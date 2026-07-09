@@ -13,11 +13,13 @@ from ..exceptions import exit_with_error
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file, read_text_file_contents
 from ..utils.git import (
-    git_add_paths,
     git_apply_stash,
     git_reset_hard,
-    git_reset_paths,
     run_git_command,
+)
+from ..utils.git_index import (
+    git_add_paths,
+    git_reset_paths,
 )
 from ..utils.git_repository import (
     get_git_repository_root_path,

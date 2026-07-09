@@ -12,7 +12,7 @@ from ...core.buffer import (
 )
 from ...data.file_modes import apply_git_file_mode, detect_file_mode_in_commit
 from ...data.repository_buffers import load_git_object_as_buffer
-from ...utils.git import git_update_index
+from ...utils.git_index import git_update_index
 from ...utils.git_repository import get_git_repository_root_path
 from ...utils.git_object_io import create_git_blob
 

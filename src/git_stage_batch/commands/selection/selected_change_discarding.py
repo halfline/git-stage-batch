@@ -26,9 +26,11 @@ from ...utils.git import (
     git_apply_to_worktree,
     git_checkout_paths,
     git_remove_paths,
+    run_git_command,
+)
+from ...utils.git_index import (
     git_update_gitlink,
     git_update_index,
-    run_git_command,
 )
 from ...utils.git_repository import get_git_repository_root_path
 from ...utils.journal import log_journal

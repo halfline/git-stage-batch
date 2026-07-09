@@ -2374,14 +2374,28 @@ def test_command_streaming_process_state_stays_out_of_command_runner():
     assert "class StreamingProcess" in command_streaming_text
 
 
-def test_batch_hunk_display_does_not_import_hunk_navigation():
-    """Batch display caching should not depend on hunk navigation."""
-    cache_path = SRC_ROOT / "data" / "batch_hunk_display.py"
+def test_selected_change_batch_file_cache_does_not_import_hunk_navigation():
+    """Batch file selection caching should not depend on hunk navigation."""
+    old_cache_path = SRC_ROOT / "data" / "batch_hunk_display.py"
+    cache_path = SRC_ROOT / "data" / "selected_change" / "batch_file_cache.py"
     imported_modules = {
         imported_module
         for imported_module, _node in _import_from_nodes(cache_path)
     }
+    old_imports = []
 
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.data.batch_hunk_display":
+                continue
+
+            relative_path = path.relative_to(REPO_ROOT)
+            old_imports.append(
+                f"{relative_path}:{node.lineno} imports {imported_module}"
+            )
+
+    assert not old_cache_path.exists()
+    assert old_imports == []
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
 
 
@@ -5831,9 +5845,9 @@ def test_tui_current_change_owns_interactive_change_display():
         for imported_module, _node in _import_from_nodes(current_change_path)
     }
     current_change_owner_imports = {
-        "git_stage_batch.data.batch_hunk_display",
         "git_stage_batch.data.line_state",
         "git_stage_batch.data.progress",
+        "git_stage_batch.data.selected_change.batch_file_cache",
         "git_stage_batch.output.hunk",
         "git_stage_batch.tui.display",
     }

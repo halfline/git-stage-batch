@@ -10,7 +10,6 @@ from ..commands.abort import command_abort
 from ..commands.again import command_again
 from ..commands.block_file import command_block_file
 from ..commands.check_unstaged import command_check_unstaged
-from ..commands.redo import command_redo
 from ..commands.start import command_start
 from ..commands.status import command_status
 from ..commands.suggest_fixup import (
@@ -40,7 +39,11 @@ from .git_help import GitHelpArgumentParser
 from .include_dispatch import dispatch_include_command
 from .quick_actions import expand_quick_actions
 from .reset_dispatch import dispatch_reset_command
-from .session_subcommands import add_stop_subcommand, add_undo_subcommand
+from .session_subcommands import (
+    add_redo_subcommand,
+    add_stop_subcommand,
+    add_undo_subcommand,
+)
 from .show_dispatch import dispatch_show_command
 from .skip_dispatch import dispatch_skip_command
 from .subcommand_parser import add_subcommand_parser
@@ -143,19 +146,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
 
     add_undo_subcommand(subparsers)
 
-    # redo - Redo the most recently undone session operation
-    parser_redo = add_subcommand_parser(
-        subparsers,
-        "redo",
-        aliases=["forward"],
-        help=_("Redo the most recently undone session operation"),
-    )
-    parser_redo.add_argument(
-        "--force",
-        action="store_true",
-        help=_("Overwrite changes made after the undo"),
-    )
-    parser_redo.set_defaults(func=lambda args: command_redo(force=args.force))
+    add_redo_subcommand(subparsers)
 
     # show - Show the selected hunk
     parser_show = add_subcommand_parser(

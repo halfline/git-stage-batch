@@ -149,6 +149,8 @@ Important modules include:
   Undo/redo checkpoints for session operations.
 - `data.line_state`
   Serialization of the currently selected line-level view.
+- `data.line_id_files`
+  Persistence for processed include, skip, and batch line ID files.
 - `data.file_review.state`
   Persistence for page-aware file review safety state.
 - `data.file_review.records`

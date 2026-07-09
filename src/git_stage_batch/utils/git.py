@@ -15,6 +15,7 @@ from pathlib import Path
 from ..exceptions import exit_with_error
 from ..i18n import _
 from .command import ExitEvent, OutputEvent, run_command, stream_command
+from .git_environment import git_environment_with_optional_locks_disabled
 from .text import bytes_to_lines
 
 
@@ -43,14 +44,6 @@ class GitIndexEntryUpdate:
     force_remove: bool = False
 
 
-def _git_environment_with_optional_locks_disabled(
-    env: dict[str, str] | None,
-) -> dict[str, str]:
-    git_env = os.environ.copy() if env is None else dict(env)
-    git_env["GIT_OPTIONAL_LOCKS"] = "0"
-    return git_env
-
-
 def _custom_index_lock_path(
     *,
     env: dict[str, str] | None,
@@ -76,7 +69,7 @@ def _git_index_lock_path(*, cwd: str | None, env: dict[str, str] | None) -> Path
         ["git", "rev-parse", "--absolute-git-dir"],
         check=True,
         cwd=cwd,
-        env=_git_environment_with_optional_locks_disabled(env),
+        env=git_environment_with_optional_locks_disabled(env),
     )
     return Path(result.stdout.strip()) / "index.lock"
 
@@ -120,7 +113,7 @@ def _git_command_environment(
 ) -> dict[str, str] | None:
     if requires_index_lock:
         return env
-    return _git_environment_with_optional_locks_disabled(env)
+    return git_environment_with_optional_locks_disabled(env)
 
 
 def _index_lock_error_text(stream: str | bytes | None) -> str:

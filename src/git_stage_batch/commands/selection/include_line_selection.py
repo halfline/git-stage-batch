@@ -37,7 +37,7 @@ from ...data.selected_change.store import (
 from ...data.selected_change.snapshots import snapshots_are_stale
 from ...exceptions import exit_with_error
 from ...i18n import _
-from ...staging.operations import update_index_with_blob_buffer
+from ...staging.index_update import update_index_with_blob_buffer
 from ...utils.paths import get_session_batch_sources_file_path
 from . import replacement_selection
 

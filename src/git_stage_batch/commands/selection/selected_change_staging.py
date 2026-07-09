@@ -20,7 +20,7 @@ from ...data.selected_change.loading import load_selected_change
 from ...data.undo import undo_checkpoint
 from ...exceptions import NoMoreHunks, exit_with_error
 from ...i18n import _
-from ...staging.operations import update_index_with_blob_buffer
+from ...staging.index_update import update_index_with_blob_buffer
 from ...utils.file_io import read_text_file_contents
 from ...utils.git_index import (
     GitIndexEntryUpdate,

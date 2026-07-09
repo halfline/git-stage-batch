@@ -256,6 +256,39 @@ def test_text_line_helpers_live_in_core_boundary():
     assert violations == []
 
 
+def test_staging_index_update_owns_git_index_mutation():
+    """Index mutation should stay separate from staging buffer construction."""
+    operations_path = SRC_ROOT / "staging" / "operations.py"
+    index_update_path = SRC_ROOT / "staging" / "index_update.py"
+    operations = __import__(
+        "git_stage_batch.staging.operations",
+        fromlist=["operations"],
+    )
+    index_update = __import__(
+        "git_stage_batch.staging.index_update",
+        fromlist=["index_update"],
+    )
+    mutation_modules = {
+        "git_stage_batch.utils.git_command",
+        "git_stage_batch.utils.git_index",
+        "git_stage_batch.utils.git_object_io",
+        "git_stage_batch.utils.journal",
+    }
+    operations_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(operations_path)
+    }
+    index_update_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(index_update_path)
+    }
+
+    assert "update_index_with_blob_buffer" not in vars(operations)
+    assert "update_index_with_blob_buffer" in vars(index_update)
+    assert operations_imports.isdisjoint(mutation_modules)
+    assert mutation_modules <= index_update_imports
+
+
 def test_replacement_payload_imports_use_core_boundary():
     """Non-batch code should not depend on batch replacement for neutral payloads."""
     batch_replacement = __import__(

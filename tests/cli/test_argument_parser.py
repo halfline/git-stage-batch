@@ -11,6 +11,7 @@ from git_stage_batch.cli import (
     discard_dispatch,
     file_blocking_subcommands,
     file_scope,
+    fixup_subcommands,
     git_help,
     include_dispatch,
     replacement_input,
@@ -1572,6 +1573,51 @@ def test_parse_command_line_suggest_fixup_with_flags():
     assert args.reset is True
     assert hasattr(args, "func")
     assert callable(args.func)
+
+
+def test_parse_command_line_suggest_fixup_passes_hunk_args(monkeypatch):
+    """suggest-fixup dispatches hunk scope through the fixup parser owner."""
+    mock_command = Mock()
+    monkeypatch.setattr(fixup_subcommands, "command_suggest_fixup", mock_command)
+
+    args = parse_command_line(
+        ["suggest-fixup", "--reset", "--last", "main"],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "main",
+        reset=True,
+        abort=False,
+        show_last=True,
+    )
+
+
+def test_parse_command_line_suggest_fixup_passes_line_args(monkeypatch):
+    """suggest-fixup dispatches line scope through the fixup parser owner."""
+    mock_command = Mock()
+    monkeypatch.setattr(
+        fixup_subcommands,
+        "command_suggest_fixup_line",
+        mock_command,
+    )
+
+    args = parse_command_line(
+        ["suggest-fixup", "--line", "1,3", "--abort", "main"],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "1,3",
+        "main",
+        reset=False,
+        abort=True,
+        show_last=False,
+    )
 
 
 def test_parse_command_line_new():

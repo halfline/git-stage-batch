@@ -126,6 +126,38 @@ def test_mapped_storage_lives_in_core_boundary():
     assert violations == []
 
 
+def test_text_line_helpers_live_in_core_boundary():
+    """Byte-line helpers should live below batch, editor, and utils adapters."""
+    old_text_path = SRC_ROOT / "utils" / "text.py"
+    text_lines = __import__(
+        "git_stage_batch.core.text_lines",
+        fromlist=["text_lines"],
+    )
+    public_text_line_names = {
+        "AcquirableLineSequence",
+        "as_acquirable_line_sequence",
+        "bytes_to_lines",
+        "normalize_line_ending",
+        "normalize_line_endings",
+        "normalize_line_sequence_endings",
+    }
+    violations = []
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.utils.text":
+                continue
+
+            relative_path = path.relative_to(REPO_ROOT)
+            violations.append(
+                f"{relative_path}:{node.lineno} imports {imported_module}"
+            )
+
+    assert not old_text_path.exists()
+    assert public_text_line_names <= vars(text_lines).keys()
+    assert violations == []
+
+
 def test_replacement_payload_imports_use_core_boundary():
     """Non-batch code should not depend on batch replacement for neutral payloads."""
     neutral_names = {
@@ -9144,7 +9176,7 @@ def test_batch_transform_sift_results_own_result_planning():
             "load_git_object_as_buffer_or_empty",
             "load_working_tree_file_as_buffer",
         },
-        "git_stage_batch.utils.text": {
+        "git_stage_batch.core.text_lines": {
             "normalize_line_sequence_endings",
         },
     }

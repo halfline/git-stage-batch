@@ -11,7 +11,7 @@ from ..core.buffer import buffer_byte_chunks
 if TYPE_CHECKING:
     from ..core.buffer import LineBuffer
     from ..core.replacement import ReplacementPayload
-    from .operation_candidates import (
+    from .operation_candidate_types import (
         CandidateOperation,
         CandidateTarget,
         TargetCandidatePreview,

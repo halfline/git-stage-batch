@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..batch.operation_candidates import OperationCandidatePreview
+from ..batch.operation_candidate_types import OperationCandidatePreview
 from ..i18n import _
 from ..utils.paths import get_context_lines
 from . import candidate_preview_snippets

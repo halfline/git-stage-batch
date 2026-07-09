@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import shlex
 
-from ..batch.operation_candidates import OperationCandidatePreview
+from ..batch.operation_candidate_types import OperationCandidatePreview
 
 
 def candidate_selector_text(

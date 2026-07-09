@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from ..batch.operation_candidates import OperationCandidatePreview
+from ..batch.operation_candidate_types import OperationCandidatePreview
 from . import candidate_preview_snippets
 from . import candidate_preview_summary
 from .candidate_preview_commands import (

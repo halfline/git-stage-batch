@@ -6,9 +6,11 @@ from contextlib import ExitStack
 
 from . import candidate_inputs as _candidate_inputs
 from . import candidate_previews as _candidate_previews
-from ...batch.operation_candidates import (
+from ...batch.operation_candidate_types import (
     CandidateEnumerationLimitError,
     CandidatePreviewCount,
+)
+from ...batch.operation_candidates import (
     build_apply_candidate_previews,
     build_include_candidate_previews,
 )

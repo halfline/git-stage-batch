@@ -1175,6 +1175,9 @@ def test_file_review_records_stay_out_of_state_module():
             "FileReviewState",
             "ReviewSource",
         },
+        SRC_ROOT / "output" / "file_review_action_selections.py": {
+            "ReviewSource",
+        },
         SRC_ROOT / "output" / "file_review_state_builder.py": {
             "FileReviewAction",
             "FileReviewSelectionState",
@@ -1319,6 +1322,41 @@ def test_file_review_output_uses_display_id_module():
     assert "display_ids_for_rows" in vars(file_review_display_ids)
     assert "def display_ids_for_rows" not in review_output_text
     assert "def _display_ids_for_rows" not in review_output_text
+
+
+def test_file_review_output_uses_action_selection_module():
+    """File-review output should not own page action selection mapping."""
+    review_output_path = SRC_ROOT / "output" / "file_review.py"
+    review_state_builder_path = SRC_ROOT / "output" / "file_review_state_builder.py"
+    review_output_text = review_output_path.read_text()
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_output_path)
+    }
+    state_builder_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_state_builder_path)
+    }
+    file_review_action_selections = __import__(
+        "git_stage_batch.output.file_review_action_selections",
+        fromlist=["file_review_action_selections"],
+    )
+    public_names = {
+        "change_index_containing_review_display_ids",
+        "change_is_live_splittable",
+        "display_ids_for_change_pages",
+        "pages_containing_review_display_ids",
+        "selection_ids_for_display_ids",
+        "shown_line_action_selections",
+    }
+
+    assert "git_stage_batch.output.file_review_action_selections" in imported_modules
+    assert "git_stage_batch.output.file_review_action_selections" in state_builder_imports
+    assert public_names <= vars(file_review_action_selections).keys()
+    assert "def _shown_line_action_selections" not in review_output_text
+    assert "def _display_ids_for_change_pages" not in review_output_text
+    assert "def _pages_containing_review_display_ids" not in review_output_text
+    assert "def _selection_ids_for_display_ids" not in review_output_text
 
 
 def test_show_commands_use_file_review_state_builder():

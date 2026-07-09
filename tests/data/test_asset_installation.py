@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from git_stage_batch.data.asset_installation import copy_asset_tree
+import pytest
+
+from git_stage_batch.data.asset_installation import (
+    copy_asset_tree,
+    validate_asset_destination_path,
+)
+from git_stage_batch.exceptions import CommandError
 
 
 def test_copy_asset_tree_ignores_python_cache_artifacts(tmp_path):
@@ -26,3 +32,68 @@ def test_copy_asset_tree_ignores_python_cache_artifacts(tmp_path):
     assert not (destination / "scripts" / "__pycache__").exists()
     assert not (destination / "scripts" / "helper.pyc").exists()
     assert not (destination / "scripts" / "helper.pyo").exists()
+
+
+def test_validate_asset_destination_path_allows_missing_destination(tmp_path):
+    """Missing destination paths should be accepted."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    source = tmp_path / "source.txt"
+    source.write_text("asset\n", encoding="utf-8")
+
+    validate_asset_destination_path(
+        source,
+        repo_root / ".codex" / "config.toml",
+        repo_root,
+    )
+
+
+def test_validate_asset_destination_path_rejects_blocked_parent(tmp_path):
+    """Non-directory parents should block asset installation."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    source = tmp_path / "source.txt"
+    source.write_text("asset\n", encoding="utf-8")
+    (repo_root / ".codex").write_text("file\n", encoding="utf-8")
+
+    with pytest.raises(
+        CommandError,
+        match=r"Cannot install bundled assets because '\.codex' is not a directory",
+    ):
+        validate_asset_destination_path(
+            source,
+            repo_root / ".codex" / "config.toml",
+            repo_root,
+        )
+
+
+def test_validate_asset_destination_path_rejects_file_for_directory_source(tmp_path):
+    """File destinations should reject directory assets."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    source = tmp_path / "source"
+    source.mkdir()
+    destination = repo_root / ".agents"
+    destination.write_text("file\n", encoding="utf-8")
+
+    with pytest.raises(
+        CommandError,
+        match=r"Cannot install bundled assets because '\.agents' is not a directory",
+    ):
+        validate_asset_destination_path(source, destination, repo_root)
+
+
+def test_validate_asset_destination_path_rejects_directory_for_file_source(tmp_path):
+    """Directory destinations should reject file assets."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    source = tmp_path / "source.txt"
+    source.write_text("asset\n", encoding="utf-8")
+    destination = repo_root / ".codex"
+    destination.mkdir()
+
+    with pytest.raises(
+        CommandError,
+        match=r"Cannot install bundled assets because '\.codex' is a directory",
+    ):
+        validate_asset_destination_path(source, destination, repo_root)

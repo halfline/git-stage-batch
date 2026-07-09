@@ -22,11 +22,11 @@ from ...data.undo import undo_checkpoint
 from ...exceptions import CommandError, NoMoreHunks, exit_with_error
 from ...i18n import _
 from ...utils.file_io import append_lines_to_file, path_is_empty, read_text_file_contents
-from ...utils.git import (
+from ...utils.git import run_git_command
+from ...utils.git_worktree import (
     git_apply_to_worktree,
     git_checkout_paths,
     git_remove_paths,
-    run_git_command,
 )
 from ...utils.git_index import (
     git_update_gitlink,

@@ -6,10 +6,10 @@ import shutil
 
 from ..exceptions import exit_with_error
 from ..i18n import _
-from ..utils.git import (
+from ..utils.git import run_git_command
+from ..utils.git_worktree import (
     git_checkout_detached,
     git_submodule_update_checkout,
-    run_git_command,
 )
 from ..utils.git_index import (
     git_add_paths,

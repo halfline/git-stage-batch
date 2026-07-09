@@ -15,7 +15,7 @@ from ...data.session import snapshot_file_if_untracked
 from ...exceptions import exit_with_error
 from ...i18n import _
 from ...utils.file_io import append_lines_to_file
-from ...utils.git import (
+from ...utils.git_worktree import (
     git_checkout_paths,
     git_remove_paths,
 )

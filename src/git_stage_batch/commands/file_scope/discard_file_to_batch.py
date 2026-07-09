@@ -31,7 +31,7 @@ from ...data.text_lifecycle_detection import detect_empty_text_lifecycle_change
 from ...exceptions import exit_with_error
 from ...i18n import _
 from ...utils.file_io import read_text_file_line_set
-from ...utils.git import (
+from ...utils.git_worktree import (
     git_apply_to_worktree,
     git_checkout_paths,
     git_remove_paths,

@@ -165,23 +165,11 @@ def test_batch_package_stays_below_workflow_data():
         "git_stage_batch.batch.source_snapshots",
         fromlist=["source_snapshots"],
     )
-    try:
-        source_cache = __import__(
-            "git_stage_batch.batch.source_cache",
-            fromlist=["source_cache"],
-        )
-    except ModuleNotFoundError:
-        source_cache = source_snapshots
     public_snapshot_names = {
         "BatchSourceCommit",
         "create_batch_source_commit",
         "create_batch_source_commits",
         "load_saved_session_file_as_buffer",
-    }
-    public_cache_names = {
-        "get_batch_source_for_file",
-        "load_session_batch_sources",
-        "save_session_batch_sources",
     }
     violations = []
 
@@ -198,7 +186,69 @@ def test_batch_package_stays_below_workflow_data():
 
     assert not old_source_path.exists()
     assert public_snapshot_names <= vars(source_snapshots).keys()
-    assert public_cache_names <= vars(source_cache).keys()
+    assert violations == []
+
+
+def test_batch_source_cache_owns_session_mapping():
+    """Session source-cache mapping should live outside source snapshots."""
+    source_cache = __import__(
+        "git_stage_batch.batch.source_cache",
+        fromlist=["source_cache"],
+    )
+    source_snapshots = __import__(
+        "git_stage_batch.batch.source_snapshots",
+        fromlist=["source_snapshots"],
+    )
+    source_cache_path = SRC_ROOT / "batch" / "source_cache.py"
+    public_names = {
+        "get_batch_source_for_file",
+        "load_session_batch_sources",
+        "save_session_batch_sources",
+    }
+    expected_imports = {
+        SRC_ROOT / "batch" / "binary_file_storage.py": public_names,
+        SRC_ROOT / "batch" / "display.py": {"get_batch_source_for_file"},
+        SRC_ROOT / "batch" / "source_refresh.py": {
+            "load_session_batch_sources",
+            "save_session_batch_sources",
+        },
+        SRC_ROOT / "batch" / "text_file_storage.py": {
+            "load_session_batch_sources",
+            "save_session_batch_sources",
+        },
+        SRC_ROOT / "commands" / "selection" / "discard_line_replacement.py": {
+            "load_session_batch_sources",
+            "save_session_batch_sources",
+        },
+    }
+    violations = []
+
+    assert public_names <= vars(source_cache).keys()
+    assert public_names.isdisjoint(vars(source_snapshots))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == source_cache_path:
+            continue
+
+        imported_public_names = set()
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.source_snapshots":
+                stale_imports = imported_names & public_names
+                if stale_imports:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(stale_imports))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module != "git_stage_batch.batch.source_cache":
+                continue
+
+            imported_public_names |= imported_names & public_names
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
     assert violations == []
 
 

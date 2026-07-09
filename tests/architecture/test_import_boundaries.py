@@ -660,6 +660,61 @@ def test_diff_parser_uses_core_buffer_boundary():
     assert imported_exception_names == {"CommandError"}
 
 
+def test_gitlink_diff_owns_gitlink_parser_helpers():
+    """Gitlink-specific diff helpers should stay outside the general parser."""
+    diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"
+    gitlink_diff_path = SRC_ROOT / "core" / "gitlink_diff.py"
+    diff_parser_text = diff_parser_path.read_text()
+    gitlink_diff_text = gitlink_diff_path.read_text()
+    diff_parser = __import__(
+        "git_stage_batch.core.diff_parser",
+        fromlist=["diff_parser"],
+    )
+    gitlink_diff = __import__(
+        "git_stage_batch.core.gitlink_diff",
+        fromlist=["gitlink_diff"],
+    )
+    public_names = {
+        "consume_gitlink_hunks",
+        "gitlink_change_type",
+        "gitlink_new_path",
+        "gitlink_oids_from_index",
+        "gitlink_oids_from_subproject_commit_patch",
+        "gitlink_old_path",
+        "metadata_indicates_gitlink",
+        "non_null_git_oid",
+    }
+    old_parser_names = {
+        "INDEX_LINE_PATTERN",
+        "NULL_OBJECT_PREFIX",
+        "SUBPROJECT_COMMIT_PATTERN",
+        "_consume_gitlink_hunks",
+        "_gitlink_change_type",
+        "_gitlink_new_path",
+        "_gitlink_oids_from_index",
+        "_gitlink_oids_from_subproject_commit_patch",
+        "_gitlink_old_path",
+        "_metadata_indicates_gitlink",
+        "_non_null_git_oid",
+    }
+    diff_imports = {}
+
+    for imported_module, node in _import_from_nodes(diff_parser_path):
+        diff_imports.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    assert public_names <= vars(gitlink_diff).keys()
+    assert public_names.isdisjoint(vars(diff_parser))
+    assert "gitlink_diff" in diff_imports.get("git_stage_batch.core", set())
+    assert "git_stage_batch.core.gitlink_diff" not in diff_imports
+    assert "_gitlink_diff.consume_gitlink_hunks" in diff_parser_text
+    assert old_parser_names.isdisjoint(vars(diff_parser))
+    for name in old_parser_names:
+        assert name not in diff_parser_text
+        assert name.removeprefix("_") in gitlink_diff_text
+
+
 def test_patch_header_queries_stay_in_diff_parser():
     """Include and discard should use core patch header queries."""
     include_path = SRC_ROOT / "commands" / "include.py"

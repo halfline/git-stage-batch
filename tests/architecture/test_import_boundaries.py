@@ -2708,6 +2708,43 @@ def test_argument_parser_delegates_skip_dispatch():
     assert "command_skip_line(" not in parser_text
 
 
+def test_argument_parser_delegates_apply_dispatch():
+    """Parser construction should not own apply workflow dispatch."""
+    parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    apply_dispatch_path = SRC_ROOT / "cli" / "apply_dispatch.py"
+    parser_text = parser_path.read_text()
+    parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    apply_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(apply_dispatch_path)
+    }
+    parser = __import__(
+        "git_stage_batch.cli.argument_parser",
+        fromlist=["argument_parser"],
+    )
+    apply_dispatch = __import__(
+        "git_stage_batch.cli.apply_dispatch",
+        fromlist=["apply_dispatch"],
+    )
+    apply_runtime_imports = {
+        "git_stage_batch.commands.apply_from",
+        "git_stage_batch.commands.file_scope.multi_file_actions",
+    }
+
+    assert "git_stage_batch.cli.apply_dispatch" in parser_imports
+    assert "git_stage_batch.commands.apply_from" not in parser_imports
+    assert apply_runtime_imports <= apply_dispatch_imports
+    assert "git_stage_batch.cli.file_scope" in apply_dispatch_imports
+    assert "dispatch_apply_command" in vars(apply_dispatch)
+    assert "command_apply_from_batch" not in vars(parser)
+    assert "def dispatch_apply(" not in parser_text
+    assert "command_apply_from_batch(" not in parser_text
+    assert "apply --from" not in parser_text
+
+
 def test_argument_parser_delegates_replacement_input_decoding():
     """Parser branches should not own replacement payload decoding."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"

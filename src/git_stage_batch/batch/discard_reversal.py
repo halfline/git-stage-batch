@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 
 from .baseline_correspondence import (
     BaselineCorrespondence as _BaselineCorrespondence,
@@ -13,15 +13,9 @@ from .realized_entries import (
     _RealizedEntries,
     _entry_source_line_at,
 )
-from ..core.line_selection import LineRanges, LineSelection
+from ..core.line_selection import LineRanges, LineSelection, coerce_line_ranges
 from ..exceptions import MergeError as _MergeError
 from ..i18n import _
-
-
-def _as_line_ranges(lines: LineSelection | Iterable[int]) -> LineRanges:
-    if isinstance(lines, LineRanges):
-        return lines
-    return LineRanges.from_lines(lines)
 
 
 def _count_lines_in_range(
@@ -29,7 +23,7 @@ def _count_lines_in_range(
     start_line: int,
     end_line: int,
 ) -> int:
-    return _as_line_ranges(line_selection).count(start_line, end_line)
+    return coerce_line_ranges(line_selection).count(start_line, end_line)
 
 
 def reverse_presence_constraints(
@@ -119,7 +113,7 @@ def reverse_presence_constraints(
     copy_start: int | None = 0
 
     if isinstance(entries, _RealizedEntries):
-        presence_lines = _as_line_ranges(presence_line_set)
+        presence_lines = coerce_line_ranges(presence_line_set)
         for run in entries.provenance_runs():
             if run.source_start == 0:
                 continue

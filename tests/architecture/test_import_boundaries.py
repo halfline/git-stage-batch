@@ -12854,6 +12854,70 @@ def test_batch_presence_constraints_own_presence_entry_helpers():
     assert violations == []
 
 
+def test_batch_presence_missing_claims_own_mapping_lookup():
+    """Missing presence-claim lookup should live outside constraint policies."""
+    presence_missing_claims = __import__(
+        "git_stage_batch.batch.presence_missing_claims",
+        fromlist=["presence_missing_claims"],
+    )
+    presence_constraints = __import__(
+        "git_stage_batch.batch.presence_constraints",
+        fromlist=["presence_constraints"],
+    )
+    merge_validation = __import__(
+        "git_stage_batch.batch.merge_validation",
+        fromlist=["merge_validation"],
+    )
+    presence_missing_claims_path = (
+        SRC_ROOT / "batch" / "presence_missing_claims.py"
+    )
+    presence_constraints_path = SRC_ROOT / "batch" / "presence_constraints.py"
+    merge_validation_path = SRC_ROOT / "batch" / "merge_validation.py"
+    public_names = {
+        "mapped_missing_source_lines",
+    }
+    private_names = {
+        "_mapped_missing_source_lines",
+    }
+    expected_imports = {
+        presence_constraints_path: public_names,
+        merge_validation_path: public_names,
+    }
+    violations = []
+
+    assert public_names <= vars(presence_missing_claims).keys()
+    assert public_names.isdisjoint(vars(presence_constraints))
+    assert public_names.isdisjoint(vars(merge_validation))
+    assert "def _mapped_missing_source_lines(" not in (
+        presence_constraints_path.read_text(encoding="utf-8")
+    )
+    assert "def _mapped_missing_source_lines(" not in (
+        merge_validation_path.read_text(encoding="utf-8")
+    )
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == presence_missing_claims_path:
+            continue
+
+        direct_public_names = set()
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module != "git_stage_batch.batch.presence_missing_claims":
+                continue
+
+            direct_public_names |= imported_names & public_names
+            private_imports = imported_names & private_names
+            if private_imports:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(private_imports))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= direct_public_names
+
+    assert violations == []
+
+
 def test_realized_mapping_owns_working_range_builder():
     """Working-range realization should stay on the realized mapping boundary."""
     merge = __import__(

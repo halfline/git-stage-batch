@@ -3722,14 +3722,20 @@ def test_argument_parser_uses_auto_advance_option_module():
     assert "Leave no hunk selected after the command completes" not in parser_text
 
 
-def test_cli_dispatch_delegates_noninteractive_execution():
-    """CLI dispatch should launch TUI or delegate parsed command execution."""
-    dispatch_path = SRC_ROOT / "cli" / "dispatch.py"
+def test_cli_mode_dispatch_delegates_noninteractive_execution():
+    """CLI mode dispatch should launch TUI or delegate parsed command execution."""
+    mode_dispatch_path = SRC_ROOT / "cli" / "mode_dispatch.py"
     imported_modules = {
         imported_module
-        for imported_module, _node in _import_from_nodes(dispatch_path)
+        for imported_module, _node in _import_from_nodes(mode_dispatch_path)
     }
+    mode_dispatch = __import__(
+        "git_stage_batch.cli.mode_dispatch",
+        fromlist=["mode_dispatch"],
+    )
 
+    assert not (SRC_ROOT / "cli" / "dispatch.py").exists()
+    assert "dispatch_cli_mode" in vars(mode_dispatch)
     assert "git_stage_batch.commands" not in imported_modules
     assert "git_stage_batch.commands.interactive" not in imported_modules
     assert "git_stage_batch.cli.execution" in imported_modules
@@ -3742,7 +3748,7 @@ def test_tui_cli_escape_does_not_import_dispatch():
     action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
     cli_escape_path = SRC_ROOT / "tui" / "cli_escape.py"
     execution_path = SRC_ROOT / "cli" / "execution.py"
-    dispatch_path = SRC_ROOT / "cli" / "dispatch.py"
+    mode_dispatch_path = SRC_ROOT / "cli" / "mode_dispatch.py"
     interactive_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(interactive_path)
@@ -3759,9 +3765,9 @@ def test_tui_cli_escape_does_not_import_dispatch():
         imported_module
         for imported_module, _node in _import_from_nodes(execution_path)
     }
-    dispatch_imports = {
+    mode_dispatch_imports = {
         imported_module
-        for imported_module, _node in _import_from_nodes(dispatch_path)
+        for imported_module, _node in _import_from_nodes(mode_dispatch_path)
     }
 
     assert "git_stage_batch.tui.action_dispatch" in interactive_imports
@@ -3769,8 +3775,9 @@ def test_tui_cli_escape_does_not_import_dispatch():
     assert "git_stage_batch.cli.argument_parser" in cli_escape_imports
     assert "git_stage_batch.cli.execution" in cli_escape_imports
     assert "git_stage_batch.cli.dispatch" not in cli_escape_imports
+    assert "git_stage_batch.cli.mode_dispatch" not in cli_escape_imports
     assert "git_stage_batch.tui.interactive" not in execution_imports
-    assert "git_stage_batch.tui.interactive" in dispatch_imports
+    assert "git_stage_batch.tui.interactive" in mode_dispatch_imports
 
 
 def test_tui_batch_menu_owns_batch_management_actions():

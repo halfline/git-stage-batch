@@ -776,6 +776,32 @@ def test_cli_argument_parser_delegates_include_subcommand_registration():
     assert "git_stage_batch.cli.subcommand_parser" in selection_subcommands_imports
 
 
+def test_cli_argument_parser_delegates_skip_subcommand_registration():
+    """Argument parsing should not own skip parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    selection_subcommands_path = SRC_ROOT / "cli" / "selection_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    selection_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(selection_subcommands_path)
+    }
+    selection_subcommands = __import__(
+        "git_stage_batch.cli.selection_subcommands",
+        fromlist=["selection_subcommands"],
+    )
+
+    assert "add_skip_subcommand" in vars(selection_subcommands)
+    assert "git_stage_batch.cli.selection_subcommands" in argument_parser_imports
+    assert "git_stage_batch.cli.skip_dispatch" not in argument_parser_imports
+    assert "git_stage_batch.cli.skip_dispatch" in selection_subcommands_imports
+    assert "git_stage_batch.cli.auto_advance_options" in selection_subcommands_imports
+    assert "git_stage_batch.cli.file_arguments" in selection_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in selection_subcommands_imports
+
+
 def test_cli_argument_parser_delegates_stop_subcommand_registration():
     """Argument parsing should not own stop parser details."""
     argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
@@ -3308,11 +3334,16 @@ def test_argument_parser_delegates_show_dispatch():
 def test_argument_parser_delegates_skip_dispatch():
     """Parser construction should not own skip workflow dispatch."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    selection_subcommands_path = SRC_ROOT / "cli" / "selection_subcommands.py"
     skip_dispatch_path = SRC_ROOT / "cli" / "skip_dispatch.py"
     parser_text = parser_path.read_text()
     parser_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    selection_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(selection_subcommands_path)
     }
     skip_dispatch_imports = {
         imported_module
@@ -3327,7 +3358,9 @@ def test_argument_parser_delegates_skip_dispatch():
         fromlist=["skip_dispatch"],
     )
 
-    assert "git_stage_batch.cli.skip_dispatch" in parser_imports
+    assert "git_stage_batch.cli.selection_subcommands" in parser_imports
+    assert "git_stage_batch.cli.skip_dispatch" not in parser_imports
+    assert "git_stage_batch.cli.skip_dispatch" in selection_subcommands_imports
     assert "git_stage_batch.commands.skip" not in parser_imports
     assert "git_stage_batch.commands.skip" in skip_dispatch_imports
     assert (

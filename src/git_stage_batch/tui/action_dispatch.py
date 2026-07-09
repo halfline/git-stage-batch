@@ -12,7 +12,7 @@ from .again_action import handle_again
 from .asset_menu import handle_asset_menu
 from .batch_menu import handle_batch_menu
 from .cli_escape import handle_cli_escape
-from .file_review import handle_current_file_review, handle_file_browser
+from .file_review.browser import handle_current_file_review, handle_file_browser
 from .file_selection_menu import handle_file_selection_menu
 from .fixup_menu import handle_fixup_menu
 from .flow import FlowState, LocationRole

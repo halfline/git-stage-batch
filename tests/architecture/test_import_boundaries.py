@@ -325,6 +325,7 @@ def test_data_package_does_not_reexport_data_apis():
         "record_hunk_discarded",
         "record_hunk_included",
         "record_hunk_skipped",
+        "read_status_summary",
         "restore_batch_refs",
         "snapshot_batch_refs",
     }
@@ -897,7 +898,7 @@ def test_file_review_freshness_stays_out_of_state_module():
         "selected_change_matches_review_state",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "status.py": {
+        SRC_ROOT / "data" / "status_summary.py": {
             "selected_change_matches_review_state",
         },
         SRC_ROOT / "data" / "file_review" / "state.py": {
@@ -961,7 +962,7 @@ def test_file_review_selection_validation_stays_out_of_state_module():
         "validate_review_scoped_line_selection",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "status.py": {
+        SRC_ROOT / "data" / "status_summary.py": {
             "shown_review_selections_for_action",
         },
         SRC_ROOT / "data" / "file_review" / "batch_selection.py": {
@@ -1035,7 +1036,7 @@ def test_file_review_records_stay_out_of_state_module():
             "FileReviewAction",
         },
         SRC_ROOT / "commands" / "skip.py": {"FileReviewAction"},
-        SRC_ROOT / "commands" / "status.py": {
+        SRC_ROOT / "data" / "status_summary.py": {
             "FileReviewAction",
             "ReviewSource",
         },
@@ -1282,7 +1283,7 @@ def test_status_does_not_import_hunk_navigation():
 
 
 def test_status_remaining_hunk_estimate_stays_in_data_module():
-    """Status should not own live-diff remaining hunk accounting."""
+    """Status summary should delegate live-diff remaining hunk accounting."""
     remaining_hunks = __import__(
         "git_stage_batch.data.remaining_hunks",
         fromlist=["remaining_hunks"],
@@ -1292,6 +1293,7 @@ def test_status_remaining_hunk_estimate_stays_in_data_module():
         fromlist=["status"],
     )
     status_path = SRC_ROOT / "commands" / "status.py"
+    status_summary_path = SRC_ROOT / "data" / "status_summary.py"
     public_names = {
         "estimate_remaining_hunks",
     }
@@ -1329,32 +1331,159 @@ def test_status_remaining_hunk_estimate_stays_in_data_module():
             "get_context_lines",
         },
     }
+    inspected_paths = {
+        status_path,
+        status_summary_path,
+    }
+    direct_estimate_imports = {
+        path: set()
+        for path in inspected_paths
+    }
+    remaining_imports = {
+        path: set()
+        for path in inspected_paths
+    }
+
+    for path in inspected_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.data.remaining_hunks":
+                remaining_imports[path] |= {
+                    alias.asname or alias.name
+                    for alias in node.names
+                }
+            direct_estimate_imports[path] |= imported_names & disallowed_imports.get(
+                imported_module,
+                set(),
+            )
+
+    assert public_names <= vars(remaining_hunks).keys()
+    assert "estimate_remaining_hunks" not in vars(status)
+    assert remaining_imports == {
+        status_path: set(),
+        status_summary_path: {"_estimate_remaining_hunks"},
+    }
+    assert direct_estimate_imports == {
+        status_path: set(),
+        status_summary_path: set(),
+    }
+
+
+def test_status_summary_reader_owns_status_payload_assembly():
+    """Status payload assembly should live outside the command module."""
+    status_summary = __import__(
+        "git_stage_batch.data.status_summary",
+        fromlist=["status_summary"],
+    )
+    status = __import__(
+        "git_stage_batch.commands.status",
+        fromlist=["status"],
+    )
+    status_path = SRC_ROOT / "commands" / "status.py"
+    public_names = {
+        "read_status_summary",
+    }
+    old_status_names = {
+        "_read_batch_review_display_ids",
+        "_read_file_review_summary",
+        "_read_live_review_display_ids",
+        "_read_selected_change_summary",
+        "_read_skipped_hunks",
+        "_read_status_summary",
+        "_selected_change_is_stale",
+    }
+    disallowed_imports = {
+        "git_stage_batch.batch.query": {
+            "read_batch_metadata",
+        },
+        "git_stage_batch.data.batch_selected_changes": {
+            "selected_batch_binary_batch_name",
+            "selected_batch_binary_file_for_batch",
+        },
+        "git_stage_batch.data.change_freshness": {
+            "binary_file_change_is_stale",
+            "gitlink_change_is_stale",
+            "rename_change_is_stale",
+            "text_deletion_change_is_stale",
+        },
+        "git_stage_batch.data.file_review.freshness": {
+            "selected_change_matches_review_state",
+        },
+        "git_stage_batch.data.file_review.records": {
+            "FileReviewAction",
+            "ReviewSource",
+        },
+        "git_stage_batch.data.file_review.selection_validation": {
+            "shown_review_selections_for_action",
+        },
+        "git_stage_batch.data.file_review.state": {
+            "read_last_file_review_state",
+        },
+        "git_stage_batch.data.line_state": {
+            "load_line_changes_from_state",
+        },
+        "git_stage_batch.data.remaining_hunks": {
+            "estimate_remaining_hunks",
+        },
+        "git_stage_batch.data.selected_change.clear_reasons": {
+            "mark_selected_change_cleared_by_stale_batch_selection",
+        },
+        "git_stage_batch.data.selected_change.file_changes": {
+            "load_selected_binary_file",
+            "load_selected_gitlink_change",
+            "load_selected_rename_change",
+            "load_selected_text_deletion_change",
+        },
+        "git_stage_batch.data.selected_change.lifecycle": {
+            "clear_selected_change_state_files",
+        },
+        "git_stage_batch.data.selected_change.snapshots": {
+            "snapshots_are_stale",
+        },
+        "git_stage_batch.data.selected_change.store": {
+            "read_selected_change_kind",
+        },
+        "git_stage_batch.data.session": {
+            "get_iteration_count",
+        },
+        "git_stage_batch.utils.file_io": {
+            "count_nonblank_text_file_lines",
+            "stream_text_file_lines",
+        },
+        "git_stage_batch.utils.paths": {
+            "get_discarded_hunks_file_path",
+            "get_included_hunks_file_path",
+            "get_line_changes_json_file_path",
+            "get_selected_hunk_patch_file_path",
+            "get_skipped_hunks_jsonl_file_path",
+        },
+    }
     status_tree = ast.parse(status_path.read_text(), filename=str(status_path))
     status_names = {
         node.name
         for node in ast.walk(status_tree)
         if isinstance(node, ast.ClassDef | ast.FunctionDef)
     }
-    status_remaining_imports = set()
-    direct_estimate_imports = set()
+    imported_status_summary_names = set()
+    direct_payload_imports = set()
 
     for imported_module, node in _import_from_nodes(status_path):
         imported_names = {alias.name for alias in node.names}
-        if imported_module == "git_stage_batch.data.remaining_hunks":
-            status_remaining_imports |= {
+        if imported_module == "git_stage_batch.data.status_summary":
+            imported_status_summary_names |= {
                 alias.asname or alias.name
                 for alias in node.names
             }
-        direct_estimate_imports |= imported_names & disallowed_imports.get(
+        direct_payload_imports |= imported_names & disallowed_imports.get(
             imported_module,
             set(),
         )
 
-    assert public_names <= vars(remaining_hunks).keys()
-    assert "estimate_remaining_hunks" not in vars(status)
-    assert "estimate_remaining_hunks" not in status_names
-    assert "_estimate_remaining_hunks" in status_remaining_imports
-    assert direct_estimate_imports == set()
+    assert public_names <= vars(status_summary).keys()
+    assert "read_status_summary" not in vars(status)
+    assert old_status_names.isdisjoint(status_names)
+    assert "_read_status_summary" in imported_status_summary_names
+    assert direct_payload_imports == set()
 
 
 def test_active_session_query_stays_in_session_data():

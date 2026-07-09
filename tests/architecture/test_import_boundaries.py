@@ -506,7 +506,9 @@ def test_line_id_file_persistence_stays_in_data_layer():
         / "commands"
         / "selection"
         / "skip_line_selection.py": file_helper_names,
-        SRC_ROOT / "data" / "file_hunk_display.py": {"write_line_ids_file"},
+        SRC_ROOT / "data" / "selected_change" / "file_hunk_cache.py": {
+            "write_line_ids_file",
+        },
         SRC_ROOT / "data" / "line_state.py": {"read_line_ids_file"},
         SRC_ROOT / "data" / "selected_change" / "hunk_recalculation.py": {
             "write_line_ids_file",
@@ -3415,6 +3417,49 @@ def test_file_hunk_display_does_not_import_hunk_navigation():
     }
 
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
+
+
+def test_file_hunk_cache_owns_selected_state_writes():
+    """File hunk rendering should not write selected-change cache state."""
+    display_path = SRC_ROOT / "data" / "file_hunk_display.py"
+    cache_path = SRC_ROOT / "data" / "selected_change" / "file_hunk_cache.py"
+    display = __import__(
+        "git_stage_batch.data.file_hunk_display",
+        fromlist=["file_hunk_display"],
+    )
+    cache = __import__(
+        "git_stage_batch.data.selected_change.file_hunk_cache",
+        fromlist=["file_hunk_cache"],
+    )
+    cache_names = {
+        "cache_file_as_single_hunk",
+        "cache_unstaged_file_as_single_hunk",
+    }
+    render_names = {
+        "build_file_hunk_from_buffer",
+        "render_file_as_single_hunk",
+        "render_unstaged_file_as_single_hunk",
+    }
+    selected_state_modules = {
+        "git_stage_batch.data.line_id_files",
+        "git_stage_batch.data.selected_change.snapshots",
+        "git_stage_batch.data.selected_change.store",
+        "git_stage_batch.utils.file_io",
+    }
+    display_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(display_path)
+    }
+    cache_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(cache_path)
+    }
+
+    assert render_names <= vars(display).keys()
+    assert cache_names.isdisjoint(vars(display))
+    assert cache_names <= vars(cache).keys()
+    assert selected_state_modules.isdisjoint(display_imports)
+    assert selected_state_modules <= cache_imports
 
 
 def test_change_freshness_does_not_import_hunk_navigation():

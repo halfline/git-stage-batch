@@ -8920,29 +8920,17 @@ def test_batch_ownership_claims_own_presence_records():
     )
     claims_path = SRC_ROOT / "batch" / "ownership_claims.py"
     public_names = {"PresenceClaim"}
-    claims_own_record = public_names <= vars(ownership_claims).keys()
-    if claims_own_record:
-        expected_import_module = "git_stage_batch.batch.ownership_claims"
-        expected_imports = {
-            SRC_ROOT / "batch" / "ownership.py": public_names,
-            SRC_ROOT / "batch" / "ownership_detachment.py": public_names,
-        }
-    else:
-        expected_import_module = "git_stage_batch.batch.ownership"
-        expected_imports = {
-            SRC_ROOT / "batch" / "ownership_claims.py": public_names,
-            SRC_ROOT / "batch" / "ownership_detachment.py": public_names,
-        }
+    expected_imports = {
+        SRC_ROOT / "batch" / "ownership.py": public_names,
+        SRC_ROOT / "batch" / "ownership_detachment.py": public_names,
+    }
     violations = []
 
-    assert public_names <= vars(
-        ownership_claims if claims_own_record else ownership
-    ).keys()
-    if claims_own_record:
-        assert public_names.isdisjoint(vars(ownership))
-        assert "class PresenceClaim" not in (
-            SRC_ROOT / "batch" / "ownership.py"
-        ).read_text()
+    assert public_names <= vars(ownership_claims).keys()
+    assert public_names.isdisjoint(vars(ownership))
+    assert "class PresenceClaim" not in (
+        SRC_ROOT / "batch" / "ownership.py"
+    ).read_text()
 
     for path in SRC_ROOT.rglob("*.py"):
         if path == claims_path:
@@ -8951,10 +8939,7 @@ def test_batch_ownership_claims_own_presence_records():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if (
-                claims_own_record
-                and imported_module == "git_stage_batch.batch.ownership"
-            ):
+            if imported_module == "git_stage_batch.batch.ownership":
                 stale_imports = imported_names & public_names
                 if stale_imports:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -8962,7 +8947,7 @@ def test_batch_ownership_claims_own_presence_records():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != expected_import_module:
+            if imported_module != "git_stage_batch.batch.ownership_claims":
                 continue
 
             imported_public_names |= imported_names & public_names

@@ -388,6 +388,26 @@ def test_cli_package_does_not_reexport_cli_apis():
     assert violations == []
 
 
+def test_cli_argument_parser_uses_subcommand_parser_module():
+    """Argument parsing should not own reusable subcommand construction."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    subcommand_parser_path = SRC_ROOT / "cli" / "subcommand_parser.py"
+    argument_parser_text = argument_parser_path.read_text()
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    subcommand_parser = __import__(
+        "git_stage_batch.cli.subcommand_parser",
+        fromlist=["subcommand_parser"],
+    )
+
+    assert "git_stage_batch.cli.subcommand_parser" in argument_parser_imports
+    assert "add_subcommand_parser" in vars(subcommand_parser)
+    assert "def _add_subcommand_parser" not in argument_parser_text
+    assert subcommand_parser_path.exists()
+
+
 def test_tui_package_does_not_reexport_tui_apis():
     """TUI callers should import concrete modules instead of the package."""
     tui_path = SRC_ROOT / "tui" / "__init__.py"

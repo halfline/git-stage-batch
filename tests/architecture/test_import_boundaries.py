@@ -8848,62 +8848,39 @@ def test_batch_ownership_references_own_baseline_boundaries():
         "git_stage_batch.batch.ownership",
         fromlist=["ownership"],
     )
+    ownership_references = __import__(
+        "git_stage_batch.batch.ownership_references",
+        fromlist=["ownership_references"],
+    )
     reference_path = SRC_ROOT / "batch" / "ownership_references.py"
-    if reference_path.exists():
-        ownership_references = __import__(
-            "git_stage_batch.batch.ownership_references",
-            fromlist=["ownership_references"],
-        )
-        expected_import_module = "git_stage_batch.batch.ownership_references"
-        expected_imports = {
-            SRC_ROOT / "batch" / "hunk_ownership_translation.py": {
-                "BaselineReference",
-            },
-            SRC_ROOT / "batch" / "ownership.py": {
-                "BaselineReference",
-            },
-            SRC_ROOT / "batch" / "ownership_claims.py": {
-                "BaselineReference",
-            },
-            SRC_ROOT / "batch" / "ownership_line_entries.py": {
-                "BaselineReference",
-            },
-            SRC_ROOT / "batch" / "ownership_merging.py": {
-                "BaselineReference",
-            },
-            SRC_ROOT / "batch" / "ownership_translation.py": {
-                "BaselineReference",
-            },
-        }
-    else:
-        ownership_references = ownership
-        expected_import_module = "git_stage_batch.batch.ownership"
-        expected_imports = {
-            SRC_ROOT / "batch" / "hunk_ownership_translation.py": {
-                "BaselineReference",
-            },
-            SRC_ROOT / "batch" / "ownership_claims.py": {
-                "BaselineReference",
-            },
-            SRC_ROOT / "batch" / "ownership_line_entries.py": {
-                "BaselineReference",
-            },
-            SRC_ROOT / "batch" / "ownership_merging.py": {
-                "BaselineReference",
-            },
-            SRC_ROOT / "batch" / "ownership_translation.py": {
-                "BaselineReference",
-            },
-        }
+    expected_imports = {
+        SRC_ROOT / "batch" / "hunk_ownership_translation.py": {
+            "BaselineReference",
+        },
+        SRC_ROOT / "batch" / "ownership.py": {
+            "BaselineReference",
+        },
+        SRC_ROOT / "batch" / "ownership_claims.py": {
+            "BaselineReference",
+        },
+        SRC_ROOT / "batch" / "ownership_line_entries.py": {
+            "BaselineReference",
+        },
+        SRC_ROOT / "batch" / "ownership_merging.py": {
+            "BaselineReference",
+        },
+        SRC_ROOT / "batch" / "ownership_translation.py": {
+            "BaselineReference",
+        },
+    }
     public_names = {"BaselineReference"}
     violations = []
 
     assert public_names <= vars(ownership_references).keys()
-    if reference_path.exists():
-        assert public_names.isdisjoint(vars(ownership))
-        assert "class BaselineReference" not in (
-            SRC_ROOT / "batch" / "ownership.py"
-        ).read_text()
+    assert public_names.isdisjoint(vars(ownership))
+    assert "class BaselineReference" not in (
+        SRC_ROOT / "batch" / "ownership.py"
+    ).read_text()
 
     for path in SRC_ROOT.rglob("*.py"):
         if path == reference_path:
@@ -8912,10 +8889,7 @@ def test_batch_ownership_references_own_baseline_boundaries():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if (
-                reference_path.exists()
-                and imported_module == "git_stage_batch.batch.ownership"
-            ):
+            if imported_module == "git_stage_batch.batch.ownership":
                 stale_imports = imported_names & public_names
                 if stale_imports:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -8923,7 +8897,7 @@ def test_batch_ownership_references_own_baseline_boundaries():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != expected_import_module:
+            if imported_module != "git_stage_batch.batch.ownership_references":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -10440,11 +10414,16 @@ def test_batch_ownership_metadata_blobs_own_blob_discovery():
         "git_stage_batch.batch.ownership",
         fromlist=["ownership"],
     )
+    ownership_references = __import__(
+        "git_stage_batch.batch.ownership_references",
+        fromlist=["ownership_references"],
+    )
     ownership_metadata_blobs = __import__(
         "git_stage_batch.batch.ownership_metadata_blobs",
         fromlist=["ownership_metadata_blobs"],
     )
     ownership_path = SRC_ROOT / "batch" / "ownership.py"
+    ownership_reference_path = SRC_ROOT / "batch" / "ownership_references.py"
     metadata_blob_path = SRC_ROOT / "batch" / "ownership_metadata_blobs.py"
     public_names = {
         "baseline_reference_blob_ids",
@@ -10469,14 +10448,17 @@ def test_batch_ownership_metadata_blobs_own_blob_discovery():
             "deletion_content_blob_ids",
             "deletion_reference_blob_ids",
             "presence_claim_reference_blob_ids",
-            "read_metadata_blob",
             "replacement_origin_reference_blob_ids",
+        },
+        ownership_reference_path: {
+            "read_metadata_blob",
         },
     }
     violations = []
 
     assert public_names <= vars(ownership_metadata_blobs).keys()
     assert old_private_names.isdisjoint(vars(ownership))
+    assert old_private_names.isdisjoint(vars(ownership_references))
 
     for path in SRC_ROOT.rglob("*.py"):
         if path == metadata_blob_path:

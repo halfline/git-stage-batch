@@ -49,10 +49,6 @@ from .file_scope import include_file as _file_scope_include_file
 from .file_scope import include_file_replacement as _file_scope_include_file_replacement
 from .file_scope import include_file_to_batch as _file_scope_include_file_to_batch
 from .file_scope.target_path import require_file_scope_target_path
-from .selection.selected_hunk_refresh import (
-    recalculate_selected_hunk_for_command,
-)
-from .selection.action_completion import finish_selected_change_action
 
 
 def command_include(

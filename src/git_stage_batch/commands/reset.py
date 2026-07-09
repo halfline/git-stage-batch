@@ -8,6 +8,7 @@ import sys
 from collections.abc import Sequence
 from contextlib import AbstractContextManager
 
+from .batch_source import selection_state_cleanup as _selection_state_cleanup
 from ..core.line_selection import LineRanges
 from ..batch.operations import create_batch
 from ..batch.ownership import (
@@ -39,26 +40,12 @@ from ..batch.source_selector import require_plain_batch_name
 from ..batch.validation import batch_exists, validate_batch_name
 from ..exceptions import MergeError, exit_with_error
 from ..i18n import _
-from ..data.batch_selected_changes import (
-    selected_batch_binary_matches_batch,
-    selected_batch_gitlink_matches_batch,
-)
 from ..data.batch_file_review_selection import (
     translate_reset_batch_file_gutter_ids_to_selection_ranges,
 )
-from ..data.file_review.records import FileReviewAction, ReviewSource
+from ..data.file_review.records import FileReviewAction
 from ..data.file_review.state import (
-    read_last_file_review_state,
     resolve_batch_source_action_scope,
-)
-from ..data.selected_change.lifecycle import clear_selected_change_state_files
-from ..data.selected_change.store import (
-    SelectedChangeKind,
-    read_selected_change_kind,
-)
-from ..data.selected_change.paths import get_selected_change_file_path
-from ..data.selected_change.clear_reasons import (
-    mark_selected_change_cleared_by_stale_batch_selection,
 )
 from ..data.undo import undo_checkpoint
 from ..data.repository_buffers import load_git_object_as_buffer
@@ -148,7 +135,7 @@ def command_reset_from_batch(
         else:
             _reset_all_claims_from_batch(batch_name)
 
-    _clear_selected_batch_state_after_batch_mutation(
+    _selection_state_cleanup.clear_selected_batch_state_after_batch_mutation(
         source_batch=batch_name,
         dest_batch=to_batch,
         affected_files=affected_files,
@@ -170,68 +157,6 @@ def command_reset_from_batch(
         print(_("✓ Reset file from batch '{name}'").format(name=batch_name), file=sys.stderr)
     else:
         print(_("✓ Reset all claims from batch '{name}'").format(name=batch_name), file=sys.stderr)
-
-
-def _clear_selected_batch_state_after_batch_mutation(
-    *,
-    source_batch: str,
-    dest_batch: str | None,
-    affected_files: set[str],
-) -> None:
-    """Clear selected batch views that point at files changed by reset."""
-    selected_kind = read_selected_change_kind()
-    if selected_kind not in (
-        SelectedChangeKind.BATCH_FILE,
-        SelectedChangeKind.BATCH_BINARY,
-        SelectedChangeKind.BATCH_GITLINK,
-    ):
-        return
-
-    selected_file = get_selected_change_file_path()
-    if selected_file is None or selected_file not in affected_files:
-        return
-
-    if selected_kind == SelectedChangeKind.BATCH_BINARY:
-        if selected_batch_binary_matches_batch(source_batch) or (
-            dest_batch is not None and selected_batch_binary_matches_batch(dest_batch)
-        ):
-            stale_batch = source_batch if selected_batch_binary_matches_batch(source_batch) else dest_batch
-            clear_selected_change_state_files()
-            mark_selected_change_cleared_by_stale_batch_selection(
-                batch_name=stale_batch or source_batch,
-                file_path=selected_file,
-            )
-        return
-    if selected_kind == SelectedChangeKind.BATCH_GITLINK:
-        if selected_batch_gitlink_matches_batch(source_batch) or (
-            dest_batch is not None and selected_batch_gitlink_matches_batch(dest_batch)
-        ):
-            stale_batch = source_batch if selected_batch_gitlink_matches_batch(source_batch) else dest_batch
-            clear_selected_change_state_files()
-            mark_selected_change_cleared_by_stale_batch_selection(
-                batch_name=stale_batch or source_batch,
-                file_path=selected_file,
-            )
-        return
-
-    review_state = read_last_file_review_state()
-    if review_state is not None:
-        if review_state.source == ReviewSource.BATCH and review_state.batch_name in {source_batch, dest_batch}:
-            stale_batch = review_state.batch_name or source_batch
-            clear_selected_change_state_files()
-            mark_selected_change_cleared_by_stale_batch_selection(
-                batch_name=stale_batch,
-                file_path=selected_file,
-            )
-        return
-
-    # Filtered batch text views do not persist the batch name, so clear on a
-    # matching path rather than leave a stale pathless action target behind.
-    clear_selected_change_state_files()
-    mark_selected_change_cleared_by_stale_batch_selection(
-        batch_name=source_batch,
-        file_path=selected_file,
-    )
 
 
 def _ensure_destination_batch(source_batch: str, dest_batch: str, source_metadata: dict) -> None:

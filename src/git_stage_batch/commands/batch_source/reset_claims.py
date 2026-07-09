@@ -24,6 +24,8 @@ from ...batch.selection import require_display_ids_available, resolve_batch_file
 from ...batch.state_refs import sync_batch_state_refs
 from ...batch.storage import (
     add_file_to_batch,
+)
+from ...batch.file_entry_storage import (
     copy_file_from_batch_to_batch,
     remove_file_from_batch,
 )

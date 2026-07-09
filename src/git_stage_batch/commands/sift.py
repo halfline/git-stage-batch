@@ -31,7 +31,6 @@ from ..batch.state_refs import (
     get_batch_content_ref_name,
     sync_batch_state_refs,
 )
-from ..batch.storage import add_binary_file_to_batch
 from ..batch.validation import batch_exists, validate_batch_name
 from ..batch.source_selector import require_plain_batch_name
 from .batch_transform import sift_persistence as _sift_persistence
@@ -136,22 +135,12 @@ def command_sift_batch(source_batch: str, dest_batch: str) -> None:
             )
         else:
             for file_path, file_meta, result in retained_files:
-                if isinstance(result, _sift_results.SiftedBinaryFileResult):
-                    add_binary_file_to_batch(
-                        dest_batch,
-                        result.binary_change,
-                        file_mode=file_meta.get("mode", "100644"),
-                        file_buffer_override=result.target_buffer,
-                    )
-                else:
-                    _sift_persistence.add_sifted_text_file_to_batch(
-                        batch_name=dest_batch,
-                        file_path=file_path,
-                        target_buffer=result.target_buffer,
-                        ownership=result.ownership,
-                        file_mode=file_meta.get("mode", "100644"),
-                        change_type=result.change_type,
-                    )
+                _sift_persistence.add_sifted_file_to_batch(
+                    dest_batch,
+                    file_path,
+                    file_meta,
+                    result,
+                )
     except MergeError as e:
         if dest_created and batch_exists(dest_batch):
             delete_batch(dest_batch)
@@ -227,22 +216,12 @@ def _perform_atomic_in_place_sift(
 
     try:
         for file_path, file_meta, result in retained_files:
-            if isinstance(result, _sift_results.SiftedBinaryFileResult):
-                add_binary_file_to_batch(
-                    temp_batch_name,
-                    result.binary_change,
-                    file_mode=file_meta.get("mode", "100644"),
-                    file_buffer_override=result.target_buffer,
-                )
-            else:
-                _sift_persistence.add_sifted_text_file_to_batch(
-                    batch_name=temp_batch_name,
-                    file_path=file_path,
-                    target_buffer=result.target_buffer,
-                    ownership=result.ownership,
-                    file_mode=file_meta.get("mode", "100644"),
-                    change_type=result.change_type,
-                )
+            _sift_persistence.add_sifted_file_to_batch(
+                temp_batch_name,
+                file_path,
+                file_meta,
+                result,
+            )
 
         temp_commit = run_git_command(
             ["rev-parse", get_batch_content_ref_name(temp_batch_name)],

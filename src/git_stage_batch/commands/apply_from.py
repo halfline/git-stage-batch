@@ -11,7 +11,6 @@ from .batch_source import binary_file_actions as _binary_file_actions
 from .batch_source import candidate_materialization as _candidate_materialization
 from .batch_source import candidate_preview_counts as _candidate_preview_counts
 from .batch_source import candidate_refusals as _candidate_refusals
-from .batch_source import candidate_selectors as _candidate_selectors
 from .batch_source import merge_refusals as _merge_refusals
 from .batch_source import text_file_actions as _text_file_actions
 from .batch_source import text_plan_builders as _text_plan_builders

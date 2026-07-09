@@ -10,14 +10,12 @@ from ..commands.again import command_again
 from ..commands.block_file import command_block_file
 from ..commands.check_unstaged import command_check_unstaged
 from ..commands.start import command_start
-from ..commands.status import command_status
 from ..commands.suggest_fixup import (
     command_suggest_fixup,
     command_suggest_fixup_line,
 )
 from ..commands.unblock_file import command_unblock_file
 from ..i18n import _
-from ..output.status_prompt import DEFAULT_PROMPT_FORMAT
 from .apply_dispatch import dispatch_apply_command
 from .asset_subcommands import add_install_assets_subcommand
 from .auto_advance_options import add_auto_advance_arguments
@@ -41,6 +39,7 @@ from .reset_dispatch import dispatch_reset_command
 from .session_subcommands import (
     add_abort_subcommand,
     add_redo_subcommand,
+    add_status_subcommand,
     add_stop_subcommand,
     add_undo_subcommand,
 )
@@ -212,33 +211,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     parser_show.set_defaults(func=dispatch_show_command)
 
-    # status - Show selected session status
-    parser_status = add_subcommand_parser(
-        subparsers,
-        "status",
-        aliases=["st"],
-        help=_("Show selected session status"),
-    )
-    status_output = parser_status.add_mutually_exclusive_group()
-    status_output.add_argument(
-        "--porcelain",
-        action="store_true",
-        help=_("Output JSON for scripting instead of human-readable text"),
-    )
-    status_output.add_argument(
-        "--for-prompt",
-        dest="prompt_format",
-        nargs="?",
-        const=DEFAULT_PROMPT_FORMAT,
-        metavar="FORMAT",
-        help=_("Print FORMAT only when a session is active, for shell prompts"),
-    )
-    parser_status.set_defaults(
-        func=lambda args: command_status(
-            porcelain=args.porcelain,
-            prompt_format=args.prompt_format,
-        )
-    )
+    add_status_subcommand(subparsers)
 
     # include - Stage the selected hunk
     parser_include = add_subcommand_parser(

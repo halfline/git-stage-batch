@@ -7810,6 +7810,78 @@ def test_batch_ownership_replacement_units_owns_normalization():
     assert violations == []
 
 
+def test_batch_ownership_merging_owns_merge_helpers():
+    """Ownership merge behavior should live outside ownership metadata."""
+    ownership = __import__(
+        "git_stage_batch.batch.ownership",
+        fromlist=["ownership"],
+    )
+    ownership_merging = __import__(
+        "git_stage_batch.batch.ownership_merging",
+        fromlist=["ownership_merging"],
+    )
+    merging_path = SRC_ROOT / "batch" / "ownership_merging.py"
+    public_names = {
+        "merge_batch_ownership",
+    }
+    moved_private_names = {
+        "_AbsenceSignature",
+        "_absence_signature",
+        "_baseline_reference_side_score",
+        "_merge_baseline_references",
+        "_merge_deletion_claim_metadata",
+    }
+    expected_imports = {
+        SRC_ROOT / "batch" / "source_refresh.py": public_names,
+        SRC_ROOT / "commands" / "batch_source" / "reset_claims.py": public_names,
+        SRC_ROOT
+        / "commands"
+        / "selection"
+        / "discard_line_replacement.py": public_names,
+        SRC_ROOT / "data" / "consumed_selections.py": public_names,
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(ownership_merging)
+        assert public_name not in vars(ownership)
+    assert moved_private_names.isdisjoint(vars(ownership))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == merging_path:
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.ownership":
+                disallowed_names = imported_names & (
+                    public_names | moved_private_names
+                )
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module != "git_stage_batch.batch.ownership_merging":
+                continue
+
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & moved_private_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_batch_source_advancement_uses_public_entry_helpers():
     """Source advancement callers should import public advancement helpers."""
     source_advancement = __import__(

@@ -9,8 +9,8 @@ from git_stage_batch.batch.ownership import (
     BatchOwnership,
     AbsenceClaim,
     ReplacementUnit,
-    merge_batch_ownership,
 )
+from git_stage_batch.batch.ownership_merging import merge_batch_ownership
 from git_stage_batch.batch.ownership_remapping import (
     remap_batch_ownership_to_new_source_lines,
     remap_batch_ownership_with_lineage,

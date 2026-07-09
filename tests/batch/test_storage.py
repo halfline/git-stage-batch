@@ -18,8 +18,10 @@ from git_stage_batch.batch.ownership import (
     AbsenceClaim,
     ReplacementUnit,
     ReplacementUnitOrigin,
-    _absence_signature,
     acquire_detached_batch_ownership,
+)
+from git_stage_batch.batch.ownership_merging import (
+    _absence_signature,
     merge_batch_ownership,
 )
 import git_stage_batch.batch.absence_content as absence_content_module

@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 
 from ..core.models import LineEntry
-from ..data.batch_sources import (
+from .source_snapshots import (
     create_batch_source_commit,
     load_session_batch_sources,
     save_session_batch_sources,

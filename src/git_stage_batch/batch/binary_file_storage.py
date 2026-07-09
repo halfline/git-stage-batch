@@ -6,7 +6,7 @@ import json
 
 from ..core.buffer import LineBuffer
 from ..core.models import BinaryFileChange
-from ..data.batch_sources import (
+from .source_snapshots import (
     create_batch_source_commit,
     get_batch_source_for_file,
     load_session_batch_sources,

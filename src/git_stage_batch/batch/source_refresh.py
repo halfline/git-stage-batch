@@ -25,8 +25,8 @@ from .lineage import BatchSourceLineage
 from .match import match_lines
 from .ownership import (
     BatchOwnership,
-    merge_batch_ownership,
 )
+from .ownership_merging import merge_batch_ownership
 from .ownership_translation import (
     detect_stale_batch_source_for_selection,
     translate_hunk_selection_to_batch_ownership,

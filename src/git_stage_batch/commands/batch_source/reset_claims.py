@@ -11,8 +11,8 @@ from ...batch.operations import create_batch
 from ...batch.ownership import (
     BatchOwnership,
     acquire_detached_batch_ownership,
-    merge_batch_ownership,
 )
+from ...batch.ownership_merging import merge_batch_ownership
 from ...batch.ownership_units import (
     build_ownership_units_from_batch_source_lines,
     filter_ownership_units_by_display_ids,

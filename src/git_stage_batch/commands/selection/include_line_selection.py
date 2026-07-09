@@ -19,7 +19,7 @@ from ...batch.text_file_storage import add_file_to_batch
 from ...batch.validation import batch_exists
 from ...core.buffer import LineBuffer, buffer_matches
 from ...batch.source_snapshots import create_batch_source_commit
-from ...data.file_hunk_display import cache_unstaged_file_as_single_hunk
+from ...data.selected_change.file_hunk_cache import cache_unstaged_file_as_single_hunk
 from ...data.file_modes import detect_file_mode
 from ...data.file_tracking import auto_add_untracked_files
 from ...data.line_state import load_line_changes_from_state

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ...data.file_change_display import render_gitlink_change
-from ...data.file_hunk_display import cache_unstaged_file_as_single_hunk
+from ...data.selected_change.file_hunk_cache import cache_unstaged_file_as_single_hunk
 from ...data.line_state import load_line_changes_from_state
 from ...exceptions import exit_with_error
 from ...i18n import _

@@ -8,10 +8,8 @@ import sys
 
 from ...batch.selection import require_line_selection_in_view
 from ...core.line_selection import parse_line_selection
-from ...data.file_hunk_display import (
-    cache_unstaged_file_as_single_hunk,
-    render_unstaged_file_as_single_hunk,
-)
+from ...data.file_hunk_display import render_unstaged_file_as_single_hunk
+from ...data.selected_change.file_hunk_cache import cache_unstaged_file_as_single_hunk
 from ...data.file_review.action_scope import finish_review_scoped_line_action
 from ...data.file_tracking import auto_add_untracked_files
 from ...data.line_id_files import read_line_ids_file, write_line_ids_file

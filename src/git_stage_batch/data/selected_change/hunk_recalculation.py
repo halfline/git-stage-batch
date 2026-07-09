@@ -33,10 +33,10 @@ from ...utils.paths import (
 from ..auto_advance import resolve_auto_advance
 from ..line_id_files import write_line_ids_file
 from .. import change_freshness as _change_freshness
-from .. import file_hunk_display as _file_hunk_display
 from .. import line_state as _line_state
 from .. import live_diff as _live_diff
 from . import clear_reasons as _selected_change_clear_reasons
+from . import file_hunk_cache as _selected_file_hunk_cache
 from . import file_changes as _selected_file_changes
 from . import store as _selected_store
 from . import hunk_filtering as _selected_hunk_filtering
@@ -77,7 +77,9 @@ def recalculate_selected_hunk_for_file(
     write_line_ids_file(get_processed_skip_ids_file_path(), set())
 
     if selected_kind == _selected_store.SelectedChangeKind.FILE:
-        line_changes = _file_hunk_display.cache_unstaged_file_as_single_hunk(file_path)
+        line_changes = _selected_file_hunk_cache.cache_unstaged_file_as_single_hunk(
+            file_path
+        )
         if line_changes is None:
             _clear_selected_change_state_files()
             if resolve_auto_advance(auto_advance):

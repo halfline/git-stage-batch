@@ -3379,6 +3379,80 @@ def test_file_scope_include_file_owns_file_pipeline():
     assert helper_imports <= helper_imported_names
 
 
+def test_file_scope_skip_owns_file_pipeline():
+    """Explicit file-scope skip support should stay out of skip.py."""
+    skip_path = SRC_ROOT / "commands" / "skip.py"
+    helper_path = SRC_ROOT / "commands" / "file_scope" / "skip_file.py"
+    helper = __import__(
+        "git_stage_batch.commands.file_scope.skip_file",
+        fromlist=["skip_file"],
+    )
+    public_names = {
+        "skip_file_changes",
+    }
+    moved_names = {
+        "acquire_unified_diff",
+        "append_lines_to_file",
+        "auto_add_untracked_files",
+        "build_line_changes_from_patch_lines",
+        "compute_binary_file_hash",
+        "compute_gitlink_change_hash",
+        "compute_rename_change_hash",
+        "compute_stable_hunk_hash_from_lines",
+        "compute_text_file_deletion_hash",
+        "get_block_list_file_path",
+        "get_context_lines",
+        "get_selected_change_file_path",
+        "ngettext",
+        "read_text_file_line_set",
+        "record_binary_hunk_skipped",
+        "record_gitlink_hunk_skipped",
+        "record_hunk_skipped",
+        "record_rename_hunk_skipped",
+        "record_text_deletion_hunk_skipped",
+        "stream_live_git_diff",
+    }
+    helper_imports = moved_names | {
+        "BinaryFileChange",
+        "GitlinkChange",
+        "RenameChange",
+        "TextFileDeletionChange",
+        "finish_selected_change_action",
+        "undo_checkpoint",
+    }
+
+    skip_tree = ast.parse(skip_path.read_text(), filename=str(skip_path))
+    skip_functions = {
+        node.name: node
+        for node in ast.walk(skip_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    command_skip_file_names = {
+        node.id
+        for node in ast.walk(skip_functions["command_skip_file"])
+        if isinstance(node, ast.Name)
+    }
+    command_skip_file_attributes = {
+        node.attr
+        for node in ast.walk(skip_functions["command_skip_file"])
+        if isinstance(node, ast.Attribute)
+    }
+    skip_file_scope_imports = set()
+    for imported_module, node in _import_from_nodes(skip_path):
+        if imported_module == "git_stage_batch.commands.file_scope":
+            skip_file_scope_imports |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert "skip_file" in skip_file_scope_imports
+    assert "skip_file_changes" in command_skip_file_attributes
+    assert moved_names.isdisjoint(command_skip_file_names)
+    assert helper_imports <= helper_imported_names
+
+
 def test_file_scope_include_to_batch_owns_file_pipeline():
     """Explicit file-scope include-to-batch support should stay out of include.py."""
     include_path = SRC_ROOT / "commands" / "include.py"

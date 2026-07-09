@@ -256,6 +256,32 @@ def test_editor_edit_uses_piece_table_module():
     assert "bytearray(" not in edit_text
 
 
+def test_editor_edit_uses_line_export_module():
+    """Editor mutations should not own stateless line export helpers."""
+    edit_path = SRC_ROOT / "editor" / "edit.py"
+    edit_text = edit_path.read_text()
+    edit_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(edit_path)
+    }
+    edit = __import__(
+        "git_stage_batch.editor.edit",
+        fromlist=["edit"],
+    )
+    line_export = __import__(
+        "git_stage_batch.editor.line_export",
+        fromlist=["line_export"],
+    )
+
+    assert "git_stage_batch.editor.line_export" in edit_imports
+    assert "export_lines_as_buffer" in vars(line_export)
+    assert "export_lines_as_buffer" not in vars(edit)
+    assert "def export_lines_as_buffer" not in edit_text
+    assert "def _line_body" not in edit_text
+    assert "def _line_bytes" not in edit_text
+    assert "def _line_body_chunks" not in edit_text
+
+
 def test_cli_package_does_not_reexport_cli_apis():
     """CLI callers should import concrete modules instead of the package."""
     cli_path = SRC_ROOT / "cli" / "__init__.py"

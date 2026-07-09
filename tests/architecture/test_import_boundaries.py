@@ -10805,6 +10805,61 @@ def test_batch_file_mergeability_owns_display_probe():
     assert "batch_merge.can_merge_batch_from_line_sequences" in mergeability_text
 
 
+def test_batch_file_display_model_owns_review_model_assembly():
+    """Batch file display should delegate review-model object assembly."""
+    file_display = __import__(
+        "git_stage_batch.batch.file_display",
+        fromlist=["file_display"],
+    )
+    file_display_model = __import__(
+        "git_stage_batch.batch.file_display_model",
+        fromlist=["file_display_model"],
+    )
+    display_path = SRC_ROOT / "batch" / "file_display.py"
+    model_path = SRC_ROOT / "batch" / "file_display_model.py"
+    public_names = {
+        "build_rendered_batch_display_model",
+    }
+    model_names = {
+        "HunkHeader",
+        "LineEntry",
+        "LineLevelChange",
+        "ReviewActionGroup",
+    }
+    display_imported_names: dict[str | None, set[str]] = {}
+    model_imported_names: dict[str | None, set[str]] = {}
+    display_text = display_path.read_text()
+    model_text = model_path.read_text()
+
+    assert public_names <= vars(file_display_model).keys()
+    assert public_names.isdisjoint(vars(file_display))
+
+    for imported_module, node in _import_from_nodes(display_path):
+        display_imported_names.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    for imported_module, node in _import_from_nodes(model_path):
+        model_imported_names.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    assert "file_display_model" in display_imported_names.get(
+        "git_stage_batch.batch",
+        set(),
+    )
+    assert model_names.isdisjoint(
+        display_imported_names.get("git_stage_batch.core.models", set())
+    )
+    assert model_names <= model_imported_names.get(
+        "git_stage_batch.core.models",
+        set(),
+    )
+    assert "_file_display_model.build_rendered_batch_display_model" in display_text
+    assert "ReviewActionGroup(" not in display_text
+    assert "ReviewActionGroup(" in model_text
+
+
 def test_batch_ownership_unit_selection_owns_display_id_filtering():
     """Display-ID unit selection should live outside unit construction."""
     ownership_units = __import__(

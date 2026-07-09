@@ -7417,6 +7417,9 @@ def test_output_owns_operation_candidate_preview_rendering():
         fromlist=["candidate_preview_summary"],
     )
     show_from_path = SRC_ROOT / "commands" / "show_from.py"
+    action_path = (
+        SRC_ROOT / "commands" / "batch_source" / "candidate_preview_action.py"
+    )
     candidate_preview_path = SRC_ROOT / "output" / "candidate_preview.py"
     candidate_summary_path = SRC_ROOT / "output" / "candidate_preview_summary.py"
     public_renderer_names = {
@@ -7450,7 +7453,7 @@ def test_output_owns_operation_candidate_preview_rendering():
         for node in ast.walk(show_from_tree)
         if isinstance(node, (ast.ClassDef, ast.FunctionDef))
     }
-    show_from_renderer_imports = set()
+    action_renderer_imports = set()
     candidate_preview_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(candidate_preview_path)
@@ -7460,15 +7463,15 @@ def test_output_owns_operation_candidate_preview_rendering():
         for imported_module, _node in _import_from_nodes(candidate_summary_path)
     }
 
-    for imported_module, node in _import_from_nodes(show_from_path):
+    for imported_module, node in _import_from_nodes(action_path):
         if imported_module != "git_stage_batch.output.candidate_preview":
             continue
-        show_from_renderer_imports |= {alias.name for alias in node.names}
+        action_renderer_imports |= {alias.name for alias in node.names}
 
     assert public_renderer_names <= vars(candidate_preview).keys()
     assert renderer_helper_names <= vars(candidate_preview).keys()
     assert summary_names <= vars(candidate_preview_summary).keys()
-    assert public_renderer_names <= show_from_renderer_imports
+    assert public_renderer_names <= action_renderer_imports
     assert renderer_helper_names.isdisjoint(show_from_helpers)
     assert summary_names.isdisjoint(vars(candidate_preview))
     assert old_renderer_summary_names.isdisjoint(vars(candidate_preview))
@@ -7821,7 +7824,9 @@ def test_batch_source_candidate_previews_own_candidate_preview_checks():
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
-    show_from_path = SRC_ROOT / "commands" / "show_from.py"
+    action_path = (
+        SRC_ROOT / "commands" / "batch_source" / "candidate_preview_action.py"
+    )
     public_names = {
         "candidate_preview_for_ordinal",
         "candidate_preview_state_matches",
@@ -7832,7 +7837,7 @@ def test_batch_source_candidate_previews_own_candidate_preview_checks():
     command_paths = {
         apply_from_path,
         include_from_path,
-        show_from_path,
+        action_path,
     }
     imports_candidate_previews = {
         path: False
@@ -7860,12 +7865,12 @@ def test_batch_source_candidate_previews_own_candidate_preview_checks():
     assert imports_candidate_previews == {
         apply_from_path: False,
         include_from_path: False,
-        show_from_path: True,
+        action_path: True,
     }
     assert direct_state_imports == {
         apply_from_path: set(),
         include_from_path: set(),
-        show_from_path: set(),
+        action_path: set(),
     }
     for path in command_paths:
         command_text = path.read_text()
@@ -7880,7 +7885,9 @@ def test_batch_source_candidate_preview_builders_own_show_candidate_construction
         "git_stage_batch.commands.batch_source.candidate_preview_builders",
         fromlist=["candidate_preview_builders"],
     )
-    show_from_path = SRC_ROOT / "commands" / "show_from.py"
+    action_path = (
+        SRC_ROOT / "commands" / "batch_source" / "candidate_preview_action.py"
+    )
     public_names = {
         "build_batch_source_candidate_previews",
     }
@@ -7891,19 +7898,19 @@ def test_batch_source_candidate_preview_builders_own_show_candidate_construction
         "build_apply_candidate_previews",
         "build_include_candidate_previews",
     }
-    show_from_tree = ast.parse(
-        show_from_path.read_text(),
-        filename=str(show_from_path),
+    action_tree = ast.parse(
+        action_path.read_text(),
+        filename=str(action_path),
     )
-    show_from_helpers = {
+    action_helpers = {
         node.name
-        for node in ast.walk(show_from_tree)
+        for node in ast.walk(action_tree)
         if isinstance(node, ast.FunctionDef)
     }
     imports_candidate_preview_builders = False
     direct_operation_builder_imports = set()
 
-    for imported_module, node in _import_from_nodes(show_from_path):
+    for imported_module, node in _import_from_nodes(action_path):
         imported_names = {alias.name for alias in node.names}
         if (
             imported_module == "git_stage_batch.commands.batch_source"
@@ -7915,7 +7922,7 @@ def test_batch_source_candidate_preview_builders_own_show_candidate_construction
 
     assert public_names <= vars(candidate_preview_builders).keys()
     assert imports_candidate_preview_builders
-    assert old_function_names.isdisjoint(show_from_helpers)
+    assert old_function_names.isdisjoint(action_helpers)
     assert direct_operation_builder_imports == set()
 
 

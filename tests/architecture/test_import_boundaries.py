@@ -3802,6 +3802,12 @@ def test_tui_file_review_block_actions_own_block_commands():
         "git_stage_batch.tui.file_review.block_actions",
         fromlist=["block_actions"],
     )
+    browser_tree = ast.parse(browser_path.read_text(), filename=str(browser_path))
+    browser_function_names = {
+        node.name
+        for node in ast.walk(browser_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
     browser_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(browser_path)
@@ -3814,11 +3820,22 @@ def test_tui_file_review_block_actions_own_block_commands():
         imported_module
         for imported_module, _node in _import_from_nodes(block_actions_path)
     }
+    old_browser_snippets = {
+        "This will add the reviewed file to ignore state.",
+        "block_review_file",
+        "confirm_destructive_operation",
+        "prompt_block_local_only",
+        "unblock_review_file",
+    }
+    browser_text = browser_path.read_text()
 
     assert {
+        "apply_block_action",
         "block_review_file",
         "unblock_review_file",
     } <= vars(block_actions).keys()
+    assert "_apply_block_action" not in browser_function_names
+    assert all(snippet not in browser_text for snippet in old_browser_snippets)
     assert "git_stage_batch.tui.file_review.block_actions" in browser_imports
     assert "git_stage_batch.tui.file_review.block_actions" in file_browser_imports
     assert "git_stage_batch.commands.block_file" not in browser_imports
@@ -3827,6 +3844,8 @@ def test_tui_file_review_block_actions_own_block_commands():
     assert "git_stage_batch.commands.unblock_file" not in file_browser_imports
     assert "git_stage_batch.commands.block_file" in block_action_imports
     assert "git_stage_batch.commands.unblock_file" in block_action_imports
+    assert "git_stage_batch.tui.file_review.file_browser" in block_action_imports
+    assert "git_stage_batch.tui.prompts" in block_action_imports
 
 
 def test_tui_file_review_fixup_actions_own_line_fixups():

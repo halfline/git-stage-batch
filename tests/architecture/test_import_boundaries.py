@@ -408,6 +408,30 @@ def test_cli_argument_parser_uses_subcommand_parser_module():
     assert subcommand_parser_path.exists()
 
 
+def test_cli_argument_parser_delegates_asset_subcommand_registration():
+    """Argument parsing should not own install-assets parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    asset_subcommands_path = SRC_ROOT / "cli" / "asset_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    asset_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(asset_subcommands_path)
+    }
+    asset_subcommands = __import__(
+        "git_stage_batch.cli.asset_subcommands",
+        fromlist=["asset_subcommands"],
+    )
+
+    assert "add_install_assets_subcommand" in vars(asset_subcommands)
+    assert "git_stage_batch.cli.asset_subcommands" in argument_parser_imports
+    assert "git_stage_batch.commands.install_assets" not in argument_parser_imports
+    assert "git_stage_batch.commands.install_assets" in asset_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in asset_subcommands_imports
+
+
 def test_tui_package_does_not_reexport_tui_apis():
     """TUI callers should import concrete modules instead of the package."""
     tui_path = SRC_ROOT / "tui" / "__init__.py"

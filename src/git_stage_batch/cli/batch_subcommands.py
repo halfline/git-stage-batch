@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ..commands.drop import command_drop_batch
 from ..commands.list import command_list_batches
 from ..commands.new import command_new_batch
 from ..commands.sift import command_sift_batch
@@ -39,6 +40,20 @@ def add_list_subcommand(subparsers) -> None:
         help=_("List all batches"),
     )
     parser_list.set_defaults(func=lambda _: command_list_batches())
+
+
+def add_drop_subcommand(subparsers) -> None:
+    """Register the drop subcommand."""
+    parser_drop = add_subcommand_parser(
+        subparsers,
+        "drop",
+        help=_("Delete a batch"),
+    )
+    parser_drop.add_argument(
+        "batch_name",
+        help=_("Name of the batch to delete"),
+    )
+    parser_drop.set_defaults(func=lambda args: command_drop_batch(args.batch_name))
 
 
 def add_sift_subcommand(subparsers) -> None:

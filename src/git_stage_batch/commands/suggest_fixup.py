@@ -26,6 +26,7 @@ from ..utils.paths import (
     ensure_state_directory_exists,
     get_selected_hunk_hash_file_path,
 )
+from .fixup.boundary import require_suggest_fixup_boundary_range
 from .fixup.candidate_display import (
     display_suggest_fixup_candidate,
     show_last_suggest_fixup_candidate,
@@ -95,24 +96,7 @@ def command_suggest_fixup(
     min_line = line_range.min_line
     max_line = line_range.max_line
 
-    # Validate boundary ref
-    try:
-        run_git_command(["rev-parse", "--verify", effective_boundary], check=True, requires_index_lock=False)
-    except subprocess.CalledProcessError:
-        exit_with_error(_("Invalid boundary ref: {boundary}").format(boundary=effective_boundary))
-
-    # Check if there are any commits in the range
-    try:
-        rev_list_result = run_git_command(
-            ["rev-list", f"{effective_boundary}..HEAD"],
-            check=True,
-            requires_index_lock=False,
-        )
-    except subprocess.CalledProcessError:
-        exit_with_error(_("Failed to get commit range {boundary}..HEAD").format(boundary=effective_boundary))
-
-    if not rev_list_result.stdout.strip():
-        exit_with_error(_("No commits found in range {boundary}..HEAD").format(boundary=effective_boundary))
+    require_suggest_fixup_boundary_range(effective_boundary)
 
     # Check if we should reset state due to context change
     if state and suggest_fixup_state_should_reset(

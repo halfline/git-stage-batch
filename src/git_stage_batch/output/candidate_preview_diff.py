@@ -2,11 +2,35 @@
 
 from __future__ import annotations
 
-from ..batch.operation_candidates import render_candidate_buffer_diff
+import difflib
+
 from ..core.buffer import LineBuffer
 from ..core.diff_parser import build_line_changes_from_patch_lines
 from . import candidate_preview_snippets
 from .colors import Colors
+
+
+def render_candidate_buffer_diff(
+    file_path: str,
+    before_buffer: LineBuffer,
+    after_buffer: LineBuffer,
+    *,
+    label_before: str,
+    label_after: str,
+    context_lines: int,
+) -> str:
+    """Render a unified diff between two candidate buffers."""
+    before_text = before_buffer.to_bytes().decode("utf-8", errors="surrogateescape")
+    after_text = after_buffer.to_bytes().decode("utf-8", errors="surrogateescape")
+    return "".join(
+        difflib.unified_diff(
+            before_text.splitlines(keepends=True),
+            after_text.splitlines(keepends=True),
+            fromfile=f"{label_before}/{file_path}",
+            tofile=f"{label_after}/{file_path}",
+            n=context_lines,
+        )
+    )
 
 
 def _candidate_diff_hunks(diff_text: str) -> tuple[tuple[bytes, ...], ...]:

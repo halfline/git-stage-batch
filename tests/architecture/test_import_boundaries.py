@@ -3576,6 +3576,7 @@ def test_batch_storage_uses_public_content_helpers():
         fromlist=["storage"],
     )
     public_names = {
+        "add_binary_file_to_batch",
         "build_realized_buffer_from_lines",
         "remove_file_from_batch_commit",
         "update_batch_commit",
@@ -3590,6 +3591,7 @@ def test_batch_storage_uses_public_content_helpers():
             "build_realized_buffer_from_lines",
         },
         SRC_ROOT / "commands" / "batch_transform" / "sift_persistence.py": {
+            "add_binary_file_to_batch",
             "remove_file_from_batch_commit",
             "update_batch_commit",
         },
@@ -3738,14 +3740,15 @@ def test_batch_transform_sift_results_own_result_planning():
         assert {"__contains__", "__getitem__", "get"}.isdisjoint(result_methods)
 
 
-def test_batch_transform_sift_persistence_owns_text_writes():
-    """Sift text persistence should live outside the command entry point."""
+def test_batch_transform_sift_persistence_owns_file_writes():
+    """Sift file persistence should live outside the command entry point."""
     sift_persistence = __import__(
         "git_stage_batch.commands.batch_transform.sift_persistence",
         fromlist=["sift_persistence"],
     )
     sift_path = SRC_ROOT / "commands" / "sift.py"
     public_names = {
+        "add_sifted_file_to_batch",
         "add_sifted_text_file_to_batch",
         "create_synthetic_batch_source_commit",
     }
@@ -3757,6 +3760,7 @@ def test_batch_transform_sift_persistence_owns_text_writes():
             "get_batch_baseline_commit",
         },
         "git_stage_batch.batch.storage": {
+            "add_binary_file_to_batch",
             "remove_file_from_batch_commit",
             "update_batch_commit",
         },
@@ -3779,6 +3783,7 @@ def test_batch_transform_sift_persistence_owns_text_writes():
     }
     imports_sift_persistence = False
     direct_persistence_imports = set()
+    persistence_calls = set()
 
     for imported_module, node in _import_from_nodes(sift_path):
         imported_names = {alias.name for alias in node.names}
@@ -3798,11 +3803,21 @@ def test_batch_transform_sift_persistence_owns_text_writes():
         for node in ast.walk(sift_tree)
         if isinstance(node, (ast.ClassDef, ast.FunctionDef))
     }
+    for node in ast.walk(sift_tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "_sift_persistence"
+        ):
+            persistence_calls.add(node.func.attr)
 
     assert public_names <= vars(sift_persistence).keys()
     assert imports_sift_persistence
     assert direct_persistence_imports == set()
     assert old_helper_names.isdisjoint(sift_helpers)
+    assert "add_sifted_file_to_batch" in persistence_calls
+    assert "add_sifted_text_file_to_batch" not in persistence_calls
 
 
 def test_batch_ownership_units_bridge_keeps_display_out_of_ownership():

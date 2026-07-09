@@ -7976,6 +7976,76 @@ def test_gitlink_storage_owns_gitlink_persistence():
     assert violations == []
 
 
+def test_file_entry_storage_owns_entry_operations():
+    """Generic batch file entry operations should live outside text storage."""
+    file_entry_storage = __import__(
+        "git_stage_batch.batch.file_entry_storage",
+        fromlist=["file_entry_storage"],
+    )
+    storage = __import__(
+        "git_stage_batch.batch.storage",
+        fromlist=["storage"],
+    )
+    public_names = {
+        "copy_file_from_batch_to_batch",
+        "read_file_from_batch",
+        "remove_file_from_batch",
+    }
+    private_names = {
+        "_copy_file_from_batch_to_batch",
+        "_read_file_from_batch",
+        "_remove_file_from_batch",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "batch_source" / "reset_claims.py": {
+            "copy_file_from_batch_to_batch",
+            "remove_file_from_batch",
+        },
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(file_entry_storage)
+    assert public_names.isdisjoint(vars(storage))
+    assert private_names.isdisjoint(vars(file_entry_storage))
+    assert private_names.isdisjoint(vars(storage))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "batch" / "file_entry_storage.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.storage":
+                disallowed_names = imported_names & public_names
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(
+                        f"{relative_path}:{node.lineno} imports {names} "
+                        "from batch.storage"
+                    )
+                continue
+
+            if imported_module != "git_stage_batch.batch.file_entry_storage":
+                continue
+
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & private_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_batch_content_commits_own_tree_publication():
     """Batch commit tree publication should live outside storage."""
     content_commits = __import__(
@@ -10925,6 +10995,8 @@ def test_batch_source_reset_claims_own_reset_mutations():
         },
         "git_stage_batch.batch.storage": {
             "add_file_to_batch",
+        },
+        "git_stage_batch.batch.file_entry_storage": {
             "copy_file_from_batch_to_batch",
             "remove_file_from_batch",
         },

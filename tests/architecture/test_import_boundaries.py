@@ -1826,6 +1826,31 @@ def test_argument_parser_delegates_git_help_display():
     assert "import tempfile" not in parser_text
 
 
+def test_argument_parser_delegates_quick_action_expansion():
+    """Parser construction should not own shortcut token expansion."""
+    parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    parser_text = parser_path.read_text()
+    parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    parser = __import__(
+        "git_stage_batch.cli.argument_parser",
+        fromlist=["argument_parser"],
+    )
+    quick_actions = __import__(
+        "git_stage_batch.cli.quick_actions",
+        fromlist=["quick_actions"],
+    )
+
+    assert "git_stage_batch.cli.quick_actions" in parser_imports
+    assert "expand_quick_actions" in vars(quick_actions)
+    assert "QUICK_ACTIONS" in vars(quick_actions)
+    assert "QUICK_ACTIONS" not in vars(parser)
+    assert "quick_actions = {" not in parser_text
+    assert "'if': ['include', '--file']" not in parser_text
+
+
 def test_file_scope_discard_to_batch_owns_multi_file_pipeline():
     """Multi-file discard-to-batch support should stay out of discard.py."""
     discard_path = SRC_ROOT / "commands" / "discard.py"

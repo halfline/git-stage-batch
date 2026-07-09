@@ -10765,6 +10765,78 @@ def test_discard_line_replacement_stays_in_command_helper():
     assert helper_imports <= helper_imported_names
 
 
+def test_discard_line_replacement_action_stays_in_command_helper():
+    """Discard line-replacement action support should stay out of the entrypoint."""
+    discard_path = SRC_ROOT / "commands" / "discard.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "discard_line_replacement_action.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.selection.discard_line_replacement_action",
+        fromlist=["discard_line_replacement_action"],
+    )
+    public_names = {"discard_live_line_replacement_to_batch"}
+    action_dependency_names = {
+        "coerce_replacement_payload",
+        "discard_file_selection",
+        "discard_line_batching",
+        "discard_lines_as_to_batch",
+        "finish_review_scoped_line_action",
+        "load_explicit_file_selection",
+        "require_file_scope_target_path",
+        "require_selected_hunk",
+        "restore_selected_change_state",
+        "snapshot_selected_change_state",
+        "undo_checkpoint",
+    }
+    helper_imports = {
+        "ReplacementPayload",
+        "coerce_replacement_payload",
+        "discard_file_selection",
+        "discard_line_batching",
+        "finish_review_scoped_line_action",
+        "require_file_scope_target_path",
+        "require_selected_hunk",
+        "restore_selected_change_state",
+        "snapshot_selected_change_state",
+        "undo_checkpoint",
+    }
+
+    assert public_names <= vars(helper).keys()
+
+    discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    discard_functions = {
+        node.name: node
+        for node in ast.walk(discard_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    command_line_as_names = {
+        node.id
+        for node in ast.walk(discard_functions["command_discard_line_as_to_batch"])
+        if isinstance(node, ast.Name)
+    }
+    command_line_as_attributes = {
+        node.attr
+        for node in ast.walk(discard_functions["command_discard_line_as_to_batch"])
+        if isinstance(node, ast.Attribute)
+    }
+    discard_selection_imports = set()
+    for imported_module, node in _import_from_nodes(discard_path):
+        if imported_module != "git_stage_batch.commands.selection":
+            continue
+        discard_selection_imports |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert "discard_line_replacement_action" in discard_selection_imports
+    assert "discard_live_line_replacement_to_batch" in command_line_as_attributes
+    assert action_dependency_names.isdisjoint(command_line_as_names)
+    assert action_dependency_names.isdisjoint(command_line_as_attributes)
+    assert helper_imports <= helper_imported_names
+
+
 def test_batch_line_selection_stays_in_command_helper():
     """Batch line-selection validation should live in command selection support."""
     include_line_batching_path = (

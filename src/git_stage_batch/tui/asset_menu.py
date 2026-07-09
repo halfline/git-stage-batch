@@ -5,7 +5,8 @@ from __future__ import annotations
 import shlex
 import sys
 
-from ..commands.install_assets import ASSET_GROUPS, command_install_assets
+from ..commands.install_assets import command_install_assets
+from ..data.asset_catalog import ASSET_GROUPS
 from ..i18n import _
 
 

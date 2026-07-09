@@ -106,7 +106,7 @@ class TestHandleCurrentFileReview:
             ):
                 with patch("git_stage_batch.commands.show.command_show") as mock_show:
                     with patch(
-                        "git_stage_batch.tui.file_review.browser.read_last_file_review_state",
+                        "git_stage_batch.tui.file_review.page_navigation.read_last_file_review_state",
                         side_effect=page_states,
                     ):
                         with patch("builtins.input", side_effect=["n", "q"]):
@@ -133,7 +133,7 @@ class TestHandleCurrentFileReview:
             ):
                 with patch("git_stage_batch.commands.show.command_show") as mock_show:
                     with patch(
-                        "git_stage_batch.tui.file_review.browser.read_last_file_review_state",
+                        "git_stage_batch.tui.file_review.page_navigation.read_last_file_review_state",
                         return_value=SimpleNamespace(
                             shown_pages=(2,),
                             page_count=3,

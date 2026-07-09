@@ -3,7 +3,7 @@
 import pytest
 
 from git_stage_batch.exceptions import CommandError
-from git_stage_batch.output.file_review_pages import (
+from git_stage_batch.data.file_review.pages import (
     normalize_page_spec,
     parse_page_selection,
 )

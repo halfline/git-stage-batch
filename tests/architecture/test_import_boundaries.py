@@ -1610,11 +1610,11 @@ def test_file_review_state_builder_uses_page_selection_module():
         for imported_module, _node in _import_from_nodes(review_state_builder_path)
     }
     file_review_pages = __import__(
-        "git_stage_batch.output.file_review_pages",
+        "git_stage_batch.data.file_review.pages",
         fromlist=["file_review_pages"],
     )
 
-    assert "git_stage_batch.output.file_review_pages" in imported_modules
+    assert "git_stage_batch.data.file_review.pages" in imported_modules
     assert "parse_page_selection" in vars(file_review_pages)
     assert "normalize_page_spec" in vars(file_review_pages)
     assert "def parse_page_selection" not in review_state_builder_text

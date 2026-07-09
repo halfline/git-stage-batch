@@ -876,6 +876,31 @@ def test_ignore_file_helpers_stay_in_data_layer():
     assert violations == []
 
 
+def test_git_index_lock_waiting_stays_out_of_git_command_module():
+    """Git command execution should delegate index-lock waiting."""
+    git_path = SRC_ROOT / "utils" / "git.py"
+    git_text = git_path.read_text()
+    git_imports = _import_from_nodes(git_path)
+    imports_lock_module = any(
+        imported_module == "git_stage_batch.utils"
+        and any(alias.name == "git_index_lock" for alias in node.names)
+        for imported_module, node in git_imports
+    )
+    git_utils = __import__("git_stage_batch.utils.git", fromlist=["git"])
+    git_index_lock = __import__(
+        "git_stage_batch.utils.git_index_lock",
+        fromlist=["git_index_lock"],
+    )
+
+    assert imports_lock_module
+    assert "wait_for_git_index_lock" in vars(git_index_lock)
+    assert "DEFAULT_INDEX_LOCK_WAIT_SECONDS" in vars(git_index_lock)
+    assert "wait_for_git_index_lock" not in vars(git_utils)
+    assert "def wait_for_git_index_lock" not in git_text
+    assert "def _git_index_lock_path" not in git_text
+    assert "def _custom_index_lock_path" not in git_text
+
+
 def test_batch_hunk_display_does_not_import_hunk_navigation():
     """Batch display caching should not depend on hunk navigation."""
     cache_path = SRC_ROOT / "data" / "batch_hunk_display.py"

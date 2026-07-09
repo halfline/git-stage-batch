@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import shlex
-import shutil
 import sys
 from dataclasses import dataclass
 
@@ -29,15 +28,9 @@ from ..data.file_review.fingerprints import (
 from ..data.selected_change.store import SelectedChangeKind
 from ..exceptions import CommandError
 from ..i18n import _
+from . import file_review_layout
 from .colors import Colors
 from ..data.file_review.pages import normalize_page_spec, parse_page_selection
-
-DEFAULT_NON_TTY_REVIEW_LINES = 80
-DEFAULT_REVIEW_WIDTH = 80
-REVIEW_HEADER_LINES = 3
-REVIEW_FOOTER_LINES = 9
-PAGER_EXIT_MARGIN_LINES = 1
-MINIMUM_BODY_LINES = 8
 
 
 def _quote(value: str) -> str:
@@ -503,7 +496,7 @@ def build_file_review_model(
         for change in changes
     ]
 
-    body_budget = _body_budget()
+    body_budget = file_review_layout.body_budget()
     page_fragments: list[list[tuple[ReviewChange, tuple[LineEntry, ...], bool, bool]]] = []
     current_page: list[tuple[ReviewChange, tuple[LineEntry, ...], bool, bool]] = []
     current_height = 0
@@ -599,21 +592,6 @@ def build_file_review_model(
         display_id_by_selection_id=display_id_by_selection_id,
         review_action_groups=review_action_groups or (),
     )
-
-
-def _body_budget() -> int:
-    size = _review_terminal_size()
-    estimated_footer_lines = _estimate_file_review_footer_height()
-    reserved_lines = REVIEW_HEADER_LINES + estimated_footer_lines + PAGER_EXIT_MARGIN_LINES
-    return max(MINIMUM_BODY_LINES, size.lines - reserved_lines)
-
-
-def _review_terminal_size():
-    return shutil.get_terminal_size(fallback=(DEFAULT_REVIEW_WIDTH, DEFAULT_NON_TTY_REVIEW_LINES))
-
-
-def _estimate_file_review_footer_height(_complete_change_count: int = 3) -> int:
-    return REVIEW_FOOTER_LINES
 
 
 def resolve_default_review_pages(

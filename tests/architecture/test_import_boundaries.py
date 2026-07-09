@@ -9068,72 +9068,41 @@ def test_batch_ownership_replacement_units_own_value_records():
         "ReplacementUnit",
         "ReplacementUnitOrigin",
     }
-    replacement_units_own_records = public_names <= vars(replacement_units).keys()
-    if replacement_units_own_records:
-        expected_import_module = "git_stage_batch.batch.ownership_replacement_units"
-        expected_imports = {
-            SRC_ROOT / "batch" / "hunk_ownership_translation.py": public_names,
-            SRC_ROOT / "batch" / "ownership.py": public_names,
-            SRC_ROOT / "batch" / "ownership_detachment.py": {
-                "ReplacementUnit",
-            },
-            SRC_ROOT / "batch" / "ownership_line_entries.py": public_names,
-            SRC_ROOT / "batch" / "ownership_merging.py": {
-                "ReplacementUnit",
-            },
-            SRC_ROOT / "batch" / "ownership_remapping.py": {
-                "ReplacementUnit",
-            },
-            SRC_ROOT / "batch" / "ownership_translation.py": {
-                "ReplacementUnit",
-            },
-            SRC_ROOT / "batch" / "ownership_unit_rebuild.py": {
-                "ReplacementUnit",
-            },
-            SRC_ROOT / "batch" / "ownership_unit_types.py": {
-                "ReplacementUnitOrigin",
-            },
-            SRC_ROOT / "batch" / "replacement.py": {
-                "ReplacementUnit",
-            },
-        }
-    else:
-        expected_import_module = "git_stage_batch.batch.ownership"
-        expected_imports = {
-            SRC_ROOT / "batch" / "hunk_ownership_translation.py": public_names,
-            SRC_ROOT / "batch" / "ownership_detachment.py": {
-                "ReplacementUnit",
-            },
-            SRC_ROOT / "batch" / "ownership_line_entries.py": public_names,
-            SRC_ROOT / "batch" / "ownership_merging.py": {
-                "ReplacementUnit",
-            },
-            SRC_ROOT / "batch" / "ownership_remapping.py": {
-                "ReplacementUnit",
-            },
-            SRC_ROOT / "batch" / "ownership_translation.py": {
-                "ReplacementUnit",
-            },
-            SRC_ROOT / "batch" / "ownership_unit_rebuild.py": {
-                "ReplacementUnit",
-            },
-            SRC_ROOT / "batch" / "ownership_unit_types.py": {
-                "ReplacementUnitOrigin",
-            },
-            SRC_ROOT / "batch" / "replacement.py": {
-                "ReplacementUnit",
-            },
-        }
+    expected_imports = {
+        SRC_ROOT / "batch" / "hunk_ownership_translation.py": public_names,
+        SRC_ROOT / "batch" / "ownership.py": {
+            "ReplacementUnit",
+        },
+        SRC_ROOT / "batch" / "ownership_detachment.py": {
+            "ReplacementUnit",
+        },
+        SRC_ROOT / "batch" / "ownership_line_entries.py": public_names,
+        SRC_ROOT / "batch" / "ownership_merging.py": {
+            "ReplacementUnit",
+        },
+        SRC_ROOT / "batch" / "ownership_remapping.py": {
+            "ReplacementUnit",
+        },
+        SRC_ROOT / "batch" / "ownership_translation.py": {
+            "ReplacementUnit",
+        },
+        SRC_ROOT / "batch" / "ownership_unit_rebuild.py": {
+            "ReplacementUnit",
+        },
+        SRC_ROOT / "batch" / "ownership_unit_types.py": {
+            "ReplacementUnitOrigin",
+        },
+        SRC_ROOT / "batch" / "replacement.py": {
+            "ReplacementUnit",
+        },
+    }
     violations = []
 
-    assert public_names <= vars(
-        replacement_units if replacement_units_own_records else ownership
-    ).keys()
-    if replacement_units_own_records:
-        assert public_names.isdisjoint(vars(ownership))
-        ownership_text = (SRC_ROOT / "batch" / "ownership.py").read_text()
-        assert "class ReplacementUnit" not in ownership_text
-        assert "class ReplacementUnitOrigin" not in ownership_text
+    assert public_names <= vars(replacement_units).keys()
+    assert public_names.isdisjoint(vars(ownership))
+    ownership_text = (SRC_ROOT / "batch" / "ownership.py").read_text()
+    assert "class ReplacementUnit" not in ownership_text
+    assert "class ReplacementUnitOrigin" not in ownership_text
 
     for path in SRC_ROOT.rglob("*.py"):
         if path == replacement_unit_path:
@@ -9142,10 +9111,7 @@ def test_batch_ownership_replacement_units_own_value_records():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if (
-                replacement_units_own_records
-                and imported_module == "git_stage_batch.batch.ownership"
-            ):
+            if imported_module == "git_stage_batch.batch.ownership":
                 stale_imports = imported_names & public_names
                 if stale_imports:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -9153,7 +9119,7 @@ def test_batch_ownership_replacement_units_own_value_records():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != expected_import_module:
+            if imported_module != "git_stage_batch.batch.ownership_replacement_units":
                 continue
 
             imported_public_names |= imported_names & public_names

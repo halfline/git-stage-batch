@@ -5,20 +5,17 @@ from __future__ import annotations
 import sys
 
 from ...data.line_state import load_line_changes_from_state
-from ...exceptions import BypassRefresh, CommandError
+from ...exceptions import BypassRefresh
 from ...i18n import _
 from .action_router import (
     apply_file_action,
     apply_line_action,
     apply_replacement_action,
 )
-from .block_actions import block_review_file, unblock_review_file
+from .block_actions import apply_block_action as _apply_block_action
 from .candidates import browse_candidates
 from .display import render_file_review
-from .file_browser import (
-    choose_review_file,
-    prompt_block_local_only as _prompt_block_local_only,
-)
+from .file_browser import choose_review_file
 from .fixup_actions import apply_fixup_action as _apply_fixup_action
 from .page_navigation import (
     next_page_spec as _next_page_spec,
@@ -32,7 +29,6 @@ from .prompts import (
 )
 from .session import FileReviewSessionState
 from ..flow import FlowState
-from ..prompts import confirm_destructive_operation
 
 
 def handle_current_file_review(flow_state: FlowState) -> None:
@@ -117,27 +113,3 @@ def _review_loop(state: FileReviewSessionState) -> None:
             continue
 
         print(_("Unknown review action: {action}").format(action=action))
-
-
-def _apply_block_action(state: FileReviewSessionState, action: str) -> None:
-    if action == "B":
-        if not confirm_destructive_operation(
-            "block",
-            _("This will add the reviewed file to ignore state."),
-        ):
-            return
-
-        local_only = _prompt_block_local_only()
-        if local_only is None:
-            return
-
-        try:
-            block_review_file(state.file_path, local_only=local_only)
-        except CommandError as e:
-            print(e.message, file=sys.stderr)
-        return
-
-    try:
-        unblock_review_file(state.file_path)
-    except CommandError as e:
-        print(e.message, file=sys.stderr)

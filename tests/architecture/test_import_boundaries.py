@@ -8930,7 +8930,6 @@ def test_batch_ownership_units_owns_unit_operations():
     public_names = {
         "build_ownership_units_from_batch_source_lines",
         "build_ownership_units_from_display_lines",
-        "validate_ownership_units",
     }
     moved_selection_names = {
         "filter_ownership_units_by_display_ids",
@@ -8939,18 +8938,18 @@ def test_batch_ownership_units_owns_unit_operations():
     moved_rebuild_names = {
         "rebuild_ownership_from_units",
     }
+    moved_validation_names = {
+        "validate_ownership_units",
+    }
     expected_unit_imports = {
         SRC_ROOT / "batch" / "file_display.py": {
             "build_ownership_units_from_display_lines",
-            "validate_ownership_units",
         },
         SRC_ROOT / "batch" / "selection.py": {
             "build_ownership_units_from_batch_source_lines",
-            "validate_ownership_units",
         },
         SRC_ROOT / "commands" / "batch_source" / "reset_claims.py": {
             "build_ownership_units_from_batch_source_lines",
-            "validate_ownership_units",
         },
     }
     violations = []
@@ -8960,6 +8959,7 @@ def test_batch_ownership_units_owns_unit_operations():
         assert public_name in vars(ownership_units)
     assert moved_selection_names.isdisjoint(vars(ownership_units))
     assert moved_rebuild_names.isdisjoint(vars(ownership_units))
+    assert moved_validation_names.isdisjoint(vars(ownership_units))
 
     ownership_imports = {
         imported_module
@@ -8997,6 +8997,56 @@ def test_batch_ownership_units_owns_unit_operations():
 
         if path in expected_unit_imports:
             assert expected_unit_imports[path] <= imported_unit_names
+
+    assert violations == []
+
+
+def test_batch_ownership_unit_validation_owns_structural_checks():
+    """Ownership unit validation should live outside unit construction."""
+    ownership_units = __import__(
+        "git_stage_batch.batch.ownership_units",
+        fromlist=["ownership_units"],
+    )
+    ownership_unit_validation = __import__(
+        "git_stage_batch.batch.ownership_unit_validation",
+        fromlist=["ownership_unit_validation"],
+    )
+    validation_path = SRC_ROOT / "batch" / "ownership_unit_validation.py"
+    public_names = {
+        "validate_ownership_units",
+    }
+    private_names = {
+        "_validate_ownership_units",
+    }
+    expected_imports = {
+        SRC_ROOT / "batch" / "file_display.py": public_names,
+        SRC_ROOT / "batch" / "selection.py": public_names,
+        SRC_ROOT / "commands" / "batch_source" / "reset_claims.py": public_names,
+    }
+    violations = []
+
+    assert public_names <= vars(ownership_unit_validation).keys()
+    assert public_names.isdisjoint(vars(ownership_units))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == validation_path:
+            continue
+
+        imported_public_names = set()
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module != "git_stage_batch.batch.ownership_unit_validation":
+                continue
+
+            imported_public_names |= imported_names & public_names
+            private_imports = imported_names & private_names
+            if private_imports:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(private_imports))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
 
     assert violations == []
 
@@ -12373,13 +12423,15 @@ def test_batch_source_reset_claims_own_reset_mutations():
         },
         "git_stage_batch.batch.ownership_units": {
             "build_ownership_units_from_batch_source_lines",
-            "validate_ownership_units",
         },
         "git_stage_batch.batch.ownership_unit_rebuild": {
             "rebuild_ownership_from_units",
         },
         "git_stage_batch.batch.ownership_unit_selection": {
             "filter_ownership_units_by_display_ids",
+        },
+        "git_stage_batch.batch.ownership_unit_validation": {
+            "validate_ownership_units",
         },
         "git_stage_batch.batch.selection": {
             "require_display_ids_available",

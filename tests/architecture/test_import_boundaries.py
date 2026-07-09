@@ -2660,6 +2660,9 @@ def test_file_review_records_stay_out_of_state_module():
         },
         SRC_ROOT / "data" / "file_review" / "batch_selection.py": {"FileReviewAction"},
         SRC_ROOT / "output" / "file_review.py": {
+            "ReviewSource",
+        },
+        SRC_ROOT / "output" / "file_review_footer.py": {
             "FileReviewAction",
             "FileReviewState",
             "ReviewSource",
@@ -3114,7 +3117,7 @@ def test_file_review_action_commands_stay_out_of_state_module():
             "line_action_command",
             "show_command_for_review_state",
         },
-        SRC_ROOT / "output" / "file_review.py": {"line_action_command"},
+        SRC_ROOT / "output" / "file_review_footer.py": {"line_action_command"},
     }
     violations = []
 

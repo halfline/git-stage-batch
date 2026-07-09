@@ -6,18 +6,20 @@ descriptors. The core is binary-only and chunk-based.
 Example usage:
 
     # One-shot streaming with stdin
+    from git_stage_batch.utils import command_events
+
     for event in stream_command(["cat"], stdin_chunks=[b"hello\n"]):
-        if isinstance(event, OutputEvent):
+        if isinstance(event, command_events.OutputEvent):
             print(f"fd {event.fd}: {event.data!r}")
-        elif isinstance(event, ExitEvent):
+        elif isinstance(event, command_events.ExitEvent):
             print(f"exit code: {event.exit_code}")
 
     # Capture extra child fd (e.g., Xvfb -displayfd 3)
     for event in stream_command(
         ["python3", "-c", "import os; os.write(3, b'display:1\\n'); os.close(3)"],
-        extra_fds=[CapturedFd(3)],
+        extra_fds=[command_events.CapturedFd(3)],
     ):
-        if isinstance(event, OutputEvent) and event.fd == 3:
+        if isinstance(event, command_events.OutputEvent) and event.fd == 3:
             display = event.data.decode().strip()
 
     # Process handle for interactive use
@@ -36,9 +38,8 @@ import signal
 import subprocess
 import time
 from collections.abc import Iterable, Iterator
-from dataclasses import dataclass
-from enum import Enum
-from typing import Literal
+
+from . import command_events
 
 
 _CHUNK_SIZE = 8192
@@ -120,48 +121,6 @@ class _SpawnedProcess:
                 os.kill(self.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
-
-
-class CommandEventRole(Enum):
-    """Command event role/type."""
-
-    OUTPUT = "output"
-    STDIN_CLOSED = "stdin_closed"
-    EXIT = "exit"
-
-
-@dataclass
-class OutputEvent:
-    """Represents output from a child file descriptor."""
-
-    role: Literal[CommandEventRole.OUTPUT]
-    fd: int
-    data: bytes
-
-
-@dataclass
-class StdinClosedEvent:
-    """Represents parent closing child stdin."""
-
-    role: Literal[CommandEventRole.STDIN_CLOSED]
-
-
-@dataclass
-class ExitEvent:
-    """Represents child process exit."""
-
-    role: Literal[CommandEventRole.EXIT]
-    exit_code: int
-
-
-CommandEvent = OutputEvent | StdinClosedEvent | ExitEvent
-
-
-@dataclass(frozen=True)
-class CapturedFd:
-    """Specification for capturing an extra child file descriptor."""
-
-    child_fd: int
 
 
 def _close_fd_if_present(fd: int | None) -> None:
@@ -322,16 +281,19 @@ class StreamingProcess:
 
         exit_code = 0
         for event in self.stream(stdin_chunks):
-            if isinstance(event, ExitEvent):
+            if isinstance(event, command_events.ExitEvent):
                 exit_code = event.exit_code
         return exit_code
 
-    def stream(self, stdin_chunks: Iterable[bytes] | None = None) -> Iterator[CommandEvent]:
+    def stream(
+        self,
+        stdin_chunks: Iterable[bytes] | None = None,
+    ) -> Iterator[command_events.CommandEvent]:
         """Stream I/O with the child process.
 
         Iteration continues until all captured output file descriptors reach EOF
         and any managed stdin pipe has been closed. After that, the child is
-        waited for and a final ExitEvent is emitted.
+        waited for and a final exit event is emitted.
 
         Args:
             stdin_chunks: Optional iterator of bytes to write to stdin. If provided,
@@ -339,9 +301,9 @@ class StreamingProcess:
                 in-memory buffering beyond the kernel's pipe buffer.
 
         Yields:
-            OutputEvent for each chunk from captured fds (stdout, stderr, extra_fds),
-            optionally StdinClosedEvent when stdin is closed,
-            and exactly one ExitEvent at the end with the process exit code.
+            Output events for each chunk from captured fds.
+            Optionally a stdin-closed event when stdin is closed.
+            Exactly one exit event at the end with the process exit code.
 
         This is a single-consumer iterator. Do not call multiple times.
 
@@ -369,7 +331,9 @@ class StreamingProcess:
 
                 if self._should_close_stdin_now():
                     self._close_stdin_now()
-                    yield StdinClosedEvent(CommandEventRole.STDIN_CLOSED)
+                    yield command_events.StdinClosedEvent(
+                        command_events.CommandEventRole.STDIN_CLOSED
+                    )
                     continue
 
                 if not self._selector.get_map():
@@ -391,7 +355,10 @@ class StreamingProcess:
 
             # All outputs drained, wait for child and emit exit event
             exit_code = self._process.wait()
-            yield ExitEvent(CommandEventRole.EXIT, exit_code)
+            yield command_events.ExitEvent(
+                command_events.CommandEventRole.EXIT,
+                exit_code,
+            )
 
         except GeneratorExit:
             # Iterator closed early - terminate the child
@@ -456,7 +423,10 @@ class StreamingProcess:
         self._stdin_fd = None
         self._stdin_closed_emitted = True
 
-    def _handle_readable_fd(self, parent_fd: int) -> Iterator[CommandEvent]:
+    def _handle_readable_fd(
+        self,
+        parent_fd: int,
+    ) -> Iterator[command_events.CommandEvent]:
         try:
             data = os.read(parent_fd, _CHUNK_SIZE)
         except OSError:
@@ -464,7 +434,11 @@ class StreamingProcess:
 
         if data:
             child_fd = self._output_fds[parent_fd]
-            yield OutputEvent(CommandEventRole.OUTPUT, child_fd, data)
+            yield command_events.OutputEvent(
+                command_events.CommandEventRole.OUTPUT,
+                child_fd,
+                data,
+            )
             return
 
         # EOF on this fd - close and remove from monitoring
@@ -481,7 +455,10 @@ class StreamingProcess:
 
         self._output_fds.pop(parent_fd, None)
 
-    def _handle_writable_stdin(self, parent_fd: int) -> StdinClosedEvent | None:
+    def _handle_writable_stdin(
+        self,
+        parent_fd: int,
+    ) -> command_events.StdinClosedEvent | None:
         if self._stdin_fd is None or parent_fd != self._stdin_fd:
             return None
 
@@ -528,7 +505,9 @@ class StreamingProcess:
 
         if self._should_close_stdin_now():
             self._close_stdin_now()
-            return StdinClosedEvent(CommandEventRole.STDIN_CLOSED)
+            return command_events.StdinClosedEvent(
+                command_events.CommandEventRole.STDIN_CLOSED
+            )
 
         return None
 
@@ -577,7 +556,7 @@ def start_command(
     *,
     stdin: bool = False,
     stdin_fd: int | None = None,
-    extra_fds: list[CapturedFd] | None = None,
+    extra_fds: list[command_events.CapturedFd] | None = None,
     cwd: str | None = None,
     env: dict[str, str] | None = None,
     capture_stdout: bool = True,
@@ -729,12 +708,12 @@ def stream_command(
     stdin_chunks: Iterable[bytes] | None = None,
     *,
     stdin_fd: int | None = None,
-    extra_fds: list[CapturedFd] | None = None,
+    extra_fds: list[command_events.CapturedFd] | None = None,
     cwd: str | None = None,
     env: dict[str, str] | None = None,
     capture_stdout: bool = True,
     capture_stderr: bool = True,
-) -> Iterator[CommandEvent]:
+) -> Iterator[command_events.CommandEvent]:
     """One-shot convenience wrapper for streaming a command.
 
     This starts the command, optionally feeds stdin from an iterable, and
@@ -794,9 +773,9 @@ def run_command(
         capture_stdout=capture_stdout,
         capture_stderr=capture_stderr,
     ):
-        if isinstance(event, ExitEvent):
+        if isinstance(event, command_events.ExitEvent):
             returncode = event.exit_code
-        elif isinstance(event, OutputEvent):
+        elif isinstance(event, command_events.OutputEvent):
             if event.fd == 1:
                 stdout_chunks.append(event.data)
             elif event.fd == 2:

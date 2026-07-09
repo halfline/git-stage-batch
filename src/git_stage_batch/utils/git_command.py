@@ -6,8 +6,8 @@ import subprocess
 import time
 from collections.abc import Iterable, Iterator, Sequence
 
-from . import git_index_lock
-from .command import ExitEvent, OutputEvent, run_command, stream_command
+from . import command_events, git_index_lock
+from .command import run_command, stream_command
 from .git_environment import git_environment_with_optional_locks_disabled
 from .text import bytes_to_lines
 
@@ -104,9 +104,9 @@ def stream_git_command(
                 env=env,
             ),
         ):
-            if isinstance(event, ExitEvent):
+            if isinstance(event, command_events.ExitEvent):
                 exit_code = event.exit_code
-            elif isinstance(event, OutputEvent):
+            elif isinstance(event, command_events.OutputEvent):
                 if event.fd == 1:  # stdout
                     yield event.data
                 elif event.fd == 2:  # stderr

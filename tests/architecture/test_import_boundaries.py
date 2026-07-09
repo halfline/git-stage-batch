@@ -321,6 +321,7 @@ def test_data_package_does_not_reexport_data_apis():
         "AssetGroup",
         "auto_add_untracked_files",
         "CompanionAsset",
+        "copy_asset_tree",
         "estimate_remaining_hunks",
         "format_id_range",
         "get_file_progress",
@@ -2596,6 +2597,55 @@ def test_install_asset_catalog_owns_asset_groups():
         asset_menu_path: set(),
         command_path: set(),
     }
+
+
+def test_asset_installation_owns_asset_tree_copying():
+    """Packaged asset tree copying should live in the data helper."""
+    asset_installation = __import__(
+        "git_stage_batch.data.asset_installation",
+        fromlist=["asset_installation"],
+    )
+    install_assets = __import__(
+        "git_stage_batch.commands.install_assets",
+        fromlist=["install_assets"],
+    )
+    command_path = SRC_ROOT / "commands" / "install_assets.py"
+    data_path = SRC_ROOT / "data" / "asset_installation.py"
+    old_command_names = {
+        "_copy_traversable_tree",
+        "_should_skip_asset_entry",
+    }
+    old_command_snippets = {
+        "def _copy_traversable_tree",
+        "def _should_skip_asset_entry",
+        "write_file_bytes",
+    }
+    command_imports = set()
+
+    for imported_module, node in _import_from_nodes(command_path):
+        if imported_module == "git_stage_batch.data.asset_installation":
+            command_imports |= {alias.name for alias in node.names}
+
+    command_tree = ast.parse(command_path.read_text(), filename=str(command_path))
+    data_tree = ast.parse(data_path.read_text(), filename=str(data_path))
+    command_names = {
+        node.name
+        for node in ast.walk(command_tree)
+        if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+    data_names = {
+        node.name
+        for node in ast.walk(data_tree)
+        if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+    command_text = command_path.read_text()
+
+    assert {"copy_asset_tree", "_should_skip_asset_entry"} <= data_names
+    assert "copy_asset_tree" in vars(asset_installation)
+    assert old_command_names.isdisjoint(vars(install_assets))
+    assert old_command_names.isdisjoint(command_names)
+    assert all(snippet not in command_text for snippet in old_command_snippets)
+    assert command_imports == {"copy_asset_tree"}
 
 
 def test_tui_flow_menu_owns_batch_selection_menus():

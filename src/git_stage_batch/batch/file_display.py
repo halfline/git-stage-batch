@@ -10,9 +10,9 @@ from .match import match_lines
 from .ownership import BatchOwnership
 from .ownership_units import (
     build_ownership_units_from_display_lines,
-    rebuild_ownership_from_units,
     validate_ownership_units,
 )
+from .ownership_unit_rebuild import rebuild_ownership_from_units
 from .query import read_batch_metadata
 from ..core.line_selection import LineRanges
 from ..core.models import (

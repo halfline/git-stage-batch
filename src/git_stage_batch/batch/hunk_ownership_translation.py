@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
 
 from ..core.models import LineEntry
+from . import hunk_line_ranges as _hunk_line_ranges
 from .absence_content import (
     AbsenceContentBuilder as _AbsenceContentBuilder,
     build_absence_content_from_range as _build_absence_content_from_range,
@@ -27,116 +27,6 @@ from .ownership_replacement_units import (
     normalize_replacement_units,
 )
 from .replacement_line_runs import ReplacementLineRun as _ReplacementLineRun
-
-
-@dataclass(frozen=True)
-class _HunkLineRangeScan:
-    start: int
-    end: int
-    start_index: int
-    stop_index: int
-    count: int
-    selected_count: int
-
-    @property
-    def complete(self) -> bool:
-        return self.count == self.end - self.start + 1
-
-    @property
-    def fully_selected(self) -> bool:
-        return self.complete and self.selected_count == self.count
-
-
-def _scan_hunk_line_range(
-    hunk_lines: list[LineEntry],
-    cursor: int,
-    *,
-    kind: str,
-    line_number_attr: str,
-    start: int,
-    end: int,
-    selected_display_ids: set[int],
-) -> _HunkLineRangeScan:
-    index = cursor
-    start_index = cursor
-    count = 0
-    selected_count = 0
-    found_first = False
-
-    while index < len(hunk_lines):
-        line = hunk_lines[index]
-        line_number = getattr(line, line_number_attr)
-        if line_number is not None and line_number > end:
-            break
-        if line.kind == kind and line_number is not None:
-            if line_number < start:
-                index += 1
-                continue
-            if line_number > end:
-                break
-            if not found_first:
-                start_index = index
-                found_first = True
-            count += 1
-            if line.id is not None and line.id in selected_display_ids:
-                selected_count += 1
-        index += 1
-
-    return _HunkLineRangeScan(
-        start=start,
-        end=end,
-        start_index=start_index,
-        stop_index=index,
-        count=count,
-        selected_count=selected_count,
-    )
-
-
-def _hunk_line_indexes_in_range(
-    hunk_lines: list[LineEntry],
-    scan: _HunkLineRangeScan,
-    *,
-    kind: str,
-    line_number_attr: str,
-) -> Iterable[int]:
-    for index in range(scan.start_index, scan.stop_index):
-        line = hunk_lines[index]
-        line_number = getattr(line, line_number_attr)
-        if (
-            line.kind == kind
-            and line_number is not None
-            and scan.start <= line_number <= scan.end
-        ):
-            yield index
-
-
-def _hunk_line_index_ranges_in_range(
-    hunk_lines: list[LineEntry],
-    scan: _HunkLineRangeScan,
-    *,
-    kind: str,
-    line_number_attr: str,
-) -> Iterable[tuple[int, int]]:
-    pending_start: int | None = None
-    pending_stop: int | None = None
-
-    for index in _hunk_line_indexes_in_range(
-        hunk_lines,
-        scan,
-        kind=kind,
-        line_number_attr=line_number_attr,
-    ):
-        if pending_stop == index:
-            pending_stop = index + 1
-            continue
-
-        if pending_start is not None and pending_stop is not None:
-            yield pending_start, pending_stop
-        pending_start = index
-        pending_stop = index + 1
-
-    if pending_start is not None and pending_stop is not None:
-        yield pending_start, pending_stop
 
 
 def translate_hunk_selection_to_batch_ownership(
@@ -244,7 +134,7 @@ def translate_hunk_selection_to_batch_ownership(
             replacement_run,
             old_line_content,
         )
-        old_scan = _scan_hunk_line_range(
+        old_scan = _hunk_line_ranges.scan_hunk_line_range(
             hunk_lines,
             old_cursor,
             kind="-",
@@ -253,7 +143,7 @@ def translate_hunk_selection_to_batch_ownership(
             end=replacement_run.old_end,
             selected_display_ids=selected_display_ids,
         )
-        new_scan = _scan_hunk_line_range(
+        new_scan = _hunk_line_ranges.scan_hunk_line_range(
             hunk_lines,
             new_cursor,
             kind="+",
@@ -269,13 +159,13 @@ def translate_hunk_selection_to_batch_ownership(
             continue
 
         if old_scan.count == new_scan.count:
-            old_indexes = _hunk_line_indexes_in_range(
+            old_indexes = _hunk_line_ranges.hunk_line_indexes_in_range(
                 hunk_lines,
                 old_scan,
                 kind="-",
                 line_number_attr="old_line_number",
             )
-            new_indexes = _hunk_line_indexes_in_range(
+            new_indexes = _hunk_line_ranges.hunk_line_indexes_in_range(
                 hunk_lines,
                 new_scan,
                 kind="+",
@@ -306,7 +196,7 @@ def translate_hunk_selection_to_batch_ownership(
 
         if old_scan.fully_selected and new_scan.fully_selected:
             add_replacement_unit(
-                _hunk_line_index_ranges_in_range(
+                _hunk_line_ranges.hunk_line_index_ranges_in_range(
                     hunk_lines,
                     old_scan,
                     kind="-",
@@ -314,7 +204,7 @@ def translate_hunk_selection_to_batch_ownership(
                 ),
                 (
                     hunk_lines[index]
-                    for index in _hunk_line_indexes_in_range(
+                    for index in _hunk_line_ranges.hunk_line_indexes_in_range(
                         hunk_lines,
                         new_scan,
                         kind="+",

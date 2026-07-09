@@ -14,9 +14,11 @@ from ..data.selected_change.clear_reasons import (
     refuse_bare_action_after_file_list,
 )
 from ..data.file_review.records import FileReviewAction, ReviewSource
-from ..data.file_review.action_scope import (
+from ..data.file_review.action_refusals import (
     refuse_ambiguous_bare_action_after_partial_file_review,
     refuse_live_action_for_batch_selection,
+)
+from ..data.file_review.action_scope import (
     resolve_live_line_action_scope,
     resolve_live_to_batch_action_scope,
 )

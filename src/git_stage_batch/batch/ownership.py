@@ -22,7 +22,7 @@ from ..data.repository_buffers import (
 from ..editor.edit import Editor
 from ..exceptions import AtomicUnitError, MergeError
 from ..i18n import _
-from ..utils.git import (
+from ..utils.git_object_io import (
     create_git_blob,
     read_git_blobs_as_bytes,
 )

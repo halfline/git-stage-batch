@@ -13,7 +13,6 @@ from ..core.buffer import LineBuffer
 from ..data.repository_buffers import load_git_object_as_buffer
 from ..utils.file_io import read_text_file_contents
 from ..utils.git import (
-    create_git_blob,
     GitIndexEntryUpdate,
     git_commit_tree,
     git_update_index_entries,
@@ -22,6 +21,7 @@ from ..utils.git import (
     temp_git_index,
     update_git_refs,
 )
+from ..utils.git_object_io import create_git_blob
 from ..utils.paths import get_batch_metadata_file_path
 
 

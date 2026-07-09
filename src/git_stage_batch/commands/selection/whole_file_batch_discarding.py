@@ -16,10 +16,10 @@ from ...exceptions import exit_with_error
 from ...i18n import _
 from ...utils.file_io import append_lines_to_file
 from ...utils.git import (
-    get_git_repository_root_path,
     git_checkout_paths,
     git_remove_paths,
 )
+from ...utils.git_repository import get_git_repository_root_path
 from ...utils.paths import get_block_list_file_path
 from .action_completion import finish_selected_change_action
 from .selected_change_discarding import discard_text_deletion_change

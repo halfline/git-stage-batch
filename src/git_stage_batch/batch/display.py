@@ -12,7 +12,7 @@ from ..data.repository_buffers import (
     load_working_tree_file_as_buffer,
 )
 from ..i18n import ngettext
-from ..utils.git import get_git_repository_root_path
+from ..utils.git_repository import get_git_repository_root_path
 from .match import match_lines
 
 if TYPE_CHECKING:

@@ -42,10 +42,8 @@ from ..exceptions import (
     exit_with_error,
 )
 from ..i18n import _
-from ..utils.git import (
-    git_refresh_index,
-    require_git_repository,
-)
+from ..utils.git import git_refresh_index
+from ..utils.git_repository import require_git_repository
 
 
 def _execute_include_candidate(

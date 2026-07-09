@@ -16,11 +16,11 @@ from ..utils.file_io import (
     write_text_file_contents,
 )
 from ..utils.git import (
-    get_git_repository_root_path,
     git_add_paths,
     git_remove_paths,
     run_git_command,
 )
+from ..utils.git_repository import get_git_repository_root_path
 from ..utils.journal import log_journal
 from ..utils.paths import (
     get_abort_head_file_path,

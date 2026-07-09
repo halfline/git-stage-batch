@@ -6,7 +6,8 @@ import os
 from pathlib import Path
 import stat
 
-from ..utils.git import get_git_repository_root_path, run_git_command
+from ..utils.git import run_git_command
+from ..utils.git_repository import get_git_repository_root_path
 
 
 def detect_file_mode(file_path: str) -> str:

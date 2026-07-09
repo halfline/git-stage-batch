@@ -6,7 +6,7 @@ import sys
 
 from ..batch.query import list_batch_names
 from ..i18n import _
-from ..utils.git import require_git_repository
+from ..utils.git_repository import require_git_repository
 
 
 def command_list_batches() -> None:

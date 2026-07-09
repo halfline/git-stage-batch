@@ -40,10 +40,8 @@ from ..core.buffer import (
 )
 from ..exceptions import exit_with_error
 from ..i18n import _
-from ..utils.git import (
-    require_git_repository,
-    run_git_command,
-)
+from ..utils.git import run_git_command
+from ..utils.git_repository import require_git_repository
 from ..utils.journal import log_journal
 from ..utils.paths import (
     ensure_state_directory_exists,

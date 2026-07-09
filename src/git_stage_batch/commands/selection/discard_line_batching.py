@@ -14,7 +14,7 @@ from ...data.selected_change.loading import require_selected_hunk
 from ...exceptions import exit_with_error
 from ...i18n import _
 from ...staging.operations import build_target_working_tree_buffer_from_lines
-from ...utils.git import get_git_repository_root_path
+from ...utils.git_repository import get_git_repository_root_path
 from ...utils.journal import log_journal
 from . import batch_line_selection as _batch_line_selection
 from . import batch_line_updates as _batch_line_updates

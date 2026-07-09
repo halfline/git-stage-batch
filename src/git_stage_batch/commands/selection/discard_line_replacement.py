@@ -50,7 +50,7 @@ from ...staging.operations import (
     build_target_working_tree_buffer_from_lines,
     build_target_working_tree_buffer_with_replaced_lines,
 )
-from ...utils.git import get_git_repository_root_path
+from ...utils.git_repository import get_git_repository_root_path
 from . import replacement_selection
 
 

@@ -76,7 +76,7 @@ from ..exceptions import (
 )
 from ..i18n import _
 from ..core.models import LineLevelChange
-from ..utils.git import require_git_repository
+from ..utils.git_repository import require_git_repository
 
 
 def _batch_source_args(batch_name: str) -> str:

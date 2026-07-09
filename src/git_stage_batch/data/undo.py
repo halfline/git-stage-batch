@@ -25,7 +25,6 @@ from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.git import (
     GitIndexEntryUpdate,
-    get_git_repository_root_path,
     git_commit_tree,
     git_read_tree,
     git_update_index_entries,
@@ -34,6 +33,7 @@ from ..utils.git import (
     temp_git_index,
     update_git_refs,
 )
+from ..utils.git_repository import get_git_repository_root_path
 from ..utils.git_object_io import create_git_blob
 from ..utils.paths import (
     get_batches_directory_path,

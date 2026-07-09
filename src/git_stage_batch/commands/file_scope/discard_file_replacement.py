@@ -16,7 +16,7 @@ from ...data.session import snapshot_file_if_untracked
 from ...data.undo import undo_checkpoint
 from ...exceptions import exit_with_error
 from ...i18n import _
-from ...utils.git import get_git_repository_root_path
+from ...utils.git_repository import get_git_repository_root_path
 from ..selection import discard_file_selection as _discard_file_selection
 from ..selection.selected_hunk_refresh import recalculate_selected_hunk_for_command
 

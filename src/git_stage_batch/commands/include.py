@@ -58,9 +58,7 @@ from ..staging.operations import (
     build_target_index_buffer_from_lines,
     update_index_with_blob_buffer,
 )
-from ..utils.git import (
-    require_git_repository,
-)
+from ..utils.git_repository import require_git_repository
 from ..utils.journal import log_journal
 from ..utils.paths import (
     ensure_state_directory_exists,

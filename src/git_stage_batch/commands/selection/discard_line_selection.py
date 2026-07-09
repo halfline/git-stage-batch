@@ -14,7 +14,7 @@ from ...data.selected_change.paths import get_selected_change_file_path
 from ...exceptions import exit_with_error
 from ...i18n import _
 from ...staging.operations import build_target_working_tree_buffer_from_lines
-from ...utils.git import get_git_repository_root_path
+from ...utils.git_repository import get_git_repository_root_path
 from . import discard_file_selection as _discard_file_selection
 
 

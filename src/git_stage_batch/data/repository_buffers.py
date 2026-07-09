@@ -7,10 +7,8 @@ import subprocess
 from collections.abc import Iterator
 
 from ..core.buffer import LineBuffer
-from ..utils.git import (
-    get_git_repository_root_path,
-    stream_git_command,
-)
+from ..utils.git import stream_git_command
+from ..utils.git_repository import get_git_repository_root_path
 from ..utils.git_object_io import list_git_tree_blobs, read_git_blob
 
 

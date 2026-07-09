@@ -77,7 +77,7 @@ from ..output.file_review_list import (
     print_file_review_list,
 )
 from ..utils.file_io import read_text_file_line_set
-from ..utils.git import require_git_repository
+from ..utils.git_repository import require_git_repository
 from ..utils.paths import (
     ensure_state_directory_exists,
     get_block_list_file_path,

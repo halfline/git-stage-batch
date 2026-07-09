@@ -12,7 +12,7 @@ from ...core.text_lifecycle import (
     mode_for_text_materialization,
     normalized_text_change_type,
 )
-from ...utils.git import get_git_repository_root_path
+from ...utils.git_repository import get_git_repository_root_path
 
 
 @dataclass(frozen=True)

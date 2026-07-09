@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ..data.auto_advance import write_auto_advance_default
 from ..data.session import require_session_started
-from ..utils.git import require_git_repository
+from ..utils.git_repository import require_git_repository
 from ..utils.paths import ensure_state_directory_exists
 from .session.iteration import restart_iteration_pass
 

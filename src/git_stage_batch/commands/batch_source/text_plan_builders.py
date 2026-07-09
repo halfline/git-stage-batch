@@ -27,7 +27,7 @@ from ...data.repository_buffers import (
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
 )
-from ...utils.git import get_git_repository_root_path
+from ...utils.git_repository import get_git_repository_root_path
 
 
 @dataclass(frozen=True)

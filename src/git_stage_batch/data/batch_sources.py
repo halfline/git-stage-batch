@@ -19,7 +19,6 @@ from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file, read_text_file_contents, write_text_file_contents
 from ..utils.git import (
-    get_git_repository_root_path,
     git_commit_tree,
     git_read_tree,
     git_update_index,
@@ -28,6 +27,7 @@ from ..utils.git import (
     temp_git_index,
     update_git_refs,
 )
+from ..utils.git_repository import get_git_repository_root_path
 from ..utils.git_object_io import create_git_blob, list_git_tree_blobs
 from ..utils.journal import log_journal
 from ..utils.paths import (

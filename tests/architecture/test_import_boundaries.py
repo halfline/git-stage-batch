@@ -1079,6 +1079,56 @@ def test_git_index_helpers_stay_out_of_git_command_module():
     assert violations == []
 
 
+def test_git_worktree_helpers_stay_out_of_git_command_module():
+    """Git worktree helpers should live beside the command wrapper."""
+    git_path = SRC_ROOT / "utils" / "git.py"
+    worktree_path = SRC_ROOT / "utils" / "git_worktree.py"
+    git_text = git_path.read_text()
+    git_utils = __import__("git_stage_batch.utils.git", fromlist=["git"])
+    git_worktree = __import__(
+        "git_stage_batch.utils.git_worktree",
+        fromlist=["git_worktree"],
+    )
+    public_names = {
+        "git_apply_to_worktree",
+        "git_checkout_paths",
+        "git_checkout_detached",
+        "git_remove_paths",
+        "git_reset_hard",
+        "git_apply_stash",
+        "git_submodule_update_checkout",
+    }
+    violations = []
+
+    assert public_names <= vars(git_worktree).keys()
+    assert public_names.isdisjoint(vars(git_utils))
+
+    for public_name in public_names:
+        assert f"def {public_name}" not in git_text
+
+    git_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(git_path)
+    }
+    assert "git_stage_batch.utils.git_worktree" not in git_imports
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == worktree_path:
+            continue
+
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.utils.git":
+                continue
+
+            moved_names = {alias.name for alias in node.names} & public_names
+            if moved_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(moved_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
 def test_batch_hunk_display_does_not_import_hunk_navigation():
     """Batch display caching should not depend on hunk navigation."""
     cache_path = SRC_ROOT / "data" / "batch_hunk_display.py"

@@ -11547,12 +11547,10 @@ def test_output_owns_operation_candidate_preview_rendering():
     }
     renderer_helper_names: set[str] = set()
     summary_names = {
-        "CandidateSnippetLine",
         "CandidateTargetSummary",
         "candidate_overview_subject",
         "candidate_target_summary",
         "common_candidate_target_indexes",
-        "plain_candidate_snippet_lines",
         "summarize_ambiguity_block",
     }
     old_renderer_summary_names = {

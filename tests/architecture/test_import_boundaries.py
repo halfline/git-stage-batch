@@ -5572,6 +5572,63 @@ def test_suggest_fixup_history_stays_in_fixup_support():
     assert "git_stage_batch.utils.git_command" in history_imports
 
 
+def test_suggest_fixup_candidate_display_stays_in_fixup_support():
+    """Suggest-fixup candidate output should stay below entrypoints."""
+    command_path = SRC_ROOT / "commands" / "suggest_fixup.py"
+    helper_path = SRC_ROOT / "commands" / "fixup" / "candidate_display.py"
+    command_tree = ast.parse(command_path.read_text(), filename=str(command_path))
+    helper_tree = ast.parse(helper_path.read_text(), filename=str(helper_path))
+    helper = __import__(
+        "git_stage_batch.commands.fixup.candidate_display",
+        fromlist=["candidate_display"],
+    )
+    public_names = {
+        "display_suggest_fixup_candidate",
+        "show_last_suggest_fixup_candidate",
+    }
+    presentation_names = {
+        "get_commit_details",
+        "show_commit_diff_for_file",
+    }
+    command_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(command_path)
+    }
+    helper_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(helper_path)
+    }
+    command_imported_names = set()
+    helper_imported_names = set()
+    command_plain_imports = {
+        alias.name
+        for node in ast.walk(command_tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    helper_plain_imports = {
+        alias.name
+        for node in ast.walk(helper_tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+
+    for _imported_module, node in _import_from_nodes(command_path):
+        command_imported_names |= {alias.name for alias in node.names}
+
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert "git_stage_batch.commands.fixup.candidate_display" in command_imports
+    assert "git_stage_batch.commands.fixup.history" in helper_imports
+    assert "git_stage_batch.utils.git_command" in helper_imports
+    assert presentation_names.isdisjoint(command_imported_names)
+    assert presentation_names <= helper_imported_names
+    assert "json" not in command_plain_imports
+    assert "json" in helper_plain_imports
+
+
 def test_suggest_fixup_iteration_state_stays_in_fixup_support():
     """Suggest-fixup iteration state should stay below entrypoints."""
     command_path = SRC_ROOT / "commands" / "suggest_fixup.py"

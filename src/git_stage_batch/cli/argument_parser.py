@@ -41,8 +41,11 @@ from .session_subcommands import (
     add_stop_subcommand,
     add_undo_subcommand,
 )
-from .selection_subcommands import add_include_subcommand, add_show_subcommand
-from .skip_dispatch import dispatch_skip_command
+from .selection_subcommands import (
+    add_include_subcommand,
+    add_show_subcommand,
+    add_skip_subcommand,
+)
 from .subcommand_parser import add_subcommand_parser
 
 
@@ -115,29 +118,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
 
     add_include_subcommand(subparsers)
 
-    # skip - Skip the selected hunk without staging
-    parser_skip = add_subcommand_parser(
-        subparsers,
-        "skip",
-        aliases=["s"],
-        help=_("Skip the selected hunk without staging"),
-    )
-    parser_skip.add_argument(
-        "--line",
-        "--lines",
-        dest="line_ids",
-        metavar="IDS",
-        help=_("Skip only specific line IDs (e.g., '1,3,5-7')"),
-    )
-    add_file_argument(
-        parser_skip,
-        _("Operate on entire file (live working tree state). "
-          "If PATH omitted, uses selected hunk's file. "
-          "Without --line, skips all hunks from the file."),
-    )
-    add_auto_advance_arguments(parser_skip)
-
-    parser_skip.set_defaults(func=dispatch_skip_command)
+    add_skip_subcommand(subparsers)
 
     # discard - Remove the selected hunk from working tree
     parser_discard = add_subcommand_parser(

@@ -9,6 +9,7 @@ from .auto_advance_options import add_auto_advance_arguments
 from .file_arguments import add_file_argument
 from .include_dispatch import dispatch_include_command
 from .show_dispatch import dispatch_show_command
+from .skip_dispatch import dispatch_skip_command
 from .subcommand_parser import add_subcommand_parser
 
 
@@ -154,3 +155,30 @@ def add_include_subcommand(subparsers) -> None:
     )
     add_auto_advance_arguments(parser_include)
     parser_include.set_defaults(func=dispatch_include_command)
+
+
+def add_skip_subcommand(subparsers) -> None:
+    """Register the skip subcommand."""
+    parser_skip = add_subcommand_parser(
+        subparsers,
+        "skip",
+        aliases=["s"],
+        help=_("Skip the selected hunk without staging"),
+    )
+    parser_skip.add_argument(
+        "--line",
+        "--lines",
+        dest="line_ids",
+        metavar="IDS",
+        help=_("Skip only specific line IDs (e.g., '1,3,5-7')"),
+    )
+    add_file_argument(
+        parser_skip,
+        _(
+            "Operate on entire file (live working tree state). "
+            "If PATH omitted, uses selected hunk's file. "
+            "Without --line, skips all hunks from the file."
+        ),
+    )
+    add_auto_advance_arguments(parser_skip)
+    parser_skip.set_defaults(func=dispatch_skip_command)

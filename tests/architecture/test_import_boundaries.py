@@ -11603,6 +11603,65 @@ def test_selected_hunk_filtering_stays_out_of_hunk_tracking():
     assert violations == []
 
 
+def test_attribution_projection_stays_out_of_attribution_builder():
+    """Displayed-diff projection should live outside attribution building."""
+    attribution = __import__(
+        "git_stage_batch.batch.attribution",
+        fromlist=["attribution"],
+    )
+    attribution_projection = __import__(
+        "git_stage_batch.batch.attribution_projection",
+        fromlist=["attribution_projection"],
+    )
+    projection_path = SRC_ROOT / "batch" / "attribution_projection.py"
+    public_names = {
+        "filter_owned_diff_fragments",
+        "project_attribution_to_diff",
+    }
+    stale_builder_names = public_names | {
+        "_CollectedAddedRun",
+        "_CollectedDeletedRun",
+        "_anchor_consistent_with_diff_position",
+        "_collect_added_run",
+        "_collect_deleted_run",
+    }
+    expected_imports = {
+        SRC_ROOT
+        / "data"
+        / "selected_change"
+        / "hunk_filtering.py": {
+            "filter_owned_diff_fragments",
+        },
+    }
+    violations = []
+
+    assert public_names <= vars(attribution_projection).keys()
+    assert stale_builder_names.isdisjoint(vars(attribution))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == projection_path:
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_projection_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.attribution_projection":
+                imported_projection_names |= imported_names & public_names
+            if imported_module == "git_stage_batch.batch.attribution":
+                moved_names = imported_names & stale_builder_names
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_projection_names
+
+    assert violations == []
+
+
 def test_consumed_replacement_masks_stay_out_of_hunk_tracking():
     """Consumed replacement metadata should stay outside hunk navigation."""
     filtering_path = SRC_ROOT / "data" / "selected_change" / "hunk_filtering.py"

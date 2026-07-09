@@ -9,7 +9,7 @@ from typing import Any, Optional
 from ..core.models import LineLevelChange, HunkHeader, LineEntry
 from ..exceptions import exit_with_error
 from ..i18n import _
-from ..core.line_selection import read_line_ids_file
+from .line_id_files import read_line_ids_file
 from ..utils.file_io import read_text_file_contents
 from ..utils.paths import (
     get_selected_hunk_patch_file_path,

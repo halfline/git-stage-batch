@@ -14,13 +14,10 @@ from ..core.hashing import (
     compute_stable_hunk_hash_from_lines,
     compute_text_file_deletion_hash,
 )
-from ..core.line_selection import (
-    parse_line_selection,
-    read_line_ids_file,
-    write_line_ids_file,
-)
 from ..batch.selection import require_line_selection_in_view
+from ..core.line_selection import parse_line_selection
 from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
+from ..data.line_id_files import read_line_ids_file, write_line_ids_file
 from ..data.hunk_tracking import (
     fetch_next_change,
 )

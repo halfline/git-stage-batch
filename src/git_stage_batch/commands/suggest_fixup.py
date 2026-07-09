@@ -15,7 +15,6 @@ from ..data.selected_change.paths import get_selected_change_file_path
 from ..data.session import require_session_started
 from ..data.suggest_fixup_state import (
     clear_suggest_fixup_state,
-    read_suggest_fixup_state,
     suggest_fixup_state_should_reset,
     write_suggest_fixup_state,
 )
@@ -259,32 +258,16 @@ def command_suggest_fixup_line(
     ensure_state_directory_exists()
     require_session_started()
 
-    # Handle abort flag
-    if abort:
-        clear_suggest_fixup_state()
-        if not porcelain:
-            print(_("Suggest-fixup iteration cleared."), file=sys.stderr)
+    iteration_context = prepare_suggest_fixup_iteration(
+        boundary=boundary,
+        reset=reset,
+        abort=abort,
+        porcelain=porcelain,
+    )
+    if iteration_context is None:
         return
-
-    # Load selected state early to determine effective boundary
-    state = read_suggest_fixup_state()
-
-    # Determine effective boundary
-    if boundary is None:
-        # No boundary provided - use state's boundary or default
-        effective_boundary = state.get("boundary") if state else "@{upstream}"
-    else:
-        # Boundary was explicitly provided
-        effective_boundary = boundary
-        # If state exists and boundary changed, auto-reset
-        if state and state.get("boundary") != boundary:
-            clear_suggest_fixup_state()
-            state = None
-
-    # Handle reset flag
-    if reset:
-        clear_suggest_fixup_state()
-        state = None
+    state = iteration_context.state
+    effective_boundary = iteration_context.effective_boundary
 
     if file is None:
         require_selected_hunk()

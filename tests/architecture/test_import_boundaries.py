@@ -500,6 +500,31 @@ def test_cli_argument_parser_delegates_apply_subcommand_registration():
     assert "git_stage_batch.cli.subcommand_parser" in batch_subcommands_imports
 
 
+def test_cli_argument_parser_delegates_reset_subcommand_registration():
+    """Argument parsing should not own reset parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    batch_subcommands_path = SRC_ROOT / "cli" / "batch_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    batch_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(batch_subcommands_path)
+    }
+    batch_subcommands = __import__(
+        "git_stage_batch.cli.batch_subcommands",
+        fromlist=["batch_subcommands"],
+    )
+
+    assert "add_reset_subcommand" in vars(batch_subcommands)
+    assert "git_stage_batch.cli.batch_subcommands" in argument_parser_imports
+    assert "git_stage_batch.cli.reset_dispatch" not in argument_parser_imports
+    assert "git_stage_batch.cli.reset_dispatch" in batch_subcommands_imports
+    assert "git_stage_batch.cli.file_arguments" in batch_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in batch_subcommands_imports
+
+
 def test_cli_argument_parser_delegates_new_batch_subcommand_registration():
     """Argument parsing should not own new-batch parser details."""
     argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
@@ -3477,11 +3502,16 @@ def test_argument_parser_delegates_apply_dispatch():
 def test_argument_parser_delegates_reset_dispatch():
     """Parser construction should not own reset workflow dispatch."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    batch_subcommands_path = SRC_ROOT / "cli" / "batch_subcommands.py"
     reset_dispatch_path = SRC_ROOT / "cli" / "reset_dispatch.py"
     parser_text = parser_path.read_text()
     parser_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    batch_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(batch_subcommands_path)
     }
     reset_dispatch_imports = {
         imported_module
@@ -3500,7 +3530,9 @@ def test_argument_parser_delegates_reset_dispatch():
         "git_stage_batch.commands.file_scope.multi_file_actions",
     }
 
-    assert "git_stage_batch.cli.reset_dispatch" in parser_imports
+    assert "git_stage_batch.cli.batch_subcommands" in parser_imports
+    assert "git_stage_batch.cli.reset_dispatch" not in parser_imports
+    assert "git_stage_batch.cli.reset_dispatch" in batch_subcommands_imports
     assert "git_stage_batch.commands.reset" not in parser_imports
     assert reset_runtime_imports <= reset_dispatch_imports
     assert "git_stage_batch.cli.file_scope" in reset_dispatch_imports
@@ -4945,12 +4977,24 @@ def test_selected_file_discarding_owns_selected_file_pipeline():
     assert helper_imports <= helper_imported_names
 
 
-def test_argument_parser_uses_file_scope_resolver_module():
-    """Parser branches should not own repository file-scope resolution."""
+def test_cli_dispatch_uses_file_scope_resolver_module():
+    """CLI dispatch should not own repository file-scope resolution."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    dispatch_paths = (
+        SRC_ROOT / "cli" / "apply_dispatch.py",
+        SRC_ROOT / "cli" / "discard_dispatch.py",
+        SRC_ROOT / "cli" / "include_dispatch.py",
+        SRC_ROOT / "cli" / "reset_dispatch.py",
+        SRC_ROOT / "cli" / "show_dispatch.py",
+        SRC_ROOT / "cli" / "skip_dispatch.py",
+    )
     parser_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    dispatch_imports = {
+        path: {imported_module for imported_module, _node in _import_from_nodes(path)}
+        for path in dispatch_paths
     }
     file_scope_path = SRC_ROOT / "cli" / "file_scope.py"
     file_scope_imports = {
@@ -4968,7 +5012,11 @@ def test_argument_parser_uses_file_scope_resolver_module():
         "_resolve_batch_file_scope",
     }
 
-    assert "git_stage_batch.cli.file_scope" in parser_imports
+    assert "git_stage_batch.cli.file_scope" not in parser_imports
+    assert all(
+        "git_stage_batch.cli.file_scope" in imports
+        for imports in dispatch_imports.values()
+    )
     assert "git_stage_batch.data.file_tracking" not in parser_imports
     assert "git_stage_batch.utils.file_patterns" not in parser_imports
     assert "git_stage_batch.data.file_tracking" in file_scope_imports

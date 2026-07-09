@@ -5,7 +5,6 @@ from __future__ import annotations
 import sys
 
 from ..core.hashing import compute_rename_change_hash
-from ..core.models import GitlinkChange, RenameChange, TextFileDeletionChange
 from ..data.selected_change.store import (
     SelectedChangeKind,
 )

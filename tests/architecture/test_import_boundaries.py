@@ -9660,6 +9660,61 @@ def test_batch_realized_entries_uses_public_entry_helpers():
     assert violations == []
 
 
+def test_batch_line_range_view_stays_out_of_realized_entries():
+    """Generic line range views should live outside realized-entry storage."""
+    line_range_view = __import__(
+        "git_stage_batch.batch.line_range_view",
+        fromlist=["line_range_view"],
+    )
+    realized_entries = __import__(
+        "git_stage_batch.batch.realized_entries",
+        fromlist=["realized_entries"],
+    )
+    line_range_view_path = SRC_ROOT / "batch" / "line_range_view.py"
+    public_names = {
+        "LineRangeView",
+    }
+    moved_private_names = {
+        "_LineRange",
+    }
+    expected_imports = {
+        SRC_ROOT / "batch" / "baseline_correspondence.py": public_names,
+        SRC_ROOT / "batch" / "realized_entries.py": public_names,
+    }
+    violations = []
+
+    assert public_names <= vars(line_range_view).keys()
+    assert public_names.isdisjoint(vars(realized_entries))
+    assert moved_private_names.isdisjoint(vars(realized_entries))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == line_range_view_path:
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.realized_entries":
+                moved_names = imported_names & moved_private_names
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module != "git_stage_batch.batch.line_range_view":
+                continue
+
+            imported_public_names |= imported_names & public_names
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_batch_realized_provenance_owns_run_storage():
     """Realized provenance run storage should live outside entry editing."""
     realized_entries = __import__(

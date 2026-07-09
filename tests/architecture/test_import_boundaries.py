@@ -9610,6 +9610,61 @@ def test_batch_baseline_edits_own_replacement_fallback():
     assert violations == []
 
 
+def test_batch_baseline_reference_positions_own_position_lookup():
+    """Baseline-reference coordinate lookup should live outside fallback edits."""
+    baseline_reference_positions = __import__(
+        "git_stage_batch.batch.baseline_reference_positions",
+        fromlist=["baseline_reference_positions"],
+    )
+    baseline_edits = __import__(
+        "git_stage_batch.batch.baseline_edits",
+        fromlist=["baseline_edits"],
+    )
+    baseline_reference_positions_path = (
+        SRC_ROOT / "batch" / "baseline_reference_positions.py"
+    )
+    baseline_edits_path = SRC_ROOT / "batch" / "baseline_edits.py"
+    public_names = {
+        "baseline_reference_absence_position",
+        "baseline_reference_insertion_position",
+    }
+    private_position_names = {
+        "_baseline_reference_absence_position",
+        "_baseline_reference_insertion_position",
+        "_line_payload_for_reference_match",
+        "_reference_line_matches",
+    }
+    expected_imports = {
+        baseline_edits_path: public_names,
+    }
+    violations = []
+
+    assert public_names <= vars(baseline_reference_positions).keys()
+    assert private_position_names.isdisjoint(vars(baseline_edits))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == baseline_reference_positions_path:
+            continue
+
+        direct_public_names = set()
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module != "git_stage_batch.batch.baseline_reference_positions":
+                continue
+
+            direct_public_names |= imported_names & public_names
+            private_imports = imported_names & private_position_names
+            if private_imports:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(private_imports))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= direct_public_names
+
+    assert violations == []
+
+
 def test_batch_merge_validation_owns_structural_checks():
     """Structural merge validation should live outside merge."""
     merge_validation = __import__(

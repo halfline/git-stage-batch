@@ -10236,6 +10236,78 @@ def test_batch_source_candidate_previews_own_candidate_preview_checks():
         assert ".candidate_preview_state_matches(" not in command_text
 
 
+def test_operation_candidate_state_owns_preview_state_helpers():
+    """Candidate preview persistence should live outside candidate construction."""
+    operation_candidates = __import__(
+        "git_stage_batch.batch.operation_candidates",
+        fromlist=["operation_candidates"],
+    )
+    operation_candidate_state = __import__(
+        "git_stage_batch.batch.operation_candidate_state",
+        fromlist=["operation_candidate_state"],
+    )
+    state_path = SRC_ROOT / "batch" / "operation_candidate_state.py"
+    public_names = {
+        "candidate_preview_scope_key",
+        "clear_candidate_preview_state_for_file",
+        "load_candidate_preview_state",
+        "save_candidate_preview_state",
+    }
+    private_names = {
+        "_load_state",
+        "_save_state",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "batch_source" / "candidate_execution.py": {
+            "clear_candidate_preview_state_for_file",
+        },
+        SRC_ROOT / "commands" / "batch_source" / "candidate_preview_action.py": {
+            "save_candidate_preview_state",
+        },
+        SRC_ROOT / "commands" / "batch_source" / "candidate_previews.py": {
+            "load_candidate_preview_state",
+        },
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(operation_candidate_state)
+        assert public_name not in vars(operation_candidates)
+    assert private_names.isdisjoint(vars(operation_candidates))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == state_path:
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.operation_candidates":
+                disallowed_names = imported_names & (public_names | private_names)
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module != "git_stage_batch.batch.operation_candidate_state":
+                continue
+
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & private_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_batch_source_candidate_preview_builders_own_show_candidate_construction():
     """Show-from candidate construction should live in batch-source support."""
     candidate_preview_builders = __import__(

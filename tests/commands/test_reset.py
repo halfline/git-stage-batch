@@ -4,6 +4,7 @@ import subprocess
 
 import pytest
 
+import git_stage_batch.commands.batch_source.reset_claims as reset_claims
 import git_stage_batch.commands.reset as reset_module
 import git_stage_batch.commands.show_from as show_from_module
 import git_stage_batch.batch.file_display as file_display_module
@@ -79,7 +80,7 @@ def test_reset_partition_accepts_non_list_line_sequences(line_sequence):
     ownership = BatchOwnership.from_presence_lines(["2"], [])
     source_lines = line_sequence([b"line1\n", b"line2\n", b"line3\n"])
 
-    remaining_units, removed_units = reset_module._partition_line_ownership_units(
+    remaining_units, removed_units = reset_claims.partition_line_ownership_units(
         ownership,
         source_lines,
         LineRanges.from_ranges([(1, 1)]),
@@ -97,19 +98,19 @@ def test_reset_partition_validates_available_ids_as_ranges(line_sequence, monkey
     ownership = BatchOwnership.from_presence_lines(["1,3"], [])
     source_lines = line_sequence([b"line1\n", b"line2\n", b"line3\n"])
     seen_available_ids = []
-    original_require_available = reset_module.require_display_ids_available
+    original_require_available = reset_claims.require_display_ids_available
 
     def capture_require_available(requested_ids, available_ids, **kwargs):
         seen_available_ids.append(available_ids)
         return original_require_available(requested_ids, available_ids, **kwargs)
 
     monkeypatch.setattr(
-        reset_module,
+        reset_claims,
         "require_display_ids_available",
         capture_require_available,
     )
 
-    reset_module._partition_line_ownership_units(
+    reset_claims.partition_line_ownership_units(
         ownership,
         source_lines,
         LineRanges.from_ranges([(2, 2)]),
@@ -159,8 +160,8 @@ def test_reset_file_line_selection_passes_requested_ids_as_ranges(
         seen_line_ids.append(lines_to_remove)
 
     monkeypatch.setattr(
-        reset_module,
-        "_reset_line_claims_for_file",
+        reset_claims,
+        "reset_line_claims_for_file",
         capture_reset_line_claims_for_file,
     )
 

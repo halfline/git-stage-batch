@@ -3839,7 +3839,7 @@ def test_batch_ownership_units_bridge_keeps_display_out_of_ownership():
     bridge_path = SRC_ROOT / "batch" / "ownership_units.py"
     expected_bridge_callers = {
         SRC_ROOT / "batch" / "selection.py",
-        SRC_ROOT / "commands" / "reset.py",
+        SRC_ROOT / "commands" / "batch_source" / "reset_claims.py",
     }
     moved_name = "build_ownership_units_from_batch_source_lines"
     violations = []

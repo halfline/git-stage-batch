@@ -8993,7 +8993,7 @@ def test_batch_source_action_selection_owns_file_line_selection():
         "git_stage_batch.batch.selection": {
             "require_single_file_context_for_line_selection",
             "resolve_batch_file_scope",
-            "resolve_current_batch_binary_file_scope",
+            "resolve_current_batch_atomic_file_scope",
         },
         "git_stage_batch.batch.submodule_pointer": {
             "refuse_batch_submodule_pointer_lines",
@@ -9267,7 +9267,7 @@ def test_batch_source_reset_selection_owns_reset_scope():
         },
         "git_stage_batch.batch.selection": {
             "resolve_batch_file_scope",
-            "resolve_current_batch_binary_file_scope",
+            "resolve_current_batch_atomic_file_scope",
         },
         "git_stage_batch.batch.source_selector": {
             "require_plain_batch_name",

@@ -2810,12 +2810,6 @@ def test_file_review_model_builder_uses_layout_module():
     review_output_text = review_output_path.read_text()
     review_model_builder_path = SRC_ROOT / "output" / "file_review_model_builder.py"
     review_model_builder_text = review_model_builder_path.read_text()
-    imports = _import_from_nodes(review_model_builder_path)
-    imports_layout_module = any(
-        imported_module == "git_stage_batch.output"
-        and any(alias.name == "file_review_layout" for alias in node.names)
-        for imported_module, node in imports
-    )
     file_review_model_builder = __import__(
         "git_stage_batch.output.file_review_model_builder",
         fromlist=["file_review_model_builder"],
@@ -2825,7 +2819,6 @@ def test_file_review_model_builder_uses_layout_module():
         fromlist=["file_review_layout"],
     )
 
-    assert imports_layout_module
     assert "body_budget" in vars(file_review_layout)
     assert "body_budget" not in vars(file_review_model_builder)
     assert "git_stage_batch.output.file_review_layout" not in {

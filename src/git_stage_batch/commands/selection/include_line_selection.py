@@ -11,7 +11,7 @@ from ...batch.hunk_ownership_translation import (
     translate_hunk_selection_to_batch_ownership,
 )
 from ...batch.merge import merge_batch_from_line_sequences_as_buffer
-from ...batch.operations import create_batch, delete_batch
+from ...batch.lifecycle import create_batch, delete_batch
 from ...batch.ownership import BatchOwnership
 from ...batch.query import read_batch_metadata
 from ...batch.selection import line_selection_not_valid_message

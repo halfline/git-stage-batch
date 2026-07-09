@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from ...batch.operations import create_batch, delete_batch
+from ...batch.lifecycle import create_batch, delete_batch
 from ...batch.ownership import BatchOwnership
 from ...batch.query import get_batch_baseline_commit, read_batch_metadata
 from ...batch.state_refs import (

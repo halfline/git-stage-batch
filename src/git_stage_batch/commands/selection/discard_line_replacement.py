@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 
 from ...batch.display import annotate_with_batch_source_working_lines
-from ...batch.operations import create_batch
+from ...batch.lifecycle import create_batch
 from ...batch.ownership import (
     BatchOwnership,
 )

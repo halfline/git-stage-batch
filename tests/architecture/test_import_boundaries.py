@@ -928,6 +928,55 @@ def test_git_index_lock_waiting_stays_out_of_git_command_module():
     assert "def _custom_index_lock_path" not in git_text
 
 
+def test_git_object_io_stays_out_of_git_command_module():
+    """Git object IO should live beside the command wrapper."""
+    git_path = SRC_ROOT / "utils" / "git.py"
+    object_io_path = SRC_ROOT / "utils" / "git_object_io.py"
+    git_text = git_path.read_text()
+    git_utils = __import__("git_stage_batch.utils.git", fromlist=["git"])
+    git_object_io = __import__(
+        "git_stage_batch.utils.git_object_io",
+        fromlist=["git_object_io"],
+    )
+    public_names = {
+        "GitTreeBlob",
+        "create_git_blob",
+        "read_git_blob",
+        "read_git_blobs_as_bytes",
+        "list_git_tree_blobs",
+    }
+    violations = []
+
+    assert public_names <= vars(git_object_io).keys()
+    assert public_names.isdisjoint(vars(git_utils))
+
+    for public_name in public_names:
+        assert f"def {public_name}" not in git_text
+        assert f"class {public_name}" not in git_text
+
+    git_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(git_path)
+    }
+    assert "git_stage_batch.utils.git_object_io" not in git_imports
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == object_io_path:
+            continue
+
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.utils.git":
+                continue
+
+            moved_names = {alias.name for alias in node.names} & public_names
+            if moved_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(moved_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
 def test_selected_change_batch_file_cache_does_not_import_hunk_navigation():
     """Batch file selection caching should not depend on hunk navigation."""
     cache_path = SRC_ROOT / "data" / "selected_change" / "batch_file_cache.py"

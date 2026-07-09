@@ -747,6 +747,41 @@ def test_hunk_headers_own_hunk_header_parsing():
         assert name not in diff_parser_text
 
 
+def test_line_change_body_owns_line_entry_construction():
+    """Hunk body LineEntry construction should stay outside diff_parser."""
+    diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"
+    line_change_body_path = SRC_ROOT / "core" / "line_change_body.py"
+    diff_parser_text = diff_parser_path.read_text()
+    line_change_body_text = line_change_body_path.read_text()
+    diff_parser = __import__(
+        "git_stage_batch.core.diff_parser",
+        fromlist=["diff_parser"],
+    )
+    line_change_body = __import__(
+        "git_stage_batch.core.line_change_body",
+        fromlist=["line_change_body"],
+    )
+    diff_imports = {}
+    model_imports = set()
+
+    for imported_module, node in _import_from_nodes(diff_parser_path):
+        imported_names = {alias.name for alias in node.names}
+        diff_imports.setdefault(imported_module, set()).update(imported_names)
+        if imported_module == "git_stage_batch.core.models":
+            model_imports |= imported_names
+
+    assert "LineChangeBodyBuilder" in vars(line_change_body)
+    assert "LineChangeBodyBuilder" not in vars(diff_parser)
+    assert "line_change_body" in diff_imports.get("git_stage_batch.core", set())
+    assert "git_stage_batch.core.line_change_body" not in diff_imports
+    assert "_line_change_body.LineChangeBodyBuilder" in diff_parser_text
+    assert "LineEntry" not in model_imports
+    assert "NO_NEWLINE_MARKER" in line_change_body_text
+    assert "NO_NEWLINE_MARKER" not in diff_parser_text
+    assert "has_trailing_newline = False" not in diff_parser_text
+    assert "next_display_id" not in diff_parser_text
+
+
 def test_patch_headers_own_patch_file_header_parsing():
     """Patch file header parsing should stay outside diff_parser."""
     diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"

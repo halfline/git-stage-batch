@@ -2645,6 +2645,10 @@ def test_argument_parser_delegates_multi_file_action_flow():
         imported_module
         for imported_module, _node in _import_from_nodes(helper_path)
     }
+    helper_file_scope_imported_names = set()
+    for imported_module, node in _import_from_nodes(helper_path):
+        if imported_module == "git_stage_batch.commands.file_scope":
+            helper_file_scope_imported_names |= {alias.name for alias in node.names}
 
     assert "git_stage_batch.data.hunk_tracking" not in parser_imports
     assert "git_stage_batch.data.undo" not in parser_imports
@@ -2658,6 +2662,9 @@ def test_argument_parser_delegates_multi_file_action_flow():
     )
     assert "git_stage_batch.data.hunk_tracking" in helper_imports
     assert "git_stage_batch.data.undo" in helper_imports
+    assert "git_stage_batch.commands.include" not in helper_imports
+    assert "git_stage_batch.commands.skip" not in helper_imports
+    assert {"include_file", "skip_file"} <= helper_file_scope_imported_names
     assert not hasattr(
         __import__(
             "git_stage_batch.cli.argument_parser",

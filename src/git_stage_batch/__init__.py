@@ -4,7 +4,7 @@ try:
     from ._version import __version__
 except (ImportError, FileNotFoundError):
     try:
-        from .utils.git import get_git_repository_root_path
+        from .utils.git_repository import get_git_repository_root_path
 
         __version__ = (
             get_git_repository_root_path() / "VERSION"

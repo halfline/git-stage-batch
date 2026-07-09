@@ -31,7 +31,7 @@ from .batch_transform import sift_persistence as _sift_persistence
 from .batch_transform import sift_results as _sift_results
 from ..exceptions import BatchMetadataError, exit_with_error
 from ..i18n import _
-from ..utils.git import (
+from ..utils.git_repository import (
     get_git_repository_root_path,
     require_git_repository,
 )

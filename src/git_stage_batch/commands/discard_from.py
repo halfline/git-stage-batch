@@ -23,7 +23,7 @@ from ..data.session import snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..exceptions import exit_with_error, AtomicUnitError, CommandError, MergeError, BatchMetadataError
 from ..i18n import _
-from ..utils.git import require_git_repository
+from ..utils.git_repository import require_git_repository
 
 
 def command_discard_from_batch(

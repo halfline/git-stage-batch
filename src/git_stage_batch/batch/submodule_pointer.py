@@ -7,13 +7,13 @@ import shutil
 from ..exceptions import exit_with_error
 from ..i18n import _
 from ..utils.git import (
-    get_git_repository_root_path,
     git_add_paths,
     git_checkout_detached,
     git_submodule_update_checkout,
     git_update_gitlink,
     run_git_command,
 )
+from ..utils.git_repository import get_git_repository_root_path
 
 
 def is_batch_submodule_pointer(file_meta: dict) -> bool:

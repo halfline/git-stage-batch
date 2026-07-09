@@ -8,7 +8,7 @@ from ..data.asset_selection import select_asset_entries as _select_asset_entries
 from ..output.install_assets import (
     print_group_install_summary as _print_group_install_summary,
 )
-from ..utils.git import get_git_repository_root_path, require_git_repository
+from ..utils.git_repository import get_git_repository_root_path, require_git_repository
 
 
 def command_install_assets(

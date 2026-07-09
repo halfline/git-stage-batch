@@ -13,7 +13,7 @@ from ..data.staged_renames import normalize_start_time_staged_deletions, normali
 from ..exceptions import CommandError, NoMoreHunks
 from ..i18n import _
 from ..utils.file_io import write_text_file_contents
-from ..utils.git import require_git_repository
+from ..utils.git_repository import require_git_repository
 from ..utils.paths import ensure_state_directory_exists, get_context_lines_file_path
 from .selection.selected_change_display import show_selected_change
 from .session.iteration import restart_iteration_pass

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..utils.file_io import read_text_file_contents, write_text_file_contents
-from ..utils.git import get_git_directory_path, get_git_repository_root_path
+from ..utils.git_repository import get_git_directory_path, get_git_repository_root_path
 
 
 def get_gitignore_path() -> Path:

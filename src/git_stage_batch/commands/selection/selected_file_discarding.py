@@ -9,10 +9,10 @@ from ...data.session import snapshot_file_if_untracked
 from ...data.undo import undo_checkpoint
 from ...i18n import _
 from ...utils.git import (
-    get_git_repository_root_path,
     git_checkout_paths,
     run_git_command,
 )
+from ...utils.git_repository import get_git_repository_root_path
 from .action_completion import finish_selected_change_action
 
 

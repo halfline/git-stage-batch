@@ -9,7 +9,7 @@ from .batch_source import reset_selection as _reset_selection
 from .batch_source import selection_state_cleanup as _selection_state_cleanup
 from ..i18n import _
 from ..data.undo import undo_checkpoint
-from ..utils.git import require_git_repository
+from ..utils.git_repository import require_git_repository
 from ..utils.paths import ensure_state_directory_exists
 
 

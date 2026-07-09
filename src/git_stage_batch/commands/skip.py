@@ -72,7 +72,7 @@ from ..utils.file_io import (
     read_text_file_contents,
     write_text_file_contents,
 )
-from ..utils.git import require_git_repository
+from ..utils.git_repository import require_git_repository
 from ..utils.journal import log_journal
 from ..utils.paths import (
     ensure_state_directory_exists,

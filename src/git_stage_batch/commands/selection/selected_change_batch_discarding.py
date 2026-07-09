@@ -40,10 +40,10 @@ from ...utils.file_io import (
     read_text_file_line_set,
 )
 from ...utils.git import (
-    get_git_repository_root_path,
     git_apply_to_worktree,
     git_remove_paths,
 )
+from ...utils.git_repository import get_git_repository_root_path
 from ...utils.journal import log_journal
 from ...utils.paths import (
     get_block_list_file_path,

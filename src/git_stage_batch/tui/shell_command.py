@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 
 from ..i18n import _
-from ..utils.git import get_git_repository_root_path
+from ..utils.git_repository import get_git_repository_root_path
 from .prompts import prompt_shell_command
 
 

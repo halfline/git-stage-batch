@@ -7,7 +7,7 @@ from ..batch.source_selector import require_plain_batch_name
 import sys
 from ..data.undo import undo_checkpoint
 from ..i18n import _
-from ..utils.git import require_git_repository
+from ..utils.git_repository import require_git_repository
 
 
 def command_drop_batch(batch_name: str) -> None:

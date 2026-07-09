@@ -5263,6 +5263,48 @@ def test_tui_session_startup_owns_interactive_startup():
     assert startup_imports <= session_startup_imports
 
 
+def test_tui_current_change_owns_interactive_change_display():
+    """Current-change loading and display should live outside the TUI loop."""
+    interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    current_change_path = SRC_ROOT / "tui" / "current_change.py"
+    interactive = __import__(
+        "git_stage_batch.tui.interactive",
+        fromlist=["interactive"],
+    )
+    current_change = __import__(
+        "git_stage_batch.tui.current_change",
+        fromlist=["current_change"],
+    )
+    interactive_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    interactive_tui_imported_names = set()
+    for imported_module, node in _import_from_nodes(interactive_path):
+        if imported_module == "git_stage_batch.tui":
+            interactive_tui_imported_names |= {alias.name for alias in node.names}
+    current_change_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(current_change_path)
+    }
+    current_change_owner_imports = {
+        "git_stage_batch.data.selected_change.batch_file_cache",
+        "git_stage_batch.data.line_state",
+        "git_stage_batch.data.progress",
+        "git_stage_batch.output.hunk",
+        "git_stage_batch.tui.display",
+    }
+
+    assert "CurrentChange" in vars(current_change)
+    assert "load_current_change" in vars(current_change)
+    assert "display_current_change" in vars(current_change)
+    assert "load_current_change" not in vars(interactive)
+    assert "display_current_change" not in vars(interactive)
+    assert "current_change" in interactive_tui_imported_names
+    assert current_change_owner_imports.isdisjoint(interactive_imports)
+    assert current_change_owner_imports <= current_change_imports
+
+
 def test_tui_batch_menu_owns_batch_management_actions():
     """TUI batch management should live in the batch menu adapter."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"

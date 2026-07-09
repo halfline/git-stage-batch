@@ -2668,6 +2668,47 @@ def test_argument_parser_delegates_show_dispatch():
     assert "command_show(" not in parser_text
 
 
+def test_argument_parser_delegates_skip_dispatch():
+    """Parser construction should not own skip workflow dispatch."""
+    parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    skip_dispatch_path = SRC_ROOT / "cli" / "skip_dispatch.py"
+    parser_text = parser_path.read_text()
+    parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    skip_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(skip_dispatch_path)
+    }
+    parser = __import__(
+        "git_stage_batch.cli.argument_parser",
+        fromlist=["argument_parser"],
+    )
+    skip_dispatch = __import__(
+        "git_stage_batch.cli.skip_dispatch",
+        fromlist=["skip_dispatch"],
+    )
+
+    assert "git_stage_batch.cli.skip_dispatch" in parser_imports
+    assert "git_stage_batch.commands.skip" not in parser_imports
+    assert "git_stage_batch.commands.skip" in skip_dispatch_imports
+    assert (
+        "git_stage_batch.commands.file_scope.multi_file_actions"
+        in skip_dispatch_imports
+    )
+    assert "git_stage_batch.cli.file_scope" in skip_dispatch_imports
+    assert "dispatch_skip_command" in vars(skip_dispatch)
+    assert "command_skip" not in vars(parser)
+    assert "command_skip_file" not in vars(parser)
+    assert "command_skip_line" not in vars(parser)
+    assert "def dispatch_skip(" not in parser_text
+    assert "skip_each_resolved_file(" not in parser_text
+    assert "command_skip(" not in parser_text
+    assert "command_skip_file(" not in parser_text
+    assert "command_skip_line(" not in parser_text
+
+
 def test_argument_parser_delegates_replacement_input_decoding():
     """Parser branches should not own replacement payload decoding."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"

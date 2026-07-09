@@ -13,7 +13,6 @@ from ..data.selected_change.paths import get_selected_change_file_path
 from ..data.session import require_session_started
 from ..data.suggest_fixup_state import (
     clear_suggest_fixup_state,
-    suggest_fixup_state_should_reset,
     write_suggest_fixup_state,
 )
 from ..exceptions import exit_with_error
@@ -245,12 +244,18 @@ def command_suggest_fixup_line(
 
     require_suggest_fixup_boundary_range(effective_boundary)
 
-    # Check if we should reset state due to context change
-    if state and suggest_fixup_state_should_reset(
-        hunk_hash, requested_ids_sorted, effective_boundary, line_changes.path, min_line, max_line
-    ):
-        clear_suggest_fixup_state()
-        state = None
+    search_target = SuggestFixupSearchTarget(
+        hunk_hash=hunk_hash,
+        line_ids=requested_ids_sorted,
+        boundary=effective_boundary,
+        file_path=line_changes.path,
+        min_line=min_line,
+        max_line=max_line,
+    )
+    state = reset_suggest_fixup_state_for_search(
+        state=state,
+        target=search_target,
+    )
 
     if show_last:
         show_last_suggest_fixup_candidate(

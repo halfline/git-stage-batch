@@ -92,6 +92,28 @@ def test_top_level_packages_are_acyclic():
     assert cycle is None
 
 
+def test_core_and_utils_do_not_import_command_exit_helper():
+    """Core and utils should raise errors without command-exit policy helpers."""
+    violations = []
+
+    for package_name in ("core", "utils"):
+        for path in (SRC_ROOT / package_name).rglob("*.py"):
+            for imported_module, node in _import_from_nodes(path):
+                if imported_module != "git_stage_batch.exceptions":
+                    continue
+
+                imported_names = {alias.name for alias in node.names}
+                if "exit_with_error" not in imported_names:
+                    continue
+
+                relative_path = path.relative_to(REPO_ROOT)
+                violations.append(
+                    f"{relative_path}:{node.lineno} imports exit_with_error"
+                )
+
+    assert violations == []
+
+
 def _assert_parser_delegates_subcommand_registry(
     parser_imports: set[str],
     delegated_module: str,

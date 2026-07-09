@@ -239,6 +239,8 @@ Key modules:
   Structural merge and reverse-merge logic.
 - `batch.baseline_correspondence`
   Baseline restoration mapping for discarding batch-owned changes.
+- `batch.discard_reversal`
+  Presence-constraint reversal for batch discard operations.
 - `batch.attribution`
   Ownership attribution for filtering live diffs.
 - `batch.source_refresh`

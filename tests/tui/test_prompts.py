@@ -17,6 +17,14 @@ from git_stage_batch.tui.prompts import (
 )
 
 
+def _terminal_size_patch_target() -> str:
+    try:
+        import git_stage_batch.tui.action_prompt_menu  # noqa: F401
+    except ModuleNotFoundError:
+        return "git_stage_batch.tui.prompts.shutil.get_terminal_size"
+    return "git_stage_batch.tui.action_prompt_menu.shutil.get_terminal_size"
+
+
 class TestPromptAction:
     """Tests for prompt_action function."""
 
@@ -190,7 +198,7 @@ class TestPromptAction:
             with patch("sys.stdout", new=StringIO()) as fake_out:
                 with patch("sys.stdout.isatty", return_value=False):
                     with patch(
-                        "git_stage_batch.tui.prompts.shutil.get_terminal_size",
+                        _terminal_size_patch_target(),
                         return_value=terminal_size((56, 20)),
                     ):
                         result = prompt_action(use_color=False, has_hunk=True)

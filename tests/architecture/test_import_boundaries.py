@@ -891,6 +891,52 @@ def test_empty_file_diff_owns_empty_file_parser_helpers():
         assert name not in diff_parser_text
 
 
+def test_file_metadata_diff_owns_generic_metadata_helpers():
+    """Generic file metadata helpers should stay outside diff_parser."""
+    diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"
+    file_metadata_diff_path = SRC_ROOT / "core" / "file_metadata_diff.py"
+    diff_parser_text = diff_parser_path.read_text()
+    file_metadata_diff_text = file_metadata_diff_path.read_text()
+    diff_parser = __import__(
+        "git_stage_batch.core.diff_parser",
+        fromlist=["diff_parser"],
+    )
+    file_metadata_diff = __import__(
+        "git_stage_batch.core.file_metadata_diff",
+        fromlist=["file_metadata_diff"],
+    )
+    public_names = {
+        "metadata_indicates_deleted_file",
+        "metadata_indicates_rename",
+    }
+    helper_names = {
+        "DELETED_FILE_MODE_PREFIX",
+        "RENAME_FROM_PREFIX",
+        "RENAME_TO_PREFIX",
+    }
+    diff_imports = {}
+
+    for imported_module, node in _import_from_nodes(diff_parser_path):
+        diff_imports.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    assert public_names <= vars(file_metadata_diff).keys()
+    assert public_names.isdisjoint(vars(diff_parser))
+    assert "file_metadata_diff" in diff_imports.get("git_stage_batch.core", set())
+    assert "git_stage_batch.core.file_metadata_diff" not in diff_imports
+    assert "_file_metadata_diff.metadata_indicates_rename" in diff_parser_text
+    assert "_file_metadata_diff.metadata_indicates_deleted_file" in diff_parser_text
+    assert "rename from " not in diff_parser_text
+    assert "rename to " not in diff_parser_text
+    assert "deleted file mode " not in diff_parser_text
+    for name in public_names:
+        assert f"def {name}" not in diff_parser_text
+    for name in helper_names:
+        assert name in file_metadata_diff_text
+        assert name not in diff_parser_text
+
+
 def test_gitlink_diff_owns_gitlink_parser_helpers():
     """Gitlink-specific diff helpers should stay outside the general parser."""
     diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"

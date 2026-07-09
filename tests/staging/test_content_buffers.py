@@ -1,8 +1,8 @@
-"""Tests for line-level staging operations."""
+"""Tests for line-level staging content buffers."""
 
 from git_stage_batch.core.models import LineLevelChange, HunkHeader, LineEntry
 from git_stage_batch.core.buffer import LineBuffer
-from git_stage_batch.staging.operations import (
+from git_stage_batch.staging.content_buffers import (
     build_target_index_buffer_from_lines,
     build_target_index_buffer_with_replaced_lines,
     build_target_working_tree_buffer_from_lines,

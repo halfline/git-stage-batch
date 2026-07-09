@@ -25,6 +25,8 @@ from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.git import (
     run_git_command,
+)
+from ..utils.git_refs import (
     update_git_refs,
 )
 from ..utils.git_index import (

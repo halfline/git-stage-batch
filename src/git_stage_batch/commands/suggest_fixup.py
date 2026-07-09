@@ -11,10 +11,6 @@ from ..data.file_hunk_display import render_file_as_single_hunk
 from ..data.line_state import load_line_changes_from_state
 from ..data.selected_change.paths import get_selected_change_file_path
 from ..data.session import require_session_started
-from ..data.suggest_fixup_state import (
-    clear_suggest_fixup_state,
-    write_suggest_fixup_state,
-)
 from ..exceptions import exit_with_error
 from ..i18n import _
 from ..utils.file_io import read_text_file_contents
@@ -29,7 +25,6 @@ from .fixup.candidate_display import (
     display_suggest_fixup_candidate,
     show_last_suggest_fixup_candidate,
 )
-from .fixup.history import find_next_fixup_candidate
 from .fixup.iteration_state import prepare_suggest_fixup_iteration
 from .fixup.line_ranges import (
     require_hunk_old_line_range,
@@ -237,44 +232,14 @@ def command_suggest_fixup_line(
         )
         return
 
-    # Determine last shown commit and iteration
-    last_shown = state["last_shown_commit"] if state else None
-    iteration = state["iteration"] + 1 if state else 1
-
-    # Find next candidate
-    candidate_commit = find_next_fixup_candidate(
-        line_changes.path,
-        min_line,
-        max_line,
-        effective_boundary,
-        last_shown
+    candidate = advance_suggest_fixup_candidate(
+        state=state,
+        target=search_target,
     )
 
-    if not candidate_commit:
-        if iteration == 1:
-            exit_with_error(
-                f"No commits in range {effective_boundary}..HEAD modified these lines.\n" +
-                "The changes may be fixing code from before the boundary."
-            )
-        else:
-            clear_suggest_fixup_state()
-            exit_with_error(_("No more candidates found."))
-
-    # Save state for next invocation
-    write_suggest_fixup_state({
-        "hunk_hash": hunk_hash,
-        "line_ids": requested_ids_sorted,
-        "boundary": effective_boundary,
-        "file_path": line_changes.path,
-        "min_line": min_line,
-        "max_line": max_line,
-        "last_shown_commit": candidate_commit,
-        "iteration": iteration
-    })
-
     display_suggest_fixup_candidate(
-        candidate_commit=candidate_commit,
-        iteration=iteration,
+        candidate_commit=candidate.commit,
+        iteration=candidate.iteration,
         boundary=effective_boundary,
         file_path=line_changes.path,
         porcelain=porcelain,

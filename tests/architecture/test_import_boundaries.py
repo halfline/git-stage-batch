@@ -7840,6 +7840,96 @@ def test_batch_replacement_line_runs_own_public_derivation():
     assert violations == []
 
 
+def test_text_file_storage_owns_text_persistence():
+    """Text batch persistence should live in the text storage module."""
+    text_file_storage = __import__(
+        "git_stage_batch.batch.text_file_storage",
+        fromlist=["text_file_storage"],
+    )
+    public_names = {
+        "BatchFileUpdate",
+        "add_file_to_batch",
+        "add_files_to_batch",
+    }
+    private_names = {
+        "_BatchFileUpdate",
+        "_add_file_to_batch",
+        "_add_files_to_batch",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "batch_source" / "reset_claims.py": {
+            "add_file_to_batch",
+        },
+        SRC_ROOT / "commands" / "file_scope" / "discard_file_to_batch.py": {
+            "add_file_to_batch",
+        },
+        SRC_ROOT / "commands" / "file_scope" / "discard_to_batch.py": {
+            "BatchFileUpdate",
+            "add_files_to_batch",
+        },
+        SRC_ROOT / "commands" / "file_scope" / "include_file_to_batch.py": {
+            "add_file_to_batch",
+        },
+        SRC_ROOT / "commands" / "selection" / "batch_line_updates.py": {
+            "add_file_to_batch",
+        },
+        SRC_ROOT / "commands" / "selection" / "discard_line_replacement.py": {
+            "add_file_to_batch",
+        },
+        SRC_ROOT / "commands" / "selection" / "include_line_selection.py": {
+            "add_file_to_batch",
+        },
+        SRC_ROOT / "commands" / "selection" / "selected_change_batch_discarding.py": {
+            "add_file_to_batch",
+        },
+        SRC_ROOT / "commands" / "selection" / "selected_change_batch_staging.py": {
+            "add_file_to_batch",
+        },
+        SRC_ROOT / "commands" / "selection" / "whole_file_batch_discarding.py": {
+            "add_file_to_batch",
+        },
+        SRC_ROOT / "commands" / "selection" / "whole_file_batch_staging.py": {
+            "add_file_to_batch",
+        },
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(text_file_storage)
+    assert private_names.isdisjoint(vars(text_file_storage))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "batch" / "text_file_storage.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            if imported_module == "git_stage_batch.batch.storage":
+                relative_path = path.relative_to(REPO_ROOT)
+                violations.append(
+                    f"{relative_path}:{node.lineno} imports removed batch.storage"
+                )
+                continue
+
+            if imported_module != "git_stage_batch.batch.text_file_storage":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & private_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_binary_file_storage_owns_binary_persistence():
     """Binary persistence should live outside batch storage."""
     binary_file_storage = __import__(
@@ -7847,7 +7937,7 @@ def test_binary_file_storage_owns_binary_persistence():
         fromlist=["binary_file_storage"],
     )
     storage = __import__(
-        "git_stage_batch.batch.storage",
+        "git_stage_batch.batch.text_file_storage",
         fromlist=["storage"],
     )
     public_names = {
@@ -7884,14 +7974,14 @@ def test_binary_file_storage_owns_binary_persistence():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.storage":
+            if imported_module == "git_stage_batch.batch.text_file_storage":
                 disallowed_names = imported_names & public_names
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
                     names = ", ".join(sorted(disallowed_names))
                     violations.append(
                         f"{relative_path}:{node.lineno} imports {names} "
-                        "from batch.storage"
+                        "from batch.text_file_storage"
                     )
                 continue
 
@@ -7918,7 +8008,7 @@ def test_gitlink_storage_owns_gitlink_persistence():
         fromlist=["gitlink_storage"],
     )
     storage = __import__(
-        "git_stage_batch.batch.storage",
+        "git_stage_batch.batch.text_file_storage",
         fromlist=["storage"],
     )
     public_names = {
@@ -7949,14 +8039,14 @@ def test_gitlink_storage_owns_gitlink_persistence():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.storage":
+            if imported_module == "git_stage_batch.batch.text_file_storage":
                 disallowed_names = imported_names & public_names
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
                     names = ", ".join(sorted(disallowed_names))
                     violations.append(
                         f"{relative_path}:{node.lineno} imports {names} "
-                        "from batch.storage"
+                        "from batch.text_file_storage"
                     )
                 continue
 
@@ -7983,7 +8073,7 @@ def test_file_entry_storage_owns_entry_operations():
         fromlist=["file_entry_storage"],
     )
     storage = __import__(
-        "git_stage_batch.batch.storage",
+        "git_stage_batch.batch.text_file_storage",
         fromlist=["storage"],
     )
     public_names = {
@@ -8019,14 +8109,14 @@ def test_file_entry_storage_owns_entry_operations():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.storage":
+            if imported_module == "git_stage_batch.batch.text_file_storage":
                 disallowed_names = imported_names & public_names
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
                     names = ", ".join(sorted(disallowed_names))
                     violations.append(
                         f"{relative_path}:{node.lineno} imports {names} "
-                        "from batch.storage"
+                        "from batch.text_file_storage"
                     )
                 continue
 
@@ -8053,7 +8143,7 @@ def test_batch_content_commits_own_tree_publication():
         fromlist=["content_commits"],
     )
     storage = __import__(
-        "git_stage_batch.batch.storage",
+        "git_stage_batch.batch.text_file_storage",
         fromlist=["storage"],
     )
     public_names = {
@@ -8074,7 +8164,7 @@ def test_batch_content_commits_own_tree_publication():
             "update_batch_commit",
         },
     }
-    storage_module_imports = _import_from_nodes(SRC_ROOT / "batch" / "storage.py")
+    storage_module_imports = _import_from_nodes(SRC_ROOT / "batch" / "text_file_storage.py")
     violations = []
 
     for public_name in public_names:
@@ -8101,14 +8191,14 @@ def test_batch_content_commits_own_tree_publication():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.storage":
+            if imported_module == "git_stage_batch.batch.text_file_storage":
                 disallowed_names = imported_names & public_names
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
                     names = ", ".join(sorted(disallowed_names))
                     violations.append(
                         f"{relative_path}:{node.lineno} imports {names} "
-                        "from batch.storage"
+                        "from batch.text_file_storage"
                     )
                 continue
 
@@ -8135,7 +8225,7 @@ def test_realized_file_content_owns_text_materialization():
         fromlist=["realized_file_content"],
     )
     storage = __import__(
-        "git_stage_batch.batch.storage",
+        "git_stage_batch.batch.text_file_storage",
         fromlist=["storage"],
     )
     public_names = {
@@ -8149,7 +8239,7 @@ def test_realized_file_content_owns_text_materialization():
             "build_realized_buffer_from_lines",
         },
     }
-    storage_module_imports = _import_from_nodes(SRC_ROOT / "batch" / "storage.py")
+    storage_module_imports = _import_from_nodes(SRC_ROOT / "batch" / "text_file_storage.py")
     violations = []
 
     assert public_names <= vars(realized_file_content).keys()
@@ -8174,14 +8264,14 @@ def test_realized_file_content_owns_text_materialization():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.storage":
+            if imported_module == "git_stage_batch.batch.text_file_storage":
                 disallowed_names = imported_names & public_names
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
                     names = ", ".join(sorted(disallowed_names))
                     violations.append(
                         f"{relative_path}:{node.lineno} imports {names} "
-                        "from batch.storage"
+                        "from batch.text_file_storage"
                     )
             if imported_module != "git_stage_batch.batch.realized_file_content":
                 continue
@@ -8227,7 +8317,7 @@ def test_batch_transform_sift_results_own_result_planning():
             "AbsenceClaim",
             "AbsenceContentBuilder",
         },
-        "git_stage_batch.batch.storage": {
+        "git_stage_batch.batch.text_file_storage": {
             "build_realized_buffer_from_lines",
         },
         "git_stage_batch.core.buffer": {
@@ -10993,7 +11083,7 @@ def test_batch_source_reset_claims_own_reset_mutations():
         "git_stage_batch.batch.state_refs": {
             "sync_batch_state_refs",
         },
-        "git_stage_batch.batch.storage": {
+        "git_stage_batch.batch.text_file_storage": {
             "add_file_to_batch",
         },
         "git_stage_batch.batch.file_entry_storage": {

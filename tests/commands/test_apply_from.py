@@ -5,7 +5,7 @@ import os
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.include import command_include_to_batch
 from git_stage_batch.batch.ownership import BatchOwnership
-from git_stage_batch.batch.storage import add_file_to_batch
+from git_stage_batch.batch.text_file_storage import add_file_to_batch
 from git_stage_batch.batch.ownership import AbsenceClaim
 
 import subprocess

@@ -3,7 +3,7 @@
 from git_stage_batch.batch.operations import create_batch
 from git_stage_batch.batch.ownership import BatchOwnership
 from git_stage_batch.batch.binary_file_storage import add_binary_file_to_batch
-from git_stage_batch.batch.storage import add_file_to_batch
+from git_stage_batch.batch.text_file_storage import add_file_to_batch
 from git_stage_batch.commands.include import command_include_line, command_include_to_batch
 from git_stage_batch.commands.reset import command_reset_from_batch
 from git_stage_batch.commands.show import command_show, command_show_file_list

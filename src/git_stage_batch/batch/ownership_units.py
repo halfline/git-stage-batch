@@ -15,12 +15,14 @@ from .ownership import (
     BatchOwnership,
     ReplacementUnit,
     ReplacementUnitOrigin,
-    _LineRangeBuilder,
-    _format_line_set,
-    _normalize_replacement_units,
-    _parse_line_ranges,
-    _presence_claims_from_source_lines,
 )
+from .ownership_claims import (
+    LineRangeBuilder,
+    format_ownership_line_set,
+    parse_ownership_line_ranges,
+    presence_claims_from_source_lines,
+)
+from .ownership_replacement_units import normalize_replacement_units
 
 
 class OwnershipUnitKind(Enum):
@@ -203,7 +205,7 @@ def _build_explicit_replacement_units_from_display_lines(
     consumed_claimed_lines = LineRanges.empty()
     consumed_deletion_indices: set[int] = set()
 
-    replacement_units = _normalize_replacement_units(
+    replacement_units = normalize_replacement_units(
         ownership.replacement_units,
         deletion_count=len(ownership.deletions),
     )
@@ -211,10 +213,12 @@ def _build_explicit_replacement_units_from_display_lines(
         return units, consumed_claimed_lines, consumed_deletion_indices
 
     for replacement_unit in replacement_units:
-        claimed_source_lines = _parse_line_ranges(replacement_unit.presence_lines)
+        claimed_source_lines = parse_ownership_line_ranges(
+            replacement_unit.presence_lines
+        )
         deletion_indices = set(replacement_unit.deletion_indices)
-        claimed_display_id_builder = _LineRangeBuilder()
-        deletion_display_id_builder = _LineRangeBuilder()
+        claimed_display_id_builder = LineRangeBuilder()
+        deletion_display_id_builder = LineRangeBuilder()
 
         for display_line in display_lines:
             display_id = display_line.get("id")
@@ -519,15 +523,15 @@ def rebuild_ownership_from_units(units: list[OwnershipUnit]) -> BatchOwnership:
             deletion_indices.append(len(all_deletions) - 1)
         if unit.kind == OwnershipUnitKind.REPLACEMENT and unit.preserves_replacement_unit:
             replacement_units.append(ReplacementUnit(
-                presence_lines=_format_line_set(unit.claimed_source_lines),
+                presence_lines=format_ownership_line_set(unit.claimed_source_lines),
                 deletion_indices=deletion_indices,
                 origin=unit.replacement_origin,
             ))
 
     return BatchOwnership(
-        presence_claims=_presence_claims_from_source_lines(all_presence_lines),
+        presence_claims=presence_claims_from_source_lines(all_presence_lines),
         deletions=all_deletions,
-        replacement_units=_normalize_replacement_units(
+        replacement_units=normalize_replacement_units(
             replacement_units,
             deletion_count=len(all_deletions),
         ),

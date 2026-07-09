@@ -12,8 +12,8 @@ from git_stage_batch.batch.merge import (
     discard_batch_from_line_sequences_as_buffer,
     merge_batch_from_line_sequences_as_buffer,
     _sequence_present_at_boundary,
-    _find_boundary_after_source_line,
 )
+from git_stage_batch.batch.realized_boundaries import find_boundary_after_source_line
 from git_stage_batch.batch.realized_entries import RealizedEntry
 from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim
 from git_stage_batch.core.buffer import LineBuffer
@@ -115,7 +115,7 @@ different line 3
 
 
 def test_find_boundary_missing_anchor_raises_specific_error():
-    """_find_boundary_after_source_line raises MissingAnchorError when anchor not present."""
+    """Boundary lookup raises MissingAnchorError when anchor is not present."""
     # Entries without source line 5
     entries = [
         RealizedEntry(content=b"line 1\n", source_line=1, is_claimed=False),
@@ -125,13 +125,13 @@ def test_find_boundary_missing_anchor_raises_specific_error():
 
     # Try to find boundary after source line 5 (not present)
     with pytest.raises(MissingAnchorError) as exc_info:
-        _find_boundary_after_source_line(entries, 5)
+        find_boundary_after_source_line(entries, 5)
 
     assert "not present" in str(exc_info.value).lower()
 
 
 def test_find_boundary_ambiguous_anchor_raises_specific_error():
-    """_find_boundary_after_source_line raises AmbiguousAnchorError for duplicates without claim."""
+    """Boundary lookup raises AmbiguousAnchorError for unclaimed duplicates."""
     # Entries with duplicate source line 2 (neither claimed)
     entries = [
         RealizedEntry(content=b"line 1\n", source_line=1, is_claimed=False),
@@ -142,13 +142,13 @@ def test_find_boundary_ambiguous_anchor_raises_specific_error():
 
     # Try to find boundary after source line 2 (ambiguous - two unclaimed occurrences)
     with pytest.raises(AmbiguousAnchorError) as exc_info:
-        _find_boundary_after_source_line(entries, 2)
+        find_boundary_after_source_line(entries, 2)
 
     assert "ambiguity" in str(exc_info.value).lower()
 
 
 def test_find_boundary_uses_claimed_when_duplicates_exist():
-    """_find_boundary_after_source_line uses claimed occurrence when anchor duplicated."""
+    """Boundary lookup uses the claimed occurrence when an anchor is duplicated."""
     # Entries with duplicate source line 2, but one is claimed
     entries = [
         RealizedEntry(content=b"line 1\n", source_line=1, is_claimed=False),
@@ -158,7 +158,7 @@ def test_find_boundary_uses_claimed_when_duplicates_exist():
     ]
 
     # Should use the claimed occurrence (index 2) and return boundary after it (index 3)
-    boundary = _find_boundary_after_source_line(entries, 2)
+    boundary = find_boundary_after_source_line(entries, 2)
     assert boundary == 3  # After the claimed occurrence
 
 

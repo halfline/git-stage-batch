@@ -782,6 +782,28 @@ def test_line_change_body_owns_line_entry_construction():
     assert "next_display_id" not in diff_parser_text
 
 
+def test_binary_change_path_selection_stays_on_model():
+    """Binary change callers should use the model path helper."""
+    model_path = SRC_ROOT / "core" / "models.py"
+    models = __import__("git_stage_batch.core.models", fromlist=["models"])
+    violations = []
+
+    assert "path" in vars(models.BinaryFileChange)
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == model_path:
+            continue
+
+        text = path.read_text()
+        if 'new_path != "/dev/null"' not in text:
+            continue
+
+        relative_path = path.relative_to(REPO_ROOT)
+        violations.append(str(relative_path))
+
+    assert violations == []
+
+
 def test_patch_headers_own_patch_file_header_parsing():
     """Patch file header parsing should stay outside diff_parser."""
     diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"

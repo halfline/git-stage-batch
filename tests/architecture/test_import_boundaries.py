@@ -403,6 +403,7 @@ def test_output_package_does_not_reexport_output_apis():
         "print_line_level_changes",
         "print_remaining_line_changes_header",
         "print_rename_change",
+        "print_status_summary",
         "print_text_file_deletion_change",
     }
     violations = []
@@ -1585,6 +1586,68 @@ def test_status_prompt_rendering_stays_in_output_module():
         "render_prompt_status",
     } <= status_imported_prompt_names
     assert "DEFAULT_PROMPT_FORMAT" in parser_imported_prompt_names
+
+
+def test_status_summary_rendering_stays_in_output_module():
+    """Human-readable status rendering should stay out of the command module."""
+    status_output = __import__(
+        "git_stage_batch.output.status",
+        fromlist=["status"],
+    )
+    command_status = __import__(
+        "git_stage_batch.commands.status",
+        fromlist=["status"],
+    )
+    status_path = SRC_ROOT / "commands" / "status.py"
+    public_names = {
+        "print_status_summary",
+    }
+    old_status_names = {
+        "_selected_kind_label",
+    }
+    old_status_snippets = {
+        "Progress this iteration:",
+        "Skipped hunks:",
+        "Current hunk:",
+        "Last file review:",
+    }
+    disallowed_imports = {
+        "git_stage_batch.data.progress": {
+            "format_id_range",
+        },
+        "git_stage_batch.data.selected_change.store": {
+            "SelectedChangeKind",
+        },
+    }
+    status_tree = ast.parse(status_path.read_text(), filename=str(status_path))
+    status_names = {
+        node.name
+        for node in ast.walk(status_tree)
+        if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+    imported_status_output_names = set()
+    direct_render_imports = set()
+
+    for imported_module, node in _import_from_nodes(status_path):
+        imported_names = {alias.name for alias in node.names}
+        if imported_module == "git_stage_batch.output.status":
+            imported_status_output_names |= {
+                alias.asname or alias.name
+                for alias in node.names
+            }
+        direct_render_imports |= imported_names & disallowed_imports.get(
+            imported_module,
+            set(),
+        )
+
+    status_text = status_path.read_text()
+
+    assert public_names <= vars(status_output).keys()
+    assert "print_status_summary" not in vars(command_status)
+    assert old_status_names.isdisjoint(status_names)
+    assert old_status_snippets.isdisjoint(status_text)
+    assert "_print_status_summary" in imported_status_output_names
+    assert direct_render_imports == set()
 
 
 def test_argument_parser_delegates_multi_file_action_flow():

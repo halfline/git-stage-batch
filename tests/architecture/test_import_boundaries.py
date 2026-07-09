@@ -3094,7 +3094,7 @@ def test_active_session_query_stays_in_session_data():
         SRC_ROOT / "commands" / "start.py",
         SRC_ROOT / "commands" / "status.py",
         SRC_ROOT / "commands" / "unblock_file.py",
-        SRC_ROOT / "tui" / "interactive.py",
+        SRC_ROOT / "tui" / "session_startup.py",
     )
     session = __import__(
         "git_stage_batch.data.session",
@@ -5225,6 +5225,42 @@ def test_tui_cli_escape_does_not_import_dispatch():
     assert "git_stage_batch.runtime" not in cli_escape_imports
     assert "git_stage_batch.tui.interactive" not in execution_imports
     assert "git_stage_batch.tui.interactive" in runtime_imports
+
+
+def test_tui_session_startup_owns_interactive_startup():
+    """TUI startup should live outside the interactive loop."""
+    interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    session_startup_path = SRC_ROOT / "tui" / "session_startup.py"
+    interactive = __import__(
+        "git_stage_batch.tui.interactive",
+        fromlist=["interactive"],
+    )
+    session_startup = __import__(
+        "git_stage_batch.tui.session_startup",
+        fromlist=["session_startup"],
+    )
+    interactive_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    session_startup_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(session_startup_path)
+    }
+    startup_imports = {
+        "git_stage_batch.commands.start",
+        "git_stage_batch.data.session",
+        "git_stage_batch.utils.file_io",
+        "git_stage_batch.utils.git_command",
+        "git_stage_batch.utils.paths",
+    }
+
+    assert "prepare_interactive_session" in vars(session_startup)
+    assert "InteractiveSessionStartup" in vars(session_startup)
+    assert "_record_start_repository_state" not in vars(interactive)
+    assert "git_stage_batch.tui.session_startup" in interactive_imports
+    assert startup_imports.isdisjoint(interactive_imports)
+    assert startup_imports <= session_startup_imports
 
 
 def test_tui_batch_menu_owns_batch_management_actions():

@@ -7,11 +7,11 @@ from dataclasses import dataclass, field
 
 from ..core.models import LineEntry
 from .ownership import (
-    BaselineReference,
     ReplacementUnit,
     ReplacementUnitOrigin,
 )
 from .ownership_claims import LineRangeBuilder
+from .ownership_references import BaselineReference
 from .replacement_line_runs import ReplacementLineRun
 
 

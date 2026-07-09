@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING
 from ..core.line_selection import LineRanges, LineSelection
 
 if TYPE_CHECKING:
-    from .ownership import BaselineReference, PresenceClaim
+    from .ownership import PresenceClaim
+    from .ownership_references import BaselineReference
 
 
 def parse_ownership_line_ranges(line_ranges: list[str] | list[int]) -> LineRanges:

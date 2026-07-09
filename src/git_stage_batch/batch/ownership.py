@@ -28,9 +28,9 @@ from .ownership_metadata_blobs import (
     deletion_content_blob_ids as _metadata_deletion_content_blob_ids,
     deletion_reference_blob_ids as _metadata_deletion_reference_blob_ids,
     presence_claim_reference_blob_ids as _metadata_presence_reference_blob_ids,
-    read_metadata_blob as _metadata_blob_content,
     replacement_origin_reference_blob_ids as _metadata_replacement_reference_blob_ids,
 )
+from .ownership_references import BaselineReference as _BaselineReference
 from .ownership_replacement_units import (
     normalize_replacement_units as _replacement_normalize_units,
 )
@@ -39,59 +39,6 @@ if TYPE_CHECKING:
     from .ownership_acquisition import (
         AcquiredBatchOwnership as _AcquiredBatchOwnership,
     )
-
-
-@dataclass
-class BaselineReference:
-    """Baseline-side coordinate and optional boundary identity.
-
-    The line numbers are old-file coordinates from the diff that produced the
-    selection. Byte payloads, when present, let a later merge prove the target
-    still has the same local boundary before applying a baseline coordinate.
-    """
-
-    after_line: int | None
-    after_content: bytes | None = None
-    has_after_line: bool = True
-    before_line: int | None = None
-    before_content: bytes | None = None
-    has_before_line: bool = False
-
-    def to_dict(self) -> dict:
-        """Serialize to metadata dictionary."""
-        data = {}
-        if self.has_after_line:
-            data["after_line"] = self.after_line
-        if self.after_content is not None:
-            data["after_blob"] = create_git_blob([self.after_content])
-        if self.has_before_line:
-            data["before_line"] = self.before_line
-        if self.before_content is not None:
-            data["before_blob"] = create_git_blob([self.before_content])
-        return data
-
-    @classmethod
-    def from_dict(
-        cls,
-        data: dict,
-        blob_contents: dict[str, bytes] | None = None,
-    ) -> BaselineReference:
-        """Deserialize from metadata dictionary."""
-        if not isinstance(data, dict):
-            raise ValueError("Baseline reference metadata must be a dictionary")
-
-        after_blob = data.get("after_blob")
-        before_blob = data.get("before_blob")
-        after_content = _metadata_blob_content(after_blob, blob_contents)
-        before_content = _metadata_blob_content(before_blob, blob_contents)
-        return cls(
-            after_line=data.get("after_line"),
-            after_content=after_content,
-            has_after_line="after_line" in data,
-            before_line=data.get("before_line"),
-            before_content=before_content,
-            has_before_line="before_line" in data,
-        )
 
 
 @dataclass
@@ -114,7 +61,7 @@ class AbsenceClaim:
     """
     anchor_line: int | None
     content_lines: Sequence[bytes]
-    baseline_reference: BaselineReference | None = None
+    baseline_reference: _BaselineReference | None = None
 
     def to_dict(self) -> dict:
         """Serialize to metadata dictionary."""
@@ -142,7 +89,7 @@ class AbsenceClaim:
         content_lines = blob_buffers[blob_sha]
         baseline_metadata = data.get("baseline_reference")
         baseline_reference = (
-            BaselineReference.from_dict(baseline_metadata, blob_contents)
+            _BaselineReference.from_dict(baseline_metadata, blob_contents)
             if baseline_metadata is not None else None
         )
         return cls(
@@ -163,7 +110,7 @@ class PresenceClaim:
     """
 
     source_lines: list[str]
-    baseline_references: dict[int, BaselineReference] = field(default_factory=dict)
+    baseline_references: dict[int, _BaselineReference] = field(default_factory=dict)
 
     def source_line_set(self) -> LineRanges:
         """Return batch-source line numbers covered by this presence claim."""
@@ -190,7 +137,7 @@ class PresenceClaim:
         return cls(
             source_lines=data.get("source_lines", []),
             baseline_references={
-                int(line): BaselineReference.from_dict(
+                int(line): _BaselineReference.from_dict(
                     reference,
                     blob_contents,
                 )
@@ -213,7 +160,7 @@ class ReplacementUnitOrigin:
     old_end: int
     new_start: int
     new_end: int
-    baseline_reference: BaselineReference | None = None
+    baseline_reference: _BaselineReference | None = None
 
     @property
     def old_line_count(self) -> int:
@@ -246,7 +193,7 @@ class ReplacementUnitOrigin:
             new_start=data["new_start"],
             new_end=data["new_end"],
             baseline_reference=(
-                BaselineReference.from_dict(baseline_metadata, blob_contents)
+                _BaselineReference.from_dict(baseline_metadata, blob_contents)
                 if baseline_metadata is not None else None
             ),
         )
@@ -312,7 +259,7 @@ class BatchOwnership:
         deletions: list[AbsenceClaim] | None = None,
         *,
         replacement_units: list[ReplacementUnit] | None = None,
-        baseline_references: dict[int, BaselineReference] | None = None,
+        baseline_references: dict[int, _BaselineReference] | None = None,
     ) -> BatchOwnership:
         """Create ownership from source-line ranges.
 
@@ -340,9 +287,9 @@ class BatchOwnership:
             presence_lines = presence_lines.union(claim.source_line_set())
         return presence_lines
 
-    def presence_baseline_references(self) -> dict[int, BaselineReference]:
+    def presence_baseline_references(self) -> dict[int, _BaselineReference]:
         """Return baseline references keyed by claimed batch-source line."""
-        references: dict[int, BaselineReference] = {}
+        references: dict[int, _BaselineReference] = {}
         for claim in self.presence_claims:
             references.update(claim.baseline_references)
         return references

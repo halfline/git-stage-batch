@@ -6,7 +6,6 @@ import argparse
 import sys
 
 from .. import __version__
-from ..commands.abort import command_abort
 from ..commands.again import command_again
 from ..commands.block_file import command_block_file
 from ..commands.check_unstaged import command_check_unstaged
@@ -40,6 +39,7 @@ from .include_dispatch import dispatch_include_command
 from .quick_actions import expand_quick_actions
 from .reset_dispatch import dispatch_reset_command
 from .session_subcommands import (
+    add_abort_subcommand,
     add_redo_subcommand,
     add_stop_subcommand,
     add_undo_subcommand,
@@ -386,13 +386,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
 
     parser_discard.set_defaults(func=dispatch_discard_command)
 
-    # abort - Restore repository to pre-session state
-    parser_abort = add_subcommand_parser(
-        subparsers,
-        "abort",
-        help=_("Restore repository to pre-session state"),
-    )
-    parser_abort.set_defaults(func=lambda _: command_abort())
+    add_abort_subcommand(subparsers)
 
     # block-file - Permanently exclude a file
     parser_block_file = add_subcommand_parser(

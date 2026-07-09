@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from bisect import bisect_right
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Iterable, Iterator, Protocol
-from ..utils.file_io import read_text_file_contents, write_text_file_contents
 
 
 class LineSelection(Protocol):
@@ -368,25 +366,6 @@ def parse_line_selection_ranges(selection: str) -> LineRanges:
         ranges.append((line_id, line_id))
 
     return LineRanges.from_ranges(ranges)
-
-
-def read_line_ids_file(path: Path) -> list[int]:
-    """Read a file containing line IDs (one per line) and return as a list."""
-    if not path.exists():
-        return []
-
-    ids: list[int] = []
-    for line in read_text_file_contents(path).splitlines():
-        value = line.strip()
-        if value.isdigit():
-            ids.append(int(value))
-    return ids
-
-
-def write_line_ids_file(path: Path, ids: Iterable[int]) -> None:
-    """Write line IDs to a file (one per line), sorted and deduplicated."""
-    unique_sorted_ids = sorted(set(ids))
-    write_text_file_contents(path, "\n".join(str(i) for i in unique_sorted_ids) + ("\n" if unique_sorted_ids else ""))
 
 
 def format_line_ids(line_ids: list[str | int]) -> str:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ..commands.list import command_list_batches
 from ..commands.new import command_new_batch
 from ..commands.sift import command_sift_batch
 from ..i18n import _
@@ -28,6 +29,16 @@ def add_new_subcommand(subparsers) -> None:
     parser_new.set_defaults(
         func=lambda args: command_new_batch(args.batch_name, args.note)
     )
+
+
+def add_list_subcommand(subparsers) -> None:
+    """Register the list subcommand."""
+    parser_list = add_subcommand_parser(
+        subparsers,
+        "list",
+        help=_("List all batches"),
+    )
+    parser_list.set_defaults(func=lambda _: command_list_batches())
 
 
 def add_sift_subcommand(subparsers) -> None:

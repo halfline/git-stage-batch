@@ -12,7 +12,6 @@ from ..commands.annotate import command_annotate_batch
 from ..commands.block_file import command_block_file
 from ..commands.check_unstaged import command_check_unstaged
 from ..commands.drop import command_drop_batch
-from ..commands.list import command_list_batches
 from ..commands.redo import command_redo
 from ..commands.start import command_start
 from ..commands.status import command_status
@@ -28,7 +27,11 @@ from ..output.status_prompt import DEFAULT_PROMPT_FORMAT
 from .apply_dispatch import dispatch_apply_command
 from .asset_subcommands import add_install_assets_subcommand
 from .auto_advance_options import add_auto_advance_arguments
-from .batch_subcommands import add_new_subcommand, add_sift_subcommand
+from .batch_subcommands import (
+    add_list_subcommand,
+    add_new_subcommand,
+    add_sift_subcommand,
+)
 from .completion import add_completion_subcommand
 from .discard_dispatch import dispatch_discard_command
 from .file_arguments import add_file_argument, normalize_parsed_file_arguments
@@ -506,13 +509,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
 
     add_new_subcommand(subparsers)
 
-    # list - List all batches
-    parser_list = add_subcommand_parser(
-        subparsers,
-        "list",
-        help=_("List all batches"),
-    )
-    parser_list.set_defaults(func=lambda _: command_list_batches())
+    add_list_subcommand(subparsers)
 
     # drop - Delete a batch
     parser_drop = add_subcommand_parser(

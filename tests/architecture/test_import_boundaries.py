@@ -3569,6 +3569,55 @@ def test_tui_file_review_display_owns_review_rendering():
     assert "git_stage_batch.tui.display" in display_imports
 
 
+def test_tui_file_review_page_navigation_owns_page_specs():
+    """TUI file review page navigation should own page prompts."""
+    browser_path = SRC_ROOT / "tui" / "file_review" / "browser.py"
+    page_navigation_path = SRC_ROOT / "tui" / "file_review" / "page_navigation.py"
+    page_navigation = __import__(
+        "git_stage_batch.tui.file_review.page_navigation",
+        fromlist=["page_navigation"],
+    )
+    browser_tree = ast.parse(browser_path.read_text(), filename=str(browser_path))
+    browser_function_names = {
+        node.name
+        for node in ast.walk(browser_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    browser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(browser_path)
+    }
+    page_navigation_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(page_navigation_path)
+    }
+    public_names = {
+        "next_page_spec",
+        "previous_page_spec",
+        "prompt_page_spec",
+    }
+    moved_function_names = {
+        "_next_page_spec",
+        "_previous_page_spec",
+        "_prompt_page_spec",
+    }
+    old_browser_snippets = {
+        "Already at the first file review page.",
+        "Already at the last file review page.",
+        "No file review page state is available.",
+        "Page(s), for example",
+        "read_last_file_review_state",
+    }
+    browser_text = browser_path.read_text()
+
+    assert public_names <= vars(page_navigation).keys()
+    assert moved_function_names.isdisjoint(browser_function_names)
+    assert all(snippet not in browser_text for snippet in old_browser_snippets)
+    assert "git_stage_batch.tui.file_review.page_navigation" in browser_imports
+    assert "git_stage_batch.data.file_review.state" not in browser_imports
+    assert "git_stage_batch.data.file_review.state" in page_navigation_imports
+
+
 def test_tui_file_review_candidates_own_candidate_browser():
     """TUI file review candidates should own batch candidate browsing."""
     browser_path = SRC_ROOT / "tui" / "file_review" / "browser.py"

@@ -28,9 +28,9 @@ from ...data.selected_change.store import (
 )
 from ...exceptions import exit_with_error
 from ...i18n import _
+from ...staging.index_update import update_index_with_blob_buffer
 from ...staging.operations import (
     build_target_index_buffer_with_replaced_lines,
-    update_index_with_blob_buffer,
 )
 from ...utils.paths import (
     get_index_snapshot_file_path,

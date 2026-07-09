@@ -24,7 +24,7 @@ from ...data.selected_change.store import (
 from ...data.undo import undo_checkpoint
 from ...exceptions import exit_with_error
 from ...i18n import _
-from ...staging.operations import update_index_with_blob_buffer
+from ...staging.index_update import update_index_with_blob_buffer
 from ...utils.paths import get_processed_include_ids_file_path
 from ..selection.selected_hunk_refresh import recalculate_selected_hunk_for_command
 

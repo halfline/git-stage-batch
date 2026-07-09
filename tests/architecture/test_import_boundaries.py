@@ -7936,6 +7936,7 @@ def test_batch_owns_binary_file_content_loading():
         fromlist=["binary_file_content"],
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    apply_action_path = SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
     public_names = {
         "read_binary_file_from_batch",
@@ -7943,10 +7944,13 @@ def test_batch_owns_binary_file_content_loading():
     old_names = {
         "_read_binary_file_from_batch",
     }
-    apply_from_tree = ast.parse(apply_from_path.read_text(), filename=str(apply_from_path))
-    apply_from_helpers = {
+    apply_action_tree = ast.parse(
+        apply_action_path.read_text(),
+        filename=str(apply_action_path),
+    )
+    apply_action_helpers = {
         node.name
-        for node in ast.walk(apply_from_tree)
+        for node in ast.walk(apply_action_tree)
         if isinstance(node, (ast.ClassDef, ast.FunctionDef))
     }
     include_from_tree = ast.parse(
@@ -7959,7 +7963,7 @@ def test_batch_owns_binary_file_content_loading():
         if isinstance(node, (ast.ClassDef, ast.FunctionDef))
     }
     loader_imports_by_path = {
-        apply_from_path: set(),
+        apply_action_path: set(),
         include_from_path: set(),
     }
 
@@ -7970,9 +7974,9 @@ def test_batch_owns_binary_file_content_loading():
             loader_imports_by_path[path] |= {alias.name for alias in node.names}
 
     assert public_names <= vars(binary_file_content).keys()
-    assert public_names <= loader_imports_by_path[apply_from_path]
+    assert public_names <= loader_imports_by_path[apply_action_path]
     assert public_names <= loader_imports_by_path[include_from_path]
-    assert old_names.isdisjoint(apply_from_helpers)
+    assert old_names.isdisjoint(apply_action_helpers)
     assert old_names.isdisjoint(include_from_helpers)
 
 
@@ -7983,6 +7987,7 @@ def test_batch_source_action_plans_own_resource_plans():
         fromlist=["action_plans"],
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    apply_action_path = SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
     public_names = {
         "ApplyTextFileActionPlan",
@@ -8004,10 +8009,13 @@ def test_batch_source_action_plans_own_resource_plans():
         "_IncludeSubmodulePlan",
         "_close_include_plans",
     }
-    apply_from_tree = ast.parse(apply_from_path.read_text(), filename=str(apply_from_path))
-    apply_from_helpers = {
+    apply_action_tree = ast.parse(
+        apply_action_path.read_text(),
+        filename=str(apply_action_path),
+    )
+    apply_action_helpers = {
         node.name
-        for node in ast.walk(apply_from_tree)
+        for node in ast.walk(apply_action_tree)
         if isinstance(node, (ast.ClassDef, ast.FunctionDef))
     }
     include_from_tree = ast.parse(
@@ -8020,7 +8028,7 @@ def test_batch_source_action_plans_own_resource_plans():
         if isinstance(node, (ast.ClassDef, ast.FunctionDef))
     }
     imports_action_plans = {
-        apply_from_path: False,
+        apply_action_path: False,
         include_from_path: False,
     }
 
@@ -8034,9 +8042,9 @@ def test_batch_source_action_plans_own_resource_plans():
                 imports_action_plans[path] = True
 
     assert public_names <= vars(action_plans).keys()
-    assert imports_action_plans[apply_from_path]
+    assert imports_action_plans[apply_action_path]
     assert imports_action_plans[include_from_path]
-    assert old_apply_names.isdisjoint(apply_from_helpers)
+    assert old_apply_names.isdisjoint(apply_action_helpers)
     assert old_include_names.isdisjoint(include_from_helpers)
 
 
@@ -8046,7 +8054,7 @@ def test_batch_source_text_plan_builders_own_apply_text_planning():
         "git_stage_batch.commands.batch_source.text_plan_builders",
         fromlist=["text_plan_builders"],
     )
-    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    apply_action_path = SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
     public_names = {
         "ApplyTextPlanBuildResult",
         "build_apply_text_file_action_plan",
@@ -8078,7 +8086,7 @@ def test_batch_source_text_plan_builders_own_apply_text_planning():
     imports_text_plan_builders = False
     direct_plan_imports = set()
 
-    for imported_module, node in _import_from_nodes(apply_from_path):
+    for imported_module, node in _import_from_nodes(apply_action_path):
         imported_names = {alias.name for alias in node.names}
         if (
             imported_module == "git_stage_batch.commands.batch_source"
@@ -8090,14 +8098,14 @@ def test_batch_source_text_plan_builders_own_apply_text_planning():
             set(),
         )
 
-    command_text = apply_from_path.read_text()
+    action_text = apply_action_path.read_text()
 
     assert public_names <= vars(text_plan_builders).keys()
     assert imports_text_plan_builders
     assert direct_plan_imports == set()
-    assert "build_apply_text_file_action_plan(" in command_text
-    assert "merge_batch_from_line_sequences_as_buffer(" not in command_text
-    assert "selected_text_target_change_type(" not in command_text
+    assert "build_apply_text_file_action_plan(" in action_text
+    assert "merge_batch_from_line_sequences_as_buffer(" not in action_text
+    assert "selected_text_target_change_type(" not in action_text
 
 
 def test_batch_source_text_plan_builders_own_include_text_planning():
@@ -8413,13 +8421,14 @@ def test_batch_source_candidate_preview_counts_own_failure_enumeration():
         fromlist=["candidate_preview_counts"],
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    apply_action_path = SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
     public_names = {
         "count_apply_candidate_previews_for_file",
         "count_include_candidate_previews_for_file",
     }
     old_function_names = {
-        apply_from_path: {
+        apply_action_path: {
             "_apply_candidate_count_for_file",
         },
         include_from_path: {
@@ -8460,11 +8469,11 @@ def test_batch_source_candidate_preview_counts_own_failure_enumeration():
 
     assert public_names <= vars(candidate_preview_counts).keys()
     assert imports_candidate_preview_counts == {
-        apply_from_path: True,
+        apply_action_path: True,
         include_from_path: True,
     }
     assert direct_count_imports == {
-        apply_from_path: set(),
+        apply_action_path: set(),
         include_from_path: set(),
     }
     for path, old_names in old_function_names.items():
@@ -8848,12 +8857,13 @@ def test_batch_source_candidate_refusals_own_candidate_count_refusals():
         fromlist=["candidate_refusals"],
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    apply_action_path = SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
     public_names = {
         "refuse_candidate_conflicts",
     }
     old_snippets_by_path = {
-        apply_from_path: {
+        apply_action_path: {
             "too many apply candidates",
             "Cannot enumerate apply candidates",
             "multiple files need apply decisions",
@@ -8881,7 +8891,7 @@ def test_batch_source_candidate_refusals_own_candidate_count_refusals():
 
     assert public_names <= vars(candidate_refusals).keys()
     assert imports_candidate_refusals == {
-        apply_from_path: True,
+        apply_action_path: True,
         include_from_path: True,
     }
     for path, old_snippets in old_snippets_by_path.items():
@@ -8897,6 +8907,7 @@ def test_batch_source_action_context_owns_action_prologue():
         fromlist=["action_context"],
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    apply_action_path = SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
     discard_from_path = SRC_ROOT / "commands" / "discard_from.py"
     public_names = {
@@ -8983,6 +8994,7 @@ def test_batch_source_action_selection_owns_file_line_selection():
         fromlist=["action_selection"],
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    apply_action_path = SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
     discard_from_path = SRC_ROOT / "commands" / "discard_from.py"
     public_names = {
@@ -9054,12 +9066,13 @@ def test_batch_source_action_completion_owns_review_finalization():
         fromlist=["action_completion"],
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    apply_action_path = SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
     public_names = {
         "finish_batch_source_action_review",
     }
     command_paths = {
-        apply_from_path,
+        apply_action_path,
         include_from_path,
     }
     imports_action_completion = {
@@ -9086,11 +9099,11 @@ def test_batch_source_action_completion_owns_review_finalization():
 
     assert public_names <= vars(action_completion).keys()
     assert imports_action_completion == {
-        apply_from_path: True,
+        apply_action_path: True,
         include_from_path: True,
     }
     assert direct_review_imports == {
-        apply_from_path: set(),
+        apply_action_path: set(),
         include_from_path: set(),
     }
 
@@ -9135,6 +9148,63 @@ def test_batch_source_apply_action_owns_apply_execution():
     assert "write_text_file_to_worktree(" in action_text
     assert "write_binary_file_to_worktree(" in action_text
     assert "finish_batch_source_action_review(" in action_text
+
+
+def test_apply_from_delegates_apply_action_execution():
+    """Apply-from should delegate selected file execution to batch-source support."""
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    disallowed_imports = {
+        "git_stage_batch.commands.batch_source": {
+            "action_completion",
+            "action_plans",
+            "binary_file_actions",
+            "candidate_preview_counts",
+            "candidate_refusals",
+            "merge_refusals",
+            "text_file_actions",
+            "text_plan_builders",
+            "worktree_refusals",
+        },
+        "git_stage_batch.batch.binary_file_content": {
+            "read_binary_file_from_batch",
+        },
+        "git_stage_batch.batch.selection": {
+            "translate_atomic_unit_error_to_gutter_ids",
+        },
+        "git_stage_batch.batch.submodule_pointer": {
+            "apply_submodule_pointer_from_batch",
+            "is_batch_submodule_pointer",
+        },
+        "git_stage_batch.data.session": {
+            "snapshot_file_if_untracked",
+        },
+        "git_stage_batch.data.undo": {
+            "undo_checkpoint",
+        },
+    }
+    imports_apply_action = False
+    direct_execution_imports = set()
+
+    for imported_module, node in _import_from_nodes(apply_from_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_source"
+            and "apply_action" in imported_names
+        ):
+            imports_apply_action = True
+        direct_execution_imports |= imported_names & disallowed_imports.get(
+            imported_module,
+            set(),
+        )
+
+    command_text = apply_from_path.read_text()
+
+    assert imports_apply_action
+    assert direct_execution_imports == set()
+    assert "execute_apply_action(" in command_text
+    assert "build_apply_text_file_action_plan(" not in command_text
+    assert "write_binary_file_to_worktree(" not in command_text
+    assert "write_text_file_to_worktree(" not in command_text
 
 
 def test_batch_source_discard_action_owns_discard_execution():
@@ -9529,12 +9599,13 @@ def test_batch_source_merge_refusals_own_merge_failure_refusals():
         fromlist=["merge_refusals"],
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    apply_action_path = SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
     public_names = {
         "refuse_batch_source_merge_failures",
     }
     old_snippets_by_path = {
-        apply_from_path: {
+        apply_action_path: {
             "gutter_to_selection_id",
             "Failed for: {files}",
         },
@@ -9568,11 +9639,11 @@ def test_batch_source_merge_refusals_own_merge_failure_refusals():
 
     assert public_names <= vars(merge_refusals).keys()
     assert imports_merge_refusals == {
-        apply_from_path: True,
+        apply_action_path: True,
         include_from_path: True,
     }
     assert direct_display_imports == {
-        apply_from_path: set(),
+        apply_action_path: set(),
         include_from_path: set(),
     }
     for path, old_snippets in old_snippets_by_path.items():
@@ -9588,12 +9659,13 @@ def test_batch_source_worktree_refusals_own_execution_refusals():
         fromlist=["worktree_refusals"],
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    apply_action_path = SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
     public_names = {
         "refuse_incompatible_worktree_action",
     }
     old_snippets_by_path = {
-        apply_from_path: {
+        apply_action_path: {
             "contains changes to {file} that are incompatible",
             "one or more files that are incompatible",
         },
@@ -9619,7 +9691,7 @@ def test_batch_source_worktree_refusals_own_execution_refusals():
 
     assert public_names <= vars(worktree_refusals).keys()
     assert imports_worktree_refusals == {
-        apply_from_path: True,
+        apply_action_path: True,
         include_from_path: True,
     }
     for path, old_snippets in old_snippets_by_path.items():
@@ -9635,6 +9707,7 @@ def test_batch_source_text_actions_own_text_file_mutations():
         fromlist=["text_file_actions"],
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    apply_action_path = SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
     discard_from_path = SRC_ROOT / "commands" / "discard_from.py"
     discard_action_path = (
@@ -9651,7 +9724,7 @@ def test_batch_source_text_actions_own_text_file_mutations():
         "_write_text_file_from_batch",
     }
     helper_paths = {
-        apply_from_path,
+        apply_action_path,
         discard_action_path,
         include_from_path,
     }
@@ -9679,7 +9752,7 @@ def test_batch_source_text_actions_own_text_file_mutations():
 
     assert public_names <= vars(text_file_actions).keys()
     assert imports_text_file_actions == {
-        apply_from_path: True,
+        apply_action_path: True,
         discard_action_path: True,
         include_from_path: True,
     }
@@ -9731,6 +9804,7 @@ def test_batch_source_binary_actions_own_worktree_mutation():
         fromlist=["binary_file_actions"],
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    apply_action_path = SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
     discard_from_path = SRC_ROOT / "commands" / "discard_from.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
     discard_action_path = (
@@ -9746,7 +9820,7 @@ def test_batch_source_binary_actions_own_worktree_mutation():
         "_write_binary_file_from_batch",
     }
     helper_paths = {
-        apply_from_path,
+        apply_action_path,
         discard_action_path,
         include_from_path,
     }
@@ -9774,7 +9848,7 @@ def test_batch_source_binary_actions_own_worktree_mutation():
 
     assert public_names <= vars(binary_file_actions).keys()
     assert imports_binary_file_actions == {
-        apply_from_path: True,
+        apply_action_path: True,
         discard_action_path: True,
         include_from_path: True,
     }

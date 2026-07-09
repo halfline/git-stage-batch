@@ -25,36 +25,22 @@ from .file_review_display_ids import display_ids_for_rows
 from .file_review_model import (
     FileReviewModel,
     ReviewChange,
-    ReviewChangeFragment,
 )
 from .file_review_rows import (
     maximum_display_id_digit_count,
     print_file_review_rows,
 )
+from .file_review_summary import (
+    change_spec_for_fragments,
+    change_summary,
+    line_spec_for_display_ids,
+    page_summary,
+    review_source_summary,
+)
 
 
 def _quote(value: str) -> str:
     return shlex.quote(value)
-
-
-def _line_spec_for_display_ids(display_ids: tuple[int, ...]) -> str:
-    if not display_ids:
-        return "-"
-    return _display_line_spec(format_line_ids(list(display_ids)))
-
-
-def _change_spec_for_fragments(fragments: list[ReviewChangeFragment]) -> str:
-    change_ids: list[int] = []
-    seen: set[int] = set()
-    for fragment in fragments:
-        change_id = fragment.change.index
-        if change_id in seen:
-            continue
-        change_ids.append(change_id)
-        seen.add(change_id)
-    if not change_ids:
-        return "-"
-    return _display_line_spec(format_line_ids(change_ids))
 
 
 def print_file_review(
@@ -94,8 +80,8 @@ def print_file_review(
                 continue
             shown_display_ids.append(display_id)
             seen_display_ids.add(display_id)
-    shown_line_spec = _line_spec_for_display_ids(tuple(shown_display_ids))
-    shown_change_spec = _change_spec_for_fragments(shown_fragments)
+    shown_line_spec = line_spec_for_display_ids(tuple(shown_display_ids))
+    shown_change_spec = change_spec_for_fragments(shown_fragments)
     complete_line_action_selections = shown_line_action_selections(
         model,
         shown_pages,
@@ -129,7 +115,7 @@ def print_file_review(
                 model.display_id_by_selection_id,
             )
             selection_spec = (
-                _line_spec_for_display_ids(fragment_display_ids)
+                line_spec_for_display_ids(fragment_display_ids)
                 if fragment_display_ids else
                 change.select_as or "-"
             )
@@ -201,41 +187,6 @@ def _review_change_heading_action(change: ReviewChange) -> str:
     return _("select")
 
 
-def _display_line_spec(line_spec: str) -> str:
-    return line_spec.replace("-", "–")
-
-
-def _page_summary(shown_pages: tuple[int, ...], page_count: int) -> str:
-    page_word = _("page") if len(shown_pages) == 1 else _("pages")
-    return _("{page_word} {pages}/{page_count}").format(
-        page_word=page_word,
-        pages=_display_line_spec(format_line_ids(list(shown_pages))),
-        page_count=page_count,
-    )
-
-
-def _change_summary(change_spec: str, total_changes: int) -> str:
-    change_word = _("change") if "," not in change_spec and "–" not in change_spec else _("changes")
-    return _("{change_word} {changes}/{total}").format(
-        change_word=change_word,
-        changes=change_spec,
-        total=total_changes,
-    )
-
-
-def _review_source_summary(
-    source: ReviewSource,
-    batch_name: str | None,
-    source_label: str,
-) -> str:
-    if source == ReviewSource.BATCH and batch_name:
-        return batch_name
-    prefix = _("Changes: ")
-    if source_label.startswith(prefix):
-        return source_label[len(prefix):]
-    return source_label
-
-
 def _print_header(
     path: str,
     *,
@@ -254,9 +205,9 @@ def _print_header(
     status = "  ·  ".join(
         (
             path,
-            _review_source_summary(source, batch_name, source_label),
-            _page_summary(shown_pages, page_count),
-            _change_summary(shown_change_spec, total_changes),
+            review_source_summary(source, batch_name, source_label),
+            page_summary(shown_pages, page_count),
+            change_summary(shown_change_spec, total_changes),
             _("lines {lines}").format(lines=shown_line_spec),
         )
     )
@@ -460,8 +411,8 @@ def _print_footer(
         status = "  ·  ".join(
             (
                 path,
-                _page_summary(shown_pages, page_count),
-                _change_summary(shown_change_spec, total_changes),
+                page_summary(shown_pages, page_count),
+                change_summary(shown_change_spec, total_changes),
                 _("lines {lines}").format(lines=shown_line_spec),
             )
         )

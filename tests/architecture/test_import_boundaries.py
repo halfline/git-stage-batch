@@ -11169,14 +11169,11 @@ def test_batch_merge_candidates_uses_public_data_types():
             "MergeResolution",
         },
         merge_candidate_enumeration_path: public_names,
-        SRC_ROOT / "batch" / "operation_candidates.py": (
-            {"MergeCandidate"}
-            if operation_candidate_types_path.exists() else
-            {"MergeCandidate", "MergeResolution"}
-        ),
+        SRC_ROOT / "batch" / "operation_candidates.py": {
+            "MergeCandidate",
+        },
+        operation_candidate_types_path: {"MergeResolution"},
     }
-    if operation_candidate_types_path.exists():
-        expected_imports[operation_candidate_types_path] = {"MergeResolution"}
     violations = []
 
     for public_name in public_names:
@@ -11710,43 +11707,113 @@ def test_batch_absence_constraints_own_suppression_helpers():
     assert violations == []
 
 
-def test_operation_candidates_owns_candidate_preview_count():
-    """Candidate preview count state should live with operation candidates."""
+def test_operation_candidate_types_own_preview_records():
+    """Candidate preview records should live outside candidate construction."""
     operation_candidates = __import__(
         "git_stage_batch.batch.operation_candidates",
         fromlist=["operation_candidates"],
     )
-    try:
-        operation_candidate_types = __import__(
-            "git_stage_batch.batch.operation_candidate_types",
-            fromlist=["operation_candidate_types"],
-        )
-    except ModuleNotFoundError:
-        operation_candidate_types = operation_candidates
+    operation_candidate_types = __import__(
+        "git_stage_batch.batch.operation_candidate_types",
+        fromlist=["operation_candidate_types"],
+    )
+    operation_candidate_types_path = (
+        SRC_ROOT / "batch" / "operation_candidate_types.py"
+    )
     public_names = {
+        "CandidateEnumerationLimitError",
+        "CandidateOperation",
         "CandidatePreviewCount",
+        "CandidateTarget",
+        "MAX_OPERATION_CANDIDATES",
+        "OperationCandidatePreview",
+        "TargetCandidatePreview",
     }
     private_names = {
         "_ApplyCandidateCount",
         "_IncludeCandidateCount",
     }
     expected_imports = {
+        SRC_ROOT / "batch" / "operation_candidate_fingerprints.py": {
+            "CandidateOperation",
+            "CandidateTarget",
+            "TargetCandidatePreview",
+        },
+        SRC_ROOT / "batch" / "operation_candidate_state.py": {
+            "OperationCandidatePreview",
+        },
+        SRC_ROOT / "batch" / "operation_candidates.py": {
+            "CandidateEnumerationLimitError",
+            "CandidateOperation",
+            "CandidateTarget",
+            "MAX_OPERATION_CANDIDATES",
+            "OperationCandidatePreview",
+            "TargetCandidatePreview",
+        },
         SRC_ROOT
         / "commands"
         / "batch_source"
-        / "candidate_preview_counts.py": public_names,
-        SRC_ROOT / "commands" / "batch_source" / "candidate_refusals.py": public_names,
+        / "candidate_materialization.py": {
+            "OperationCandidatePreview",
+            "TargetCandidatePreview",
+        },
+        SRC_ROOT
+        / "commands"
+        / "batch_source"
+        / "candidate_preview_builders.py": {
+            "OperationCandidatePreview",
+        },
+        SRC_ROOT
+        / "commands"
+        / "batch_source"
+        / "candidate_preview_counts.py": {
+            "CandidateEnumerationLimitError",
+            "CandidatePreviewCount",
+        },
+        SRC_ROOT / "commands" / "batch_source" / "candidate_previews.py": {
+            "OperationCandidatePreview",
+        },
+        SRC_ROOT / "commands" / "batch_source" / "candidate_refusals.py": {
+            "CandidatePreviewCount",
+        },
+        SRC_ROOT / "output" / "candidate_preview.py": {
+            "OperationCandidatePreview",
+        },
+        SRC_ROOT / "output" / "candidate_preview_commands.py": {
+            "OperationCandidatePreview",
+        },
+        SRC_ROOT / "output" / "candidate_preview_porcelain.py": {
+            "OperationCandidatePreview",
+        },
+        SRC_ROOT / "output" / "candidate_preview_summary.py": {
+            "OperationCandidatePreview",
+        },
     }
-    expected_import_module = (
-        "git_stage_batch.batch.operation_candidate_types"
-        if (SRC_ROOT / "batch" / "operation_candidate_types.py").exists() else
-        "git_stage_batch.batch.operation_candidates"
-    )
+    old_definition_names = {
+        "class CandidateEnumerationLimitError",
+        "class CandidatePreviewCount",
+        "class OperationCandidatePreview",
+        "class TargetCandidatePreview",
+        "CandidateOperation =",
+        "CandidateTarget =",
+        "MAX_OPERATION_CANDIDATES =",
+    }
+    violations = []
 
     assert public_names <= vars(operation_candidate_types).keys()
+    assert public_names.isdisjoint(vars(operation_candidates))
     assert private_names.isdisjoint(vars(operation_candidates))
 
-    for path, expected_names in expected_imports.items():
+    operation_candidates_text = (
+        SRC_ROOT / "batch" / "operation_candidates.py"
+    ).read_text()
+    for old_definition in old_definition_names:
+        assert old_definition not in operation_candidates_text
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == operation_candidate_types_path:
+            continue
+
         tree = ast.parse(path.read_text(), filename=str(path))
         helper_names = {
             node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
@@ -11754,12 +11821,24 @@ def test_operation_candidates_owns_candidate_preview_count():
         imported_candidate_names = set()
 
         for imported_module, node in _import_from_nodes(path):
-            if imported_module != expected_import_module:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.operation_candidates":
+                stale_imports = imported_names & public_names
+                if stale_imports:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(stale_imports))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
-            imported_candidate_names |= {alias.name for alias in node.names}
+
+            if imported_module != "git_stage_batch.batch.operation_candidate_types":
+                continue
+            imported_candidate_names |= imported_names & public_names
 
         assert private_names.isdisjoint(helper_names)
-        assert expected_names <= imported_candidate_names
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_candidate_names
+
+    assert violations == []
 
 
 def test_output_owns_operation_candidate_preview_rendering():

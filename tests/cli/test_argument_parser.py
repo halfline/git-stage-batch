@@ -5,7 +5,7 @@ from unittest.mock import Mock, call
 
 import pytest
 
-from git_stage_batch.cli import argument_parser, file_scope, git_help
+from git_stage_batch.cli import argument_parser, file_scope, git_help, replacement_input
 from git_stage_batch.cli.argument_parser import parse_command_line
 
 
@@ -602,7 +602,7 @@ def test_parse_command_line_include_with_file_and_as_stdin_dispatches_file_repla
     """Include --file --as-stdin should preserve trailing newlines."""
     mock_command = Mock()
     monkeypatch.setattr(argument_parser, "command_include_file_as", mock_command)
-    monkeypatch.setattr(argument_parser.sys, "stdin", _stdin_with_bytes(b"replacement\n"))
+    monkeypatch.setattr(replacement_input.sys, "stdin", _stdin_with_bytes(b"replacement\n"))
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
     args = parse_command_line(
@@ -643,7 +643,7 @@ def test_parse_command_line_include_with_line_range_and_as_stdin_dispatches_line
     """Include --line range --as-stdin should forward exact replacement text."""
     mock_command = Mock()
     monkeypatch.setattr(argument_parser, "command_include_line_as", mock_command)
-    monkeypatch.setattr(argument_parser.sys, "stdin", _stdin_with_bytes(b"replacement one\nreplacement two\n"))
+    monkeypatch.setattr(replacement_input.sys, "stdin", _stdin_with_bytes(b"replacement one\nreplacement two\n"))
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
     args = parse_command_line(
@@ -830,7 +830,7 @@ def test_parse_command_line_include_from_with_as():
 
 def test_parse_command_line_include_rejects_as_and_as_stdin_together(monkeypatch):
     """Include should reject mixing literal and stdin replacement sources."""
-    monkeypatch.setattr(argument_parser.sys, "stdin", _stdin_with_bytes(b"replacement\n"))
+    monkeypatch.setattr(replacement_input.sys, "stdin", _stdin_with_bytes(b"replacement\n"))
     args = parse_command_line(
         ["include", "--file", "path.txt", "--as", "replacement", "--as-stdin"],
         quiet=True,
@@ -877,7 +877,7 @@ def test_parse_command_line_include_rejects_no_edge_overlap_without_line_as():
 
 def test_parse_command_line_include_invalid_as_stdin_shape_does_not_read(monkeypatch):
     """Invalid include --as-stdin combinations should fail before consuming stdin."""
-    monkeypatch.setattr(argument_parser.sys, "stdin", _UnreadableStdin())
+    monkeypatch.setattr(replacement_input.sys, "stdin", _UnreadableStdin())
     args = parse_command_line(["include", "--to", "batch", "--as-stdin"], quiet=True)
     assert args is not None
 
@@ -1277,7 +1277,7 @@ def test_parse_command_line_discard_with_file_and_as_stdin_dispatches_file_repla
     """Discard --file --as-stdin should preserve trailing newlines."""
     mock_command = Mock()
     monkeypatch.setattr(argument_parser, "command_discard_file_as", mock_command)
-    monkeypatch.setattr(argument_parser.sys, "stdin", _stdin_with_bytes(b"replacement\n"))
+    monkeypatch.setattr(replacement_input.sys, "stdin", _stdin_with_bytes(b"replacement\n"))
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
     args = parse_command_line(
@@ -1298,7 +1298,7 @@ def test_parse_command_line_discard_to_line_range_and_as_stdin_dispatches_replac
     """Discard --to --line range --as-stdin should forward exact replacement text."""
     mock_command = Mock()
     monkeypatch.setattr(argument_parser, "command_discard_line_as_to_batch", mock_command)
-    monkeypatch.setattr(argument_parser.sys, "stdin", _stdin_with_bytes(b"replacement one\nreplacement two\n"))
+    monkeypatch.setattr(replacement_input.sys, "stdin", _stdin_with_bytes(b"replacement one\nreplacement two\n"))
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
     args = parse_command_line(
@@ -1320,7 +1320,7 @@ def test_parse_command_line_discard_to_line_range_and_as_stdin_dispatches_replac
 
 def test_parse_command_line_discard_rejects_as_and_as_stdin_together(monkeypatch):
     """Discard should reject mixing literal and stdin replacement sources."""
-    monkeypatch.setattr(argument_parser.sys, "stdin", _stdin_with_bytes(b"replacement\n"))
+    monkeypatch.setattr(replacement_input.sys, "stdin", _stdin_with_bytes(b"replacement\n"))
     args = parse_command_line(
         ["discard", "--file", "path.txt", "--as", "replacement", "--as-stdin"],
         quiet=True,
@@ -1368,7 +1368,7 @@ def test_parse_command_line_discard_rejects_no_edge_overlap_without_to_line_as()
 
 def test_parse_command_line_discard_invalid_as_stdin_shape_does_not_read(monkeypatch):
     """Invalid discard --as-stdin combinations should fail before consuming stdin."""
-    monkeypatch.setattr(argument_parser.sys, "stdin", _UnreadableStdin())
+    monkeypatch.setattr(replacement_input.sys, "stdin", _UnreadableStdin())
     args = parse_command_line(["discard", "--from", "batch", "--as-stdin"], quiet=True)
     assert args is not None
 

@@ -1851,6 +1851,37 @@ def test_argument_parser_delegates_quick_action_expansion():
     assert "'if': ['include', '--file']" not in parser_text
 
 
+def test_argument_parser_delegates_replacement_input_decoding():
+    """Parser branches should not own replacement payload decoding."""
+    parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    replacement_input_path = SRC_ROOT / "cli" / "replacement_input.py"
+    parser_text = parser_path.read_text()
+    parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    replacement_input_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(replacement_input_path)
+    }
+    parser = __import__(
+        "git_stage_batch.cli.argument_parser",
+        fromlist=["argument_parser"],
+    )
+    replacement_input = __import__(
+        "git_stage_batch.cli.replacement_input",
+        fromlist=["replacement_input"],
+    )
+
+    assert "git_stage_batch.cli.replacement_input" in parser_imports
+    assert "git_stage_batch.core.replacement" not in parser_imports
+    assert "git_stage_batch.core.replacement" in replacement_input_imports
+    assert "resolve_replacement_text" in vars(replacement_input)
+    assert "_resolve_replacement_text" not in vars(parser)
+    assert "ReplacementText" not in parser_text
+    assert "stdin.buffer.read" not in parser_text
+
+
 def test_file_scope_discard_to_batch_owns_multi_file_pipeline():
     """Multi-file discard-to-batch support should stay out of discard.py."""
     discard_path = SRC_ROOT / "commands" / "discard.py"

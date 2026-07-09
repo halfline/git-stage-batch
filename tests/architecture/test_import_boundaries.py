@@ -12691,6 +12691,36 @@ def test_batch_source_action_completion_owns_review_finalization():
     }
 
 
+def test_batch_source_atomic_unit_refusals_own_gutter_translation():
+    """Atomic ownership refusal formatting should live in batch-source support."""
+    atomic_unit_refusals = __import__(
+        "git_stage_batch.commands.batch_source.atomic_unit_refusals",
+        fromlist=["atomic_unit_refusals"],
+    )
+    batch_selection = __import__(
+        "git_stage_batch.batch.selection",
+        fromlist=["selection"],
+    )
+    helper_path = (
+        SRC_ROOT / "commands" / "batch_source" / "atomic_unit_refusals.py"
+    )
+    public_names = {
+        "translate_atomic_unit_error_to_gutter_ids",
+    }
+    required_imports = {
+        "git_stage_batch.data.progress",
+        "git_stage_batch.exceptions",
+    }
+    helper_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(helper_path)
+    }
+
+    assert public_names <= vars(atomic_unit_refusals).keys()
+    assert public_names.isdisjoint(vars(batch_selection))
+    assert required_imports <= helper_imports
+
+
 def test_batch_source_apply_action_owns_apply_execution():
     """Apply-from file execution should live in batch-source support."""
     apply_action = __import__(
@@ -12704,6 +12734,7 @@ def test_batch_source_apply_action_owns_apply_execution():
     required_imports = {
         ("git_stage_batch.commands.batch_source", "action_completion"),
         ("git_stage_batch.commands.batch_source", "action_plans"),
+        ("git_stage_batch.commands.batch_source", "atomic_unit_refusals"),
         ("git_stage_batch.commands.batch_source", "binary_file_actions"),
         ("git_stage_batch.commands.batch_source", "candidate_preview_counts"),
         ("git_stage_batch.commands.batch_source", "candidate_refusals"),
@@ -12712,7 +12743,6 @@ def test_batch_source_apply_action_owns_apply_execution():
         ("git_stage_batch.commands.batch_source", "text_plan_builders"),
         ("git_stage_batch.commands.batch_source", "worktree_refusals"),
         ("git_stage_batch.batch.binary_file_content", "read_binary_file_from_batch"),
-        ("git_stage_batch.batch.selection", "translate_atomic_unit_error_to_gutter_ids"),
         ("git_stage_batch.batch.submodule_pointer", "apply_submodule_pointer_from_batch"),
         ("git_stage_batch.data.session", "snapshot_file_if_untracked"),
         ("git_stage_batch.data.undo", "undo_checkpoint"),
@@ -12740,6 +12770,7 @@ def test_apply_from_delegates_apply_action_execution():
         "git_stage_batch.commands.batch_source": {
             "action_completion",
             "action_plans",
+            "atomic_unit_refusals",
             "binary_file_actions",
             "candidate_preview_counts",
             "candidate_refusals",
@@ -12803,6 +12834,7 @@ def test_batch_source_include_action_owns_include_execution():
     required_imports = {
         ("git_stage_batch.commands.batch_source", "action_completion"),
         ("git_stage_batch.commands.batch_source", "action_plans"),
+        ("git_stage_batch.commands.batch_source", "atomic_unit_refusals"),
         ("git_stage_batch.commands.batch_source", "binary_file_actions"),
         ("git_stage_batch.commands.batch_source", "candidate_preview_counts"),
         ("git_stage_batch.commands.batch_source", "candidate_refusals"),
@@ -12811,7 +12843,6 @@ def test_batch_source_include_action_owns_include_execution():
         ("git_stage_batch.commands.batch_source", "text_plan_builders"),
         ("git_stage_batch.commands.batch_source", "worktree_refusals"),
         ("git_stage_batch.batch.binary_file_content", "read_binary_file_from_batch"),
-        ("git_stage_batch.batch.selection", "translate_atomic_unit_error_to_gutter_ids"),
         ("git_stage_batch.batch.submodule_pointer", "stage_submodule_pointer_from_batch"),
         ("git_stage_batch.data.session", "snapshot_file_if_untracked"),
         ("git_stage_batch.data.undo", "undo_checkpoint"),
@@ -12839,6 +12870,7 @@ def test_include_from_delegates_include_action_execution():
         "git_stage_batch.commands.batch_source": {
             "action_completion",
             "action_plans",
+            "atomic_unit_refusals",
             "binary_file_actions",
             "candidate_preview_counts",
             "candidate_refusals",
@@ -12900,11 +12932,11 @@ def test_batch_source_discard_action_owns_discard_execution():
         "execute_discard_action",
     }
     required_imports = {
+        ("git_stage_batch.commands.batch_source", "atomic_unit_refusals"),
         ("git_stage_batch.commands.batch_source", "binary_file_actions"),
         ("git_stage_batch.commands.batch_source", "text_file_actions"),
         ("git_stage_batch.commands.batch_source", "text_plan_builders"),
         ("git_stage_batch.batch.metadata_validation", "get_validated_baseline_commit"),
-        ("git_stage_batch.batch.selection", "translate_atomic_unit_error_to_gutter_ids"),
         ("git_stage_batch.batch.submodule_pointer", "discard_submodule_pointer_from_batch"),
         ("git_stage_batch.data.session", "snapshot_file_if_untracked"),
         ("git_stage_batch.data.undo", "undo_checkpoint"),
@@ -12929,6 +12961,7 @@ def test_discard_from_delegates_discard_action_execution():
     discard_from_path = SRC_ROOT / "commands" / "discard_from.py"
     disallowed_imports = {
         "git_stage_batch.commands.batch_source": {
+            "atomic_unit_refusals",
             "binary_file_actions",
             "text_file_actions",
             "text_plan_builders",

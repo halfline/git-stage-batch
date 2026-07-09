@@ -168,7 +168,7 @@ Important modules include:
   Session lifecycle, abort initialization, snapshotting, and cleanup.
 - `data.hunk_tracking`
   Discovery, caching, navigation, hunk selection, and live filtering.
-- `data.undo`
+- `data.undo_checkpoints`
   Undo/redo checkpoints for session operations.
 - `data.line_state`
   Serialization of the currently selected line-level view.

@@ -13,6 +13,7 @@ from ...batch.lifecycle import create_batch
 from ...batch.ownership import (
     BatchOwnership,
 )
+from ...batch.ownership_metadata_loading import acquire_ownership_for_metadata_dict
 from ...batch.ownership_merging import merge_batch_ownership
 from ...batch.ownership_remapping import remap_batch_ownership_with_lineage
 from ...batch.ownership_translation import translate_lines_to_batch_ownership
@@ -251,7 +252,7 @@ def _merge_replacement_with_batch(
 ):
     current_batch_source = file_metadata.get("batch_source_commit")
     existing_ownership = ownership_stack.enter_context(
-        BatchOwnership.acquire_for_metadata_dict(file_metadata)
+        acquire_ownership_for_metadata_dict(file_metadata)
     )
     old_source_buffer = load_git_object_as_buffer(
         f"{current_batch_source}:{selection.file_path}"

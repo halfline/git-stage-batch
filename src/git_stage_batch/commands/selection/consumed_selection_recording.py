@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ...batch.ownership import BatchOwnership
+from ...batch.ownership_metadata_loading import acquire_ownership_for_metadata_dict
 from ...batch.ownership_merging import merge_batch_ownership
 from ...batch.ownership_translation import (
     detect_stale_batch_source_for_selection,
@@ -54,7 +55,7 @@ def record_consumed_selection(
         write_consumed_file_metadata(file_path, file_metadata)
 
     if existing_file_metadata is not None:
-        with BatchOwnership.acquire_for_metadata_dict(
+        with acquire_ownership_for_metadata_dict(
             existing_file_metadata
         ) as existing_ownership:
             batch_source_commit = existing_file_metadata["batch_source_commit"]

@@ -8,6 +8,7 @@ from . import display as batch_display
 from . import merge as batch_merge
 from .match import match_lines
 from .ownership import BatchOwnership
+from .ownership_metadata_loading import acquire_ownership_for_metadata_dict
 from .ownership_units import (
     build_ownership_units_from_display_lines,
 )
@@ -83,7 +84,7 @@ def render_batch_file_display(
 
     # Get batch source commit and ownership
     batch_source_commit = file_meta["batch_source_commit"]
-    with BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership:
+    with acquire_ownership_for_metadata_dict(file_meta) as ownership:
         return _render_batch_file_display_from_ownership(
             batch_source_commit=batch_source_commit,
             file_path=file_path,

@@ -9762,16 +9762,15 @@ def test_batch_baseline_edits_own_replacement_fallback():
     )
     baseline_edits_path = SRC_ROOT / "batch" / "baseline_edits.py"
     merge_path = SRC_ROOT / "batch" / "merge.py"
-    merge_candidate_enumeration_path = (
-        SRC_ROOT / "batch" / "merge_candidate_enumeration.py"
-    )
     public_names = {
-        "ReplacementOriginChoice",
         "has_missing_origin_replacement_claims",
-        "replacement_origin_choices_for_unit",
         "try_apply_baseline_replacement_units",
     }
-    stale_merge_names = public_names | {
+    moved_choice_names = {
+        "ReplacementOriginChoice",
+        "replacement_origin_choices_for_unit",
+    }
+    stale_merge_names = public_names | moved_choice_names | {
         "_BaselineLineEdit",
         "_ReplacementOriginChoice",
         "_baseline_reference_absence_position",
@@ -9784,22 +9783,15 @@ def test_batch_baseline_edits_own_replacement_fallback():
         "_replacement_origin_choices_for_unit",
         "_try_apply_baseline_replacement_units",
     }
-    expected_direct_imports = {
-        merge_candidate_enumeration_path: {
-            "ReplacementOriginChoice",
-        },
-    }
     expected_child_imports = {
         merge_path: {
-            "baseline_edits",
-        },
-        merge_candidate_enumeration_path: {
             "baseline_edits",
         },
     }
     violations = []
 
     assert public_names <= vars(baseline_edits).keys()
+    assert moved_choice_names.isdisjoint(vars(baseline_edits))
     assert stale_merge_names.isdisjoint(vars(merge))
 
     for path in SRC_ROOT.rglob("*.py"):
@@ -9807,7 +9799,6 @@ def test_batch_baseline_edits_own_replacement_fallback():
             continue
 
         imports = _import_from_nodes(path)
-        direct_public_names = set()
         child_module_names = set()
 
         for imported_module, node in imports:
@@ -9827,7 +9818,6 @@ def test_batch_baseline_edits_own_replacement_fallback():
             if imported_module != "git_stage_batch.batch.baseline_edits":
                 continue
 
-            direct_public_names |= imported_names & public_names
             private_old_names = imported_names & {
                 name for name in stale_merge_names if name.startswith("_")
             }
@@ -9836,10 +9826,76 @@ def test_batch_baseline_edits_own_replacement_fallback():
                 names = ", ".join(sorted(private_old_names))
                 violations.append(f"{relative_path}:{node.lineno} imports {names}")
 
-        if path in expected_direct_imports:
-            assert expected_direct_imports[path] <= direct_public_names
         if path in expected_child_imports:
             assert expected_child_imports[path] <= child_module_names
+
+    assert violations == []
+
+
+def test_batch_baseline_replacement_choices_own_origin_placements():
+    """Replacement-origin placement choices should live outside edit fallback."""
+    baseline_replacement_choices = __import__(
+        "git_stage_batch.batch.baseline_replacement_choices",
+        fromlist=["baseline_replacement_choices"],
+    )
+    baseline_edits = __import__(
+        "git_stage_batch.batch.baseline_edits",
+        fromlist=["baseline_edits"],
+    )
+    baseline_replacement_choices_path = (
+        SRC_ROOT / "batch" / "baseline_replacement_choices.py"
+    )
+    baseline_edits_path = SRC_ROOT / "batch" / "baseline_edits.py"
+    merge_candidate_enumeration_path = (
+        SRC_ROOT / "batch" / "merge_candidate_enumeration.py"
+    )
+    public_names = {
+        "ReplacementOriginChoice",
+        "replacement_origin_choices_for_unit",
+    }
+    private_choice_names = {
+        "_ReplacementOriginChoice",
+        "_replacement_origin_ambiguity_key",
+        "_replacement_origin_choices_for_unit",
+        "_sequence_digest",
+    }
+    stale_baseline_definition_names = {
+        "ReplacementOriginChoice",
+        "replacement_origin_choices_for_unit",
+        "_ReplacementOriginChoice",
+        "_replacement_origin_ambiguity_key",
+        "_sequence_digest",
+    }
+    expected_imports = {
+        baseline_edits_path: {
+            "replacement_origin_choices_for_unit",
+        },
+        merge_candidate_enumeration_path: public_names,
+    }
+    violations = []
+
+    assert public_names <= vars(baseline_replacement_choices).keys()
+    assert stale_baseline_definition_names.isdisjoint(vars(baseline_edits))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == baseline_replacement_choices_path:
+            continue
+
+        direct_public_names = set()
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module != "git_stage_batch.batch.baseline_replacement_choices":
+                continue
+
+            direct_public_names |= imported_names & public_names
+            private_imports = imported_names & private_choice_names
+            if private_imports:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(private_imports))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= direct_public_names
 
     assert violations == []
 

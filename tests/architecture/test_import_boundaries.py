@@ -258,6 +258,10 @@ def test_text_line_helpers_live_in_core_boundary():
 
 def test_replacement_payload_imports_use_core_boundary():
     """Non-batch code should not depend on batch replacement for neutral payloads."""
+    batch_replacement = __import__(
+        "git_stage_batch.batch.replacement",
+        fromlist=["replacement"],
+    )
     neutral_names = {
         "ReplacementPayload",
         "ReplacementText",
@@ -279,6 +283,11 @@ def test_replacement_payload_imports_use_core_boundary():
                 names = ", ".join(sorted(disallowed_names))
                 violations.append(f"{relative_path}:{node.lineno} imports {names}")
 
+    assert set(batch_replacement.__all__) == {
+        "ReplacementBatchView",
+        "build_replacement_batch_view_from_lines",
+    }
+    assert neutral_names.isdisjoint(batch_replacement.__all__)
     assert violations == []
 
 

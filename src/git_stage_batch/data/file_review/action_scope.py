@@ -35,14 +35,6 @@ class ReviewScopedSelectionError(CommandError):
     """Raised when a pathless line action is not valid for the current review."""
 
 
-def _coerce_review_source(source: _records.ReviewSource | str) -> _records.ReviewSource:
-    return source if isinstance(source, _records.ReviewSource) else _records.ReviewSource(source)
-
-
-def _coerce_review_action(action: _records.FileReviewAction | str) -> _records.FileReviewAction:
-    return action if isinstance(action, _records.FileReviewAction) else _records.FileReviewAction(action)
-
-
 def _get_selected_change_file_path() -> str | None:
     from ..selected_change.paths import get_selected_change_file_path
 
@@ -84,7 +76,7 @@ def resolve_batch_source_action_scope(
         refuse_bare_action_after_stale_batch_selection,
     )
 
-    review_action = _coerce_review_action(action)
+    review_action = _records.coerce_review_action(action)
     if patterns is not None:
         return _records.ActionScopeResolution(file=file)
 
@@ -180,7 +172,7 @@ def fresh_batch_review_selections_for_action(
         return None
     if review_state.batch_name != batch_name or review_state.file_path != file_path:
         return None
-    review_action = _coerce_review_action(action)
+    review_action = _records.coerce_review_action(action)
     try:
         review_is_fresh = _review_state_matches_action(review_state, review_action)
     except Exception:
@@ -215,7 +207,7 @@ def _print_stale_or_mismatched_file_review_help(action: str, review_state: _reco
 
 def refuse_live_action_for_batch_selection(action: _records.FileReviewAction | str) -> bool:
     """Refuse bare live actions when the current selection came from a batch view."""
-    review_action = _coerce_review_action(action)
+    review_action = _records.coerce_review_action(action)
     if read_selected_change_kind() not in (
         SelectedChangeKind.BATCH_FILE,
         SelectedChangeKind.BATCH_BINARY,
@@ -278,7 +270,7 @@ def refuse_live_action_for_batch_selection(action: _records.FileReviewAction | s
 
 def refuse_ambiguous_bare_action_after_partial_file_review(action: _records.FileReviewAction | str) -> bool:
     """Refuse pathless whole-file actions after a partial file review."""
-    review_action = _coerce_review_action(action)
+    review_action = _records.coerce_review_action(action)
     review_state = read_last_file_review_state()
     if review_state is None:
         return False
@@ -366,7 +358,7 @@ def resolve_review_file_for_bare_whole_file_action(
     if review_state is None:
         return None
 
-    if review_state.source != _coerce_review_source(source):
+    if review_state.source != _records.coerce_review_source(source):
         return None
     if batch_name is not None and review_state.batch_name != batch_name:
         return None
@@ -394,7 +386,7 @@ def validate_implicit_live_to_batch_file_action(
         refuse_bare_action_after_file_list,
     )
 
-    review_action = _coerce_review_action(action)
+    review_action = _records.coerce_review_action(action)
     refuse_bare_action_after_file_list(action_command)
     refuse_bare_action_after_auto_advance_disabled(action_command)
     if line_id_specification is None:
@@ -428,7 +420,7 @@ def resolve_live_to_batch_action_scope(
         refuse_bare_action_after_file_list,
     )
 
-    review_action = _coerce_review_action(action)
+    review_action = _records.coerce_review_action(action)
     if file is None:
         action_command = _live_to_batch_action_command(
             command_name,
@@ -494,7 +486,7 @@ def resolve_live_line_action_scope(
     if file not in (None, ""):
         return _records.ActionScopeResolution(file=file)
 
-    review_action = _coerce_review_action(action)
+    review_action = _records.coerce_review_action(action)
     refuse_bare_action_after_file_list(action_command)
     refuse_bare_action_after_auto_advance_disabled(action_command)
 
@@ -529,11 +521,14 @@ def validate_pathless_review_line_action(
     batch_name: str | None = None,
 ) -> _records.FileReviewState | None:
     """Validate pathless --line against the last file review."""
-    review_action = _coerce_review_action(action)
+    review_action = _records.coerce_review_action(action)
     review_state = read_last_file_review_state()
     if review_state is None:
         return None
-    if source is not None and review_state.source != _coerce_review_source(source):
+    if (
+        source is not None
+        and review_state.source != _records.coerce_review_source(source)
+    ):
         _print_stale_or_mismatched_file_review_help(review_action.value, review_state)
     if batch_name is not None and review_state.batch_name != batch_name:
         _print_stale_or_mismatched_file_review_help(review_action.value, review_state)

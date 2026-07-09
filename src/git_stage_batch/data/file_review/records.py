@@ -31,6 +31,20 @@ class FileReviewAction(str, Enum):
     RESET_FROM_BATCH = "reset-from-batch"
 
 
+def coerce_review_source(source: ReviewSource | str) -> ReviewSource:
+    """Return a file-review source enum for persisted or caller-provided values."""
+    return source if isinstance(source, ReviewSource) else ReviewSource(source)
+
+
+def coerce_review_action(action: FileReviewAction | str) -> FileReviewAction:
+    """Return a file-review action enum for persisted or caller-provided values."""
+    return (
+        action
+        if isinstance(action, FileReviewAction) else
+        FileReviewAction(action)
+    )
+
+
 @dataclass(frozen=True)
 class FileReviewSelectionState:
     """One actionable selection shown by a file review."""

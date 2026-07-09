@@ -7,16 +7,6 @@ import shlex
 from . import records as _records
 
 
-def _coerce_review_action(
-    action: _records.FileReviewAction | str,
-) -> _records.FileReviewAction:
-    return (
-        action
-        if isinstance(action, _records.FileReviewAction) else
-        _records.FileReviewAction(action)
-    )
-
-
 def _quote(value: str) -> str:
     return shlex.quote(value)
 
@@ -66,7 +56,7 @@ def line_action_command(
     pathless_line: bool = False,
 ) -> str | None:
     """Return an action command for a reviewed file or line selection."""
-    review_action = _coerce_review_action(action)
+    review_action = _records.coerce_review_action(action)
     action_value = review_action.value
     if review_action in (
         _records.FileReviewAction.INCLUDE_TO_BATCH,

@@ -11,10 +11,6 @@ from ...i18n import _
 from . import records as _records
 
 
-def _coerce_review_action(action: _records.FileReviewAction | str) -> _records.FileReviewAction:
-    return action if isinstance(action, _records.FileReviewAction) else _records.FileReviewAction(action)
-
-
 def _format_line_ranges(selection: LineRanges) -> str:
     return selection.to_line_spec()
 
@@ -30,7 +26,7 @@ def shown_review_selections_for_action(
     action: _records.FileReviewAction | str,
 ) -> list[_records.FileReviewSelectionState]:
     """Return actionable selections fully contained by the shown review pages."""
-    review_action = _coerce_review_action(action)
+    review_action = _records.coerce_review_action(action)
     shown_pages = (
         set(range(1, review_state.page_count + 1))
         if review_state.entire_file_shown else

@@ -5,8 +5,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from ..core.line_selection import LineRanges, LineSelection
-from ..exceptions import MergeError
-from ..i18n import _
 from .display import build_display_lines_from_batch_source_lines
 from .ownership import (
     BatchOwnership,
@@ -341,46 +339,6 @@ def _build_deletion_only_unit(
         is_atomic=True,
         atomic_reason="deletion_only"
     )
-
-
-def validate_ownership_units(units: list[_UnitRecord]) -> None:
-    """Validate structural invariants of ownership units.
-
-    Ensures:
-    - No orphaned absence claims
-    - No duplicate ownership of absence claims
-    - Atomic units have valid structure
-
-    Args:
-        units: List of ownership units to validate
-
-    Raises:
-        MergeError: If units have invalid structure
-    """
-    # Track absence claim usage to ensure no orphans or duplicates
-    deletion_claim_usage = {}
-
-    for unit in units:
-        for claim in unit.deletion_claims:
-            claim_id = id(claim)
-            if claim_id in deletion_claim_usage:
-                # Duplicate ownership - may be intentional in some cases
-                # but worth tracking for now
-                pass
-            deletion_claim_usage[claim_id] = unit
-
-        # Validate atomic units have coherent structure
-        if unit.is_atomic:
-            if unit.kind == _UnitKind.REPLACEMENT:
-                if not unit.claimed_source_lines or not unit.deletion_claims:
-                    raise MergeError(
-                        _("Invalid replacement in batch metadata: expected both added and removed lines.")
-                    )
-            elif unit.kind == _UnitKind.DELETION_ONLY:
-                if unit.claimed_source_lines or not unit.deletion_claims:
-                    raise MergeError(
-                        _("Invalid deletion in batch metadata: expected removed lines only.")
-                    )
 
 
 def build_ownership_units_from_batch_source_lines(

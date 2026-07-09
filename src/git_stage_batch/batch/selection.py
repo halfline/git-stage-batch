@@ -9,10 +9,10 @@ from typing import TYPE_CHECKING, Optional
 from .ownership import BatchOwnership
 from .ownership_units import (
     build_ownership_units_from_batch_source_lines,
-    validate_ownership_units,
 )
 from .ownership_unit_rebuild import rebuild_ownership_from_units
 from .ownership_unit_selection import select_ownership_units_by_display_ids
+from .ownership_unit_validation import validate_ownership_units
 from ..core.line_selection import (
     LineRanges,
     LineSelection,

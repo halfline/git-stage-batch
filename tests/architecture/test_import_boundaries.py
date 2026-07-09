@@ -4941,6 +4941,72 @@ def test_batch_source_action_context_owns_action_prologue():
     }
 
 
+def test_batch_source_action_selection_owns_file_line_selection():
+    """Shared apply/include file and line selection should live outside entries."""
+    action_selection = __import__(
+        "git_stage_batch.commands.batch_source.action_selection",
+        fromlist=["action_selection"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    public_names = {
+        "BatchSourceActionSelection",
+        "resolve_apply_action_selection",
+        "resolve_include_action_selection",
+    }
+    disallowed_imports = {
+        "git_stage_batch.batch.selection": {
+            "require_single_file_context_for_line_selection",
+            "resolve_batch_file_scope",
+            "resolve_current_batch_binary_file_scope",
+        },
+        "git_stage_batch.batch.submodule_pointer": {
+            "refuse_batch_submodule_pointer_lines",
+        },
+        "git_stage_batch.commands.selection": {
+            "replacement_selection",
+        },
+        "git_stage_batch.data.batch_file_review_selection": {
+            "translate_batch_file_gutter_ids_to_selection_ids",
+        },
+    }
+    command_paths = {
+        apply_from_path,
+        include_from_path,
+    }
+    imports_action_selection = {
+        path: False
+        for path in command_paths
+    }
+    direct_selection_imports = {
+        path: set()
+        for path in command_paths
+    }
+
+    for path in command_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "action_selection" in imported_names
+            ):
+                imports_action_selection[path] = True
+            direct_selection_imports[path] |= imported_names & disallowed_imports.get(
+                imported_module,
+                set(),
+            )
+
+    assert public_names <= vars(action_selection).keys()
+    assert imports_action_selection == {
+        apply_from_path: True,
+        include_from_path: True,
+    }
+    assert direct_selection_imports == {
+        apply_from_path: set(),
+        include_from_path: set(),
+    }
+
+
 def test_batch_source_candidate_selectors_own_action_selector_validation():
     """Shared candidate selector validation should live outside action entries."""
     candidate_selectors = __import__(

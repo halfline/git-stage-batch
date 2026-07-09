@@ -1025,7 +1025,9 @@ def test_file_review_records_stay_out_of_state_module():
         SRC_ROOT / "commands" / "discard_from.py": {"FileReviewAction"},
         SRC_ROOT / "commands" / "include.py": {"FileReviewAction"},
         SRC_ROOT / "commands" / "include_from.py": {"FileReviewAction"},
-        SRC_ROOT / "commands" / "reset.py": {"FileReviewAction"},
+        SRC_ROOT / "commands" / "batch_source" / "reset_selection.py": {
+            "FileReviewAction",
+        },
         SRC_ROOT / "commands" / "show.py": {"ReviewSource"},
         SRC_ROOT / "commands" / "show_from.py": {"ReviewSource"},
         SRC_ROOT / "commands" / "batch_source" / "replacement_previews.py": {
@@ -1167,7 +1169,7 @@ def test_batch_review_selection_translation_stays_in_file_review_package():
         SRC_ROOT / "commands" / "batch_source" / "action_selection.py": {
             "translate_batch_file_gutter_ids_to_selection_ids",
         },
-        SRC_ROOT / "commands" / "reset.py": {
+        SRC_ROOT / "commands" / "batch_source" / "reset_selection.py": {
             "translate_reset_batch_file_gutter_ids_to_selection_ranges",
         },
         SRC_ROOT / "commands" / "show_from.py": {
@@ -5233,6 +5235,72 @@ def test_batch_source_reset_claims_own_reset_mutations():
     assert imports_reset_claims
     assert direct_claim_imports == set()
     assert old_helper_names.isdisjoint(reset_helpers)
+
+
+def test_batch_source_reset_selection_owns_reset_scope():
+    """Reset scope setup should live outside the reset entry."""
+    reset_selection = __import__(
+        "git_stage_batch.commands.batch_source.reset_selection",
+        fromlist=["reset_selection"],
+    )
+    reset_path = SRC_ROOT / "commands" / "reset.py"
+    public_names = {
+        "ResetClaimSelection",
+        "resolve_reset_claim_selection",
+    }
+    disallowed_imports = {
+        "git_stage_batch.batch.query": {
+            "read_batch_metadata",
+        },
+        "git_stage_batch.batch.selection": {
+            "resolve_batch_file_scope",
+            "resolve_current_batch_binary_file_scope",
+        },
+        "git_stage_batch.batch.source_selector": {
+            "require_plain_batch_name",
+        },
+        "git_stage_batch.batch.validation": {
+            "batch_exists",
+            "validate_batch_name",
+        },
+        "git_stage_batch.data.file_review.batch_selection": {
+            "translate_reset_batch_file_gutter_ids_to_selection_ranges",
+        },
+        "git_stage_batch.data.file_review.records": {
+            "FileReviewAction",
+        },
+        "git_stage_batch.data.file_review.state": {
+            "resolve_batch_source_action_scope",
+        },
+        "git_stage_batch.exceptions": {
+            "exit_with_error",
+        },
+    }
+    reset_tree = ast.parse(reset_path.read_text(), filename=str(reset_path))
+    reset_helpers = {
+        node.name
+        for node in ast.walk(reset_tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+    imports_reset_selection = False
+    direct_selection_imports = set()
+
+    for imported_module, node in _import_from_nodes(reset_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_source"
+            and "reset_selection" in imported_names
+        ):
+            imports_reset_selection = True
+        direct_selection_imports |= imported_names & disallowed_imports.get(
+            imported_module,
+            set(),
+        )
+
+    assert public_names <= vars(reset_selection).keys()
+    assert imports_reset_selection
+    assert direct_selection_imports == set()
+    assert "_operation_parts" not in reset_helpers
 
 
 def test_batch_source_candidate_selectors_own_action_selector_validation():

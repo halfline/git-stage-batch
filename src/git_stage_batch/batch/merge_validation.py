@@ -6,10 +6,13 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ..core.line_selection import LineRanges, LineSelection, coerce_line_ranges
+from ..core.line_selection import LineRanges, LineSelection
 from ..exceptions import MergeError as _MergeError
 from ..i18n import _
 from .line_mapping import LineMapping
+from .presence_missing_claims import (
+    mapped_missing_source_lines as _mapped_missing_source_lines,
+)
 
 if TYPE_CHECKING:
     from .ownership import AbsenceClaim
@@ -208,40 +211,6 @@ def _first_selected_line(lines: LineSelection) -> int | None:
     if first is not None:
         return first()
     return min(lines) if lines else None
-
-
-def _mapped_missing_source_lines(
-    source_lines: LineSelection,
-    source_line_count: int,
-    mapping: LineMapping,
-) -> LineRanges:
-    missing_ranges: list[tuple[int, int]] = []
-    current_start: int | None = None
-    current_end: int | None = None
-    source_selection = coerce_line_ranges(source_lines)
-
-    for start, end in source_selection.ranges():
-        for source_line in range(max(1, start), min(end, source_line_count) + 1):
-            if mapping.get_target_line_from_source_line(source_line) is not None:
-                if current_start is not None and current_end is not None:
-                    missing_ranges.append((current_start, current_end))
-                    current_start = None
-                    current_end = None
-                continue
-
-            if current_start is None:
-                current_start = source_line
-            current_end = source_line
-
-        if current_start is not None and current_end is not None:
-            missing_ranges.append((current_start, current_end))
-            current_start = None
-            current_end = None
-
-    if current_start is not None and current_end is not None:
-        missing_ranges.append((current_start, current_end))
-
-    return LineRanges.from_ranges(missing_ranges)
 
 
 def _find_nearest_mapped_source_line_before(

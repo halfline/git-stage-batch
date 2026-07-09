@@ -7843,26 +7843,21 @@ def test_batch_replacement_line_runs_own_public_derivation():
     assert violations == []
 
 
-def test_batch_storage_uses_public_commit_helpers():
-    """Cross-module storage callers should import public commit helpers."""
+def test_batch_storage_uses_public_binary_helper():
+    """Cross-module storage callers should import the public binary helper."""
     storage = __import__(
         "git_stage_batch.batch.storage",
         fromlist=["storage"],
     )
     public_names = {
         "add_binary_file_to_batch",
-        "remove_file_from_batch_commit",
-        "update_batch_commit",
     }
     private_names = {
-        "_remove_file_from_batch_commit",
-        "_update_batch_commit",
+        "_add_binary_file_to_batch",
     }
     expected_imports = {
         SRC_ROOT / "commands" / "batch_transform" / "sift_persistence.py": {
             "add_binary_file_to_batch",
-            "remove_file_from_batch_commit",
-            "update_batch_commit",
         },
     }
     violations = []
@@ -7883,6 +7878,88 @@ def test_batch_storage_uses_public_commit_helpers():
                 continue
 
             imported_names = {alias.name for alias in node.names}
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & private_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
+def test_batch_content_commits_own_tree_publication():
+    """Batch commit tree publication should live outside storage."""
+    content_commits = __import__(
+        "git_stage_batch.batch.content_commits",
+        fromlist=["content_commits"],
+    )
+    storage = __import__(
+        "git_stage_batch.batch.storage",
+        fromlist=["storage"],
+    )
+    public_names = {
+        "batch_content_commit_parents",
+        "remove_file_from_batch_commit",
+        "update_batch_commit",
+        "update_batch_gitlink_commit",
+    }
+    private_names = {
+        "_batch_commit_parents",
+        "_remove_file_from_batch_commit",
+        "_update_batch_commit",
+        "_update_batch_gitlink_commit",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "batch_transform" / "sift_persistence.py": {
+            "remove_file_from_batch_commit",
+            "update_batch_commit",
+        },
+    }
+    storage_module_imports = _import_from_nodes(SRC_ROOT / "batch" / "storage.py")
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(content_commits)
+    assert public_names.isdisjoint(vars(storage))
+    assert private_names.isdisjoint(vars(content_commits))
+    assert private_names.isdisjoint(vars(storage))
+    assert any(
+        imported_module == "git_stage_batch.batch"
+        and any(
+            alias.name == "content_commits"
+            and alias.asname == "_content_commits"
+            for alias in node.names
+        )
+        for imported_module, node in storage_module_imports
+    )
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "batch" / "content_commits.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.storage":
+                disallowed_names = imported_names & public_names
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(
+                        f"{relative_path}:{node.lineno} imports {names} "
+                        "from batch.storage"
+                    )
+                continue
+
+            if imported_module != "git_stage_batch.batch.content_commits":
+                continue
+
             imported_public_names |= imported_names & public_names
             disallowed_names = imported_names & private_names
             if disallowed_names:
@@ -8106,10 +8183,12 @@ def test_batch_transform_sift_persistence_owns_file_writes():
             "get_batch_content_ref_name",
             "sync_batch_state_refs",
         },
-        "git_stage_batch.batch.storage": {
-            "add_binary_file_to_batch",
+        "git_stage_batch.batch.content_commits": {
             "remove_file_from_batch_commit",
             "update_batch_commit",
+        },
+        "git_stage_batch.batch.storage": {
+            "add_binary_file_to_batch",
         },
         "git_stage_batch.core.text_lifecycle": {
             "TextFileChangeType",

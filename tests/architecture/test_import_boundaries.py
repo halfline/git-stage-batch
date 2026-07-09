@@ -7402,33 +7402,59 @@ def test_selected_line_source_refresh_uses_public_api():
         "git_stage_batch.batch.source_refresh",
         fromlist=["source_refresh"],
     )
+    line_refresh = __import__(
+        "git_stage_batch.batch.selected_line_source_refresh",
+        fromlist=["selected_line_source_refresh"],
+    )
+    source_refresh_path = SRC_ROOT / "batch" / "source_refresh.py"
+    line_refresh_path = SRC_ROOT / "batch" / "selected_line_source_refresh.py"
     public_names = {
         "refresh_selected_lines_against_new_source",
         "refresh_selected_lines_against_source_lines",
+        "selected_lines_fit_source",
     }
     private_names = {
+        "_line_entry_content",
         "_refresh_selected_lines_against_new_source",
         "_refresh_selected_lines_against_source_lines",
+        "_selected_lines_fit_source",
     }
+    old_source_refresh_names = public_names | private_names
     expected_imports = {
+        source_refresh_path: public_names,
         SRC_ROOT
         / "commands"
         / "selection"
         / "discard_line_replacement.py": {"refresh_selected_lines_against_source_lines"},
-        SRC_ROOT / "data" / "consumed_selections.py": public_names,
+        SRC_ROOT / "data" / "consumed_selections.py": {
+            "refresh_selected_lines_against_new_source",
+            "refresh_selected_lines_against_source_lines",
+        },
     }
     violations = []
 
     for public_name in public_names:
-        assert public_name in vars(source_refresh)
-    assert private_names.isdisjoint(vars(source_refresh))
+        assert public_name in vars(line_refresh)
+    assert old_source_refresh_names.isdisjoint(vars(source_refresh))
 
     for path in SRC_ROOT.rglob("*.py"):
+        if path == line_refresh_path:
+            continue
+
         imports = _import_from_nodes(path)
         imported_public_names = set()
 
         for imported_module, node in imports:
-            if imported_module != "git_stage_batch.batch.source_refresh":
+            if imported_module == "git_stage_batch.batch.source_refresh":
+                imported_names = {alias.name for alias in node.names}
+                disallowed_names = imported_names & old_source_refresh_names
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module != "git_stage_batch.batch.selected_line_source_refresh":
                 continue
 
             imported_names = {alias.name for alias in node.names}
@@ -7464,7 +7490,7 @@ def test_batch_lineage_uses_public_data_types():
             "BatchSourceLineage",
         },
         SRC_ROOT / "batch" / "source_advancement.py": public_names,
-        SRC_ROOT / "batch" / "source_refresh.py": {
+        SRC_ROOT / "batch" / "selected_line_source_refresh.py": {
             "BatchSourceLineage",
         },
     }

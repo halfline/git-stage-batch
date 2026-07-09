@@ -1,6 +1,7 @@
 """Tests for git command execution utilities."""
 
 from git_stage_batch.utils import git as git_utils
+from git_stage_batch.utils import git_index_lock
 from git_stage_batch.utils.git import stream_git_command
 from git_stage_batch.utils.git import stream_git_diff
 from git_stage_batch.utils.git import resolve_file_path_to_repo_relative
@@ -21,8 +22,8 @@ from git_stage_batch.utils.git import (
     require_git_repository,
     run_git_command,
     temp_git_index,
-    wait_for_git_index_lock,
 )
+from git_stage_batch.utils.git_index_lock import wait_for_git_index_lock
 
 
 @pytest.fixture
@@ -97,7 +98,7 @@ class TestRunGitCommand:
             calls.append(("run", arguments, stdin_chunks, kwargs))
             return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
 
-        monkeypatch.setattr(git_utils, "wait_for_git_index_lock", fake_wait)
+        monkeypatch.setattr(git_index_lock, "wait_for_git_index_lock", fake_wait)
         monkeypatch.setattr(git_utils, "run_command", fake_run_command)
 
         run_git_command(["add", "--", "file.txt"], env=command_env, cwd="/repo")
@@ -124,7 +125,7 @@ class TestRunGitCommand:
                 )
             return subprocess.CompletedProcess(arguments, 0, stdout="ok\n", stderr="")
 
-        monkeypatch.setattr(git_utils, "wait_for_git_index_lock", fake_wait)
+        monkeypatch.setattr(git_index_lock, "wait_for_git_index_lock", fake_wait)
         monkeypatch.setattr(git_utils, "run_command", fake_run_command)
 
         result = run_git_command(["apply", "--cached"], check=False, cwd="/repo")
@@ -155,7 +156,7 @@ class TestRunGitCommand:
             yield b"diff --git a/file.txt b/file.txt\n"
             yield b"+new line\n"
 
-        monkeypatch.setattr(git_utils, "wait_for_git_index_lock", fake_wait)
+        monkeypatch.setattr(git_index_lock, "wait_for_git_index_lock", fake_wait)
         monkeypatch.setattr(git_utils, "run_command", fake_run_command)
 
         result = run_git_command(
@@ -183,7 +184,7 @@ class TestRunGitCommand:
             captured["kwargs"] = kwargs
             return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
 
-        monkeypatch.setattr(git_utils, "wait_for_git_index_lock", fail_wait)
+        monkeypatch.setattr(git_index_lock, "wait_for_git_index_lock", fail_wait)
         monkeypatch.setattr(git_utils, "run_command", fake_run_command)
 
         original_env = {"CUSTOM": "1"}
@@ -202,8 +203,8 @@ class TestWaitForGitIndexLock:
         """Absent index locks should not delay command startup."""
         sleep_calls = []
 
-        monkeypatch.setattr(git_utils, "_git_index_lock_path", lambda **_kwargs: tmp_path / "index.lock")
-        monkeypatch.setattr(git_utils.time, "sleep", lambda duration: sleep_calls.append(duration))
+        monkeypatch.setattr(git_index_lock, "_git_index_lock_path", lambda **_kwargs: tmp_path / "index.lock")
+        monkeypatch.setattr(git_index_lock.time, "sleep", lambda duration: sleep_calls.append(duration))
 
         wait_for_git_index_lock()
 
@@ -219,9 +220,9 @@ class TestWaitForGitIndexLock:
             sleep_calls.append(duration)
             index_lock.unlink()
 
-        monkeypatch.setattr(git_utils, "_git_index_lock_path", lambda **_kwargs: index_lock)
-        monkeypatch.setattr(git_utils.time, "monotonic", lambda: 0.0)
-        monkeypatch.setattr(git_utils.time, "sleep", fake_sleep)
+        monkeypatch.setattr(git_index_lock, "_git_index_lock_path", lambda **_kwargs: index_lock)
+        monkeypatch.setattr(git_index_lock.time, "monotonic", lambda: 0.0)
+        monkeypatch.setattr(git_index_lock.time, "sleep", fake_sleep)
 
         wait_for_git_index_lock(timeout_seconds=1.0, poll_seconds=0.05)
 
@@ -234,9 +235,9 @@ class TestWaitForGitIndexLock:
         times = iter([0.0, 0.0, 0.2])
         sleep_calls = []
 
-        monkeypatch.setattr(git_utils, "_git_index_lock_path", lambda **_kwargs: index_lock)
-        monkeypatch.setattr(git_utils.time, "monotonic", lambda: next(times))
-        monkeypatch.setattr(git_utils.time, "sleep", lambda duration: sleep_calls.append(duration))
+        monkeypatch.setattr(git_index_lock, "_git_index_lock_path", lambda **_kwargs: index_lock)
+        monkeypatch.setattr(git_index_lock.time, "monotonic", lambda: next(times))
+        monkeypatch.setattr(git_index_lock.time, "sleep", lambda duration: sleep_calls.append(duration))
 
         wait_for_git_index_lock(timeout_seconds=0.1, poll_seconds=0.05)
 
@@ -250,8 +251,8 @@ class TestWaitForGitIndexLock:
         def fail_git_directory(**_kwargs):
             raise subprocess.CalledProcessError(128, ["git", "rev-parse"])
 
-        monkeypatch.setattr(git_utils, "_git_index_lock_path", fail_git_directory)
-        monkeypatch.setattr(git_utils.time, "sleep", lambda duration: sleep_calls.append(duration))
+        monkeypatch.setattr(git_index_lock, "_git_index_lock_path", fail_git_directory)
+        monkeypatch.setattr(git_index_lock.time, "sleep", lambda duration: sleep_calls.append(duration))
 
         wait_for_git_index_lock()
 
@@ -271,9 +272,9 @@ class TestWaitForGitIndexLock:
             sleep_calls.append(duration)
             index_lock.unlink()
 
-        monkeypatch.setattr(git_utils, "run_command", fail_git_directory)
-        monkeypatch.setattr(git_utils.time, "monotonic", lambda: 0.0)
-        monkeypatch.setattr(git_utils.time, "sleep", fake_sleep)
+        monkeypatch.setattr(git_index_lock, "run_command", fail_git_directory)
+        monkeypatch.setattr(git_index_lock.time, "monotonic", lambda: 0.0)
+        monkeypatch.setattr(git_index_lock.time, "sleep", fake_sleep)
 
         wait_for_git_index_lock(
             env={"GIT_INDEX_FILE": str(index_file)},

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from ..core.models import BinaryFileChange, GitlinkChange, LineLevelChange, RenameChange, TextFileDeletionChange
 from ..i18n import _
-from .file_review import build_file_review_model
+from .file_review_model_builder import build_file_review_model
 
 
 @dataclass(frozen=True)

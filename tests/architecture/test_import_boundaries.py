@@ -86,6 +86,41 @@ def test_replacement_payload_imports_use_core_boundary():
     assert violations == []
 
 
+def test_line_range_coercion_stays_in_core_line_selection():
+    """ID-based line range coercion should stay on the core line-selection boundary."""
+    line_selection = __import__(
+        "git_stage_batch.core.line_selection",
+        fromlist=["line_selection"],
+    )
+    forbidden_function_names = {
+        "_as_line_ranges",
+        "as_line_ranges",
+        "_coerce_line_ranges",
+    }
+    allowed_paths = {
+        SRC_ROOT / "core" / "line_selection.py",
+        SRC_ROOT / "editor" / "edit.py",
+    }
+    violations = []
+
+    assert "coerce_line_ranges" in vars(line_selection)
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path in allowed_paths:
+            continue
+
+        tree = ast.parse(path.read_text(), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            if node.name not in forbidden_function_names:
+                continue
+            relative_path = path.relative_to(REPO_ROOT)
+            violations.append(f"{relative_path}:{node.lineno} defines {node.name}")
+
+    assert violations == []
+
+
 def test_diff_parser_does_not_import_snapshot_runtime_io():
     """Diff parsing should not own selected-file snapshot persistence."""
     diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"

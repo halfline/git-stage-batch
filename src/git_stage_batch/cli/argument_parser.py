@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import shlex
 import sys
 
 from .. import __version__
@@ -12,20 +11,7 @@ from ..commands.again import command_again
 from ..commands.annotate import command_annotate_batch
 from ..commands.block_file import command_block_file
 from ..commands.check_unstaged import command_check_unstaged
-from ..commands.discard import (
-    command_discard,
-    command_discard_file,
-    command_discard_file_as,
-    command_discard_line,
-    command_discard_line_as_to_batch,
-    command_discard_to_batch,
-)
-from ..commands.discard_from import command_discard_from_batch
 from ..commands.drop import command_drop_batch
-from ..commands.file_scope.multi_file_actions import (
-    discard_to_batch_each_resolved_file,
-    run_for_each_resolved_file,
-)
 from ..commands.install_assets import command_install_assets
 from ..commands.list import command_list_batches
 from ..commands.new import command_new_batch
@@ -40,22 +26,19 @@ from ..commands.suggest_fixup import (
 )
 from ..commands.unblock_file import command_unblock_file
 from ..commands.undo import command_undo
-from ..exceptions import CommandError
 from ..i18n import _
 from ..output.status_prompt import DEFAULT_PROMPT_FORMAT
 from .apply_dispatch import dispatch_apply_command
 from .auto_advance_options import add_auto_advance_arguments
 from .completion import command_complete_files
+from .discard_dispatch import dispatch_discard_command
 from .file_arguments import add_file_argument, normalize_parsed_file_arguments
 from .file_scope import (
     FileArgument,
-    resolve_batch_file_scope,
-    resolve_live_file_scope,
 )
 from .git_help import GitHelpArgumentParser
 from .include_dispatch import dispatch_include_command
 from .quick_actions import expand_quick_actions
-from .replacement_input import resolve_replacement_text
 from .reset_dispatch import dispatch_reset_command
 from .show_dispatch import dispatch_show_command
 from .skip_dispatch import dispatch_skip_command
@@ -440,104 +423,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     add_auto_advance_arguments(parser_discard)
 
-    def dispatch_discard(args: argparse.Namespace) -> None:
-        replacement_requested = args.as_text is not None or args.as_stdin
-        if replacement_requested:
-            if args.as_text is not None and args.as_stdin:
-                raise CommandError(_("Cannot use `--as` and `--as-stdin` together."))
-            if args.to_batch and args.line_ids and not args.from_batch:
-                resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
-                resolved_file = resolved_live_scope.require_single_file(_("Cannot use --lines with multiple files."))
-                replacement_text = resolve_replacement_text(args)
-                command_discard_line_as_to_batch(
-                    args.to_batch,
-                    args.line_ids,
-                    replacement_text,
-                    file=resolved_file,
-                    no_edge_overlap=args.no_edge_overlap,
-                    auto_advance=args.auto_advance,
-                )
-                return
-            if (
-                args.to_batch is None
-                and args.from_batch is None
-                and args.line_ids is None
-            ):
-                resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
-                if resolved_live_scope.is_implicit:
-                    raise CommandError(
-                        _("`discard --as` requires `--file`, or `--to` with `--line`.")
-                    )
-                if args.no_edge_overlap:
-                    raise CommandError(_("`--no-edge-overlap` requires `discard --to --line --as`."))
-                if resolved_live_scope.is_multiple:
-                    raise CommandError(_("Cannot use --as with multiple files."))
-                replacement_text = resolve_replacement_text(args)
-                command_discard_file_as(
-                    replacement_text,
-                    file=resolved_live_scope.optional_file(),
-                    auto_advance=args.auto_advance,
-                )
-                return
-            raise CommandError(
-                _("`discard --as` requires `--file`, or `--to` with `--line`.")
-            )
-        if args.no_edge_overlap:
-            raise CommandError(_("`--no-edge-overlap` requires `discard --to --line --as`."))
-        if args.from_batch:
-            resolved_batch_scope = resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
-            run_for_each_resolved_file(
-                resolved_batch_scope,
-                lambda file: command_discard_from_batch(args.from_batch, args.line_ids, file),
-                line_ids=args.line_ids,
-                undo_operation=f"discard --from {shlex.quote(args.from_batch)}",
-                worktree_paths=resolved_batch_scope.files,
-            )
-        elif args.to_batch:
-            resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
-            if resolved_live_scope.is_multiple and args.line_ids is None:
-                discard_to_batch_each_resolved_file(
-                    args.to_batch,
-                    list(resolved_live_scope.files),
-                    auto_advance=args.auto_advance,
-                )
-            else:
-                run_for_each_resolved_file(
-                    resolved_live_scope,
-                    lambda file: command_discard_to_batch(
-                        args.to_batch,
-                        args.line_ids,
-                        file,
-                        auto_advance=args.auto_advance,
-                    ),
-                    line_ids=args.line_ids,
-                    undo_operation=f"discard --to {shlex.quote(args.to_batch)}",
-                    worktree_paths=resolved_live_scope.files,
-                )
-        elif args.line_ids:
-            resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
-            resolved_file = resolved_live_scope.require_single_file(_("Cannot use --lines with multiple files."))
-            command_discard_line(
-                args.line_ids,
-                file=resolved_file,
-                auto_advance=args.auto_advance,
-            )
-        else:
-            resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
-            if not resolved_live_scope.is_implicit:
-                run_for_each_resolved_file(
-                    resolved_live_scope,
-                    lambda file: command_discard_file(
-                        file,
-                        auto_advance=args.auto_advance,
-                    ),
-                    undo_operation="discard",
-                    worktree_paths=resolved_live_scope.files,
-                )
-            else:
-                command_discard(auto_advance=args.auto_advance)
-
-    parser_discard.set_defaults(func=dispatch_discard)
+    parser_discard.set_defaults(func=dispatch_discard_command)
 
     # abort - Restore repository to pre-session state
     parser_abort = _add_subcommand_parser(

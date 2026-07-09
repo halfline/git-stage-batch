@@ -237,6 +237,8 @@ Key modules:
   Ownership data structures and ownership transformations.
 - `batch.merge`
   Structural merge and reverse-merge logic.
+- `batch.baseline_correspondence`
+  Baseline restoration mapping for discarding batch-owned changes.
 - `batch.attribution`
   Ownership attribution for filtering live diffs.
 - `batch.source_refresh`

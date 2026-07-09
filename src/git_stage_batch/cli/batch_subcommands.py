@@ -1,4 +1,4 @@
-"""Batch-management subcommand registration."""
+"""Batch subcommand registration."""
 
 from __future__ import annotations
 
@@ -8,6 +8,8 @@ from ..commands.list import command_list_batches
 from ..commands.new import command_new_batch
 from ..commands.sift import command_sift_batch
 from ..i18n import _
+from .apply_dispatch import dispatch_apply_command
+from .file_arguments import add_file_argument
 from .subcommand_parser import add_subcommand_parser
 
 
@@ -101,3 +103,35 @@ def add_sift_subcommand(subparsers) -> None:
     parser_sift.set_defaults(
         func=lambda args: command_sift_batch(args.from_batch, args.to_batch)
     )
+
+
+def add_apply_subcommand(subparsers) -> None:
+    """Register the apply subcommand."""
+    parser_apply = add_subcommand_parser(
+        subparsers,
+        "apply",
+        help=_("Apply batch changes to working tree"),
+    )
+    parser_apply.add_argument(
+        "--from",
+        dest="from_batch",
+        metavar="BATCH",
+        required=True,
+        help=_("Apply changes from batch to working tree"),
+    )
+    parser_apply.add_argument(
+        "--line",
+        "--lines",
+        dest="line_ids",
+        metavar="IDS",
+        help=_("Apply only specific line IDs (e.g., '1,3,5-7')"),
+    )
+    add_file_argument(
+        parser_apply,
+        _(
+            "Operate on entire file from batch. "
+            "If PATH omitted, uses first file in batch (sorted order). "
+            "With --line, operates on line IDs from entire file."
+        ),
+    )
+    parser_apply.set_defaults(func=dispatch_apply_command)

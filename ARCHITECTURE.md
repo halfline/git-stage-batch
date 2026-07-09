@@ -239,6 +239,8 @@ Key modules:
   Ownership-unit grouping, filtering, validation, and rebuild logic.
 - `batch.ownership_remapping`
   Ownership remapping across matched and lineage-tracked source spaces.
+- `batch.ownership_translation`
+  Selected-line translation into batch ownership claims.
 - `batch.absence_content`
   Streaming builders for absence-claim content buffers.
 - `batch.replacement_line_runs`

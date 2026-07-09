@@ -12,6 +12,7 @@ from .fixup.candidate_display import (
     show_last_suggest_fixup_candidate,
 )
 from .fixup.iteration_state import prepare_suggest_fixup_iteration
+from .fixup.search_flow import run_suggest_fixup_search
 from .fixup.search_targets import (
     require_suggest_fixup_hunk_target,
     require_suggest_fixup_line_target,
@@ -61,35 +62,10 @@ def command_suggest_fixup(
         effective_boundary,
         porcelain=porcelain,
     )
-    line_changes = resolved_target.line_changes
-    search_target = resolved_target.search_target
-
-    require_suggest_fixup_boundary_range(effective_boundary)
-
-    state = reset_suggest_fixup_state_for_search(
+    run_suggest_fixup_search(
         state=state,
-        target=search_target,
-    )
-
-    if show_last:
-        show_last_suggest_fixup_candidate(
-            state=state,
-            effective_boundary=effective_boundary,
-            file_path=line_changes.path,
-            porcelain=porcelain,
-        )
-        return
-
-    candidate = advance_suggest_fixup_candidate(
-        state=state,
-        target=search_target,
-    )
-
-    display_suggest_fixup_candidate(
-        candidate_commit=candidate.commit,
-        iteration=candidate.iteration,
-        boundary=effective_boundary,
-        file_path=line_changes.path,
+        resolved_target=resolved_target,
+        show_last=show_last,
         porcelain=porcelain,
     )
 

@@ -6,24 +6,24 @@ from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from ..batch.file_display import render_batch_file_display
-from ..batch.selection import (
+from ...batch.file_display import render_batch_file_display
+from ...batch.selection import (
     require_single_file_context_for_line_selection_ranges,
     resolve_batch_file_scope,
 )
-from ..batch.submodule_pointer import (
+from ...batch.submodule_pointer import (
     is_batch_submodule_pointer,
     refuse_batch_submodule_pointer_lines,
 )
-from ..core.line_selection import LineRanges
-from ..exceptions import exit_with_error
-from ..i18n import _
-from .file_review.records import FileReviewAction
-from .file_review.selection_validation import validate_review_scoped_line_selection
-from .file_review.action_scope import fresh_batch_review_selections_for_action
+from ...core.line_selection import LineRanges
+from ...exceptions import exit_with_error
+from ...i18n import _
+from .action_scope import fresh_batch_review_selections_for_action
+from .records import FileReviewAction
+from .selection_validation import validate_review_scoped_line_selection
 
 if TYPE_CHECKING:
-    from ..core.models import RenderedBatchDisplay
+    from ...core.models import RenderedBatchDisplay
 
 
 def _selection_ids_from_gutter_ids(

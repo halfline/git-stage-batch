@@ -28,7 +28,7 @@ from ..data.batch_selected_changes import (
     compute_batch_gitlink_fingerprint,
 )
 from ..data.batch_hunk_display import cache_rendered_batch_file_display
-from ..data.batch_file_review_selection import translate_batch_file_gutter_ids_to_selection_ids
+from ..data.file_review.batch_selection import translate_batch_file_gutter_ids_to_selection_ids
 from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..data.selected_change.store import (
     SelectedChangeKind,

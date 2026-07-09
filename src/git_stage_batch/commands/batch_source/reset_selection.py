@@ -13,7 +13,7 @@ from ...batch.selection import (
 from ...batch.source_selector import require_plain_batch_name
 from ...batch.validation import batch_exists, validate_batch_name
 from ...core.line_selection import LineRanges
-from ...data.batch_file_review_selection import (
+from ...data.file_review.batch_selection import (
     translate_reset_batch_file_gutter_ids_to_selection_ranges,
 )
 from ...data.file_review.records import FileReviewAction

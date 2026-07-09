@@ -15,7 +15,7 @@ from ...batch.submodule_pointer import (
     refuse_batch_submodule_pointer_lines,
 )
 from ...core.replacement import ReplacementPayload
-from ...data.batch_file_review_selection import (
+from ...data.file_review.batch_selection import (
     translate_batch_file_gutter_ids_to_selection_ids,
 )
 from ...data.file_review.records import FileReviewAction

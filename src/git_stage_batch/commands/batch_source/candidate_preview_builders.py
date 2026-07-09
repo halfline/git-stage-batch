@@ -18,7 +18,7 @@ from ...batch.selection import acquire_batch_ownership_for_display_ids_from_line
 from ...batch.source_selector import BatchSourceSelector
 from ...core.buffer import LineBuffer
 from ...core.replacement import ReplacementPayload, coerce_replacement_payload
-from ...data.batch_file_review_selection import (
+from ...data.file_review.batch_selection import (
     translate_batch_file_gutter_ids_to_selection_ids,
 )
 from ...data.file_review.records import FileReviewAction

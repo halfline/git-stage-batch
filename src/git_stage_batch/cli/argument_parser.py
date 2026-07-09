@@ -14,6 +14,7 @@ from .batch_subcommands import (
     add_drop_subcommand,
     add_list_subcommand,
     add_new_subcommand,
+    add_reset_subcommand,
     add_sift_subcommand,
 )
 from .completion import add_completion_subcommand
@@ -21,14 +22,10 @@ from .file_blocking_subcommands import (
     add_block_file_subcommand,
     add_unblock_file_subcommand,
 )
-from .file_arguments import add_file_argument, normalize_parsed_file_arguments
-from .file_scope import (
-    FileArgument,
-)
+from .file_arguments import normalize_parsed_file_arguments
 from .fixup_subcommands import add_suggest_fixup_subcommand
 from .git_help import GitHelpArgumentParser
 from .quick_actions import expand_quick_actions
-from .reset_dispatch import dispatch_reset_command
 from .session_subcommands import (
     add_abort_subcommand,
     add_again_subcommand,
@@ -139,40 +136,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
 
     add_apply_subcommand(subparsers)
 
-    # reset - Remove claims from batch
-    parser_reset = add_subcommand_parser(
-        subparsers,
-        "reset",
-        help=_("Remove claims from batch"),
-    )
-    parser_reset.add_argument(
-        "--from",
-        dest="from_batch",
-        metavar="BATCH",
-        required=True,
-        help=_("Remove claims from batch"),
-    )
-    parser_reset.add_argument(
-        "--to",
-        dest="to_batch",
-        metavar="BATCH",
-        help=_("Move reset claims to another batch"),
-    )
-    parser_reset.add_argument(
-        "--line",
-        "--lines",
-        dest="line_ids",
-        metavar="IDS",
-        help=_("Reset only specific line IDs (e.g., '1,3,5-7')"),
-    )
-    add_file_argument(
-        parser_reset,
-        _("Operate on entire file from batch. "
-          "If PATH omitted, uses selected hunk's file. "
-          "With --line, operates on line IDs from entire file."),
-    )
-
-    parser_reset.set_defaults(func=dispatch_reset_command)
+    add_reset_subcommand(subparsers)
 
     add_sift_subcommand(subparsers)
 

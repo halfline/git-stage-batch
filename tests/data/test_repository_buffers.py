@@ -13,7 +13,7 @@ from git_stage_batch.data.repository_buffers import (
     load_git_tree_files_as_buffers,
     load_working_tree_file_as_buffer,
 )
-from git_stage_batch.utils.git import GitTreeBlob
+from git_stage_batch.utils.git_object_io import GitTreeBlob
 
 
 def test_load_git_blob_as_buffer_loads_streamed_blob(monkeypatch):

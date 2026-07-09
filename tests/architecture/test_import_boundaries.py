@@ -3181,11 +3181,23 @@ def test_file_review_changes_own_review_change_assembly():
     """ReviewChange assembly should stay out of model orchestration."""
     review_model_builder_path = SRC_ROOT / "output" / "file_review_model_builder.py"
     changes_path = SRC_ROOT / "output" / "file_review_changes.py"
+    segments_path = SRC_ROOT / "output" / "file_review_change_segments.py"
     review_model_builder_text = review_model_builder_path.read_text()
     changes_text = changes_path.read_text()
+    segments_text = segments_path.read_text()
     builder_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(review_model_builder_path)
+    }
+    changes_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(changes_path)
+    }
+    changes_output_imports = {
+        alias.name
+        for imported_module, node in _import_from_nodes(changes_path)
+        if imported_module == "git_stage_batch.output"
+        for alias in node.names
     }
     builder_model_imports = {
         alias.name
@@ -3197,9 +3209,21 @@ def test_file_review_changes_own_review_change_assembly():
         "git_stage_batch.output.file_review_changes",
         fromlist=["file_review_changes"],
     )
+    file_review_change_segments = __import__(
+        "git_stage_batch.output.file_review_change_segments",
+        fromlist=["file_review_change_segments"],
+    )
+    segment_names = {
+        "ReviewChangeSegment",
+        "build_file_review_change_segments",
+    }
 
     assert "git_stage_batch.output.file_review_changes" in builder_imports
     assert "build_file_review_changes" in vars(file_review_changes)
+    assert "git_stage_batch.output.file_review_change_segments" not in changes_imports
+    assert "file_review_change_segments" in changes_output_imports
+    assert segment_names <= vars(file_review_change_segments).keys()
+    assert segment_names.isdisjoint(vars(file_review_changes))
     assert builder_model_imports == {"FileReviewModel"}
     assert "ActionableSelectionReason" not in review_model_builder_text
     assert "format_line_ids" not in review_model_builder_text
@@ -3209,7 +3233,10 @@ def test_file_review_changes_own_review_change_assembly():
     assert "flush_segment" not in review_model_builder_text
     assert "ReviewChange" in changes_text
     assert "format_line_ids" in changes_text
-    assert "flush_segment" in changes_text
+    assert "flush_segment" not in changes_text
+    assert "file_review_model import ReviewChange" not in segments_text
+    assert "ReviewChange(" not in segments_text
+    assert "flush_segment" in segments_text
 
 
 def test_file_review_output_uses_model_module():

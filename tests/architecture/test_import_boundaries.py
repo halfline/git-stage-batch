@@ -9025,7 +9025,10 @@ def test_batch_hunk_line_ranges_own_hunk_range_scanning():
         "_scan_hunk_line_range",
     }
     hunk_imported_names: dict[str | None, set[str]] = {}
+    replacement_imported_names: dict[str | None, set[str]] = {}
     hunk_text = hunk_path.read_text()
+    replacement_path = SRC_ROOT / "batch" / "hunk_replacement_translation.py"
+    replacement_text = replacement_path.read_text()
     range_text = range_path.read_text()
 
     assert public_names <= vars(hunk_line_ranges).keys()
@@ -9037,7 +9040,16 @@ def test_batch_hunk_line_ranges_own_hunk_range_scanning():
             alias.name for alias in node.names
         )
 
-    assert "hunk_line_ranges" in hunk_imported_names.get(
+    for imported_module, node in _import_from_nodes(replacement_path):
+        replacement_imported_names.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    assert "hunk_line_ranges" not in hunk_imported_names.get(
+        "git_stage_batch.batch",
+        set(),
+    )
+    assert "hunk_line_ranges" in replacement_imported_names.get(
         "git_stage_batch.batch",
         set(),
     )
@@ -9045,8 +9057,65 @@ def test_batch_hunk_line_ranges_own_hunk_range_scanning():
         assert f"def {public_name}" not in hunk_text
     for old_private_name in old_private_names:
         assert old_private_name not in hunk_text
-    assert "_hunk_line_ranges.scan_hunk_line_range" in hunk_text
+    assert "_hunk_line_ranges.scan_hunk_line_range" in replacement_text
     assert "class HunkLineRangeScan" in range_text
+
+
+def test_batch_hunk_replacement_translation_owns_replacement_runs():
+    """File-derived replacement run translation should stay outside hunk walks."""
+    hunk_translation = __import__(
+        "git_stage_batch.batch.hunk_ownership_translation",
+        fromlist=["hunk_ownership_translation"],
+    )
+    replacement_translation = __import__(
+        "git_stage_batch.batch.hunk_replacement_translation",
+        fromlist=["hunk_replacement_translation"],
+    )
+    hunk_path = SRC_ROOT / "batch" / "hunk_ownership_translation.py"
+    replacement_path = SRC_ROOT / "batch" / "hunk_replacement_translation.py"
+    public_names = {
+        "HunkReplacementTranslation",
+        "translate_hunk_replacement_line_runs",
+    }
+    hunk_imported_names: dict[str | None, set[str]] = {}
+    replacement_imported_names: dict[str | None, set[str]] = {}
+    hunk_text = hunk_path.read_text()
+    replacement_text = replacement_path.read_text()
+
+    assert public_names <= vars(replacement_translation).keys()
+    assert public_names.isdisjoint(vars(hunk_translation))
+
+    for imported_module, node in _import_from_nodes(hunk_path):
+        hunk_imported_names.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    for imported_module, node in _import_from_nodes(replacement_path):
+        replacement_imported_names.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    assert "hunk_replacement_translation" in hunk_imported_names.get(
+        "git_stage_batch.batch",
+        set(),
+    )
+    assert "hunk_line_ranges" not in hunk_imported_names.get(
+        "git_stage_batch.batch",
+        set(),
+    )
+    assert "hunk_line_ranges" in replacement_imported_names.get(
+        "git_stage_batch.batch",
+        set(),
+    )
+    assert "AbsenceContentBuilder" not in hunk_text
+    assert "ReplacementUnit(" not in hunk_text
+    assert "replacement_unit_origin_for_line_run" not in hunk_text
+    assert "for replacement_run in replacement_line_runs" not in hunk_text
+    assert (
+        "_hunk_replacement_translation.translate_hunk_replacement_line_runs"
+        in hunk_text
+    )
+    assert "for replacement_run in replacement_line_runs" in replacement_text
 
 
 def test_batch_ownership_line_entries_own_entry_helpers():
@@ -9089,6 +9158,10 @@ def test_batch_ownership_line_entries_own_entry_helpers():
             "baseline_reference_for_old_line_range",
             "baseline_reference_for_presence_line",
             "old_line_content_by_number",
+        },
+        SRC_ROOT / "batch" / "hunk_replacement_translation.py": {
+            "baseline_reference_for_old_line_range",
+            "baseline_reference_for_presence_line",
             "replacement_unit_origin_for_line_run",
         },
         SRC_ROOT / "batch" / "ownership_translation.py": {
@@ -9423,7 +9496,7 @@ def test_batch_ownership_replacement_units_own_value_records():
         "ReplacementUnitOrigin",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "hunk_ownership_translation.py": public_names,
+        SRC_ROOT / "batch" / "hunk_replacement_translation.py": public_names,
         SRC_ROOT / "batch" / "ownership.py": {
             "ReplacementUnit",
         },
@@ -9821,8 +9894,10 @@ def test_batch_absence_content_owns_public_builders():
     }
     expected_imports = {
         SRC_ROOT / "batch" / "hunk_ownership_translation.py": {
-            "AbsenceContentBuilder",
             "build_absence_content_from_range",
+        },
+        SRC_ROOT / "batch" / "hunk_replacement_translation.py": {
+            "AbsenceContentBuilder",
         },
         SRC_ROOT / "batch" / "ownership_detachment.py": {
             "copy_absence_content",

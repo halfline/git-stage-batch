@@ -9,7 +9,6 @@ from .. import __version__
 from ..i18n import _
 from .apply_dispatch import dispatch_apply_command
 from .asset_subcommands import add_install_assets_subcommand
-from .auto_advance_options import add_auto_advance_arguments
 from .batch_subcommands import (
     add_annotate_subcommand,
     add_drop_subcommand,
@@ -18,7 +17,6 @@ from .batch_subcommands import (
     add_sift_subcommand,
 )
 from .completion import add_completion_subcommand
-from .discard_dispatch import dispatch_discard_command
 from .file_blocking_subcommands import (
     add_block_file_subcommand,
     add_unblock_file_subcommand,
@@ -42,6 +40,7 @@ from .session_subcommands import (
     add_undo_subcommand,
 )
 from .selection_subcommands import (
+    add_discard_subcommand,
     add_include_subcommand,
     add_show_subcommand,
     add_skip_subcommand,
@@ -120,66 +119,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
 
     add_skip_subcommand(subparsers)
 
-    # discard - Remove the selected hunk from working tree
-    parser_discard = add_subcommand_parser(
-        subparsers,
-        "discard",
-        aliases=["d"],
-        help=_("Remove the selected hunk from working tree"),
-    )
-    parser_discard.add_argument(
-        "--line",
-        "--lines",
-        dest="line_ids",
-        metavar="IDS",
-        help=_("Discard only specific line IDs (e.g., '1,3,5-7')"),
-    )
-    add_file_argument(
-        parser_discard,
-        _("Operate on entire file (live working tree state). "
-          "If PATH omitted, uses selected hunk's file. "
-          "Without --line, discards entire file. "
-          "With --line, operates on line IDs from entire file."),
-    )
-    parser_discard.add_argument(
-        "--from",
-        dest="from_batch",
-        metavar="BATCH",
-        help=_("Discard changes from batch"),
-    )
-    parser_discard.add_argument(
-        "--to",
-        dest="to_batch",
-        metavar="BATCH",
-        help=_("Discard changes to batch"),
-    )
-    parser_discard.add_argument(
-        "--as",
-        dest="as_text",
-        metavar="TEXT",
-        help=_("Replace selected lines, or full file with --file, using TEXT"),
-    )
-    parser_discard.add_argument(
-        "--as-stdin",
-        dest="as_stdin",
-        action="store_true",
-        help=_("Read replacement text from standard input exactly, preserving trailing newlines"),
-    )
-    parser_discard.add_argument(
-        "--no-edge-overlap",
-        dest="no_edge_overlap",
-        action="store_true",
-        help=_("Do not strip unchanged edge-overlap lines from replacement text used with --as"),
-    )
-    parser_discard.add_argument(
-        "--no-anchor",
-        dest="no_edge_overlap",
-        action="store_true",
-        help=argparse.SUPPRESS,
-    )
-    add_auto_advance_arguments(parser_discard)
-
-    parser_discard.set_defaults(func=dispatch_discard_command)
+    add_discard_subcommand(subparsers)
 
     add_abort_subcommand(subparsers)
 

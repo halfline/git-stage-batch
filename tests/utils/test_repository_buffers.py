@@ -5,8 +5,8 @@ from __future__ import annotations
 import subprocess
 
 from git_stage_batch.core.buffer import LineBuffer
-import git_stage_batch.data.repository_buffers as repository_buffers
-from git_stage_batch.data.repository_buffers import (
+import git_stage_batch.utils.repository_buffers as repository_buffers
+from git_stage_batch.utils.repository_buffers import (
     load_git_blob_as_buffer,
     load_git_object_as_buffer,
     load_git_object_as_buffer_or_empty,

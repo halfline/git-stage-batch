@@ -11,6 +11,7 @@ from ...utils.paths import get_line_changes_json_file_path
 from .. import change_freshness as _change_freshness
 from .. import consumed_replacement_masks as _consumed_replacement_masks
 from .. import line_state as _line_state
+from ..consumed_selections import read_consumed_file_metadata
 
 
 def apply_line_level_batch_filter_to_cached_hunk() -> bool:
@@ -36,7 +37,10 @@ def apply_line_level_batch_filter_to_cached_hunk() -> bool:
     ):
         return True
 
-    attribution = build_file_attribution(file_path)
+    attribution = build_file_attribution(
+        file_path,
+        supplemental_batch_metadata=_consumed_batch_metadata(file_path),
+    )
     should_skip, filtered_line_changes = filter_owned_diff_fragments(
         line_changes, attribution
     )
@@ -62,3 +66,16 @@ def apply_line_level_batch_filter_to_cached_hunk() -> bool:
     )
 
     return False
+
+
+def _consumed_batch_metadata(file_path: str) -> dict[str, dict] | None:
+    consumed_file_metadata = read_consumed_file_metadata(file_path)
+    if consumed_file_metadata is None:
+        return None
+    return {
+        "__consumed__": {
+            "files": {
+                file_path: consumed_file_metadata,
+            },
+        },
+    }

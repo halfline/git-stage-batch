@@ -13,7 +13,7 @@ from ...utils.repository_buffers import load_working_tree_file_as_buffer
 from ...data.selected_change.loading import require_selected_hunk
 from ...exceptions import exit_with_error
 from ...i18n import _
-from ...staging.operations import build_target_working_tree_buffer_from_lines
+from ...staging.content_buffers import build_target_working_tree_buffer_from_lines
 from ...utils.git_repository import get_git_repository_root_path
 from ...utils.journal import log_journal
 from . import batch_line_selection as _batch_line_selection

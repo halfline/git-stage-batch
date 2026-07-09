@@ -1,4 +1,4 @@
-"""Line-level staging operations for applying selective changes to index and working tree."""
+"""Construct staged and working-tree content buffers from line selections."""
 
 from __future__ import annotations
 

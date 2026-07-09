@@ -29,7 +29,7 @@ from ...data.selected_change.store import (
 from ...exceptions import exit_with_error
 from ...i18n import _
 from ...staging.index_update import update_index_with_blob_buffer
-from ...staging.operations import (
+from ...staging.content_buffers import (
     build_target_index_buffer_with_replaced_lines,
 )
 from ...utils.paths import (

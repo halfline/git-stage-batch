@@ -242,7 +242,7 @@ Key modules:
 - `batch.discard_reversal`
   Presence-constraint reversal for batch discard operations.
 - `batch.realized_boundaries`
-  Boundary lookup over realized entries for anchored absence logic.
+  Boundary lookup and sequence checks over realized entries.
 - `batch.attribution`
   Ownership attribution for filtering live diffs.
 - `batch.source_refresh`

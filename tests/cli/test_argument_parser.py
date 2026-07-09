@@ -8,6 +8,7 @@ import pytest
 from git_stage_batch.cli import (
     apply_dispatch,
     argument_parser,
+    discard_dispatch,
     file_scope,
     git_help,
     include_dispatch,
@@ -1034,7 +1035,7 @@ def test_parse_command_line_skip_combines_file_and_files_patterns(monkeypatch):
 def test_parse_command_line_discard_with_files_dispatches_per_file(monkeypatch):
     """Discard should dispatch once per file resolved from --files."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_discard_file", mock_command)
+    monkeypatch.setattr(discard_dispatch, "command_discard_file", mock_command)
     _mock_live_file_candidates(monkeypatch, ["foo.py", "bar.py", "notes.txt"])
 
     args = parse_command_line(["discard", "--files", "*.py"], quiet=True)
@@ -1050,7 +1051,7 @@ def test_parse_command_line_discard_with_files_dispatches_per_file(monkeypatch):
 def test_parse_command_line_discard_with_file_pattern_dispatches_per_file(monkeypatch):
     """Discard --file with a pattern should dispatch like --files."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_discard_file", mock_command)
+    monkeypatch.setattr(discard_dispatch, "command_discard_file", mock_command)
     _mock_live_file_candidates(monkeypatch, ["foo.py", "bar.py", "notes.txt"])
 
     args = parse_command_line(["discard", "--file", "*.py"], quiet=True)
@@ -1066,7 +1067,7 @@ def test_parse_command_line_discard_with_file_pattern_dispatches_per_file(monkey
 def test_parse_command_line_discard_from_with_files_resolves_batch_scope_only(monkeypatch):
     """discard --from --files should match batch files, not current live changes."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_discard_from_batch", mock_command)
+    monkeypatch.setattr(discard_dispatch, "command_discard_from_batch", mock_command)
     _mock_batch_files(monkeypatch, ["foo.py", "bar.py", "notes.txt"])
     monkeypatch.setattr(
         file_scope,
@@ -1088,7 +1089,7 @@ def test_parse_command_line_discard_to_with_files_uses_aggregate_dispatch(monkey
     """discard --to --files should suppress per-file selected-change display."""
     mock_command = Mock()
     monkeypatch.setattr(
-        argument_parser,
+        discard_dispatch,
         "discard_to_batch_each_resolved_file",
         mock_command,
     )
@@ -1266,7 +1267,7 @@ def test_parse_command_line_discard_to_with_file_and_as():
 def test_parse_command_line_discard_with_file_and_as_dispatches_file_replacement(monkeypatch):
     """Discard --file --as without --line should dispatch file replacement."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_discard_file_as", mock_command)
+    monkeypatch.setattr(discard_dispatch, "command_discard_file_as", mock_command)
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
     args = parse_command_line(
@@ -1286,7 +1287,7 @@ def test_parse_command_line_discard_with_file_and_as_dispatches_file_replacement
 def test_parse_command_line_discard_with_file_and_as_stdin_dispatches_file_replacement(monkeypatch):
     """Discard --file --as-stdin should preserve trailing newlines."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_discard_file_as", mock_command)
+    monkeypatch.setattr(discard_dispatch, "command_discard_file_as", mock_command)
     monkeypatch.setattr(replacement_input.sys, "stdin", _stdin_with_bytes(b"replacement\n"))
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
@@ -1307,7 +1308,7 @@ def test_parse_command_line_discard_with_file_and_as_stdin_dispatches_file_repla
 def test_parse_command_line_discard_to_line_range_and_as_stdin_dispatches_replacement(monkeypatch):
     """Discard --to --line range --as-stdin should forward exact replacement text."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_discard_line_as_to_batch", mock_command)
+    monkeypatch.setattr(discard_dispatch, "command_discard_line_as_to_batch", mock_command)
     monkeypatch.setattr(replacement_input.sys, "stdin", _stdin_with_bytes(b"replacement one\nreplacement two\n"))
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
@@ -1344,7 +1345,7 @@ def test_parse_command_line_discard_rejects_as_and_as_stdin_together(monkeypatch
 def test_parse_command_line_discard_with_no_edge_overlap_dispatches_line_replacement(monkeypatch):
     """Discard --to --line --as --no-edge-overlap should forward the no-edge-overlap flag."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_discard_line_as_to_batch", mock_command)
+    monkeypatch.setattr(discard_dispatch, "command_discard_line_as_to_batch", mock_command)
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
     args = parse_command_line(
@@ -1389,7 +1390,7 @@ def test_parse_command_line_discard_invalid_as_stdin_shape_does_not_read(monkeyp
 def test_parse_command_line_discard_with_file_and_line_dispatches_file_scope(monkeypatch):
     """Discard --file --line should dispatch to file-scoped line discard."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_discard_line", mock_command)
+    monkeypatch.setattr(discard_dispatch, "command_discard_line", mock_command)
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
     args = parse_command_line(
@@ -1417,7 +1418,7 @@ def test_parse_command_line_discard_alias():
 
 def test_parse_command_line_discard_passes_auto_advance(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_discard", mock_command)
+    monkeypatch.setattr(discard_dispatch, "command_discard", mock_command)
 
     args = parse_command_line(["discard", "--no-auto-advance"], quiet=True)
 

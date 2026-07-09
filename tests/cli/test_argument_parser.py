@@ -285,7 +285,7 @@ def test_parse_command_line_again_alias():
 
 def test_parse_command_line_again_passes_auto_advance(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_again", mock_command)
+    monkeypatch.setattr(session_subcommands, "command_again", mock_command)
 
     args = parse_command_line(["again", "--auto-advance"], quiet=True)
 

@@ -6171,8 +6171,6 @@ def test_baseline_correspondence_stays_out_of_merge_module():
         "build_baseline_correspondence",
     }
     merge_dependency_names = {
-        "BaselineCorrespondence",
-        "RegionKind",
         "build_baseline_correspondence",
     }
     stale_merge_names = public_names | {"_build_baseline_correspondence"}
@@ -6211,6 +6209,70 @@ def test_baseline_correspondence_stays_out_of_merge_module():
                         )
 
     assert merge_dependency_names <= imported_by_merge
+    assert violations == []
+
+
+def test_discard_reversal_stays_out_of_merge_module():
+    """Discard presence reversal should live outside merge operations."""
+    discard_reversal = __import__(
+        "git_stage_batch.batch.discard_reversal",
+        fromlist=["discard_reversal"],
+    )
+    merge = __import__(
+        "git_stage_batch.batch.merge",
+        fromlist=["merge"],
+    )
+    discard_reversal_path = SRC_ROOT / "batch" / "discard_reversal.py"
+    merge_path = SRC_ROOT / "batch" / "merge.py"
+    public_names = {
+        "reverse_presence_constraints",
+    }
+    stale_merge_names = public_names | {"_reverse_presence_constraints"}
+    dependency_names = {
+        "BaselineCorrespondence",
+        "RegionKind",
+    }
+    imported_by_merge = set()
+    violations = []
+    discard_reversal_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(discard_reversal_path)
+    }
+
+    assert public_names <= vars(discard_reversal).keys()
+    assert stale_merge_names.isdisjoint(vars(merge))
+    assert dependency_names.isdisjoint(vars(discard_reversal))
+    assert "git_stage_batch.batch.merge" not in discard_reversal_imports
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == discard_reversal_path:
+            continue
+
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+
+            if imported_module == "git_stage_batch.batch.merge":
+                disallowed_names = imported_names & stale_merge_names
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+            if imported_module != "git_stage_batch.batch.discard_reversal":
+                continue
+
+            if path == merge_path:
+                imported_by_merge |= imported_names & public_names
+                for alias in node.names:
+                    if alias.name not in public_names:
+                        continue
+                    if alias.asname is None or not alias.asname.startswith("_"):
+                        relative_path = path.relative_to(REPO_ROOT)
+                        violations.append(
+                            f"{relative_path}:{node.lineno} imports {alias.name} without private alias"
+                        )
+
+    assert public_names <= imported_by_merge
     assert violations == []
 
 

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import hashlib
 from typing import TYPE_CHECKING, Any
 
-from ..core.line_selection import LineRanges, LineSelection
+from ..core.line_selection import LineRanges, LineSelection, coerce_line_ranges
 from ..exceptions import MergeError as _MergeError
 from ..i18n import _
 from ..utils.text import normalize_line_endings
@@ -30,15 +30,6 @@ class ReplacementOriginChoice:
     position: int
     target_after_line: int | None
     target_before_line: int | None
-
-
-def _as_line_ranges(lines: LineSelection | Iterable[int]) -> LineRanges:
-    if isinstance(lines, LineRanges):
-        return lines
-    ranges = getattr(lines, "ranges", None)
-    if ranges is not None:
-        return LineRanges.from_ranges(ranges())
-    return LineRanges.from_lines(lines)
 
 
 def _selection_outside_bounds(lines: LineSelection, max_line: int) -> bool:
@@ -590,7 +581,7 @@ def try_apply_baseline_replacement_units(
             return None
         edits.append(removal_edit)
 
-    presence_lines = _as_line_ranges(presence_line_set)
+    presence_lines = coerce_line_ranges(presence_line_set)
     remaining_claimed_lines = presence_lines.difference(unit_claimed_lines)
     claimed_line_references = ownership.presence_baseline_references()
     if remaining_claimed_lines:
@@ -633,7 +624,7 @@ def has_missing_origin_replacement_claims(
     mapping: LineMapping,
 ) -> bool:
     """Return whether parent-tracked replacement lines would need placement."""
-    selected_presence = _as_line_ranges(presence_line_set)
+    selected_presence = coerce_line_ranges(presence_line_set)
     for unit in getattr(ownership, "replacement_units", []):
         if getattr(unit, "origin", None) is None:
             continue

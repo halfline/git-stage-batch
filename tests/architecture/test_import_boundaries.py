@@ -10046,6 +10046,80 @@ def test_include_line_replacement_stays_in_command_helper():
     assert helper_imports <= helper_imported_names
 
 
+def test_include_line_replacement_action_stays_in_command_helper():
+    """Include line-replacement action support should stay out of the entrypoint."""
+    include_path = SRC_ROOT / "commands" / "include.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "include_line_replacement_action.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.selection.include_line_replacement_action",
+        fromlist=["include_line_replacement_action"],
+    )
+    public_names = {"include_live_line_replacement"}
+    action_dependency_names = {
+        "ExitStack",
+        "apply_include_line_replacement",
+        "coerce_replacement_payload",
+        "finish_review_scoped_line_action",
+        "get_processed_include_ids_file_path",
+        "prepare_file_include_line_replacement",
+        "prepare_pathless_include_line_replacement",
+        "print",
+        "refresh_selected_hunk_after_line_action",
+        "restore_selected_change_state",
+        "sys",
+        "undo_checkpoint",
+        "write_line_ids_file",
+    }
+    helper_imports = {
+        "ExitStack",
+        "ReplacementPayload",
+        "coerce_replacement_payload",
+        "finish_review_scoped_line_action",
+        "get_processed_include_ids_file_path",
+        "include_line_replacement",
+        "refresh_selected_hunk_after_line_action",
+        "restore_selected_change_state",
+        "undo_checkpoint",
+        "write_line_ids_file",
+    }
+
+    assert public_names <= vars(helper).keys()
+
+    include_tree = ast.parse(include_path.read_text(), filename=str(include_path))
+    include_functions = {
+        node.name: node
+        for node in ast.walk(include_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    command_line_as_names = {
+        node.id
+        for node in ast.walk(include_functions["command_include_line_as"])
+        if isinstance(node, ast.Name)
+    }
+    command_line_as_attributes = {
+        node.attr
+        for node in ast.walk(include_functions["command_include_line_as"])
+        if isinstance(node, ast.Attribute)
+    }
+    include_selection_imports = set()
+    for imported_module, node in _import_from_nodes(include_path):
+        if imported_module != "git_stage_batch.commands.selection":
+            continue
+        include_selection_imports |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert "include_line_replacement_action" in include_selection_imports
+    assert "include_live_line_replacement" in command_line_as_attributes
+    assert action_dependency_names.isdisjoint(command_line_as_names)
+    assert action_dependency_names.isdisjoint(command_line_as_attributes)
+    assert helper_imports <= helper_imported_names
+
+
 def test_selected_change_discarding_owns_discard_pipeline():
     """Selected change discard support should stay out of discard.py."""
     discard_path = SRC_ROOT / "commands" / "discard.py"

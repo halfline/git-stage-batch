@@ -18,18 +18,11 @@ from git_stage_batch.batch.source_snapshots import (
     create_batch_source_commits,
 )
 from git_stage_batch.utils.file_io import read_text_file_contents
-try:
-    from git_stage_batch.batch.source_cache import (
-        get_batch_source_for_file,
-        load_session_batch_sources,
-        save_session_batch_sources,
-    )
-except ModuleNotFoundError:
-    from git_stage_batch.batch.source_snapshots import (
-        get_batch_source_for_file,
-        load_session_batch_sources,
-        save_session_batch_sources,
-    )
+from git_stage_batch.batch.source_cache import (
+    get_batch_source_for_file,
+    load_session_batch_sources,
+    save_session_batch_sources,
+)
 
 import subprocess
 

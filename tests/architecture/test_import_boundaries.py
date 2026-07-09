@@ -329,6 +329,8 @@ def test_data_package_does_not_reexport_data_apis():
         "get_file_progress",
         "get_hunk_counts",
         "list_asset_group_entries",
+        "PlannedAssetInstall",
+        "plan_asset_installs",
         "record_hunk_discarded",
         "record_hunk_included",
         "record_hunk_skipped",
@@ -2639,9 +2641,7 @@ def test_install_asset_catalog_owns_asset_groups():
     assert all(snippet not in command_text for snippet in old_command_snippets)
     assert catalog_imports == {
         asset_menu_path: {"ASSET_GROUPS"},
-        command_path: {
-            "Traversable",
-        },
+        command_path: set(),
     }
     assert direct_definition_imports == {
         asset_menu_path: set(),
@@ -2692,10 +2692,11 @@ def test_asset_installation_owns_asset_tree_copying():
 
     assert {"copy_asset_tree", "_should_skip_asset_entry"} <= data_names
     assert "copy_asset_tree" in vars(asset_installation)
+    assert "copy_asset_tree" not in vars(install_assets)
     assert old_command_names.isdisjoint(vars(install_assets))
     assert old_command_names.isdisjoint(command_names)
     assert all(snippet not in command_text for snippet in old_command_snippets)
-    assert "copy_asset_tree" in command_imports
+    assert "_copy_asset_tree" in command_imports
 
 
 def test_asset_installation_owns_destination_validation():
@@ -2709,6 +2710,7 @@ def test_asset_installation_owns_destination_validation():
         fromlist=["install_assets"],
     )
     command_path = SRC_ROOT / "commands" / "install_assets.py"
+    plan_path = SRC_ROOT / "data" / "asset_install_plan.py"
     public_names = {
         "validate_asset_destination_path",
     }
@@ -2721,11 +2723,18 @@ def test_asset_installation_owns_destination_validation():
         "is not a directory",
         "is a directory",
     }
-    imported_installation_names = set()
+    command_installation_names = set()
+    plan_installation_names = set()
 
     for imported_module, node in _import_from_nodes(command_path):
         if imported_module == "git_stage_batch.data.asset_installation":
-            imported_installation_names |= {
+            command_installation_names |= {
+                alias.asname or alias.name for alias in node.names
+            }
+
+    for imported_module, node in _import_from_nodes(plan_path):
+        if imported_module == "git_stage_batch.data.asset_installation":
+            plan_installation_names |= {
                 alias.asname or alias.name for alias in node.names
             }
 
@@ -2741,7 +2750,8 @@ def test_asset_installation_owns_destination_validation():
     assert public_names.isdisjoint(vars(install_assets))
     assert old_command_names.isdisjoint(command_names)
     assert all(snippet not in command_text for snippet in old_command_snippets)
-    assert "_validate_asset_destination" in imported_installation_names
+    assert command_installation_names == {"_copy_asset_tree"}
+    assert "validate_asset_destination_path" in plan_installation_names
 
 
 def test_asset_inventory_owns_packaged_asset_lookup():
@@ -2755,6 +2765,7 @@ def test_asset_inventory_owns_packaged_asset_lookup():
         fromlist=["install_assets"],
     )
     command_path = SRC_ROOT / "commands" / "install_assets.py"
+    plan_path = SRC_ROOT / "data" / "asset_install_plan.py"
     public_names = {
         "get_companion_asset_source",
         "get_entry_companion_assets",
@@ -2772,11 +2783,18 @@ def test_asset_inventory_owns_packaged_asset_lookup():
         "resources.files",
         "CompanionAsset",
     }
-    imported_inventory_names = set()
+    command_inventory_names = set()
+    plan_inventory_names = set()
 
     for imported_module, node in _import_from_nodes(command_path):
         if imported_module == "git_stage_batch.data.asset_inventory":
-            imported_inventory_names |= {
+            command_inventory_names |= {
+                alias.asname or alias.name for alias in node.names
+            }
+
+    for imported_module, node in _import_from_nodes(plan_path):
+        if imported_module == "git_stage_batch.data.asset_inventory":
+            plan_inventory_names |= {
                 alias.asname or alias.name for alias in node.names
             }
 
@@ -2792,10 +2810,51 @@ def test_asset_inventory_owns_packaged_asset_lookup():
     assert public_names.isdisjoint(vars(install_assets))
     assert old_command_names.isdisjoint(command_names)
     assert all(snippet not in command_text for snippet in old_command_snippets)
-    assert imported_inventory_names == {
+    assert command_inventory_names == set()
+    assert plan_inventory_names == {
+        "get_companion_asset_source",
+        "get_entry_companion_assets",
+    }
+
+
+def test_asset_install_plan_owns_install_assembly():
+    """Install assembly should live in the data install planner."""
+    asset_install_plan = __import__(
+        "git_stage_batch.data.asset_install_plan",
+        fromlist=["asset_install_plan"],
+    )
+    install_assets = __import__(
+        "git_stage_batch.commands.install_assets",
+        fromlist=["install_assets"],
+    )
+    command_path = SRC_ROOT / "commands" / "install_assets.py"
+    public_names = {
+        "PlannedAssetInstall",
+        "plan_asset_installs",
+    }
+    old_command_snippets = {
+        "Refusing to overwrite",
         "_companion_asset_source",
         "_entry_companion_assets",
+        "_validate_asset_destination",
+        "destination.exists",
+        "planned_installs: list",
+        "target_root",
     }
+    imported_plan_names = set()
+
+    for imported_module, node in _import_from_nodes(command_path):
+        if imported_module == "git_stage_batch.data.asset_install_plan":
+            imported_plan_names |= {
+                alias.asname or alias.name for alias in node.names
+            }
+
+    command_text = command_path.read_text()
+
+    assert public_names <= vars(asset_install_plan).keys()
+    assert public_names.isdisjoint(vars(install_assets))
+    assert all(snippet not in command_text for snippet in old_command_snippets)
+    assert imported_plan_names == {"_plan_asset_installs"}
 
 
 def test_asset_selection_owns_group_filter_selection():

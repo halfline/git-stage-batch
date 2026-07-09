@@ -9000,6 +9000,55 @@ def test_batch_hunk_ownership_translation_owns_hunk_selection():
     assert violations == []
 
 
+def test_batch_hunk_line_ranges_own_hunk_range_scanning():
+    """Live-hunk range scanning should stay outside ownership translation."""
+    hunk_translation = __import__(
+        "git_stage_batch.batch.hunk_ownership_translation",
+        fromlist=["hunk_ownership_translation"],
+    )
+    hunk_line_ranges = __import__(
+        "git_stage_batch.batch.hunk_line_ranges",
+        fromlist=["hunk_line_ranges"],
+    )
+    hunk_path = SRC_ROOT / "batch" / "hunk_ownership_translation.py"
+    range_path = SRC_ROOT / "batch" / "hunk_line_ranges.py"
+    public_names = {
+        "HunkLineRangeScan",
+        "hunk_line_index_ranges_in_range",
+        "hunk_line_indexes_in_range",
+        "scan_hunk_line_range",
+    }
+    old_private_names = {
+        "_HunkLineRangeScan",
+        "_hunk_line_index_ranges_in_range",
+        "_hunk_line_indexes_in_range",
+        "_scan_hunk_line_range",
+    }
+    hunk_imported_names: dict[str | None, set[str]] = {}
+    hunk_text = hunk_path.read_text()
+    range_text = range_path.read_text()
+
+    assert public_names <= vars(hunk_line_ranges).keys()
+    assert public_names.isdisjoint(vars(hunk_translation))
+    assert old_private_names.isdisjoint(vars(hunk_translation))
+
+    for imported_module, node in _import_from_nodes(hunk_path):
+        hunk_imported_names.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    assert "hunk_line_ranges" in hunk_imported_names.get(
+        "git_stage_batch.batch",
+        set(),
+    )
+    for public_name in public_names:
+        assert f"def {public_name}" not in hunk_text
+    for old_private_name in old_private_names:
+        assert old_private_name not in hunk_text
+    assert "_hunk_line_ranges.scan_hunk_line_range" in hunk_text
+    assert "class HunkLineRangeScan" in range_text
+
+
 def test_batch_ownership_line_entries_own_entry_helpers():
     """LineEntry ownership primitives should stay outside translators."""
     line_entries = __import__(

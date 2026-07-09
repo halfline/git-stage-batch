@@ -9265,7 +9265,12 @@ def test_batch_ownership_acquisition_owns_scoped_context():
         "git_stage_batch.batch.ownership_acquisition",
         fromlist=["ownership_acquisition"],
     )
+    ownership_metadata_loading = __import__(
+        "git_stage_batch.batch.ownership_metadata_loading",
+        fromlist=["ownership_metadata_loading"],
+    )
     acquisition_path = SRC_ROOT / "batch" / "ownership_acquisition.py"
+    metadata_loading_path = SRC_ROOT / "batch" / "ownership_metadata_loading.py"
     public_names = {
         "AcquiredBatchOwnership",
     }
@@ -9273,12 +9278,13 @@ def test_batch_ownership_acquisition_owns_scoped_context():
         "_AcquiredBatchOwnership",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "ownership.py": public_names,
+        metadata_loading_path: public_names,
     }
     violations = []
 
     assert public_names <= vars(ownership_acquisition).keys()
     assert public_names.isdisjoint(vars(ownership))
+    assert public_names <= vars(ownership_metadata_loading).keys()
     assert private_names.isdisjoint(vars(ownership))
 
     for path in SRC_ROOT.rglob("*.py"):
@@ -10602,9 +10608,13 @@ def test_batch_ownership_metadata_blobs_own_blob_discovery():
         "git_stage_batch.batch.ownership_metadata_blobs",
         fromlist=["ownership_metadata_blobs"],
     )
-    ownership_path = SRC_ROOT / "batch" / "ownership.py"
+    ownership_metadata_loading = __import__(
+        "git_stage_batch.batch.ownership_metadata_loading",
+        fromlist=["ownership_metadata_loading"],
+    )
     ownership_reference_path = SRC_ROOT / "batch" / "ownership_references.py"
     metadata_blob_path = SRC_ROOT / "batch" / "ownership_metadata_blobs.py"
+    metadata_loading_path = SRC_ROOT / "batch" / "ownership_metadata_loading.py"
     public_names = {
         "baseline_reference_blob_ids",
         "baseline_references_blob_ids",
@@ -10624,7 +10634,7 @@ def test_batch_ownership_metadata_blobs_own_blob_discovery():
         "_replacement_origin_reference_blob_ids",
     }
     expected_imports = {
-        ownership_path: {
+        metadata_loading_path: {
             "deletion_content_blob_ids",
             "deletion_reference_blob_ids",
             "presence_claim_reference_blob_ids",
@@ -10639,6 +10649,7 @@ def test_batch_ownership_metadata_blobs_own_blob_discovery():
     assert public_names <= vars(ownership_metadata_blobs).keys()
     assert old_private_names.isdisjoint(vars(ownership))
     assert old_private_names.isdisjoint(vars(ownership_references))
+    assert old_private_names.isdisjoint(vars(ownership_metadata_loading))
 
     for path in SRC_ROOT.rglob("*.py"):
         if path == metadata_blob_path:

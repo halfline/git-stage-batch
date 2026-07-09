@@ -8638,6 +8638,92 @@ def test_selected_line_source_refresh_uses_public_api():
     assert violations == []
 
 
+def test_batch_ownership_update_owns_prepared_update_api():
+    """Prepared ownership updates should stay outside source refresh."""
+    source_refresh = __import__(
+        "git_stage_batch.batch.source_refresh",
+        fromlist=["source_refresh"],
+    )
+    ownership_update = __import__(
+        "git_stage_batch.batch.ownership_update",
+        fromlist=["ownership_update"],
+    )
+    ownership_update_path = SRC_ROOT / "batch" / "ownership_update.py"
+    public_names = {
+        "PreparedBatchUpdate",
+        "acquire_batch_ownership_update_for_selection",
+        "prepare_batch_ownership_update_for_selection",
+    }
+    private_names = {
+        "_merge_refreshed_selected_lines_into_hunk",
+        "_translate_selection_to_batch_ownership",
+    }
+    old_source_refresh_names = public_names | private_names
+    expected_imports = {
+        SRC_ROOT / "commands" / "file_scope" / "discard_file_to_batch.py": {
+            "acquire_batch_ownership_update_for_selection",
+        },
+        SRC_ROOT / "commands" / "file_scope" / "discard_to_batch.py": {
+            "acquire_batch_ownership_update_for_selection",
+        },
+        SRC_ROOT / "commands" / "file_scope" / "include_file_to_batch.py": {
+            "acquire_batch_ownership_update_for_selection",
+        },
+        SRC_ROOT / "commands" / "selection" / "batch_line_updates.py": {
+            "acquire_batch_ownership_update_for_selection",
+        },
+        SRC_ROOT / "commands" / "selection" / "discard_line_replacement.py": {
+            "acquire_batch_ownership_update_for_selection",
+        },
+        (
+            SRC_ROOT
+            / "commands"
+            / "selection"
+            / "selected_change_batch_discarding.py"
+        ): {"acquire_batch_ownership_update_for_selection"},
+        (
+            SRC_ROOT
+            / "commands"
+            / "selection"
+            / "selected_change_batch_staging.py"
+        ): {"acquire_batch_ownership_update_for_selection"},
+    }
+    violations = []
+
+    assert public_names <= vars(ownership_update).keys()
+    assert old_source_refresh_names.isdisjoint(vars(source_refresh))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == ownership_update_path:
+            continue
+
+        imported_public_names = set()
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.source_refresh":
+                stale_imports = imported_names & old_source_refresh_names
+                if stale_imports:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(stale_imports))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module != "git_stage_batch.batch.ownership_update":
+                continue
+
+            imported_public_names |= imported_names & public_names
+            private_imports = imported_names & private_names
+            if private_imports:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(private_imports))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_batch_lineage_uses_public_data_types():
     """Batch modules should import public lineage data types."""
     lineage = __import__(
@@ -8794,7 +8880,12 @@ def test_batch_ownership_translation_owns_public_helpers():
         "_translate_lines_to_batch_ownership",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "source_refresh.py": public_names,
+        SRC_ROOT / "batch" / "source_refresh.py": {
+            "detect_stale_batch_source_for_selection",
+        },
+        SRC_ROOT / "batch" / "ownership_update.py": {
+            "translate_lines_to_batch_ownership",
+        },
         SRC_ROOT / "commands" / "selection" / "discard_line_replacement.py": {
             "translate_lines_to_batch_ownership",
         },
@@ -8865,7 +8956,7 @@ def test_batch_hunk_ownership_translation_owns_hunk_selection():
         "_translate_hunk_selection_to_batch_ownership",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "source_refresh.py": public_names,
+        SRC_ROOT / "batch" / "ownership_update.py": public_names,
         SRC_ROOT / "commands" / "selection" / "include_line_selection.py": (
             public_names
         ),
@@ -9545,7 +9636,7 @@ def test_batch_ownership_merging_owns_merge_helpers():
         "_merge_deletion_claim_metadata",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "source_refresh.py": public_names,
+        SRC_ROOT / "batch" / "ownership_update.py": public_names,
         SRC_ROOT / "commands" / "batch_source" / "reset_claims.py": public_names,
         SRC_ROOT
         / "commands"
@@ -9746,7 +9837,7 @@ def test_batch_replacement_line_runs_own_public_derivation():
             "ReplacementLineRun"
         },
         SRC_ROOT / "batch" / "ownership_line_entries.py": {"ReplacementLineRun"},
-        SRC_ROOT / "batch" / "source_refresh.py": {
+        SRC_ROOT / "batch" / "ownership_update.py": {
             "ReplacementLineRun",
         },
         SRC_ROOT / "commands" / "selection" / "discard_line_replacement.py": (

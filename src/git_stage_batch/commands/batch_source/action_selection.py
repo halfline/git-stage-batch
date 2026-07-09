@@ -7,8 +7,6 @@ from typing import TYPE_CHECKING
 
 from ...batch.selection import (
     require_single_file_context_for_line_selection,
-    resolve_batch_file_scope,
-    resolve_current_batch_atomic_file_scope,
 )
 from ...batch.submodule_pointer import (
     is_batch_submodule_pointer,
@@ -17,6 +15,10 @@ from ...batch.submodule_pointer import (
 from ...core.replacement import ReplacementPayload
 from ...data.file_review.batch_selection import (
     translate_batch_file_gutter_ids_to_selection_ids,
+)
+from ...data.batch_file_scope import (
+    resolve_batch_file_scope,
+    resolve_current_batch_atomic_file_scope,
 )
 from ...data.file_review.records import FileReviewAction
 from ...exceptions import exit_with_error

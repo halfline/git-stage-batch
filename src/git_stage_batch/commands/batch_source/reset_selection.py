@@ -6,13 +6,13 @@ import shlex
 from dataclasses import dataclass
 
 from ...batch.query import read_batch_metadata
-from ...batch.selection import (
-    resolve_batch_file_scope,
-    resolve_current_batch_atomic_file_scope,
-)
 from ...batch.source_selector import require_plain_batch_name
 from ...batch.validation import batch_exists, validate_batch_name
 from ...core.line_selection import LineRanges
+from ...data.batch_file_scope import (
+    resolve_batch_file_scope,
+    resolve_current_batch_atomic_file_scope,
+)
 from ...data.file_review.batch_selection import (
     translate_reset_batch_file_gutter_ids_to_selection_ranges,
 )

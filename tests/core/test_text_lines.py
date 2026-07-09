@@ -3,7 +3,7 @@
 import pytest
 
 from git_stage_batch.core.buffer import LineBuffer
-from git_stage_batch.utils.text import (
+from git_stage_batch.core.text_lines import (
     bytes_to_lines,
     normalize_line_ending,
     normalize_line_endings,

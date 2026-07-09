@@ -2,21 +2,10 @@
 
 from __future__ import annotations
 
-from importlib.util import find_spec
-
 from git_stage_batch.batch.ownership import BatchOwnership
-
-
-def acquire_ownership_for_metadata(metadata: dict):
-    """Acquire ownership metadata through the available loader API."""
-    if find_spec("git_stage_batch.batch.ownership_metadata_loading") is None:
-        return BatchOwnership.acquire_for_metadata_dict(metadata)
-
-    from git_stage_batch.batch.ownership_metadata_loading import (
-        acquire_ownership_for_metadata_dict,
-    )
-
-    return acquire_ownership_for_metadata_dict(metadata)
+from git_stage_batch.batch.ownership_metadata_loading import (
+    acquire_ownership_for_metadata_dict as acquire_ownership_for_metadata,
+)
 
 
 def reject_materialized_ownership_metadata(

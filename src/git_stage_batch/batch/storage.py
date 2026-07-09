@@ -55,7 +55,7 @@ from .presence_constraints import satisfy_constraints
 from .realized_entries import realized_entry_content_chunks
 
 if TYPE_CHECKING:
-    from .ownership import BatchOwnership, AbsenceClaim
+    from .ownership import BatchOwnership
 
 
 @dataclass(frozen=True)
@@ -475,93 +475,6 @@ def _stream_realized_content_chunks_from_lines(
         yield from realized_entry_content_chunks(realized_entries)
     finally:
         realized_entries.close()
-
-
-def _suppress_sequence_at_position_bytes(
-    lines: list[bytes],
-    sequence: list[bytes],
-    position: int
-) -> list[bytes]:
-    """Suppress exact byte sequence at specific position if it matches.
-
-    This is position-specific, not global removal.
-
-    Args:
-        lines: File content split into lines
-        sequence: Byte sequence to suppress
-        position: 0-indexed position to check (sequence should start here)
-
-    Returns:
-        Lines with sequence suppressed if found at position, otherwise unchanged
-    """
-    if not sequence or not lines:
-        return lines
-
-    seq_len = len(sequence)
-
-    # Check if position is valid
-    if position < 0 or position >= len(lines):
-        return lines
-
-    # Check if sequence matches at this position
-    if position + seq_len > len(lines):
-        # Not enough lines remaining for sequence to match
-        return lines
-
-    # Check for exact match
-    match = all(
-        lines[position + j] == sequence[j]
-        for j in range(seq_len)
-    )
-
-    if not match:
-        # Sequence not found at this position - constraint already satisfied
-        return lines
-
-    # Suppress the sequence by removing it
-    return lines[:position] + lines[position + seq_len:]
-
-
-def _enforce_deletion_constraint(
-    lines: list[bytes],
-    claim: 'AbsenceClaim'
-) -> list[bytes]:
-    """Remove sequences matching a deletion constraint.
-
-    Scans the line list and removes any occurrence of the exact sequence
-    specified by the absence claim.
-
-    Args:
-        lines: Current content as list of lines (bytes with newlines)
-        claim: Deletion constraint specifying content to suppress
-
-    Returns:
-        Content with matching sequences removed
-    """
-    if not claim.content_lines or not lines:
-        return lines
-
-    claim_length = len(claim.content_lines)
-    result = []
-    i = 0
-
-    while i < len(lines):
-        # Check if we have a match starting at position i
-        if i + claim_length <= len(lines):
-            match = all(
-                lines[i + j] == claim.content_lines[j]
-                for j in range(claim_length)
-            )
-            if match:
-                # Skip this sequence (suppress it)
-                i += claim_length
-                continue
-
-        # No match: keep this line
-        result.append(lines[i])
-        i += 1
-
-    return result
 
 
 def remove_file_from_batch(batch_name: str, file_path: str) -> None:

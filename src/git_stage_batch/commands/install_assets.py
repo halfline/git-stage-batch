@@ -5,7 +5,6 @@ from __future__ import annotations
 from importlib import resources
 from pathlib import Path
 import subprocess
-import sys
 
 from ..data.asset_catalog import (
     ASSET_GROUPS as _ASSET_GROUPS,
@@ -16,6 +15,9 @@ from ..data.asset_catalog import (
 from ..data.asset_installation import copy_asset_tree
 from ..exceptions import CommandError
 from ..i18n import _
+from ..output.install_assets import (
+    print_group_install_summary as _print_group_install_summary,
+)
 from ..utils.file_patterns import resolve_gitignore_style_patterns
 from ..utils.git import get_git_repository_root_path, require_git_repository
 
@@ -104,30 +106,6 @@ def _validate_destination_path_shape(
                 path=str(destination.relative_to(repo_root)),
             )
         )
-
-
-def _print_group_install_summary(
-    group: AssetGroup,
-    selected_entries: dict[str, Traversable],
-) -> None:
-    """Print a summary of what was installed for one asset group."""
-    installed_names = ", ".join(selected_entries)
-    if len(selected_entries) == 1:
-        print(
-            _("✓ Installed {kind} '{name}'").format(
-                kind=group.display_name_singular,
-                name=next(iter(selected_entries)),
-            ),
-            file=sys.stderr,
-        )
-        return
-    print(
-        _("✓ Installed {kind}: {names}").format(
-            kind=group.display_name_plural,
-            names=installed_names,
-        ),
-        file=sys.stderr,
-    )
 
 
 def command_install_assets(
@@ -220,4 +198,4 @@ def command_install_assets(
         copy_asset_tree(entry, destination)
 
     for group, selected_entries in selected_entries_by_group:
-        _print_group_install_summary(group, selected_entries)
+        _print_group_install_summary(group, selected_entries.keys())

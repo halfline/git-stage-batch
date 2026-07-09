@@ -13,10 +13,10 @@ from .discard_reversal import (
 )
 from .line_mapping import LineMapping
 from .match import match_lines
-from .realized_entries import (
-    RealizedEntry as _RealizedEntry,
-    _RealizedEntries,
-    _as_realized_entries,
+from .realized_entries import RealizedEntry as _RealizedEntry
+from .realized_entry_storage import (
+    RealizedEntries,
+    as_realized_entries,
     realized_entry_content_chunks as _realized_entry_content_chunks,
 )
 from . import realized_mapping as _realized_mapping
@@ -157,9 +157,9 @@ def _build_realized_entries_for_discard(
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
     working_to_source: LineMapping,
-) -> _RealizedEntries:
+) -> RealizedEntries:
     """Build structured entries from working tree with source provenance."""
-    result = _RealizedEntries()
+    result = RealizedEntries()
     _realized_mapping.append_working_range_with_mapping(
         result,
         working_lines,
@@ -175,9 +175,9 @@ def _build_realized_entries_for_discard(
 def _restore_absence_constraints(
     entries: Sequence[_RealizedEntry],
     deletion_claims: list['AbsenceClaim'],
-) -> _RealizedEntries:
+) -> RealizedEntries:
     """Restore absence constraints at anchored source boundaries."""
-    result = _as_realized_entries(entries)
+    result = as_realized_entries(entries)
     if not deletion_claims:
         return result
 
@@ -192,7 +192,7 @@ def _restore_absence_constraints(
         if _boundary_sequence_present(result, boundary, claim.content_lines):
             continue
 
-        with _RealizedEntries() as restored_entries:
+        with RealizedEntries() as restored_entries:
             restored_entries.append_line_range_from(
                 claim.content_lines,
                 0,

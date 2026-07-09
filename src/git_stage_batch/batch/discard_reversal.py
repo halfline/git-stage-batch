@@ -8,10 +8,10 @@ from .baseline_correspondence import (
     BaselineCorrespondence as _BaselineCorrespondence,
     RegionKind as _RegionKind,
 )
-from .realized_entries import (
-    RealizedEntry as _RealizedEntry,
-    _RealizedEntries,
-    _entry_source_line_at,
+from .realized_entries import RealizedEntry as _RealizedEntry
+from .realized_entry_storage import (
+    RealizedEntries,
+    realized_entry_source_line_at,
 )
 from ..core.line_selection import LineRanges, LineSelection, coerce_line_ranges
 from ..exceptions import MergeError as _MergeError
@@ -30,9 +30,9 @@ def reverse_presence_constraints(
     entries: Sequence[_RealizedEntry],
     presence_line_set: LineSelection,
     correspondence: _BaselineCorrespondence,
-) -> _RealizedEntries:
+) -> RealizedEntries:
     """Replace or remove batch-owned claimed lines during discard."""
-    result = _RealizedEntries()
+    result = RealizedEntries()
     processed_replace_regions: set[int] = set()
 
     def flush_copy(start: int | None, stop: int) -> None:
@@ -112,7 +112,7 @@ def reverse_presence_constraints(
 
     copy_start: int | None = 0
 
-    if isinstance(entries, _RealizedEntries):
+    if isinstance(entries, RealizedEntries):
         presence_lines = coerce_line_ranges(presence_line_set)
         for run in entries.provenance_runs():
             if run.source_start == 0:
@@ -140,7 +140,7 @@ def reverse_presence_constraints(
         return result
 
     for index in range(len(entries)):
-        source_line = _entry_source_line_at(entries, index)
+        source_line = realized_entry_source_line_at(entries, index)
         if source_line is not None and source_line in presence_line_set:
             flush_copy(copy_start, index)
             copy_start = None

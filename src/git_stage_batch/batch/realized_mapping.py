@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from .line_mapping import LineMapping
-from .realized_entries import _RealizedEntries, _backing_content_sequence
+from .realized_entry_storage import RealizedEntries, backing_content_sequence
 from ..core.line_selection import LineSelection
 
 
@@ -19,7 +19,7 @@ def _source_lines_are_contiguous(
 
 
 def append_working_range_with_mapping(
-    result: _RealizedEntries,
+    result: RealizedEntries,
     working_lines: Sequence[bytes],
     mapping: LineMapping,
     start: int,
@@ -30,7 +30,7 @@ def append_working_range_with_mapping(
     if start == end:
         return
 
-    content_lines = _backing_content_sequence(working_lines)
+    content_lines = backing_content_sequence(working_lines)
     run_start = start
     run_source_start = mapping.get_source_line_from_target_line(start + 1)
     previous_source_line = run_source_start

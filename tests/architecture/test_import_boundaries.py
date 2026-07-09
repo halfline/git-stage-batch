@@ -595,6 +595,31 @@ def test_cli_argument_parser_delegates_check_unstaged_subcommand_registration():
     assert "git_stage_batch.cli.subcommand_parser" in session_subcommands_imports
 
 
+def test_cli_argument_parser_delegates_start_subcommand_registration():
+    """Argument parsing should not own start parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    session_subcommands_path = SRC_ROOT / "cli" / "session_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    session_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(session_subcommands_path)
+    }
+    session_subcommands = __import__(
+        "git_stage_batch.cli.session_subcommands",
+        fromlist=["session_subcommands"],
+    )
+
+    assert "add_start_subcommand" in vars(session_subcommands)
+    assert "git_stage_batch.cli.session_subcommands" in argument_parser_imports
+    assert "git_stage_batch.commands.start" not in argument_parser_imports
+    assert "git_stage_batch.commands.start" in session_subcommands_imports
+    assert "git_stage_batch.cli.auto_advance_options" in session_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in session_subcommands_imports
+
+
 def test_cli_argument_parser_delegates_stop_subcommand_registration():
     """Argument parsing should not own stop parser details."""
     argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
@@ -6301,6 +6326,7 @@ def test_argument_parser_does_not_import_command_facade():
     assert "git_stage_batch.commands.discard_from" not in imported_modules
     assert "git_stage_batch.commands.interactive" not in imported_modules
     assert "git_stage_batch.commands.check_unstaged" not in imported_modules
+    assert "git_stage_batch.commands.start" not in imported_modules
     assert "git_stage_batch.commands.status" not in imported_modules
     assert "git_stage_batch.cli.session_subcommands" in imported_modules
 

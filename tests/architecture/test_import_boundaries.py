@@ -956,7 +956,7 @@ def test_file_review_freshness_stays_out_of_state_module():
         SRC_ROOT / "data" / "status_summary.py": {
             "selected_change_matches_review_state",
         },
-        SRC_ROOT / "data" / "file_review" / "state.py": {
+        SRC_ROOT / "data" / "file_review" / "action_scope.py": {
             "review_state_matches_action",
             "selected_change_kind_matches_review_source",
             "selected_change_matches_review_state",
@@ -1023,7 +1023,7 @@ def test_file_review_selection_validation_stays_out_of_state_module():
         SRC_ROOT / "data" / "batch_file_review_selection.py": {
             "validate_review_scoped_line_selection",
         },
-        SRC_ROOT / "data" / "file_review" / "state.py": public_names,
+        SRC_ROOT / "data" / "file_review" / "action_scope.py": public_names,
     }
     violations = []
 
@@ -1164,7 +1164,7 @@ def test_file_review_action_commands_stay_out_of_state_module():
         "show_command_for_review_state",
     }
     expected_imports = {
-        SRC_ROOT / "data" / "file_review" / "state.py": public_names,
+        SRC_ROOT / "data" / "file_review" / "action_scope.py": public_names,
         SRC_ROOT / "output" / "file_review.py": {"line_action_command"},
     }
     violations = []
@@ -1183,6 +1183,94 @@ def test_file_review_action_commands_stay_out_of_state_module():
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
             if imported_module == "git_stage_batch.data.file_review.action_commands":
+                imported_public_names |= imported_names & public_names
+            if imported_module == "git_stage_batch.data.file_review.state":
+                moved_names = imported_names & public_names
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
+def test_file_review_action_scope_stays_out_of_state_module():
+    """File-review action scope should live beside persisted state."""
+    action_scope = __import__(
+        "git_stage_batch.data.file_review.action_scope",
+        fromlist=["action_scope"],
+    )
+    review_state = __import__(
+        "git_stage_batch.data.file_review.state",
+        fromlist=["state"],
+    )
+    public_names = {
+        "ReviewScopedSelectionError",
+        "finish_review_scoped_line_action",
+        "fresh_batch_review_selections_for_action",
+        "line_action_came_from_partial_review",
+        "refuse_ambiguous_bare_action_after_partial_file_review",
+        "refuse_live_action_for_batch_selection",
+        "resolve_batch_source_action_scope",
+        "resolve_live_line_action_scope",
+        "resolve_live_to_batch_action_scope",
+        "resolve_review_file_for_bare_whole_file_action",
+        "validate_implicit_live_to_batch_file_action",
+        "validate_pathless_review_line_action",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "batch_source" / "action_completion.py": {
+            "finish_review_scoped_line_action",
+        },
+        SRC_ROOT / "commands" / "batch_source" / "action_context.py": {
+            "resolve_batch_source_action_scope",
+        },
+        SRC_ROOT / "commands" / "batch_source" / "reset_selection.py": {
+            "resolve_batch_source_action_scope",
+        },
+        SRC_ROOT / "commands" / "discard.py": {
+            "finish_review_scoped_line_action",
+            "refuse_ambiguous_bare_action_after_partial_file_review",
+            "refuse_live_action_for_batch_selection",
+            "resolve_live_line_action_scope",
+            "resolve_live_to_batch_action_scope",
+        },
+        SRC_ROOT / "commands" / "include.py": {
+            "finish_review_scoped_line_action",
+            "refuse_ambiguous_bare_action_after_partial_file_review",
+            "refuse_live_action_for_batch_selection",
+            "resolve_live_line_action_scope",
+            "resolve_live_to_batch_action_scope",
+        },
+        SRC_ROOT / "commands" / "skip.py": {
+            "finish_review_scoped_line_action",
+            "refuse_ambiguous_bare_action_after_partial_file_review",
+            "refuse_live_action_for_batch_selection",
+            "resolve_live_line_action_scope",
+        },
+        SRC_ROOT / "data" / "batch_file_review_selection.py": {
+            "fresh_batch_review_selections_for_action",
+        },
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(action_scope)
+    assert public_names.isdisjoint(vars(review_state))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "data" / "file_review" / "action_scope.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.data.file_review.action_scope":
                 imported_public_names |= imported_names & public_names
             if imported_module == "git_stage_batch.data.file_review.state":
                 moved_names = imported_names & public_names
@@ -5869,7 +5957,7 @@ def test_batch_source_action_context_owns_action_prologue():
         "git_stage_batch.batch.validation": {
             "batch_exists",
         },
-        "git_stage_batch.data.file_review.state": {
+        "git_stage_batch.data.file_review.action_scope": {
             "resolve_batch_source_action_scope",
         },
     }
@@ -6034,7 +6122,7 @@ def test_batch_source_action_completion_owns_review_finalization():
                 and "action_completion" in imported_names
             ):
                 imports_action_completion[path] = True
-            if imported_module == "git_stage_batch.data.file_review.state":
+            if imported_module == "git_stage_batch.data.file_review.action_scope":
                 direct_review_imports[path] |= (
                     imported_names & {"finish_review_scoped_line_action"}
                 )
@@ -6239,7 +6327,7 @@ def test_batch_source_reset_selection_owns_reset_scope():
         "git_stage_batch.data.file_review.records": {
             "FileReviewAction",
         },
-        "git_stage_batch.data.file_review.state": {
+        "git_stage_batch.data.file_review.action_scope": {
             "resolve_batch_source_action_scope",
         },
         "git_stage_batch.exceptions": {

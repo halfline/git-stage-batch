@@ -29,6 +29,7 @@ from ..data.batch_selected_changes import (
 )
 from ..data.batch_hunk_display import cache_rendered_batch_file_display
 from ..data.file_review.batch_selection import translate_batch_file_gutter_ids_to_selection_ids
+from ..data.file_review.pages import normalize_page_spec
 from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..data.selected_change.store import (
     SelectedChangeKind,
@@ -54,7 +55,6 @@ from ..output.file_review import (
     print_file_review,
 )
 from ..output.file_review_model_builder import build_file_review_model
-from ..output.file_review_pages import normalize_page_spec
 from ..output.file_review_state_builder import (
     make_file_review_state,
     resolve_default_review_pages,

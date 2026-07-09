@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from ..core.line_selection import format_line_ids, parse_positive_selection
-from ..exceptions import CommandError
-from ..i18n import _
+from ...core.line_selection import format_line_ids, parse_positive_selection
+from ...exceptions import CommandError
+from ...i18n import _
 
 
 def parse_page_selection(

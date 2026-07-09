@@ -5,7 +5,7 @@ from __future__ import annotations
 from ..batch.operation_candidates import render_candidate_buffer_diff
 from ..core.buffer import LineBuffer
 from ..core.diff_parser import build_line_changes_from_patch_lines
-from . import candidate_preview_summary
+from . import candidate_preview_snippets
 from .colors import Colors
 
 
@@ -62,7 +62,7 @@ def _print_candidate_line_changes(
         gutter_number = " " * width if line_number is None else f"{line_number:>{width}}"
         gutter = (
             f"{gutter_number}"
-            f"{candidate_preview_summary.CANDIDATE_GUTTER_SEPARATOR} "
+            f"{candidate_preview_snippets.CANDIDATE_GUTTER_SEPARATOR} "
         )
         body = f"{line.kind}{line.display_text()}"
 
@@ -75,7 +75,7 @@ def _print_candidate_line_changes(
             print(f"{styled_gutter}{Colors.GREEN}{body}{Colors.RESET}")
         elif line.kind == "-":
             print(f"{styled_gutter}{Colors.RED}{body}{Colors.RESET}")
-        elif candidate_preview_summary.candidate_line_in_range(
+        elif candidate_preview_snippets.candidate_line_in_range(
             line_number,
             ambiguity_target_line_range,
         ):

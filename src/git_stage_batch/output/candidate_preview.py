@@ -7,6 +7,7 @@ import json
 from ..batch.operation_candidates import OperationCandidatePreview
 from ..i18n import _
 from ..utils.paths import get_context_lines
+from . import candidate_preview_snippets
 from . import candidate_preview_summary
 from .candidate_preview_commands import (
     candidate_selector_text,
@@ -89,7 +90,7 @@ def _print_candidate_detail_header(
 
 
 def _style_candidate_snippet_line(
-    line: candidate_preview_summary.CandidateSnippetLine,
+    line: candidate_preview_snippets.CandidateSnippetLine,
     *,
     width: int,
 ) -> str:
@@ -99,11 +100,11 @@ def _style_candidate_snippet_line(
 
     line_number = " " * width if line.line_number is None else f"{line.line_number:>{width}}"
     gutter = (
-        f"{line_number}{candidate_preview_summary.CANDIDATE_GUTTER_SEPARATOR} "
+        f"{line_number}{candidate_preview_snippets.CANDIDATE_GUTTER_SEPARATOR} "
     )
     body = (
         f"{line.marker}"
-        f"{candidate_preview_summary.shorten_candidate_overview_text(line.text)}"
+        f"{candidate_preview_snippets.shorten_candidate_overview_text(line.text)}"
     )
     if line.highlight:
         return f"{Colors.GRAY}{gutter}{Colors.RESET}{Colors.REVERSE}{Colors.GRAY}{body}{Colors.RESET}"
@@ -119,7 +120,7 @@ def _print_candidate_summary_block(
     *,
     indent: str,
 ) -> None:
-    width = candidate_preview_summary.snippet_line_width(summary.lines)
+    width = candidate_preview_snippets.snippet_line_width(summary.lines)
     for line in summary.lines:
         print(f"{indent}{_style_candidate_snippet_line(line, width=width)}")
 
@@ -198,7 +199,7 @@ def render_operation_candidate_overview(
                             "target": target.target,
                             "summary": summary.title,
                             "context": list(
-                                candidate_preview_summary.plain_candidate_snippet_lines(
+                                candidate_preview_snippets.plain_candidate_snippet_lines(
                                     summary.lines
                                 )
                             ),

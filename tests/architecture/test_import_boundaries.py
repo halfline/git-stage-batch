@@ -9095,6 +9095,48 @@ def test_batch_source_action_completion_owns_review_finalization():
     }
 
 
+def test_batch_source_apply_action_owns_apply_execution():
+    """Apply-from file execution should live in batch-source support."""
+    apply_action = __import__(
+        "git_stage_batch.commands.batch_source.apply_action",
+        fromlist=["apply_action"],
+    )
+    action_path = SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
+    public_names = {
+        "execute_apply_action",
+    }
+    required_imports = {
+        ("git_stage_batch.commands.batch_source", "action_completion"),
+        ("git_stage_batch.commands.batch_source", "action_plans"),
+        ("git_stage_batch.commands.batch_source", "binary_file_actions"),
+        ("git_stage_batch.commands.batch_source", "candidate_preview_counts"),
+        ("git_stage_batch.commands.batch_source", "candidate_refusals"),
+        ("git_stage_batch.commands.batch_source", "merge_refusals"),
+        ("git_stage_batch.commands.batch_source", "text_file_actions"),
+        ("git_stage_batch.commands.batch_source", "text_plan_builders"),
+        ("git_stage_batch.commands.batch_source", "worktree_refusals"),
+        ("git_stage_batch.batch.binary_file_content", "read_binary_file_from_batch"),
+        ("git_stage_batch.batch.selection", "translate_atomic_unit_error_to_gutter_ids"),
+        ("git_stage_batch.batch.submodule_pointer", "apply_submodule_pointer_from_batch"),
+        ("git_stage_batch.data.session", "snapshot_file_if_untracked"),
+        ("git_stage_batch.data.undo", "undo_checkpoint"),
+    }
+    action_imports = set()
+
+    for imported_module, node in _import_from_nodes(action_path):
+        for alias in node.names:
+            action_imports.add((imported_module, alias.name))
+
+    action_text = action_path.read_text()
+
+    assert public_names <= vars(apply_action).keys()
+    assert required_imports <= action_imports
+    assert "build_apply_text_file_action_plan(" in action_text
+    assert "write_text_file_to_worktree(" in action_text
+    assert "write_binary_file_to_worktree(" in action_text
+    assert "finish_batch_source_action_review(" in action_text
+
+
 def test_batch_source_discard_action_owns_discard_execution():
     """Discard-from file execution should live in batch-source support."""
     discard_action = __import__(

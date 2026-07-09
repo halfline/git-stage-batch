@@ -5,11 +5,13 @@ from __future__ import annotations
 from ..commands.abort import command_abort
 from ..commands.check_unstaged import command_check_unstaged
 from ..commands.redo import command_redo
+from ..commands.start import command_start
 from ..commands.status import command_status
 from ..commands.stop import command_stop
 from ..commands.undo import command_undo
 from ..i18n import _
 from ..output.status_prompt import DEFAULT_PROMPT_FORMAT
+from .auto_advance_options import add_auto_advance_arguments
 from .subcommand_parser import add_subcommand_parser
 
 
@@ -21,6 +23,30 @@ def add_check_unstaged_subcommand(subparsers) -> None:
         help=_("Check whether the index fits an unstaged-only workflow"),
     )
     parser_check_unstaged.set_defaults(func=lambda _: command_check_unstaged())
+
+
+def add_start_subcommand(subparsers) -> None:
+    """Register the start subcommand."""
+    parser_start = add_subcommand_parser(
+        subparsers,
+        "start",
+        help=_("Start a new batch staging session"),
+    )
+    parser_start.add_argument(
+        "-U",
+        "--unified",
+        dest="context_lines",
+        type=int,
+        metavar="N",
+        help=_("Number of context lines in diff output (default: 3)"),
+    )
+    add_auto_advance_arguments(parser_start)
+    parser_start.set_defaults(
+        func=lambda args: command_start(
+            context_lines=args.context_lines,
+            auto_advance=args.auto_advance,
+        )
+    )
 
 
 def add_stop_subcommand(subparsers) -> None:

@@ -32,6 +32,7 @@ from .fixup.candidate_display import (
 )
 from .fixup.history import find_next_fixup_candidate
 from .fixup.iteration_state import prepare_suggest_fixup_iteration
+from .fixup.line_ranges import require_hunk_old_line_range
 
 
 def command_suggest_fixup(
@@ -84,20 +85,12 @@ def command_suggest_fixup(
     # Get hunk hash for state tracking
     hunk_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
 
-    # Extract old line numbers from all changed lines
-    old_line_numbers = []
-    for entry in line_changes.lines:
-        if entry.old_line_number is not None:
-            old_line_numbers.append(entry.old_line_number)
-
-    if not old_line_numbers:
-        if porcelain:
-            sys.exit(1)
-        exit_with_error(_("No old line numbers found in hunk (all lines may be additions)."))
-
-    # Get the range of old lines
-    min_line = min(old_line_numbers)
-    max_line = max(old_line_numbers)
+    line_range = require_hunk_old_line_range(
+        line_changes,
+        porcelain=porcelain,
+    )
+    min_line = line_range.min_line
+    max_line = line_range.max_line
 
     # Validate boundary ref
     try:

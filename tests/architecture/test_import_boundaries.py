@@ -7488,7 +7488,9 @@ def test_batch_owns_atomic_file_change_metadata_conversion():
         "git_stage_batch.batch.atomic_file_changes",
         fromlist=["atomic_file_changes"],
     )
-    show_from_path = SRC_ROOT / "commands" / "show_from.py"
+    action_path = (
+        SRC_ROOT / "commands" / "batch_source" / "file_display_action.py"
+    )
     public_names = {
         "binary_change_from_batch_file_metadata",
         "gitlink_change_from_batch_file_metadata",
@@ -7501,27 +7503,27 @@ def test_batch_owns_atomic_file_change_metadata_conversion():
         "BinaryFileChange",
         "GitlinkChange",
     }
-    show_from_tree = ast.parse(show_from_path.read_text(), filename=str(show_from_path))
-    show_from_helpers = {
+    action_tree = ast.parse(action_path.read_text(), filename=str(action_path))
+    action_helpers = {
         node.name
-        for node in ast.walk(show_from_tree)
+        for node in ast.walk(action_tree)
         if isinstance(node, (ast.ClassDef, ast.FunctionDef))
     }
-    show_from_atomic_imports = set()
-    show_from_model_imports = set()
+    action_atomic_imports = set()
+    action_model_imports = set()
 
-    for imported_module, node in _import_from_nodes(show_from_path):
+    for imported_module, node in _import_from_nodes(action_path):
         imported_names = {alias.name for alias in node.names}
         if imported_module == "git_stage_batch.batch.atomic_file_changes":
-            show_from_atomic_imports |= imported_names
+            action_atomic_imports |= imported_names
         if imported_module == "git_stage_batch.core.models":
-            show_from_model_imports |= imported_names & model_names
+            action_model_imports |= imported_names & model_names
 
     assert public_names <= vars(atomic_file_changes).keys()
     assert model_names <= vars(atomic_file_changes).keys()
-    assert public_names <= show_from_atomic_imports
-    assert old_names.isdisjoint(show_from_helpers)
-    assert show_from_model_imports == set()
+    assert public_names <= action_atomic_imports
+    assert old_names.isdisjoint(action_helpers)
+    assert action_model_imports == set()
 
 
 def test_batch_owns_binary_file_content_loading():

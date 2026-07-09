@@ -6,7 +6,7 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.batch.storage import add_binary_file_to_batch
+from git_stage_batch.batch.binary_file_storage import add_binary_file_to_batch
 from git_stage_batch.batch.query import get_batch_commit_sha, read_batch_metadata
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.core.models import BinaryFileChange

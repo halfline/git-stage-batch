@@ -7840,8 +7840,12 @@ def test_batch_replacement_line_runs_own_public_derivation():
     assert violations == []
 
 
-def test_batch_storage_uses_public_binary_helper():
-    """Cross-module storage callers should import the public binary helper."""
+def test_binary_file_storage_owns_binary_persistence():
+    """Binary persistence should live outside batch storage."""
+    binary_file_storage = __import__(
+        "git_stage_batch.batch.binary_file_storage",
+        fromlist=["binary_file_storage"],
+    )
     storage = __import__(
         "git_stage_batch.batch.storage",
         fromlist=["storage"],
@@ -7856,25 +7860,44 @@ def test_batch_storage_uses_public_binary_helper():
         SRC_ROOT / "commands" / "batch_transform" / "sift_persistence.py": {
             "add_binary_file_to_batch",
         },
+        SRC_ROOT / "commands" / "selection" / "whole_file_batch_discarding.py": {
+            "add_binary_file_to_batch",
+        },
+        SRC_ROOT / "commands" / "selection" / "whole_file_batch_staging.py": {
+            "add_binary_file_to_batch",
+        },
     }
     violations = []
 
     for public_name in public_names:
-        assert public_name in vars(storage)
+        assert public_name in vars(binary_file_storage)
+    assert public_names.isdisjoint(vars(storage))
+    assert private_names.isdisjoint(vars(binary_file_storage))
     assert private_names.isdisjoint(vars(storage))
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == SRC_ROOT / "batch" / "storage.py":
+        if path == SRC_ROOT / "batch" / "binary_file_storage.py":
             continue
 
         imports = _import_from_nodes(path)
         imported_public_names = set()
 
         for imported_module, node in imports:
-            if imported_module != "git_stage_batch.batch.storage":
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.storage":
+                disallowed_names = imported_names & public_names
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(
+                        f"{relative_path}:{node.lineno} imports {names} "
+                        "from batch.storage"
+                    )
                 continue
 
-            imported_names = {alias.name for alias in node.names}
+            if imported_module != "git_stage_batch.batch.binary_file_storage":
+                continue
+
             imported_public_names |= imported_names & public_names
             disallowed_names = imported_names & private_names
             if disallowed_names:
@@ -8184,7 +8207,7 @@ def test_batch_transform_sift_persistence_owns_file_writes():
             "remove_file_from_batch_commit",
             "update_batch_commit",
         },
-        "git_stage_batch.batch.storage": {
+        "git_stage_batch.batch.binary_file_storage": {
             "add_binary_file_to_batch",
         },
         "git_stage_batch.core.text_lifecycle": {

@@ -46,7 +46,8 @@ from git_stage_batch.core.line_selection import format_line_ids
 from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange, RenderedBatchDisplay, ReviewActionGroup
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.output.colors import Colors
-from git_stage_batch.output.file_review import build_file_review_model, print_file_review
+from git_stage_batch.output.file_review import print_file_review
+from git_stage_batch.output.file_review_model_builder import build_file_review_model
 from git_stage_batch.output.file_review_state_builder import make_file_review_state
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,

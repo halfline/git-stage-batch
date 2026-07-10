@@ -22,7 +22,7 @@ from .attribution_units import (
     enumerate_units_from_file_comparison as _enumerate_units_from_file_comparison,
     make_attribution_unit_id as _make_attribution_unit_id,
 )
-from .query import list_batch_names, read_batch_metadata
+from .query import list_batch_names, read_batch_metadata_for_batches
 from ..core.line_selection import parse_line_selection
 from ..utils.repository_buffers import (
     load_git_object_as_buffer_or_empty,
@@ -82,12 +82,15 @@ def _has_presence_source_lines(file_metadata: dict) -> bool:
 def build_file_attribution(
     file_path: str,
     *,
+    batch_metadata_by_name: dict[str, dict] | None = None,
     supplemental_batch_metadata: dict[str, dict] | None = None,
 ) -> FileAttribution:
     """Build complete ownership attribution for a file."""
     all_batch_metadata = {}
-    for batch_name in list_batch_names():
-        metadata = read_batch_metadata(batch_name)
+    if batch_metadata_by_name is None:
+        batch_metadata_by_name = read_batch_metadata_for_batches(list_batch_names())
+
+    for batch_name, metadata in batch_metadata_by_name.items():
         if file_path in metadata.get("files", {}):
             all_batch_metadata[batch_name] = metadata
 

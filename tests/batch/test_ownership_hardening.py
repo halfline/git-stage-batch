@@ -273,6 +273,81 @@ def test_build_file_attribution_reuses_batch_alignment_per_file(temp_repo, monke
     assert match_call_count == 2
 
 
+def test_build_file_attribution_bulk_loads_batch_source_buffers(
+    temp_repo,
+    monkeypatch,
+):
+    """Batch source buffers should be loaded with one object batch read."""
+    test_file = temp_repo / "test.txt"
+    test_file.write_text("base\n")
+    subprocess.run(["git", "add", "test.txt"], check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "baseline"], check=True, capture_output=True)
+
+    first_source_commit = _create_batch_source_commit(
+        temp_repo,
+        "test.txt",
+        "base\nfirst\n",
+    )
+    second_source_commit = _create_batch_source_commit(
+        temp_repo,
+        "test.txt",
+        "base\nsecond\n",
+    )
+
+    monkeypatch.setattr(
+        attribution_module,
+        "list_batch_names",
+        lambda: ["first", "second"],
+    )
+    monkeypatch.setattr(
+        attribution_module,
+        "read_batch_metadata_for_batches",
+        lambda _names: {
+            "first": {
+                "files": {
+                    "test.txt": {
+                        "batch_source_commit": first_source_commit,
+                        "presence_claims": [{"source_lines": ["2"]}],
+                        "deletions": [],
+                    }
+                }
+            },
+            "second": {
+                "files": {
+                    "test.txt": {
+                        "batch_source_commit": second_source_commit,
+                        "presence_claims": [{"source_lines": ["2"]}],
+                        "deletions": [],
+                    }
+                }
+            },
+        },
+    )
+    calls = []
+    original_read_git_blobs_as_bytes = attribution_module.read_git_blobs_as_bytes
+
+    def counting_read_git_blobs_as_bytes(refspecs):
+        refspecs = tuple(refspecs)
+        calls.append(refspecs)
+        return original_read_git_blobs_as_bytes(refspecs)
+
+    monkeypatch.setattr(
+        attribution_module,
+        "read_git_blobs_as_bytes",
+        counting_read_git_blobs_as_bytes,
+    )
+
+    attribution = build_file_attribution("test.txt")
+
+    assert attribution.units
+    assert calls == [
+        (
+            f"{first_source_commit}:test.txt",
+            f"{second_source_commit}:test.txt",
+        )
+    ]
+
+
 class TestPresenceGranularity:
     """Test that PRESENCE_ONLY units are per-line, not per-run."""
 

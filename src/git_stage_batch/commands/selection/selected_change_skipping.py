@@ -19,6 +19,7 @@ from ...data.progress import (
     record_text_deletion_hunk_skipped,
 )
 from ...data.selected_change.loading import load_selected_change
+from ...data.selected_change.paths import worktree_paths_for_selected_change
 from ...data.undo_checkpoints import undo_checkpoint
 from ...exceptions import NoMoreHunks
 from ...i18n import _
@@ -45,7 +46,10 @@ def skip_selected_change(
                 print(_("No more hunks to process."), file=sys.stderr)
             return
 
-    with undo_checkpoint("skip"):
+    with undo_checkpoint(
+        "skip",
+        worktree_paths=worktree_paths_for_selected_change(item),
+    ):
         _skip_loaded_selected_change(
             item,
             quiet=quiet,

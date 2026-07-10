@@ -66,7 +66,10 @@ def discard_file_changes(
         target_file = file
 
     auto_add_untracked_files([target_file])
-    with undo_checkpoint(f"discard --file {file}".rstrip()):
+    with undo_checkpoint(
+        f"discard --file {file}".rstrip(),
+        worktree_paths=[target_file],
+    ):
         blocklist_path = get_block_list_file_path()
         blocked_hashes = read_text_file_line_set(blocklist_path)
 

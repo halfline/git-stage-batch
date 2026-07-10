@@ -61,7 +61,10 @@ def include_file_changes(
         target_file = file
 
     auto_add_untracked_files([target_file])
-    with undo_checkpoint(f"include --file {file}".rstrip()):
+    with undo_checkpoint(
+        f"include --file {file}".rstrip(),
+        worktree_paths=[target_file],
+    ):
         hunks_staged = 0
         submodule_pointers_staged = 0
         renames_staged = 0

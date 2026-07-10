@@ -54,9 +54,22 @@ def build_replacement_batch_view_from_lines(
     replacement_text: str | ReplacementPayload,
 ) -> ReplacementBatchView:
     """Build replacement source content from an indexed byte-line sequence."""
-    claimed_source_lines = sorted(ownership.presence_line_set())
     payload = coerce_replacement_payload(replacement_text)
-    replacement_lines = replacement_line_chunks(payload)
+    with replacement_line_chunks(payload) as replacement_lines:
+        return _build_replacement_batch_view(
+            source_lines,
+            ownership,
+            replacement_lines,
+        )
+
+
+def _build_replacement_batch_view(
+    source_lines: Sequence[bytes],
+    ownership: BatchOwnership,
+    replacement_lines: Sequence[bytes],
+) -> ReplacementBatchView:
+    """Build a replacement view while its replacement line sequence is open."""
+    claimed_source_lines = sorted(ownership.presence_line_set())
 
     if claimed_source_lines:
         expected_claimed = list(range(claimed_source_lines[0], claimed_source_lines[-1] + 1))

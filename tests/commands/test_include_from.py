@@ -17,6 +17,7 @@ from git_stage_batch.commands.include_from import command_include_from_batch
 from git_stage_batch.commands.show_from import command_show_from_batch
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.batch.file_display import render_batch_file_display
+from git_stage_batch.data.file_review.state import clear_last_file_review_state
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.git_command import run_git_command
@@ -326,6 +327,58 @@ class TestCommandIncludeFromBatch:
         assert index_entry.startswith("100755 ")
         assert tool_path.read_text() == "#!/bin/sh\necho batched\n"
         assert stat.S_IMODE(tool_path.stat().st_mode) & stat.S_IXUSR
+
+    def test_include_from_batch_rejects_reset_only_review_ids_without_cached_review(
+        self,
+        temp_git_repo,
+    ):
+        """Explicit batch line actions must not reinterpret stale review IDs."""
+        prefix = [
+            "class X {\n",
+            "    @Test\n",
+            "    fun presentBefore() {\n",
+            "        assert(\"before\")\n",
+            "    }\n",
+            "\n",
+        ]
+        missing_middle = [
+            "    @Test\n",
+            "    fun missingOne() {\n",
+            "        assert(\"body1\")\n",
+            "    }\n",
+            "\n",
+            "    @Test\n",
+            "    fun missingTwo() {\n",
+            "        assert(\"body2\")\n",
+            "    }\n",
+            "\n",
+        ]
+        suffix = [
+            "    @Test\n",
+            "    fun next() {\n",
+            "        assert(\"next\")\n",
+            "    }\n",
+            *[
+                f"    val filler{index} = {index}\n"
+                for index in range(1, 40)
+            ],
+            "}\n",
+        ]
+        test_file = temp_git_repo / "Test.kt"
+        test_file.write_text("".join([*prefix, *missing_middle, *suffix]))
+        command_start(quiet=True)
+        command_include_to_batch("test-batch", file="Test.kt", quiet=True)
+
+        test_file.write_text("".join([*prefix, *suffix]))
+        subprocess.run(["git", "add", "Test.kt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Partial"], check=True, cwd=temp_git_repo, capture_output=True)
+        clear_last_file_review_state()
+
+        with pytest.raises(CommandError, match="Line selection #8-14"):
+            command_include_from_batch("test-batch", line_ids="7-16", file="Test.kt")
+
+        assert run_git_command(["diff", "--cached", "--", "Test.kt"]).stdout == ""
+        assert test_file.read_text() == "".join([*prefix, *suffix])
 
     def test_include_from_batch_line_scoped_deleted_text_file_stages_deletion(self, temp_git_repo):
         """Line-scoped include of a full deleted text file should stage path deletion."""

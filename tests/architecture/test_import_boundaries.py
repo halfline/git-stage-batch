@@ -51,6 +51,66 @@ def _import_from_nodes(path: Path) -> list[tuple[str | None, ast.ImportFrom]]:
     return nodes
 
 
+def _package_path_for_module(module: str) -> Path | None:
+    if not module.startswith("git_stage_batch."):
+        return None
+
+    package_path = SRC_ROOT.joinpath(*module.split(".")[1:])
+    if not (package_path / "__init__.py").exists():
+        return None
+
+    return package_path
+
+
+def _external_package_child_module_import_violations(
+    disallowed_children: dict[str, set[str]],
+) -> list[str]:
+    violations = []
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module not in disallowed_children:
+                continue
+
+            package_path = _package_path_for_module(imported_module)
+            if package_path is not None and package_path in path.parents:
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            disallowed_names = (
+                imported_names & disallowed_children[imported_module]
+            )
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    return violations
+
+
+def test_selected_change_display_names_data_modules_at_import_sites():
+    """Selected-change display should not import data modules through the package."""
+    assert _external_package_child_module_import_violations(
+        {
+            "git_stage_batch.data": {
+                "line_state",
+                "selected_change_store",
+            },
+        }
+    ) == []
+
+
+def test_tui_batch_menus_name_query_module_at_import_sites():
+    """TUI batch menus should not import query through the batch package."""
+    assert _external_package_child_module_import_violations(
+        {
+            "git_stage_batch.batch": {
+                "query",
+            },
+        }
+    ) == []
+
+
 def test_replacement_payload_imports_use_core_boundary():
     """Non-batch code should not depend on batch replacement for neutral payloads."""
     neutral_names = {
@@ -143,22 +203,125 @@ def test_live_text_lifecycle_detection_stays_out_of_core():
     assert "detect_empty_text_lifecycle_change" in vars(detector)
 
 
-def test_editor_package_does_not_reexport_buffer_primitives():
-    """Buffer primitives should be imported from core, not the editor package."""
+def test_editor_package_does_not_reexport_editor_apis():
+    """Editor callers should import concrete modules instead of the package."""
+    editor_path = SRC_ROOT / "editor" / "__init__.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(editor_path)
+    }
     editor = __import__("git_stage_batch.editor", fromlist=["editor"])
-    buffer_names = {
+    facade_names = {
         "BufferInput",
+        "Cursor",
+        "Editor",
         "LineBuffer",
         "buffer_byte_chunks",
         "buffer_byte_count",
         "buffer_has_data",
         "buffer_matches",
         "buffer_preview",
+        "choose_line_ending",
+        "detect_line_ending",
+        "edit_lines_as_buffer",
+        "export_lines_as_buffer",
+        "restore_line_endings",
+        "restore_line_endings_in_chunks",
         "write_buffer_to_path",
         "write_buffer_to_working_tree_path",
     }
+    violations = []
 
-    assert buffer_names.isdisjoint(vars(editor))
+    assert imported_modules <= {"__future__"}
+    assert facade_names.isdisjoint(vars(editor))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.editor":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            disallowed_names = imported_names & facade_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
+def test_cli_package_does_not_reexport_cli_apis():
+    """CLI callers should import concrete modules instead of the package."""
+    cli_path = SRC_ROOT / "cli" / "__init__.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(cli_path)
+    }
+    cli = __import__("git_stage_batch.cli", fromlist=["cli"])
+    facade_names = {
+        "main",
+    }
+    violations = []
+
+    assert imported_modules <= {"__future__"}
+    if "main" in vars(cli):
+        assert (
+            getattr(vars(cli)["main"], "__name__", None)
+            == "git_stage_batch.cli.main"
+        )
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.cli":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            disallowed_names = imported_names & facade_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
+def test_tui_package_does_not_reexport_tui_apis():
+    """TUI callers should import concrete modules instead of the package."""
+    tui_path = SRC_ROOT / "tui" / "__init__.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(tui_path)
+    }
+    tui = __import__("git_stage_batch.tui", fromlist=["tui"])
+    facade_names = {
+        "FileReviewSessionState",
+        "FlowLocation",
+        "FlowState",
+        "ReviewFileEntry",
+        "handle_current_file_review",
+        "handle_file_browser",
+        "list_review_file_entries",
+        "run_interactive",
+    }
+    violations = []
+
+    assert imported_modules <= {"__future__"}
+    assert "__all__" not in vars(tui)
+    assert facade_names.isdisjoint(vars(tui))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.tui":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            disallowed_names = imported_names & facade_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
 
 
 def test_data_package_does_not_reexport_data_apis():
@@ -183,6 +346,97 @@ def test_data_package_does_not_reexport_data_apis():
 
     assert imported_modules <= {"__future__"}
     assert facade_names.isdisjoint(vars(data))
+
+
+def test_batch_package_does_not_reexport_batch_apis():
+    """Batch callers should import concrete modules instead of the package."""
+    batch_path = SRC_ROOT / "batch" / "__init__.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(batch_path)
+    }
+    batch = __import__("git_stage_batch.batch", fromlist=["batch"])
+    facade_names = {
+        "BatchFileUpdate",
+        "add_binary_file_to_batch",
+        "add_file_to_batch",
+        "add_files_to_batch",
+        "add_gitlink_to_batch",
+        "batch_exists",
+        "copy_file_from_batch_to_batch",
+        "create_batch",
+        "delete_batch",
+        "get_batch_baseline_commit",
+        "get_batch_commit_sha",
+        "get_batch_tree_sha",
+        "get_validated_baseline_commit",
+        "list_batch_files",
+        "list_batch_names",
+        "read_batch_metadata",
+        "read_file_from_batch",
+        "read_validated_batch_metadata",
+        "require_batch_metadata_sane",
+        "update_batch_note",
+        "validate_batch_name",
+    }
+    violations = []
+
+    assert imported_modules <= {"__future__"}
+    assert facade_names.isdisjoint(vars(batch))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.batch":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            disallowed_names = imported_names & facade_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
+def test_output_package_does_not_reexport_output_apis():
+    """Output callers should import concrete modules instead of the package."""
+    output_path = SRC_ROOT / "output" / "__init__.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(output_path)
+    }
+    output = __import__("git_stage_batch.output", fromlist=["output"])
+    facade_names = {
+        "Colors",
+        "format_hotkey",
+        "format_option_list",
+        "print_binary_file_change",
+        "print_colored_patch",
+        "print_gitlink_change",
+        "print_line_level_changes",
+        "print_remaining_line_changes_header",
+        "print_rename_change",
+        "print_text_file_deletion_change",
+    }
+    violations = []
+
+    assert imported_modules <= {"__future__"}
+    assert facade_names.isdisjoint(vars(output))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.output":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            disallowed_names = imported_names & facade_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
 
 
 def test_repository_buffer_helpers_stay_in_utils_layer():
@@ -245,6 +499,74 @@ def test_batch_file_display_stays_below_hunk_navigation():
     assert "git_stage_batch.data.file_review.state" not in imported_modules
 
 
+def test_ignore_file_helpers_stay_in_data_layer():
+    """Ignore-file editing should stay below command execution utilities."""
+    ignore_files = __import__(
+        "git_stage_batch.data.ignore_files",
+        fromlist=["ignore_files"],
+    )
+    git_utils = __import__(
+        "git_stage_batch.utils.git",
+        fromlist=["git"],
+    )
+    public_names = {
+        "add_file_to_gitignore",
+        "add_file_to_local_exclude",
+        "get_gitignore_path",
+        "get_local_exclude_path",
+        "promote_directory_to_glob_in_gitignore",
+        "promote_directory_to_glob_in_local_exclude",
+        "read_gitignore_lines",
+        "remove_file_from_gitignore",
+        "remove_file_from_local_exclude",
+        "write_gitignore_lines",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "block_file.py": {
+            "add_file_to_gitignore",
+            "add_file_to_local_exclude",
+        },
+        SRC_ROOT / "commands" / "unblock_file.py": {
+            "add_file_to_gitignore",
+            "add_file_to_local_exclude",
+            "promote_directory_to_glob_in_gitignore",
+            "promote_directory_to_glob_in_local_exclude",
+            "remove_file_from_gitignore",
+            "remove_file_from_local_exclude",
+        },
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(ignore_files)
+    assert public_names.isdisjoint(vars(git_utils))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "data" / "ignore_files.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.data.ignore_files":
+                imported_public_names |= imported_names & public_names
+            if imported_module == "git_stage_batch.utils.git":
+                moved_names = imported_names & public_names
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(
+                        f"{relative_path}:{node.lineno} imports {names}"
+                    )
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_selected_change_batch_file_cache_does_not_import_hunk_navigation():
     """Batch file selection caching should not depend on hunk navigation."""
     cache_path = SRC_ROOT / "data" / "selected_change" / "batch_file_cache.py"
@@ -267,6 +589,267 @@ def test_file_review_state_does_not_import_hunk_navigation():
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
 
 
+def test_file_review_fingerprints_stay_out_of_state_module():
+    """File-review fingerprinting should live beside persisted state."""
+    review_state = __import__(
+        "git_stage_batch.data.file_review.state",
+        fromlist=["state"],
+    )
+    fingerprints = __import__(
+        "git_stage_batch.data.file_review.fingerprints",
+        fromlist=["fingerprints"],
+    )
+    public_names = {
+        "compute_current_file_review_diff_fingerprint",
+        "fingerprint_selected_file_view",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "suggest_fixup.py": {
+            "compute_current_file_review_diff_fingerprint",
+        },
+        SRC_ROOT / "data" / "file_review" / "freshness.py": public_names,
+        SRC_ROOT / "output" / "file_review.py": public_names,
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(fingerprints)
+    assert public_names.isdisjoint(vars(review_state))
+
+    state_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(
+            SRC_ROOT / "data" / "file_review" / "state.py"
+        )
+    }
+    assert "git_stage_batch.core.buffer" not in state_imports
+    assert "git_stage_batch.data.line_state" not in state_imports
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "data" / "file_review" / "fingerprints.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.data.file_review.fingerprints":
+                imported_public_names |= imported_names & public_names
+            if imported_module == "git_stage_batch.data.file_review.state":
+                moved_names = imported_names & public_names
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
+def test_file_review_freshness_stays_out_of_state_module():
+    """File-review freshness checks should live beside validation state."""
+    freshness = __import__(
+        "git_stage_batch.data.file_review.freshness",
+        fromlist=["freshness"],
+    )
+    review_state = __import__(
+        "git_stage_batch.data.file_review.state",
+        fromlist=["state"],
+    )
+    public_names = {
+        "review_state_matches_action",
+        "selected_batch_review_matches_reset_state",
+        "selected_change_kind_matches_review_source",
+        "selected_change_matches_review_state",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "status.py": {
+            "selected_change_matches_review_state",
+        },
+        SRC_ROOT / "data" / "file_review" / "state.py": {
+            "review_state_matches_action",
+            "selected_change_kind_matches_review_source",
+            "selected_change_matches_review_state",
+        },
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(freshness)
+    assert public_names.isdisjoint(vars(review_state))
+
+    state_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(
+            SRC_ROOT / "data" / "file_review" / "state.py"
+        )
+    }
+    assert "git_stage_batch.batch" not in state_imports
+    assert "git_stage_batch.data.file_review.fingerprints" not in state_imports
+    assert "git_stage_batch.data.selected_change.snapshots" not in state_imports
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "data" / "file_review" / "freshness.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.data.file_review.freshness":
+                imported_public_names |= imported_names & public_names
+            if imported_module == "git_stage_batch.data.file_review.state":
+                moved_names = imported_names & public_names
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
+def test_file_review_selection_validation_stays_out_of_state_module():
+    """File-review selection validation should live beside state."""
+    review_state = __import__(
+        "git_stage_batch.data.file_review.state",
+        fromlist=["state"],
+    )
+    selection_validation = __import__(
+        "git_stage_batch.data.file_review.selection_validation",
+        fromlist=["selection_validation"],
+    )
+    public_names = {
+        "shown_review_selections_for_action",
+        "validate_review_scoped_line_selection",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "status.py": {
+            "shown_review_selections_for_action",
+        },
+        SRC_ROOT / "data" / "file_review" / "batch_selection.py": {
+            "validate_review_scoped_line_selection",
+        },
+        SRC_ROOT / "data" / "file_review" / "state.py": public_names,
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(selection_validation)
+    assert public_names.isdisjoint(vars(review_state))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "data" / "file_review" / "selection_validation.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.data.file_review.selection_validation":
+                imported_public_names |= imported_names & public_names
+            if imported_module == "git_stage_batch.data.file_review.state":
+                moved_names = imported_names & public_names
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
+def test_file_review_records_stay_out_of_state_module():
+    """File-review record types should live beside validation state."""
+    review_state = __import__(
+        "git_stage_batch.data.file_review.state",
+        fromlist=["state"],
+    )
+    records = __import__(
+        "git_stage_batch.data.file_review.records",
+        fromlist=["records"],
+    )
+    public_names = {
+        "ActionScopeResolution",
+        "FileReviewAction",
+        "FileReviewSelectionState",
+        "FileReviewState",
+        "ImplicitLiveToBatchFileActionResult",
+        "ReviewSource",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "apply_from.py": {"FileReviewAction"},
+        SRC_ROOT / "commands" / "discard.py": {
+            "FileReviewAction",
+            "ReviewSource",
+        },
+        SRC_ROOT / "commands" / "discard_from.py": {"FileReviewAction"},
+        SRC_ROOT / "commands" / "include.py": {"FileReviewAction"},
+        SRC_ROOT / "commands" / "include_from.py": {"FileReviewAction"},
+        SRC_ROOT / "commands" / "reset.py": {
+            "FileReviewAction",
+            "ReviewSource",
+        },
+        SRC_ROOT / "commands" / "show.py": {"ReviewSource"},
+        SRC_ROOT / "commands" / "show_from.py": {
+            "FileReviewAction",
+            "ReviewSource",
+        },
+        SRC_ROOT / "commands" / "skip.py": {"FileReviewAction"},
+        SRC_ROOT / "commands" / "status.py": {
+            "FileReviewAction",
+            "ReviewSource",
+        },
+        SRC_ROOT / "data" / "file_review" / "batch_selection.py": {"FileReviewAction"},
+        SRC_ROOT / "output" / "file_review.py": {
+            "FileReviewAction",
+            "FileReviewSelectionState",
+            "FileReviewState",
+            "ReviewSource",
+        },
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(records)
+    assert public_names.isdisjoint(vars(review_state))
+
+    state_text = (SRC_ROOT / "data" / "file_review" / "state.py").read_text()
+    assert "from . import records as _records" in state_text
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "data" / "file_review" / "records.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.data.file_review.records":
+                imported_public_names |= imported_names & public_names
+            if imported_module == "git_stage_batch.data.file_review.state":
+                moved_names = imported_names & public_names
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
 def test_file_review_output_does_not_import_hunk_navigation():
     """File-review output should not depend on hunk navigation."""
     review_output_path = SRC_ROOT / "output" / "file_review.py"
@@ -278,40 +861,49 @@ def test_file_review_output_does_not_import_hunk_navigation():
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
 
 
-def test_file_review_output_uses_public_action_command_formatter():
-    """File-review output should import the public command formatter."""
+def test_file_review_action_commands_stay_out_of_state_module():
+    """File-review command text should live beside validation state."""
+    action_commands = __import__(
+        "git_stage_batch.data.file_review.action_commands",
+        fromlist=["action_commands"],
+    )
     review_state = __import__(
         "git_stage_batch.data.file_review.state",
         fromlist=["state"],
     )
-    public_names = {"line_action_command"}
-    private_names = {"_line_action_command"}
+    public_names = {
+        "batch_source_action_command",
+        "line_action_command",
+        "live_to_batch_action_command",
+        "show_command_for_review_state",
+    }
     expected_imports = {
-        SRC_ROOT / "output" / "file_review.py": public_names,
+        SRC_ROOT / "data" / "file_review" / "state.py": public_names,
+        SRC_ROOT / "output" / "file_review.py": {"line_action_command"},
     }
     violations = []
 
-    assert "line_action_command" in vars(review_state)
-    assert private_names.isdisjoint(vars(review_state))
+    for public_name in public_names:
+        assert public_name in vars(action_commands)
+    assert public_names.isdisjoint(vars(review_state))
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == SRC_ROOT / "data" / "file_review" / "state.py":
+        if path == SRC_ROOT / "data" / "file_review" / "action_commands.py":
             continue
 
         imports = _import_from_nodes(path)
         imported_public_names = set()
 
         for imported_module, node in imports:
-            if imported_module != "git_stage_batch.data.file_review.state":
-                continue
-
             imported_names = {alias.name for alias in node.names}
-            imported_public_names |= imported_names & public_names
-            disallowed_names = imported_names & private_names
-            if disallowed_names:
-                relative_path = path.relative_to(REPO_ROOT)
-                names = ", ".join(sorted(disallowed_names))
-                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+            if imported_module == "git_stage_batch.data.file_review.action_commands":
+                imported_public_names |= imported_names & public_names
+            if imported_module == "git_stage_batch.data.file_review.state":
+                moved_names = imported_names & public_names
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
 
         if path in expected_imports:
             assert expected_imports[path] <= imported_public_names
@@ -328,6 +920,75 @@ def test_batch_selection_does_not_import_hunk_navigation():
     }
 
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
+
+
+def test_batch_review_selection_translation_stays_in_file_review_package():
+    """Review-aware batch selection translation should live under file_review."""
+    batch_selection = __import__(
+        "git_stage_batch.batch.selection",
+        fromlist=["selection"],
+    )
+    review_selection = __import__(
+        "git_stage_batch.data.file_review.batch_selection",
+        fromlist=["batch_selection"],
+    )
+    public_names = {
+        "translate_batch_file_gutter_ids_to_selection_ids",
+        "translate_reset_batch_file_gutter_ids_to_selection_ranges",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "apply_from.py": {
+            "translate_batch_file_gutter_ids_to_selection_ids",
+        },
+        SRC_ROOT / "commands" / "discard_from.py": {
+            "translate_batch_file_gutter_ids_to_selection_ids",
+        },
+        SRC_ROOT / "commands" / "include_from.py": {
+            "translate_batch_file_gutter_ids_to_selection_ids",
+        },
+        SRC_ROOT / "commands" / "reset.py": {
+            "translate_reset_batch_file_gutter_ids_to_selection_ranges",
+        },
+        SRC_ROOT / "commands" / "show_from.py": {
+            "translate_batch_file_gutter_ids_to_selection_ids",
+        },
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(review_selection)
+    assert public_names.isdisjoint(vars(batch_selection))
+
+    selection_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(
+            SRC_ROOT / "batch" / "selection.py"
+        )
+    }
+    assert "git_stage_batch.data.file_review.state" not in selection_imports
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "data" / "file_review" / "batch_selection.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.data.file_review.batch_selection":
+                imported_public_names |= imported_names & public_names
+            if imported_module == "git_stage_batch.batch.selection":
+                moved_names = imported_names & public_names
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
 
 
 def test_batch_selected_changes_does_not_import_hunk_navigation():
@@ -459,8 +1120,8 @@ def test_argument_parser_uses_file_scope_resolver_module():
     assert parser_local_names.isdisjoint(vars(parser))
 
 
-def test_cli_dispatch_does_not_import_command_facade():
-    """CLI dispatch should import exact modules for fallback and TUI paths."""
+def test_cli_dispatch_delegates_noninteractive_execution():
+    """CLI dispatch should launch TUI or delegate parsed command execution."""
     dispatch_path = SRC_ROOT / "cli" / "dispatch.py"
     imported_modules = {
         imported_module
@@ -468,9 +1129,65 @@ def test_cli_dispatch_does_not_import_command_facade():
     }
 
     assert "git_stage_batch.commands" not in imported_modules
-    assert "git_stage_batch.commands.show" in imported_modules
     assert "git_stage_batch.commands.interactive" not in imported_modules
+    assert "git_stage_batch.cli.execution" in imported_modules
     assert "git_stage_batch.tui.interactive" in imported_modules
+
+
+def test_tui_cli_escape_does_not_import_dispatch():
+    """TUI command escape should execute parsed args without importing launcher dispatch."""
+    interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    execution_path = SRC_ROOT / "cli" / "execution.py"
+    dispatch_path = SRC_ROOT / "cli" / "dispatch.py"
+    interactive_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    execution_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(execution_path)
+    }
+    dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(dispatch_path)
+    }
+
+    assert "git_stage_batch.cli.argument_parser" in interactive_imports
+    assert "git_stage_batch.cli.execution" in interactive_imports
+    assert "git_stage_batch.cli.dispatch" not in interactive_imports
+    assert "git_stage_batch.tui.interactive" not in execution_imports
+    assert "git_stage_batch.tui.interactive" in dispatch_imports
+
+
+def test_tui_file_review_state_name_does_not_shadow_persisted_state():
+    """TUI review state should not reuse the persisted file-review state name."""
+    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    tree = ast.parse(review_path.read_text(), filename=str(review_path))
+    class_names = {
+        node.name
+        for node in tree.body
+        if isinstance(node, ast.ClassDef)
+    }
+    imported_state_names = set()
+    records = __import__(
+        "git_stage_batch.data.file_review.records",
+        fromlist=["records"],
+    )
+    persisted_state = __import__(
+        "git_stage_batch.data.file_review.state",
+        fromlist=["state"],
+    )
+
+    for imported_module, node in _import_from_nodes(review_path):
+        if imported_module != "git_stage_batch.data.file_review.state":
+            continue
+        imported_state_names |= {alias.name for alias in node.names}
+
+    assert "FileReviewState" in vars(records)
+    assert "FileReviewState" not in vars(persisted_state)
+    assert "FileReviewSessionState" in class_names
+    assert "FileReviewState" not in class_names
+    assert "FileReviewState" not in imported_state_names
 
 
 def test_commands_do_not_import_tui():
@@ -527,6 +1244,47 @@ def test_argument_parser_does_not_import_command_facade():
     assert "git_stage_batch.commands.discard" in imported_modules
     assert "git_stage_batch.commands.interactive" not in imported_modules
     assert "git_stage_batch.commands.status" in imported_modules
+
+
+def test_argument_parser_command_entries_stay_in_commands_modules():
+    """CLI command functions should enter through command modules."""
+    parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    violations = []
+
+    for imported_module, node in _import_from_nodes(parser_path):
+        command_names = {
+            alias.name for alias in node.names if alias.name.startswith("command_")
+        }
+        if not command_names:
+            continue
+        if imported_module == "git_stage_batch.cli.completion":
+            continue
+        if imported_module is None or not imported_module.startswith(
+            "git_stage_batch.commands."
+        ):
+            relative_path = parser_path.relative_to(REPO_ROOT)
+            names = ", ".join(sorted(command_names))
+            violations.append(f"{relative_path}:{node.lineno} imports {names}")
+            continue
+
+        module_path = SRC_ROOT.joinpath(
+            *imported_module.removeprefix("git_stage_batch.").split(".")
+        ).with_suffix(".py")
+        tree = ast.parse(module_path.read_text(), filename=str(module_path))
+        defined_functions = {
+            child.name
+            for child in tree.body
+            if isinstance(child, (ast.AsyncFunctionDef, ast.FunctionDef))
+        }
+        missing_names = command_names - defined_functions
+        if missing_names:
+            relative_path = parser_path.relative_to(REPO_ROOT)
+            names = ", ".join(sorted(missing_names))
+            violations.append(
+                f"{relative_path}:{node.lineno} imports {names} from non-entry module"
+            )
+
+    assert violations == []
 
 
 def test_suggest_fixup_state_stays_in_data_layer():
@@ -642,7 +1400,10 @@ def test_batch_lineage_uses_public_data_types():
         "_LineageRun",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "ownership.py": public_names,
+        SRC_ROOT / "batch" / "ownership.py": {
+            "BatchSourceLineage",
+        },
+        SRC_ROOT / "batch" / "source_advancement.py": public_names,
         SRC_ROOT / "batch" / "source_refresh.py": {
             "BatchSourceLineage",
         },
@@ -678,28 +1439,42 @@ def test_batch_lineage_uses_public_data_types():
     assert violations == []
 
 
-def test_batch_ownership_uses_public_lineage_helpers():
-    """Cross-module ownership callers should import public lineage helpers."""
+def test_batch_ownership_uses_public_lineage_remapping():
+    """Cross-module ownership callers should import public lineage remapping."""
     ownership = __import__(
         "git_stage_batch.batch.ownership",
         fromlist=["ownership"],
     )
     public_names = {
-        "advance_source_lines_preserving_existing_presence",
         "remap_batch_ownership_with_lineage",
     }
     private_names = {
-        "_advance_source_lines_preserving_existing_presence",
         "_remap_batch_ownership_with_lineage",
+    }
+    moved_names = {
+        "advance_source_lines_preserving_existing_presence",
+        "advance_batch_source_for_file_with_provenance",
+        "SourceContentWithLineProvenance",
+        "BatchSourceAdvanceResult",
     }
     expected_imports = {
         SRC_ROOT / "commands" / "discard.py": public_names,
+        SRC_ROOT / "batch" / "source_advancement.py": public_names,
     }
     violations = []
 
     for public_name in public_names:
         assert public_name in vars(ownership)
     assert private_names.isdisjoint(vars(ownership))
+    assert moved_names.isdisjoint(vars(ownership))
+
+    ownership_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(
+            SRC_ROOT / "batch" / "ownership.py"
+        )
+    }
+    assert "git_stage_batch.batch.merge" not in ownership_imports
 
     for path in SRC_ROOT.rglob("*.py"):
         if path == SRC_ROOT / "batch" / "ownership.py":
@@ -710,6 +1485,62 @@ def test_batch_ownership_uses_public_lineage_helpers():
 
         for imported_module, node in imports:
             if imported_module != "git_stage_batch.batch.ownership":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & private_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
+def test_batch_source_advancement_uses_public_entry_helpers():
+    """Source advancement callers should import public advancement helpers."""
+    source_advancement = __import__(
+        "git_stage_batch.batch.source_advancement",
+        fromlist=["source_advancement"],
+    )
+    public_names = {
+        "advance_source_lines_preserving_existing_presence",
+        "advance_batch_source_for_file_with_provenance",
+    }
+    private_names = {
+        "_advance_source_lines_preserving_existing_presence",
+        "_advance_batch_source_for_file_with_provenance",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "discard.py": {
+            "advance_source_lines_preserving_existing_presence",
+        },
+        SRC_ROOT / "batch" / "source_refresh.py": {
+            "advance_batch_source_for_file_with_provenance",
+        },
+        SRC_ROOT / "data" / "consumed_selections.py": {
+            "advance_batch_source_for_file_with_provenance",
+        },
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(source_advancement)
+    assert private_names.isdisjoint(vars(source_advancement))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "batch" / "source_advancement.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            if imported_module != "git_stage_batch.batch.source_advancement":
                 continue
 
             imported_names = {alias.name for alias in node.names}
@@ -885,6 +1716,165 @@ def test_batch_ownership_units_bridge_keeps_display_out_of_ownership():
     assert violations == []
 
 
+def test_batch_realized_entries_uses_public_entry_helpers():
+    """Batch callers should import public realized-entry helpers."""
+    realized_entries = __import__(
+        "git_stage_batch.batch.realized_entries",
+        fromlist=["realized_entries"],
+    )
+    public_names = {
+        "RealizedEntry",
+        "realized_entry_content_chunks",
+    }
+    private_names = {
+        "_realized_entry_content_chunks",
+    }
+    expected_imports = {
+        SRC_ROOT / "batch" / "merge.py": public_names,
+        SRC_ROOT / "batch" / "source_advancement.py": {
+            "realized_entry_content_chunks",
+        },
+        SRC_ROOT / "batch" / "storage.py": {
+            "realized_entry_content_chunks",
+        },
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(realized_entries)
+    assert private_names.isdisjoint(vars(realized_entries))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "batch" / "realized_entries.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            if imported_module != "git_stage_batch.batch.realized_entries":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & private_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
+def test_batch_merge_candidates_uses_public_data_types():
+    """Batch callers should import public merge-candidate data types."""
+    merge_candidates = __import__(
+        "git_stage_batch.batch.merge_candidates",
+        fromlist=["merge_candidates"],
+    )
+    merge = __import__(
+        "git_stage_batch.batch.merge",
+        fromlist=["merge"],
+    )
+    public_names = {
+        "MergeCandidate",
+        "MergeCandidateSet",
+        "MergeResolution",
+        "MergeResolutionDecision",
+    }
+    private_names = {
+        "_MergeCandidate",
+        "_MergeCandidateSet",
+        "_MergeResolution",
+        "_MergeResolutionDecision",
+    }
+    expected_imports = {
+        SRC_ROOT / "batch" / "merge.py": public_names,
+        SRC_ROOT / "batch" / "operation_candidates.py": {
+            "MergeCandidate",
+            "MergeResolution",
+        },
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(merge_candidates)
+    assert private_names.isdisjoint(vars(merge_candidates))
+    assert public_names.isdisjoint(vars(merge))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "batch" / "merge_candidates.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.merge_candidates":
+                imported_public_names |= imported_names & public_names
+                disallowed_names = imported_names & private_names
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(
+                        f"{relative_path}:{node.lineno} imports {names}"
+                    )
+            if imported_module == "git_stage_batch.batch.merge":
+                moved_names = imported_names & public_names
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(
+                        f"{relative_path}:{node.lineno} imports {names}"
+                    )
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
+def test_batch_merge_does_not_reexport_merge_exceptions():
+    """Merge exceptions should stay on the shared exception boundary."""
+    merge = __import__(
+        "git_stage_batch.batch.merge",
+        fromlist=["merge"],
+    )
+    exception_names = {
+        "AmbiguousAnchorError",
+        "MergeError",
+        "MissingAnchorError",
+    }
+    show_from_exception_imports = set()
+    violations = []
+
+    assert exception_names.isdisjoint(vars(merge))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.exceptions":
+                if path == SRC_ROOT / "commands" / "show_from.py":
+                    show_from_exception_imports |= imported_names & exception_names
+                continue
+
+            if imported_module != "git_stage_batch.batch.merge":
+                continue
+
+            moved_names = imported_names & exception_names
+            if moved_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(moved_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert "MergeError" in show_from_exception_imports
+    assert violations == []
+
+
 def test_batch_merge_uses_public_entry_helpers():
     """Batch callers should import public merge entry helpers."""
     merge = __import__(
@@ -893,21 +1883,21 @@ def test_batch_merge_uses_public_entry_helpers():
     )
     public_names = {
         "apply_presence_constraints",
-        "realized_entry_content_chunks",
         "satisfy_constraints",
     }
     private_names = {
         "_apply_presence_constraints",
-        "_realized_entry_content_chunks",
         "_satisfy_constraints",
     }
+    moved_names = {
+        "RealizedEntry",
+        "realized_entry_content_chunks",
+    }
     expected_imports = {
-        SRC_ROOT / "batch" / "ownership.py": {
+        SRC_ROOT / "batch" / "source_advancement.py": {
             "apply_presence_constraints",
-            "realized_entry_content_chunks",
         },
         SRC_ROOT / "batch" / "storage.py": {
-            "realized_entry_content_chunks",
             "satisfy_constraints",
         },
     }
@@ -916,6 +1906,7 @@ def test_batch_merge_uses_public_entry_helpers():
     for public_name in public_names:
         assert public_name in vars(merge)
     assert private_names.isdisjoint(vars(merge))
+    assert moved_names.isdisjoint(vars(merge))
 
     for path in SRC_ROOT.rglob("*.py"):
         if path == SRC_ROOT / "batch" / "merge.py":
@@ -1106,6 +2097,318 @@ def test_hunk_tracking_does_not_reexport_line_state_helpers():
     }
 
     assert line_state_names.isdisjoint(vars(hunk_tracking))
+
+
+def test_selected_change_loading_stays_out_of_hunk_tracking():
+    """Selected-change readers should live outside hunk navigation."""
+    hunk_tracking_path = SRC_ROOT / "data" / "hunk_tracking.py"
+    moved_names = {
+        "load_selected_change",
+        "require_selected_hunk",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "include.py": moved_names,
+        SRC_ROOT / "commands" / "discard.py": moved_names,
+        SRC_ROOT / "commands" / "skip.py": moved_names,
+        SRC_ROOT / "commands" / "suggest_fixup.py": {"require_selected_hunk"},
+    }
+    violations = []
+
+    hunk_tracking = __import__(
+        "git_stage_batch.data.hunk_tracking",
+        fromlist=["hunk_tracking"],
+    )
+    selected_loading = __import__(
+        "git_stage_batch.data.selected_change.loading",
+        fromlist=["loading"],
+    )
+    hunk_tracking_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(hunk_tracking_path)
+    }
+
+    assert moved_names <= vars(selected_loading).keys()
+    assert moved_names.isdisjoint(vars(hunk_tracking))
+    assert "git_stage_batch.data.selected_change.loading" not in hunk_tracking_imports
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "data" / "selected_change" / "loading.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_loading_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.data.selected_change.loading":
+                imported_loading_names |= imported_names & moved_names
+            if imported_module == "git_stage_batch.data.hunk_tracking":
+                moved_imports = imported_names & moved_names
+                if moved_imports:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_imports))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_loading_names
+
+    assert violations == []
+
+
+def test_selected_hunk_filtering_stays_out_of_hunk_tracking():
+    """Cached hunk filtering should live outside hunk navigation."""
+    hunk_tracking_path = SRC_ROOT / "data" / "hunk_tracking.py"
+    moved_names = {
+        "apply_line_level_batch_filter_to_cached_hunk",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "include.py": moved_names,
+        SRC_ROOT / "commands" / "show.py": moved_names,
+    }
+    violations = []
+
+    hunk_tracking = __import__(
+        "git_stage_batch.data.hunk_tracking",
+        fromlist=["hunk_tracking"],
+    )
+    selected_filtering = __import__(
+        "git_stage_batch.data.selected_change.hunk_filtering",
+        fromlist=["hunk_filtering"],
+    )
+    hunk_tracking_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(hunk_tracking_path)
+    }
+
+    assert moved_names <= vars(selected_filtering).keys()
+    assert moved_names.isdisjoint(vars(hunk_tracking))
+    assert "git_stage_batch.batch.attribution" not in hunk_tracking_imports
+    assert (
+        "git_stage_batch.data.consumed_replacement_masks"
+        not in hunk_tracking_imports
+    )
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "data" / "selected_change" / "hunk_filtering.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_filtering_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.data.selected_change.hunk_filtering":
+                imported_filtering_names |= imported_names & moved_names
+            if imported_module == "git_stage_batch.data.hunk_tracking":
+                moved_imports = imported_names & moved_names
+                if moved_imports:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_imports))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_filtering_names
+
+    assert violations == []
+
+
+def test_consumed_replacement_masks_stay_out_of_hunk_tracking():
+    """Consumed replacement metadata should stay outside hunk navigation."""
+    filtering_path = SRC_ROOT / "data" / "selected_change" / "hunk_filtering.py"
+    hunk_tracking_path = SRC_ROOT / "data" / "hunk_tracking.py"
+    filtering_imports = _import_from_nodes(filtering_path)
+    filtering_imported_modules = {
+        imported_module for imported_module, _node in filtering_imports
+    }
+    hunk_tracking_imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(hunk_tracking_path)
+    }
+    imports_mask_module_alias = any(
+        imported_module == "git_stage_batch.data"
+        and any(alias.name == "consumed_replacement_masks" for alias in node.names)
+        for imported_module, node in filtering_imports
+    )
+    hunk_tracking = __import__(
+        "git_stage_batch.data.hunk_tracking",
+        fromlist=["hunk_tracking"],
+    )
+    consumed_masks = __import__(
+        "git_stage_batch.data.consumed_replacement_masks",
+        fromlist=["consumed_replacement_masks"],
+    )
+
+    assert imports_mask_module_alias
+    assert (
+        "git_stage_batch.data.consumed_replacement_masks"
+        not in filtering_imported_modules
+    )
+    assert (
+        "git_stage_batch.data.consumed_selections"
+        not in hunk_tracking_imported_modules
+    )
+    assert (
+        "git_stage_batch.data.consumed_replacement_masks"
+        not in hunk_tracking_imported_modules
+    )
+    assert "filter_consumed_replacement_masks" in vars(consumed_masks)
+    assert "filter_consumed_replacement_masks" not in vars(hunk_tracking)
+    assert "_filter_consumed_replacement_masks" not in vars(hunk_tracking)
+    assert "read_consumed_file_metadata" not in vars(hunk_tracking)
+
+
+def test_selected_hunk_recalculation_stays_out_of_hunk_tracking():
+    """Selected-hunk recalculation should stay outside hunk navigation."""
+    hunk_tracking_path = SRC_ROOT / "data" / "hunk_tracking.py"
+    refresh_path = SRC_ROOT / "commands" / "selection" / "selected_hunk_refresh.py"
+    moved_names = {
+        "RecalculateSelectedHunkResult",
+        "recalculate_selected_hunk_for_file",
+    }
+    refresh_imported_names = set()
+    stale_import_violations = []
+    hunk_tracking_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(hunk_tracking_path)
+    }
+    hunk_tracking = __import__(
+        "git_stage_batch.data.hunk_tracking",
+        fromlist=["hunk_tracking"],
+    )
+    recalculation = __import__(
+        "git_stage_batch.data.selected_change.hunk_recalculation",
+        fromlist=["hunk_recalculation"],
+    )
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                path == refresh_path
+                and imported_module == "git_stage_batch.data.selected_change.hunk_recalculation"
+            ):
+                refresh_imported_names |= imported_names & moved_names
+
+            if imported_module != "git_stage_batch.data.hunk_tracking":
+                continue
+
+            moved_imports = imported_names & moved_names
+            if moved_imports:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(moved_imports))
+                stale_import_violations.append(
+                    f"{relative_path}:{node.lineno} imports {names}"
+                )
+
+    assert moved_names <= vars(recalculation).keys()
+    assert moved_names.isdisjoint(vars(hunk_tracking))
+    assert (
+        "git_stage_batch.data.selected_change.hunk_recalculation"
+        not in hunk_tracking_imports
+    )
+    assert refresh_imported_names == moved_names
+    assert stale_import_violations == []
+
+
+def test_selected_hunk_cache_writes_stay_in_selected_change_store():
+    """Navigation and recalculation should delegate text-hunk state writes."""
+    selected_store = __import__(
+        "git_stage_batch.data.selected_change.store",
+        fromlist=["store"],
+    )
+    caller_paths = (
+        SRC_ROOT / "data" / "hunk_tracking.py",
+        SRC_ROOT / "data" / "selected_change" / "hunk_recalculation.py",
+        SRC_ROOT / "commands" / "show.py",
+    )
+    forbidden_imports = {
+        "git_stage_batch.data.selected_change.snapshots": {
+            "write_snapshots_for_selected_file_path",
+        },
+        "git_stage_batch.utils.file_io": {
+            "write_text_file_contents",
+        },
+        "git_stage_batch.utils.paths": {
+            "get_line_changes_json_file_path",
+            "get_selected_hunk_hash_file_path",
+        },
+    }
+    forbidden_calls = {
+        "write_selected_change_kind",
+        "write_selected_hunk_patch_lines",
+    }
+    violations = []
+
+    assert "cache_hunk_change" in vars(selected_store)
+
+    for path in caller_paths:
+        tree = ast.parse(path.read_text(), filename=str(path))
+        call_names = {
+            node.func.attr
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+        }
+        call_names |= {
+            node.func.id
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+        }
+        relative_path = path.relative_to(REPO_ROOT)
+
+        assert "cache_hunk_change" in call_names
+        disallowed_calls = call_names & forbidden_calls
+        if disallowed_calls:
+            names = ", ".join(sorted(disallowed_calls))
+            violations.append(f"{relative_path} calls {names}")
+
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            disallowed_imports = (
+                imported_names & forbidden_imports.get(imported_module, set())
+            )
+            if disallowed_imports:
+                names = ", ".join(sorted(disallowed_imports))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
+def test_batch_file_mode_detection_stays_in_data_module():
+    """Include and discard should use the shared file-mode detector."""
+    file_modes = __import__(
+        "git_stage_batch.data.file_modes",
+        fromlist=["file_modes"],
+    )
+    expected_imports = {
+        SRC_ROOT / "commands" / "include.py": {"detect_file_mode"},
+        SRC_ROOT / "commands" / "discard.py": {
+            "detect_file_mode",
+            "detect_file_mode_from_root",
+        },
+    }
+    forbidden_helpers = {
+        "_detect_file_mode",
+        "_detect_file_mode_from_root",
+    }
+
+    assert {"detect_file_mode", "detect_file_mode_from_root"} <= vars(file_modes).keys()
+
+    for path, expected_names in expected_imports.items():
+        tree = ast.parse(path.read_text(), filename=str(path))
+        helper_names = {
+            node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+        }
+        imported_file_mode_names = set()
+
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.data.file_modes":
+                continue
+            imported_file_mode_names |= {alias.name for alias in node.names}
+
+        assert forbidden_helpers.isdisjoint(helper_names)
+        assert expected_names <= imported_file_mode_names
 
 
 def test_recalc_handoff_stays_in_command_helper():

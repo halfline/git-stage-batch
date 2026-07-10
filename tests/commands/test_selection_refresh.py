@@ -1,5 +1,7 @@
 import git_stage_batch.commands.selection.selected_hunk_refresh as selected_hunk_refresh
-from git_stage_batch.data.hunk_tracking import RecalculateSelectedHunkResult
+from git_stage_batch.data.selected_change.hunk_recalculation import (
+    RecalculateSelectedHunkResult,
+)
 
 
 def test_recalculate_selected_hunk_for_command_displays_refreshed_change(monkeypatch):

@@ -12,7 +12,7 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.batch import create_batch
+from git_stage_batch.batch.operations import create_batch
 from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import CommandError

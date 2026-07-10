@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sys
 
 from ..batch.display import annotate_with_batch_source
@@ -15,11 +14,12 @@ from ..core.hashing import (
     compute_text_file_deletion_hash,
 )
 from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
-from ..data.hunk_tracking import (
+from ..data.selected_change.hunk_filtering import (
     apply_line_level_batch_filter_to_cached_hunk,
 )
 from ..data.selected_change.store import (
     SelectedChangeKind,
+    cache_hunk_change,
     cache_binary_file_change,
     cache_gitlink_change,
     cache_rename_change,
@@ -28,8 +28,6 @@ from ..data.selected_change.store import (
     mark_selected_change_cleared_by_file_list,
     restore_selected_change_state,
     snapshot_selected_change_state,
-    write_selected_hunk_patch_lines,
-    write_selected_change_kind,
 )
 from ..data.change_freshness import text_deletion_change_is_batched
 from ..data.file_hunk_display import cache_file_as_single_hunk, render_file_as_single_hunk
@@ -39,22 +37,21 @@ from ..data.file_change_display import (
     render_rename_change,
     render_text_deletion_change,
 )
+from ..data.file_review.records import ReviewSource
 from ..data.file_review.state import (
     clear_last_file_review_state,
-    ReviewSource,
     write_last_file_review_state,
 )
-from ..data.line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
+from ..data.line_state import load_line_changes_from_state
 from ..data.live_diff import stream_live_git_diff
 from ..data.session import require_session_started
 from ..data.selected_change.lifecycle import clear_selected_change_state_files
-from ..data.selected_change.snapshots import write_snapshots_for_selected_file_path
 from ..exceptions import exit_with_error
 from ..i18n import _
-from ..output import (
+from ..output.hunk import print_line_level_changes
+from ..output.patch import (
     print_binary_file_change,
     print_gitlink_change,
-    print_line_level_changes,
     print_rename_change,
     print_text_file_deletion_change,
 )
@@ -73,17 +70,12 @@ from ..output.file_review_list import (
     make_text_deletion_file_review_list_entry,
     print_file_review_list,
 )
-from ..utils.file_io import (
-    read_text_file_line_set,
-    write_text_file_contents,
-)
+from ..utils.file_io import read_text_file_line_set
 from ..utils.git import require_git_repository
 from ..utils.paths import (
     ensure_state_directory_exists,
     get_block_list_file_path,
     get_context_lines,
-    get_line_changes_json_file_path,
-    get_selected_hunk_hash_file_path,
 )
 
 
@@ -384,20 +376,11 @@ def command_show(
                 patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
                 if patch_hash not in blocked_hashes:
                     with snapshot_selected_change_state() as previous_selected_state:
-                        # Cache selected hunk bytes exactly; display text is derived from parsed lines.
-                        write_selected_hunk_patch_lines(patch.lines)
-                        write_text_file_contents(get_selected_hunk_hash_file_path(), patch_hash)
-                        write_selected_change_kind(SelectedChangeKind.HUNK)
-
-                        # Parse and cache line_changes for batch filtering
                         line_changes = build_line_changes_from_patch_lines(
                             patch.lines,
                             annotator=annotate_with_batch_source,
                         )
-                        write_text_file_contents(get_line_changes_json_file_path(),
-                                                json.dumps(convert_line_changes_to_serializable_dict(line_changes),
-                                                          ensure_ascii=False, indent=0))
-                        write_snapshots_for_selected_file_path(line_changes.path)
+                        cache_hunk_change(patch.lines, patch_hash, line_changes)
 
                         # Apply line-level batch filtering
                         if apply_line_level_batch_filter_to_cached_hunk():

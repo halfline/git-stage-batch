@@ -23,8 +23,8 @@ from git_stage_batch.commands.show import command_show
 from git_stage_batch.core.models import TextFileDeletionChange
 from git_stage_batch.data.hunk_tracking import (
     fetch_next_change,
-    load_selected_change,
 )
+from git_stage_batch.data.selected_change.loading import load_selected_change
 from git_stage_batch.data.line_state import load_line_changes_from_state
 from git_stage_batch.data.selected_change.store import (
     selected_change_was_cleared_by_auto_advance_disabled,

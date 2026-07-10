@@ -15,14 +15,15 @@ from ..core.buffer import (
     LineBuffer,
     buffer_byte_chunks,
 )
-from ..exceptions import AtomicUnitError
+from ..exceptions import AtomicUnitError, MergeError
 from ..utils.paths import get_batch_candidate_state_file_path
 from .merge import (
-    MergeError,
-    MergeCandidate,
-    MergeResolution,
     enumerate_merge_batch_candidates_from_line_sequences,
     merge_batch_from_line_sequences_as_buffer,
+)
+from .merge_candidates import (
+    MergeCandidate,
+    MergeResolution,
 )
 from ..core.replacement import ReplacementPayload
 

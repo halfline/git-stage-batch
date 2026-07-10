@@ -11,7 +11,6 @@ from contextlib import ExitStack
 from dataclasses import dataclass
 from typing import Optional
 
-from ..batch.merge import MergeError
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.operation_candidates import (
     OperationCandidatePreview,
@@ -29,7 +28,6 @@ from ..batch.selection import (
     acquire_batch_ownership_for_display_ids_from_lines,
     resolve_batch_file_scope,
     require_single_file_context_for_line_selection,
-    translate_batch_file_gutter_ids_to_selection_ids,
 )
 from ..batch.source_selector import parse_batch_source_selector
 from ..batch.submodule_pointer import is_batch_submodule_pointer
@@ -45,6 +43,7 @@ from ..data.batch_selected_changes import (
     compute_batch_gitlink_fingerprint,
 )
 from ..data.selected_change.batch_file_cache import cache_rendered_batch_file_display
+from ..data.file_review.batch_selection import translate_batch_file_gutter_ids_to_selection_ids
 from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..data.selected_change.store import (
     SelectedChangeKind,
@@ -52,17 +51,16 @@ from ..data.selected_change.store import (
     cache_gitlink_change,
     mark_selected_change_cleared_by_file_list,
 )
+from ..data.file_review.records import FileReviewAction, ReviewSource
 from ..data.file_review.state import (
-    FileReviewAction,
-    ReviewSource,
     clear_last_file_review_state,
     write_last_file_review_state,
 )
-from ..output import (
-    Colors,
+from ..output.colors import Colors
+from ..output.hunk import print_line_level_changes
+from ..output.patch import (
     print_binary_file_change,
     print_gitlink_change,
-    print_line_level_changes,
 )
 from ..output.file_review import (
     build_file_review_model,
@@ -82,7 +80,12 @@ from ..utils.repository_buffers import (
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
 )
-from ..exceptions import exit_with_error, BatchMetadataError, CommandError
+from ..exceptions import (
+    exit_with_error,
+    BatchMetadataError,
+    CommandError,
+    MergeError,
+)
 from ..i18n import _
 from ..core.models import BinaryFileChange, GitlinkChange, LineLevelChange
 from ..utils.git import get_git_repository_root_path, require_git_repository

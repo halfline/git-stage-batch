@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from ..commands.show import command_show
-from ..exceptions import exit_with_error
-from ..i18n import _
-from ..utils.paths import get_abort_head_file_path
+from .execution import execute_non_interactive_args
 
 
 def _run_interactive_command() -> None:
@@ -28,14 +25,5 @@ def dispatch_args(args: argparse.Namespace) -> None:
         or getattr(args, "interactive_command", False)
     ):
         _run_interactive_command()
-    elif args.command is None:
-        if get_abort_head_file_path().exists():
-            command_show()
-        else:
-            # No command provided - show helpful message
-            exit_with_error(
-                _("No batch staging session in progress.") + "\n" +
-                _("Run 'git-stage-batch start' to begin.")
-            )
     else:
-        args.func(args)
+        execute_non_interactive_args(args)

@@ -7,7 +7,7 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.batch import create_batch
+from git_stage_batch.batch.operations import create_batch
 from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim, ReplacementUnit
 from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.batch.storage import add_file_to_batch
@@ -28,11 +28,11 @@ from git_stage_batch.commands.include import command_include_to_batch
 from git_stage_batch.commands.suggest_fixup import command_suggest_fixup
 from git_stage_batch.core.actionable_changes import ActionableSelectionReason
 import git_stage_batch.batch.file_display as file_display_module
+import git_stage_batch.data.file_review.freshness as file_review_freshness_module
+from git_stage_batch.data.file_review.records import FileReviewAction, ReviewSource
+from git_stage_batch.data.file_review.selection_validation import shown_review_selections_for_action
 from git_stage_batch.data.file_review.state import (
-    FileReviewAction,
-    ReviewSource,
     read_last_file_review_state,
-    shown_review_selections_for_action,
     validate_pathless_review_line_action,
 )
 from git_stage_batch.data.selected_change.store import (
@@ -87,7 +87,7 @@ def paged_batch_repo(paged_file_repo):
 
 
 def _force_one_change_per_page(monkeypatch):
-    from git_stage_batch.output import file_review
+    import git_stage_batch.output.file_review as file_review
 
     monkeypatch.setattr(file_review, "_body_budget", lambda: 1)
 
@@ -1051,7 +1051,7 @@ def test_pathless_include_line_accepts_visible_presence_subset_from_review(
     monkeypatch,
     capsys,
 ):
-    from git_stage_batch.output import file_review
+    import git_stage_batch.output.file_review as file_review
 
     monkeypatch.chdir(tmp_path)
     subprocess.run(["git", "init"], check=True, capture_output=True)
@@ -1891,6 +1891,7 @@ def test_pathless_include_from_batch_refuses_when_rerendered_batch_diff_changes(
         )
 
     monkeypatch.setattr(file_display_module, "render_batch_file_display", changed_render)
+    monkeypatch.setattr(file_review_freshness_module, "render_batch_file_display", changed_render)
 
     with pytest.raises(CommandError, match="no longer matches"):
         command_include_from_batch("cleanup", line_ids=line_spec)
@@ -2241,7 +2242,7 @@ def test_file_review_multiline_note_is_part_of_header(capsys):
 
 
 def test_presence_only_review_keeps_visual_group_with_page_local_actions(capsys, monkeypatch):
-    from git_stage_batch.output import file_review
+    import git_stage_batch.output.file_review as file_review
 
     lines = [
         LineEntry(
@@ -2560,6 +2561,11 @@ def test_show_from_batch_line_after_review_uses_review_id_space(
 
     monkeypatch.setattr(show_from_module, "render_batch_file_display", render_with_review_only_first_line)
     monkeypatch.setattr(file_display_module, "render_batch_file_display", render_with_review_only_first_line)
+    monkeypatch.setattr(
+        file_review_freshness_module,
+        "render_batch_file_display",
+        render_with_review_only_first_line,
+    )
 
     command_show_from_batch("manual", file="file.txt", page="all")
     capsys.readouterr()
@@ -2653,6 +2659,11 @@ def test_show_from_batch_line_without_review_uses_printed_review_id_space(
 
     monkeypatch.setattr(show_from_module, "render_batch_file_display", render_with_review_only_second_line)
     monkeypatch.setattr(file_display_module, "render_batch_file_display", render_with_review_only_second_line)
+    monkeypatch.setattr(
+        file_review_freshness_module,
+        "render_batch_file_display",
+        render_with_review_only_second_line,
+    )
 
     command_show_from_batch("manual", file="file.txt", line_ids="2")
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from git_stage_batch.core.buffer import LineBuffer
-from git_stage_batch.editor import (
+from git_stage_batch.editor.line_endings import (
     choose_line_ending,
     detect_line_ending,
     restore_line_endings,

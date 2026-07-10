@@ -17,7 +17,7 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.batch import create_batch
+from git_stage_batch.batch.operations import create_batch
 from git_stage_batch.commands.show_from import command_show_from_batch
 from git_stage_batch.core.line_selection import LineRanges
 from git_stage_batch.data.session import initialize_abort_state

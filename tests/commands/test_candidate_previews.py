@@ -10,7 +10,7 @@ import git_stage_batch.batch.operation_candidates as operation_candidates
 import git_stage_batch.commands.apply_from as apply_from_module
 import git_stage_batch.commands.include_from as include_from_module
 import git_stage_batch.commands.show_from as show_from_module
-from git_stage_batch.batch import create_batch
+from git_stage_batch.batch.operations import create_batch
 from git_stage_batch.batch.ownership import (
     AbsenceClaim,
     BaselineReference,

@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import sys
 
-from ...data.hunk_tracking import (
+from ...data.selected_change.hunk_recalculation import (
     RecalculateSelectedHunkResult,
     recalculate_selected_hunk_for_file,
 )
 from ...i18n import _
-from ...output import print_remaining_line_changes_header
+from ...output.hunk import print_remaining_line_changes_header
 from .selected_change_display import show_selected_change
 
 

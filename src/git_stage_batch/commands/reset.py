@@ -22,7 +22,6 @@ from ..batch.ownership_units import build_ownership_units_from_batch_source_line
 from ..batch.query import read_batch_metadata
 from ..batch.selection import (
     require_display_ids_available,
-    require_single_file_context_for_line_selection_ranges,
     resolve_current_batch_binary_file_scope,
     resolve_batch_file_scope,
 )
@@ -40,18 +39,17 @@ from ..batch.source_selector import require_plain_batch_name
 from ..batch.validation import batch_exists, validate_batch_name
 from ..exceptions import MergeError, exit_with_error
 from ..i18n import _
-from ..batch.file_display import render_batch_file_display
 from ..data.batch_selected_changes import (
     selected_batch_binary_matches_batch,
     selected_batch_gitlink_matches_batch,
 )
+from ..data.file_review.batch_selection import (
+    translate_reset_batch_file_gutter_ids_to_selection_ranges,
+)
+from ..data.file_review.records import FileReviewAction, ReviewSource
 from ..data.file_review.state import (
-    FileReviewAction,
-    ReviewSource,
-    fresh_batch_review_selections_for_action,
     read_last_file_review_state,
     resolve_batch_source_action_scope,
-    validate_review_scoped_line_selection,
 )
 from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..data.selected_change.store import (
@@ -118,7 +116,13 @@ def command_reset_from_batch(
             exit_with_error(_("--to must name a different batch"))
 
     effective_line_ids = (
-        _translate_reset_line_ids_to_selection_ids(batch_name, all_files, file, patterns, line_ids)
+        translate_reset_batch_file_gutter_ids_to_selection_ranges(
+            batch_name,
+            all_files,
+            file,
+            patterns,
+            line_ids,
+        )
         if line_ids is not None else
         None
     )
@@ -227,65 +231,6 @@ def _clear_selected_batch_state_after_batch_mutation(
         file_path=selected_file,
     )
 
-
-def _translate_reset_line_ids_to_selection_ids(
-    batch_name: str,
-    all_files: dict[str, dict],
-    file: str | None,
-    patterns: list[str] | None,
-    line_id_specification: str,
-) -> LineRanges:
-    """Translate fresh file-review gutter IDs to batch selection IDs.
-
-    Reset is a metadata operation, so explicit reset line IDs must keep working
-    even when a batch change is not currently mergeable into the worktree. Only
-    translate through the mergeability-filtered gutter map when a fresh batch
-    file review is in scope; otherwise leave the batch display IDs untouched.
-    """
-    files = resolve_batch_file_scope(batch_name, all_files, file, patterns)
-    selected_ids = require_single_file_context_for_line_selection_ranges(
-        batch_name, files, line_id_specification, "reset"
-    )
-    if selected_ids is None:
-        return LineRanges.empty()
-
-    file_path = list(files.keys())[0]
-    if files[file_path].get("file_type") == "binary":
-        exit_with_error(_("Cannot use --lines with binary files. Reset the whole file instead."))
-    if is_batch_submodule_pointer(files[file_path]):
-        refuse_batch_submodule_pointer_lines(_("Reset"))
-
-    review_selections = fresh_batch_review_selections_for_action(
-        batch_name,
-        file_path,
-        FileReviewAction.RESET_FROM_BATCH,
-    )
-    if review_selections is None:
-        return selected_ids
-    validate_review_scoped_line_selection(selected_ids, review_selections)
-
-    rendered = render_batch_file_display(batch_name, file_path)
-    if rendered is None:
-        exit_with_error(
-            _("No changes for file '{file}' in batch '{name}'.").format(
-                file=file_path,
-                name=batch_name,
-            )
-        )
-
-    display_id_map = rendered.review_gutter_to_selection_id or rendered.gutter_to_selection_id
-    def mapped_selection_ids():
-        for gutter_id in selected_ids:
-            if gutter_id in display_id_map:
-                yield display_id_map[gutter_id]
-            else:
-                exit_with_error(
-                    _("Line ID {id} is not available for this action. Select one of the numbered lines shown for this batch file.").format(
-                        id=gutter_id
-                    )
-                )
-
-    return LineRanges.from_lines(mapped_selection_ids())
 
 def _ensure_destination_batch(source_batch: str, dest_batch: str, source_metadata: dict) -> None:
     """Create destination batch from source baseline, or verify compatibility."""

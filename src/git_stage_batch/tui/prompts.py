@@ -28,7 +28,7 @@ except ImportError:
     INPUT_USES_LIBEDIT = False
     readline = None  # type: ignore
 
-from ..output import Colors, format_hotkey
+from ..output.colors import Colors, format_hotkey
 from ..i18n import _, pgettext
 
 # Module-level storage for shell command history

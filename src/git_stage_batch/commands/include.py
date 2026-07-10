@@ -6,12 +6,15 @@ from collections.abc import Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from enum import Enum
-import os
-import stat
 import sys
 import uuid
 
-from ..batch import add_binary_file_to_batch, add_file_to_batch, add_gitlink_to_batch, create_batch, delete_batch
+from ..batch.operations import create_batch, delete_batch
+from ..batch.storage import (
+    add_binary_file_to_batch,
+    add_file_to_batch,
+    add_gitlink_to_batch,
+)
 from ..batch.display import annotate_with_batch_source
 from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..batch.ownership import (
@@ -50,8 +53,12 @@ from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFil
 from ..core.text_lifecycle import TextFileChangeType
 from ..data.text_lifecycle_detection import detect_empty_text_lifecycle_change
 from ..data.hunk_tracking import (
-    apply_line_level_batch_filter_to_cached_hunk,
     fetch_next_change,
+)
+from ..data.selected_change.hunk_filtering import (
+    apply_line_level_batch_filter_to_cached_hunk,
+)
+from ..data.selected_change.loading import (
     load_selected_change,
     require_selected_hunk,
 )
@@ -73,8 +80,9 @@ from ..data.file_hunk_display import (
     cache_unstaged_file_as_single_hunk,
     render_unstaged_file_as_single_hunk,
 )
+from ..data.file_modes import detect_file_mode
+from ..data.file_review.records import FileReviewAction
 from ..data.file_review.state import (
-    FileReviewAction,
     clear_last_file_review_state_if_file_matches,
     finish_review_scoped_line_action,
     refuse_ambiguous_bare_action_after_partial_file_review,
@@ -108,7 +116,7 @@ from ..utils.repository_buffers import (
 )
 from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
-from ..output import print_line_level_changes
+from ..output.hunk import print_line_level_changes
 from ..staging.operations import (
     build_target_index_buffer_from_lines,
     build_target_index_buffer_with_replaced_lines,
@@ -120,7 +128,6 @@ from ..utils.file_io import (
     read_text_file_contents,
 )
 from ..utils.git import (
-    get_git_repository_root_path,
     GitIndexEntryUpdate,
     git_add_paths,
     git_apply_to_index,
@@ -415,7 +422,7 @@ def _try_build_index_content_via_transient_batch(
                 batch_name,
                 line_changes.path,
                 ownership,
-                _detect_file_mode(line_changes.path),
+                detect_file_mode(line_changes.path),
                 batch_source_commit=batch_source_commit,
             )
 
@@ -1651,23 +1658,6 @@ def command_include_to_batch(
         finish_review_scoped_line_action(review_state)
 
 
-def _detect_file_mode(file_path: str) -> str:
-    """Return the current git file mode for a path, defaulting to a regular file."""
-    absolute_path = get_git_repository_root_path() / file_path
-    if os.path.lexists(absolute_path):
-        file_status = absolute_path.lstat()
-        if stat.S_ISLNK(file_status.st_mode):
-            return "120000"
-        return "100755" if file_status.st_mode & stat.S_IXUSR else "100644"
-
-    ls_result = run_git_command(["ls-files", "-s", "--", file_path], check=False, requires_index_lock=False)
-    if ls_result.returncode == 0 and ls_result.stdout.strip():
-        parts = ls_result.stdout.strip().split()
-        if parts:
-            return parts[0]
-    return "100644"
-
-
 def _save_empty_text_lifecycle_to_batch(
     batch_name: str,
     file_path: str,
@@ -1704,7 +1694,7 @@ def _command_include_text_deletion_to_batch(
         batch_name,
         file_path,
         BatchOwnership([], []),
-        _detect_file_mode(file_path),
+        detect_file_mode(file_path),
         change_type=TextFileChangeType.DELETED.value,
     )
     append_lines_to_file(get_block_list_file_path(), [patch_hash])
@@ -1736,7 +1726,7 @@ def _command_include_binary_to_batch(
     add_binary_file_to_batch(
         batch_name,
         binary_change,
-        file_mode=_detect_file_mode(file_path),
+        file_mode=detect_file_mode(file_path),
     )
     append_lines_to_file(get_block_list_file_path(), [patch_hash])
     record_binary_hunk_skipped(binary_change, patch_hash)
@@ -1824,7 +1814,7 @@ def _command_include_file_to_batch(
         return
 
     # Detect file mode
-    file_mode = _detect_file_mode(file_path)
+    file_mode = detect_file_mode(file_path)
 
     # Collect ALL hunks from this file (live working tree state)
     all_lines_to_batch = []
@@ -1944,7 +1934,7 @@ def _command_include_file_lines_to_batch(
     if not batch_exists(batch_name):
         create_batch(batch_name, "Auto-created")
 
-    file_mode = _detect_file_mode(file_path)
+    file_mode = detect_file_mode(file_path)
 
     # Prepare batch ownership update (handles stale source, translation, merge)
 
@@ -2024,7 +2014,7 @@ def _command_include_lines_to_batch(
     metadata = read_batch_metadata(batch_name)
     file_metadata = metadata.get("files", {}).get(line_changes.path)
 
-    file_mode = _detect_file_mode(line_changes.path)
+    file_mode = detect_file_mode(line_changes.path)
 
     with ExitStack() as ownership_stack:
         try:
@@ -2170,7 +2160,7 @@ def _command_include_hunk_to_batch(
     file_path = selected_file_path
 
     # Detect file mode
-    file_mode = _detect_file_mode(file_path)
+    file_mode = detect_file_mode(file_path)
 
     # Collect all lines to batch (either selected hunk or all hunks from file)
     all_lines_to_batch = []

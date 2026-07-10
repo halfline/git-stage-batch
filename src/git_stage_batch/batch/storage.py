@@ -31,7 +31,7 @@ from ..utils.repository_buffers import (
     load_git_object_as_buffer,
     load_git_tree_files_as_buffers,
 )
-from ..editor import (
+from ..editor.line_endings import (
     restore_line_endings_in_chunks,
     detect_line_ending,
 )
@@ -51,7 +51,8 @@ from ..utils.git import (
 )
 from ..utils.paths import get_batch_metadata_file_path
 from ..utils.text import normalize_line_sequence_endings
-from .merge import realized_entry_content_chunks, satisfy_constraints
+from .merge import satisfy_constraints
+from .realized_entries import realized_entry_content_chunks
 
 if TYPE_CHECKING:
     from .ownership import BatchOwnership, AbsenceClaim

@@ -24,7 +24,7 @@ from ..prompts import (
 
 
 @dataclass
-class FileReviewState:
+class FileReviewSessionState:
     """State for one interactive file review session."""
 
     flow_state: FlowState
@@ -66,7 +66,7 @@ def handle_current_file_review(flow_state: FlowState) -> None:
         print(_("No current file to review."), file=sys.stderr)
         raise BypassRefresh()
 
-    state = FileReviewState(
+    state = FileReviewSessionState(
         flow_state=flow_state,
         file_path=line_changes.path,
     )
@@ -80,11 +80,13 @@ def handle_file_browser(flow_state: FlowState) -> None:
     if selected_file is None:
         raise BypassRefresh()
 
-    _review_loop(FileReviewState(flow_state=flow_state, file_path=selected_file))
+    _review_loop(
+        FileReviewSessionState(flow_state=flow_state, file_path=selected_file)
+    )
     raise BypassRefresh()
 
 
-def _review_loop(state: FileReviewState) -> None:
+def _review_loop(state: FileReviewSessionState) -> None:
     while True:
         if not _render_review(state):
             return
@@ -134,7 +136,7 @@ def _review_loop(state: FileReviewState) -> None:
         print(_("Unknown review action: {action}").format(action=action))
 
 
-def _render_review(state: FileReviewState) -> bool:
+def _render_review(state: FileReviewSessionState) -> bool:
     print()
     print_status_bar(get_hunk_counts(), state.flow_state)
     print()
@@ -450,7 +452,7 @@ def _apply_marked_file_action(
                 command_block_file(path, local_only=local_only)
                 continue
 
-            state = FileReviewState(flow_state=flow_state, file_path=path)
+            state = FileReviewSessionState(flow_state=flow_state, file_path=path)
             if flow_state.source.role is LocationRole.BATCH:
                 _apply_batch_file_action(state, action)
             else:
@@ -473,7 +475,7 @@ def _normalize_marked_file_action(raw_action: str) -> str | None:
     return None
 
 
-def _browse_candidates(state: FileReviewState) -> None:
+def _browse_candidates(state: FileReviewSessionState) -> None:
     if state.flow_state.source.role is not LocationRole.BATCH:
         print(_("Candidate browsing is only available when pulling from a batch."), file=sys.stderr)
         return
@@ -586,7 +588,7 @@ def _execute_candidate(
         print(e.message, file=sys.stderr)
 
 
-def _apply_replacement_action(state: FileReviewState) -> None:
+def _apply_replacement_action(state: FileReviewSessionState) -> None:
     line_ids = prompt_line_ids()
     if not line_ids:
         return
@@ -604,7 +606,7 @@ def _apply_replacement_action(state: FileReviewState) -> None:
         print(e.message, file=sys.stderr)
 
 
-def _apply_line_action(state: FileReviewState, action: str) -> None:
+def _apply_line_action(state: FileReviewSessionState, action: str) -> None:
     if action == "s" and state.flow_state.source.role is LocationRole.BATCH:
         print(_("Skip is not available when pulling from a batch."), file=sys.stderr)
         return
@@ -629,7 +631,7 @@ def _apply_line_action(state: FileReviewState, action: str) -> None:
         print(e.message, file=sys.stderr)
 
 
-def _apply_file_action(state: FileReviewState, action: str) -> None:
+def _apply_file_action(state: FileReviewSessionState, action: str) -> None:
     if action == "S" and state.flow_state.source.role is LocationRole.BATCH:
         print(_("Skip is not available when pulling from a batch."), file=sys.stderr)
         return
@@ -650,7 +652,7 @@ def _apply_file_action(state: FileReviewState, action: str) -> None:
         print(e.message, file=sys.stderr)
 
 
-def _apply_block_action(state: FileReviewState, action: str) -> None:
+def _apply_block_action(state: FileReviewSessionState, action: str) -> None:
     if action == "B":
         if not confirm_destructive_operation(
             "block",
@@ -678,7 +680,7 @@ def _apply_block_action(state: FileReviewState, action: str) -> None:
         print(e.message, file=sys.stderr)
 
 
-def _apply_fixup_action(state: FileReviewState) -> None:
+def _apply_fixup_action(state: FileReviewSessionState) -> None:
     if state.flow_state.source.role is LocationRole.BATCH:
         print(_("Suggest-fixup is not available when pulling from a batch."), file=sys.stderr)
         return
@@ -737,7 +739,7 @@ def _apply_fixup_action(state: FileReviewState) -> None:
 
 
 def _apply_live_line_action(
-    state: FileReviewState,
+    state: FileReviewSessionState,
     action: str,
     line_ids: str,
 ) -> None:
@@ -795,7 +797,7 @@ def _apply_live_line_action(
 
 
 def _apply_live_replacement_action(
-    state: FileReviewState,
+    state: FileReviewSessionState,
     line_ids: str,
     replacement_text: str,
 ) -> None:
@@ -822,7 +824,7 @@ def _apply_live_replacement_action(
     )
 
 
-def _apply_live_file_action(state: FileReviewState, action: str) -> None:
+def _apply_live_file_action(state: FileReviewSessionState, action: str) -> None:
     if action == "I":
         if state.flow_state.target.role is LocationRole.BATCH:
             from ...commands.include import command_include_to_batch
@@ -885,7 +887,7 @@ def _apply_live_file_action(state: FileReviewState, action: str) -> None:
 
 
 def _apply_batch_line_action(
-    state: FileReviewState,
+    state: FileReviewSessionState,
     action: str,
     line_ids: str,
 ) -> None:
@@ -916,7 +918,7 @@ def _apply_batch_line_action(
 
 
 def _apply_batch_replacement_action(
-    state: FileReviewState,
+    state: FileReviewSessionState,
     line_ids: str,
     replacement_text: str,
 ) -> None:
@@ -937,7 +939,7 @@ def _apply_batch_replacement_action(
     )
 
 
-def _apply_batch_file_action(state: FileReviewState, action: str) -> None:
+def _apply_batch_file_action(state: FileReviewSessionState, action: str) -> None:
     if state.flow_state.target.role is not LocationRole.STAGING_AREA:
         print(
             _("Batch-to-batch transfers not yet supported. Target must be staging."),

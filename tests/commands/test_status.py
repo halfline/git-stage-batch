@@ -1,6 +1,6 @@
 """Tests for status command."""
 
-from git_stage_batch.batch import create_batch
+from git_stage_batch.batch.operations import create_batch
 from git_stage_batch.batch.ownership import BatchOwnership
 from git_stage_batch.batch.storage import add_binary_file_to_batch
 from git_stage_batch.batch.storage import add_file_to_batch
@@ -491,7 +491,7 @@ class TestCommandStatus:
         capsys,
     ):
         """Batch-file status should not advertise hidden-page line IDs."""
-        from git_stage_batch.output import file_review
+        import git_stage_batch.output.file_review as file_review
 
         monkeypatch.setattr(file_review, "_body_budget", lambda: 1)
         test_file = temp_git_repo / "file.txt"
@@ -531,7 +531,7 @@ class TestCommandStatus:
         capsys,
     ):
         """Live file status should not advertise hidden-page line IDs."""
-        from git_stage_batch.output import file_review
+        import git_stage_batch.output.file_review as file_review
 
         monkeypatch.setattr(file_review, "_body_budget", lambda: 1)
         test_file = temp_git_repo / "file.txt"
@@ -564,7 +564,7 @@ class TestCommandStatus:
         capsys,
     ):
         """Status should not fall back to raw IDs from a stale live review."""
-        from git_stage_batch.output import file_review
+        import git_stage_batch.output.file_review as file_review
 
         monkeypatch.setattr(file_review, "_body_budget", lambda: 1)
         test_file = temp_git_repo / "file.txt"

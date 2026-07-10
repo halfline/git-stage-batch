@@ -8,7 +8,7 @@ from typing import overload
 import pytest
 
 from git_stage_batch.core.buffer import LineBuffer
-from git_stage_batch.editor import (
+from git_stage_batch.editor.edit import (
     Editor,
     edit_lines_as_buffer,
     export_lines_as_buffer,

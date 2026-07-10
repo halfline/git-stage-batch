@@ -105,6 +105,19 @@ def write_line_changes_state(line_changes: LineLevelChange) -> None:
     )
 
 
+def cache_hunk_change(
+    patch_lines: Sequence[bytes],
+    hunk_hash: str,
+    line_changes: LineLevelChange,
+) -> None:
+    """Cache a text hunk as the current selected change."""
+    write_selected_hunk_patch_lines(patch_lines)
+    write_text_file_contents(get_selected_hunk_hash_file_path(), hunk_hash)
+    write_selected_change_kind(SelectedChangeKind.HUNK)
+    write_line_changes_state(line_changes)
+    write_snapshots_for_selected_file_path(line_changes.path)
+
+
 def load_line_changes_from_patch_path(patch_path: Path) -> LineLevelChange:
     with LineBuffer.from_path(patch_path) as patch_lines:
         return build_line_changes_from_patch_lines(patch_lines)

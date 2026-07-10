@@ -5,15 +5,16 @@ from unittest.mock import patch
 
 from git_stage_batch.batch.ownership import BatchOwnership
 from git_stage_batch.utils.paths import get_abort_snapshots_directory_path
-from git_stage_batch.batch import list_batch_files, read_batch_metadata, read_file_from_batch
+from git_stage_batch.batch.query import list_batch_files, read_batch_metadata
+from git_stage_batch.batch.storage import read_file_from_batch
 from git_stage_batch.commands.discard import command_discard_to_batch
 from git_stage_batch.batch.validation import batch_exists
 from git_stage_batch.commands.apply_from import command_apply_from_batch
-from git_stage_batch.data.hunk_tracking import (
-    fetch_next_change,
-    load_selected_change,
+from git_stage_batch.data.hunk_tracking import fetch_next_change
+from git_stage_batch.data.selected_change.hunk_recalculation import (
     recalculate_selected_hunk_for_file,
 )
+from git_stage_batch.data.selected_change.loading import load_selected_change
 from git_stage_batch.data.line_state import load_line_changes_from_state
 from git_stage_batch.data.selected_change.store import (
     selected_change_was_cleared_by_auto_advance_disabled,

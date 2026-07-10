@@ -5,14 +5,11 @@ import pytest
 from git_stage_batch.batch.match import match_lines
 from git_stage_batch.batch.merge import (
     RegionKind,
-    RealizedEntry,
-    _RealizedEntries,
     _build_baseline_correspondence,
     _build_realized_entries_for_discard,
     _check_structural_validity,
     _discard_batch_line_chunks,
     _merge_batch_line_chunks,
-    realized_entry_content_chunks,
     _reverse_presence_constraints,
     _try_apply_baseline_replacement_units,
     can_merge_batch_from_line_sequences,
@@ -20,6 +17,11 @@ from git_stage_batch.batch.merge import (
     enumerate_merge_batch_candidates_from_line_sequences,
     merge_batch_from_line_sequences_as_buffer,
     satisfy_constraints,
+)
+from git_stage_batch.batch.realized_entries import (
+    RealizedEntry,
+    _RealizedEntries,
+    realized_entry_content_chunks,
 )
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.exceptions import MergeError

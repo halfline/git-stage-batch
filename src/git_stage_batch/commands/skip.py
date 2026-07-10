@@ -23,6 +23,8 @@ from ..batch.selection import require_line_selection_in_view
 from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
 from ..data.hunk_tracking import (
     fetch_next_change,
+)
+from ..data.selected_change.loading import (
     load_selected_change,
     require_selected_hunk,
 )
@@ -33,8 +35,8 @@ from ..data.selected_change.store import (
     refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
 )
+from ..data.file_review.records import FileReviewAction
 from ..data.file_review.state import (
-    FileReviewAction,
     finish_review_scoped_line_action,
     refuse_ambiguous_bare_action_after_partial_file_review,
     refuse_live_action_for_batch_selection,
@@ -58,7 +60,10 @@ from ..data.session import require_session_started
 from ..data.undo import undo_checkpoint
 from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
-from ..output import print_line_level_changes, print_remaining_line_changes_header
+from ..output.hunk import (
+    print_line_level_changes,
+    print_remaining_line_changes_header,
+)
 from ..utils.file_io import (
     append_lines_to_file,
     read_text_file_line_set,

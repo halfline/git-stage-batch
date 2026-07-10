@@ -303,6 +303,9 @@ Key modules:
   Ownership attribution for filtering live diffs.
 - `batch.source_refresh`
   Stale-source detection and repair orchestration.
+- `batch.source_cache`, `batch.source_buffers`, `batch.source_snapshots`
+  Session source-commit caching, session-start buffer loading, and batch source
+  commit construction.
 - `batch.selection`
   File scope and line-level batch selection rules.
 - `batch.display`

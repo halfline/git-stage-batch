@@ -313,6 +313,9 @@ When no session is active, `--for-prompt` prints nothing, so any spacing or
 brackets included in `FORMAT` are hidden too. Without `FORMAT`, it prints
 `STAGING`. In prompt output, `{status}` is the operation name `STAGING`;
 `{progress_status}` exposes the underlying `in_progress` or `complete` state.
+Prompt rendering is lock-free and read-only so shell startup never waits for an
+in-progress staging operation. A prompt may briefly reflect either side of a
+concurrent update, but it does not modify or clean up session state.
 Format fields include `{status}`, `{status_label}`, `{progress_status}`,
 `{progress_label}`, `{iteration}`, `{processed}`, `{total}`, `{included}`,
 `{skipped}`, `{discarded}`, `{remaining}`, `{selected_file}`,

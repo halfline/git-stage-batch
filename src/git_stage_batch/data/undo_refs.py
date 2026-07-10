@@ -80,5 +80,8 @@ def clear_redo_history() -> None:
 
 def clear_undo_history() -> None:
     """Clear all undo and redo checkpoints for the current session."""
+    from .recovery_anchors import clear_recovery_anchors
+
     update_git_refs(deletes=[SESSION_UNDO_STACK_REF])
     clear_redo_history()
+    clear_recovery_anchors()

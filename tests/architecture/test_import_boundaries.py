@@ -660,6 +660,395 @@ def test_diff_parser_uses_core_buffer_boundary():
     assert imported_exception_names == {"CommandError"}
 
 
+def test_diff_headers_own_git_file_header_parsing():
+    """Git file diff header parsing should stay outside the general parser."""
+    diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"
+    diff_headers_path = SRC_ROOT / "core" / "diff_headers.py"
+    diff_parser_text = diff_parser_path.read_text()
+    diff_headers_text = diff_headers_path.read_text()
+    diff_parser = __import__(
+        "git_stage_batch.core.diff_parser",
+        fromlist=["diff_parser"],
+    )
+    diff_headers = __import__(
+        "git_stage_batch.core.diff_headers",
+        fromlist=["diff_headers"],
+    )
+    public_names = {
+        "diff_git_paths",
+        "line_is_diff_git_header",
+    }
+    helper_constants = {
+        "DIFF_GIT_PREFIX",
+        "NEW_PATH_MARKER",
+        "OLD_PATH_PREFIX",
+    }
+    diff_imports = {}
+
+    for imported_module, node in _import_from_nodes(diff_parser_path):
+        diff_imports.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    assert public_names <= vars(diff_headers).keys()
+    assert public_names.isdisjoint(vars(diff_parser))
+    assert "diff_headers" in diff_imports.get("git_stage_batch.core", set())
+    assert "git_stage_batch.core.diff_headers" not in diff_imports
+    assert "_diff_headers.diff_git_paths" in diff_parser_text
+    assert "_diff_headers.line_is_diff_git_header" in diff_parser_text
+    for name in public_names:
+        assert f"def {name}" not in diff_parser_text
+    for name in helper_constants:
+        assert name in diff_headers_text
+        assert name not in diff_parser_text
+
+
+def test_hunk_headers_own_hunk_header_parsing():
+    """Unified diff hunk header parsing should stay outside diff_parser."""
+    diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"
+    hunk_headers_path = SRC_ROOT / "core" / "hunk_headers.py"
+    diff_parser_text = diff_parser_path.read_text()
+    hunk_headers_text = hunk_headers_path.read_text()
+    diff_parser = __import__(
+        "git_stage_batch.core.diff_parser",
+        fromlist=["diff_parser"],
+    )
+    hunk_headers = __import__(
+        "git_stage_batch.core.hunk_headers",
+        fromlist=["hunk_headers"],
+    )
+    public_names = {
+        "line_is_hunk_header",
+        "parse_hunk_header_line",
+    }
+    helper_names = {
+        "HUNK_HEADER_PATTERN",
+        "HUNK_HEADER_PREFIX",
+    }
+    diff_imports = {}
+
+    for imported_module, node in _import_from_nodes(diff_parser_path):
+        diff_imports.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    assert public_names <= vars(hunk_headers).keys()
+    assert public_names.isdisjoint(vars(diff_parser))
+    assert "hunk_headers" in diff_imports.get("git_stage_batch.core", set())
+    assert "git_stage_batch.core.hunk_headers" not in diff_imports
+    assert "_hunk_headers.line_is_hunk_header" in diff_parser_text
+    assert "_hunk_headers.parse_hunk_header_line" in diff_parser_text
+    assert "Bad hunk header" not in diff_parser_text
+    assert "import re" not in diff_parser_text
+    for name in public_names:
+        assert f"def {name}" not in diff_parser_text
+    for name in helper_names:
+        assert name in hunk_headers_text
+        assert name not in diff_parser_text
+
+
+def test_line_change_body_owns_line_entry_construction():
+    """Hunk body LineEntry construction should stay outside diff_parser."""
+    diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"
+    line_change_body_path = SRC_ROOT / "core" / "line_change_body.py"
+    diff_parser_text = diff_parser_path.read_text()
+    line_change_body_text = line_change_body_path.read_text()
+    diff_parser = __import__(
+        "git_stage_batch.core.diff_parser",
+        fromlist=["diff_parser"],
+    )
+    line_change_body = __import__(
+        "git_stage_batch.core.line_change_body",
+        fromlist=["line_change_body"],
+    )
+    diff_imports = {}
+    model_imports = set()
+
+    for imported_module, node in _import_from_nodes(diff_parser_path):
+        imported_names = {alias.name for alias in node.names}
+        diff_imports.setdefault(imported_module, set()).update(imported_names)
+        if imported_module == "git_stage_batch.core.models":
+            model_imports |= imported_names
+
+    assert "LineChangeBodyBuilder" in vars(line_change_body)
+    assert "LineChangeBodyBuilder" not in vars(diff_parser)
+    assert "line_change_body" in diff_imports.get("git_stage_batch.core", set())
+    assert "git_stage_batch.core.line_change_body" not in diff_imports
+    assert "_line_change_body.LineChangeBodyBuilder" in diff_parser_text
+    assert "LineEntry" not in model_imports
+    assert "NO_NEWLINE_MARKER" in line_change_body_text
+    assert "NO_NEWLINE_MARKER" not in diff_parser_text
+    assert "has_trailing_newline = False" not in diff_parser_text
+    assert "next_display_id" not in diff_parser_text
+
+
+def test_binary_change_path_selection_stays_on_model():
+    """Binary change callers should use the model path helper."""
+    model_path = SRC_ROOT / "core" / "models.py"
+    models = __import__("git_stage_batch.core.models", fromlist=["models"])
+    violations = []
+
+    assert "path" in vars(models.BinaryFileChange)
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == model_path:
+            continue
+
+        text = path.read_text()
+        if 'new_path != "/dev/null"' not in text:
+            continue
+
+        relative_path = path.relative_to(REPO_ROOT)
+        violations.append(str(relative_path))
+
+    assert violations == []
+
+
+def test_patch_headers_own_patch_file_header_parsing():
+    """Patch file header parsing should stay outside diff_parser."""
+    diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"
+    patch_headers_path = SRC_ROOT / "core" / "patch_headers.py"
+    diff_parser_text = diff_parser_path.read_text()
+    patch_headers_text = patch_headers_path.read_text()
+    diff_parser = __import__(
+        "git_stage_batch.core.diff_parser",
+        fromlist=["diff_parser"],
+    )
+    patch_headers = __import__(
+        "git_stage_batch.core.patch_headers",
+        fromlist=["patch_headers"],
+    )
+    public_names = {
+        "line_change_path",
+        "line_is_new_file_header",
+        "line_is_old_file_header",
+        "new_file_path_from_header",
+        "old_file_path_from_header",
+        "patch_targets_file_deletion",
+        "patch_targets_new_file",
+    }
+    helper_names = {
+        "DEV_NULL_PATH",
+        "NEW_FILE_HEADER_PREFIX",
+        "NEW_PATH_PREFIX",
+        "OLD_FILE_HEADER_PREFIX",
+        "OLD_PATH_PREFIX",
+    }
+    diff_imports = {}
+
+    for imported_module, node in _import_from_nodes(diff_parser_path):
+        diff_imports.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    assert public_names <= vars(patch_headers).keys()
+    assert public_names.isdisjoint(vars(diff_parser))
+    assert "patch_headers" in diff_imports.get("git_stage_batch.core", set())
+    assert "git_stage_batch.core.patch_headers" not in diff_imports
+    assert "_patch_headers.line_is_old_file_header" in diff_parser_text
+    assert "_patch_headers.line_is_new_file_header" in diff_parser_text
+    assert "_patch_headers.old_file_path_from_header" in diff_parser_text
+    assert "_patch_headers.new_file_path_from_header" in diff_parser_text
+    assert "_patch_headers.line_change_path" in diff_parser_text
+    assert "_patch_headers.patch_targets_file_deletion" in diff_parser_text
+    assert "_patch_headers.patch_targets_new_file" in diff_parser_text
+    for name in public_names:
+        assert f"def {name}" not in diff_parser_text
+    for name in helper_names:
+        assert name in patch_headers_text
+        assert name not in diff_parser_text
+
+
+def test_binary_diff_owns_binary_parser_helpers():
+    """Binary-specific diff helpers should stay outside the general parser."""
+    diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"
+    binary_diff_path = SRC_ROOT / "core" / "binary_diff.py"
+    diff_parser_text = diff_parser_path.read_text()
+    binary_diff_text = binary_diff_path.read_text()
+    diff_parser = __import__(
+        "git_stage_batch.core.diff_parser",
+        fromlist=["diff_parser"],
+    )
+    binary_diff = __import__(
+        "git_stage_batch.core.binary_diff",
+        fromlist=["binary_diff"],
+    )
+    public_names = {
+        "binary_change_type",
+        "binary_file_diff_line",
+        "metadata_indicates_binary_file",
+    }
+    helper_constants = {
+        "BINARY_FILES_MARKER",
+        "DEV_NULL_PATH",
+        "NEW_BINARY_PATH_MARKER",
+        "OLD_BINARY_PATH_MARKER",
+    }
+    diff_imports = {}
+
+    for imported_module, node in _import_from_nodes(diff_parser_path):
+        diff_imports.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    assert public_names <= vars(binary_diff).keys()
+    assert public_names.isdisjoint(vars(diff_parser))
+    assert "binary_diff" in diff_imports.get("git_stage_batch.core", set())
+    assert "git_stage_batch.core.binary_diff" not in diff_imports
+    assert "_binary_diff.metadata_indicates_binary_file" in diff_parser_text
+    for name in public_names:
+        assert f"def {name}" not in diff_parser_text
+    for name in helper_constants:
+        assert name in binary_diff_text
+        assert name not in diff_parser_text
+
+
+def test_empty_file_diff_owns_empty_file_parser_helpers():
+    """Empty-file diff helpers should stay outside the general parser."""
+    diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"
+    empty_file_diff_path = SRC_ROOT / "core" / "empty_file_diff.py"
+    diff_parser_text = diff_parser_path.read_text()
+    empty_file_diff_text = empty_file_diff_path.read_text()
+    diff_parser = __import__(
+        "git_stage_batch.core.diff_parser",
+        fromlist=["diff_parser"],
+    )
+    empty_file_diff = __import__(
+        "git_stage_batch.core.empty_file_diff",
+        fromlist=["empty_file_diff"],
+    )
+    public_names = {
+        "metadata_indicates_new_empty_file",
+        "synthetic_empty_file_patch_lines",
+    }
+    helper_constants = {
+        "EMPTY_BLOB_SHORT_HASH",
+        "NEW_FILE_MODE_MARKER",
+    }
+    diff_imports = {}
+
+    for imported_module, node in _import_from_nodes(diff_parser_path):
+        diff_imports.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    assert public_names <= vars(empty_file_diff).keys()
+    assert public_names.isdisjoint(vars(diff_parser))
+    assert "empty_file_diff" in diff_imports.get("git_stage_batch.core", set())
+    assert "git_stage_batch.core.empty_file_diff" not in diff_imports
+    assert "_empty_file_diff.SYNTHETIC_EMPTY_HUNK_HEADER" in diff_parser_text
+    assert "_empty_file_diff.metadata_indicates_new_empty_file" in diff_parser_text
+    assert "_empty_file_diff.synthetic_empty_file_patch_lines" in diff_parser_text
+    assert "e69de29" not in diff_parser_text
+    assert "new file mode" not in diff_parser_text
+    for name in public_names:
+        assert f"def {name}" not in diff_parser_text
+    for name in helper_constants:
+        assert name in empty_file_diff_text
+        assert name not in diff_parser_text
+
+
+def test_file_metadata_diff_owns_generic_metadata_helpers():
+    """Generic file metadata helpers should stay outside diff_parser."""
+    diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"
+    file_metadata_diff_path = SRC_ROOT / "core" / "file_metadata_diff.py"
+    diff_parser_text = diff_parser_path.read_text()
+    file_metadata_diff_text = file_metadata_diff_path.read_text()
+    diff_parser = __import__(
+        "git_stage_batch.core.diff_parser",
+        fromlist=["diff_parser"],
+    )
+    file_metadata_diff = __import__(
+        "git_stage_batch.core.file_metadata_diff",
+        fromlist=["file_metadata_diff"],
+    )
+    public_names = {
+        "metadata_indicates_deleted_file",
+        "metadata_indicates_rename",
+    }
+    helper_names = {
+        "DELETED_FILE_MODE_PREFIX",
+        "RENAME_FROM_PREFIX",
+        "RENAME_TO_PREFIX",
+    }
+    diff_imports = {}
+
+    for imported_module, node in _import_from_nodes(diff_parser_path):
+        diff_imports.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    assert public_names <= vars(file_metadata_diff).keys()
+    assert public_names.isdisjoint(vars(diff_parser))
+    assert "file_metadata_diff" in diff_imports.get("git_stage_batch.core", set())
+    assert "git_stage_batch.core.file_metadata_diff" not in diff_imports
+    assert "_file_metadata_diff.metadata_indicates_rename" in diff_parser_text
+    assert "_file_metadata_diff.metadata_indicates_deleted_file" in diff_parser_text
+    assert "rename from " not in diff_parser_text
+    assert "rename to " not in diff_parser_text
+    assert "deleted file mode " not in diff_parser_text
+    for name in public_names:
+        assert f"def {name}" not in diff_parser_text
+    for name in helper_names:
+        assert name in file_metadata_diff_text
+        assert name not in diff_parser_text
+
+
+def test_gitlink_diff_owns_gitlink_parser_helpers():
+    """Gitlink-specific diff helpers should stay outside the general parser."""
+    diff_parser_path = SRC_ROOT / "core" / "diff_parser.py"
+    gitlink_diff_path = SRC_ROOT / "core" / "gitlink_diff.py"
+    diff_parser_text = diff_parser_path.read_text()
+    gitlink_diff_text = gitlink_diff_path.read_text()
+    diff_parser = __import__(
+        "git_stage_batch.core.diff_parser",
+        fromlist=["diff_parser"],
+    )
+    gitlink_diff = __import__(
+        "git_stage_batch.core.gitlink_diff",
+        fromlist=["gitlink_diff"],
+    )
+    public_names = {
+        "consume_gitlink_hunks",
+        "gitlink_change_type",
+        "gitlink_new_path",
+        "gitlink_oids_from_index",
+        "gitlink_oids_from_subproject_commit_patch",
+        "gitlink_old_path",
+        "metadata_indicates_gitlink",
+        "non_null_git_oid",
+    }
+    old_parser_names = {
+        "INDEX_LINE_PATTERN",
+        "NULL_OBJECT_PREFIX",
+        "SUBPROJECT_COMMIT_PATTERN",
+        "_consume_gitlink_hunks",
+        "_gitlink_change_type",
+        "_gitlink_new_path",
+        "_gitlink_oids_from_index",
+        "_gitlink_oids_from_subproject_commit_patch",
+        "_gitlink_old_path",
+        "_metadata_indicates_gitlink",
+        "_non_null_git_oid",
+    }
+    diff_imports = {}
+
+    for imported_module, node in _import_from_nodes(diff_parser_path):
+        diff_imports.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    assert public_names <= vars(gitlink_diff).keys()
+    assert public_names.isdisjoint(vars(diff_parser))
+    assert "gitlink_diff" in diff_imports.get("git_stage_batch.core", set())
+    assert "git_stage_batch.core.gitlink_diff" not in diff_imports
+    assert "_gitlink_diff.consume_gitlink_hunks" in diff_parser_text
+    assert old_parser_names.isdisjoint(vars(diff_parser))
+    for name in old_parser_names:
+        assert name not in diff_parser_text
+        assert name.removeprefix("_") in gitlink_diff_text
+
+
 def test_patch_header_queries_stay_in_diff_parser():
     """Include and discard should use core patch header queries."""
     include_path = SRC_ROOT / "commands" / "include.py"
@@ -3181,11 +3570,23 @@ def test_file_review_changes_own_review_change_assembly():
     """ReviewChange assembly should stay out of model orchestration."""
     review_model_builder_path = SRC_ROOT / "output" / "file_review_model_builder.py"
     changes_path = SRC_ROOT / "output" / "file_review_changes.py"
+    segments_path = SRC_ROOT / "output" / "file_review_change_segments.py"
     review_model_builder_text = review_model_builder_path.read_text()
     changes_text = changes_path.read_text()
+    segments_text = segments_path.read_text()
     builder_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(review_model_builder_path)
+    }
+    changes_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(changes_path)
+    }
+    changes_output_imports = {
+        alias.name
+        for imported_module, node in _import_from_nodes(changes_path)
+        if imported_module == "git_stage_batch.output"
+        for alias in node.names
     }
     builder_model_imports = {
         alias.name
@@ -3197,9 +3598,21 @@ def test_file_review_changes_own_review_change_assembly():
         "git_stage_batch.output.file_review_changes",
         fromlist=["file_review_changes"],
     )
+    file_review_change_segments = __import__(
+        "git_stage_batch.output.file_review_change_segments",
+        fromlist=["file_review_change_segments"],
+    )
+    segment_names = {
+        "ReviewChangeSegment",
+        "build_file_review_change_segments",
+    }
 
     assert "git_stage_batch.output.file_review_changes" in builder_imports
     assert "build_file_review_changes" in vars(file_review_changes)
+    assert "git_stage_batch.output.file_review_change_segments" not in changes_imports
+    assert "file_review_change_segments" in changes_output_imports
+    assert segment_names <= vars(file_review_change_segments).keys()
+    assert segment_names.isdisjoint(vars(file_review_changes))
     assert builder_model_imports == {"FileReviewModel"}
     assert "ActionableSelectionReason" not in review_model_builder_text
     assert "format_line_ids" not in review_model_builder_text
@@ -3209,7 +3622,10 @@ def test_file_review_changes_own_review_change_assembly():
     assert "flush_segment" not in review_model_builder_text
     assert "ReviewChange" in changes_text
     assert "format_line_ids" in changes_text
-    assert "flush_segment" in changes_text
+    assert "flush_segment" not in changes_text
+    assert "file_review_model import ReviewChange" not in segments_text
+    assert "ReviewChange(" not in segments_text
+    assert "flush_segment" in segments_text
 
 
 def test_file_review_output_uses_model_module():
@@ -4213,6 +4629,41 @@ def test_status_summary_reader_owns_status_payload_assembly():
     assert old_status_names.isdisjoint(status_names)
     assert "_read_status_summary" in imported_status_summary_names
     assert direct_payload_imports == set()
+
+
+def test_status_summary_uses_batch_selected_binary_validation():
+    """Status summary should not read batch metadata for selected binaries."""
+    status_summary_path = SRC_ROOT / "data" / "status_summary.py"
+    batch_selected_path = SRC_ROOT / "data" / "batch_selected_changes.py"
+    status_summary_text = status_summary_path.read_text()
+    batch_selected = __import__(
+        "git_stage_batch.data.batch_selected_changes",
+        fromlist=["batch_selected_changes"],
+    )
+    imported_batch_selected_names = set()
+    imported_batch_query_names = {
+        alias.name
+        for imported_module, node in _import_from_nodes(batch_selected_path)
+        if imported_module == "git_stage_batch.batch.query"
+        for alias in node.names
+    }
+    status_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(status_summary_path)
+    }
+
+    for imported_module, node in _import_from_nodes(status_summary_path):
+        if imported_module != "git_stage_batch.data.batch_selected_changes":
+            continue
+        imported_batch_selected_names |= {alias.name for alias in node.names}
+
+    assert "load_current_selected_batch_binary_file" in vars(batch_selected)
+    assert "load_current_selected_batch_binary_file" in imported_batch_selected_names
+    assert "read_batch_metadata" in imported_batch_query_names
+    assert "git_stage_batch.batch.query" not in status_imports
+    assert "read_batch_metadata" not in status_summary_text
+    assert "selected_batch_binary_batch_name" not in status_summary_text
+    assert "selected_batch_binary_file_for_batch" not in status_summary_text
 
 
 def test_active_session_query_stays_in_session_data():
@@ -9000,6 +9451,124 @@ def test_batch_hunk_ownership_translation_owns_hunk_selection():
     assert violations == []
 
 
+def test_batch_hunk_line_ranges_own_hunk_range_scanning():
+    """Live-hunk range scanning should stay outside ownership translation."""
+    hunk_translation = __import__(
+        "git_stage_batch.batch.hunk_ownership_translation",
+        fromlist=["hunk_ownership_translation"],
+    )
+    hunk_line_ranges = __import__(
+        "git_stage_batch.batch.hunk_line_ranges",
+        fromlist=["hunk_line_ranges"],
+    )
+    hunk_path = SRC_ROOT / "batch" / "hunk_ownership_translation.py"
+    range_path = SRC_ROOT / "batch" / "hunk_line_ranges.py"
+    public_names = {
+        "HunkLineRangeScan",
+        "hunk_line_index_ranges_in_range",
+        "hunk_line_indexes_in_range",
+        "scan_hunk_line_range",
+    }
+    old_private_names = {
+        "_HunkLineRangeScan",
+        "_hunk_line_index_ranges_in_range",
+        "_hunk_line_indexes_in_range",
+        "_scan_hunk_line_range",
+    }
+    hunk_imported_names: dict[str | None, set[str]] = {}
+    replacement_imported_names: dict[str | None, set[str]] = {}
+    hunk_text = hunk_path.read_text()
+    replacement_path = SRC_ROOT / "batch" / "hunk_replacement_translation.py"
+    replacement_text = replacement_path.read_text()
+    range_text = range_path.read_text()
+
+    assert public_names <= vars(hunk_line_ranges).keys()
+    assert public_names.isdisjoint(vars(hunk_translation))
+    assert old_private_names.isdisjoint(vars(hunk_translation))
+
+    for imported_module, node in _import_from_nodes(hunk_path):
+        hunk_imported_names.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    for imported_module, node in _import_from_nodes(replacement_path):
+        replacement_imported_names.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    assert "hunk_line_ranges" not in hunk_imported_names.get(
+        "git_stage_batch.batch",
+        set(),
+    )
+    assert "hunk_line_ranges" in replacement_imported_names.get(
+        "git_stage_batch.batch",
+        set(),
+    )
+    for public_name in public_names:
+        assert f"def {public_name}" not in hunk_text
+    for old_private_name in old_private_names:
+        assert old_private_name not in hunk_text
+    assert "_hunk_line_ranges.scan_hunk_line_range" in replacement_text
+    assert "class HunkLineRangeScan" in range_text
+
+
+def test_batch_hunk_replacement_translation_owns_replacement_runs():
+    """File-derived replacement run translation should stay outside hunk walks."""
+    hunk_translation = __import__(
+        "git_stage_batch.batch.hunk_ownership_translation",
+        fromlist=["hunk_ownership_translation"],
+    )
+    replacement_translation = __import__(
+        "git_stage_batch.batch.hunk_replacement_translation",
+        fromlist=["hunk_replacement_translation"],
+    )
+    hunk_path = SRC_ROOT / "batch" / "hunk_ownership_translation.py"
+    replacement_path = SRC_ROOT / "batch" / "hunk_replacement_translation.py"
+    public_names = {
+        "HunkReplacementTranslation",
+        "translate_hunk_replacement_line_runs",
+    }
+    hunk_imported_names: dict[str | None, set[str]] = {}
+    replacement_imported_names: dict[str | None, set[str]] = {}
+    hunk_text = hunk_path.read_text()
+    replacement_text = replacement_path.read_text()
+
+    assert public_names <= vars(replacement_translation).keys()
+    assert public_names.isdisjoint(vars(hunk_translation))
+
+    for imported_module, node in _import_from_nodes(hunk_path):
+        hunk_imported_names.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    for imported_module, node in _import_from_nodes(replacement_path):
+        replacement_imported_names.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    assert "hunk_replacement_translation" in hunk_imported_names.get(
+        "git_stage_batch.batch",
+        set(),
+    )
+    assert "hunk_line_ranges" not in hunk_imported_names.get(
+        "git_stage_batch.batch",
+        set(),
+    )
+    assert "hunk_line_ranges" in replacement_imported_names.get(
+        "git_stage_batch.batch",
+        set(),
+    )
+    assert "AbsenceContentBuilder" not in hunk_text
+    assert "ReplacementUnit(" not in hunk_text
+    assert "replacement_unit_origin_for_line_run" not in hunk_text
+    assert "for replacement_run in replacement_line_runs" not in hunk_text
+    assert (
+        "_hunk_replacement_translation.translate_hunk_replacement_line_runs"
+        in hunk_text
+    )
+    assert "for replacement_run in replacement_line_runs" in replacement_text
+
+
 def test_batch_ownership_line_entries_own_entry_helpers():
     """LineEntry ownership primitives should stay outside translators."""
     line_entries = __import__(
@@ -9019,6 +9588,7 @@ def test_batch_ownership_line_entries_own_entry_helpers():
         "LineEntryContentSequence",
         "ReplacementUnitBuilder",
         "baseline_reference_for_old_line_range",
+        "baseline_reference_for_presence_line",
         "line_entry_content",
         "old_line_content_by_number",
         "replacement_unit_origin_for_line_run",
@@ -9027,6 +9597,7 @@ def test_batch_ownership_line_entries_own_entry_helpers():
         "_LineEntryContentSequence",
         "_ReplacementUnitBuilder",
         "_baseline_reference_for_old_line_range",
+        "_baseline_reference_for_presence_line",
         "_line_entry_content",
         "_old_line_content_by_number",
         "_replacement_unit_origin_for_line_run",
@@ -9036,7 +9607,12 @@ def test_batch_ownership_line_entries_own_entry_helpers():
             "LineEntryContentSequence",
             "ReplacementUnitBuilder",
             "baseline_reference_for_old_line_range",
+            "baseline_reference_for_presence_line",
             "old_line_content_by_number",
+        },
+        SRC_ROOT / "batch" / "hunk_replacement_translation.py": {
+            "baseline_reference_for_old_line_range",
+            "baseline_reference_for_presence_line",
             "replacement_unit_origin_for_line_run",
         },
         SRC_ROOT / "batch" / "ownership_translation.py": {
@@ -9371,7 +9947,7 @@ def test_batch_ownership_replacement_units_own_value_records():
         "ReplacementUnitOrigin",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "hunk_ownership_translation.py": public_names,
+        SRC_ROOT / "batch" / "hunk_replacement_translation.py": public_names,
         SRC_ROOT / "batch" / "ownership.py": {
             "ReplacementUnit",
         },
@@ -9769,8 +10345,10 @@ def test_batch_absence_content_owns_public_builders():
     }
     expected_imports = {
         SRC_ROOT / "batch" / "hunk_ownership_translation.py": {
-            "AbsenceContentBuilder",
             "build_absence_content_from_range",
+        },
+        SRC_ROOT / "batch" / "hunk_replacement_translation.py": {
+            "AbsenceContentBuilder",
         },
         SRC_ROOT / "batch" / "ownership_detachment.py": {
             "copy_absence_content",
@@ -10803,6 +11381,61 @@ def test_batch_file_mergeability_owns_display_probe():
     assert "can_merge_batch_from_line_sequences" not in display_text
     assert "_file_mergeability.probe_batch_file_mergeability" in display_text
     assert "batch_merge.can_merge_batch_from_line_sequences" in mergeability_text
+
+
+def test_batch_file_display_model_owns_review_model_assembly():
+    """Batch file display should delegate review-model object assembly."""
+    file_display = __import__(
+        "git_stage_batch.batch.file_display",
+        fromlist=["file_display"],
+    )
+    file_display_model = __import__(
+        "git_stage_batch.batch.file_display_model",
+        fromlist=["file_display_model"],
+    )
+    display_path = SRC_ROOT / "batch" / "file_display.py"
+    model_path = SRC_ROOT / "batch" / "file_display_model.py"
+    public_names = {
+        "build_rendered_batch_display_model",
+    }
+    model_names = {
+        "HunkHeader",
+        "LineEntry",
+        "LineLevelChange",
+        "ReviewActionGroup",
+    }
+    display_imported_names: dict[str | None, set[str]] = {}
+    model_imported_names: dict[str | None, set[str]] = {}
+    display_text = display_path.read_text()
+    model_text = model_path.read_text()
+
+    assert public_names <= vars(file_display_model).keys()
+    assert public_names.isdisjoint(vars(file_display))
+
+    for imported_module, node in _import_from_nodes(display_path):
+        display_imported_names.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    for imported_module, node in _import_from_nodes(model_path):
+        model_imported_names.setdefault(imported_module, set()).update(
+            alias.name for alias in node.names
+        )
+
+    assert "file_display_model" in display_imported_names.get(
+        "git_stage_batch.batch",
+        set(),
+    )
+    assert model_names.isdisjoint(
+        display_imported_names.get("git_stage_batch.core.models", set())
+    )
+    assert model_names <= model_imported_names.get(
+        "git_stage_batch.core.models",
+        set(),
+    )
+    assert "_file_display_model.build_rendered_batch_display_model" in display_text
+    assert "ReviewActionGroup(" not in display_text
+    assert "ReviewActionGroup(" in model_text
 
 
 def test_batch_ownership_unit_selection_owns_display_id_filtering():

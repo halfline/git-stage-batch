@@ -2,7 +2,12 @@
 
 import pytest
 
-from git_stage_batch.core.models import HunkHeader, LineEntry, SingleHunkPatch
+from git_stage_batch.core.models import (
+    BinaryFileChange,
+    HunkHeader,
+    LineEntry,
+    SingleHunkPatch,
+)
 
 
 class TestHunkHeader:
@@ -67,6 +72,40 @@ class TestLineEntry:
         assert line.display_text() == "caf\ufffd"
 
 
+class TestBinaryFileChange:
+    """Tests for BinaryFileChange helpers."""
+
+    def test_path_uses_new_path_for_added_or_modified_binary(self):
+        """Binary path should prefer the non-null new side."""
+        assert (
+            BinaryFileChange(
+                old_path="/dev/null",
+                new_path="asset.bin",
+                change_type="added",
+            ).path()
+            == "asset.bin"
+        )
+        assert (
+            BinaryFileChange(
+                old_path="asset.bin",
+                new_path="asset.bin",
+                change_type="modified",
+            ).path()
+            == "asset.bin"
+        )
+
+    def test_path_uses_old_path_for_deleted_binary(self):
+        """Deleted binary path should come from the old side."""
+        assert (
+            BinaryFileChange(
+                old_path="asset.bin",
+                new_path="/dev/null",
+                change_type="deleted",
+            ).path()
+            == "asset.bin"
+        )
+
+
 class TestSingleHunkPatch:
     """Tests for SingleHunkPatch dataclass."""
 
@@ -86,3 +125,33 @@ class TestSingleHunkPatch:
         assert patch.old_path == "file.txt"
         assert patch.new_path == "file.txt"
         assert len(patch.lines) == 7
+
+    def test_path_uses_new_path_for_added_or_modified_hunk(self):
+        """Text hunk path should prefer the non-null new side."""
+        assert (
+            SingleHunkPatch(
+                old_path="/dev/null",
+                new_path="file.txt",
+                lines=(),
+            ).path()
+            == "file.txt"
+        )
+        assert (
+            SingleHunkPatch(
+                old_path="file.txt",
+                new_path="file.txt",
+                lines=(),
+            ).path()
+            == "file.txt"
+        )
+
+    def test_path_uses_old_path_for_deleted_hunk(self):
+        """Deleted text hunk path should come from the old side."""
+        assert (
+            SingleHunkPatch(
+                old_path="file.txt",
+                new_path="/dev/null",
+                lines=(),
+            ).path()
+            == "file.txt"
+        )

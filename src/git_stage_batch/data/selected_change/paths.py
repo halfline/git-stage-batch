@@ -23,11 +23,7 @@ def get_selected_change_file_path() -> str | None:
 
     binary_file = _selected_file_changes.load_selected_binary_file()
     if binary_file is not None:
-        return (
-            binary_file.new_path
-            if binary_file.new_path != "/dev/null" else
-            binary_file.old_path
-        )
+            return binary_file.path()
 
     patch_path = get_selected_hunk_patch_file_path()
     if not patch_path.exists():

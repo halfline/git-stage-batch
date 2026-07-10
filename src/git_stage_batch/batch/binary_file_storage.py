@@ -34,11 +34,7 @@ def add_binary_file_to_batch(
     if not batch_exists(batch_name):
         create_batch(batch_name, "Auto-created")
 
-    file_path = (
-        binary_change.new_path
-        if binary_change.new_path != "/dev/null" else
-        binary_change.old_path
-    )
+    file_path = binary_change.path()
 
     current_binary_buffer: LineBuffer | None = None
     close_current_binary_buffer = False

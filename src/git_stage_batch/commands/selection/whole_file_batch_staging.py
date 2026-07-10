@@ -93,7 +93,7 @@ def include_binary_to_batch(
     auto_advance: bool | None = None,
 ) -> None:
     """Save one binary change to a batch and mark it processed."""
-    file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
+    file_path = binary_change.path()
     patch_hash = compute_binary_file_hash(binary_change)
 
     add_binary_file_to_batch(

@@ -120,7 +120,7 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
                         continue
 
                     # Determine file path for blocked files check
-                    file_path = item.new_path if item.new_path != "/dev/null" else item.old_path
+                    file_path = item.path()
                     if is_path_blocked(file_path, blocked_files):
                         continue
 

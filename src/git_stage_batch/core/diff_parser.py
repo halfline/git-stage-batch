@@ -2,21 +2,27 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable
 from typing import Iterable, Iterator, Union
 
+from . import binary_diff as _binary_diff
+from . import diff_headers as _diff_headers
+from . import empty_file_diff as _empty_file_diff
+from . import file_metadata_diff as _file_metadata_diff
+from . import gitlink_diff as _gitlink_diff
+from . import hunk_headers as _hunk_headers
+from . import line_change_body as _line_change_body
+from . import patch_headers as _patch_headers
+from .buffer import LineBuffer
 from .models import (
     BinaryFileChange,
     GitlinkChange,
     LineLevelChange,
     HunkHeader,
-    LineEntry,
     RenameChange,
     SingleHunkPatch,
     TextFileDeletionChange,
 )
-from .buffer import LineBuffer
 from ..exceptions import CommandError
 from ..i18n import _
 
@@ -26,162 +32,22 @@ LineLevelChangeAnnotator = Callable[[str, LineLevelChange], LineLevelChange]
 UnifiedDiffItem = Union[SingleHunkPatch, BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange]
 
 
-HUNK_HEADER_PATTERN = re.compile(r"^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s+@@")
-INDEX_LINE_PATTERN = re.compile(br"^index ([0-9a-f]+)\.\.([0-9a-f]+)(?: ([0-7]+))?$")
-SUBPROJECT_COMMIT_PATTERN = re.compile(br"^([+-])Subproject commit ([0-9a-f]+)(?:-[^\s]+)?$")
-NULL_OBJECT_PREFIX = "0" * 7
-
-
 def patch_is_file_deletion(patch_lines: Iterable[bytes]) -> bool:
     """Return whether patch lines target a deleted file path."""
-    return any(line.rstrip(b"\n") == b"+++ /dev/null" for line in patch_lines)
+    return _patch_headers.patch_targets_file_deletion(patch_lines)
 
 
 def patch_is_new_file(patch_lines: Iterable[bytes]) -> bool:
     """Return whether patch lines target a newly added file path."""
-    return any(line.rstrip(b"\n") == b"--- /dev/null" for line in patch_lines)
+    return _patch_headers.patch_targets_new_file(patch_lines)
 
 
 def patch_is_empty_file_change(patch_lines: Iterable[bytes]) -> bool:
     """Return whether patch lines describe a synthetic empty-file change."""
-    return any(line.rstrip(b"\n") == b"@@ -0,0 +0,0 @@" for line in patch_lines)
-
-
-def _metadata_indicates_gitlink(metadata_lines: list[bytes]) -> bool:
-    """Return whether diff metadata describes a mode-160000 entry."""
-    for line in metadata_lines:
-        if line in (
-            b"new file mode 160000",
-            b"deleted file mode 160000",
-            b"old mode 160000",
-            b"new mode 160000",
-        ):
-            return True
-        match = INDEX_LINE_PATTERN.match(line)
-        if match is not None and match.group(3) == b"160000":
-            return True
-    return False
-
-
-def _metadata_indicates_rename(metadata_lines: list[bytes]) -> bool:
-    """Return whether diff metadata describes a path rename."""
-    has_rename_from = any(line.startswith(b"rename from ") for line in metadata_lines)
-    has_rename_to = any(line.startswith(b"rename to ") for line in metadata_lines)
-    return has_rename_from and has_rename_to
-
-
-def _metadata_indicates_deleted_file(metadata_lines: list[bytes]) -> bool:
-    """Return whether diff metadata describes a deleted file."""
-    return any(line.startswith(b"deleted file mode ") for line in metadata_lines)
-
-
-def _gitlink_oids_from_index(metadata_lines: list[bytes]) -> tuple[str | None, str | None]:
-    """Extract old and new object ids from a gitlink index line."""
-    for line in metadata_lines:
-        match = INDEX_LINE_PATTERN.match(line)
-        if match is not None:
-            return (
-                match.group(1).decode("ascii"),
-                match.group(2).decode("ascii"),
-            )
-    return None, None
-
-
-def _non_null_git_oid(oid: str | None) -> str | None:
-    """Return an object id unless it represents the null side of a diff."""
-    if oid is None:
-        return None
-    if oid.startswith(NULL_OBJECT_PREFIX):
-        return None
-    return oid
-
-
-def _gitlink_old_path(path: str, old_oid: str | None) -> str:
-    """Return /dev/null for the old side of an added gitlink."""
-    return "/dev/null" if _non_null_git_oid(old_oid) is None else path
-
-
-def _gitlink_new_path(path: str, new_oid: str | None) -> str:
-    """Return /dev/null for the new side of a deleted gitlink."""
-    return "/dev/null" if _non_null_git_oid(new_oid) is None else path
-
-
-def _gitlink_change_type(
-    metadata_lines: list[bytes],
-    old_oid: str | None,
-    new_oid: str | None,
-) -> str:
-    """Derive added/modified/deleted from gitlink diff metadata."""
-    if any(line == b"new file mode 160000" for line in metadata_lines):
-        return "added"
-    if any(line == b"deleted file mode 160000" for line in metadata_lines):
-        return "deleted"
-    if _non_null_git_oid(old_oid) is None:
-        return "added"
-    if _non_null_git_oid(new_oid) is None:
-        return "deleted"
-    return "modified"
-
-
-def _consume_gitlink_hunks(
-    next_line: Callable[[], bytes | None],
-    peek_line: Callable[[], bytes | None],
-) -> tuple[str | None, str | None]:
-    """Consume all gitlink hunks for the current file and return full oids."""
-    old_oid = None
-    new_oid = None
-
-    while True:
-        next_l = peek_line()
-        if next_l is None:
-            break
-        next_l_stripped = next_l.rstrip(b"\n")
-        if next_l_stripped.startswith(b"diff --git "):
-            break
-        if next_l_stripped.startswith(b"---"):
-            break
-
-        next_line()
-        match = SUBPROJECT_COMMIT_PATTERN.match(next_l_stripped)
-        if match is not None:
-            oid = match.group(2).decode("ascii")
-            if match.group(1) == b"-":
-                old_oid = oid
-            else:
-                new_oid = oid
-
-    return old_oid, new_oid
-
-
-def _gitlink_oids_from_subproject_commit_patch(
-    patch_lines: Iterable[bytes],
-) -> tuple[str | None, str | None] | None:
-    """Return gitlink oids when a patch only changes Subproject commit lines."""
-    old_oid = None
-    new_oid = None
-    changed_line_count = 0
-
-    for line in patch_lines:
-        stripped = line.rstrip(b"\n")
-        if stripped.startswith((b"--- ", b"+++ ", b"@@ ", b"\\ ")):
-            continue
-        if not stripped or stripped[0:1] not in (b"+", b"-"):
-            continue
-
-        changed_line_count += 1
-        match = SUBPROJECT_COMMIT_PATTERN.match(stripped)
-        if match is None:
-            return None
-
-        oid = match.group(2).decode("ascii")
-        if match.group(1) == b"-":
-            old_oid = oid
-        else:
-            new_oid = oid
-
-    if changed_line_count == 0:
-        return None
-    return old_oid, new_oid
+    return any(
+        line.rstrip(b"\n") == _empty_file_diff.SYNTHETIC_EMPTY_HUNK_HEADER
+        for line in patch_lines
+    )
 
 
 class _UnifiedDiffParserBuildContext:
@@ -307,10 +173,10 @@ class _UnifiedDiffParserBuildContext:
 
                 body_line_stripped = body_line.rstrip(b'\n')
 
-                if body_line_stripped.startswith(b"diff --git "):
+                if _diff_headers.line_is_diff_git_header(body_line_stripped):
                     # Next file starting
                     break
-                if body_line_stripped.startswith(b"@@"):
+                if _hunk_headers.line_is_hunk_header(body_line_stripped):
                     # Next hunk for same file
                     break
                 # Check for start of new file diff (---/+++)
@@ -347,21 +213,11 @@ class _UnifiedDiffParserBuildContext:
                 line = line.rstrip(b'\n')
 
                 # Look for start of a file diff
-                if line.startswith(b"diff --git "):
-                    # Extract file paths from the diff --git line
-                    # Format: diff --git a/path b/path
-                    rest = line[len(b"diff --git "):]
-
-                    # Find a/ and b/ markers
-                    a_start = rest.find(b"a/")
-                    b_start = rest.find(b" b/")
-
-                    if a_start == -1 or b_start == -1:
+                if _diff_headers.line_is_diff_git_header(line):
+                    file_paths = _diff_headers.diff_git_paths(line)
+                    if file_paths is None:
                         continue
-
-                    # Paths in git are always valid UTF-8, decode them to str
-                    old_path = rest[a_start + 2:b_start].decode('utf-8')
-                    new_path = rest[b_start + 3:].decode('utf-8')  # Skip " b/"
+                    old_path, new_path = file_paths
 
                     # Collect metadata lines until we hit the --- line (start of unified diff)
                     # Files with no hunks (binary, mode-only, rename-only, empty) won't have --- line
@@ -379,15 +235,25 @@ class _UnifiedDiffParserBuildContext:
                         # Collect metadata lines
                         metadata_lines.append(next_l)
                         # If we hit another diff header, this file has no hunks - check if it's an empty new file
-                        if next_l.startswith(b"diff --git "):
+                        if _diff_headers.line_is_diff_git_header(next_l):
                             # Put the line back for next iteration (with \n restored for consistency)
                             lookahead = next_l + b'\n'
                             break
 
-                    is_gitlink = _metadata_indicates_gitlink(metadata_lines)
-                    is_rename = _metadata_indicates_rename(metadata_lines)
-                    is_deleted_file = _metadata_indicates_deleted_file(metadata_lines)
-                    index_old_oid, index_new_oid = _gitlink_oids_from_index(metadata_lines)
+                    is_gitlink = _gitlink_diff.metadata_indicates_gitlink(
+                        metadata_lines
+                    )
+                    is_rename = _file_metadata_diff.metadata_indicates_rename(
+                        metadata_lines
+                    )
+                    is_deleted_file = (
+                        _file_metadata_diff.metadata_indicates_deleted_file(
+                            metadata_lines
+                        )
+                    )
+                    index_old_oid, index_new_oid = (
+                        _gitlink_diff.gitlink_oids_from_index(metadata_lines)
+                    )
 
                     # Handle files without unified diff hunks
                     if old_file_line is None:
@@ -396,11 +262,17 @@ class _UnifiedDiffParserBuildContext:
 
                         if is_gitlink:
                             yield GitlinkChange(
-                                old_path=_gitlink_old_path(old_path, index_old_oid),
-                                new_path=_gitlink_new_path(new_path, index_new_oid),
-                                old_oid=_non_null_git_oid(index_old_oid),
-                                new_oid=_non_null_git_oid(index_new_oid),
-                                change_type=_gitlink_change_type(
+                                old_path=_gitlink_diff.gitlink_old_path(
+                                    old_path,
+                                    index_old_oid,
+                                ),
+                                new_path=_gitlink_diff.gitlink_new_path(
+                                    new_path,
+                                    index_new_oid,
+                                ),
+                                old_oid=_gitlink_diff.non_null_git_oid(index_old_oid),
+                                new_oid=_gitlink_diff.non_null_git_oid(index_new_oid),
+                                change_type=_gitlink_diff.gitlink_change_type(
                                     metadata_lines,
                                     index_old_oid,
                                     index_new_oid,
@@ -408,33 +280,13 @@ class _UnifiedDiffParserBuildContext:
                             )
                             continue
 
-                        # Check if this is a binary file
-                        # Binary files have lines like "Binary files a/X and b/X differ"
-                        is_binary = any(b"Binary files" in m for m in metadata_lines)
-
-                        if is_binary:
-                            # Yield binary file change
-                            # Extract the binary file line to determine change type
-                            binary_line = next(
-                                (m for m in metadata_lines if b"Binary files" in m),
-                                b"Binary files differ",
-                            )
-
-                            # Determine if it's a new, modified, or deleted binary file
-                            is_new_binary = b"/dev/null" in binary_line and b"and b/" in binary_line
-                            is_deleted_binary = b"a/" in binary_line and b"/dev/null" in binary_line
-
-                            if is_new_binary:
-                                change_type = "added"
-                            elif is_deleted_binary:
-                                change_type = "deleted"
-                            else:
-                                change_type = "modified"
-
+                        if _binary_diff.metadata_indicates_binary_file(metadata_lines):
                             yield BinaryFileChange(
                                 old_path=old_path,
                                 new_path=new_path,
-                                change_type=change_type
+                                change_type=_binary_diff.binary_change_type(
+                                    metadata_lines
+                                ),
                             )
                             continue
 
@@ -445,23 +297,16 @@ class _UnifiedDiffParserBuildContext:
                             yield TextFileDeletionChange(old_path=old_path)
                             continue
 
-                        # Check if this is an empty new file (new file with no content)
-                        # Empty new files have "new file mode" and "index 0000000..e69de29" (empty blob, short hash)
-                        EMPTY_BLOB_SHORT_HASH = b"e69de29"  # Short hash for empty blob
-                        is_new_file = any(b"new file mode" in m for m in metadata_lines)
-                        is_empty = any(EMPTY_BLOB_SHORT_HASH in m for m in metadata_lines)
-
-                        if is_new_file and is_empty:
-                            # Yield empty new file as a special patch with synthetic hunk
-                            # Create fake ---/+++ lines and an empty hunk header (with \n terminators)
+                        if _empty_file_diff.metadata_indicates_new_empty_file(
+                            metadata_lines
+                        ):
                             yield self._build_single_hunk_patch(
                                 old_path="/dev/null",
                                 new_path=new_path,
-                                lines=[
-                                    b"--- /dev/null\n",
-                                    f"+++ b/{new_path}\n".encode('utf-8'),
-                                    b"@@ -0,0 +0,0 @@\n",
-                                ],
+                                lines=_empty_file_diff.synthetic_empty_file_patch_lines(
+                                    b"--- /dev/null",
+                                    f"+++ b/{new_path}".encode("utf-8"),
+                                ),
                             )
                         # Skip other files without hunks (mode-only, rename-only, etc.)
                         continue
@@ -479,17 +324,32 @@ class _UnifiedDiffParserBuildContext:
                         yield RenameChange(old_path=old_path, new_path=new_path)
 
                     if is_gitlink:
-                        hunk_old_oid, hunk_new_oid = _consume_gitlink_hunks(next_line, peek_line)
-                        old_oid = hunk_old_oid or _non_null_git_oid(index_old_oid)
-                        new_oid = hunk_new_oid or _non_null_git_oid(index_new_oid)
+                        hunk_old_oid, hunk_new_oid = (
+                            _gitlink_diff.consume_gitlink_hunks(
+                                next_line,
+                                peek_line,
+                            )
+                        )
+                        old_oid = hunk_old_oid or _gitlink_diff.non_null_git_oid(
+                            index_old_oid
+                        )
+                        new_oid = hunk_new_oid or _gitlink_diff.non_null_git_oid(
+                            index_new_oid
+                        )
                         if old_oid is not None and old_oid == new_oid:
                             continue
                         yield GitlinkChange(
-                            old_path=_gitlink_old_path(old_path, old_oid or index_old_oid),
-                            new_path=_gitlink_new_path(new_path, new_oid or index_new_oid),
+                            old_path=_gitlink_diff.gitlink_old_path(
+                                old_path,
+                                old_oid or index_old_oid,
+                            ),
+                            new_path=_gitlink_diff.gitlink_new_path(
+                                new_path,
+                                new_oid or index_new_oid,
+                            ),
                             old_oid=old_oid,
                             new_oid=new_oid,
-                            change_type=_gitlink_change_type(
+                            change_type=_gitlink_diff.gitlink_change_type(
                                 metadata_lines,
                                 old_oid or index_old_oid,
                                 new_oid or index_new_oid,
@@ -505,7 +365,9 @@ class _UnifiedDiffParserBuildContext:
                         if hunk_header_line is None:
                             return
                         hunk_header_stripped = hunk_header_line.rstrip(b'\n')
-                        if not hunk_header_stripped.startswith(b"@@"):
+                        if not _hunk_headers.line_is_hunk_header(
+                            hunk_header_stripped
+                        ):
                             # No more hunks for this file
                             break
 
@@ -522,19 +384,27 @@ class _UnifiedDiffParserBuildContext:
                         subproject_oids = None
                         if not is_gitlink and not metadata_lines:
                             patch_lines = list(patch_lines)
-                            subproject_oids = _gitlink_oids_from_subproject_commit_patch(
-                                patch_lines
+                            subproject_oids = (
+                                _gitlink_diff.gitlink_oids_from_subproject_commit_patch(
+                                    patch_lines
+                                )
                             )
                         if subproject_oids is not None:
                             old_oid, new_oid = subproject_oids
                             if old_oid is not None and old_oid == new_oid:
                                 continue
                             yield GitlinkChange(
-                                old_path=_gitlink_old_path(old_path, old_oid),
-                                new_path=_gitlink_new_path(new_path, new_oid),
+                                old_path=_gitlink_diff.gitlink_old_path(
+                                    old_path,
+                                    old_oid,
+                                ),
+                                new_path=_gitlink_diff.gitlink_new_path(
+                                    new_path,
+                                    new_oid,
+                                ),
                                 old_oid=old_oid,
                                 new_oid=new_oid,
-                                change_type=_gitlink_change_type(
+                                change_type=_gitlink_diff.gitlink_change_type(
                                     metadata_lines,
                                     old_oid,
                                     new_oid,
@@ -549,24 +419,17 @@ class _UnifiedDiffParserBuildContext:
                             lines=patch_lines,
                         )
 
-                    # If we got --- and +++ but no hunks, check if it's an empty new file
                     if not has_hunks:
-                        # Check if this is an empty new file (new file with no content)
-                        # Empty new files have "new file mode" and "index 0000000..e69de29" (empty blob)
-                        EMPTY_BLOB_SHORT_HASH = b"e69de29"
-                        is_new_file = any(b"new file mode" in m for m in metadata_lines)
-                        is_empty = any(EMPTY_BLOB_SHORT_HASH in m for m in metadata_lines)
-
-                        if is_new_file and is_empty:
-                            # Yield empty new file as a special patch with synthetic hunk
+                        if _empty_file_diff.metadata_indicates_new_empty_file(
+                            metadata_lines
+                        ):
                             yield self._build_single_hunk_patch(
                                 old_path=old_path,
                                 new_path=new_path,
-                                lines=[
-                                    old_file_line + b'\n',
-                                    new_file_line + b'\n',
-                                    b"@@ -0,0 +0,0 @@\n",
-                                ],
+                                lines=_empty_file_diff.synthetic_empty_file_patch_lines(
+                                    old_file_line,
+                                    new_file_line,
+                                ),
                             )
                         elif is_deleted_file:
                             yield TextFileDeletionChange(old_path=old_path)
@@ -601,111 +464,33 @@ def build_line_changes_from_patch_lines(
     old_path_value = ""
     new_path_value = ""
     hunk_header: HunkHeader | None = None
-    old_line_number = 0
-    new_line_number = 0
-    next_display_id = 0
-    line_entries: list[LineEntry] = []
+    body_builder = _line_change_body.LineChangeBodyBuilder()
 
     # Preserve line endings so a parsed hunk can be emitted unchanged.
     for line_with_ending in patch_lines:
         # Strip only \n for comparison (preserve \r in content)
         line = line_with_ending.rstrip(b'\n')
 
-        if line.startswith(b"--- "):
-            # Decode path to str (paths are always UTF-8 in git)
-            old_path_value = line.split(b" ", 1)[1].strip().decode('utf-8')
-            if old_path_value != "/dev/null" and old_path_value.startswith("a/"):
-                old_path_value = old_path_value[2:]
-        elif line.startswith(b"+++ "):
-            new_path_value = line.split(b" ", 1)[1].strip().decode('utf-8')
-            if new_path_value != "/dev/null" and new_path_value.startswith("b/"):
-                new_path_value = new_path_value[2:]
-        elif line.startswith(b"@@ "):
-            captured_header_line = line.decode('utf-8', errors='replace')
-            header_match = HUNK_HEADER_PATTERN.match(captured_header_line)
-            if not header_match:
-                raise CommandError(f"Bad hunk header: {captured_header_line}")
-
-            old_start = int(header_match.group(1))
-            old_length = int(header_match.group(2) or "1")
-            new_start = int(header_match.group(3))
-            new_length = int(header_match.group(4) or "1")
-            hunk_header = HunkHeader(old_start, old_length, new_start, new_length)
-            old_line_number = old_start
-            new_line_number = new_start
-            next_display_id = 0
+        if _patch_headers.line_is_old_file_header(line):
+            old_path_value = _patch_headers.old_file_path_from_header(line)
+        elif _patch_headers.line_is_new_file_header(line):
+            new_path_value = _patch_headers.new_file_path_from_header(line)
+        elif _hunk_headers.line_is_hunk_header(line):
+            hunk_header = _hunk_headers.parse_hunk_header_line(line)
+            body_builder.reset_for_hunk_header(hunk_header)
         elif hunk_header is not None:
-            if line.startswith(b"\\ No newline at end of file"):
-                if line_entries:
-                    line_entries[-1].has_trailing_newline = False
-                continue
-            if not line:
-                sign = " "
-                text_bytes = b""
-            else:
-                sign = line[0:1].decode('ascii')  # +, -, or space (always ASCII)
-                text_bytes = line[1:]  # Canonical bytes (without +/- prefix)
+            body_builder.append_patch_line(line)
 
-            if sign == " ":
-                # Context line
-                line_entries.append(LineEntry(
-                    id=None,
-                    kind=" ",
-                    old_line_number=old_line_number,
-                    new_line_number=new_line_number,
-                    text_bytes=text_bytes,
-                    source_line=None,
-                ))
-                old_line_number += 1
-                new_line_number += 1
-            elif sign == "-":
-                next_display_id += 1
-                # Deletion: doesn't exist in working tree
-                line_entries.append(LineEntry(
-                    id=next_display_id,
-                    kind="-",
-                    old_line_number=old_line_number,
-                    new_line_number=None,
-                    text_bytes=text_bytes,
-                    source_line=None,
-                ))
-                old_line_number += 1
-            elif sign == "+":
-                next_display_id += 1
-                # Addition: exists in working tree
-                line_entries.append(LineEntry(
-                    id=next_display_id,
-                    kind="+",
-                    old_line_number=None,
-                    new_line_number=new_line_number,
-                    text_bytes=text_bytes,
-                    source_line=None,
-                ))
-                new_line_number += 1
-            else:
-                # Treat as context line
-                line_entries.append(LineEntry(
-                    id=None,
-                    kind=" ",
-                    old_line_number=old_line_number,
-                    new_line_number=new_line_number,
-                    text_bytes=text_bytes,
-                    source_line=None,
-                ))
-                old_line_number += 1
-                new_line_number += 1
-
-    if new_path_value and new_path_value != "/dev/null":
-        path_value = new_path_value
-    elif old_path_value and old_path_value != "/dev/null":
-        path_value = old_path_value
-    else:
-        path_value = new_path_value or old_path_value or ""
+    path_value = _patch_headers.line_change_path(old_path_value, new_path_value)
 
     if hunk_header is None:
         raise CommandError(_("Failed to parse hunk header."))
 
-    line_changes = LineLevelChange(path=path_value, header=hunk_header, lines=line_entries)
+    line_changes = LineLevelChange(
+        path=path_value,
+        header=hunk_header,
+        lines=body_builder.line_entries,
+    )
 
     # Apply annotator hook if provided
     if annotator is not None:

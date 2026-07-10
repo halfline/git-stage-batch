@@ -133,7 +133,7 @@ def _include_loaded_selected_change(
         return
 
     if isinstance(item, BinaryFileChange):
-        file_path = item.new_path if item.new_path != "/dev/null" else item.old_path
+        file_path = item.path()
         result = git_add_paths([file_path], check=False)
         if result.returncode != 0:
             print(

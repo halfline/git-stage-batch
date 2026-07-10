@@ -2,36 +2,14 @@
 
 from __future__ import annotations
 
-import json
-import subprocess
-import sys
-
-from ..core.line_selection import parse_line_selection
-from ..data.file_review.fingerprints import compute_current_file_review_diff_fingerprint
-from ..data.selected_change.loading import require_selected_hunk
-from ..data.file_hunk_display import render_file_as_single_hunk
-from ..data.line_state import load_line_changes_from_state
-from ..data.selected_change.paths import get_selected_change_file_path
 from ..data.session import require_session_started
-from ..data.suggest_fixup_state import (
-    clear_suggest_fixup_state,
-    read_suggest_fixup_state,
-    suggest_fixup_state_should_reset,
-    write_suggest_fixup_state,
-)
-from ..exceptions import exit_with_error
-from ..i18n import _
-from ..utils.file_io import read_text_file_contents
-from ..utils.git_command import run_git_command
 from ..utils.git_repository import require_git_repository
-from ..utils.paths import (
-    ensure_state_directory_exists,
-    get_selected_hunk_hash_file_path,
-)
-from .fixup.history import (
-    find_next_fixup_candidate,
-    get_commit_details,
-    show_commit_diff_for_file,
+from ..utils.paths import ensure_state_directory_exists
+from .fixup.iteration_state import prepare_suggest_fixup_iteration
+from .fixup.search_flow import run_suggest_fixup_search
+from .fixup.search_targets import (
+    require_suggest_fixup_hunk_target,
+    require_suggest_fixup_line_target,
 )
 
 
@@ -62,183 +40,27 @@ def command_suggest_fixup(
     require_git_repository()
     ensure_state_directory_exists()
 
-    # Handle abort flag
-    if abort:
-        clear_suggest_fixup_state()
-        if not porcelain:
-            print(_("Suggest-fixup iteration cleared."), file=sys.stderr)
-        return
-
-    # Load selected state early to determine effective boundary
-    state = read_suggest_fixup_state()
-
-    # Determine effective boundary
-    if boundary is None:
-        # No boundary provided - use state's boundary or default
-        effective_boundary = state.get("boundary") if state else "@{upstream}"
-    else:
-        # Boundary was explicitly provided
-        effective_boundary = boundary
-        # If state exists and boundary changed, auto-reset
-        if state and state.get("boundary") != boundary:
-            clear_suggest_fixup_state()
-            state = None
-
-    # Handle reset flag
-    if reset:
-        clear_suggest_fixup_state()
-        state = None
-
-    require_selected_hunk()
-    line_changes = load_line_changes_from_state()
-
-    # Ensure we have full hunk state (not just patch/hash)
-    if line_changes is None:
-        if porcelain:
-            sys.exit(1)
-        exit_with_error(_("Full hunk state not available. Run 'show' to select a hunk."))
-
-    # Get hunk hash for state tracking
-    hunk_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
-
-    # Extract old line numbers from all changed lines
-    old_line_numbers = []
-    for entry in line_changes.lines:
-        if entry.old_line_number is not None:
-            old_line_numbers.append(entry.old_line_number)
-
-    if not old_line_numbers:
-        if porcelain:
-            sys.exit(1)
-        exit_with_error(_("No old line numbers found in hunk (all lines may be additions)."))
-
-    # Get the range of old lines
-    min_line = min(old_line_numbers)
-    max_line = max(old_line_numbers)
-
-    # Validate boundary ref
-    try:
-        run_git_command(["rev-parse", "--verify", effective_boundary], check=True, requires_index_lock=False)
-    except subprocess.CalledProcessError:
-        exit_with_error(_("Invalid boundary ref: {boundary}").format(boundary=effective_boundary))
-
-    # Check if there are any commits in the range
-    try:
-        rev_list_result = run_git_command(
-            ["rev-list", f"{effective_boundary}..HEAD"],
-            check=True,
-            requires_index_lock=False,
-        )
-    except subprocess.CalledProcessError:
-        exit_with_error(_("Failed to get commit range {boundary}..HEAD").format(boundary=effective_boundary))
-
-    if not rev_list_result.stdout.strip():
-        exit_with_error(_("No commits found in range {boundary}..HEAD").format(boundary=effective_boundary))
-
-    # Check if we should reset state due to context change
-    if state and suggest_fixup_state_should_reset(
-        hunk_hash, None, effective_boundary, line_changes.path, min_line, max_line
-    ):
-        clear_suggest_fixup_state()
-        state = None
-
-    # Handle show_last flag
-    if show_last:
-        if not state or not state.get("last_shown_commit"):
-            exit_with_error(
-                "No previous candidate to show.\n" +
-                "Run suggest-fixup without --last to find a candidate."
-            )
-
-        # Re-display the last candidate
-        candidate_commit = state["last_shown_commit"]
-        iteration = state["iteration"]
-
-        if porcelain:
-            # JSON output
-            commit_details = get_commit_details(candidate_commit)
-            output = {
-                "candidate": commit_details,
-                "iteration": iteration,
-                "boundary": state.get("boundary", effective_boundary)
-            }
-            print(json.dumps(output, indent=2))
-        else:
-            # Display the candidate
-            try:
-                show_result = run_git_command(
-                    ["show", "--no-patch", "--format=%h %s", candidate_commit],
-                    check=True,
-                    requires_index_lock=False,
-                )
-                commit_info = show_result.stdout.strip()
-            except subprocess.CalledProcessError:
-                commit_info = candidate_commit[:7]
-
-            print(_("Candidate {iteration}: {info}").format(iteration=iteration, info=commit_info))
-            show_commit_diff_for_file(candidate_commit, line_changes.path)
-            print(_("Run: git commit --fixup={commit}").format(commit=candidate_commit[:7]))
-        return
-
-    # Determine last shown commit and iteration
-    last_shown = state["last_shown_commit"] if state else None
-    iteration = state["iteration"] + 1 if state else 1
-
-    # Find next candidate
-    candidate_commit = find_next_fixup_candidate(
-        line_changes.path,
-        min_line,
-        max_line,
-        effective_boundary,
-        last_shown
+    iteration_context = prepare_suggest_fixup_iteration(
+        boundary=boundary,
+        reset=reset,
+        abort=abort,
+        porcelain=porcelain,
     )
+    if iteration_context is None:
+        return
+    state = iteration_context.state
+    effective_boundary = iteration_context.effective_boundary
 
-    if not candidate_commit:
-        if iteration == 1:
-            exit_with_error(
-                f"No commits in range {effective_boundary}..HEAD modified these lines.\n" +
-                "The changes may be fixing code from before the boundary."
-            )
-        else:
-            clear_suggest_fixup_state()
-            exit_with_error(_("No more candidates found."))
-
-    # Save state for next invocation
-    write_suggest_fixup_state({
-        "hunk_hash": hunk_hash,
-        "line_ids": None,
-        "boundary": effective_boundary,
-        "file_path": line_changes.path,
-        "min_line": min_line,
-        "max_line": max_line,
-        "last_shown_commit": candidate_commit,
-        "iteration": iteration
-    })
-
-    # Display the candidate
-    if porcelain:
-        # JSON output
-        commit_details = get_commit_details(candidate_commit)
-        output = {
-            "candidate": commit_details,
-            "iteration": iteration,
-            "boundary": effective_boundary
-        }
-        print(json.dumps(output, indent=2))
-    else:
-        try:
-            show_result = run_git_command(
-                ["show", "--no-patch", "--format=%h %s", candidate_commit],
-                check=True,
-                requires_index_lock=False,
-            )
-            commit_info = show_result.stdout.strip()
-        except subprocess.CalledProcessError:
-            commit_info = candidate_commit[:7]
-
-        print(_("Candidate {iteration}: {info}").format(iteration=iteration, info=commit_info))
-        show_commit_diff_for_file(candidate_commit, line_changes.path)
-        print(_("Run: git commit --fixup={commit}").format(commit=candidate_commit[:7]))
+    resolved_target = require_suggest_fixup_hunk_target(
+        effective_boundary,
+        porcelain=porcelain,
+    )
+    run_suggest_fixup_search(
+        state=state,
+        resolved_target=resolved_target,
+        show_last=show_last,
+        porcelain=porcelain,
+    )
 
 
 def command_suggest_fixup_line(
@@ -274,195 +96,25 @@ def command_suggest_fixup_line(
     ensure_state_directory_exists()
     require_session_started()
 
-    # Handle abort flag
-    if abort:
-        clear_suggest_fixup_state()
-        if not porcelain:
-            print(_("Suggest-fixup iteration cleared."), file=sys.stderr)
-        return
-
-    # Load selected state early to determine effective boundary
-    state = read_suggest_fixup_state()
-
-    # Determine effective boundary
-    if boundary is None:
-        # No boundary provided - use state's boundary or default
-        effective_boundary = state.get("boundary") if state else "@{upstream}"
-    else:
-        # Boundary was explicitly provided
-        effective_boundary = boundary
-        # If state exists and boundary changed, auto-reset
-        if state and state.get("boundary") != boundary:
-            clear_suggest_fixup_state()
-            state = None
-
-    # Handle reset flag
-    if reset:
-        clear_suggest_fixup_state()
-        state = None
-
-    if file is None:
-        require_selected_hunk()
-        line_changes = load_line_changes_from_state()
-        if line_changes is None:
-            exit_with_error(_("Full hunk state not available. Run 'show' to select a hunk."))
-
-        # Get hunk hash for state tracking
-        hunk_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
-    else:
-        if file == "":
-            target_file = get_selected_change_file_path()
-            if target_file is None:
-                exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
-        else:
-            target_file = file
-
-        line_changes = render_file_as_single_hunk(target_file)
-        if line_changes is None:
-            exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
-
-        hunk_hash = "file:" + compute_current_file_review_diff_fingerprint(
-            target_file,
-            line_changes=line_changes,
-        )
-
-    # Parse the line IDs
-    requested_ids = parse_line_selection(line_id_specification)
-    requested_ids_sorted = sorted(requested_ids)
-
-    # Extract old line numbers only for the specified line IDs
-    old_line_numbers = []
-    for entry in line_changes.lines:
-        if entry.id in requested_ids and entry.old_line_number is not None:
-            old_line_numbers.append(entry.old_line_number)
-
-    if not old_line_numbers:
-        exit_with_error(_("No old line numbers found for specified lines (they may be newly added lines)."))
-
-    # Get the range of old lines
-    min_line = min(old_line_numbers)
-    max_line = max(old_line_numbers)
-
-    # Validate boundary ref
-    try:
-        run_git_command(["rev-parse", "--verify", effective_boundary], check=True, requires_index_lock=False)
-    except subprocess.CalledProcessError:
-        exit_with_error(_("Invalid boundary ref: {boundary}").format(boundary=effective_boundary))
-
-    # Check if there are any commits in the range
-    try:
-        rev_list_result = run_git_command(
-            ["rev-list", f"{effective_boundary}..HEAD"],
-            check=True,
-            requires_index_lock=False,
-        )
-    except subprocess.CalledProcessError:
-        exit_with_error(_("Failed to get commit range {boundary}..HEAD").format(boundary=effective_boundary))
-
-    if not rev_list_result.stdout.strip():
-        exit_with_error(_("No commits found in range {boundary}..HEAD").format(boundary=effective_boundary))
-
-    # Check if we should reset state due to context change
-    if state and suggest_fixup_state_should_reset(
-        hunk_hash, requested_ids_sorted, effective_boundary, line_changes.path, min_line, max_line
-    ):
-        clear_suggest_fixup_state()
-        state = None
-
-    # Handle show_last flag
-    if show_last:
-        if not state or not state.get("last_shown_commit"):
-            exit_with_error(
-                "No previous candidate to show.\n" +
-                "Run suggest-fixup without --last to find a candidate."
-            )
-
-        # Re-display the last candidate
-        candidate_commit = state["last_shown_commit"]
-        iteration = state["iteration"]
-
-        if porcelain:
-            # JSON output
-            commit_details = get_commit_details(candidate_commit)
-            output = {
-                "candidate": commit_details,
-                "iteration": iteration,
-                "boundary": state.get("boundary", effective_boundary)
-            }
-            print(json.dumps(output, indent=2))
-        else:
-            # Display the candidate
-            try:
-                show_result = run_git_command(
-                    ["show", "--no-patch", "--format=%h %s", candidate_commit],
-                    check=True,
-                    requires_index_lock=False,
-                )
-                commit_info = show_result.stdout.strip()
-            except subprocess.CalledProcessError:
-                commit_info = candidate_commit[:7]
-
-            print(_("Candidate {iteration}: {info}").format(iteration=iteration, info=commit_info))
-            show_commit_diff_for_file(candidate_commit, line_changes.path)
-            print(_("Run: git commit --fixup={commit}").format(commit=candidate_commit[:7]))
-        return
-
-    # Determine last shown commit and iteration
-    last_shown = state["last_shown_commit"] if state else None
-    iteration = state["iteration"] + 1 if state else 1
-
-    # Find next candidate
-    candidate_commit = find_next_fixup_candidate(
-        line_changes.path,
-        min_line,
-        max_line,
-        effective_boundary,
-        last_shown
+    iteration_context = prepare_suggest_fixup_iteration(
+        boundary=boundary,
+        reset=reset,
+        abort=abort,
+        porcelain=porcelain,
     )
+    if iteration_context is None:
+        return
+    state = iteration_context.state
+    effective_boundary = iteration_context.effective_boundary
 
-    if not candidate_commit:
-        if iteration == 1:
-            exit_with_error(
-                f"No commits in range {effective_boundary}..HEAD modified these lines.\n" +
-                "The changes may be fixing code from before the boundary."
-            )
-        else:
-            clear_suggest_fixup_state()
-            exit_with_error(_("No more candidates found."))
-
-    # Save state for next invocation
-    write_suggest_fixup_state({
-        "hunk_hash": hunk_hash,
-        "line_ids": requested_ids_sorted,
-        "boundary": effective_boundary,
-        "file_path": line_changes.path,
-        "min_line": min_line,
-        "max_line": max_line,
-        "last_shown_commit": candidate_commit,
-        "iteration": iteration
-    })
-
-    # Display the candidate
-    if porcelain:
-        # JSON output
-        commit_details = get_commit_details(candidate_commit)
-        output = {
-            "candidate": commit_details,
-            "iteration": iteration,
-            "boundary": effective_boundary
-        }
-        print(json.dumps(output, indent=2))
-    else:
-        try:
-            show_result = run_git_command(
-                ["show", "--no-patch", "--format=%h %s", candidate_commit],
-                check=True,
-                requires_index_lock=False,
-            )
-            commit_info = show_result.stdout.strip()
-        except subprocess.CalledProcessError:
-            commit_info = candidate_commit[:7]
-
-        print(_("Candidate {iteration}: {info}").format(iteration=iteration, info=commit_info))
-        show_commit_diff_for_file(candidate_commit, line_changes.path)
-        print(_("Run: git commit --fixup={commit}").format(commit=candidate_commit[:7]))
+    resolved_target = require_suggest_fixup_line_target(
+        line_id_specification,
+        boundary=effective_boundary,
+        file=file,
+    )
+    run_suggest_fixup_search(
+        state=state,
+        resolved_target=resolved_target,
+        show_last=show_last,
+        porcelain=porcelain,
+    )

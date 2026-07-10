@@ -7,6 +7,14 @@ from dataclasses import dataclass
 import hashlib
 from typing import TYPE_CHECKING, Any
 
+from .absence_constraints import (
+    AbsenceChoice as _MergeAbsenceChoice,
+    absence_ambiguity_key as _merge_absence_ambiguity_key,
+    absence_choices_for_claim as _merge_absence_choices_for_claim,
+    apply_absence_constraints as _apply_merge_absence_constraints,
+)
+from . import baseline_edits as _baseline_edits
+from .baseline_edits import ReplacementOriginChoice as _BaselineReplacementOriginChoice
 from .baseline_correspondence import (
     build_baseline_correspondence as _build_discard_baseline_correspondence,
 )
@@ -19,6 +27,9 @@ from .merge_candidates import (
     MergeResolution as _MergeResolution,
     MergeResolutionDecision as _MergeResolutionDecision,
 )
+from .merge_validation import (
+    check_structural_validity as _check_merge_structural_validity,
+)
 from .match import LineMapping, iter_exact_context_gaps, match_lines
 from .realized_entries import (
     RealizedEntry as _RealizedEntry,
@@ -26,16 +37,13 @@ from .realized_entries import (
     _RealizedEntryContentSequence,
     _as_realized_entries,
     _backing_content_sequence,
-    _entry_content_at,
     _entry_is_claimed_at,
     _entry_source_line_at,
     _entry_target_line_at,
     realized_entry_content_chunks as _realized_entry_content_chunks,
 )
 from .realized_boundaries import (
-    boundary_choices_after_source_line as _boundary_choices_for_source_line,
     find_boundary_after_source_line as _locate_boundary_after_source_line,
-    find_realization_fallback_boundary as _realization_fallback_boundary,
     sequence_present_at_boundary as _boundary_sequence_present,
 )
 from ..core.line_selection import LineRanges, LineSelection
@@ -66,16 +74,9 @@ if TYPE_CHECKING:
 _MERGE_CANDIDATE_CAP = 50
 
 
-_BaselineLineEdit = tuple[int, int, list[Any]]
-
-
 def _byte_chunks(chunks: Iterable[Any]) -> Iterator[bytes]:
     for chunk in chunks:
         yield bytes(chunk)
-
-
-def _normalize_line_content(content: Any) -> bytes:
-    return normalize_line_endings(bytes(content))
 
 
 def _merge_result_line_ending_from_lines(
@@ -100,218 +101,6 @@ def _discard_result_line_ending_from_lines(
     return choose_line_ending(source_lines)
 
 
-@dataclass
-class ClaimedRunIntervalFacts:
-    """Structural facts about one contiguous run of missing claimed lines.
-
-    These facts make the merge-time safety decision explicit instead of hiding the
-    reasoning inside a single trailing-gap threshold.
-    """
-    run_start: int
-    run_end: int
-    run_length: int
-    before_source_line: int | None
-    after_source_line: int | None
-    before_target_line: int | None
-    after_target_line: int | None
-    leading_unmapped_source_gap: int
-    trailing_unmapped_source_gap: int
-    bracketed_on_both_sides: bool
-    bracketed_on_one_side_only: bool
-    source_interval_span: int | None
-    target_interval_span: int | None
-    surrounding_source_gap_outside_run: int | None
-    target_lines_after_before_anchor: int | None
-    has_deletion_at_before_anchor: bool
-    deletion_line_count_at_before_anchor: int
-
-
-def _check_structural_validity(
-    line_mapping: LineMapping,
-    claimed_lines: LineSelection,
-    deletions: list,  # list[AbsenceClaim]
-    source_lines: Sequence[bytes],
-    target_lines: Sequence[bytes]
-) -> None:
-    """Validate that batch can be safely applied given structural alignment.
-
-    Checks:
-    1. File hasn't been completely rewritten (zero alignment)
-    2. Missing claimed lines have nearby aligned context
-    3. Missing deletion anchors have nearby aligned context
-    4. Claimed runs have structurally coherent surrounding context
-
-    Check #4 prevents corruption when applying partial selections.
-    If claimed lines come from a source region whose surrounding source structure
-    no longer maps coherently into the working tree, inserting those lines may
-    preserve incompatible working-tree content that should have been replaced.
-
-    Args:
-        line_mapping: Alignment between batch source and working tree
-        claimed_lines: Claimed batch source line numbers
-        deletions: List of AbsenceClaim objects
-        source_lines: Batch source file lines (bytes)
-        target_lines: Working tree file lines (bytes)
-
-    Raises:
-        MergeError: If structural requirements aren't met
-    """
-    present_count = sum(1 for line in range(1, len(source_lines) + 1)
-                       if line_mapping.is_source_line_present(line))
-
-    if len(target_lines) == 0:
-        return
-
-    if present_count == 0 and len(target_lines) > 0:
-        if claimed_lines:
-            first_claimed = _first_selected_line(claimed_lines)
-            raise _MergeError(
-                _("Cannot reliably place claimed line {line}: file completely rewritten").format(
-                    line=first_claimed
-                )
-            )
-
-    for claimed_line in claimed_lines:
-        if claimed_line < 1 or claimed_line > len(source_lines):
-            raise _MergeError(
-                _("Claimed line {line} is out of range (batch source has {count} lines)").format(
-                    line=claimed_line,
-                    count=len(source_lines)
-                )
-            )
-
-        if not line_mapping.is_source_line_present(claimed_line):
-            has_context_before = False
-            has_context_after = False
-
-            for check_line in range(claimed_line - 1, 0, -1):
-                if line_mapping.is_source_line_present(check_line):
-                    has_context_before = True
-                    break
-
-            for check_line in range(claimed_line + 1, len(source_lines) + 1):
-                if line_mapping.is_source_line_present(check_line):
-                    has_context_after = True
-                    break
-
-            if not has_context_before and not has_context_after:
-                raise _MergeError(
-                    _("Cannot reliably place claimed line {line}: surrounding context lost").format(
-                        line=claimed_line
-                    )
-                )
-
-    for deletion in deletions:
-        after_line = deletion.anchor_line
-
-        if after_line is not None:
-            if after_line < 1 or after_line > len(source_lines):
-                raise _MergeError(
-                    _("Deletion after line {line} is out of range").format(line=after_line)
-                )
-
-            if not line_mapping.is_source_line_present(after_line):
-                has_context = False
-                for check_line in range(max(1, after_line - 3), min(len(source_lines) + 1, after_line + 4)):
-                    if check_line != after_line and line_mapping.is_source_line_present(check_line):
-                        has_context = True
-                        break
-
-                if not has_context and after_line != len(source_lines):
-                    raise _MergeError(
-                        _("Cannot determine deletion position after line {line}: anchor and neighbors missing").format(
-                            line=after_line
-                        )
-                    )
-
-    _check_claimed_region_compatibility(
-        line_mapping,
-        claimed_lines,
-        deletions,
-        source_lines,
-        target_lines
-    )
-
-
-def _check_claimed_region_compatibility(
-    line_mapping: LineMapping,
-    claimed_lines: LineSelection,
-    deletions: list,  # list[AbsenceClaim]
-    source_lines: Sequence[bytes],
-    target_lines: Sequence[bytes]
-) -> None:
-    """Check if claimed lines come from source regions with structurally coherent context.
-
-    Prevents corruption from partial selections where claimed lines are inserted
-    from a source region whose surrounding context is structurally incompatible
-    with the working tree.
-
-    For each contiguous run of missing claimed lines:
-    1. Find the nearest mapped source boundary before the run
-    2. Find the nearest mapped source boundary after the run
-    3. Map those boundaries into target-space
-    4. Compare the source interval around the run with the available target interval
-    5. Reject if the run is weakly anchored next to source-only structure that
-       does not fit the target interval coherently
-
-    This is conservative. It is not trying to prove the placement is globally
-    optimal; it is trying to reject cases where the run clearly comes from a
-    different structural neighborhood than the working tree currently has.
-
-    Args:
-        line_mapping: Alignment between source and working tree
-        claimed_lines: Claimed source line numbers
-        source_lines: Batch source lines
-        target_lines: Working tree lines
-
-    Raises:
-        MergeError: If claimed lines come from incompatible source region
-    """
-    missing_claimed = _get_missing_claimed_lines(
-        line_mapping,
-        claimed_lines,
-        source_lines
-    )
-
-    if not missing_claimed or len(target_lines) == 0:
-        return
-
-    for run_start, run_end in missing_claimed.ranges():
-        facts = _collect_claimed_run_interval_facts(
-            run_start,
-            run_end,
-            line_mapping,
-            source_lines,
-            target_lines,
-            deletions
-        )
-
-        if not _is_claimed_run_structurally_coherent(facts):
-            raise _MergeError(
-                _("Batch was created from a different version of the file")
-            )
-
-
-def _get_missing_claimed_lines(
-    line_mapping: LineMapping,
-    claimed_lines: LineSelection,
-    source_lines: Sequence[bytes]
-) -> LineRanges:
-    """Return claimed source lines that are not present in the working tree."""
-    return _mapped_missing_source_lines(
-        claimed_lines,
-        len(source_lines),
-        line_mapping,
-    )
-
-
-def _first_selected_line(lines: LineSelection) -> int | None:
-    first = getattr(lines, "first", None)
-    if first is not None:
-        return first()
-    return min(lines) if lines else None
-
-
 def _as_line_ranges(lines: LineSelection | Iterable[int]) -> LineRanges:
     if isinstance(lines, LineRanges):
         return lines
@@ -319,212 +108,6 @@ def _as_line_ranges(lines: LineSelection | Iterable[int]) -> LineRanges:
     if ranges is not None:
         return LineRanges.from_ranges(ranges())
     return LineRanges.from_lines(lines)
-
-
-def _selection_outside_bounds(lines: LineSelection, max_line: int) -> bool:
-    for start, end in _as_line_ranges(lines).ranges():
-        if start < 1 or end > max_line:
-            return True
-    return False
-
-
-def _find_nearest_mapped_source_line_before(
-    line_mapping: LineMapping,
-    source_line: int
-) -> int | None:
-    """Find the nearest mapped source line strictly before the given line."""
-    for check_line in range(source_line - 1, 0, -1):
-        if line_mapping.get_target_line_from_source_line(check_line) is not None:
-            return check_line
-
-    return None
-
-
-def _find_nearest_mapped_source_line_after(
-    line_mapping: LineMapping,
-    source_line: int,
-    max_source_line: int
-) -> int | None:
-    """Find the nearest mapped source line strictly after the given line."""
-    for check_line in range(source_line + 1, max_source_line + 1):
-        if line_mapping.get_target_line_from_source_line(check_line) is not None:
-            return check_line
-
-    return None
-
-
-def _collect_claimed_run_interval_facts(
-    run_start: int,
-    run_end: int,
-    line_mapping: LineMapping,
-    source_lines: Sequence[bytes],
-    target_lines: Sequence[bytes],
-    deletions: list
-) -> ClaimedRunIntervalFacts:
-    """Collect explicit structural facts about one missing claimed run."""
-    before_source_line = _find_nearest_mapped_source_line_before(
-        line_mapping,
-        run_start
-    )
-    after_source_line = _find_nearest_mapped_source_line_after(
-        line_mapping,
-        run_end,
-        len(source_lines)
-    )
-
-    before_target_line = None
-    after_target_line = None
-
-    if before_source_line is not None:
-        before_target_line = line_mapping.get_target_line_from_source_line(before_source_line)
-
-    if after_source_line is not None:
-        after_target_line = line_mapping.get_target_line_from_source_line(after_source_line)
-
-    leading_unmapped_source_gap = 0
-    if before_source_line is not None:
-        leading_unmapped_source_gap = run_start - before_source_line - 1
-
-    trailing_unmapped_source_gap = 0
-    if after_source_line is not None:
-        trailing_unmapped_source_gap = after_source_line - run_end - 1
-    else:
-        trailing_unmapped_source_gap = len(source_lines) - run_end
-
-    bracketed_on_both_sides = (
-        before_source_line is not None and
-        after_source_line is not None and
-        before_target_line is not None and
-        after_target_line is not None
-    )
-    bracketed_on_one_side_only = (
-        (before_source_line is None) != (after_source_line is None)
-    )
-
-    source_interval_span = None
-    target_interval_span = None
-    surrounding_source_gap_outside_run = None
-    target_lines_after_before_anchor = None
-    has_deletion_at_before_anchor = False
-    deletion_line_count_at_before_anchor = 0
-
-    if bracketed_on_both_sides:
-        source_interval_span = after_source_line - before_source_line - 1
-        target_interval_span = after_target_line - before_target_line - 1
-        surrounding_source_gap_outside_run = source_interval_span - (run_end - run_start + 1)
-    elif before_target_line is not None and after_target_line is None:
-        target_lines_after_before_anchor = len(target_lines) - before_target_line
-
-    if before_source_line is not None:
-        deletion_line_count_at_before_anchor = sum(
-            len(deletion.content_lines)
-            for deletion in deletions
-            if deletion.anchor_line == before_source_line
-        )
-        has_deletion_at_before_anchor = deletion_line_count_at_before_anchor > 0
-
-    return ClaimedRunIntervalFacts(
-        run_start=run_start,
-        run_end=run_end,
-        run_length=run_end - run_start + 1,
-        before_source_line=before_source_line,
-        after_source_line=after_source_line,
-        before_target_line=before_target_line,
-        after_target_line=after_target_line,
-        leading_unmapped_source_gap=leading_unmapped_source_gap,
-        trailing_unmapped_source_gap=trailing_unmapped_source_gap,
-        bracketed_on_both_sides=bracketed_on_both_sides,
-        bracketed_on_one_side_only=bracketed_on_one_side_only,
-        source_interval_span=source_interval_span,
-        target_interval_span=target_interval_span,
-        surrounding_source_gap_outside_run=surrounding_source_gap_outside_run,
-        target_lines_after_before_anchor=target_lines_after_before_anchor,
-        has_deletion_at_before_anchor=has_deletion_at_before_anchor,
-        deletion_line_count_at_before_anchor=deletion_line_count_at_before_anchor,
-    )
-
-
-def _is_claimed_run_structurally_coherent(
-    facts: ClaimedRunIntervalFacts
-) -> bool:
-    """Check if a missing claimed run sits in a coherent source/target interval.
-
-    This does not try to prove the merge is globally correct. It makes a
-    conservative local decision from explicit interval facts.
-
-    Unsafe patterns:
-    - No mapped anchors at all
-    - Both-side anchors exist but are inverted in target-space
-    - A large trailing source-only gap sits immediately after the run and the
-      before/after target interval is too small to plausibly absorb the
-      surrounding source structure
-    - The run is anchored only on one side and a large source-only gap extends
-      away from the run on the unanchored side
-    """
-    significant_trailing_gap = facts.trailing_unmapped_source_gap >= 3
-    significant_leading_gap = facts.leading_unmapped_source_gap >= 3
-
-    if not facts.bracketed_on_both_sides and not facts.bracketed_on_one_side_only:
-        return False
-
-    if facts.bracketed_on_both_sides:
-        if facts.before_target_line is None or facts.after_target_line is None:
-            return False
-
-        if facts.before_target_line >= facts.after_target_line:
-            return False
-
-        if significant_trailing_gap:
-            if facts.target_interval_span is None or facts.surrounding_source_gap_outside_run is None:
-                return False
-
-            # There is substantial source-side structure after the run before the
-            # next reliable source anchor, but almost no room for it in target-space.
-            # This is the characteristic shape of the corruption case: the selected
-            # run came from a neighborhood with extra source-only structure, so
-            # inserting it would preserve incompatible target content nearby.
-            if facts.target_interval_span < facts.surrounding_source_gap_outside_run:
-                return False
-
-            # Even if the overall interval is not smaller, a run followed by a large
-            # source-only tail with little or no target interval is still too weakly
-            # bracketed to trust.
-            if facts.target_interval_span <= facts.run_length:
-                return False
-
-        return True
-
-    # Exactly one-sided anchoring. Be stricter because placement depends on only
-    # one reliable boundary.
-    if facts.before_source_line is not None and facts.after_source_line is None:
-        if significant_trailing_gap:
-            if facts.target_lines_after_before_anchor is None:
-                return False
-
-            # A source-only tail after the selected run is safe when applying
-            # into an empty target tail: this is the append/interleave case
-            # that lets independent batches compose in either order.
-            if facts.target_lines_after_before_anchor == 0:
-                return True
-
-            # A replacement can also be safe with target content after the
-            # anchor when an absence constraint at that same boundary removes
-            # the whole target tail before the new claimed lines are inserted.
-            if (
-                facts.has_deletion_at_before_anchor and
-                facts.target_lines_after_before_anchor <= facts.deletion_line_count_at_before_anchor
-            ):
-                return True
-
-            return False
-        return True
-
-    if facts.before_source_line is None and facts.after_source_line is not None:
-        if significant_leading_gap:
-            return False
-        return True
-
-    return False
 
 
 def apply_presence_constraints(
@@ -811,98 +394,6 @@ def _apply_presence_constraints_with_mapping(
     return result
 
 
-def _apply_absence_constraints(
-    entries: Sequence[_RealizedEntry],
-    deletion_claims: list['AbsenceClaim'],
-    *,
-    strict: bool = True,
-    resolution: _MergeResolution | None = None,
-) -> _RealizedEntries:
-    """Apply absence constraints with boundary enforcement.
-
-    For each absence claim:
-    1. Find the structural boundary after the anchor line
-    2. Suppress forbidden sequence at that boundary using appropriate mode
-
-    Two enforcement modes controlled by 'strict' parameter:
-
-    Strict mode (strict=True) - for applying batch ownership:
-    - Used when merging into live working tree that may have diverged
-    - Exact match at boundary: suppress
-    - Found nearby but not at boundary: raise MergeError (structural conflict)
-    - Not found: no-op (already suppressed or never existed)
-
-    Realization mode (strict=False) - for realized batch content construction:
-    - Used when building display/storage content from baseline
-    - Exact match at boundary: suppress
-    - Not at boundary: no-op (baseline may not have content there)
-
-    Both modes fail if anchor boundary itself cannot be determined (MissingAnchorError
-    or AmbiguousAnchorError), as this indicates a real structural inconsistency.
-
-    Args:
-        entries: Realized entries with source provenance from presence pass
-        deletion_claims: Absence constraints with structural anchors
-        strict: If True, use strict enforcement (merge). If False, lenient (realization)
-
-    Returns:
-        Entries with forbidden sequences suppressed at their anchored boundaries
-
-    Raises:
-        MissingAnchorError: If anchor line not present in realized content
-        AmbiguousAnchorError: If anchor boundary cannot be determined uniquely
-        MergeError: If strict=True and sequence found nearby but not at boundary
-    """
-    result = _as_realized_entries(entries)
-    if not deletion_claims:
-        return result
-
-    suppress_fn = _suppress_at_boundary_strict if strict else _suppress_at_boundary_for_realization
-
-    for claim_index, claim in enumerate(deletion_claims):
-        if not claim.content_lines:
-            continue
-
-        forbidden_sequence = [
-            normalize_line_endings(line)
-            for line in claim.content_lines
-        ]
-
-        ambiguity_key = _absence_ambiguity_key(
-            claim_index,
-            claim.anchor_line,
-            forbidden_sequence,
-        )
-
-        if resolution is not None and ambiguity_key in resolution.decisions:
-            old_result = result
-            result = _suppress_absence_with_resolution(
-                result,
-                claim.anchor_line,
-                forbidden_sequence,
-                ambiguity_key,
-                resolution,
-            )
-            if result is not old_result and old_result is not entries:
-                old_result.close()
-            continue
-
-        # Find boundary (fails if ambiguous or missing - appropriate for both modes)
-        try:
-            boundary = _locate_boundary_after_source_line(result, claim.anchor_line)
-        except _MissingAnchorError:
-            if strict:
-                raise
-            boundary = _realization_fallback_boundary(result, claim.anchor_line)
-
-        old_result = result
-        result = suppress_fn(result, boundary, forbidden_sequence)
-        if result is not old_result and old_result is not entries:
-            old_result.close()
-
-    return result
-
-
 def _missing_claimed_lines(
     entries: Sequence[_RealizedEntry],
     presence_line_set: LineSelection
@@ -952,7 +443,7 @@ def satisfy_constraints(
     )
 
     try:
-        updated_entries = _apply_absence_constraints(
+        updated_entries = _apply_merge_absence_constraints(
             realized_entries,
             deletion_claims,
             strict=strict,
@@ -978,7 +469,7 @@ def satisfy_constraints(
             previous_entries.close()
         realized_entries = updated_entries
 
-        updated_entries = _apply_absence_constraints(
+        updated_entries = _apply_merge_absence_constraints(
             realized_entries,
             deletion_claims,
             strict=strict,
@@ -1005,16 +496,6 @@ def satisfy_constraints(
         raise
 
 
-def _absence_ambiguity_key(
-    claim_index: int,
-    anchor_line: int | None,
-    forbidden_sequence: Sequence[bytes],
-) -> str:
-    anchor = "start" if anchor_line is None else str(anchor_line)
-    digest = hashlib.sha256(b"".join(forbidden_sequence)).hexdigest()[:12]
-    return f"absence:{claim_index}:{anchor}:{digest}"
-
-
 def _presence_ambiguity_key(
     run_start: int,
     run_end: int,
@@ -1026,22 +507,6 @@ def _presence_ambiguity_key(
     return (
         f"presence:{run_start}-{run_end}:claimed:{digest}:"
         f"between:{before_source_line}-{after_source_line}"
-    )
-
-
-def _replacement_origin_ambiguity_key(
-    unit_index: int,
-    deletion_index: int,
-    origin,
-    claimed_lines: Sequence[int],
-    forbidden_sequence: Sequence[bytes],
-) -> str:
-    claimed = ",".join(str(line) for line in claimed_lines)
-    digest = hashlib.sha256(b"".join(forbidden_sequence)).hexdigest()[:12]
-    return (
-        f"replacement-origin:{unit_index}:delete:{deletion_index}:"
-        f"claimed:{claimed}:old:{origin.old_start}-{origin.old_end}:"
-        f"new:{origin.new_start}-{origin.new_end}:{digest}"
     )
 
 
@@ -1109,28 +574,11 @@ def _presence_choices_for_missing_claimed_run(
 
 
 @dataclass(frozen=True)
-class _AbsenceChoice:
-    choice_index: int
-    position: int
-    target_after_line: int | None
-    target_before_line: int | None
-    explanation: str
-
-
-@dataclass(frozen=True)
 class _PresenceChoice:
     choice_index: int
     gap_index: int
     run_start: int
     run_end: int
-    target_after_line: int | None
-    target_before_line: int | None
-
-
-@dataclass(frozen=True)
-class _ReplacementOriginChoice:
-    choice_index: int
-    position: int
     target_after_line: int | None
     target_before_line: int | None
 
@@ -1151,490 +599,6 @@ def _presence_ambiguity_target_line_range(
     return start, end
 
 
-def _absence_choices_for_claim(
-    entries: Sequence[_RealizedEntry],
-    anchor_line: int | None,
-    forbidden_sequence: Sequence[bytes],
-    *,
-    max_results: int | None = None,
-) -> tuple[_AbsenceChoice, ...]:
-    """Return concrete exact-removal choices for one absence claim."""
-    positions: list[tuple[int, str]] = []
-    seen: set[int] = set()
-
-    def add_position(position: int, explanation: str) -> None:
-        if position in seen:
-            return
-        if not _sequence_matches_at_position(entries, position, list(forbidden_sequence)):
-            return
-        seen.add(position)
-        positions.append((position, explanation))
-
-    for boundary in _boundary_choices_for_source_line(entries, anchor_line):
-        add_position(boundary, _("deletion content appears at the anchored boundary"))
-        after_claimed = _position_after_claimed_insertions_at_boundary(entries, boundary)
-        if after_claimed != boundary:
-            add_position(
-                after_claimed,
-                _("deletion content appears after claimed insertions at the anchored boundary"),
-            )
-
-    if len(positions) <= 1:
-        for position in iter_sequence_occurrences_nearby(
-            entries,
-            _boundary_choices_for_source_line(entries, anchor_line)[0],
-            forbidden_sequence,
-            window=20,
-            max_results=(max_results or _MERGE_CANDIDATE_CAP) + 1,
-        ):
-            add_position(position, _("deletion content appears nearby"))
-
-    positions.sort(key=lambda item: item[0])
-    if max_results is not None:
-        positions = positions[:max_results]
-
-    choices = []
-    for index, (position, explanation) in enumerate(positions, start=1):
-        after_line = None if position == 0 else position
-        before_line = None if position + len(forbidden_sequence) >= len(entries) else position + 1
-        choices.append(
-            _AbsenceChoice(
-                choice_index=index,
-                position=position,
-                target_after_line=after_line,
-                target_before_line=before_line,
-                explanation=explanation,
-            )
-        )
-    return tuple(choices)
-
-
-def _replacement_origin_choices_for_unit(
-    claim: 'AbsenceClaim',
-    unit_index: int,
-    unit,
-    claimed_lines: Sequence[int],
-    working_lines: Sequence[bytes],
-    *,
-    max_results: int | None = None,
-) -> tuple[str | None, tuple[_ReplacementOriginChoice, ...]]:
-    """Return explicit target placements for an origin-tracked replacement."""
-    origin = getattr(unit, "origin", None)
-    if origin is None or not claim.content_lines:
-        return None, ()
-
-    forbidden_sequence = [
-        normalize_line_endings(line)
-        for line in claim.content_lines
-    ]
-    if not forbidden_sequence:
-        return None, ()
-    if len(forbidden_sequence) > len(working_lines):
-        return None, ()
-
-    choices: list[_ReplacementOriginChoice] = []
-    for position in range(0, len(working_lines) - len(forbidden_sequence) + 1):
-        if not _line_slice_equals(working_lines, position, forbidden_sequence):
-            continue
-        choices.append(
-            _ReplacementOriginChoice(
-                choice_index=len(choices) + 1,
-                position=position,
-                target_after_line=None if position == 0 else position,
-                target_before_line=(
-                    None
-                    if position + len(forbidden_sequence) >= len(working_lines) else
-                    position + len(forbidden_sequence) + 1
-                ),
-            )
-        )
-        if max_results is not None and len(choices) >= max_results:
-            break
-
-    if not choices:
-        return None, ()
-
-    deletion_indices = getattr(unit, "deletion_indices", [])
-    if len(deletion_indices) != 1:
-        return None, ()
-
-    key = _replacement_origin_ambiguity_key(
-        unit_index,
-        deletion_indices[0],
-        origin,
-        claimed_lines,
-        forbidden_sequence,
-    )
-    return key, tuple(choices)
-
-
-def _suppress_absence_with_resolution(
-    entries: Sequence[_RealizedEntry],
-    anchor_line: int | None,
-    forbidden_sequence: list[bytes],
-    ambiguity_key: str,
-    resolution: _MergeResolution,
-) -> _RealizedEntries:
-    choice_index = resolution.decisions.get(ambiguity_key)
-    if choice_index is None:
-        raise _MergeError(_("Missing merge resolution for {key}").format(key=ambiguity_key))
-    choices = _absence_choices_for_claim(
-        entries,
-        anchor_line,
-        forbidden_sequence,
-        max_results=_MERGE_CANDIDATE_CAP + 1,
-    )
-    for choice in choices:
-        if choice.choice_index == choice_index:
-            return _remove_sequence_at_position(entries, choice.position, forbidden_sequence)
-    raise _MergeError(_("Selected merge resolution is no longer valid"))
-
-
-def _sequence_matches_at_position(
-    entries: Sequence[_RealizedEntry],
-    position: int,
-    sequence: list[bytes]
-) -> bool:
-    """Check if sequence matches entries starting at exact position.
-
-    Args:
-        entries: Realized entries
-        position: Starting position to check (0-indexed)
-        sequence: Normalized sequence to match
-
-    Returns:
-        True if sequence matches at position, False otherwise
-    """
-    if position + len(sequence) > len(entries):
-        return False
-
-    return all(
-        _normalize_line_content(_entry_content_at(entries, position + i)) == sequence[i]
-        for i in range(len(sequence))
-    )
-
-
-def _find_sequence_nearby(
-    entries: Sequence[_RealizedEntry],
-    position: int,
-    sequence: list[bytes],
-    window: int = 20
-) -> int | None:
-    """Search for sequence within window after position.
-
-    Args:
-        entries: Realized entries
-        position: Starting position for search window (0-indexed)
-        sequence: Normalized sequence to find
-        window: Number of positions to search after position
-
-    Returns:
-        Position where sequence was found, or None if not found
-    """
-    search_end = min(position + window, len(entries) - len(sequence) + 1)
-
-    for check_pos in range(position + 1, search_end):
-        if _sequence_matches_at_position(entries, check_pos, sequence):
-            return check_pos
-
-    return None
-
-
-def iter_sequence_occurrences_nearby(
-    entries: Sequence[_RealizedEntry],
-    position: int,
-    sequence: Sequence[bytes],
-    *,
-    window: int,
-    max_results: int,
-) -> Iterator[int]:
-    """Yield exact nearby sequence positions after a boundary."""
-    search_end = min(position + window, len(entries) - len(sequence) + 1)
-    result_count = 0
-    for check_pos in range(position + 1, search_end):
-        if _sequence_matches_at_position(entries, check_pos, list(sequence)):
-            yield check_pos
-            result_count += 1
-            if result_count >= max_results:
-                return
-
-
-def _remove_sequence_at_position(
-    entries: Sequence[_RealizedEntry],
-    position: int,
-    sequence: list[bytes]
-) -> _RealizedEntries:
-    """Remove sequence from entries at exact position.
-
-    Args:
-        entries: Realized entries
-        position: Position where sequence starts (0-indexed)
-        sequence: Sequence to remove (length determines how many entries removed)
-
-    Returns:
-        New list with sequence removed
-    """
-    return _as_realized_entries(entries).without_range(
-        position,
-        position + len(sequence),
-    )
-
-
-def _position_after_claimed_insertions_at_boundary(
-    entries: Sequence[_RealizedEntry],
-    position: int
-) -> int:
-    """Return the first position after contiguous claimed entries at boundary."""
-    check_pos = position
-
-    if isinstance(entries, _RealizedEntries):
-        for run in entries.provenance_runs(position, len(entries)):
-            if not run.is_claimed:
-                break
-            check_pos = run.dest_end
-        return check_pos
-
-    while check_pos < len(entries) and _entry_is_claimed_at(entries, check_pos):
-        check_pos += 1
-
-    return check_pos
-
-
-def _suppress_at_boundary_strict(
-    entries: Sequence[_RealizedEntry],
-    position: int,
-    forbidden_sequence: list[bytes]
-) -> _RealizedEntries:
-    """Suppress forbidden sequence with strict enforcement for merge operations.
-
-    This enforces absence constraints with two-phase checking:
-
-    Phase 1: Exact boundary enforcement
-    - If sequence matches at exact boundary: suppress it (remove from entries)
-    - If sequence not at exact boundary: move to phase 2
-
-    Phase 2: Conservative nearby ambiguity check
-    - Search within a limited window after the boundary (20 entries)
-    - If forbidden sequence appears nearby but not at exact boundary,
-      this indicates structural displacement (e.g., presence constraint
-      insertions pushed the deletion target away from its anchored position)
-    - Raise MergeError rather than silently failing to delete displaced content
-
-    This is not general fuzzy matching. It is a conservative structural safety
-    check: the deletion content must be suppressed at the exact anchored boundary.
-    Finding it nearby indicates the batch was created from a different file version
-    where the deletion target was positioned differently.
-
-    Used when applying batch ownership to live working tree lines.
-
-    Args:
-        entries: Realized entries
-        position: Exact boundary position to check (0-indexed)
-        forbidden_sequence: Sequence that must not appear at this position (normalized)
-
-    Returns:
-        Entries with sequence removed if found at exact position
-
-    Raises:
-        MergeError: If sequence appears nearby but not at exact boundary (displacement)
-    """
-    # Phase 1: Check exact match at boundary
-    if _sequence_matches_at_position(entries, position, forbidden_sequence):
-        return _remove_sequence_at_position(entries, position, forbidden_sequence)
-
-    after_claimed_insertions = _position_after_claimed_insertions_at_boundary(
-        entries,
-        position
-    )
-    if after_claimed_insertions != position:
-        if _sequence_matches_at_position(
-            entries,
-            after_claimed_insertions,
-            forbidden_sequence
-        ):
-            return _remove_sequence_at_position(
-                entries,
-                after_claimed_insertions,
-                forbidden_sequence
-            )
-
-    # Phase 2: Check for nearby displacement (conservative safety check)
-    nearby_pos = _find_sequence_nearby(entries, position, forbidden_sequence, window=20)
-    if nearby_pos is not None:
-        raise _MergeError(
-            _("Batch was created from a different version of the file")
-        )
-
-    # Not found - already suppressed or never existed
-    return _as_realized_entries(entries)
-
-
-def _suppress_at_boundary_for_realization(
-    entries: Sequence[_RealizedEntry],
-    position: int,
-    forbidden_sequence: list[bytes]
-) -> _RealizedEntries:
-    """Suppress forbidden sequence with lenient enforcement for content realization.
-
-    This enforces absence constraints only when exact match exists at boundary:
-    - If sequence matches at exact boundary: suppress it (remove from entries)
-    - If sequence not at exact boundary: no-op (baseline may not have content there)
-
-    Used when building display/storage content from baseline. The baseline may
-    legitimately not have the deletion content at the expected anchor, or may
-    not have it at all. We only suppress if there's an exact structural match.
-
-    Args:
-        entries: Realized entries
-        position: Exact boundary position to check (0-indexed)
-        forbidden_sequence: Sequence that must not appear at this position (normalized)
-
-    Returns:
-        Entries with sequence removed if found at exact position, otherwise unchanged
-    """
-    # Only suppress if exact match at boundary
-    if _sequence_matches_at_position(entries, position, forbidden_sequence):
-        return _remove_sequence_at_position(entries, position, forbidden_sequence)
-
-    after_claimed_insertions = _position_after_claimed_insertions_at_boundary(
-        entries,
-        position
-    )
-    if after_claimed_insertions != position:
-        if _sequence_matches_at_position(
-            entries,
-            after_claimed_insertions,
-            forbidden_sequence
-        ):
-            return _remove_sequence_at_position(
-                entries,
-                after_claimed_insertions,
-                forbidden_sequence
-            )
-
-    # Not at boundary - no-op, don't suppress
-    # (Baseline might not have this content or it might be elsewhere)
-    return _as_realized_entries(entries)
-
-
-def _line_payload_for_reference_match(content: Any) -> bytes:
-    """Normalize one line for insertion-boundary identity checks."""
-    normalized = _normalize_line_content(content)
-    if normalized.endswith(b"\n"):
-        return normalized[:-1]
-    return normalized
-
-
-def _reference_line_matches(
-    target_line: bytes,
-    reference_content: bytes | None,
-) -> bool:
-    if reference_content is None:
-        return False
-    return (
-        _line_payload_for_reference_match(target_line) ==
-        _line_payload_for_reference_match(reference_content)
-    )
-
-
-def _baseline_reference_insertion_position(
-    reference,
-    working_lines: Sequence[bytes],
-) -> int | None:
-    """Return the proven insertion position for a baseline reference."""
-    if reference is None or not getattr(reference, "has_after_line", False):
-        return None
-
-    after_line = getattr(reference, "after_line", None)
-    position = after_line or 0
-    if position < 0 or position > len(working_lines):
-        return None
-
-    verified_boundary = False
-    if after_line is not None:
-        if after_line < 1 or after_line > len(working_lines):
-            return None
-        if not _reference_line_matches(
-            working_lines[after_line - 1],
-            getattr(reference, "after_content", None),
-        ):
-            return None
-        verified_boundary = True
-
-    if getattr(reference, "has_before_line", False):
-        before_line = getattr(reference, "before_line", None)
-        if before_line is None:
-            if position != len(working_lines):
-                return None
-            verified_boundary = True
-        else:
-            if position >= len(working_lines):
-                return None
-            if not _reference_line_matches(
-                working_lines[position],
-                getattr(reference, "before_content", None),
-            ):
-                return None
-            verified_boundary = True
-
-    if not verified_boundary:
-        return None
-    return position
-
-
-def _baseline_reference_absence_position(
-    reference,
-    working_lines: Sequence[bytes],
-    sequence_length: int,
-) -> int | None:
-    """Return the proven removal position for a baseline reference."""
-    if reference is None or not getattr(reference, "has_after_line", False):
-        return None
-
-    after_line = getattr(reference, "after_line", None)
-    position = after_line or 0
-    if position < 0 or position + sequence_length > len(working_lines):
-        return None
-
-    after_content = getattr(reference, "after_content", None)
-    if after_line is not None and after_content is not None:
-        if after_line < 1 or after_line > len(working_lines):
-            return None
-        if not _reference_line_matches(
-            working_lines[after_line - 1],
-            after_content,
-        ):
-            return None
-
-    if getattr(reference, "has_before_line", False):
-        before_line = getattr(reference, "before_line", None)
-        before_position = position + sequence_length
-        if before_line is None:
-            if before_position != len(working_lines):
-                return None
-        else:
-            if before_position >= len(working_lines):
-                return None
-            if not _reference_line_matches(
-                working_lines[before_position],
-                getattr(reference, "before_content", None),
-            ):
-                return None
-
-    return position
-
-
-def _line_sequences_equal(
-    left: Sequence[bytes],
-    right: Sequence[bytes],
-) -> bool:
-    """Return whether two line sequences contain the same bytes."""
-    return len(left) == len(right) and all(
-        left[index] == right[index]
-        for index in range(len(left))
-    )
-
-
 def _line_slice_equals(
     lines: Sequence[bytes],
     start: int,
@@ -1647,416 +611,6 @@ def _line_slice_equals(
         lines[start + offset] == expected[offset]
         for offset in range(len(expected))
     )
-
-
-def _try_apply_baseline_absence_constraints(
-    working_lines: Sequence[bytes],
-    deletion_claims: list['AbsenceClaim'],
-) -> Iterator[bytes] | None:
-    """Apply absence-only constraints by exact baseline coordinates."""
-    if not deletion_claims:
-        return None
-
-    edits: list[_BaselineLineEdit] = []
-    for claim in deletion_claims:
-        if not claim.content_lines:
-            continue
-        forbidden_sequence = [
-            normalize_line_endings(line)
-            for line in claim.content_lines
-        ]
-        position = _baseline_reference_absence_position(
-            claim.baseline_reference,
-            working_lines,
-            len(forbidden_sequence),
-        )
-        if position is None:
-            return None
-        if not _line_slice_equals(working_lines, position, forbidden_sequence):
-            return None
-        edits.append((position, position + len(forbidden_sequence), []))
-
-    return _apply_non_overlapping_baseline_edits(working_lines, edits)
-
-
-def _baseline_removal_edit(
-    claim: 'AbsenceClaim',
-    working_lines: Sequence[bytes],
-) -> _BaselineLineEdit | None:
-    if not claim.content_lines:
-        return None
-
-    forbidden_sequence = [
-        normalize_line_endings(line)
-        for line in claim.content_lines
-    ]
-    position = _baseline_reference_absence_position(
-        claim.baseline_reference,
-        working_lines,
-        len(forbidden_sequence),
-    )
-    if position is None:
-        return None
-    if not _line_slice_equals(working_lines, position, forbidden_sequence):
-        return None
-    return position, position + len(forbidden_sequence), []
-
-
-def _replacement_origin_absence_bounds(
-    origin,
-    working_lines: Sequence[bytes],
-) -> tuple[int, int] | None:
-    """Return the target bounds of an original replacement parent, if provable."""
-    if origin is None or getattr(origin, "baseline_reference", None) is None:
-        return None
-    old_line_count = getattr(origin, "old_line_count", None)
-    if type(old_line_count) is not int or old_line_count <= 0:
-        return None
-
-    position = _baseline_reference_absence_position(
-        origin.baseline_reference,
-        working_lines,
-        old_line_count,
-    )
-    if position is None:
-        return None
-    return position, position + old_line_count
-
-
-def _replacement_edit_with_origin_guard(
-    claim: 'AbsenceClaim',
-    origin,
-    working_lines: Sequence[bytes],
-) -> _BaselineLineEdit | None:
-    """Return a removal edit only if it fits inside the original parent unit."""
-    removal_edit = _baseline_removal_edit(claim, working_lines)
-    if removal_edit is None:
-        return None
-
-    if origin is None:
-        return removal_edit
-
-    parent_bounds = _replacement_origin_absence_bounds(origin, working_lines)
-    if parent_bounds is None:
-        return None
-
-    start, end, replacement_lines = removal_edit
-    parent_start, parent_end = parent_bounds
-    if start < parent_start or end > parent_end:
-        return None
-    return start, end, replacement_lines
-
-
-def _replacement_edit_from_parent_offset(
-    claim: 'AbsenceClaim',
-    origin,
-    claimed_lines: Sequence[int],
-    working_lines: Sequence[bytes],
-) -> _BaselineLineEdit | None:
-    """Place an equal-size split replacement by offset inside its parent."""
-    if origin is None or not claim.content_lines:
-        return None
-
-    old_line_count = getattr(origin, "old_line_count", None)
-    new_start = getattr(origin, "new_start", None)
-    new_end = getattr(origin, "new_end", None)
-    if (
-        type(old_line_count) is not int
-        or type(new_start) is not int
-        or type(new_end) is not int
-        or old_line_count <= 0
-        or new_end < new_start
-    ):
-        return None
-
-    new_line_count = new_end - new_start + 1
-    if old_line_count != new_line_count:
-        return None
-
-    relative_offsets = [
-        claimed_line - new_start
-        for claimed_line in sorted(claimed_lines)
-    ]
-    if (
-        not relative_offsets
-        or relative_offsets[0] < 0
-        or relative_offsets[-1] >= new_line_count
-    ):
-        return None
-    if relative_offsets != list(
-        range(relative_offsets[0], relative_offsets[0] + len(relative_offsets))
-    ):
-        return None
-
-    forbidden_sequence = [
-        normalize_line_endings(line)
-        for line in claim.content_lines
-    ]
-    if len(forbidden_sequence) != len(relative_offsets):
-        return None
-
-    parent_bounds = _replacement_origin_absence_bounds(origin, working_lines)
-    if parent_bounds is None:
-        return None
-
-    parent_start, parent_end = parent_bounds
-    start = parent_start + relative_offsets[0]
-    end = start + len(forbidden_sequence)
-    if start < parent_start or end > parent_end:
-        return None
-    if not _line_slice_equals(working_lines, start, forbidden_sequence):
-        return None
-    return start, end, []
-
-
-def _replacement_edit_from_origin_resolution(
-    claim: 'AbsenceClaim',
-    unit_index: int,
-    unit,
-    claimed_lines: Sequence[int],
-    working_lines: Sequence[bytes],
-    resolution: _MergeResolution | None,
-) -> _BaselineLineEdit | None:
-    """Return a replacement edit from a reviewed origin-placement choice."""
-    if resolution is None:
-        return None
-
-    key, choices = _replacement_origin_choices_for_unit(
-        claim,
-        unit_index,
-        unit,
-        claimed_lines,
-        working_lines,
-        max_results=_MERGE_CANDIDATE_CAP + 1,
-    )
-    if key is None or key not in resolution.decisions:
-        return None
-
-    choice_index = resolution.decisions[key]
-    forbidden_sequence = [
-        normalize_line_endings(line)
-        for line in claim.content_lines
-    ]
-    for choice in choices:
-        if choice.choice_index == choice_index:
-            return (
-                choice.position,
-                choice.position + len(forbidden_sequence),
-                [],
-            )
-
-    raise _MergeError(_("Selected merge resolution is no longer valid"))
-
-
-def _replacement_baseline_edit(
-    claim: 'AbsenceClaim',
-    unit_index: int,
-    unit,
-    claimed_lines: Sequence[int],
-    working_lines: Sequence[bytes],
-    resolution: _MergeResolution | None,
-) -> _BaselineLineEdit | None:
-    origin = getattr(unit, "origin", None)
-    offset_edit = _replacement_edit_from_parent_offset(
-        claim,
-        origin,
-        claimed_lines,
-        working_lines,
-    )
-    if offset_edit is not None:
-        return offset_edit
-
-    guarded_edit = _replacement_edit_with_origin_guard(
-        claim,
-        origin,
-        working_lines,
-    )
-    if guarded_edit is not None:
-        return guarded_edit
-
-    return _replacement_edit_from_origin_resolution(
-        claim,
-        unit_index,
-        unit,
-        claimed_lines,
-        working_lines,
-        resolution,
-    )
-
-
-def _apply_non_overlapping_baseline_edits(
-    working_lines: Sequence[bytes],
-    edits: list[_BaselineLineEdit],
-) -> Iterator[bytes] | None:
-    sorted_edits = sorted(edits, key=lambda edit: (edit[0], edit[1]))
-    previous_end = 0
-    for start, end, _replacement_lines in sorted_edits:
-        if start < previous_end:
-            return None
-        previous_end = max(previous_end, end)
-
-    return _iter_lines_with_baseline_edits(working_lines, sorted_edits)
-
-
-def _iter_lines_with_baseline_edits(
-    working_lines: Sequence[bytes],
-    sorted_edits: Sequence[_BaselineLineEdit],
-) -> Iterator[bytes]:
-    position = 0
-    for start, end, replacement_lines in sorted_edits:
-        for index in range(position, start):
-            yield working_lines[index]
-        yield from replacement_lines
-        position = end
-
-    for index in range(position, len(working_lines)):
-        yield working_lines[index]
-
-
-def _has_complete_baseline_references(
-    ownership: 'BatchOwnership',
-    presence_line_set: LineSelection,
-    deletion_claims: list['AbsenceClaim'],
-) -> bool:
-    claimed_line_references = ownership.presence_baseline_references()
-    for claimed_line in presence_line_set:
-        reference = claimed_line_references.get(claimed_line)
-        if reference is None or not getattr(reference, "has_after_line", False):
-            return False
-    for claim in deletion_claims:
-        reference = claim.baseline_reference
-        if reference is None or not getattr(reference, "has_after_line", False):
-            return False
-    return bool(presence_line_set or deletion_claims)
-
-
-def _try_apply_baseline_replacement_units(
-    source_lines: Sequence[bytes],
-    working_lines: Sequence[bytes],
-    ownership: 'BatchOwnership',
-    presence_line_set: LineSelection,
-    deletion_claims: list['AbsenceClaim'],
-    *,
-    resolution: _MergeResolution | None = None,
-) -> Iterator[bytes] | None:
-    """Apply baseline-coordinate edits when structural source anchors fail.
-
-    This is a conservative fallback for same-source round trips where the batch
-    source is the post-change file and the target is still the pre-change
-    baseline/index. In that shape, source anchors can legitimately be absent
-    even though the old baseline bytes still exist at an exact recorded
-    coordinate.
-    """
-    if _selection_outside_bounds(presence_line_set, len(source_lines)):
-        return None
-
-    if (
-        _line_sequences_equal(source_lines, working_lines)
-        and _has_complete_baseline_references(
-            ownership,
-            presence_line_set,
-            deletion_claims,
-        )
-    ):
-        return iter(working_lines)
-
-    replacement_units = getattr(ownership, "replacement_units", [])
-    edits: list[_BaselineLineEdit] = []
-    unit_claimed_lines = LineRanges.empty()
-    unit_deletion_indices: set[int] = set()
-
-    for unit_index, unit in enumerate(replacement_units):
-        claimed_selection = LineRanges.from_specs(unit.presence_lines)
-        claimed_lines = list(claimed_selection)
-        if not claimed_lines or len(unit.deletion_indices) != 1:
-            return None
-
-        deletion_index = unit.deletion_indices[0]
-        if deletion_index < 0 or deletion_index >= len(deletion_claims):
-            return None
-        replacement_lines: list[bytes] = []
-        for claimed_line in claimed_lines:
-            if claimed_line < 1 or claimed_line > len(source_lines):
-                return None
-            replacement_lines.append(source_lines[claimed_line - 1])
-
-        removal_edit = _replacement_baseline_edit(
-            deletion_claims[deletion_index],
-            unit_index,
-            unit,
-            claimed_lines,
-            working_lines,
-            resolution,
-        )
-        if removal_edit is None:
-            return None
-        start, end, _removed_lines = removal_edit
-        edits.append((start, end, replacement_lines))
-        unit_claimed_lines = unit_claimed_lines.union(claimed_selection)
-        unit_deletion_indices.add(deletion_index)
-
-    for deletion_index, claim in enumerate(deletion_claims):
-        if deletion_index in unit_deletion_indices:
-            continue
-        removal_edit = _baseline_removal_edit(claim, working_lines)
-        if removal_edit is None:
-            return None
-        edits.append(removal_edit)
-
-    presence_lines = _as_line_ranges(presence_line_set)
-    remaining_claimed_lines = presence_lines.difference(unit_claimed_lines)
-    claimed_line_references = ownership.presence_baseline_references()
-    if remaining_claimed_lines:
-        grouped_insertions: dict[int, list[int]] = {}
-        for claimed_line in sorted(remaining_claimed_lines):
-            if claimed_line < 1 or claimed_line > len(source_lines):
-                return None
-            reference = claimed_line_references.get(claimed_line)
-            position = _baseline_reference_insertion_position(
-                reference,
-                working_lines,
-            )
-            if position is None:
-                return None
-            grouped_insertions.setdefault(position, []).append(claimed_line)
-
-        for position, claimed_lines in grouped_insertions.items():
-            insertion_lines = [
-                source_lines[claimed_line - 1]
-                for claimed_line in claimed_lines
-            ]
-            if _line_slice_equals(working_lines, position, insertion_lines):
-                continue
-            edits.append((
-                position,
-                position,
-                insertion_lines,
-            ))
-
-    if unit_claimed_lines.union(remaining_claimed_lines) != presence_lines:
-        return None
-
-    return _apply_non_overlapping_baseline_edits(working_lines, edits)
-
-
-def _has_missing_origin_replacement_claims(
-    ownership: 'BatchOwnership',
-    presence_line_set: LineSelection,
-    source_lines: Sequence[bytes],
-    mapping: LineMapping,
-) -> bool:
-    """Return whether parent-tracked replacement lines would need placement."""
-    selected_presence = _as_line_ranges(presence_line_set)
-    for unit in getattr(ownership, "replacement_units", []):
-        if getattr(unit, "origin", None) is None:
-            continue
-        claimed_selection = LineRanges.from_specs(unit.presence_lines)
-        for claimed_line in selected_presence.intersection(claimed_selection):
-            if claimed_line < 1 or claimed_line > len(source_lines):
-                continue
-            if mapping.get_target_line_from_source_line(claimed_line) is None:
-                return True
-    return False
 
 
 def _replacement_origin_candidate_set(
@@ -2072,7 +626,9 @@ def _replacement_origin_candidate_set(
     owned_mapping = match_lines(source_lines, working_lines)
     try:
         selected_presence = _as_line_ranges(presence_line_set)
-        unresolved: list[tuple[list[int], int, str, tuple[_ReplacementOriginChoice, ...]]] = []
+        unresolved: list[
+            tuple[list[int], int, str, tuple[_BaselineReplacementOriginChoice, ...]]
+        ] = []
         for unit_index, unit in enumerate(getattr(ownership, "replacement_units", [])):
             if getattr(unit, "origin", None) is None:
                 continue
@@ -2093,7 +649,7 @@ def _replacement_origin_candidate_set(
             deletion_index = unit.deletion_indices[0]
             if deletion_index < 0 or deletion_index >= len(deletion_claims):
                 raise _MergeError(_("Batch was created from a different version of the file"))
-            key, choices = _replacement_origin_choices_for_unit(
+            key, choices = _baseline_edits.replacement_origin_choices_for_unit(
                 deletion_claims[deletion_index],
                 unit_index,
                 unit,
@@ -2116,7 +672,7 @@ def _replacement_origin_candidate_set(
     if len(choices) > max_candidates:
         raise _MergeError(_("Too many merge candidates to preview safely"))
 
-    valid_choices: list[_ReplacementOriginChoice] = []
+    valid_choices: list[_BaselineReplacementOriginChoice] = []
     for choice in choices:
         resolution = _MergeResolution({key: choice.choice_index})
         try:
@@ -2274,13 +830,14 @@ def _merge_batch_acquired_line_chunks(
     presence_line_set = resolved.presence_line_set
     deletion_claims = resolved.deletion_claims
 
-    fallback_chunks = _try_apply_baseline_replacement_units(
+    fallback_chunks = _baseline_edits.try_apply_baseline_replacement_units(
         source_lines,
         working_lines,
         ownership,
         presence_line_set,
         deletion_claims,
         resolution=resolution,
+        max_resolution_choices=_MERGE_CANDIDATE_CAP + 1,
     )
     if fallback_chunks is not None:
         yield from _byte_chunks(fallback_chunks)
@@ -2292,7 +849,7 @@ def _merge_batch_acquired_line_chunks(
         owned_mapping = match_lines(source_lines, working_lines)
         mapping = owned_mapping
     try:
-        if _has_missing_origin_replacement_claims(
+        if _baseline_edits.has_missing_origin_replacement_claims(
             ownership,
             presence_line_set,
             source_lines,
@@ -2306,7 +863,7 @@ def _merge_batch_acquired_line_chunks(
             )
 
         try:
-            _check_structural_validity(
+            _check_merge_structural_validity(
                 mapping,
                 presence_line_set,
                 deletion_claims,
@@ -2326,13 +883,14 @@ def _merge_batch_acquired_line_chunks(
             resolution=resolution,
         )
     except _MergeError:
-        fallback_chunks = _try_apply_baseline_replacement_units(
+        fallback_chunks = _baseline_edits.try_apply_baseline_replacement_units(
             source_lines,
             working_lines,
             ownership,
             presence_line_set,
             deletion_claims,
             resolution=resolution,
+            max_resolution_choices=_MERGE_CANDIDATE_CAP + 1,
         )
         if fallback_chunks is not None:
             yield from _byte_chunks(fallback_chunks)
@@ -2482,7 +1040,7 @@ def _enumerate_merge_batch_candidates_acquired(
 
     owned_mapping = match_lines(source_lines, working_lines)
     try:
-        _check_structural_validity(
+        _check_merge_structural_validity(
             owned_mapping,
             presence_line_set,
             deletion_claims,
@@ -2509,12 +1067,12 @@ def _enumerate_merge_batch_candidates_acquired(
             normalize_line_endings(line)
             for line in claim.content_lines
         ]
-        ambiguity_key = _absence_ambiguity_key(
+        ambiguity_key = _merge_absence_ambiguity_key(
             claim_index,
             claim.anchor_line,
             forbidden_sequence,
         )
-        choices = _absence_choices_for_claim(
+        choices = _merge_absence_choices_for_claim(
             realized_entries,
             claim.anchor_line,
             forbidden_sequence,
@@ -2525,7 +1083,7 @@ def _enumerate_merge_batch_candidates_acquired(
         if len(choices) <= 1:
             return _MergeCandidateSet(())
 
-        valid_choices: list[_AbsenceChoice] = []
+        valid_choices: list[_MergeAbsenceChoice] = []
         for choice in choices:
             resolution = _MergeResolution({ambiguity_key: choice.choice_index})
             try:

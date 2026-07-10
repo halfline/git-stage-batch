@@ -19,7 +19,6 @@ from ..data.selected_change.store import (
     restore_selected_change_state,
     snapshot_selected_change_state,
 )
-from ..data.selected_change.paths import get_selected_change_file_path
 from ..data.selected_change.clear_reasons import (
     refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
@@ -55,6 +54,7 @@ from .selection import selected_file_discarding as _selected_file_discarding
 from .file_scope import discard_file as _file_scope_discard_file
 from .file_scope import discard_file_replacement as _file_scope_discard_file_replacement
 from .file_scope.discard_file_to_batch import discard_file_to_batch
+from .file_scope.target_path import require_file_scope_target_path
 from .selection.whole_file_batch_discarding import (
     discard_binary_to_batch,
     discard_text_deletion_to_batch,
@@ -312,15 +312,7 @@ def command_discard_to_batch(
                 )
         elif file is not None:
             # File-scoped operation
-
-            # Determine target file
-            if file == "":
-                # --file with no arg: use selected hunk's file
-                target_file = get_selected_change_file_path()
-                if target_file is None:
-                    exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
-            else:
-                target_file = file
+            target_file = require_file_scope_target_path(file)
 
             if line_ids is None:
                 # --file without --line: discard entire file
@@ -408,13 +400,7 @@ def command_discard_line_as_to_batch(
             if file is None:
                 require_selected_hunk()
             else:
-                if file == "":
-                    target_file = get_selected_change_file_path()
-                    if target_file is None:
-                        exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
-                else:
-                    target_file = file
-
+                target_file = require_file_scope_target_path(file)
                 _discard_file_selection.load_explicit_file_selection(target_file)
 
             _discard_line_batching.discard_lines_as_to_batch(

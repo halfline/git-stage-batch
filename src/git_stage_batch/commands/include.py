@@ -9,12 +9,8 @@ from ..core.replacement import (
     ReplacementPayload,
     coerce_replacement_payload,
 )
-from ..batch.selection import (
-    require_line_selection_in_view,
-)
-from ..core.line_selection import parse_line_selection
 from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
-from ..data.line_id_files import read_line_ids_file, write_line_ids_file
+from ..data.line_id_files import write_line_ids_file
 from ..data.selected_change.loading import (
     load_selected_change,
 )
@@ -22,9 +18,7 @@ from ..data.selected_change.store import (
     SelectedChangeKind,
     read_selected_change_kind,
     restore_selected_change_state,
-    snapshot_selected_change_state,
 )
-from ..data.selected_change.paths import get_selected_change_file_path
 from ..data.selected_change.clear_reasons import (
     refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
@@ -42,38 +36,24 @@ from ..data.file_review.action_scope import (
 )
 from ..data.session import require_session_started
 from ..data.undo import undo_checkpoint
-from ..core.buffer import (
-    LineBuffer,
-    buffer_matches,
-)
-from ..utils.repository_buffers import (
-    load_git_object_as_buffer,
-)
 from ..exceptions import exit_with_error
 from ..i18n import _
-from ..staging.operations import (
-    build_target_index_buffer_from_lines,
-    update_index_with_blob_buffer,
-)
 from ..utils.git_repository import require_git_repository
 from ..utils.journal import log_journal
 from ..utils.paths import (
     ensure_state_directory_exists,
-    get_context_lines,
-    get_index_snapshot_file_path,
     get_processed_include_ids_file_path,
-    get_working_tree_snapshot_file_path,
 )
-from .selection import include_line_selection as _include_line_selection
+from .selection import include_line_action as _include_line_action
 from .selection import include_line_batching as _include_line_batching
 from .selection import include_line_replacement as _include_line_replacement
-from .selection import replacement_selection
 from .selection import selected_change_batch_staging as _selected_change_batch_staging
 from .selection import selected_change_staging as _selected_change_staging
 from .selection import whole_file_batch_staging as _whole_file_batch_staging
 from .file_scope import include_file as _file_scope_include_file
 from .file_scope import include_file_replacement as _file_scope_include_file_replacement
 from .file_scope import include_file_to_batch as _file_scope_include_file_to_batch
+from .file_scope.target_path import require_file_scope_target_path
 from .selection.selected_hunk_refresh import (
     recalculate_selected_hunk_for_command,
     refresh_selected_hunk_after_line_action,
@@ -204,147 +184,12 @@ def command_include_line(
         return
     review_state = scope_resolution.review_state
 
-    operation_parts = ["include", "--line", line_id_specification]
-    if file is not None:
-        operation_parts.extend(["--file", file])
-
-    with undo_checkpoint(" ".join(operation_parts)), ExitStack() as selected_state_stack:
-        selection_context = _include_line_selection.load_include_line_selection_context(
-            file,
-            selected_state_stack,
-        )
-        line_changes = selection_context.line_changes
-
-        requested_ids = parse_line_selection(line_id_specification)
-        require_line_selection_in_view(
-            line_changes,
-            set(requested_ids),
-            line_id_specification=line_id_specification,
-        )
-        if selection_context.reset_processed_include_ids:
-            already_included_ids = set()
-        else:
-            already_included_ids = set(read_line_ids_file(get_processed_include_ids_file_path()))
-        combined_include_ids = already_included_ids | set(requested_ids)
-
-        current_index_buffer = load_git_object_as_buffer(f":{line_changes.path}")
-        if current_index_buffer is None:
-            current_index_buffer = LineBuffer.from_bytes(b"")
-
-        with (
-            LineBuffer.from_path(get_index_snapshot_file_path()) as hunk_base_lines,
-            LineBuffer.from_path(get_working_tree_snapshot_file_path()) as hunk_source_lines,
-            current_index_buffer as current_index_lines,
-        ):
-            selected_change_kind = read_selected_change_kind()
-            if selected_change_kind == SelectedChangeKind.FILE:
-                leading_replacement_addition_error = (
-                    replacement_selection.build_leading_replacement_addition_selection_error(
-                        line_changes,
-                        combined_include_ids,
-                    )
-                )
-                if leading_replacement_addition_error is not None:
-                    exit_with_error(leading_replacement_addition_error)
-
-                partial_structural_run_error = (
-                    replacement_selection.build_partial_structural_run_selection_error(
-                        line_changes,
-                        combined_include_ids,
-                        hunk_base_lines=hunk_base_lines,
-                        hunk_source_lines=hunk_source_lines,
-                    )
-                )
-                if partial_structural_run_error is not None:
-                    exit_with_error(partial_structural_run_error)
-
-            transient_result = (
-                _include_line_selection.try_build_index_content_via_transient_batch(
-                    line_changes=line_changes,
-                    selected_display_ids=set(combined_include_ids),
-                    current_index_lines=current_index_lines,
-                    hunk_base_lines=hunk_base_lines,
-                    hunk_source_lines=hunk_source_lines,
-                )
-            )
-            if (
-                transient_result.buffer is None
-                and transient_result.failure_reason
-                == _include_line_selection.TransientIncludeFailureReason.INDEX_MERGE_FAILED
-                and buffer_matches(current_index_lines, hunk_base_lines)
-            ):
-                transient_result = _include_line_selection.TransientIncludeResult.success(
-                    build_target_index_buffer_from_lines(
-                        line_changes,
-                        set(combined_include_ids),
-                        hunk_base_lines,
-                        base_has_trailing_newline=(
-                            _include_line_selection.line_sequence_ends_with_lf(
-                                hunk_base_lines
-                            )
-                        ),
-                    )
-                )
-        if transient_result.buffer is not None:
-            log_journal(
-                "include_line_transient_batch_staging_used",
-                file_path=line_changes.path,
-                selected_ids=sorted(combined_include_ids),
-            )
-            target_index_buffer_context = transient_result.buffer
-        else:
-            failure_reason = (
-                transient_result.failure_reason
-                or _include_line_selection.TransientIncludeFailureReason.PREPARATION_FAILED
-            )
-            log_journal(
-                "include_line_transient_batch_staging_declined",
-                file_path=line_changes.path,
-                selected_ids=sorted(combined_include_ids),
-                reason=failure_reason.value,
-                detail=transient_result.failure_detail,
-            )
-            exit_with_error(
-                _include_line_selection.transient_include_failure_message(
-                    reason=failure_reason,
-                    line_id_specification=line_id_specification,
-                    file_path=line_changes.path,
-                )
-            )
-
-        with target_index_buffer_context as target_index_buffer:
-            _include_line_selection.stage_live_line_target_buffer(
-                line_changes.path,
-                target_index_buffer,
-            )
-
-        if selection_context.preserve_selected_state:
-            assert selection_context.saved_selected_state is not None
-            restore_selected_change_state(selection_context.saved_selected_state)
-        else:
-            # Update processed include IDs only when the selected display remains
-            # current for incremental line inclusion.
-            write_line_ids_file(get_processed_include_ids_file_path(), combined_include_ids)
-            print(
-                _("✓ Included line(s): {lines} from {file}").format(
-                    lines=line_id_specification,
-                    file=line_changes.path,
-                ),
-                file=sys.stderr,
-            )
-            refresh_selected_hunk_after_line_action(
-                line_changes.path,
-                auto_advance=auto_advance,
-            )
-        finish_review_scoped_line_action(review_state, file_path=line_changes.path)
-    if selection_context.preserve_selected_state:
-        print(
-            _("✓ Included line(s): {lines} from {file}").format(
-                lines=line_id_specification,
-                file=line_changes.path,
-            ),
-            file=sys.stderr,
-        )
+    _include_line_action.include_live_line_selection(
+        line_id_specification,
+        file,
+        review_state=review_state,
+        auto_advance=auto_advance,
+    )
 
 
 def command_include_line_as(
@@ -594,15 +439,7 @@ def command_include_to_batch(
                 return
         elif file is not None:
             # File-scoped operation
-
-            # Determine target file
-            if file == "":
-                # --file with no arg: use selected hunk's file
-                target_file = get_selected_change_file_path()
-                if target_file is None:
-                    exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
-            else:
-                target_file = file
+            target_file = require_file_scope_target_path(file)
 
             if line_ids is None:
                 # --file without --line: include entire file

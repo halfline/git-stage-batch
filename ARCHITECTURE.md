@@ -89,6 +89,29 @@ For a typical non-batch staging workflow:
 The program therefore behaves like a state machine spread across CLI
 invocations. The on-disk state in `data/` is what keeps the workflow coherent.
 
+## Command Layer Structure
+
+Command modules at `commands/<name>.py` are the entry points for public
+operations such as `include`, `skip`, and `discard`. Those files should keep
+argument-level guards, command-level scope resolution, and delegation to the
+operation owner.
+
+Support code lives in command subpackages named for the kind of workflow they
+own:
+
+- `commands.selection`
+  Selected-hunk, selected-line, replacement, and selected-change helpers.
+- `commands.file_scope`
+  Explicit file-scoped include, skip, discard, and batch-transfer helpers.
+- `commands.batch_source`
+  Batch-source action planning, candidate selection, previews, and completion.
+- `commands.batch_transform`
+  Batch-to-batch transform persistence and result reporting.
+- `commands.session`
+  Session iteration helpers shared by command entry points.
+- `commands.fixup`
+  Suggest-fixup history helpers.
+
 File-scoped `show --file` and single-file `show --from <batch> --file` add a
 page-aware review layer on top of the selected-change cache. Large file reviews
 can show only one page or a page range. When not all pages are shown, pathless
@@ -242,10 +265,24 @@ Key modules:
   Reading batch metadata and refs.
 - `batch.ownership`
   Ownership data structures and ownership transformations.
+- `batch.ownership_units`
+  Ownership-unit grouping, filtering, validation, and rebuild logic.
+- `batch.ownership_remapping`
+  Ownership remapping across matched and lineage-tracked source spaces.
+- `batch.ownership_translation`
+  Selected-line translation into batch ownership claims.
 - `batch.absence_content`
   Streaming builders for absence-claim content buffers.
+- `batch.replacement_line_runs`
+  Replacement line-run derivation from old and new file content.
 - `batch.merge`
   Structural merge and reverse-merge logic.
+- `batch.merge_validation`
+  Structural safety checks for claimed-line placement during merge.
+- `batch.absence_constraints`
+  Absence-claim suppression and deletion-choice resolution.
+- `batch.baseline_edits`
+  Exact baseline-coordinate edit fallback for replacement merge round trips.
 - `batch.baseline_correspondence`
   Baseline restoration mapping for discarding batch-owned changes.
 - `batch.discard_reversal`

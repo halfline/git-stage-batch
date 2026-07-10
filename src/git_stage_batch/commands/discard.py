@@ -7,35 +7,18 @@ import os
 from pathlib import Path
 import sys
 from contextlib import ExitStack
-from dataclasses import dataclass
 
 from ..batch.operations import create_batch
 from ..batch.storage import (
-    BatchFileUpdate,
-    add_binary_file_to_batch,
     add_file_to_batch,
-    add_files_to_batch,
 )
-from ..batch.display import (
-    annotate_with_batch_source,
-    annotate_with_batch_source_working_lines,
-)
-from ..batch.ownership import (
-    BatchOwnership,
-    remap_batch_ownership_with_lineage,
-    derive_replacement_line_runs_from_lines,
-    merge_batch_ownership,
-    translate_lines_to_batch_ownership,
-)
-from ..batch.source_advancement import advance_source_lines_preserving_existing_presence
+from ..batch.display import annotate_with_batch_source
 from ..core.replacement import (
     ReplacementPayload,
     coerce_replacement_payload,
 )
 from ..batch.query import read_batch_metadata
-from ..batch.selection import require_line_selection_in_view
 from ..batch.source_refresh import acquire_batch_ownership_update_for_selection
-from ..batch.source_refresh import refresh_selected_lines_against_source_lines
 from ..batch.validation import batch_exists
 from ..core.diff_parser import (
     acquire_unified_diff,
@@ -50,10 +33,7 @@ from ..core.hashing import (
     compute_stable_hunk_hash_from_lines,
     compute_text_file_deletion_hash,
 )
-from ..core.line_selection import parse_line_selection
 from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
-from ..core.text_lifecycle import TextFileChangeType
-from ..data.text_lifecycle_detection import detect_empty_text_lifecycle_change
 from ..data.hunk_tracking import (
     fetch_next_change,
 )
@@ -73,16 +53,12 @@ from ..data.selected_change.clear_reasons import (
     refuse_bare_action_after_file_list,
 )
 from ..data.file_change_display import (
-    render_binary_file_change,
     render_gitlink_change,
     render_rename_change,
     render_text_deletion_change,
 )
-from ..data.file_hunk_display import (
-    build_file_hunk_from_buffer,
-    cache_unstaged_file_as_single_hunk,
-)
-from ..data.file_modes import detect_file_mode, detect_file_mode_from_root
+from ..data.file_hunk_display import cache_unstaged_file_as_single_hunk
+from ..data.file_modes import detect_file_mode
 from ..data.file_review.records import FileReviewAction, ReviewSource
 from ..data.file_review.state import (
     clear_last_file_review_state_if_file_matches,
@@ -95,9 +71,8 @@ from ..data.file_review.state import (
 from ..data.file_tracking import auto_add_untracked_files
 from ..data.line_state import load_line_changes_from_state
 from ..data.live_diff import stream_live_git_diff
-from ..data.progress import record_hunk_discarded, record_hunks_discarded
-from ..data.batch_sources import create_batch_source_commit, load_session_batch_sources, save_session_batch_sources
-from ..data.session import require_session_started, snapshot_file_if_untracked, snapshot_files_if_untracked
+from ..data.progress import record_hunk_discarded
+from ..data.session import require_session_started, snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..core.buffer import (
     LineBuffer,
@@ -105,16 +80,11 @@ from ..core.buffer import (
     write_buffer_to_path,
 )
 from ..utils.repository_buffers import (
-    load_git_object_as_buffer,
-    load_git_object_as_buffer_or_empty,
     load_working_tree_file_as_buffer,
 )
 from ..exceptions import CommandError, exit_with_error, NoMoreHunks
 from ..i18n import _, ngettext
-from ..staging.operations import (
-    build_target_working_tree_buffer_from_lines,
-    build_target_working_tree_buffer_with_replaced_lines,
-)
+from ..staging.operations import build_target_working_tree_buffer_from_lines
 from ..utils.file_io import (
     append_lines_to_file,
     path_is_empty,
@@ -137,8 +107,16 @@ from ..utils.paths import (
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
 )
-from .selection import replacement_selection
 from .selection import discard_file_selection as _discard_file_selection
+from .selection import discard_line_selection as _discard_line_selection
+from .selection import discard_line_replacement as _discard_line_replacement
+from .selection import batch_line_selection as _batch_line_selection
+from .selection import batch_line_updates as _batch_line_updates
+from .file_scope.discard_file_to_batch import (
+    discard_binary_to_batch,
+    discard_file_to_batch,
+    discard_text_deletion_to_batch,
+)
 from .selection.selected_hunk_refresh import (
     recalculate_selected_hunk_for_command,
     refresh_selected_hunk_after_line_action,
@@ -149,41 +127,6 @@ from .selection.selected_change_discarding import (
     discard_text_deletion_change,
 )
 from .selection.action_completion import finish_selected_change_action
-
-
-@dataclass(frozen=True)
-class _PreparedPatchDiscard:
-    patch_lines: Sequence[bytes]
-    patch_hash: str
-
-
-@dataclass
-class _TextFileDiscardInput:
-    file_path: str
-    file_mode: str
-    all_lines_to_batch: list
-    patches_to_discard: list[_PreparedPatchDiscard]
-
-
-@dataclass(frozen=True)
-class _CollectedTextFileDiscards:
-    inputs_by_file: dict[str, _TextFileDiscardInput]
-    files_with_text_patches: set[str]
-
-
-@dataclass(frozen=True)
-class _PreparedTextFileDiscardToBatch:
-    file_path: str
-    file_mode: str
-    ownership: BatchOwnership
-    batch_source_commit: str | None
-    patches_to_discard: list[_PreparedPatchDiscard]
-
-
-@dataclass(frozen=True)
-class DiscardFilesToBatchResult:
-    discarded_hunks: int
-    discarded_files: list[str]
 
 
 def command_discard(
@@ -676,52 +619,19 @@ def command_discard_line(
     if file is not None:
         operation_parts.extend(["--file", file])
     with undo_checkpoint(" ".join(operation_parts)):
-        if file is None:
-            require_selected_hunk()
-            line_changes = load_line_changes_from_state()
-        else:
-            if file == "":
-                target_file = get_selected_change_file_path()
-                if target_file is None:
-                    exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
-            else:
-                target_file = file
-
-            line_changes = _discard_file_selection.load_explicit_file_selection(target_file)
-
-        requested_ids = parse_line_selection(line_id_specification)
-        require_line_selection_in_view(
-            line_changes,
-            set(requested_ids),
-            line_id_specification=line_id_specification,
+        file_path = _discard_line_selection.discard_worktree_line_selection(
+            line_id_specification,
+            file=file,
         )
-
-        working_file_path = get_git_repository_root_path() / line_changes.path
-        if not os.path.lexists(working_file_path):
-            exit_with_error(_("File not found in working tree: {file}").format(file=line_changes.path))
-
-        with load_working_tree_file_as_buffer(line_changes.path) as working_lines:
-            target_working_buffer = build_target_working_tree_buffer_from_lines(
-                line_changes,
-                set(requested_ids),
-                working_lines,
-                working_has_trailing_newline=buffer_ends_with_lf(working_lines),
-            )
-
-        # Write back to working tree
-        with target_working_buffer:
-            write_buffer_to_path(working_file_path, target_working_buffer)
-
-        # After modifying working tree, recalculate hunk for the SAME file
         print(
             _("✓ Discarded line(s): {lines} from {file}").format(
                 lines=line_id_specification,
-                file=line_changes.path,
+                file=file_path,
             ),
             file=sys.stderr,
         )
         refresh_selected_hunk_after_line_action(
-            line_changes.path,
+            file_path,
             auto_advance=auto_advance,
         )
         finish_review_scoped_line_action(review_state)
@@ -800,7 +710,7 @@ def command_discard_to_batch(
         ):
             selected_change = load_selected_change()
             if isinstance(selected_change, BinaryFileChange):
-                saved_hunks = _command_discard_binary_to_batch(
+                saved_hunks = discard_binary_to_batch(
                     batch_name,
                     selected_change,
                     quiet=quiet,
@@ -820,7 +730,7 @@ def command_discard_to_batch(
         ):
             selected_change = load_selected_change()
             if isinstance(selected_change, TextFileDeletionChange):
-                saved_hunks = _command_discard_text_deletion_to_batch(
+                saved_hunks = discard_text_deletion_to_batch(
                     batch_name,
                     selected_change,
                     quiet=quiet,
@@ -847,7 +757,7 @@ def command_discard_to_batch(
 
             if line_ids is None:
                 # --file without --line: discard entire file
-                saved_hunks = _command_discard_file_to_batch(
+                saved_hunks = discard_file_to_batch(
                     batch_name,
                     target_file,
                     quiet=quiet,
@@ -960,18 +870,6 @@ def command_discard_line_as_to_batch(
         finish_review_scoped_line_action(review_state, file_path=target_file)
 
 
-def _derive_live_replacement_line_runs(file_path: str):
-    """Derive file-level replacement runs for the current live file state."""
-    with (
-        load_git_object_as_buffer_or_empty(f"HEAD:{file_path}") as baseline_lines,
-        load_working_tree_file_as_buffer(file_path) as working_lines,
-    ):
-        return derive_replacement_line_runs_from_lines(
-            old_file_lines=baseline_lines,
-            new_file_lines=working_lines,
-        )
-
-
 def _command_discard_lines_to_batch_as(
     batch_name: str,
     line_id_specification: str,
@@ -982,164 +880,23 @@ def _command_discard_lines_to_batch_as(
     auto_advance: bool | None = None,
 ) -> None:
     """Persist replacement text to batch and discard original selected lines."""
-    line_changes = load_line_changes_from_state()
-    requested_ids = set(parse_line_selection(line_id_specification))
-    require_line_selection_in_view(
-        line_changes,
-        requested_ids,
-        line_id_specification=line_id_specification,
-    )
-    effective_ids = replacement_selection.expand_replacement_selection_ids(
-        line_changes,
-        requested_ids,
-    )
-
-    if not batch_exists(batch_name):
-        create_batch(batch_name, "Auto-created")
-
-    selected_lines = [line for line in line_changes.lines if line.id in effective_ids]
-    if not selected_lines:
-        exit_with_error(_("No matching lines found for selection: {ids}").format(ids=line_id_specification))
-
-    working_file_path = get_git_repository_root_path() / line_changes.path
-    if not os.path.lexists(working_file_path):
-        exit_with_error(_("File not found in working tree: {file}").format(file=line_changes.path))
-
-    replacement_payload = coerce_replacement_payload(replacement_text)
-    try:
-        with load_working_tree_file_as_buffer(line_changes.path) as working_lines:
-            rewritten_working_buffer = (
-                build_target_working_tree_buffer_with_replaced_lines(
-                    line_changes,
-                    effective_ids,
-                    replacement_payload,
-                    working_lines,
-                    working_has_trailing_newline=buffer_ends_with_lf(working_lines),
-                    trim_unchanged_edge_anchors=not no_edge_overlap,
-                )
-            )
-    except ValueError as e:
-        exit_with_error(str(e))
-
     target_working_buffer: LineBuffer | None = None
+    replacement = None
     try:
-        with rewritten_working_buffer as rewritten_working_lines:
-            rewritten_cached_lines = build_file_hunk_from_buffer(
-                line_changes.path,
-                rewritten_working_lines,
-            )
-            if rewritten_cached_lines is None:
-                exit_with_error(_("No changes in file '{file}'.").format(file=line_changes.path))
-            rewritten_line_changes = annotate_with_batch_source_working_lines(
-                line_changes.path,
-                rewritten_cached_lines,
-                rewritten_working_lines,
-            )
-            rewritten_selected_lines = _select_rewritten_replacement_lines(
-                selected_lines,
-                rewritten_line_changes,
+        with _discard_line_replacement.prepare_discard_line_replacement_selection(
+            line_id_specification,
+            replacement_text,
+            no_edge_overlap=no_edge_overlap,
+        ) as replacement:
+            _discard_line_replacement.add_discard_line_replacement_to_batch(
+                batch_name,
+                replacement,
             )
 
-            metadata = read_batch_metadata(batch_name)
-            file_metadata = metadata.get("files", {}).get(line_changes.path)
-            batch_source_commit = None
-
-            with ExitStack() as ownership_stack:
-                try:
-                    if file_metadata is None:
-                        update = ownership_stack.enter_context(
-                            acquire_batch_ownership_update_for_selection(
-                                batch_name=batch_name,
-                                file_path=line_changes.path,
-                                file_metadata=None,
-                                selected_lines=rewritten_selected_lines,
-                            )
-                        )
-                        ownership = update.ownership_after
-                        batch_source_commit = update.batch_source_commit
-                    else:
-                        current_batch_source = file_metadata.get("batch_source_commit")
-                        existing_ownership = ownership_stack.enter_context(
-                            BatchOwnership.acquire_for_metadata_dict(file_metadata)
-                        )
-                        old_source_buffer = load_git_object_as_buffer(
-                            f"{current_batch_source}:{line_changes.path}"
-                        )
-                        if old_source_buffer is None:
-                            exit_with_error(
-                                _("Cannot discard lines to batch: failed to read batch source for '{file}'.").format(
-                                    file=line_changes.path
-                                )
-                            )
-
-                        with (
-                            old_source_buffer as old_source_lines,
-                            advance_source_lines_preserving_existing_presence(
-                                old_lines=old_source_lines,
-                                working_lines=rewritten_working_lines,
-                                ownership=existing_ownership,
-                            ) as source_with_provenance,
-                        ):
-                            remapped_existing_ownership = remap_batch_ownership_with_lineage(
-                                ownership=existing_ownership,
-                                lineage=source_with_provenance.lineage,
-                            )
-                            refreshed_selected_lines = refresh_selected_lines_against_source_lines(
-                                rewritten_selected_lines,
-                                source_lines=source_with_provenance.source_buffer,
-                                working_lines=(),
-                                lineage=source_with_provenance.lineage,
-                            )
-                            new_ownership = translate_lines_to_batch_ownership(
-                                refreshed_selected_lines
-                            )
-                            ownership = merge_batch_ownership(
-                                remapped_existing_ownership,
-                                new_ownership,
-                            )
-                            batch_source_commit = create_batch_source_commit(
-                                line_changes.path,
-                                file_buffer_override=source_with_provenance.source_buffer,
-                            )
-                            batch_sources = load_session_batch_sources()
-                            batch_sources[line_changes.path] = batch_source_commit
-                            save_session_batch_sources(batch_sources)
-                except ValueError as e:
-                    exit_with_error(
-                        _("Cannot discard lines to batch: batch source is stale and remapping failed.\n"
-                          "File: {file}\n"
-                          "Batch: {batch}\n"
-                          "Error: {error}").format(file=line_changes.path, batch=batch_name, error=str(e))
-                    )
-
-                file_mode = detect_file_mode(line_changes.path)
-
-                if batch_source_commit is None:
-                    batch_source_commit = create_batch_source_commit(
-                        line_changes.path,
-                        file_buffer_override=rewritten_working_lines,
-                    )
-                    batch_sources = load_session_batch_sources()
-                    batch_sources[line_changes.path] = batch_source_commit
-                    save_session_batch_sources(batch_sources)
-
-                snapshot_file_if_untracked(line_changes.path)
-                add_file_to_batch(
-                    batch_name,
-                    line_changes.path,
-                    ownership,
-                    file_mode,
-                    batch_source_commit=batch_source_commit,
+            target_working_buffer = (
+                _discard_line_replacement.build_discard_line_replacement_target_buffer(
+                    replacement
                 )
-
-            rewritten_selected_ids = {
-                line.id for line in rewritten_selected_lines if line.id is not None
-            }
-            target_working_buffer = build_target_working_tree_buffer_from_lines(
-                rewritten_line_changes,
-                rewritten_selected_ids,
-                rewritten_working_lines,
-                working_has_trailing_newline=buffer_ends_with_lf(rewritten_working_lines),
             )
 
     except Exception:
@@ -1148,8 +905,9 @@ def _command_discard_lines_to_batch_as(
         raise
 
     assert target_working_buffer is not None
+    assert replacement is not None
     with target_working_buffer:
-        write_buffer_to_path(working_file_path, target_working_buffer)
+        write_buffer_to_path(replacement.working_file_path, target_working_buffer)
 
     if not quiet:
         print(
@@ -1160,606 +918,10 @@ def _command_discard_lines_to_batch_as(
             file=sys.stderr,
         )
 
-    recalculate_selected_hunk_for_command(line_changes.path, auto_advance=auto_advance)
-
-
-def _select_rewritten_replacement_lines(
-    original_selected_lines: list,
-    rewritten_line_changes,
-) -> list:
-    """Find the rewritten changed span that overlaps the original selection."""
-    original_old_lines = {
-        line.old_line_number
-        for line in original_selected_lines
-        if line.old_line_number is not None
-    }
-    original_new_lines = {
-        line.new_line_number
-        for line in original_selected_lines
-        if line.new_line_number is not None
-    }
-
-    matching_indices = [
-        index
-        for index, line in enumerate(rewritten_line_changes.lines)
-        if line.kind != " " and (
-            line.old_line_number in original_old_lines
-            or line.new_line_number in original_new_lines
-        )
-    ]
-    if matching_indices:
-        start_index = min(matching_indices)
-        end_index = max(matching_indices)
-        return [
-            line
-            for line in rewritten_line_changes.lines[start_index:end_index + 1]
-            if line.kind != " "
-        ]
-
-    exit_with_error(_("Replacement selection could not be located after rewriting the file."))
-
-
-def _discard_binary_change_from_working_tree(binary_change: BinaryFileChange) -> None:
-    """Discard one live binary change from the working tree."""
-    file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
-    absolute_path = get_git_repository_root_path() / file_path
-
-    if binary_change.is_new_file():
-        if absolute_path.exists():
-            absolute_path.unlink()
-        git_remove_paths([file_path], cached=True, quiet=True, check=False)
-        return
-
-    result = git_checkout_paths("HEAD", [file_path], check=False)
-    if result.returncode != 0:
-        exit_with_error(_("Failed to restore binary file: {error}").format(error=result.stderr))
-
-
-def _command_discard_binary_to_batch(
-    batch_name: str,
-    binary_change: BinaryFileChange,
-    *,
-    quiet: bool = False,
-    advance: bool = True,
-    auto_advance: bool | None = None,
-) -> int:
-    """Save one binary change to a batch, then discard it from the working tree."""
-    file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
-    patch_hash = compute_binary_file_hash(binary_change)
-
-    snapshot_file_if_untracked(file_path)
-    add_binary_file_to_batch(
-        batch_name,
-        binary_change,
-        file_mode=detect_file_mode(file_path),
+    recalculate_selected_hunk_for_command(
+        replacement.file_path,
+        auto_advance=auto_advance,
     )
-    _discard_binary_change_from_working_tree(binary_change)
-
-    append_lines_to_file(get_block_list_file_path(), [patch_hash])
-    record_hunk_discarded(patch_hash)
-
-    if not quiet:
-        print(
-            _("Discarded binary file '{file}' to batch '{batch}'").format(
-                file=file_path,
-                batch=batch_name,
-            ),
-            file=sys.stderr,
-        )
-
-    if advance:
-        finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
-    return 1
-
-
-def _command_discard_text_deletion_to_batch(
-    batch_name: str,
-    deletion_change: TextFileDeletionChange,
-    *,
-    quiet: bool = False,
-    advance: bool = True,
-    auto_advance: bool | None = None,
-) -> int:
-    """Save one whole-text-file deletion to a batch, then restore it locally."""
-    file_path = deletion_change.path()
-    patch_hash = compute_text_file_deletion_hash(deletion_change)
-
-    snapshot_file_if_untracked(file_path)
-    add_file_to_batch(
-        batch_name,
-        file_path,
-        BatchOwnership([], []),
-        detect_file_mode(file_path),
-        change_type=TextFileChangeType.DELETED.value,
-    )
-    discard_text_deletion_change(deletion_change)
-
-    append_lines_to_file(get_block_list_file_path(), [patch_hash])
-    record_hunk_discarded(patch_hash)
-
-    if not quiet:
-        print(
-            _("Discarded text file deletion '{file}' to batch '{batch}'").format(
-                file=file_path,
-                batch=batch_name,
-            ),
-            file=sys.stderr,
-        )
-
-    if advance:
-        finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
-    return 1
-
-
-def _prepare_text_file_discard_to_batch(
-    batch_name: str,
-    discard_input: _TextFileDiscardInput,
-    *,
-    metadata: dict,
-    ownership_stack: ExitStack,
-) -> _PreparedTextFileDiscardToBatch | None:
-    """Prepare one normal text file discard without publishing batch state."""
-    if not discard_input.all_lines_to_batch:
-        return None
-
-    file_path = discard_input.file_path
-    file_metadata = metadata.get("files", {}).get(file_path)
-
-    try:
-        update = ownership_stack.enter_context(
-            acquire_batch_ownership_update_for_selection(
-                batch_name=batch_name,
-                file_path=file_path,
-                file_metadata=file_metadata,
-                selected_lines=discard_input.all_lines_to_batch,
-            )
-        )
-    except ValueError as e:
-        exit_with_error(
-            _("Cannot discard file to batch: batch source is stale and remapping failed.\n"
-              "File: {file}\n"
-              "Batch: {batch}\n"
-              "Error: {error}").format(file=file_path, batch=batch_name, error=str(e))
-        )
-
-    return _PreparedTextFileDiscardToBatch(
-        file_path=file_path,
-        file_mode=discard_input.file_mode,
-        ownership=update.ownership_after,
-        batch_source_commit=update.batch_source_commit,
-        patches_to_discard=discard_input.patches_to_discard,
-    )
-
-
-def _collect_text_file_discard_inputs(
-    files: list[str],
-    *,
-    blocked_hashes: set[str],
-    patch_stack: ExitStack,
-) -> _CollectedTextFileDiscards:
-    """Collect normal text file discard inputs from one Git diff."""
-    if not files:
-        return _CollectedTextFileDiscards(inputs_by_file={}, files_with_text_patches=set())
-
-    repo_root = get_git_repository_root_path()
-    inputs_by_file: dict[str, _TextFileDiscardInput] = {}
-    files_with_text_patches: set[str] = set()
-
-    with acquire_unified_diff(
-        stream_live_git_diff(
-            base="HEAD",
-            context_lines=get_context_lines(),
-            paths=files,
-        )
-    ) as patches:
-        for patch in patches:
-            if isinstance(patch, RenameChange):
-                continue
-
-            if isinstance(patch, TextFileDeletionChange):
-                continue
-
-            if isinstance(patch, GitlinkChange):
-                exit_with_error(_("Discarding submodule pointer changes to a batch is not supported yet."))
-
-            if isinstance(patch, BinaryFileChange):
-                continue
-
-            file_path = patch.new_path if patch.new_path != "/dev/null" else patch.old_path
-            files_with_text_patches.add(file_path)
-
-            patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
-            if patch_hash in blocked_hashes:
-                continue
-
-            hunk_lines = build_line_changes_from_patch_lines(
-                patch.lines,
-                annotator=annotate_with_batch_source,
-            )
-            discard_input = inputs_by_file.get(file_path)
-            if discard_input is None:
-                discard_input = _TextFileDiscardInput(
-                    file_path=file_path,
-                    file_mode=detect_file_mode_from_root(repo_root, file_path),
-                    all_lines_to_batch=[],
-                    patches_to_discard=[],
-                )
-                inputs_by_file[file_path] = discard_input
-            discard_input.all_lines_to_batch.extend(hunk_lines.lines)
-            discard_input.patches_to_discard.append(
-                _PreparedPatchDiscard(
-                    patch_lines=patch_stack.enter_context(
-                        LineBuffer.from_chunks(patch.lines)
-                    ),
-                    patch_hash=patch_hash,
-                )
-            )
-            blocked_hashes.add(patch_hash)
-
-    return _CollectedTextFileDiscards(
-        inputs_by_file=inputs_by_file,
-        files_with_text_patches=files_with_text_patches,
-    )
-
-
-def _run_reverse_apply_for_prepared_discards(
-    prepared_discards: list[_PreparedTextFileDiscardToBatch],
-    *,
-    check_only: bool = False,
-) -> None:
-    def patch_chunks():
-        for prepared in prepared_discards:
-            for patch in prepared.patches_to_discard:
-                yield from patch.patch_lines
-
-    apply_result = git_apply_to_worktree(
-        patch_chunks(),
-        reverse=True,
-        unidiff_zero=True,
-        check_only=check_only,
-        check=False,
-    )
-
-    if apply_result.returncode != 0:
-        exit_with_error(_("Failed to discard changes from file: {err}").format(err=apply_result.stderr))
-
-
-def _discard_prepared_text_files_to_batch(
-    batch_name: str,
-    prepared_discards: list[_PreparedTextFileDiscardToBatch],
-) -> DiscardFilesToBatchResult:
-    """Publish prepared text file discards once, then update the worktree."""
-    if not prepared_discards:
-        return DiscardFilesToBatchResult(discarded_hunks=0, discarded_files=[])
-
-    snapshot_files_if_untracked([prepared.file_path for prepared in prepared_discards])
-
-    _run_reverse_apply_for_prepared_discards(prepared_discards, check_only=True)
-    add_files_to_batch(
-        batch_name,
-        [
-            BatchFileUpdate(
-                file_path=prepared.file_path,
-                ownership=prepared.ownership,
-                file_mode=prepared.file_mode,
-                batch_source_commit=prepared.batch_source_commit,
-            )
-            for prepared in prepared_discards
-        ],
-    )
-    _run_reverse_apply_for_prepared_discards(prepared_discards)
-
-    repo_root = get_git_repository_root_path()
-    for prepared in prepared_discards:
-        full_path = repo_root / prepared.file_path
-        if not full_path.exists():
-            git_remove_paths([prepared.file_path], cached=True, quiet=True, check=False)
-
-    hunk_hashes = [
-        patch.patch_hash
-        for prepared in prepared_discards
-        for patch in prepared.patches_to_discard
-    ]
-    record_hunks_discarded(hunk_hashes)
-
-    return DiscardFilesToBatchResult(
-        discarded_hunks=len(hunk_hashes),
-        discarded_files=[
-            prepared.file_path
-            for prepared in prepared_discards
-            if prepared.patches_to_discard
-        ],
-    )
-
-
-def command_discard_files_to_batch(
-    batch_name: str,
-    files: list[str],
-    *,
-    quiet: bool = False,
-    advance: bool = True,
-    auto_advance: bool | None = None,
-) -> DiscardFilesToBatchResult:
-    """Save resolved text files to a batch with one batch publication."""
-    require_git_repository()
-    ensure_state_directory_exists()
-
-    if not files:
-        return DiscardFilesToBatchResult(discarded_hunks=0, discarded_files=[])
-    auto_add_untracked_files(files)
-    if not batch_exists(batch_name):
-        create_batch(batch_name, "Auto-created")
-
-    blocklist_path = get_block_list_file_path()
-    blocked_hashes = read_text_file_line_set(blocklist_path)
-    prepared_discards: list[_PreparedTextFileDiscardToBatch] = []
-    ownership_stack = ExitStack()
-    patch_stack = ExitStack()
-    total_hunks = 0
-    discarded_files: list[str] = []
-
-    def flush_prepared() -> None:
-        nonlocal metadata, total_hunks
-        nonlocal discarded_files, ownership_stack, prepared_discards
-        with ownership_stack:
-            result = _discard_prepared_text_files_to_batch(batch_name, prepared_discards)
-        if result.discarded_hunks:
-            total_hunks += result.discarded_hunks
-            discarded_files.extend(result.discarded_files)
-            metadata = read_batch_metadata(batch_name)
-        prepared_discards = []
-        ownership_stack = ExitStack()
-
-    try:
-        metadata = read_batch_metadata(batch_name)
-        collected_discards = _collect_text_file_discard_inputs(
-            files,
-            blocked_hashes=blocked_hashes,
-            patch_stack=patch_stack,
-        )
-
-        for file_path in files:
-            log_journal("discard_file_to_batch_start", batch_name=batch_name, file_path=file_path, quiet=quiet)
-            discard_input = collected_discards.inputs_by_file.get(file_path)
-            if discard_input is None and file_path in collected_discards.files_with_text_patches:
-                continue
-
-            prepared = _prepare_text_file_discard_to_batch(
-                batch_name,
-                discard_input,
-                metadata=metadata,
-                ownership_stack=ownership_stack,
-            ) if discard_input is not None else None
-            if prepared is None:
-                flush_prepared()
-                discarded_hunks = command_discard_to_batch(
-                    batch_name,
-                    file=file_path,
-                    quiet=True,
-                    advance=False,
-                    auto_advance=auto_advance,
-                )
-                if discarded_hunks > 0:
-                    total_hunks += discarded_hunks
-                    discarded_files.append(file_path)
-                    metadata = read_batch_metadata(batch_name)
-                    blocked_hashes = read_text_file_line_set(blocklist_path)
-                continue
-
-            prepared_discards.append(prepared)
-            log_journal("discard_file_to_batch_end", batch_name=batch_name, file_path=file_path)
-
-        flush_prepared()
-    finally:
-        ownership_stack.close()
-        patch_stack.close()
-
-    if advance:
-        finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
-
-    return DiscardFilesToBatchResult(
-        discarded_hunks=total_hunks,
-        discarded_files=discarded_files,
-    )
-
-
-def _command_discard_file_to_batch(
-    batch_name: str,
-    file_path: str,
-    *,
-    quiet: bool = False,
-    advance: bool = True,
-    auto_advance: bool | None = None,
-) -> int:
-    """Discard entire file to batch (internal helper for file-scoped operations)."""
-    auto_add_untracked_files([file_path])
-
-    log_journal("discard_file_to_batch_start", batch_name=batch_name, file_path=file_path, quiet=quiet)
-
-    # Auto-create batch if it doesn't exist
-    if not batch_exists(batch_name):
-        create_batch(batch_name, "Auto-created")
-
-    deletion_change = render_text_deletion_change(file_path)
-    if deletion_change is not None:
-        return _command_discard_text_deletion_to_batch(
-            batch_name,
-            deletion_change,
-            quiet=quiet,
-            advance=advance,
-            auto_advance=auto_advance,
-        )
-
-    binary_change = render_binary_file_change(file_path)
-    if binary_change is not None:
-        return _command_discard_binary_to_batch(
-            batch_name,
-            binary_change,
-            quiet=quiet,
-            advance=advance,
-            auto_advance=auto_advance,
-        )
-    if render_gitlink_change(file_path) is not None:
-        exit_with_error(_("Discarding submodule pointer changes to a batch is not supported yet."))
-
-    # Load blocklist
-    blocklist_path = get_block_list_file_path()
-    blocked_hashes = read_text_file_line_set(blocklist_path)
-
-    # Detect file mode
-    file_mode = detect_file_mode(file_path)
-
-    with ExitStack() as patch_stack:
-        # Collect ALL hunks from this file (live working tree state)
-        all_lines_to_batch = []
-        patches_to_discard = []
-
-        with acquire_unified_diff(
-            stream_live_git_diff(
-                base="HEAD",
-                context_lines=get_context_lines(),
-                paths=[file_path],
-            )
-        ) as patches:
-            for patch in patches:
-                if isinstance(patch, RenameChange):
-                    continue
-
-                if isinstance(patch, TextFileDeletionChange):
-                    continue
-
-                if isinstance(patch, GitlinkChange):
-                    exit_with_error(_("Discarding submodule pointer changes to a batch is not supported yet."))
-                if isinstance(patch, BinaryFileChange):
-                    continue
-
-                patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
-
-                if patch_hash in blocked_hashes:
-                    continue
-
-                # Parse hunk to get lines
-                hunk_lines = build_line_changes_from_patch_lines(
-                    patch.lines,
-                    annotator=annotate_with_batch_source,
-                )
-                all_lines_to_batch.extend(hunk_lines.lines)
-                patches_to_discard.append((
-                    patch_stack.enter_context(LineBuffer.from_chunks(patch.lines)),
-                    patch_hash,
-                ))
-
-        if not all_lines_to_batch:
-            # Special case: empty text lifecycle changes have no hunk body.
-            repo_root = get_git_repository_root_path()
-            full_path = repo_root / file_path
-            lifecycle_change_type = detect_empty_text_lifecycle_change(file_path)
-            if lifecycle_change_type is not None:
-                snapshot_file_if_untracked(file_path)
-                add_file_to_batch(
-                    batch_name,
-                    file_path,
-                    BatchOwnership([], []),
-                    file_mode,
-                    change_type=lifecycle_change_type,
-                )
-
-                if lifecycle_change_type == TextFileChangeType.ADDED:
-                    # Delete from working tree
-                    full_path.unlink()
-
-                    # Remove from index if present (from intent-to-add)
-                    git_remove_paths([file_path], cached=True, quiet=True, check=False)
-                else:
-                    git_checkout_paths("HEAD", [file_path], check=False)
-
-                if not quiet:
-                    print(_("Discarded file '{file}' to batch '{batch}'").format(file=file_path, batch=batch_name), file=sys.stderr)
-
-                log_journal("discard_file_to_batch_end", batch_name=batch_name, file_path=file_path)
-                return 1
-
-            if not quiet:
-                print(_("No changes in file '{file}' to discard.").format(file=file_path), file=sys.stderr)
-            return 0
-
-        # Prepare batch ownership update (handles stale source, translation, merge)
-
-        metadata = read_batch_metadata(batch_name)
-        file_metadata = metadata.get("files", {}).get(file_path)
-
-        with ExitStack() as ownership_stack:
-            try:
-                update = ownership_stack.enter_context(
-                    acquire_batch_ownership_update_for_selection(
-                        batch_name=batch_name,
-                        file_path=file_path,
-                        file_metadata=file_metadata,
-                        selected_lines=all_lines_to_batch,
-                    )
-                )
-            except ValueError as e:
-                exit_with_error(
-                    _("Cannot discard file to batch: batch source is stale and remapping failed.\n"
-                      "File: {file}\n"
-                      "Batch: {batch}\n"
-                      "Error: {error}").format(file=file_path, batch=batch_name, error=str(e))
-                )
-
-            # Snapshot file before modifying
-            snapshot_file_if_untracked(file_path)
-
-            # Save to batch
-            add_file_to_batch(
-                batch_name,
-                file_path,
-                update.ownership_after,
-                file_mode,
-                batch_source_commit=update.batch_source_commit,
-            )
-
-        # Record hunks as discarded for progress tracking
-        for _patch_lines, patch_hash in patches_to_discard:
-            record_hunk_discarded(patch_hash)
-
-        # Discard from working tree (reverse patches)
-        for patch_lines_item, patch_hash in patches_to_discard:
-            log_journal(
-                "discard_file_to_batch_before_git_apply",
-                batch_name=batch_name,
-                patch_hash=patch_hash,
-                file_path=file_path,
-                patch_line_count=len(patch_lines_item),
-            )
-
-            apply_result = git_apply_to_worktree(
-                patch_lines_item,
-                reverse=True,
-                unidiff_zero=True,
-                check=False,
-            )
-
-            if apply_result.returncode != 0:
-                exit_with_error(_("Failed to discard changes from file: {err}").format(err=apply_result.stderr))
-
-            log_journal("discard_file_to_batch_after_git_apply", batch_name=batch_name, patch_hash=patch_hash, exit_code=apply_result.returncode)
-
-        # If file was deleted from working tree, remove from index too
-        repo_root = get_git_repository_root_path()
-        full_path = repo_root / file_path
-        if not full_path.exists():
-            # File was deleted by git apply --reverse, remove from index
-            git_remove_paths([file_path], cached=True, quiet=True, check=False)
-
-        if not quiet:
-            print(_("Discarded file '{file}' to batch '{batch}'").format(file=file_path, batch=batch_name), file=sys.stderr)
-
-        log_journal("discard_file_to_batch_end", batch_name=batch_name, file_path=file_path)
-
-        # Show next hunk
-        if advance:
-            finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
-        return len(patches_to_discard)
 
 
 def _command_discard_file_lines_to_batch(
@@ -1778,62 +940,29 @@ def _command_discard_file_lines_to_batch(
     line_changes = annotate_with_batch_source(file_path, cached_lines)
 
     # Parse line IDs and filter to selected lines
-    requested_ids = set(parse_line_selection(line_id_specification))
-    require_line_selection_in_view(
+    selection = _batch_line_selection.select_lines_for_batch_action(
         line_changes,
-        requested_ids,
-        line_id_specification=line_id_specification,
+        line_id_specification,
     )
-    selected_lines = [line for line in line_changes.lines if line.id in requested_ids]
 
-    if not selected_lines:
+    if not selection.selected_lines:
         if not quiet:
             print(_("No lines match the specified IDs in file '{file}'.").format(file=file_path), file=sys.stderr)
         return 0
 
-    # Auto-create batch if it doesn't exist
-    if not batch_exists(batch_name):
-        create_batch(batch_name, "Auto-created")
+    replacement_line_runs = (
+        _discard_line_replacement.derive_live_replacement_line_runs(file_path)
+    )
 
-    file_mode = detect_file_mode(file_path)
-
-    # Prepare batch ownership update (handles stale source, translation, merge)
-
-    metadata = read_batch_metadata(batch_name)
-    file_metadata = metadata.get("files", {}).get(file_path)
-    replacement_line_runs = _derive_live_replacement_line_runs(file_path)
-
-    with ExitStack() as ownership_stack:
-        try:
-            update = ownership_stack.enter_context(
-                acquire_batch_ownership_update_for_selection(
-                    batch_name=batch_name,
-                    file_path=file_path,
-                    file_metadata=file_metadata,
-                    selected_lines=selected_lines,
-                    hunk_lines=line_changes.lines,
-                    replacement_line_runs=replacement_line_runs,
-                )
-            )
-        except ValueError as e:
-            exit_with_error(
-                _("Cannot discard lines to batch: batch source is stale and remapping failed.\n"
-                  "File: {file}\n"
-                  "Batch: {batch}\n"
-                  "Error: {error}").format(file=file_path, batch=batch_name, error=str(e))
-            )
-
-        # Snapshot file before modifying
-        snapshot_file_if_untracked(file_path)
-
-        # Save to batch
-        add_file_to_batch(
-            batch_name,
-            file_path,
-            update.ownership_after,
-            file_mode,
-            batch_source_commit=update.batch_source_commit,
-        )
+    _batch_line_updates.add_selected_lines_to_batch(
+        batch_name=batch_name,
+        file_path=file_path,
+        selected_lines=selection.selected_lines,
+        stale_source_action=_("Cannot discard lines to batch"),
+        hunk_lines=line_changes.lines,
+        replacement_line_runs=replacement_line_runs,
+        snapshot_untracked=True,
+    )
 
     # Now discard selected lines from working tree
     working_file_path = get_git_repository_root_path() / file_path
@@ -1843,7 +972,7 @@ def _command_discard_file_lines_to_batch(
     with load_working_tree_file_as_buffer(file_path) as working_lines:
         target_working_buffer = build_target_working_tree_buffer_from_lines(
             line_changes,
-            requested_ids,
+            selection.requested_ids,
             working_lines,
             working_has_trailing_newline=buffer_ends_with_lf(working_lines),
         )
@@ -1876,64 +1005,36 @@ def _command_discard_lines_to_batch(
 
     require_selected_hunk()
 
-    requested_ids = set(parse_line_selection(line_id_specification))
     line_changes = load_line_changes_from_state()
-    require_line_selection_in_view(
+    selection = _batch_line_selection.select_lines_for_batch_action(
         line_changes,
-        requested_ids,
-        line_id_specification=line_id_specification,
+        line_id_specification,
     )
 
     # Filter to requested display line IDs
-    selected_lines = [line for line in line_changes.lines if line.id in requested_ids]
-    if not selected_lines:
+    if not selection.selected_lines:
         exit_with_error(_("No matching lines found for selection: {ids}").format(ids=line_id_specification))
 
-    # Auto-create batch if it doesn't exist
-    if not batch_exists(batch_name):
-        create_batch(batch_name, "Auto-created")
-
-    # Prepare batch ownership update (handles stale source, translation, merge)
-
-    metadata = read_batch_metadata(batch_name)
-    file_metadata = metadata.get("files", {}).get(line_changes.path)
-    replacement_line_runs = _derive_live_replacement_line_runs(line_changes.path)
-
-    file_mode = detect_file_mode(line_changes.path)
-
-    with ExitStack() as ownership_stack:
-        try:
-            update = ownership_stack.enter_context(
-                acquire_batch_ownership_update_for_selection(
-                    batch_name=batch_name,
-                    file_path=line_changes.path,
-                    file_metadata=file_metadata,
-                    selected_lines=selected_lines,
-                    hunk_lines=line_changes.lines,
-                    replacement_line_runs=replacement_line_runs,
-                )
-            )
-        except ValueError as e:
-            exit_with_error(
-                _("Cannot discard lines to batch: batch source is stale and remapping failed.\n"
-                  "File: {file}\n"
-                  "Batch: {batch}\n"
-                  "Error: {error}").format(file=line_changes.path, batch=batch_name, error=str(e))
-            )
-
-        # add_file_to_batch creates the batch source commit from this snapshot.
-        snapshot_file_if_untracked(line_changes.path)
-
-        log_journal("discard_lines_to_batch_before_add", batch_name=batch_name, file_path=line_changes.path)
-
-        # Save to batch using batch source model
-        add_file_to_batch(
-            batch_name,
-            line_changes.path,
-            update.ownership_after,
-            file_mode,
-            batch_source_commit=update.batch_source_commit,
+    replacement_line_runs = (
+        _discard_line_replacement.derive_live_replacement_line_runs(
+            line_changes.path
         )
+    )
+
+    _batch_line_updates.add_selected_lines_to_batch(
+        batch_name=batch_name,
+        file_path=line_changes.path,
+        selected_lines=selection.selected_lines,
+        stale_source_action=_("Cannot discard lines to batch"),
+        hunk_lines=line_changes.lines,
+        replacement_line_runs=replacement_line_runs,
+        snapshot_untracked=True,
+        before_add=lambda: log_journal(
+            "discard_lines_to_batch_before_add",
+            batch_name=batch_name,
+            file_path=line_changes.path,
+        ),
+    )
 
     log_journal("discard_lines_to_batch_after_add", batch_name=batch_name, file_path=line_changes.path)
 
@@ -1945,7 +1046,7 @@ def _command_discard_lines_to_batch(
     with load_working_tree_file_as_buffer(line_changes.path) as working_lines:
         target_working_buffer = build_target_working_tree_buffer_from_lines(
             line_changes,
-            requested_ids,
+            selection.requested_ids,
             working_lines,
             working_has_trailing_newline=buffer_ends_with_lf(working_lines),
         )
@@ -1997,14 +1098,14 @@ def _command_discard_hunk_to_batch(
     if isinstance(selected_item, GitlinkChange):
         exit_with_error(_("Discarding submodule pointer changes to a batch is not supported yet."))
     if isinstance(selected_item, BinaryFileChange):
-        return _command_discard_binary_to_batch(
+        return discard_binary_to_batch(
             batch_name,
             selected_item,
             quiet=quiet,
             auto_advance=auto_advance,
         )
     if isinstance(selected_item, TextFileDeletionChange):
-        return _command_discard_text_deletion_to_batch(
+        return discard_text_deletion_to_batch(
             batch_name,
             selected_item,
             quiet=quiet,

@@ -3,21 +3,65 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 
+from ...batch.display import annotate_with_batch_source
 from ...batch.selection import require_line_selection_in_view
 from ...core.buffer import LineBuffer
-from ...core.line_selection import parse_line_selection
+from ...core.line_selection import format_line_ids, parse_line_selection
 from ...core.replacement import ReplacementPayload, coerce_replacement_payload
 from ...data.consumed_selections import record_consumed_selection
-from ...data.file_hunk_display import render_unstaged_file_as_single_hunk
+from ...data.file_hunk_display import (
+    cache_unstaged_file_as_single_hunk,
+    render_unstaged_file_as_single_hunk,
+)
+from ...data.line_state import load_line_changes_from_state
+from ...utils.repository_buffers import (
+    load_git_object_as_buffer_or_empty,
+    load_working_tree_file_as_buffer,
+)
+from ...data.selected_change.loading import require_selected_hunk
+from ...data.selected_change.paths import get_selected_change_file_path
+from ...data.selected_change.store import (
+    SelectedChangeKind,
+    read_selected_change_kind,
+    snapshot_selected_change_state,
+)
 from ...exceptions import exit_with_error
 from ...i18n import _
 from ...staging.operations import (
     build_target_index_buffer_with_replaced_lines,
     update_index_with_blob_buffer,
 )
+from ...utils.paths import (
+    get_index_snapshot_file_path,
+    get_working_tree_snapshot_file_path,
+)
 from . import include_line_selection as _include_line_selection
 from . import replacement_selection
+
+
+@dataclass(frozen=True)
+class IncludeLineReplacementSelection:
+    """Prepared pathless include replacement selection."""
+
+    display_line_changes: object
+    replacement_line_changes: object
+    line_id_specification: str
+    base_buffer: LineBuffer
+    source_buffer: LineBuffer
+
+
+@dataclass(frozen=True)
+class IncludeLineReplacementFileSelection:
+    """Prepared file-scoped include replacement selection."""
+
+    target_file: str
+    line_changes: object
+    base_buffer: LineBuffer
+    source_buffer: LineBuffer
+    preserve_selected_state: bool = False
+    saved_selected_state: object | None = None
 
 
 def apply_include_line_replacement(
@@ -78,6 +122,99 @@ def apply_include_line_replacement(
                 if line.kind == "+"
             ],
         },
+    )
+
+
+def prepare_pathless_include_line_replacement(
+    line_id_specification: str,
+) -> IncludeLineReplacementSelection:
+    """Prepare replacement context for include --line --as."""
+    require_selected_hunk()
+    line_changes = load_line_changes_from_state()
+    replacement_line_changes = line_changes
+    replacement_line_id_specification = line_id_specification
+    replacement_base_buffer = None
+    replacement_source_buffer = None
+    selected_change_kind = read_selected_change_kind()
+    requested_ids = set(parse_line_selection(line_id_specification))
+    if selected_change_kind == SelectedChangeKind.FILE:
+        require_line_selection_in_view(
+            line_changes,
+            requested_ids,
+            line_id_specification=line_id_specification,
+        )
+        translated_replacement = translate_file_view_replacement_to_unstaged_diff(
+            line_changes,
+            requested_ids,
+        )
+        if translated_replacement is not None:
+            replacement_line_changes, replacement_ids = translated_replacement
+            replacement_line_id_specification = format_line_ids(sorted(replacement_ids))
+            replacement_base_buffer = load_git_object_as_buffer_or_empty(
+                f":{line_changes.path}"
+            )
+            replacement_source_buffer = load_working_tree_file_as_buffer(
+                line_changes.path
+            )
+    if replacement_base_buffer is None:
+        replacement_base_buffer = LineBuffer.from_path(get_index_snapshot_file_path())
+    if replacement_source_buffer is None:
+        replacement_source_buffer = LineBuffer.from_path(
+            get_working_tree_snapshot_file_path()
+        )
+
+    return IncludeLineReplacementSelection(
+        display_line_changes=line_changes,
+        replacement_line_changes=replacement_line_changes,
+        line_id_specification=replacement_line_id_specification,
+        base_buffer=replacement_base_buffer,
+        source_buffer=replacement_source_buffer,
+    )
+
+
+def prepare_file_include_line_replacement(
+    file: str,
+    selected_state_stack,
+) -> IncludeLineReplacementFileSelection:
+    """Prepare replacement context for include --line --as --file."""
+    preserve_selected_state = False
+    saved_selected_state = None
+
+    if file == "":
+        target_file = get_selected_change_file_path()
+        if target_file is None:
+            exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
+    else:
+        target_file = file
+
+    selected_file_view_targets_file = _include_line_selection.selected_file_view_targets(
+        target_file
+    )
+    reuse_selected_file_view = _include_line_selection.selected_file_view_is_fresh_for(
+        target_file
+    )
+    if reuse_selected_file_view:
+        cached_lines = load_line_changes_from_state()
+        if cached_lines is None:
+            exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
+    else:
+        if file != "" and not selected_file_view_targets_file:
+            preserve_selected_state = True
+            saved_selected_state = selected_state_stack.enter_context(
+                snapshot_selected_change_state()
+            )
+
+        cached_lines = cache_unstaged_file_as_single_hunk(target_file)
+        if cached_lines is None:
+            exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
+
+    return IncludeLineReplacementFileSelection(
+        target_file=target_file,
+        line_changes=annotate_with_batch_source(target_file, cached_lines),
+        base_buffer=load_git_object_as_buffer_or_empty(f":{target_file}"),
+        source_buffer=load_working_tree_file_as_buffer(target_file),
+        preserve_selected_state=preserve_selected_state,
+        saved_selected_state=saved_selected_state,
     )
 
 

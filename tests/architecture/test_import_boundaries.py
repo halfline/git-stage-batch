@@ -1404,6 +1404,141 @@ def test_argument_parser_delegates_multi_file_action_flow():
     )
 
 
+def test_file_scope_discard_to_batch_owns_multi_file_pipeline():
+    """Multi-file discard-to-batch support should stay out of discard.py."""
+    discard_path = SRC_ROOT / "commands" / "discard.py"
+    multi_file_actions_path = (
+        SRC_ROOT / "commands" / "file_scope" / "multi_file_actions.py"
+    )
+    helper_path = SRC_ROOT / "commands" / "file_scope" / "discard_to_batch.py"
+    helper = __import__(
+        "git_stage_batch.commands.file_scope.discard_to_batch",
+        fromlist=["discard_to_batch"],
+    )
+    public_names = {
+        "DiscardFilesToBatchResult",
+        "discard_files_to_batch",
+    }
+    moved_names = {
+        "DiscardFilesToBatchResult",
+        "_collect_text_file_discard_inputs",
+        "_discard_prepared_text_files_to_batch",
+        "_prepare_text_file_discard_to_batch",
+        "_run_reverse_apply_for_prepared_discards",
+        "discard_files_to_batch",
+    }
+    internal_record_names = {
+        "_CollectedTextFileDiscards",
+        "_PreparedPatchDiscard",
+        "_PreparedTextFileDiscardToBatch",
+        "_TextFileDiscardInput",
+    }
+    internal_state_names = {
+        "_DiscardFilesToBatchSession",
+    }
+    old_public_record_names = {
+        "CollectedTextFileDiscards",
+        "PreparedPatchDiscard",
+        "PreparedTextFileDiscardToBatch",
+        "TextFileDiscardInput",
+    }
+    helper_imports = {
+        "BatchFileUpdate",
+        "add_files_to_batch",
+        "detect_file_mode_from_root",
+        "record_hunks_discarded",
+        "snapshot_files_if_untracked",
+    }
+
+    assert public_names <= vars(helper).keys()
+    assert internal_record_names <= vars(helper).keys()
+    assert internal_state_names <= vars(helper).keys()
+    assert old_public_record_names.isdisjoint(vars(helper).keys())
+
+    discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    helper_tree = ast.parse(helper_path.read_text(), filename=str(helper_path))
+    discard_names = {
+        node.name
+        for node in ast.walk(discard_tree)
+        if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+    discard_files_to_batch_def = next(
+        node
+        for node in ast.walk(helper_tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "discard_files_to_batch"
+    )
+    nested_helper_names = {
+        node.name
+        for node in ast.walk(discard_files_to_batch_def)
+        if isinstance(node, ast.FunctionDef) and node is not discard_files_to_batch_def
+    }
+    multi_file_action_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(multi_file_actions_path)
+    }
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert moved_names.isdisjoint(discard_names)
+    assert nested_helper_names == set()
+    assert (
+        "git_stage_batch.commands.file_scope.discard_to_batch"
+        in multi_file_action_imports
+    )
+    assert helper_imports <= helper_imported_names
+
+
+def test_file_scope_single_file_discard_to_batch_breaks_command_import_cycle():
+    """File-scope fallback support should not depend on discard.py."""
+    discard_path = SRC_ROOT / "commands" / "discard.py"
+    multi_file_helper_path = (
+        SRC_ROOT / "commands" / "file_scope" / "discard_to_batch.py"
+    )
+    single_file_helper = __import__(
+        "git_stage_batch.commands.file_scope.discard_file_to_batch",
+        fromlist=["discard_file_to_batch"],
+    )
+    support_names = {
+        "discard_binary_to_batch",
+        "discard_file_to_batch",
+        "discard_text_deletion_to_batch",
+    }
+    old_command_helper_names = {
+        "_command_discard_binary_to_batch",
+        "_command_discard_file_to_batch",
+        "_command_discard_text_deletion_to_batch",
+    }
+
+    discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    discard_names = {
+        node.name
+        for node in ast.walk(discard_tree)
+        if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+    discard_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(discard_path)
+    }
+    multi_file_helper_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(multi_file_helper_path)
+    }
+
+    assert support_names <= vars(single_file_helper).keys()
+    assert old_command_helper_names.isdisjoint(vars(single_file_helper).keys())
+    assert old_command_helper_names.isdisjoint(discard_names)
+    assert (
+        "git_stage_batch.commands.file_scope.discard_file_to_batch"
+        in discard_imports
+    )
+    assert (
+        "git_stage_batch.commands.file_scope.discard_file_to_batch"
+        in multi_file_helper_imports
+    )
+    assert "git_stage_batch.commands.discard" not in multi_file_helper_imports
+
+
 def test_argument_parser_uses_file_scope_resolver_module():
     """Parser branches should not own repository file-scope resolution."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"
@@ -1452,11 +1587,21 @@ def test_cli_dispatch_delegates_noninteractive_execution():
 def test_tui_cli_escape_does_not_import_dispatch():
     """TUI command escape should execute parsed args without importing launcher dispatch."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
+    cli_escape_path = SRC_ROOT / "tui" / "cli_escape.py"
     execution_path = SRC_ROOT / "cli" / "execution.py"
     dispatch_path = SRC_ROOT / "cli" / "dispatch.py"
     interactive_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
+    }
+    cli_escape_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(cli_escape_path)
     }
     execution_imports = {
         imported_module
@@ -1467,9 +1612,11 @@ def test_tui_cli_escape_does_not_import_dispatch():
         for imported_module, _node in _import_from_nodes(dispatch_path)
     }
 
-    assert "git_stage_batch.cli.argument_parser" in interactive_imports
-    assert "git_stage_batch.cli.execution" in interactive_imports
-    assert "git_stage_batch.cli.dispatch" not in interactive_imports
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.cli_escape" in action_dispatch_imports
+    assert "git_stage_batch.cli.argument_parser" in cli_escape_imports
+    assert "git_stage_batch.cli.execution" in cli_escape_imports
+    assert "git_stage_batch.cli.dispatch" not in cli_escape_imports
     assert "git_stage_batch.tui.interactive" not in execution_imports
     assert "git_stage_batch.tui.interactive" in dispatch_imports
 
@@ -1477,6 +1624,7 @@ def test_tui_cli_escape_does_not_import_dispatch():
 def test_tui_batch_menu_owns_batch_management_actions():
     """TUI batch management should live in the batch menu adapter."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
     batch_menu_path = SRC_ROOT / "tui" / "batch_menu.py"
     interactive = __import__(
         "git_stage_batch.tui.interactive",
@@ -1489,6 +1637,10 @@ def test_tui_batch_menu_owns_batch_management_actions():
     interactive_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
     }
     batch_menu_imports = {
         imported_module
@@ -1511,16 +1663,19 @@ def test_tui_batch_menu_owns_batch_management_actions():
 
     assert "handle_batch_menu" in vars(batch_menu)
     assert moved_names.isdisjoint(vars(interactive))
-    assert "git_stage_batch.tui.batch_menu" in interactive_imports
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.batch_menu" in action_dispatch_imports
 
     for imported_module in menu_command_modules:
         assert imported_module not in interactive_imports
+        assert imported_module not in action_dispatch_imports
         assert imported_module in batch_menu_imports
 
 
 def test_tui_asset_menu_owns_install_assets_action():
     """TUI asset installation should live in the asset menu adapter."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
     asset_menu_path = SRC_ROOT / "tui" / "asset_menu.py"
     interactive = __import__(
         "git_stage_batch.tui.interactive",
@@ -1534,6 +1689,10 @@ def test_tui_asset_menu_owns_install_assets_action():
         imported_module
         for imported_module, _node in _import_from_nodes(interactive_path)
     }
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
+    }
     asset_menu_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(asset_menu_path)
@@ -1541,18 +1700,26 @@ def test_tui_asset_menu_owns_install_assets_action():
 
     assert "handle_asset_menu" in vars(asset_menu)
     assert "handle_install_assets" not in vars(interactive)
-    assert "git_stage_batch.tui.asset_menu" in interactive_imports
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.asset_menu" in action_dispatch_imports
     assert "git_stage_batch.commands.install_assets" not in interactive_imports
+    assert "git_stage_batch.commands.install_assets" not in action_dispatch_imports
     assert "git_stage_batch.commands.install_assets" in asset_menu_imports
 
 
 def test_tui_flow_menu_owns_batch_selection_menus():
     """TUI flow selection should live in the flow menu adapter."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
+    flow_actions_path = SRC_ROOT / "tui" / "flow_actions.py"
     flow_menu_path = SRC_ROOT / "tui" / "flow_menu.py"
     interactive = __import__(
         "git_stage_batch.tui.interactive",
         fromlist=["interactive"],
+    )
+    flow_actions = __import__(
+        "git_stage_batch.tui.flow_actions",
+        fromlist=["flow_actions"],
     )
     flow_menu = __import__(
         "git_stage_batch.tui.flow_menu",
@@ -1562,24 +1729,408 @@ def test_tui_flow_menu_owns_batch_selection_menus():
         imported_module
         for imported_module, _node in _import_from_nodes(interactive_path)
     }
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
+    }
+    flow_actions_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(flow_actions_path)
+    }
     flow_menu_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(flow_menu_path)
     }
 
+    assert "handle_flow_action" in vars(flow_actions)
     assert {"handle_from_menu", "handle_to_menu"} <= vars(flow_menu).keys()
     assert "_handle_from" not in vars(interactive)
     assert "_handle_to" not in vars(interactive)
-    assert "git_stage_batch.tui.flow_menu" in interactive_imports
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.flow_actions" in action_dispatch_imports
+    assert "git_stage_batch.tui.flow_menu" in flow_actions_imports
     assert "git_stage_batch.batch.query" not in interactive_imports
+    assert "git_stage_batch.batch.query" not in action_dispatch_imports
     assert "git_stage_batch.commands.new" not in interactive_imports
+    assert "git_stage_batch.commands.new" not in action_dispatch_imports
     assert "git_stage_batch.batch.query" in flow_menu_imports
     assert "git_stage_batch.commands.new" in flow_menu_imports
+
+
+def test_tui_hunk_actions_own_direct_hunk_commands():
+    """TUI direct hunk actions should live in the hunk actions adapter."""
+    interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
+    hunk_actions_path = SRC_ROOT / "tui" / "hunk_actions.py"
+    interactive = __import__(
+        "git_stage_batch.tui.interactive",
+        fromlist=["interactive"],
+    )
+    hunk_actions = __import__(
+        "git_stage_batch.tui.hunk_actions",
+        fromlist=["hunk_actions"],
+    )
+    interactive_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    interactive_imported_names = set()
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
+    }
+    hunk_actions_imported_names = set()
+    hunk_action_names = {
+        "handle_hunk_discard",
+        "handle_hunk_include",
+        "handle_hunk_skip",
+    }
+    hunk_command_names = {
+        "command_discard",
+        "command_discard_from_batch",
+        "command_discard_to_batch",
+        "command_include",
+        "command_include_from_batch",
+        "command_include_to_batch",
+        "command_skip",
+    }
+
+    for _imported_module, node in _import_from_nodes(interactive_path):
+        interactive_imported_names |= {alias.name for alias in node.names}
+
+    for _imported_module, node in _import_from_nodes(hunk_actions_path):
+        hunk_actions_imported_names |= {alias.name for alias in node.names}
+
+    assert hunk_action_names <= vars(hunk_actions).keys()
+    assert "_handle_include" not in vars(interactive)
+    assert "_handle_skip" not in vars(interactive)
+    assert "_handle_discard" not in vars(interactive)
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.hunk_actions" in action_dispatch_imports
+    assert hunk_command_names.isdisjoint(interactive_imported_names)
+    assert hunk_command_names <= hunk_actions_imported_names
+
+
+def test_tui_history_actions_own_undo_redo_actions():
+    """TUI history actions should live in the history action adapter."""
+    interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
+    history_actions_path = SRC_ROOT / "tui" / "history_actions.py"
+    action_dispatch = __import__(
+        "git_stage_batch.tui.action_dispatch",
+        fromlist=["action_dispatch"],
+    )
+    history_actions = __import__(
+        "git_stage_batch.tui.history_actions",
+        fromlist=["history_actions"],
+    )
+    interactive_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
+    }
+    history_actions_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(history_actions_path)
+    }
+    old_dispatch_names = {
+        "_handle_redo",
+        "_handle_undo",
+    }
+    command_modules = {
+        "git_stage_batch.commands.redo",
+        "git_stage_batch.commands.undo",
+    }
+
+    assert {"handle_redo", "handle_undo"} <= vars(history_actions).keys()
+    assert old_dispatch_names.isdisjoint(vars(action_dispatch))
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.history_actions" in action_dispatch_imports
+
+    for imported_module in command_modules:
+        assert imported_module not in interactive_imports
+        assert imported_module not in action_dispatch_imports
+        assert imported_module in history_actions_imports
+
+
+def test_tui_again_action_owns_iteration_restart():
+    """TUI again action should live in the again action adapter."""
+    interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
+    again_action_path = SRC_ROOT / "tui" / "again_action.py"
+    action_dispatch = __import__(
+        "git_stage_batch.tui.action_dispatch",
+        fromlist=["action_dispatch"],
+    )
+    again_action = __import__(
+        "git_stage_batch.tui.again_action",
+        fromlist=["again_action"],
+    )
+    interactive_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
+    }
+    again_action_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(again_action_path)
+    }
+    old_dispatch_imports = {
+        "git_stage_batch.data.file_tracking",
+        "git_stage_batch.data.hunk_tracking",
+        "git_stage_batch.utils.paths",
+    }
+
+    assert "handle_again" in vars(again_action)
+    assert "_handle_again" not in vars(action_dispatch)
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.again_action" in action_dispatch_imports
+    assert "git_stage_batch.commands.again" not in interactive_imports
+    assert "git_stage_batch.commands.again" not in action_dispatch_imports
+    assert action_dispatch_imports.isdisjoint(old_dispatch_imports)
+    assert "git_stage_batch.commands.again" in again_action_imports
+
+
+def test_tui_status_action_owns_status_command():
+    """TUI status action should live in the status action adapter."""
+    interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
+    status_action_path = SRC_ROOT / "tui" / "status_action.py"
+    action_dispatch = __import__(
+        "git_stage_batch.tui.action_dispatch",
+        fromlist=["action_dispatch"],
+    )
+    status_action = __import__(
+        "git_stage_batch.tui.status_action",
+        fromlist=["status_action"],
+    )
+    interactive_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
+    }
+    status_action_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(status_action_path)
+    }
+
+    assert "handle_status" in vars(status_action)
+    assert "_handle_status" not in vars(action_dispatch)
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.status_action" in action_dispatch_imports
+    assert "git_stage_batch.commands.status" not in interactive_imports
+    assert "git_stage_batch.commands.status" not in action_dispatch_imports
+    assert "git_stage_batch.commands.status" in status_action_imports
+
+
+def test_tui_fixup_menu_owns_suggest_fixup_submenu():
+    """TUI suggest-fixup selection should live in the fixup menu."""
+    interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
+    fixup_menu_path = SRC_ROOT / "tui" / "fixup_menu.py"
+    interactive = __import__(
+        "git_stage_batch.tui.interactive",
+        fromlist=["interactive"],
+    )
+    fixup_menu = __import__(
+        "git_stage_batch.tui.fixup_menu",
+        fromlist=["fixup_menu"],
+    )
+    interactive_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    interactive_imported_names = set()
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
+    }
+    fixup_menu_imported_names = set()
+    fixup_menu_names = {
+        "clear_suggest_fixup_state",
+        "command_suggest_fixup",
+        "prompt_fixup_action",
+        "read_suggest_fixup_state",
+    }
+
+    for _imported_module, node in _import_from_nodes(interactive_path):
+        interactive_imported_names |= {alias.name for alias in node.names}
+
+    for _imported_module, node in _import_from_nodes(fixup_menu_path):
+        fixup_menu_imported_names |= {alias.name for alias in node.names}
+
+    assert "handle_fixup_menu" in vars(fixup_menu)
+    assert "handle_fixup_selection" not in vars(interactive)
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.fixup_menu" in action_dispatch_imports
+    assert fixup_menu_names.isdisjoint(interactive_imported_names)
+    assert fixup_menu_names <= fixup_menu_imported_names
+
+
+def test_tui_shell_command_owns_shell_escape():
+    """TUI shell escapes should live in the shell command adapter."""
+    interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
+    shell_command_path = SRC_ROOT / "tui" / "shell_command.py"
+    interactive = __import__(
+        "git_stage_batch.tui.interactive",
+        fromlist=["interactive"],
+    )
+    shell_command = __import__(
+        "git_stage_batch.tui.shell_command",
+        fromlist=["shell_command"],
+    )
+    interactive_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    interactive_imported_names = set()
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
+    }
+    shell_command_imported_names = set()
+    interactive_plain_imports = set()
+    shell_command_plain_imports = set()
+    shell_command_names = {
+        "get_git_repository_root_path",
+        "prompt_shell_command",
+    }
+
+    for node in ast.walk(ast.parse(interactive_path.read_text())):
+        if isinstance(node, ast.Import):
+            interactive_plain_imports |= {alias.name for alias in node.names}
+
+    for node in ast.walk(ast.parse(shell_command_path.read_text())):
+        if isinstance(node, ast.Import):
+            shell_command_plain_imports |= {alias.name for alias in node.names}
+
+    for _imported_module, node in _import_from_nodes(interactive_path):
+        interactive_imported_names |= {alias.name for alias in node.names}
+
+    for _imported_module, node in _import_from_nodes(shell_command_path):
+        shell_command_imported_names |= {alias.name for alias in node.names}
+
+    assert "handle_shell_command" in vars(shell_command)
+    assert "_handle_shell" not in vars(interactive)
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.shell_command" in action_dispatch_imports
+    assert "subprocess" not in interactive_plain_imports
+    assert "subprocess" in shell_command_plain_imports
+    assert shell_command_names.isdisjoint(interactive_imported_names)
+    assert shell_command_names <= shell_command_imported_names
+
+
+def test_tui_cli_escape_owns_command_fallback():
+    """TUI CLI command fallback should live in the CLI escape adapter."""
+    interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
+    cli_escape_path = SRC_ROOT / "tui" / "cli_escape.py"
+    interactive = __import__(
+        "git_stage_batch.tui.interactive",
+        fromlist=["interactive"],
+    )
+    cli_escape = __import__(
+        "git_stage_batch.tui.cli_escape",
+        fromlist=["cli_escape"],
+    )
+    interactive_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    interactive_imported_names = set()
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
+    }
+    cli_escape_imported_names = set()
+    interactive_plain_imports = set()
+    cli_escape_plain_imports = set()
+    cli_escape_names = {
+        "execute_non_interactive_args",
+        "parse_command_line",
+    }
+
+    for node in ast.walk(ast.parse(interactive_path.read_text())):
+        if isinstance(node, ast.Import):
+            interactive_plain_imports |= {alias.name for alias in node.names}
+
+    for node in ast.walk(ast.parse(cli_escape_path.read_text())):
+        if isinstance(node, ast.Import):
+            cli_escape_plain_imports |= {alias.name for alias in node.names}
+
+    for _imported_module, node in _import_from_nodes(interactive_path):
+        interactive_imported_names |= {alias.name for alias in node.names}
+
+    for _imported_module, node in _import_from_nodes(cli_escape_path):
+        cli_escape_imported_names |= {alias.name for alias in node.names}
+
+    assert "handle_cli_escape" in vars(cli_escape)
+    assert "_handle_cli_command" not in vars(interactive)
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.cli_escape" in action_dispatch_imports
+    assert "shlex" not in interactive_plain_imports
+    assert "shlex" in cli_escape_plain_imports
+    assert cli_escape_names.isdisjoint(interactive_imported_names)
+    assert cli_escape_names <= cli_escape_imported_names
+
+
+def test_tui_session_quit_owns_smart_quit_actions():
+    """TUI smart quit handling should live in the session quit adapter."""
+    interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
+    session_quit_path = SRC_ROOT / "tui" / "session_quit.py"
+    interactive = __import__(
+        "git_stage_batch.tui.interactive",
+        fromlist=["interactive"],
+    )
+    session_quit = __import__(
+        "git_stage_batch.tui.session_quit",
+        fromlist=["session_quit"],
+    )
+    interactive_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    interactive_imported_names = set()
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
+    }
+    session_quit_imported_names = set()
+    session_quit_names = {
+        "command_abort",
+        "command_stop",
+        "prompt_quit_session",
+        "read_text_file_contents",
+    }
+
+    for _imported_module, node in _import_from_nodes(interactive_path):
+        interactive_imported_names |= {alias.name for alias in node.names}
+
+    for _imported_module, node in _import_from_nodes(session_quit_path):
+        session_quit_imported_names |= {alias.name for alias in node.names}
+
+    assert "handle_quit" in vars(session_quit)
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.session_quit" in action_dispatch_imports
+    assert session_quit_names.isdisjoint(interactive_imported_names)
+    assert session_quit_names <= session_quit_imported_names
 
 
 def test_tui_file_selection_menu_owns_whole_file_actions():
     """TUI whole-file selection should live in the file selection menu."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
     file_menu_path = SRC_ROOT / "tui" / "file_selection_menu.py"
     interactive = __import__(
         "git_stage_batch.tui.interactive",
@@ -1594,6 +2145,10 @@ def test_tui_file_selection_menu_owns_whole_file_actions():
         for imported_module, _node in _import_from_nodes(interactive_path)
     }
     interactive_imported_names = set()
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
+    }
     file_menu_imported_names = set()
     whole_file_command_names = {
         "command_discard_file",
@@ -1609,7 +2164,8 @@ def test_tui_file_selection_menu_owns_whole_file_actions():
 
     assert "handle_file_selection_menu" in vars(file_menu)
     assert "handle_file_selection" not in vars(interactive)
-    assert "git_stage_batch.tui.file_selection_menu" in interactive_imports
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.file_selection_menu" in action_dispatch_imports
     assert whole_file_command_names.isdisjoint(interactive_imported_names)
     assert whole_file_command_names <= file_menu_imported_names
 
@@ -1617,6 +2173,7 @@ def test_tui_file_selection_menu_owns_whole_file_actions():
 def test_tui_line_selection_menu_owns_line_actions():
     """TUI line selection should live in the line selection menu."""
     interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
     line_menu_path = SRC_ROOT / "tui" / "line_selection_menu.py"
     interactive = __import__(
         "git_stage_batch.tui.interactive",
@@ -1631,6 +2188,10 @@ def test_tui_line_selection_menu_owns_line_actions():
         for imported_module, _node in _import_from_nodes(interactive_path)
     }
     interactive_imported_names = set()
+    action_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(action_dispatch_path)
+    }
     line_menu_imported_names = set()
     line_command_names = {
         "command_discard_line",
@@ -1646,7 +2207,8 @@ def test_tui_line_selection_menu_owns_line_actions():
 
     assert "handle_line_selection_menu" in vars(line_menu)
     assert "handle_line_selection" not in vars(interactive)
-    assert "git_stage_batch.tui.line_selection_menu" in interactive_imports
+    assert "git_stage_batch.tui.action_dispatch" in interactive_imports
+    assert "git_stage_batch.tui.line_selection_menu" in action_dispatch_imports
     assert line_command_names.isdisjoint(interactive_imported_names)
     assert line_command_names <= line_menu_imported_names
 
@@ -1654,10 +2216,17 @@ def test_tui_line_selection_menu_owns_line_actions():
 def test_tui_file_review_state_name_does_not_shadow_persisted_state():
     """TUI review state should not reuse the persisted file-review state name."""
     review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
-    tree = ast.parse(review_path.read_text(), filename=str(review_path))
-    class_names = {
+    session_path = SRC_ROOT / "tui" / "file_review" / "session.py"
+    review_tree = ast.parse(review_path.read_text(), filename=str(review_path))
+    session_tree = ast.parse(session_path.read_text(), filename=str(session_path))
+    review_class_names = {
         node.name
-        for node in tree.body
+        for node in review_tree.body
+        if isinstance(node, ast.ClassDef)
+    }
+    session_class_names = {
+        node.name
+        for node in session_tree.body
         if isinstance(node, ast.ClassDef)
     }
     imported_state_names = set()
@@ -1675,11 +2244,354 @@ def test_tui_file_review_state_name_does_not_shadow_persisted_state():
             continue
         imported_state_names |= {alias.name for alias in node.names}
 
+    review_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_path)
+    }
+
     assert "FileReviewState" in vars(records)
     assert "FileReviewState" not in vars(persisted_state)
-    assert "FileReviewSessionState" in class_names
-    assert "FileReviewState" not in class_names
+    assert "FileReviewSessionState" in session_class_names
+    assert "FileReviewSessionState" not in review_class_names
+    assert "git_stage_batch.tui.file_review.session" in review_imports
+    assert "FileReviewState" not in review_class_names
+    assert "FileReviewState" not in session_class_names
     assert "FileReviewState" not in imported_state_names
+
+
+def test_tui_file_review_modules_share_session_state():
+    """TUI file review modules should use the shared session state."""
+    owner_import = "git_stage_batch.tui.file_review.session"
+    reviewed_paths = {
+        SRC_ROOT / "tui" / "file_review" / "__init__.py": {
+            "FileReviewActionState",
+            "FileReviewBatchActionState",
+            "FileReviewCandidateState",
+            "FileReviewLiveActionState",
+        },
+        SRC_ROOT / "tui" / "file_review" / "action_router.py": {
+            "FileReviewActionState",
+        },
+        SRC_ROOT / "tui" / "file_review" / "batch_actions.py": {
+            "FileReviewBatchActionState",
+        },
+        SRC_ROOT / "tui" / "file_review" / "candidates.py": {
+            "FileReviewCandidateState",
+        },
+        SRC_ROOT / "tui" / "file_review" / "live_actions.py": {
+            "FileReviewLiveActionState",
+        },
+    }
+
+    for path, old_names in reviewed_paths.items():
+        tree = ast.parse(path.read_text(), filename=str(path))
+        class_names = {
+            node.name
+            for node in tree.body
+            if isinstance(node, ast.ClassDef)
+        }
+        imported_modules = {
+            imported_module
+            for imported_module, _node in _import_from_nodes(path)
+        }
+
+        assert old_names.isdisjoint(class_names)
+        assert owner_import in imported_modules
+
+
+def test_tui_file_review_display_owns_review_rendering():
+    """TUI file review display should own reviewed-file rendering."""
+    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    display_path = SRC_ROOT / "tui" / "file_review" / "display.py"
+    review = __import__(
+        "git_stage_batch.tui.file_review",
+        fromlist=["file_review"],
+    )
+    display = __import__(
+        "git_stage_batch.tui.file_review.display",
+        fromlist=["display"],
+    )
+    review_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_path)
+    }
+    display_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(display_path)
+    }
+    old_review_names = {
+        "_render_review",
+        "get_hunk_counts",
+        "print_status_bar",
+    }
+
+    assert "render_file_review" in vars(display)
+    assert old_review_names.isdisjoint(vars(review))
+    assert "git_stage_batch.tui.file_review.display" in review_imports
+    assert "git_stage_batch.commands.show" not in review_imports
+    assert "git_stage_batch.data.progress" not in review_imports
+    assert "git_stage_batch.tui.display" not in review_imports
+    assert "git_stage_batch.commands.show" in display_imports
+    assert "git_stage_batch.commands.show_from" in display_imports
+    assert "git_stage_batch.data.progress" in display_imports
+    assert "git_stage_batch.tui.display" in display_imports
+
+
+def test_tui_file_review_candidates_own_candidate_browser():
+    """TUI file review candidates should own batch candidate browsing."""
+    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    candidates_path = SRC_ROOT / "tui" / "file_review" / "candidates.py"
+    review = __import__(
+        "git_stage_batch.tui.file_review",
+        fromlist=["file_review"],
+    )
+    candidates = __import__(
+        "git_stage_batch.tui.file_review.candidates",
+        fromlist=["candidates"],
+    )
+    review_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_path)
+    }
+    candidate_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(candidates_path)
+    }
+    old_review_names = {
+        "_browse_candidates",
+        "_execute_candidate",
+        "_preview_candidate",
+        "_prompt_candidate_action",
+        "_prompt_candidate_operation",
+    }
+
+    assert "browse_candidates" in vars(candidates)
+    assert old_review_names.isdisjoint(vars(review))
+    assert "git_stage_batch.tui.file_review.candidates" in review_imports
+    assert "git_stage_batch.commands.apply_from" not in review_imports
+    assert "git_stage_batch.commands.show_from" not in review_imports
+    assert "git_stage_batch.commands.apply_from" in candidate_imports
+    assert "git_stage_batch.commands.include_from" in candidate_imports
+    assert "git_stage_batch.commands.show_from" in candidate_imports
+
+
+def test_tui_file_review_batch_actions_own_batch_transfers():
+    """TUI file review batch actions should own batch transfer commands."""
+    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    batch_actions_path = SRC_ROOT / "tui" / "file_review" / "batch_actions.py"
+    review = __import__(
+        "git_stage_batch.tui.file_review",
+        fromlist=["file_review"],
+    )
+    batch_actions = __import__(
+        "git_stage_batch.tui.file_review.batch_actions",
+        fromlist=["batch_actions"],
+    )
+    review_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_path)
+    }
+    batch_action_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(batch_actions_path)
+    }
+    old_review_names = {
+        "_apply_batch_file_action",
+        "_apply_batch_line_action",
+        "_apply_batch_replacement_action",
+    }
+
+    assert {
+        "apply_batch_file_action",
+        "apply_batch_line_action",
+        "apply_batch_replacement_action",
+    } <= vars(batch_actions).keys()
+    assert old_review_names.isdisjoint(vars(review))
+    assert "git_stage_batch.tui.file_review.batch_actions" in review_imports
+    assert "git_stage_batch.commands.discard_from" not in review_imports
+    assert "git_stage_batch.commands.include_from" not in review_imports
+    assert "git_stage_batch.commands.discard_from" in batch_action_imports
+    assert "git_stage_batch.commands.include_from" in batch_action_imports
+
+
+def test_tui_file_review_live_actions_own_live_transfers():
+    """TUI file review live actions should own live transfer commands."""
+    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    live_actions_path = SRC_ROOT / "tui" / "file_review" / "live_actions.py"
+    review = __import__(
+        "git_stage_batch.tui.file_review",
+        fromlist=["file_review"],
+    )
+    live_actions = __import__(
+        "git_stage_batch.tui.file_review.live_actions",
+        fromlist=["live_actions"],
+    )
+    review_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_path)
+    }
+    live_action_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(live_actions_path)
+    }
+    old_review_names = {
+        "_apply_live_file_action",
+        "_apply_live_line_action",
+        "_apply_live_replacement_action",
+    }
+
+    assert {
+        "apply_live_file_action",
+        "apply_live_line_action",
+        "apply_live_replacement_action",
+    } <= vars(live_actions).keys()
+    assert old_review_names.isdisjoint(vars(review))
+    assert "git_stage_batch.tui.file_review.live_actions" in review_imports
+    assert "git_stage_batch.commands.discard" not in review_imports
+    assert "git_stage_batch.commands.include" not in review_imports
+    assert "git_stage_batch.commands.skip" not in review_imports
+    assert "git_stage_batch.commands.discard" in live_action_imports
+    assert "git_stage_batch.commands.include" in live_action_imports
+    assert "git_stage_batch.commands.skip" in live_action_imports
+
+
+def test_tui_file_review_block_actions_own_block_commands():
+    """TUI file review block actions should own block command calls."""
+    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    block_actions_path = SRC_ROOT / "tui" / "file_review" / "block_actions.py"
+    block_actions = __import__(
+        "git_stage_batch.tui.file_review.block_actions",
+        fromlist=["block_actions"],
+    )
+    review_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_path)
+    }
+    block_action_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(block_actions_path)
+    }
+
+    assert {
+        "block_review_file",
+        "unblock_review_file",
+    } <= vars(block_actions).keys()
+    assert "git_stage_batch.tui.file_review.block_actions" in review_imports
+    assert "git_stage_batch.commands.block_file" not in review_imports
+    assert "git_stage_batch.commands.unblock_file" not in review_imports
+    assert "git_stage_batch.commands.block_file" in block_action_imports
+    assert "git_stage_batch.commands.unblock_file" in block_action_imports
+
+
+def test_tui_file_review_fixup_actions_own_line_fixups():
+    """TUI file review fixup actions should own line-fixup command calls."""
+    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    fixup_actions_path = SRC_ROOT / "tui" / "file_review" / "fixup_actions.py"
+    fixup_actions = __import__(
+        "git_stage_batch.tui.file_review.fixup_actions",
+        fromlist=["fixup_actions"],
+    )
+    review_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_path)
+    }
+    fixup_action_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(fixup_actions_path)
+    }
+
+    assert {
+        "clear_file_review_fixup_state",
+        "read_last_fixup_commit_hash",
+        "suggest_fixup_for_lines",
+    } <= vars(fixup_actions).keys()
+    assert "git_stage_batch.tui.file_review.fixup_actions" in review_imports
+    assert "git_stage_batch.commands.suggest_fixup" not in review_imports
+    assert "git_stage_batch.data.suggest_fixup_state" not in review_imports
+    assert "git_stage_batch.commands.suggest_fixup" in fixup_action_imports
+    assert "git_stage_batch.data.suggest_fixup_state" in fixup_action_imports
+
+
+def test_tui_file_review_prompts_own_action_vocabulary():
+    """TUI file review prompts should own action text and parsing."""
+    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    prompts_path = SRC_ROOT / "tui" / "file_review" / "prompts.py"
+    review = __import__(
+        "git_stage_batch.tui.file_review",
+        fromlist=["file_review"],
+    )
+    prompts = __import__(
+        "git_stage_batch.tui.file_review.prompts",
+        fromlist=["prompts"],
+    )
+    review_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_path)
+    }
+    prompt_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(prompts_path)
+    }
+    old_review_names = {
+        "_normalize_review_action",
+        "_print_review_help",
+        "_prompt_review_action",
+    }
+    prompt_text = prompts_path.read_text()
+    review_text = review_path.read_text()
+
+    assert {
+        "normalize_review_action",
+        "print_review_help",
+        "prompt_review_action",
+    } <= vars(prompts).keys()
+    assert old_review_names.isdisjoint(vars(review))
+    assert "git_stage_batch.tui.file_review.prompts" in review_imports
+    assert "git_stage_batch.tui.prompts" in prompt_imports
+    assert "Review action:" not in review_text
+    assert "Review action:" in prompt_text
+
+
+def test_tui_file_review_action_router_owns_standard_actions():
+    """TUI file review action router should own standard action gates."""
+    review_path = SRC_ROOT / "tui" / "file_review" / "__init__.py"
+    router_path = SRC_ROOT / "tui" / "file_review" / "action_router.py"
+    review = __import__(
+        "git_stage_batch.tui.file_review",
+        fromlist=["file_review"],
+    )
+    router = __import__(
+        "git_stage_batch.tui.file_review.action_router",
+        fromlist=["action_router"],
+    )
+    review_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_path)
+    }
+    router_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(router_path)
+    }
+    old_review_names = {
+        "_apply_file_action",
+        "_apply_line_action",
+        "_apply_replacement_action",
+        "_prompt_replacement_text",
+    }
+    review_text = review_path.read_text()
+    router_text = router_path.read_text()
+
+    assert {
+        "apply_file_action",
+        "apply_line_action",
+        "apply_replacement_action",
+    } <= vars(router).keys()
+    assert old_review_names.isdisjoint(vars(review))
+    assert "git_stage_batch.tui.file_review.action_router" in review_imports
+    assert "git_stage_batch.tui.file_review.batch_actions" in router_imports
+    assert "git_stage_batch.tui.file_review.live_actions" in router_imports
+    assert "Replacement text (empty cancels):" not in review_text
+    assert "Replacement text (empty cancels):" in router_text
 
 
 def test_commands_do_not_import_tui():
@@ -1783,9 +2695,14 @@ def test_suggest_fixup_state_stays_in_data_layer():
     """Suggest-fixup state persistence should stay below command and TUI flows."""
     command_path = SRC_ROOT / "commands" / "suggest_fixup.py"
     data_path = SRC_ROOT / "data" / "suggest_fixup_state.py"
-    tui_paths = (
-        SRC_ROOT / "tui" / "interactive.py",
+    tui_command_paths = (
+        SRC_ROOT / "tui" / "fixup_menu.py",
         SRC_ROOT / "tui" / "file_review" / "__init__.py",
+        SRC_ROOT / "tui" / "file_review" / "fixup_actions.py",
+    )
+    tui_state_paths = (
+        SRC_ROOT / "tui" / "fixup_menu.py",
+        SRC_ROOT / "tui" / "file_review" / "fixup_actions.py",
     )
     command_imports = {
         imported_module
@@ -1807,11 +2724,13 @@ def test_suggest_fixup_state_stays_in_data_layer():
     }
     violations = []
 
-    for tui_path in tui_paths:
+    for tui_path in tui_state_paths:
         imports = _import_from_nodes(tui_path)
         imported_modules = {imported_module for imported_module, _node in imports}
         assert "git_stage_batch.data.suggest_fixup_state" in imported_modules
 
+    for tui_path in tui_command_paths:
+        imports = _import_from_nodes(tui_path)
         for imported_module, node in imports:
             if imported_module != "git_stage_batch.commands.suggest_fixup":
                 continue
@@ -1844,9 +2763,10 @@ def test_selected_line_source_refresh_uses_public_api():
         "_refresh_selected_lines_against_source_lines",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "discard.py": {
-            "refresh_selected_lines_against_source_lines",
-        },
+        SRC_ROOT
+        / "commands"
+        / "selection"
+        / "discard_line_replacement.py": {"refresh_selected_lines_against_source_lines"},
         SRC_ROOT / "data" / "consumed_selections.py": public_names,
     }
     violations = []
@@ -1950,7 +2870,10 @@ def test_batch_ownership_uses_public_lineage_remapping():
         "BatchSourceAdvanceResult",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "discard.py": public_names,
+        SRC_ROOT
+        / "commands"
+        / "selection"
+        / "discard_line_replacement.py": public_names,
         SRC_ROOT / "batch" / "source_advancement.py": public_names,
     }
     violations = []
@@ -2008,7 +2931,10 @@ def test_batch_source_advancement_uses_public_entry_helpers():
         "_advance_batch_source_for_file_with_provenance",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "discard.py": {
+        SRC_ROOT
+        / "commands"
+        / "selection"
+        / "discard_line_replacement.py": {
             "advance_source_lines_preserving_existing_presence",
         },
         SRC_ROOT / "batch" / "source_refresh.py": {
@@ -2875,10 +3801,11 @@ def test_batch_file_mode_detection_stays_in_data_module():
     )
     expected_imports = {
         SRC_ROOT / "commands" / "include.py": {"detect_file_mode"},
-        SRC_ROOT / "commands" / "discard.py": {
-            "detect_file_mode",
-            "detect_file_mode_from_root",
-        },
+        SRC_ROOT / "commands" / "discard.py": {"detect_file_mode"},
+        SRC_ROOT
+        / "commands"
+        / "file_scope"
+        / "discard_to_batch.py": {"detect_file_mode_from_root"},
     }
     forbidden_helpers = {
         "_detect_file_mode",
@@ -3015,15 +3942,20 @@ def test_include_selected_change_staging_stays_in_command_helper():
 def test_include_line_selection_stays_in_command_helper():
     """Include line-selection support should stay out of the command entrypoint."""
     include_path = SRC_ROOT / "commands" / "include.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "include_line_selection.py"
+    )
     helper = __import__(
         "git_stage_batch.commands.selection.include_line_selection",
         fromlist=["include_line_selection"],
     )
     public_names = {
+        "IncludeLineSelectionContext",
         "TransientIncludeFailureReason",
         "TransientIncludeResult",
         "annotate_line_changes_with_working_tree_source",
         "line_sequence_ends_with_lf",
+        "load_include_line_selection_context",
         "record_baseline_references_for_additions",
         "selected_file_view_is_fresh_for",
         "selected_file_view_targets",
@@ -3036,6 +3968,7 @@ def test_include_line_selection_stays_in_command_helper():
         "TransientIncludeResult",
         "_annotate_line_changes_with_working_tree_source",
         "_line_sequence_ends_with_lf",
+        "_load_include_line_selection_context",
         "_record_baseline_references_for_additions",
         "_restore_session_batch_sources_file",
         "_selected_file_view_is_fresh_for",
@@ -3044,6 +3977,23 @@ def test_include_line_selection_stays_in_command_helper():
         "_stage_live_line_target_buffer",
         "_transient_include_failure_message",
         "_try_build_index_content_via_transient_batch",
+    }
+    line_selection_resolution_names = {
+        "annotate_line_changes_with_working_tree_source",
+        "auto_add_untracked_files",
+        "cache_unstaged_file_as_single_hunk",
+        "load_line_changes_from_state",
+        "require_selected_hunk",
+        "selected_file_view_is_fresh_for",
+        "selected_file_view_targets",
+        "snapshot_selected_change_state",
+    }
+    helper_imports = {
+        "auto_add_untracked_files",
+        "cache_unstaged_file_as_single_hunk",
+        "load_line_changes_from_state",
+        "require_selected_hunk",
+        "snapshot_selected_change_state",
     }
     include_imports_helper = False
 
@@ -3055,6 +4005,11 @@ def test_include_line_selection_stays_in_command_helper():
         for node in ast.walk(tree)
         if isinstance(node, ast.ClassDef | ast.FunctionDef)
     }
+    include_functions = {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+    }
 
     for imported_module, node in _import_from_nodes(include_path):
         if imported_module != "git_stage_batch.commands.selection":
@@ -3063,8 +4018,19 @@ def test_include_line_selection_stays_in_command_helper():
         if "include_line_selection" in imported_names:
             include_imports_helper = True
 
+    command_include_line_names = {
+        node.id
+        for node in ast.walk(include_functions["command_include_line"])
+        if isinstance(node, ast.Name)
+    }
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
     assert old_include_names.isdisjoint(include_names)
     assert include_imports_helper
+    assert line_selection_resolution_names.isdisjoint(command_include_line_names)
+    assert helper_imports <= helper_imported_names
 
 
 def test_include_line_replacement_stays_in_command_helper():
@@ -3078,21 +4044,55 @@ def test_include_line_replacement_stays_in_command_helper():
         fromlist=["include_line_replacement"],
     )
     public_names = {
+        "IncludeLineReplacementFileSelection",
+        "IncludeLineReplacementSelection",
         "apply_include_line_replacement",
+        "prepare_file_include_line_replacement",
+        "prepare_pathless_include_line_replacement",
         "translate_file_view_replacement_to_unstaged_diff",
     }
     old_include_names = {
         "_apply_include_line_replacement",
         "_line_identity_for_live_replacement",
+        "_prepare_file_include_line_replacement",
+        "_prepare_pathless_include_line_replacement",
         "_translate_file_view_replacement_to_unstaged_diff",
     }
     helper_imports = {
+        "SelectedChangeKind",
+        "annotate_with_batch_source",
         "build_target_index_buffer_with_replaced_lines",
+        "cache_unstaged_file_as_single_hunk",
+        "format_line_ids",
+        "get_index_snapshot_file_path",
+        "get_selected_change_file_path",
+        "get_working_tree_snapshot_file_path",
+        "load_git_object_as_buffer_or_empty",
+        "load_line_changes_from_state",
+        "load_working_tree_file_as_buffer",
         "parse_line_selection",
+        "read_selected_change_kind",
         "record_consumed_selection",
         "render_unstaged_file_as_single_hunk",
         "require_line_selection_in_view",
+        "require_selected_hunk",
+        "snapshot_selected_change_state",
         "update_index_with_blob_buffer",
+    }
+    replacement_context_names = {
+        "annotate_with_batch_source",
+        "cache_unstaged_file_as_single_hunk",
+        "format_line_ids",
+        "get_index_snapshot_file_path",
+        "get_selected_change_file_path",
+        "get_working_tree_snapshot_file_path",
+        "load_git_object_as_buffer",
+        "load_line_changes_from_state",
+        "load_working_tree_file_as_buffer",
+        "require_selected_hunk",
+        "selected_file_view_is_fresh_for",
+        "selected_file_view_targets",
+        "snapshot_selected_change_state",
     }
 
     assert public_names <= vars(helper).keys()
@@ -3102,6 +4102,11 @@ def test_include_line_replacement_stays_in_command_helper():
         node.name
         for node in ast.walk(include_tree)
         if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+    include_functions = {
+        node.name: node
+        for node in ast.walk(include_tree)
+        if isinstance(node, ast.FunctionDef)
     }
     include_imports_helper = False
 
@@ -3116,8 +4121,23 @@ def test_include_line_replacement_stays_in_command_helper():
     for _imported_module, node in _import_from_nodes(helper_path):
         helper_imported_names |= {alias.name for alias in node.names}
 
+    command_line_as_names = {
+        node.id
+        for node in ast.walk(include_functions["command_include_line_as"])
+        if isinstance(node, ast.Name)
+    }
+    command_line_as_attributes = {
+        node.attr
+        for node in ast.walk(include_functions["command_include_line_as"])
+        if isinstance(node, ast.Attribute)
+    }
+
     assert old_include_names.isdisjoint(include_names)
     assert include_imports_helper
+    assert "prepare_file_include_line_replacement" in command_line_as_attributes
+    assert "prepare_pathless_include_line_replacement" in command_line_as_attributes
+    assert replacement_context_names.isdisjoint(command_line_as_names)
+    assert replacement_context_names.isdisjoint(command_line_as_attributes)
     assert helper_imports <= helper_imported_names
 
 
@@ -3214,6 +4234,350 @@ def test_discard_file_selection_stays_in_command_helper():
     assert old_discard_names.isdisjoint(discard_helpers)
     assert discard_imports_helper
     assert helper_imports <= helper_imported_names
+
+
+def test_include_file_selection_stays_in_command_helper():
+    """Include file selection should stay out of the command entrypoint."""
+    include_path = SRC_ROOT / "commands" / "include.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "include_file_selection.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.selection.include_file_selection",
+        fromlist=["include_file_selection"],
+    )
+    public_names = {"load_explicit_file_selection"}
+    helper_imports = {
+        "cache_unstaged_file_as_single_hunk",
+        "load_line_changes_from_state",
+        "render_gitlink_change",
+        "selected_file_view_targets",
+    }
+
+    assert public_names <= vars(helper).keys()
+
+    tree = ast.parse(include_path.read_text(), filename=str(include_path))
+    functions = {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    include_imports_helper = False
+
+    for imported_module, node in _import_from_nodes(include_path):
+        if imported_module != "git_stage_batch.commands.selection":
+            continue
+        imported_names = {alias.name for alias in node.names}
+        if "include_file_selection" in imported_names:
+            include_imports_helper = True
+
+    line_function_names = {
+        node.id
+        for node in ast.walk(functions["_command_include_file_lines_to_batch"])
+        if isinstance(node, ast.Name)
+    }
+    line_function_attributes = {
+        node.attr
+        for node in ast.walk(functions["_command_include_file_lines_to_batch"])
+        if isinstance(node, ast.Attribute)
+    }
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert include_imports_helper
+    assert "load_explicit_file_selection" in line_function_attributes
+    assert helper_imports.isdisjoint(line_function_names)
+    assert helper_imports <= helper_imported_names
+
+
+def test_discard_line_selection_stays_in_command_helper():
+    """Discard line-selection editing should stay out of the command entrypoint."""
+    discard_path = SRC_ROOT / "commands" / "discard.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "discard_line_selection.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.selection.discard_line_selection",
+        fromlist=["discard_line_selection"],
+    )
+    public_names = {"discard_worktree_line_selection"}
+    command_level_names = {
+        "build_target_working_tree_buffer_from_lines",
+        "load_working_tree_file_as_buffer",
+        "parse_line_selection",
+        "require_line_selection_in_view",
+        "write_buffer_to_path",
+    }
+    helper_imports = command_level_names | {
+        "buffer_ends_with_lf",
+        "get_git_repository_root_path",
+        "get_selected_change_file_path",
+        "load_line_changes_from_state",
+        "require_selected_hunk",
+    }
+
+    assert public_names <= vars(helper).keys()
+
+    discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    command_discard_line = next(
+        node
+        for node in ast.walk(discard_tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "command_discard_line"
+    )
+    command_names = {
+        node.id for node in ast.walk(command_discard_line) if isinstance(node, ast.Name)
+    }
+    discard_imports_helper = False
+
+    for imported_module, node in _import_from_nodes(discard_path):
+        if imported_module != "git_stage_batch.commands.selection":
+            continue
+        imported_names = {alias.name for alias in node.names}
+        if "discard_line_selection" in imported_names:
+            discard_imports_helper = True
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert command_level_names.isdisjoint(command_names)
+    assert discard_imports_helper
+    assert helper_imports <= helper_imported_names
+
+
+def test_discard_line_replacement_stays_in_command_helper():
+    """Discard line-replacement support should stay out of the command entrypoint."""
+    discard_path = SRC_ROOT / "commands" / "discard.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "discard_line_replacement.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.selection.discard_line_replacement",
+        fromlist=["discard_line_replacement"],
+    )
+    public_names = {
+        "DiscardLineReplacementSelection",
+        "add_discard_line_replacement_to_batch",
+        "build_discard_line_replacement_target_buffer",
+        "derive_live_replacement_line_runs",
+        "prepare_discard_line_replacement_selection",
+    }
+    old_discard_names = {
+        "_add_discard_line_replacement_to_batch",
+        "_derive_live_replacement_line_runs",
+        "_select_rewritten_replacement_lines",
+    }
+    helper_imports = {
+        "BatchOwnership",
+        "acquire_batch_ownership_update_for_selection",
+        "add_file_to_batch",
+        "advance_source_lines_preserving_existing_presence",
+        "annotate_with_batch_source_working_lines",
+        "batch_exists",
+        "build_file_hunk_from_buffer",
+        "build_target_working_tree_buffer_from_lines",
+        "build_target_working_tree_buffer_with_replaced_lines",
+        "coerce_replacement_payload",
+        "create_batch",
+        "create_batch_source_commit",
+        "detect_file_mode",
+        "derive_replacement_line_runs_from_lines",
+        "load_git_object_as_buffer",
+        "load_git_object_as_buffer_or_empty",
+        "load_line_changes_from_state",
+        "load_session_batch_sources",
+        "load_working_tree_file_as_buffer",
+        "merge_batch_ownership",
+        "parse_line_selection",
+        "read_batch_metadata",
+        "refresh_selected_lines_against_source_lines",
+        "replacement_selection",
+        "remap_batch_ownership_with_lineage",
+        "require_line_selection_in_view",
+        "save_session_batch_sources",
+        "snapshot_file_if_untracked",
+        "translate_lines_to_batch_ownership",
+    }
+    moved_batch_update_names = {
+        "advance_source_lines_preserving_existing_presence",
+        "create_batch_source_commit",
+        "load_git_object_as_buffer",
+        "load_session_batch_sources",
+        "merge_batch_ownership",
+        "refresh_selected_lines_against_source_lines",
+        "remap_batch_ownership_with_lineage",
+        "save_session_batch_sources",
+        "translate_lines_to_batch_ownership",
+    }
+
+    assert public_names <= vars(helper).keys()
+
+    discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    discard_helpers = {
+        node.name for node in ast.walk(discard_tree) if isinstance(node, ast.FunctionDef)
+    }
+    discard_functions = {
+        node.name: node
+        for node in ast.walk(discard_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    discard_imports_helper = False
+
+    for imported_module, node in _import_from_nodes(discard_path):
+        if imported_module != "git_stage_batch.commands.selection":
+            continue
+        imported_names = {alias.name for alias in node.names}
+        if "discard_line_replacement" in imported_names:
+            discard_imports_helper = True
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+    command_update_names = {
+        node.id
+        for node in ast.walk(discard_functions["_command_discard_lines_to_batch_as"])
+        if isinstance(node, ast.Name)
+    }
+
+    assert old_discard_names.isdisjoint(discard_helpers)
+    assert moved_batch_update_names.isdisjoint(command_update_names)
+    assert discard_imports_helper
+    assert helper_imports <= helper_imported_names
+
+
+def test_batch_line_selection_stays_in_command_helper():
+    """Batch line-selection validation should live in command selection support."""
+    include_path = SRC_ROOT / "commands" / "include.py"
+    discard_path = SRC_ROOT / "commands" / "discard.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "batch_line_selection.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.selection.batch_line_selection",
+        fromlist=["batch_line_selection"],
+    )
+    public_names = {
+        "BatchLineSelection",
+        "select_lines_for_batch_action",
+    }
+    command_level_names = {
+        "parse_line_selection",
+        "require_line_selection_in_view",
+    }
+    guarded_functions = {
+        include_path: {
+            "_command_include_file_lines_to_batch",
+            "_command_include_lines_to_batch",
+        },
+        discard_path: {
+            "_command_discard_file_lines_to_batch",
+            "_command_discard_lines_to_batch",
+        },
+    }
+
+    assert public_names <= vars(helper).keys()
+
+    for path, function_names in guarded_functions.items():
+        tree = ast.parse(path.read_text(), filename=str(path))
+        functions = {
+            node.name: node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef)
+        }
+        imports_helper = False
+
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.commands.selection":
+                continue
+            imported_names = {alias.name for alias in node.names}
+            if "batch_line_selection" in imported_names:
+                imports_helper = True
+
+        assert imports_helper
+        for function_name in function_names:
+            function = functions[function_name]
+            function_names_used = {
+                node.id for node in ast.walk(function) if isinstance(node, ast.Name)
+            }
+            assert command_level_names.isdisjoint(function_names_used)
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert command_level_names <= helper_imported_names
+
+
+def test_batch_line_updates_stays_in_command_helper():
+    """Batch line updates should live in command selection support."""
+    include_path = SRC_ROOT / "commands" / "include.py"
+    discard_path = SRC_ROOT / "commands" / "discard.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "batch_line_updates.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.selection.batch_line_updates",
+        fromlist=["batch_line_updates"],
+    )
+    public_names = {
+        "add_selected_lines_to_batch",
+    }
+    moved_names = {
+        "acquire_batch_ownership_update_for_selection",
+        "add_file_to_batch",
+        "batch_exists",
+        "create_batch",
+        "detect_file_mode",
+        "read_batch_metadata",
+        "snapshot_file_if_untracked",
+    }
+    guarded_functions = {
+        include_path: {
+            "_command_include_file_lines_to_batch",
+            "_command_include_lines_to_batch",
+        },
+        discard_path: {
+            "_command_discard_file_lines_to_batch",
+            "_command_discard_lines_to_batch",
+        },
+    }
+
+    assert public_names <= vars(helper).keys()
+
+    for path, function_names in guarded_functions.items():
+        tree = ast.parse(path.read_text(), filename=str(path))
+        functions = {
+            node.name: node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef)
+        }
+        imports_helper = False
+
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.commands.selection":
+                continue
+            imported_names = {alias.name for alias in node.names}
+            if "batch_line_updates" in imported_names:
+                imports_helper = True
+
+        assert imports_helper
+        for function_name in function_names:
+            function = functions[function_name]
+            function_names_used = {
+                node.id for node in ast.walk(function) if isinstance(node, ast.Name)
+            }
+            attribute_names_used = {
+                node.attr for node in ast.walk(function) if isinstance(node, ast.Attribute)
+            }
+            assert "add_selected_lines_to_batch" in attribute_names_used
+            assert moved_names.isdisjoint(function_names_used)
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert moved_names <= helper_imported_names
 
 
 def test_discard_uses_file_io_path_empty_helper():
@@ -3463,6 +4827,9 @@ def test_replacement_selection_stays_in_command_helper():
     """Include and discard should use the replacement-selection helper module."""
     include_path = SRC_ROOT / "commands" / "include.py"
     discard_path = SRC_ROOT / "commands" / "discard.py"
+    discard_replacement_path = (
+        SRC_ROOT / "commands" / "selection" / "discard_line_replacement.py"
+    )
     helper = __import__(
         "git_stage_batch.commands.selection.replacement_selection",
         fromlist=["replacement_selection"],
@@ -3483,9 +4850,9 @@ def test_replacement_selection_stays_in_command_helper():
         "_derive_replacement_line_runs",
         "_expand_replacement_selection_ids",
     }
-    command_paths = (
+    helper_user_paths = (
         include_path,
-        discard_path,
+        discard_replacement_path,
     )
     violations = []
 
@@ -3495,7 +4862,7 @@ def test_replacement_selection_stays_in_command_helper():
     for old_name in old_include_names:
         assert f"def {old_name}" not in include_path.read_text()
 
-    for command_path in command_paths:
+    for command_path in helper_user_paths:
         imports = _import_from_nodes(command_path)
         imports_helper_namespace = False
 
@@ -3513,11 +4880,12 @@ def test_replacement_selection_stays_in_command_helper():
                     f"{relative_path}:{node.lineno} imports replacement names directly"
                 )
 
-            if command_path == discard_path and imported_module == "git_stage_batch.commands.include":
-                relative_path = command_path.relative_to(REPO_ROOT)
-                violations.append(f"{relative_path}:{node.lineno} imports include")
-
         assert imports_helper_namespace
+
+    for imported_module, node in _import_from_nodes(discard_path):
+        if imported_module == "git_stage_batch.commands.include":
+            relative_path = discard_path.relative_to(REPO_ROOT)
+            violations.append(f"{relative_path}:{node.lineno} imports include")
 
     assert violations == []
 

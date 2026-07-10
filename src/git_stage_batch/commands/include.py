@@ -38,7 +38,6 @@ from ..core.hashing import (
     compute_text_file_deletion_hash,
 )
 from ..core.line_selection import (
-    format_line_ids,
     parse_line_selection,
     read_line_ids_file,
     write_line_ids_file,
@@ -108,7 +107,6 @@ from ..core.buffer import (
 )
 from ..utils.repository_buffers import (
     load_git_object_as_buffer,
-    load_working_tree_file_as_buffer,
 )
 from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
@@ -140,8 +138,11 @@ from ..utils.paths import (
     get_working_tree_snapshot_file_path,
 )
 from .selection import include_line_selection as _include_line_selection
+from .selection import include_file_selection as _include_file_selection
 from .selection import include_line_replacement as _include_line_replacement
 from .selection import replacement_selection
+from .selection import batch_line_selection as _batch_line_selection
+from .selection import batch_line_updates as _batch_line_updates
 from .selection.selected_hunk_refresh import (
     recalculate_selected_hunk_for_command,
     refresh_selected_hunk_after_line_action,
@@ -610,53 +611,11 @@ def command_include_line(
         operation_parts.extend(["--file", file])
 
     with undo_checkpoint(" ".join(operation_parts)), ExitStack() as selected_state_stack:
-        preserve_selected_state = False
-        saved_selected_state = None
-
-        if file is None:
-            require_selected_hunk()
-            line_changes = load_line_changes_from_state()
-            line_changes = (
-                _include_line_selection.annotate_line_changes_with_working_tree_source(
-                    line_changes
-                )
-            )
-        else:
-            if file == "":
-                target_file = get_selected_change_file_path()
-                if target_file is None:
-                    exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
-            else:
-                target_file = file
-            auto_add_untracked_files([target_file])
-            selected_file_view_targets_file = (
-                _include_line_selection.selected_file_view_targets(target_file)
-            )
-            reuse_selected_file_view = (
-                _include_line_selection.selected_file_view_is_fresh_for(target_file)
-            )
-            if reuse_selected_file_view:
-                line_changes = load_line_changes_from_state()
-                line_changes = (
-                    _include_line_selection.annotate_line_changes_with_working_tree_source(
-                        line_changes
-                    )
-                )
-            else:
-                if file != "" and not selected_file_view_targets_file:
-                    preserve_selected_state = True
-                    saved_selected_state = selected_state_stack.enter_context(
-                        snapshot_selected_change_state()
-                    )
-
-                line_changes = cache_unstaged_file_as_single_hunk(target_file)
-                if line_changes is None:
-                    exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
-                line_changes = (
-                    _include_line_selection.annotate_line_changes_with_working_tree_source(
-                        line_changes
-                    )
-                )
+        selection_context = _include_line_selection.load_include_line_selection_context(
+            file,
+            selected_state_stack,
+        )
+        line_changes = selection_context.line_changes
 
         requested_ids = parse_line_selection(line_id_specification)
         require_line_selection_in_view(
@@ -664,7 +623,7 @@ def command_include_line(
             set(requested_ids),
             line_id_specification=line_id_specification,
         )
-        if preserve_selected_state or (file is not None and not reuse_selected_file_view):
+        if selection_context.reset_processed_include_ids:
             already_included_ids = set()
         else:
             already_included_ids = set(read_line_ids_file(get_processed_include_ids_file_path()))
@@ -761,9 +720,9 @@ def command_include_line(
                 target_index_buffer,
             )
 
-        if preserve_selected_state:
-            assert saved_selected_state is not None
-            restore_selected_change_state(saved_selected_state)
+        if selection_context.preserve_selected_state:
+            assert selection_context.saved_selected_state is not None
+            restore_selected_change_state(selection_context.saved_selected_state)
         else:
             # Update processed include IDs only when the selected display remains
             # current for incremental line inclusion.
@@ -780,7 +739,7 @@ def command_include_line(
                 auto_advance=auto_advance,
             )
         finish_review_scoped_line_action(review_state, file_path=line_changes.path)
-    if preserve_selected_state:
+    if selection_context.preserve_selected_state:
         print(
             _("✓ Included line(s): {lines} from {file}").format(
                 lines=line_id_specification,
@@ -826,60 +785,22 @@ def command_include_line_as(
     if file is not None:
         operation_parts.extend(["--file", file])
 
+    replacement_file_context = None
     with undo_checkpoint(" ".join(operation_parts)), ExitStack() as selected_state_stack:
-        preserve_selected_state = False
-        saved_selected_state = None
-
         if file is None:
-            require_selected_hunk()
-            line_changes = load_line_changes_from_state()
-            replacement_line_changes = line_changes
-            replacement_line_id_specification = line_id_specification
-            replacement_base_buffer = None
-            replacement_source_buffer = None
-            selected_change_kind = read_selected_change_kind()
-            requested_ids = set(parse_line_selection(line_id_specification))
-            if selected_change_kind == SelectedChangeKind.FILE:
-                require_line_selection_in_view(
-                    line_changes,
-                    requested_ids,
-                    line_id_specification=line_id_specification,
+            replacement_context = (
+                _include_line_replacement.prepare_pathless_include_line_replacement(
+                    line_id_specification
                 )
-                translated_replacement = (
-                    _include_line_replacement.translate_file_view_replacement_to_unstaged_diff(
-                        line_changes,
-                        requested_ids,
-                    )
-                )
-                if translated_replacement is not None:
-                    replacement_line_changes, replacement_ids = translated_replacement
-                    replacement_line_id_specification = format_line_ids(
-                        sorted(replacement_ids)
-                    )
-                    replacement_base_buffer = load_git_object_as_buffer(
-                        f":{line_changes.path}"
-                    )
-                    if replacement_base_buffer is None:
-                        replacement_base_buffer = LineBuffer.from_bytes(b"")
-                    replacement_source_buffer = load_working_tree_file_as_buffer(
-                        line_changes.path
-                    )
-            if replacement_base_buffer is None:
-                replacement_base_buffer = LineBuffer.from_path(
-                    get_index_snapshot_file_path()
-                )
-            if replacement_source_buffer is None:
-                replacement_source_buffer = LineBuffer.from_path(
-                    get_working_tree_snapshot_file_path()
-                )
-
+            )
+            line_changes = replacement_context.display_line_changes
             with (
-                replacement_base_buffer as hunk_base_lines,
-                replacement_source_buffer as hunk_source_lines,
+                replacement_context.base_buffer as hunk_base_lines,
+                replacement_context.source_buffer as hunk_source_lines,
             ):
                 _include_line_replacement.apply_include_line_replacement(
-                    replacement_line_changes,
-                    line_id_specification=replacement_line_id_specification,
+                    replacement_context.replacement_line_changes,
+                    line_id_specification=replacement_context.line_id_specification,
                     replacement_text=replacement_text,
                     hunk_base_lines=hunk_base_lines,
                     hunk_source_lines=hunk_source_lines,
@@ -900,47 +821,18 @@ def command_include_line_as(
             )
             finish_review_scoped_line_action(review_state, file_path=line_changes.path)
         else:
-            if file == "":
-                target_file = get_selected_change_file_path()
-                if target_file is None:
-                    exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
-                preserve_selected_state = False
-            else:
-                target_file = file
-            selected_file_view_targets_file = (
-                _include_line_selection.selected_file_view_targets(target_file)
-            )
-            reuse_selected_file_view = (
-                _include_line_selection.selected_file_view_is_fresh_for(target_file)
-            )
-            if reuse_selected_file_view:
-                cached_lines = load_line_changes_from_state()
-                if cached_lines is None:
-                    exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
-                annotated_changes = annotate_with_batch_source(target_file, cached_lines)
-            else:
-                if file != "" and not selected_file_view_targets_file:
-                    preserve_selected_state = True
-                saved_selected_state = (
-                    selected_state_stack.enter_context(snapshot_selected_change_state())
-                    if preserve_selected_state else None
+            replacement_file_context = (
+                _include_line_replacement.prepare_file_include_line_replacement(
+                    file,
+                    selected_state_stack,
                 )
-
-                cached_lines = cache_unstaged_file_as_single_hunk(target_file)
-                if cached_lines is None:
-                    exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
-
-                annotated_changes = annotate_with_batch_source(target_file, cached_lines)
-            hunk_base_buffer = load_git_object_as_buffer(f":{target_file}")
-            if hunk_base_buffer is None:
-                hunk_base_buffer = LineBuffer.from_bytes(b"")
-
+            )
             with (
-                hunk_base_buffer as hunk_base_lines,
-                load_working_tree_file_as_buffer(target_file) as hunk_source_lines,
+                replacement_file_context.base_buffer as hunk_base_lines,
+                replacement_file_context.source_buffer as hunk_source_lines,
             ):
                 _include_line_replacement.apply_include_line_replacement(
-                    annotated_changes,
+                    replacement_file_context.line_changes,
                     line_id_specification=line_id_specification,
                     replacement_text=replacement_text,
                     hunk_base_lines=hunk_base_lines,
@@ -948,29 +840,37 @@ def command_include_line_as(
                     trim_unchanged_edge_anchors=not no_edge_overlap,
                 )
 
-            if preserve_selected_state:
-                assert saved_selected_state is not None
-                restore_selected_change_state(saved_selected_state)
+            if replacement_file_context.preserve_selected_state:
+                assert replacement_file_context.saved_selected_state is not None
+                restore_selected_change_state(
+                    replacement_file_context.saved_selected_state
+                )
             else:
                 write_line_ids_file(get_processed_include_ids_file_path(), set())
                 print(
                     _("✓ Included line(s) as replacement: {lines} from {file}").format(
                         lines=line_id_specification,
-                        file=target_file,
+                        file=replacement_file_context.target_file,
                     ),
                     file=sys.stderr,
                 )
                 refresh_selected_hunk_after_line_action(
-                    target_file,
+                    replacement_file_context.target_file,
                     auto_advance=auto_advance,
                 )
-            finish_review_scoped_line_action(review_state, file_path=target_file)
+            finish_review_scoped_line_action(
+                review_state,
+                file_path=replacement_file_context.target_file,
+            )
 
-    if preserve_selected_state:
+    if (
+        replacement_file_context is not None
+        and replacement_file_context.preserve_selected_state
+    ):
         print(
             _("✓ Included line(s) as replacement: {lines} from {file}").format(
                 lines=line_id_specification,
-                file=target_file,
+                file=replacement_file_context.target_file,
             ),
             file=sys.stderr,
         )
@@ -1384,80 +1284,29 @@ def _command_include_file_lines_to_batch(
     auto_advance: bool | None = None,
 ) -> None:
     """Include specific lines from a file to batch (file-scoped with line IDs)."""
-    if render_gitlink_change(file_path) is not None:
-        exit_with_error(
-            _("Cannot use --lines with submodule pointers. Include the whole pointer instead.")
-        )
-
-    reuse_selected_file_view = (
-        read_selected_change_kind() == SelectedChangeKind.FILE
-        and get_selected_change_file_path() == file_path
-    )
-    if reuse_selected_file_view:
-        cached_lines = load_line_changes_from_state()
-    else:
-        cached_lines = cache_unstaged_file_as_single_hunk(file_path)
-
-    if cached_lines is None:
-        exit_with_error(_("No changes in file '{file}'.").format(file=file_path))
-
+    cached_lines = _include_file_selection.load_explicit_file_selection(file_path)
     # Annotate with batch source line numbers
     line_changes = annotate_with_batch_source(file_path, cached_lines)
     _include_line_selection.record_baseline_references_for_additions(line_changes)
 
     # Parse line IDs and filter to selected lines
-    requested_ids = set(parse_line_selection(line_id_specification))
-    require_line_selection_in_view(
+    selection = _batch_line_selection.select_lines_for_batch_action(
         line_changes,
-        requested_ids,
-        line_id_specification=line_id_specification,
+        line_id_specification,
     )
-    selected_lines = [line for line in line_changes.lines if line.id in requested_ids]
 
-    if not selected_lines:
+    if not selection.selected_lines:
         if not quiet:
             print(_("No lines match the specified IDs in file '{file}'.").format(file=file_path), file=sys.stderr)
         return
 
-    # Auto-create batch if it doesn't exist
-    if not batch_exists(batch_name):
-        create_batch(batch_name, "Auto-created")
-
-    file_mode = detect_file_mode(file_path)
-
-    # Prepare batch ownership update (handles stale source, translation, merge)
-
-    metadata = read_batch_metadata(batch_name)
-    file_metadata = metadata.get("files", {}).get(file_path)
-
-    with ExitStack() as ownership_stack:
-        try:
-            update = ownership_stack.enter_context(
-                acquire_batch_ownership_update_for_selection(
-                    batch_name=batch_name,
-                    file_path=file_path,
-                    file_metadata=file_metadata,
-                    selected_lines=selected_lines,
-                )
-            )
-        except ValueError as e:
-            exit_with_error(
-                _("Cannot include lines to batch: batch source is stale and remapping failed.\n"
-                  "File: {file}\nBatch: {batch}\nError: {error}").format(
-                    file=file_path, batch=batch_name, error=str(e))
-            )
-
-        # Snapshot file before modifying
-        snapshot_file_if_untracked(file_path)
-
-        # Save to batch
-        add_file_to_batch(
-            batch_name,
-            file_path,
-            update.ownership_after,
-            file_mode,
-            batch_source_commit=update.batch_source_commit,
-        )
+    _batch_line_updates.add_selected_lines_to_batch(
+        batch_name=batch_name,
+        file_path=file_path,
+        selected_lines=selection.selected_lines,
+        stale_source_action=_("Cannot include lines to batch"),
+        snapshot_untracked=True,
+    )
 
     if not quiet:
         print(_("Included line(s) from file '{file}' to batch '{batch}': {lines}").format(
@@ -1480,56 +1329,23 @@ def _command_include_lines_to_batch(
 
     require_selected_hunk()
 
-    requested_ids = set(parse_line_selection(line_id_specification))
     line_changes = load_line_changes_from_state()
     _include_line_selection.record_baseline_references_for_additions(line_changes)
-    require_line_selection_in_view(
+    selection = _batch_line_selection.select_lines_for_batch_action(
         line_changes,
-        requested_ids,
-        line_id_specification=line_id_specification,
+        line_id_specification,
     )
 
     # Filter to requested display line IDs
-    selected_lines = [line for line in line_changes.lines if line.id in requested_ids]
-    if not selected_lines:
+    if not selection.selected_lines:
         exit_with_error(_("No matching lines found for selection: {ids}").format(ids=line_id_specification))
 
-    # Auto-create batch if it doesn't exist
-    if not batch_exists(batch_name):
-        create_batch(batch_name, "Auto-created")
-
-    # Prepare batch ownership update (handles stale source, translation, merge)
-
-    metadata = read_batch_metadata(batch_name)
-    file_metadata = metadata.get("files", {}).get(line_changes.path)
-
-    file_mode = detect_file_mode(line_changes.path)
-
-    with ExitStack() as ownership_stack:
-        try:
-            update = ownership_stack.enter_context(
-                acquire_batch_ownership_update_for_selection(
-                    batch_name=batch_name,
-                    file_path=line_changes.path,
-                    file_metadata=file_metadata,
-                    selected_lines=selected_lines,
-                )
-            )
-        except ValueError as e:
-            exit_with_error(
-                _("Cannot include lines to batch: batch source is stale and remapping failed.\n"
-                  "File: {file}\nBatch: {batch}\nError: {error}").format(
-                    file=line_changes.path, batch=batch_name, error=str(e))
-            )
-
-        # Save to batch using batch source model
-        add_file_to_batch(
-            batch_name,
-            line_changes.path,
-            update.ownership_after,
-            file_mode,
-            batch_source_commit=update.batch_source_commit,
-        )
+    _batch_line_updates.add_selected_lines_to_batch(
+        batch_name=batch_name,
+        file_path=line_changes.path,
+        selected_lines=selection.selected_lines,
+        stale_source_action=_("Cannot include lines to batch"),
+    )
 
     if not quiet:
         print(_("✓ Included line(s) to batch '{name}': {lines}").format(name=batch_name, lines=line_id_specification), file=sys.stderr)

@@ -9,11 +9,32 @@ from ...batch.query import read_batch_metadata
 from ...data.file_review.state import read_last_file_review_state
 from ...data.line_state import load_line_changes_from_state
 from ...data.file_tracking import list_untracked_files
-from ...data.progress import get_hunk_counts
 from ...exceptions import BypassRefresh, CommandError
 from ...i18n import _
 from ...utils.file_patterns import list_changed_files, resolve_gitignore_style_patterns
-from ..display import print_status_bar
+from .action_router import (
+    apply_file_action,
+    apply_line_action,
+    apply_replacement_action,
+)
+from .batch_actions import (
+    apply_batch_file_action,
+)
+from .block_actions import block_review_file, unblock_review_file
+from .candidates import browse_candidates
+from .display import render_file_review
+from .fixup_actions import (
+    clear_file_review_fixup_state,
+    read_last_fixup_commit_hash,
+    suggest_fixup_for_lines,
+)
+from .live_actions import apply_live_file_action
+from .prompts import (
+    normalize_review_action,
+    print_review_help,
+    prompt_review_action,
+)
+from .session import FileReviewSessionState
 from ..flow import FlowState, LocationRole
 from ..prompts import (
     confirm_destructive_operation,
@@ -21,15 +42,6 @@ from ..prompts import (
     prompt_line_ids,
     wrap_prompt_for_readline,
 )
-
-
-@dataclass
-class FileReviewSessionState:
-    """State for one interactive file review session."""
-
-    flow_state: FlowState
-    file_path: str
-    page_spec: str | None = None
 
 
 @dataclass(frozen=True)
@@ -88,16 +100,20 @@ def handle_file_browser(flow_state: FlowState) -> None:
 
 def _review_loop(state: FileReviewSessionState) -> None:
     while True:
-        if not _render_review(state):
+        if not render_file_review(
+            state.flow_state,
+            file_path=state.file_path,
+            page_spec=state.page_spec,
+        ):
             return
 
-        action = _prompt_review_action(state.flow_state)
-        normalized = _normalize_review_action(action)
+        action = prompt_review_action(state.flow_state)
+        normalized = normalize_review_action(action)
 
         if normalized in {"q", "back", "quit"}:
             return
         if normalized in {"?", "help"}:
-            _print_review_help(state.flow_state)
+            print_review_help(state.flow_state)
             continue
         if normalized in {"g", "page"}:
             state.page_spec = _prompt_page_spec()
@@ -115,122 +131,25 @@ def _review_loop(state: FileReviewSessionState) -> None:
                 state.page_spec = None
             continue
         if normalized in {"i", "s", "d"}:
-            _apply_line_action(state, normalized)
+            apply_line_action(state, normalized)
             continue
         if normalized == "r":
-            _apply_replacement_action(state)
+            apply_replacement_action(state)
             continue
         if normalized == "x":
             _apply_fixup_action(state)
             continue
         if normalized == "c":
-            _browse_candidates(state)
+            browse_candidates(state)
             continue
         if normalized in {"I", "S", "D"}:
-            _apply_file_action(state, normalized)
+            apply_file_action(state, normalized)
             continue
         if normalized in {"B", "U"}:
             _apply_block_action(state, normalized)
             continue
 
         print(_("Unknown review action: {action}").format(action=action))
-
-
-def _render_review(state: FileReviewSessionState) -> bool:
-    print()
-    print_status_bar(get_hunk_counts(), state.flow_state)
-    print()
-
-    try:
-        if state.flow_state.source.role is LocationRole.BATCH:
-            from ...commands.show_from import command_show_from_batch
-
-            command_show_from_batch(
-                state.flow_state.source.batch_name,
-                file=state.file_path,
-                page=state.page_spec,
-                selectable=True,
-            )
-        else:
-            from ...commands.show import command_show
-
-            command_show(
-                file=state.file_path,
-                page=state.page_spec,
-                selectable=True,
-            )
-    except CommandError as e:
-        print(e.message, file=sys.stderr)
-        return False
-    return True
-
-
-def _prompt_review_action(flow_state: FlowState) -> str:
-    print()
-    if flow_state.source.role is LocationRole.BATCH:
-        print(
-            _(
-                "Review action: [i]nclude lines [d]iscard lines "
-                "[r]eplace lines [I]include file [D]discard file "
-                "[B]block [U]unblock [c]andidates [n]next [p]prev [g]page "
-                "[o]open [q]back [?]help"
-            )
-        )
-    else:
-        print(
-            _(
-                "Review action: [i]nclude lines [s]kip lines [d]iscard lines "
-                "[r]eplace lines [I]include file [S]skip file [D]discard file "
-                "[B]block [U]unblock [x]fixup lines [n]next [p]prev [g]page "
-                "[o]open [q]back [?]help"
-            )
-        )
-
-    try:
-        return input(wrap_prompt_for_readline(_("Action: "))).strip()
-    except (KeyboardInterrupt, EOFError):
-        return "q"
-
-
-def _normalize_review_action(action: str) -> str:
-    if action in {"I", "S", "D", "B", "U"}:
-        return action
-
-    lowered = action.lower()
-    word_to_action = {
-        "include": "i",
-        "skip": "s",
-        "discard": "d",
-        "replace": "r",
-        "include-file": "I",
-        "include file": "I",
-        "skip-file": "S",
-        "skip file": "S",
-        "discard-file": "D",
-        "discard file": "D",
-        "block": "B",
-        "block-file": "B",
-        "block file": "B",
-        "unblock": "U",
-        "unblock-file": "U",
-        "unblock file": "U",
-        "fixup": "x",
-        "fixup-lines": "x",
-        "fixup lines": "x",
-        "candidates": "c",
-        "candidate": "c",
-        "next": "n",
-        "prev": "p",
-        "previous": "p",
-        "page": "g",
-        "goto": "g",
-        "open": "o",
-        "files": "o",
-        "back": "q",
-        "quit": "q",
-        "help": "?",
-    }
-    return word_to_action.get(lowered, lowered)
 
 
 def _prompt_page_spec() -> str | None:
@@ -269,18 +188,6 @@ def _previous_page_spec() -> str | None:
         return review_state.page_spec
 
     return str(current_page - 1)
-
-
-def _prompt_replacement_text() -> str | None:
-    try:
-        value = input(
-            wrap_prompt_for_readline(_("Replacement text (empty cancels): "))
-        )
-    except (KeyboardInterrupt, EOFError):
-        return None
-    if value == "":
-        return None
-    return value
 
 
 def _prompt_block_local_only() -> bool | None:
@@ -447,16 +354,14 @@ def _apply_marked_file_action(
     for path in sorted(marked_paths):
         try:
             if action == "B":
-                from ...commands.block_file import command_block_file
-
-                command_block_file(path, local_only=local_only)
+                block_review_file(path, local_only=local_only)
                 continue
 
             state = FileReviewSessionState(flow_state=flow_state, file_path=path)
             if flow_state.source.role is LocationRole.BATCH:
-                _apply_batch_file_action(state, action)
+                apply_batch_file_action(state, action)
             else:
-                _apply_live_file_action(state, action)
+                apply_live_file_action(state, action)
         except CommandError as e:
             print(e.message, file=sys.stderr)
 
@@ -475,183 +380,6 @@ def _normalize_marked_file_action(raw_action: str) -> str | None:
     return None
 
 
-def _browse_candidates(state: FileReviewSessionState) -> None:
-    if state.flow_state.source.role is not LocationRole.BATCH:
-        print(_("Candidate browsing is only available when pulling from a batch."), file=sys.stderr)
-        return
-
-    operation = _prompt_candidate_operation()
-    if operation is None:
-        return
-
-    batch_name = state.flow_state.source.batch_name
-    selector = f"{batch_name}:{operation}"
-
-    try:
-        from ...commands.show_from import command_show_from_batch
-
-        command_show_from_batch(selector, file=state.file_path)
-    except CommandError as e:
-        print(e.message, file=sys.stderr)
-        return
-
-    while True:
-        choice = _prompt_candidate_action()
-        if choice is None:
-            return
-
-        if choice.isdigit():
-            _preview_candidate(batch_name, operation, int(choice), state.file_path)
-            continue
-        if choice.startswith("e "):
-            ordinal_text = choice[2:].strip()
-            if not ordinal_text.isdigit():
-                print(_("Invalid candidate selection."), file=sys.stderr)
-                continue
-            _execute_candidate(batch_name, operation, int(ordinal_text), state.file_path)
-            return
-
-        print(_("Invalid candidate selection."), file=sys.stderr)
-
-
-def _prompt_candidate_operation() -> str | None:
-    try:
-        choice = input(
-            wrap_prompt_for_readline(
-                _("Candidate operation [i]nclude, [a]pply, or q: ")
-            )
-        ).strip().lower()
-    except (KeyboardInterrupt, EOFError):
-        return None
-
-    if choice in {"q", "quit", "cancel"}:
-        return None
-    if choice in {"i", "include"}:
-        return "include"
-    if choice in {"a", "apply"}:
-        return "apply"
-
-    print(_("Invalid candidate operation."), file=sys.stderr)
-    return None
-
-
-def _prompt_candidate_action() -> str | None:
-    try:
-        choice = input(
-            wrap_prompt_for_readline(
-                _("Candidate number to preview, e N to execute, or q: ")
-            )
-        ).strip().lower()
-    except (KeyboardInterrupt, EOFError):
-        return None
-
-    if choice in {"q", "quit", "back"}:
-        return None
-    return choice
-
-
-def _preview_candidate(
-    batch_name: str,
-    operation: str,
-    ordinal: int,
-    file_path: str,
-) -> None:
-    from ...commands.show_from import command_show_from_batch
-
-    try:
-        command_show_from_batch(
-            f"{batch_name}:{operation}:{ordinal}",
-            file=file_path,
-        )
-    except CommandError as e:
-        print(e.message, file=sys.stderr)
-
-
-def _execute_candidate(
-    batch_name: str,
-    operation: str,
-    ordinal: int,
-    file_path: str,
-) -> None:
-    selector = f"{batch_name}:{operation}:{ordinal}"
-    try:
-        if operation == "include":
-            from ...commands.include_from import command_include_from_batch
-
-            command_include_from_batch(selector, file=file_path)
-            return
-
-        from ...commands.apply_from import command_apply_from_batch
-
-        command_apply_from_batch(selector, file=file_path)
-    except CommandError as e:
-        print(e.message, file=sys.stderr)
-
-
-def _apply_replacement_action(state: FileReviewSessionState) -> None:
-    line_ids = prompt_line_ids()
-    if not line_ids:
-        return
-
-    replacement_text = _prompt_replacement_text()
-    if replacement_text is None:
-        return
-
-    try:
-        if state.flow_state.source.role is LocationRole.BATCH:
-            _apply_batch_replacement_action(state, line_ids, replacement_text)
-        else:
-            _apply_live_replacement_action(state, line_ids, replacement_text)
-    except CommandError as e:
-        print(e.message, file=sys.stderr)
-
-
-def _apply_line_action(state: FileReviewSessionState, action: str) -> None:
-    if action == "s" and state.flow_state.source.role is LocationRole.BATCH:
-        print(_("Skip is not available when pulling from a batch."), file=sys.stderr)
-        return
-
-    line_ids = prompt_line_ids()
-    if not line_ids:
-        return
-
-    if action == "d" and state.flow_state.source.role is LocationRole.WORKING_TREE:
-        if not confirm_destructive_operation(
-            "discard",
-            _("This will discard the selected lines from your working tree."),
-        ):
-            return
-
-    try:
-        if state.flow_state.source.role is LocationRole.BATCH:
-            _apply_batch_line_action(state, action, line_ids)
-        else:
-            _apply_live_line_action(state, action, line_ids)
-    except CommandError as e:
-        print(e.message, file=sys.stderr)
-
-
-def _apply_file_action(state: FileReviewSessionState, action: str) -> None:
-    if action == "S" and state.flow_state.source.role is LocationRole.BATCH:
-        print(_("Skip is not available when pulling from a batch."), file=sys.stderr)
-        return
-
-    if action == "D" and state.flow_state.source.role is LocationRole.WORKING_TREE:
-        if not confirm_destructive_operation(
-            "discard",
-            _("This will discard the reviewed file from your working tree."),
-        ):
-            return
-
-    try:
-        if state.flow_state.source.role is LocationRole.BATCH:
-            _apply_batch_file_action(state, action)
-        else:
-            _apply_live_file_action(state, action)
-    except CommandError as e:
-        print(e.message, file=sys.stderr)
-
-
 def _apply_block_action(state: FileReviewSessionState, action: str) -> None:
     if action == "B":
         if not confirm_destructive_operation(
@@ -665,17 +393,13 @@ def _apply_block_action(state: FileReviewSessionState, action: str) -> None:
             return
 
         try:
-            from ...commands.block_file import command_block_file
-
-            command_block_file(state.file_path, local_only=local_only)
+            block_review_file(state.file_path, local_only=local_only)
         except CommandError as e:
             print(e.message, file=sys.stderr)
         return
 
     try:
-        from ...commands.unblock_file import command_unblock_file
-
-        command_unblock_file(state.file_path)
+        unblock_review_file(state.file_path)
     except CommandError as e:
         print(e.message, file=sys.stderr)
 
@@ -689,16 +413,10 @@ def _apply_fixup_action(state: FileReviewSessionState) -> None:
     if not line_ids:
         return
 
-    from ...commands.suggest_fixup import command_suggest_fixup_line
-    from ...data.suggest_fixup_state import (
-        clear_suggest_fixup_state,
-        read_suggest_fixup_state,
-    )
-
     use_color = sys.stdout.isatty()
 
     try:
-        command_suggest_fixup_line(line_ids, file=state.file_path)
+        suggest_fixup_for_lines(line_ids, file_path=state.file_path)
     except CommandError as e:
         print(e.message, file=sys.stderr)
         return
@@ -708,9 +426,8 @@ def _apply_fixup_action(state: FileReviewSessionState) -> None:
         action = prompt_fixup_action(use_color=use_color)
 
         if action == "y":
-            fixup_state = read_suggest_fixup_state()
-            if fixup_state and fixup_state.get("last_shown_commit"):
-                commit_hash = fixup_state["last_shown_commit"][:7]
+            commit_hash = read_last_fixup_commit_hash()
+            if commit_hash is not None:
                 print()
                 print(_("Create fixup commit with:"))
                 print(f"  git commit --fixup={commit_hash}")
@@ -718,272 +435,25 @@ def _apply_fixup_action(state: FileReviewSessionState) -> None:
             return
         if action == "n":
             try:
-                command_suggest_fixup_line(line_ids, file=state.file_path)
+                suggest_fixup_for_lines(line_ids, file_path=state.file_path)
             except CommandError as e:
                 print(e.message, file=sys.stderr)
                 return
             continue
         if action == "r":
             try:
-                command_suggest_fixup_line(line_ids, file=state.file_path, reset=True)
+                suggest_fixup_for_lines(
+                    line_ids,
+                    file_path=state.file_path,
+                    reset=True,
+                )
             except CommandError as e:
                 print(e.message, file=sys.stderr)
                 return
             continue
         if action == "q":
-            clear_suggest_fixup_state()
+            clear_file_review_fixup_state()
             print(_("\nCanceled."))
             return
 
         print(_("Unknown action: {action}").format(action=action))
-
-
-def _apply_live_line_action(
-    state: FileReviewSessionState,
-    action: str,
-    line_ids: str,
-) -> None:
-    if action == "i":
-        if state.flow_state.target.role is LocationRole.BATCH:
-            from ...commands.include import command_include_to_batch
-
-            command_include_to_batch(
-                state.flow_state.target.batch_name,
-                line_ids=line_ids,
-                file=state.file_path,
-                quiet=True,
-                auto_advance=False,
-            )
-            return
-
-        from ...commands.include import command_include_line
-
-        command_include_line(line_ids, file=state.file_path, auto_advance=False)
-        return
-
-    if action == "s":
-        if state.flow_state.target.role is LocationRole.BATCH:
-            from ...commands.include import command_include_to_batch
-
-            command_include_to_batch(
-                state.flow_state.target.batch_name,
-                line_ids=line_ids,
-                file=state.file_path,
-                quiet=True,
-                auto_advance=False,
-            )
-            return
-
-        from ...commands.skip import command_skip_line
-
-        command_skip_line(line_ids, file=state.file_path, auto_advance=False)
-        return
-
-    if state.flow_state.target.role is LocationRole.BATCH:
-        from ...commands.discard import command_discard_to_batch
-
-        command_discard_to_batch(
-            state.flow_state.target.batch_name,
-            line_ids=line_ids,
-            file=state.file_path,
-            quiet=True,
-            auto_advance=False,
-        )
-        return
-
-    from ...commands.discard import command_discard_line
-
-    command_discard_line(line_ids, file=state.file_path, auto_advance=False)
-
-
-def _apply_live_replacement_action(
-    state: FileReviewSessionState,
-    line_ids: str,
-    replacement_text: str,
-) -> None:
-    if state.flow_state.target.role is LocationRole.BATCH:
-        from ...commands.discard import command_discard_line_as_to_batch
-
-        command_discard_line_as_to_batch(
-            state.flow_state.target.batch_name,
-            line_ids,
-            replacement_text,
-            file=state.file_path,
-            quiet=True,
-            auto_advance=False,
-        )
-        return
-
-    from ...commands.include import command_include_line_as
-
-    command_include_line_as(
-        line_ids,
-        replacement_text,
-        file=state.file_path,
-        auto_advance=False,
-    )
-
-
-def _apply_live_file_action(state: FileReviewSessionState, action: str) -> None:
-    if action == "I":
-        if state.flow_state.target.role is LocationRole.BATCH:
-            from ...commands.include import command_include_to_batch
-
-            command_include_to_batch(
-                state.flow_state.target.batch_name,
-                file=state.file_path,
-                quiet=True,
-                auto_advance=False,
-            )
-            return
-
-        from ...commands.include import command_include_file
-
-        command_include_file(
-            state.file_path,
-            quiet=True,
-            advance=False,
-            auto_advance=False,
-        )
-        return
-
-    if action == "S":
-        if state.flow_state.target.role is LocationRole.BATCH:
-            from ...commands.include import command_include_to_batch
-
-            command_include_to_batch(
-                state.flow_state.target.batch_name,
-                file=state.file_path,
-                quiet=True,
-                auto_advance=False,
-            )
-            return
-
-        from ...commands.skip import command_skip_file
-
-        command_skip_file(
-            state.file_path,
-            quiet=True,
-            advance=False,
-            auto_advance=False,
-        )
-        return
-
-    if state.flow_state.target.role is LocationRole.BATCH:
-        from ...commands.discard import command_discard_to_batch
-
-        command_discard_to_batch(
-            state.flow_state.target.batch_name,
-            file=state.file_path,
-            quiet=True,
-            advance=False,
-            auto_advance=False,
-        )
-        return
-
-    from ...commands.discard import command_discard_file
-
-    command_discard_file(state.file_path, auto_advance=False)
-
-
-def _apply_batch_line_action(
-    state: FileReviewSessionState,
-    action: str,
-    line_ids: str,
-) -> None:
-    if state.flow_state.target.role is not LocationRole.STAGING_AREA:
-        print(
-            _("Batch-to-batch transfers not yet supported. Target must be staging."),
-            file=sys.stderr,
-        )
-        return
-
-    if action == "i":
-        from ...commands.include_from import command_include_from_batch
-
-        command_include_from_batch(
-            state.flow_state.source.batch_name,
-            line_ids=line_ids,
-            file=state.file_path,
-        )
-        return
-
-    from ...commands.discard_from import command_discard_from_batch
-
-    command_discard_from_batch(
-        state.flow_state.source.batch_name,
-        line_ids=line_ids,
-        file=state.file_path,
-    )
-
-
-def _apply_batch_replacement_action(
-    state: FileReviewSessionState,
-    line_ids: str,
-    replacement_text: str,
-) -> None:
-    if state.flow_state.target.role is not LocationRole.STAGING_AREA:
-        print(
-            _("Batch-to-batch transfers not yet supported. Target must be staging."),
-            file=sys.stderr,
-        )
-        return
-
-    from ...commands.include_from import command_include_from_batch
-
-    command_include_from_batch(
-        state.flow_state.source.batch_name,
-        line_ids=line_ids,
-        file=state.file_path,
-        replacement_text=replacement_text,
-    )
-
-
-def _apply_batch_file_action(state: FileReviewSessionState, action: str) -> None:
-    if state.flow_state.target.role is not LocationRole.STAGING_AREA:
-        print(
-            _("Batch-to-batch transfers not yet supported. Target must be staging."),
-            file=sys.stderr,
-        )
-        return
-
-    if action == "I":
-        from ...commands.include_from import command_include_from_batch
-
-        command_include_from_batch(
-            state.flow_state.source.batch_name,
-            file=state.file_path,
-        )
-        return
-
-    from ...commands.discard_from import command_discard_from_batch
-
-    command_discard_from_batch(
-        state.flow_state.source.batch_name,
-        file=state.file_path,
-    )
-
-
-def _print_review_help(flow_state: FlowState) -> None:
-    print()
-    print(_("File Review Commands:"))
-    print(_("  i, include       Include selected file-review line IDs"))
-    if flow_state.source.role is not LocationRole.BATCH:
-        print(_("  s, skip          Skip selected file-review line IDs"))
-    print(_("  d, discard       Discard selected file-review line IDs"))
-    print(_("  r, replace       Replace selected line IDs through current flow"))
-    if flow_state.source.role is not LocationRole.BATCH:
-        print(_("  x, fixup         Suggest fixup commits for selected line IDs"))
-    if flow_state.source.role is LocationRole.BATCH:
-        print(_("  c, candidates    Preview or execute batch candidates"))
-    print(_("  I                Include the reviewed file"))
-    if flow_state.source.role is not LocationRole.BATCH:
-        print(_("  S                Skip the reviewed file"))
-    print(_("  D                Discard the reviewed file"))
-    print(_("  B                Block the reviewed file"))
-    print(_("  U                Unblock the reviewed file"))
-    print(_("  n, next          Show the next file review page"))
-    print(_("  p, prev          Show the previous file review page"))
-    print(_("  g, page          Show a page or page range"))
-    print(_("  o, open          Choose another reviewable file"))
-    print(_("  q, back          Return to hunk review"))

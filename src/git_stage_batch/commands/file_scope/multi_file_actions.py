@@ -12,7 +12,7 @@ from ...data.hunk_tracking import select_next_change_after_action
 from ...data.undo import undo_checkpoint
 from ...exceptions import CommandError
 from ...i18n import _, ngettext
-from ..discard import command_discard_files_to_batch
+from .discard_to_batch import discard_files_to_batch
 from ..include import command_include_file
 from ..selection.selected_change_display import show_selected_change
 from ..skip import command_skip_file
@@ -178,7 +178,7 @@ def discard_to_batch_each_resolved_file(
     """Save a multi-file live scope to a batch and report one aggregate summary."""
     operation = f"discard --to {shlex.quote(batch_name)}"
     with _multi_file_undo_checkpoint(operation, files, worktree_paths=files):
-        result = command_discard_files_to_batch(
+        result = discard_files_to_batch(
             batch_name,
             list(files),
             quiet=True,

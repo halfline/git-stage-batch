@@ -69,6 +69,23 @@ class TestIntentToAddHandling:
         )
         assert status_result.stdout == "A  staged-empty.py\n"
 
+    def test_empty_intent_to_add_file_remains_intent_to_add(self, temp_git_repo):
+        """An empty worktree file still carries a real intent-to-add flag."""
+        test_file = temp_git_repo / "intent-empty.py"
+        test_file.write_bytes(b"")
+        subprocess.run(["git", "add", "-N", test_file.name], cwd=temp_git_repo, check=True, capture_output=True)
+
+        initialize_abort_state()
+
+        status_result = subprocess.run(
+            ["git", "status", "--porcelain", "--", test_file.name],
+            cwd=temp_git_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert status_result.stdout == " A intent-empty.py\n"
+
     def test_tracked_file_with_intent_to_add_not_removed_from_index(self, temp_git_repo):
         """Tracked files with intent-to-add should keep their index entry."""
         # Create and commit a tracked file

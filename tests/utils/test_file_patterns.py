@@ -1,6 +1,7 @@
 """Tests for gitignore-style file pattern resolution."""
 
 import subprocess
+from pathlib import Path
 
 from git_stage_batch.utils.file_patterns import list_changed_files, resolve_gitignore_style_patterns
 
@@ -103,6 +104,21 @@ def test_resolve_gitignore_style_patterns_returns_empty_list_for_no_matches():
     )
 
     assert resolved == []
+
+
+def test_resolve_gitignore_style_patterns_does_not_materialize_candidate_files(monkeypatch):
+    """Git can match candidate pathnames without creating files in the temp repo."""
+    def fail_touch(self, *args, **kwargs):
+        raise AssertionError(f"unexpected candidate materialization: {self}")
+
+    monkeypatch.setattr(Path, "touch", fail_touch)
+
+    resolved = resolve_gitignore_style_patterns(
+        ["docs/guide.md", "build/output.o"],
+        ["docs/**"],
+    )
+
+    assert resolved == ["docs/guide.md"]
 
 
 def test_list_changed_files_reports_rename_delete_and_add(tmp_path, monkeypatch):

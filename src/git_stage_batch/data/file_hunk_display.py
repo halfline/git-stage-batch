@@ -29,6 +29,7 @@ from ..utils.paths import get_context_lines
 from ..core.text_lines import bytes_to_lines
 from .file_tracking import auto_add_untracked_files
 from .live_diff import stream_live_git_diff
+from ..utils.session_start_point import session_comparison_base
 
 
 def render_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
@@ -36,7 +37,7 @@ def render_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
     auto_add_untracked_files([file_path])
     with acquire_unified_diff(
         stream_live_git_diff(
-            base="HEAD",
+            base=session_comparison_base(),
             context_lines=get_context_lines(),
             full_index=True,
             ignore_submodules="none",

@@ -6,7 +6,6 @@ import sys
 from contextlib import nullcontext
 from pathlib import Path
 
-from ..data.hunk_tracking import advance_to_and_show_next_change
 from ..data.undo import undo_checkpoint
 from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _
@@ -20,6 +19,7 @@ from ..utils.git import (
     run_git_command,
 )
 from ..utils.paths import ensure_state_directory_exists, get_abort_head_file_path, get_auto_added_files_file_path, get_blocked_files_file_path
+from .selection.action_completion import advance_to_and_show_next_change
 
 
 EMPTY_BLOB_HASH = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"

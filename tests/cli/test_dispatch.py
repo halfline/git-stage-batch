@@ -41,6 +41,56 @@ def test_dispatch_args_with_command():
     assert executed == [True]
 
 
+def test_dispatch_args_interactive_flag_uses_interactive_runner(monkeypatch):
+    """The top-level interactive flag should launch through dispatch."""
+    called = []
+    args = argparse.Namespace(command=None, interactive_flag=True)
+
+    monkeypatch.setattr(
+        dispatch,
+        "_run_interactive_command",
+        lambda: called.append(True),
+    )
+
+    dispatch.dispatch_args(args)
+
+    assert called == [True]
+
+
+def test_dispatch_args_interactive_command_uses_interactive_runner(monkeypatch):
+    """The interactive subcommand should launch through dispatch."""
+    called = []
+    args = argparse.Namespace(
+        command="interactive",
+        interactive_command=True,
+        interactive_flag=False,
+    )
+
+    monkeypatch.setattr(
+        dispatch,
+        "_run_interactive_command",
+        lambda: called.append(True),
+    )
+
+    dispatch.dispatch_args(args)
+
+    assert called == [True]
+
+
+def test_run_interactive_command_launches_tui(monkeypatch):
+    """The dispatch runner should call the TUI entry point directly."""
+    called = []
+
+    monkeypatch.setattr(
+        "git_stage_batch.tui.interactive.start_interactive_mode",
+        lambda: called.append(True),
+    )
+
+    dispatch._run_interactive_command()
+
+    assert called == [True]
+
+
 def test_dispatch_args_no_command_shows_selected_hunk_when_session_active(monkeypatch):
     """Test dispatch with no command falls back to show during an active session."""
     args = argparse.Namespace(command=None)

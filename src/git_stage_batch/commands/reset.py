@@ -13,12 +13,12 @@ from ..batch.operations import create_batch
 from ..batch.ownership import (
     BatchOwnership,
     acquire_detached_batch_ownership,
-    build_ownership_units_from_batch_source_lines,
     filter_ownership_units_by_display_ids,
     merge_batch_ownership,
     rebuild_ownership_from_units,
     validate_ownership_units,
 )
+from ..batch.ownership_units import build_ownership_units_from_batch_source_lines
 from ..batch.query import read_batch_metadata
 from ..batch.selection import (
     require_display_ids_available,
@@ -61,7 +61,7 @@ from ..data.selected_change.store import (
     read_selected_change_kind,
 )
 from ..data.undo import undo_checkpoint
-from ..editor import load_git_object_as_buffer
+from ..utils.repository_buffers import load_git_object_as_buffer
 from ..utils.file_io import write_text_file_contents
 from ..utils.git import require_git_repository
 from ..utils.paths import (

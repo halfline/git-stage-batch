@@ -77,8 +77,8 @@ from ..output.file_review_list import (
     make_gitlink_file_review_list_entry,
     print_file_review_list,
 )
-from ..editor import (
-    EditorBuffer,
+from ..core.buffer import LineBuffer
+from ..utils.repository_buffers import (
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
 )
@@ -321,7 +321,7 @@ class _CandidateSnippetLine:
         )
 
 
-def _decode_overview_lines(buffer: EditorBuffer) -> list[str]:
+def _decode_overview_lines(buffer: LineBuffer) -> list[str]:
     text = buffer.to_bytes().decode("utf-8", errors="surrogateescape")
     return text.splitlines()
 
@@ -618,8 +618,8 @@ def _print_candidate_line_changes(
 
 def _print_candidate_buffer_diff(
     file_path: str,
-    before_buffer: EditorBuffer,
-    after_buffer: EditorBuffer,
+    before_buffer: LineBuffer,
+    after_buffer: LineBuffer,
     *,
     context_lines: int,
     ambiguity_target_line_range: tuple[int, int] | None,
@@ -1106,7 +1106,7 @@ def _preview_replacement_batch_view(
             except ValueError as e:
                 exit_with_error(str(e))
             with replacement_view:
-                before = EditorBuffer.from_bytes(batch_source_buffer.to_bytes())
+                before = LineBuffer.from_bytes(batch_source_buffer.to_bytes())
                 try:
                     diff_text = render_candidate_buffer_diff(
                         file_path,
@@ -1214,7 +1214,7 @@ def _build_candidate_previews(
                 index_buffer = load_git_object_as_buffer(f":{file_path}")
                 index_exists = index_buffer is not None
                 if index_buffer is None:
-                    index_buffer = EditorBuffer.from_bytes(b"")
+                    index_buffer = LineBuffer.from_bytes(b"")
                 index_file_mode = mode_for_text_materialization(
                     batch_file_mode,
                     selected_ids,

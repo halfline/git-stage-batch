@@ -21,7 +21,7 @@ from git_stage_batch.core.models import RenderedBatchDisplay, ReviewActionGroup
 from git_stage_batch.data.batch_sources import create_batch_source_commit, save_session_batch_sources
 from git_stage_batch.batch.file_display import render_batch_file_display
 from git_stage_batch.data.hunk_tracking import fetch_next_change
-from git_stage_batch.editor import EditorBuffer
+from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.exceptions import CommandError, NoMoreHunks
 
 
@@ -685,7 +685,7 @@ class TestResetFromBatch:
         metadata_before = read_batch_metadata("mybatch")
         original_source = metadata_before["files"]["test.py"]["batch_source_commit"]
 
-        with EditorBuffer.from_bytes(b"unrelated cache content\n") as wrong_source_buffer:
+        with LineBuffer.from_bytes(b"unrelated cache content\n") as wrong_source_buffer:
             wrong_source = create_batch_source_commit(
                 "test.py",
                 file_buffer_override=wrong_source_buffer,

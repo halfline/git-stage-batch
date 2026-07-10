@@ -13,17 +13,17 @@ from git_stage_batch.commands import include, discard
 from git_stage_batch.batch.source_refresh import (
     RefreshedBatchSelection,
     PreparedBatchUpdate,
-    _refresh_selected_lines_against_source_lines,
     acquire_batch_ownership_update_for_selection,
     ensure_batch_source_current_for_selection,
     prepare_batch_ownership_update_for_selection,
+    refresh_selected_lines_against_source_lines,
 )
 from git_stage_batch.batch.ownership import (
     BatchOwnership,
-    _advance_source_lines_preserving_existing_presence,
+    advance_source_lines_preserving_existing_presence,
 )
 from git_stage_batch.core.models import LineEntry
-from git_stage_batch.editor import EditorBuffer
+from git_stage_batch.core.buffer import LineBuffer
 
 
 def _advance_source_from_content(
@@ -33,10 +33,10 @@ def _advance_source_from_content(
     ownership: BatchOwnership,
 ):
     with (
-        EditorBuffer.from_bytes(old_source_buffer) as old_source_lines,
-        EditorBuffer.from_bytes(working_buffer) as working_lines,
+        LineBuffer.from_bytes(old_source_buffer) as old_source_lines,
+        LineBuffer.from_bytes(working_buffer) as working_lines,
     ):
-        return _advance_source_lines_preserving_existing_presence(
+        return advance_source_lines_preserving_existing_presence(
             old_lines=old_source_lines,
             working_lines=working_lines,
             ownership=ownership,
@@ -304,7 +304,7 @@ def test_refresh_selected_lines_uses_synthesized_working_line_provenance():
             ),
         ]
 
-        refreshed = _refresh_selected_lines_against_source_lines(
+        refreshed = refresh_selected_lines_against_source_lines(
             selected_lines,
             source_lines=source_with_provenance.source_buffer,
             working_lines=(),
@@ -323,7 +323,7 @@ def test_refresh_selected_lines_accepts_non_list_source_sequences(line_sequence)
         ),
     ]
 
-    refreshed = _refresh_selected_lines_against_source_lines(
+    refreshed = refresh_selected_lines_against_source_lines(
         selected_lines,
         source_lines=line_sequence([b"line1\n", b"line2\n", b"line3\n"]),
         working_lines=line_sequence([b"line1\n", b"line3\n"]),
@@ -341,7 +341,7 @@ def test_refresh_selected_lines_accepts_non_list_line_sequences(line_sequence):
         ),
     ]
 
-    refreshed = _refresh_selected_lines_against_source_lines(
+    refreshed = refresh_selected_lines_against_source_lines(
         selected_lines,
         source_lines=line_sequence([b"line1\n", b"line2\n", b"line3\n"]),
         working_lines=line_sequence([b"line1\n", b"line3\n"]),

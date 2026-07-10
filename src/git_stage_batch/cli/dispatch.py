@@ -4,10 +4,16 @@ from __future__ import annotations
 
 import argparse
 
-from ..commands import command_show
+from ..commands.show import command_show
 from ..exceptions import exit_with_error
 from ..i18n import _
 from ..utils.paths import get_abort_head_file_path
+
+
+def _run_interactive_command() -> None:
+    from ..tui.interactive import start_interactive_mode
+
+    start_interactive_mode()
 
 
 def dispatch_args(args: argparse.Namespace) -> None:
@@ -16,10 +22,12 @@ def dispatch_args(args: argparse.Namespace) -> None:
     Args:
         args: Parsed arguments from ArgumentParser
     """
-    # Check for -i flag first
-    if hasattr(args, 'interactive_flag') and args.interactive_flag:
-        from ..commands import command_interactive
-        command_interactive()
+    # Check interactive launch paths first.
+    if (
+        getattr(args, "interactive_flag", False)
+        or getattr(args, "interactive_command", False)
+    ):
+        _run_interactive_command()
     elif args.command is None:
         if get_abort_head_file_path().exists():
             command_show()

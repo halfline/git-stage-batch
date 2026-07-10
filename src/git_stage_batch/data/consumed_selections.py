@@ -13,11 +13,11 @@ from ..batch.ownership import (
     translate_lines_to_batch_ownership,
 )
 from ..batch.source_refresh import (
-    _refresh_selected_lines_against_new_source,
-    _refresh_selected_lines_against_source_lines,
+    refresh_selected_lines_against_new_source,
+    refresh_selected_lines_against_source_lines,
 )
 from .batch_sources import create_batch_source_commit
-from ..editor import EditorBuffer
+from ..core.buffer import LineBuffer
 from ..utils.file_io import read_text_file_contents, write_text_file_contents
 from ..utils.paths import get_session_consumed_selections_file_path
 
@@ -49,7 +49,7 @@ def read_consumed_file_metadata(file_path: str) -> dict[str, Any] | None:
 def record_consumed_selection(
     file_path: str,
     *,
-    source_buffer: EditorBuffer,
+    source_buffer: LineBuffer,
     selected_lines: list,
     replacement_mask: dict[str, list[str]] | None = None,
 ) -> None:
@@ -97,7 +97,7 @@ def record_consumed_selection(
                 ) as advance_result:
                     batch_source_commit = advance_result.batch_source_commit
                     existing_ownership = advance_result.ownership
-                    selected_lines = _refresh_selected_lines_against_source_lines(
+                    selected_lines = refresh_selected_lines_against_source_lines(
                         selected_lines,
                         source_lines=advance_result.source_buffer,
                         working_lines=(),
@@ -111,7 +111,7 @@ def record_consumed_selection(
             return
     else:
         if detect_stale_batch_source_for_selection(selected_lines):
-            selected_lines = _refresh_selected_lines_against_new_source(selected_lines)
+            selected_lines = refresh_selected_lines_against_new_source(selected_lines)
         merged_ownership = translate_lines_to_batch_ownership(selected_lines)
         batch_source_commit = create_batch_source_commit(
             file_path,

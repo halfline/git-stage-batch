@@ -46,11 +46,13 @@ from ..data.file_review.state import (
     resolve_batch_source_action_scope,
 )
 from ..batch.file_display import render_batch_file_display
-from ..editor import (
-    EditorBuffer,
+from ..core.buffer import (
+    LineBuffer,
+    write_buffer_to_working_tree_path,
+)
+from ..utils.repository_buffers import (
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
-    write_buffer_to_working_tree_path,
 )
 from ..data.session import snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
@@ -62,7 +64,7 @@ from ..utils.git import get_git_repository_root_path, require_git_repository
 @dataclass
 class _ApplyTextPlan:
     file_path: str
-    buffer: EditorBuffer | None
+    buffer: LineBuffer | None
     file_mode: str | None
     change_type: str
 
@@ -75,7 +77,7 @@ class _ApplyTextPlan:
 class _ApplyBinaryPlan:
     file_path: str
     file_meta: dict
-    buffer: EditorBuffer | None
+    buffer: LineBuffer | None
 
     def close(self) -> None:
         if self.buffer is not None:
@@ -102,7 +104,7 @@ def _read_binary_file_from_batch(
     batch_name: str,
     file_path: str,
     file_meta: dict,
-) -> EditorBuffer | None:
+) -> LineBuffer | None:
     """Read one binary batch target, or return None for a stored deletion."""
     batch_commit = get_batch_commit_sha(batch_name)
     if not batch_commit:
@@ -124,7 +126,7 @@ def _read_binary_file_from_batch(
 def _write_binary_file_from_batch(
     file_path: str,
     file_meta: dict,
-    buffer: EditorBuffer | None,
+    buffer: LineBuffer | None,
 ) -> None:
     """Write one binary batch target into the working tree."""
     repo_root = get_git_repository_root_path()
@@ -157,7 +159,7 @@ def _write_binary_file_from_batch(
 
 def _write_text_file_from_batch(
     file_path: str,
-    buffer: EditorBuffer | None,
+    buffer: LineBuffer | None,
     file_mode: str | None,
     change_type: str = "modified",
 ) -> None:
@@ -528,7 +530,7 @@ def command_apply_from_batch(
                     ) as ownership:
                         if ownership.is_empty():
                             if selected_ids is None and text_change_type == TextFileChangeType.ADDED:
-                                merged_buffer = EditorBuffer.from_bytes(b"")
+                                merged_buffer = LineBuffer.from_bytes(b"")
                             else:
                                 continue
                         else:

@@ -7,8 +7,8 @@ from typing import overload
 
 import pytest
 
+from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.editor import (
-    EditorBuffer,
     Editor,
     edit_lines_as_buffer,
     export_lines_as_buffer,
@@ -55,7 +55,7 @@ def test_edit_lines_as_buffer_replaces_middle_lines(line_sequence):
         selection_end=2,
         has_trailing_newline=True,
     ) as buffer:
-        assert isinstance(buffer, EditorBuffer)
+        assert isinstance(buffer, LineBuffer)
         assert buffer.to_bytes() == b"one\nnew\nthree\n"
 
 
@@ -123,7 +123,7 @@ def test_export_lines_as_buffer_exports_generated_lines():
     lines = (line for line in [b"one\r\n", b"two\r"])
 
     with export_lines_as_buffer(lines, has_trailing_newline=True) as buffer:
-        assert isinstance(buffer, EditorBuffer)
+        assert isinstance(buffer, LineBuffer)
         assert buffer.to_bytes() == b"one\ntwo\r\n"
 
 
@@ -312,7 +312,7 @@ def test_editor_exposes_exact_indexed_lines(line_sequence):
 def test_editor_add_lines_accepts_acquired_line_views():
     """add_lines can carry scoped editor-buffer line views by range."""
     with (
-        EditorBuffer.from_bytes(b"one\ntwo\nthree\n") as buffer,
+        LineBuffer.from_bytes(b"one\ntwo\nthree\n") as buffer,
         buffer.acquire_lines() as lines,
         Editor([]) as editor,
     ):

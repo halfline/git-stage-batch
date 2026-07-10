@@ -7,7 +7,7 @@ from git_stage_batch.core.diff_parser import (
     build_line_changes_from_patch_lines,
 )
 from git_stage_batch.core.models import SingleHunkPatch
-from git_stage_batch.editor import EditorBuffer
+from git_stage_batch.core.buffer import LineBuffer
 from tests.diff_parser_helpers import collect_unified_diff
 
 
@@ -73,7 +73,7 @@ index abc123..def456 100644
             patch = next(patches)
 
             assert isinstance(patch, SingleHunkPatch)
-            assert isinstance(patch.lines, EditorBuffer)
+            assert isinstance(patch.lines, LineBuffer)
             assert b"".join(patch.lines).startswith(b"--- a/file.txt\n")
 
         with pytest.raises(ValueError, match="buffer is closed"):

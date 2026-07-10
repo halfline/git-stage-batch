@@ -24,7 +24,10 @@ from ...core.models import (
     RenameChange,
     TextFileDeletionChange,
 )
-from ...editor import EditorBuffer, write_buffer_to_path
+from ...core.buffer import (
+    LineBuffer,
+    write_buffer_to_path,
+)
 from ...exceptions import CommandError
 from ...i18n import _
 from ...utils.file_io import read_text_file_contents, write_text_file_contents
@@ -87,7 +90,7 @@ class SelectedChangeStateSnapshot:
 
 
 def write_selected_hunk_patch_lines(patch_lines: Sequence[bytes]) -> None:
-    with EditorBuffer.from_chunks(iter(patch_lines)) as patch_buffer:
+    with LineBuffer.from_chunks(iter(patch_lines)) as patch_buffer:
         write_buffer_to_path(get_selected_hunk_patch_file_path(), patch_buffer)
 
 
@@ -103,7 +106,7 @@ def write_line_changes_state(line_changes: LineLevelChange) -> None:
 
 
 def load_line_changes_from_patch_path(patch_path: Path) -> LineLevelChange:
-    with EditorBuffer.from_path(patch_path) as patch_lines:
+    with LineBuffer.from_path(patch_path) as patch_lines:
         return build_line_changes_from_patch_lines(patch_lines)
 
 

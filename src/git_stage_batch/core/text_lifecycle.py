@@ -3,16 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from contextlib import ExitStack
 from enum import Enum
 
-from ..editor import (
-    EditorBuffer,
+from .buffer import (
     buffer_byte_count,
     buffer_matches,
-    load_git_object_as_buffer,
 )
-from ..utils.git import get_git_repository_root_path
 
 
 BufferData = bytes | Sequence[bytes]
@@ -36,34 +32,6 @@ def normalized_text_change_type(change_type: str | TextFileChangeType | None) ->
         return TextFileChangeType.MODIFIED
 
 
-def detect_empty_text_lifecycle_change(
-    file_path: str,
-    *,
-    baseline_ref: str = "HEAD",
-) -> TextFileChangeType | None:
-    """Return added/deleted for empty text lifecycle diffs with no hunk body."""
-    full_path = get_git_repository_root_path() / file_path
-
-    with ExitStack() as stack:
-        if full_path.exists() and full_path.is_file():
-            working_buffer = stack.enter_context(EditorBuffer.from_path(full_path))
-            if buffer_byte_count(working_buffer) != 0:
-                return None
-
-            baseline_buffer = load_git_object_as_buffer(f"{baseline_ref}:{file_path}")
-            if baseline_buffer is None:
-                return TextFileChangeType.ADDED
-            baseline_buffer.close()
-            return None
-
-        baseline_buffer = load_git_object_as_buffer(f"{baseline_ref}:{file_path}")
-        if baseline_buffer is not None:
-            stack.enter_context(baseline_buffer)
-            if buffer_byte_count(baseline_buffer) == 0:
-                return TextFileChangeType.DELETED
-    return None
-
-
 def resolve_text_change_type(
     *,
     file_path: str,
@@ -71,7 +39,7 @@ def resolve_text_change_type(
     batch_source_content: BufferData,
     realized_content: BufferData,
     requested_change_type: str | TextFileChangeType | None = None,
-    working_exists: bool | None = None,
+    working_exists: bool,
 ) -> TextFileChangeType:
     """Classify text batches that represent whole-path lifecycle states."""
     requested = (
@@ -106,8 +74,6 @@ def resolve_text_change_type(
     ):
         return TextFileChangeType.ADDED
 
-    if working_exists is None:
-        working_exists = (get_git_repository_root_path() / file_path).exists()
     if baseline_exists and not working_exists and _buffer_is_empty(realized_content):
         return TextFileChangeType.DELETED
 

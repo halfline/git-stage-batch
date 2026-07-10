@@ -26,10 +26,12 @@ from ..data.batch_sources import (
     load_session_batch_sources,
     save_session_batch_sources,
 )
-from ..editor import (
-    EditorBuffer,
+from ..core.buffer import LineBuffer
+from ..utils.repository_buffers import (
     load_git_object_as_buffer,
     load_git_tree_files_as_buffers,
+)
+from ..editor import (
     restore_line_endings_in_chunks,
     detect_line_ending,
 )
@@ -49,7 +51,7 @@ from ..utils.git import (
 )
 from ..utils.paths import get_batch_metadata_file_path
 from ..utils.text import normalize_line_sequence_endings
-from .merge import _realized_entry_content_chunks, _satisfy_constraints
+from .merge import realized_entry_content_chunks, satisfy_constraints
 
 if TYPE_CHECKING:
     from .ownership import BatchOwnership, AbsenceClaim
@@ -123,13 +125,13 @@ def add_files_to_batch(batch_name: str, updates: list[BatchFileUpdate]) -> None:
     batch_sources = load_session_batch_sources()
     batch_sources_changed = False
     batch_source_commits: dict[str, str] = {}
-    batch_source_buffers: dict[str, EditorBuffer] = {}
+    batch_source_buffers: dict[str, LineBuffer] = {}
     missing_source_paths: list[str] = []
-    managed_buffers: list[EditorBuffer] = []
+    managed_buffers: list[LineBuffer] = []
 
     def manage_buffers(
-        buffers: dict[str, EditorBuffer],
-    ) -> dict[str, EditorBuffer]:
+        buffers: dict[str, LineBuffer],
+    ) -> dict[str, LineBuffer]:
         managed_buffers.extend(buffers.values())
         return buffers
 
@@ -169,7 +171,7 @@ def add_files_to_batch(batch_name: str, updates: list[BatchFileUpdate]) -> None:
                 manage_buffers(load_git_tree_files_as_buffers(source_commit, source_paths))
             )
 
-        empty_buffer = EditorBuffer.from_bytes(b"")
+        empty_buffer = LineBuffer.from_bytes(b"")
         managed_buffers.append(empty_buffer)
 
         with temp_git_index() as env:
@@ -178,7 +180,7 @@ def add_files_to_batch(batch_name: str, updates: list[BatchFileUpdate]) -> None:
                 git_read_tree(existing_commit, env=env)
 
             index_updates: list[GitIndexEntryUpdate] = []
-            realized_buffers: list[EditorBuffer] = []
+            realized_buffers: list[LineBuffer] = []
             realized_buffer_indexes: list[int] = []
             for update in updates:
                 file_path = update.file_path
@@ -187,7 +189,7 @@ def add_files_to_batch(batch_name: str, updates: list[BatchFileUpdate]) -> None:
                 base_buffer = baseline_buffers.get(file_path, empty_buffer)
                 batch_source_buffer = batch_source_buffers.get(file_path, empty_buffer)
 
-                realized_buffer = _build_realized_buffer_from_lines(
+                realized_buffer = build_realized_buffer_from_lines(
                     base_buffer,
                     batch_source_buffer,
                     update.ownership,
@@ -212,6 +214,9 @@ def add_files_to_batch(batch_name: str, updates: list[BatchFileUpdate]) -> None:
                     ),
                     realized_content=realized_buffer,
                     requested_change_type=update.change_type,
+                    working_exists=(
+                        get_git_repository_root_path() / file_path
+                    ).exists(),
                 )
 
                 file_metadata = {
@@ -282,7 +287,7 @@ def add_binary_file_to_batch(
     batch_name: str,
     binary_change: BinaryFileChange,
     file_mode: str = "100644",
-    file_buffer_override: EditorBuffer | None = None,
+    file_buffer_override: LineBuffer | None = None,
 ) -> None:
     """Add a binary file change to a batch as an atomic unit.
 
@@ -305,7 +310,7 @@ def add_binary_file_to_batch(
     # Determine file path
     file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
 
-    current_binary_buffer: EditorBuffer | None = None
+    current_binary_buffer: LineBuffer | None = None
     close_current_binary_buffer = False
     try:
         if binary_change.is_deleted_file():
@@ -326,7 +331,7 @@ def add_binary_file_to_batch(
                 full_path = get_git_repository_root_path() / file_path
                 if not full_path.exists():
                     raise FileNotFoundError(file_path)
-                current_binary_buffer = EditorBuffer.from_path(full_path)
+                current_binary_buffer = LineBuffer.from_path(full_path)
                 close_current_binary_buffer = True
             else:
                 current_binary_buffer = file_buffer_override
@@ -369,7 +374,7 @@ def add_binary_file_to_batch(
         # Update batch commit tree
         if blob_sha:
             # Added or modified: add file to batch commit tree
-            _update_batch_commit(
+            update_batch_commit(
                 batch_name,
                 file_path,
                 blob_sha,
@@ -378,7 +383,7 @@ def add_binary_file_to_batch(
             )
         else:
             # Deleted: remove file from batch commit tree
-            _remove_file_from_batch_commit(
+            remove_file_from_batch_commit(
                 batch_name,
                 file_path,
                 source_buffers=source_buffers,
@@ -415,7 +420,7 @@ def add_gitlink_to_batch(
     write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
 
     if gitlink_change.is_deleted_file():
-        _remove_file_from_batch_commit(batch_name, file_path)
+        remove_file_from_batch_commit(batch_name, file_path)
         return
 
     if gitlink_change.new_oid is None:
@@ -426,13 +431,13 @@ def add_gitlink_to_batch(
     _update_batch_gitlink_commit(batch_name, file_path, gitlink_change.new_oid)
 
 
-def _build_realized_buffer_from_lines(
+def build_realized_buffer_from_lines(
     base_lines: Sequence[bytes],
     batch_source_lines: Sequence[bytes],
     ownership: 'BatchOwnership',
-) -> EditorBuffer:
-    """Build realized batch content as an editor buffer."""
-    return EditorBuffer.from_chunks(
+) -> LineBuffer:
+    """Build realized batch content as a line buffer."""
+    return LineBuffer.from_chunks(
         restore_line_endings_in_chunks(
             _stream_realized_content_chunks_from_lines(
                 normalize_line_sequence_endings(base_lines),
@@ -457,7 +462,7 @@ def _stream_realized_content_chunks_from_lines(
 
     # Apply constraints using same model as merge, with lenient absence
     # enforcement because baseline may not have deletion content at that boundary.
-    realized_entries = _satisfy_constraints(
+    realized_entries = satisfy_constraints(
         batch_source_lines,
         base_lines,
         presence_line_set,
@@ -466,7 +471,7 @@ def _stream_realized_content_chunks_from_lines(
     )
 
     try:
-        yield from _realized_entry_content_chunks(realized_entries)
+        yield from realized_entry_content_chunks(realized_entries)
     finally:
         realized_entries.close()
 
@@ -564,7 +569,7 @@ def remove_file_from_batch(batch_name: str, file_path: str) -> None:
     metadata.get("files", {}).pop(file_path, None)
     metadata_path = get_batch_metadata_file_path(batch_name)
     write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
-    _remove_file_from_batch_commit(batch_name, file_path)
+    remove_file_from_batch_commit(batch_name, file_path)
 
 
 def copy_file_from_batch_to_batch(source_batch: str, dest_batch: str, file_path: str) -> None:
@@ -584,16 +589,16 @@ def copy_file_from_batch_to_batch(source_batch: str, dest_batch: str, file_path:
 
     source_commit = get_batch_commit_sha(source_batch)
     if not source_commit:
-        _remove_file_from_batch_commit(dest_batch, file_path)
+        remove_file_from_batch_commit(dest_batch, file_path)
         return
 
     if file_meta.get("file_type") == "gitlink":
         if file_meta.get("change_type") == "deleted":
-            _remove_file_from_batch_commit(dest_batch, file_path)
+            remove_file_from_batch_commit(dest_batch, file_path)
             return
         oid = file_meta.get("new_oid")
         if not oid:
-            _remove_file_from_batch_commit(dest_batch, file_path)
+            remove_file_from_batch_commit(dest_batch, file_path)
             return
         _update_batch_gitlink_commit(dest_batch, file_path, oid)
         return
@@ -603,9 +608,9 @@ def copy_file_from_batch_to_batch(source_batch: str, dest_batch: str, file_path:
         with source_buffer:
             blob_sha = create_git_blob(source_buffer.byte_chunks())
         file_mode = file_meta.get("mode", "100644")
-        _update_batch_commit(dest_batch, file_path, blob_sha, file_mode)
+        update_batch_commit(dest_batch, file_path, blob_sha, file_mode)
     else:
-        _remove_file_from_batch_commit(dest_batch, file_path)
+        remove_file_from_batch_commit(dest_batch, file_path)
 
 
 def _batch_commit_parents(batch_name: str) -> list[str]:
@@ -625,11 +630,11 @@ def _batch_commit_parents(batch_name: str) -> list[str]:
     return parents
 
 
-def _remove_file_from_batch_commit(
+def remove_file_from_batch_commit(
     batch_name: str,
     file_path: str,
     *,
-    source_buffers: dict[str, EditorBuffer] | None = None,
+    source_buffers: dict[str, LineBuffer] | None = None,
 ) -> None:
     """Remove a file from batch commit tree (for deletions).
 
@@ -666,13 +671,13 @@ def _remove_file_from_batch_commit(
     )
 
 
-def _update_batch_commit(
+def update_batch_commit(
     batch_name: str,
     file_path: str,
     blob_sha: str,
     file_mode: str,
     *,
-    source_buffers: dict[str, EditorBuffer] | None = None,
+    source_buffers: dict[str, LineBuffer] | None = None,
 ) -> None:
     """Update batch commit tree with new/updated file.
 

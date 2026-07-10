@@ -687,10 +687,10 @@ def _apply_fixup_action(state: FileReviewState) -> None:
     if not line_ids:
         return
 
-    from ...commands.suggest_fixup import (
-        _load_suggest_fixup_state,
-        _reset_suggest_fixup_state,
-        command_suggest_fixup_line,
+    from ...commands.suggest_fixup import command_suggest_fixup_line
+    from ...data.suggest_fixup_state import (
+        clear_suggest_fixup_state,
+        read_suggest_fixup_state,
     )
 
     use_color = sys.stdout.isatty()
@@ -706,7 +706,7 @@ def _apply_fixup_action(state: FileReviewState) -> None:
         action = prompt_fixup_action(use_color=use_color)
 
         if action == "y":
-            fixup_state = _load_suggest_fixup_state()
+            fixup_state = read_suggest_fixup_state()
             if fixup_state and fixup_state.get("last_shown_commit"):
                 commit_hash = fixup_state["last_shown_commit"][:7]
                 print()
@@ -729,7 +729,7 @@ def _apply_fixup_action(state: FileReviewState) -> None:
                 return
             continue
         if action == "q":
-            _reset_suggest_fixup_state()
+            clear_suggest_fixup_state()
             print(_("\nCanceled."))
             return
 

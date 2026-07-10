@@ -7,84 +7,74 @@ import os
 import shlex
 import sys
 import tempfile
-from collections.abc import Callable, Sequence
-from contextlib import AbstractContextManager, nullcontext
-from dataclasses import dataclass
-from enum import Enum
+from contextlib import nullcontext
 from importlib import resources
 from pathlib import Path
 
 from .. import __version__
-from ..batch.validation import batch_exists
-from ..batch.source_selector import batch_name_for_source_lookup
-from ..core.replacement import ReplacementText
-from .. import commands
 from ..batch.query import read_batch_metadata
-from ..data.file_tracking import list_untracked_files
-from ..data.hunk_tracking import select_next_change_after_action, show_selected_change
-from ..data.undo import undo_checkpoint
-from ..exceptions import CommandError
-from ..i18n import _, ngettext
-from ..utils.command import run_command
-from ..utils.file_patterns import (
-    list_changed_files,
-    list_staged_files,
-    resolve_gitignore_style_patterns,
+from ..batch.source_selector import batch_name_for_source_lookup
+from ..batch.validation import batch_exists
+from ..commands.abort import command_abort
+from ..commands.again import command_again
+from ..commands.annotate import command_annotate_batch
+from ..commands.apply_from import command_apply_from_batch
+from ..commands.block_file import command_block_file
+from ..commands.check_unstaged import command_check_unstaged
+from ..commands.discard import (
+    command_discard,
+    command_discard_file,
+    command_discard_file_as,
+    command_discard_line,
+    command_discard_line_as_to_batch,
+    command_discard_to_batch,
 )
+from ..commands.discard_from import command_discard_from_batch
+from ..commands.drop import command_drop_batch
+from ..core.replacement import ReplacementText
+from ..commands.file_scope.multi_file_actions import (
+    discard_to_batch_each_resolved_file,
+    include_each_resolved_file,
+    run_for_each_resolved_file,
+    skip_each_resolved_file,
+)
+from ..commands.include import (
+    command_include,
+    command_include_file,
+    command_include_file_as,
+    command_include_line,
+    command_include_line_as,
+    command_include_to_batch,
+)
+from ..commands.include_from import command_include_from_batch
+from ..commands.install_assets import command_install_assets
+from ..commands.list import command_list_batches
+from ..commands.new import command_new_batch
+from ..commands.redo import command_redo
+from ..commands.reset import command_reset_from_batch
+from ..commands.show import command_show, command_show_file_list
+from ..commands.show_from import command_show_from_batch
+from ..commands.sift import command_sift_batch
+from ..commands.skip import command_skip, command_skip_file, command_skip_line
+from ..commands.start import command_start
+from ..commands.status import DEFAULT_PROMPT_FORMAT, command_status
+from ..commands.stop import command_stop
+from ..commands.suggest_fixup import (
+    command_suggest_fixup,
+    command_suggest_fixup_line,
+)
+from ..commands.unblock_file import command_unblock_file
+from ..commands.undo import command_undo
+from ..exceptions import CommandError
+from ..i18n import _
+from ..utils.command import run_command
 from ..utils.git import run_git_command
 from .completion import command_complete_files
-
-FileArgument = str | list[str] | None
-
-
-class FileScopeKind(str, Enum):
-    """How a command's optional file scope was requested."""
-
-    IMPLICIT = "implicit"
-    EXPLICIT = "explicit"
-    PATTERN = "pattern"
-
-
-@dataclass(frozen=True)
-class FileScope:
-    """Resolved command file scope with explicit origin and concrete files."""
-
-    kind: FileScopeKind
-    files: tuple[str, ...] = ()
-
-    @classmethod
-    def implicit(cls) -> "FileScope":
-        return cls(FileScopeKind.IMPLICIT)
-
-    @classmethod
-    def explicit(cls, file_path: str) -> "FileScope":
-        return cls(FileScopeKind.EXPLICIT, (file_path,))
-
-    @classmethod
-    def pattern(cls, files: list[str]) -> "FileScope":
-        return cls(FileScopeKind.PATTERN, tuple(files))
-
-    @property
-    def is_implicit(self) -> bool:
-        return self.kind == FileScopeKind.IMPLICIT
-
-    @property
-    def is_multiple(self) -> bool:
-        return len(self.files) > 1
-
-    def optional_file(self) -> str | None:
-        """Return the single file path for this scope, or None for implicit scope."""
-        if self.is_implicit:
-            return None
-        if self.is_multiple:
-            raise ValueError("multiple file scope cannot be represented by one path")
-        return self.files[0]
-
-    def require_single_file(self, error_message: str) -> str | None:
-        """Return an optional single file path, or raise for a multi-file scope."""
-        if self.is_multiple:
-            raise CommandError(error_message)
-        return self.optional_file()
+from .file_scope import (
+    FileArgument,
+    resolve_batch_file_scope,
+    resolve_live_file_scope,
+)
 
 
 class GitHelpArgumentParser(argparse.ArgumentParser):
@@ -310,325 +300,6 @@ def _normalize_parsed_file_arguments(args: argparse.Namespace) -> None:
         args.file = file_values
 
 
-def _resolve_file_patterns(
-    file_arg: FileArgument,
-    file_patterns: list[str] | None,
-) -> list[str] | None:
-    """Return combined pattern arguments, preserving pathless --file."""
-    if file_arg == "":
-        if file_patterns is not None:
-            raise CommandError(_("Cannot use --file together with --files."))
-        return None
-
-    patterns: list[str] = []
-    if isinstance(file_arg, str):
-        patterns.append(file_arg)
-    elif file_arg is not None:
-        patterns.extend(file_arg)
-
-    if file_patterns is not None:
-        patterns.extend(file_patterns)
-
-    return patterns or None
-
-
-def _file_arg_values(file_arg: FileArgument) -> list[str]:
-    """Return argument-bearing --file values."""
-    if file_arg is None or file_arg == "":
-        return []
-    if isinstance(file_arg, str):
-        return [file_arg]
-    return list(file_arg)
-
-
-def _normalize_file_argument_path(path: str) -> str:
-    """Normalize a user-provided file path for exact candidate lookup."""
-    normalized = path.replace("\\", "/")
-    if normalized.startswith("./"):
-        normalized = normalized[2:]
-    return normalized
-
-
-def _resolve_file_argument_patterns(
-    candidates: Sequence[str],
-    file_arg: FileArgument,
-    file_patterns: list[str] | None,
-) -> tuple[list[str], list[str]]:
-    """Resolve --file/--files values against candidates with exact --file fallback."""
-    file_values = _file_arg_values(file_arg)
-    display_patterns = [*file_values, *(file_patterns or [])]
-    candidate_by_path = {
-        _normalize_file_argument_path(candidate): candidate
-        for candidate in candidates
-    }
-
-    exact_files: list[str] = []
-    pattern_values: list[str] = []
-    for value in file_values:
-        exact_file = candidate_by_path.get(_normalize_file_argument_path(value))
-        if exact_file is not None:
-            exact_files.append(exact_file)
-        else:
-            pattern_values.append(value)
-
-    pattern_values.extend(file_patterns or [])
-    resolved_patterns = (
-        resolve_gitignore_style_patterns(candidates, pattern_values)
-        if pattern_values else
-        []
-    )
-    resolved_files = list(dict.fromkeys([*exact_files, *resolved_patterns]))
-    return resolved_files, display_patterns
-
-
-def _run_for_each_file(
-    file_scope: FileScope,
-    callback: Callable[[str | None], None],
-    *,
-    line_ids: str | None = None,
-    undo_operation: str | None = None,
-    worktree_paths: Sequence[str] | None = None,
-) -> None:
-    """Run a callback once per resolved file argument."""
-    if file_scope.is_multiple and line_ids is not None:
-        raise CommandError(_("Cannot use --lines with multiple files."))
-    if file_scope.is_multiple:
-        checkpoint = (
-            _multi_file_undo_checkpoint(
-                undo_operation,
-                file_scope.files,
-                worktree_paths=worktree_paths,
-            )
-            if undo_operation is not None else
-            nullcontext()
-        )
-        with checkpoint:
-            for file in file_scope.files:
-                callback(file)
-        return
-    callback(file_scope.optional_file())
-
-
-def _format_multi_file_operation(command: str, files: Sequence[str]) -> str:
-    """Return a readable undo operation for a resolved multi-file command."""
-    return f"{command} --files {' '.join(shlex.quote(file) for file in files)}"
-
-
-def _multi_file_undo_checkpoint(
-    command: str,
-    files: Sequence[str],
-    *,
-    worktree_paths: Sequence[str] | None = None,
-) -> AbstractContextManager[None]:
-    """Create one undo checkpoint for a resolved multi-file command."""
-    paths = list(worktree_paths) if worktree_paths is not None else None
-    return undo_checkpoint(
-        _format_multi_file_operation(command, files),
-        worktree_paths=paths,
-    )
-
-
-def _include_each_resolved_file(
-    files: list[str],
-    *,
-    auto_advance: bool | None = None,
-) -> None:
-    """Stage a multi-file live scope and report one aggregate summary."""
-    total_hunks = 0
-    staged_files: list[str] = []
-
-    with _multi_file_undo_checkpoint("include", files):
-        for file_path in files:
-            staged_hunks = commands.command_include_file(
-                file_path,
-                quiet=True,
-                advance=False,
-            )
-            if staged_hunks > 0:
-                total_hunks += staged_hunks
-                staged_files.append(file_path)
-
-    if total_hunks == 0:
-        print(_("No hunks staged from matched files."), file=sys.stderr)
-        return
-
-    should_show_next = select_next_change_after_action(auto_advance=auto_advance)
-
-    if len(staged_files) == 1:
-        file_summary = staged_files[0]
-    else:
-        file_summary = ngettext(
-            "{count} file",
-            "{count} files",
-            len(staged_files),
-        ).format(count=len(staged_files))
-
-    print(
-        ngettext(
-            "✓ Staged {count} hunk from {files}",
-            "✓ Staged {count} hunks from {files}",
-            total_hunks,
-        ).format(count=total_hunks, files=file_summary),
-        file=sys.stderr,
-    )
-    if should_show_next:
-        show_selected_change()
-
-
-def _skip_each_resolved_file(
-    files: list[str],
-    *,
-    auto_advance: bool | None = None,
-) -> None:
-    """Skip a multi-file live scope and report one aggregate summary."""
-    total_hunks = 0
-    skipped_files: list[str] = []
-
-    with _multi_file_undo_checkpoint("skip", files):
-        for file_path in files:
-            skipped_hunks = commands.command_skip_file(
-                file_path,
-                quiet=True,
-                advance=False,
-            )
-            if skipped_hunks > 0:
-                total_hunks += skipped_hunks
-                skipped_files.append(file_path)
-
-    if total_hunks == 0:
-        print(_("No hunks skipped from matched files."), file=sys.stderr)
-        return
-
-    should_show_next = select_next_change_after_action(auto_advance=auto_advance)
-
-    if len(skipped_files) == 1:
-        file_summary = skipped_files[0]
-    else:
-        file_summary = ngettext(
-            "{count} file",
-            "{count} files",
-            len(skipped_files),
-        ).format(count=len(skipped_files))
-
-    print(
-        ngettext(
-            "✓ Skipped {count} hunk from {files}",
-            "✓ Skipped {count} hunks from {files}",
-            total_hunks,
-        ).format(count=total_hunks, files=file_summary),
-        file=sys.stderr,
-    )
-    if should_show_next:
-        show_selected_change()
-
-
-def _discard_to_batch_each_resolved_file(
-    batch_name: str,
-    files: list[str],
-    *,
-    auto_advance: bool | None = None,
-) -> None:
-    """Save a multi-file live scope to a batch and report one aggregate summary."""
-    total_hunks = 0
-    discarded_files: list[str] = []
-
-    operation = f"discard --to {shlex.quote(batch_name)}"
-    with _multi_file_undo_checkpoint(operation, files, worktree_paths=files):
-        result = commands.command_discard_files_to_batch(
-            batch_name,
-            files,
-            quiet=True,
-            advance=False,
-            auto_advance=auto_advance,
-        )
-        total_hunks = result.discarded_hunks
-        discarded_files = result.discarded_files
-
-    if total_hunks == 0:
-        print(_("No hunks saved to batch from matched files."), file=sys.stderr)
-        return
-
-    should_show_next = select_next_change_after_action(auto_advance=auto_advance)
-
-    if len(discarded_files) == 1:
-        file_summary = discarded_files[0]
-    else:
-        file_summary = ngettext(
-            "{count} file",
-            "{count} files",
-            len(discarded_files),
-        ).format(count=len(discarded_files))
-
-    print(
-        ngettext(
-            "✓ Saved {count} hunk from {files} to batch '{batch}' and discarded it",
-            "✓ Saved {count} hunks from {files} to batch '{batch}' and discarded them",
-            total_hunks,
-        ).format(count=total_hunks, files=file_summary, batch=batch_name),
-        file=sys.stderr,
-    )
-    if should_show_next:
-        show_selected_change()
-
-
-def _resolve_live_file_scope(
-    file_arg: FileArgument,
-    file_patterns: list[str] | None,
-    *,
-    include_staged: bool = False,
-) -> FileScope:
-    """Resolve single-file or pattern-based live file scope."""
-    resolved_patterns = _resolve_file_patterns(file_arg, file_patterns)
-    if resolved_patterns is None:
-        return FileScope.implicit() if file_arg is None else FileScope.explicit("")
-
-    candidate_files = [*list_changed_files(), *list_untracked_files()]
-    if include_staged:
-        candidate_files.extend(list_staged_files())
-    candidate_files = list(dict.fromkeys(candidate_files))
-    resolved_files, display_patterns = _resolve_file_argument_patterns(
-        candidate_files,
-        file_arg,
-        file_patterns,
-    )
-    if not resolved_files:
-        raise CommandError(
-            _("No changed files matched: {patterns}").format(
-                patterns=", ".join(display_patterns),
-            )
-        )
-    return FileScope.pattern(resolved_files)
-
-
-def _resolve_batch_file_scope(
-    batch_name: str,
-    file_arg: FileArgument,
-    file_patterns: list[str] | None,
-) -> FileScope:
-    """Resolve single-file or pattern-based batch file scope."""
-    lookup_batch_name = batch_name_for_source_lookup(batch_name)
-    resolved_patterns = _resolve_file_patterns(file_arg, file_patterns)
-    if resolved_patterns is None:
-        return FileScope.implicit() if file_arg is None else FileScope.explicit("")
-    if not batch_exists(lookup_batch_name):
-        raise CommandError(_("Batch '{name}' does not exist").format(name=lookup_batch_name))
-
-    metadata = read_batch_metadata(lookup_batch_name)
-    resolved_files, display_patterns = _resolve_file_argument_patterns(
-        list(metadata.get("files", {}).keys()),
-        file_arg,
-        file_patterns,
-    )
-    if not resolved_files:
-        raise CommandError(
-            _("No files in batch '{name}' matched: {patterns}").format(
-                name=lookup_batch_name,
-                patterns=", ".join(display_patterns),
-            )
-        )
-    return FileScope.pattern(resolved_files)
-
-
 def _resolve_replacement_text(args: argparse.Namespace) -> str | None:
     """Return replacement text from `--as` or exact stdin content."""
     if getattr(args, "as_text", None) is not None and getattr(args, "as_stdin", False):
@@ -712,7 +383,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         "check-unstaged",
         help=_("Check whether the index fits an unstaged-only workflow"),
     )
-    parser_check_unstaged.set_defaults(func=lambda _: commands.command_check_unstaged())
+    parser_check_unstaged.set_defaults(func=lambda _: command_check_unstaged())
 
     # start - Start a new batch staging session
     parser_start = _add_subcommand_parser(
@@ -730,7 +401,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     _add_auto_advance_arguments(parser_start)
     parser_start.set_defaults(
-        func=lambda args: commands.command_start(
+        func=lambda args: command_start(
             context_lines=args.context_lines,
             auto_advance=args.auto_advance,
         )
@@ -742,7 +413,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         "interactive",
         help=_("Start interactive hunk-by-hunk mode"),
     )
-    parser_interactive.set_defaults(func=lambda _: commands.command_interactive())
+    parser_interactive.set_defaults(interactive_command=True)
 
     # stop - Stop the selected session and clear state
     parser_stop = _add_subcommand_parser(
@@ -750,7 +421,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         "stop",
         help=_("Stop the selected session and clear state"),
     )
-    parser_stop.set_defaults(func=lambda _: commands.command_stop())
+    parser_stop.set_defaults(func=lambda _: command_stop())
 
     # again - Clear state and start a fresh pass
     parser_again = _add_subcommand_parser(
@@ -761,7 +432,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     _add_auto_advance_arguments(parser_again)
     parser_again.set_defaults(
-        func=lambda args: commands.command_again(auto_advance=args.auto_advance)
+        func=lambda args: command_again(auto_advance=args.auto_advance)
     )
 
     # undo - Undo the most recent undoable session operation
@@ -776,7 +447,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         action="store_true",
         help=_("Overwrite changes made after the undo checkpoint"),
     )
-    parser_undo.set_defaults(func=lambda args: commands.command_undo(force=args.force))
+    parser_undo.set_defaults(func=lambda args: command_undo(force=args.force))
 
     # redo - Redo the most recently undone session operation
     parser_redo = _add_subcommand_parser(
@@ -790,7 +461,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         action="store_true",
         help=_("Overwrite changes made after the undo"),
     )
-    parser_redo.set_defaults(func=lambda args: commands.command_redo(force=args.force))
+    parser_redo.set_defaults(func=lambda args: command_redo(force=args.force))
 
     # show - Show the selected hunk
     parser_show = _add_subcommand_parser(
@@ -861,9 +532,9 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         if args.as_text is not None and args.as_stdin:
             raise CommandError(_("Cannot use `--as` and `--as-stdin` together."))
         resolved_file_scope = (
-            _resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
+            resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
             if args.from_batch
-            else _resolve_live_file_scope(args.file, args.file_patterns)
+            else resolve_live_file_scope(args.file, args.file_patterns)
         )
         if args.page is not None:
             lookup_batch = batch_name_for_source_lookup(args.from_batch) if args.from_batch else None
@@ -902,14 +573,14 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                     raise CommandError(_("Cannot use --lines with multiple files."))
                 if replacement_requested:
                     raise CommandError(_("`show --as` requires exactly one resolved file."))
-                commands.command_show_from_batch(
+                command_show_from_batch(
                     args.from_batch,
                     args.line_ids,
                     patterns=args.file_patterns,
                     **show_kwargs,
                 )
             else:
-                commands.command_show_from_batch(
+                command_show_from_batch(
                     args.from_batch,
                     args.line_ids,
                     resolved_file_scope.optional_file(),
@@ -925,7 +596,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                 show_list_kwargs = {}
                 if not args.advance:
                     show_list_kwargs["selectable"] = False
-                commands.command_show_file_list(
+                command_show_file_list(
                     list(resolved_file_scope.files),
                     **show_list_kwargs,
                 )
@@ -937,14 +608,14 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                 }
                 if not args.advance:
                     show_kwargs["selectable"] = False
-                commands.command_show(
+                command_show(
                     **show_kwargs,
                 )
             return
         show_kwargs = {"porcelain": args.porcelain}
         if not args.advance:
             show_kwargs["selectable"] = False
-        commands.command_show(**show_kwargs)
+        command_show(**show_kwargs)
 
     parser_show.set_defaults(func=dispatch_show)
 
@@ -965,12 +636,12 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         "--for-prompt",
         dest="prompt_format",
         nargs="?",
-        const=commands.DEFAULT_PROMPT_FORMAT,
+        const=DEFAULT_PROMPT_FORMAT,
         metavar="FORMAT",
         help=_("Print FORMAT only when a session is active, for shell prompts"),
     )
     parser_status.set_defaults(
-        func=lambda args: commands.command_status(
+        func=lambda args: command_status(
             porcelain=args.porcelain,
             prompt_format=args.prompt_format,
         )
@@ -1043,10 +714,10 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
             if args.line_ids and args.from_batch and not args.to_batch:
                 if args.no_edge_overlap:
                     raise CommandError(_("`--no-edge-overlap` only applies to live `include --line --as` operations."))
-                resolved_batch_scope = _resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
+                resolved_batch_scope = resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
                 resolved_file = resolved_batch_scope.require_single_file(_("Cannot use --lines with multiple files."))
                 replacement_text = _resolve_replacement_text(args)
-                commands.command_include_from_batch(
+                command_include_from_batch(
                     args.from_batch,
                     args.line_ids,
                     file=resolved_file,
@@ -1054,10 +725,10 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                 )
                 return
             if args.line_ids and not args.from_batch and not args.to_batch:
-                resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
+                resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
                 resolved_file = resolved_live_scope.require_single_file(_("Cannot use --lines with multiple files."))
                 replacement_text = _resolve_replacement_text(args)
-                commands.command_include_line_as(
+                command_include_line_as(
                     args.line_ids,
                     replacement_text,
                     file=resolved_file,
@@ -1070,7 +741,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                 and args.from_batch is None
                 and args.to_batch is None
             ):
-                resolved_live_scope = _resolve_live_file_scope(
+                resolved_live_scope = resolve_live_file_scope(
                     args.file,
                     args.file_patterns,
                     include_staged=True,
@@ -1084,7 +755,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                 if resolved_live_scope.is_multiple:
                     raise CommandError(_("Cannot use --as with multiple files."))
                 replacement_text = _resolve_replacement_text(args)
-                commands.command_include_file_as(
+                command_include_file_as(
                     replacement_text,
                     file=resolved_live_scope.optional_file(),
                     auto_advance=args.auto_advance,
@@ -1096,19 +767,19 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         if args.no_edge_overlap:
             raise CommandError(_("`--no-edge-overlap` requires `include --line --as`."))
         if args.from_batch:
-            resolved_batch_scope = _resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
-            _run_for_each_file(
+            resolved_batch_scope = resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
+            run_for_each_resolved_file(
                 resolved_batch_scope,
-                lambda file: commands.command_include_from_batch(args.from_batch, args.line_ids, file),
+                lambda file: command_include_from_batch(args.from_batch, args.line_ids, file),
                 line_ids=args.line_ids,
                 undo_operation=f"include --from {shlex.quote(args.from_batch)}",
                 worktree_paths=resolved_batch_scope.files,
             )
         elif args.to_batch:
-            resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
-            _run_for_each_file(
+            resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
+            run_for_each_resolved_file(
                 resolved_live_scope,
-                lambda file: commands.command_include_to_batch(
+                lambda file: command_include_to_batch(
                     args.to_batch,
                     args.line_ids,
                     file,
@@ -1118,27 +789,27 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                 undo_operation=f"include --to {shlex.quote(args.to_batch)}",
             )
         elif args.line_ids:
-            resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
+            resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
             resolved_file = resolved_live_scope.require_single_file(_("Cannot use --lines with multiple files."))
-            commands.command_include_line(
+            command_include_line(
                 args.line_ids,
                 file=resolved_file,
                 auto_advance=args.auto_advance,
             )
         else:
-            resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
+            resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
             if resolved_live_scope.is_multiple:
-                _include_each_resolved_file(
+                include_each_resolved_file(
                     list(resolved_live_scope.files),
                     auto_advance=args.auto_advance,
                 )
             elif not resolved_live_scope.is_implicit:
-                commands.command_include_file(
+                command_include_file(
                     resolved_live_scope.optional_file(),
                     auto_advance=args.auto_advance,
                 )
             else:
-                commands.command_include(auto_advance=args.auto_advance)
+                command_include(auto_advance=args.auto_advance)
 
     parser_include.set_defaults(func=dispatch_include)
 
@@ -1165,27 +836,27 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     _add_auto_advance_arguments(parser_skip)
 
     def dispatch_skip(args: argparse.Namespace) -> None:
-        resolved_file_scope = _resolve_live_file_scope(args.file, args.file_patterns)
+        resolved_file_scope = resolve_live_file_scope(args.file, args.file_patterns)
         if args.line_ids:
             resolved_file = resolved_file_scope.require_single_file(_("Cannot use --lines with multiple files."))
-            commands.command_skip_line(
+            command_skip_line(
                 args.line_ids,
                 file=resolved_file,
                 auto_advance=args.auto_advance,
             )
         elif not resolved_file_scope.is_implicit:
             if resolved_file_scope.is_multiple:
-                _skip_each_resolved_file(
+                skip_each_resolved_file(
                     list(resolved_file_scope.files),
                     auto_advance=args.auto_advance,
                 )
             else:
-                commands.command_skip_file(
+                command_skip_file(
                     resolved_file_scope.optional_file(),
                     auto_advance=args.auto_advance,
                 )
         else:
-            commands.command_skip(auto_advance=args.auto_advance)
+            command_skip(auto_advance=args.auto_advance)
 
     parser_skip.set_defaults(func=dispatch_skip)
 
@@ -1254,10 +925,10 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
             if args.as_text is not None and args.as_stdin:
                 raise CommandError(_("Cannot use `--as` and `--as-stdin` together."))
             if args.to_batch and args.line_ids and not args.from_batch:
-                resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
+                resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
                 resolved_file = resolved_live_scope.require_single_file(_("Cannot use --lines with multiple files."))
                 replacement_text = _resolve_replacement_text(args)
-                commands.command_discard_line_as_to_batch(
+                command_discard_line_as_to_batch(
                     args.to_batch,
                     args.line_ids,
                     replacement_text,
@@ -1271,7 +942,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                 and args.from_batch is None
                 and args.line_ids is None
             ):
-                resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
+                resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
                 if resolved_live_scope.is_implicit:
                     raise CommandError(
                         _("`discard --as` requires `--file`, or `--to` with `--line`.")
@@ -1281,7 +952,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                 if resolved_live_scope.is_multiple:
                     raise CommandError(_("Cannot use --as with multiple files."))
                 replacement_text = _resolve_replacement_text(args)
-                commands.command_discard_file_as(
+                command_discard_file_as(
                     replacement_text,
                     file=resolved_live_scope.optional_file(),
                     auto_advance=args.auto_advance,
@@ -1293,26 +964,26 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         if args.no_edge_overlap:
             raise CommandError(_("`--no-edge-overlap` requires `discard --to --line --as`."))
         if args.from_batch:
-            resolved_batch_scope = _resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
-            _run_for_each_file(
+            resolved_batch_scope = resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
+            run_for_each_resolved_file(
                 resolved_batch_scope,
-                lambda file: commands.command_discard_from_batch(args.from_batch, args.line_ids, file),
+                lambda file: command_discard_from_batch(args.from_batch, args.line_ids, file),
                 line_ids=args.line_ids,
                 undo_operation=f"discard --from {shlex.quote(args.from_batch)}",
                 worktree_paths=resolved_batch_scope.files,
             )
         elif args.to_batch:
-            resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
+            resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
             if resolved_live_scope.is_multiple and args.line_ids is None:
-                _discard_to_batch_each_resolved_file(
+                discard_to_batch_each_resolved_file(
                     args.to_batch,
                     list(resolved_live_scope.files),
                     auto_advance=args.auto_advance,
                 )
             else:
-                _run_for_each_file(
+                run_for_each_resolved_file(
                     resolved_live_scope,
-                    lambda file: commands.command_discard_to_batch(
+                    lambda file: command_discard_to_batch(
                         args.to_batch,
                         args.line_ids,
                         file,
@@ -1323,19 +994,19 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                     worktree_paths=resolved_live_scope.files,
                 )
         elif args.line_ids:
-            resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
+            resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
             resolved_file = resolved_live_scope.require_single_file(_("Cannot use --lines with multiple files."))
-            commands.command_discard_line(
+            command_discard_line(
                 args.line_ids,
                 file=resolved_file,
                 auto_advance=args.auto_advance,
             )
         else:
-            resolved_live_scope = _resolve_live_file_scope(args.file, args.file_patterns)
+            resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
             if not resolved_live_scope.is_implicit:
-                _run_for_each_file(
+                run_for_each_resolved_file(
                     resolved_live_scope,
-                    lambda file: commands.command_discard_file(
+                    lambda file: command_discard_file(
                         file,
                         auto_advance=args.auto_advance,
                     ),
@@ -1343,7 +1014,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                     worktree_paths=resolved_live_scope.files,
                 )
             else:
-                commands.command_discard(auto_advance=args.auto_advance)
+                command_discard(auto_advance=args.auto_advance)
 
     parser_discard.set_defaults(func=dispatch_discard)
 
@@ -1353,7 +1024,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         "abort",
         help=_("Restore repository to pre-session state"),
     )
-    parser_abort.set_defaults(func=lambda _: commands.command_abort())
+    parser_abort.set_defaults(func=lambda _: command_abort())
 
     # block-file - Permanently exclude a file
     parser_block_file = _add_subcommand_parser(
@@ -1374,7 +1045,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         default=False,
         help=_("Add to .git/info/exclude instead of .gitignore"),
     )
-    parser_block_file.set_defaults(func=lambda args: commands.command_block_file(args.file_path, local_only=args.local_only))
+    parser_block_file.set_defaults(func=lambda args: command_block_file(args.file_path, local_only=args.local_only))
 
     # unblock-file - Remove a file from blocked list
     parser_unblock_file = _add_subcommand_parser(
@@ -1387,7 +1058,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         "file_path",
         help=_("Path to the file to unblock"),
     )
-    parser_unblock_file.set_defaults(func=lambda args: commands.command_unblock_file(args.file_path))
+    parser_unblock_file.set_defaults(func=lambda args: command_unblock_file(args.file_path))
 
     # suggest-fixup - Suggest which commit the selected hunk should be fixed up to
     parser_suggest_fixup = _add_subcommand_parser(
@@ -1425,14 +1096,14 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         help=_("Git ref to use as lower bound for commit search (default: @{upstream})"),
     )
     parser_suggest_fixup.set_defaults(func=lambda args: (
-        commands.command_suggest_fixup_line(
+        command_suggest_fixup_line(
             args.line_ids,
             args.boundary,
             reset=args.reset,
             abort=args.abort,
             show_last=args.last
         ) if args.line_ids else
-        commands.command_suggest_fixup(
+        command_suggest_fixup(
             args.boundary,
             reset=args.reset,
             abort=args.abort,
@@ -1455,7 +1126,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         default="",
         help=_("Optional description for the batch"),
     )
-    parser_new.set_defaults(func=lambda args: commands.command_new_batch(args.batch_name, args.note))
+    parser_new.set_defaults(func=lambda args: command_new_batch(args.batch_name, args.note))
 
     # list - List all batches
     parser_list = _add_subcommand_parser(
@@ -1463,7 +1134,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         "list",
         help=_("List all batches"),
     )
-    parser_list.set_defaults(func=lambda _: commands.command_list_batches())
+    parser_list.set_defaults(func=lambda _: command_list_batches())
 
     # drop - Delete a batch
     parser_drop = _add_subcommand_parser(
@@ -1475,7 +1146,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         "batch_name",
         help=_("Name of the batch to delete"),
     )
-    parser_drop.set_defaults(func=lambda args: commands.command_drop_batch(args.batch_name))
+    parser_drop.set_defaults(func=lambda args: command_drop_batch(args.batch_name))
 
     # annotate - Add/update batch description
     parser_annotate = _add_subcommand_parser(
@@ -1491,7 +1162,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         "note",
         help=_("Description text"),
     )
-    parser_annotate.set_defaults(func=lambda args: commands.command_annotate_batch(args.batch_name, args.note))
+    parser_annotate.set_defaults(func=lambda args: command_annotate_batch(args.batch_name, args.note))
 
     # apply - Apply batch changes to working tree
     parser_apply = _add_subcommand_parser(
@@ -1521,10 +1192,10 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
 
     def dispatch_apply(args: argparse.Namespace) -> None:
-        resolved_file_scope = _resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
-        _run_for_each_file(
+        resolved_file_scope = resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
+        run_for_each_resolved_file(
             resolved_file_scope,
-            lambda file: commands.command_apply_from_batch(
+            lambda file: command_apply_from_batch(
                 args.from_batch,
                 line_ids=args.line_ids if hasattr(args, "line_ids") else None,
                 file=file,
@@ -1570,15 +1241,15 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
 
     def dispatch_reset(args: argparse.Namespace) -> None:
-        resolved_file_scope = _resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
+        resolved_file_scope = resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
         command_parts = ["reset", "--from", shlex.quote(args.from_batch)]
         if args.to_batch is not None:
             command_parts.extend(["--to", shlex.quote(args.to_batch)])
         if args.line_ids is not None:
             command_parts.extend(["--line", shlex.quote(args.line_ids)])
-        _run_for_each_file(
+        run_for_each_resolved_file(
             resolved_file_scope,
-            lambda file: commands.command_reset_from_batch(
+            lambda file: command_reset_from_batch(
                 args.from_batch,
                 args.line_ids,
                 file,
@@ -1611,7 +1282,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         required=True,
         help=_("Destination batch (may equal source for in-place sift)"),
     )
-    parser_sift.set_defaults(func=lambda args: commands.command_sift_batch(args.from_batch, args.to_batch))
+    parser_sift.set_defaults(func=lambda args: command_sift_batch(args.from_batch, args.to_batch))
 
     parser_install_assets = _add_subcommand_parser(
         subparsers,
@@ -1637,7 +1308,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         help=_("Overwrite an existing installed asset"),
     )
     parser_install_assets.set_defaults(
-        func=lambda args: commands.command_install_assets(
+        func=lambda args: command_install_assets(
             args.asset_group,
             args.filters,
             force=args.force,

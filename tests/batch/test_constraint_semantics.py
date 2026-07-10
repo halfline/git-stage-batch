@@ -7,8 +7,8 @@ described in BATCHES.md.
 
 from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim
 from git_stage_batch.batch.merge import merge_batch_from_line_sequences_as_buffer
-from git_stage_batch.batch.storage import _build_realized_buffer_from_lines
-from git_stage_batch.editor import EditorBuffer
+from git_stage_batch.batch.storage import build_realized_buffer_from_lines
+from git_stage_batch.core.buffer import LineBuffer
 
 
 def merge_batch(
@@ -18,8 +18,8 @@ def merge_batch(
 ) -> bytes:
     """Return merged bytes through the buffer-returning production API."""
     with (
-        EditorBuffer.from_bytes(batch_source_content) as source_lines,
-        EditorBuffer.from_bytes(working_content) as working_lines,
+        LineBuffer.from_bytes(batch_source_content) as source_lines,
+        LineBuffer.from_bytes(working_content) as working_lines,
         merge_batch_from_line_sequences_as_buffer(
             source_lines,
             ownership,
@@ -35,9 +35,9 @@ def _build_realized_content_from_bytes(
     ownership: BatchOwnership,
 ) -> bytes:
     with (
-        EditorBuffer.from_bytes(baseline_content) as baseline_lines,
-        EditorBuffer.from_bytes(batch_source_content) as batch_source_lines,
-        _build_realized_buffer_from_lines(
+        LineBuffer.from_bytes(baseline_content) as baseline_lines,
+        LineBuffer.from_bytes(batch_source_content) as batch_source_lines,
+        build_realized_buffer_from_lines(
             baseline_lines,
             batch_source_lines,
             ownership,

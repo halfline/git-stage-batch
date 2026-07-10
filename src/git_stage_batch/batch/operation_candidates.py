@@ -11,7 +11,10 @@ from itertools import product
 from typing import Literal
 
 from ..core.text_lifecycle import selected_text_target_change_type
-from ..editor import EditorBuffer, buffer_byte_chunks
+from ..core.buffer import (
+    LineBuffer,
+    buffer_byte_chunks,
+)
 from ..exceptions import AtomicUnitError
 from ..utils.paths import get_batch_candidate_state_file_path
 from .merge import (
@@ -40,8 +43,8 @@ class TargetCandidatePreview:
 
     target: CandidateTarget
     file_path: str
-    before_buffer: EditorBuffer
-    after_buffer: EditorBuffer
+    before_buffer: LineBuffer
+    after_buffer: LineBuffer
     file_mode: str | None
     change_type: str
     destination_exists: bool
@@ -95,7 +98,7 @@ def _json_fingerprint(payload) -> str:
     ).hexdigest()
 
 
-def _target_fingerprint(target: CandidateTarget, file_path: str, buffer: EditorBuffer) -> str:
+def _target_fingerprint(target: CandidateTarget, file_path: str, buffer: LineBuffer) -> str:
     return _json_fingerprint({
         "target": target,
         "file": file_path,
@@ -242,7 +245,7 @@ def _batch_fingerprint(
     *,
     batch_name: str,
     file_path: str,
-    source_buffer: EditorBuffer,
+    source_buffer: LineBuffer,
     ownership,
     batch_source_commit: str,
     file_meta: dict,
@@ -259,9 +262,9 @@ def _batch_fingerprint(
 
 
 def _merge_candidates_or_unambiguous(
-    source_lines: EditorBuffer,
+    source_lines: LineBuffer,
     ownership,
-    target_lines: EditorBuffer,
+    target_lines: LineBuffer,
 ) -> tuple[MergeCandidate | None, ...]:
     try:
         with merge_batch_from_line_sequences_as_buffer(
@@ -291,16 +294,16 @@ def _materialize_target_candidate(
     *,
     target: CandidateTarget,
     file_path: str,
-    source_lines: EditorBuffer,
+    source_lines: LineBuffer,
     ownership,
-    before_lines: EditorBuffer,
+    before_lines: LineBuffer,
     candidate: MergeCandidate | None,
     file_mode: str | None,
     text_change_type,
     destination_exists: bool,
     selected_ids: set[int] | None,
 ) -> TargetCandidatePreview:
-    before_copy = EditorBuffer.from_bytes(before_lines.to_bytes())
+    before_copy = LineBuffer.from_bytes(before_lines.to_bytes())
     after = merge_batch_from_line_sequences_as_buffer(
         source_lines,
         ownership,
@@ -334,9 +337,9 @@ def build_apply_candidate_previews(
     *,
     batch_name: str,
     file_path: str,
-    source_lines: EditorBuffer,
+    source_lines: LineBuffer,
     ownership,
-    worktree_lines: EditorBuffer,
+    worktree_lines: LineBuffer,
     batch_source_commit: str,
     file_meta: dict,
     text_change_type,
@@ -421,10 +424,10 @@ def build_include_candidate_previews(
     *,
     batch_name: str,
     file_path: str,
-    source_lines: EditorBuffer,
+    source_lines: LineBuffer,
     ownership,
-    index_lines: EditorBuffer,
-    worktree_lines: EditorBuffer,
+    index_lines: LineBuffer,
+    worktree_lines: LineBuffer,
     batch_source_commit: str,
     file_meta: dict,
     text_change_type,
@@ -526,8 +529,8 @@ def build_include_candidate_previews(
 
 def render_candidate_buffer_diff(
     file_path: str,
-    before_buffer: EditorBuffer,
-    after_buffer: EditorBuffer,
+    before_buffer: LineBuffer,
+    after_buffer: LineBuffer,
     *,
     label_before: str,
     label_after: str,

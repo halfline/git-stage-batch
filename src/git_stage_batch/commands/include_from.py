@@ -52,11 +52,13 @@ from ..data.file_review.state import (
     resolve_batch_source_action_scope,
 )
 from ..batch.file_display import render_batch_file_display
-from ..editor import (
-    EditorBuffer,
+from ..core.buffer import (
+    LineBuffer,
+    write_buffer_to_working_tree_path,
+)
+from ..utils.repository_buffers import (
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
-    write_buffer_to_working_tree_path,
 )
 from ..data.session import snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
@@ -81,8 +83,8 @@ from ..utils.git import (
 @dataclass
 class _IncludeTextPlan:
     file_path: str
-    index_buffer: EditorBuffer | None
-    working_buffer: EditorBuffer | None
+    index_buffer: LineBuffer | None
+    working_buffer: LineBuffer | None
     index_file_mode: str | None
     working_file_mode: str | None
     index_change_type: str
@@ -99,7 +101,7 @@ class _IncludeTextPlan:
 class _IncludeBinaryPlan:
     file_path: str
     file_meta: dict
-    buffer: EditorBuffer | None
+    buffer: LineBuffer | None
 
     def close(self) -> None:
         if self.buffer is not None:
@@ -131,7 +133,7 @@ def _read_binary_file_from_batch(
     batch_name: str,
     file_path: str,
     file_meta: dict,
-) -> EditorBuffer | None:
+) -> LineBuffer | None:
     """Read one binary batch target, or return None for a stored deletion."""
     batch_commit = get_batch_commit_sha(batch_name)
     if not batch_commit:
@@ -151,7 +153,7 @@ def _read_binary_file_from_batch(
 def _stage_binary_file_from_batch(
     file_path: str,
     file_meta: dict,
-    buffer: EditorBuffer | None,
+    buffer: LineBuffer | None,
 ) -> None:
     """Stage one binary batch target into the index."""
     change_type = file_meta.get("change_type", "modified")
@@ -171,7 +173,7 @@ def _stage_binary_file_from_batch(
 
 def _stage_text_file_from_batch(
     file_path: str,
-    buffer: EditorBuffer | None,
+    buffer: LineBuffer | None,
     file_mode: str | None,
     change_type: str = "modified",
 ) -> None:
@@ -195,7 +197,7 @@ def _stage_text_file_from_batch(
 
 def _write_text_file_from_batch(
     file_path: str,
-    buffer: EditorBuffer | None,
+    buffer: LineBuffer | None,
     file_mode: str | None,
     change_type: str = "modified",
 ) -> None:
@@ -244,7 +246,7 @@ def _execute_include_candidate(
     index_buffer = load_git_object_as_buffer(f":{file_path}")
     index_exists = index_buffer is not None
     if index_buffer is None:
-        index_buffer = EditorBuffer.from_bytes(b"")
+        index_buffer = LineBuffer.from_bytes(b"")
     index_file_mode = mode_for_text_materialization(
         batch_file_mode,
         selected_ids,
@@ -408,7 +410,7 @@ def _include_candidate_count_for_file(
     index_buffer = load_git_object_as_buffer(f":{file_path}")
     index_exists = index_buffer is not None
     if index_buffer is None:
-        index_buffer = EditorBuffer.from_bytes(b"")
+        index_buffer = LineBuffer.from_bytes(b"")
     repo_root = get_git_repository_root_path()
     full_path = repo_root / file_path
     working_exists = os.path.lexists(full_path)
@@ -480,7 +482,7 @@ def _include_candidate_count_for_file(
 def _write_binary_file_from_batch(
     file_path: str,
     file_meta: dict,
-    buffer: EditorBuffer | None,
+    buffer: LineBuffer | None,
 ) -> None:
     """Write one binary batch target into the working tree."""
     repo_root = get_git_repository_root_path()
@@ -656,7 +658,7 @@ def command_include_from_batch(
             index_buffer = load_git_object_as_buffer(f":{file_path}")
             index_exists = index_buffer is not None
             if index_buffer is None:
-                index_buffer = EditorBuffer.from_bytes(b"")
+                index_buffer = LineBuffer.from_bytes(b"")
 
             full_path = repo_root / file_path
             working_exists = os.path.lexists(full_path)
@@ -709,8 +711,8 @@ def command_include_from_batch(
                     ) as ownership:
                         if ownership.is_empty():
                             if selected_ids is None and text_change_type == TextFileChangeType.ADDED:
-                                merged_index_buffer = EditorBuffer.from_bytes(b"")
-                                merged_working_buffer = EditorBuffer.from_bytes(b"")
+                                merged_index_buffer = LineBuffer.from_bytes(b"")
+                                merged_working_buffer = LineBuffer.from_bytes(b"")
                             else:
                                 continue
                         elif replacement_payload is not None:

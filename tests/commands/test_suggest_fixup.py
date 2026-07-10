@@ -11,12 +11,9 @@ import pytest
 
 from git_stage_batch.commands.suggest_fixup import (
     _find_next_fixup_candidate,
-    _load_suggest_fixup_state,
-    _reset_suggest_fixup_state,
-    _save_suggest_fixup_state,
-    _should_reset_suggest_fixup_state,
 )
 from git_stage_batch.commands.start import command_start
+from git_stage_batch.data.suggest_fixup_state import write_suggest_fixup_state
 from git_stage_batch.data.hunk_tracking import fetch_next_change
 from git_stage_batch.data.file_hunk_display import render_file_as_single_hunk
 from git_stage_batch.exceptions import CommandError
@@ -40,116 +37,6 @@ def temp_git_repo(tmp_path, monkeypatch):
     subprocess.run(["git", "commit", "-m", "Initial commit"], check=True, cwd=repo, capture_output=True)
 
     return repo
-
-
-class TestSuggestFixupStateHelpers:
-    """Tests for suggest-fixup state management helpers."""
-
-    def test_load_state_when_no_file_exists(self, temp_git_repo):
-        """Test loading state when file doesn't exist returns None."""
-        state = _load_suggest_fixup_state()
-        assert state is None
-
-    def test_save_and_load_state(self, temp_git_repo):
-        """Test saving and loading state."""
-        test_state = {
-            "hunk_hash": "abc123",
-            "line_ids": [1, 2, 3],
-            "boundary": "@{upstream}",
-            "file_path": "test.py",
-            "min_line": 10,
-            "max_line": 20,
-            "last_shown_commit": "def456",
-            "iteration": 1
-        }
-
-        _save_suggest_fixup_state(test_state)
-        loaded_state = _load_suggest_fixup_state()
-
-        assert loaded_state == test_state
-
-    def test_reset_state(self, temp_git_repo):
-        """Test resetting state removes the file."""
-        test_state = {"hunk_hash": "abc123"}
-        _save_suggest_fixup_state(test_state)
-
-        assert get_suggest_fixup_state_file_path().exists()
-
-        _reset_suggest_fixup_state()
-
-        assert not get_suggest_fixup_state_file_path().exists()
-        assert _load_suggest_fixup_state() is None
-
-    def test_should_reset_when_no_state_exists(self, temp_git_repo):
-        """Test should_reset returns True when no state exists."""
-        should_reset = _should_reset_suggest_fixup_state(
-            "hash1", [1, 2], "@{upstream}", "test.py", 10, 20
-        )
-        assert should_reset is True
-
-    def test_should_reset_when_hunk_hash_changes(self, temp_git_repo):
-        """Test should_reset returns True when hunk hash changes."""
-        _save_suggest_fixup_state({
-            "hunk_hash": "hash1",
-            "line_ids": [1, 2],
-            "boundary": "@{upstream}",
-            "file_path": "test.py",
-            "min_line": 10,
-            "max_line": 20
-        })
-
-        should_reset = _should_reset_suggest_fixup_state(
-            "hash2", [1, 2], "@{upstream}", "test.py", 10, 20
-        )
-        assert should_reset is True
-
-    def test_should_reset_when_line_ids_change(self, temp_git_repo):
-        """Test should_reset returns True when line IDs change."""
-        _save_suggest_fixup_state({
-            "hunk_hash": "hash1",
-            "line_ids": [1, 2],
-            "boundary": "@{upstream}",
-            "file_path": "test.py",
-            "min_line": 10,
-            "max_line": 20
-        })
-
-        should_reset = _should_reset_suggest_fixup_state(
-            "hash1", [1, 2, 3], "@{upstream}", "test.py", 10, 20
-        )
-        assert should_reset is True
-
-    def test_should_reset_when_boundary_changes(self, temp_git_repo):
-        """Test should_reset returns True when boundary changes."""
-        _save_suggest_fixup_state({
-            "hunk_hash": "hash1",
-            "line_ids": [1, 2],
-            "boundary": "@{upstream}",
-            "file_path": "test.py",
-            "min_line": 10,
-            "max_line": 20
-        })
-
-        should_reset = _should_reset_suggest_fixup_state(
-            "hash1", [1, 2], "HEAD~5", "test.py", 10, 20
-        )
-        assert should_reset is True
-
-    def test_should_not_reset_when_parameters_match(self, temp_git_repo):
-        """Test should_reset returns False when all parameters match."""
-        _save_suggest_fixup_state({
-            "hunk_hash": "hash1",
-            "line_ids": [1, 2],
-            "boundary": "@{upstream}",
-            "file_path": "test.py",
-            "min_line": 10,
-            "max_line": 20
-        })
-
-        should_reset = _should_reset_suggest_fixup_state(
-            "hash1", [1, 2], "@{upstream}", "test.py", 10, 20
-        )
-        assert should_reset is False
 
 
 class TestFindNextFixupCandidate:
@@ -276,7 +163,7 @@ class TestCommandSuggestFixup:
     def test_suggest_fixup_abort_clears_state(self, temp_git_repo):
         """Test that abort flag clears state."""
         # Create state
-        _save_suggest_fixup_state({"hunk_hash": "test"})
+        write_suggest_fixup_state({"hunk_hash": "test"})
         assert get_suggest_fixup_state_file_path().exists()
 
         command_suggest_fixup(abort=True)

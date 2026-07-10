@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.editor import (
-    EditorBuffer,
     choose_line_ending,
     detect_line_ending,
     restore_line_endings,
@@ -16,18 +16,18 @@ def test_detect_line_ending_reads_bytes_and_buffer():
     assert detect_line_ending(b"one\r\ntwo\n") == b"\r\n"
     assert detect_line_ending(b"one\rtwo\n") == b"\n"
 
-    with EditorBuffer.from_bytes(b"one\rtwo\n") as buffer:
+    with LineBuffer.from_bytes(b"one\rtwo\n") as buffer:
         assert detect_line_ending(buffer) == b"\n"
 
-    with EditorBuffer.from_bytes(b"one\rtwo\r") as buffer:
+    with LineBuffer.from_bytes(b"one\rtwo\r") as buffer:
         assert detect_line_ending(buffer) == b"\r"
 
 
 def test_choose_line_ending_uses_first_buffer_with_an_ending():
     """A fallback buffer can provide the output line ending."""
     with (
-        EditorBuffer.from_bytes(b"alpha") as first,
-        EditorBuffer.from_bytes(b"beta\ngamma\n") as second,
+        LineBuffer.from_bytes(b"alpha") as first,
+        LineBuffer.from_bytes(b"beta\ngamma\n") as second,
     ):
         assert choose_line_ending(first, second) == b"\n"
 

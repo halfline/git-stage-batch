@@ -7,7 +7,7 @@ import pytest
 
 from git_stage_batch.batch.validation import batch_exists
 from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim
-from git_stage_batch.editor import EditorBuffer
+from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.batch.state_refs import get_batch_content_ref_name
 from git_stage_batch.commands.new import command_new_batch
 from git_stage_batch.commands.start import command_start
@@ -24,7 +24,7 @@ from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.batch import add_binary_file_to_batch, read_file_from_batch
 from git_stage_batch.core.models import BinaryFileChange
 from git_stage_batch.data.hunk_tracking import fetch_next_change
-from git_stage_batch.editor import EditorBuffer
+from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.exceptions import CommandError, MergeError
 
 
@@ -35,8 +35,8 @@ def merge_batch(
 ) -> bytes:
     """Return merged bytes through the buffer-returning production API."""
     with (
-        EditorBuffer.from_bytes(batch_source_content) as source_lines,
-        EditorBuffer.from_bytes(working_content) as working_lines,
+        LineBuffer.from_bytes(batch_source_content) as source_lines,
+        LineBuffer.from_bytes(working_content) as working_lines,
         merge_batch_from_line_sequences_as_buffer(
             source_lines,
             ownership,
@@ -72,7 +72,7 @@ def test_build_sift_ownership_accepts_non_list_line_sequences(line_sequence):
     resolved = ownership.resolve()
     assert resolved.presence_line_set == {2}
     assert len(resolved.deletion_claims) == 1
-    assert isinstance(resolved.deletion_claims[0].content_lines, EditorBuffer)
+    assert isinstance(resolved.deletion_claims[0].content_lines, LineBuffer)
     assert list(resolved.deletion_claims[0].content_lines) == [b"old\n"]
 
 
@@ -128,7 +128,7 @@ def test_add_sifted_text_file_to_batch_persists_target_buffer(temp_git_repo):
     """Sifted text persistence streams the target buffer into batch storage."""
     ownership = BatchOwnership.from_presence_lines(["2"], [])
 
-    with EditorBuffer.from_chunks([b"# Test\n", b"added\n"]) as target_buffer:
+    with LineBuffer.from_chunks([b"# Test\n", b"added\n"]) as target_buffer:
         add_sifted_text_file_to_batch(
             "sifted-batch",
             "README.md",

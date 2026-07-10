@@ -19,8 +19,8 @@ from ..batch.query import list_batch_names, read_batch_metadata
 from ..core.line_selection import parse_line_selection
 from ..core.models import LineLevelChange
 from ..data.consumed_selections import read_consumed_file_metadata
-from ..editor import (
-    buffer_matches,
+from ..core.buffer import buffer_matches
+from ..utils.repository_buffers import (
     load_git_blob_as_buffer,
     load_git_object_as_buffer_or_empty,
     load_working_tree_file_as_buffer,

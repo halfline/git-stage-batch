@@ -7,7 +7,10 @@ from typing import TYPE_CHECKING, TypeVar
 
 from ..core.models import LineLevelChange, LineEntry
 from ..data.batch_sources import get_batch_source_for_file
-from ..editor import load_git_object_as_buffer, load_working_tree_file_as_buffer
+from ..utils.repository_buffers import (
+    load_git_object_as_buffer,
+    load_working_tree_file_as_buffer,
+)
 from ..i18n import ngettext
 from ..utils.git import get_git_repository_root_path
 from .match import match_lines

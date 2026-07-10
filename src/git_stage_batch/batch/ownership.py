@@ -13,14 +13,16 @@ from ..core.line_selection import (
 )
 from ..core.models import LineEntry
 from ..data.batch_sources import create_batch_source_commit
-from ..editor import (
-    Editor,
-    EditorBuffer,
+from ..core.buffer import (
+    LineBuffer,
     buffer_byte_chunks,
+)
+from ..utils.repository_buffers import (
     load_git_blob_as_buffer,
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
 )
+from ..editor import Editor
 from ..exceptions import AtomicUnitError, MergeError
 from ..i18n import _
 from ..utils.git import (
@@ -29,11 +31,11 @@ from ..utils.git import (
     read_git_blobs_as_bytes,
 )
 from .comparison import SemanticChangeKind, derive_semantic_change_runs
-from .lineage import _BatchSourceLineage, _LineageRun
+from .lineage import BatchSourceLineage, LineageRun
 from .match import LineMapping, match_lines
 from .merge import (
-    _apply_presence_constraints,
-    _realized_entry_content_chunks,
+    apply_presence_constraints,
+    realized_entry_content_chunks,
 )
 
 
@@ -128,7 +130,7 @@ class AbsenceClaim:
         cls,
         data: dict,
         blob_contents: dict[str, bytes] | None = None,
-        blob_buffers: dict[str, EditorBuffer] | None = None,
+        blob_buffers: dict[str, LineBuffer] | None = None,
     ) -> AbsenceClaim:
         """Deserialize from metadata dictionary."""
         anchor_line = data.get("after_source_line")
@@ -492,8 +494,8 @@ class BatchOwnership:
         deletion_metadata = data.get("deletions", [])
         presence_metadata = data.get("presence_claims", [])
         replacement_metadata = data.get("replacement_units", [])
-        blob_buffers: dict[str, EditorBuffer] = {}
-        buffers: list[EditorBuffer] = []
+        blob_buffers: dict[str, LineBuffer] = {}
+        buffers: list[LineBuffer] = []
         try:
             for blob_sha in _deletion_content_blob_ids(deletion_metadata):
                 if blob_sha in blob_buffers:
@@ -530,7 +532,7 @@ class BatchOwnership:
         data: dict,
         *,
         blob_contents: dict[str, bytes],
-        deletion_blob_buffers: dict[str, EditorBuffer] | None = None,
+        deletion_blob_buffers: dict[str, LineBuffer] | None = None,
     ) -> BatchOwnership:
         deletion_metadata = data.get("deletions", [])
         presence_metadata = data.get("presence_claims", [])
@@ -571,7 +573,7 @@ class _AcquiredBatchOwnership:
     """Own buffers used by a scoped BatchOwnership value."""
 
     ownership: BatchOwnership
-    buffers: list[EditorBuffer]
+    buffers: list[LineBuffer]
 
     def close(self) -> None:
         for buffer in self.buffers:
@@ -602,7 +604,7 @@ def acquire_detached_batch_ownership(
     ownership: BatchOwnership,
 ) -> _AcquiredBatchOwnership:
     """Acquire an ownership copy with independent absence content buffers."""
-    buffers: list[EditorBuffer] = []
+    buffers: list[LineBuffer] = []
     deletions: list[AbsenceClaim] = []
     try:
         for deletion in ownership.deletions:
@@ -647,8 +649,8 @@ def acquire_detached_batch_ownership(
 class SourceContentWithLineProvenance:
     """Synthesized source buffer with line provenance from its inputs."""
 
-    source_buffer: EditorBuffer
-    lineage: _BatchSourceLineage
+    source_buffer: LineBuffer
+    lineage: BatchSourceLineage
 
     def close(self) -> None:
         """Release the synthesized buffer and line lineage."""
@@ -668,8 +670,8 @@ class BatchSourceAdvanceResult:
 
     batch_source_commit: str
     ownership: BatchOwnership
-    source_buffer: EditorBuffer
-    lineage: _BatchSourceLineage
+    source_buffer: LineBuffer
+    lineage: BatchSourceLineage
 
     def close(self) -> None:
         """Release the refreshed source buffer and line lineage."""
@@ -1235,13 +1237,13 @@ class _LineEntryContentSequence(Sequence[bytes]):
         return _line_entry_content(self._lines[index])
 
 
-class _AbsenceContentBuilder:
-    """Build absence content as an EditorBuffer from appended line ranges."""
+class AbsenceContentBuilder:
+    """Build absence content as an LineBuffer from appended line ranges."""
 
     def __init__(self) -> None:
         self._editor: Editor | None = Editor(())
 
-    def __enter__(self) -> _AbsenceContentBuilder:
+    def __enter__(self) -> AbsenceContentBuilder:
         self._check_open()
         return self
 
@@ -1257,10 +1259,10 @@ class _AbsenceContentBuilder:
         editor = self._check_open()
         editor.append_line_range(lines, start, end)
 
-    def finish(self) -> EditorBuffer:
+    def finish(self) -> LineBuffer:
         editor = self._check_open()
         try:
-            return EditorBuffer.from_chunks(editor.line_chunks())
+            return LineBuffer.from_chunks(editor.line_chunks())
         finally:
             self.close()
 
@@ -1280,9 +1282,9 @@ class _AbsenceContentBuilder:
         return editor
 
 
-def _copy_absence_content(content_lines: Sequence[bytes]) -> EditorBuffer:
-    if isinstance(content_lines, EditorBuffer):
-        return EditorBuffer.from_chunks(buffer_byte_chunks(content_lines))
+def _copy_absence_content(content_lines: Sequence[bytes]) -> LineBuffer:
+    if isinstance(content_lines, LineBuffer):
+        return LineBuffer.from_chunks(buffer_byte_chunks(content_lines))
     return _build_absence_content_from_range(content_lines, 0, len(content_lines))
 
 
@@ -1290,8 +1292,8 @@ def _build_absence_content_from_range(
     content_lines: Sequence[bytes],
     start: int,
     end: int,
-) -> EditorBuffer:
-    with _AbsenceContentBuilder() as builder:
+) -> LineBuffer:
+    with AbsenceContentBuilder() as builder:
         builder.append_line_range(content_lines, start, end)
         return builder.finish()
 
@@ -1484,7 +1486,7 @@ def translate_hunk_selection_to_batch_ownership(
         old_line_seen = False
         selected_source_lines = _LineRangeBuilder()
         consumed_ids: list[int] = []
-        with _AbsenceContentBuilder() as builder:
+        with AbsenceContentBuilder() as builder:
             for range_start, range_stop in selected_old_ranges:
                 if not old_line_seen:
                     deletion_anchor = hunk_lines[range_start].source_line
@@ -1807,42 +1809,6 @@ class OwnershipUnit:
     atomic_reason: str | None = None
     preserves_replacement_unit: bool = False
     replacement_origin: ReplacementUnitOrigin | None = None
-
-
-def build_ownership_units_from_batch_source_lines(
-    ownership: BatchOwnership,
-    batch_source_lines: Sequence[bytes],
-) -> list[OwnershipUnit]:
-    """Build semantic ownership units from indexed batch-source lines.
-
-    Persisted replacement metadata is honored first, so captured replacements
-    remain whole atomic units even if their lines are no longer display-adjacent.
-    Remaining lines fall back to display-adjacency grouping in reconstructed
-    display order, not source-line proximity. This reflects what the user
-    actually sees in the batch display.
-
-    Grouping rules:
-    - Deletion block immediately followed by claimed line -> REPLACEMENT unit (atomic)
-    - Claimed line immediately followed by deletion block -> REPLACEMENT unit (atomic)
-    - Deletion block with no adjacent claimed line -> DELETION_ONLY unit (atomic)
-    - Claimed line with no adjacent deletion -> PRESENCE_ONLY unit (non-atomic)
-
-    For fallback display-adjacent grouping, claimed lines are processed
-    individually (not as blocks) to preserve fine-grained reset capability.
-    When a deletion block is followed by multiple claimed lines, only the first
-    claimed line couples with the deletion to form a REPLACEMENT unit.
-    Subsequent claimed lines remain independent PRESENCE_ONLY units.
-
-    "Adjacent" means consecutive in the display_lines sequence with no intervening
-    entries of a different type. Source-line proximity is not considered.
-    """
-    from ..batch.display import build_display_lines_from_batch_source_lines
-
-    display_lines = build_display_lines_from_batch_source_lines(
-        batch_source_lines,
-        ownership,
-    )
-    return build_ownership_units_from_display_lines(ownership, display_lines)
 
 
 def build_ownership_units_from_display_lines(
@@ -2350,7 +2316,7 @@ def _remap_replacement_units(
 
 def _first_unmapped_line(
     line_selection: LineSelection,
-    lineage: _BatchSourceLineage,
+    lineage: BatchSourceLineage,
 ) -> int | None:
     return lineage.first_unmapped_source_line(line_selection)
 
@@ -2358,7 +2324,7 @@ def _first_unmapped_line(
 def _remap_replacement_units_with_lineage(
     replacement_units: list[ReplacementUnit],
     *,
-    lineage: _BatchSourceLineage,
+    lineage: BatchSourceLineage,
     deletion_count: int,
 ) -> list[ReplacementUnit]:
     """Remap replacement-unit presence lines with refreshed source lineage."""
@@ -2465,7 +2431,7 @@ def _remap_batch_ownership_with_mapping(
     )
 
 
-def _advance_source_lines_preserving_existing_presence(
+def advance_source_lines_preserving_existing_presence(
     old_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
     ownership: BatchOwnership,
@@ -2473,20 +2439,20 @@ def _advance_source_lines_preserving_existing_presence(
     """Build source content with provenance from line sequences."""
     presence_lines = ownership.presence_line_set()
 
-    entries = _apply_presence_constraints(
+    entries = apply_presence_constraints(
         old_lines,
         working_lines,
         presence_lines,
     )
 
-    lineage = _BatchSourceLineage()
+    lineage = BatchSourceLineage()
     try:
         for run in entries.provenance_runs():
             line_count = run.dest_end - run.dest_start
             new_start = run.dest_start + 1
             if run.source_start != 0:
                 lineage.append_source_run(
-                    _LineageRun(
+                    LineageRun(
                         old_start=run.source_start,
                         old_end=run.source_start + line_count - 1,
                         new_start=new_start,
@@ -2494,7 +2460,7 @@ def _advance_source_lines_preserving_existing_presence(
                 )
             if run.target_start != 0:
                 lineage.append_working_run(
-                    _LineageRun(
+                    LineageRun(
                         old_start=run.target_start,
                         old_end=run.target_start + line_count - 1,
                         new_start=new_start,
@@ -2502,8 +2468,8 @@ def _advance_source_lines_preserving_existing_presence(
                 )
 
         return SourceContentWithLineProvenance(
-            source_buffer=EditorBuffer.from_chunks(
-                _realized_entry_content_chunks(entries)
+            source_buffer=LineBuffer.from_chunks(
+                realized_entry_content_chunks(entries)
             ),
             lineage=lineage,
         )
@@ -2514,9 +2480,9 @@ def _advance_source_lines_preserving_existing_presence(
         entries.close()
 
 
-def _remap_batch_ownership_with_lineage(
+def remap_batch_ownership_with_lineage(
     ownership: BatchOwnership,
-    lineage: _BatchSourceLineage,
+    lineage: BatchSourceLineage,
 ) -> BatchOwnership:
     """Remap ownership using provenance from source refresh construction."""
     old_presence = ownership.presence_line_set()
@@ -2601,7 +2567,7 @@ def advance_batch_source_for_file_with_provenance(
             old_source_buffer as old_source_lines,
             load_working_tree_file_as_buffer(file_path) as working_lines,
         ):
-            source_with_provenance = _advance_source_lines_preserving_existing_presence(
+            source_with_provenance = advance_source_lines_preserving_existing_presence(
                 old_lines=old_source_lines,
                 working_lines=working_lines,
                 ownership=existing_ownership,
@@ -2618,7 +2584,7 @@ def advance_batch_source_for_file_with_provenance(
         # Remap ownership using lineage produced while constructing the refreshed
         # source. This preserves already-owned lines that no longer exist in the
         # working tree after earlier discard operations.
-        remapped_ownership = _remap_batch_ownership_with_lineage(
+        remapped_ownership = remap_batch_ownership_with_lineage(
             ownership=existing_ownership,
             lineage=source_with_provenance.lineage,
         )

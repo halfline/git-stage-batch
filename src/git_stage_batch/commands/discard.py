@@ -23,8 +23,8 @@ from ..batch.display import (
 )
 from ..batch.ownership import (
     BatchOwnership,
-    _advance_source_lines_preserving_existing_presence,
-    _remap_batch_ownership_with_lineage,
+    advance_source_lines_preserving_existing_presence,
+    remap_batch_ownership_with_lineage,
     derive_replacement_line_runs_from_lines,
     merge_batch_ownership,
     translate_lines_to_batch_ownership,
@@ -36,7 +36,7 @@ from ..core.replacement import (
 from ..batch.query import read_batch_metadata
 from ..batch.selection import require_line_selection_in_view
 from ..batch.source_refresh import acquire_batch_ownership_update_for_selection
-from ..batch.source_refresh import _refresh_selected_lines_against_source_lines
+from ..batch.source_refresh import refresh_selected_lines_against_source_lines
 from ..batch.validation import batch_exists
 from ..batch.submodule_pointer import discard_submodule_pointer_from_batch
 from ..core.diff_parser import (
@@ -52,10 +52,10 @@ from ..core.hashing import (
 )
 from ..core.line_selection import parse_line_selection
 from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
-from ..core.text_lifecycle import TextFileChangeType, detect_empty_text_lifecycle_change
+from ..core.text_lifecycle import TextFileChangeType
+from ..data.text_lifecycle_detection import detect_empty_text_lifecycle_change
 from ..data.hunk_tracking import (
     fetch_next_change,
-    finish_selected_change_action,
     load_selected_change,
     require_selected_hunk,
 )
@@ -95,12 +95,14 @@ from ..data.progress import record_hunk_discarded, record_hunks_discarded
 from ..data.batch_sources import create_batch_source_commit, load_session_batch_sources, save_session_batch_sources
 from ..data.session import require_session_started, snapshot_file_if_untracked, snapshot_files_if_untracked
 from ..data.undo import undo_checkpoint
-from ..editor import (
-    EditorBuffer,
+from ..core.buffer import (
+    LineBuffer,
+    write_buffer_to_path,
+)
+from ..utils.repository_buffers import (
     load_git_object_as_buffer,
     load_git_object_as_buffer_or_empty,
     load_working_tree_file_as_buffer,
-    write_buffer_to_path,
 )
 from ..exceptions import CommandError, exit_with_error, NoMoreHunks
 from ..i18n import _, ngettext
@@ -131,13 +133,12 @@ from ..utils.paths import (
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
 )
-from .include import (
-    _expand_replacement_selection_ids,
-)
+from .selection import replacement_selection
 from .selection.selected_hunk_refresh import (
     recalculate_selected_hunk_for_command,
     refresh_selected_hunk_after_line_action,
 )
+from .selection.action_completion import finish_selected_change_action
 
 
 @dataclass(frozen=True)
@@ -287,7 +288,7 @@ class DiscardFilesToBatchResult:
     discarded_files: list[str]
 
 
-def _buffer_ends_with_lf(buffer: EditorBuffer) -> bool:
+def _buffer_ends_with_lf(buffer: LineBuffer) -> bool:
     last_chunk = b""
     for chunk in buffer.byte_chunks():
         if chunk:
@@ -467,7 +468,7 @@ def command_discard(
             return
 
         # Text hunk - use git apply -R
-        with EditorBuffer.from_path(get_selected_hunk_patch_file_path()) as patch_buffer:
+        with LineBuffer.from_path(get_selected_hunk_patch_file_path()) as patch_buffer:
             # Extract filename for user feedback and snapshotting
             line_changes = build_line_changes_from_patch_lines(patch_buffer)
             filename = line_changes.path
@@ -1126,7 +1127,10 @@ def _command_discard_lines_to_batch_as(
         requested_ids,
         line_id_specification=line_id_specification,
     )
-    effective_ids = _expand_replacement_selection_ids(line_changes, requested_ids)
+    effective_ids = replacement_selection.expand_replacement_selection_ids(
+        line_changes,
+        requested_ids,
+    )
 
     if not batch_exists(batch_name):
         create_batch(batch_name, "Auto-created")
@@ -1155,7 +1159,7 @@ def _command_discard_lines_to_batch_as(
     except ValueError as e:
         exit_with_error(str(e))
 
-    target_working_buffer: EditorBuffer | None = None
+    target_working_buffer: LineBuffer | None = None
     try:
         with rewritten_working_buffer as rewritten_working_lines:
             rewritten_cached_lines = build_file_hunk_from_buffer(
@@ -1208,17 +1212,17 @@ def _command_discard_lines_to_batch_as(
 
                         with (
                             old_source_buffer as old_source_lines,
-                            _advance_source_lines_preserving_existing_presence(
+                            advance_source_lines_preserving_existing_presence(
                                 old_lines=old_source_lines,
                                 working_lines=rewritten_working_lines,
                                 ownership=existing_ownership,
                             ) as source_with_provenance,
                         ):
-                            remapped_existing_ownership = _remap_batch_ownership_with_lineage(
+                            remapped_existing_ownership = remap_batch_ownership_with_lineage(
                                 ownership=existing_ownership,
                                 lineage=source_with_provenance.lineage,
                             )
-                            refreshed_selected_lines = _refresh_selected_lines_against_source_lines(
+                            refreshed_selected_lines = refresh_selected_lines_against_source_lines(
                                 rewritten_selected_lines,
                                 source_lines=source_with_provenance.source_buffer,
                                 working_lines=(),
@@ -1545,7 +1549,7 @@ def _collect_text_file_discard_inputs(
             discard_input.patches_to_discard.append(
                 _PreparedPatchDiscard(
                     patch_lines=patch_stack.enter_context(
-                        EditorBuffer.from_chunks(patch.lines)
+                        LineBuffer.from_chunks(patch.lines)
                     ),
                     patch_hash=patch_hash,
                 )
@@ -1801,7 +1805,7 @@ def _command_discard_file_to_batch(
                 )
                 all_lines_to_batch.extend(hunk_lines.lines)
                 patches_to_discard.append((
-                    patch_stack.enter_context(EditorBuffer.from_chunks(patch.lines)),
+                    patch_stack.enter_context(LineBuffer.from_chunks(patch.lines)),
                     patch_hash,
                 ))
 
@@ -2169,7 +2173,7 @@ def _command_discard_hunk_to_batch(
 
     # Get the file path and hash from currently cached hunk
     patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
-    with EditorBuffer.from_path(get_selected_hunk_patch_file_path()) as selected_patch_lines:
+    with LineBuffer.from_path(get_selected_hunk_patch_file_path()) as selected_patch_lines:
         return _command_discard_text_hunk_to_batch(
             batch_name=batch_name,
             selected_patch_lines=selected_patch_lines,
@@ -2239,7 +2243,7 @@ def _command_discard_text_hunk_to_batch(
                     )
                     all_lines_to_batch.extend(hunk_lines.lines)
                     patches_to_discard.append((
-                        patch_stack.enter_context(EditorBuffer.from_chunks(patch.lines)),
+                        patch_stack.enter_context(LineBuffer.from_chunks(patch.lines)),
                         patch_hash,
                     ))
         else:

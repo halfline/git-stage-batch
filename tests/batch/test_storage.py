@@ -16,14 +16,14 @@ from git_stage_batch.batch.ownership import (
     AbsenceClaim,
     ReplacementUnit,
     ReplacementUnitOrigin,
-    _AbsenceContentBuilder,
+    AbsenceContentBuilder,
     _absence_signature,
     acquire_detached_batch_ownership,
     merge_batch_ownership,
 )
 import git_stage_batch.batch.ownership as ownership_module
 from git_stage_batch.data.session import initialize_abort_state
-from git_stage_batch.editor import EditorBuffer
+from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.utils.git import create_git_blob
 
 
@@ -34,8 +34,8 @@ def merge_batch(
 ) -> bytes:
     """Return merged bytes through the buffer-returning production API."""
     with (
-        EditorBuffer.from_bytes(batch_source_content) as source_lines,
-        EditorBuffer.from_bytes(working_content) as working_lines,
+        LineBuffer.from_bytes(batch_source_content) as source_lines,
+        LineBuffer.from_bytes(working_content) as working_lines,
         merge_batch_from_line_sequences_as_buffer(
             source_lines,
             ownership,
@@ -145,7 +145,7 @@ def test_deletion_claim_metadata_accepts_non_list_content_lines(
 
 def test_absence_claim_metadata_keeps_deletions_key(temp_git_repo):
     """Serialized metadata should keep the compatible deletions key."""
-    with EditorBuffer.from_chunks([b"old\n"]) as content:
+    with LineBuffer.from_chunks([b"old\n"]) as content:
         ownership = BatchOwnership.from_presence_lines(
             [],
             [
@@ -177,7 +177,7 @@ def test_batch_ownership_metadata_acquisition_scopes_deletion_buffers(temp_git_r
 
     with BatchOwnership.acquire_for_metadata_dict(metadata) as scoped_ownership:
         content_lines = scoped_ownership.deletions[0].content_lines
-        assert isinstance(content_lines, EditorBuffer)
+        assert isinstance(content_lines, LineBuffer)
         assert content_lines[0] == b"old one\n"
         assert content_lines[1] == b"old two\n"
 
@@ -204,14 +204,14 @@ def test_acquire_detached_batch_ownership_keeps_copied_content(temp_git_repo):
     with BatchOwnership.acquire_for_metadata_dict(metadata) as scoped_ownership:
         detached_context = acquire_detached_batch_ownership(scoped_ownership)
         content_lines = scoped_ownership.deletions[0].content_lines
-        assert isinstance(content_lines, EditorBuffer)
+        assert isinstance(content_lines, LineBuffer)
 
     with pytest.raises(ValueError, match="buffer is closed"):
         content_lines[0]
 
     with detached_context as detached:
         detached_content = detached.deletions[0].content_lines
-        assert isinstance(detached_content, EditorBuffer)
+        assert isinstance(detached_content, LineBuffer)
         assert list(detached_content) == [
             b"old one\n",
             b"old two\n",
@@ -230,8 +230,8 @@ def test_acquire_detached_batch_ownership_streams_buffer_content(monkeypatch):
     def fail_getitem(self, index):
         raise AssertionError("detach should stream byte chunks")
 
-    with EditorBuffer.from_chunks([b"old one\n", b"old two\n"]) as content:
-        monkeypatch.setattr(EditorBuffer, "__getitem__", fail_getitem)
+    with LineBuffer.from_chunks([b"old one\n", b"old two\n"]) as content:
+        monkeypatch.setattr(LineBuffer, "__getitem__", fail_getitem)
         detached_context = acquire_detached_batch_ownership(
             BatchOwnership.from_presence_lines(
                 [],
@@ -241,7 +241,7 @@ def test_acquire_detached_batch_ownership_streams_buffer_content(monkeypatch):
 
     with detached_context as detached:
         detached_content = detached.deletions[0].content_lines
-        assert isinstance(detached_content, EditorBuffer)
+        assert isinstance(detached_content, LineBuffer)
         assert detached_content.to_bytes() == b"old one\nold two\n"
 
     with pytest.raises(ValueError, match="buffer is closed"):
@@ -254,10 +254,10 @@ def test_absence_signature_streams_editor_buffer_chunks(monkeypatch):
         raise AssertionError("absence signature should stream byte chunks")
 
     with (
-        EditorBuffer.from_chunks([b"old one\n", b"old two\n"]) as left_content,
-        EditorBuffer.from_chunks([b"old one\n", b"old two\n"]) as right_content,
+        LineBuffer.from_chunks([b"old one\n", b"old two\n"]) as left_content,
+        LineBuffer.from_chunks([b"old one\n", b"old two\n"]) as right_content,
     ):
-        monkeypatch.setattr(EditorBuffer, "__getitem__", fail_getitem)
+        monkeypatch.setattr(LineBuffer, "__getitem__", fail_getitem)
         left_claim = AbsenceClaim(anchor_line=None, content_lines=left_content)
         right_claim = AbsenceClaim(anchor_line=None, content_lines=right_content)
 
@@ -284,7 +284,7 @@ def test_absence_content_builder_closes_editor_on_finish(monkeypatch):
 
     monkeypatch.setattr(ownership_module.Editor, "close", count_close)
 
-    with _AbsenceContentBuilder() as builder:
+    with AbsenceContentBuilder() as builder:
         builder.append_line_range([b"old\n"], 0, 1)
         content = builder.finish()
 
@@ -308,7 +308,7 @@ def test_absence_content_builder_closes_editor_on_exception(monkeypatch):
     monkeypatch.setattr(ownership_module.Editor, "close", count_close)
 
     with pytest.raises(RuntimeError, match="boom"):
-        with _AbsenceContentBuilder() as builder:
+        with AbsenceContentBuilder() as builder:
             builder.append_line_range([b"old\n"], 0, 1)
             raise RuntimeError("boom")
 

@@ -1,12 +1,12 @@
-"""Tests for editor Git buffer loading."""
+"""Tests for repository-backed buffer loading."""
 
 from __future__ import annotations
 
 import subprocess
 
-import git_stage_batch.editor.git as editor_git
-from git_stage_batch.editor import (
-    EditorBuffer,
+from git_stage_batch.core.buffer import LineBuffer
+import git_stage_batch.utils.repository_buffers as repository_buffers
+from git_stage_batch.utils.repository_buffers import (
     load_git_blob_as_buffer,
     load_git_object_as_buffer,
     load_git_object_as_buffer_or_empty,
@@ -24,7 +24,7 @@ def test_load_git_blob_as_buffer_loads_streamed_blob(monkeypatch):
         calls.append(blob_sha)
         return iter([b"alpha\nbe", b"ta\n"])
 
-    monkeypatch.setattr(editor_git, "read_git_blob", fake_read_git_blob)
+    monkeypatch.setattr(repository_buffers, "read_git_blob", fake_read_git_blob)
 
     with load_git_blob_as_buffer("abc123") as buffer:
         assert calls == ["abc123"]
@@ -44,10 +44,18 @@ def test_load_git_tree_files_as_buffers_loads_tree_blobs(monkeypatch):
         }
 
     def fake_load_git_blob_as_buffer(blob_sha):
-        return EditorBuffer.from_bytes(blob_sha.encode("ascii") + b"\n")
+        return LineBuffer.from_bytes(blob_sha.encode("ascii") + b"\n")
 
-    monkeypatch.setattr(editor_git, "list_git_tree_blobs", fake_list_git_tree_blobs)
-    monkeypatch.setattr(editor_git, "load_git_blob_as_buffer", fake_load_git_blob_as_buffer)
+    monkeypatch.setattr(
+        repository_buffers,
+        "list_git_tree_blobs",
+        fake_list_git_tree_blobs,
+    )
+    monkeypatch.setattr(
+        repository_buffers,
+        "load_git_blob_as_buffer",
+        fake_load_git_blob_as_buffer,
+    )
 
     buffers = load_git_tree_files_as_buffers("HEAD", ["alpha.txt", "beta.txt"])
     try:
@@ -67,7 +75,7 @@ def test_load_git_object_as_buffer_loads_streamed_output(monkeypatch):
         calls.append(revision_path)
         return iter([b"alpha\nbe", b"ta\n"])
 
-    monkeypatch.setattr(editor_git, "_stream_git_object", fake_stream_git_object)
+    monkeypatch.setattr(repository_buffers, "_stream_git_object", fake_stream_git_object)
 
     with load_git_object_as_buffer("HEAD:file.txt") as buffer:
         assert calls == ["HEAD:file.txt"]
@@ -84,7 +92,7 @@ def test_load_git_object_as_buffer_returns_none_for_missing_object(monkeypatch):
             ["git", "show", revision_path],
         )
 
-    monkeypatch.setattr(editor_git, "_stream_git_object", fake_stream_git_object)
+    monkeypatch.setattr(repository_buffers, "_stream_git_object", fake_stream_git_object)
 
     assert load_git_object_as_buffer("HEAD:missing.txt") is None
 
@@ -100,7 +108,7 @@ def test_load_git_object_as_buffer_or_empty_returns_empty_for_missing_object(
             ["git", "show", revision_path],
         )
 
-    monkeypatch.setattr(editor_git, "_stream_git_object", fake_stream_git_object)
+    monkeypatch.setattr(repository_buffers, "_stream_git_object", fake_stream_git_object)
 
     with load_git_object_as_buffer_or_empty("HEAD:missing.txt") as buffer:
         assert len(buffer) == 0
@@ -112,7 +120,11 @@ def test_load_working_tree_file_as_buffer_uses_repository_root(monkeypatch, tmp_
     file_path.parent.mkdir()
     file_path.write_bytes(b"alpha\nbeta\n")
 
-    monkeypatch.setattr(editor_git, "get_git_repository_root_path", lambda: tmp_path)
+    monkeypatch.setattr(
+        repository_buffers,
+        "get_git_repository_root_path",
+        lambda: tmp_path,
+    )
 
     with load_working_tree_file_as_buffer("dir/file.txt") as buffer:
         assert buffer.uses_mapped_storage is False
@@ -125,7 +137,11 @@ def test_load_working_tree_file_as_buffer_returns_empty_for_missing_file(
     tmp_path,
 ):
     """Missing working-tree files return an empty buffer."""
-    monkeypatch.setattr(editor_git, "get_git_repository_root_path", lambda: tmp_path)
+    monkeypatch.setattr(
+        repository_buffers,
+        "get_git_repository_root_path",
+        lambda: tmp_path,
+    )
 
     with load_working_tree_file_as_buffer("missing.txt") as buffer:
         assert len(buffer) == 0

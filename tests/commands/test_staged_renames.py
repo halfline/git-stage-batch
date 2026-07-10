@@ -7,10 +7,11 @@ import pytest
 from git_stage_batch.commands.abort import command_abort
 from git_stage_batch.commands.check_unstaged import command_check_unstaged
 from git_stage_batch.commands.include import command_include
+from git_stage_batch.commands.selection.selected_change_display import show_selected_change
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.stop import command_stop
 from git_stage_batch.core.models import LineLevelChange, RenameChange, TextFileDeletionChange
-from git_stage_batch.data.hunk_tracking import load_selected_change, show_selected_change
+from git_stage_batch.data.hunk_tracking import load_selected_change
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import get_staged_deletions_file_path, get_staged_renames_file_path
 

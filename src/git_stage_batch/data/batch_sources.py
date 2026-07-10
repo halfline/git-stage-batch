@@ -9,8 +9,8 @@ import tempfile
 import uuid
 from dataclasses import dataclass
 
-from ..editor import (
-    EditorBuffer,
+from ..core.buffer import LineBuffer
+from ..utils.repository_buffers import (
     load_git_blob_as_buffer,
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
@@ -45,17 +45,17 @@ class BatchSourceCommit:
     """A per-file batch source commit and the file buffer it stores."""
 
     commit_sha: str
-    file_buffer: EditorBuffer
+    file_buffer: LineBuffer
 
 
-def _buffer_preview(buffer: EditorBuffer) -> bytes:
+def _buffer_preview(buffer: LineBuffer) -> bytes:
     """Return a short byte preview for journal logging."""
     for chunk in buffer.byte_chunks(200):
         return chunk
     return b"(empty)"
 
 
-def load_saved_session_file_as_buffer(file_path: str) -> EditorBuffer:
+def load_saved_session_file_as_buffer(file_path: str) -> LineBuffer:
     """Load a file buffer as it was at session start.
 
     For tracked files, extracts from the git stash created by
@@ -79,7 +79,7 @@ def load_saved_session_file_as_buffer(file_path: str) -> EditorBuffer:
             # Read from snapshot directory
             snapshot_path = get_abort_snapshots_directory_path() / file_path
             if snapshot_path.exists():
-                return EditorBuffer.from_path(snapshot_path)
+                return LineBuffer.from_path(snapshot_path)
             else:
                 raise CommandError(
                     _("Snapshot for untracked file not found: {file}").format(file=file_path)
@@ -106,7 +106,7 @@ def load_saved_session_file_as_buffer(file_path: str) -> EditorBuffer:
     buffer = load_git_object_as_buffer(f"{baseline_commit}:{file_path}")
     if buffer is None:
         # File might not exist in baseline (new file)
-        return EditorBuffer.from_bytes(b"")
+        return LineBuffer.from_bytes(b"")
 
     return buffer
 
@@ -140,7 +140,7 @@ def _read_session_file_buffers(
     file_paths: list[str],
     *,
     baseline_commit: str,
-) -> tuple[dict[str, EditorBuffer], set[str]]:
+) -> tuple[dict[str, LineBuffer], set[str]]:
     """Read session-start buffers for several files."""
     unique_file_paths = list(dict.fromkeys(file_paths))
     baseline_blobs = list_git_tree_blobs(baseline_commit, unique_file_paths)
@@ -153,7 +153,7 @@ def _read_session_file_buffers(
         set()
     )
 
-    buffers: dict[str, EditorBuffer] = {}
+    buffers: dict[str, LineBuffer] = {}
     remaining_paths: list[str] = []
     try:
         snapshot_directory = get_abort_snapshots_directory_path()
@@ -161,7 +161,7 @@ def _read_session_file_buffers(
             if file_path in snapshotted_files:
                 snapshot_path = snapshot_directory / file_path
                 if snapshot_path.exists():
-                    buffers[file_path] = EditorBuffer.from_path(snapshot_path)
+                    buffers[file_path] = LineBuffer.from_path(snapshot_path)
                     continue
                 raise CommandError(
                     _("Snapshot for untracked file not found: {file}").format(file=file_path)
@@ -194,7 +194,7 @@ def _read_session_file_buffers(
             ):
                 buffers[file_path] = load_working_tree_file_as_buffer(file_path)
             else:
-                buffers[file_path] = EditorBuffer.from_bytes(b"")
+                buffers[file_path] = LineBuffer.from_bytes(b"")
     except Exception:
         for buffer in buffers.values():
             buffer.close()
@@ -339,7 +339,7 @@ def create_batch_source_commits(file_paths: list[str]) -> dict[str, BatchSourceC
 def create_batch_source_commit(
     file_path: str,
     *,
-    file_buffer_override: EditorBuffer | None = None
+    file_buffer_override: LineBuffer | None = None
 ) -> str:
     """Create batch source commit for a file.
 
@@ -372,7 +372,7 @@ def create_batch_source_commit(
 
     repo_root = get_git_repository_root_path()
     full_path = repo_root / file_path
-    file_buffer: EditorBuffer | None = None
+    file_buffer: LineBuffer | None = None
     close_file_buffer = True
     content_len = 0
     content_lines = 0

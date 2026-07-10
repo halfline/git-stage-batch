@@ -17,8 +17,11 @@ from ..data.batch_sources import (
     load_session_batch_sources,
     save_session_batch_sources,
 )
-from ..editor import load_git_object_as_buffer, load_working_tree_file_as_buffer
-from .lineage import _BatchSourceLineage
+from ..utils.repository_buffers import (
+    load_git_object_as_buffer,
+    load_working_tree_file_as_buffer,
+)
+from .lineage import BatchSourceLineage
 from .match import match_lines
 from .ownership import (
     BatchOwnership,
@@ -141,7 +144,7 @@ def ensure_batch_source_current_for_selection(
             # Re-annotate lines against the refreshed source. That source may
             # include already-owned lines that are absent from the
             # working tree after earlier discard operations.
-            reannotated_lines = _refresh_selected_lines_against_source_lines(
+            reannotated_lines = refresh_selected_lines_against_source_lines(
                 selected_lines,
                 source_lines=advance_result.source_buffer,
                 working_lines=(),
@@ -167,7 +170,7 @@ def ensure_batch_source_current_for_selection(
         # First time - stale is normal. The batch source will be created from
         # the same working tree snapshot, so annotate now in that coordinate
         # space before translating ownership.
-        reannotated_lines = _refresh_selected_lines_against_new_source(selected_lines)
+        reannotated_lines = refresh_selected_lines_against_new_source(selected_lines)
 
         return RefreshedBatchSelection(
             batch_source_commit=current_batch_source_commit,
@@ -231,7 +234,7 @@ def _create_current_working_source_for_selection(
     _cache_session_source(file_path, batch_source_commit)
     return (
         batch_source_commit,
-        _refresh_selected_lines_against_new_source(selected_lines),
+        refresh_selected_lines_against_new_source(selected_lines),
     )
 
 
@@ -260,7 +263,7 @@ def _prepare_initial_cached_source_for_selection(
     return new_batch_source_commit, reannotated_lines, True
 
 
-def _refresh_selected_lines_against_new_source(selected_lines: list) -> list:
+def refresh_selected_lines_against_new_source(selected_lines: list) -> list:
     """Re-annotate selected lines for a first-time batch source.
 
     This helper is only used before a batch source exists.
@@ -271,7 +274,7 @@ def _refresh_selected_lines_against_new_source(selected_lines: list) -> list:
 
     This invariant is maintained by create_batch_source_commit(), which creates
     the first source from the current working tree state. Advanced batch sources
-    use _refresh_selected_lines_against_source_lines() instead because they
+    use refresh_selected_lines_against_source_lines() instead because they
     may preserve already-owned lines that are absent from the working tree.
 
     For first-time source creation, the mapping is trivial:
@@ -318,12 +321,12 @@ def _refresh_selected_lines_against_new_source(selected_lines: list) -> list:
     return reannotated_lines
 
 
-def _refresh_selected_lines_against_source_lines(
+def refresh_selected_lines_against_source_lines(
     selected_lines: list,
     *,
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
-    lineage: _BatchSourceLineage | None = None,
+    lineage: BatchSourceLineage | None = None,
 ) -> list:
     """Re-annotate selected lines against source and working-tree line sequences."""
     mapping = None

@@ -33,7 +33,7 @@ from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..exceptions import MergeError
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.operations import create_batch, delete_batch
-from ..batch.ownership import BatchOwnership, AbsenceClaim, _AbsenceContentBuilder
+from ..batch.ownership import BatchOwnership, AbsenceClaim, AbsenceContentBuilder
 from ..batch.query import get_batch_baseline_commit, read_batch_metadata
 from ..batch.state_refs import (
     delete_batch_state_refs,
@@ -42,9 +42,9 @@ from ..batch.state_refs import (
 )
 from ..batch.storage import (
     add_binary_file_to_batch,
-    _build_realized_buffer_from_lines,
-    _remove_file_from_batch_commit,
-    _update_batch_commit,
+    build_realized_buffer_from_lines,
+    remove_file_from_batch_commit,
+    update_batch_commit,
 )
 from ..batch.validation import batch_exists, validate_batch_name
 from ..batch.source_selector import require_plain_batch_name
@@ -55,10 +55,12 @@ from ..core.text_lifecycle import (
     normalized_text_change_type,
     sifted_empty_text_path_change_type,
 )
-from ..editor import (
-    EditorBuffer,
+from ..core.buffer import (
+    LineBuffer,
     buffer_byte_count,
     buffer_matches,
+)
+from ..utils.repository_buffers import (
     load_git_object_as_buffer_or_empty,
     load_working_tree_file_as_buffer,
 )
@@ -85,7 +87,7 @@ from ..utils.paths import (
 def create_synthetic_batch_source_commit(
     baseline_commit: str,
     file_path: str,
-    file_buffer: EditorBuffer,
+    file_buffer: LineBuffer,
     file_mode: str = "100644",
 ) -> str:
     """Create a synthetic batch source commit for a single file.
@@ -113,7 +115,7 @@ def create_synthetic_batch_source_commit(
 def add_sifted_text_file_to_batch(
     batch_name: str,
     file_path: str,
-    target_buffer: EditorBuffer,
+    target_buffer: LineBuffer,
     ownership: BatchOwnership,
     file_mode: str = "100644",
     change_type: str | None = None,
@@ -165,13 +167,13 @@ def add_sifted_text_file_to_batch(
 
     source_buffers = {file_path: target_buffer}
     if text_change_type == TextFileChangeType.DELETED:
-        _remove_file_from_batch_commit(
+        remove_file_from_batch_commit(
             batch_name,
             file_path,
             source_buffers=source_buffers,
         )
     else:
-        _update_batch_commit(
+        update_batch_commit(
             batch_name,
             file_path,
             target_blob_sha,
@@ -400,9 +402,9 @@ def _perform_atomic_in_place_sift(
 
 def _source_buffers_from_sift_results(
     retained_files: list,
-) -> dict[str, EditorBuffer]:
+) -> dict[str, LineBuffer]:
     """Return source buffers held by retained sift results."""
-    source_buffers: dict[str, EditorBuffer] = {}
+    source_buffers: dict[str, LineBuffer] = {}
     for file_path, _file_meta, result in retained_files:
         target_buffer = _target_buffer_from_sift_result(result)
         if target_buffer is not None:
@@ -418,9 +420,9 @@ def _close_sifted_results(retained_files: list) -> None:
             target_buffer.close()
 
 
-def _target_buffer_from_sift_result(result: dict) -> EditorBuffer | None:
+def _target_buffer_from_sift_result(result: dict) -> LineBuffer | None:
     target_buffer = result.get("target_buffer")
-    if isinstance(target_buffer, EditorBuffer):
+    if isinstance(target_buffer, LineBuffer):
         return target_buffer
     return None
 
@@ -466,11 +468,11 @@ def _compute_sifted_binary_file(
     full_path = repo_root / file_path
     working_exists = full_path.exists()
     working_buffer = (
-        EditorBuffer.from_path(full_path)
+        LineBuffer.from_path(full_path)
         if working_exists else
-        EditorBuffer.from_bytes(b"")
+        LineBuffer.from_bytes(b"")
     )
-    target_buffer: EditorBuffer | None = None
+    target_buffer: LineBuffer | None = None
     try:
         if change_type == "deleted":
             if not working_exists:
@@ -528,10 +530,10 @@ def _compute_sifted_text_file(
     baseline_buffer = (
         load_git_object_as_buffer_or_empty(f"{baseline_commit}:{file_path}")
         if baseline_commit is not None else
-        EditorBuffer.from_bytes(b"")
+        LineBuffer.from_bytes(b"")
     )
     working_buffer = load_working_tree_file_as_buffer(file_path)
-    target_buffer: EditorBuffer | None = None
+    target_buffer: LineBuffer | None = None
 
     with (
         batch_source_buffer,
@@ -539,7 +541,7 @@ def _compute_sifted_text_file(
         working_buffer,
         BatchOwnership.acquire_for_metadata_dict(file_meta) as source_ownership,
     ):
-        target_buffer = _build_realized_buffer_from_lines(
+        target_buffer = build_realized_buffer_from_lines(
             baseline_buffer,
             batch_source_buffer,
             source_ownership,
@@ -613,7 +615,7 @@ def build_ownership_from_working_and_target_lines(
         source_start: int,
         source_end: int,
     ) -> AbsenceClaim:
-        with _AbsenceContentBuilder() as builder:
+        with AbsenceContentBuilder() as builder:
             builder.append_line_range(
                 working_lines,
                 source_start - 1,

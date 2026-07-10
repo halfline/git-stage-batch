@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
 from enum import Enum
 from typing import Optional, Union
 
@@ -33,13 +32,6 @@ from ..core.line_selection import write_line_ids_file
 from ..core.line_identity import preserve_line_ids_from_previous_view
 from ..exceptions import CommandError, NoMoreHunks, exit_with_error
 from ..i18n import _
-from ..output import (
-    print_line_level_changes,
-    print_binary_file_change,
-    print_gitlink_change,
-    print_rename_change,
-    print_text_file_deletion_change,
-)
 from .consumed_selections import read_consumed_file_metadata
 from .auto_advance import resolve_auto_advance
 from . import change_freshness as _change_freshness
@@ -67,7 +59,7 @@ from ..utils.paths import (
     get_processed_include_ids_file_path,
     get_processed_skip_ids_file_path,
 )
-from .line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
+from . import line_state as _line_state
 from .selected_change.lifecycle import (
     clear_selected_change_state_files as _clear_selected_change_state_files,
 )
@@ -79,6 +71,8 @@ class RecalculateSelectedHunkResult(str, Enum):
     RECALCULATED = "recalculated"
     CLEARED = "cleared"
     SHOW_NEXT_CHANGE = "show-next-change"
+    NO_MORE_LINES = "no-more-lines"
+    NO_PENDING_HUNKS = "no-pending-hunks"
 
 
 _BATCH_MERGE_REVIEW_ACTIONS = (
@@ -155,7 +149,7 @@ def load_selected_change() -> Optional[Union[LineLevelChange, BinaryFileChange, 
 
     require_selected_hunk()
 
-    line_changes = load_line_changes_from_state()
+    line_changes = _line_state.load_line_changes_from_state()
     if line_changes is not None:
         return line_changes
 
@@ -173,7 +167,7 @@ def apply_line_level_batch_filter_to_cached_hunk() -> bool:
     Returns:
         True if hunk should be skipped (all lines filtered), False otherwise
     """
-    line_changes = load_line_changes_from_state()
+    line_changes = _line_state.load_line_changes_from_state()
     if line_changes is None:
         return True
 
@@ -203,8 +197,13 @@ def apply_line_level_batch_filter_to_cached_hunk() -> bool:
     # Update cached hunk with filtered version
     write_text_file_contents(
         get_line_changes_json_file_path(),
-        json.dumps(convert_line_changes_to_serializable_dict(filtered_line_changes),
-                  ensure_ascii=False, indent=0)
+        json.dumps(
+            _line_state.convert_line_changes_to_serializable_dict(
+                filtered_line_changes
+            ),
+            ensure_ascii=False,
+            indent=0,
+        ),
     )
 
     return False
@@ -374,9 +373,16 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
                     _selected_store.SelectedChangeKind.HUNK
                 )
 
-                write_text_file_contents(get_line_changes_json_file_path(),
-                                         json.dumps(convert_line_changes_to_serializable_dict(line_changes),
-                                                    ensure_ascii=False, indent=0))
+                write_text_file_contents(
+                    get_line_changes_json_file_path(),
+                    json.dumps(
+                        _line_state.convert_line_changes_to_serializable_dict(
+                            line_changes
+                        ),
+                        ensure_ascii=False,
+                        indent=0,
+                    ),
+                )
                 _write_snapshots_for_selected_file_path(line_changes.path)
 
                 # Apply line-level batch filtering
@@ -386,7 +392,7 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
                     continue
 
                 # Return filtered hunk (or original if no filtering applied)
-                return load_line_changes_from_state()
+                return _line_state.load_line_changes_from_state()
     except subprocess.CalledProcessError:
         # Git diff failed (e.g., no changes)
         pass
@@ -408,102 +414,6 @@ def advance_to_next_change() -> None:
         pass
 
 
-def show_selected_change() -> None:
-    """Display the currently cached hunk or binary file.
-
-    This is a helper for commands that need to display the cached hunk
-    without advancing (e.g., start, again).
-    """
-    rename_change = _selected_store.load_selected_rename_change()
-    if rename_change is not None:
-        print_rename_change(rename_change)
-        return
-
-    deletion_change = _selected_store.load_selected_text_deletion_change()
-    if deletion_change is not None:
-        print_text_file_deletion_change(deletion_change)
-        return
-
-    gitlink_change = _selected_store.load_selected_gitlink_change()
-    if gitlink_change is not None:
-        print_gitlink_change(gitlink_change)
-        return
-
-    # Check if selected item is a binary file
-    binary_file = _selected_store.load_selected_binary_file()
-    if binary_file is not None:
-        print_binary_file_change(binary_file)
-        return
-
-    # Otherwise, show text hunk
-    patch_path = get_selected_hunk_patch_file_path()
-    if patch_path.exists():
-        line_changes = _selected_store.load_line_changes_from_patch_path(
-            patch_path
-        )
-        print_line_level_changes(line_changes)
-
-
-def advance_to_and_show_next_change() -> None:
-    """Advance to next hunk/binary file and display it (CLI workflow helper).
-
-    This is a convenience wrapper for CLI commands that combines advancing
-    to the next hunk/binary file with displaying it. If no more items exist,
-    prints a message to stderr.
-    """
-    advance_to_next_change()
-
-    rename_change = _selected_store.load_selected_rename_change()
-    if rename_change is not None:
-        print_rename_change(rename_change)
-        return
-
-    deletion_change = _selected_store.load_selected_text_deletion_change()
-    if deletion_change is not None:
-        print_text_file_deletion_change(deletion_change)
-        return
-
-    gitlink_change = _selected_store.load_selected_gitlink_change()
-    if gitlink_change is not None:
-        print_gitlink_change(gitlink_change)
-        return
-
-    # Check if a binary file was cached
-    binary_file = _selected_store.load_selected_binary_file()
-    if binary_file is not None:
-        print_binary_file_change(binary_file)
-        return
-
-    # Check if a text hunk was cached
-    patch_path = get_selected_hunk_patch_file_path()
-    if patch_path.exists():
-        line_changes = _selected_store.load_line_changes_from_patch_path(
-            patch_path
-        )
-        print_line_level_changes(line_changes)
-    else:
-        print(_("No more hunks to process."), file=sys.stderr)
-
-
-def finish_selected_change_action(
-    *,
-    quiet: bool,
-    auto_advance: bool | None = None,
-) -> None:
-    """Apply the configured selection step after a hunk action completes."""
-    if not select_next_change_after_action(auto_advance=auto_advance):
-        return
-
-    if quiet:
-        return
-
-    if _selected_store.read_selected_change_kind() is None:
-        print(_("No more hunks to process."), file=sys.stderr)
-        return
-
-    show_selected_change()
-
-
 def select_next_change_after_action(
     *,
     auto_advance: bool | None = None,
@@ -516,8 +426,6 @@ def select_next_change_after_action(
     _clear_selected_change_state_files()
     _selected_store.mark_selected_change_cleared_by_auto_advance_disabled()
     return False
-
-
 
 
 def require_selected_hunk() -> None:
@@ -558,7 +466,7 @@ def recalculate_selected_hunk_for_file(
         file_path: Repository-relative path to recalculate hunk for
     """
     selected_kind = _selected_store.read_selected_change_kind()
-    previous_line_changes = load_line_changes_from_state()
+    previous_line_changes = _line_state.load_line_changes_from_state()
     if previous_line_changes is not None and previous_line_changes.path != file_path:
         previous_line_changes = None
 
@@ -588,9 +496,6 @@ def recalculate_selected_hunk_for_file(
             _selected_store.mark_selected_change_cleared_by_auto_advance_disabled()
             return RecalculateSelectedHunkResult.CLEARED
 
-        line_changes = load_line_changes_from_state()
-        if line_changes is not None:
-            print_line_level_changes(line_changes)
         return RecalculateSelectedHunkResult.RECALCULATED
 
     # Load blocklist
@@ -615,7 +520,6 @@ def recalculate_selected_hunk_for_file(
                     if rename_hash in blocked_hashes:
                         continue
                     _selected_store.cache_rename_change(single_hunk)
-                    print_rename_change(single_hunk)
                     return RecalculateSelectedHunkResult.RECALCULATED
 
                 if isinstance(single_hunk, TextFileDeletionChange):
@@ -628,7 +532,6 @@ def recalculate_selected_hunk_for_file(
                     ):
                         continue
                     _selected_store.cache_text_deletion_change(single_hunk)
-                    print_text_file_deletion_change(single_hunk)
                     return RecalculateSelectedHunkResult.RECALCULATED
 
                 if isinstance(single_hunk, GitlinkChange):
@@ -636,7 +539,6 @@ def recalculate_selected_hunk_for_file(
                     if gitlink_hash in blocked_hashes:
                         continue
                     _selected_store.cache_gitlink_change(single_hunk)
-                    print_gitlink_change(single_hunk)
                     return RecalculateSelectedHunkResult.RECALCULATED
 
                 if isinstance(single_hunk, BinaryFileChange):
@@ -678,19 +580,13 @@ def recalculate_selected_hunk_for_file(
                 if apply_line_level_batch_filter_to_cached_hunk():
                     # All lines were batched, clear the hunk
                     _clear_selected_change_state_files()
-                    print(_("No more lines in this hunk."), file=sys.stderr)
-                    return RecalculateSelectedHunkResult.CLEARED
+                    return RecalculateSelectedHunkResult.NO_MORE_LINES
 
-                # Display filtered hunk
-                line_changes = load_line_changes_from_state()
-                if line_changes is not None:
-                    print_line_level_changes(line_changes)
                 return RecalculateSelectedHunkResult.RECALCULATED
     except subprocess.CalledProcessError:
         # Git diff failed (e.g., no changes)
         _clear_selected_change_state_files()
-        print(_("No pending hunks."), file=sys.stderr)
-        return RecalculateSelectedHunkResult.CLEARED
+        return RecalculateSelectedHunkResult.NO_PENDING_HUNKS
 
     # No more hunks for this file, advance to next file
     _clear_selected_change_state_files()

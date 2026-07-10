@@ -5,7 +5,7 @@ import subprocess
 import pytest
 
 from git_stage_batch.core.models import LineLevelChange, HunkHeader, LineEntry
-from git_stage_batch.editor import EditorBuffer
+from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.staging.operations import (
     build_target_index_buffer_from_lines,
     build_target_index_buffer_with_replaced_lines,
@@ -36,7 +36,7 @@ def _build_target_index_content_text(
     base_text: str,
 ) -> str:
     base_content = base_text.encode("utf-8", errors="surrogateescape")
-    with EditorBuffer.from_bytes(base_content) as base_lines:
+    with LineBuffer.from_bytes(base_content) as base_lines:
         result = _build_target_index_content_bytes(
             line_changes,
             include_ids,
@@ -47,7 +47,7 @@ def _build_target_index_content_text(
 
 
 def _update_index_with_bytes(path: str, data: bytes) -> None:
-    with EditorBuffer.from_bytes(data) as buffer:
+    with LineBuffer.from_bytes(data) as buffer:
         update_index_with_blob_buffer(path, buffer)
 
 
@@ -57,7 +57,7 @@ def _build_target_working_tree_content_text(
     working_text: str,
 ) -> str:
     working_content = working_text.encode("utf-8", errors="surrogateescape")
-    with EditorBuffer.from_bytes(working_content) as working_lines:
+    with LineBuffer.from_bytes(working_content) as working_lines:
         result = _build_target_working_tree_content_bytes(
             line_changes,
             discard_ids,
@@ -324,7 +324,7 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_content = b"line1\n\nline3\n"
 
-        with EditorBuffer.from_bytes(base_content) as base_lines:
+        with LineBuffer.from_bytes(base_content) as base_lines:
             result = _build_target_index_content_bytes(
                 line_changes,
                 {1, 2},
@@ -373,7 +373,7 @@ class TestBuildTargetIndexContent:
             base_lines,
             base_has_trailing_newline=True,
         ) as result:
-            assert isinstance(result, EditorBuffer)
+            assert isinstance(result, LineBuffer)
             assert result.to_bytes() == b"line1\nnew\nline2\n"
 
     def test_preserves_trailing_newline(self):
@@ -442,7 +442,7 @@ class TestBuildTargetIndexContent:
             b"if binary:\n"
         )
 
-        with EditorBuffer.from_bytes(base_content) as base_lines:
+        with LineBuffer.from_bytes(base_content) as base_lines:
             result = _build_target_index_content_bytes(
                 line_changes,
                 {1, 2, 3, 4, 5},
@@ -491,7 +491,7 @@ class TestBuildTargetIndexContent:
             b"line12\n"
         )
 
-        with EditorBuffer.from_bytes(base_content) as base_lines:
+        with LineBuffer.from_bytes(base_content) as base_lines:
             result = _build_target_index_content_bytes(
                 line_changes,
                 {1},
@@ -549,7 +549,7 @@ class TestBuildTargetIndexContent:
             b"old-b\n"
         )
 
-        with EditorBuffer.from_bytes(base_content) as base_lines:
+        with LineBuffer.from_bytes(base_content) as base_lines:
             result = _build_target_index_content_bytes(
                 line_changes,
                 {1, 2, 3, 4},
@@ -583,7 +583,7 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_content = b"keep\nold value\n"
 
-        with EditorBuffer.from_bytes(base_content) as base_lines:
+        with LineBuffer.from_bytes(base_content) as base_lines:
             result = _build_target_index_replacement_bytes(
                 line_changes,
                 {1, 2},
@@ -614,7 +614,7 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_content = b"".join(f"line{i}\n".encode("utf-8") for i in range(1, 21))
 
-        with EditorBuffer.from_bytes(base_content) as base_lines:
+        with LineBuffer.from_bytes(base_content) as base_lines:
             result = _build_target_index_replacement_bytes(
                 line_changes,
                 {1, 2},
@@ -655,7 +655,7 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_content = b"line1\n\nline3\n"
 
-        with EditorBuffer.from_bytes(base_content) as base_lines:
+        with LineBuffer.from_bytes(base_content) as base_lines:
             result = _build_target_index_replacement_bytes(
                 line_changes,
                 {1},
@@ -684,7 +684,7 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_content = b"line1\nline3\nline5\n"
 
-        with EditorBuffer.from_bytes(base_content) as base_lines:
+        with LineBuffer.from_bytes(base_content) as base_lines:
             result = _build_target_index_replacement_bytes(
                 line_changes,
                 {2},
@@ -738,7 +738,7 @@ class TestBuildTargetIndexContent:
             + ["stage-three-a\n", "stage-three-b\n"]
         )
 
-        with EditorBuffer.from_bytes(base_content) as base_lines:
+        with LineBuffer.from_bytes(base_content) as base_lines:
             result = _build_target_index_replacement_bytes(
                 line_changes,
                 {1, 2, 3, 4, 5, 6},
@@ -766,7 +766,7 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_content = b"keep1\nold\nkeep3\nkeep4\n"
 
-        with EditorBuffer.from_bytes(base_content) as base_lines:
+        with LineBuffer.from_bytes(base_content) as base_lines:
             result = _build_target_index_replacement_bytes(
                 line_changes,
                 {1, 2},
@@ -818,7 +818,7 @@ class TestBuildTargetIndexContent:
             base_lines,
             base_has_trailing_newline=True,
         ) as result:
-            assert isinstance(result, EditorBuffer)
+            assert isinstance(result, LineBuffer)
             assert result.to_bytes() == b"keep\nstaged\ntail\n"
 
     def test_replace_selection_keeps_matching_edge_anchors_with_no_edge_overlap(self):
@@ -834,7 +834,7 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_content = b"keep1\nold\nkeep3\nkeep4\n"
 
-        with EditorBuffer.from_bytes(base_content) as base_lines:
+        with LineBuffer.from_bytes(base_content) as base_lines:
             result = _build_target_index_replacement_bytes(
                 line_changes,
                 {1, 2},
@@ -859,7 +859,7 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         working_content = b"keep1\nworking\nkeep3\nkeep4\n"
 
-        with EditorBuffer.from_bytes(working_content) as working_lines:
+        with LineBuffer.from_bytes(working_content) as working_lines:
             result = _build_target_working_tree_replacement_bytes(
                 line_changes,
                 {1, 2},
@@ -883,7 +883,7 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         working_content = b"keep1\nworking\nkeep3\nkeep4\n"
 
-        with EditorBuffer.from_bytes(working_content) as working_lines:
+        with LineBuffer.from_bytes(working_content) as working_lines:
             result = _build_target_working_tree_replacement_bytes(
                 line_changes,
                 {1, 2},
@@ -904,7 +904,7 @@ class TestBuildTargetIndexContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         working_content = b"line1\nline3\n"
 
-        with EditorBuffer.from_bytes(working_content) as working_lines:
+        with LineBuffer.from_bytes(working_content) as working_lines:
             result = _build_target_working_tree_replacement_bytes(
                 line_changes,
                 {1},
@@ -956,7 +956,7 @@ class TestBuildTargetIndexContent:
             working_lines,
             working_has_trailing_newline=True,
         ) as result:
-            assert isinstance(result, EditorBuffer)
+            assert isinstance(result, LineBuffer)
             assert result.to_bytes() == b"keep\nreplacement\ntail\n"
 
 
@@ -1021,7 +1021,7 @@ class TestBuildTargetWorkingTreeContent:
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         working_content = b"line1\nline3\n"
 
-        with EditorBuffer.from_bytes(working_content) as working_lines:
+        with LineBuffer.from_bytes(working_content) as working_lines:
             result = _build_target_working_tree_content_bytes(
                 line_changes,
                 {1},
@@ -1066,7 +1066,7 @@ class TestBuildTargetWorkingTreeContent:
             working_lines,
             working_has_trailing_newline=True,
         ) as result:
-            assert isinstance(result, EditorBuffer)
+            assert isinstance(result, LineBuffer)
             assert result.to_bytes() == b"line1\nline2\n"
 
     def test_file_scoped_deletion_uses_prior_change_delta(self):
@@ -1337,7 +1337,7 @@ class TestUpdateIndexWithBlobContent:
         subprocess.run(["git", "add", "existing.txt"], check=True, cwd=temp_git_repo, capture_output=True)
         subprocess.run(["git", "commit", "-m", "Initial"], check=True, cwd=temp_git_repo, capture_output=True)
 
-        with EditorBuffer.from_chunks([b"generated\n", b"content\n"]) as buffer:
+        with LineBuffer.from_chunks([b"generated\n", b"content\n"]) as buffer:
             update_index_with_blob_buffer("generated.txt", buffer)
 
         result = subprocess.run(

@@ -10,6 +10,8 @@ from git_stage_batch.utils.git_index import (
     git_commit_tree,
     git_read_tree,
     git_update_index,
+    git_update_index_entries,
+    GitIndexEntryUpdate,
     git_write_tree,
     temp_git_index,
 )
@@ -119,6 +121,28 @@ class TestGitIndexPlumbing:
 
         assert result.returncode != 0
         assert run_git_command(["status", "--short"]).stdout == ""
+
+    def test_batched_force_remove_uses_repository_object_width(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """Index-info removal should use a SHA-256-width null object ID."""
+        repo = tmp_path / "sha256-index"
+        subprocess.run(
+            ["git", "init", "--object-format=sha256", str(repo)],
+            check=True,
+            capture_output=True,
+        )
+        monkeypatch.chdir(repo)
+        (repo / "tracked.txt").write_text("tracked\n")
+        subprocess.run(["git", "add", "tracked.txt"], check=True, cwd=repo)
+
+        git_update_index_entries(
+            [GitIndexEntryUpdate(file_path="tracked.txt", force_remove=True)]
+        )
+
+        assert run_git_command(["ls-files", "tracked.txt"]).stdout == ""
 
     def test_update_index_rejects_ambiguous_modes(self, temp_git_repo):
         """Test that update-index helper modes are explicit."""

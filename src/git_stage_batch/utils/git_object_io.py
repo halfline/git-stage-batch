@@ -26,7 +26,7 @@ def create_git_blob(content_chunks: Iterable[bytes]) -> str:
         content_chunks: Iterable yielding binary content chunks to store
 
     Returns:
-        SHA-1 hash of the created blob object
+        Repository-native object ID of the created blob object
 
     Raises:
         RuntimeError: If git hash-object fails or produces no output
@@ -98,7 +98,7 @@ def read_git_blob(blob_sha: str) -> Iterator[bytes]:
     """Read a git blob object as a stream.
 
     Args:
-        blob_sha: SHA-1 hash of the blob to read
+        blob_sha: Repository-native object ID of the blob to read
 
     Yields:
         Binary chunks from the blob content

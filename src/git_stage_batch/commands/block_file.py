@@ -6,7 +6,7 @@ import sys
 from contextlib import nullcontext
 from pathlib import Path
 
-from ..data.session import session_is_active
+from ..data.session import path_is_intent_to_add, session_is_active
 from ..data.undo_checkpoints import undo_checkpoint
 from ..data.ignore_files import (
     add_file_to_local_exclude,
@@ -29,9 +29,6 @@ from ..utils.paths import (
 from .selection.action_completion import advance_to_and_show_next_change
 
 
-EMPTY_BLOB_HASH = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
-
-
 def _is_new_intent_to_add_file(file_path: str) -> bool:
     """Return True when file_path is an intent-to-add entry absent from HEAD."""
     stage_result = run_git_command(["ls-files", "--stage", "--", file_path], check=False, requires_index_lock=False)
@@ -39,8 +36,7 @@ def _is_new_intent_to_add_file(file_path: str) -> bool:
     if not stage_output:
         return False
 
-    parts = stage_output.split()
-    if len(parts) < 2 or parts[1] != EMPTY_BLOB_HASH:
+    if not path_is_intent_to_add(file_path):
         return False
 
     head_check = run_git_command(["cat-file", "-e", f"HEAD:{file_path}"], check=False, requires_index_lock=False)

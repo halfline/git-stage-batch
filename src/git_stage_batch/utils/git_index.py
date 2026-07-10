@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 
 from .git_command import run_git_command, stream_git_command
+from .git_repository import null_object_id
 
 
 @dataclass(frozen=True)
@@ -118,13 +119,18 @@ def git_update_index_entries(
 ) -> None:
     """Update several index entries through one update-index process."""
     payload_chunks: list[bytes] = []
+    null_oid: bytes | None = None
     for entry in entries:
         path_bytes = entry.file_path.encode("utf-8")
         if entry.force_remove:
             if entry.mode is not None or entry.blob_sha is not None:
                 raise ValueError("mode and blob_sha cannot be used with force_remove=True")
+            if null_oid is None:
+                null_oid = null_object_id().encode("ascii")
             payload_chunks.extend([
-                b"0 0000000000000000000000000000000000000000\t",
+                b"0 ",
+                null_oid,
+                b"\t",
                 path_bytes,
                 b"\0",
             ])

@@ -75,3 +75,39 @@ jobs:
           uv venv /tmp/test-install
           uv pip install --python /tmp/test-install/bin/python dist/*.whl
           /tmp/test-install/bin/git-stage-batch --help
+
+  sha256-repository:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure git identity
+        run: |
+          git config --global user.name "CI"
+          git config --global user.email "ci@test"
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y gettext
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python
+        run: uv python install 3.10
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      - name: Report Git object-format support
+        run: |
+          git --version
+          probe=$(mktemp -d)
+          if git init --object-format=sha256 "$probe"; then
+            git -C "$probe" rev-parse --show-object-format
+          else
+            echo "Installed Git does not support SHA-256 repositories"
+          fi
+
+      - name: Run SHA-256 repository workflows
+        run: uv run pytest -n auto tests/functional/test_sha256_repository.py

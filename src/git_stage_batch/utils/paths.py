@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .file_io import read_text_file_contents
-from .git_repository import get_git_directory_path
+from .git_repository import get_git_common_directory_path, get_git_directory_path
 
 
 def get_state_directory_path() -> Path:
@@ -18,12 +18,27 @@ def get_state_directory_path() -> Path:
 
 
 def get_session_lock_file_path() -> Path:
-    """Get the path to the session lock file.
+    """Get the path to the repository-wide session lock file.
 
     Returns:
         Path to session lock file
     """
-    return get_state_directory_path() / "session.lock"
+    return get_common_state_directory_path() / "session.lock"
+
+
+def get_common_state_directory_path() -> Path:
+    """Get the state directory shared by every linked worktree."""
+    return get_git_common_directory_path() / "git-stage-batch"
+
+
+def get_active_session_owner_file_path() -> Path:
+    """Get the repository-wide active-session ownership record path."""
+    return get_common_state_directory_path() / "active-session.json"
+
+
+def ensure_common_state_directory_exists() -> None:
+    """Create the repository-wide state directory if it does not exist."""
+    get_common_state_directory_path().mkdir(parents=True, exist_ok=True)
 
 
 def ensure_state_directory_exists() -> None:

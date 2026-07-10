@@ -3,6 +3,7 @@
 from git_stage_batch.utils.paths import get_processed_include_ids_file_path
 from git_stage_batch.utils.paths import get_processed_skip_ids_file_path
 from git_stage_batch.utils.paths import get_session_lock_file_path
+from git_stage_batch.utils.paths import get_common_state_directory_path
 from git_stage_batch.utils.paths import get_line_changes_json_file_path
 from git_stage_batch.utils.paths import get_index_snapshot_file_path
 from git_stage_batch.utils.paths import get_working_tree_snapshot_file_path
@@ -98,6 +99,30 @@ class TestGetStateDirectoryPath:
         ensure_state_directory_exists()
 
         assert state_dir.is_dir()
+
+    def test_linked_worktree_uses_shared_common_state_for_lock(
+        self,
+        temp_git_repo,
+        tmp_path,
+        monkeypatch,
+    ):
+        """Linked worktrees share their repository mutation lock."""
+        main_lock = get_session_lock_file_path()
+        worktree = tmp_path / "linked-lock"
+        subprocess.run(
+            ["git", "worktree", "add", str(worktree)],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        monkeypatch.chdir(worktree)
+
+        linked_state = get_state_directory_path()
+        linked_lock = get_session_lock_file_path()
+
+        assert linked_state != temp_git_repo / ".git" / "git-stage-batch"
+        assert get_common_state_directory_path() == temp_git_repo / ".git" / "git-stage-batch"
+        assert linked_lock == main_lock
 
 
 class TestEnsureStateDirectoryExists:

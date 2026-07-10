@@ -6,7 +6,7 @@ import fcntl
 from contextlib import contextmanager
 from pathlib import Path
 
-from .paths import ensure_state_directory_exists, get_session_lock_file_path
+from .paths import ensure_common_state_directory_exists, get_session_lock_file_path
 
 _LOCK_DEPTH = 0
 _LOCK_HANDLE = None
@@ -30,7 +30,7 @@ def acquire_session_lock():
             _LOCK_DEPTH -= 1
         return
 
-    ensure_state_directory_exists()
+    ensure_common_state_directory_exists()
     lock_path = get_session_lock_file_path()
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     lock_handle = Path(lock_path).open("a+", encoding="utf-8")

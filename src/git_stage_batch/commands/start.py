@@ -8,7 +8,11 @@ from ..data.auto_advance import DEFAULT_AUTO_ADVANCE, write_auto_advance_default
 from ..data.hunk_tracking import fetch_next_change
 from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..data.file_tracking import auto_add_untracked_files
-from ..data.session import initialize_abort_state, session_is_active
+from ..data.session import clear_session_state, initialize_abort_state, session_is_active
+from ..data.session_ownership import (
+    claim_session_ownership,
+    require_no_foreign_session_owner,
+)
 from ..data.start_time_changes import (
     normalize_start_time_staged_deletions,
     normalize_start_time_staged_renames,
@@ -37,9 +41,11 @@ def command_start(
     """
     require_git_repository()
     ensure_state_directory_exists()
+    require_no_foreign_session_owner()
 
     # If session already exists, run again logic instead
     if session_is_active():
+        claim_session_ownership()
         if auto_advance is not None:
             write_auto_advance_default(auto_advance)
         restart_iteration_pass(quiet=quiet)
@@ -51,6 +57,13 @@ def command_start(
 
     # Initialize abort state for new session
     initialize_abort_state()
+    try:
+        claim_session_ownership()
+    except BaseException:
+        # The snapshot is worktree-local and has not been published as an
+        # active shared session. Remove it if ownership publication fails.
+        clear_session_state()
+        raise
 
     try:
         # Staged renames and text deletions are already in the index, so a plain

@@ -10,9 +10,22 @@ from contextlib import nullcontext
 from ..exceptions import CommandError
 from ..i18n import _
 from ..runtime import dispatch_cli_mode
+from ..data.session_ownership import require_no_foreign_session_owner
 from ..utils.session_lock import acquire_session_lock
 from .argument_parser import parse_command_line
 from .pager import pager_output, should_page_output
+
+
+_READ_ONLY_COMMANDS = frozenset({"check-unstaged", "list", "show", "status"})
+
+
+def _command_may_mutate(args) -> bool:
+    """Return whether dispatch may change worktree-local or shared state."""
+    if getattr(args, "interactive_flag", False):
+        return True
+    if getattr(args, "interactive_command", False):
+        return True
+    return getattr(args, "command", None) not in _READ_ONLY_COMMANDS
 
 
 def main() -> None:
@@ -31,6 +44,8 @@ def main() -> None:
             )
             with pager_context:
                 with lock_context:
+                    if not skip_session_lock and _command_may_mutate(args):
+                        require_no_foreign_session_owner()
                     dispatch_cli_mode(args)
         else:
             # Parsing failed

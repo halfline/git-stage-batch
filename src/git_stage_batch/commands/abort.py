@@ -8,6 +8,11 @@ import sys
 
 from ..data.batch_refs import restore_batch_refs
 from ..data.session import clear_session_state
+from ..data.session_ownership import (
+    release_session_ownership,
+    require_current_session_owner,
+    require_no_foreign_session_owner,
+)
 from ..data.start_time_changes import read_staged_renames
 from ..exceptions import exit_with_error
 from ..i18n import _
@@ -60,10 +65,12 @@ def _remove_normalized_rename_destinations_before_stash_apply() -> None:
 def command_abort(*, quiet: bool = False) -> None:
     """Abort the session and undo all changes including commits and discards."""
     require_git_repository()
+    require_no_foreign_session_owner()
 
     # Check if abort state exists
     if not get_abort_head_file_path().exists():
         exit_with_error(_("No session to abort. Abort state not found."))
+    require_current_session_owner()
 
     # Read abort state
     abort_head = read_text_file_contents(get_abort_head_file_path()).strip()
@@ -126,6 +133,7 @@ def command_abort(*, quiet: bool = False) -> None:
     # Clear all session state (preserves batches and batch-sources)
     # Do this AFTER restore_batch_refs so snapshot file is available
     clear_session_state()
+    release_session_ownership()
 
     if not quiet:
         print(_("✓ Session aborted. All changes reverted."), file=sys.stderr)

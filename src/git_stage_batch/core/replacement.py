@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
+from typing import overload
 
-from .text_lines import bytes_to_lines
+from .buffer import LineBuffer
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,21 +69,86 @@ def coerce_replacement_payload(
     return ReplacementPayload.from_text(replacement, exact=False)
 
 
-def replacement_line_chunks(payload: ReplacementPayload) -> list[bytes]:
-    """Split replacement bytes into exact line chunks."""
-    if not payload.exact:
-        return [line + b"\n" for line in payload.data.splitlines()]
-    return list(bytes_to_lines([payload.data]))
+class _ReplacementLineBodies(Sequence[bytes]):
+    """Lazy editor-line bodies over exact replacement chunks."""
 
+    def __init__(
+        self,
+        lines: Sequence[bytes],
+        indices: range | None = None,
+    ) -> None:
+        self._lines = lines
+        self._indices = range(len(lines)) if indices is None else indices
 
-def replacement_line_bodies(payload: ReplacementPayload) -> list[bytes]:
-    """Return editor line bodies while preserving CRLF as body CR bytes."""
-    if not payload.exact:
-        return payload.data.splitlines()
-    bodies: list[bytes] = []
-    for line in replacement_line_chunks(payload):
+    def __len__(self) -> int:
+        return len(self._indices)
+
+    @overload
+    def __getitem__(self, index: int) -> bytes: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> Sequence[bytes]: ...
+
+    def __getitem__(self, index: int | slice) -> bytes | Sequence[bytes]:
+        if isinstance(index, slice):
+            return _ReplacementLineBodies(self._lines, self._indices[index])
+        try:
+            line_index = self._indices[index]
+        except IndexError as exc:
+            raise IndexError(index) from exc
+        line = self._lines[line_index]
         if line.endswith(b"\n"):
-            bodies.append(line[:-1])
-        else:
-            bodies.append(line)
-    return bodies
+            line = line[:-1]
+        return line
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Sequence):
+            return NotImplemented
+        return len(self) == len(other) and all(
+            self[index] == other[index]
+            for index in range(len(self))
+        )
+
+
+_LEGACY_LINE_BREAKS = frozenset((10, 13))
+
+
+def _legacy_replacement_line_chunks(data: bytes) -> Iterator[bytes]:
+    """Yield legacy splitlines-compatible chunks normalized to LF."""
+    start = 0
+    index = 0
+    while index < len(data):
+        byte = data[index]
+        if byte not in _LEGACY_LINE_BREAKS:
+            index += 1
+            continue
+        yield data[start:index] + b"\n"
+        index += 1
+        if byte == 13 and index < len(data) and data[index] == 10:
+            index += 1
+        start = index
+    if start < len(data):
+        yield data[start:] + b"\n"
+
+
+@contextmanager
+def replacement_line_chunks(
+    payload: ReplacementPayload,
+) -> Iterator[Sequence[bytes]]:
+    """Expose replacement bytes as a scoped indexed line sequence."""
+    buffer = (
+        LineBuffer.from_bytes(payload.data)
+        if payload.exact
+        else LineBuffer.from_chunks(_legacy_replacement_line_chunks(payload.data))
+    )
+    with buffer:
+        yield buffer
+
+
+@contextmanager
+def replacement_line_bodies(
+    payload: ReplacementPayload,
+) -> Iterator[Sequence[bytes]]:
+    """Expose scoped editor line bodies without retaining per-line objects."""
+    with replacement_line_chunks(payload) as lines:
+        yield _ReplacementLineBodies(lines)

@@ -9,6 +9,7 @@ from git_stage_batch.batch.replacement import (
 from git_stage_batch.core.replacement import (
     ReplacementText,
     coerce_replacement_payload,
+    replacement_line_bodies,
     replacement_line_chunks,
 )
 
@@ -63,4 +64,16 @@ def test_replacement_text_can_carry_exact_stdin_bytes():
         )
     )
 
-    assert replacement_line_chunks(payload) == [b"first\r\n", b"second"]
+    with replacement_line_chunks(payload) as lines:
+        assert list(lines) == [b"first\r\n", b"second"]
+    with replacement_line_bodies(payload) as bodies:
+        assert list(bodies) == [b"first\r", b"second"]
+
+
+def test_legacy_replacement_text_normalizes_line_endings():
+    payload = coerce_replacement_payload("first\r\nsecond")
+
+    with replacement_line_chunks(payload) as lines:
+        assert list(lines) == [b"first\n", b"second\n"]
+    with replacement_line_bodies(payload) as bodies:
+        assert list(bodies) == [b"first", b"second"]

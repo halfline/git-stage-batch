@@ -187,6 +187,30 @@ def build_target_index_buffer_with_replaced_lines(
     trim_unchanged_edge_anchors: bool = True,
 ) -> LineBuffer:
     """Build target index content by replacing a span in indexed base lines."""
+    replacement_payload = coerce_replacement_payload(replacement_text)
+    with replacement_line_bodies(replacement_payload) as replacement_lines:
+        return _build_target_index_buffer_with_replaced_lines(
+            line_changes,
+            replace_ids,
+            replacement_payload,
+            replacement_lines,
+            base_lines,
+            base_has_trailing_newline=base_has_trailing_newline,
+            trim_unchanged_edge_anchors=trim_unchanged_edge_anchors,
+        )
+
+
+def _build_target_index_buffer_with_replaced_lines(
+    line_changes: LineLevelChange,
+    replace_ids: set[int],
+    replacement_payload: ReplacementPayload,
+    replacement_lines: Sequence[bytes],
+    base_lines: Sequence[bytes],
+    *,
+    base_has_trailing_newline: bool,
+    trim_unchanged_edge_anchors: bool,
+) -> LineBuffer:
+    """Build index content while replacement line storage is open."""
     def longest_prefix_context_match(
         candidate_lines: list[bytes],
         context_lines: list[bytes],
@@ -225,8 +249,6 @@ def build_target_index_buffer_with_replaced_lines(
     if selected_ids != expected_range:
         raise ValueError("Replacement selection must be one contiguous line range")
 
-    replacement_payload = coerce_replacement_payload(replacement_text)
-    replacement_lines = replacement_line_bodies(replacement_payload)
     base_line_count = len(base_lines)
     selected_indices = [
         index
@@ -430,6 +452,30 @@ def build_target_working_tree_buffer_with_replaced_lines(
     trim_unchanged_edge_anchors: bool = True,
 ) -> LineBuffer:
     """Build working tree content by replacing a span in indexed lines."""
+    replacement_payload = coerce_replacement_payload(replacement_text)
+    with replacement_line_bodies(replacement_payload) as replacement_lines:
+        return _build_target_working_tree_buffer_with_replaced_lines(
+            line_changes,
+            replace_ids,
+            replacement_payload,
+            replacement_lines,
+            working_lines,
+            working_has_trailing_newline=working_has_trailing_newline,
+            trim_unchanged_edge_anchors=trim_unchanged_edge_anchors,
+        )
+
+
+def _build_target_working_tree_buffer_with_replaced_lines(
+    line_changes: LineLevelChange,
+    replace_ids: set[int],
+    replacement_payload: ReplacementPayload,
+    replacement_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    *,
+    working_has_trailing_newline: bool,
+    trim_unchanged_edge_anchors: bool,
+) -> LineBuffer:
+    """Build working content while replacement line storage is open."""
     def longest_prefix_context_match(
         candidate_lines: list[bytes],
         context_lines: list[bytes],
@@ -469,8 +515,6 @@ def build_target_working_tree_buffer_with_replaced_lines(
         raise ValueError("Replacement selection must be one contiguous line range")
 
     working_line_count = len(working_lines)
-    replacement_payload = coerce_replacement_payload(replacement_text)
-    replacement_lines = replacement_line_bodies(replacement_payload)
     selected_indices = [
         index
         for index, line in enumerate(line_changes.lines)

@@ -10,6 +10,7 @@ from contextlib import AbstractContextManager
 from ...batch.lifecycle import create_batch
 from ...batch.ownership import BatchOwnership
 from ...batch.ownership_detachment import acquire_detached_batch_ownership
+from ...batch.ownership_metadata_loading import acquire_ownership_for_metadata_dict
 from ...batch.ownership_merging import merge_batch_ownership
 from ...batch.ownership_units import (
     build_ownership_units_from_batch_source_lines,
@@ -89,7 +90,7 @@ def move_claims_between_batches(
                 )
             copy_file_from_batch_to_batch(source_batch, dest_batch, file_path)
         else:
-            with BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership:
+            with acquire_ownership_for_metadata_dict(file_meta) as ownership:
                 _add_ownership_to_destination(
                     dest_batch,
                     file_path,
@@ -179,7 +180,7 @@ def reset_line_claims_for_file(
         )
 
     with (
-        BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership,
+        acquire_ownership_for_metadata_dict(file_meta) as ownership,
         batch_source_buffer as batch_source_lines,
     ):
         remaining_units = partition_line_ownership_units(
@@ -324,7 +325,7 @@ def _add_ownership_to_destination(
                     file=file_path,
                 )
             )
-        with BatchOwnership.acquire_for_metadata_dict(dest_file_meta) as existing:
+        with acquire_ownership_for_metadata_dict(dest_file_meta) as existing:
             add_to_destination(merge_batch_ownership(existing, ownership))
         return
 
@@ -359,7 +360,7 @@ def _acquire_line_ownership_for_file(
         )
 
     with (
-        BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership,
+        acquire_ownership_for_metadata_dict(file_meta) as ownership,
         batch_source_buffer as batch_source_lines,
     ):
         _remaining_units, selected_units = partition_line_ownership_units(

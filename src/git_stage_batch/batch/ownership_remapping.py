@@ -8,17 +8,14 @@ from ..core.line_selection import LineSelection
 from .lineage import BatchSourceLineage
 from .line_mapping import LineMapping
 from .match import match_lines
-from .ownership import (
-    AbsenceClaim,
-    BatchOwnership,
-    ReplacementUnit,
-)
+from .ownership import BatchOwnership
+from .ownership_absence_claims import AbsenceClaim
 from .ownership_claims import (
     format_ownership_line_set,
     parse_ownership_line_ranges,
     presence_claims_from_source_lines,
 )
-from .ownership_replacement_units import normalize_replacement_units
+from .ownership_replacement_units import ReplacementUnit, normalize_replacement_units
 
 
 def _remap_replacement_units(

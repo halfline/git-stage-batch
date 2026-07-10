@@ -5,14 +5,9 @@ from __future__ import annotations
 from typing import Optional
 
 from . import display as batch_display
-from . import merge as batch_merge
-from .match import match_lines
+from . import file_mergeability as _file_mergeability
 from .ownership import BatchOwnership
-from .ownership_units import (
-    build_ownership_units_from_display_lines,
-)
-from .ownership_unit_rebuild import rebuild_ownership_from_units
-from .ownership_unit_validation import validate_ownership_units
+from .ownership_metadata_loading import acquire_ownership_for_metadata_dict
 from .query import read_batch_metadata
 from ..core.line_selection import LineRanges
 from ..core.models import (
@@ -24,11 +19,8 @@ from ..core.models import (
 )
 from ..utils.repository_buffers import (
     load_git_object_as_buffer,
-    load_working_tree_file_as_buffer,
 )
-from ..exceptions import MergeError
 from ..utils.paths import get_context_lines
-from ..core.text_lines import normalize_line_sequence_endings
 
 
 _BATCH_MERGE_REVIEW_ACTIONS = (
@@ -83,7 +75,7 @@ def render_batch_file_display(
 
     # Get batch source commit and ownership
     batch_source_commit = file_meta["batch_source_commit"]
-    with BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership:
+    with acquire_ownership_for_metadata_dict(file_meta) as ownership:
         return _render_batch_file_display_from_ownership(
             batch_source_commit=batch_source_commit,
             file_path=file_path,
@@ -109,7 +101,6 @@ def _render_batch_file_display_from_ownership(
     if batch_source_buffer is None:
         return None
 
-    mergeable_id_range_parts: list[tuple[int, int]] = []
     mergeable_id_ranges = LineRanges.empty()
     units = []
 
@@ -122,41 +113,14 @@ def _render_batch_file_display_from_ownership(
         )
 
         if probe_mergeability and display_lines:
-            source_match_lines = normalize_line_sequence_endings(batch_source_lines)
-            working_tree_buffer = load_working_tree_file_as_buffer(file_path)
-            with working_tree_buffer as working_tree_lines:
-                working_match_lines = normalize_line_sequence_endings(working_tree_lines)
-                with match_lines(
-                    source_match_lines,
-                    working_match_lines,
-                ) as source_to_working_mapping:
-
-                    units = build_ownership_units_from_display_lines(
-                        ownership,
-                        display_lines,
-                    )
-
-                    # Check each ownership unit once. All lines in an atomic unit
-                    # share the same mergeability result.
-                    for unit in units:
-                        try:
-                            validate_ownership_units([unit])
-                            ownership_for_unit = rebuild_ownership_from_units([unit])
-                            if ownership_for_unit.is_empty():
-                                continue
-                            if not batch_merge.can_merge_batch_from_line_sequences(
-                                source_match_lines,
-                                ownership_for_unit,
-                                working_match_lines,
-                                source_to_working_mapping=source_to_working_mapping,
-                            ):
-                                continue
-                            mergeable_id_range_parts.extend(unit.display_line_ids.ranges())
-                        except (MergeError, ValueError, KeyError, Exception):
-                            # Unit not mergeable - exclude all its lines
-                            pass
-
-                    mergeable_id_ranges = LineRanges.from_ranges(mergeable_id_range_parts)
+            mergeability = _file_mergeability.probe_batch_file_mergeability(
+                file_path=file_path,
+                ownership=ownership,
+                display_lines=display_lines,
+                batch_source_lines=batch_source_lines,
+            )
+            mergeable_id_ranges = mergeability.mergeable_id_ranges
+            units = mergeability.units
 
     if not display_lines:
         change_type = file_meta.get("change_type", "modified")

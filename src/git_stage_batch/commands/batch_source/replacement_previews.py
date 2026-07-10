@@ -6,7 +6,6 @@ from collections.abc import Callable
 from typing import Any
 
 from ..selection import replacement_selection
-from ...batch.operation_candidates import render_candidate_buffer_diff
 from ...batch.replacement import build_replacement_batch_view_from_lines
 from ...batch.selection import acquire_batch_ownership_for_display_ids_from_lines
 from ...batch.submodule_pointer import is_batch_submodule_pointer
@@ -19,6 +18,7 @@ from ...data.file_review.records import FileReviewAction
 from ...utils.repository_buffers import load_git_object_as_buffer
 from ...exceptions import exit_with_error
 from ...i18n import _
+from ...output.candidate_preview_diff import render_candidate_buffer_diff
 from ...utils.paths import get_context_lines
 
 

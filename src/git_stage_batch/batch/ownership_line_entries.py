@@ -6,12 +6,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from ..core.models import LineEntry
-from .ownership import (
-    BaselineReference,
-    ReplacementUnit,
-    ReplacementUnitOrigin,
-)
 from .ownership_claims import LineRangeBuilder
+from .ownership_references import BaselineReference
+from .ownership_replacement_units import ReplacementUnit, ReplacementUnitOrigin
 from .replacement_line_runs import ReplacementLineRun
 
 

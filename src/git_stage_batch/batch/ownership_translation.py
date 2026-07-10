@@ -5,18 +5,18 @@ from __future__ import annotations
 from .absence_content import (
     build_absence_content_from_range as _build_absence_content_from_range,
 )
-from .ownership import (
-    AbsenceClaim,
-    BaselineReference,
-    BatchOwnership,
-    ReplacementUnit as _ReplacementUnit,
-)
+from .ownership import BatchOwnership
+from .ownership_absence_claims import AbsenceClaim
 from .ownership_claims import LineRangeBuilder, presence_claims_from_source_lines
 from .ownership_line_entries import (
     LineEntryContentSequence as _LineEntryContentSequence,
     ReplacementUnitBuilder as _ReplacementUnitBuilder,
 )
-from .ownership_replacement_units import normalize_replacement_units
+from .ownership_references import BaselineReference
+from .ownership_replacement_units import (
+    ReplacementUnit as _ReplacementUnit,
+    normalize_replacement_units,
+)
 
 
 def detect_stale_batch_source_for_selection(selected_lines: list) -> bool:

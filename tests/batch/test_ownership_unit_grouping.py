@@ -12,10 +12,12 @@ import pytest
 from git_stage_batch.batch.display import (
     build_display_lines_from_batch_source_lines,
 )
+from git_stage_batch.batch.ownership_absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership import (
     BatchOwnership,
-    AbsenceClaim,
-    BaselineReference,
+)
+from git_stage_batch.batch.ownership_references import BaselineReference
+from git_stage_batch.batch.ownership_replacement_units import (
     ReplacementUnit,
     ReplacementUnitOrigin,
 )

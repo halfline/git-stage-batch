@@ -15,11 +15,11 @@ from ..core.text_lifecycle import (
     normalized_text_change_type,
     resolve_text_change_type,
 )
-from .source_snapshots import (
-    create_batch_source_commits,
+from .source_cache import (
     load_session_batch_sources,
     save_session_batch_sources,
 )
+from .source_snapshots import create_batch_source_commits
 from ..core.buffer import LineBuffer
 from ..utils.repository_buffers import (
     load_git_tree_files_as_buffers,

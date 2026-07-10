@@ -10,13 +10,8 @@ from .absence_content import (
     AbsenceContentBuilder as _AbsenceContentBuilder,
     build_absence_content_from_range as _build_absence_content_from_range,
 )
-from .ownership import (
-    AbsenceClaim,
-    BaselineReference,
-    BatchOwnership,
-    ReplacementUnit,
-    ReplacementUnitOrigin,
-)
+from .ownership import BatchOwnership
+from .ownership_absence_claims import AbsenceClaim
 from .ownership_claims import LineRangeBuilder, presence_claims_from_source_lines
 from .ownership_line_entries import (
     LineEntryContentSequence as _LineEntryContentSequence,
@@ -25,7 +20,12 @@ from .ownership_line_entries import (
     old_line_content_by_number as _old_line_content_by_number,
     replacement_unit_origin_for_line_run as _replacement_unit_origin_for_line_run,
 )
-from .ownership_replacement_units import normalize_replacement_units
+from .ownership_references import BaselineReference
+from .ownership_replacement_units import (
+    ReplacementUnit,
+    ReplacementUnitOrigin,
+    normalize_replacement_units,
+)
 from .replacement_line_runs import ReplacementLineRun as _ReplacementLineRun
 
 

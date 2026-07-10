@@ -15,7 +15,7 @@ from .presence_missing_claims import (
 )
 
 if TYPE_CHECKING:
-    from .ownership import AbsenceClaim
+    from .ownership_absence_claims import AbsenceClaim
 
 
 @dataclass

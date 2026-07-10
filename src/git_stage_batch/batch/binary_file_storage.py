@@ -6,12 +6,12 @@ import json
 
 from ..core.buffer import LineBuffer
 from ..core.models import BinaryFileChange
-from .source_snapshots import (
-    create_batch_source_commit,
+from .source_cache import (
     get_batch_source_for_file,
     load_session_batch_sources,
     save_session_batch_sources,
 )
+from .source_snapshots import create_batch_source_commit
 from ..utils.file_io import write_text_file_contents
 from ..utils.git_object_io import create_git_blob
 from ..utils.git_repository import get_git_repository_root_path

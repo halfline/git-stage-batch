@@ -1,8 +1,7 @@
-"""Session batch source management for batch operations."""
+"""Batch source commit construction for batch operations."""
 
 from __future__ import annotations
 
-import json
 import os
 import stat
 import tempfile
@@ -11,13 +10,9 @@ from dataclasses import dataclass
 
 from ..core.buffer import LineBuffer
 from ..utils.repository_buffers import (
-    load_git_blob_as_buffer,
-    load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
 )
-from ..exceptions import CommandError
-from ..i18n import _
-from ..utils.file_io import read_file_paths_file, read_text_file_contents, write_text_file_contents
+from ..utils.file_io import read_text_file_contents
 from ..utils.git_command import (
     run_git_command,
 )
@@ -32,14 +27,14 @@ from ..utils.git_index import (
     temp_git_index,
 )
 from ..utils.git_repository import get_git_repository_root_path
-from ..utils.git_object_io import create_git_blob, list_git_tree_blobs
+from ..utils.git_object_io import create_git_blob
 from ..utils.journal import log_journal
 from ..utils.paths import (
     get_abort_head_file_path,
-    get_abort_snapshot_list_file_path,
-    get_abort_snapshots_directory_path,
-    get_abort_stash_file_path,
-    get_session_batch_sources_file_path,
+)
+from .source_buffers import (
+    load_saved_session_file_as_buffer as _load_saved_session_file_as_buffer,
+    read_session_file_buffers as _read_session_file_buffers,
 )
 
 
@@ -56,62 +51,6 @@ def _buffer_preview(buffer: LineBuffer) -> bytes:
     for chunk in buffer.byte_chunks(200):
         return chunk
     return b"(empty)"
-
-
-def load_saved_session_file_as_buffer(file_path: str) -> LineBuffer:
-    """Load a file buffer as it was at session start.
-
-    For tracked files, extracts from the git stash created by
-    initialize_abort_state(). For untracked files, reads from the lazy
-    snapshot taken before first modification.
-
-    Args:
-        file_path: Repository-relative path to the file
-
-    Returns:
-        File buffer, preserving exact encoding and line endings
-
-    Raises:
-        CommandError: If the file buffer cannot be retrieved
-    """
-    # Check if file was untracked and snapshotted
-    snapshot_list_path = get_abort_snapshot_list_file_path()
-    if snapshot_list_path.exists():
-        snapshotted_files = read_file_paths_file(snapshot_list_path)
-        if file_path in snapshotted_files:
-            # Read from snapshot directory
-            snapshot_path = get_abort_snapshots_directory_path() / file_path
-            if snapshot_path.exists():
-                return LineBuffer.from_path(snapshot_path)
-            else:
-                raise CommandError(
-                    _("Snapshot for untracked file not found: {file}").format(file=file_path)
-                )
-
-    # File was tracked - extract from stash if it exists, otherwise from baseline
-    stash_file_path = get_abort_stash_file_path()
-    if stash_file_path.exists():
-        stash_commit = read_text_file_contents(stash_file_path).strip()
-        if stash_commit:
-            # Extract file from stash commit
-            # The stash commit contains the working tree state
-            buffer = load_git_object_as_buffer(f"{stash_commit}:{file_path}")
-            if buffer is not None:
-                return buffer
-
-    # No stash or file not in stash - file was unchanged at session start
-    # Read from baseline (abort HEAD)
-    abort_head_path = get_abort_head_file_path()
-    if not abort_head_path.exists():
-        raise CommandError(_("No session found"))
-
-    baseline_commit = read_text_file_contents(abort_head_path).strip()
-    buffer = load_git_object_as_buffer(f"{baseline_commit}:{file_path}")
-    if buffer is None:
-        # File might not exist in baseline (new file)
-        return LineBuffer.from_bytes(b"")
-
-    return buffer
 
 
 def _fast_import_quote_path(file_path: str) -> str:
@@ -137,73 +76,6 @@ def _fast_import_quote_path(file_path: str) -> str:
         else:
             escaped.append(f"\\{byte:03o}")
     return '"' + "".join(escaped) + '"'
-
-
-def _read_session_file_buffers(
-    file_paths: list[str],
-    *,
-    baseline_commit: str,
-) -> tuple[dict[str, LineBuffer], set[str]]:
-    """Read session-start buffers for several files."""
-    unique_file_paths = list(dict.fromkeys(file_paths))
-    baseline_blobs = list_git_tree_blobs(baseline_commit, unique_file_paths)
-    baseline_existing_files = set(baseline_blobs)
-
-    snapshot_list_path = get_abort_snapshot_list_file_path()
-    snapshotted_files = (
-        set(read_file_paths_file(snapshot_list_path))
-        if snapshot_list_path.exists() else
-        set()
-    )
-
-    buffers: dict[str, LineBuffer] = {}
-    remaining_paths: list[str] = []
-    try:
-        snapshot_directory = get_abort_snapshots_directory_path()
-        for file_path in unique_file_paths:
-            if file_path in snapshotted_files:
-                snapshot_path = snapshot_directory / file_path
-                if snapshot_path.exists():
-                    buffers[file_path] = LineBuffer.from_path(snapshot_path)
-                    continue
-                raise CommandError(
-                    _("Snapshot for untracked file not found: {file}").format(file=file_path)
-                )
-            remaining_paths.append(file_path)
-
-        stash_file_path = get_abort_stash_file_path()
-        stash_blobs = {}
-        if stash_file_path.exists():
-            stash_commit = read_text_file_contents(stash_file_path).strip()
-            if stash_commit:
-                stash_blobs = list_git_tree_blobs(stash_commit, remaining_paths)
-
-        repo_root = get_git_repository_root_path()
-        for file_path in remaining_paths:
-            stash_blob = stash_blobs.get(file_path)
-            if stash_blob is not None:
-                buffers[file_path] = load_git_blob_as_buffer(stash_blob.blob_sha)
-                continue
-
-            baseline_blob = baseline_blobs.get(file_path)
-            if baseline_blob is not None:
-                buffers[file_path] = load_git_blob_as_buffer(baseline_blob.blob_sha)
-                continue
-
-            file_full_path = repo_root / file_path
-            if (
-                file_path not in baseline_existing_files
-                and os.path.lexists(file_full_path)
-            ):
-                buffers[file_path] = load_working_tree_file_as_buffer(file_path)
-            else:
-                buffers[file_path] = LineBuffer.from_bytes(b"")
-    except Exception:
-        for buffer in buffers.values():
-            buffer.close()
-        raise
-
-    return buffers, baseline_existing_files
 
 
 def create_batch_source_commits(file_paths: list[str]) -> dict[str, BatchSourceCommit]:
@@ -384,7 +256,7 @@ def create_batch_source_commit(
             file_buffer = file_buffer_override
             close_file_buffer = False
         else:
-            file_buffer = load_saved_session_file_as_buffer(file_path)
+            file_buffer = _load_saved_session_file_as_buffer(file_path)
 
         # For new files (didn't exist at session start), use selected working tree content
         # This ensures the batch source has the lines we're actually claiming
@@ -445,44 +317,3 @@ def create_batch_source_commit(
     )
 
     return batch_source_commit
-
-
-def get_batch_source_for_file(file_path: str) -> str | None:
-    """Retrieve existing batch source commit for a file from session cache.
-
-    Args:
-        file_path: Repository-relative path to the file
-
-    Returns:
-        Batch source commit SHA if found, None otherwise
-    """
-    batch_sources = load_session_batch_sources()
-    return batch_sources.get(file_path)
-
-
-def load_session_batch_sources() -> dict[str, str]:
-    """Load session batch sources from session-batch-sources.json.
-
-    Returns:
-        Dictionary mapping file paths to batch source commit SHAs
-    """
-    batch_sources_path = get_session_batch_sources_file_path()
-    if not batch_sources_path.exists():
-        return {}
-
-    try:
-        content = read_text_file_contents(batch_sources_path)
-        return json.loads(content)
-    except (json.JSONDecodeError, ValueError):
-        return {}
-
-
-def save_session_batch_sources(batch_sources: dict[str, str]) -> None:
-    """Save session batch sources to session-batch-sources.json.
-
-    Args:
-        batch_sources: Dictionary mapping file paths to batch source commit SHAs
-    """
-    batch_sources_path = get_session_batch_sources_file_path()
-    content = json.dumps(batch_sources, indent=2)
-    write_text_file_contents(batch_sources_path, content)

@@ -7,6 +7,9 @@ from types import SimpleNamespace
 import pytest
 
 import git_stage_batch.batch.operation_candidates as operation_candidates
+from git_stage_batch.batch.operation_candidate_types import (
+    CandidateEnumerationLimitError,
+)
 import git_stage_batch.commands.batch_source.action_selection as action_selection
 import git_stage_batch.commands.batch_source.candidate_preview_action as candidate_preview_action
 import git_stage_batch.commands.batch_source.candidate_preview_counts as candidate_preview_counts
@@ -14,10 +17,12 @@ import git_stage_batch.commands.show_from as show_from_module
 import git_stage_batch.output.candidate_preview as candidate_preview_module
 import git_stage_batch.output.candidate_preview_summary as candidate_preview_summary
 from git_stage_batch.batch.lifecycle import create_batch
+from git_stage_batch.batch.ownership_absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership import (
-    AbsenceClaim,
-    BaselineReference,
     BatchOwnership,
+)
+from git_stage_batch.batch.ownership_references import BaselineReference
+from git_stage_batch.batch.ownership_replacement_units import (
     ReplacementUnit,
     ReplacementUnitOrigin,
 )
@@ -587,7 +592,7 @@ def test_include_from_reports_candidate_limit(temp_git_repo, monkeypatch):
     _create_displaced_absence_batch(temp_git_repo)
 
     def fail_count(*args, **kwargs):
-        raise operation_candidates.CandidateEnumerationLimitError(
+        raise CandidateEnumerationLimitError(
             "too many include candidates to preview safely"
         )
 

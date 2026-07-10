@@ -11,7 +11,8 @@ import git_stage_batch.commands.show_from as show_from_module
 import git_stage_batch.batch.file_display as file_display_module
 import git_stage_batch.data.file_review.batch_selection as batch_review_selection_module
 import git_stage_batch.data.file_review.freshness as file_review_freshness_module
-from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim
+from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.batch.ownership_absence_claims import AbsenceClaim
 from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.batch.file_entry_storage import read_file_from_batch
 from git_stage_batch.batch.text_file_storage import add_file_to_batch
@@ -23,14 +24,16 @@ from git_stage_batch.commands.show_from import command_show_from_batch
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.core.line_selection import LineRanges, parse_line_selection
 from git_stage_batch.core.models import RenderedBatchDisplay, ReviewActionGroup
-from git_stage_batch.batch.source_snapshots import (
-    create_batch_source_commit,
-    save_session_batch_sources,
-)
+from git_stage_batch.batch.source_cache import save_session_batch_sources
+from git_stage_batch.batch.source_snapshots import create_batch_source_commit
 from git_stage_batch.batch.file_display import render_batch_file_display
 from git_stage_batch.data.hunk_tracking import fetch_next_change
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.exceptions import CommandError, NoMoreHunks
+from tests.ownership_metadata_helpers import (
+    acquire_ownership_for_metadata,
+    reject_materialized_ownership_metadata as _reject_materialized_ownership_metadata,
+)
 
 
 _RESET_ACTIONS = ("reset-from-batch",)
@@ -63,20 +66,8 @@ def _presence_line_ids_from_ownership(ownership: BatchOwnership) -> set[int]:
     return line_ids
 
 
-def _reject_materialized_ownership_metadata(monkeypatch):
-    def fail_from_metadata_dict(cls, data):
-        raise AssertionError("reset should use acquired ownership metadata")
-
-    monkeypatch.setattr(
-        BatchOwnership,
-        "from_metadata_dict",
-        classmethod(fail_from_metadata_dict),
-        raising=False,
-    )
-
-
 def _ownership_summary_from_metadata(file_meta: dict) -> tuple[set[int], int]:
-    with BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership:
+    with acquire_ownership_for_metadata(file_meta) as ownership:
         return _presence_line_ids_from_ownership(ownership), len(ownership.deletions)
 
 

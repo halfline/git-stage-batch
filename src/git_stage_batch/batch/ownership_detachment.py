@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from ..core.buffer import LineBuffer
 from .absence_content import copy_absence_content as _copy_absence_content
-from .ownership import AbsenceClaim, BatchOwnership, PresenceClaim, ReplacementUnit
 from .ownership_acquisition import AcquiredBatchOwnership
+from .ownership_absence_claims import AbsenceClaim
+from .ownership import BatchOwnership
+from .ownership_claims import PresenceClaim
+from .ownership_replacement_units import ReplacementUnit
 
 
 def acquire_detached_batch_ownership(

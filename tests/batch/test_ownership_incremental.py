@@ -5,8 +5,8 @@ from __future__ import annotations
 from git_stage_batch.batch.hunk_ownership_translation import (
     translate_hunk_selection_to_batch_ownership,
 )
-from git_stage_batch.batch.ownership import (
-    AbsenceClaim,
+from git_stage_batch.batch.ownership_absence_claims import AbsenceClaim
+from git_stage_batch.batch.ownership_replacement_units import (
     ReplacementUnit,
     ReplacementUnitOrigin,
 )

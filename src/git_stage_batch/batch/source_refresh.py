@@ -7,30 +7,23 @@ advancement, ownership remapping, cache updates, and line re-annotation.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
-from contextlib import contextmanager
 from dataclasses import dataclass
 
-from ..core.models import LineEntry
-from .source_snapshots import (
-    create_batch_source_commit,
+from .source_cache import (
     load_session_batch_sources,
     save_session_batch_sources,
 )
+from .source_snapshots import create_batch_source_commit
 from ..utils.repository_buffers import (
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
 )
-from .hunk_ownership_translation import translate_hunk_selection_to_batch_ownership
 from .ownership import (
     BatchOwnership,
 )
-from .ownership_merging import merge_batch_ownership
 from .ownership_translation import (
     detect_stale_batch_source_for_selection,
-    translate_lines_to_batch_ownership,
 )
-from .replacement_line_runs import ReplacementLineRun
 from .selected_line_source_refresh import (
     refresh_selected_lines_against_new_source as _refresh_lines_against_new_source,
     refresh_selected_lines_against_source_lines as _refresh_lines_against_source,
@@ -58,23 +51,6 @@ class RefreshedBatchSelection:
 
     source_was_advanced: bool
     """True if batch source was advanced during this operation."""
-
-
-@dataclass
-class PreparedBatchUpdate:
-    """Prepared ownership update for a batch file after stale-source handling.
-
-    This represents a complete ownership update ready to be persisted,
-    including the new ownership merged with existing ownership.
-    """
-    batch_source_commit: str | None
-    """The batch source commit to use for this file."""
-
-    ownership_before: BatchOwnership | None
-    """Ownership before applying this update (possibly remapped to new source)."""
-
-    ownership_after: BatchOwnership
-    """Ownership after merging new selection with existing ownership."""
 
 
 def ensure_batch_source_current_for_selection(
@@ -239,153 +215,3 @@ def _prepare_initial_cached_source_for_selection(
         _create_current_working_source_for_selection(file_path, selected_lines)
     )
     return new_batch_source_commit, reannotated_lines, True
-
-
-def _merge_refreshed_selected_lines_into_hunk(
-    hunk_lines: Sequence[LineEntry],
-    selected_lines: Sequence[LineEntry],
-) -> list[LineEntry]:
-    """Return full hunk lines with refreshed selected-line coordinates."""
-    selected_by_id = {
-        line.id: line
-        for line in selected_lines
-        if line.id is not None
-    }
-    if not selected_by_id:
-        return list(hunk_lines)
-
-    return [
-        selected_by_id.get(line.id, line)
-        if line.id is not None else
-        line
-        for line in hunk_lines
-    ]
-
-
-def _translate_selection_to_batch_ownership(
-    selected_lines: list,
-    *,
-    hunk_lines: Sequence[LineEntry] | None = None,
-    replacement_line_runs: Sequence[ReplacementLineRun] | None = None,
-) -> BatchOwnership:
-    """Translate a selection, using full-hunk replacement context when available."""
-    selected_ids = {
-        line.id
-        for line in selected_lines
-        if line.id is not None
-    }
-    if hunk_lines is not None and replacement_line_runs is not None and selected_ids:
-        return translate_hunk_selection_to_batch_ownership(
-            _merge_refreshed_selected_lines_into_hunk(
-                hunk_lines,
-                selected_lines,
-            ),
-            selected_ids,
-            replacement_line_runs=list(replacement_line_runs),
-        )
-
-    return translate_lines_to_batch_ownership(selected_lines)
-
-
-def prepare_batch_ownership_update_for_selection(
-    batch_name: str,
-    file_path: str,
-    current_batch_source_commit: str | None,
-    existing_ownership: BatchOwnership | None,
-    selected_lines: list,
-    *,
-    hunk_lines: Sequence[LineEntry] | None = None,
-    replacement_line_runs: Sequence[ReplacementLineRun] | None = None,
-) -> PreparedBatchUpdate:
-    """Prepare complete ownership update for batch file, handling stale sources.
-
-    This is the high-level orchestration helper for include/discard-to-batch.
-    It coordinates:
-    1. Ensuring batch source is current (may advance source and remap ownership)
-    2. Translating selected lines to new ownership
-    3. Merging new ownership with existing ownership
-    4. Returning a prepared update ready for persistence
-
-    Command code stays focused on line selection and working tree updates,
-    while this helper handles all batch-ownership coordination.
-
-    Args:
-        batch_name: Name of the batch being updated
-        file_path: Path to the file
-        current_batch_source_commit: Current batch source commit (or None)
-        existing_ownership: Existing ownership for this file (or None)
-        selected_lines: LineEntry objects being added to batch
-
-    Returns:
-        PreparedBatchUpdate ready to be persisted
-
-    Raises:
-        ValueError: If stale source remapping or translation fails
-    """
-    # Step 1: Ensure batch source is current, handling stale sources
-    refreshed = ensure_batch_source_current_for_selection(
-        batch_name=batch_name,
-        file_path=file_path,
-        current_batch_source_commit=current_batch_source_commit,
-        existing_ownership=existing_ownership,
-        selected_lines=selected_lines
-    )
-
-    # Step 2: Translate selected lines to new ownership
-    new_ownership = _translate_selection_to_batch_ownership(
-        refreshed.selected_lines,
-        hunk_lines=hunk_lines,
-        replacement_line_runs=replacement_line_runs,
-    )
-
-    # Step 3: Merge with existing ownership
-    if refreshed.ownership:
-        merged_ownership = merge_batch_ownership(refreshed.ownership, new_ownership)
-    else:
-        merged_ownership = new_ownership
-
-    # Step 4: Return prepared update
-    return PreparedBatchUpdate(
-        batch_source_commit=refreshed.batch_source_commit,
-        ownership_before=refreshed.ownership,
-        ownership_after=merged_ownership
-    )
-
-
-@contextmanager
-def acquire_batch_ownership_update_for_selection(
-    *,
-    batch_name: str,
-    file_path: str,
-    file_metadata: dict | None,
-    selected_lines: list,
-    hunk_lines: Sequence[LineEntry] | None = None,
-    replacement_line_runs: Sequence[ReplacementLineRun] | None = None,
-) -> Iterator[PreparedBatchUpdate]:
-    """Acquire existing ownership metadata while preparing a batch update.
-
-    The yielded ownership may borrow deletion content from acquired metadata,
-    so callers should persist or detach it before leaving the context.
-    """
-    if file_metadata is None:
-        yield prepare_batch_ownership_update_for_selection(
-            batch_name=batch_name,
-            file_path=file_path,
-            current_batch_source_commit=None,
-            existing_ownership=None,
-            selected_lines=selected_lines,
-            hunk_lines=hunk_lines,
-            replacement_line_runs=replacement_line_runs,
-        )
-        return
-
-    with BatchOwnership.acquire_for_metadata_dict(file_metadata) as existing_ownership:
-        yield prepare_batch_ownership_update_for_selection(
-            batch_name=batch_name,
-            file_path=file_path,
-            current_batch_source_commit=file_metadata.get("batch_source_commit"),
-            existing_ownership=existing_ownership,
-            selected_lines=selected_lines,
-            hunk_lines=hunk_lines,
-            replacement_line_runs=replacement_line_runs,
-        )

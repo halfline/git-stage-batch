@@ -29,6 +29,9 @@ from git_stage_batch.commands.include import command_include
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.core.models import TextFileDeletionChange
 from git_stage_batch.exceptions import CommandError
+from tests.ownership_metadata_helpers import (
+    reject_materialized_ownership_metadata as _reject_materialized_ownership_metadata,
+)
 
 
 def _prepare_single_line_change(repo, file_name="test.txt"):
@@ -40,18 +43,6 @@ def _prepare_single_line_change(repo, file_name="test.txt"):
     command_start()
     fetch_next_change()
     return test_file
-
-
-def _reject_materialized_ownership_metadata(monkeypatch):
-    def fail_from_metadata_dict(cls, data):
-        raise AssertionError("discard should use acquired ownership metadata")
-
-    monkeypatch.setattr(
-        BatchOwnership,
-        "from_metadata_dict",
-        classmethod(fail_from_metadata_dict),
-        raising=False,
-    )
 
 
 @pytest.fixture

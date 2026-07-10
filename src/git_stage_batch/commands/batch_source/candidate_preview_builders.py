@@ -8,8 +8,8 @@ from typing import Any
 
 from . import candidate_inputs as _candidate_inputs
 from ..selection import replacement_selection
+from ...batch.operation_candidate_types import OperationCandidatePreview
 from ...batch.operation_candidates import (
-    OperationCandidatePreview,
     build_apply_candidate_previews,
     build_include_candidate_previews,
 )

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from git_stage_batch.batch.operation_candidates import (
+from git_stage_batch.batch.operation_candidate_types import (
     OperationCandidatePreview,
     TargetCandidatePreview,
 )

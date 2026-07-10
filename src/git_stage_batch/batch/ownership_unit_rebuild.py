@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 from ..core.line_selection import LineRanges
-from .ownership import (
-    BatchOwnership,
-    ReplacementUnit,
-)
+from .ownership import BatchOwnership
 from .ownership_claims import (
     format_ownership_line_set,
     presence_claims_from_source_lines,
 )
-from .ownership_replacement_units import normalize_replacement_units
+from .ownership_replacement_units import ReplacementUnit, normalize_replacement_units
 from .ownership_unit_types import (
     OwnershipUnit as _UnitRecord,
     OwnershipUnitKind as _UnitKind,

@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Optional
 
 from .ownership import BatchOwnership
+from .ownership_metadata_loading import acquire_ownership_for_metadata_dict
 from .ownership_units import (
     build_ownership_units_from_batch_source_lines,
 )
@@ -189,7 +190,7 @@ def acquire_batch_ownership_for_display_ids_from_lines(
     selected_ids: Optional[set[int]],
 ) -> Iterator[BatchOwnership]:
     """Acquire selected ownership for indexed batch-source lines."""
-    with BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership:
+    with acquire_ownership_for_metadata_dict(file_meta) as ownership:
         if selected_ids is None:
             yield ownership
             return

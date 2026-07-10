@@ -12,22 +12,25 @@ from git_stage_batch.batch.merge import merge_batch_from_line_sequences_as_buffe
 from git_stage_batch.batch.file_entry_storage import read_file_from_batch
 from git_stage_batch.batch.text_file_storage import add_file_to_batch
 from git_stage_batch.batch.absence_content import AbsenceContentBuilder
+from git_stage_batch.batch.ownership_absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership import (
-    BaselineReference,
     BatchOwnership,
-    AbsenceClaim,
-    ReplacementUnit,
-    ReplacementUnitOrigin,
 )
 from git_stage_batch.batch.ownership_detachment import acquire_detached_batch_ownership
 from git_stage_batch.batch.ownership_merging import (
     _absence_signature,
     merge_batch_ownership,
 )
+from git_stage_batch.batch.ownership_references import BaselineReference
+from git_stage_batch.batch.ownership_replacement_units import (
+    ReplacementUnit,
+    ReplacementUnitOrigin,
+)
 import git_stage_batch.batch.absence_content as absence_content_module
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.utils.git_object_io import create_git_blob
+from tests.ownership_metadata_helpers import acquire_ownership_for_metadata
 
 
 def merge_batch(
@@ -117,7 +120,7 @@ def test_add_file_to_batch_persists_replacement_units(temp_git_repo):
         {"presence_lines": ["1"], "deletion_indices": [0]},
     ]
 
-    with BatchOwnership.acquire_for_metadata_dict(file_meta) as round_tripped:
+    with acquire_ownership_for_metadata(file_meta) as round_tripped:
         assert round_tripped.replacement_units == [
             ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),
         ]
@@ -139,7 +142,7 @@ def test_deletion_claim_metadata_accepts_non_list_content_lines(
     )
 
     metadata = ownership.to_metadata_dict()
-    with BatchOwnership.acquire_for_metadata_dict(metadata) as round_tripped:
+    with acquire_ownership_for_metadata(metadata) as round_tripped:
         assert list(round_tripped.deletions[0].content_lines) == [
             b"old one\n",
             b"old two\n",
@@ -178,7 +181,7 @@ def test_batch_ownership_metadata_acquisition_scopes_deletion_buffers(temp_git_r
     )
     metadata = ownership.to_metadata_dict()
 
-    with BatchOwnership.acquire_for_metadata_dict(metadata) as scoped_ownership:
+    with acquire_ownership_for_metadata(metadata) as scoped_ownership:
         content_lines = scoped_ownership.deletions[0].content_lines
         assert isinstance(content_lines, LineBuffer)
         assert content_lines[0] == b"old one\n"
@@ -204,7 +207,7 @@ def test_acquire_detached_batch_ownership_keeps_copied_content(temp_git_repo):
     )
     metadata = ownership.to_metadata_dict()
 
-    with BatchOwnership.acquire_for_metadata_dict(metadata) as scoped_ownership:
+    with acquire_ownership_for_metadata(metadata) as scoped_ownership:
         detached_context = acquire_detached_batch_ownership(scoped_ownership)
         content_lines = scoped_ownership.deletions[0].content_lines
         assert isinstance(content_lines, LineBuffer)
@@ -320,7 +323,7 @@ def test_absence_content_builder_closes_editor_on_exception(monkeypatch):
 
 def test_legacy_claimed_lines_metadata_loads_as_presence_claims(temp_git_repo):
     """Old claimed_lines metadata should retain presence ownership."""
-    with BatchOwnership.acquire_for_metadata_dict({
+    with acquire_ownership_for_metadata({
         "claimed_lines": ["2"],
         "deletions": [],
     }) as ownership:
@@ -340,7 +343,7 @@ def test_legacy_replacement_units_metadata_loads_presence_lines(temp_git_repo):
     """Old replacement-unit keys should stay readable after upgrade."""
     old_blob = create_git_blob([b"old\n"])
 
-    with BatchOwnership.acquire_for_metadata_dict({
+    with acquire_ownership_for_metadata({
         "claimed_lines": ["2"],
         "deletions": [
             {
@@ -396,7 +399,7 @@ def test_add_file_to_batch_persists_baseline_references(temp_git_repo):
         "after_line": 1,
     }
 
-    with BatchOwnership.acquire_for_metadata_dict(file_meta) as round_tripped:
+    with acquire_ownership_for_metadata(file_meta) as round_tripped:
         assert round_tripped.presence_baseline_references()[2] == presence_reference
         assert round_tripped.deletions[0].baseline_reference == deletion_reference
 
@@ -419,7 +422,7 @@ def test_replacement_unit_origin_round_trips_metadata(temp_git_repo):
     )
     old_blob = create_git_blob([b"old\n"])
 
-    with BatchOwnership.acquire_for_metadata_dict({
+    with acquire_ownership_for_metadata({
         "presence_claims": [{"source_lines": ["2"]}],
         "deletions": [
             {

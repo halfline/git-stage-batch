@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from git_stage_batch.batch.operation_candidates import CandidatePreviewCount
+from git_stage_batch.batch.operation_candidate_types import CandidatePreviewCount
 import git_stage_batch.commands.batch_source.candidate_refusals as candidate_refusals
 from git_stage_batch.exceptions import CommandError
 

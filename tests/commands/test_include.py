@@ -31,6 +31,9 @@ from git_stage_batch.data.selected_change.clear_reasons import (
 )
 from git_stage_batch.exceptions import CommandError, NoMoreHunks
 from git_stage_batch.commands.again import command_again
+from tests.ownership_metadata_helpers import (
+    reject_materialized_ownership_metadata as _reject_materialized_ownership_metadata,
+)
 
 
 def _prepare_single_line_change(repo, file_name="test.txt"):
@@ -42,18 +45,6 @@ def _prepare_single_line_change(repo, file_name="test.txt"):
     command_start()
     fetch_next_change()
     return test_file
-
-
-def _reject_materialized_ownership_metadata(monkeypatch):
-    def fail_from_metadata_dict(cls, data):
-        raise AssertionError("include should use acquired ownership metadata")
-
-    monkeypatch.setattr(
-        BatchOwnership,
-        "from_metadata_dict",
-        classmethod(fail_from_metadata_dict),
-        raising=False,
-    )
 
 
 @pytest.fixture

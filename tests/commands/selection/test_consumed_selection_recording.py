@@ -16,6 +16,7 @@ from git_stage_batch.data.consumed_selections import (
     read_consumed_file_metadata,
 )
 from git_stage_batch.core.buffer import LineBuffer
+from tests.ownership_metadata_helpers import acquire_ownership_for_metadata
 
 
 @pytest.fixture
@@ -164,6 +165,6 @@ def test_record_consumed_selection_rewrites_existing_deletions(temp_git_repo):
 
     metadata = read_consumed_file_metadata("test.txt")
     assert metadata is not None
-    with BatchOwnership.acquire_for_metadata_dict(metadata) as ownership:
+    with acquire_ownership_for_metadata(metadata) as ownership:
         assert ownership.presence_line_set() == {1}
         assert list(ownership.deletions[0].content_lines) == [b"old\n"]

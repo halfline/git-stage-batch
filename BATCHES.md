@@ -233,9 +233,10 @@ not isolated from the rest of the session machinery. They are part of the same
 reversible interaction model.
 
 This matters because the initial batch source for a file is not an arbitrary
-later working-tree snapshot. It is derived from the saved session-start file
-content returned by
-`get_saved_session_file_content()` in `src/git_stage_batch/data/batch_sources.py`.
+later working-tree snapshot. It is derived from session-start buffers loaded by
+`src/git_stage_batch/batch/source_buffers.py`, then persisted as per-file source
+commits by `src/git_stage_batch/batch/source_snapshots.py`. The active session's
+per-file source commit cache lives in `src/git_stage_batch/batch/source_cache.py`.
 For files that did not exist at session start, initial source creation falls
 back to the current working-tree file content so the new file's claimed lines
 actually exist in source space.
@@ -810,6 +811,9 @@ Ownership and repair:
 
 - `src/git_stage_batch/batch/ownership.py`
 - `src/git_stage_batch/batch/source_refresh.py`
+- `src/git_stage_batch/batch/source_cache.py`
+- `src/git_stage_batch/batch/source_buffers.py`
+- `src/git_stage_batch/batch/source_snapshots.py`
 - `src/git_stage_batch/batch/selection.py`
 
 Merge / discard engine:
@@ -826,7 +830,6 @@ Display and attribution:
 Session coupling:
 
 - `src/git_stage_batch/data/session.py`
-- `src/git_stage_batch/data/batch_sources.py`
 - `src/git_stage_batch/data/batch_refs.py`
 - `src/git_stage_batch/data/consumed_selections.py`
 

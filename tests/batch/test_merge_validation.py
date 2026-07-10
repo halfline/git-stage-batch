@@ -17,7 +17,8 @@ from git_stage_batch.batch.realized_boundaries import (
     sequence_present_at_boundary,
 )
 from git_stage_batch.batch.realized_entries import RealizedEntry
-from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim
+from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.batch.ownership_absence_claims import AbsenceClaim
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.exceptions import MergeError, MissingAnchorError, AmbiguousAnchorError
 

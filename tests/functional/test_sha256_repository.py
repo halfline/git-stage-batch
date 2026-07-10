@@ -40,6 +40,17 @@ def sha256_repo(tmp_path, monkeypatch):
     return repo
 
 
+def test_new_empty_file_can_be_selected_and_staged(sha256_repo):
+    """SHA-256 empty-blob metadata should produce an empty-file selection."""
+    empty_file = sha256_repo / "empty.txt"
+    empty_file.write_bytes(b"")
+
+    git_stage_batch("start")
+    git_stage_batch("include", "--file", "empty.txt")
+
+    assert _git("diff", "--cached", "--name-only").stdout == "empty.txt\n"
+
+
 def test_intent_to_add_survives_start_and_abort(sha256_repo):
     """Intent-to-add detection should not depend on SHA-1's empty blob ID."""
     intent_file = sha256_repo / "intent.txt"

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..batch.query import list_batch_names, read_batch_metadata
+from ..batch.query import list_batch_names, read_batch_metadata_for_batches
 from ..core.models import (
     BinaryFileChange,
     GitlinkChange,
@@ -78,19 +78,31 @@ def text_deletion_change_is_stale(
 
 def text_deletion_change_is_batched(
     deletion_change: TextFileDeletionChange,
+    *,
+    batch_metadata_by_name: dict[str, dict] | None = None,
 ) -> bool:
     """Return whether a whole-text-file deletion is already represented in a batch."""
-    return empty_text_lifecycle_change_is_batched(deletion_change.path())
+    return empty_text_lifecycle_change_is_batched(
+        deletion_change.path(),
+        batch_metadata_by_name=batch_metadata_by_name,
+    )
 
 
-def empty_text_lifecycle_change_is_batched(file_path: str) -> bool:
+def empty_text_lifecycle_change_is_batched(
+    file_path: str,
+    *,
+    batch_metadata_by_name: dict[str, dict] | None = None,
+) -> bool:
     """Return whether the current empty text lifecycle diff is already batched."""
     change_type = detect_empty_text_lifecycle_change(file_path)
     if change_type is None:
         return False
 
-    for batch_name in list_batch_names():
-        file_meta = read_batch_metadata(batch_name).get("files", {}).get(file_path)
+    if batch_metadata_by_name is None:
+        batch_metadata_by_name = read_batch_metadata_for_batches(list_batch_names())
+
+    for metadata in batch_metadata_by_name.values():
+        file_meta = metadata.get("files", {}).get(file_path)
         if file_meta is not None and file_meta.get("change_type") == change_type:
             return True
     return False

@@ -11,6 +11,7 @@ from git_stage_batch.batch.query import (
     list_batch_files,
     list_batch_names,
     read_batch_metadata,
+    read_batch_metadata_for_batches,
 )
 from git_stage_batch.batch.lifecycle import create_batch
 from git_stage_batch.batch.text_file_storage import add_file_to_batch
@@ -72,6 +73,26 @@ def test_read_batch_metadata_ignores_corrupted_compat_file(temp_git_repo):
     metadata = read_batch_metadata("test-batch")
     assert metadata["note"] == "Original"
     assert metadata["created_at"] != ""
+
+
+def test_read_batch_metadata_for_batches_reads_existing_batches(temp_git_repo):
+    """Bulk metadata reads should preserve normal query semantics."""
+    create_batch("batch-a", "A")
+    create_batch("batch-b", "B")
+
+    metadata_by_name = read_batch_metadata_for_batches(["batch-a", "batch-b"])
+
+    assert metadata_by_name["batch-a"]["note"] == "A"
+    assert metadata_by_name["batch-b"]["note"] == "B"
+    assert metadata_by_name["batch-a"]["created_at"]
+    assert metadata_by_name["batch-b"]["created_at"]
+
+
+def test_read_batch_metadata_for_batches_returns_empty_for_missing_batch(temp_git_repo):
+    """Bulk metadata reads should match single-read missing batch behavior."""
+    metadata_by_name = read_batch_metadata_for_batches(["missing"])
+
+    assert metadata_by_name["missing"] == read_batch_metadata("missing")
 
 
 def test_get_batch_commit_sha_existing(temp_git_repo):

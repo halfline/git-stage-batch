@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
@@ -25,7 +26,7 @@ from ..utils.git_index import (
     git_write_tree,
     temp_git_index,
 )
-from ..utils.git_object_io import create_git_blob
+from ..utils.git_object_io import create_git_blob, read_git_blobs_as_bytes
 from ..utils.paths import get_batch_metadata_file_path
 
 
@@ -111,6 +112,18 @@ def read_file_backed_batch_metadata(batch_name: str) -> dict[str, Any]:
     }
 
 
+def _normalize_state_metadata(state_metadata: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "note": state_metadata.get("note", ""),
+        "created_at": state_metadata.get("created_at", ""),
+        "baseline": state_metadata.get(
+            "baseline_commit",
+            state_metadata.get("baseline"),
+        ),
+        "files": state_metadata.get("files", {}),
+    }
+
+
 def read_batch_state_metadata(batch_name: str) -> dict[str, Any] | None:
     """Read normalized batch metadata from the authoritative state ref."""
     validate_batch_name(batch_name)
@@ -123,12 +136,32 @@ def read_batch_state_metadata(batch_name: str) -> dict[str, Any] | None:
         return None
 
     state_metadata = json.loads(result.stdout)
-    return {
-        "note": state_metadata.get("note", ""),
-        "created_at": state_metadata.get("created_at", ""),
-        "baseline": state_metadata.get("baseline_commit", state_metadata.get("baseline")),
-        "files": state_metadata.get("files", {}),
+    return _normalize_state_metadata(state_metadata)
+
+
+def read_batch_state_metadata_for_batches(
+    batch_names: Iterable[str],
+) -> dict[str, dict[str, Any]]:
+    """Read normalized state-ref metadata for many batches in one Git process."""
+    unique_batch_names = list(dict.fromkeys(batch_names))
+    for batch_name in unique_batch_names:
+        validate_batch_name(batch_name)
+    if not unique_batch_names:
+        return {}
+
+    refspec_by_name = {
+        batch_name: f"{get_batch_state_ref_name(batch_name)}:batch.json"
+        for batch_name in unique_batch_names
     }
+    blobs = read_git_blobs_as_bytes(refspec_by_name.values())
+
+    metadata_by_name: dict[str, dict[str, Any]] = {}
+    for batch_name, refspec in refspec_by_name.items():
+        blob = blobs.get(refspec)
+        if blob is None:
+            continue
+        metadata_by_name[batch_name] = _normalize_state_metadata(json.loads(blob))
+    return metadata_by_name
 
 
 def get_authoritative_batch_commit_sha(batch_name: str) -> str | None:

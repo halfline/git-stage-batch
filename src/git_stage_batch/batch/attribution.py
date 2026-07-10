@@ -12,6 +12,8 @@ from collections.abc import Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass
 
+from ..core.buffer import LineBuffer
+from ..utils.git_object_io import read_git_blobs_as_bytes
 from .line_mapping import LineMapping as _LineMapping
 from .match import match_lines
 from . import attribution_fingerprints as _attribution_fingerprints
@@ -22,7 +24,8 @@ from .attribution_units import (
     enumerate_units_from_file_comparison as _enumerate_units_from_file_comparison,
     make_attribution_unit_id as _make_attribution_unit_id,
 )
-from .query import list_batch_names, read_batch_metadata
+from .query import list_batch_names, read_batch_metadata_for_batches
+from .state_refs import get_batch_state_ref_name
 from ..core.line_selection import parse_line_selection
 from ..utils.repository_buffers import (
     load_git_object_as_buffer_or_empty,
@@ -56,6 +59,14 @@ class BatchAttributionContext:
     alignment: _LineMapping
 
 
+@dataclass(frozen=True)
+class _BatchSourceRequest:
+    batch_name: str
+    file_metadata: dict
+    primary_refspec: str
+    fallback_refspec: str
+
+
 def _parse_presence_source_lines(file_metadata: dict) -> list[int]:
     presence_lines: list[int] = []
     for claim in file_metadata.get("presence_claims", []):
@@ -82,12 +93,15 @@ def _has_presence_source_lines(file_metadata: dict) -> bool:
 def build_file_attribution(
     file_path: str,
     *,
+    batch_metadata_by_name: dict[str, dict] | None = None,
     supplemental_batch_metadata: dict[str, dict] | None = None,
 ) -> FileAttribution:
     """Build complete ownership attribution for a file."""
     all_batch_metadata = {}
-    for batch_name in list_batch_names():
-        metadata = read_batch_metadata(batch_name)
+    if batch_metadata_by_name is None:
+        batch_metadata_by_name = read_batch_metadata_for_batches(list_batch_names())
+
+    for batch_name, metadata in batch_metadata_by_name.items():
         if file_path in metadata.get("files", {}):
             all_batch_metadata[batch_name] = metadata
 
@@ -140,12 +154,16 @@ def _open_batch_attribution_contexts(
 ) -> list[BatchAttributionContext]:
     """Open reusable batch source buffers and alignments for one file."""
     contexts: list[BatchAttributionContext] = []
+    source_requests = _batch_source_requests(file_path, all_batch_metadata)
+    source_blobs = read_git_blobs_as_bytes(_source_refspecs(source_requests))
 
-    for batch_name, batch_metadata in all_batch_metadata.items():
-        file_metadata = batch_metadata["files"][file_path]
-        batch_source_commit = file_metadata["batch_source_commit"]
+    for request in source_requests:
+        file_metadata = request.file_metadata
+        source_blob = source_blobs.get(request.primary_refspec)
+        if source_blob is None:
+            source_blob = source_blobs.get(request.fallback_refspec, b"")
         batch_source_lines = stack.enter_context(
-            load_git_object_as_buffer_or_empty(f"{batch_source_commit}:{file_path}")
+            LineBuffer.from_chunks([source_blob])
         )
         alignment = stack.enter_context(
             match_lines(
@@ -155,7 +173,7 @@ def _open_batch_attribution_contexts(
         )
         contexts.append(
             BatchAttributionContext(
-                batch_name=batch_name,
+                batch_name=request.batch_name,
                 file_metadata=file_metadata,
                 batch_source_lines=batch_source_lines,
                 alignment=alignment,
@@ -163,6 +181,40 @@ def _open_batch_attribution_contexts(
         )
 
     return contexts
+
+
+def _batch_source_requests(
+    file_path: str,
+    all_batch_metadata: dict,
+) -> list[_BatchSourceRequest]:
+    requests: list[_BatchSourceRequest] = []
+    for batch_name, batch_metadata in all_batch_metadata.items():
+        file_metadata = batch_metadata["files"][file_path]
+        fallback_refspec = f"{file_metadata['batch_source_commit']}:{file_path}"
+        source_path = file_metadata.get("source_path")
+        primary_refspec = (
+            f"{get_batch_state_ref_name(batch_name)}:{source_path}"
+            if source_path
+            else fallback_refspec
+        )
+        requests.append(
+            _BatchSourceRequest(
+                batch_name=batch_name,
+                file_metadata=file_metadata,
+                primary_refspec=primary_refspec,
+                fallback_refspec=fallback_refspec,
+            )
+        )
+    return requests
+
+
+def _source_refspecs(source_requests: Sequence[_BatchSourceRequest]) -> list[str]:
+    refspecs: list[str] = []
+    for request in source_requests:
+        refspecs.append(request.primary_refspec)
+        if request.fallback_refspec != request.primary_refspec:
+            refspecs.append(request.fallback_refspec)
+    return refspecs
 
 
 def _enumerate_units_from_batches(

@@ -14,7 +14,10 @@ from .. import line_state as _line_state
 from ..consumed_selections import read_consumed_file_metadata
 
 
-def apply_line_level_batch_filter_to_cached_hunk() -> bool:
+def apply_line_level_batch_filter_to_cached_hunk(
+    *,
+    batch_metadata_by_name: dict[str, dict] | None = None,
+) -> bool:
     """Filter cached hunk using file-centric ownership attribution.
 
     File-centric blame-like approach:
@@ -33,12 +36,16 @@ def apply_line_level_batch_filter_to_cached_hunk() -> bool:
 
     if (
         not line_changes.lines
-        and _change_freshness.empty_text_lifecycle_change_is_batched(file_path)
+        and _change_freshness.empty_text_lifecycle_change_is_batched(
+            file_path,
+            batch_metadata_by_name=batch_metadata_by_name,
+        )
     ):
         return True
 
     attribution = build_file_attribution(
         file_path,
+        batch_metadata_by_name=batch_metadata_by_name,
         supplemental_batch_metadata=_consumed_batch_metadata(file_path),
     )
     should_skip, filtered_line_changes = filter_owned_diff_fragments(

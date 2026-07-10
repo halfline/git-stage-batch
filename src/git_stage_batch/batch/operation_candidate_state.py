@@ -7,6 +7,7 @@ import json
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+from ..utils.file_io import write_text_file_contents
 from ..utils.paths import get_batch_candidate_state_file_path
 from .operation_candidate_fingerprints import ALGORITHM_VERSION
 
@@ -40,7 +41,7 @@ def _load_state() -> dict:
 
 def _save_state(data: dict) -> None:
     path = get_batch_candidate_state_file_path()
-    path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+    write_text_file_contents(path, json.dumps(data, indent=2, sort_keys=True))
 
 
 def clear_candidate_preview_state_for_file(*, batch_name: str, file_path: str) -> None:

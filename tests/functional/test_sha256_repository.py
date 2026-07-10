@@ -75,3 +75,26 @@ def test_block_file_removes_sha256_intent_to_add_entry(sha256_repo):
 
     assert _git("ls-files", "generated.log").stdout == ""
     assert "generated.log" in (sha256_repo / ".gitignore").read_text()
+
+
+def test_batch_drop_undo_and_abort_use_sha256_objects(sha256_repo):
+    """Batch lifecycle and recovery should preserve native-width object IDs."""
+    git_stage_batch("new", "native")
+    original = _git(
+        "rev-parse", "refs/git-stage-batch/state/native"
+    ).stdout.strip()
+    assert len(original) == 64
+    (sha256_repo / "README.md").write_text("one\ntwo\n")
+    git_stage_batch("start")
+
+    git_stage_batch("drop", "native")
+    git_stage_batch("undo")
+    assert _git(
+        "rev-parse", "refs/git-stage-batch/state/native"
+    ).stdout.strip() == original
+
+    git_stage_batch("drop", "native")
+    git_stage_batch("abort")
+    assert _git(
+        "rev-parse", "refs/git-stage-batch/state/native"
+    ).stdout.strip() == original

@@ -661,8 +661,8 @@ class TestCommandStatus:
         assert output["selected_change"]["file"] == "asset.bin"
         assert output["selected_change"]["change_type"] == "deleted"
 
-    def test_status_drops_stale_batch_binary_selection(self, temp_git_repo, capsys):
-        """A cached batch-binary selection should not survive changed batch bytes."""
+    def test_status_hides_stale_batch_binary_without_clearing_it(self, temp_git_repo, capsys):
+        """Status should report stale batch binary state without mutating it."""
         binary_file = temp_git_repo / "asset.bin"
         binary_file.write_bytes(b"\x00\x01\x02")
         subprocess.run(["git", "add", "asset.bin"], check=True, cwd=temp_git_repo, capture_output=True)
@@ -688,4 +688,4 @@ class TestCommandStatus:
 
         output = json.loads(capsys.readouterr().out)
         assert output["selected_change"] is None
-        assert read_selected_change_kind() is None
+        assert read_selected_change_kind() == SelectedChangeKind.BATCH_BINARY

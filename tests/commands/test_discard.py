@@ -228,6 +228,42 @@ class TestCommandDiscard:
         with pytest.raises(CommandError, match="automatic advancement is disabled"):
             command_discard(quiet=True)
 
+    def test_discard_line_auto_advance_after_file_is_exhausted(
+        self,
+        temp_git_repo,
+    ):
+        """Line discard should show the next file after current-file refresh ends."""
+        file1 = temp_git_repo / "file1.txt"
+        file2 = temp_git_repo / "file2.txt"
+        file1.write_text("base 1\n")
+        file2.write_text("base 2\n")
+        subprocess.run(
+            ["git", "add", "file1.txt", "file2.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add files"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+
+        file1.write_text("base 1\nselected\n")
+        file2.write_text("base 2\nnext\n")
+        command_start(quiet=True)
+
+        first_change = load_line_changes_from_state()
+        assert first_change is not None
+        assert first_change.path == "file1.txt"
+
+        command_discard_line("1", auto_advance=True)
+
+        next_change = load_line_changes_from_state()
+        assert next_change is not None
+        assert next_change.path == "file2.txt"
+
     def test_discard_all_hunks_processed(self, temp_git_repo, capsys):
         """Test discard when all hunks have been processed."""
         # Modify README before starting

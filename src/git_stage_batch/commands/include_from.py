@@ -17,9 +17,9 @@ from ..batch.operation_candidates import (
     load_candidate_preview_state,
 )
 from ..batch.query import get_batch_commit_sha
-from ..batch.replacement import (
+from ..batch.replacement import build_replacement_batch_view_from_lines
+from ..core.replacement import (
     ReplacementPayload,
-    build_replacement_batch_view_from_lines,
     coerce_replacement_payload,
 )
 from ..batch.selection import (
@@ -46,7 +46,7 @@ from ..core.text_lifecycle import (
     normalized_text_change_type,
     selected_text_target_change_type,
 )
-from ..data.file_review_state import (
+from ..data.file_review.state import (
     FileReviewAction,
     finish_review_scoped_line_action,
     resolve_batch_source_action_scope,

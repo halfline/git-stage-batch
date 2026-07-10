@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator, Sequence
 
 from ..core.models import LineEntry, LineLevelChange
-from ..batch.replacement import (
+from ..core.replacement import (
     ReplacementPayload,
     coerce_replacement_payload,
     replacement_line_bodies,

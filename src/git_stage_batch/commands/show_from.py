@@ -20,9 +20,9 @@ from ..batch.operation_candidates import (
     render_candidate_buffer_diff,
     save_candidate_preview_state,
 )
-from ..batch.replacement import (
+from ..batch.replacement import build_replacement_batch_view_from_lines
+from ..core.replacement import (
     ReplacementPayload,
-    build_replacement_batch_view_from_lines,
     coerce_replacement_payload,
 )
 from ..batch.selection import (
@@ -50,7 +50,7 @@ from ..data.hunk_tracking import (
     mark_selected_change_cleared_by_file_list,
     render_batch_file_display,
 )
-from ..data.file_review_state import (
+from ..data.file_review.state import (
     FileReviewAction,
     ReviewSource,
     clear_last_file_review_state,

@@ -11,20 +11,22 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
-from ..core.actionable_changes import ActionableSelectionReason
-from ..core.line_selection import LineRanges, LineSelection, parse_line_selection_ranges
-from ..core.models import ReviewActionGroup
-from ..data.line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
-from ..editor import EditorBuffer
-from ..exceptions import CommandError
-from ..i18n import _
-from ..utils.file_io import read_text_file_contents, write_text_file_contents
-from ..utils.paths import (
+from ...core.actionable_changes import ActionableSelectionReason
+from ...core.line_selection import LineRanges, LineSelection, parse_line_selection_ranges
+from ...core.models import ReviewActionGroup
+from ..line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
+from ...editor import EditorBuffer
+from ...exceptions import CommandError
+from ...i18n import _
+from ...utils.file_io import read_text_file_contents, write_text_file_contents
+from ...utils.paths import (
     get_index_snapshot_file_path,
     get_last_file_review_state_file_path,
     get_working_tree_snapshot_file_path,
 )
-from .hunk_tracking import SelectedChangeKind, get_selected_change_file_path, read_selected_change_kind
+from ...batch import file_display
+from ..selected_change.store import SelectedChangeKind, read_selected_change_kind
+from ..selected_change.snapshots import snapshots_are_stale
 
 
 class ReviewSource(str, Enum):
@@ -124,6 +126,12 @@ def _hash_file(path: Path) -> str | None:
         for chunk in buffer.byte_chunks():
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _get_selected_change_file_path() -> str | None:
+    from ..selected_change.store import get_selected_change_file_path
+
+    return get_selected_change_file_path()
 
 
 def fingerprint_selected_file_view(
@@ -292,7 +300,7 @@ def resolve_batch_source_action_scope(
     extra_action_parts: tuple[str, ...] = (),
 ) -> ActionScopeResolution:
     """Resolve pathless and implicit-file batch actions against the last batch review."""
-    from .hunk_tracking import (
+    from ..selected_change.store import (
         refuse_bare_action_after_file_list,
         refuse_bare_action_after_stale_batch_selection,
     )
@@ -395,16 +403,17 @@ def selected_change_matches_review_state(review_state: FileReviewState) -> bool:
     selected_kind = read_selected_change_kind()
     if not selected_change_kind_matches_review_source(selected_kind, review_state):
         return False
-    if get_selected_change_file_path() != review_state.file_path:
+    if _get_selected_change_file_path() != review_state.file_path:
         return False
     if selected_kind is None:
         return False
     gutter_to_selection_id = None
     line_changes = None
     if review_state.source == ReviewSource.BATCH and review_state.batch_name is not None:
-        from .hunk_tracking import render_batch_file_display
-
-        rendered = render_batch_file_display(review_state.batch_name, review_state.file_path)
+        rendered = file_display.render_batch_file_display(
+            review_state.batch_name,
+            review_state.file_path,
+        )
         if rendered is None:
             return False
         gutter_to_selection_id = (
@@ -415,8 +424,6 @@ def selected_change_matches_review_state(review_state: FileReviewState) -> bool:
         review_action_groups = rendered.review_action_groups or None
         line_changes = rendered.line_changes
     else:
-        from .hunk_tracking import snapshots_are_stale
-
         if snapshots_are_stale(review_state.file_path):
             return False
         actionable_selection_groups = None
@@ -447,12 +454,13 @@ def selected_batch_review_matches_reset_state(review_state: FileReviewState) -> 
         return False
     if not selected_change_kind_matches_review_source(selected_kind, review_state):
         return False
-    if get_selected_change_file_path() != review_state.file_path:
+    if _get_selected_change_file_path() != review_state.file_path:
         return False
 
-    from .hunk_tracking import render_batch_file_display
-
-    rendered = render_batch_file_display(review_state.batch_name, review_state.file_path)
+    rendered = file_display.render_batch_file_display(
+        review_state.batch_name,
+        review_state.file_path,
+    )
     if rendered is None:
         return False
     if (
@@ -512,7 +520,7 @@ def _review_state_matches_action(
 
 
 def _format_pages(pages: set[int]) -> str:
-    from ..core.line_selection import format_line_ids
+    from ...core.line_selection import format_line_ids
 
     return format_line_ids(sorted(pages))
 
@@ -702,7 +710,7 @@ def refuse_live_action_for_batch_selection(action: FileReviewAction | str) -> bo
             )
         raise CommandError("\n".join(lines))
 
-    file_path = get_selected_change_file_path() or _("the selected file")
+    file_path = _get_selected_change_file_path() or _("the selected file")
     raise CommandError(
         _(
             "The selected file view for {file} came from a batch, not the live working tree.\n"
@@ -826,7 +834,7 @@ def validate_implicit_live_to_batch_file_action(
     use that explicit file path. The boolean is true when the caller should stop
     after a live-action guard handled the request.
     """
-    from .hunk_tracking import (
+    from ..selected_change.store import (
         refuse_bare_action_after_auto_advance_disabled,
         refuse_bare_action_after_file_list,
     )
@@ -875,7 +883,7 @@ def resolve_live_to_batch_action_scope(
     file: str | None,
 ) -> ActionScopeResolution:
     """Resolve pathless and implicit-file live-to-batch actions against live reviews."""
-    from .hunk_tracking import (
+    from ..selected_change.store import (
         refuse_bare_action_after_auto_advance_disabled,
         refuse_bare_action_after_file_list,
     )
@@ -938,7 +946,7 @@ def resolve_live_line_action_scope(
     validate_pathless_before_live_guard: bool = False,
 ) -> ActionScopeResolution:
     """Validate a pathless or implicit-file live line action against review state."""
-    from .hunk_tracking import (
+    from ..selected_change.store import (
         refuse_bare_action_after_auto_advance_disabled,
         refuse_bare_action_after_file_list,
     )

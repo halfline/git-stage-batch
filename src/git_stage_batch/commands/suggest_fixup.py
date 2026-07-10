@@ -8,7 +8,7 @@ import sys
 from typing import Any
 
 from ..core.line_selection import parse_line_selection
-from ..data.file_review_state import compute_current_file_review_diff_fingerprint
+from ..data.file_review.state import compute_current_file_review_diff_fingerprint
 from ..data.hunk_tracking import (
     get_selected_change_file_path,
     render_file_as_single_hunk,

@@ -3,29 +3,15 @@
 from __future__ import annotations
 
 import json
-import shutil
 import tempfile
 import subprocess
 import sys
-from collections.abc import Sequence
-from contextlib import ExitStack
-from dataclasses import dataclass
 from enum import Enum
 from hashlib import sha256
-from pathlib import Path
 from typing import Generator, Mapping, Optional, Union
 
 from ..batch.attribution import build_file_attribution, filter_owned_diff_fragments
-from ..batch import display as batch_display
-from ..batch import merge as batch_merge
 from ..batch.display import annotate_with_batch_source
-from ..batch.match import match_lines
-from ..batch.ownership import (
-    BatchOwnership,
-    build_ownership_units_from_display_lines,
-    rebuild_ownership_from_units,
-    validate_ownership_units,
-)
 from ..batch.query import get_batch_commit_sha, list_batch_names, read_batch_metadata
 from ..core.hashing import (
     compute_binary_file_hash,
@@ -42,25 +28,20 @@ from ..core.models import (
     LineEntry,
     RenameChange,
     RenderedBatchDisplay,
-    ReviewActionGroup,
     TextFileDeletionChange,
 )
 from ..core.text_lifecycle import detect_empty_text_lifecycle_change
 from ..core.diff_parser import (
     acquire_unified_diff,
     build_line_changes_from_patch_lines,
-    write_snapshots_for_selected_file_path,
 )
 from ..editor import (
     EditorBuffer,
-    buffer_matches,
     load_git_object_as_buffer,
-    load_working_tree_file_as_buffer,
-    write_buffer_to_path,
 )
-from ..core.line_selection import LineRanges, write_line_ids_file
+from ..core.line_selection import write_line_ids_file
 from ..core.line_identity import preserve_line_ids_from_previous_view
-from ..exceptions import CommandError, MergeError, NoMoreHunks, exit_with_error
+from ..exceptions import CommandError, NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
 from ..output import (
     print_line_level_changes,
@@ -71,7 +52,23 @@ from ..output import (
 )
 from .consumed_selections import read_consumed_file_metadata
 from .auto_advance import resolve_auto_advance
+from ..batch.file_display import render_batch_file_display as render_batch_file_display
 from .file_tracking import auto_add_untracked_files
+from .progress import (
+    format_id_range as format_id_range,
+    record_binary_hunk_skipped as record_binary_hunk_skipped,
+    record_gitlink_hunk_skipped as record_gitlink_hunk_skipped,
+    record_hunk_discarded as record_hunk_discarded,
+    record_hunk_included as record_hunk_included,
+    record_hunk_skipped as record_hunk_skipped,
+    record_hunks_discarded as record_hunks_discarded,
+    record_rename_hunk_skipped as record_rename_hunk_skipped,
+    record_text_deletion_hunk_skipped as record_text_deletion_hunk_skipped,
+)
+from .selected_change.snapshots import (
+    snapshots_are_stale as snapshots_are_stale,
+    write_snapshots_for_selected_file_path,
+)
 from ..utils.file_io import (
     is_path_blocked,
     read_file_paths_file,
@@ -80,48 +77,65 @@ from ..utils.file_io import (
     write_text_file_contents,
 )
 from ..utils.git import (
-    get_git_repository_root_path,
     run_git_command,
     stream_git_command,
     stream_git_diff,
 )
-from ..utils.text import bytes_to_lines, normalize_line_sequence_endings
+from ..utils.text import bytes_to_lines
 from ..utils.paths import (
     get_block_list_file_path,
     get_blocked_files_file_path,
     get_context_lines,
-    get_selected_change_clear_reason_file_path,
-    get_selected_change_kind_file_path,
-    get_selected_binary_file_json_path,
-    get_selected_gitlink_file_json_path,
-    get_selected_rename_file_json_path,
-    get_selected_text_deletion_file_json_path,
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
     get_line_changes_json_file_path,
-    get_discarded_hunks_file_path,
-    get_included_hunks_file_path,
     get_index_snapshot_file_path,
     get_processed_include_ids_file_path,
     get_processed_skip_ids_file_path,
-    get_skipped_hunks_jsonl_file_path,
     get_working_tree_snapshot_file_path,
 )
 from .line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
+from .selected_change.lifecycle import clear_selected_change_state_files as clear_selected_change_state_files
+from .selected_change.store import (
+    SelectedChangeClearReason as SelectedChangeClearReason,
+    SelectedChangeKind,
+    SelectedChangeStateSnapshot as SelectedChangeStateSnapshot,
+    cache_binary_file_change,
+    cache_gitlink_change,
+    cache_rename_change,
+    cache_text_deletion_change,
+    get_selected_change_file_path as get_selected_change_file_path,
+    load_line_changes_from_patch_path as _load_line_changes_from_patch_path,
+    load_selected_binary_file,
+    load_selected_gitlink_change,
+    load_selected_rename_change,
+    load_selected_text_deletion_change,
+    mark_selected_change_cleared_by_auto_advance_disabled,
+    mark_selected_change_cleared_by_file_list as mark_selected_change_cleared_by_file_list,
+    mark_selected_change_cleared_by_stale_batch_selection,
+    read_selected_binary_data as _read_selected_binary_data,
+    read_selected_change_kind,
+    read_selected_gitlink_data as _read_selected_gitlink_data,
+    refuse_bare_action_after_auto_advance_disabled as refuse_bare_action_after_auto_advance_disabled,
+    refuse_bare_action_after_file_list as refuse_bare_action_after_file_list,
+    refuse_bare_action_after_stale_batch_selection as refuse_bare_action_after_stale_batch_selection,
+    restore_selected_change_state as restore_selected_change_state,
+    selected_change_was_cleared_by_auto_advance_disabled as selected_change_was_cleared_by_auto_advance_disabled,
+    selected_change_was_cleared_by_file_list as selected_change_was_cleared_by_file_list,
+    selected_change_was_cleared_by_stale_batch_selection as selected_change_was_cleared_by_stale_batch_selection,
+    snapshot_selected_change_state as snapshot_selected_change_state,
+    write_line_changes_state as _write_line_changes_state,
+    write_selected_change_kind,
+    write_selected_hunk_patch_lines,
+)
 
 
-class SelectedChangeKind(str, Enum):
-    """Kinds of selected changes cached in session state."""
+class RecalculateSelectedHunkResult(str, Enum):
+    """Outcome from refreshing the selected hunk for one file."""
 
-    HUNK = "hunk"
-    FILE = "file"
-    RENAME = "rename"
-    DELETION = "deletion"
-    BINARY = "binary"
-    GITLINK = "submodule"
-    BATCH_FILE = "batch-file"
-    BATCH_BINARY = "batch-binary"
-    BATCH_GITLINK = "batch-submodule"
+    RECALCULATED = "recalculated"
+    CLEARED = "cleared"
+    SHOW_NEXT_CHANGE = "show-next-change"
 
 
 _BATCH_MERGE_REVIEW_ACTIONS = (
@@ -136,440 +150,6 @@ def stream_live_git_diff(**kwargs):
     """Stream actionable live changes with rename detection enabled."""
     kwargs.setdefault("find_renames", True)
     return stream_git_diff(**kwargs)
-
-
-@dataclass
-class SelectedChangeStateSnapshot:
-    """Temporary file copy of selected change state."""
-
-    paths: dict[str, Path | None]
-    temporary_directory: tempfile.TemporaryDirectory
-
-    def close(self) -> None:
-        self.temporary_directory.cleanup()
-
-    def __enter__(self) -> SelectedChangeStateSnapshot:
-        return self
-
-    def __exit__(self, exc_type, exc, traceback) -> None:
-        self.close()
-
-
-def write_selected_hunk_patch_lines(patch_lines: Sequence[bytes]) -> None:
-    with EditorBuffer.from_chunks(iter(patch_lines)) as patch_buffer:
-        write_buffer_to_path(get_selected_hunk_patch_file_path(), patch_buffer)
-
-
-def _write_line_changes_state(line_changes: LineLevelChange) -> None:
-    write_text_file_contents(
-        get_line_changes_json_file_path(),
-        json.dumps(
-            convert_line_changes_to_serializable_dict(line_changes),
-            ensure_ascii=False,
-            indent=0,
-        ),
-    )
-
-
-def _load_line_changes_from_patch_path(patch_path: Path) -> LineLevelChange:
-    with EditorBuffer.from_path(patch_path) as patch_lines:
-        return build_line_changes_from_patch_lines(patch_lines)
-
-
-class SelectedChangeClearReason(str, Enum):
-    """Reasons selected change state was intentionally cleared."""
-
-    AUTO_ADVANCE_DISABLED = "auto-advance-disabled"
-    FILE_LIST = "file-list"
-    STALE_BATCH_SELECTION = "stale-batch-selection"
-
-
-def _selected_change_state_paths():
-    """Return files that make up the cached selected change state."""
-    return {
-        "patch": get_selected_hunk_patch_file_path(),
-        "hash": get_selected_hunk_hash_file_path(),
-        "clear_reason": get_selected_change_clear_reason_file_path(),
-        "kind": get_selected_change_kind_file_path(),
-        "line_state": get_line_changes_json_file_path(),
-        "rename": get_selected_rename_file_json_path(),
-        "text_deletion": get_selected_text_deletion_file_json_path(),
-        "binary": get_selected_binary_file_json_path(),
-        "gitlink": get_selected_gitlink_file_json_path(),
-        "index_snapshot": get_index_snapshot_file_path(),
-        "working_snapshot": get_working_tree_snapshot_file_path(),
-        "processed_include_ids": get_processed_include_ids_file_path(),
-        "processed_skip_ids": get_processed_skip_ids_file_path(),
-    }
-
-
-def snapshot_selected_change_state() -> SelectedChangeStateSnapshot:
-    """Capture the current selected change cache."""
-    temporary_directory = tempfile.TemporaryDirectory()
-    snapshot_root = Path(temporary_directory.name)
-    snapshot_paths: dict[str, Path | None] = {}
-
-    for name, path in _selected_change_state_paths().items():
-        if not path.exists():
-            snapshot_paths[name] = None
-            continue
-
-        snapshot_path = snapshot_root / name
-        shutil.copyfile(path, snapshot_path)
-        snapshot_paths[name] = snapshot_path
-
-    return SelectedChangeStateSnapshot(
-        paths=snapshot_paths,
-        temporary_directory=temporary_directory,
-    )
-
-
-def restore_selected_change_state(snapshot: SelectedChangeStateSnapshot) -> None:
-    """Restore a previously captured selected change cache."""
-    for name, path in _selected_change_state_paths().items():
-        snapshot_path = snapshot.paths.get(name)
-        if snapshot_path is None:
-            path.unlink(missing_ok=True)
-        else:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(snapshot_path, path)
-
-
-def clear_selected_change_state_files() -> None:
-    """Clear all cached selected hunk state files."""
-    from .file_review_state import clear_last_file_review_state
-
-    for path in _selected_change_state_paths().values():
-        path.unlink(missing_ok=True)
-    clear_last_file_review_state()
-    # processed_batch_ids is global state (union of all batches), not per-hunk state
-
-
-def mark_selected_change_cleared_by_file_list(
-    *,
-    source: str,
-    batch_name: str | None = None,
-) -> None:
-    """Record that a navigational file list intentionally cleared selection."""
-    _write_selected_change_clear_reason(
-        reason=SelectedChangeClearReason.FILE_LIST,
-        source=source,
-        batch_name=batch_name,
-    )
-
-
-def mark_selected_change_cleared_by_stale_batch_selection(
-    *,
-    batch_name: str,
-    file_path: str,
-) -> None:
-    """Record that a batch mutation invalidated the selected batch file."""
-    _write_selected_change_clear_reason(
-        reason=SelectedChangeClearReason.STALE_BATCH_SELECTION,
-        source="batch",
-        batch_name=batch_name,
-        file_path=file_path,
-    )
-
-
-def mark_selected_change_cleared_by_auto_advance_disabled() -> None:
-    """Record that an action left the next change unselected."""
-    _write_selected_change_clear_reason(
-        reason=SelectedChangeClearReason.AUTO_ADVANCE_DISABLED,
-        source="auto-advance",
-    )
-
-
-def _write_selected_change_clear_reason(
-    *,
-    reason: SelectedChangeClearReason,
-    source: str,
-    batch_name: str | None = None,
-    file_path: str | None = None,
-) -> None:
-    """Write a structured selected-change clear marker."""
-    write_text_file_contents(
-        get_selected_change_clear_reason_file_path(),
-        json.dumps(
-            {
-                "reason": reason.value,
-                "source": source,
-                "batch_name": batch_name,
-                "file_path": file_path,
-            },
-            ensure_ascii=False,
-            indent=0,
-        ),
-    )
-
-
-def _read_selected_change_clear_reason() -> dict[str, str | None] | None:
-    """Return the structured clear marker, tolerating legacy plain-text state."""
-    raw_reason = read_text_file_contents(get_selected_change_clear_reason_file_path()).strip()
-    if not raw_reason:
-        return None
-    if raw_reason == SelectedChangeClearReason.FILE_LIST.value:
-        return {
-            "reason": SelectedChangeClearReason.FILE_LIST.value,
-            "source": None,
-            "batch_name": None,
-        }
-    try:
-        data = json.loads(raw_reason)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(data, dict):
-        return None
-    reason = data.get("reason")
-    if reason not in {item.value for item in SelectedChangeClearReason}:
-        return None
-    return {
-        "reason": reason,
-        "source": data.get("source") if isinstance(data.get("source"), str) else None,
-        "batch_name": data.get("batch_name") if isinstance(data.get("batch_name"), str) else None,
-        "file_path": data.get("file_path") if isinstance(data.get("file_path"), str) else None,
-    }
-
-
-def selected_change_was_cleared_by_file_list(
-    *,
-    source: str | None = None,
-    batch_name: str | None = None,
-) -> bool:
-    """Return whether the current empty selection came from a file list."""
-    if read_selected_change_kind() is not None:
-        return False
-    marker = _read_selected_change_clear_reason()
-    if marker is None:
-        return False
-    if marker["reason"] != SelectedChangeClearReason.FILE_LIST.value:
-        return False
-    marker_source = marker["source"]
-    marker_batch_name = marker["batch_name"]
-    if source is not None and marker_source != source:
-        return False
-    if batch_name is not None and marker_batch_name != batch_name:
-        return False
-    return True
-
-
-def selected_change_was_cleared_by_stale_batch_selection(
-    *,
-    batch_name: str | None = None,
-) -> bool:
-    """Return whether the current empty selection is a stale batch selection."""
-    if read_selected_change_kind() is not None:
-        return False
-    marker = _read_selected_change_clear_reason()
-    if marker is None:
-        return False
-    if marker["reason"] != SelectedChangeClearReason.STALE_BATCH_SELECTION.value:
-        return False
-    if batch_name is not None and marker["batch_name"] != batch_name:
-        return False
-    return True
-
-
-def selected_change_was_cleared_by_auto_advance_disabled() -> bool:
-    """Return whether the current empty selection needs an explicit show."""
-    if read_selected_change_kind() is not None:
-        return False
-    marker = _read_selected_change_clear_reason()
-    if marker is None:
-        return False
-    return marker["reason"] == SelectedChangeClearReason.AUTO_ADVANCE_DISABLED.value
-
-
-def refuse_bare_action_after_file_list(
-    action_command: str,
-    *,
-    open_command: str = "git-stage-batch show --file PATH",
-    source: str | None = None,
-    batch_name: str | None = None,
-) -> None:
-    """Refuse a bare action after a navigational file list cleared selection."""
-    if not selected_change_was_cleared_by_file_list(source=source, batch_name=batch_name):
-        return
-    raise CommandError(
-        _(
-            "No selected change.\n"
-            "The last command only showed files; it did not choose one for follow-up actions.\n\n"
-            "Run:\n"
-            "  git-stage-batch show\n"
-            "or choose a file with:\n"
-            "  {open_command}\n"
-            "before running:\n"
-            "  git-stage-batch {action}"
-        ).format(open_command=open_command, action=action_command)
-    )
-
-
-def refuse_bare_action_after_auto_advance_disabled(action_command: str) -> None:
-    """Refuse a bare action after a command declined to select the next hunk."""
-    if not selected_change_was_cleared_by_auto_advance_disabled():
-        return
-    raise CommandError(
-        _(
-            "No selected change.\n"
-            "The previous command did not choose the next hunk because automatic "
-            "advancement is disabled.\n\n"
-            "Run:\n"
-            "  git-stage-batch show\n"
-            "before running:\n"
-            "  git-stage-batch {action}"
-        ).format(action=action_command)
-    )
-
-
-def refuse_bare_action_after_stale_batch_selection(
-    action_command: str,
-    *,
-    batch_name: str,
-) -> None:
-    """Refuse a bare batch action after the selected batch file went stale."""
-    if not selected_change_was_cleared_by_stale_batch_selection(batch_name=batch_name):
-        return
-
-    marker = _read_selected_change_clear_reason() or {}
-    file_path = marker.get("file_path") or "the previously selected file"
-    raise CommandError(
-        _(
-            "No selected change.\n"
-            "The selected batch file '{file}' was changed or removed from batch '{batch}'.\n\n"
-            "Open a current batch file with:\n"
-            "  git-stage-batch show --from {batch} --file PATH\n"
-            "before running:\n"
-            "  git-stage-batch {action}"
-        ).format(file=file_path, batch=batch_name, action=action_command)
-    )
-
-
-def _read_selected_binary_data() -> dict | None:
-    """Read cached binary selection data, if structurally valid."""
-    binary_path = get_selected_binary_file_json_path()
-    if not binary_path.exists():
-        return None
-    try:
-        binary_data = json.loads(read_text_file_contents(binary_path))
-    except json.JSONDecodeError:
-        return None
-    return binary_data if isinstance(binary_data, dict) else None
-
-
-def load_selected_binary_file() -> Optional[BinaryFileChange]:
-    """Load the currently cached binary file.
-
-    Returns:
-        BinaryFileChange if a binary file is cached, None otherwise
-    """
-    if read_selected_change_kind() not in (SelectedChangeKind.BINARY, SelectedChangeKind.BATCH_BINARY):
-        return None
-
-    binary_data = _read_selected_binary_data()
-    if binary_data is None:
-        return None
-
-    try:
-        return BinaryFileChange(
-            old_path=binary_data["old_path"],
-            new_path=binary_data["new_path"],
-            change_type=binary_data["change_type"]
-        )
-    except KeyError:
-        return None
-
-
-def _read_selected_gitlink_data() -> dict | None:
-    """Read cached gitlink selection data, if structurally valid."""
-    gitlink_path = get_selected_gitlink_file_json_path()
-    if not gitlink_path.exists():
-        return None
-    try:
-        gitlink_data = json.loads(read_text_file_contents(gitlink_path))
-    except json.JSONDecodeError:
-        return None
-    return gitlink_data if isinstance(gitlink_data, dict) else None
-
-
-def load_selected_gitlink_change() -> Optional[GitlinkChange]:
-    """Load the currently cached gitlink change."""
-    if read_selected_change_kind() not in (SelectedChangeKind.GITLINK, SelectedChangeKind.BATCH_GITLINK):
-        return None
-
-    gitlink_data = _read_selected_gitlink_data()
-    if gitlink_data is None:
-        return None
-
-    try:
-        return GitlinkChange(
-            old_path=gitlink_data["old_path"],
-            new_path=gitlink_data["new_path"],
-            old_oid=gitlink_data.get("old_oid"),
-            new_oid=gitlink_data.get("new_oid"),
-            change_type=gitlink_data["change_type"],
-        )
-    except KeyError:
-        return None
-
-
-def _read_selected_rename_data() -> dict | None:
-    """Read cached rename selection data, if structurally valid."""
-    rename_path = get_selected_rename_file_json_path()
-    if not rename_path.exists():
-        return None
-    try:
-        rename_data = json.loads(read_text_file_contents(rename_path))
-    except json.JSONDecodeError:
-        return None
-    return rename_data if isinstance(rename_data, dict) else None
-
-
-def load_selected_rename_change() -> Optional[RenameChange]:
-    """Load the currently cached rename change."""
-    if read_selected_change_kind() != SelectedChangeKind.RENAME:
-        return None
-
-    rename_data = _read_selected_rename_data()
-    if rename_data is None:
-        return None
-
-    try:
-        return RenameChange(
-            old_path=rename_data["old_path"],
-            new_path=rename_data["new_path"],
-        )
-    except KeyError:
-        return None
-
-
-def _read_selected_text_deletion_data() -> dict | None:
-    """Read cached text deletion selection data, if structurally valid."""
-    deletion_path = get_selected_text_deletion_file_json_path()
-    if not deletion_path.exists():
-        return None
-    try:
-        deletion_data = json.loads(read_text_file_contents(deletion_path))
-    except json.JSONDecodeError:
-        return None
-    return deletion_data if isinstance(deletion_data, dict) else None
-
-
-def load_selected_text_deletion_change() -> Optional[TextFileDeletionChange]:
-    """Load the currently cached text file deletion change."""
-    if read_selected_change_kind() != SelectedChangeKind.DELETION:
-        return None
-
-    deletion_data = _read_selected_text_deletion_data()
-    if deletion_data is None:
-        return None
-
-    try:
-        return TextFileDeletionChange(
-            old_path=deletion_data["old_path"],
-            new_path=deletion_data.get("new_path", "/dev/null"),
-        )
-    except KeyError:
-        return None
 
 
 def compute_batch_binary_fingerprint(
@@ -600,145 +180,6 @@ def compute_batch_binary_fingerprint(
     }
     data = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return sha256(data.encode("utf-8", errors="surrogateescape")).hexdigest()
-
-
-def cache_binary_file_change(
-    binary_change: BinaryFileChange,
-    *,
-    kind: SelectedChangeKind = SelectedChangeKind.BINARY,
-    batch_name: str | None = None,
-    batch_binary_fingerprint: str | None = None,
-) -> None:
-    """Cache a binary file change as the current selected change."""
-    if kind not in (SelectedChangeKind.BINARY, SelectedChangeKind.BATCH_BINARY):
-        raise ValueError("binary selections must use a binary selected-change kind")
-    file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
-    binary_data = {
-        "old_path": binary_change.old_path,
-        "new_path": binary_change.new_path,
-        "change_type": binary_change.change_type,
-        "batch_name": batch_name if kind == SelectedChangeKind.BATCH_BINARY else None,
-        "batch_binary_fingerprint": (
-            batch_binary_fingerprint
-            if kind == SelectedChangeKind.BATCH_BINARY else
-            None
-        ),
-    }
-    get_selected_hunk_patch_file_path().unlink(missing_ok=True)
-    get_line_changes_json_file_path().unlink(missing_ok=True)
-    get_selected_rename_file_json_path().unlink(missing_ok=True)
-    get_selected_text_deletion_file_json_path().unlink(missing_ok=True)
-    get_index_snapshot_file_path().unlink(missing_ok=True)
-    get_working_tree_snapshot_file_path().unlink(missing_ok=True)
-    get_processed_include_ids_file_path().unlink(missing_ok=True)
-    get_processed_skip_ids_file_path().unlink(missing_ok=True)
-    write_text_file_contents(
-        get_selected_binary_file_json_path(),
-        json.dumps(binary_data, ensure_ascii=False, indent=0),
-    )
-    write_text_file_contents(
-        get_selected_hunk_hash_file_path(),
-        compute_binary_file_hash(binary_change),
-    )
-    if kind == SelectedChangeKind.BINARY:
-        write_snapshots_for_selected_file_path(file_path)
-    write_selected_change_kind(kind)
-
-
-def cache_gitlink_change(
-    gitlink_change: GitlinkChange,
-    *,
-    kind: SelectedChangeKind = SelectedChangeKind.GITLINK,
-    batch_name: str | None = None,
-    batch_gitlink_fingerprint: str | None = None,
-) -> None:
-    """Cache a gitlink change as the current selected change."""
-    if kind not in (SelectedChangeKind.GITLINK, SelectedChangeKind.BATCH_GITLINK):
-        raise ValueError("gitlink selections must use a gitlink selected-change kind")
-    gitlink_data = {
-        "old_path": gitlink_change.old_path,
-        "new_path": gitlink_change.new_path,
-        "old_oid": gitlink_change.old_oid,
-        "new_oid": gitlink_change.new_oid,
-        "change_type": gitlink_change.change_type,
-        "batch_name": batch_name if kind == SelectedChangeKind.BATCH_GITLINK else None,
-        "batch_gitlink_fingerprint": (
-            batch_gitlink_fingerprint
-            if kind == SelectedChangeKind.BATCH_GITLINK else
-            None
-        ),
-    }
-    get_selected_hunk_patch_file_path().unlink(missing_ok=True)
-    get_line_changes_json_file_path().unlink(missing_ok=True)
-    get_selected_rename_file_json_path().unlink(missing_ok=True)
-    get_selected_binary_file_json_path().unlink(missing_ok=True)
-    get_selected_text_deletion_file_json_path().unlink(missing_ok=True)
-    get_index_snapshot_file_path().unlink(missing_ok=True)
-    get_working_tree_snapshot_file_path().unlink(missing_ok=True)
-    get_processed_include_ids_file_path().unlink(missing_ok=True)
-    get_processed_skip_ids_file_path().unlink(missing_ok=True)
-    write_text_file_contents(
-        get_selected_gitlink_file_json_path(),
-        json.dumps(gitlink_data, ensure_ascii=False, indent=0),
-    )
-    write_text_file_contents(
-        get_selected_hunk_hash_file_path(),
-        compute_gitlink_change_hash(gitlink_change),
-    )
-    write_selected_change_kind(kind)
-
-
-def cache_rename_change(rename_change: RenameChange) -> None:
-    """Cache a rename change as the current selected change."""
-    rename_data = {
-        "old_path": rename_change.old_path,
-        "new_path": rename_change.new_path,
-    }
-    get_selected_hunk_patch_file_path().unlink(missing_ok=True)
-    get_line_changes_json_file_path().unlink(missing_ok=True)
-    get_selected_binary_file_json_path().unlink(missing_ok=True)
-    get_selected_gitlink_file_json_path().unlink(missing_ok=True)
-    get_selected_text_deletion_file_json_path().unlink(missing_ok=True)
-    get_index_snapshot_file_path().unlink(missing_ok=True)
-    get_working_tree_snapshot_file_path().unlink(missing_ok=True)
-    get_processed_include_ids_file_path().unlink(missing_ok=True)
-    get_processed_skip_ids_file_path().unlink(missing_ok=True)
-    write_text_file_contents(
-        get_selected_rename_file_json_path(),
-        json.dumps(rename_data, ensure_ascii=False, indent=0),
-    )
-    write_text_file_contents(
-        get_selected_hunk_hash_file_path(),
-        compute_rename_change_hash(rename_change),
-    )
-    write_selected_change_kind(SelectedChangeKind.RENAME)
-
-
-def cache_text_deletion_change(deletion_change: TextFileDeletionChange) -> None:
-    """Cache a whole-text-file deletion as the current selected change."""
-    deletion_data = {
-        "old_path": deletion_change.old_path,
-        "new_path": deletion_change.new_path,
-    }
-    get_selected_hunk_patch_file_path().unlink(missing_ok=True)
-    get_line_changes_json_file_path().unlink(missing_ok=True)
-    get_selected_binary_file_json_path().unlink(missing_ok=True)
-    get_selected_gitlink_file_json_path().unlink(missing_ok=True)
-    get_selected_rename_file_json_path().unlink(missing_ok=True)
-    get_index_snapshot_file_path().unlink(missing_ok=True)
-    get_working_tree_snapshot_file_path().unlink(missing_ok=True)
-    get_processed_include_ids_file_path().unlink(missing_ok=True)
-    get_processed_skip_ids_file_path().unlink(missing_ok=True)
-    write_text_file_contents(
-        get_selected_text_deletion_file_json_path(),
-        json.dumps(deletion_data, ensure_ascii=False, indent=0),
-    )
-    write_text_file_contents(
-        get_selected_hunk_hash_file_path(),
-        compute_text_file_deletion_hash(deletion_change),
-    )
-    write_snapshots_for_selected_file_path(deletion_change.path())
-    write_selected_change_kind(SelectedChangeKind.DELETION)
 
 
 def selected_batch_binary_matches_batch(batch_name: str) -> bool:
@@ -976,36 +417,6 @@ def text_deletion_change_is_stale(deletion_change: TextFileDeletionChange) -> bo
     )
 
 
-def write_selected_change_kind(kind: SelectedChangeKind) -> None:
-    """Persist the kind of selected change cached in session state."""
-    get_selected_change_clear_reason_file_path().unlink(missing_ok=True)
-    if kind != SelectedChangeKind.RENAME:
-        get_selected_rename_file_json_path().unlink(missing_ok=True)
-    if kind != SelectedChangeKind.DELETION:
-        get_selected_text_deletion_file_json_path().unlink(missing_ok=True)
-    if kind not in (SelectedChangeKind.BINARY, SelectedChangeKind.BATCH_BINARY):
-        get_selected_binary_file_json_path().unlink(missing_ok=True)
-    if kind not in (SelectedChangeKind.GITLINK, SelectedChangeKind.BATCH_GITLINK):
-        get_selected_gitlink_file_json_path().unlink(missing_ok=True)
-    write_text_file_contents(get_selected_change_kind_file_path(), kind)
-
-
-def read_selected_change_kind() -> Optional[SelectedChangeKind]:
-    """Return the kind of selected change cached in session state."""
-    path = get_selected_change_kind_file_path()
-    if not path.exists():
-        return None
-
-    raw_kind = read_text_file_contents(path).strip()
-    if not raw_kind:
-        return None
-
-    try:
-        return SelectedChangeKind(raw_kind)
-    except ValueError:
-        return None
-
-
 def load_selected_change() -> Optional[Union[LineLevelChange, BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange]]:
     """Load the currently cached selected change, if any."""
     selected_kind = read_selected_change_kind()
@@ -1065,38 +476,6 @@ def load_selected_change() -> Optional[Union[LineLevelChange, BinaryFileChange, 
         return line_changes
 
     return _load_line_changes_from_patch_path(patch_path)
-
-
-def get_selected_change_file_path() -> Optional[str]:
-    """Return the file path for the currently cached selected change.
-
-    The selected patch/binary cache is the source of truth for pathless
-    file-scoped commands because it is what navigation just displayed.
-    selected-lines.json is derived state and may lag after display/navigation
-    edge cases.
-    """
-    rename_change = load_selected_rename_change()
-    if rename_change is not None:
-        return rename_change.path()
-
-    deletion_change = load_selected_text_deletion_change()
-    if deletion_change is not None:
-        return deletion_change.path()
-
-    gitlink_change = load_selected_gitlink_change()
-    if gitlink_change is not None:
-        return gitlink_change.path()
-
-    binary_file = load_selected_binary_file()
-    if binary_file is not None:
-        return binary_file.new_path if binary_file.new_path != "/dev/null" else binary_file.old_path
-
-    patch_path = get_selected_hunk_patch_file_path()
-    if not patch_path.exists():
-        return None
-
-    line_changes = _load_line_changes_from_patch_path(patch_path)
-    return line_changes.path
 
 
 def apply_line_level_batch_filter_to_cached_hunk() -> bool:
@@ -1219,314 +598,6 @@ def _filter_consumed_replacement_masks(
     )
 
 
-def render_batch_file_display(
-    batch_name: str,
-    file_path: str,
-    metadata: dict | None = None,
-    *,
-    probe_mergeability: bool = True,
-) -> Optional['RenderedBatchDisplay']:
-    """Pure function to render batch file display with gutter ID translation.
-
-    This is a side-effect-free helper that:
-    - Reads batch metadata
-    - Reads batch source content
-    - Reads current working tree content
-    - Probes individual line mergeability
-    - Builds LineLevelChange with original selection IDs
-    - Builds gutter ID mappings
-
-    It does not:
-    - Write cache files
-    - Mutate selected hunk state
-    - Compute patch hashes
-
-    Args:
-        batch_name: Name of the batch
-        file_path: Specific file to render
-        probe_mergeability: If True, compute which batch lines are currently
-            mergeable. Multi-file navigational previews can set this to False
-            because they do not cache or act on individual lines.
-
-    Returns:
-        RenderedBatchDisplay with line changes and gutter ID translation, or None if file not found.
-    """
-    # Read batch metadata
-    if metadata is None:
-        metadata = read_batch_metadata(batch_name)
-    files = metadata.get("files", {})
-
-    if not files or file_path not in files:
-        return None
-
-    file_meta = files[file_path]
-
-    # Get batch source commit and ownership
-    batch_source_commit = file_meta["batch_source_commit"]
-    with BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership:
-        return _render_batch_file_display_from_ownership(
-            batch_source_commit=batch_source_commit,
-            file_path=file_path,
-            file_meta=file_meta,
-            ownership=ownership,
-            probe_mergeability=probe_mergeability,
-        )
-
-
-def _render_batch_file_display_from_ownership(
-    *,
-    batch_source_commit: str,
-    file_path: str,
-    file_meta: dict,
-    ownership: BatchOwnership,
-    probe_mergeability: bool,
-) -> Optional['RenderedBatchDisplay']:
-    """Render batch file display from already-acquired ownership metadata."""
-
-    batch_source_buffer = load_git_object_as_buffer(
-        f"{batch_source_commit}:{file_path}"
-    )
-    if batch_source_buffer is None:
-        return None
-
-    mergeable_id_range_parts: list[tuple[int, int]] = []
-    mergeable_id_ranges = LineRanges.empty()
-    units = []
-
-    with batch_source_buffer as batch_source_lines:
-        # Build display lines (already has correct line IDs matching ownership)
-        display_lines = batch_display.build_display_lines_from_batch_source_lines(
-            batch_source_lines,
-            ownership,
-            context_lines=get_context_lines(),
-        )
-
-        if probe_mergeability and display_lines:
-            source_match_lines = normalize_line_sequence_endings(batch_source_lines)
-            working_tree_buffer = load_working_tree_file_as_buffer(file_path)
-            with working_tree_buffer as working_tree_lines:
-                working_match_lines = normalize_line_sequence_endings(working_tree_lines)
-                with match_lines(
-                    source_match_lines,
-                    working_match_lines,
-                ) as source_to_working_mapping:
-
-                    units = build_ownership_units_from_display_lines(
-                        ownership,
-                        display_lines,
-                    )
-
-                    # Check each ownership unit once. All lines in an atomic unit
-                    # share the same mergeability result.
-                    for unit in units:
-                        try:
-                            validate_ownership_units([unit])
-                            ownership_for_unit = rebuild_ownership_from_units([unit])
-                            if ownership_for_unit.is_empty():
-                                continue
-                            if not batch_merge.can_merge_batch_from_line_sequences(
-                                source_match_lines,
-                                ownership_for_unit,
-                                working_match_lines,
-                                source_to_working_mapping=source_to_working_mapping,
-                            ):
-                                continue
-                            mergeable_id_range_parts.extend(unit.display_line_ids.ranges())
-                        except (MergeError, ValueError, KeyError, Exception):
-                            # Unit not mergeable - exclude all its lines
-                            pass
-
-                    mergeable_id_ranges = LineRanges.from_ranges(mergeable_id_range_parts)
-
-    if not display_lines:
-        change_type = file_meta.get("change_type", "modified")
-        if change_type in {"added", "deleted"}:
-            marker_kind = "+" if change_type == "added" else "-"
-            line_changes = LineLevelChange(
-                path=file_path,
-                header=HunkHeader(
-                    old_start=0 if change_type == "added" else 1,
-                    old_len=0 if change_type == "added" else 1,
-                    new_start=1 if change_type == "added" else 0,
-                    new_len=1 if change_type == "added" else 0,
-                ),
-                lines=[
-                    LineEntry(
-                        id=1,
-                        kind=marker_kind,
-                        old_line_number=1 if change_type == "deleted" else None,
-                        new_line_number=1 if change_type == "added" else None,
-                        text_bytes=b"<empty file>",
-                        source_line=None,
-                    )
-                ],
-            )
-            return RenderedBatchDisplay(
-                line_changes=line_changes,
-                gutter_to_selection_id={},
-                selection_id_to_gutter={},
-                actionable_selection_groups=(),
-            )
-        return None
-
-    # Keep original selection IDs; mergeability is stored separately.
-    line_entries = []
-    new_line_num = 1
-
-    for display_line in display_lines:
-        line_id = display_line["id"]  # Keep original selection ID
-        content = display_line["content"]
-
-        # Convert string content to bytes (encode as UTF-8)
-        content_bytes = content.encode('utf-8')
-        # Strip only the newline terminator, preserve \r
-        text_bytes = content_bytes.rstrip(b'\n')
-        has_trailing_newline = content_bytes.endswith(b'\n')
-
-        if display_line["type"] == "claimed":
-            # Claimed line from batch source
-            source_line = display_line["source_line"]
-            line_entries.append(LineEntry(
-                id=line_id,
-                kind="+",
-                old_line_number=None,
-                new_line_number=new_line_num,
-                text_bytes=text_bytes,
-                source_line=source_line,
-                has_trailing_newline=has_trailing_newline,
-            ))
-            new_line_num += 1
-        elif display_line["type"] == "deletion":
-            # Deletion (suppression constraint - show as deletion for display)
-            line_entries.append(LineEntry(
-                id=line_id,
-                kind="-",
-                old_line_number=None,  # Not from old file (it's a constraint)
-                new_line_number=None,
-                text_bytes=text_bytes,
-                source_line=None,
-                has_trailing_newline=has_trailing_newline,
-            ))
-        elif display_line["type"] == "context":
-            line_entries.append(LineEntry(
-                id=None,
-                kind=" ",
-                old_line_number=None,
-                new_line_number=new_line_num,
-                text_bytes=text_bytes,
-                source_line=display_line["source_line"],
-                has_trailing_newline=has_trailing_newline,
-            ))
-            new_line_num += 1
-        elif display_line["type"] == "gap":
-            line_entries.append(LineEntry(
-                id=None,
-                kind=" ",
-                old_line_number=None,
-                new_line_number=None,
-                text_bytes=text_bytes,
-                source_line=None,
-                has_trailing_newline=has_trailing_newline,
-            ))
-
-    # Compute header based on actual line types
-    addition_count = sum(1 for e in line_entries if e.kind == "+")
-    deletion_count = sum(1 for e in line_entries if e.kind == "-")
-
-    # Create hunk header
-    header = HunkHeader(
-        old_start=0 if deletion_count == 0 else 1,
-        old_len=deletion_count,
-        new_start=0 if addition_count == 0 else 1,
-        new_len=addition_count
-    )
-
-    line_changes = LineLevelChange(
-        path=file_path,
-        header=header,
-        lines=line_entries
-    )
-
-    # Build gutter ID mappings
-    # Only mergeable lines get consecutive gutter IDs (1, 2, 3...)
-    gutter_to_selection_id = {}
-    selection_id_to_gutter = {}
-    gutter_num = 1
-    for entry in line_entries:
-        if entry.id is not None and entry.id in mergeable_id_ranges:
-            gutter_to_selection_id[gutter_num] = entry.id
-            selection_id_to_gutter[entry.id] = gutter_num
-            gutter_num += 1
-
-    line_id_display_order = [
-        entry.id
-        for entry in line_entries
-        if entry.id is not None
-    ]
-    resettable_ids = LineRanges.from_ranges(
-        display_id_range
-        for unit in units
-        for display_id_range in unit.display_line_ids.ranges()
-    )
-    review_gutter_to_selection_id = {}
-    review_selection_id_to_gutter = {}
-    review_gutter_num = 1
-    for entry in line_entries:
-        if entry.id is not None and entry.id in resettable_ids:
-            review_gutter_to_selection_id[review_gutter_num] = entry.id
-            review_selection_id_to_gutter[entry.id] = review_gutter_num
-            review_gutter_num += 1
-
-    actionable_selection_groups = []
-    review_action_groups = []
-    for unit in units:
-        if not unit.display_line_ids:
-            continue
-        ordered_group = tuple(
-            line_id
-            for line_id in line_id_display_order
-            if line_id in unit.display_line_ids
-        )
-        if len(ordered_group) != len(unit.display_line_ids):
-            continue
-
-        actions = [_BATCH_RESET_REVIEW_ACTION]
-        if unit.display_line_ids.intersection(mergeable_id_ranges) == unit.display_line_ids:
-            actionable_selection_groups.append(ordered_group)
-            actions = [
-                *_BATCH_MERGE_REVIEW_ACTIONS,
-                _BATCH_RESET_REVIEW_ACTION,
-            ]
-
-        review_display_ids = tuple(
-            review_selection_id_to_gutter[line_id]
-            for line_id in ordered_group
-            if line_id in review_selection_id_to_gutter
-        )
-        if len(review_display_ids) == len(ordered_group):
-            if unit.kind.value == "replacement":
-                reason = "replacement"
-            elif unit.kind.value == "deletion_only":
-                reason = "structural-run"
-            else:
-                reason = "simple"
-            review_action_groups.append(
-                ReviewActionGroup(
-                    display_ids=review_display_ids,
-                    selection_ids=ordered_group,
-                    actions=tuple(actions),
-                    reason=reason,
-                )
-            )
-    return RenderedBatchDisplay(
-        line_changes=line_changes,
-        gutter_to_selection_id=gutter_to_selection_id,
-        selection_id_to_gutter=selection_id_to_gutter,
-        actionable_selection_groups=tuple(actionable_selection_groups),
-        review_gutter_to_selection_id=review_gutter_to_selection_id,
-        review_selection_id_to_gutter=review_selection_id_to_gutter,
-        review_action_groups=tuple(review_action_groups),
-    )
 
 
 def cache_batch_as_single_hunk(
@@ -2285,51 +1356,6 @@ def select_next_change_after_action(
     return False
 
 
-def snapshots_are_stale(file_path: str) -> bool:
-    """Check if cached snapshots are stale (file changed since snapshots taken).
-
-    Args:
-        file_path: Repository-relative path to check
-
-    Returns:
-        True if the file has been committed or otherwise changed such that
-        the cached hunk no longer applies
-    """
-    snapshot_base_path = get_index_snapshot_file_path()
-    snapshot_new_path = get_working_tree_snapshot_file_path()
-
-    # Missing snapshots means state is incomplete/stale
-    if not snapshot_base_path.exists() or not snapshot_new_path.exists():
-        return True
-
-    try:
-        with ExitStack() as stack:
-            cached_index_content = stack.enter_context(
-                EditorBuffer.from_path(snapshot_base_path)
-            )
-            cached_worktree_content = stack.enter_context(
-                EditorBuffer.from_path(snapshot_new_path)
-            )
-
-            selected_index_content = load_git_object_as_buffer(f":{file_path}")
-            if selected_index_content is None:
-                selected_index_content = EditorBuffer.from_bytes(b"")
-            stack.enter_context(selected_index_content)
-
-            repo_root = get_git_repository_root_path()
-            file_full_path = repo_root / file_path
-            if file_full_path.exists():
-                selected_worktree_content = EditorBuffer.from_path(file_full_path)
-            else:
-                selected_worktree_content = EditorBuffer.from_bytes(b"")
-            stack.enter_context(selected_worktree_content)
-
-            return (
-                not buffer_matches(cached_index_content, selected_index_content)
-                or not buffer_matches(cached_worktree_content, selected_worktree_content)
-            )
-    except Exception:
-        return True  # Error reading means state is stale
 
 
 def require_selected_hunk() -> None:
@@ -2357,7 +1383,7 @@ def recalculate_selected_hunk_for_file(
     file_path: str,
     *,
     auto_advance: bool | None = None,
-) -> None:
+) -> RecalculateSelectedHunkResult:
     """Recalculate the selected hunk for a specific file after modifications.
 
     After discard --line or include --line changes the working tree or index,
@@ -2380,11 +1406,9 @@ def recalculate_selected_hunk_for_file(
         if line_changes is None:
             clear_selected_change_state_files()
             if resolve_auto_advance(auto_advance):
-                from ..commands.show import command_show
-                command_show()
-            else:
-                mark_selected_change_cleared_by_auto_advance_disabled()
-            return
+                return RecalculateSelectedHunkResult.SHOW_NEXT_CHANGE
+            mark_selected_change_cleared_by_auto_advance_disabled()
+            return RecalculateSelectedHunkResult.CLEARED
 
         line_changes = preserve_line_ids_from_previous_view(
             previous_line_changes,
@@ -2395,16 +1419,14 @@ def recalculate_selected_hunk_for_file(
         if apply_line_level_batch_filter_to_cached_hunk():
             clear_selected_change_state_files()
             if resolve_auto_advance(auto_advance):
-                from ..commands.show import command_show
-                command_show()
-            else:
-                mark_selected_change_cleared_by_auto_advance_disabled()
-            return
+                return RecalculateSelectedHunkResult.SHOW_NEXT_CHANGE
+            mark_selected_change_cleared_by_auto_advance_disabled()
+            return RecalculateSelectedHunkResult.CLEARED
 
         line_changes = load_line_changes_from_state()
         if line_changes is not None:
             print_line_level_changes(line_changes)
-        return
+        return RecalculateSelectedHunkResult.RECALCULATED
 
     # Load blocklist
     blocked_hashes = read_text_file_line_set(get_block_list_file_path())
@@ -2429,7 +1451,7 @@ def recalculate_selected_hunk_for_file(
                         continue
                     cache_rename_change(single_hunk)
                     print_rename_change(single_hunk)
-                    return
+                    return RecalculateSelectedHunkResult.RECALCULATED
 
                 if isinstance(single_hunk, TextFileDeletionChange):
                     deletion_hash = compute_text_file_deletion_hash(single_hunk)
@@ -2437,7 +1459,7 @@ def recalculate_selected_hunk_for_file(
                         continue
                     cache_text_deletion_change(single_hunk)
                     print_text_file_deletion_change(single_hunk)
-                    return
+                    return RecalculateSelectedHunkResult.RECALCULATED
 
                 if isinstance(single_hunk, GitlinkChange):
                     gitlink_hash = compute_gitlink_change_hash(single_hunk)
@@ -2445,7 +1467,7 @@ def recalculate_selected_hunk_for_file(
                         continue
                     cache_gitlink_change(single_hunk)
                     print_gitlink_change(single_hunk)
-                    return
+                    return RecalculateSelectedHunkResult.RECALCULATED
 
                 if isinstance(single_hunk, BinaryFileChange):
                     continue
@@ -2485,179 +1507,22 @@ def recalculate_selected_hunk_for_file(
                     # All lines were batched, clear the hunk
                     clear_selected_change_state_files()
                     print(_("No more lines in this hunk."), file=sys.stderr)
-                    return
+                    return RecalculateSelectedHunkResult.CLEARED
 
                 # Display filtered hunk
                 line_changes = load_line_changes_from_state()
                 if line_changes is not None:
                     print_line_level_changes(line_changes)
-                return
+                return RecalculateSelectedHunkResult.RECALCULATED
     except subprocess.CalledProcessError:
         # Git diff failed (e.g., no changes)
         clear_selected_change_state_files()
         print(_("No pending hunks."), file=sys.stderr)
-        return
+        return RecalculateSelectedHunkResult.CLEARED
 
     # No more hunks for this file, advance to next file
     clear_selected_change_state_files()
-    # Import here to avoid circular dependency
     if resolve_auto_advance(auto_advance):
-        from ..commands.show import command_show
-        command_show()
-    else:
-        mark_selected_change_cleared_by_auto_advance_disabled()
-
-
-def record_hunk_included(hunk_hash: str) -> None:
-    """Record that a hunk was included (staged)."""
-    included_path = get_included_hunks_file_path()
-    existing = read_text_file_line_set(included_path)
-    existing.add(hunk_hash)
-    write_text_file_contents(included_path, "\n".join(sorted(existing)) + "\n" if existing else "")
-
-
-def record_hunk_discarded(hunk_hash: str) -> None:
-    """Record that a hunk was discarded (removed from working tree)."""
-    record_hunks_discarded([hunk_hash])
-
-
-def record_hunks_discarded(hunk_hashes: list[str]) -> None:
-    """Record that hunks were discarded (removed from working tree)."""
-    new_hashes = {hunk_hash for hunk_hash in hunk_hashes if hunk_hash}
-    if not new_hashes:
-        return
-    discarded_path = get_discarded_hunks_file_path()
-    existing = read_text_file_line_set(discarded_path)
-    existing.update(new_hashes)
-    write_text_file_contents(discarded_path, "\n".join(sorted(existing)) + "\n" if existing else "")
-
-
-def record_hunk_skipped(line_changes: LineLevelChange, hunk_hash: str) -> None:
-    """Record that a hunk was skipped with metadata for display.
-
-    Args:
-        line_changes: Current hunk's lines
-        hunk_hash: SHA-1 hash of the hunk
-    """
-    # Extract first changed line number for display
-    first_changed_line = None
-    for entry in line_changes.lines:
-        if entry.kind != " ":  # Not context
-            first_changed_line = entry.old_line_number or entry.new_line_number
-            break
-
-    # Build metadata object
-    metadata = {
-        "hash": hunk_hash,
-        "file": line_changes.path,
-        "line": first_changed_line or 0,
-        "ids": line_changes.changed_line_ids()
-    }
-
-    # Append to JSONL file
-    jsonl_path = get_skipped_hunks_jsonl_file_path()
-    with jsonl_path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(metadata) + "\n")
-
-
-def record_binary_hunk_skipped(binary_change: BinaryFileChange, hunk_hash: str) -> None:
-    """Record that a binary change was skipped with file-level metadata."""
-    file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
-    metadata = {
-        "hash": hunk_hash,
-        "file": file_path,
-        "line": None,
-        "ids": [],
-        "change_type": binary_change.change_type,
-    }
-
-    jsonl_path = get_skipped_hunks_jsonl_file_path()
-    with jsonl_path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(metadata) + "\n")
-
-
-def record_gitlink_hunk_skipped(gitlink_change: GitlinkChange, hunk_hash: str) -> None:
-    """Record that a gitlink change was skipped with file-level metadata."""
-    metadata = {
-        "hash": hunk_hash,
-        "file": gitlink_change.path(),
-        "line": None,
-        "ids": [],
-        "type": "submodule",
-        "change_type": gitlink_change.change_type,
-        "old_oid": gitlink_change.old_oid,
-        "new_oid": gitlink_change.new_oid,
-    }
-
-    jsonl_path = get_skipped_hunks_jsonl_file_path()
-    with jsonl_path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(metadata) + "\n")
-
-
-def record_rename_hunk_skipped(rename_change: RenameChange, hunk_hash: str) -> None:
-    """Record that a rename change was skipped with file-level metadata."""
-    metadata = {
-        "hash": hunk_hash,
-        "file": rename_change.new_path,
-        "line": None,
-        "ids": [],
-        "type": "rename",
-        "old_path": rename_change.old_path,
-        "new_path": rename_change.new_path,
-    }
-
-    jsonl_path = get_skipped_hunks_jsonl_file_path()
-    with jsonl_path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(metadata) + "\n")
-
-
-def record_text_deletion_hunk_skipped(deletion_change: TextFileDeletionChange, hunk_hash: str) -> None:
-    """Record that a whole-text-file deletion was skipped with file-level metadata."""
-    metadata = {
-        "hash": hunk_hash,
-        "file": deletion_change.path(),
-        "line": None,
-        "ids": [],
-        "type": "text-deletion",
-        "change_type": "deleted",
-    }
-
-    jsonl_path = get_skipped_hunks_jsonl_file_path()
-    with jsonl_path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(metadata) + "\n")
-
-
-def format_id_range(ids: list[int]) -> str:
-    """Format list of IDs as compact range string (e.g., '1-5,7,9-11').
-
-    Args:
-        ids: List of integer IDs
-
-    Returns:
-        Compact range string
-    """
-    if not ids:
-        return ""
-
-    ids = sorted(ids)
-    ranges = []
-    start = ids[0]
-    end = ids[0]
-
-    for i in range(1, len(ids)):
-        if ids[i] == end + 1:
-            end = ids[i]
-        else:
-            if start == end:
-                ranges.append(str(start))
-            else:
-                ranges.append(f"{start}-{end}")
-            start = end = ids[i]
-
-    # Add final range
-    if start == end:
-        ranges.append(str(start))
-    else:
-        ranges.append(f"{start}-{end}")
-
-    return ",".join(ranges)
+        return RecalculateSelectedHunkResult.SHOW_NEXT_CHANGE
+    mark_selected_change_cleared_by_auto_advance_disabled()
+    return RecalculateSelectedHunkResult.CLEARED

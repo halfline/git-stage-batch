@@ -2,9 +2,11 @@
 
 from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim
 from git_stage_batch.batch.replacement import (
-    ReplacementText,
     ReplacementBatchView,
     build_replacement_batch_view_from_lines,
+)
+from git_stage_batch.core.replacement import (
+    ReplacementText,
     coerce_replacement_payload,
     replacement_line_chunks,
 )

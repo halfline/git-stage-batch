@@ -7,7 +7,6 @@ import sys
 
 from ..batch.display import annotate_with_batch_source
 from ..core.diff_parser import acquire_unified_diff, build_line_changes_from_patch_lines
-from ..core.diff_parser import write_snapshots_for_selected_file_path
 from ..core.hashing import (
     compute_binary_file_hash,
     compute_gitlink_change_hash,
@@ -39,13 +38,14 @@ from ..data.hunk_tracking import (
     write_selected_hunk_patch_lines,
     write_selected_change_kind,
 )
-from ..data.file_review_state import (
+from ..data.file_review.state import (
     clear_last_file_review_state,
     ReviewSource,
     write_last_file_review_state,
 )
 from ..data.line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
 from ..data.session import require_session_started
+from ..data.selected_change.snapshots import write_snapshots_for_selected_file_path
 from ..exceptions import exit_with_error
 from ..i18n import _
 from ..output import (

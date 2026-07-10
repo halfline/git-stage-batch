@@ -5,7 +5,7 @@ from git_stage_batch.core.line_selection import parse_line_selection
 from git_stage_batch.commands.discard import command_discard_to_batch
 from git_stage_batch.commands.include import command_include
 from git_stage_batch.commands.show import command_show, command_show_file_list
-from git_stage_batch.data.file_review_state import read_last_file_review_state
+from git_stage_batch.data.file_review.state import read_last_file_review_state
 from git_stage_batch.data.hunk_tracking import (
     SelectedChangeKind,
     fetch_next_change,

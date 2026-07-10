@@ -21,7 +21,7 @@ from ..batch.ownership import (
     derive_replacement_line_runs_from_lines,
     translate_hunk_selection_to_batch_ownership,
 )
-from ..batch.replacement import (
+from ..core.replacement import (
     ReplacementPayload,
     coerce_replacement_payload,
 )
@@ -61,7 +61,6 @@ from ..data.hunk_tracking import (
     get_selected_change_file_path,
     load_selected_change,
     read_selected_change_kind,
-    recalculate_selected_hunk_for_file,
     record_binary_hunk_skipped,
     record_gitlink_hunk_skipped,
     record_hunk_included,
@@ -79,7 +78,7 @@ from ..data.hunk_tracking import (
     snapshots_are_stale,
     stream_live_git_diff,
 )
-from ..data.file_review_state import (
+from ..data.file_review.state import (
     FileReviewAction,
     clear_last_file_review_state_if_file_matches,
     finish_review_scoped_line_action,
@@ -102,7 +101,7 @@ from ..editor import (
 )
 from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _, ngettext
-from ..output import print_line_level_changes, print_remaining_line_changes_header
+from ..output import print_line_level_changes
 from ..staging.operations import (
     build_target_index_buffer_from_lines,
     build_target_index_buffer_with_replaced_lines,
@@ -135,6 +134,10 @@ from ..utils.paths import (
     get_processed_include_ids_file_path,
     get_session_batch_sources_file_path,
     get_working_tree_snapshot_file_path,
+)
+from .selection.selected_hunk_refresh import (
+    recalculate_selected_hunk_for_command,
+    refresh_selected_hunk_after_line_action,
 )
 
 
@@ -979,7 +982,7 @@ def command_include_file_as(
             restore_selected_change_state(saved_selected_state)
         else:
             write_line_ids_file(get_processed_include_ids_file_path(), set())
-            recalculate_selected_hunk_for_file(
+            recalculate_selected_hunk_for_command(
                 target_file,
                 auto_advance=auto_advance,
             )
@@ -1160,8 +1163,7 @@ def command_include_line(
                 ),
                 file=sys.stderr,
             )
-            print_remaining_line_changes_header(line_changes.path)
-            recalculate_selected_hunk_for_file(
+            refresh_selected_hunk_after_line_action(
                 line_changes.path,
                 auto_advance=auto_advance,
             )
@@ -1545,8 +1547,7 @@ def command_include_line_as(
                 ),
                 file=sys.stderr,
             )
-            print_remaining_line_changes_header(line_changes.path)
-            recalculate_selected_hunk_for_file(
+            refresh_selected_hunk_after_line_action(
                 line_changes.path,
                 auto_advance=auto_advance,
             )
@@ -1608,8 +1609,7 @@ def command_include_line_as(
                     ),
                     file=sys.stderr,
                 )
-                print_remaining_line_changes_header(target_file)
-                recalculate_selected_hunk_for_file(
+                refresh_selected_hunk_after_line_action(
                     target_file,
                     auto_advance=auto_advance,
                 )
@@ -2201,7 +2201,7 @@ def _command_include_lines_to_batch(
         print(_("✓ Included line(s) to batch '{name}': {lines}").format(name=batch_name, lines=line_id_specification), file=sys.stderr)
 
     # Recalculate and show the updated hunk for this file with batched lines filtered out
-    recalculate_selected_hunk_for_file(line_changes.path, auto_advance=auto_advance)
+    recalculate_selected_hunk_for_command(line_changes.path, auto_advance=auto_advance)
 
 
 def _filter_selected_hunk_excluding_batched_lines(

@@ -3,15 +3,24 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Sequence
-from dataclasses import dataclass
-import hashlib
 from typing import TYPE_CHECKING, Any
 
 from ..core.line_selection import LineRanges, LineSelection, coerce_line_ranges
 from ..exceptions import MergeError as _MergeError
 from ..i18n import _
 from ..utils.text import normalize_line_endings
-from .match import LineMapping
+from .baseline_reference_positions import (
+    baseline_reference_absence_position as _find_baseline_absence_position,
+    baseline_reference_insertion_position as _find_baseline_insertion_position,
+)
+from .baseline_replacement_choices import (
+    replacement_origin_choices_for_unit as _replacement_origin_choices_for_unit,
+)
+from .line_sequence_equality import (
+    line_sequences_equal as _line_sequences_match,
+    line_slice_equals as _line_slice_matches,
+)
+from .line_mapping import LineMapping
 from .merge_candidates import MergeResolution as _MergeResolution
 
 if TYPE_CHECKING:
@@ -22,173 +31,11 @@ _BaselineLineEdit = tuple[int, int, list[bytes]]
 _DEFAULT_RESOLUTION_CHOICE_LIMIT = 51
 
 
-@dataclass(frozen=True)
-class ReplacementOriginChoice:
-    """Concrete target placement for an origin-tracked replacement."""
-
-    choice_index: int
-    position: int
-    target_after_line: int | None
-    target_before_line: int | None
-
-
 def _selection_outside_bounds(lines: LineSelection, max_line: int) -> bool:
     for line in lines:
         if line < 1 or line > max_line:
             return True
     return False
-
-
-def _replacement_origin_ambiguity_key(
-    unit_index: int,
-    deletion_index: int,
-    origin: Any,
-    claimed_lines: Sequence[int],
-    forbidden_sequence: Sequence[bytes],
-) -> str:
-    claimed = ",".join(str(line) for line in claimed_lines)
-    digest = _sequence_digest(forbidden_sequence)
-    return (
-        f"replacement-origin:{unit_index}:delete:{deletion_index}:"
-        f"claimed:{claimed}:old:{origin.old_start}-{origin.old_end}:"
-        f"new:{origin.new_start}-{origin.new_end}:{digest}"
-    )
-
-
-def _sequence_digest(lines: Sequence[bytes]) -> str:
-    return hashlib.sha256(b"".join(lines)).hexdigest()[:12]
-
-
-def _line_payload_for_reference_match(content: Any) -> bytes:
-    """Normalize one line for insertion-boundary identity checks."""
-    normalized = normalize_line_endings(bytes(content))
-    if normalized.endswith(b"\n"):
-        return normalized[:-1]
-    return normalized
-
-
-def _reference_line_matches(
-    target_line: bytes,
-    reference_content: bytes | None,
-) -> bool:
-    if reference_content is None:
-        return False
-    return (
-        _line_payload_for_reference_match(target_line)
-        == _line_payload_for_reference_match(reference_content)
-    )
-
-
-def _baseline_reference_insertion_position(
-    reference: Any,
-    working_lines: Sequence[bytes],
-) -> int | None:
-    """Return the proven insertion position for a baseline reference."""
-    if reference is None or not getattr(reference, "has_after_line", False):
-        return None
-
-    after_line = getattr(reference, "after_line", None)
-    position = after_line or 0
-    if position < 0 or position > len(working_lines):
-        return None
-
-    verified_boundary = False
-    if after_line is not None:
-        if after_line < 1 or after_line > len(working_lines):
-            return None
-        if not _reference_line_matches(
-            working_lines[after_line - 1],
-            getattr(reference, "after_content", None),
-        ):
-            return None
-        verified_boundary = True
-
-    if getattr(reference, "has_before_line", False):
-        before_line = getattr(reference, "before_line", None)
-        if before_line is None:
-            if position != len(working_lines):
-                return None
-            verified_boundary = True
-        else:
-            if position >= len(working_lines):
-                return None
-            if not _reference_line_matches(
-                working_lines[position],
-                getattr(reference, "before_content", None),
-            ):
-                return None
-            verified_boundary = True
-
-    if not verified_boundary:
-        return None
-    return position
-
-
-def _baseline_reference_absence_position(
-    reference: Any,
-    working_lines: Sequence[bytes],
-    sequence_length: int,
-) -> int | None:
-    """Return the proven removal position for a baseline reference."""
-    if reference is None or not getattr(reference, "has_after_line", False):
-        return None
-
-    after_line = getattr(reference, "after_line", None)
-    position = after_line or 0
-    if position < 0 or position + sequence_length > len(working_lines):
-        return None
-
-    after_content = getattr(reference, "after_content", None)
-    if after_line is not None and after_content is not None:
-        if after_line < 1 or after_line > len(working_lines):
-            return None
-        if not _reference_line_matches(
-            working_lines[after_line - 1],
-            after_content,
-        ):
-            return None
-
-    if getattr(reference, "has_before_line", False):
-        before_line = getattr(reference, "before_line", None)
-        before_position = position + sequence_length
-        if before_line is None:
-            if before_position != len(working_lines):
-                return None
-        else:
-            if before_position >= len(working_lines):
-                return None
-            if not _reference_line_matches(
-                working_lines[before_position],
-                getattr(reference, "before_content", None),
-            ):
-                return None
-
-    return position
-
-
-def _line_sequences_equal(
-    left: Sequence[bytes],
-    right: Sequence[bytes],
-) -> bool:
-    """Return whether two line sequences contain the same bytes."""
-    return len(left) == len(right) and all(
-        left[index] == right[index]
-        for index in range(len(left))
-    )
-
-
-def _line_slice_equals(
-    lines: Sequence[bytes],
-    start: int,
-    expected: Sequence[bytes],
-) -> bool:
-    """Return whether a sequence slice equals the expected byte lines."""
-    if start < 0 or start + len(expected) > len(lines):
-        return False
-    return all(
-        lines[start + offset] == expected[offset]
-        for offset in range(len(expected))
-    )
 
 
 def _baseline_removal_edit(
@@ -202,14 +49,14 @@ def _baseline_removal_edit(
         normalize_line_endings(line)
         for line in claim.content_lines
     ]
-    position = _baseline_reference_absence_position(
+    position = _find_baseline_absence_position(
         claim.baseline_reference,
         working_lines,
         len(forbidden_sequence),
     )
     if position is None:
         return None
-    if not _line_slice_equals(working_lines, position, forbidden_sequence):
+    if not _line_slice_matches(working_lines, position, forbidden_sequence):
         return None
     return position, position + len(forbidden_sequence), []
 
@@ -225,7 +72,7 @@ def _replacement_origin_absence_bounds(
     if type(old_line_count) is not int or old_line_count <= 0:
         return None
 
-    position = _baseline_reference_absence_position(
+    position = _find_baseline_absence_position(
         origin.baseline_reference,
         working_lines,
         old_line_count,
@@ -316,7 +163,7 @@ def _replacement_edit_from_parent_offset(
     end = start + len(forbidden_sequence)
     if start < parent_start or end > parent_end:
         return None
-    if not _line_slice_equals(working_lines, start, forbidden_sequence):
+    if not _line_slice_matches(working_lines, start, forbidden_sequence):
         return None
     return start, end, []
 
@@ -335,7 +182,7 @@ def _replacement_edit_from_origin_resolution(
     if resolution is None:
         return None
 
-    key, choices = replacement_origin_choices_for_unit(
+    key, choices = _replacement_origin_choices_for_unit(
         claim,
         unit_index,
         unit,
@@ -447,65 +294,6 @@ def _has_complete_baseline_references(
     return bool(presence_line_set or deletion_claims)
 
 
-def replacement_origin_choices_for_unit(
-    claim: AbsenceClaim,
-    unit_index: int,
-    unit: Any,
-    claimed_lines: Sequence[int],
-    working_lines: Sequence[bytes],
-    *,
-    max_results: int | None = None,
-) -> tuple[str | None, tuple[ReplacementOriginChoice, ...]]:
-    """Return explicit target placements for an origin-tracked replacement."""
-    origin = getattr(unit, "origin", None)
-    if origin is None or not claim.content_lines:
-        return None, ()
-
-    forbidden_sequence = [
-        normalize_line_endings(line)
-        for line in claim.content_lines
-    ]
-    if not forbidden_sequence:
-        return None, ()
-    if len(forbidden_sequence) > len(working_lines):
-        return None, ()
-
-    choices: list[ReplacementOriginChoice] = []
-    for position in range(0, len(working_lines) - len(forbidden_sequence) + 1):
-        if not _line_slice_equals(working_lines, position, forbidden_sequence):
-            continue
-        choices.append(
-            ReplacementOriginChoice(
-                choice_index=len(choices) + 1,
-                position=position,
-                target_after_line=None if position == 0 else position,
-                target_before_line=(
-                    None
-                    if position + len(forbidden_sequence) >= len(working_lines)
-                    else position + len(forbidden_sequence) + 1
-                ),
-            )
-        )
-        if max_results is not None and len(choices) >= max_results:
-            break
-
-    if not choices:
-        return None, ()
-
-    deletion_indices = getattr(unit, "deletion_indices", [])
-    if len(deletion_indices) != 1:
-        return None, ()
-
-    key = _replacement_origin_ambiguity_key(
-        unit_index,
-        deletion_indices[0],
-        origin,
-        claimed_lines,
-        forbidden_sequence,
-    )
-    return key, tuple(choices)
-
-
 def try_apply_baseline_replacement_units(
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
@@ -528,7 +316,7 @@ def try_apply_baseline_replacement_units(
         return None
 
     if (
-        _line_sequences_equal(source_lines, working_lines)
+        _line_sequences_match(source_lines, working_lines)
         and _has_complete_baseline_references(
             ownership,
             presence_line_set,
@@ -590,7 +378,7 @@ def try_apply_baseline_replacement_units(
             if claimed_line < 1 or claimed_line > len(source_lines):
                 return None
             reference = claimed_line_references.get(claimed_line)
-            position = _baseline_reference_insertion_position(
+            position = _find_baseline_insertion_position(
                 reference,
                 working_lines,
             )
@@ -603,7 +391,7 @@ def try_apply_baseline_replacement_units(
                 source_lines[claimed_line - 1]
                 for claimed_line in claimed_lines
             ]
-            if _line_slice_equals(working_lines, position, insertion_lines):
+            if _line_slice_matches(working_lines, position, insertion_lines):
                 continue
             edits.append((
                 position,

@@ -8,9 +8,9 @@ from typing import Any
 from . import attribution_fingerprints as _attribution_fingerprints
 from .attribution import (
     AttributedUnit,
-    AttributionUnitKind,
     FileAttribution,
 )
+from .attribution_units import AttributionUnitKind
 from ..core.models import LineLevelChange
 
 

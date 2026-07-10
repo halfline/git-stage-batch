@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from hashlib import sha256
+from typing import TYPE_CHECKING
 
 from ..core.line_selection import (
     LineRanges,
-    LineSelection,
 )
 from ..core.buffer import (
     LineBuffer,
@@ -21,7 +20,25 @@ from ..utils.git_object_io import (
     create_git_blob,
     read_git_blobs_as_bytes,
 )
-from .absence_content import copy_absence_content as _copy_absence_content
+from .ownership_claims import (
+    parse_ownership_line_ranges as _claim_parse_line_ranges,
+    presence_claims_from_source_lines as _claim_presence_claims_from_source_lines,
+)
+from .ownership_metadata_blobs import (
+    deletion_content_blob_ids as _metadata_deletion_content_blob_ids,
+    deletion_reference_blob_ids as _metadata_deletion_reference_blob_ids,
+    presence_claim_reference_blob_ids as _metadata_presence_reference_blob_ids,
+    read_metadata_blob as _metadata_blob_content,
+    replacement_origin_reference_blob_ids as _metadata_replacement_reference_blob_ids,
+)
+from .ownership_replacement_units import (
+    normalize_replacement_units as _replacement_normalize_units,
+)
+
+if TYPE_CHECKING:
+    from .ownership_acquisition import (
+        AcquiredBatchOwnership as _AcquiredBatchOwnership,
+    )
 
 
 @dataclass
@@ -65,8 +82,8 @@ class BaselineReference:
 
         after_blob = data.get("after_blob")
         before_blob = data.get("before_blob")
-        after_content = _read_metadata_blob(after_blob, blob_contents)
-        before_content = _read_metadata_blob(before_blob, blob_contents)
+        after_content = _metadata_blob_content(after_blob, blob_contents)
+        before_content = _metadata_blob_content(before_blob, blob_contents)
         return cls(
             after_line=data.get("after_line"),
             after_content=after_content,
@@ -135,35 +152,6 @@ class AbsenceClaim:
         )
 
 
-def _read_metadata_blob(
-    blob_sha: str | None,
-    blob_contents: dict[str, bytes] | None,
-) -> bytes | None:
-    if blob_sha is None:
-        return None
-    if blob_contents is None:
-        raise ValueError("metadata blobs must be loaded before deserialization")
-    return blob_contents[blob_sha]
-
-
-def _baseline_reference_blob_ids(reference_metadata: dict) -> list[str]:
-    if not isinstance(reference_metadata, dict):
-        return []
-    blob_ids: list[str] = []
-    for key in ("after_blob", "before_blob"):
-        blob_sha = reference_metadata.get(key)
-        if blob_sha:
-            blob_ids.append(blob_sha)
-    return blob_ids
-
-
-def _baseline_references_blob_ids(references_metadata: dict) -> list[str]:
-    blob_ids: list[str] = []
-    for value in references_metadata.values():
-        blob_ids.extend(_baseline_reference_blob_ids(value))
-    return blob_ids
-
-
 @dataclass
 class PresenceClaim:
     """A presence constraint over batch-source lines.
@@ -179,7 +167,7 @@ class PresenceClaim:
 
     def source_line_set(self) -> LineRanges:
         """Return batch-source line numbers covered by this presence claim."""
-        return _parse_line_ranges(self.source_lines)
+        return _claim_parse_line_ranges(self.source_lines)
 
     def to_dict(self) -> dict:
         """Serialize to metadata dictionary."""
@@ -209,49 +197,6 @@ class PresenceClaim:
                 for line, reference in references_metadata.items()
             },
         )
-
-
-def _presence_claim_reference_blob_ids(presence_metadata: list[dict]) -> list[str]:
-    blob_ids: list[str] = []
-    for claim in presence_metadata:
-        blob_ids.extend(
-            _baseline_references_blob_ids(
-                claim.get("baseline_references", {})
-            )
-        )
-    return blob_ids
-
-
-def _deletion_content_blob_ids(deletion_metadata: list[dict]) -> list[str]:
-    return [
-        metadata["blob"]
-        for metadata in deletion_metadata
-        if "blob" in metadata
-    ]
-
-
-def _deletion_reference_blob_ids(deletion_metadata: list[dict]) -> list[str]:
-    return [
-        blob_id
-        for metadata in deletion_metadata
-        for blob_id in _baseline_reference_blob_ids(
-            metadata.get("baseline_reference", {})
-        )
-    ]
-
-
-def _replacement_origin_reference_blob_ids(replacement_metadata: list[dict]) -> list[str]:
-    blob_ids: list[str] = []
-    for metadata in replacement_metadata:
-        origin_metadata = metadata.get("original_unit", {})
-        if not isinstance(origin_metadata, dict):
-            continue
-        blob_ids.extend(
-            _baseline_reference_blob_ids(
-                origin_metadata.get("baseline_reference", {})
-            )
-        )
-    return blob_ids
 
 
 @dataclass
@@ -376,8 +321,8 @@ class BatchOwnership:
         list of PresenceClaim objects.
         """
         return cls(
-            presence_claims=_presence_claims_from_source_lines(
-                _parse_line_ranges(source_lines),
+            presence_claims=_claim_presence_claims_from_source_lines(
+                _claim_parse_line_ranges(source_lines),
                 baseline_references or {},
             ),
             deletions=deletions or [],
@@ -410,7 +355,7 @@ class BatchOwnership:
         }
         replacement_units = [
             unit.to_dict()
-            for unit in _normalize_replacement_units(
+            for unit in _replacement_normalize_units(
                 self.replacement_units,
                 deletion_count=len(self.deletions),
             )
@@ -425,13 +370,15 @@ class BatchOwnership:
         data: dict,
     ) -> _AcquiredBatchOwnership:
         """Acquire ownership for metadata with buffered deletion blobs."""
+        from .ownership_acquisition import AcquiredBatchOwnership
+
         deletion_metadata = data.get("deletions", [])
         presence_metadata = data.get("presence_claims", [])
         replacement_metadata = data.get("replacement_units", [])
         blob_buffers: dict[str, LineBuffer] = {}
         buffers: list[LineBuffer] = []
         try:
-            for blob_sha in _deletion_content_blob_ids(deletion_metadata):
+            for blob_sha in _metadata_deletion_content_blob_ids(deletion_metadata):
                 if blob_sha in blob_buffers:
                     continue
                 buffer = load_git_blob_as_buffer(blob_sha)
@@ -440,9 +387,9 @@ class BatchOwnership:
 
             blob_contents = read_git_blobs_as_bytes(
                 [
-                    *_deletion_reference_blob_ids(deletion_metadata),
-                    *_presence_claim_reference_blob_ids(presence_metadata),
-                    *_replacement_origin_reference_blob_ids(replacement_metadata),
+                    *_metadata_deletion_reference_blob_ids(deletion_metadata),
+                    *_metadata_presence_reference_blob_ids(presence_metadata),
+                    *_metadata_replacement_reference_blob_ids(replacement_metadata),
                 ]
             )
             ownership = cls._from_metadata_dict(
@@ -455,7 +402,7 @@ class BatchOwnership:
                 buffer.close()
             raise
 
-        return _AcquiredBatchOwnership(
+        return AcquiredBatchOwnership(
             ownership=ownership,
             buffers=buffers,
         )
@@ -476,8 +423,8 @@ class BatchOwnership:
             for d in presence_metadata
         ]
         if not presence_claims and legacy_claimed_lines:
-            presence_claims = _presence_claims_from_source_lines(
-                _parse_line_ranges(legacy_claimed_lines)
+            presence_claims = _claim_presence_claims_from_source_lines(
+                _claim_parse_line_ranges(legacy_claimed_lines)
             )
         deletions = [
             AbsenceClaim.from_dict(d, blob_contents, deletion_blob_buffers)
@@ -503,24 +450,6 @@ class BatchOwnership:
 
 
 @dataclass
-class _AcquiredBatchOwnership:
-    """Own buffers used by a scoped BatchOwnership value."""
-
-    ownership: BatchOwnership
-    buffers: list[LineBuffer]
-
-    def close(self) -> None:
-        for buffer in self.buffers:
-            buffer.close()
-
-    def __enter__(self) -> BatchOwnership:
-        return self.ownership
-
-    def __exit__(self, exc_type, exc, traceback) -> None:
-        self.close()
-
-
-@dataclass
 class ResolvedBatchOwnership:
     """Resolved ownership representation for materialization and merge.
 
@@ -532,382 +461,3 @@ class ResolvedBatchOwnership:
     """
     presence_line_set: LineRanges  # Batch source line numbers (1-indexed)
     deletion_claims: list[AbsenceClaim]  # Separate constraints, not collapsed
-
-
-def acquire_detached_batch_ownership(
-    ownership: BatchOwnership,
-) -> _AcquiredBatchOwnership:
-    """Acquire an ownership copy with independent absence content buffers."""
-    buffers: list[LineBuffer] = []
-    deletions: list[AbsenceClaim] = []
-    try:
-        for deletion in ownership.deletions:
-            content_lines = _copy_absence_content(deletion.content_lines)
-            buffers.append(content_lines)
-            deletions.append(
-                AbsenceClaim(
-                    anchor_line=deletion.anchor_line,
-                    content_lines=content_lines,
-                    baseline_reference=deletion.baseline_reference,
-                )
-            )
-    except Exception:
-        for buffer in buffers:
-            buffer.close()
-        raise
-
-    return _AcquiredBatchOwnership(
-        ownership=BatchOwnership(
-            presence_claims=[
-                PresenceClaim(
-                    source_lines=claim.source_lines[:],
-                    baseline_references=dict(claim.baseline_references),
-                )
-                for claim in ownership.presence_claims
-            ],
-            deletions=deletions,
-            replacement_units=[
-                ReplacementUnit(
-                    presence_lines=unit.presence_lines[:],
-                    deletion_indices=unit.deletion_indices[:],
-                    origin=unit.origin,
-                )
-                for unit in ownership.replacement_units
-            ],
-        ),
-        buffers=buffers,
-    )
-
-
-@dataclass(frozen=True, slots=True)
-class _AbsenceSignature:
-    anchor_line: int | None
-    content_digest: str
-    byte_count: int
-    line_count: int
-
-
-def _absence_signature(claim: AbsenceClaim) -> _AbsenceSignature:
-    """Return a stable signature for an absence claim."""
-    digest = sha256()
-    byte_count = 0
-    for chunk in buffer_byte_chunks(claim.content_lines):
-        digest.update(chunk)
-        byte_count += len(chunk)
-
-    return _AbsenceSignature(
-        anchor_line=claim.anchor_line,
-        content_digest=digest.hexdigest(),
-        byte_count=byte_count,
-        line_count=len(claim.content_lines),
-    )
-
-
-def _baseline_reference_side_score(
-    reference: BaselineReference | None,
-    *,
-    side: str,
-) -> int:
-    """Score how much boundary data a baseline reference side carries."""
-    if reference is None:
-        return 0
-    if side == "after":
-        has_line = reference.has_after_line
-        content = reference.after_content
-    else:
-        has_line = reference.has_before_line
-        content = reference.before_content
-    return (1 if has_line else 0) + (2 if content is not None else 0)
-
-
-def _merge_baseline_references(
-    existing: BaselineReference | None,
-    new: BaselineReference | None,
-) -> BaselineReference | None:
-    """Keep the strongest available baseline boundary metadata."""
-    if existing is None:
-        return new
-    if new is None:
-        return existing
-
-    after = (
-        new
-        if _baseline_reference_side_score(new, side="after")
-        > _baseline_reference_side_score(existing, side="after")
-        else existing
-    )
-    before = (
-        new
-        if _baseline_reference_side_score(new, side="before")
-        > _baseline_reference_side_score(existing, side="before")
-        else existing
-    )
-    return BaselineReference(
-        after_line=after.after_line,
-        after_content=after.after_content,
-        has_after_line=after.has_after_line,
-        before_line=before.before_line,
-        before_content=before.before_content,
-        has_before_line=before.has_before_line,
-    )
-
-
-def _merge_deletion_claim_metadata(
-    existing: AbsenceClaim,
-    new: AbsenceClaim,
-) -> AbsenceClaim:
-    """Merge metadata for absence claims with the same anchor and content."""
-    return AbsenceClaim(
-        anchor_line=existing.anchor_line,
-        content_lines=existing.content_lines,
-        baseline_reference=_merge_baseline_references(
-            existing.baseline_reference,
-            new.baseline_reference,
-        ),
-    )
-
-
-def _parse_line_ranges(line_ranges: list[str] | list[int]) -> LineRanges:
-    """Parse source line range strings into a selection."""
-    return LineRanges.from_specs(line_ranges)
-
-
-def _format_line_set(source_lines: LineSelection | Iterable[int]) -> list[str]:
-    """Format a source line selection as normalized range strings."""
-    if isinstance(source_lines, LineRanges):
-        return source_lines.to_range_strings()
-    source_selection = LineRanges.from_lines(source_lines)
-    if not source_selection:
-        return []
-    return source_selection.to_range_strings()
-
-
-@dataclass
-class _LineRangeBuilder:
-    """Build a normalized line selection from mostly ordered additions."""
-
-    ranges: list[tuple[int, int]] = field(default_factory=list)
-    pending_start: int | None = None
-    pending_end: int | None = None
-
-    def add_line(self, line_number: int) -> None:
-        if self.pending_start is None or self.pending_end is None:
-            self.pending_start = line_number
-            self.pending_end = line_number
-            return
-
-        if self.pending_start <= line_number <= self.pending_end:
-            return
-
-        if line_number == self.pending_end + 1:
-            self.pending_end = line_number
-            return
-
-        self.ranges.append((self.pending_start, self.pending_end))
-        self.pending_start = line_number
-        self.pending_end = line_number
-
-    def finish(self) -> LineRanges:
-        ranges = list(self.ranges)
-        if self.pending_start is not None and self.pending_end is not None:
-            ranges.append((self.pending_start, self.pending_end))
-        return LineRanges.from_ranges(ranges)
-
-
-
-def _presence_claims_from_source_lines(
-    source_lines: LineSelection | Iterable[int],
-    baseline_references: dict[int, BaselineReference] | None = None,
-) -> list[PresenceClaim]:
-    """Build normalized presence claims from a source-line selection."""
-    source_selection = (
-        source_lines
-        if isinstance(source_lines, LineRanges)
-        else LineRanges.from_lines(source_lines)
-    )
-    if not source_selection:
-        return []
-    references = baseline_references or {}
-    return [
-        PresenceClaim(
-            source_lines=_format_line_set(source_selection),
-            baseline_references={
-                line: reference
-                for line, reference in references.items()
-                if line in source_selection
-            },
-        )
-    ]
-
-
-def _normalize_replacement_units(
-    replacement_units: list[ReplacementUnit],
-    *,
-    deletion_count: int,
-) -> list[ReplacementUnit]:
-    """Drop invalid references and coalesce overlapping replacement units."""
-    components: list[tuple[LineRanges, set[int], ReplacementUnitOrigin | None]] = []
-
-    for unit in replacement_units:
-        claimed = _parse_line_ranges(unit.presence_lines)
-        deletion_indices = {
-            index
-            for index in unit.deletion_indices
-            if type(index) is int and 0 <= index < deletion_count
-        }
-        if not claimed or not deletion_indices:
-            continue
-        origin = _normalize_replacement_unit_origin(unit.origin)
-
-        overlapping_component_indices = [
-            index
-            for index, (component_claimed, component_deletions, _component_origin)
-            in enumerate(components)
-            if component_claimed.intersection(claimed) or component_deletions & deletion_indices
-        ]
-        if not overlapping_component_indices:
-            components.append((claimed, set(deletion_indices), origin))
-            continue
-
-        target_index = overlapping_component_indices[0]
-        target_claimed, target_deletions, target_origin = components[target_index]
-        target_claimed = target_claimed.union(claimed)
-        target_deletions.update(deletion_indices)
-        target_origin = _merge_replacement_unit_origins(target_origin, origin)
-
-        for source_index in reversed(overlapping_component_indices[1:]):
-            source_claimed, source_deletions, source_origin = components[source_index]
-            target_claimed = target_claimed.union(source_claimed)
-            target_deletions.update(source_deletions)
-            target_origin = _merge_replacement_unit_origins(
-                target_origin,
-                source_origin,
-            )
-            del components[source_index]
-        components[target_index] = (target_claimed, target_deletions, target_origin)
-
-    return [
-        ReplacementUnit(
-            presence_lines=_format_line_set(claimed),
-            deletion_indices=sorted(deletion_indices),
-            origin=origin,
-        )
-        for claimed, deletion_indices, origin in components
-    ]
-
-
-def _normalize_replacement_unit_origin(
-    origin: ReplacementUnitOrigin | None,
-) -> ReplacementUnitOrigin | None:
-    """Return valid original replacement context, or None."""
-    if origin is None:
-        return None
-    if (
-        type(origin.old_start) is not int
-        or type(origin.old_end) is not int
-        or type(origin.new_start) is not int
-        or type(origin.new_end) is not int
-        or origin.old_start > origin.old_end
-        or origin.new_start > origin.new_end
-    ):
-        return None
-    return origin
-
-
-def _merge_replacement_unit_origins(
-    left: ReplacementUnitOrigin | None,
-    right: ReplacementUnitOrigin | None,
-) -> ReplacementUnitOrigin | None:
-    """Keep parent context only when coalesced units agree on it."""
-    if left == right:
-        return left
-    if left is None:
-        return right
-    if right is None:
-        return left
-    return None
-
-
-def merge_batch_ownership(existing: BatchOwnership, new: BatchOwnership) -> BatchOwnership:
-    """Merge two BatchOwnership objects.
-
-    Combines presence claims (union) and merges deletion constraints with deduplication.
-
-    Absence claims are deduplicated by (anchor_line, content) signature to prevent
-    duplicate deletions when batch source advances and ownership is remapped. The same
-    deletion can appear in both existing (remapped) and new (from current diff).
-
-    Args:
-        existing: Existing batch ownership
-        new: New ownership to merge in
-
-    Returns:
-        Merged BatchOwnership with combined claims and deduplicated deletions
-    """
-    # Merge presence claims (combine and normalize ranges)
-    existing_claimed = existing.presence_line_set()
-    new_claimed = new.presence_line_set()
-    combined_claimed = existing_claimed.union(new_claimed)
-    combined_presence_references = {
-        **existing.presence_baseline_references(),
-        **new.presence_baseline_references(),
-    }
-
-    # Merge absence claims: deduplicate by anchor and content
-    # When batch source advances and ownership is remapped, the same deletion can appear
-    # in both existing (remapped) and new (from current diff). We need to deduplicate.
-    combined_deletions = []
-    deletion_index_by_signature: dict[_AbsenceSignature, int] = {}
-    existing_deletion_index_map: dict[int, int] = {}
-    new_deletion_index_map: dict[int, int] = {}
-
-    for source_name, source_index, deletion in (
-        [("existing", index, deletion) for index, deletion in enumerate(existing.deletions)]
-        + [("new", index, deletion) for index, deletion in enumerate(new.deletions)]
-    ):
-        # Create a signature for this deletion: anchor + content
-        signature = _absence_signature(deletion)
-
-        if signature not in deletion_index_by_signature:
-            deletion_index_by_signature[signature] = len(combined_deletions)
-            combined_deletions.append(deletion)
-        else:
-            combined_index = deletion_index_by_signature[signature]
-            combined_deletions[combined_index] = _merge_deletion_claim_metadata(
-                combined_deletions[combined_index],
-                deletion,
-            )
-        combined_index = deletion_index_by_signature[signature]
-        if source_name == "existing":
-            existing_deletion_index_map[source_index] = combined_index
-        else:
-            new_deletion_index_map[source_index] = combined_index
-
-    combined_replacement_units: list[ReplacementUnit] = []
-    for source_units, index_map in (
-        (existing.replacement_units, existing_deletion_index_map),
-        (new.replacement_units, new_deletion_index_map),
-    ):
-        for unit in source_units:
-            remapped_indices = [
-                index_map[index]
-                for index in unit.deletion_indices
-                if type(index) is int and index in index_map
-            ]
-            combined_replacement_units.append(ReplacementUnit(
-                presence_lines=unit.presence_lines,
-                deletion_indices=remapped_indices,
-                origin=unit.origin,
-            ))
-
-    return BatchOwnership(
-        presence_claims=_presence_claims_from_source_lines(
-            combined_claimed,
-            combined_presence_references,
-        ),
-        deletions=combined_deletions,
-        replacement_units=_normalize_replacement_units(
-            combined_replacement_units,
-            deletion_count=len(combined_deletions),
-        ),
-    )

@@ -19,12 +19,12 @@ from .realized_boundaries import (
     find_boundary_after_source_line as _locate_boundary_after_source_line,
     find_realization_fallback_boundary as _realization_fallback_boundary,
 )
-from .realized_entries import (
-    RealizedEntry as _RealizedEntry,
-    _RealizedEntries,
-    _as_realized_entries,
-    _entry_content_at,
-    _entry_is_claimed_at,
+from .realized_entries import RealizedEntry as _RealizedEntry
+from .realized_entry_storage import (
+    RealizedEntries,
+    as_realized_entries,
+    realized_entry_content_at,
+    realized_entry_is_claimed_at,
 )
 
 if TYPE_CHECKING:
@@ -51,7 +51,7 @@ def apply_absence_constraints(
     *,
     strict: bool = True,
     resolution: _MergeResolution | None = None,
-) -> _RealizedEntries:
+) -> RealizedEntries:
     """Apply absence constraints with boundary enforcement.
 
     For each absence claim:
@@ -88,7 +88,7 @@ def apply_absence_constraints(
         AmbiguousAnchorError: If anchor boundary cannot be determined uniquely
         MergeError: If strict=True and sequence is found nearby but not at boundary
     """
-    result = _as_realized_entries(entries)
+    result = as_realized_entries(entries)
     if not deletion_claims:
         return result
 
@@ -223,7 +223,7 @@ def _suppress_absence_with_resolution(
     forbidden_sequence: list[bytes],
     ambiguity_key: str,
     resolution: _MergeResolution,
-) -> _RealizedEntries:
+) -> RealizedEntries:
     choice_index = resolution.decisions.get(ambiguity_key)
     if choice_index is None:
         raise _MergeError(_("Missing merge resolution for {key}").format(key=ambiguity_key))
@@ -253,7 +253,9 @@ def _sequence_matches_at_position(
         return False
 
     return all(
-        _normalize_line_content(_entry_content_at(entries, position + i)) == sequence[i]
+        _normalize_line_content(
+            realized_entry_content_at(entries, position + i)
+        ) == sequence[i]
         for i in range(len(sequence))
     )
 
@@ -297,9 +299,9 @@ def _remove_sequence_at_position(
     entries: Sequence[_RealizedEntry],
     position: int,
     sequence: list[bytes],
-) -> _RealizedEntries:
+) -> RealizedEntries:
     """Remove sequence from entries at exact position."""
-    return _as_realized_entries(entries).without_range(
+    return as_realized_entries(entries).without_range(
         position,
         position + len(sequence),
     )
@@ -312,14 +314,17 @@ def _position_after_claimed_insertions_at_boundary(
     """Return the first position after contiguous claimed entries at boundary."""
     check_pos = position
 
-    if isinstance(entries, _RealizedEntries):
+    if isinstance(entries, RealizedEntries):
         for run in entries.provenance_runs(position, len(entries)):
             if not run.is_claimed:
                 break
             check_pos = run.dest_end
         return check_pos
 
-    while check_pos < len(entries) and _entry_is_claimed_at(entries, check_pos):
+    while check_pos < len(entries) and realized_entry_is_claimed_at(
+        entries,
+        check_pos,
+    ):
         check_pos += 1
 
     return check_pos
@@ -329,7 +334,7 @@ def _suppress_at_boundary_strict(
     entries: Sequence[_RealizedEntry],
     position: int,
     forbidden_sequence: list[bytes],
-) -> _RealizedEntries:
+) -> RealizedEntries:
     """Suppress forbidden sequence with strict enforcement for merge operations."""
     if _sequence_matches_at_position(entries, position, forbidden_sequence):
         return _remove_sequence_at_position(entries, position, forbidden_sequence)
@@ -356,14 +361,14 @@ def _suppress_at_boundary_strict(
             _("Batch was created from a different version of the file")
         )
 
-    return _as_realized_entries(entries)
+    return as_realized_entries(entries)
 
 
 def _suppress_at_boundary_for_realization(
     entries: Sequence[_RealizedEntry],
     position: int,
     forbidden_sequence: list[bytes],
-) -> _RealizedEntries:
+) -> RealizedEntries:
     """Suppress forbidden sequence leniently for content realization."""
     if _sequence_matches_at_position(entries, position, forbidden_sequence):
         return _remove_sequence_at_position(entries, position, forbidden_sequence)
@@ -384,4 +389,4 @@ def _suppress_at_boundary_for_realization(
                 forbidden_sequence,
             )
 
-    return _as_realized_entries(entries)
+    return as_realized_entries(entries)

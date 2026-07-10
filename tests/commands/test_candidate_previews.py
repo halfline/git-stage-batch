@@ -21,7 +21,7 @@ from git_stage_batch.batch.ownership import (
     ReplacementUnit,
     ReplacementUnitOrigin,
 )
-from git_stage_batch.batch.storage import add_file_to_batch
+from git_stage_batch.batch.text_file_storage import add_file_to_batch
 from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.commands.include_from import command_include_from_batch
 from git_stage_batch.commands.show_from import command_show_from_batch

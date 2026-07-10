@@ -9,32 +9,20 @@ from typing import TYPE_CHECKING, Optional
 from .ownership import BatchOwnership
 from .ownership_units import (
     build_ownership_units_from_batch_source_lines,
-    select_ownership_units_by_display_ids,
-    validate_ownership_units,
-    rebuild_ownership_from_units,
 )
+from .ownership_unit_rebuild import rebuild_ownership_from_units
+from .ownership_unit_selection import select_ownership_units_by_display_ids
+from .ownership_unit_validation import validate_ownership_units
 from ..core.line_selection import (
     LineRanges,
     LineSelection,
     parse_line_selection,
     parse_line_selection_ranges,
 )
-from ..data.batch_selected_changes import (
-    require_current_selected_batch_binary_file_for_batch,
-    require_current_selected_batch_gitlink_file_for_batch,
-)
-from ..data.progress import format_id_range
-from ..data.selected_change.store import (
-    SelectedChangeKind,
-    read_selected_change_kind,
-)
-from ..data.selected_change.paths import get_selected_change_file_path
-from ..exceptions import CommandError, exit_with_error
+from ..exceptions import exit_with_error
 from ..i18n import _
-from ..utils.file_patterns import resolve_gitignore_style_patterns
 
 if TYPE_CHECKING:
-    from ..exceptions import AtomicUnitError
     from ..core.models import LineLevelChange
 
 
@@ -119,103 +107,6 @@ def require_line_selection_in_view(
     )
 
 
-def resolve_batch_file_scope(
-    batch_name: str,
-    all_files: dict[str, dict],
-    file: Optional[str] = None,
-    patterns: Optional[list[str]] = None,
-) -> dict[str, dict]:
-    """Resolve which files from a batch to operate on.
-
-    Args:
-        batch_name: Name of the batch
-        all_files: All files in the batch metadata
-        file: Optional file path filter:
-            - None: operate on all files in batch
-            - "": use currently selected hunk's file
-            - path: specific file path
-        patterns: Optional gitignore-style file patterns to resolve against batch files
-
-    Returns:
-        Dictionary of file paths to file metadata for selected files
-
-    Raises:
-        SystemExit: If file not found or no hunk selected when using ""
-    """
-    if file is not None:
-        # If file is empty string, use selected hunk's file
-        if file == "":
-            file_to_use = get_selected_change_file_path()
-            if file_to_use is None:
-                exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
-        else:
-            file_to_use = file
-
-        target_file = _get_batch_file_for_line_operation(batch_name, all_files, file_to_use)
-        return {target_file: all_files[target_file]}
-    if patterns is not None:
-        resolved_files = resolve_gitignore_style_patterns(all_files.keys(), patterns)
-        if not resolved_files:
-            exit_with_error(
-                _("No files in batch '{name}' matched: {patterns}").format(
-                    name=batch_name,
-                    patterns=", ".join(patterns),
-                )
-            )
-        return {file_path: all_files[file_path] for file_path in resolved_files}
-    else:
-        # All files in batch (default)
-        return all_files
-
-
-def resolve_current_batch_atomic_file_scope(
-    batch_name: str,
-    all_files: dict[str, dict],
-    file: Optional[str] = None,
-    patterns: Optional[list[str]] = None,
-    line_ids: Optional[str] = None,
-) -> Optional[str]:
-    """Resolve a pathless whole-file batch action through an atomic selection.
-
-    Selected batch binaries and submodule pointers are atomic current-file
-    selections. Both the bare command and `--file` with no path are pathless
-    whole-file actions, so both must revalidate cached batch state before
-    narrowing to the selected file.
-    """
-    if patterns is not None or line_ids is not None or file not in (None, ""):
-        return file
-
-    selected_kind = read_selected_change_kind()
-    if selected_kind == SelectedChangeKind.BATCH_BINARY:
-        selected_file = require_current_selected_batch_binary_file_for_batch(batch_name, all_files)
-        return selected_file if selected_file is not None else file
-    if selected_kind == SelectedChangeKind.BATCH_GITLINK:
-        selected_file = require_current_selected_batch_gitlink_file_for_batch(batch_name, all_files)
-        return selected_file if selected_file is not None else file
-
-    return file
-
-
-def _get_batch_file_for_line_operation(
-    batch_name: str,
-    all_files: dict[str, dict],
-    file: str | None,
-) -> str:
-    """Determine which file in batch to operate on."""
-    files = sorted(all_files.keys())
-
-    if not files:
-        raise CommandError(f"Batch '{batch_name}' is empty")
-
-    if file is None:
-        return files[0]
-
-    if file not in all_files:
-        raise CommandError(f"File '{file}' not found in batch '{batch_name}'")
-
-    return file
-
-
 def require_single_file_context_for_line_selection(
     batch_name: str,
     files: dict[str, dict],
@@ -289,55 +180,6 @@ def _line_selection_has_single_file_context(
         )
 
     return True
-
-
-def translate_atomic_unit_error_to_gutter_ids(
-    error: 'AtomicUnitError',
-    rendered: 'RenderedBatchDisplay',
-    operation_verb: str,
-    batch_name: str
-) -> None:
-    """Translate AtomicUnitError selection IDs to gutter IDs and exit with user-friendly message.
-
-    Args:
-        error: The AtomicUnitError containing selection IDs
-        rendered: The RenderedBatchDisplay with gutter<->selection ID mapping
-        operation_verb: Operation name for error message (e.g., "apply", "include")
-        batch_name: Name of the batch
-
-    Raises:
-        CommandError: Always exits with translated error message
-    """
-    if error.required_selection_ids:
-        # Translate required selection IDs to gutter IDs
-        gutter_ids = []
-        for sel_id in sorted(error.required_selection_ids):
-            if sel_id in rendered.selection_id_to_gutter:
-                gutter_ids.append(rendered.selection_id_to_gutter[sel_id])
-
-        if gutter_ids:
-            required_range = format_id_range(gutter_ids)
-
-            # User-friendly message based on unit kind
-            if error.unit_kind == "replacement":
-                explanation = _("These lines form a replacement (deletion + addition) and must be selected together.")
-            elif error.unit_kind == "deletion_only":
-                explanation = _("These lines form a deletion and must be selected together.")
-            else:
-                explanation = _("These lines must be selected together.")
-
-            exit_with_error(
-                _("{explanation}\nUse: --line {range}").format(
-                    explanation=explanation,
-                    range=required_range
-                ))
-
-    # Fallback: show original error
-    exit_with_error(_("Failed to {operation} batch '{name}': {error}").format(
-        operation=operation_verb,
-        name=batch_name,
-        error=str(error)
-    ))
 
 
 @contextmanager

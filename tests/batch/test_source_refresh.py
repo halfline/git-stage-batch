@@ -19,6 +19,8 @@ from git_stage_batch.batch.source_refresh import (
     acquire_batch_ownership_update_for_selection,
     ensure_batch_source_current_for_selection,
     prepare_batch_ownership_update_for_selection,
+)
+from git_stage_batch.batch.selected_line_source_refresh import (
     refresh_selected_lines_against_source_lines,
 )
 from git_stage_batch.batch.ownership import BatchOwnership

@@ -7,15 +7,15 @@ from dataclasses import dataclass, replace
 from enum import Enum
 import uuid
 
-from ...batch.operations import create_batch, delete_batch
-from ...batch.merge import merge_batch_from_line_sequences_as_buffer
-from ...batch.ownership import BatchOwnership
-from ...batch.ownership_translation import (
+from ...batch.hunk_ownership_translation import (
     translate_hunk_selection_to_batch_ownership,
 )
+from ...batch.merge import merge_batch_from_line_sequences_as_buffer
+from ...batch.operations import create_batch, delete_batch
+from ...batch.ownership import BatchOwnership
 from ...batch.query import read_batch_metadata
 from ...batch.selection import line_selection_not_valid_message
-from ...batch.storage import add_file_to_batch
+from ...batch.text_file_storage import add_file_to_batch
 from ...batch.validation import batch_exists
 from ...core.buffer import LineBuffer, buffer_matches
 from ...data.batch_sources import create_batch_source_commit

@@ -9,7 +9,8 @@ import pytest
 from git_stage_batch.batch.operations import create_batch
 from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.batch.merge import merge_batch_from_line_sequences_as_buffer
-from git_stage_batch.batch.storage import add_file_to_batch, read_file_from_batch
+from git_stage_batch.batch.file_entry_storage import read_file_from_batch
+from git_stage_batch.batch.text_file_storage import add_file_to_batch
 from git_stage_batch.batch.absence_content import AbsenceContentBuilder
 from git_stage_batch.batch.ownership import (
     BaselineReference,
@@ -17,8 +18,10 @@ from git_stage_batch.batch.ownership import (
     AbsenceClaim,
     ReplacementUnit,
     ReplacementUnitOrigin,
+)
+from git_stage_batch.batch.ownership_detachment import acquire_detached_batch_ownership
+from git_stage_batch.batch.ownership_merging import (
     _absence_signature,
-    acquire_detached_batch_ownership,
     merge_batch_ownership,
 )
 import git_stage_batch.batch.absence_content as absence_content_module

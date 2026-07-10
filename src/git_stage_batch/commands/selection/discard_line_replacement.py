@@ -12,8 +12,8 @@ from ...batch.display import annotate_with_batch_source_working_lines
 from ...batch.operations import create_batch
 from ...batch.ownership import (
     BatchOwnership,
-    merge_batch_ownership,
 )
+from ...batch.ownership_merging import merge_batch_ownership
 from ...batch.ownership_remapping import remap_batch_ownership_with_lineage
 from ...batch.ownership_translation import translate_lines_to_batch_ownership
 from ...batch.query import read_batch_metadata
@@ -25,9 +25,11 @@ from ...batch.selection import require_line_selection_in_view
 from ...batch.source_advancement import advance_source_lines_preserving_existing_presence
 from ...batch.source_refresh import (
     acquire_batch_ownership_update_for_selection,
+)
+from ...batch.selected_line_source_refresh import (
     refresh_selected_lines_against_source_lines,
 )
-from ...batch.storage import add_file_to_batch
+from ...batch.text_file_storage import add_file_to_batch
 from ...batch.validation import batch_exists
 from ...core.buffer import LineBuffer, buffer_ends_with_lf
 from ...core.line_selection import parse_line_selection

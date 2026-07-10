@@ -6,13 +6,16 @@ from tests.diff_parser_helpers import collect_unified_diff
 import pytest
 
 import git_stage_batch.batch.attribution as attribution_module
+import git_stage_batch.batch.attribution_units as attribution_units_module
 from git_stage_batch.batch.attribution import (
     AttributedUnit,
-    AttributionUnitKind,
     FileAttribution,
+    build_file_attribution,
+)
+from git_stage_batch.batch.attribution_units import (
+    AttributionUnitKind,
     FileComparison,
     enumerate_units_from_file_comparison,
-    build_file_attribution,
 )
 from git_stage_batch.batch.attribution_projection import project_attribution_to_diff
 from git_stage_batch.batch.match import match_lines
@@ -254,6 +257,11 @@ def test_build_file_attribution_reuses_batch_alignment_per_file(temp_repo, monke
         return original_match_lines(*args, **kwargs)
 
     monkeypatch.setattr(attribution_module, "match_lines", counting_match_lines)
+    monkeypatch.setattr(
+        attribution_units_module,
+        "match_lines",
+        counting_match_lines,
+    )
 
     attribution = build_file_attribution("test.txt")
 

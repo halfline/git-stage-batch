@@ -257,8 +257,18 @@ project.
 
 Key modules:
 
-- `batch.storage`
-  Persisting batch file entries and realized content.
+- `batch.text_file_storage`
+  Persisting text file ownership and realized text content.
+- `batch.binary_file_storage`
+  Persisting binary file entries.
+- `batch.gitlink_storage`
+  Persisting submodule pointer entries.
+- `batch.file_entry_storage`
+  Copying and removing generic batch file entries.
+- `batch.content_commits`
+  Publishing realized batch content trees.
+- `batch.realized_file_content`
+  Streaming realized text content from baseline, source, and ownership.
 - `batch.state_refs`
   Publishing authoritative batch state into Git refs.
 - `batch.query`

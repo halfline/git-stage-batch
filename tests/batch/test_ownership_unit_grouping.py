@@ -21,10 +21,16 @@ from git_stage_batch.batch.ownership import (
 )
 from git_stage_batch.batch.ownership_units import (
     build_ownership_units_from_batch_source_lines,
+)
+from git_stage_batch.batch.ownership_unit_rebuild import (
+    rebuild_ownership_from_units,
+)
+from git_stage_batch.batch.ownership_unit_selection import (
+    select_ownership_units_by_display_ids,
+)
+from git_stage_batch.batch.ownership_unit_types import (
     OwnershipUnit,
     OwnershipUnitKind,
-    rebuild_ownership_from_units,
-    select_ownership_units_by_display_ids,
 )
 from git_stage_batch.batch.selection import acquire_batch_ownership_for_display_ids_from_lines
 from git_stage_batch.core.line_selection import LineRanges

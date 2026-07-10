@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 
 from .match import match_lines
-from .realized_entries import _LineRange
+from .line_range_view import LineRangeView
 
 
 class RegionKind(Enum):
@@ -245,8 +245,8 @@ def _append_baseline_gap_region(
         )
 
     if base_len == src_len:
-        baseline_segment = _LineRange(baseline_lines, base_start, base_end)
-        source_segment = _LineRange(source_lines, src_start, src_end)
+        baseline_segment = LineRangeView(baseline_lines, base_start, base_end)
+        source_segment = LineRangeView(source_lines, src_start, src_end)
 
         with match_lines(baseline_segment, source_segment) as sub_mapping:
             all_baseline_mapped = all(
@@ -305,7 +305,7 @@ def _append_baseline_region(
     if kind == RegionKind.INSERT:
         baseline_region_lines = ()
     else:
-        baseline_region_lines = _LineRange(baseline_lines, base_start, base_end)
+        baseline_region_lines = LineRangeView(baseline_lines, base_start, base_end)
 
     regions.append(
         BaselineRegion(

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ...batch.operation_candidates import save_candidate_preview_state
+from ...batch.operation_candidate_state import save_candidate_preview_state
 from ...core.replacement import ReplacementPayload
 from ...data.file_review.batch_selection import (
     translate_batch_file_gutter_ids_to_selection_ids,

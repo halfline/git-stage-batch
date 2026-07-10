@@ -10,7 +10,7 @@ import pytest
 from git_stage_batch.batch.operations import create_batch
 from git_stage_batch.batch.ownership import BatchOwnership, AbsenceClaim, ReplacementUnit
 from git_stage_batch.batch.query import read_batch_metadata
-from git_stage_batch.batch.storage import add_file_to_batch
+from git_stage_batch.batch.text_file_storage import add_file_to_batch
 from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.commands.discard_from import command_discard_from_batch
 from git_stage_batch.commands.discard import command_discard_file, command_discard_file_as, command_discard_line, command_discard_line_as_to_batch, command_discard_to_batch
@@ -30,7 +30,7 @@ from git_stage_batch.commands.suggest_fixup import command_suggest_fixup
 from git_stage_batch.core.actionable_changes import ActionableSelectionReason
 import git_stage_batch.batch.file_display as file_display_module
 import git_stage_batch.data.file_review.freshness as file_review_freshness_module
-from git_stage_batch.data.file_review.action_scope import validate_pathless_review_line_action
+from git_stage_batch.data.file_review.line_action_validation import validate_pathless_review_line_action
 from git_stage_batch.data.file_review.records import FileReviewAction, ReviewSource
 from git_stage_batch.data.file_review.selection_validation import shown_review_selections_for_action
 from git_stage_batch.data.file_review.state import (

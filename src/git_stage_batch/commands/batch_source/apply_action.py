@@ -8,6 +8,7 @@ from . import action_completion as _action_completion
 from . import action_context as _action_context
 from . import action_plans as _action_plans
 from . import action_selection as _action_selection
+from . import atomic_unit_refusals as _atomic_unit_refusals
 from . import binary_file_actions as _binary_file_actions
 from . import candidate_preview_counts as _candidate_preview_counts
 from . import candidate_refusals as _candidate_refusals
@@ -16,7 +17,6 @@ from . import text_file_actions as _text_file_actions
 from . import text_plan_builders as _text_plan_builders
 from . import worktree_refusals as _worktree_refusals
 from ...batch.binary_file_content import read_binary_file_from_batch
-from ...batch.selection import translate_atomic_unit_error_to_gutter_ids
 from ...batch.submodule_pointer import (
     apply_submodule_pointer_from_batch,
     is_batch_submodule_pointer,
@@ -103,7 +103,7 @@ def execute_apply_action(
                 )
             except AtomicUnitError as e:
                 if rendered:
-                    translate_atomic_unit_error_to_gutter_ids(
+                    _atomic_unit_refusals.translate_atomic_unit_error_to_gutter_ids(
                         e,
                         rendered,
                         "apply",

@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from git_stage_batch.batch.hunk_ownership_translation import (
+    translate_hunk_selection_to_batch_ownership,
+)
 from git_stage_batch.batch.ownership import (
     AbsenceClaim,
     ReplacementUnit,
     ReplacementUnitOrigin,
 )
 from git_stage_batch.batch.ownership_translation import (
-    translate_hunk_selection_to_batch_ownership,
     translate_lines_to_batch_ownership,
 )
 from git_stage_batch.batch.replacement_line_runs import (

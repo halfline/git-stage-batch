@@ -8,22 +8,22 @@ from collections.abc import Sequence
 from contextlib import AbstractContextManager
 
 from ...batch.operations import create_batch
-from ...batch.ownership import (
-    BatchOwnership,
-    acquire_detached_batch_ownership,
-    merge_batch_ownership,
-)
+from ...batch.ownership import BatchOwnership
+from ...batch.ownership_detachment import acquire_detached_batch_ownership
+from ...batch.ownership_merging import merge_batch_ownership
 from ...batch.ownership_units import (
     build_ownership_units_from_batch_source_lines,
-    filter_ownership_units_by_display_ids,
-    rebuild_ownership_from_units,
-    validate_ownership_units,
 )
+from ...batch.ownership_unit_rebuild import rebuild_ownership_from_units
+from ...batch.ownership_unit_selection import filter_ownership_units_by_display_ids
+from ...batch.ownership_unit_validation import validate_ownership_units
 from ...batch.query import read_batch_metadata
-from ...batch.selection import require_display_ids_available, resolve_batch_file_scope
+from ...batch.selection import require_display_ids_available
 from ...batch.state_refs import sync_batch_state_refs
-from ...batch.storage import (
+from ...batch.text_file_storage import (
     add_file_to_batch,
+)
+from ...batch.file_entry_storage import (
     copy_file_from_batch_to_batch,
     remove_file_from_batch,
 )
@@ -33,6 +33,7 @@ from ...batch.submodule_pointer import (
 )
 from ...batch.validation import batch_exists
 from ...core.line_selection import LineRanges
+from ...data.batch_file_scope import resolve_batch_file_scope
 from ...utils.repository_buffers import load_git_object_as_buffer
 from ...exceptions import MergeError, exit_with_error
 from ...i18n import _

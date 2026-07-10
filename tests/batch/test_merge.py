@@ -10,21 +10,23 @@ from git_stage_batch.batch.baseline_edits import (
     try_apply_baseline_replacement_units,
 )
 from git_stage_batch.batch.discard_reversal import reverse_presence_constraints
+from git_stage_batch.batch.discard import (
+    _build_realized_entries_for_discard,
+    _discard_batch_line_chunks,
+    discard_batch_from_line_sequences_as_buffer,
+)
 from git_stage_batch.batch.match import match_lines
 from git_stage_batch.batch.merge_validation import check_structural_validity
 from git_stage_batch.batch.merge import (
-    _build_realized_entries_for_discard,
-    _discard_batch_line_chunks,
     _merge_batch_line_chunks,
     can_merge_batch_from_line_sequences,
-    discard_batch_from_line_sequences_as_buffer,
     enumerate_merge_batch_candidates_from_line_sequences,
     merge_batch_from_line_sequences_as_buffer,
 )
 from git_stage_batch.batch.presence_constraints import satisfy_constraints
-from git_stage_batch.batch.realized_entries import (
-    RealizedEntry,
-    _RealizedEntries,
+from git_stage_batch.batch.realized_entries import RealizedEntry
+from git_stage_batch.batch.realized_entry_storage import (
+    RealizedEntries,
     realized_entry_content_chunks,
 )
 from git_stage_batch.core.buffer import LineBuffer
@@ -46,14 +48,14 @@ class _IndexGuardedLineBuffer(LineBuffer):
         raise AssertionError("public line indexing should not be used")
 
 
-class _IndexGuardedRealizedEntries(_RealizedEntries):
+class _IndexGuardedRealizedEntries(RealizedEntries):
     """Realized entries variant that rejects entry-view indexing in tests."""
 
     def __getitem__(self, index):
         raise AssertionError("entry indexing should not be used")
 
 
-class _SourceLookupGuardedRealizedEntries(_RealizedEntries):
+class _SourceLookupGuardedRealizedEntries(RealizedEntries):
     """Realized entries variant that rejects per-line source lookups in tests."""
 
     def source_line_at(self, index):
@@ -423,7 +425,7 @@ class TestMergeLineSequences:
             source_to_working_mapping=mapping,
         )
 
-        assert isinstance(entries, _RealizedEntries)
+        assert isinstance(entries, RealizedEntries)
         assert b"".join(entry.content for entry in entries) == b"line1\nline2\nline3\n"
 
     def test_discard_entry_builder_accepts_non_list_sequences(self, line_sequence):
@@ -434,7 +436,7 @@ class TestMergeLineSequences:
 
         entries = _build_realized_entries_for_discard(source, working, mapping)
 
-        assert isinstance(entries, _RealizedEntries)
+        assert isinstance(entries, RealizedEntries)
         assert [entry.content for entry in entries] == [b"line1\n", b"line3\n"]
         assert [entry.source_line for entry in entries] == [1, 3]
 
@@ -452,7 +454,7 @@ class TestMergeLineSequences:
     def test_realized_entry_pending_read_does_not_flush_or_block_coalescing(self):
         """Reading a pending provenance run keeps it available for coalescing."""
         lines = [b"line1\n", b"line2\n"]
-        entries = _RealizedEntries()
+        entries = RealizedEntries()
         entries.append_line_from(lines, 0, source_line=1, target_line=1)
 
         assert entries.flushed_provenance_run_count == 0
@@ -468,7 +470,7 @@ class TestMergeLineSequences:
     def test_realized_entry_copy_slice_clips_partial_runs(self):
         """copy_slice_from adjusts first and last clipped run provenance."""
         lines = [b"one\n", b"two\n", b"three\n", b"four\n", b"five\n"]
-        entries = _RealizedEntries()
+        entries = RealizedEntries()
         entries.append_line_range_from(
             lines,
             0,
@@ -477,7 +479,7 @@ class TestMergeLineSequences:
             target_line_start=10,
         )
 
-        result = _RealizedEntries()
+        result = RealizedEntries()
         result.copy_slice_from(entries, 1, 4)
 
         assert list(result.content_chunks()) == [b"two\n", b"three\n", b"four\n"]
@@ -491,7 +493,7 @@ class TestMergeLineSequences:
     def test_realized_entry_adjacent_contiguous_runs_coalesce(self):
         """Adjacent compatible provenance ranges stay in one run."""
         lines = [b"one\n", b"two\n", b"three\n", b"four\n"]
-        entries = _RealizedEntries()
+        entries = RealizedEntries()
 
         entries.append_line_range_from(
             lines,
@@ -516,7 +518,7 @@ class TestMergeLineSequences:
     def test_realized_entry_claimed_changes_split_runs(self):
         """Claimed state changes are provenance run boundaries."""
         lines = [b"one\n", b"two\n", b"three\n", b"four\n"]
-        entries = _RealizedEntries()
+        entries = RealizedEntries()
 
         entries.append_line_range_from(
             lines,
@@ -543,7 +545,7 @@ class TestMergeLineSequences:
     def test_realized_entry_source_and_target_lookup_across_none_runs(self):
         """Random lookup works across None and numbered provenance runs."""
         lines = [b"one\n", b"two\n", b"three\n", b"four\n"]
-        entries = _RealizedEntries()
+        entries = RealizedEntries()
         entries.append_line_range_from(
             lines,
             0,
@@ -564,8 +566,8 @@ class TestMergeLineSequences:
 
     def test_closed_realized_entries_reject_access(self):
         """Public realized-entry APIs reject use after close."""
-        donor = _RealizedEntries([RealizedEntry(b"donor\n", source_line=1)])
-        entries = _RealizedEntries([RealizedEntry(b"line\n", source_line=1)])
+        donor = RealizedEntries([RealizedEntry(b"donor\n", source_line=1)])
+        entries = RealizedEntries([RealizedEntry(b"line\n", source_line=1)])
         entries.close()
 
         accessors = [
@@ -593,7 +595,7 @@ class TestMergeLineSequences:
 
     def test_realized_entries_context_manager_closes_provenance(self):
         """Context manager cleanup closes mapped provenance resources."""
-        with _RealizedEntries() as entries:
+        with RealizedEntries() as entries:
             entries.append(b"line\n", source_line=1)
             provenance = entries._provenance
 
@@ -603,7 +605,7 @@ class TestMergeLineSequences:
     def test_realized_entry_slice_without_range_and_insert_preserve_provenance(self):
         """Structural copy operations preserve content and provenance."""
         lines = [b"one\n", b"two\n", b"three\n", b"four\n"]
-        entries = _RealizedEntries()
+        entries = RealizedEntries()
         entries.append_line_range_from(
             lines,
             0,
@@ -611,7 +613,7 @@ class TestMergeLineSequences:
             source_line_start=1,
             target_line_start=11,
         )
-        inserted = _RealizedEntries()
+        inserted = RealizedEntries()
         inserted.append_line_range_from(
             [b"inserted\n"],
             0,
@@ -648,7 +650,7 @@ class TestMergeLineSequences:
 
     def test_realized_entry_getitem_reconstructs_entry(self):
         """__getitem__ returns the expected RealizedEntry view."""
-        entries = _RealizedEntries()
+        entries = RealizedEntries()
         entries.append(
             b"line\n",
             source_line=7,

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import sys
 
+from ...batch.binary_file_storage import add_binary_file_to_batch
 from ...batch.ownership import BatchOwnership
-from ...batch.storage import add_binary_file_to_batch, add_file_to_batch
+from ...batch.text_file_storage import add_file_to_batch
 from ...core.hashing import compute_binary_file_hash, compute_text_file_deletion_hash
 from ...core.models import BinaryFileChange, TextFileDeletionChange
 from ...core.text_lifecycle import TextFileChangeType

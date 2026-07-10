@@ -3,20 +3,14 @@
 from __future__ import annotations
 
 import difflib
-import hashlib
-import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from itertools import product
 from typing import Literal
 
+from ..core.buffer import LineBuffer
+from ..core.replacement import ReplacementPayload
 from ..core.text_lifecycle import selected_text_target_change_type
-from ..core.buffer import (
-    LineBuffer,
-    buffer_byte_chunks,
-)
 from ..exceptions import AtomicUnitError, MergeError
-from ..utils.paths import get_batch_candidate_state_file_path
 from .merge import (
     enumerate_merge_batch_candidates_from_line_sequences,
     merge_batch_from_line_sequences_as_buffer,
@@ -25,13 +19,18 @@ from .merge_candidates import (
     MergeCandidate,
     MergeResolution,
 )
-from ..core.replacement import ReplacementPayload
+from .operation_candidate_fingerprints import (
+    batch_fingerprint as _fingerprint_batch,
+    candidate_id as _fingerprint_candidate_id,
+    scope_fingerprint as _fingerprint_scope,
+    target_fingerprint as _fingerprint_target,
+    target_result_fingerprint as _fingerprint_target_result,
+)
 
 
 CandidateOperation = Literal["apply", "include"]
 CandidateTarget = Literal["index", "worktree"]
 MAX_OPERATION_CANDIDATES = 50
-ALGORITHM_VERSION = 2
 
 
 class CandidateEnumerationLimitError(ValueError):
@@ -96,186 +95,6 @@ class OperationCandidatePreview:
     def close(self) -> None:
         for target in self.targets:
             target.close()
-
-
-def _hash_bytes(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
-
-
-def _buffer_fingerprint(buffer) -> str:
-    digest = hashlib.sha256()
-    for chunk in buffer_byte_chunks(buffer):
-        digest.update(chunk)
-    return digest.hexdigest()
-
-
-def _json_fingerprint(payload) -> str:
-    return hashlib.sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()
-
-
-def _target_fingerprint(target: CandidateTarget, file_path: str, buffer: LineBuffer) -> str:
-    return _json_fingerprint({
-        "target": target,
-        "file": file_path,
-        "buffer": _buffer_fingerprint(buffer),
-    })
-
-
-def _target_result_fingerprint(target: TargetCandidatePreview) -> str:
-    return _json_fingerprint({
-        "target": target.target,
-        "file": target.file_path,
-        "before": _buffer_fingerprint(target.before_buffer),
-        "after": _buffer_fingerprint(target.after_buffer),
-        "file_mode": target.file_mode,
-        "change_type": target.change_type,
-        "destination_exists": target.destination_exists,
-    })
-
-
-def _baseline_reference_payload(reference) -> dict | None:
-    if reference is None:
-        return None
-    return {
-        "after_line": reference.after_line,
-        "after_content": (
-            None if reference.after_content is None else _hash_bytes(reference.after_content)
-        ),
-        "has_after_line": reference.has_after_line,
-        "before_line": reference.before_line,
-        "before_content": (
-            None if reference.before_content is None else _hash_bytes(reference.before_content)
-        ),
-        "has_before_line": reference.has_before_line,
-    }
-
-
-def _absence_claim_payload(claim) -> dict:
-    return {
-        "anchor_line": claim.anchor_line,
-        "content": _buffer_fingerprint(claim.content_lines),
-        "line_count": len(claim.content_lines),
-        "baseline_reference": _baseline_reference_payload(claim.baseline_reference),
-    }
-
-
-def _presence_claim_payload(claim) -> dict:
-    return {
-        "source_lines": claim.source_lines,
-        "baseline_references": [
-            [line, _baseline_reference_payload(reference)]
-            for line, reference in sorted(claim.baseline_references.items())
-        ],
-    }
-
-
-def _replacement_unit_payload(unit) -> dict:
-    origin = unit.origin
-    return {
-        "presence_lines": unit.presence_lines,
-        "deletion_indices": unit.deletion_indices,
-        "origin": None if origin is None else {
-            "old_start": origin.old_start,
-            "old_end": origin.old_end,
-            "new_start": origin.new_start,
-            "new_end": origin.new_end,
-            "baseline_reference": _baseline_reference_payload(
-                origin.baseline_reference
-            ),
-        },
-    }
-
-
-def _ownership_fingerprint(ownership) -> str:
-    return _json_fingerprint({
-        "presence_claims": [
-            _presence_claim_payload(claim)
-            for claim in ownership.presence_claims
-        ],
-        "deletions": [
-            _absence_claim_payload(claim)
-            for claim in ownership.deletions
-        ],
-        "replacement_units": [
-            _replacement_unit_payload(unit)
-            for unit in ownership.replacement_units
-        ],
-    })
-
-
-def _candidate_id(
-    *,
-    operation: CandidateOperation,
-    batch_name: str,
-    file_path: str,
-    scope_fingerprint: str,
-    batch_fingerprint: str,
-    target_fingerprints: dict[str, str],
-    target_result_fingerprints: dict[str, str],
-    targets: tuple[TargetCandidatePreview, ...],
-) -> str:
-    payload = {
-        "algorithm_version": ALGORITHM_VERSION,
-        "operation": operation,
-        "batch_name": batch_name,
-        "file": file_path,
-        "scope": scope_fingerprint,
-        "batch_fingerprint": batch_fingerprint,
-        "targets": target_fingerprints,
-        "target_results": target_result_fingerprints,
-        "decisions": [
-            [
-                target.target,
-                None if target.resolution is None else sorted(target.resolution.decisions.items()),
-            ]
-            for target in targets
-        ],
-    }
-    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:12]
-
-
-def _scope_fingerprint(
-    *,
-    operation: CandidateOperation,
-    batch_name: str,
-    file_path: str,
-    selection_ids: set[int] | None,
-    replacement_payload: ReplacementPayload | None = None,
-) -> str:
-    payload = {
-        "operation": operation,
-        "batch": batch_name,
-        "file": file_path,
-        "selection_ids": sorted(selection_ids) if selection_ids is not None else None,
-        "replacement": (
-            _hash_bytes(replacement_payload.data)
-            if replacement_payload is not None
-            else None
-        ),
-    }
-    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
-
-
-def _batch_fingerprint(
-    *,
-    batch_name: str,
-    file_path: str,
-    source_buffer: LineBuffer,
-    ownership,
-    batch_source_commit: str,
-    file_meta: dict,
-) -> str:
-    return _json_fingerprint({
-        "algorithm_version": ALGORITHM_VERSION,
-        "batch_name": batch_name,
-        "file": file_path,
-        "batch_source_commit": batch_source_commit,
-        "source": _buffer_fingerprint(source_buffer),
-        "file_metadata": file_meta,
-        "ownership": _ownership_fingerprint(ownership),
-    })
 
 
 def _merge_candidates_or_unambiguous(
@@ -374,7 +193,7 @@ def build_apply_candidate_previews(
     if merge_candidates == (None,):
         return ()
 
-    batch_fingerprint = _batch_fingerprint(
+    batch_fingerprint = _fingerprint_batch(
         batch_name=batch_name,
         file_path=file_path,
         source_buffer=source_lines,
@@ -382,7 +201,7 @@ def build_apply_candidate_previews(
         batch_source_commit=batch_source_commit,
         file_meta=file_meta,
     )
-    scope_fingerprint = _scope_fingerprint(
+    scope_fingerprint = _fingerprint_scope(
         operation="apply",
         batch_name=batch_name,
         file_path=file_path,
@@ -404,10 +223,14 @@ def build_apply_candidate_previews(
             selected_ids=selected_ids,
         )
         target_fingerprints = {
-            "worktree": _target_fingerprint("worktree", file_path, target_preview.before_buffer)
+            "worktree": _fingerprint_target(
+                "worktree",
+                file_path,
+                target_preview.before_buffer,
+            )
         }
         target_result_fingerprints = {
-            "worktree": _target_result_fingerprint(target_preview)
+            "worktree": _fingerprint_target_result(target_preview)
         }
         targets = (target_preview,)
         preview = OperationCandidatePreview(
@@ -423,7 +246,7 @@ def build_apply_candidate_previews(
             target_result_fingerprints=target_result_fingerprints,
             scope_fingerprint=scope_fingerprint,
         )
-        preview.candidate_id = _candidate_id(
+        preview.candidate_id = _fingerprint_candidate_id(
             operation="apply",
             batch_name=batch_name,
             file_path=file_path,
@@ -466,7 +289,7 @@ def build_include_candidate_previews(
     if len(products) > MAX_OPERATION_CANDIDATES:
         raise CandidateEnumerationLimitError("too many include candidates to preview safely")
 
-    batch_fingerprint = _batch_fingerprint(
+    batch_fingerprint = _fingerprint_batch(
         batch_name=batch_name,
         file_path=file_path,
         source_buffer=source_lines,
@@ -474,7 +297,7 @@ def build_include_candidate_previews(
         batch_source_commit=batch_source_commit,
         file_meta=file_meta,
     )
-    scope_fingerprint = _scope_fingerprint(
+    scope_fingerprint = _fingerprint_scope(
         operation="include",
         batch_name=batch_name,
         file_path=file_path,
@@ -510,12 +333,20 @@ def build_include_candidate_previews(
         )
         targets = (index_preview, worktree_preview)
         target_fingerprints = {
-            "index": _target_fingerprint("index", file_path, index_preview.before_buffer),
-            "worktree": _target_fingerprint("worktree", file_path, worktree_preview.before_buffer),
+            "index": _fingerprint_target(
+                "index",
+                file_path,
+                index_preview.before_buffer,
+            ),
+            "worktree": _fingerprint_target(
+                "worktree",
+                file_path,
+                worktree_preview.before_buffer,
+            ),
         }
         target_result_fingerprints = {
-            "index": _target_result_fingerprint(index_preview),
-            "worktree": _target_result_fingerprint(worktree_preview),
+            "index": _fingerprint_target_result(index_preview),
+            "worktree": _fingerprint_target_result(worktree_preview),
         }
         preview = OperationCandidatePreview(
             operation="include",
@@ -530,7 +361,7 @@ def build_include_candidate_previews(
             target_result_fingerprints=target_result_fingerprints,
             scope_fingerprint=scope_fingerprint,
         )
-        preview.candidate_id = _candidate_id(
+        preview.candidate_id = _fingerprint_candidate_id(
             operation="include",
             batch_name=batch_name,
             file_path=file_path,
@@ -565,87 +396,3 @@ def render_candidate_buffer_diff(
             n=context_lines,
         )
     )
-
-
-def _load_state() -> dict:
-    path = get_batch_candidate_state_file_path()
-    if not path.exists():
-        return {"schema_version": 1, "algorithm_version": ALGORITHM_VERSION, "scopes": {}}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {"schema_version": 1, "algorithm_version": ALGORITHM_VERSION, "scopes": {}}
-    if data.get("schema_version") != 1:
-        return {"schema_version": 1, "algorithm_version": ALGORITHM_VERSION, "scopes": {}}
-    if data.get("algorithm_version") != ALGORITHM_VERSION:
-        return {"schema_version": 1, "algorithm_version": ALGORITHM_VERSION, "scopes": {}}
-    data.setdefault("scopes", {})
-    return data
-
-
-def _save_state(data: dict) -> None:
-    path = get_batch_candidate_state_file_path()
-    path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
-
-
-def clear_candidate_preview_state_for_file(*, batch_name: str, file_path: str) -> None:
-    """Remove saved candidate previews for one batch file."""
-    data = _load_state()
-    scopes = data.get("scopes", {})
-    matching_keys = [
-        key
-        for key, scope in scopes.items()
-        if scope.get("batch_name") == batch_name and scope.get("file") == file_path
-    ]
-    if not matching_keys:
-        return
-
-    for key in matching_keys:
-        del scopes[key]
-
-    if scopes:
-        _save_state(data)
-        return
-
-    get_batch_candidate_state_file_path().unlink(missing_ok=True)
-
-
-def candidate_preview_scope_key(preview: OperationCandidatePreview) -> str:
-    payload = {
-        "algorithm_version": ALGORITHM_VERSION,
-        "operation": preview.operation,
-        "batch": preview.batch_name,
-        "file": preview.file_path,
-        "scope": preview.scope_fingerprint,
-    }
-    digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
-    return f"{preview.operation}:{preview.batch_name}:{preview.file_path}:{digest}"
-
-
-def save_candidate_preview_state(preview: OperationCandidatePreview) -> None:
-    data = _load_state()
-    data["algorithm_version"] = ALGORITHM_VERSION
-    scope = data["scopes"].setdefault(candidate_preview_scope_key(preview), {})
-    scope.update({
-        "batch_name": preview.batch_name,
-        "operation": preview.operation,
-        "file": preview.file_path,
-        "batch_fingerprint": preview.batch_fingerprint,
-        "scope_fingerprint": preview.scope_fingerprint,
-        "candidate_count": preview.count,
-    })
-    scope.setdefault("previews", {})[str(preview.ordinal)] = {
-        "ordinal": preview.ordinal,
-        "candidate_id": preview.candidate_id,
-        "target_fingerprints": preview.target_fingerprints,
-        "target_result_fingerprints": preview.target_result_fingerprints,
-        "shown_at": datetime.now(timezone.utc).isoformat(),
-    }
-    _save_state(data)
-
-
-def load_candidate_preview_state(preview: OperationCandidatePreview) -> dict | None:
-    scope = _load_state().get("scopes", {}).get(candidate_preview_scope_key(preview))
-    if scope is None:
-        return None
-    return scope.get("previews", {}).get(str(preview.ordinal))

@@ -10,7 +10,7 @@ from ...batch.operations import create_batch
 from ...batch.ownership import BatchOwnership
 from ...batch.query import read_batch_metadata
 from ...batch.source_refresh import acquire_batch_ownership_update_for_selection
-from ...batch.storage import add_file_to_batch
+from ...batch.text_file_storage import add_file_to_batch
 from ...batch.validation import batch_exists
 from ...core.buffer import LineBuffer
 from ...core.diff_parser import acquire_unified_diff, build_line_changes_from_patch_lines

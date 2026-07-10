@@ -6,8 +6,8 @@ from collections.abc import Iterable, Sequence
 
 from ...batch.operation_candidates import (
     OperationCandidatePreview,
-    load_candidate_preview_state,
 )
+from ...batch.operation_candidate_state import load_candidate_preview_state
 from ...exceptions import CommandError
 from ...i18n import _
 

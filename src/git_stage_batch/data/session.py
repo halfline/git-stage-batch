@@ -245,8 +245,9 @@ def require_session_started() -> None:
     Raises:
         CommandError: If no session is active
     """
-    if not session_is_active():
-        raise CommandError(_("No session in progress. Run 'git-stage-batch start' first."))
+    from .session_ownership import require_current_session_owner
+
+    require_current_session_owner()
 
 
 def snapshot_file_if_untracked(file_path: str) -> None:

@@ -10,15 +10,11 @@ from ...batch.operations import create_batch
 from ...batch.ownership import BatchOwnership
 from ...batch.query import read_batch_metadata
 from ...batch.source_refresh import acquire_batch_ownership_update_for_selection
-from ...batch.storage import add_binary_file_to_batch, add_file_to_batch
+from ...batch.storage import add_file_to_batch
 from ...batch.validation import batch_exists
 from ...core.buffer import LineBuffer
 from ...core.diff_parser import acquire_unified_diff, build_line_changes_from_patch_lines
-from ...core.hashing import (
-    compute_binary_file_hash,
-    compute_stable_hunk_hash_from_lines,
-    compute_text_file_deletion_hash,
-)
+from ...core.hashing import compute_stable_hunk_hash_from_lines
 from ...core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
 from ...core.text_lifecycle import TextFileChangeType
 from ...data.file_change_display import (
@@ -34,7 +30,7 @@ from ...data.session import snapshot_file_if_untracked
 from ...data.text_lifecycle_detection import detect_empty_text_lifecycle_change
 from ...exceptions import exit_with_error
 from ...i18n import _
-from ...utils.file_io import append_lines_to_file, read_text_file_line_set
+from ...utils.file_io import read_text_file_line_set
 from ...utils.git import (
     get_git_repository_root_path,
     git_apply_to_worktree,
@@ -44,99 +40,7 @@ from ...utils.git import (
 from ...utils.journal import log_journal
 from ...utils.paths import get_block_list_file_path, get_context_lines
 from ..selection.action_completion import finish_selected_change_action
-from ..selection.selected_change_discarding import discard_text_deletion_change
-
-
-def _discard_binary_change_from_working_tree(binary_change: BinaryFileChange) -> None:
-    """Discard one live binary change from the working tree."""
-    file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
-    absolute_path = get_git_repository_root_path() / file_path
-
-    if binary_change.is_new_file():
-        if absolute_path.exists():
-            absolute_path.unlink()
-        git_remove_paths([file_path], cached=True, quiet=True, check=False)
-        return
-
-    result = git_checkout_paths("HEAD", [file_path], check=False)
-    if result.returncode != 0:
-        exit_with_error(_("Failed to restore binary file: {error}").format(error=result.stderr))
-
-
-def discard_binary_to_batch(
-    batch_name: str,
-    binary_change: BinaryFileChange,
-    *,
-    quiet: bool = False,
-    advance: bool = True,
-    auto_advance: bool | None = None,
-) -> int:
-    """Save one binary change to a batch, then discard it from the working tree."""
-    file_path = binary_change.new_path if binary_change.new_path != "/dev/null" else binary_change.old_path
-    patch_hash = compute_binary_file_hash(binary_change)
-
-    snapshot_file_if_untracked(file_path)
-    add_binary_file_to_batch(
-        batch_name,
-        binary_change,
-        file_mode=detect_file_mode(file_path),
-    )
-    _discard_binary_change_from_working_tree(binary_change)
-
-    append_lines_to_file(get_block_list_file_path(), [patch_hash])
-    record_hunk_discarded(patch_hash)
-
-    if not quiet:
-        print(
-            _("Discarded binary file '{file}' to batch '{batch}'").format(
-                file=file_path,
-                batch=batch_name,
-            ),
-            file=sys.stderr,
-        )
-
-    if advance:
-        finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
-    return 1
-
-
-def discard_text_deletion_to_batch(
-    batch_name: str,
-    deletion_change: TextFileDeletionChange,
-    *,
-    quiet: bool = False,
-    advance: bool = True,
-    auto_advance: bool | None = None,
-) -> int:
-    """Save one whole-text-file deletion to a batch, then restore it locally."""
-    file_path = deletion_change.path()
-    patch_hash = compute_text_file_deletion_hash(deletion_change)
-
-    snapshot_file_if_untracked(file_path)
-    add_file_to_batch(
-        batch_name,
-        file_path,
-        BatchOwnership([], []),
-        detect_file_mode(file_path),
-        change_type=TextFileChangeType.DELETED.value,
-    )
-    discard_text_deletion_change(deletion_change)
-
-    append_lines_to_file(get_block_list_file_path(), [patch_hash])
-    record_hunk_discarded(patch_hash)
-
-    if not quiet:
-        print(
-            _("Discarded text file deletion '{file}' to batch '{batch}'").format(
-                file=file_path,
-                batch=batch_name,
-            ),
-            file=sys.stderr,
-        )
-
-    if advance:
-        finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
-    return 1
+from ..selection import whole_file_batch_discarding as _whole_file_batch_discarding
 
 
 def discard_file_to_batch(
@@ -157,7 +61,7 @@ def discard_file_to_batch(
 
     deletion_change = render_text_deletion_change(file_path)
     if deletion_change is not None:
-        return discard_text_deletion_to_batch(
+        return _whole_file_batch_discarding.discard_text_deletion_to_batch(
             batch_name,
             deletion_change,
             quiet=quiet,
@@ -167,7 +71,7 @@ def discard_file_to_batch(
 
     binary_change = render_binary_file_change(file_path)
     if binary_change is not None:
-        return discard_binary_to_batch(
+        return _whole_file_batch_discarding.discard_binary_to_batch(
             batch_name,
             binary_change,
             quiet=quiet,

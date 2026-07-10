@@ -4,18 +4,21 @@ from __future__ import annotations
 
 import os
 import sys
-from dataclasses import dataclass
 from typing import Optional
 
+from .batch_source import action_plans as _action_plans
+from .batch_source import binary_file_actions as _binary_file_actions
+from .batch_source import text_file_actions as _text_file_actions
+from ..batch.binary_file_content import read_binary_file_from_batch
 from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.operation_candidates import (
     CandidateEnumerationLimitError,
+    CandidatePreviewCount,
     build_apply_candidate_previews,
     clear_candidate_preview_state_for_file,
     load_candidate_preview_state,
 )
-from ..batch.query import get_batch_commit_sha
 from ..batch.selection import (
     acquire_batch_ownership_for_display_ids_from_lines,
     resolve_current_batch_binary_file_scope,
@@ -46,10 +49,7 @@ from ..data.file_review.state import (
 )
 from ..data.file_review.batch_selection import translate_batch_file_gutter_ids_to_selection_ids
 from ..batch.file_display import render_batch_file_display
-from ..core.buffer import (
-    LineBuffer,
-    write_buffer_to_working_tree_path,
-)
+from ..core.buffer import LineBuffer
 from ..utils.repository_buffers import (
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
@@ -61,126 +61,23 @@ from ..i18n import _
 from ..utils.git import get_git_repository_root_path, require_git_repository
 
 
-@dataclass
-class _ApplyTextPlan:
-    file_path: str
-    buffer: LineBuffer | None
-    file_mode: str | None
-    change_type: str
-
-    def close(self) -> None:
-        if self.buffer is not None:
-            self.buffer.close()
-
-
-@dataclass
-class _ApplyBinaryPlan:
-    file_path: str
-    file_meta: dict
-    buffer: LineBuffer | None
-
-    def close(self) -> None:
-        if self.buffer is not None:
-            self.buffer.close()
-
-
-@dataclass(frozen=True)
-class _ApplySubmodulePlan:
-    file_path: str
-    file_meta: dict
-
-    def close(self) -> None:
-        return None
-
-
-@dataclass(frozen=True)
-class _ApplyCandidateCount:
-    count: int = 0
-    too_many: bool = False
-    error: str | None = None
-
-
-def _read_binary_file_from_batch(
-    batch_name: str,
+def _print_binary_worktree_result(
     file_path: str,
-    file_meta: dict,
-) -> LineBuffer | None:
-    """Read one binary batch target, or return None for a stored deletion."""
-    batch_commit = get_batch_commit_sha(batch_name)
-    if not batch_commit:
-        raise RuntimeError(f"Batch commit not found for batch '{batch_name}'")
-
-    change_type = file_meta.get("change_type", "modified")
-    if change_type == "deleted":
-        return None
-
-    batch_buffer = load_git_object_as_buffer(f"{batch_commit}:{file_path}")
-    if batch_buffer is None:
-        raise RuntimeError(
-            f"Binary file metadata for {file_path} says {change_type}, "
-            "but the batch content is missing"
-        )
-    return batch_buffer
-
-
-def _write_binary_file_from_batch(
-    file_path: str,
-    file_meta: dict,
-    buffer: LineBuffer | None,
+    action: _binary_file_actions.BinaryWorktreeAction | None,
 ) -> None:
-    """Write one binary batch target into the working tree."""
-    repo_root = get_git_repository_root_path()
-    full_path = repo_root / file_path
-    change_type = file_meta.get("change_type", "modified")
-
-    if change_type == "deleted":
-        if os.path.lexists(full_path):
-            full_path.unlink()
-            print(_("✓ Deleted binary file: {file}").format(file=file_path), file=sys.stderr)
+    """Print apply-from status for a binary working-tree action."""
+    if action is None:
         return
 
-    if buffer is None:
-        raise RuntimeError(
-            f"Binary file metadata for {file_path} says {change_type}, "
-            "but the batch content is missing"
-        )
-
-    write_buffer_to_working_tree_path(
-        full_path,
-        buffer,
-        mode=str(file_meta.get("mode", "100644")),
-    )
-
-    if change_type == "added":
+    if action is _binary_file_actions.BinaryWorktreeAction.DELETED:
+        print(_("✓ Deleted binary file: {file}").format(file=file_path), file=sys.stderr)
+    elif action is _binary_file_actions.BinaryWorktreeAction.ADDED:
         print(_("✓ Applied new binary file: {file}").format(file=file_path), file=sys.stderr)
     else:
-        print(_("✓ Replaced binary file: {file}").format(file=file_path), file=sys.stderr)
-
-
-def _write_text_file_from_batch(
-    file_path: str,
-    buffer: LineBuffer | None,
-    file_mode: str | None,
-    change_type: str = "modified",
-) -> None:
-    """Write one text batch target into the working tree."""
-    repo_root = get_git_repository_root_path()
-    full_path = repo_root / file_path
-
-    if normalized_text_change_type(change_type) == TextFileChangeType.DELETED:
-        if os.path.lexists(full_path):
-            full_path.unlink()
-        return
-
-    if buffer is None:
-        raise RuntimeError(f"Text file not found in batch content: {file_path}")
-
-    write_buffer_to_working_tree_path(full_path, buffer, mode=file_mode)
-
-
-def _close_apply_plans(plans) -> None:
-    for plan in plans:
-        plan.close()
+        print(
+            _("✓ Replaced binary file: {file}").format(file=file_path),
+            file=sys.stderr,
+        )
 
 
 def _execute_apply_candidate(
@@ -290,7 +187,7 @@ def _execute_apply_candidate(
                 operation_parts = ["apply", "--from", raw_selector, "--file", file_path]
                 with undo_checkpoint(" ".join(operation_parts), worktree_paths=[file_path]):
                     snapshot_file_if_untracked(file_path)
-                    _write_text_file_from_batch(
+                    _text_file_actions.write_text_file_to_worktree(
                         file_path,
                         target.after_buffer,
                         file_mode,
@@ -319,15 +216,15 @@ def _apply_candidate_count_for_file(
     file_path: str,
     file_meta: dict,
     selection_ids_to_apply: set[int] | None,
-) -> _ApplyCandidateCount:
+) -> CandidatePreviewCount:
     if file_meta.get("file_type") == "binary" or is_batch_submodule_pointer(file_meta):
-        return _ApplyCandidateCount()
+        return CandidatePreviewCount()
     batch_source_commit = file_meta.get("batch_source_commit")
     if not batch_source_commit:
-        return _ApplyCandidateCount()
+        return CandidatePreviewCount()
     batch_source_buffer = load_git_object_as_buffer(f"{batch_source_commit}:{file_path}")
     if batch_source_buffer is None:
-        return _ApplyCandidateCount()
+        return CandidatePreviewCount()
     repo_root = get_git_repository_root_path()
     full_path = repo_root / file_path
     working_exists = os.path.lexists(full_path)
@@ -364,13 +261,13 @@ def _apply_candidate_count_for_file(
                 count = len(previews)
                 for preview in previews:
                     preview.close()
-                return _ApplyCandidateCount(count=count)
+                return CandidatePreviewCount(count=count)
     except CandidateEnumerationLimitError as e:
-        return _ApplyCandidateCount(too_many=True, error=str(e))
+        return CandidatePreviewCount(too_many=True, error=str(e))
     except MergeError:
-        return _ApplyCandidateCount()
+        return CandidatePreviewCount()
     except Exception as e:
-        return _ApplyCandidateCount(error=str(e))
+        return CandidatePreviewCount(error=str(e))
 
 
 def command_apply_from_batch(
@@ -480,18 +377,30 @@ def command_apply_from_batch(
 
     repo_root = get_git_repository_root_path()
     failed_files = []
-    candidate_counts: dict[str, _ApplyCandidateCount] = {}
+    candidate_counts: dict[str, CandidatePreviewCount] = {}
     apply_plans = []
 
     for file_path, file_meta in files.items():
         try:
             # Binary files are atomic units - handle separately without ownership/merge logic
             if file_meta.get("file_type") == "binary":
-                batch_buffer = _read_binary_file_from_batch(batch_name, file_path, file_meta)
-                apply_plans.append(_ApplyBinaryPlan(file_path, file_meta, batch_buffer))
+                batch_buffer = read_binary_file_from_batch(
+                    batch_name,
+                    file_path,
+                    file_meta,
+                )
+                apply_plans.append(
+                    _action_plans.BinaryFileActionPlan(
+                        file_path,
+                        file_meta,
+                        batch_buffer,
+                    )
+                )
                 continue
             if is_batch_submodule_pointer(file_meta):
-                apply_plans.append(_ApplySubmodulePlan(file_path, file_meta))
+                apply_plans.append(
+                    _action_plans.SubmodulePointerActionPlan(file_path, file_meta)
+                )
                 continue
 
             text_change_type = normalized_text_change_type(file_meta.get("change_type"))
@@ -506,7 +415,12 @@ def command_apply_from_batch(
             )
             if selected_ids is None and text_change_type == TextFileChangeType.DELETED:
                 apply_plans.append(
-                    _ApplyTextPlan(file_path, None, file_mode, text_change_type)
+                    _action_plans.ApplyTextFileActionPlan(
+                        file_path,
+                        None,
+                        file_mode,
+                        text_change_type,
+                    )
                 )
                 continue
 
@@ -542,7 +456,7 @@ def command_apply_from_batch(
                 except AtomicUnitError as e:
                     if rendered:
                         translate_atomic_unit_error_to_gutter_ids(e, rendered, "apply", batch_name)
-                    _close_apply_plans(apply_plans)
+                    _action_plans.close_action_plans(apply_plans)
                     exit_with_error(_("Failed to apply batch '{name}': {error}").format(
                         name=batch_name,
                         error=str(e)
@@ -554,7 +468,12 @@ def command_apply_from_batch(
                 merged_buffer,
             )
             apply_plans.append(
-                _ApplyTextPlan(file_path, merged_buffer, file_mode, effective_change_type)
+                _action_plans.ApplyTextFileActionPlan(
+                    file_path,
+                    merged_buffer,
+                    file_mode,
+                    effective_change_type,
+                )
             )
 
         except MergeError:
@@ -570,18 +489,18 @@ def command_apply_from_batch(
             failed_files.append(file_path)
         except CommandError:
             # Re-raise user errors (e.g., partial atomic selection)
-            _close_apply_plans(apply_plans)
+            _action_plans.close_action_plans(apply_plans)
             raise
         except Exception as e:
             print(_("Error applying {file}: {error}").format(file=file_path, error=str(e)), file=sys.stderr)
             failed_files.append(file_path)
 
     if failed_files:
-        _close_apply_plans(apply_plans)
+        _action_plans.close_action_plans(apply_plans)
         candidate_limit_files = [
             file_path
             for file_path in failed_files
-            if candidate_counts.get(file_path, _ApplyCandidateCount()).too_many
+            if candidate_counts.get(file_path, CandidatePreviewCount()).too_many
         ]
         if len(candidate_limit_files) == 1:
             file_path = candidate_limit_files[0]
@@ -609,8 +528,8 @@ def command_apply_from_batch(
             file_path
             for file_path in failed_files
             if (
-                candidate_counts.get(file_path, _ApplyCandidateCount()).error
-                and not candidate_counts.get(file_path, _ApplyCandidateCount()).too_many
+                candidate_counts.get(file_path, CandidatePreviewCount()).error
+                and not candidate_counts.get(file_path, CandidatePreviewCount()).too_many
             )
         ]
         if len(candidate_error_files) == 1:
@@ -638,7 +557,7 @@ def command_apply_from_batch(
         ambiguous_files = [
             file_path
             for file_path in failed_files
-            if candidate_counts.get(file_path, _ApplyCandidateCount()).count
+            if candidate_counts.get(file_path, CandidatePreviewCount()).count
         ]
         if len(ambiguous_files) == 1:
             file_path = ambiguous_files[0]
@@ -704,19 +623,25 @@ def command_apply_from_batch(
             with undo_checkpoint(" ".join(operation_parts), worktree_paths=list(files)):
                 for plan in apply_plans:
                     snapshot_file_if_untracked(plan.file_path)
-                    if isinstance(plan, _ApplyTextPlan):
-                        _write_text_file_from_batch(
+                    if isinstance(plan, _action_plans.ApplyTextFileActionPlan):
+                        _text_file_actions.write_text_file_to_worktree(
                             plan.file_path,
                             plan.buffer,
                             plan.file_mode,
                             plan.change_type,
                         )
-                    elif isinstance(plan, _ApplyBinaryPlan):
-                        _write_binary_file_from_batch(
+                    elif isinstance(plan, _action_plans.BinaryFileActionPlan):
+                        action = _binary_file_actions.write_binary_file_to_worktree(
                             plan.file_path,
                             plan.file_meta,
                             plan.buffer,
+                            missing_content_message=(
+                                f"Binary file metadata for {plan.file_path} "
+                                f"says {plan.file_meta.get('change_type', 'modified')}, "
+                                "but the batch content is missing"
+                            ),
                         )
+                        _print_binary_worktree_result(plan.file_path, action)
                     else:
                         apply_submodule_pointer_from_batch(plan.file_path, plan.file_meta)
         except CommandError:
@@ -738,7 +663,7 @@ def command_apply_from_batch(
                 )
             )
     finally:
-        _close_apply_plans(apply_plans)
+        _action_plans.close_action_plans(apply_plans)
 
     for file_path in files:
         finish_review_scoped_line_action(scope_resolution.review_state, file_path=file_path)

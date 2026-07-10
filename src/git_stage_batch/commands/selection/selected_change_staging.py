@@ -3,17 +3,199 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 
-from ...core.models import GitlinkChange, RenameChange, TextFileDeletionChange
+from ...core.buffer import LineBuffer
+from ...core.diff_parser import patch_is_file_deletion
+from ...core.models import (
+    BinaryFileChange,
+    GitlinkChange,
+    RenameChange,
+    TextFileDeletionChange,
+)
+from ...data.hunk_tracking import fetch_next_change
 from ...data.index_entries import read_index_entry
-from ...exceptions import exit_with_error
+from ...data.progress import record_hunk_included
+from ...data.selected_change.loading import load_selected_change
+from ...data.undo import undo_checkpoint
+from ...exceptions import NoMoreHunks, exit_with_error
 from ...i18n import _
+from ...staging.operations import update_index_with_blob_buffer
+from ...utils.file_io import read_text_file_contents
 from ...utils.git import (
     GitIndexEntryUpdate,
+    git_add_paths,
+    git_apply_to_index,
     git_update_gitlink,
     git_update_index,
     git_update_index_entries,
 )
+from ...utils.paths import (
+    get_selected_hunk_hash_file_path,
+    get_selected_hunk_patch_file_path,
+)
+from .action_completion import finish_selected_change_action
+
+
+def include_selected_change(
+    *,
+    quiet: bool = False,
+    auto_advance: bool | None = None,
+) -> int | None:
+    """Include the currently selected change in the index."""
+    item = load_selected_change()
+    if item is None:
+        try:
+            item = fetch_next_change()
+        except NoMoreHunks:
+            if not quiet:
+                print(_("No more hunks to process."), file=sys.stderr)
+            return 0
+
+    with undo_checkpoint("include"):
+        return _include_loaded_selected_change(
+            item,
+            quiet=quiet,
+            auto_advance=auto_advance,
+        )
+
+
+def _include_loaded_selected_change(
+    item,
+    *,
+    quiet: bool,
+    auto_advance: bool | None,
+) -> None:
+    """Include one loaded selected change in the index."""
+    patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
+
+    if isinstance(item, RenameChange):
+        stage_rename_change(item)
+        record_hunk_included(patch_hash)
+
+        if not quiet:
+            print(
+                _("✓ Rename staged: {old} -> {new}").format(
+                    old=item.old_path,
+                    new=item.new_path,
+                ),
+                file=sys.stderr,
+            )
+
+        finish_selected_change_action(
+            quiet=quiet,
+            auto_advance=auto_advance,
+        )
+        return
+
+    if isinstance(item, TextFileDeletionChange):
+        stage_text_deletion_change(item)
+        record_hunk_included(patch_hash)
+
+        if not quiet:
+            print(
+                _("✓ Text file deletion staged: {file}").format(file=item.path()),
+                file=sys.stderr,
+            )
+
+        finish_selected_change_action(
+            quiet=quiet,
+            auto_advance=auto_advance,
+        )
+        return
+
+    if isinstance(item, GitlinkChange):
+        result = stage_gitlink_change(item)
+        if result.returncode != 0:
+            print(
+                _("Failed to stage submodule pointer: {error}").format(
+                    error=result.stderr,
+                ),
+                file=sys.stderr,
+            )
+            return
+
+        record_hunk_included(patch_hash)
+
+        if not quiet:
+            print(
+                _("✓ Submodule pointer {desc}: {file}").format(
+                    desc=item.change_type,
+                    file=item.path(),
+                ),
+                file=sys.stderr,
+            )
+
+        finish_selected_change_action(
+            quiet=quiet,
+            auto_advance=auto_advance,
+        )
+        return
+
+    if isinstance(item, BinaryFileChange):
+        file_path = item.new_path if item.new_path != "/dev/null" else item.old_path
+        result = git_add_paths([file_path], check=False)
+        if result.returncode != 0:
+            print(
+                _("Failed to stage binary file: {error}").format(
+                    error=result.stderr,
+                ),
+                file=sys.stderr,
+            )
+            return
+
+        record_hunk_included(patch_hash)
+
+        if not quiet:
+            if item.is_new_file():
+                change_desc = "added"
+            elif item.is_deleted_file():
+                change_desc = "deleted"
+            else:
+                change_desc = "modified"
+            print(
+                _("✓ Binary file {desc}: {file}").format(
+                    desc=change_desc,
+                    file=file_path,
+                ),
+                file=sys.stderr,
+            )
+
+        finish_selected_change_action(
+            quiet=quiet,
+            auto_advance=auto_advance,
+        )
+        return
+
+    file_path = item.path
+
+    with LineBuffer.from_path(get_selected_hunk_patch_file_path()) as patch_buffer:
+        if patch_is_file_deletion(patch_buffer):
+            with LineBuffer.from_bytes(b"") as empty_buffer:
+                update_index_with_blob_buffer(file_path, empty_buffer)
+            apply_result = None
+        else:
+            apply_result = git_apply_to_index(
+                patch_buffer.byte_chunks(),
+                check=False,
+            )
+
+    if apply_result is not None and apply_result.returncode != 0:
+        print(
+            _("Failed to apply hunk: {error}").format(error=apply_result.stderr),
+            file=sys.stderr,
+        )
+        return
+
+    record_hunk_included(patch_hash)
+
+    if not quiet:
+        print(_("✓ Hunk staged from {file}").format(file=file_path), file=sys.stderr)
+
+    finish_selected_change_action(
+        quiet=quiet,
+        auto_advance=auto_advance,
+    )
 
 
 def stage_gitlink_change(gitlink_change: GitlinkChange) -> subprocess.CompletedProcess:

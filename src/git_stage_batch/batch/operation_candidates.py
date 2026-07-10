@@ -38,6 +38,15 @@ class CandidateEnumerationLimitError(ValueError):
     """Raised when a candidate set is too large to preview safely."""
 
 
+@dataclass(frozen=True)
+class CandidatePreviewCount:
+    """Candidate preview count result for one file."""
+
+    count: int = 0
+    too_many: bool = False
+    error: str | None = None
+
+
 @dataclass
 class TargetCandidatePreview:
     """Materialized candidate result for one target."""

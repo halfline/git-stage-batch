@@ -10,6 +10,7 @@ import git_stage_batch.batch.operation_candidates as operation_candidates
 import git_stage_batch.commands.apply_from as apply_from_module
 import git_stage_batch.commands.include_from as include_from_module
 import git_stage_batch.commands.show_from as show_from_module
+import git_stage_batch.output.candidate_preview as candidate_preview_module
 from git_stage_batch.batch.operations import create_batch
 from git_stage_batch.batch.ownership import (
     AbsenceClaim,
@@ -222,7 +223,7 @@ def test_show_candidate_set_lists_context_and_commands(temp_git_repo, capsys):
 
 def test_multiline_ambiguous_block_summary_uses_ellipsis():
     """Candidate summaries should name a multi-line block by its endpoints."""
-    assert show_from_module._summarize_ambiguity_block(
+    assert candidate_preview_module._summarize_ambiguity_block(
         ["vanilla extract", "nutmeg"],
     ) == '"vanilla extract … nutmeg"'
 
@@ -235,7 +236,7 @@ def test_candidate_overview_subject_names_only_ambiguous_targets():
             SimpleNamespace(target="worktree", resolution_count=2),
         ),
     )
-    assert show_from_module._candidate_overview_subject((preview,)) == (
+    assert candidate_preview_module._candidate_overview_subject((preview,)) == (
         "working tree",
         "has",
     )
@@ -246,7 +247,7 @@ def test_candidate_overview_subject_names_only_ambiguous_targets():
             SimpleNamespace(target="worktree", resolution_count=1),
         ),
     )
-    assert show_from_module._candidate_overview_subject((preview,)) == (
+    assert candidate_preview_module._candidate_overview_subject((preview,)) == (
         "index",
         "has",
     )
@@ -257,7 +258,7 @@ def test_candidate_overview_subject_names_only_ambiguous_targets():
             SimpleNamespace(target="worktree", resolution_count=2),
         ),
     )
-    assert show_from_module._candidate_overview_subject((preview,)) == (
+    assert candidate_preview_module._candidate_overview_subject((preview,)) == (
         "working tree and index",
         "have",
     )
@@ -271,7 +272,7 @@ def test_show_candidate_set_highlights_candidate_regions_when_colored(
     """Candidate summaries should visually mark the chosen ambiguous region."""
     _create_displaced_absence_batch(temp_git_repo)
     monkeypatch.setattr(
-        show_from_module.Colors,
+        candidate_preview_module.Colors,
         "enabled",
         staticmethod(lambda: True),
     )
@@ -279,11 +280,11 @@ def test_show_candidate_set_highlights_candidate_regions_when_colored(
     command_show_from_batch("ambiguous:apply", file="file.txt")
 
     captured = capsys.readouterr()
-    assert show_from_module.Colors.REVERSE in captured.out
-    assert show_from_module.Colors.GRAY in captured.out
-    assert show_from_module.Colors.RED in captured.out
-    assert f"{show_from_module.Colors.REVERSE}{show_from_module.Colors.RED}" not in captured.out
-    assert f"{show_from_module.Colors.REVERSE}{show_from_module.Colors.GRAY}" in captured.out
+    assert candidate_preview_module.Colors.REVERSE in captured.out
+    assert candidate_preview_module.Colors.GRAY in captured.out
+    assert candidate_preview_module.Colors.RED in captured.out
+    assert f"{candidate_preview_module.Colors.REVERSE}{candidate_preview_module.Colors.RED}" not in captured.out
+    assert f"{candidate_preview_module.Colors.REVERSE}{candidate_preview_module.Colors.GRAY}" in captured.out
     assert "3│ " in captured.out
 
 
@@ -459,7 +460,7 @@ def test_numbered_show_candidate_keeps_diff_colors_when_colored(
     """Candidate diffs should use normal red/green diff colors."""
     _create_displaced_absence_batch(temp_git_repo)
     monkeypatch.setattr(
-        show_from_module.Colors,
+        candidate_preview_module.Colors,
         "enabled",
         staticmethod(lambda: True),
     )
@@ -467,10 +468,10 @@ def test_numbered_show_candidate_keeps_diff_colors_when_colored(
     command_show_from_batch("ambiguous:apply:1", file="file.txt")
 
     captured = capsys.readouterr()
-    assert show_from_module.Colors.REVERSE in captured.out
-    assert show_from_module.Colors.RED in captured.out
-    assert f"{show_from_module.Colors.REVERSE}{show_from_module.Colors.RED}" not in captured.out
-    assert f"{show_from_module.Colors.REVERSE}{show_from_module.Colors.GRAY}" in captured.out
+    assert candidate_preview_module.Colors.REVERSE in captured.out
+    assert candidate_preview_module.Colors.RED in captured.out
+    assert f"{candidate_preview_module.Colors.REVERSE}{candidate_preview_module.Colors.RED}" not in captured.out
+    assert f"{candidate_preview_module.Colors.REVERSE}{candidate_preview_module.Colors.GRAY}" in captured.out
 
 
 def test_numbered_include_candidate_separates_target_sections(

@@ -5,18 +5,22 @@ from __future__ import annotations
 from contextlib import ExitStack
 import os
 import sys
-from dataclasses import dataclass
 from typing import Optional
 
+from .batch_source import action_plans as _action_plans
+from .batch_source import binary_file_actions as _binary_file_actions
+from .batch_source import text_file_actions as _text_file_actions
+from .selection import replacement_selection
+from ..batch.binary_file_content import read_binary_file_from_batch
 from ..batch.merge import merge_batch_from_line_sequences_as_buffer
 from ..batch.metadata_validation import read_validated_batch_metadata
 from ..batch.operation_candidates import (
     CandidateEnumerationLimitError,
+    CandidatePreviewCount,
     build_include_candidate_previews,
     clear_candidate_preview_state_for_file,
     load_candidate_preview_state,
 )
-from ..batch.query import get_batch_commit_sha
 from ..batch.replacement import build_replacement_batch_view_from_lines
 from ..core.replacement import (
     ReplacementPayload,
@@ -52,10 +56,7 @@ from ..data.file_review.state import (
 )
 from ..data.file_review.batch_selection import translate_batch_file_gutter_ids_to_selection_ids
 from ..batch.file_display import render_batch_file_display
-from ..core.buffer import (
-    LineBuffer,
-    write_buffer_to_working_tree_path,
-)
+from ..core.buffer import LineBuffer
 from ..utils.repository_buffers import (
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
@@ -70,150 +71,11 @@ from ..exceptions import (
     exit_with_error,
 )
 from ..i18n import _
-from ..staging.operations import update_index_with_blob_buffer
 from ..utils.git import (
-    create_git_blob,
     get_git_repository_root_path,
     git_refresh_index,
-    git_update_index,
     require_git_repository,
 )
-
-
-@dataclass
-class _IncludeTextPlan:
-    file_path: str
-    index_buffer: LineBuffer | None
-    working_buffer: LineBuffer | None
-    index_file_mode: str | None
-    working_file_mode: str | None
-    index_change_type: str
-    working_change_type: str
-
-    def close(self) -> None:
-        if self.index_buffer is not None:
-            self.index_buffer.close()
-        if self.working_buffer is not None and self.working_buffer is not self.index_buffer:
-            self.working_buffer.close()
-
-
-@dataclass
-class _IncludeBinaryPlan:
-    file_path: str
-    file_meta: dict
-    buffer: LineBuffer | None
-
-    def close(self) -> None:
-        if self.buffer is not None:
-            self.buffer.close()
-
-
-@dataclass(frozen=True)
-class _IncludeSubmodulePlan:
-    file_path: str
-    file_meta: dict
-
-    def close(self) -> None:
-        return None
-
-
-def _close_include_plans(plans) -> None:
-    for plan in plans:
-        plan.close()
-
-
-@dataclass(frozen=True)
-class _IncludeCandidateCount:
-    count: int = 0
-    too_many: bool = False
-    error: str | None = None
-
-
-def _read_binary_file_from_batch(
-    batch_name: str,
-    file_path: str,
-    file_meta: dict,
-) -> LineBuffer | None:
-    """Read one binary batch target, or return None for a stored deletion."""
-    batch_commit = get_batch_commit_sha(batch_name)
-    if not batch_commit:
-        raise RuntimeError(f"Batch commit not found for batch '{batch_name}'")
-
-    change_type = file_meta.get("change_type", "modified")
-    if change_type == "deleted":
-        return None
-
-    buffer = load_git_object_as_buffer(f"{batch_commit}:{file_path}")
-    if buffer is None:
-        raise RuntimeError(f"Binary file not found in batch commit: {file_path}")
-
-    return buffer
-
-
-def _stage_binary_file_from_batch(
-    file_path: str,
-    file_meta: dict,
-    buffer: LineBuffer | None,
-) -> None:
-    """Stage one binary batch target into the index."""
-    change_type = file_meta.get("change_type", "modified")
-    if change_type == "deleted":
-        result = git_update_index(file_path=file_path, force_remove=True, check=False)
-        if result.returncode != 0:
-            raise RuntimeError(f"Failed to stage binary deletion for {file_path}: {result.stderr}")
-        return
-
-    if buffer is None:
-        raise RuntimeError(f"Binary file not found in batch commit: {file_path}")
-
-    blob_hash = create_git_blob(buffer.byte_chunks())
-    file_mode = file_meta.get("mode", "100644")
-    git_update_index(file_path=file_path, mode=str(file_mode), blob_sha=blob_hash)
-
-
-def _stage_text_file_from_batch(
-    file_path: str,
-    buffer: LineBuffer | None,
-    file_mode: str | None,
-    change_type: str = "modified",
-) -> None:
-    """Stage a text buffer, optionally forcing the batch target mode."""
-    if normalized_text_change_type(change_type) == TextFileChangeType.DELETED:
-        result = git_update_index(file_path=file_path, force_remove=True, check=False)
-        if result.returncode != 0:
-            raise RuntimeError(f"Failed to stage text deletion for {file_path}: {result.stderr}")
-        return
-
-    if buffer is None:
-        raise RuntimeError(f"Text file not found in batch content: {file_path}")
-
-    if file_mode is None:
-        update_index_with_blob_buffer(file_path, buffer)
-        return
-
-    blob_hash = create_git_blob(buffer.byte_chunks())
-    git_update_index(file_path=file_path, mode=file_mode, blob_sha=blob_hash)
-
-
-def _write_text_file_from_batch(
-    file_path: str,
-    buffer: LineBuffer | None,
-    file_mode: str | None,
-    change_type: str = "modified",
-) -> None:
-    """Write one text batch target into the working tree."""
-    repo_root = get_git_repository_root_path()
-    full_path = repo_root / file_path
-
-    if normalized_text_change_type(change_type) == TextFileChangeType.DELETED:
-        if os.path.lexists(full_path):
-            full_path.unlink()
-        return
-
-    if buffer is None:
-        raise RuntimeError(f"Text file not found in batch content: {file_path}")
-
-    write_buffer_to_working_tree_path(full_path, buffer, mode=file_mode)
 
 
 def _execute_include_candidate(
@@ -362,13 +224,13 @@ def _execute_include_candidate(
                 operation_parts = ["include", "--from", raw_selector, "--file", file_path]
                 with undo_checkpoint(" ".join(operation_parts), worktree_paths=[file_path]):
                     snapshot_file_if_untracked(file_path)
-                    _stage_text_file_from_batch(
+                    _text_file_actions.stage_text_file_to_index(
                         file_path,
                         index_target.after_buffer,
                         index_file_mode,
                         index_change_type,
                     )
-                    _write_text_file_from_batch(
+                    _text_file_actions.write_text_file_to_worktree(
                         file_path,
                         worktree_target.after_buffer,
                         working_file_mode,
@@ -398,15 +260,15 @@ def _include_candidate_count_for_file(
     file_meta: dict,
     selection_ids_to_include: set[int] | None,
     replacement_payload: ReplacementPayload | None,
-) -> _IncludeCandidateCount:
+) -> CandidatePreviewCount:
     if file_meta.get("file_type") == "binary" or is_batch_submodule_pointer(file_meta):
-        return _IncludeCandidateCount()
+        return CandidatePreviewCount()
     batch_source_commit = file_meta.get("batch_source_commit")
     if not batch_source_commit:
-        return _IncludeCandidateCount()
+        return CandidatePreviewCount()
     batch_source_buffer = load_git_object_as_buffer(f"{batch_source_commit}:{file_path}")
     if batch_source_buffer is None:
-        return _IncludeCandidateCount()
+        return CandidatePreviewCount()
     index_buffer = load_git_object_as_buffer(f":{file_path}")
     index_exists = index_buffer is not None
     if index_buffer is None:
@@ -470,48 +332,13 @@ def _include_candidate_count_for_file(
                 count = len(previews)
                 for preview in previews:
                     preview.close()
-                return _IncludeCandidateCount(count=count)
+                return CandidatePreviewCount(count=count)
     except CandidateEnumerationLimitError as e:
-        return _IncludeCandidateCount(too_many=True, error=str(e))
+        return CandidatePreviewCount(too_many=True, error=str(e))
     except MergeError:
-        return _IncludeCandidateCount()
+        return CandidatePreviewCount()
     except Exception as e:
-        return _IncludeCandidateCount(error=str(e))
-
-
-def _write_binary_file_from_batch(
-    file_path: str,
-    file_meta: dict,
-    buffer: LineBuffer | None,
-) -> None:
-    """Write one binary batch target into the working tree."""
-    repo_root = get_git_repository_root_path()
-    full_path = repo_root / file_path
-    change_type = file_meta.get("change_type", "modified")
-
-    if change_type == "deleted":
-        if os.path.lexists(full_path):
-            full_path.unlink()
-        return
-
-    if buffer is None:
-        raise RuntimeError(f"Binary file not found in batch commit: {file_path}")
-
-    write_buffer_to_working_tree_path(
-        full_path,
-        buffer,
-        mode=str(file_meta.get("mode", "100644")),
-    )
-
-
-def _require_contiguous_display_selection(selected_ids: set[int]) -> None:
-    """Require one contiguous selected display range for replacement text."""
-    if not selected_ids:
-        return
-
-    selected_range = list(range(min(selected_ids), max(selected_ids) + 1))
-    if sorted(selected_ids) != selected_range:
-        exit_with_error(_("Replacement selection must be one contiguous line range."))
+        return CandidatePreviewCount(error=str(e))
 
 
 def command_include_from_batch(
@@ -609,7 +436,7 @@ def command_include_from_batch(
     rendered = None  # Store for error translation
     if selected_ids:
         if replacement_payload is not None:
-            _require_contiguous_display_selection(selected_ids)
+            replacement_selection.require_contiguous_display_selection(selected_ids)
         file_path_for_render = list(files.keys())[0]  # Single file context enforced above
         selection_ids_to_include, rendered = translate_batch_file_gutter_ids_to_selection_ids(
             batch_name,
@@ -638,7 +465,7 @@ def command_include_from_batch(
 
     repo_root = get_git_repository_root_path()
     failed_files = []
-    candidate_counts: dict[str, _IncludeCandidateCount] = {}
+    candidate_counts: dict[str, CandidatePreviewCount] = {}
     include_plans = []
 
     for file_path, file_meta in files.items():
@@ -646,11 +473,26 @@ def command_include_from_batch(
         merged_working_buffer = None
         try:
             if file_meta.get("file_type") == "binary":
-                batch_buffer = _read_binary_file_from_batch(batch_name, file_path, file_meta)
-                include_plans.append(_IncludeBinaryPlan(file_path, file_meta, batch_buffer))
+                batch_buffer = read_binary_file_from_batch(
+                    batch_name,
+                    file_path,
+                    file_meta,
+                    missing_content_message=(
+                        f"Binary file not found in batch commit: {file_path}"
+                    ),
+                )
+                include_plans.append(
+                    _action_plans.BinaryFileActionPlan(
+                        file_path,
+                        file_meta,
+                        batch_buffer,
+                    )
+                )
                 continue
             if is_batch_submodule_pointer(file_meta):
-                include_plans.append(_IncludeSubmodulePlan(file_path, file_meta))
+                include_plans.append(
+                    _action_plans.SubmodulePointerActionPlan(file_path, file_meta)
+                )
                 continue
 
             text_change_type = normalized_text_change_type(file_meta.get("change_type"))
@@ -677,7 +519,7 @@ def command_include_from_batch(
             if selected_ids is None and text_change_type == TextFileChangeType.DELETED:
                 index_buffer.close()
                 include_plans.append(
-                    _IncludeTextPlan(
+                    _action_plans.IncludeTextFileActionPlan(
                         file_path,
                         None,
                         None,
@@ -723,7 +565,7 @@ def command_include_from_batch(
                                     replacement_payload,
                                 )
                             except ValueError as e:
-                                _close_include_plans(include_plans)
+                                _action_plans.close_action_plans(include_plans)
                                 exit_with_error(str(e))
 
                             with replacement_view:
@@ -752,7 +594,7 @@ def command_include_from_batch(
                 except AtomicUnitError as e:
                     if rendered:
                         translate_atomic_unit_error_to_gutter_ids(e, rendered, "include from", batch_name)
-                    _close_include_plans(include_plans)
+                    _action_plans.close_action_plans(include_plans)
                     exit_with_error(_("Failed to include from batch '{name}': {error}").format(
                         name=batch_name,
                         error=str(e)
@@ -769,7 +611,7 @@ def command_include_from_batch(
                 merged_working_buffer,
             )
             include_plans.append(
-                _IncludeTextPlan(
+                _action_plans.IncludeTextFileActionPlan(
                     file_path,
                     merged_index_buffer,
                     merged_working_buffer,
@@ -800,18 +642,18 @@ def command_include_from_batch(
             failed_files.append(file_path)
         except CommandError:
             # Re-raise user errors (e.g., partial atomic selection)
-            _close_include_plans(include_plans)
+            _action_plans.close_action_plans(include_plans)
             raise
         except Exception as e:
             print(_("Error staging {file}: {error}").format(file=file_path, error=str(e)), file=sys.stderr)
             failed_files.append(file_path)
 
     if failed_files:
-        _close_include_plans(include_plans)
+        _action_plans.close_action_plans(include_plans)
         candidate_limit_files = [
             file_path
             for file_path in failed_files
-            if candidate_counts.get(file_path, _IncludeCandidateCount()).too_many
+            if candidate_counts.get(file_path, CandidatePreviewCount()).too_many
         ]
         if len(candidate_limit_files) == 1:
             file_path = candidate_limit_files[0]
@@ -839,8 +681,8 @@ def command_include_from_batch(
             file_path
             for file_path in failed_files
             if (
-                candidate_counts.get(file_path, _IncludeCandidateCount()).error
-                and not candidate_counts.get(file_path, _IncludeCandidateCount()).too_many
+                candidate_counts.get(file_path, CandidatePreviewCount()).error
+                and not candidate_counts.get(file_path, CandidatePreviewCount()).too_many
             )
         ]
         if len(candidate_error_files) == 1:
@@ -868,7 +710,7 @@ def command_include_from_batch(
         ambiguous_files = [
             file_path
             for file_path in failed_files
-            if candidate_counts.get(file_path, _IncludeCandidateCount()).count
+            if candidate_counts.get(file_path, CandidatePreviewCount()).count
         ]
         if len(ambiguous_files) == 1:
             file_path = ambiguous_files[0]
@@ -934,22 +776,30 @@ def command_include_from_batch(
             with undo_checkpoint(" ".join(operation_parts), worktree_paths=list(files)):
                 for plan in include_plans:
                     snapshot_file_if_untracked(plan.file_path)
-                    if isinstance(plan, _IncludeTextPlan):
-                        _stage_text_file_from_batch(
+                    if isinstance(plan, _action_plans.IncludeTextFileActionPlan):
+                        _text_file_actions.stage_text_file_to_index(
                             plan.file_path,
                             plan.index_buffer,
                             plan.index_file_mode,
                             plan.index_change_type,
                         )
-                        _write_text_file_from_batch(
+                        _text_file_actions.write_text_file_to_worktree(
                             plan.file_path,
                             plan.working_buffer,
                             plan.working_file_mode,
                             plan.working_change_type,
                         )
-                    elif isinstance(plan, _IncludeBinaryPlan):
-                        _stage_binary_file_from_batch(plan.file_path, plan.file_meta, plan.buffer)
-                        _write_binary_file_from_batch(plan.file_path, plan.file_meta, plan.buffer)
+                    elif isinstance(plan, _action_plans.BinaryFileActionPlan):
+                        _binary_file_actions.stage_binary_file_to_index(
+                            plan.file_path,
+                            plan.file_meta,
+                            plan.buffer,
+                        )
+                        _binary_file_actions.write_binary_file_to_worktree(
+                            plan.file_path,
+                            plan.file_meta,
+                            plan.buffer,
+                        )
                     else:
                         stage_submodule_pointer_from_batch(plan.file_path, plan.file_meta)
         except CommandError:
@@ -971,7 +821,7 @@ def command_include_from_batch(
                 )
             )
     finally:
-        _close_include_plans(include_plans)
+        _action_plans.close_action_plans(include_plans)
 
     for file_path in files:
         finish_review_scoped_line_action(scope_resolution.review_state, file_path=file_path)

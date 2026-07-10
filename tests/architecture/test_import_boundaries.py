@@ -100,7 +100,14 @@ def test_diff_parser_uses_core_buffer_boundary():
 def test_patch_header_queries_stay_in_diff_parser():
     """Include and discard should use core patch header queries."""
     include_path = SRC_ROOT / "commands" / "include.py"
+    include_file_path = SRC_ROOT / "commands" / "file_scope" / "include_file.py"
     discard_path = SRC_ROOT / "commands" / "discard.py"
+    selected_change_batch_path = (
+        SRC_ROOT / "commands" / "selection" / "selected_change_batch_discarding.py"
+    )
+    selected_change_discarding_path = (
+        SRC_ROOT / "commands" / "selection" / "selected_change_discarding.py"
+    )
     diff_parser = __import__(
         "git_stage_batch.core.diff_parser",
         fromlist=["diff_parser"],
@@ -116,24 +123,33 @@ def test_patch_header_queries_stay_in_diff_parser():
     include_helpers = {
         node.name for node in ast.walk(include_tree) if isinstance(node, ast.FunctionDef)
     }
-    imported_diff_names = set()
-    discard_imported_diff_names = set()
+    include_file_imported_diff_names = set()
+    selected_change_batch_imported_diff_names = set()
+    selected_change_discarding_imported_diff_names = set()
 
-    for imported_module, node in _import_from_nodes(include_path):
+    for imported_module, node in _import_from_nodes(include_file_path):
         if imported_module != "git_stage_batch.core.diff_parser":
             continue
-        imported_diff_names |= {alias.name for alias in node.names}
+        include_file_imported_diff_names |= {alias.name for alias in node.names}
 
-    for imported_module, node in _import_from_nodes(discard_path):
+    for imported_module, node in _import_from_nodes(selected_change_batch_path):
         if imported_module != "git_stage_batch.core.diff_parser":
             continue
-        discard_imported_diff_names |= {alias.name for alias in node.names}
+        selected_change_batch_imported_diff_names |= {alias.name for alias in node.names}
+
+    for imported_module, node in _import_from_nodes(selected_change_discarding_path):
+        if imported_module != "git_stage_batch.core.diff_parser":
+            continue
+        selected_change_discarding_imported_diff_names |= {
+            alias.name for alias in node.names
+        }
 
     assert "_patch_is_text_file_path_deletion" not in include_helpers
-    assert "patch_is_file_deletion" in imported_diff_names
+    assert "patch_is_file_deletion" in include_file_imported_diff_names
     assert "_patch_lines_contain_line" not in discard_path.read_text()
-    assert "patch_is_empty_file_change" in discard_imported_diff_names
-    assert "patch_is_new_file" in discard_imported_diff_names
+    assert "patch_is_empty_file_change" in selected_change_batch_imported_diff_names
+    assert "patch_is_new_file" in selected_change_discarding_imported_diff_names
+    assert "patch_is_new_file" in selected_change_batch_imported_diff_names
     assert "@@ -0,0 +0,0 @@" not in discard_path.read_text()
     assert "--- /dev/null" not in discard_path.read_text()
 
@@ -1499,9 +1515,15 @@ def test_file_scope_single_file_discard_to_batch_breaks_command_import_cycle():
         "git_stage_batch.commands.file_scope.discard_file_to_batch",
         fromlist=["discard_file_to_batch"],
     )
-    support_names = {
-        "discard_binary_to_batch",
+    whole_file_helper = __import__(
+        "git_stage_batch.commands.selection.whole_file_batch_discarding",
+        fromlist=["whole_file_batch_discarding"],
+    )
+    file_scope_support_names = {
         "discard_file_to_batch",
+    }
+    whole_file_support_names = {
+        "discard_binary_to_batch",
         "discard_text_deletion_to_batch",
     }
     old_command_helper_names = {
@@ -1524,19 +1546,546 @@ def test_file_scope_single_file_discard_to_batch_breaks_command_import_cycle():
         imported_module
         for imported_module, _node in _import_from_nodes(multi_file_helper_path)
     }
+    single_file_helper_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(
+            SRC_ROOT / "commands" / "file_scope" / "discard_file_to_batch.py"
+        )
+    }
+    single_file_helper_imported_names = set()
+    for imported_module, node in _import_from_nodes(
+        SRC_ROOT / "commands" / "file_scope" / "discard_file_to_batch.py"
+    ):
+        if imported_module == "git_stage_batch.commands.selection":
+            single_file_helper_imported_names |= {alias.name for alias in node.names}
 
-    assert support_names <= vars(single_file_helper).keys()
+    assert file_scope_support_names <= vars(single_file_helper).keys()
+    assert whole_file_support_names <= vars(whole_file_helper).keys()
+    assert whole_file_support_names.isdisjoint(vars(single_file_helper).keys())
     assert old_command_helper_names.isdisjoint(vars(single_file_helper).keys())
+    assert old_command_helper_names.isdisjoint(vars(whole_file_helper).keys())
     assert old_command_helper_names.isdisjoint(discard_names)
     assert (
         "git_stage_batch.commands.file_scope.discard_file_to_batch"
         in discard_imports
     )
     assert (
+        "git_stage_batch.commands.selection.whole_file_batch_discarding"
+        in discard_imports
+    )
+    assert (
         "git_stage_batch.commands.file_scope.discard_file_to_batch"
         in multi_file_helper_imports
     )
+    assert "git_stage_batch.commands.selection" in single_file_helper_imports
+    assert "whole_file_batch_discarding" in single_file_helper_imported_names
     assert "git_stage_batch.commands.discard" not in multi_file_helper_imports
+
+
+def test_whole_file_batch_staging_owns_include_pipeline():
+    """Whole-file include-to-batch support should stay out of include.py."""
+    include_path = SRC_ROOT / "commands" / "include.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "whole_file_batch_staging.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.selection.whole_file_batch_staging",
+        fromlist=["whole_file_batch_staging"],
+    )
+    public_names = {
+        "include_binary_to_batch",
+        "include_gitlink_to_batch",
+        "include_text_deletion_to_batch",
+        "save_empty_text_lifecycle_to_batch",
+    }
+    old_command_helper_names = {
+        "_command_include_binary_to_batch",
+        "_command_include_gitlink_to_batch",
+        "_command_include_text_deletion_to_batch",
+        "_save_empty_text_lifecycle_to_batch",
+    }
+    moved_import_names = {
+        "BatchOwnership",
+        "TextFileChangeType",
+        "add_binary_file_to_batch",
+        "add_gitlink_to_batch",
+        "detect_empty_text_lifecycle_change",
+        "record_binary_hunk_skipped",
+        "record_gitlink_hunk_skipped",
+        "record_text_deletion_hunk_skipped",
+    }
+
+    include_tree = ast.parse(include_path.read_text(), filename=str(include_path))
+    include_names = {
+        node.name
+        for node in ast.walk(include_tree)
+        if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+    include_imported_names = set()
+    include_selection_imports = set()
+    for imported_module, node in _import_from_nodes(include_path):
+        imported_names = {alias.name for alias in node.names}
+        include_imported_names |= imported_names
+        if imported_module == "git_stage_batch.commands.selection":
+            include_selection_imports |= imported_names
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert old_command_helper_names.isdisjoint(include_names)
+    assert old_command_helper_names.isdisjoint(vars(helper).keys())
+    assert "whole_file_batch_staging" in include_selection_imports
+    assert moved_import_names.isdisjoint(include_imported_names)
+    assert moved_import_names <= helper_imported_names
+
+
+def test_selected_change_batch_staging_owns_include_pipeline():
+    """Selected change include-to-batch support should stay out of include.py."""
+    include_path = SRC_ROOT / "commands" / "include.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "selected_change_batch_staging.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.selection.selected_change_batch_staging",
+        fromlist=["selected_change_batch_staging"],
+    )
+    public_names = {
+        "include_selected_change_to_batch",
+    }
+    old_command_helper_names = {
+        "_command_include_hunk_to_batch",
+    }
+    moved_import_names = {
+        "acquire_batch_ownership_update_for_selection",
+        "add_file_to_batch",
+        "annotate_with_batch_source",
+        "append_lines_to_file",
+        "batch_exists",
+        "build_line_changes_from_patch_lines",
+        "create_batch",
+        "detect_file_mode",
+        "get_block_list_file_path",
+        "read_batch_metadata",
+        "read_text_file_line_set",
+        "record_hunk_skipped",
+    }
+    helper_imports = moved_import_names | {
+        "stream_live_git_diff",
+        "whole_file_batch_staging",
+    }
+
+    include_tree = ast.parse(include_path.read_text(), filename=str(include_path))
+    include_names = {
+        node.name
+        for node in ast.walk(include_tree)
+        if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+    include_imported_names = set()
+    include_selection_imports = set()
+    for imported_module, node in _import_from_nodes(include_path):
+        imported_names = {alias.name for alias in node.names}
+        include_imported_names |= imported_names
+        if imported_module == "git_stage_batch.commands.selection":
+            include_selection_imports |= imported_names
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert old_command_helper_names.isdisjoint(include_names)
+    assert old_command_helper_names.isdisjoint(vars(helper).keys())
+    assert "selected_change_batch_staging" in include_selection_imports
+    assert moved_import_names.isdisjoint(include_imported_names)
+    assert helper_imports <= helper_imported_names
+
+
+def test_file_scope_include_file_owns_file_pipeline():
+    """Explicit file-scope include support should stay out of include.py."""
+    include_path = SRC_ROOT / "commands" / "include.py"
+    helper_path = SRC_ROOT / "commands" / "file_scope" / "include_file.py"
+    helper = __import__(
+        "git_stage_batch.commands.file_scope.include_file",
+        fromlist=["include_file"],
+    )
+    public_names = {
+        "include_file_changes",
+    }
+    moved_names = {
+        "acquire_unified_diff",
+        "auto_add_untracked_files",
+        "compute_binary_file_hash",
+        "compute_gitlink_change_hash",
+        "compute_rename_change_hash",
+        "compute_stable_hunk_hash_from_lines",
+        "compute_text_file_deletion_hash",
+        "git_add_paths",
+        "git_apply_to_index",
+        "ngettext",
+        "patch_is_file_deletion",
+        "record_hunk_included",
+        "run_git_command",
+        "stream_live_git_diff",
+        "update_index_with_blob_buffer",
+    }
+    helper_imports = moved_names | {
+        "LineBuffer",
+        "finish_selected_change_action",
+        "get_selected_change_file_path",
+        "selected_change_staging",
+        "undo_checkpoint",
+    }
+
+    include_tree = ast.parse(include_path.read_text(), filename=str(include_path))
+    include_functions = {
+        node.name: node
+        for node in ast.walk(include_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    command_include_file_names = {
+        node.id
+        for node in ast.walk(include_functions["command_include_file"])
+        if isinstance(node, ast.Name)
+    }
+    command_include_file_attributes = {
+        node.attr
+        for node in ast.walk(include_functions["command_include_file"])
+        if isinstance(node, ast.Attribute)
+    }
+    include_file_scope_imports = set()
+    for imported_module, node in _import_from_nodes(include_path):
+        if imported_module == "git_stage_batch.commands.file_scope":
+            include_file_scope_imports |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert "include_file" in include_file_scope_imports
+    assert "include_file_changes" in command_include_file_attributes
+    assert moved_names.isdisjoint(command_include_file_names)
+    assert helper_imports <= helper_imported_names
+
+
+def test_file_scope_include_to_batch_owns_file_pipeline():
+    """Explicit file-scope include-to-batch support should stay out of include.py."""
+    include_path = SRC_ROOT / "commands" / "include.py"
+    helper_path = SRC_ROOT / "commands" / "file_scope" / "include_file_to_batch.py"
+    helper = __import__(
+        "git_stage_batch.commands.file_scope.include_file_to_batch",
+        fromlist=["include_file_to_batch"],
+    )
+    public_names = {
+        "include_file_to_batch",
+    }
+    old_command_helper_names = {
+        "_command_include_file_to_batch",
+    }
+    moved_names = {
+        "acquire_batch_ownership_update_for_selection",
+        "add_file_to_batch",
+        "read_batch_metadata",
+        "render_binary_file_change",
+        "render_gitlink_change",
+        "render_text_deletion_change",
+        "snapshot_file_if_untracked",
+    }
+    helper_imports = moved_names | {
+        "annotate_with_batch_source",
+        "auto_add_untracked_files",
+        "stream_live_git_diff",
+        "whole_file_batch_staging",
+    }
+
+    include_tree = ast.parse(include_path.read_text(), filename=str(include_path))
+    include_functions = {
+        node.name: node
+        for node in ast.walk(include_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    command_include_to_batch_names = {
+        node.id
+        for node in ast.walk(include_functions["command_include_to_batch"])
+        if isinstance(node, ast.Name)
+    }
+    include_names = set(include_functions)
+    include_file_scope_imports = set()
+    for imported_module, node in _import_from_nodes(include_path):
+        if imported_module == "git_stage_batch.commands.file_scope":
+            include_file_scope_imports |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert old_command_helper_names.isdisjoint(include_names)
+    assert "include_file_to_batch" in include_file_scope_imports
+    assert moved_names.isdisjoint(command_include_to_batch_names)
+    assert helper_imports <= helper_imported_names
+
+
+def test_file_scope_discard_owns_file_pipeline():
+    """Explicit file-scope discard support should stay out of discard.py."""
+    discard_path = SRC_ROOT / "commands" / "discard.py"
+    helper_path = SRC_ROOT / "commands" / "file_scope" / "discard_file.py"
+    helper = __import__(
+        "git_stage_batch.commands.file_scope.discard_file",
+        fromlist=["discard_file"],
+    )
+    public_names = {
+        "discard_file_changes",
+    }
+    moved_names = {
+        "auto_add_untracked_files",
+        "git_remove_paths",
+        "render_gitlink_change",
+        "render_rename_change",
+        "render_text_deletion_change",
+        "stream_live_git_diff",
+    }
+
+    discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    discard_functions = {
+        node.name: node
+        for node in ast.walk(discard_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    command_discard_file_names = {
+        node.id
+        for node in ast.walk(discard_functions["command_discard_file"])
+        if isinstance(node, ast.Name)
+    }
+    discard_imported_names = set()
+    for imported_module, node in _import_from_nodes(discard_path):
+        if imported_module == "git_stage_batch.commands.file_scope":
+            discard_imported_names |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert "discard_file" in discard_imported_names
+    assert moved_names.isdisjoint(command_discard_file_names)
+    assert moved_names <= helper_imported_names
+
+
+def test_file_scope_discard_replacement_owns_file_pipeline():
+    """File-scope discard replacement support should stay out of discard.py."""
+    discard_path = SRC_ROOT / "commands" / "discard.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "file_scope" / "discard_file_replacement.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.file_scope.discard_file_replacement",
+        fromlist=["discard_file_replacement"],
+    )
+    public_names = {
+        "discard_file_as_replacement",
+    }
+    moved_names = {
+        "clear_last_file_review_state_if_file_matches",
+        "coerce_replacement_payload",
+        "get_git_repository_root_path",
+        "restore_selected_change_state",
+        "snapshot_file_if_untracked",
+        "snapshot_selected_change_state",
+    }
+    moved_attributes = {
+        "mkdir",
+        "write_bytes",
+    }
+
+    discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    discard_functions = {
+        node.name: node
+        for node in ast.walk(discard_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    command_discard_file_as_names = {
+        node.id
+        for node in ast.walk(discard_functions["command_discard_file_as"])
+        if isinstance(node, ast.Name)
+    }
+    command_discard_file_as_attributes = {
+        node.attr
+        for node in ast.walk(discard_functions["command_discard_file_as"])
+        if isinstance(node, ast.Attribute)
+    }
+    discard_imported_names = set()
+    for imported_module, node in _import_from_nodes(discard_path):
+        if imported_module == "git_stage_batch.commands.file_scope":
+            discard_imported_names |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert "discard_file_replacement" in discard_imported_names
+    assert moved_names.isdisjoint(command_discard_file_as_names)
+    assert moved_attributes.isdisjoint(command_discard_file_as_attributes)
+    assert moved_names <= helper_imported_names
+
+
+def test_file_scope_include_replacement_owns_file_pipeline():
+    """File-scope include replacement support should stay out of include.py."""
+    include_path = SRC_ROOT / "commands" / "include.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "file_scope" / "include_file_replacement.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.file_scope.include_file_replacement",
+        fromlist=["include_file_replacement"],
+    )
+    public_names = {
+        "include_file_as_replacement",
+    }
+    moved_names = {
+        "clear_last_file_review_state_if_file_matches",
+        "coerce_replacement_payload",
+        "file_has_staged_changes",
+        "file_has_unstaged_changes",
+        "load_line_changes_from_state",
+        "restore_selected_change_state",
+        "snapshot_selected_change_state",
+        "update_index_with_blob_buffer",
+        "write_line_ids_file",
+    }
+    moved_attributes = {
+        "from_bytes",
+    }
+
+    include_tree = ast.parse(include_path.read_text(), filename=str(include_path))
+    include_functions = {
+        node.name: node
+        for node in ast.walk(include_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    command_include_file_as_names = {
+        node.id
+        for node in ast.walk(include_functions["command_include_file_as"])
+        if isinstance(node, ast.Name)
+    }
+    command_include_file_as_attributes = {
+        node.attr
+        for node in ast.walk(include_functions["command_include_file_as"])
+        if isinstance(node, ast.Attribute)
+    }
+    include_imported_names = set()
+    for imported_module, node in _import_from_nodes(include_path):
+        if imported_module == "git_stage_batch.commands.file_scope":
+            include_imported_names |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert "include_file_replacement" in include_imported_names
+    assert moved_names.isdisjoint(command_include_file_as_names)
+    assert moved_attributes.isdisjoint(command_include_file_as_attributes)
+    assert moved_names <= helper_imported_names
+
+
+def test_selected_change_batch_discarding_owns_hunk_pipeline():
+    """Selected change batch support should stay out of discard.py."""
+    discard_path = SRC_ROOT / "commands" / "discard.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "selected_change_batch_discarding.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.selection.selected_change_batch_discarding",
+        fromlist=["selected_change_batch_discarding"],
+    )
+    public_names = {
+        "discard_selected_change_to_batch",
+    }
+    internal_names = {
+        "_discard_text_hunk_to_batch",
+    }
+    old_command_helper_names = {
+        "_command_discard_hunk_to_batch",
+        "_command_discard_text_hunk_to_batch",
+    }
+    helper_imports = {
+        "acquire_batch_ownership_update_for_selection",
+        "add_file_to_batch",
+        "annotate_with_batch_source",
+        "fetch_next_change",
+        "patch_is_empty_file_change",
+        "patch_is_new_file",
+        "record_hunk_discarded",
+    }
+
+    discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    discard_names = {
+        node.name
+        for node in ast.walk(discard_tree)
+        if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+    discard_imported_names = set()
+    for imported_module, node in _import_from_nodes(discard_path):
+        if imported_module == "git_stage_batch.commands.selection":
+            discard_imported_names |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert internal_names <= vars(helper).keys()
+    assert old_command_helper_names.isdisjoint(discard_names)
+    assert "selected_change_batch_discarding" in discard_imported_names
+    assert helper_imports <= helper_imported_names
+
+
+def test_selected_file_discarding_owns_selected_file_pipeline():
+    """Selected file-scope discard support should stay out of discard.py."""
+    discard_path = SRC_ROOT / "commands" / "discard.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "selected_file_discarding.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.selection.selected_file_discarding",
+        fromlist=["selected_file_discarding"],
+    )
+    public_names = {
+        "discard_selected_file",
+    }
+    old_command_helper_names = {
+        "_command_discard_selected_file",
+    }
+    helper_imports = {
+        "finish_selected_change_action",
+        "get_selected_change_file_path",
+        "snapshot_file_if_untracked",
+        "undo_checkpoint",
+    }
+
+    discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    discard_names = {
+        node.name
+        for node in ast.walk(discard_tree)
+        if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+    discard_imported_names = set()
+    for imported_module, node in _import_from_nodes(discard_path):
+        if imported_module == "git_stage_batch.commands.selection":
+            discard_imported_names |= {alias.name for alias in node.names}
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert old_command_helper_names.isdisjoint(discard_names)
+    assert "selected_file_discarding" in discard_imported_names
+    assert helper_imports <= helper_imported_names
 
 
 def test_argument_parser_uses_file_scope_resolver_module():
@@ -3256,6 +3805,381 @@ def test_batch_merge_candidates_uses_public_data_types():
     assert violations == []
 
 
+def test_operation_candidates_owns_candidate_preview_count():
+    """Candidate preview count state should live with operation candidates."""
+    operation_candidates = __import__(
+        "git_stage_batch.batch.operation_candidates",
+        fromlist=["operation_candidates"],
+    )
+    public_names = {
+        "CandidatePreviewCount",
+    }
+    private_names = {
+        "_ApplyCandidateCount",
+        "_IncludeCandidateCount",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "apply_from.py": public_names,
+        SRC_ROOT / "commands" / "include_from.py": public_names,
+    }
+
+    assert public_names <= vars(operation_candidates).keys()
+    assert private_names.isdisjoint(vars(operation_candidates))
+
+    for path, expected_names in expected_imports.items():
+        tree = ast.parse(path.read_text(), filename=str(path))
+        helper_names = {
+            node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
+        }
+        imported_candidate_names = set()
+
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.batch.operation_candidates":
+                continue
+            imported_candidate_names |= {alias.name for alias in node.names}
+
+        assert private_names.isdisjoint(helper_names)
+        assert expected_names <= imported_candidate_names
+
+
+def test_output_owns_operation_candidate_preview_rendering():
+    """Operation candidate preview rendering should live in output."""
+    candidate_preview = __import__(
+        "git_stage_batch.output.candidate_preview",
+        fromlist=["candidate_preview"],
+    )
+    show_from_path = SRC_ROOT / "commands" / "show_from.py"
+    candidate_preview_path = SRC_ROOT / "output" / "candidate_preview.py"
+    public_names = {
+        "render_operation_candidate",
+        "render_operation_candidate_overview",
+    }
+    moved_names = {
+        "_candidate_overview_subject",
+        "_execute_candidate_command",
+        "_print_candidate_buffer_diff",
+        "_show_candidate_command",
+        "_summarize_ambiguity_block",
+        "_summarize_candidate_target",
+        "_CandidateSnippetLine",
+        "_CandidateTargetSummary",
+    }
+    show_from_tree = ast.parse(show_from_path.read_text(), filename=str(show_from_path))
+    show_from_helpers = {
+        node.name
+        for node in ast.walk(show_from_tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+    show_from_renderer_imports = set()
+    candidate_preview_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(candidate_preview_path)
+    }
+
+    for imported_module, node in _import_from_nodes(show_from_path):
+        if imported_module != "git_stage_batch.output.candidate_preview":
+            continue
+        show_from_renderer_imports |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(candidate_preview).keys()
+    assert moved_names <= vars(candidate_preview).keys()
+    assert public_names <= show_from_renderer_imports
+    assert moved_names.isdisjoint(show_from_helpers)
+    assert "git_stage_batch.output.colors" in candidate_preview_imports
+    assert "git_stage_batch.core.diff_parser" in candidate_preview_imports
+
+
+def test_batch_owns_atomic_file_change_metadata_conversion():
+    """Stored atomic file metadata conversion should live in batch."""
+    atomic_file_changes = __import__(
+        "git_stage_batch.batch.atomic_file_changes",
+        fromlist=["atomic_file_changes"],
+    )
+    show_from_path = SRC_ROOT / "commands" / "show_from.py"
+    public_names = {
+        "binary_change_from_batch_file_metadata",
+        "gitlink_change_from_batch_file_metadata",
+    }
+    old_names = {
+        "_render_batch_binary_file_change",
+        "_render_batch_gitlink_change",
+    }
+    model_names = {
+        "BinaryFileChange",
+        "GitlinkChange",
+    }
+    show_from_tree = ast.parse(show_from_path.read_text(), filename=str(show_from_path))
+    show_from_helpers = {
+        node.name
+        for node in ast.walk(show_from_tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+    show_from_atomic_imports = set()
+    show_from_model_imports = set()
+
+    for imported_module, node in _import_from_nodes(show_from_path):
+        imported_names = {alias.name for alias in node.names}
+        if imported_module == "git_stage_batch.batch.atomic_file_changes":
+            show_from_atomic_imports |= imported_names
+        if imported_module == "git_stage_batch.core.models":
+            show_from_model_imports |= imported_names & model_names
+
+    assert public_names <= vars(atomic_file_changes).keys()
+    assert model_names <= vars(atomic_file_changes).keys()
+    assert public_names <= show_from_atomic_imports
+    assert old_names.isdisjoint(show_from_helpers)
+    assert show_from_model_imports == set()
+
+
+def test_batch_owns_binary_file_content_loading():
+    """Stored binary batch content loading should live in batch."""
+    binary_file_content = __import__(
+        "git_stage_batch.batch.binary_file_content",
+        fromlist=["binary_file_content"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    public_names = {
+        "read_binary_file_from_batch",
+    }
+    old_names = {
+        "_read_binary_file_from_batch",
+    }
+    apply_from_tree = ast.parse(apply_from_path.read_text(), filename=str(apply_from_path))
+    apply_from_helpers = {
+        node.name
+        for node in ast.walk(apply_from_tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+    include_from_tree = ast.parse(
+        include_from_path.read_text(),
+        filename=str(include_from_path),
+    )
+    include_from_helpers = {
+        node.name
+        for node in ast.walk(include_from_tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+    loader_imports_by_path = {
+        apply_from_path: set(),
+        include_from_path: set(),
+    }
+
+    for path in loader_imports_by_path:
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.batch.binary_file_content":
+                continue
+            loader_imports_by_path[path] |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(binary_file_content).keys()
+    assert public_names <= loader_imports_by_path[apply_from_path]
+    assert public_names <= loader_imports_by_path[include_from_path]
+    assert old_names.isdisjoint(apply_from_helpers)
+    assert old_names.isdisjoint(include_from_helpers)
+
+
+def test_batch_source_action_plans_own_resource_plans():
+    """Shared batch-source action plans should live outside command entries."""
+    action_plans = __import__(
+        "git_stage_batch.commands.batch_source.action_plans",
+        fromlist=["action_plans"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    public_names = {
+        "ApplyTextFileActionPlan",
+        "BatchSourceActionPlan",
+        "BinaryFileActionPlan",
+        "IncludeTextFileActionPlan",
+        "SubmodulePointerActionPlan",
+        "close_action_plans",
+    }
+    old_apply_names = {
+        "_ApplyBinaryPlan",
+        "_ApplyTextPlan",
+        "_ApplySubmodulePlan",
+        "_close_apply_plans",
+    }
+    old_include_names = {
+        "_IncludeBinaryPlan",
+        "_IncludeTextPlan",
+        "_IncludeSubmodulePlan",
+        "_close_include_plans",
+    }
+    apply_from_tree = ast.parse(apply_from_path.read_text(), filename=str(apply_from_path))
+    apply_from_helpers = {
+        node.name
+        for node in ast.walk(apply_from_tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+    include_from_tree = ast.parse(
+        include_from_path.read_text(),
+        filename=str(include_from_path),
+    )
+    include_from_helpers = {
+        node.name
+        for node in ast.walk(include_from_tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+    imports_action_plans = {
+        apply_from_path: False,
+        include_from_path: False,
+    }
+
+    for path in imports_action_plans:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "action_plans" in imported_names
+            ):
+                imports_action_plans[path] = True
+
+    assert public_names <= vars(action_plans).keys()
+    assert imports_action_plans[apply_from_path]
+    assert imports_action_plans[include_from_path]
+    assert old_apply_names.isdisjoint(apply_from_helpers)
+    assert old_include_names.isdisjoint(include_from_helpers)
+
+
+def test_batch_source_text_actions_own_text_file_mutations():
+    """Shared text file actions should live outside command entries."""
+    text_file_actions = __import__(
+        "git_stage_batch.commands.batch_source.text_file_actions",
+        fromlist=["text_file_actions"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    public_names = {
+        "stage_text_file_to_index",
+        "write_text_file_to_worktree",
+    }
+    old_names = {
+        "_stage_text_file_from_batch",
+        "_write_text_file_from_batch",
+    }
+    command_paths = {
+        apply_from_path,
+        include_from_path,
+    }
+    helpers_by_path = {
+        path: {
+            node.name
+            for node in ast.walk(ast.parse(path.read_text(), filename=str(path)))
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+        }
+        for path in command_paths
+    }
+    imports_text_file_actions = {
+        path: False
+        for path in command_paths
+    }
+
+    for path in command_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "text_file_actions" in imported_names
+            ):
+                imports_text_file_actions[path] = True
+
+    assert public_names <= vars(text_file_actions).keys()
+    assert imports_text_file_actions == {
+        apply_from_path: True,
+        include_from_path: True,
+    }
+    for helpers in helpers_by_path.values():
+        assert old_names.isdisjoint(helpers)
+
+
+def test_batch_source_binary_actions_own_index_mutation():
+    """Shared binary index actions should live outside include-from."""
+    binary_file_actions = __import__(
+        "git_stage_batch.commands.batch_source.binary_file_actions",
+        fromlist=["binary_file_actions"],
+    )
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    public_names = {
+        "stage_binary_file_to_index",
+    }
+    old_names = {
+        "_stage_binary_file_from_batch",
+    }
+    include_from_tree = ast.parse(
+        include_from_path.read_text(),
+        filename=str(include_from_path),
+    )
+    include_from_helpers = {
+        node.name
+        for node in ast.walk(include_from_tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+    imports_binary_file_actions = False
+
+    for imported_module, node in _import_from_nodes(include_from_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_source"
+            and "binary_file_actions" in imported_names
+        ):
+            imports_binary_file_actions = True
+
+    assert public_names <= vars(binary_file_actions).keys()
+    assert imports_binary_file_actions
+    assert old_names.isdisjoint(include_from_helpers)
+
+
+def test_batch_source_binary_actions_own_worktree_mutation():
+    """Shared binary working-tree actions should live outside command entries."""
+    binary_file_actions = __import__(
+        "git_stage_batch.commands.batch_source.binary_file_actions",
+        fromlist=["binary_file_actions"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    public_names = {
+        "BinaryWorktreeAction",
+        "write_binary_file_to_worktree",
+    }
+    old_names = {
+        "_write_binary_file_from_batch",
+    }
+    command_paths = {
+        apply_from_path,
+        include_from_path,
+    }
+    helpers_by_path = {
+        path: {
+            node.name
+            for node in ast.walk(ast.parse(path.read_text(), filename=str(path)))
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+        }
+        for path in command_paths
+    }
+    imports_binary_file_actions = {
+        path: False
+        for path in command_paths
+    }
+
+    for path in command_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "binary_file_actions" in imported_names
+            ):
+                imports_binary_file_actions[path] = True
+
+    assert public_names <= vars(binary_file_actions).keys()
+    assert imports_binary_file_actions == {
+        apply_from_path: True,
+        include_from_path: True,
+    }
+    for helpers in helpers_by_path.values():
+        assert old_names.isdisjoint(helpers)
+
+
 def test_batch_merge_does_not_reexport_merge_exceptions():
     """Merge exceptions should stay on the shared exception boundary."""
     merge = __import__(
@@ -3525,7 +4449,11 @@ def test_selected_change_loading_stays_out_of_hunk_tracking():
         "require_selected_hunk",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "include.py": moved_names,
+        SRC_ROOT / "commands" / "include.py": {"load_selected_change"},
+        SRC_ROOT
+        / "commands"
+        / "selection"
+        / "include_line_batching.py": {"require_selected_hunk"},
         SRC_ROOT / "commands" / "discard.py": moved_names,
         SRC_ROOT / "commands" / "skip.py": moved_names,
         SRC_ROOT / "commands" / "suggest_fixup.py": {"require_selected_hunk"},
@@ -3580,7 +4508,6 @@ def test_selected_hunk_filtering_stays_out_of_hunk_tracking():
         "apply_line_level_batch_filter_to_cached_hunk",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "include.py": moved_names,
         SRC_ROOT / "commands" / "show.py": moved_names,
     }
     violations = []
@@ -3800,8 +4727,14 @@ def test_batch_file_mode_detection_stays_in_data_module():
         fromlist=["file_modes"],
     )
     expected_imports = {
-        SRC_ROOT / "commands" / "include.py": {"detect_file_mode"},
-        SRC_ROOT / "commands" / "discard.py": {"detect_file_mode"},
+        SRC_ROOT
+        / "commands"
+        / "selection"
+        / "selected_change_batch_staging.py": {"detect_file_mode"},
+        SRC_ROOT
+        / "commands"
+        / "selection"
+        / "selected_change_batch_discarding.py": {"detect_file_mode"},
         SRC_ROOT
         / "commands"
         / "file_scope"
@@ -3833,6 +4766,9 @@ def test_batch_file_mode_detection_stays_in_data_module():
 def test_file_change_status_queries_stay_in_data_module():
     """Include should use data helpers for file change status probes."""
     include_path = SRC_ROOT / "commands" / "include.py"
+    replacement_path = (
+        SRC_ROOT / "commands" / "file_scope" / "include_file_replacement.py"
+    )
     status_path = SRC_ROOT / "data" / "file_change_status.py"
     file_change_status = __import__(
         "git_stage_batch.data.file_change_status",
@@ -3853,9 +4789,13 @@ def test_file_change_status_queries_stay_in_data_module():
     include_helpers = {
         node.name for node in ast.walk(include_tree) if isinstance(node, ast.FunctionDef)
     }
+    include_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(include_path)
+    }
     imported_status_names = set()
 
-    for imported_module, node in _import_from_nodes(include_path):
+    for imported_module, node in _import_from_nodes(replacement_path):
         if imported_module != "git_stage_batch.data.file_change_status":
             continue
         imported_status_names |= {alias.name for alias in node.names}
@@ -3865,6 +4805,7 @@ def test_file_change_status_queries_stay_in_data_module():
         status_imported_names |= {alias.name for alias in node.names}
 
     assert old_include_names.isdisjoint(include_helpers)
+    assert "git_stage_batch.data.file_change_status" not in include_imports
     assert public_names <= imported_status_names
     assert "run_git_command" in status_imported_names
 
@@ -3901,42 +4842,79 @@ def test_index_entry_lookup_stays_in_data_module():
         assert expected_names <= imported_index_names
 
 
-def test_include_selected_change_staging_stays_in_command_helper():
-    """Include should use the selected-change staging helper module."""
+def test_selected_change_staging_owns_include_pipeline():
+    """Selected change include support should stay out of include.py."""
     include_path = SRC_ROOT / "commands" / "include.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "selected_change_staging.py"
+    )
     helper = __import__(
         "git_stage_batch.commands.selection.selected_change_staging",
         fromlist=["selected_change_staging"],
     )
     public_names = {
+        "include_selected_change",
         "stage_gitlink_change",
         "stage_rename_change",
         "stage_text_deletion_change",
+    }
+    internal_names = {
+        "_include_loaded_selected_change",
     }
     old_include_names = {
         "_stage_rename_change",
         "_stage_text_deletion_change",
         "_update_index_for_gitlink_change",
     }
+    moved_names = {
+        "NoMoreHunks",
+        "fetch_next_change",
+        "get_selected_hunk_hash_file_path",
+        "get_selected_hunk_patch_file_path",
+        "git_apply_to_index",
+        "git_add_paths",
+        "load_selected_change",
+        "patch_is_file_deletion",
+        "read_text_file_contents",
+        "record_hunk_included",
+        "update_index_with_blob_buffer",
+    }
+    helper_imports = moved_names | {
+        "BinaryFileChange",
+        "LineBuffer",
+        "finish_selected_change_action",
+        "undo_checkpoint",
+    }
 
     assert public_names <= vars(helper).keys()
+    assert internal_names <= vars(helper).keys()
 
     tree = ast.parse(include_path.read_text(), filename=str(include_path))
-    include_helpers = {
-        node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+    include_functions = {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
     }
-    imported_staging_names = set()
+    command_include_names = {
+        node.id
+        for node in ast.walk(include_functions["command_include"])
+        if isinstance(node, ast.Name)
+    }
+    include_selection_imports = set()
 
     for imported_module, node in _import_from_nodes(include_path):
-        if (
-            imported_module
-            != "git_stage_batch.commands.selection.selected_change_staging"
-        ):
+        if imported_module != "git_stage_batch.commands.selection":
             continue
-        imported_staging_names |= {alias.name for alias in node.names}
+        include_selection_imports |= {alias.name for alias in node.names}
 
-    assert old_include_names.isdisjoint(include_helpers)
-    assert public_names <= imported_staging_names
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert old_include_names.isdisjoint(include_functions)
+    assert "selected_change_staging" in include_selection_imports
+    assert moved_names.isdisjoint(command_include_names)
+    assert helper_imports <= helper_imported_names
 
 
 def test_include_line_selection_stays_in_command_helper():
@@ -4141,8 +5119,8 @@ def test_include_line_replacement_stays_in_command_helper():
     assert helper_imports <= helper_imported_names
 
 
-def test_discard_selected_change_discarding_stays_in_command_helper():
-    """Discard should use the selected-change discarding helper module."""
+def test_selected_change_discarding_owns_discard_pipeline():
+    """Selected change discard support should stay out of discard.py."""
     discard_path = SRC_ROOT / "commands" / "discard.py"
     helper_path = (
         SRC_ROOT / "commands" / "selection" / "selected_change_discarding.py"
@@ -4152,43 +5130,78 @@ def test_discard_selected_change_discarding_stays_in_command_helper():
         fromlist=["selected_change_discarding"],
     )
     public_names = {
+        "discard_selected_change",
         "discard_gitlink_change",
         "discard_rename_change",
         "discard_text_deletion_change",
+    }
+    internal_names = {
+        "_discard_binary_change",
+        "_discard_loaded_selected_change",
+        "_discard_text_hunk",
     }
     old_discard_names = {
         "_discard_gitlink_change",
         "_discard_rename_change",
         "_discard_text_deletion_change",
     }
-    helper_imports = {
+    moved_names = {
+        "CommandError",
+        "NoMoreHunks",
+        "append_lines_to_file",
+        "build_line_changes_from_patch_lines",
+        "fetch_next_change",
+        "get_block_list_file_path",
+        "get_git_repository_root_path",
+        "get_selected_hunk_hash_file_path",
+        "get_selected_hunk_patch_file_path",
+        "git_apply_to_worktree",
+        "git_checkout_paths",
+        "path_is_empty",
+        "patch_is_new_file",
+        "read_text_file_contents",
+        "record_hunk_discarded",
+        "snapshot_file_if_untracked",
+    }
+    helper_imports = moved_names | {
+        "BinaryFileChange",
+        "LineBuffer",
         "discard_submodule_pointer_from_batch",
+        "finish_selected_change_action",
         "git_update_gitlink",
         "git_update_index",
+        "load_selected_change",
+        "undo_checkpoint",
     }
 
     assert public_names <= vars(helper).keys()
+    assert internal_names <= vars(helper).keys()
 
     discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
-    discard_helpers = {
-        node.name for node in ast.walk(discard_tree) if isinstance(node, ast.FunctionDef)
+    discard_functions = {
+        node.name: node
+        for node in ast.walk(discard_tree)
+        if isinstance(node, ast.FunctionDef)
     }
-    imported_discarding_names = set()
+    command_discard_names = {
+        node.id
+        for node in ast.walk(discard_functions["command_discard"])
+        if isinstance(node, ast.Name)
+    }
+    discard_selection_imports = set()
 
     for imported_module, node in _import_from_nodes(discard_path):
-        if (
-            imported_module
-            != "git_stage_batch.commands.selection.selected_change_discarding"
-        ):
+        if imported_module != "git_stage_batch.commands.selection":
             continue
-        imported_discarding_names |= {alias.name for alias in node.names}
+        discard_selection_imports |= {alias.name for alias in node.names}
 
     helper_imported_names = set()
     for _imported_module, node in _import_from_nodes(helper_path):
         helper_imported_names |= {alias.name for alias in node.names}
 
-    assert old_discard_names.isdisjoint(discard_helpers)
-    assert public_names <= imported_discarding_names
+    assert old_discard_names.isdisjoint(discard_functions)
+    assert "selected_change_discarding" in discard_selection_imports
+    assert moved_names.isdisjoint(command_discard_names)
     assert helper_imports <= helper_imported_names
 
 
@@ -4238,7 +5251,9 @@ def test_discard_file_selection_stays_in_command_helper():
 
 def test_include_file_selection_stays_in_command_helper():
     """Include file selection should stay out of the command entrypoint."""
-    include_path = SRC_ROOT / "commands" / "include.py"
+    line_batching_path = (
+        SRC_ROOT / "commands" / "selection" / "include_line_batching.py"
+    )
     helper_path = (
         SRC_ROOT / "commands" / "selection" / "include_file_selection.py"
     )
@@ -4256,38 +5271,91 @@ def test_include_file_selection_stays_in_command_helper():
 
     assert public_names <= vars(helper).keys()
 
-    tree = ast.parse(include_path.read_text(), filename=str(include_path))
+    tree = ast.parse(line_batching_path.read_text(), filename=str(line_batching_path))
     functions = {
         node.name: node
         for node in ast.walk(tree)
         if isinstance(node, ast.FunctionDef)
     }
-    include_imports_helper = False
+    line_batching_imports_helper = False
 
-    for imported_module, node in _import_from_nodes(include_path):
+    for imported_module, node in _import_from_nodes(line_batching_path):
         if imported_module != "git_stage_batch.commands.selection":
             continue
         imported_names = {alias.name for alias in node.names}
         if "include_file_selection" in imported_names:
-            include_imports_helper = True
+            line_batching_imports_helper = True
 
     line_function_names = {
         node.id
-        for node in ast.walk(functions["_command_include_file_lines_to_batch"])
+        for node in ast.walk(functions["include_file_lines_to_batch"])
         if isinstance(node, ast.Name)
     }
     line_function_attributes = {
         node.attr
-        for node in ast.walk(functions["_command_include_file_lines_to_batch"])
+        for node in ast.walk(functions["include_file_lines_to_batch"])
         if isinstance(node, ast.Attribute)
     }
     helper_imported_names = set()
     for _imported_module, node in _import_from_nodes(helper_path):
         helper_imported_names |= {alias.name for alias in node.names}
 
-    assert include_imports_helper
+    assert line_batching_imports_helper
     assert "load_explicit_file_selection" in line_function_attributes
     assert helper_imports.isdisjoint(line_function_names)
+    assert helper_imports <= helper_imported_names
+
+
+def test_include_line_batching_stays_in_command_helper():
+    """Include line-to-batch support should stay out of the command entrypoint."""
+    include_path = SRC_ROOT / "commands" / "include.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "include_line_batching.py"
+    )
+    helper = __import__(
+        "git_stage_batch.commands.selection.include_line_batching",
+        fromlist=["include_line_batching"],
+    )
+    public_names = {
+        "include_file_lines_to_batch",
+        "include_selected_lines_to_batch",
+    }
+    old_include_names = {
+        "_command_include_file_lines_to_batch",
+        "_command_include_lines_to_batch",
+        "_filter_selected_hunk_excluding_batched_lines",
+    }
+    helper_imports = {
+        "annotate_with_batch_source",
+        "batch_line_selection",
+        "batch_line_updates",
+        "include_file_selection",
+        "include_line_selection",
+        "load_line_changes_from_state",
+        "recalculate_selected_hunk_for_command",
+        "require_selected_hunk",
+    }
+
+    include_tree = ast.parse(include_path.read_text(), filename=str(include_path))
+    include_names = {
+        node.name for node in ast.walk(include_tree) if isinstance(node, ast.FunctionDef)
+    }
+    include_imports_helper = False
+    for imported_module, node in _import_from_nodes(include_path):
+        if imported_module != "git_stage_batch.commands.selection":
+            continue
+        imported_names = {alias.name for alias in node.names}
+        if "include_line_batching" in imported_names:
+            include_imports_helper = True
+
+    helper_imported_names = set()
+    for _imported_module, node in _import_from_nodes(helper_path):
+        helper_imported_names |= {alias.name for alias in node.names}
+
+    assert public_names <= vars(helper).keys()
+    assert old_include_names.isdisjoint(include_names)
+    assert old_include_names.isdisjoint(vars(helper).keys())
+    assert include_imports_helper
     assert helper_imports <= helper_imported_names
 
 
@@ -4352,9 +5420,16 @@ def test_discard_line_replacement_stays_in_command_helper():
     helper_path = (
         SRC_ROOT / "commands" / "selection" / "discard_line_replacement.py"
     )
+    line_batching_path = (
+        SRC_ROOT / "commands" / "selection" / "discard_line_batching.py"
+    )
     helper = __import__(
         "git_stage_batch.commands.selection.discard_line_replacement",
         fromlist=["discard_line_replacement"],
+    )
+    line_batching = __import__(
+        "git_stage_batch.commands.selection.discard_line_batching",
+        fromlist=["discard_line_batching"],
     )
     public_names = {
         "DiscardLineReplacementSelection",
@@ -4363,9 +5438,17 @@ def test_discard_line_replacement_stays_in_command_helper():
         "derive_live_replacement_line_runs",
         "prepare_discard_line_replacement_selection",
     }
+    line_batching_names = {
+        "discard_file_lines_to_batch",
+        "discard_lines_as_to_batch",
+        "discard_selected_lines_to_batch",
+    }
     old_discard_names = {
         "_add_discard_line_replacement_to_batch",
         "_derive_live_replacement_line_runs",
+        "_command_discard_file_lines_to_batch",
+        "_command_discard_lines_to_batch",
+        "_command_discard_lines_to_batch_as",
         "_select_rewritten_replacement_lines",
     }
     helper_imports = {
@@ -4412,44 +5495,62 @@ def test_discard_line_replacement_stays_in_command_helper():
     }
 
     assert public_names <= vars(helper).keys()
+    assert line_batching_names <= vars(line_batching).keys()
 
     discard_tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    line_batching_tree = ast.parse(
+        line_batching_path.read_text(),
+        filename=str(line_batching_path),
+    )
     discard_helpers = {
         node.name for node in ast.walk(discard_tree) if isinstance(node, ast.FunctionDef)
     }
-    discard_functions = {
+    line_batching_functions = {
         node.name: node
-        for node in ast.walk(discard_tree)
+        for node in ast.walk(line_batching_tree)
         if isinstance(node, ast.FunctionDef)
     }
-    discard_imports_helper = False
+    discard_imports_line_batching = False
+    line_batching_imports_helper = False
 
     for imported_module, node in _import_from_nodes(discard_path):
         if imported_module != "git_stage_batch.commands.selection":
             continue
         imported_names = {alias.name for alias in node.names}
+        if "discard_line_batching" in imported_names:
+            discard_imports_line_batching = True
+
+    for imported_module, node in _import_from_nodes(line_batching_path):
+        if imported_module != "git_stage_batch.commands.selection":
+            continue
+        imported_names = {alias.name for alias in node.names}
         if "discard_line_replacement" in imported_names:
-            discard_imports_helper = True
+            line_batching_imports_helper = True
 
     helper_imported_names = set()
     for _imported_module, node in _import_from_nodes(helper_path):
         helper_imported_names |= {alias.name for alias in node.names}
     command_update_names = {
         node.id
-        for node in ast.walk(discard_functions["_command_discard_lines_to_batch_as"])
+        for node in ast.walk(line_batching_functions["discard_lines_as_to_batch"])
         if isinstance(node, ast.Name)
     }
 
     assert old_discard_names.isdisjoint(discard_helpers)
     assert moved_batch_update_names.isdisjoint(command_update_names)
-    assert discard_imports_helper
+    assert discard_imports_line_batching
+    assert line_batching_imports_helper
     assert helper_imports <= helper_imported_names
 
 
 def test_batch_line_selection_stays_in_command_helper():
     """Batch line-selection validation should live in command selection support."""
-    include_path = SRC_ROOT / "commands" / "include.py"
-    discard_path = SRC_ROOT / "commands" / "discard.py"
+    include_line_batching_path = (
+        SRC_ROOT / "commands" / "selection" / "include_line_batching.py"
+    )
+    discard_line_batching_path = (
+        SRC_ROOT / "commands" / "selection" / "discard_line_batching.py"
+    )
     helper_path = (
         SRC_ROOT / "commands" / "selection" / "batch_line_selection.py"
     )
@@ -4466,13 +5567,13 @@ def test_batch_line_selection_stays_in_command_helper():
         "require_line_selection_in_view",
     }
     guarded_functions = {
-        include_path: {
-            "_command_include_file_lines_to_batch",
-            "_command_include_lines_to_batch",
+        include_line_batching_path: {
+            "include_file_lines_to_batch",
+            "include_selected_lines_to_batch",
         },
-        discard_path: {
-            "_command_discard_file_lines_to_batch",
-            "_command_discard_lines_to_batch",
+        discard_line_batching_path: {
+            "discard_file_lines_to_batch",
+            "discard_selected_lines_to_batch",
         },
     }
 
@@ -4511,8 +5612,12 @@ def test_batch_line_selection_stays_in_command_helper():
 
 def test_batch_line_updates_stays_in_command_helper():
     """Batch line updates should live in command selection support."""
-    include_path = SRC_ROOT / "commands" / "include.py"
-    discard_path = SRC_ROOT / "commands" / "discard.py"
+    include_line_batching_path = (
+        SRC_ROOT / "commands" / "selection" / "include_line_batching.py"
+    )
+    discard_line_batching_path = (
+        SRC_ROOT / "commands" / "selection" / "discard_line_batching.py"
+    )
     helper_path = (
         SRC_ROOT / "commands" / "selection" / "batch_line_updates.py"
     )
@@ -4533,13 +5638,13 @@ def test_batch_line_updates_stays_in_command_helper():
         "snapshot_file_if_untracked",
     }
     guarded_functions = {
-        include_path: {
-            "_command_include_file_lines_to_batch",
-            "_command_include_lines_to_batch",
+        include_line_batching_path: {
+            "include_file_lines_to_batch",
+            "include_selected_lines_to_batch",
         },
-        discard_path: {
-            "_command_discard_file_lines_to_batch",
-            "_command_discard_lines_to_batch",
+        discard_line_batching_path: {
+            "discard_file_lines_to_batch",
+            "discard_selected_lines_to_batch",
         },
     }
 
@@ -4583,6 +5688,9 @@ def test_batch_line_updates_stays_in_command_helper():
 def test_discard_uses_file_io_path_empty_helper():
     """Discard should use file I/O utilities for generic path byte checks."""
     discard_path = SRC_ROOT / "commands" / "discard.py"
+    helper_path = (
+        SRC_ROOT / "commands" / "selection" / "selected_change_discarding.py"
+    )
     file_io = __import__(
         "git_stage_batch.utils.file_io",
         fromlist=["file_io"],
@@ -4591,12 +5699,12 @@ def test_discard_uses_file_io_path_empty_helper():
 
     assert "path_is_empty" in vars(file_io)
 
-    tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    tree = ast.parse(helper_path.read_text(), filename=str(helper_path))
     discard_helpers = {
         node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
     }
 
-    for imported_module, node in _import_from_nodes(discard_path):
+    for imported_module, node in _import_from_nodes(helper_path):
         if imported_module != "git_stage_batch.utils.file_io":
             continue
         imported_file_io_names |= {alias.name for alias in node.names}
@@ -4607,7 +5715,9 @@ def test_discard_uses_file_io_path_empty_helper():
 
 def test_discard_uses_core_buffer_newline_helper():
     """Discard should use core buffer helpers for trailing newline checks."""
-    discard_path = SRC_ROOT / "commands" / "discard.py"
+    line_batching_path = (
+        SRC_ROOT / "commands" / "selection" / "discard_line_batching.py"
+    )
     core_buffer = __import__(
         "git_stage_batch.core.buffer",
         fromlist=["buffer"],
@@ -4616,12 +5726,15 @@ def test_discard_uses_core_buffer_newline_helper():
 
     assert "buffer_ends_with_lf" in vars(core_buffer)
 
-    tree = ast.parse(discard_path.read_text(), filename=str(discard_path))
+    tree = ast.parse(
+        line_batching_path.read_text(),
+        filename=str(line_batching_path),
+    )
     discard_helpers = {
         node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
     }
 
-    for imported_module, node in _import_from_nodes(discard_path):
+    for imported_module, node in _import_from_nodes(line_batching_path):
         if imported_module != "git_stage_batch.core.buffer":
             continue
         imported_buffer_names |= {alias.name for alias in node.names}
@@ -4826,7 +5939,9 @@ def test_line_action_refresh_header_stays_in_command_helper():
 def test_replacement_selection_stays_in_command_helper():
     """Include and discard should use the replacement-selection helper module."""
     include_path = SRC_ROOT / "commands" / "include.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
     discard_path = SRC_ROOT / "commands" / "discard.py"
+    show_from_path = SRC_ROOT / "commands" / "show_from.py"
     discard_replacement_path = (
         SRC_ROOT / "commands" / "selection" / "discard_line_replacement.py"
     )
@@ -4843,6 +5958,7 @@ def test_replacement_selection_stays_in_command_helper():
         "build_partial_structural_run_selection_error",
         "derive_replacement_line_runs",
         "expand_replacement_selection_ids",
+        "require_contiguous_display_selection",
     }
     old_include_names = {
         "_build_leading_replacement_addition_selection_error",
@@ -4850,9 +5966,14 @@ def test_replacement_selection_stays_in_command_helper():
         "_derive_replacement_line_runs",
         "_expand_replacement_selection_ids",
     }
+    old_show_from_names = {
+        "_require_contiguous_display_selection",
+    }
     helper_user_paths = (
         include_path,
+        include_from_path,
         discard_replacement_path,
+        show_from_path,
     )
     violations = []
 
@@ -4861,6 +5982,9 @@ def test_replacement_selection_stays_in_command_helper():
     assert old_include_names.isdisjoint(vars(include))
     for old_name in old_include_names:
         assert f"def {old_name}" not in include_path.read_text()
+    for old_name in old_show_from_names:
+        assert f"def {old_name}" not in show_from_path.read_text()
+        assert f"def {old_name}" not in include_from_path.read_text()
 
     for command_path in helper_user_paths:
         imports = _import_from_nodes(command_path)

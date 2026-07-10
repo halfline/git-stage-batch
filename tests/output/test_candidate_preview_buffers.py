@@ -1,11 +1,13 @@
 """Tests for buffer-backed candidate preview rendering."""
 
+from types import SimpleNamespace
 
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.output.candidate_preview_diff import (
     print_candidate_buffer_diff,
     render_candidate_buffer_diff,
 )
+from git_stage_batch.output.candidate_preview_summary import candidate_target_summary
 
 
 class _IndexGuardedLineBuffer(LineBuffer):
@@ -58,3 +60,21 @@ def test_candidate_diff_printing_consumes_buffered_hunks(capsys):
     output = capsys.readouterr().out
     assert "-old" in output
     assert "+new" in output
+
+
+def test_candidate_summary_matches_through_acquired_line_views():
+    with (
+        _guarded_buffer(b"old\n") as before,
+        _guarded_buffer(b"new\n") as after,
+    ):
+        summary = candidate_target_summary(
+            SimpleNamespace(
+                target="worktree",
+                before_buffer=before,
+                after_buffer=after,
+                ambiguity_target_line_range=None,
+            )
+        )
+
+    assert [line.marker for line in summary.lines] == ["-", "+"]
+    assert [line.text for line in summary.lines] == ["old", "new"]

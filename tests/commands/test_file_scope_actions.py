@@ -107,7 +107,16 @@ def test_include_each_resolved_file_reports_aggregate_result(
         include_calls.append((file_path, quiet, advance))
         return {"alpha.txt": 2, "beta.txt": 0}[file_path]
 
-    monkeypatch.setattr(multi_file_actions, "command_include_file", fake_include_file)
+    monkeypatch.setattr(
+        multi_file_actions,
+        "_prepare_live_multi_file_action",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        multi_file_actions._include_file,
+        "include_file_changes",
+        fake_include_file,
+    )
     monkeypatch.setattr(
         multi_file_actions,
         "select_next_change_after_action",
@@ -150,7 +159,16 @@ def test_skip_each_resolved_file_stops_after_empty_result(
         skip_calls.append((file_path, quiet, advance))
         return 0
 
-    monkeypatch.setattr(multi_file_actions, "command_skip_file", fake_skip_file)
+    monkeypatch.setattr(
+        multi_file_actions,
+        "_prepare_live_multi_file_action",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        multi_file_actions._skip_file,
+        "skip_file_changes",
+        fake_skip_file,
+    )
     monkeypatch.setattr(
         multi_file_actions,
         "select_next_change_after_action",

@@ -196,23 +196,6 @@ def resolve_current_batch_atomic_file_scope(
     return file
 
 
-def resolve_current_batch_binary_file_scope(
-    batch_name: str,
-    all_files: dict[str, dict],
-    file: Optional[str] = None,
-    patterns: Optional[list[str]] = None,
-    line_ids: Optional[str] = None,
-) -> Optional[str]:
-    """Backward-compatible wrapper for atomic batch selections."""
-    return resolve_current_batch_atomic_file_scope(
-        batch_name,
-        all_files,
-        file,
-        patterns,
-        line_ids,
-    )
-
-
 def _get_batch_file_for_line_operation(
     batch_name: str,
     all_files: dict[str, dict],

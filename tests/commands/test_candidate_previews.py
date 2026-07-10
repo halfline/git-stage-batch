@@ -8,6 +8,7 @@ import pytest
 
 import git_stage_batch.batch.operation_candidates as operation_candidates
 import git_stage_batch.commands.batch_source.action_selection as action_selection
+import git_stage_batch.commands.batch_source.candidate_preview_action as candidate_preview_action
 import git_stage_batch.commands.batch_source.candidate_preview_counts as candidate_preview_counts
 import git_stage_batch.commands.show_from as show_from_module
 import git_stage_batch.output.candidate_preview as candidate_preview_module
@@ -349,6 +350,11 @@ def test_candidate_preview_allows_equivalent_line_selection_spelling(
 
     monkeypatch.setattr(
         show_from_module,
+        "translate_batch_file_gutter_ids_to_selection_ids",
+        resolve_selected_lines,
+    )
+    monkeypatch.setattr(
+        candidate_preview_action,
         "translate_batch_file_gutter_ids_to_selection_ids",
         resolve_selected_lines,
     )

@@ -19,6 +19,7 @@ from git_stage_batch.commands.include_from import command_include_from_batch
 from git_stage_batch.commands.reset import command_reset_from_batch
 from git_stage_batch.commands.show_from import command_show_from_batch
 import git_stage_batch.commands.show_from as show_from_module
+import git_stage_batch.commands.batch_source.file_display_action as batch_file_display_action
 from git_stage_batch.commands.show import command_show, command_show_file_list
 import git_stage_batch.commands.selection.next_change_display as next_change_display
 from git_stage_batch.commands.skip import command_skip, command_skip_file, command_skip_line
@@ -2534,7 +2535,7 @@ def test_show_from_batch_line_after_review_uses_review_id_space(
         "100644",
     )
 
-    original_render = show_from_module.render_batch_file_display
+    original_render = file_display_module.render_batch_file_display
 
     def render_with_review_only_first_line(batch_name, file_path, metadata=None):
         rendered = original_render(batch_name, file_path, metadata=metadata)
@@ -2565,7 +2566,17 @@ def test_show_from_batch_line_after_review_uses_review_id_space(
             ),
         )
 
-    monkeypatch.setattr(show_from_module, "render_batch_file_display", render_with_review_only_first_line)
+    monkeypatch.setattr(
+        batch_file_display_action,
+        "render_batch_file_display",
+        render_with_review_only_first_line,
+    )
+    if hasattr(show_from_module, "render_batch_file_display"):
+        monkeypatch.setattr(
+            show_from_module,
+            "render_batch_file_display",
+            render_with_review_only_first_line,
+        )
     monkeypatch.setattr(file_display_module, "render_batch_file_display", render_with_review_only_first_line)
     monkeypatch.setattr(
         file_review_freshness_module,
@@ -2663,7 +2674,17 @@ def test_show_from_batch_line_without_review_uses_printed_review_id_space(
             ),
         )
 
-    monkeypatch.setattr(show_from_module, "render_batch_file_display", render_with_review_only_second_line)
+    monkeypatch.setattr(
+        batch_file_display_action,
+        "render_batch_file_display",
+        render_with_review_only_second_line,
+    )
+    if hasattr(show_from_module, "render_batch_file_display"):
+        monkeypatch.setattr(
+            show_from_module,
+            "render_batch_file_display",
+            render_with_review_only_second_line,
+        )
     monkeypatch.setattr(file_display_module, "render_batch_file_display", render_with_review_only_second_line)
     monkeypatch.setattr(
         file_review_freshness_module,

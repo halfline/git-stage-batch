@@ -3,18 +3,13 @@
 from __future__ import annotations
 
 import shlex
-import sys
 from typing import Optional
 
-from .batch_source import candidate_preview_builders as _candidate_preview_builders
-from .batch_source import candidate_previews as _candidate_previews
+from .batch_source import candidate_preview_action as _candidate_preview_action
+from .batch_source import file_display_action as _file_display_action
+from .batch_source import file_list_action as _file_list_action
 from .batch_source import replacement_previews as _replacement_previews
-from ..batch.atomic_file_changes import (
-    binary_change_from_batch_file_metadata,
-    gitlink_change_from_batch_file_metadata,
-)
 from ..batch.metadata_validation import read_validated_batch_metadata
-from ..batch.operation_candidates import save_candidate_preview_state
 from ..core.replacement import ReplacementPayload
 from ..batch.selection import (
     resolve_batch_file_scope,
@@ -22,78 +17,17 @@ from ..batch.selection import (
 )
 from ..batch.source_selector import parse_batch_source_selector
 from ..batch.validation import batch_exists
-from ..batch.file_display import render_batch_file_display
-from ..data.batch_selected_changes import (
-    compute_batch_binary_fingerprint,
-    compute_batch_gitlink_fingerprint,
-)
-from ..data.selected_change.batch_file_cache import cache_rendered_batch_file_display
 from ..data.file_review.batch_selection import translate_batch_file_gutter_ids_to_selection_ids
-from ..data.file_review.pages import normalize_page_spec
-from ..data.selected_change.lifecycle import clear_selected_change_state_files
-from ..data.selected_change.store import (
-    SelectedChangeKind,
-)
-from ..data.selected_change.clear_reasons import (
-    mark_selected_change_cleared_by_file_list,
-)
-from ..data.selected_change.file_changes import (
-    cache_binary_file_change,
-    cache_gitlink_change,
-)
-from ..data.file_review.records import ReviewSource
-from ..data.file_review.state import (
-    clear_last_file_review_state,
-    write_last_file_review_state,
-)
-from ..output.hunk import print_line_level_changes
-from ..output.patch import (
-    print_binary_file_change,
-    print_gitlink_change,
-)
-from ..output.file_review import (
-    print_file_review,
-)
-from ..output.file_review_model_builder import build_file_review_model
-from ..output.file_review_state_builder import (
-    make_file_review_state,
-    resolve_default_review_pages,
-)
-from ..output.file_review_list import (
-    make_binary_file_review_list_entry,
-    make_file_review_list_entry,
-    make_gitlink_file_review_list_entry,
-    print_file_review_list,
-)
-from ..output.candidate_preview import (
-    render_operation_candidate,
-    render_operation_candidate_overview,
-)
 from ..exceptions import (
     exit_with_error,
     BatchMetadataError,
-    MergeError,
 )
 from ..i18n import _
-from ..core.models import LineLevelChange
 from ..utils.git_repository import require_git_repository
 
 
 def _batch_source_args(batch_name: str) -> str:
     return f" --from {shlex.quote(batch_name)}"
-
-
-def _shown_pages_for_display_ids(review_model, display_ids: set[int]) -> tuple[int, ...]:
-    """Return review pages that contain the selected display IDs."""
-    return tuple(
-        sorted(
-            {
-                change.first_page
-                for change in review_model.changes
-                if set(change.display_ids) & display_ids
-            }
-        )
-    )
 
 
 def command_show_from_batch(
@@ -145,63 +79,16 @@ def command_show_from_batch(
     )
 
     if selector.candidate_operation is not None:
-        if patterns is not None or len(files) != 1:
-            exit_with_error(_("Candidate preview requires exactly one file."))
-        file_path = list(files.keys())[0]
-        try:
-            previews = _candidate_preview_builders.build_batch_source_candidate_previews(
-                selector=selector,
-                files=files,
-                file_path=file_path,
-                selected_ids=selected_ids,
-                replacement_text=replacement_text,
-                translate_selection_ids=(
-                    translate_batch_file_gutter_ids_to_selection_ids
-                ),
-            )
-        except ValueError as e:
-            exit_with_error(str(e))
-        except MergeError as e:
-            exit_with_error(str(e))
-
-        if not previews:
-            exit_with_error(
-                _("Batch '{batch}' has no {operation} candidates for {file}.").format(
-                    batch=batch_name,
-                    operation=selector.candidate_operation,
-                    file=file_path,
-                )
-            )
-
-        if selector.candidate_ordinal is None:
-            try:
-                reviewed_previews = render_operation_candidate_overview(
-                    previews,
-                    porcelain=porcelain,
-                    note=metadata.get("note") or None,
-                )
-                for preview in reviewed_previews:
-                    save_candidate_preview_state(preview)
-            finally:
-                _candidate_previews.close_candidate_previews(previews)
-            return
-
-        try:
-            preview = _candidate_previews.require_candidate_preview_for_ordinal(
-                previews,
-                selector.candidate_ordinal,
-                batch_name=batch_name,
-                operation=selector.candidate_operation,
-                file_path=file_path,
-            )
-            render_operation_candidate(
-                preview,
-                porcelain=porcelain,
-                note=metadata.get("note") or None,
-            )
-            save_candidate_preview_state(preview)
-        finally:
-            _candidate_previews.close_candidate_previews(previews)
+        _candidate_preview_action.show_batch_source_candidate_preview(
+            selector=selector,
+            batch_name=batch_name,
+            files=files,
+            selected_ids=selected_ids,
+            replacement_text=replacement_text,
+            patterns=patterns,
+            porcelain=porcelain,
+            note=metadata.get("note") or None,
+        )
         return
 
     if porcelain:
@@ -225,232 +112,23 @@ def command_show_from_batch(
         return
 
     if len(files) == 1:
-        # Show specific file from batch
-        # Get the resolved file path
         file_path = list(files.keys())[0]
-        binary_change = binary_change_from_batch_file_metadata(
-            file_path,
-            files[file_path],
-        )
-        if binary_change is not None:
-            if selected_ids:
-                exit_with_error(
-                    _("Cannot use --lines with binary files. Run without --lines to view the binary change summary.")
-                )
-            if page is not None:
-                exit_with_error(_("File review pages are only available for text changes."))
-            if selectable:
-                clear_selected_change_state_files()
-                cache_binary_file_change(
-                    binary_change,
-                    kind=SelectedChangeKind.BATCH_BINARY,
-                    batch_name=batch_name,
-                    batch_binary_fingerprint=compute_batch_binary_fingerprint(
-                        batch_name,
-                        file_path,
-                        files[file_path],
-                    ),
-                )
-            print_binary_file_change(binary_change)
-            return
-
-        gitlink_change = gitlink_change_from_batch_file_metadata(
-            file_path,
-            files[file_path],
-        )
-        if gitlink_change is not None:
-            if selected_ids:
-                exit_with_error(
-                    _("Cannot use --lines with submodule pointers. Run without --lines to view the submodule pointer summary.")
-                )
-            if page is not None:
-                exit_with_error(_("File review pages are only available for text changes."))
-            if selectable:
-                clear_selected_change_state_files()
-                cache_gitlink_change(
-                    gitlink_change,
-                    kind=SelectedChangeKind.BATCH_GITLINK,
-                    batch_name=batch_name,
-                    batch_gitlink_fingerprint=compute_batch_gitlink_fingerprint(
-                        file_path,
-                        files[file_path],
-                    ),
-                )
-            print_gitlink_change(gitlink_change)
-            return
-
-        rendered = render_batch_file_display(batch_name, file_path, metadata=metadata)
-        if rendered is None:
-            print(_("No changes for file '{file}' in batch '{name}'.").format(file=file_path, name=batch_name), file=sys.stderr)
-            return
-
-        review_model = None
-        review_gutter_to_selection_id = (
-            rendered.review_gutter_to_selection_id
-            or rendered.gutter_to_selection_id
-        )
-        review_selection_id_to_gutter = (
-            rendered.review_selection_id_to_gutter
-            or rendered.selection_id_to_gutter
-        )
-        review_action_groups = rendered.review_action_groups or None
-
-        def get_review_model():
-            nonlocal review_model
-            if review_model is None:
-                review_model = build_file_review_model(
-                    rendered.line_changes,
-                    gutter_to_selection_id=review_gutter_to_selection_id,
-                    actionable_selection_groups=rendered.actionable_selection_groups,
-                    review_action_groups=review_action_groups,
-                )
-            return review_model
-
-        if selectable and page is not None:
-            resolve_default_review_pages(
-                get_review_model(),
-                requested_page_spec=page,
-                previous_selection=None,
-            )
-
-        if page is not None or (selectable and not selected_ids):
-            review_model = get_review_model()
-            shown_pages = resolve_default_review_pages(
-                review_model,
-                requested_page_spec=page,
-                previous_selection=None,
-            )
-            page_spec = normalize_page_spec(shown_pages, len(review_model.pages))
-            if selectable:
-                clear_last_file_review_state()
-                cache_rendered_batch_file_display(file_path, rendered)
-                write_last_file_review_state(
-                    make_file_review_state(
-                        review_model,
-                        source=ReviewSource.BATCH,
-                        batch_name=batch_name,
-                        shown_pages=shown_pages,
-                        selected_change_kind=SelectedChangeKind.BATCH_FILE,
-                        gutter_to_selection_id=review_gutter_to_selection_id,
-                        actionable_selection_groups=rendered.actionable_selection_groups,
-                        review_action_groups=review_action_groups,
-                    )
-                )
-            print_file_review(
-                review_model,
-                shown_pages=shown_pages,
-                source_label=_("Changes: batch {name}").format(name=batch_name),
-                page_spec=page_spec,
-                command_source_args=_batch_source_args(batch_name),
-                source=ReviewSource.BATCH,
-                batch_name=batch_name,
-                note=metadata.get("note") or None,
-            )
-            return
-
-        # Filter by line IDs if specified (for display only)
-        if selected_ids:
-            line_gutter_to_selection_id = (
-                review_gutter_to_selection_id
-                if selectable else
-                rendered.gutter_to_selection_id
-            )
-
-            # Translate gutter IDs (what user sees) to selection IDs (internal)
-            selection_ids = set()
-            for gutter_id in selected_ids:
-                if gutter_id in line_gutter_to_selection_id:
-                    selection_ids.add(line_gutter_to_selection_id[gutter_id])
-                else:
-                    exit_with_error(
-                        _("Line ID {id} is not available for this action. Select one of the numbered lines shown for this batch file.").format(
-                            id=gutter_id
-                        )
-                    )
-
-            if selectable:
-                clear_last_file_review_state()
-                cache_rendered_batch_file_display(file_path, rendered)
-                review_model = get_review_model()
-                visible_review_display_ids = {
-                    review_selection_id_to_gutter[selection_id]
-                    for selection_id in selection_ids
-                    if selection_id in review_selection_id_to_gutter
-                }
-                shown_pages = _shown_pages_for_display_ids(review_model, visible_review_display_ids)
-                if shown_pages:
-                    write_last_file_review_state(
-                        make_file_review_state(
-                            review_model,
-                            source=ReviewSource.BATCH,
-                            batch_name=batch_name,
-                            shown_pages=shown_pages,
-                            selected_change_kind=SelectedChangeKind.BATCH_FILE,
-                            gutter_to_selection_id=review_gutter_to_selection_id,
-                            actionable_selection_groups=rendered.actionable_selection_groups,
-                            review_action_groups=review_action_groups,
-                            visible_display_ids=visible_review_display_ids,
-                            entire_file_shown=False,
-                        )
-                    )
-
-            # Filter by selection IDs (not gutter IDs)
-            filtered_lines = [line for line in rendered.line_changes.lines if line.id in selection_ids]
-            if filtered_lines:
-                filtered_line_changes = LineLevelChange(
-                    path=rendered.line_changes.path,
-                    lines=filtered_lines,
-                    header=rendered.line_changes.header
-                )
-                print_line_level_changes(filtered_line_changes, gutter_to_selection_id=line_gutter_to_selection_id)
-        else:
-            print_line_level_changes(
-                    rendered.line_changes,
-                    gutter_to_selection_id=(
-                        review_gutter_to_selection_id
-                        if selectable else
-                        {}
-                    ),
-                )
-
-        return
-
-    entries = []
-    for file_path, file_meta in files.items():
-        binary_change = binary_change_from_batch_file_metadata(file_path, file_meta)
-        if binary_change is not None:
-            entries.append(make_binary_file_review_list_entry(binary_change))
-            continue
-        gitlink_change = gitlink_change_from_batch_file_metadata(file_path, file_meta)
-        if gitlink_change is not None:
-            entries.append(make_gitlink_file_review_list_entry(gitlink_change))
-            continue
-        rendered = render_batch_file_display(
-            batch_name,
-            file_path,
+        _file_display_action.show_batch_source_file_display(
+            batch_name=batch_name,
+            file_path=file_path,
+            files=files,
             metadata=metadata,
-            probe_mergeability=False,
-        )
-        if rendered is not None:
-            entries.append(
-                make_file_review_list_entry(
-                    rendered.line_changes,
-                )
-            )
-
-    if entries:
-        # Multi-file batch output is navigational; it must not leave a hidden
-        # selected file that a later bare action could operate on.
-        if selectable:
-            clear_selected_change_state_files()
-            mark_selected_change_cleared_by_file_list(
-                source=ReviewSource.BATCH.value,
-                batch_name=batch_name,
-            )
-        print_file_review_list(
-            source_label=_("Changes: batch {name}").format(name=batch_name),
-            entries=entries,
+            selected_ids=selected_ids,
+            selectable=selectable,
+            page=page,
             command_source_args=_batch_source_args(batch_name),
         )
-    else:
-        print(_("Batch '{name}' is empty").format(name=batch_name), file=sys.stderr)
+        return
+
+    _file_list_action.show_batch_source_file_list(
+        batch_name=batch_name,
+        files=files,
+        metadata=metadata,
+        selectable=selectable,
+        command_source_args=_batch_source_args(batch_name),
+    )

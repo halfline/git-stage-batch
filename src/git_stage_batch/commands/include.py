@@ -2,63 +2,38 @@
 
 from __future__ import annotations
 
-from contextlib import ExitStack
-import sys
-
 from ..core.replacement import (
     ReplacementPayload,
-    coerce_replacement_payload,
-)
-from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
-from ..data.line_id_files import write_line_ids_file
-from ..data.selected_change.loading import (
-    load_selected_change,
 )
 from ..data.selected_change.store import (
     SelectedChangeKind,
     read_selected_change_kind,
-    restore_selected_change_state,
 )
 from ..data.selected_change.clear_reasons import (
     refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
 )
-from ..data.file_hunk_display import (
-    cache_unstaged_file_as_single_hunk,
-)
 from ..data.file_review.records import FileReviewAction
 from ..data.file_review.action_scope import (
-    finish_review_scoped_line_action,
     refuse_ambiguous_bare_action_after_partial_file_review,
     refuse_live_action_for_batch_selection,
     resolve_live_line_action_scope,
     resolve_live_to_batch_action_scope,
 )
 from ..data.session import require_session_started
-from ..data.undo import undo_checkpoint
-from ..exceptions import exit_with_error
-from ..i18n import _
 from ..utils.git_repository import require_git_repository
 from ..utils.journal import log_journal
 from ..utils.paths import (
     ensure_state_directory_exists,
-    get_processed_include_ids_file_path,
 )
+from .selection import include_to_batch_action as _include_to_batch_action
 from .selection import include_line_action as _include_line_action
-from .selection import include_line_batching as _include_line_batching
-from .selection import include_line_replacement as _include_line_replacement
-from .selection import selected_change_batch_staging as _selected_change_batch_staging
+from .selection import (
+    include_line_replacement_action as _include_line_replacement_action,
+)
 from .selection import selected_change_staging as _selected_change_staging
-from .selection import whole_file_batch_staging as _whole_file_batch_staging
 from .file_scope import include_file as _file_scope_include_file
 from .file_scope import include_file_replacement as _file_scope_include_file_replacement
-from .file_scope import include_file_to_batch as _file_scope_include_file_to_batch
-from .file_scope.target_path import require_file_scope_target_path
-from .selection.selected_hunk_refresh import (
-    recalculate_selected_hunk_for_command,
-    refresh_selected_hunk_after_line_action,
-)
-from .selection.action_completion import finish_selected_change_action
 
 
 def command_include(
@@ -215,108 +190,14 @@ def command_include_line_as(
         return
     review_state = scope_resolution.review_state
 
-    replacement_payload = coerce_replacement_payload(replacement_text)
-    operation_parts = [
-        "include",
-        "--line",
+    _include_line_replacement_action.include_live_line_replacement(
         line_id_specification,
-        "--as",
-        replacement_payload.display_text or "<stdin>",
-    ]
-    if no_edge_overlap:
-        operation_parts.append("--no-edge-overlap")
-    if file is not None:
-        operation_parts.extend(["--file", file])
-
-    replacement_file_context = None
-    with undo_checkpoint(" ".join(operation_parts)), ExitStack() as selected_state_stack:
-        if file is None:
-            replacement_context = (
-                _include_line_replacement.prepare_pathless_include_line_replacement(
-                    line_id_specification
-                )
-            )
-            line_changes = replacement_context.display_line_changes
-            with (
-                replacement_context.base_buffer as hunk_base_lines,
-                replacement_context.source_buffer as hunk_source_lines,
-            ):
-                _include_line_replacement.apply_include_line_replacement(
-                    replacement_context.replacement_line_changes,
-                    line_id_specification=replacement_context.line_id_specification,
-                    replacement_text=replacement_text,
-                    hunk_base_lines=hunk_base_lines,
-                    hunk_source_lines=hunk_source_lines,
-                    trim_unchanged_edge_anchors=not no_edge_overlap,
-                )
-
-            write_line_ids_file(get_processed_include_ids_file_path(), set())
-            print(
-                _("✓ Included line(s) as replacement: {lines} from {file}").format(
-                    lines=line_id_specification,
-                    file=line_changes.path,
-                ),
-                file=sys.stderr,
-            )
-            refresh_selected_hunk_after_line_action(
-                line_changes.path,
-                auto_advance=auto_advance,
-            )
-            finish_review_scoped_line_action(review_state, file_path=line_changes.path)
-        else:
-            replacement_file_context = (
-                _include_line_replacement.prepare_file_include_line_replacement(
-                    file,
-                    selected_state_stack,
-                )
-            )
-            with (
-                replacement_file_context.base_buffer as hunk_base_lines,
-                replacement_file_context.source_buffer as hunk_source_lines,
-            ):
-                _include_line_replacement.apply_include_line_replacement(
-                    replacement_file_context.line_changes,
-                    line_id_specification=line_id_specification,
-                    replacement_text=replacement_text,
-                    hunk_base_lines=hunk_base_lines,
-                    hunk_source_lines=hunk_source_lines,
-                    trim_unchanged_edge_anchors=not no_edge_overlap,
-                )
-
-            if replacement_file_context.preserve_selected_state:
-                assert replacement_file_context.saved_selected_state is not None
-                restore_selected_change_state(
-                    replacement_file_context.saved_selected_state
-                )
-            else:
-                write_line_ids_file(get_processed_include_ids_file_path(), set())
-                print(
-                    _("✓ Included line(s) as replacement: {lines} from {file}").format(
-                        lines=line_id_specification,
-                        file=replacement_file_context.target_file,
-                    ),
-                    file=sys.stderr,
-                )
-                refresh_selected_hunk_after_line_action(
-                    replacement_file_context.target_file,
-                    auto_advance=auto_advance,
-                )
-            finish_review_scoped_line_action(
-                review_state,
-                file_path=replacement_file_context.target_file,
-            )
-
-    if (
-        replacement_file_context is not None
-        and replacement_file_context.preserve_selected_state
-    ):
-        print(
-            _("✓ Included line(s) as replacement: {lines} from {file}").format(
-                lines=line_id_specification,
-                file=replacement_file_context.target_file,
-            ),
-            file=sys.stderr,
-        )
+        replacement_text,
+        file,
+        review_state=review_state,
+        no_edge_overlap=no_edge_overlap,
+        auto_advance=auto_advance,
+    )
 
 
 def command_include_to_batch(
@@ -352,127 +233,12 @@ def command_include_to_batch(
         return
     file = scope_resolution.file
     review_state = scope_resolution.review_state
-    operation_parts = ["include", "--to", batch_name]
-    if line_ids is not None:
-        operation_parts.extend(["--line", line_ids])
-    if file is not None:
-        operation_parts.extend(["--file", file])
-    with undo_checkpoint(" ".join(operation_parts)):
-        if (
-            file is None
-            and line_ids is None
-            and read_selected_change_kind() == SelectedChangeKind.RENAME
-        ):
-            selected_change = load_selected_change()
-            if isinstance(selected_change, RenameChange):
-                exit_with_error(
-                    _(
-                        "Cannot include rename '{old} -> {new}' to a batch yet. "
-                        "Stage, skip, or discard the rename first."
-                    ).format(
-                        old=selected_change.old_path,
-                        new=selected_change.new_path,
-                    )
-                )
-        if (
-            file is None
-            and line_ids is None
-            and read_selected_change_kind() == SelectedChangeKind.GITLINK
-        ):
-            selected_change = load_selected_change()
-            if isinstance(selected_change, GitlinkChange):
-                _whole_file_batch_staging.include_gitlink_to_batch(
-                    batch_name,
-                    selected_change,
-                    quiet=quiet,
-                    auto_advance=auto_advance,
-                )
-                return
-            else:
-                _selected_change_batch_staging.include_selected_change_to_batch(
-                    batch_name,
-                    quiet=quiet,
-                    auto_advance=auto_advance,
-                )
-                return
-        elif (
-            file is None
-            and line_ids is None
-            and read_selected_change_kind() == SelectedChangeKind.DELETION
-        ):
-            selected_change = load_selected_change()
-            if isinstance(selected_change, TextFileDeletionChange):
-                _whole_file_batch_staging.include_text_deletion_to_batch(
-                    batch_name,
-                    selected_change,
-                    quiet=quiet,
-                    auto_advance=auto_advance,
-                )
-                return
-            else:
-                _selected_change_batch_staging.include_selected_change_to_batch(
-                    batch_name,
-                    quiet=quiet,
-                    auto_advance=auto_advance,
-                )
-                return
-        elif (
-            file is None
-            and line_ids is None
-            and read_selected_change_kind() == SelectedChangeKind.BINARY
-        ):
-            selected_change = load_selected_change()
-            if isinstance(selected_change, BinaryFileChange):
-                _whole_file_batch_staging.include_binary_to_batch(
-                    batch_name,
-                    selected_change,
-                    quiet=quiet,
-                    auto_advance=auto_advance,
-                )
-                return
-            else:
-                _selected_change_batch_staging.include_selected_change_to_batch(
-                    batch_name,
-                    quiet=quiet,
-                    auto_advance=auto_advance,
-                )
-                return
-        elif file is not None:
-            # File-scoped operation
-            target_file = require_file_scope_target_path(file)
-
-            if line_ids is None:
-                # --file without --line: include entire file
-                _file_scope_include_file_to_batch.include_file_to_batch(
-                    batch_name,
-                    target_file,
-                    quiet=quiet,
-                    auto_advance=auto_advance,
-                )
-            else:
-                # --file with --line: include specific lines from file
-                _include_line_batching.include_file_lines_to_batch(
-                    batch_name,
-                    target_file,
-                    line_ids,
-                    quiet=quiet,
-                    auto_advance=auto_advance,
-                )
-        else:
-            # Hunk-scoped operation (selected behavior)
-            if line_ids is not None:
-                _include_line_batching.include_selected_lines_to_batch(
-                    batch_name,
-                    line_ids,
-                    quiet=quiet,
-                    auto_advance=auto_advance,
-                )
-            else:
-                # Include entire selected hunk
-                _selected_change_batch_staging.include_selected_change_to_batch(
-                    batch_name,
-                    quiet=quiet,
-                    auto_advance=auto_advance,
-                )
-    if original_file_scope in (None, "") and line_ids is not None:
-        finish_review_scoped_line_action(review_state)
+    _include_to_batch_action.execute_include_to_batch_action(
+        batch_name=batch_name,
+        line_ids=line_ids,
+        file=file,
+        original_file_scope=original_file_scope,
+        review_state=review_state,
+        quiet=quiet,
+        auto_advance=auto_advance,
+    )

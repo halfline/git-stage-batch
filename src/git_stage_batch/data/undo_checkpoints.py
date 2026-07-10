@@ -38,7 +38,7 @@ from ..utils.git_index import (
     temp_git_index,
 )
 from ..utils.git_repository import get_git_repository_root_path
-from ..utils.git_object_io import create_git_blob
+from ..utils.git_object_io import create_git_blob, create_git_blobs_from_paths
 from ..utils.paths import (
     get_batches_directory_path,
     get_session_directory_path,
@@ -74,17 +74,31 @@ def _add_blob_to_index(env: dict[str, str], path: str, data: bytes, mode: str = 
 def _add_directory_to_index(env: dict[str, str], *, source_dir: Path, tree_prefix: str) -> None:
     if not source_dir.exists():
         return
+    file_paths = sorted(path for path in source_dir.rglob("*") if path.is_file())
+    normal_file_blobs = create_git_blobs_from_paths(
+        path for path in file_paths if not path.is_symlink()
+    )
     updates: list[GitIndexEntryUpdate] = []
-    for file_path in sorted(path for path in source_dir.rglob("*") if path.is_file()):
+    for file_path in file_paths:
         relative_path = file_path.relative_to(source_dir).as_posix()
         tree_path = f"{tree_prefix}/{relative_path}"
-        updates.append(
-            _undo_worktree.index_update_from_path(
-                index_path=tree_path,
-                source_path=file_path,
-                mode=_undo_worktree.file_mode_for_path(file_path),
+        mode = _undo_worktree.file_mode_for_path(file_path)
+        if file_path.is_symlink():
+            updates.append(
+                _undo_worktree.index_update_from_path(
+                    index_path=tree_path,
+                    source_path=file_path,
+                    mode=mode,
+                )
             )
-        )
+        else:
+            updates.append(
+                GitIndexEntryUpdate(
+                    file_path=tree_path,
+                    mode=mode,
+                    blob_sha=normal_file_blobs[file_path],
+                )
+            )
     git_update_index_entries(updates, env=env)
 
 

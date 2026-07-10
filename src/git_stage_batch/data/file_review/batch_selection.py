@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Mapping
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from ...batch.file_display import render_batch_file_display
@@ -22,6 +22,27 @@ from .selection_validation import validate_review_scoped_line_selection
 
 if TYPE_CHECKING:
     from ...core.models import RenderedBatchDisplay
+
+
+@dataclass(frozen=True)
+class _SelectionForValidation:
+    display_ids: tuple[int, ...]
+    is_splittable: bool = False
+
+
+def _current_action_selections_for_validation(
+    rendered: 'RenderedBatchDisplay',
+    action: 'FileReviewAction | str',
+) -> list[_SelectionForValidation]:
+    review_action = FileReviewAction(action).value
+    return [
+        _SelectionForValidation(
+            display_ids=group.display_ids,
+            is_splittable=group.reason in {"replacement", "structural-run"},
+        )
+        for group in rendered.review_action_groups
+        if group.display_ids and review_action in group.actions
+    ]
 
 
 def _selection_ids_from_gutter_ids(
@@ -49,8 +70,9 @@ def translate_batch_file_gutter_ids_to_selection_ids(
 
     If the IDs came after a fresh matching file review, validate them against
     the complete actions shown by that review before consulting the full batch
-    display. Without a matching review, keep the historical raw batch display
-    behavior.
+    display. Without a matching review, validate against the current review
+    action groups so reset-only review IDs cannot be reinterpreted as compact
+    mergeable IDs.
     """
     if selected_ids is None:
         return None, None
@@ -60,18 +82,36 @@ def translate_batch_file_gutter_ids_to_selection_ids(
         file_path,
         action,
     )
-    if review_selections is not None:
-        validate_review_scoped_line_selection(selected_ids, review_selections)
-
     rendered = render_batch_file_display(batch_name, file_path)
     if rendered is None:
         return selected_ids, None
 
-    display_id_map = (
-        rendered.review_gutter_to_selection_id or rendered.gutter_to_selection_id
-        if review_selections is not None else
-        rendered.gutter_to_selection_id
-    )
+    selection_ids: set[int] | None = None
+    if review_selections is not None:
+        display_id_map = (
+            rendered.review_gutter_to_selection_id
+            or rendered.gutter_to_selection_id
+        )
+        selection_ids = set(_selection_ids_from_gutter_ids(selected_ids, display_id_map))
+        validate_review_scoped_line_selection(selected_ids, review_selections)
+    else:
+        current_action_selections = _current_action_selections_for_validation(
+            rendered,
+            action,
+        )
+        if current_action_selections:
+            display_id_map = (
+                rendered.review_gutter_to_selection_id
+                or rendered.gutter_to_selection_id
+            )
+            selection_ids = set(_selection_ids_from_gutter_ids(selected_ids, display_id_map))
+            validate_review_scoped_line_selection(
+                selected_ids,
+                current_action_selections,
+            )
+        else:
+            display_id_map = rendered.gutter_to_selection_id
+
     rendered_for_messages = (
         replace(
             rendered,
@@ -84,7 +124,8 @@ def translate_batch_file_gutter_ids_to_selection_ids(
         if review_selections is not None else
         rendered
     )
-    selection_ids = set(_selection_ids_from_gutter_ids(selected_ids, display_id_map))
+    if selection_ids is None:
+        selection_ids = set(_selection_ids_from_gutter_ids(selected_ids, display_id_map))
     return selection_ids, rendered_for_messages
 
 

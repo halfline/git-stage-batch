@@ -3,13 +3,8 @@
 from __future__ import annotations
 
 import argparse
-import os
 import shlex
 import sys
-import tempfile
-from contextlib import nullcontext
-from importlib import resources
-from pathlib import Path
 
 from .. import __version__
 from ..batch.query import read_batch_metadata
@@ -31,7 +26,6 @@ from ..commands.discard import (
 )
 from ..commands.discard_from import command_discard_from_batch
 from ..commands.drop import command_drop_batch
-from ..core.replacement import ReplacementText
 from ..commands.file_scope.multi_file_actions import (
     discard_to_batch_each_resolved_file,
     include_each_resolved_file,
@@ -68,146 +62,17 @@ from ..commands.undo import command_undo
 from ..exceptions import CommandError
 from ..i18n import _
 from ..output.status_prompt import DEFAULT_PROMPT_FORMAT
-from ..utils.command import run_command
-from ..utils.git import run_git_command
+from .auto_advance_options import add_auto_advance_arguments
 from .completion import command_complete_files
+from .file_arguments import add_file_argument, normalize_parsed_file_arguments
 from .file_scope import (
     FileArgument,
     resolve_batch_file_scope,
     resolve_live_file_scope,
 )
-
-
-class GitHelpArgumentParser(argparse.ArgumentParser):
-    """Custom ArgumentParser that tries to use git help for --help."""
-
-    def __init__(
-        self,
-        *args,
-        help_topic: str | None = None,
-        **kwargs,
-    ):
-        self._git_help_topic = help_topic
-        super().__init__(*args, **kwargs)
-
-    def print_help(self, file=None):
-        """Try to use git help, fall back to argparse help."""
-        if (
-            self._git_help_topic is not None
-            and _show_git_stage_batch_help(self._git_help_topic)
-        ):
-            return
-
-        # Fall back to standard argparse help
-        super().print_help(file)
-
-
-def _resolve_default_manpath() -> str | None:
-    """Return the default manpath as if MANPATH were unset."""
-    env = os.environ.copy()
-    env.pop("MANPATH", None)
-    try:
-        result = run_command(
-            ["manpath", "-q"],
-            check=False,
-            env=env,
-        )
-    except (FileNotFoundError, OSError):
-        return None
-    if result.returncode != 0:
-        return None
-    return result.stdout.strip() or None
-
-
-def _build_manpath_with_packaged_page(man_root: Path, env: dict[str, str]) -> str:
-    """Build a MANPATH preferring the packaged man page when available."""
-    if env.get("MANPATH"):
-        return f"{man_root}{os.pathsep}{env['MANPATH']}"
-
-    default_manpath = _resolve_default_manpath()
-    if default_manpath:
-        return f"{man_root}{os.pathsep}{default_manpath}"
-
-    return f"{man_root}{os.pathsep}{os.pathsep}"
-
-
-def _try_git_help_with_environment(
-    help_topic: str,
-    env: dict[str, str] | None = None,
-) -> bool:
-    """Run git help for a git-stage-batch topic."""
-    try:
-        result = run_git_command(
-            ["help", _git_help_name_for_help_topic(help_topic)],
-            check=False,
-            capture_stdout=False,
-            env=env,
-            requires_index_lock=False,
-        )
-    except (FileNotFoundError, OSError):
-        return False
-    return result.returncode == 0
-
-
-def _with_real_manpath_root(manpage_path: Path):
-    """Yield a manpath root that contains the requested man page."""
-    if manpage_path.parent.name == "man1":
-        return nullcontext(manpage_path.parent.parent)
-
-    class _TemporaryManRoot:
-        def __enter__(self):
-            self._temp_dir = tempfile.TemporaryDirectory(prefix="git-stage-batch-help-")
-            temp_root = Path(self._temp_dir.name)
-            temp_manpage = temp_root / "man1" / manpage_path.name
-            temp_manpage.parent.mkdir(parents=True, exist_ok=True)
-            temp_manpage.write_bytes(manpage_path.read_bytes())
-            return temp_root
-
-        def __exit__(self, exc_type, exc, tb):
-            self._temp_dir.cleanup()
-            return False
-
-    return _TemporaryManRoot()
-
-
-def _manpage_name_for_help_topic(help_topic: str) -> str:
-    """Return the man page filename for a git help topic."""
-    return f"git-{help_topic}.1"
-
-
-def _git_help_name_for_help_topic(help_topic: str) -> str:
-    """Return the git help argument for a git-stage-batch topic."""
-    return _manpage_name_for_help_topic(help_topic).removesuffix(".1")
-
-
-def _show_git_stage_batch_help(help_topic: str = "stage-batch") -> bool:
-    """Show git-stage-batch help from packaged or system man pages."""
-    try:
-        packaged_manpage = resources.files("git_stage_batch").joinpath(
-            "assets",
-            "man",
-            "man1",
-            _manpage_name_for_help_topic(help_topic),
-        )
-    except (ModuleNotFoundError, FileNotFoundError):
-        packaged_manpage = None
-
-    if packaged_manpage is not None:
-        try:
-            with resources.as_file(packaged_manpage) as packaged_manpage_path:
-                if packaged_manpage_path.exists():
-                    with _with_real_manpath_root(packaged_manpage_path) as man_root:
-                        env = os.environ.copy()
-                        env["MANPATH"] = _build_manpath_with_packaged_page(
-                            Path(man_root),
-                            env,
-                        )
-                        if _try_git_help_with_environment(help_topic, env):
-                            return True
-        except FileNotFoundError:
-            pass
-
-    return _try_git_help_with_environment(help_topic)
+from .git_help import GitHelpArgumentParser
+from .quick_actions import expand_quick_actions
+from .replacement_input import resolve_replacement_text
 
 
 def _add_subcommand_parser(
@@ -224,100 +89,6 @@ def _add_subcommand_parser(
     )
 
 
-def _add_file_argument(parser: argparse.ArgumentParser, help_text: str) -> None:
-    """Add a single-file argument that supports omitted values."""
-    parser.add_argument(
-        "--file",
-        action="append",
-        nargs="*",
-        default=None,
-        metavar="PATH",
-        help=help_text,
-    )
-    parser.add_argument(
-        "--files",
-        dest="file_patterns",
-        action="append",
-        nargs="+",
-        default=None,
-        metavar="PATTERN",
-        help=_("Resolve one or more gitignore-style PATTERNs to files."),
-    )
-
-
-def _add_auto_advance_arguments(parser: argparse.ArgumentParser) -> None:
-    """Add controls for selecting the next hunk after an action."""
-    auto_advance = parser.add_mutually_exclusive_group()
-    auto_advance.add_argument(
-        "--auto-advance",
-        dest="auto_advance",
-        action="store_true",
-        default=None,
-        help=_("Select the next hunk after the command completes"),
-    )
-    auto_advance.add_argument(
-        "--no-auto-advance",
-        dest="auto_advance",
-        action="store_false",
-        help=_("Leave no hunk selected after the command completes"),
-    )
-
-
-def _flatten_file_patterns(
-    pattern_groups: list[list[str]] | None,
-) -> list[str] | None:
-    """Flatten repeated --files groups into one ordered pattern list."""
-    if pattern_groups is None:
-        return None
-    return [
-        pattern
-        for group in pattern_groups
-        for pattern in group
-    ]
-
-
-def _normalize_parsed_file_arguments(args: argparse.Namespace) -> None:
-    """Normalize parser storage for --file/--files before dispatch."""
-    if hasattr(args, "file_patterns"):
-        args.file_patterns = _flatten_file_patterns(args.file_patterns)
-
-    if not hasattr(args, "file") or args.file is None:
-        return
-
-    file_groups = args.file
-    if file_groups and not file_groups[-1]:
-        args.file = ""
-        return
-
-    file_values = [
-        value
-        for group in file_groups
-        for value in group
-    ]
-
-    if len(file_values) == 1:
-        args.file = file_values[0]
-    else:
-        args.file = file_values
-
-
-def _resolve_replacement_text(args: argparse.Namespace) -> str | None:
-    """Return replacement text from `--as` or exact stdin content."""
-    if getattr(args, "as_text", None) is not None and getattr(args, "as_stdin", False):
-        raise CommandError(_("Cannot use `--as` and `--as-stdin` together."))
-    if getattr(args, "as_stdin", False):
-        data = sys.stdin.buffer.read()
-        return ReplacementText(
-            data.decode("utf-8", errors="surrogateescape"),
-            data=data,
-            exact=True,
-        )
-    as_text = getattr(args, "as_text", None)
-    if as_text is not None:
-        return ReplacementText(as_text, exact=True)
-    return None
-
-
 def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Namespace | None:
     """Parse command-line arguments with quick action expansion.
 
@@ -328,24 +99,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     Returns:
         Parsed arguments on success, None if parsing failed
     """
-    # Mapping from shortcuts to their expanded forms
-    quick_actions = {
-        '?': ['--help'],
-        'if': ['include', '--file'],
-        'il': ['include', '--line'],
-        'sf': ['skip', '--file'],
-        'sl': ['skip', '--line'],
-        'df': ['discard', '--file'],
-        'dl': ['discard', '--line'],
-    }
-
-    # Expand quick actions
-    expanded = []
-    for arg in args:
-        if arg in quick_actions:
-            expanded.extend(quick_actions[arg])
-        else:
-            expanded.append(arg)
+    expanded = expand_quick_actions(args)
 
     # Create parser
     parser = GitHelpArgumentParser(
@@ -400,7 +154,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="N",
         help=_("Number of context lines in diff output (default: 3)"),
     )
-    _add_auto_advance_arguments(parser_start)
+    add_auto_advance_arguments(parser_start)
     parser_start.set_defaults(
         func=lambda args: command_start(
             context_lines=args.context_lines,
@@ -431,7 +185,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         aliases=["a"],
         help=_("Clear state and start a fresh pass"),
     )
-    _add_auto_advance_arguments(parser_again)
+    add_auto_advance_arguments(parser_again)
     parser_again.set_defaults(
         func=lambda args: command_again(auto_advance=args.auto_advance)
     )
@@ -490,7 +244,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         dest="page",
         help=_("Show page selection for a file review, e.g. '3', '3-5', '1,3,5-7', or 'all'."),
     )
-    _add_file_argument(
+    add_file_argument(
         parser_show,
         _("Operate on entire file (live working tree state). "
           "If PATH omitted, uses selected hunk's file. "
@@ -561,7 +315,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
             if args.porcelain:
                 raise CommandError(_("Cannot use `show --page` with `--porcelain`."))
         if args.from_batch:
-            replacement_text = _resolve_replacement_text(args) if replacement_requested else None
+            replacement_text = resolve_replacement_text(args) if replacement_requested else None
             show_kwargs = {"page": args.page}
             if args.porcelain:
                 show_kwargs["porcelain"] = args.porcelain
@@ -662,7 +416,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="IDS",
         help=_("Stage only specific line IDs (e.g., '1,3,5-7')"),
     )
-    _add_file_argument(
+    add_file_argument(
         parser_include,
         _("Operate on entire file (live working tree state). "
           "If PATH omitted, uses selected hunk's file. "
@@ -705,7 +459,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         action="store_true",
         help=argparse.SUPPRESS,
     )
-    _add_auto_advance_arguments(parser_include)
+    add_auto_advance_arguments(parser_include)
 
     def dispatch_include(args: argparse.Namespace) -> None:
         replacement_requested = args.as_text is not None or args.as_stdin
@@ -717,7 +471,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                     raise CommandError(_("`--no-edge-overlap` only applies to live `include --line --as` operations."))
                 resolved_batch_scope = resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
                 resolved_file = resolved_batch_scope.require_single_file(_("Cannot use --lines with multiple files."))
-                replacement_text = _resolve_replacement_text(args)
+                replacement_text = resolve_replacement_text(args)
                 command_include_from_batch(
                     args.from_batch,
                     args.line_ids,
@@ -728,7 +482,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
             if args.line_ids and not args.from_batch and not args.to_batch:
                 resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
                 resolved_file = resolved_live_scope.require_single_file(_("Cannot use --lines with multiple files."))
-                replacement_text = _resolve_replacement_text(args)
+                replacement_text = resolve_replacement_text(args)
                 command_include_line_as(
                     args.line_ids,
                     replacement_text,
@@ -755,7 +509,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                     raise CommandError(_("`--no-edge-overlap` requires `include --line --as`."))
                 if resolved_live_scope.is_multiple:
                     raise CommandError(_("Cannot use --as with multiple files."))
-                replacement_text = _resolve_replacement_text(args)
+                replacement_text = resolve_replacement_text(args)
                 command_include_file_as(
                     replacement_text,
                     file=resolved_live_scope.optional_file(),
@@ -828,13 +582,13 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="IDS",
         help=_("Skip only specific line IDs (e.g., '1,3,5-7')"),
     )
-    _add_file_argument(
+    add_file_argument(
         parser_skip,
         _("Operate on entire file (live working tree state). "
           "If PATH omitted, uses selected hunk's file. "
           "Without --line, skips all hunks from the file."),
     )
-    _add_auto_advance_arguments(parser_skip)
+    add_auto_advance_arguments(parser_skip)
 
     def dispatch_skip(args: argparse.Namespace) -> None:
         resolved_file_scope = resolve_live_file_scope(args.file, args.file_patterns)
@@ -875,7 +629,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="IDS",
         help=_("Discard only specific line IDs (e.g., '1,3,5-7')"),
     )
-    _add_file_argument(
+    add_file_argument(
         parser_discard,
         _("Operate on entire file (live working tree state). "
           "If PATH omitted, uses selected hunk's file. "
@@ -918,7 +672,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         action="store_true",
         help=argparse.SUPPRESS,
     )
-    _add_auto_advance_arguments(parser_discard)
+    add_auto_advance_arguments(parser_discard)
 
     def dispatch_discard(args: argparse.Namespace) -> None:
         replacement_requested = args.as_text is not None or args.as_stdin
@@ -928,7 +682,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
             if args.to_batch and args.line_ids and not args.from_batch:
                 resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
                 resolved_file = resolved_live_scope.require_single_file(_("Cannot use --lines with multiple files."))
-                replacement_text = _resolve_replacement_text(args)
+                replacement_text = resolve_replacement_text(args)
                 command_discard_line_as_to_batch(
                     args.to_batch,
                     args.line_ids,
@@ -952,7 +706,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
                     raise CommandError(_("`--no-edge-overlap` requires `discard --to --line --as`."))
                 if resolved_live_scope.is_multiple:
                     raise CommandError(_("Cannot use --as with multiple files."))
-                replacement_text = _resolve_replacement_text(args)
+                replacement_text = resolve_replacement_text(args)
                 command_discard_file_as(
                     replacement_text,
                     file=resolved_live_scope.optional_file(),
@@ -1185,7 +939,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="IDS",
         help=_("Apply only specific line IDs (e.g., '1,3,5-7')"),
     )
-    _add_file_argument(
+    add_file_argument(
         parser_apply,
         _("Operate on entire file from batch. "
           "If PATH omitted, uses first file in batch (sorted order). "
@@ -1234,7 +988,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         metavar="IDS",
         help=_("Reset only specific line IDs (e.g., '1,3,5-7')"),
     )
-    _add_file_argument(
+    add_file_argument(
         parser_reset,
         _("Operate on entire file from batch. "
           "If PATH omitted, uses selected hunk's file. "
@@ -1337,7 +1091,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     # Parse arguments, return None on failure
     try:
         parsed_args = parser.parse_args(expanded)
-        _normalize_parsed_file_arguments(parsed_args)
+        normalize_parsed_file_arguments(parsed_args)
         return parsed_args
     except argparse.ArgumentError:
         if not quiet:

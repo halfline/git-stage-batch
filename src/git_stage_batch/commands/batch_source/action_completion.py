@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from ...data.file_review.state import finish_review_scoped_line_action
+from ...data.file_review.action_scope import finish_review_scoped_line_action
 from .action_context import BatchSourceActionContext
 
 

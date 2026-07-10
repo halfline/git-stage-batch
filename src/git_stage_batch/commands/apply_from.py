@@ -33,7 +33,7 @@ from ..data.session import snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..exceptions import exit_with_error, MergeError, CommandError, AtomicUnitError
 from ..i18n import _
-from ..utils.git import require_git_repository
+from ..utils.git_repository import require_git_repository
 
 
 def _print_binary_worktree_result(

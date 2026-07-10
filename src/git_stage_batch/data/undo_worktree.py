@@ -9,11 +9,11 @@ from typing import Any
 
 from ..core.buffer import LineBuffer
 from ..utils.git import (
-    create_git_blob,
-    get_git_repository_root_path,
     GitIndexEntryUpdate,
     run_git_command,
 )
+from ..utils.git_repository import get_git_repository_root_path
+from ..utils.git_object_io import create_git_blob
 
 
 def changed_worktree_paths() -> list[str]:

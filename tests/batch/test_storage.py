@@ -24,7 +24,7 @@ from git_stage_batch.batch.ownership import (
 import git_stage_batch.batch.ownership as ownership_module
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.core.buffer import LineBuffer
-from git_stage_batch.utils.git import create_git_blob
+from git_stage_batch.utils.git_object_io import create_git_blob
 
 
 def merge_batch(

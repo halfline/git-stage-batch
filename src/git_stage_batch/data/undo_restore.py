@@ -19,12 +19,12 @@ from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file
 from ..utils.git import (
-    get_git_repository_root_path,
     git_add_paths,
     git_checkout_detached,
     run_git_command,
     update_git_refs,
 )
+from ..utils.git_repository import get_git_repository_root_path
 from ..utils.paths import get_auto_added_files_file_path
 
 

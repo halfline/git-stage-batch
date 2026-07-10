@@ -17,7 +17,7 @@ from ...data.file_review.batch_selection import (
     translate_reset_batch_file_gutter_ids_to_selection_ranges,
 )
 from ...data.file_review.records import FileReviewAction
-from ...data.file_review.state import resolve_batch_source_action_scope
+from ...data.file_review.action_scope import resolve_batch_source_action_scope
 from ...exceptions import exit_with_error
 from ...i18n import _
 

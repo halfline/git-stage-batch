@@ -7,7 +7,7 @@ from contextlib import ExitStack
 from ..core.buffer import LineBuffer, buffer_byte_count
 from ..core.text_lifecycle import TextFileChangeType
 from ..utils.repository_buffers import load_git_object_as_buffer
-from ..utils.git import get_git_repository_root_path
+from ..utils.git_repository import get_git_repository_root_path
 
 
 def detect_empty_text_lifecycle_change(

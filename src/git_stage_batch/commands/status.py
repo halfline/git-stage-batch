@@ -13,7 +13,8 @@ from ..exceptions import CommandError
 from ..i18n import _
 from ..output.status import print_status_summary as _print_status_summary
 from ..output.status_prompt import prompt_needs_status_summary, render_prompt_status
-from ..utils.git import require_git_repository, run_git_command
+from ..utils.git import run_git_command
+from ..utils.git_repository import require_git_repository
 
 
 def _git_directory_for_prompt() -> Path | None:

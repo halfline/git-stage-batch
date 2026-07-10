@@ -36,7 +36,7 @@ from ..data.file_hunk_display import (
     cache_unstaged_file_as_single_hunk,
 )
 from ..data.file_review.records import FileReviewAction
-from ..data.file_review.state import (
+from ..data.file_review.action_scope import (
     finish_review_scoped_line_action,
     refuse_ambiguous_bare_action_after_partial_file_review,
     refuse_live_action_for_batch_selection,
@@ -58,9 +58,7 @@ from ..staging.operations import (
     build_target_index_buffer_from_lines,
     update_index_with_blob_buffer,
 )
-from ..utils.git import (
-    require_git_repository,
-)
+from ..utils.git_repository import require_git_repository
 from ..utils.journal import log_journal
 from ..utils.paths import (
     ensure_state_directory_exists,

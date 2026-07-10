@@ -24,7 +24,6 @@ from ...exceptions import exit_with_error
 from ...i18n import _
 from ...utils.file_io import write_text_file_contents
 from ...utils.git import (
-    create_git_blob,
     git_commit_tree,
     git_read_tree,
     git_update_index,
@@ -32,6 +31,7 @@ from ...utils.git import (
     run_git_command,
     temp_git_index,
 )
+from ...utils.git_object_io import create_git_blob
 from ...utils.paths import get_batch_metadata_file_path
 from .sift_results import SiftedBinaryFileResult, SiftedFileResult
 

@@ -51,10 +51,12 @@ from ..output.patch import (
     print_gitlink_change,
 )
 from ..output.file_review import (
-    build_file_review_model,
-    make_file_review_state,
-    normalize_page_spec,
     print_file_review,
+)
+from ..output.file_review_model_builder import build_file_review_model
+from ..data.file_review.pages import normalize_page_spec
+from ..output.file_review_state_builder import (
+    make_file_review_state,
     resolve_default_review_pages,
 )
 from ..output.file_review_list import (
@@ -74,7 +76,7 @@ from ..exceptions import (
 )
 from ..i18n import _
 from ..core.models import LineLevelChange
-from ..utils.git import require_git_repository
+from ..utils.git_repository import require_git_repository
 
 
 def _batch_source_args(batch_name: str) -> str:

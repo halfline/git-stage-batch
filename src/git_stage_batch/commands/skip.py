@@ -38,7 +38,7 @@ from ..data.selected_change.clear_reasons import (
     refuse_bare_action_after_file_list,
 )
 from ..data.file_review.records import FileReviewAction
-from ..data.file_review.state import (
+from ..data.file_review.action_scope import (
     finish_review_scoped_line_action,
     refuse_ambiguous_bare_action_after_partial_file_review,
     refuse_live_action_for_batch_selection,
@@ -72,7 +72,7 @@ from ..utils.file_io import (
     read_text_file_contents,
     write_text_file_contents,
 )
-from ..utils.git import require_git_repository
+from ..utils.git_repository import require_git_repository
 from ..utils.journal import log_journal
 from ..utils.paths import (
     ensure_state_directory_exists,

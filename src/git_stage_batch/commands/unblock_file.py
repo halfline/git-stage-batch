@@ -21,9 +21,11 @@ from ..i18n import _
 from ..utils.file_io import append_file_path_to_file, read_file_paths_file, remove_file_path_from_file
 from ..utils.git import (
     git_add_paths,
+    run_git_command,
+)
+from ..utils.git_repository import (
     require_git_repository,
     resolve_file_path_to_repo_relative,
-    run_git_command,
 )
 from ..utils.paths import (
     ensure_state_directory_exists,

@@ -18,9 +18,9 @@ from ...batch.submodule_pointer import (
 from ...core.line_selection import LineRanges
 from ...exceptions import exit_with_error
 from ...i18n import _
+from .action_scope import fresh_batch_review_selections_for_action
 from .records import FileReviewAction
 from .selection_validation import validate_review_scoped_line_selection
-from .state import fresh_batch_review_selections_for_action
 
 if TYPE_CHECKING:
     from ...core.models import RenderedBatchDisplay

@@ -26,7 +26,7 @@ from ..data.selected_change.clear_reasons import (
 )
 from ..data.file_hunk_display import cache_unstaged_file_as_single_hunk
 from ..data.file_review.records import FileReviewAction, ReviewSource
-from ..data.file_review.state import (
+from ..data.file_review.action_scope import (
     finish_review_scoped_line_action,
     refuse_ambiguous_bare_action_after_partial_file_review,
     refuse_live_action_for_batch_selection,
@@ -40,10 +40,8 @@ from ..core.buffer import (
 )
 from ..exceptions import exit_with_error
 from ..i18n import _
-from ..utils.git import (
-    require_git_repository,
-    run_git_command,
-)
+from ..utils.git import run_git_command
+from ..utils.git_repository import require_git_repository
 from ..utils.journal import log_journal
 from ..utils.paths import (
     ensure_state_directory_exists,

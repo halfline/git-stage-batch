@@ -29,11 +29,11 @@ from git_stage_batch.commands.suggest_fixup import command_suggest_fixup
 from git_stage_batch.core.actionable_changes import ActionableSelectionReason
 import git_stage_batch.batch.file_display as file_display_module
 import git_stage_batch.data.file_review.freshness as file_review_freshness_module
+from git_stage_batch.data.file_review.action_scope import validate_pathless_review_line_action
 from git_stage_batch.data.file_review.records import FileReviewAction, ReviewSource
 from git_stage_batch.data.file_review.selection_validation import shown_review_selections_for_action
 from git_stage_batch.data.file_review.state import (
     read_last_file_review_state,
-    validate_pathless_review_line_action,
 )
 from git_stage_batch.data.selected_change.store import (
     SelectedChangeKind,
@@ -46,7 +46,9 @@ from git_stage_batch.core.line_selection import format_line_ids
 from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange, RenderedBatchDisplay, ReviewActionGroup
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.output.colors import Colors
-from git_stage_batch.output.file_review import build_file_review_model, make_file_review_state, print_file_review
+from git_stage_batch.output.file_review import print_file_review
+from git_stage_batch.output.file_review_model_builder import build_file_review_model
+from git_stage_batch.output.file_review_state_builder import make_file_review_state
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,
     get_line_changes_json_file_path,
@@ -87,9 +89,9 @@ def paged_batch_repo(paged_file_repo):
 
 
 def _force_one_change_per_page(monkeypatch):
-    import git_stage_batch.output.file_review as file_review
+    import git_stage_batch.output.file_review_layout as file_review_layout
 
-    monkeypatch.setattr(file_review, "_body_budget", lambda: 1)
+    monkeypatch.setattr(file_review_layout, "body_budget", lambda: 1)
 
 
 def _add_second_changed_file(repo):
@@ -1051,7 +1053,7 @@ def test_pathless_include_line_accepts_visible_presence_subset_from_review(
     monkeypatch,
     capsys,
 ):
-    import git_stage_batch.output.file_review as file_review
+    import git_stage_batch.output.file_review_layout as file_review_layout
 
     monkeypatch.chdir(tmp_path)
     subprocess.run(["git", "init"], check=True, capture_output=True)
@@ -1064,7 +1066,7 @@ def test_pathless_include_line_accepts_visible_presence_subset_from_review(
     added_lines = [f"line {index}\n" for index in range(1, 13)]
     (tmp_path / "new.txt").write_text("".join(added_lines))
     command_start(quiet=True)
-    monkeypatch.setattr(file_review, "_body_budget", lambda: 6)
+    monkeypatch.setattr(file_review_layout, "body_budget", lambda: 6)
 
     command_show(file="new.txt", page="1")
     captured = capsys.readouterr()
@@ -2242,7 +2244,7 @@ def test_file_review_multiline_note_is_part_of_header(capsys):
 
 
 def test_presence_only_review_keeps_visual_group_with_page_local_actions(capsys, monkeypatch):
-    import git_stage_batch.output.file_review as file_review
+    import git_stage_batch.output.file_review_layout as file_review_layout
 
     lines = [
         LineEntry(
@@ -2260,7 +2262,7 @@ def test_presence_only_review_keeps_visual_group_with_page_local_actions(capsys,
         header=HunkHeader(old_start=1, old_len=0, new_start=1, new_len=8),
         lines=lines,
     )
-    monkeypatch.setattr(file_review, "_body_budget", lambda: 6)
+    monkeypatch.setattr(file_review_layout, "body_budget", lambda: 6)
 
     model = build_file_review_model(line_changes)
 

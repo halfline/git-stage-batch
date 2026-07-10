@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .file_io import read_text_file_contents
-from .git import get_git_directory_path
+from .git_repository import get_git_directory_path
 
 
 def get_state_directory_path() -> Path:

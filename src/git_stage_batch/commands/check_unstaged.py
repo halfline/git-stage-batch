@@ -10,7 +10,7 @@ from ..data.staged_renames import (
 )
 from ..exceptions import CommandError
 from ..i18n import _, ngettext
-from ..utils.git import require_git_repository
+from ..utils.git_repository import require_git_repository
 
 
 def command_check_unstaged() -> None:

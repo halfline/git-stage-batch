@@ -60,10 +60,12 @@ from ..output.patch import (
     print_text_file_deletion_change,
 )
 from ..output.file_review import (
-    build_file_review_model,
-    make_file_review_state,
-    normalize_page_spec,
     print_file_review,
+)
+from ..output.file_review_model_builder import build_file_review_model
+from ..data.file_review.pages import normalize_page_spec
+from ..output.file_review_state_builder import (
+    make_file_review_state,
     resolve_default_review_pages,
 )
 from ..output.file_review_list import (
@@ -75,7 +77,7 @@ from ..output.file_review_list import (
     print_file_review_list,
 )
 from ..utils.file_io import read_text_file_line_set
-from ..utils.git import require_git_repository
+from ..utils.git_repository import require_git_repository
 from ..utils.paths import (
     ensure_state_directory_exists,
     get_block_list_file_path,

@@ -25,9 +25,11 @@ from ...exceptions import exit_with_error
 from ...i18n import _
 from ...utils.file_io import read_text_file_line_set
 from ...utils.git import (
-    get_git_repository_root_path,
     git_apply_to_worktree,
     git_remove_paths,
+)
+from ...utils.git_repository import (
+    get_git_repository_root_path,
     require_git_repository,
 )
 from ...utils.journal import log_journal

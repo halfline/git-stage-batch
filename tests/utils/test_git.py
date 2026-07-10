@@ -1,9 +1,9 @@
 """Tests for git command execution utilities."""
 
 from git_stage_batch.utils import git as git_utils
+from git_stage_batch.utils import git_index_lock
 from git_stage_batch.utils.git import stream_git_command
 from git_stage_batch.utils.git import stream_git_diff
-from git_stage_batch.utils.git import resolve_file_path_to_repo_relative
 
 import subprocess
 from pathlib import Path
@@ -12,17 +12,15 @@ import pytest
 
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.git import (
-    create_git_blob,
-    get_git_repository_root_path,
     git_commit_tree,
     git_read_tree,
     git_update_index,
     git_write_tree,
-    require_git_repository,
     run_git_command,
     temp_git_index,
-    wait_for_git_index_lock,
 )
+from git_stage_batch.utils.git_index_lock import wait_for_git_index_lock
+from git_stage_batch.utils.git_object_io import create_git_blob
 
 
 @pytest.fixture
@@ -97,7 +95,7 @@ class TestRunGitCommand:
             calls.append(("run", arguments, stdin_chunks, kwargs))
             return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
 
-        monkeypatch.setattr(git_utils, "wait_for_git_index_lock", fake_wait)
+        monkeypatch.setattr(git_index_lock, "wait_for_git_index_lock", fake_wait)
         monkeypatch.setattr(git_utils, "run_command", fake_run_command)
 
         run_git_command(["add", "--", "file.txt"], env=command_env, cwd="/repo")
@@ -124,7 +122,7 @@ class TestRunGitCommand:
                 )
             return subprocess.CompletedProcess(arguments, 0, stdout="ok\n", stderr="")
 
-        monkeypatch.setattr(git_utils, "wait_for_git_index_lock", fake_wait)
+        monkeypatch.setattr(git_index_lock, "wait_for_git_index_lock", fake_wait)
         monkeypatch.setattr(git_utils, "run_command", fake_run_command)
 
         result = run_git_command(["apply", "--cached"], check=False, cwd="/repo")
@@ -155,7 +153,7 @@ class TestRunGitCommand:
             yield b"diff --git a/file.txt b/file.txt\n"
             yield b"+new line\n"
 
-        monkeypatch.setattr(git_utils, "wait_for_git_index_lock", fake_wait)
+        monkeypatch.setattr(git_index_lock, "wait_for_git_index_lock", fake_wait)
         monkeypatch.setattr(git_utils, "run_command", fake_run_command)
 
         result = run_git_command(
@@ -183,7 +181,7 @@ class TestRunGitCommand:
             captured["kwargs"] = kwargs
             return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
 
-        monkeypatch.setattr(git_utils, "wait_for_git_index_lock", fail_wait)
+        monkeypatch.setattr(git_index_lock, "wait_for_git_index_lock", fail_wait)
         monkeypatch.setattr(git_utils, "run_command", fake_run_command)
 
         original_env = {"CUSTOM": "1"}
@@ -202,8 +200,8 @@ class TestWaitForGitIndexLock:
         """Absent index locks should not delay command startup."""
         sleep_calls = []
 
-        monkeypatch.setattr(git_utils, "_git_index_lock_path", lambda **_kwargs: tmp_path / "index.lock")
-        monkeypatch.setattr(git_utils.time, "sleep", lambda duration: sleep_calls.append(duration))
+        monkeypatch.setattr(git_index_lock, "_git_index_lock_path", lambda **_kwargs: tmp_path / "index.lock")
+        monkeypatch.setattr(git_index_lock.time, "sleep", lambda duration: sleep_calls.append(duration))
 
         wait_for_git_index_lock()
 
@@ -219,9 +217,9 @@ class TestWaitForGitIndexLock:
             sleep_calls.append(duration)
             index_lock.unlink()
 
-        monkeypatch.setattr(git_utils, "_git_index_lock_path", lambda **_kwargs: index_lock)
-        monkeypatch.setattr(git_utils.time, "monotonic", lambda: 0.0)
-        monkeypatch.setattr(git_utils.time, "sleep", fake_sleep)
+        monkeypatch.setattr(git_index_lock, "_git_index_lock_path", lambda **_kwargs: index_lock)
+        monkeypatch.setattr(git_index_lock.time, "monotonic", lambda: 0.0)
+        monkeypatch.setattr(git_index_lock.time, "sleep", fake_sleep)
 
         wait_for_git_index_lock(timeout_seconds=1.0, poll_seconds=0.05)
 
@@ -234,9 +232,9 @@ class TestWaitForGitIndexLock:
         times = iter([0.0, 0.0, 0.2])
         sleep_calls = []
 
-        monkeypatch.setattr(git_utils, "_git_index_lock_path", lambda **_kwargs: index_lock)
-        monkeypatch.setattr(git_utils.time, "monotonic", lambda: next(times))
-        monkeypatch.setattr(git_utils.time, "sleep", lambda duration: sleep_calls.append(duration))
+        monkeypatch.setattr(git_index_lock, "_git_index_lock_path", lambda **_kwargs: index_lock)
+        monkeypatch.setattr(git_index_lock.time, "monotonic", lambda: next(times))
+        monkeypatch.setattr(git_index_lock.time, "sleep", lambda duration: sleep_calls.append(duration))
 
         wait_for_git_index_lock(timeout_seconds=0.1, poll_seconds=0.05)
 
@@ -250,8 +248,8 @@ class TestWaitForGitIndexLock:
         def fail_git_directory(**_kwargs):
             raise subprocess.CalledProcessError(128, ["git", "rev-parse"])
 
-        monkeypatch.setattr(git_utils, "_git_index_lock_path", fail_git_directory)
-        monkeypatch.setattr(git_utils.time, "sleep", lambda duration: sleep_calls.append(duration))
+        monkeypatch.setattr(git_index_lock, "_git_index_lock_path", fail_git_directory)
+        monkeypatch.setattr(git_index_lock.time, "sleep", lambda duration: sleep_calls.append(duration))
 
         wait_for_git_index_lock()
 
@@ -271,9 +269,9 @@ class TestWaitForGitIndexLock:
             sleep_calls.append(duration)
             index_lock.unlink()
 
-        monkeypatch.setattr(git_utils, "run_command", fail_git_directory)
-        monkeypatch.setattr(git_utils.time, "monotonic", lambda: 0.0)
-        monkeypatch.setattr(git_utils.time, "sleep", fake_sleep)
+        monkeypatch.setattr(git_index_lock, "run_command", fail_git_directory)
+        monkeypatch.setattr(git_index_lock.time, "monotonic", lambda: 0.0)
+        monkeypatch.setattr(git_index_lock.time, "sleep", fake_sleep)
 
         wait_for_git_index_lock(
             env={"GIT_INDEX_FILE": str(index_file)},
@@ -480,67 +478,3 @@ class TestGitIndexPlumbing:
                 blob_sha="0" * 40,
                 force_remove=True,
             )
-
-
-class TestRequireGitRepository:
-    """Tests for require_git_repository function."""
-
-    def test_succeeds_in_git_repository(self, temp_git_repo):
-        """Test that function succeeds when inside a git repository."""
-        # Should not raise
-        require_git_repository()
-
-    def test_exits_outside_git_repository(self, tmp_path, monkeypatch):
-        """Test that function exits with error outside git repository."""
-        # Change to non-git directory
-        monkeypatch.chdir(tmp_path)
-
-        with pytest.raises(CommandError):
-            require_git_repository()
-
-
-class TestGetGitRepositoryRootPath:
-    """Tests for get_git_repository_root_path function."""
-
-    def test_returns_repository_root(self, temp_git_repo):
-        """Test that function returns the repository root path."""
-        root = get_git_repository_root_path()
-
-        assert isinstance(root, Path)
-        assert root.is_absolute()
-        assert (root / ".git").exists()
-
-    def test_returns_same_path_from_subdirectory(self, temp_git_repo, monkeypatch):
-        """Test that function returns root even from subdirectory."""
-        # Create subdirectory and change to it
-        subdir = temp_git_repo / "subdir"
-        subdir.mkdir()
-        monkeypatch.chdir(subdir)
-
-        root = get_git_repository_root_path()
-
-        assert root == temp_git_repo
-
-
-class TestResolveFilePathToRepoRelative:
-    """Tests for resolve_file_path_to_repo_relative function."""
-
-    def test_resolve_file_path_to_repo_relative_relative(self, temp_git_repo):
-        """Test that relative paths are returned as-is."""
-
-        result = resolve_file_path_to_repo_relative("src/file.py")
-        assert result == "src/file.py"
-
-    def test_resolve_file_path_to_repo_relative_absolute(self, temp_git_repo):
-        """Test that absolute paths inside repo are made relative."""
-
-        absolute_path = str(temp_git_repo / "src" / "file.py")
-        result = resolve_file_path_to_repo_relative(absolute_path)
-        assert result == "src/file.py"
-
-    def test_resolve_file_path_to_repo_relative_outside_repo(self, temp_git_repo, tmp_path):
-        """Test that paths outside repo are returned as-is."""
-
-        outside_path = str(tmp_path / "outside.txt")
-        result = resolve_file_path_to_repo_relative(outside_path)
-        assert result == outside_path

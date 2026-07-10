@@ -4,33 +4,16 @@ from __future__ import annotations
 
 import os
 import subprocess
-import sys
 import tempfile
 import time
 from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
-from pathlib import Path
 
-from ..exceptions import exit_with_error
-from ..i18n import _
+from . import git_index_lock
 from .command import ExitEvent, OutputEvent, run_command, stream_command
+from .git_environment import git_environment_with_optional_locks_disabled
 from .text import bytes_to_lines
-
-
-_GIT_REPOSITORY_ROOT_CACHE: dict[Path, Path] = {}
-_GIT_DIRECTORY_CACHE: dict[Path, Path] = {}
-_INDEX_LOCK_WAIT_SECONDS = 20.0
-_INDEX_LOCK_POLL_SECONDS = 0.05
-
-
-@dataclass(frozen=True)
-class GitTreeBlob:
-    """One blob entry from a Git tree."""
-
-    file_path: str
-    mode: str
-    blob_sha: str
 
 
 @dataclass(frozen=True)
@@ -43,65 +26,6 @@ class GitIndexEntryUpdate:
     force_remove: bool = False
 
 
-def _git_environment_with_optional_locks_disabled(
-    env: dict[str, str] | None,
-) -> dict[str, str]:
-    git_env = os.environ.copy() if env is None else dict(env)
-    git_env["GIT_OPTIONAL_LOCKS"] = "0"
-    return git_env
-
-
-def _custom_index_lock_path(
-    *,
-    env: dict[str, str] | None,
-    cwd: str | None,
-) -> Path | None:
-    git_env = os.environ.copy() if env is None else dict(env)
-    index_file = git_env.get("GIT_INDEX_FILE")
-    if not index_file:
-        return None
-
-    index_path = Path(index_file)
-    if not index_path.is_absolute():
-        index_path = (Path.cwd() if cwd is None else Path(cwd)) / index_path
-    return Path(f"{index_path}.lock")
-
-
-def _git_index_lock_path(*, cwd: str | None, env: dict[str, str] | None) -> Path:
-    custom_index_lock_path = _custom_index_lock_path(env=env, cwd=cwd)
-    if custom_index_lock_path is not None:
-        return custom_index_lock_path
-
-    result = run_command(
-        ["git", "rev-parse", "--absolute-git-dir"],
-        check=True,
-        cwd=cwd,
-        env=_git_environment_with_optional_locks_disabled(env),
-    )
-    return Path(result.stdout.strip()) / "index.lock"
-
-
-def wait_for_git_index_lock(
-    *,
-    cwd: str | None = None,
-    env: dict[str, str] | None = None,
-    timeout_seconds: float = _INDEX_LOCK_WAIT_SECONDS,
-    poll_seconds: float = _INDEX_LOCK_POLL_SECONDS,
-) -> None:
-    """Wait briefly for a pre-existing Git index lock to disappear."""
-    try:
-        index_lock_path = _git_index_lock_path(cwd=cwd, env=env)
-    except subprocess.CalledProcessError:
-        return
-
-    deadline = time.monotonic() + timeout_seconds
-    while index_lock_path.exists():
-        remaining_seconds = deadline - time.monotonic()
-        if remaining_seconds <= 0:
-            return
-        time.sleep(min(poll_seconds, remaining_seconds))
-
-
 def _prepare_git_command_environment(
     *,
     requires_index_lock: bool,
@@ -109,7 +33,7 @@ def _prepare_git_command_environment(
     env: dict[str, str] | None,
 ) -> dict[str, str] | None:
     if requires_index_lock:
-        wait_for_git_index_lock(cwd=cwd, env=env)
+        git_index_lock.wait_for_git_index_lock(cwd=cwd, env=env)
     return _git_command_environment(requires_index_lock=requires_index_lock, env=env)
 
 
@@ -120,7 +44,7 @@ def _git_command_environment(
 ) -> dict[str, str] | None:
     if requires_index_lock:
         return env
-    return _git_environment_with_optional_locks_disabled(env)
+    return git_environment_with_optional_locks_disabled(env)
 
 
 def _index_lock_error_text(stream: str | bytes | None) -> str:
@@ -352,13 +276,13 @@ def run_git_command(
         else stdin_chunks
     )
     retry_deadline = (
-        time.monotonic() + _INDEX_LOCK_WAIT_SECONDS
+        time.monotonic() + git_index_lock.DEFAULT_INDEX_LOCK_WAIT_SECONDS
         if requires_index_lock
         else None
     )
 
     if retry_deadline is not None:
-        wait_for_git_index_lock(
+        git_index_lock.wait_for_git_index_lock(
             cwd=cwd,
             env=env,
             timeout_seconds=_remaining_index_lock_wait_seconds(retry_deadline),
@@ -388,7 +312,7 @@ def run_git_command(
         remaining_seconds = _remaining_index_lock_wait_seconds(retry_deadline)
         if remaining_seconds <= 0:
             break
-        wait_for_git_index_lock(
+        git_index_lock.wait_for_git_index_lock(
             cwd=cwd,
             env=env,
             timeout_seconds=remaining_seconds,
@@ -716,216 +640,3 @@ def git_submodule_update_checkout(
         check=check,
         requires_index_lock=True,
     )
-
-
-def create_git_blob(content_chunks: Iterable[bytes]) -> str:
-    """Create a git blob object from streaming content.
-
-    Args:
-        content_chunks: Iterable yielding binary content chunks to store
-
-    Returns:
-        SHA-1 hash of the created blob object
-
-    Raises:
-        RuntimeError: If git hash-object fails or produces no output
-    """
-    stdout_chunks = []
-    try:
-        for line in stream_git_command(
-            ["hash-object", "-w", "--stdin"],
-            content_chunks,
-            requires_index_lock=False,
-        ):
-            stdout_chunks.append(line)
-    except subprocess.CalledProcessError as error:
-        raise RuntimeError(
-            f"git hash-object failed with exit code {error.returncode}: "
-            f"{error.stderr}"
-        ) from error
-
-    if not stdout_chunks:
-        raise RuntimeError("git hash-object produced no output")
-
-    # git hash-object outputs a single line with the SHA
-    stdout_bytes = b"".join(stdout_chunks)
-    blob_sha = stdout_bytes.strip().decode("utf-8")
-    return blob_sha
-
-
-def read_git_blob(blob_sha: str) -> Iterator[bytes]:
-    """Read a git blob object as a stream.
-
-    Args:
-        blob_sha: SHA-1 hash of the blob to read
-
-    Yields:
-        Binary chunks from the blob content
-
-    Raises:
-        RuntimeError: If git cat-file fails or blob doesn't exist
-    """
-    try:
-        yield from stream_git_command(
-            ["cat-file", "blob", blob_sha],
-            requires_index_lock=False,
-        )
-    except subprocess.CalledProcessError as error:
-        raise RuntimeError(
-            f"git cat-file failed with exit code {error.returncode}: {error.stderr}"
-        ) from error
-
-
-def read_git_blobs_as_bytes(blob_hashes: Iterable[str]) -> dict[str, bytes]:
-    """Read multiple git blobs with one cat-file process."""
-    unique_blob_hashes = list(dict.fromkeys(blob_hashes))
-    if not unique_blob_hashes:
-        return {}
-
-    payload = "".join(f"{blob_hash}\n" for blob_hash in unique_blob_hashes).encode("ascii")
-    result = run_git_command(
-        ["cat-file", "--batch"],
-        stdin_chunks=[payload],
-        text_output=False,
-        requires_index_lock=False,
-    )
-
-    data = result.stdout
-    blobs: dict[str, bytes] = {}
-    offset = 0
-    for requested_hash in unique_blob_hashes:
-        header_end = data.index(b"\n", offset)
-        header = data[offset:header_end].decode("ascii", errors="replace")
-        offset = header_end + 1
-        parts = header.split()
-        if len(parts) >= 2 and parts[1] == "missing":
-            continue
-        if len(parts) < 3 or parts[1] != "blob":
-            raise RuntimeError(f"Unexpected git cat-file --batch header: {header}")
-
-        object_hash = parts[0]
-        size = int(parts[2])
-        content = data[offset:offset + size]
-        offset += size
-        if offset < len(data) and data[offset:offset + 1] == b"\n":
-            offset += 1
-        blobs[requested_hash] = content
-        blobs[object_hash] = content
-
-    return blobs
-
-
-def list_git_tree_blobs(treeish: str, file_paths: Iterable[str]) -> dict[str, GitTreeBlob]:
-    """List blob entries for paths in one tree with one ls-tree process."""
-    unique_file_paths = list(dict.fromkeys(file_paths))
-    if not unique_file_paths:
-        return {}
-
-    result = run_git_command(
-        ["ls-tree", "-rz", treeish, "--", *unique_file_paths],
-        check=False,
-        text_output=False,
-        requires_index_lock=False,
-    )
-    if result.returncode != 0:
-        return {}
-
-    entries: dict[str, GitTreeBlob] = {}
-    for record in result.stdout.split(b"\0"):
-        if not record:
-            continue
-        try:
-            metadata_bytes, path_bytes = record.split(b"\t", 1)
-        except ValueError:
-            continue
-        metadata = metadata_bytes.decode("ascii", errors="replace").split()
-        if len(metadata) < 3 or metadata[1] != "blob":
-            continue
-        file_path = path_bytes.decode("utf-8")
-        entries[file_path] = GitTreeBlob(
-            file_path=file_path,
-            mode=metadata[0],
-            blob_sha=metadata[2],
-        )
-    return entries
-
-
-def require_git_repository() -> None:
-    """Verify that we are inside a git repository.
-
-    Calls exit_with_error if not in a git repository, printing git's
-    error message for context.
-
-    Raises:
-        SystemExit: Via exit_with_error if not in a git repository
-    """
-    try:
-        run_git_command(["rev-parse", "--git-dir"], requires_index_lock=False)
-    except subprocess.CalledProcessError as error:
-        # Print git's actual error message which contains helpful context
-        if error.stderr:
-            print(error.stderr.rstrip(), file=sys.stderr)
-        exit_with_error(_("Not inside a git repository."), exit_code=error.returncode)
-
-
-def get_git_repository_root_path() -> Path:
-    """Get the absolute path to the git repository root.
-
-    Returns:
-        Path object pointing to the repository root directory
-
-    Raises:
-        subprocess.CalledProcessError: If not in a git repository
-    """
-    cwd = Path.cwd()
-    cached = _GIT_REPOSITORY_ROOT_CACHE.get(cwd)
-    if cached is not None:
-        return cached
-
-    output = run_git_command(
-        ["rev-parse", "--show-toplevel"],
-        requires_index_lock=False,
-    ).stdout.strip()
-    path = Path(output)
-    _GIT_REPOSITORY_ROOT_CACHE[cwd] = path
-    return path
-
-
-def get_git_directory_path() -> Path:
-    """Get the absolute path to the repository's git directory."""
-    cwd = Path.cwd()
-    cached = _GIT_DIRECTORY_CACHE.get(cwd)
-    if cached is not None:
-        return cached
-
-    output = run_git_command(
-        ["rev-parse", "--absolute-git-dir"],
-        requires_index_lock=False,
-    ).stdout.strip()
-    path = Path(output)
-    _GIT_DIRECTORY_CACHE[cwd] = path
-    return path
-
-
-def resolve_file_path_to_repo_relative(file_path: str) -> str:
-    """Convert a file path to repository-relative format.
-
-    Args:
-        file_path: File path to convert
-
-    Returns:
-        Repository-relative path, or original path if outside repo
-    """
-    repo_root = get_git_repository_root_path()
-    path = Path(file_path)
-
-    # If it's already relative, use it as-is
-    if not path.is_absolute():
-        return file_path
-
-    # If it's absolute, make it relative to repo root
-    try:
-        return str(path.relative_to(repo_root))
-    except ValueError:
-        # Path is outside repo, return as-is
-        return file_path

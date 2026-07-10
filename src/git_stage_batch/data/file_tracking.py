@@ -5,7 +5,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from ..utils.file_io import append_file_path_to_file, read_file_paths_file
-from ..utils.git import get_git_repository_root_path, git_add_paths, run_git_command
+from ..utils.git import git_add_paths, run_git_command
+from ..utils.git_repository import get_git_repository_root_path
 from ..utils.journal import log_journal
 from ..utils.paths import get_auto_added_files_file_path
 

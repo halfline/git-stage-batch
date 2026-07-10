@@ -9,7 +9,7 @@ import pytest
 from git_stage_batch.commands.discard import command_discard_to_batch
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.batch.operations import create_batch
-from git_stage_batch.utils.git import get_git_repository_root_path
+from git_stage_batch.utils.git_repository import get_git_repository_root_path
 
 
 @pytest.fixture

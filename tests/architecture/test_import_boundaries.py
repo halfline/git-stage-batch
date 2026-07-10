@@ -13298,7 +13298,7 @@ def test_candidate_preview_diff_owns_buffer_diff_rendering():
     assert "render_candidate_buffer_diff" not in candidate_preview_text
     assert "splitlines(keepends=True)" not in candidate_preview_text
     assert "render_candidate_buffer_diff" in candidate_diff_text
-    assert "splitlines(keepends=True)" in candidate_diff_text
+    assert "def _unified_diff_lines" in candidate_diff_text
     assert "def render_candidate_buffer_diff" not in operation_candidates_text
     assert "import difflib" not in operation_candidates_text
     assert "import difflib" in candidate_diff_text

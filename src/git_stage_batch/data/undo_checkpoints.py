@@ -19,7 +19,12 @@ from .undo_refs import (
     current_undo_commit,
     list_restorable_refs,
 )
-from .recovery_anchors import anchor_recovery_state
+from .recovery_anchors import (
+    anchor_recovery_objects,
+    anchor_recovery_state,
+    state_recovery_objects,
+    validate_recovery_state,
+)
 from . import undo_restore as _undo_restore
 from . import undo_worktree as _undo_worktree
 from ..exceptions import CommandError
@@ -354,6 +359,9 @@ def _push_redo_node(
     after_undo: dict[str, Any],
     worktree_entries: list[dict[str, Any]],
 ) -> str:
+    recovery_objects = state_recovery_objects(target)
+    recovery_objects.update(state_recovery_objects(after_undo))
+    recovery_objects.add(undo_checkpoint)
     manifest = {
         "operation": operation,
         "undo_checkpoint": undo_checkpoint,
@@ -368,6 +376,7 @@ def _push_redo_node(
             for entry in worktree_entries
         ],
         "after_undo": after_undo,
+        "recovery_anchors": anchor_recovery_objects(recovery_objects),
     }
 
     parent = current_redo_commit()
@@ -390,6 +399,10 @@ def undo_last_checkpoint(*, force: bool = False) -> str:
         raise CommandError(_("Nothing to undo."))
 
     manifest = _undo_restore.read_json_from_commit(checkpoint, "manifest.json")
+    validate_recovery_state(manifest)
+    after = manifest.get("after")
+    if isinstance(after, dict):
+        validate_recovery_state(after)
     conflicts = _detect_conflicts(manifest)
     if conflicts and not force:
         preview = ", ".join(conflicts[:5])
@@ -466,6 +479,10 @@ def redo_last_checkpoint(*, force: bool = False) -> str:
         raise CommandError(_("Nothing to redo."))
 
     manifest = _undo_restore.read_json_from_commit(redo_node, "manifest.json")
+    validate_recovery_state(manifest)
+    after_undo = manifest.get("after_undo")
+    if isinstance(after_undo, dict):
+        validate_recovery_state(after_undo)
     conflicts = _detect_redo_conflicts(manifest)
     if conflicts and not force:
         preview = ", ".join(conflicts[:5])

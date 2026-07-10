@@ -63,3 +63,15 @@ def test_intent_to_add_survives_start_and_abort(sha256_repo):
     git_stage_batch("abort")
 
     assert _git("status", "--porcelain", "--", "intent.txt").stdout == " A intent.txt\n"
+
+
+def test_block_file_removes_sha256_intent_to_add_entry(sha256_repo):
+    """Blocking an auto-added file should recognize native intent metadata."""
+    generated = sha256_repo / "generated.log"
+    generated.write_text("generated\n")
+
+    git_stage_batch("start")
+    git_stage_batch("block-file", "generated.log")
+
+    assert _git("ls-files", "generated.log").stdout == ""
+    assert "generated.log" in (sha256_repo / ".gitignore").read_text()

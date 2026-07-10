@@ -205,7 +205,7 @@ def test_validate_batch_metadata_structure_null_baseline(temp_git_repo):
         validate_batch_metadata_structure(metadata, "test-batch")
 
     error_msg = str(exc_info.value)
-    assert "has no baseline commit" in error_msg
+    assert "has no baseline object" in error_msg
     assert "test-batch" in error_msg
     assert "corrupted or incomplete" in error_msg
 
@@ -223,7 +223,7 @@ def test_validate_batch_metadata_structure_invalid_baseline_commit(temp_git_repo
         validate_batch_metadata_structure(metadata, "test-batch")
 
     error_msg = str(exc_info.value)
-    assert "invalid baseline commit" in error_msg
+    assert "invalid baseline object" in error_msg
     assert "0000000000000000000000000000000000000000" in error_msg
     assert "does not exist in the repository" in error_msg
 
@@ -401,7 +401,7 @@ def test_get_validated_baseline_commit_missing(temp_git_repo):
         get_validated_baseline_commit("test-batch")
 
     error_msg = str(exc_info.value)
-    assert "has no baseline commit" in error_msg
+    assert "has no baseline object" in error_msg
     assert "test-batch" in error_msg
 
 

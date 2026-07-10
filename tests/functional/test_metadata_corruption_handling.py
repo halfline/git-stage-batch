@@ -116,7 +116,7 @@ def test_missing_baseline_clear_error(functional_repo):
         command_show_from_batch("test-batch")
 
     error_msg = str(exc_info.value.message)
-    assert "no baseline commit" in error_msg.lower()
+    assert "no baseline object" in error_msg.lower()
     assert "test-batch" in error_msg
     assert "corrupted or incomplete" in error_msg.lower()
 
@@ -158,5 +158,5 @@ def test_invalid_baseline_commit_clear_error(functional_repo):
         command_show_from_batch("test-batch")
 
     error_msg = str(exc_info.value.message)
-    assert "invalid baseline commit" in error_msg.lower()
+    assert "invalid baseline object" in error_msg.lower()
     assert "0000000000000000000000000000000000000000" in error_msg

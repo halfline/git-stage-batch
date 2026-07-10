@@ -84,6 +84,9 @@ def _discard_stale_owner(owner: SessionOwner) -> bool:
     """Remove an owner whose worktree-local session marker no longer exists."""
     if owner.marker_path.exists():
         return False
+    from .recovery_anchors import clear_recovery_anchors
+
+    clear_recovery_anchors()
     get_active_session_owner_file_path().unlink(missing_ok=True)
     return True
 

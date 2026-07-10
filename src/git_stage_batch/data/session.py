@@ -62,6 +62,43 @@ def session_is_active(git_dir: Path | None = None) -> bool:
     return active_session_marker_path(git_dir).exists()
 
 
+def _diff_index_name_status(*, intent_to_add_visible: bool) -> dict[str, str]:
+    """Return cached path statuses under one intent-to-add interpretation."""
+    visibility_option = "--ita-visible-in-index" if intent_to_add_visible else "--ita-invisible-in-index"
+    result = run_git_command(
+        [
+            "diff-index",
+            "--cached",
+            "--name-status",
+            "-z",
+            "--no-renames",
+            visibility_option,
+            "HEAD",
+            "--",
+        ],
+        check=True,
+        requires_index_lock=False,
+    )
+    fields = result.stdout.split("\0")
+    if fields[-1] == "":
+        fields.pop()
+    if len(fields) % 2 != 0:
+        raise CommandError(_("Git returned malformed cached diff output."))
+    return dict(zip(fields[1::2], fields[0::2]))
+
+
+def _intent_to_add_files() -> list[str]:
+    """Return paths whose cached status changes with Git's intent visibility."""
+    visible_statuses = _diff_index_name_status(intent_to_add_visible=True)
+    invisible_statuses = _diff_index_name_status(intent_to_add_visible=False)
+    candidate_paths = visible_statuses.keys() | invisible_statuses.keys()
+    return sorted(
+        file_path
+        for file_path in candidate_paths
+        if visible_statuses.get(file_path) != invisible_statuses.get(file_path)
+    )
+
+
 def _snapshot_intent_to_add_files() -> tuple[list[str], list[str]]:
     """Snapshot all intent-to-add files so they survive git reset --hard on abort.
 

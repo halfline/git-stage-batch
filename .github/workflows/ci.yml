@@ -96,7 +96,13 @@ jobs:
       - name: Set up Python
         run: uv python install 3.10
 
-      - name: Install dependencies
+      - name: Set up venv
+        run: uv venv --python 3.10
+
+      - name: Install meson
+        run: uv pip install meson-python
+
+      - name: Install other dependencies
         run: uv sync --all-groups
 
       - name: Report Git object-format support

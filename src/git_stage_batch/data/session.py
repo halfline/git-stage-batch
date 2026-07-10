@@ -62,48 +62,69 @@ def session_is_active(git_dir: Path | None = None) -> bool:
     return active_session_marker_path(git_dir).exists()
 
 
+def _diff_index_name_status(*, intent_to_add_visible: bool) -> dict[str, str]:
+    """Return cached path statuses under one intent-to-add interpretation."""
+    visibility_option = "--ita-visible-in-index" if intent_to_add_visible else "--ita-invisible-in-index"
+    result = run_git_command(
+        [
+            "diff-index",
+            "--cached",
+            "--name-status",
+            "-z",
+            "--no-renames",
+            visibility_option,
+            "HEAD",
+            "--",
+        ],
+        check=True,
+        requires_index_lock=False,
+    )
+    fields = result.stdout.split("\0")
+    if fields[-1] == "":
+        fields.pop()
+    if len(fields) % 2 != 0:
+        raise CommandError(_("Git returned malformed cached diff output."))
+    return dict(zip(fields[1::2], fields[0::2]))
+
+
+def _intent_to_add_files() -> list[str]:
+    """Return paths whose cached status changes with Git's intent visibility."""
+    visible_statuses = _diff_index_name_status(intent_to_add_visible=True)
+    invisible_statuses = _diff_index_name_status(intent_to_add_visible=False)
+    candidate_paths = visible_statuses.keys() | invisible_statuses.keys()
+    return sorted(
+        file_path
+        for file_path in candidate_paths
+        if visible_statuses.get(file_path) != invisible_statuses.get(file_path)
+    )
+
+
 def _snapshot_intent_to_add_files() -> tuple[list[str], list[str]]:
     """Snapshot all intent-to-add files so they survive git reset --hard on abort.
 
-    Intent-to-add files (added with git add -N) are in the index with an empty blob
-    but won't be captured by git stash. Since git reset --hard will wipe them out,
-    we need to snapshot them upfront and record them so we can restore their status.
+    Intent-to-add files (added with git add -N) won't be captured by git stash.
+    Since git reset --hard will wipe them out, we need to snapshot them upfront
+    and record them so we can restore their status.
 
     Returns:
         Tuple of (all_intent_to_add_files, new_intent_to_add_files)
         - all_intent_to_add_files: All files with intent-to-add
         - new_intent_to_add_files: Only files absent from HEAD
     """
-    # Find all intent-to-add files (files in index with empty blob)
-    EMPTY_BLOB_HASH = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
-    ls_result = run_git_command(["ls-files", "--stage"], check=True, requires_index_lock=False)
-
-    all_intent_to_add_files = []
+    all_intent_to_add_files = _intent_to_add_files()
     new_intent_to_add_files = []
 
-    for line in ls_result.stdout.strip().split('\n'):
-        if not line:
-            continue
-        # Format: <mode> <hash> <stage>\t<path>
-        parts = line.split()
-        if len(parts) >= 4:
-            blob_hash = parts[1]
-            file_path = parts[3]
-            if blob_hash == EMPTY_BLOB_HASH:
-                # This is an intent-to-add file - snapshot it
-                snapshot_file_if_untracked(file_path)
-                all_intent_to_add_files.append(file_path)
+    for file_path in all_intent_to_add_files:
+        snapshot_file_if_untracked(file_path)
 
-                # Check if file exists in HEAD
-                # Only new files absent from HEAD are safe to git rm --cached.
-                head_check = run_git_command(
-                    ["cat-file", "-e", f"HEAD:{file_path}"],
-                    check=False,
-                    requires_index_lock=False,
-                )
-                if head_check.returncode != 0:
-                    # File is absent from HEAD, so it is safe to remove from the index.
-                    new_intent_to_add_files.append(file_path)
+        # Only new files absent from HEAD are safe to git rm --cached.
+        head_check = run_git_command(
+            ["cat-file", "-e", f"HEAD:{file_path}"],
+            check=False,
+            requires_index_lock=False,
+        )
+        if head_check.returncode != 0:
+            new_intent_to_add_files.append(file_path)
 
     # Save list of intent-to-add files for abort restoration
     if all_intent_to_add_files:

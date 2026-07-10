@@ -123,7 +123,9 @@ def read_git_blobs_as_bytes(blob_hashes: Iterable[str]) -> dict[str, bytes]:
     if not unique_blob_hashes:
         return {}
 
-    payload = "".join(f"{blob_hash}\n" for blob_hash in unique_blob_hashes).encode("ascii")
+    payload = "".join(f"{blob_hash}\n" for blob_hash in unique_blob_hashes).encode(
+        "utf-8"
+    )
     result = run_git_command(
         ["cat-file", "--batch"],
         stdin_chunks=[payload],

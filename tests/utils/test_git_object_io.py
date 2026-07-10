@@ -4,8 +4,11 @@ import subprocess
 
 import pytest
 
+from git_stage_batch.data import undo_checkpoints
 from git_stage_batch.utils.git_command import run_git_command
+from git_stage_batch.utils.git_index import git_write_tree, temp_git_index
 from git_stage_batch.utils.git_object_io import (
+    create_git_blob,
     create_git_blobs_from_paths,
     read_git_blobs_as_bytes,
 )
@@ -82,3 +85,44 @@ def test_read_git_blobs_as_bytes_accepts_revision_paths(temp_git_repo):
     blobs = read_git_blobs_as_bytes([f"HEAD:{file_path.name}"])
 
     assert blobs[f"HEAD:{file_path.name}"] == b"accented\n"
+
+
+def test_directory_snapshot_hashes_normal_files_in_one_batch(
+    temp_git_repo,
+    monkeypatch,
+):
+    """Undo directory snapshots should not spawn one hash-object per file."""
+    source_dir = temp_git_repo / "session"
+    source_dir.mkdir()
+    files = [
+        source_dir / "one.txt",
+        source_dir / "nested" / "two.txt",
+        source_dir / "three.txt",
+    ]
+    files[1].parent.mkdir()
+    for file_path in files:
+        file_path.write_text(f"{file_path.name}\n")
+
+    blob_sha = create_git_blob([b"snapshot\n"])
+    calls = []
+
+    def fake_create_git_blobs_from_paths(paths):
+        paths = tuple(paths)
+        calls.append(paths)
+        return {path: blob_sha for path in paths}
+
+    monkeypatch.setattr(
+        undo_checkpoints,
+        "create_git_blobs_from_paths",
+        fake_create_git_blobs_from_paths,
+    )
+
+    with temp_git_index() as env:
+        undo_checkpoints._add_directory_to_index(
+            env,
+            source_dir=source_dir,
+            tree_prefix="session",
+        )
+        git_write_tree(env=env)
+
+    assert calls == [tuple(sorted(files))]

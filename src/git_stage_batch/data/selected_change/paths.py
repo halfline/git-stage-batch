@@ -2,9 +2,39 @@
 
 from __future__ import annotations
 
+from ...core.models import (
+    BinaryFileChange,
+    GitlinkChange,
+    LineLevelChange,
+    RenameChange,
+    TextFileDeletionChange,
+)
 from ...utils.paths import get_selected_hunk_patch_file_path
 from . import file_changes as _selected_file_changes
 from .store import load_line_changes_from_patch_path
+
+
+SelectedChange = (
+    BinaryFileChange
+    | GitlinkChange
+    | LineLevelChange
+    | RenameChange
+    | TextFileDeletionChange
+)
+
+
+def file_path_for_selected_change(change: SelectedChange) -> str:
+    """Return the repository path that identifies a selected change."""
+    if isinstance(change, LineLevelChange):
+        return change.path
+    return change.path()
+
+
+def worktree_paths_for_selected_change(change: SelectedChange) -> list[str]:
+    """Return worktree paths that can be affected by a selected-change action."""
+    if isinstance(change, RenameChange):
+        return [change.old_path, change.new_path]
+    return [file_path_for_selected_change(change)]
 
 
 def get_selected_change_file_path() -> str | None:
@@ -23,7 +53,7 @@ def get_selected_change_file_path() -> str | None:
 
     binary_file = _selected_file_changes.load_selected_binary_file()
     if binary_file is not None:
-            return binary_file.path()
+        return binary_file.path()
 
     patch_path = get_selected_hunk_patch_file_path()
     if not patch_path.exists():

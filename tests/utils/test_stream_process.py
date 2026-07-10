@@ -9,6 +9,7 @@ import sys
 
 import pytest
 
+from git_stage_batch.utils import command_streaming
 from git_stage_batch.utils.command import (
     run_command,
     start_command,
@@ -214,6 +215,29 @@ class TestStdinHandling:
         output_data = b"".join(e.data for e in output_events)
 
         assert output_data == large_data
+
+    def test_large_stdin_chunks_are_written_in_bounded_slices(self, monkeypatch):
+        """Large stdin chunks should not monopolize the event loop."""
+        written_lengths = []
+        real_write = command_streaming.os.write
+
+        def recording_write(fd, data):
+            written_lengths.append(len(data))
+            return real_write(fd, data)
+
+        monkeypatch.setattr(command_streaming.os, "write", recording_write)
+
+        large_data = b"x" * (command_streaming._CHUNK_SIZE * 3 + 1)
+        events = list(stream_command(
+            ["cat"],
+            stdin_chunks=[large_data],
+        ))
+
+        output_events = [e for e in events if isinstance(e, OutputEvent) and e.fd == 1]
+        output_data = b"".join(e.data for e in output_events)
+
+        assert output_data == large_data
+        assert max(written_lengths) <= command_streaming._CHUNK_SIZE
 
 
 class TestExtraFdCapture:

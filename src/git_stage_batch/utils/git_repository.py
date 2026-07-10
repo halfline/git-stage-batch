@@ -13,6 +13,7 @@ from .git_command import run_git_command
 
 _GIT_REPOSITORY_ROOT_CACHE: dict[Path, Path] = {}
 _GIT_DIRECTORY_CACHE: dict[Path, Path] = {}
+_GIT_COMMON_DIRECTORY_CACHE: dict[Path, Path] = {}
 
 
 def require_git_repository() -> None:
@@ -72,6 +73,26 @@ def get_git_directory_path() -> Path:
     ).stdout.strip()
     path = Path(output)
     _GIT_DIRECTORY_CACHE[cwd] = path
+    return path
+
+
+def get_git_common_directory_path() -> Path:
+    """Get the absolute path to the repository's shared Git directory.
+
+    In a linked worktree this differs from :func:`get_git_directory_path` and
+    identifies the directory that owns shared refs and objects.
+    """
+    cwd = Path.cwd()
+    cached = _GIT_COMMON_DIRECTORY_CACHE.get(cwd)
+    if cached is not None:
+        return cached
+
+    output = run_git_command(
+        ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+        requires_index_lock=False,
+    ).stdout.strip()
+    path = Path(output)
+    _GIT_COMMON_DIRECTORY_CACHE[cwd] = path
     return path
 
 

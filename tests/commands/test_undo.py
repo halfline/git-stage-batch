@@ -9,6 +9,7 @@ from git_stage_batch.commands.include import command_include_line
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.undo import command_undo
 from git_stage_batch.data.undo_checkpoints import undo_checkpoint, undo_last_checkpoint
+from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import get_session_directory_path
 
 
@@ -109,3 +110,23 @@ def test_scoped_undo_ignores_unrelated_untracked_worktree_edits(temp_git_repo):
 
     assert target.read_text() == "before\n"
     assert unrelated.read_text() == "second\n"
+
+
+def test_incomplete_checkpoint_requires_force(temp_git_repo, monkeypatch):
+    """A checkpoint interrupted before finalization must not restore silently."""
+    from git_stage_batch.data import undo_checkpoints as checkpoints
+
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    get_session_directory_path().mkdir(parents=True, exist_ok=True)
+
+    checkpoints._create_undo_checkpoint(
+        "interrupted change",
+        worktree_paths=["target.txt"],
+    )
+    monkeypatch.setattr(checkpoints, "_PENDING_CHECKPOINT", None)
+    target.write_text("after process exit\n")
+
+    with pytest.raises(CommandError, match="incomplete checkpoint"):
+        undo_last_checkpoint()
+
+    assert target.read_text() == "after process exit\n"

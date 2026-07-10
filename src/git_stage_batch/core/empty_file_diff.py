@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 
-EMPTY_BLOB_SHORT_HASH = b"e69de29"
 NEW_FILE_MODE_MARKER = b"new file mode"
 SYNTHETIC_EMPTY_HUNK_HEADER = b"@@ -0,0 +0,0 @@"
 
 
 def metadata_indicates_new_empty_file(metadata_lines: list[bytes]) -> bool:
     """Return whether diff metadata describes a newly added empty file."""
-    is_new_file = any(NEW_FILE_MODE_MARKER in line for line in metadata_lines)
-    is_empty = any(EMPTY_BLOB_SHORT_HASH in line for line in metadata_lines)
-    return is_new_file and is_empty
+    # The parser calls this only after observing that the file has no text
+    # hunks and after binary changes have been handled. A newly created file
+    # in that state is empty regardless of the repository's hash algorithm.
+    return any(NEW_FILE_MODE_MARKER in line for line in metadata_lines)
 
 
 def synthetic_empty_file_patch_lines(

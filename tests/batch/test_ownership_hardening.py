@@ -192,13 +192,15 @@ def test_legacy_claimed_lines_metadata_owns_presence_units(temp_repo, monkeypatc
     monkeypatch.setattr(attribution_module, "list_batch_names", lambda: ["legacy"])
     monkeypatch.setattr(
         attribution_module,
-        "read_batch_metadata",
-        lambda _name: {
-            "files": {
-                "test.txt": {
-                    "batch_source_commit": batch_source_commit,
-                    "claimed_lines": ["2"],
-                    "deletions": [],
+        "read_batch_metadata_for_batches",
+        lambda _names: {
+            "legacy": {
+                "files": {
+                    "test.txt": {
+                        "batch_source_commit": batch_source_commit,
+                        "claimed_lines": ["2"],
+                        "deletions": [],
+                    }
                 }
             }
         },
@@ -236,13 +238,15 @@ def test_build_file_attribution_reuses_batch_alignment_per_file(temp_repo, monke
     monkeypatch.setattr(attribution_module, "list_batch_names", lambda: ["batch"])
     monkeypatch.setattr(
         attribution_module,
-        "read_batch_metadata",
-        lambda _name: {
-            "files": {
-                "test.txt": {
-                    "batch_source_commit": batch_source_commit,
-                    "presence_claims": [{"source_lines": ["2", "4", "6"]}],
-                    "deletions": [],
+        "read_batch_metadata_for_batches",
+        lambda _names: {
+            "batch": {
+                "files": {
+                    "test.txt": {
+                        "batch_source_commit": batch_source_commit,
+                        "presence_claims": [{"source_lines": ["2", "4", "6"]}],
+                        "deletions": [],
+                    }
                 }
             }
         },

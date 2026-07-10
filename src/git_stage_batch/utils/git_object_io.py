@@ -10,6 +10,36 @@ from pathlib import Path
 from .git_command import run_git_command, stream_git_command
 
 
+_EMPTY_TREE_OBJECT_CACHE: dict[Path, str] = {}
+
+
+def get_empty_git_tree_object_id() -> str:
+    """Return the repository-native object ID for Git's empty tree."""
+    cwd = Path.cwd()
+    cached = _EMPTY_TREE_OBJECT_CACHE.get(cwd)
+    if cached is not None:
+        return cached
+    object_id = run_git_command(
+        ["mktree"],
+        stdin_chunks=[b""],
+        requires_index_lock=False,
+    ).stdout.strip()
+    if not object_id:
+        raise RuntimeError("git mktree produced no empty tree object")
+    _EMPTY_TREE_OBJECT_CACHE[cwd] = object_id
+    return object_id
+
+
+def get_git_object_type(object_id: str) -> str | None:
+    """Return an object's Git type, or None when it does not exist."""
+    result = run_git_command(
+        ["cat-file", "-t", object_id],
+        check=False,
+        requires_index_lock=False,
+    )
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
 @dataclass(frozen=True)
 class GitTreeBlob:
     """One blob entry from a Git tree."""

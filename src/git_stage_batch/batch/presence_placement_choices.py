@@ -98,7 +98,10 @@ def presence_ambiguity_key(
     before_source_line: int,
     after_source_line: int,
 ) -> str:
-    digest = hashlib.sha256(b"".join(claimed_run)).hexdigest()[:12]
+    hasher = hashlib.sha256()
+    for line in claimed_run:
+        hasher.update(line)
+    digest = hasher.hexdigest()[:12]
     return (
         f"presence:{run_start}-{run_end}:claimed:{digest}:"
         f"between:{before_source_line}-{after_source_line}"

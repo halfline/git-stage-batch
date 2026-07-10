@@ -50,3 +50,14 @@ def test_start_show_and_include_header_like_change(functional_repo):
         text=True,
     )
     assert staged.stdout == "before\n++new\nafter\n"
+
+
+def test_discard_header_like_change(functional_repo):
+    """Header-looking replacement content can be discarded end to end."""
+    path = _prepare_header_like_change(functional_repo)
+
+    git_stage_batch("start")
+    shown = git_stage_batch("show")
+    git_stage_batch("discard", "--line", _displayed_line_ids(shown.stdout))
+
+    assert path.read_text() == "before\n--old\nafter\n"

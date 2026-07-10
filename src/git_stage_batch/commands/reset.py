@@ -2,72 +2,15 @@
 
 from __future__ import annotations
 
-import json
-import shlex
 import sys
-from collections.abc import Sequence
-from contextlib import AbstractContextManager
 
-from ..core.line_selection import LineRanges
-from ..batch.operations import create_batch
-from ..batch.ownership import (
-    BatchOwnership,
-    acquire_detached_batch_ownership,
-    filter_ownership_units_by_display_ids,
-    merge_batch_ownership,
-    rebuild_ownership_from_units,
-    validate_ownership_units,
-)
-from ..batch.ownership_units import build_ownership_units_from_batch_source_lines
-from ..batch.query import read_batch_metadata
-from ..batch.selection import (
-    require_display_ids_available,
-    resolve_current_batch_binary_file_scope,
-    resolve_batch_file_scope,
-)
-from ..batch.storage import (
-    add_file_to_batch,
-    copy_file_from_batch_to_batch,
-    remove_file_from_batch,
-)
-from ..batch.submodule_pointer import (
-    is_batch_submodule_pointer,
-    refuse_batch_submodule_pointer_lines,
-)
-from ..batch.state_refs import sync_batch_state_refs
-from ..batch.source_selector import require_plain_batch_name
-from ..batch.validation import batch_exists, validate_batch_name
-from ..exceptions import MergeError, exit_with_error
+from .batch_source import reset_claims as _reset_claims
+from .batch_source import reset_selection as _reset_selection
+from .batch_source import selection_state_cleanup as _selection_state_cleanup
 from ..i18n import _
-from ..data.batch_selected_changes import (
-    selected_batch_binary_matches_batch,
-    selected_batch_gitlink_matches_batch,
-)
-from ..data.file_review.batch_selection import (
-    translate_reset_batch_file_gutter_ids_to_selection_ranges,
-)
-from ..data.file_review.records import FileReviewAction, ReviewSource
-from ..data.file_review.state import (
-    read_last_file_review_state,
-    resolve_batch_source_action_scope,
-)
-from ..data.selected_change.lifecycle import clear_selected_change_state_files
-from ..data.selected_change.store import (
-    SelectedChangeKind,
-    read_selected_change_kind,
-)
-from ..data.selected_change.paths import get_selected_change_file_path
-from ..data.selected_change.clear_reasons import (
-    mark_selected_change_cleared_by_stale_batch_selection,
-)
 from ..data.undo import undo_checkpoint
-from ..utils.repository_buffers import load_git_object_as_buffer
-from ..utils.file_io import write_text_file_contents
 from ..utils.git import require_git_repository
-from ..utils.paths import (
-    ensure_state_directory_exists,
-    get_batch_metadata_file_path,
-)
+from ..utils.paths import ensure_state_directory_exists
 
 
 def command_reset_from_batch(
@@ -89,69 +32,50 @@ def command_reset_from_batch(
     """
     require_git_repository()
     ensure_state_directory_exists()
-    batch_name = require_plain_batch_name(batch_name, "reset")
-    validate_batch_name(batch_name)
-    extra_action_parts = ()
-    if to_batch is not None:
-        extra_action_parts = ("--to", shlex.quote(to_batch))
-    scope_resolution = resolve_batch_source_action_scope(
-        FileReviewAction.RESET_FROM_BATCH,
-        command_name="reset",
+    selection = _reset_selection.resolve_reset_claim_selection(
         batch_name=batch_name,
         line_ids=line_ids,
         file=file,
         patterns=patterns,
-        extra_action_parts=extra_action_parts,
+        to_batch=to_batch,
     )
-    file = scope_resolution.file
+    batch_name = selection.batch_name
+    file = selection.file
+    effective_line_ids = selection.effective_line_ids
 
-    if not batch_exists(batch_name):
-        exit_with_error(_("Batch '{name}' does not exist").format(name=batch_name))
-
-    metadata = read_batch_metadata(batch_name)
-    all_files = metadata.get("files", {})
-    file = resolve_current_batch_binary_file_scope(batch_name, all_files, file, patterns, line_ids)
-
-    if to_batch is not None:
-        validate_batch_name(to_batch)
-        if to_batch == batch_name:
-            exit_with_error(_("--to must name a different batch"))
-
-    effective_line_ids = (
-        translate_reset_batch_file_gutter_ids_to_selection_ranges(
-            batch_name,
-            all_files,
-            file,
-            patterns,
-            line_ids,
-        )
-        if line_ids is not None else
-        None
-    )
-    affected_files = set(resolve_batch_file_scope(batch_name, all_files, file, patterns).keys())
-    operation_parts = ["reset", "--from", batch_name]
-    if to_batch is not None:
-        operation_parts.extend(["--to", to_batch])
-    if line_ids is not None:
-        operation_parts.extend(["--line", line_ids])
-    if file is not None:
-        operation_parts.extend(["--file", file])
-    with undo_checkpoint(" ".join(operation_parts)):
+    with undo_checkpoint(" ".join(selection.operation_parts)):
         if to_batch is not None:
-            _move_claims_between_batches(batch_name, to_batch, file, patterns, effective_line_ids)
+            _reset_claims.move_claims_between_batches(
+                batch_name,
+                to_batch,
+                file,
+                patterns,
+                effective_line_ids,
+            )
         elif file is not None:
-            _reset_file_claims_from_batch(batch_name, file, effective_line_ids)
+            _reset_claims.reset_file_claims_from_batch(
+                batch_name,
+                file,
+                effective_line_ids,
+            )
         elif patterns is not None:
-            _reset_pattern_claims_from_batch(batch_name, patterns, effective_line_ids)
+            _reset_claims.reset_pattern_claims_from_batch(
+                batch_name,
+                patterns,
+                effective_line_ids,
+            )
         elif line_ids is not None:
-            _reset_line_claims_from_batch(batch_name, effective_line_ids)
+            _reset_claims.reset_line_claims_from_batch(
+                batch_name,
+                effective_line_ids,
+            )
         else:
-            _reset_all_claims_from_batch(batch_name)
+            _reset_claims.reset_all_claims_from_batch(batch_name)
 
-    _clear_selected_batch_state_after_batch_mutation(
+    _selection_state_cleanup.clear_selected_batch_state_after_batch_mutation(
         source_batch=batch_name,
         dest_batch=to_batch,
-        affected_files=affected_files,
+        affected_files=selection.affected_files,
     )
 
     if to_batch is not None and line_ids:
@@ -170,371 +94,3 @@ def command_reset_from_batch(
         print(_("✓ Reset file from batch '{name}'").format(name=batch_name), file=sys.stderr)
     else:
         print(_("✓ Reset all claims from batch '{name}'").format(name=batch_name), file=sys.stderr)
-
-
-def _clear_selected_batch_state_after_batch_mutation(
-    *,
-    source_batch: str,
-    dest_batch: str | None,
-    affected_files: set[str],
-) -> None:
-    """Clear selected batch views that point at files changed by reset."""
-    selected_kind = read_selected_change_kind()
-    if selected_kind not in (
-        SelectedChangeKind.BATCH_FILE,
-        SelectedChangeKind.BATCH_BINARY,
-        SelectedChangeKind.BATCH_GITLINK,
-    ):
-        return
-
-    selected_file = get_selected_change_file_path()
-    if selected_file is None or selected_file not in affected_files:
-        return
-
-    if selected_kind == SelectedChangeKind.BATCH_BINARY:
-        if selected_batch_binary_matches_batch(source_batch) or (
-            dest_batch is not None and selected_batch_binary_matches_batch(dest_batch)
-        ):
-            stale_batch = source_batch if selected_batch_binary_matches_batch(source_batch) else dest_batch
-            clear_selected_change_state_files()
-            mark_selected_change_cleared_by_stale_batch_selection(
-                batch_name=stale_batch or source_batch,
-                file_path=selected_file,
-            )
-        return
-    if selected_kind == SelectedChangeKind.BATCH_GITLINK:
-        if selected_batch_gitlink_matches_batch(source_batch) or (
-            dest_batch is not None and selected_batch_gitlink_matches_batch(dest_batch)
-        ):
-            stale_batch = source_batch if selected_batch_gitlink_matches_batch(source_batch) else dest_batch
-            clear_selected_change_state_files()
-            mark_selected_change_cleared_by_stale_batch_selection(
-                batch_name=stale_batch or source_batch,
-                file_path=selected_file,
-            )
-        return
-
-    review_state = read_last_file_review_state()
-    if review_state is not None:
-        if review_state.source == ReviewSource.BATCH and review_state.batch_name in {source_batch, dest_batch}:
-            stale_batch = review_state.batch_name or source_batch
-            clear_selected_change_state_files()
-            mark_selected_change_cleared_by_stale_batch_selection(
-                batch_name=stale_batch,
-                file_path=selected_file,
-            )
-        return
-
-    # Filtered batch text views do not persist the batch name, so clear on a
-    # matching path rather than leave a stale pathless action target behind.
-    clear_selected_change_state_files()
-    mark_selected_change_cleared_by_stale_batch_selection(
-        batch_name=source_batch,
-        file_path=selected_file,
-    )
-
-
-def _ensure_destination_batch(source_batch: str, dest_batch: str, source_metadata: dict) -> None:
-    """Create destination batch from source baseline, or verify compatibility."""
-    source_baseline = source_metadata.get("baseline")
-
-    if batch_exists(dest_batch):
-        dest_metadata = read_batch_metadata(dest_batch)
-        if dest_metadata.get("baseline") != source_baseline:
-            exit_with_error(
-                _("Destination batch '{dest}' has a different baseline from source batch '{source}'").format(
-                    dest=dest_batch,
-                    source=source_batch,
-                )
-            )
-        return
-
-    create_batch(dest_batch, note=_("Split from {source}").format(source=source_batch), baseline_commit=source_baseline)
-
-
-def _move_claims_between_batches(
-    source_batch: str,
-    dest_batch: str,
-    file: str | None,
-    patterns: list[str] | None,
-    selected_line_ids: LineRanges | None,
-) -> None:
-    """Move selected claims from one batch to another."""
-    source_metadata = read_batch_metadata(source_batch)
-    files = resolve_batch_file_scope(source_batch, source_metadata.get("files", {}), file, patterns)
-    _ensure_destination_batch(source_batch, dest_batch, source_metadata)
-
-    if selected_line_ids is not None:
-        file_path = list(files.keys())[0]
-        with _acquire_line_ownership_for_file(
-            source_batch,
-            file_path,
-            selected_line_ids,
-        ) as selected_ownership:
-            _add_ownership_to_destination(
-                dest_batch,
-                file_path,
-                source_metadata["files"][file_path],
-                selected_ownership,
-            )
-            _reset_line_claims_for_file(source_batch, file_path, selected_line_ids)
-        return
-
-    for file_path, file_meta in files.items():
-        if file_meta.get("file_type") == "binary" or is_batch_submodule_pointer(file_meta):
-            dest_file_meta = read_batch_metadata(dest_batch).get("files", {}).get(file_path)
-            if dest_file_meta is not None:
-                exit_with_error(
-                    _("Destination batch already has file '{file}'").format(file=file_path)
-                )
-            copy_file_from_batch_to_batch(source_batch, dest_batch, file_path)
-        else:
-            with BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership:
-                _add_ownership_to_destination(dest_batch, file_path, file_meta, ownership)
-        remove_file_from_batch(source_batch, file_path)
-
-
-def _add_ownership_to_destination(
-    dest_batch: str,
-    file_path: str,
-    source_file_meta: dict,
-    ownership: BatchOwnership,
-) -> None:
-    """Add selected text ownership to destination, merging with compatible claims."""
-    dest_metadata = read_batch_metadata(dest_batch)
-    dest_file_meta = dest_metadata.get("files", {}).get(file_path)
-    batch_source_commit = source_file_meta["batch_source_commit"]
-
-    def add_to_destination(destination_ownership: BatchOwnership) -> None:
-        file_mode = source_file_meta.get("mode", "100644")
-        add_file_to_batch(
-            dest_batch,
-            file_path,
-            destination_ownership,
-            file_mode,
-            batch_source_commit=batch_source_commit,
-            change_type=source_file_meta.get("change_type"),
-        )
-
-    if dest_file_meta is not None:
-        if dest_file_meta.get("file_type") == "binary":
-            exit_with_error(
-                _("Destination batch already has a binary version of '{file}', so text changes for the same file cannot be moved there.").format(
-                    file=file_path
-                )
-            )
-        if dest_file_meta.get("batch_source_commit") != batch_source_commit:
-            exit_with_error(
-                _("Destination batch already has file '{file}' with a different batch source").format(
-                    file=file_path
-                )
-            )
-        with BatchOwnership.acquire_for_metadata_dict(dest_file_meta) as existing:
-            add_to_destination(merge_batch_ownership(existing, ownership))
-        return
-
-    add_to_destination(ownership)
-
-
-def _reset_file_claims_from_batch(
-    batch_name: str,
-    file: str,
-    selected_line_ids: LineRanges | None = None,
-) -> None:
-    """Remove claims for a file, or selected line claims within that file."""
-    metadata = read_batch_metadata(batch_name)
-    files = resolve_batch_file_scope(batch_name, metadata.get("files", {}), file)
-
-    if selected_line_ids is None:
-        file_path = list(files.keys())[0]
-        remove_file_from_batch(batch_name, file_path)
-        return
-
-    file_path = list(files.keys())[0]
-    _reset_line_claims_for_file(batch_name, file_path, selected_line_ids)
-
-
-def _reset_pattern_claims_from_batch(
-    batch_name: str,
-    patterns: list[str],
-    selected_line_ids: LineRanges | None = None,
-) -> None:
-    """Remove claims for files selected by gitignore-style patterns."""
-    metadata = read_batch_metadata(batch_name)
-    files = resolve_batch_file_scope(batch_name, metadata.get("files", {}), None, patterns)
-
-    if selected_line_ids is None:
-        for file_path in files:
-            remove_file_from_batch(batch_name, file_path)
-        return
-
-    file_path = list(files.keys())[0]
-    _reset_line_claims_for_file(batch_name, file_path, selected_line_ids)
-
-
-def _reset_line_claims_from_batch(
-    batch_name: str,
-    selected_line_ids: LineRanges,
-) -> None:
-    """Remove specific line claims from a batch using semantic ownership filtering.
-
-    This implementation uses semantic ownership units to ensure that coupled
-    claimed lines and absence claims are removed together, preventing orphaned
-    absence constraints.
-
-    Args:
-        batch_name: Name of the batch
-        selected_line_ids: Display line IDs to reset
-    """
-    metadata = read_batch_metadata(batch_name)
-    files = resolve_batch_file_scope(batch_name, metadata.get("files", {}), None)
-    file_path = list(files.keys())[0]
-    _reset_line_claims_for_file(batch_name, file_path, selected_line_ids)
-
-
-def _reset_line_claims_for_file(
-    batch_name: str,
-    file_path: str,
-    lines_to_remove: LineRanges,
-) -> None:
-    """Remove specific display line IDs from one batch file."""
-    metadata = read_batch_metadata(batch_name)
-
-    # Get current ownership for the file
-    if metadata["files"][file_path].get("file_type") == "binary":
-        exit_with_error(_("Cannot use --lines with binary files. Reset the whole file instead."))
-    if is_batch_submodule_pointer(metadata["files"][file_path]):
-        refuse_batch_submodule_pointer_lines(_("Reset"))
-
-    file_meta = metadata["files"][file_path]
-
-    # Get batch source lines for semantic analysis and display reconstruction
-    batch_source_commit = file_meta["batch_source_commit"]
-    batch_source_buffer = load_git_object_as_buffer(f"{batch_source_commit}:{file_path}")
-    if batch_source_buffer is None:
-        exit_with_error(_("Failed to read batch source content for {file}").format(file=file_path))
-
-    with (
-        BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership,
-        batch_source_buffer as batch_source_lines,
-    ):
-        remaining_units = _partition_line_ownership_units(
-            ownership,
-            batch_source_lines,
-            lines_to_remove,
-            batch_name=batch_name,
-            file_path=file_path,
-        )[0]
-
-        # Step 3: Validate remaining units have valid structure
-        validate_ownership_units(remaining_units)
-
-        # Step 4: Rebuild ownership from remaining units
-        new_ownership = rebuild_ownership_from_units(remaining_units)
-
-        # Step 5: Persist updated ownership or remove file if empty
-        if new_ownership.is_empty():
-            # No ownership remains - remove file from batch
-            remove_file_from_batch(batch_name, file_path)
-        else:
-            # Update the batch with new ownership
-            file_mode = file_meta.get("mode", "100644")
-            add_file_to_batch(
-                batch_name,
-                file_path,
-                new_ownership,
-                file_mode,
-                batch_source_commit=batch_source_commit,
-                change_type=file_meta.get("change_type"),
-            )
-
-
-def _acquire_line_ownership_for_file(
-    batch_name: str,
-    file_path: str,
-    lines_to_select: LineRanges,
-) -> AbstractContextManager[BatchOwnership]:
-    """Acquire ownership for selected display line IDs from one batch file."""
-    metadata = read_batch_metadata(batch_name)
-
-    if metadata["files"][file_path].get("file_type") == "binary":
-        exit_with_error(_("Cannot use --lines with binary files. Reset the whole file instead."))
-    if is_batch_submodule_pointer(metadata["files"][file_path]):
-        refuse_batch_submodule_pointer_lines(_("Reset"))
-
-    file_meta = metadata["files"][file_path]
-    batch_source_commit = file_meta["batch_source_commit"]
-    batch_source_buffer = load_git_object_as_buffer(f"{batch_source_commit}:{file_path}")
-    if batch_source_buffer is None:
-        exit_with_error(_("Failed to read batch source content for {file}").format(file=file_path))
-
-    with (
-        BatchOwnership.acquire_for_metadata_dict(file_meta) as ownership,
-        batch_source_buffer as batch_source_lines,
-    ):
-        _remaining_units, selected_units = _partition_line_ownership_units(
-            ownership,
-            batch_source_lines,
-            lines_to_select,
-            batch_name=batch_name,
-            file_path=file_path,
-        )
-        validate_ownership_units(selected_units)
-        return acquire_detached_batch_ownership(
-            rebuild_ownership_from_units(selected_units)
-        )
-
-
-def _partition_line_ownership_units(
-    ownership: BatchOwnership,
-    batch_source_lines: Sequence[bytes],
-    selected_line_ids: LineRanges,
-    *,
-    batch_name: str,
-    file_path: str,
-):
-    """Partition ownership units by selected display line IDs."""
-    # This uses the actual display model, not proximity heuristics
-    units = build_ownership_units_from_batch_source_lines(
-        ownership,
-        batch_source_lines,
-    )
-    available_ids = LineRanges.from_ranges(
-        display_id_range
-        for unit in units
-        for display_id_range in unit.display_line_ids.ranges()
-    )
-    require_display_ids_available(
-        selected_line_ids,
-        available_ids,
-        line_id_specification=selected_line_ids.to_line_spec(),
-        file_path=file_path,
-        review_command=(
-            "git-stage-batch show --from "
-            f"{shlex.quote(batch_name)} --file {shlex.quote(file_path)}"
-        ),
-    )
-
-    # Step 2: Filter units by selected display IDs
-    # This will raise MergeError if atomic units are partially selected
-    try:
-        return filter_ownership_units_by_display_ids(
-            units, selected_line_ids
-        )
-    except MergeError as e:
-        # Convert MergeError to user-facing error
-        exit_with_error(str(e))
-
-
-def _reset_all_claims_from_batch(batch_name: str) -> None:
-    """Remove all claims from a batch.
-
-    Args:
-        batch_name: Name of the batch
-    """
-    # Clear batch metadata files section
-    metadata = read_batch_metadata(batch_name)
-    metadata["files"] = {}
-    metadata_path = get_batch_metadata_file_path(batch_name)
-    write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
-    sync_batch_state_refs(batch_name)

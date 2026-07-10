@@ -318,12 +318,14 @@ def test_data_package_does_not_reexport_data_apis():
     data = __import__("git_stage_batch.data", fromlist=["data"])
     facade_names = {
         "auto_add_untracked_files",
+        "estimate_remaining_hunks",
         "format_id_range",
         "get_file_progress",
         "get_hunk_counts",
         "record_hunk_discarded",
         "record_hunk_included",
         "record_hunk_skipped",
+        "read_status_summary",
         "restore_batch_refs",
         "snapshot_batch_refs",
     }
@@ -401,6 +403,7 @@ def test_output_package_does_not_reexport_output_apis():
         "print_line_level_changes",
         "print_remaining_line_changes_header",
         "print_rename_change",
+        "print_status_summary",
         "print_text_file_deletion_change",
     }
     violations = []
@@ -896,7 +899,7 @@ def test_file_review_freshness_stays_out_of_state_module():
         "selected_change_matches_review_state",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "status.py": {
+        SRC_ROOT / "data" / "status_summary.py": {
             "selected_change_matches_review_state",
         },
         SRC_ROOT / "data" / "file_review" / "state.py": {
@@ -960,7 +963,7 @@ def test_file_review_selection_validation_stays_out_of_state_module():
         "validate_review_scoped_line_selection",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "status.py": {
+        SRC_ROOT / "data" / "status_summary.py": {
             "shown_review_selections_for_action",
         },
         SRC_ROOT / "data" / "file_review" / "batch_selection.py": {
@@ -1025,9 +1028,8 @@ def test_file_review_records_stay_out_of_state_module():
         SRC_ROOT / "commands" / "discard_from.py": {"FileReviewAction"},
         SRC_ROOT / "commands" / "include.py": {"FileReviewAction"},
         SRC_ROOT / "commands" / "include_from.py": {"FileReviewAction"},
-        SRC_ROOT / "commands" / "reset.py": {
+        SRC_ROOT / "commands" / "batch_source" / "reset_selection.py": {
             "FileReviewAction",
-            "ReviewSource",
         },
         SRC_ROOT / "commands" / "show.py": {"ReviewSource"},
         SRC_ROOT / "commands" / "show_from.py": {"ReviewSource"},
@@ -1035,7 +1037,7 @@ def test_file_review_records_stay_out_of_state_module():
             "FileReviewAction",
         },
         SRC_ROOT / "commands" / "skip.py": {"FileReviewAction"},
-        SRC_ROOT / "commands" / "status.py": {
+        SRC_ROOT / "data" / "status_summary.py": {
             "FileReviewAction",
             "ReviewSource",
         },
@@ -1167,16 +1169,10 @@ def test_batch_review_selection_translation_stays_in_file_review_package():
         "translate_reset_batch_file_gutter_ids_to_selection_ranges",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "apply_from.py": {
+        SRC_ROOT / "commands" / "batch_source" / "action_selection.py": {
             "translate_batch_file_gutter_ids_to_selection_ids",
         },
-        SRC_ROOT / "commands" / "discard_from.py": {
-            "translate_batch_file_gutter_ids_to_selection_ids",
-        },
-        SRC_ROOT / "commands" / "include_from.py": {
-            "translate_batch_file_gutter_ids_to_selection_ids",
-        },
-        SRC_ROOT / "commands" / "reset.py": {
+        SRC_ROOT / "commands" / "batch_source" / "reset_selection.py": {
             "translate_reset_batch_file_gutter_ids_to_selection_ranges",
         },
         SRC_ROOT / "commands" / "show_from.py": {
@@ -1287,6 +1283,210 @@ def test_status_does_not_import_hunk_navigation():
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
 
 
+def test_status_remaining_hunk_estimate_stays_in_data_module():
+    """Status summary should delegate live-diff remaining hunk accounting."""
+    remaining_hunks = __import__(
+        "git_stage_batch.data.remaining_hunks",
+        fromlist=["remaining_hunks"],
+    )
+    status = __import__(
+        "git_stage_batch.commands.status",
+        fromlist=["status"],
+    )
+    status_path = SRC_ROOT / "commands" / "status.py"
+    status_summary_path = SRC_ROOT / "data" / "status_summary.py"
+    public_names = {
+        "estimate_remaining_hunks",
+    }
+    disallowed_imports = {
+        "git_stage_batch.core.diff_parser": {
+            "acquire_unified_diff",
+        },
+        "git_stage_batch.core.hashing": {
+            "compute_binary_file_hash",
+            "compute_gitlink_change_hash",
+            "compute_rename_change_hash",
+            "compute_stable_hunk_hash_from_lines",
+            "compute_text_file_deletion_hash",
+        },
+        "git_stage_batch.core.models": {
+            "BinaryFileChange",
+            "GitlinkChange",
+            "RenameChange",
+            "TextFileDeletionChange",
+        },
+        "git_stage_batch.data.change_freshness": {
+            "text_deletion_change_is_batched",
+        },
+        "git_stage_batch.data.live_diff": {
+            "stream_live_git_diff",
+        },
+        "git_stage_batch.utils.file_io": {
+            "is_path_blocked",
+            "read_file_paths_file",
+            "read_text_file_line_set",
+        },
+        "git_stage_batch.utils.paths": {
+            "get_block_list_file_path",
+            "get_blocked_files_file_path",
+            "get_context_lines",
+        },
+    }
+    inspected_paths = {
+        status_path,
+        status_summary_path,
+    }
+    direct_estimate_imports = {
+        path: set()
+        for path in inspected_paths
+    }
+    remaining_imports = {
+        path: set()
+        for path in inspected_paths
+    }
+
+    for path in inspected_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.data.remaining_hunks":
+                remaining_imports[path] |= {
+                    alias.asname or alias.name
+                    for alias in node.names
+                }
+            direct_estimate_imports[path] |= imported_names & disallowed_imports.get(
+                imported_module,
+                set(),
+            )
+
+    assert public_names <= vars(remaining_hunks).keys()
+    assert "estimate_remaining_hunks" not in vars(status)
+    assert remaining_imports == {
+        status_path: set(),
+        status_summary_path: {"_estimate_remaining_hunks"},
+    }
+    assert direct_estimate_imports == {
+        status_path: set(),
+        status_summary_path: set(),
+    }
+
+
+def test_status_summary_reader_owns_status_payload_assembly():
+    """Status payload assembly should live outside the command module."""
+    status_summary = __import__(
+        "git_stage_batch.data.status_summary",
+        fromlist=["status_summary"],
+    )
+    status = __import__(
+        "git_stage_batch.commands.status",
+        fromlist=["status"],
+    )
+    status_path = SRC_ROOT / "commands" / "status.py"
+    public_names = {
+        "read_status_summary",
+    }
+    old_status_names = {
+        "_read_batch_review_display_ids",
+        "_read_file_review_summary",
+        "_read_live_review_display_ids",
+        "_read_selected_change_summary",
+        "_read_skipped_hunks",
+        "_read_status_summary",
+        "_selected_change_is_stale",
+    }
+    disallowed_imports = {
+        "git_stage_batch.batch.query": {
+            "read_batch_metadata",
+        },
+        "git_stage_batch.data.batch_selected_changes": {
+            "selected_batch_binary_batch_name",
+            "selected_batch_binary_file_for_batch",
+        },
+        "git_stage_batch.data.change_freshness": {
+            "binary_file_change_is_stale",
+            "gitlink_change_is_stale",
+            "rename_change_is_stale",
+            "text_deletion_change_is_stale",
+        },
+        "git_stage_batch.data.file_review.freshness": {
+            "selected_change_matches_review_state",
+        },
+        "git_stage_batch.data.file_review.records": {
+            "FileReviewAction",
+            "ReviewSource",
+        },
+        "git_stage_batch.data.file_review.selection_validation": {
+            "shown_review_selections_for_action",
+        },
+        "git_stage_batch.data.file_review.state": {
+            "read_last_file_review_state",
+        },
+        "git_stage_batch.data.line_state": {
+            "load_line_changes_from_state",
+        },
+        "git_stage_batch.data.remaining_hunks": {
+            "estimate_remaining_hunks",
+        },
+        "git_stage_batch.data.selected_change.clear_reasons": {
+            "mark_selected_change_cleared_by_stale_batch_selection",
+        },
+        "git_stage_batch.data.selected_change.file_changes": {
+            "load_selected_binary_file",
+            "load_selected_gitlink_change",
+            "load_selected_rename_change",
+            "load_selected_text_deletion_change",
+        },
+        "git_stage_batch.data.selected_change.lifecycle": {
+            "clear_selected_change_state_files",
+        },
+        "git_stage_batch.data.selected_change.snapshots": {
+            "snapshots_are_stale",
+        },
+        "git_stage_batch.data.selected_change.store": {
+            "read_selected_change_kind",
+        },
+        "git_stage_batch.data.session": {
+            "get_iteration_count",
+        },
+        "git_stage_batch.utils.file_io": {
+            "count_nonblank_text_file_lines",
+            "stream_text_file_lines",
+        },
+        "git_stage_batch.utils.paths": {
+            "get_discarded_hunks_file_path",
+            "get_included_hunks_file_path",
+            "get_line_changes_json_file_path",
+            "get_selected_hunk_patch_file_path",
+            "get_skipped_hunks_jsonl_file_path",
+        },
+    }
+    status_tree = ast.parse(status_path.read_text(), filename=str(status_path))
+    status_names = {
+        node.name
+        for node in ast.walk(status_tree)
+        if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+    imported_status_summary_names = set()
+    direct_payload_imports = set()
+
+    for imported_module, node in _import_from_nodes(status_path):
+        imported_names = {alias.name for alias in node.names}
+        if imported_module == "git_stage_batch.data.status_summary":
+            imported_status_summary_names |= {
+                alias.asname or alias.name
+                for alias in node.names
+            }
+        direct_payload_imports |= imported_names & disallowed_imports.get(
+            imported_module,
+            set(),
+        )
+
+    assert public_names <= vars(status_summary).keys()
+    assert "read_status_summary" not in vars(status)
+    assert old_status_names.isdisjoint(status_names)
+    assert "_read_status_summary" in imported_status_summary_names
+    assert direct_payload_imports == set()
+
+
 def test_active_session_query_stays_in_session_data():
     """Callers should ask session data whether a session is active."""
     caller_paths = (
@@ -1386,6 +1586,68 @@ def test_status_prompt_rendering_stays_in_output_module():
         "render_prompt_status",
     } <= status_imported_prompt_names
     assert "DEFAULT_PROMPT_FORMAT" in parser_imported_prompt_names
+
+
+def test_status_summary_rendering_stays_in_output_module():
+    """Human-readable status rendering should stay out of the command module."""
+    status_output = __import__(
+        "git_stage_batch.output.status",
+        fromlist=["status"],
+    )
+    command_status = __import__(
+        "git_stage_batch.commands.status",
+        fromlist=["status"],
+    )
+    status_path = SRC_ROOT / "commands" / "status.py"
+    public_names = {
+        "print_status_summary",
+    }
+    old_status_names = {
+        "_selected_kind_label",
+    }
+    old_status_snippets = {
+        "Progress this iteration:",
+        "Skipped hunks:",
+        "Current hunk:",
+        "Last file review:",
+    }
+    disallowed_imports = {
+        "git_stage_batch.data.progress": {
+            "format_id_range",
+        },
+        "git_stage_batch.data.selected_change.store": {
+            "SelectedChangeKind",
+        },
+    }
+    status_tree = ast.parse(status_path.read_text(), filename=str(status_path))
+    status_names = {
+        node.name
+        for node in ast.walk(status_tree)
+        if isinstance(node, ast.ClassDef | ast.FunctionDef)
+    }
+    imported_status_output_names = set()
+    direct_render_imports = set()
+
+    for imported_module, node in _import_from_nodes(status_path):
+        imported_names = {alias.name for alias in node.names}
+        if imported_module == "git_stage_batch.output.status":
+            imported_status_output_names |= {
+                alias.asname or alias.name
+                for alias in node.names
+            }
+        direct_render_imports |= imported_names & disallowed_imports.get(
+            imported_module,
+            set(),
+        )
+
+    status_text = status_path.read_text()
+
+    assert public_names <= vars(status_output).keys()
+    assert "print_status_summary" not in vars(command_status)
+    assert old_status_names.isdisjoint(status_names)
+    assert old_status_snippets.isdisjoint(status_text)
+    assert "_print_status_summary" in imported_status_output_names
+    assert direct_render_imports == set()
 
 
 def test_argument_parser_delegates_multi_file_action_flow():
@@ -3537,7 +3799,7 @@ def test_batch_ownership_uses_public_absence_builder():
         "_AbsenceContentBuilder",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "sift.py": public_names,
+        SRC_ROOT / "commands" / "batch_transform" / "sift_results.py": public_names,
     }
     violations = []
 
@@ -3576,6 +3838,7 @@ def test_batch_storage_uses_public_content_helpers():
         fromlist=["storage"],
     )
     public_names = {
+        "add_binary_file_to_batch",
         "build_realized_buffer_from_lines",
         "remove_file_from_batch_commit",
         "update_batch_commit",
@@ -3586,7 +3849,14 @@ def test_batch_storage_uses_public_content_helpers():
         "_update_batch_commit",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "sift.py": public_names,
+        SRC_ROOT / "commands" / "batch_transform" / "sift_results.py": {
+            "build_realized_buffer_from_lines",
+        },
+        SRC_ROOT / "commands" / "batch_transform" / "sift_persistence.py": {
+            "add_binary_file_to_batch",
+            "remove_file_from_batch_commit",
+            "update_batch_commit",
+        },
     }
     violations = []
 
@@ -3619,6 +3889,214 @@ def test_batch_storage_uses_public_content_helpers():
     assert violations == []
 
 
+def test_batch_transform_sift_results_own_result_planning():
+    """Sift result planning should live outside the command entry point."""
+    sift_results = __import__(
+        "git_stage_batch.commands.batch_transform.sift_results",
+        fromlist=["sift_results"],
+    )
+    sift_path = SRC_ROOT / "commands" / "sift.py"
+    public_names = {
+        "SiftedBinaryFileResult",
+        "SiftedFileResult",
+        "SiftedTextFileResult",
+        "build_ownership_from_working_and_target_lines",
+        "compute_sifted_binary_file",
+        "compute_sifted_text_file",
+        "validate_sifted_text_file_result_from_lines",
+    }
+    disallowed_imports = {
+        "git_stage_batch.batch.comparison": {
+            "SemanticChangeKind",
+            "derive_semantic_change_runs",
+        },
+        "git_stage_batch.batch.merge": {
+            "merge_batch_from_line_sequences_as_buffer",
+        },
+        "git_stage_batch.batch.ownership": {
+            "AbsenceClaim",
+            "AbsenceContentBuilder",
+        },
+        "git_stage_batch.batch.storage": {
+            "build_realized_buffer_from_lines",
+        },
+        "git_stage_batch.core.buffer": {
+            "buffer_byte_count",
+            "buffer_matches",
+        },
+        "git_stage_batch.core.line_selection": {
+            "LineRanges",
+        },
+        "git_stage_batch.core.models": {
+            "BinaryFileChange",
+        },
+        "git_stage_batch.core.text_lifecycle": {
+            "sifted_empty_text_path_change_type",
+        },
+        "git_stage_batch.utils.repository_buffers": {
+            "load_git_object_as_buffer_or_empty",
+            "load_working_tree_file_as_buffer",
+        },
+        "git_stage_batch.utils.text": {
+            "normalize_line_sequence_endings",
+        },
+    }
+    old_helper_names = {
+        "_compute_sifted_binary_file",
+        "_compute_sifted_text_file",
+        "build_ownership_from_working_and_target_lines",
+        "validate_sifted_text_file_result_from_lines",
+    }
+    imports_sift_results = False
+    direct_result_imports = set()
+
+    for imported_module, node in _import_from_nodes(sift_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_transform"
+            and "sift_results" in imported_names
+        ):
+            imports_sift_results = True
+        direct_result_imports |= imported_names & disallowed_imports.get(
+            imported_module,
+            set(),
+        )
+
+    sift_tree = ast.parse(sift_path.read_text(), filename=str(sift_path))
+    sift_helpers = {
+        node.name
+        for node in ast.walk(sift_tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+    result_mapping_accesses = []
+
+    for node in ast.walk(sift_tree):
+        if (
+            isinstance(node, ast.Subscript)
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "result"
+        ):
+            result_mapping_accesses.append(node.lineno)
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "result"
+        ):
+            result_mapping_accesses.append(node.lineno)
+
+    assert public_names <= vars(sift_results).keys()
+    assert imports_sift_results
+    assert direct_result_imports == set()
+    assert old_helper_names.isdisjoint(sift_helpers)
+    assert result_mapping_accesses == []
+
+    for class_name in ("SiftedBinaryFileResult", "SiftedTextFileResult"):
+        result_class = getattr(sift_results, class_name)
+        result_methods = {
+            name
+            for name, value in vars(result_class).items()
+            if callable(value)
+        }
+        assert {"__contains__", "__getitem__", "get"}.isdisjoint(result_methods)
+
+
+def test_batch_transform_sift_persistence_owns_file_writes():
+    """Sift file persistence should live outside the command entry point."""
+    sift_persistence = __import__(
+        "git_stage_batch.commands.batch_transform.sift_persistence",
+        fromlist=["sift_persistence"],
+    )
+    sift_path = SRC_ROOT / "commands" / "sift.py"
+    public_names = {
+        "RetainedSiftedFile",
+        "add_sifted_file_to_batch",
+        "add_sifted_text_file_to_batch",
+        "create_synthetic_batch_source_commit",
+        "replace_batch_with_sifted_files",
+    }
+    disallowed_imports = {
+        "git_stage_batch.batch.ownership": {
+            "BatchOwnership",
+        },
+        "git_stage_batch.batch.query": {
+            "get_batch_baseline_commit",
+        },
+        "git_stage_batch.batch.state_refs": {
+            "delete_batch_state_refs",
+            "get_batch_content_ref_name",
+            "sync_batch_state_refs",
+        },
+        "git_stage_batch.batch.storage": {
+            "add_binary_file_to_batch",
+            "remove_file_from_batch_commit",
+            "update_batch_commit",
+        },
+        "git_stage_batch.core.text_lifecycle": {
+            "TextFileChangeType",
+            "normalized_text_change_type",
+        },
+        "git_stage_batch.utils.git": {
+            "create_git_blob",
+            "git_commit_tree",
+            "git_read_tree",
+            "git_update_index",
+            "git_write_tree",
+            "run_git_command",
+            "temp_git_index",
+        },
+        "git_stage_batch.utils.file_io": {
+            "write_text_file_contents",
+        },
+    }
+    old_helper_names = {
+        "_perform_atomic_in_place_sift",
+        "_source_buffers_from_sift_results",
+        "_target_buffer_from_sift_result",
+        "add_sifted_text_file_to_batch",
+        "create_synthetic_batch_source_commit",
+    }
+    imports_sift_persistence = False
+    direct_persistence_imports = set()
+    persistence_calls = set()
+
+    for imported_module, node in _import_from_nodes(sift_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_transform"
+            and "sift_persistence" in imported_names
+        ):
+            imports_sift_persistence = True
+        direct_persistence_imports |= imported_names & disallowed_imports.get(
+            imported_module,
+            set(),
+        )
+
+    sift_tree = ast.parse(sift_path.read_text(), filename=str(sift_path))
+    sift_helpers = {
+        node.name
+        for node in ast.walk(sift_tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+    for node in ast.walk(sift_tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "_sift_persistence"
+        ):
+            persistence_calls.add(node.func.attr)
+
+    assert public_names <= vars(sift_persistence).keys()
+    assert imports_sift_persistence
+    assert direct_persistence_imports == set()
+    assert old_helper_names.isdisjoint(sift_helpers)
+    assert "add_sifted_file_to_batch" in persistence_calls
+    assert "replace_batch_with_sifted_files" in persistence_calls
+    assert "add_sifted_text_file_to_batch" not in persistence_calls
+
+
 def test_batch_ownership_units_bridge_keeps_display_out_of_ownership():
     """Source-line unit construction should live in the bridge module."""
     ownership = __import__(
@@ -3633,7 +4111,7 @@ def test_batch_ownership_units_bridge_keeps_display_out_of_ownership():
     bridge_path = SRC_ROOT / "batch" / "ownership_units.py"
     expected_bridge_callers = {
         SRC_ROOT / "batch" / "selection.py",
-        SRC_ROOT / "commands" / "reset.py",
+        SRC_ROOT / "commands" / "batch_source" / "reset_claims.py",
     }
     moved_name = "build_ownership_units_from_batch_source_lines"
     violations = []
@@ -4169,6 +4647,63 @@ def test_batch_source_text_plan_builders_own_include_text_planning():
     assert "selected_text_target_change_type(" not in command_text
 
 
+def test_batch_source_text_plan_builders_own_discard_text_planning():
+    """Regular discard-from text plan construction should live in batch-source support."""
+    text_plan_builders = __import__(
+        "git_stage_batch.commands.batch_source.text_plan_builders",
+        fromlist=["text_plan_builders"],
+    )
+    discard_from_path = SRC_ROOT / "commands" / "discard_from.py"
+    public_names = {
+        "DiscardTextPlanBuildResult",
+        "build_discard_text_file_action_plan",
+    }
+    disallowed_imports = {
+        "git_stage_batch.batch.merge": {
+            "discard_batch_from_line_sequences_as_buffer",
+        },
+        "git_stage_batch.batch.selection": {
+            "acquire_batch_ownership_for_display_ids_from_lines",
+        },
+        "git_stage_batch.core.buffer": {
+            "LineBuffer",
+        },
+        "git_stage_batch.core.text_lifecycle": {
+            "TextFileChangeType",
+            "mode_for_text_materialization",
+            "normalized_text_change_type",
+            "selected_text_discard_change_type",
+        },
+        "git_stage_batch.utils.repository_buffers": {
+            "load_working_tree_file_as_buffer",
+        },
+    }
+    imports_text_plan_builders = False
+    direct_plan_imports = set()
+
+    for imported_module, node in _import_from_nodes(discard_from_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_source"
+            and "text_plan_builders" in imported_names
+        ):
+            imports_text_plan_builders = True
+        direct_plan_imports |= imported_names & disallowed_imports.get(
+            imported_module,
+            set(),
+        )
+
+    command_text = discard_from_path.read_text()
+
+    assert public_names <= vars(text_plan_builders).keys()
+    assert imports_text_plan_builders
+    assert direct_plan_imports == set()
+    assert "build_discard_text_file_action_plan(" in command_text
+    assert "_discard_text_file_lifecycle_from_batch" not in command_text
+    assert "discard_batch_from_line_sequences_as_buffer(" not in command_text
+    assert "selected_text_discard_change_type(" not in command_text
+
+
 def test_batch_source_candidate_previews_own_candidate_preview_checks():
     """Shared candidate preview checks should live outside command entries."""
     candidate_previews = __import__(
@@ -4609,11 +5144,442 @@ def test_batch_source_candidate_refusals_own_candidate_count_refusals():
             assert snippet not in command_text
 
 
+def test_batch_source_action_context_owns_action_prologue():
+    """Shared batch-source setup should live outside action entries."""
+    action_context = __import__(
+        "git_stage_batch.commands.batch_source.action_context",
+        fromlist=["action_context"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    discard_from_path = SRC_ROOT / "commands" / "discard_from.py"
+    public_names = {
+        "BatchSourceActionContext",
+        "resolve_batch_source_action_context",
+        "resolve_plain_batch_source_action_context",
+    }
+    disallowed_imports = {
+        "git_stage_batch.batch.metadata_validation": {
+            "read_validated_batch_metadata",
+        },
+        "git_stage_batch.batch.source_selector": {
+            "require_plain_batch_name",
+        },
+        "git_stage_batch.batch.validation": {
+            "batch_exists",
+        },
+        "git_stage_batch.data.file_review.state": {
+            "resolve_batch_source_action_scope",
+        },
+    }
+    disallowed_imports_by_path = {
+        apply_from_path: {
+            "git_stage_batch.exceptions": {
+                "BatchMetadataError",
+            },
+        },
+        include_from_path: {
+            "git_stage_batch.exceptions": {
+                "BatchMetadataError",
+            },
+        },
+        discard_from_path: {},
+    }
+    command_paths = {
+        apply_from_path,
+        discard_from_path,
+        include_from_path,
+    }
+    imports_action_context = {
+        path: False
+        for path in command_paths
+    }
+    direct_setup_imports = {
+        path: set()
+        for path in command_paths
+    }
+
+    for path in command_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "action_context" in imported_names
+            ):
+                imports_action_context[path] = True
+            direct_setup_imports[path] |= imported_names & disallowed_imports.get(
+                imported_module,
+                set(),
+            )
+            path_disallowed_imports = disallowed_imports_by_path[path]
+            direct_setup_imports[path] |= imported_names & path_disallowed_imports.get(
+                imported_module,
+                set(),
+            )
+
+    assert public_names <= vars(action_context).keys()
+    assert imports_action_context == {
+        apply_from_path: True,
+        discard_from_path: True,
+        include_from_path: True,
+    }
+    assert direct_setup_imports == {
+        apply_from_path: set(),
+        discard_from_path: set(),
+        include_from_path: set(),
+    }
+
+
+def test_batch_source_action_selection_owns_file_line_selection():
+    """Shared batch-source file and line selection should live outside entries."""
+    action_selection = __import__(
+        "git_stage_batch.commands.batch_source.action_selection",
+        fromlist=["action_selection"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    discard_from_path = SRC_ROOT / "commands" / "discard_from.py"
+    public_names = {
+        "BatchSourceActionSelection",
+        "resolve_apply_action_selection",
+        "resolve_discard_action_selection",
+        "resolve_include_action_selection",
+    }
+    disallowed_imports = {
+        "git_stage_batch.batch.selection": {
+            "require_single_file_context_for_line_selection",
+            "resolve_batch_file_scope",
+            "resolve_current_batch_binary_file_scope",
+        },
+        "git_stage_batch.batch.submodule_pointer": {
+            "refuse_batch_submodule_pointer_lines",
+        },
+        "git_stage_batch.commands.selection": {
+            "replacement_selection",
+        },
+        "git_stage_batch.data.file_review.batch_selection": {
+            "translate_batch_file_gutter_ids_to_selection_ids",
+        },
+    }
+    command_paths = {
+        apply_from_path,
+        discard_from_path,
+        include_from_path,
+    }
+    imports_action_selection = {
+        path: False
+        for path in command_paths
+    }
+    direct_selection_imports = {
+        path: set()
+        for path in command_paths
+    }
+
+    for path in command_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "action_selection" in imported_names
+            ):
+                imports_action_selection[path] = True
+            direct_selection_imports[path] |= imported_names & disallowed_imports.get(
+                imported_module,
+                set(),
+            )
+
+    assert public_names <= vars(action_selection).keys()
+    assert imports_action_selection == {
+        apply_from_path: True,
+        discard_from_path: True,
+        include_from_path: True,
+    }
+    assert direct_selection_imports == {
+        apply_from_path: set(),
+        discard_from_path: set(),
+        include_from_path: set(),
+    }
+
+
+def test_batch_source_action_completion_owns_review_finalization():
+    """Shared apply/include review completion should live outside entries."""
+    action_completion = __import__(
+        "git_stage_batch.commands.batch_source.action_completion",
+        fromlist=["action_completion"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    public_names = {
+        "finish_batch_source_action_review",
+    }
+    command_paths = {
+        apply_from_path,
+        include_from_path,
+    }
+    imports_action_completion = {
+        path: False
+        for path in command_paths
+    }
+    direct_review_imports = {
+        path: set()
+        for path in command_paths
+    }
+
+    for path in command_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "action_completion" in imported_names
+            ):
+                imports_action_completion[path] = True
+            if imported_module == "git_stage_batch.data.file_review.state":
+                direct_review_imports[path] |= (
+                    imported_names & {"finish_review_scoped_line_action"}
+                )
+
+    assert public_names <= vars(action_completion).keys()
+    assert imports_action_completion == {
+        apply_from_path: True,
+        include_from_path: True,
+    }
+    assert direct_review_imports == {
+        apply_from_path: set(),
+        include_from_path: set(),
+    }
+
+
+def test_batch_source_selection_state_cleanup_owns_reset_cleanup():
+    """Reset selected-state cleanup should live outside the reset entry."""
+    selection_state_cleanup = __import__(
+        "git_stage_batch.commands.batch_source.selection_state_cleanup",
+        fromlist=["selection_state_cleanup"],
+    )
+    reset_path = SRC_ROOT / "commands" / "reset.py"
+    public_names = {
+        "clear_selected_batch_state_after_batch_mutation",
+    }
+    disallowed_imports = {
+        "git_stage_batch.data.batch_selected_changes": {
+            "selected_batch_binary_matches_batch",
+            "selected_batch_gitlink_matches_batch",
+        },
+        "git_stage_batch.data.file_review.records": {
+            "ReviewSource",
+        },
+        "git_stage_batch.data.file_review.state": {
+            "read_last_file_review_state",
+        },
+        "git_stage_batch.data.selected_change.clear_reasons": {
+            "mark_selected_change_cleared_by_stale_batch_selection",
+        },
+        "git_stage_batch.data.selected_change.lifecycle": {
+            "clear_selected_change_state_files",
+        },
+        "git_stage_batch.data.selected_change.paths": {
+            "get_selected_change_file_path",
+        },
+        "git_stage_batch.data.selected_change.store": {
+            "SelectedChangeKind",
+            "read_selected_change_kind",
+        },
+    }
+    reset_tree = ast.parse(reset_path.read_text(), filename=str(reset_path))
+    reset_helpers = {
+        node.name
+        for node in ast.walk(reset_tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+    imports_selection_state_cleanup = False
+    direct_cleanup_imports = set()
+
+    for imported_module, node in _import_from_nodes(reset_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_source"
+            and "selection_state_cleanup" in imported_names
+        ):
+            imports_selection_state_cleanup = True
+        direct_cleanup_imports |= imported_names & disallowed_imports.get(
+            imported_module,
+            set(),
+        )
+
+    assert public_names <= vars(selection_state_cleanup).keys()
+    assert imports_selection_state_cleanup
+    assert direct_cleanup_imports == set()
+    assert "_clear_selected_batch_state_after_batch_mutation" not in reset_helpers
+
+
+def test_batch_source_reset_claims_own_reset_mutations():
+    """Reset claim mutation should live outside the reset entry."""
+    reset_claims = __import__(
+        "git_stage_batch.commands.batch_source.reset_claims",
+        fromlist=["reset_claims"],
+    )
+    reset_path = SRC_ROOT / "commands" / "reset.py"
+    public_names = {
+        "move_claims_between_batches",
+        "partition_line_ownership_units",
+        "reset_all_claims_from_batch",
+        "reset_file_claims_from_batch",
+        "reset_line_claims_for_file",
+        "reset_line_claims_from_batch",
+        "reset_pattern_claims_from_batch",
+    }
+    old_helper_names = {
+        "_acquire_line_ownership_for_file",
+        "_add_ownership_to_destination",
+        "_ensure_destination_batch",
+        "_move_claims_between_batches",
+        "_partition_line_ownership_units",
+        "_reset_all_claims_from_batch",
+        "_reset_file_claims_from_batch",
+        "_reset_line_claims_for_file",
+        "_reset_line_claims_from_batch",
+        "_reset_pattern_claims_from_batch",
+    }
+    disallowed_imports = {
+        "git_stage_batch.batch.operations": {
+            "create_batch",
+        },
+        "git_stage_batch.batch.ownership": {
+            "BatchOwnership",
+            "acquire_detached_batch_ownership",
+            "filter_ownership_units_by_display_ids",
+            "merge_batch_ownership",
+            "rebuild_ownership_from_units",
+            "validate_ownership_units",
+        },
+        "git_stage_batch.batch.ownership_units": {
+            "build_ownership_units_from_batch_source_lines",
+        },
+        "git_stage_batch.batch.selection": {
+            "require_display_ids_available",
+        },
+        "git_stage_batch.batch.state_refs": {
+            "sync_batch_state_refs",
+        },
+        "git_stage_batch.batch.storage": {
+            "add_file_to_batch",
+            "copy_file_from_batch_to_batch",
+            "remove_file_from_batch",
+        },
+        "git_stage_batch.batch.submodule_pointer": {
+            "is_batch_submodule_pointer",
+            "refuse_batch_submodule_pointer_lines",
+        },
+        "git_stage_batch.utils.repository_buffers": {
+            "load_git_object_as_buffer",
+        },
+        "git_stage_batch.utils.file_io": {
+            "write_text_file_contents",
+        },
+        "git_stage_batch.utils.paths": {
+            "get_batch_metadata_file_path",
+        },
+    }
+    reset_tree = ast.parse(reset_path.read_text(), filename=str(reset_path))
+    reset_helpers = {
+        node.name
+        for node in ast.walk(reset_tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+    imports_reset_claims = False
+    direct_claim_imports = set()
+
+    for imported_module, node in _import_from_nodes(reset_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_source"
+            and "reset_claims" in imported_names
+        ):
+            imports_reset_claims = True
+        direct_claim_imports |= imported_names & disallowed_imports.get(
+            imported_module,
+            set(),
+        )
+
+    assert public_names <= vars(reset_claims).keys()
+    assert imports_reset_claims
+    assert direct_claim_imports == set()
+    assert old_helper_names.isdisjoint(reset_helpers)
+
+
+def test_batch_source_reset_selection_owns_reset_scope():
+    """Reset scope setup should live outside the reset entry."""
+    reset_selection = __import__(
+        "git_stage_batch.commands.batch_source.reset_selection",
+        fromlist=["reset_selection"],
+    )
+    reset_path = SRC_ROOT / "commands" / "reset.py"
+    public_names = {
+        "ResetClaimSelection",
+        "resolve_reset_claim_selection",
+    }
+    disallowed_imports = {
+        "git_stage_batch.batch.query": {
+            "read_batch_metadata",
+        },
+        "git_stage_batch.batch.selection": {
+            "resolve_batch_file_scope",
+            "resolve_current_batch_binary_file_scope",
+        },
+        "git_stage_batch.batch.source_selector": {
+            "require_plain_batch_name",
+        },
+        "git_stage_batch.batch.validation": {
+            "batch_exists",
+            "validate_batch_name",
+        },
+        "git_stage_batch.data.file_review.batch_selection": {
+            "translate_reset_batch_file_gutter_ids_to_selection_ranges",
+        },
+        "git_stage_batch.data.file_review.records": {
+            "FileReviewAction",
+        },
+        "git_stage_batch.data.file_review.state": {
+            "resolve_batch_source_action_scope",
+        },
+        "git_stage_batch.exceptions": {
+            "exit_with_error",
+        },
+    }
+    reset_tree = ast.parse(reset_path.read_text(), filename=str(reset_path))
+    reset_helpers = {
+        node.name
+        for node in ast.walk(reset_tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+    }
+    imports_reset_selection = False
+    direct_selection_imports = set()
+
+    for imported_module, node in _import_from_nodes(reset_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_source"
+            and "reset_selection" in imported_names
+        ):
+            imports_reset_selection = True
+        direct_selection_imports |= imported_names & disallowed_imports.get(
+            imported_module,
+            set(),
+        )
+
+    assert public_names <= vars(reset_selection).keys()
+    assert imports_reset_selection
+    assert direct_selection_imports == set()
+    assert "_operation_parts" not in reset_helpers
+
+
 def test_batch_source_candidate_selectors_own_action_selector_validation():
     """Shared candidate selector validation should live outside action entries."""
     candidate_selectors = __import__(
         "git_stage_batch.commands.batch_source.candidate_selectors",
         fromlist=["candidate_selectors"],
+    )
+    action_context_path = (
+        SRC_ROOT / "commands" / "batch_source" / "action_context.py"
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
@@ -4634,35 +5600,45 @@ def test_batch_source_candidate_selectors_own_action_selector_validation():
             "requires --file in this implementation",
         },
     }
-    command_paths = set(old_snippets_by_path)
-    imports_candidate_selectors = {
+    inspected_paths = set(old_snippets_by_path) | {action_context_path}
+    imports_candidate_selectors = False
+    command_selector_imports = {
         path: False
-        for path in command_paths
+        for path in old_snippets_by_path
     }
     direct_selector_imports = {
         path: set()
-        for path in command_paths
+        for path in inspected_paths
     }
 
-    for path in command_paths:
+    for path in inspected_paths:
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
             if (
-                imported_module == "git_stage_batch.commands.batch_source"
+                path == action_context_path
+                and imported_module == "git_stage_batch.commands.batch_source"
                 and "candidate_selectors" in imported_names
             ):
-                imports_candidate_selectors[path] = True
+                imports_candidate_selectors = True
+            if (
+                path in command_selector_imports
+                and imported_module == "git_stage_batch.commands.batch_source"
+                and "candidate_selectors" in imported_names
+            ):
+                command_selector_imports[path] = True
             if imported_module == "git_stage_batch.batch.source_selector":
                 direct_selector_imports[path] |= (
                     imported_names & old_source_selector_names
                 )
 
     assert public_names <= vars(candidate_selectors).keys()
-    assert imports_candidate_selectors == {
-        apply_from_path: True,
-        include_from_path: True,
+    assert imports_candidate_selectors
+    assert command_selector_imports == {
+        apply_from_path: False,
+        include_from_path: False,
     }
     assert direct_selector_imports == {
+        action_context_path: set(),
         apply_from_path: set(),
         include_from_path: set(),
     }
@@ -4731,6 +5707,53 @@ def test_batch_source_merge_refusals_own_merge_failure_refusals():
             assert snippet not in command_text
 
 
+def test_batch_source_worktree_refusals_own_execution_refusals():
+    """Shared worktree execution refusals should live outside command entries."""
+    worktree_refusals = __import__(
+        "git_stage_batch.commands.batch_source.worktree_refusals",
+        fromlist=["worktree_refusals"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    public_names = {
+        "refuse_incompatible_worktree_action",
+    }
+    old_snippets_by_path = {
+        apply_from_path: {
+            "contains changes to {file} that are incompatible",
+            "one or more files that are incompatible",
+        },
+        include_from_path: {
+            "contains changes to {file} that are incompatible",
+            "one or more files that are incompatible",
+        },
+    }
+    command_paths = set(old_snippets_by_path)
+    imports_worktree_refusals = {
+        path: False
+        for path in command_paths
+    }
+
+    for path in command_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "worktree_refusals" in imported_names
+            ):
+                imports_worktree_refusals[path] = True
+
+    assert public_names <= vars(worktree_refusals).keys()
+    assert imports_worktree_refusals == {
+        apply_from_path: True,
+        include_from_path: True,
+    }
+    for path, old_snippets in old_snippets_by_path.items():
+        command_text = path.read_text()
+        for snippet in old_snippets:
+            assert snippet not in command_text
+
+
 def test_batch_source_text_actions_own_text_file_mutations():
     """Shared text file actions should live outside command entries."""
     text_file_actions = __import__(
@@ -4739,16 +5762,20 @@ def test_batch_source_text_actions_own_text_file_mutations():
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    discard_from_path = SRC_ROOT / "commands" / "discard_from.py"
     public_names = {
         "stage_text_file_to_index",
+        "write_discarded_text_file_to_worktree",
         "write_text_file_to_worktree",
     }
     old_names = {
+        "_discard_text_file_lifecycle_from_batch",
         "_stage_text_file_from_batch",
         "_write_text_file_from_batch",
     }
     command_paths = {
         apply_from_path,
+        discard_from_path,
         include_from_path,
     }
     helpers_by_path = {
@@ -4776,6 +5803,7 @@ def test_batch_source_text_actions_own_text_file_mutations():
     assert public_names <= vars(text_file_actions).keys()
     assert imports_text_file_actions == {
         apply_from_path: True,
+        discard_from_path: True,
         include_from_path: True,
     }
     for helpers in helpers_by_path.values():
@@ -4826,16 +5854,20 @@ def test_batch_source_binary_actions_own_worktree_mutation():
         fromlist=["binary_file_actions"],
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    discard_from_path = SRC_ROOT / "commands" / "discard_from.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
     public_names = {
         "BinaryWorktreeAction",
+        "discard_binary_file_to_worktree",
         "write_binary_file_to_worktree",
     }
     old_names = {
+        "_discard_binary_file_from_batch",
         "_write_binary_file_from_batch",
     }
     command_paths = {
         apply_from_path,
+        discard_from_path,
         include_from_path,
     }
     helpers_by_path = {
@@ -4863,6 +5895,7 @@ def test_batch_source_binary_actions_own_worktree_mutation():
     assert public_names <= vars(binary_file_actions).keys()
     assert imports_binary_file_actions == {
         apply_from_path: True,
+        discard_from_path: True,
         include_from_path: True,
     }
     for helpers in helpers_by_path.values():
@@ -6629,6 +7662,9 @@ def test_replacement_selection_stays_in_command_helper():
     """Include and discard should use the replacement-selection helper module."""
     include_path = SRC_ROOT / "commands" / "include.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    action_selection_path = (
+        SRC_ROOT / "commands" / "batch_source" / "action_selection.py"
+    )
     discard_path = SRC_ROOT / "commands" / "discard.py"
     show_from_path = SRC_ROOT / "commands" / "show_from.py"
     replacement_previews_path = (
@@ -6663,7 +7699,7 @@ def test_replacement_selection_stays_in_command_helper():
     }
     helper_user_paths = (
         include_path,
-        include_from_path,
+        action_selection_path,
         discard_replacement_path,
         replacement_previews_path,
     )

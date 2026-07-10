@@ -13,12 +13,12 @@ from git_stage_batch.commands.new import command_new_batch
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.commands.include import command_include_to_batch
-import git_stage_batch.commands.sift as sift_module
-from git_stage_batch.commands.sift import (
+import git_stage_batch.commands.batch_transform.sift_results as sift_results
+from git_stage_batch.commands.batch_transform.sift_persistence import (
     add_sifted_text_file_to_batch,
-    build_ownership_from_working_and_target_lines,
+)
+from git_stage_batch.commands.sift import (
     command_sift_batch,
-    validate_sifted_text_file_result_from_lines,
 )
 from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.batch.storage import (
@@ -66,7 +66,7 @@ def test_build_sift_ownership_accepts_non_list_line_sequences(line_sequence):
     working_lines = line_sequence([b"line1\n", b"old\n", b"line3\n"])
     target_lines = line_sequence([b"line1\n", b"new\n", b"line3\n"])
 
-    ownership = build_ownership_from_working_and_target_lines(
+    ownership = sift_results.build_ownership_from_working_and_target_lines(
         working_lines,
         target_lines,
     )
@@ -83,7 +83,7 @@ def test_build_sift_ownership_consumes_target_ranges(monkeypatch):
     """Sift ownership derivation should not expand claimed target ranges."""
 
     class TargetRangeOnlyRun:
-        kind = sift_module.SemanticChangeKind.PRESENCE
+        kind = sift_results.SemanticChangeKind.PRESENCE
         source_start = None
         source_end = None
         target_start = 2
@@ -94,12 +94,12 @@ def test_build_sift_ownership_consumes_target_ranges(monkeypatch):
             raise AssertionError("sift should consume target range endpoints")
 
     monkeypatch.setattr(
-        sift_module,
+        sift_results,
         "derive_semantic_change_runs",
         lambda source_lines, target_lines: [TargetRangeOnlyRun()],
     )
 
-    ownership = build_ownership_from_working_and_target_lines([], [])
+    ownership = sift_results.build_ownership_from_working_and_target_lines([], [])
 
     assert ownership is not None
     assert ownership.presence_claims[0].source_lines == ["2-1001"]
@@ -120,7 +120,7 @@ def test_validate_sifted_result_accepts_non_list_line_sequences(line_sequence):
         ],
     )
 
-    validate_sifted_text_file_result_from_lines(
+    sift_results.validate_sifted_text_file_result_from_lines(
         target_lines,
         ownership,
         working_lines,
@@ -602,7 +602,7 @@ class TestSiftValidationStrength:
         def fail_sift(*args, **kwargs):
             raise MergeError("synthetic structural conflict")
 
-        monkeypatch.setattr(sift_module, "_compute_sifted_text_file", fail_sift)
+        monkeypatch.setattr(sift_results, "compute_sifted_text_file", fail_sift)
 
         with pytest.raises(CommandError) as exc_info:
             command_sift_batch("source-batch", "sifted-batch")

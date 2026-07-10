@@ -1120,6 +1120,10 @@ The `after` object is recorded after the mutating command completes. Undo uses
 it for conflict detection: if the current index tree, batch refs, or tracked
 worktree path bytes differ from `after`, undo refuses by default.
 
+If a process exits after publishing the before-image but before recording
+`after`, the checkpoint is incomplete. Undo treats that missing post-state as a
+conflict and refuses unless the user explicitly supplies `--force`.
+
 ### Session and Metadata Before-Images
 
 Undo snapshots these filesystem trees:
@@ -1202,6 +1206,7 @@ recorded `after` state before restoring anything:
 * If the index tree changed, undo refuses.
 * If batch refs changed, undo refuses.
 * If a tracked worktree path changed, undo refuses.
+* If the checkpoint has no finalized `after` state, undo refuses.
 
 The user can bypass this guard with:
 

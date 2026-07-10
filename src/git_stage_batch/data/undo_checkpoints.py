@@ -257,7 +257,7 @@ def _detect_conflicts_against_state(expected_state: dict[str, Any]) -> list[str]
 def _detect_conflicts(manifest: dict[str, Any]) -> list[str]:
     after = manifest.get("after")
     if not isinstance(after, dict):
-        return []
+        return [_('incomplete checkpoint')]
     return _detect_conflicts_against_state(after)
 
 

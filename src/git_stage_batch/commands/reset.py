@@ -43,7 +43,7 @@ def command_reset_from_batch(
     file = selection.file
     effective_line_ids = selection.effective_line_ids
 
-    with undo_checkpoint(" ".join(selection.operation_parts)):
+    with undo_checkpoint(" ".join(selection.operation_parts), worktree_paths=[]):
         if to_batch is not None:
             _reset_claims.move_claims_between_batches(
                 batch_name,

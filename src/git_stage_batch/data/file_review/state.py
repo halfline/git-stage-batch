@@ -20,8 +20,11 @@ def write_last_file_review_state(review_state: _records.FileReviewState) -> None
     )
 
 
-def read_last_file_review_state() -> _records.FileReviewState | None:
-    """Read the last file review state, if present and valid."""
+def read_last_file_review_state(
+    *,
+    clear_invalid: bool = True,
+) -> _records.FileReviewState | None:
+    """Read the last file review state, optionally clearing invalid state."""
     path = get_last_file_review_state_file_path()
     if not path.exists():
         return None
@@ -57,7 +60,8 @@ def read_last_file_review_state() -> _records.FileReviewState | None:
             diff_fingerprint=data["diff_fingerprint"],
         )
     except (KeyError, TypeError, ValueError, json.JSONDecodeError):
-        clear_last_file_review_state()
+        if clear_invalid:
+            clear_last_file_review_state()
         return None
 
 

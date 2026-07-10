@@ -56,10 +56,7 @@ def presence_choices_for_missing_claimed_run(
 
     left_context = (bytes(source_lines[before_source_line - 1]),)
     right_context = (bytes(source_lines[after_source_line - 1]),)
-    claimed_run = tuple(
-        bytes(source_lines[index])
-        for index in range(run_start - 1, run_end)
-    )
+    claimed_run = source_lines[run_start - 1:run_end]
     key = presence_ambiguity_key(
         run_start,
         run_end,
@@ -98,7 +95,10 @@ def presence_ambiguity_key(
     before_source_line: int,
     after_source_line: int,
 ) -> str:
-    digest = hashlib.sha256(b"".join(claimed_run)).hexdigest()[:12]
+    hasher = hashlib.sha256()
+    for line in claimed_run:
+        hasher.update(line)
+    digest = hasher.hexdigest()[:12]
     return (
         f"presence:{run_start}-{run_end}:claimed:{digest}:"
         f"between:{before_source_line}-{after_source_line}"

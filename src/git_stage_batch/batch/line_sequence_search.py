@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 
+from .line_sequence_equality import line_slice_equals
+
 
 @dataclass(frozen=True)
 class TargetGap:
@@ -72,14 +74,16 @@ def iter_exact_context_gaps(
             continue
         if (
             left_count
-            and tuple(target_lines[gap_index - left_count:gap_index])
-            != tuple(left_context)
+            and not line_slice_equals(
+                target_lines,
+                gap_index - left_count,
+                left_context,
+            )
         ):
             continue
         if (
             right_count
-            and tuple(target_lines[gap_index:gap_index + right_count])
-            != tuple(right_context)
+            and not line_slice_equals(target_lines, gap_index, right_context)
         ):
             continue
         yield TargetGap(

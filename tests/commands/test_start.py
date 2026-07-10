@@ -85,6 +85,20 @@ class TestCommandStart:
         abort_stash_path = get_abort_stash_file_path()
         assert abort_stash_path.exists()
 
+    def test_start_without_changes_rolls_back_session(self, temp_git_repo):
+        """A rejected start should not leave an active empty session."""
+        with pytest.raises(CommandError, match="No changes to process"):
+            command_start()
+
+        assert not session_is_active()
+        assert subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=temp_git_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout == ""
+
     def test_start_refuses_failed_recovery_snapshot(self, temp_git_repo):
         """Startup should fail closed when Git cannot create the abort stash."""
         readme = temp_git_repo / "README.md"

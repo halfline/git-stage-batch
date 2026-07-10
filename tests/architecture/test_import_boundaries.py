@@ -2692,6 +2692,7 @@ def test_git_object_io_stays_out_of_git_command_module():
     public_names = {
         "GitTreeBlob",
         "create_git_blob",
+        "create_git_blobs_from_paths",
         "read_git_blob",
         "read_git_blobs_as_bytes",
         "list_git_tree_blobs",

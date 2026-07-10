@@ -1,4 +1,4 @@
-"""Editor mutation helpers."""
+"""Line editor mutation helpers."""
 
 from __future__ import annotations
 
@@ -7,18 +7,18 @@ from dataclasses import dataclass
 from typing import overload
 
 from ..core.buffer import LineBuffer
-from ..utils.text import normalize_line_ending
+from ..core.text_lines import normalize_line_ending
 from .line_endings import detect_line_ending, restore_line_endings_in_chunks
 from .line_export import line_body, line_body_chunks
 from .piece_table import LineLike, LinePieceTable, LineRange, SOURCE_RUN
 
 
-class Cursor:
+class LineCursor:
     """An opaque position in editor lines."""
 
     __slots__ = ("_editor", "_id")
 
-    def __init__(self, editor: Editor, cursor_id: int) -> None:
+    def __init__(self, editor: LineEditor, cursor_id: int) -> None:
         self._editor = editor
         self._id = cursor_id
 
@@ -30,7 +30,7 @@ _TransformResult = _BytesLike | Iterable[_LineLike]
 _Selection = tuple[int, int | None]
 
 
-class Editor(Sequence[_LineLike]):
+class LineEditor(Sequence[_LineLike]):
     """Stateful line editor for indexed lines."""
 
     def __init__(self, source: Sequence[_LineLike]) -> None:
@@ -42,11 +42,11 @@ class Editor(Sequence[_LineLike]):
         self._cursor_positions: dict[int, int] = {}
         self._next_cursor_id = 0
         self._owned_buffers: list[LineBuffer] = []
-        self._incoming_editor_leases: dict[Editor, _EditorLease] = {}
-        self._outgoing_editor_leases: set[_EditorLease] = set()
+        self._incoming_editor_leases: dict[LineEditor, _LineEditorLease] = {}
+        self._outgoing_editor_leases: set[_LineEditorLease] = set()
         self._closed = False
 
-    def __enter__(self) -> Editor:
+    def __enter__(self) -> LineEditor:
         self._require_open()
         return self
 
@@ -65,16 +65,16 @@ class Editor(Sequence[_LineLike]):
         self._require_open()
         return self._position == self._current_line_count()
 
-    def cursor_at(self, line: int) -> Cursor:
+    def cursor_at(self, line: int) -> LineCursor:
         """Return a cursor at a 0-based destination line boundary."""
         self._require_open()
         position = self._validated_position(line)
         cursor_id = self._next_cursor_id
         self._next_cursor_id += 1
         self._cursor_positions[cursor_id] = position
-        return Cursor(self, cursor_id)
+        return LineCursor(self, cursor_id)
 
-    def cursor_at_source_line(self, line: int) -> Cursor:
+    def cursor_at_source_line(self, line: int) -> LineCursor:
         """Return a cursor at a 0-based source line boundary."""
         self._require_open()
         if line < 0:
@@ -86,7 +86,7 @@ class Editor(Sequence[_LineLike]):
 
         return self.cursor_at(destination_position)
 
-    def move_to(self, target: Cursor | int) -> None:
+    def move_to(self, target: LineCursor | int) -> None:
         """Move to a cursor or destination line boundary."""
         self._require_open()
         self._selection = None
@@ -103,7 +103,7 @@ class Editor(Sequence[_LineLike]):
 
         self._selection = (self._position, selection_end)
 
-    def select_to(self, target: Cursor | int) -> None:
+    def select_to(self, target: LineCursor | int) -> None:
         """Select lines from the current position to the target."""
         self._require_open()
         self._selection = (self._position, self._resolve_position(target))
@@ -185,7 +185,7 @@ class Editor(Sequence[_LineLike]):
         start: int,
         end: int,
         *,
-        owner: Editor | None = None,
+        owner: LineEditor | None = None,
     ) -> None:
         """Append an indexed line range without walking existing content."""
         self._require_open()
@@ -205,7 +205,7 @@ class Editor(Sequence[_LineLike]):
 
     def append_line_ranges_from_editor(
         self,
-        editor: Editor,
+        editor: LineEditor,
         start: int,
         end: int,
     ) -> None:
@@ -221,7 +221,7 @@ class Editor(Sequence[_LineLike]):
 
     def add_lines_from_editor(
         self,
-        editor: Editor,
+        editor: LineEditor,
         start: int,
         end: int,
     ) -> None:
@@ -230,7 +230,7 @@ class Editor(Sequence[_LineLike]):
 
     def add_line_ranges_from_editor(
         self,
-        editor: Editor,
+        editor: LineEditor,
         start: int,
         end: int,
     ) -> None:
@@ -261,7 +261,7 @@ class Editor(Sequence[_LineLike]):
         start: int,
         end: int,
         *,
-        owner: Editor | None = None,
+        owner: LineEditor | None = None,
         validate_end: bool = True,
     ) -> None:
         _validate_line_range(lines, start, end, validate_end=validate_end)
@@ -563,8 +563,8 @@ class Editor(Sequence[_LineLike]):
 
         return None
 
-    def _resolve_position(self, target: Cursor | int) -> int:
-        if isinstance(target, Cursor):
+    def _resolve_position(self, target: LineCursor | int) -> int:
+        if isinstance(target, LineCursor):
             if target._editor is not self:
                 raise ValueError("cursor does not belong to this editor")
             try:
@@ -643,7 +643,7 @@ class Editor(Sequence[_LineLike]):
             raise ValueError("editor has active leases")
 
     def _sync_editor_leases(self) -> None:
-        active_sources: set[Editor] = set()
+        active_sources: set[LineEditor] = set()
         for owner in self._pieces.active_owners():
             if owner is not None and owner is not self:
                 active_sources.add(owner)
@@ -655,14 +655,14 @@ class Editor(Sequence[_LineLike]):
             if source not in active_sources:
                 lease.release()
 
-    def _borrow_editor(self, source: Editor) -> None:
+    def _borrow_editor(self, source: LineEditor) -> None:
         self._require_open()
         source._require_open()
 
         if source is self or source in self._incoming_editor_leases:
             return
 
-        lease = _EditorLease(source, self)
+        lease = _LineEditorLease(source, self)
         self._incoming_editor_leases[source] = lease
         source._outgoing_editor_leases.add(lease)
 
@@ -678,10 +678,10 @@ class _InsertedLines:
     owned_buffer: LineBuffer | None = None
 
 
-class _EditorLease:
+class _LineEditorLease:
     """Borrow relationship between editors sharing line segments."""
 
-    def __init__(self, source: Editor, target: Editor) -> None:
+    def __init__(self, source: LineEditor, target: LineEditor) -> None:
         self._source = source
         self._target = target
         self._released = False
@@ -701,7 +701,7 @@ class _SelectedLineSequence(Sequence[bytes]):
 
     def __init__(
         self,
-        editor: Editor,
+        editor: LineEditor,
         selection_start: int,
         selection_end: int | None,
     ) -> None:
@@ -799,7 +799,7 @@ def edit_lines_as_buffer(
         raise ValueError("invalid line selection")
 
     try:
-        with Editor(source_lines) as editor:
+        with LineEditor(source_lines) as editor:
             editor.move_to(selection_start)
             editor.select_to(selection_end)
             editor.add_lines(edited_lines)
@@ -852,7 +852,7 @@ def _validated_line_range(
     start: int,
     end: int,
     *,
-    owner: Editor | None,
+    owner: LineEditor | None,
     validate_end: bool = True,
 ) -> LineRange:
     _validate_line_range(lines, start, end, validate_end=validate_end)
@@ -862,14 +862,14 @@ def _validated_line_range(
 def _coerce_line_ranges(
     ranges: Iterable[object],
     *,
-    default_owner: Editor,
+    default_owner: LineEditor,
 ) -> tuple[LineRange, ...]:
     return tuple(_coerce_line_range(item, default_owner) for item in ranges)
 
 
 def _coerce_line_range(
     line_range: object,
-    default_owner: Editor,
+    default_owner: LineEditor,
 ) -> LineRange:
     if isinstance(line_range, LineRange):
         owner = line_range.owner or default_owner
@@ -899,7 +899,7 @@ def _coerce_line_range(
         raise TypeError("expected line sequence in range")
     if not isinstance(start, int) or not isinstance(end, int):
         raise TypeError("expected integer line range bounds")
-    if owner is not None and not isinstance(owner, Editor):
+    if owner is not None and not isinstance(owner, LineEditor):
         raise TypeError("expected editor owner")
 
     return _validated_line_range(lines, start, end, owner=owner)
@@ -914,7 +914,7 @@ def _spool_inserted_lines(
     *,
     start: int = 0,
     end: int | None = None,
-    owner: Editor | None = None,
+    owner: LineEditor | None = None,
 ) -> _InsertedLines:
     if start < 0 or (end is not None and end < start):
         raise ValueError("invalid line range")

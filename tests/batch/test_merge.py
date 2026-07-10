@@ -38,7 +38,7 @@ from git_stage_batch.batch.ownership import (
     ReplacementUnit,
     ReplacementUnitOrigin,
 )
-from git_stage_batch.utils.text import normalize_line_sequence_endings
+from git_stage_batch.core.text_lines import normalize_line_sequence_endings
 
 
 class _IndexGuardedLineBuffer(LineBuffer):

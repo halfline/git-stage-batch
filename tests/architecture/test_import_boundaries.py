@@ -16,6 +16,104 @@ def _imported_modules_for(path):
     return {imported_module for imported_module, _node in _import_from_nodes(path)}
 
 
+def _top_level_package_names() -> set[str]:
+    return {
+        path.name
+        for path in SRC_ROOT.iterdir()
+        if path.is_dir() and (path / "__init__.py").exists()
+    }
+
+
+def _top_level_package_import_edges() -> set[tuple[str, str]]:
+    package_names = _top_level_package_names()
+    edges = set()
+
+    for path in SRC_ROOT.rglob("*.py"):
+        relative_parts = path.relative_to(SRC_ROOT).parts
+        source_package = relative_parts[0]
+        if source_package not in package_names:
+            continue
+
+        for imported_module, _node in _import_from_nodes(path):
+            if not imported_module.startswith("git_stage_batch."):
+                continue
+
+            imported_parts = imported_module.split(".")
+            if len(imported_parts) < 2:
+                continue
+
+            target_package = imported_parts[1]
+            if target_package not in package_names or target_package == source_package:
+                continue
+
+            edges.add((source_package, target_package))
+
+    return edges
+
+
+def _cycle_from_edges(
+    edges: set[tuple[str, str]],
+) -> list[str] | None:
+    adjacency: dict[str, set[str]] = {}
+    for source, target in edges:
+        adjacency.setdefault(source, set()).add(target)
+
+    visiting: list[str] = []
+    visited = set()
+
+    def visit(package: str) -> list[str] | None:
+        if package in visiting:
+            return visiting[visiting.index(package):] + [package]
+        if package in visited:
+            return None
+
+        visiting.append(package)
+        for target in sorted(adjacency.get(package, ())):
+            cycle = visit(target)
+            if cycle is not None:
+                return cycle
+        visiting.pop()
+        visited.add(package)
+        return None
+
+    for package in sorted(adjacency):
+        cycle = visit(package)
+        if cycle is not None:
+            return cycle
+
+    return None
+
+
+def test_top_level_packages_are_acyclic():
+    """Top-level packages should not import each other in cycles."""
+    edges = _top_level_package_import_edges()
+    cycle = _cycle_from_edges(edges)
+
+    assert cycle is None
+
+
+def test_lower_packages_do_not_import_command_exit_helper():
+    """Lower packages should raise errors without command-exit policy helpers."""
+    violations = []
+
+    for package_name in ("batch", "core", "data", "utils"):
+        for path in (SRC_ROOT / package_name).rglob("*.py"):
+            for imported_module, node in _import_from_nodes(path):
+                if imported_module != "git_stage_batch.exceptions":
+                    continue
+
+                imported_names = {alias.name for alias in node.names}
+                if "exit_with_error" not in imported_names:
+                    continue
+
+                relative_path = path.relative_to(REPO_ROOT)
+                violations.append(
+                    f"{relative_path}:{node.lineno} imports exit_with_error"
+                )
+
+    assert violations == []
+
+
 def _assert_parser_delegates_subcommand_registry(
     parser_imports: set[str],
     delegated_module: str,
@@ -60,8 +158,145 @@ def test_tui_batch_menus_name_query_module_at_import_sites():
     ) == []
 
 
+def test_batch_package_stays_below_workflow_data():
+    """Batch domain modules should not import workflow data storage."""
+    old_source_path = SRC_ROOT / "data" / "batch_sources.py"
+    source_snapshots = __import__(
+        "git_stage_batch.batch.source_snapshots",
+        fromlist=["source_snapshots"],
+    )
+    public_source_names = {
+        "BatchSourceCommit",
+        "create_batch_source_commit",
+        "create_batch_source_commits",
+        "get_batch_source_for_file",
+        "load_saved_session_file_as_buffer",
+        "load_session_batch_sources",
+        "save_session_batch_sources",
+    }
+    violations = []
+
+    for path in (SRC_ROOT / "batch").rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if not imported_module:
+                continue
+            if not imported_module.startswith("git_stage_batch.data"):
+                continue
+            relative_path = path.relative_to(REPO_ROOT)
+            violations.append(
+                f"{relative_path}:{node.lineno} imports {imported_module}"
+            )
+
+    assert not old_source_path.exists()
+    assert public_source_names <= vars(source_snapshots).keys()
+    assert violations == []
+
+
+def test_mapped_storage_lives_in_core_boundary():
+    """Mapped storage primitives should live below batch and utils adapters."""
+    old_storage_path = SRC_ROOT / "utils" / "mapped_storage.py"
+    mapped_storage = __import__(
+        "git_stage_batch.core.mapped_storage",
+        fromlist=["mapped_storage"],
+    )
+    public_storage_names = {
+        "ChunkedMappedRecordVector",
+        "ManagedMappedResources",
+        "MappedIntVector",
+        "MappedRecordVector",
+        "byte_storage_from_chunks",
+        "byte_storage_from_path",
+    }
+    violations = []
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.utils.mapped_storage":
+                continue
+
+            relative_path = path.relative_to(REPO_ROOT)
+            violations.append(
+                f"{relative_path}:{node.lineno} imports {imported_module}"
+            )
+
+    assert not old_storage_path.exists()
+    assert public_storage_names <= vars(mapped_storage).keys()
+    assert violations == []
+
+
+def test_text_line_helpers_live_in_core_boundary():
+    """Byte-line helpers should live below batch, editor, and utils adapters."""
+    old_text_path = SRC_ROOT / "utils" / "text.py"
+    text_lines = __import__(
+        "git_stage_batch.core.text_lines",
+        fromlist=["text_lines"],
+    )
+    public_text_line_names = {
+        "AcquirableLineSequence",
+        "as_acquirable_line_sequence",
+        "bytes_to_lines",
+        "normalize_line_ending",
+        "normalize_line_endings",
+        "normalize_line_sequence_endings",
+    }
+    violations = []
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.utils.text":
+                continue
+
+            relative_path = path.relative_to(REPO_ROOT)
+            violations.append(
+                f"{relative_path}:{node.lineno} imports {imported_module}"
+            )
+
+    assert not old_text_path.exists()
+    assert public_text_line_names <= vars(text_lines).keys()
+    assert violations == []
+
+
+def test_staging_index_update_owns_git_index_mutation():
+    """Index mutation should stay separate from staging buffer construction."""
+    old_operations_path = SRC_ROOT / "staging" / "operations.py"
+    content_buffers_path = SRC_ROOT / "staging" / "content_buffers.py"
+    index_update_path = SRC_ROOT / "staging" / "index_update.py"
+    content_buffers = __import__(
+        "git_stage_batch.staging.content_buffers",
+        fromlist=["content_buffers"],
+    )
+    index_update = __import__(
+        "git_stage_batch.staging.index_update",
+        fromlist=["index_update"],
+    )
+    mutation_modules = {
+        "git_stage_batch.utils.git_command",
+        "git_stage_batch.utils.git_index",
+        "git_stage_batch.utils.git_object_io",
+        "git_stage_batch.utils.journal",
+    }
+    content_buffer_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(content_buffers_path)
+    }
+    index_update_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(index_update_path)
+    }
+
+    assert not old_operations_path.exists()
+    assert "update_index_with_blob_buffer" not in vars(content_buffers)
+    assert "update_index_with_blob_buffer" in vars(index_update)
+    assert content_buffer_imports.isdisjoint(mutation_modules)
+    assert mutation_modules <= index_update_imports
+
+
 def test_replacement_payload_imports_use_core_boundary():
     """Non-batch code should not depend on batch replacement for neutral payloads."""
+    batch_replacement = __import__(
+        "git_stage_batch.batch.replacement",
+        fromlist=["replacement"],
+    )
     neutral_names = {
         "ReplacementPayload",
         "ReplacementText",
@@ -83,6 +318,11 @@ def test_replacement_payload_imports_use_core_boundary():
                 names = ", ".join(sorted(disallowed_names))
                 violations.append(f"{relative_path}:{node.lineno} imports {names}")
 
+    assert set(batch_replacement.__all__) == {
+        "ReplacementBatchView",
+        "build_replacement_batch_view_from_lines",
+    }
+    assert neutral_names.isdisjoint(batch_replacement.__all__)
     assert violations == []
 
 
@@ -99,7 +339,7 @@ def test_line_range_coercion_stays_in_core_line_selection():
     }
     allowed_paths = {
         SRC_ROOT / "core" / "line_selection.py",
-        SRC_ROOT / "editor" / "edit.py",
+        SRC_ROOT / "editor" / "line_editor.py",
     }
     violations = []
 
@@ -149,9 +389,14 @@ def test_diff_parser_uses_core_buffer_boundary():
         imported_module
         for imported_module, _node in _import_from_nodes(diff_parser_path)
     }
+    imported_exception_names = set()
+    for imported_module, node in _import_from_nodes(diff_parser_path):
+        if imported_module == "git_stage_batch.exceptions":
+            imported_exception_names |= {alias.name for alias in node.names}
 
     assert "git_stage_batch.core.buffer" in imported_modules
     assert "git_stage_batch.editor" not in imported_modules
+    assert imported_exception_names == {"CommandError"}
 
 
 def test_patch_header_queries_stay_in_diff_parser():
@@ -261,7 +506,9 @@ def test_line_id_file_persistence_stays_in_data_layer():
         / "commands"
         / "selection"
         / "skip_line_selection.py": file_helper_names,
-        SRC_ROOT / "data" / "file_hunk_display.py": {"write_line_ids_file"},
+        SRC_ROOT / "data" / "selected_change" / "file_hunk_cache.py": {
+            "write_line_ids_file",
+        },
         SRC_ROOT / "data" / "line_state.py": {"read_line_ids_file"},
         SRC_ROOT / "data" / "selected_change" / "hunk_recalculation.py": {
             "write_line_ids_file",
@@ -325,9 +572,9 @@ def test_editor_package_does_not_reexport_editor_apis():
     editor = __import__("git_stage_batch.editor", fromlist=["editor"])
     facade_names = {
         "BufferInput",
-        "Cursor",
-        "Editor",
         "LineBuffer",
+        "LineCursor",
+        "LineEditor",
         "buffer_byte_chunks",
         "buffer_byte_count",
         "buffer_has_data",
@@ -362,52 +609,66 @@ def test_editor_package_does_not_reexport_editor_apis():
     assert violations == []
 
 
-def test_editor_edit_uses_piece_table_module():
-    """Editor mutations should not own line piece-table storage."""
-    edit_path = SRC_ROOT / "editor" / "edit.py"
-    edit_text = edit_path.read_text()
-    edit_imports = {
+def test_line_editor_uses_piece_table_module():
+    """Line editor mutations should not own line piece-table storage."""
+    old_edit_path = SRC_ROOT / "editor" / "edit.py"
+    line_editor_path = SRC_ROOT / "editor" / "line_editor.py"
+    line_editor_text = line_editor_path.read_text()
+    line_editor_imports = {
         imported_module
-        for imported_module, _node in _import_from_nodes(edit_path)
+        for imported_module, _node in _import_from_nodes(line_editor_path)
     }
     piece_table = __import__(
         "git_stage_batch.editor.piece_table",
         fromlist=["piece_table"],
     )
+    old_imports = []
 
-    assert "git_stage_batch.editor.piece_table" in edit_imports
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.editor.edit":
+                continue
+
+            relative_path = path.relative_to(REPO_ROOT)
+            old_imports.append(
+                f"{relative_path}:{node.lineno} imports {imported_module}"
+            )
+
+    assert not old_edit_path.exists()
+    assert old_imports == []
+    assert "git_stage_batch.editor.piece_table" in line_editor_imports
     assert "LinePieceTable" in vars(piece_table)
     assert "LineRange" in vars(piece_table)
-    assert "class LinePieceTable" not in edit_text
-    assert "class LineRange" not in edit_text
-    assert "from array import array" not in edit_text
-    assert "bytearray(" not in edit_text
+    assert "class LinePieceTable" not in line_editor_text
+    assert "class LineRange" not in line_editor_text
+    assert "from array import array" not in line_editor_text
+    assert "bytearray(" not in line_editor_text
 
 
-def test_editor_edit_uses_line_export_module():
-    """Editor mutations should not own stateless line export helpers."""
-    edit_path = SRC_ROOT / "editor" / "edit.py"
-    edit_text = edit_path.read_text()
-    edit_imports = {
+def test_line_editor_uses_line_export_module():
+    """Line editor mutations should not own stateless line export helpers."""
+    line_editor_path = SRC_ROOT / "editor" / "line_editor.py"
+    line_editor_text = line_editor_path.read_text()
+    line_editor_imports = {
         imported_module
-        for imported_module, _node in _import_from_nodes(edit_path)
+        for imported_module, _node in _import_from_nodes(line_editor_path)
     }
-    edit = __import__(
-        "git_stage_batch.editor.edit",
-        fromlist=["edit"],
+    line_editor = __import__(
+        "git_stage_batch.editor.line_editor",
+        fromlist=["line_editor"],
     )
     line_export = __import__(
         "git_stage_batch.editor.line_export",
         fromlist=["line_export"],
     )
 
-    assert "git_stage_batch.editor.line_export" in edit_imports
+    assert "git_stage_batch.editor.line_export" in line_editor_imports
     assert "export_lines_as_buffer" in vars(line_export)
-    assert "export_lines_as_buffer" not in vars(edit)
-    assert "def export_lines_as_buffer" not in edit_text
-    assert "def _line_body" not in edit_text
-    assert "def _line_bytes" not in edit_text
-    assert "def _line_body_chunks" not in edit_text
+    assert "export_lines_as_buffer" not in vars(line_editor)
+    assert "def export_lines_as_buffer" not in line_editor_text
+    assert "def _line_body" not in line_editor_text
+    assert "def _line_bytes" not in line_editor_text
+    assert "def _line_body_chunks" not in line_editor_text
 
 
 def test_cli_package_does_not_reexport_cli_apis():
@@ -1272,6 +1533,35 @@ def test_batch_package_does_not_reexport_batch_apis():
     assert violations == []
 
 
+def test_batch_lifecycle_module_owns_batch_lifecycle_api():
+    """Batch lifecycle APIs should live in the lifecycle module."""
+    old_operations_path = SRC_ROOT / "batch" / "operations.py"
+    lifecycle = __import__(
+        "git_stage_batch.batch.lifecycle",
+        fromlist=["lifecycle"],
+    )
+    lifecycle_names = {
+        "create_batch",
+        "delete_batch",
+        "update_batch_note",
+    }
+    violations = []
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.batch.operations":
+                continue
+
+            relative_path = path.relative_to(REPO_ROOT)
+            violations.append(
+                f"{relative_path}:{node.lineno} imports {imported_module}"
+            )
+
+    assert not old_operations_path.exists()
+    assert lifecycle_names <= vars(lifecycle).keys()
+    assert violations == []
+
+
 def test_output_package_does_not_reexport_output_apis():
     """Output callers should import concrete modules instead of the package."""
     output_path = SRC_ROOT / "output" / "__init__.py"
@@ -2088,12 +2378,26 @@ def test_command_streaming_process_state_stays_out_of_command_runner():
 
 def test_selected_change_batch_file_cache_does_not_import_hunk_navigation():
     """Batch file selection caching should not depend on hunk navigation."""
+    old_cache_path = SRC_ROOT / "data" / "batch_hunk_display.py"
     cache_path = SRC_ROOT / "data" / "selected_change" / "batch_file_cache.py"
     imported_modules = {
         imported_module
         for imported_module, _node in _import_from_nodes(cache_path)
     }
+    old_imports = []
 
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.data.batch_hunk_display":
+                continue
+
+            relative_path = path.relative_to(REPO_ROOT)
+            old_imports.append(
+                f"{relative_path}:{node.lineno} imports {imported_module}"
+            )
+
+    assert not old_cache_path.exists()
+    assert old_imports == []
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
 
 
@@ -3113,6 +3417,49 @@ def test_file_hunk_display_does_not_import_hunk_navigation():
     }
 
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
+
+
+def test_file_hunk_cache_owns_selected_state_writes():
+    """File hunk rendering should not write selected-change cache state."""
+    display_path = SRC_ROOT / "data" / "file_hunk_display.py"
+    cache_path = SRC_ROOT / "data" / "selected_change" / "file_hunk_cache.py"
+    display = __import__(
+        "git_stage_batch.data.file_hunk_display",
+        fromlist=["file_hunk_display"],
+    )
+    cache = __import__(
+        "git_stage_batch.data.selected_change.file_hunk_cache",
+        fromlist=["file_hunk_cache"],
+    )
+    cache_names = {
+        "cache_file_as_single_hunk",
+        "cache_unstaged_file_as_single_hunk",
+    }
+    render_names = {
+        "build_file_hunk_from_buffer",
+        "render_file_as_single_hunk",
+        "render_unstaged_file_as_single_hunk",
+    }
+    selected_state_modules = {
+        "git_stage_batch.data.line_id_files",
+        "git_stage_batch.data.selected_change.snapshots",
+        "git_stage_batch.data.selected_change.store",
+        "git_stage_batch.utils.file_io",
+    }
+    display_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(display_path)
+    }
+    cache_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(cache_path)
+    }
+
+    assert render_names <= vars(display).keys()
+    assert cache_names.isdisjoint(vars(display))
+    assert cache_names <= vars(cache).keys()
+    assert selected_state_modules.isdisjoint(display_imports)
+    assert selected_state_modules <= cache_imports
 
 
 def test_change_freshness_does_not_import_hunk_navigation():
@@ -5543,9 +5890,9 @@ def test_tui_current_change_owns_interactive_change_display():
         for imported_module, _node in _import_from_nodes(current_change_path)
     }
     current_change_owner_imports = {
-        "git_stage_batch.data.selected_change.batch_file_cache",
         "git_stage_batch.data.line_state",
         "git_stage_batch.data.progress",
+        "git_stage_batch.data.selected_change.batch_file_cache",
         "git_stage_batch.output.hunk",
         "git_stage_batch.tui.display",
     }
@@ -9075,7 +9422,7 @@ def test_batch_transform_sift_results_own_result_planning():
             "load_git_object_as_buffer_or_empty",
             "load_working_tree_file_as_buffer",
         },
-        "git_stage_batch.utils.text": {
+        "git_stage_batch.core.text_lines": {
             "normalize_line_sequence_endings",
         },
     }
@@ -13102,7 +13449,7 @@ def test_batch_source_reset_claims_own_reset_mutations():
         "_reset_pattern_claims_from_batch",
     }
     disallowed_imports = {
-        "git_stage_batch.batch.operations": {
+        "git_stage_batch.batch.lifecycle": {
             "create_batch",
         },
         "git_stage_batch.batch.ownership": {
@@ -14371,11 +14718,16 @@ def test_attribution_fingerprints_stay_out_of_attribution_builder():
 
 def test_consumed_replacement_masks_stay_out_of_hunk_tracking():
     """Consumed replacement metadata should stay outside hunk navigation."""
+    attribution_path = SRC_ROOT / "batch" / "attribution.py"
     filtering_path = SRC_ROOT / "data" / "selected_change" / "hunk_filtering.py"
     hunk_tracking_path = SRC_ROOT / "data" / "hunk_tracking.py"
     filtering_imports = _import_from_nodes(filtering_path)
     filtering_imported_modules = {
         imported_module for imported_module, _node in filtering_imports
+    }
+    attribution_imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(attribution_path)
     }
     hunk_tracking_imported_modules = {
         imported_module
@@ -14390,6 +14742,10 @@ def test_consumed_replacement_masks_stay_out_of_hunk_tracking():
         "git_stage_batch.data.hunk_tracking",
         fromlist=["hunk_tracking"],
     )
+    attribution = __import__(
+        "git_stage_batch.batch.attribution",
+        fromlist=["attribution"],
+    )
     consumed_masks = __import__(
         "git_stage_batch.data.consumed_replacement_masks",
         fromlist=["consumed_replacement_masks"],
@@ -14399,6 +14755,11 @@ def test_consumed_replacement_masks_stay_out_of_hunk_tracking():
     assert (
         "git_stage_batch.data.consumed_replacement_masks"
         not in filtering_imported_modules
+    )
+    assert "git_stage_batch.data.consumed_selections" in filtering_imported_modules
+    assert (
+        "git_stage_batch.data.consumed_selections"
+        not in attribution_imported_modules
     )
     assert (
         "git_stage_batch.data.consumed_selections"
@@ -14411,6 +14772,7 @@ def test_consumed_replacement_masks_stay_out_of_hunk_tracking():
     assert "filter_consumed_replacement_masks" in vars(consumed_masks)
     assert "filter_consumed_replacement_masks" not in vars(hunk_tracking)
     assert "_filter_consumed_replacement_masks" not in vars(hunk_tracking)
+    assert "read_consumed_file_metadata" not in vars(attribution)
     assert "read_consumed_file_metadata" not in vars(hunk_tracking)
 
 
@@ -14453,7 +14815,7 @@ def test_consumed_selection_recording_stays_out_of_data_store():
         "git_stage_batch.batch.source_advancement": {
             "advance_batch_source_for_file_with_provenance",
         },
-        "git_stage_batch.data.batch_sources": {"create_batch_source_commit"},
+        "git_stage_batch.batch.source_snapshots": {"create_batch_source_commit"},
         "git_stage_batch.data.consumed_selections": {
             "read_consumed_file_metadata",
             "write_consumed_file_metadata",
@@ -14728,15 +15090,29 @@ def test_index_entry_lookup_stays_in_data_module():
         "git_stage_batch.data.index_entries",
         fromlist=["index_entries"],
     )
+    old_start_time_path = SRC_ROOT / "data" / "staged_renames.py"
     expected_imports = {
         SRC_ROOT
         / "commands"
         / "selection"
         / "selected_change_staging.py": {"read_index_entry"},
-        SRC_ROOT / "data" / "staged_renames.py": {"read_index_entry"},
+        SRC_ROOT / "data" / "start_time_changes.py": {"read_index_entry"},
     }
+    old_imports = []
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.data.staged_renames":
+                continue
+
+            relative_path = path.relative_to(REPO_ROOT)
+            old_imports.append(
+                f"{relative_path}:{node.lineno} imports {imported_module}"
+            )
 
     assert {"IndexEntry", "read_index_entry"} <= vars(index_entries).keys()
+    assert not old_start_time_path.exists()
+    assert old_imports == []
 
     for path, expected_names in expected_imports.items():
         tree = ast.parse(path.read_text(), filename=str(path))

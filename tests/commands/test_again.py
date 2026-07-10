@@ -20,7 +20,7 @@ import pytest
 
 from git_stage_batch.commands.again import command_again
 from git_stage_batch.commands.start import command_start
-from git_stage_batch.batch.operations import create_batch
+from git_stage_batch.batch.lifecycle import create_batch
 from git_stage_batch.utils.file_io import read_text_file_contents, write_text_file_contents
 from git_stage_batch.utils.paths import (
     get_abort_head_file_path,

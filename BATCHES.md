@@ -804,7 +804,7 @@ Core batch state:
 - `src/git_stage_batch/batch/gitlink_storage.py`
 - `src/git_stage_batch/batch/file_entry_storage.py`
 - `src/git_stage_batch/batch/realized_file_content.py`
-- `src/git_stage_batch/batch/operations.py`
+- `src/git_stage_batch/batch/lifecycle.py`
 
 Ownership and repair:
 

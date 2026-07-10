@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 
-from ..data.staged_renames import (
+from ..data.start_time_changes import (
     list_staged_change_records,
     staged_changes_are_only_normalizable_start_time_changes,
 )

@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 
 from ...batch.display import annotate_with_batch_source_working_lines
-from ...batch.operations import create_batch
+from ...batch.lifecycle import create_batch
 from ...batch.ownership import (
     BatchOwnership,
 )
@@ -34,7 +34,7 @@ from ...batch.validation import batch_exists
 from ...core.buffer import LineBuffer, buffer_ends_with_lf
 from ...core.line_selection import parse_line_selection
 from ...core.replacement import ReplacementPayload, coerce_replacement_payload
-from ...data.batch_sources import (
+from ...batch.source_snapshots import (
     create_batch_source_commit,
     load_session_batch_sources,
     save_session_batch_sources,
@@ -50,7 +50,7 @@ from ...utils.repository_buffers import (
 from ...data.session import snapshot_file_if_untracked
 from ...exceptions import exit_with_error
 from ...i18n import _
-from ...staging.operations import (
+from ...staging.content_buffers import (
     build_target_working_tree_buffer_from_lines,
     build_target_working_tree_buffer_with_replaced_lines,
 )

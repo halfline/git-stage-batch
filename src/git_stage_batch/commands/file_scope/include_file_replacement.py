@@ -11,7 +11,7 @@ from ...data.file_change_status import (
     file_has_staged_changes,
     file_has_unstaged_changes,
 )
-from ...data.file_hunk_display import cache_unstaged_file_as_single_hunk
+from ...data.selected_change.file_hunk_cache import cache_unstaged_file_as_single_hunk
 from ...data.line_id_files import write_line_ids_file
 from ...data.file_review.state import clear_last_file_review_state_if_file_matches
 from ...data.file_tracking import auto_add_untracked_files
@@ -24,7 +24,7 @@ from ...data.selected_change.store import (
 from ...data.undo import undo_checkpoint
 from ...exceptions import exit_with_error
 from ...i18n import _
-from ...staging.operations import update_index_with_blob_buffer
+from ...staging.index_update import update_index_with_blob_buffer
 from ...utils.paths import get_processed_include_ids_file_path
 from ..selection.selected_hunk_refresh import recalculate_selected_hunk_for_command
 

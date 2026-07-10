@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, SupportsBytes
 
 if TYPE_CHECKING:
-    from .edit import Editor
+    from .line_editor import LineEditor
 
 
 BytesLike = bytes | bytearray | memoryview
@@ -20,7 +20,7 @@ class LineSource:
     """One source sequence referenced by the piece table."""
 
     lines: Sequence[LineLike]
-    owner: Editor | None = None
+    owner: LineEditor | None = None
 
 
 @dataclass(slots=True)
@@ -30,7 +30,7 @@ class LineRange:
     lines: Sequence[LineLike]
     start: int
     end: int
-    owner: Editor | None
+    owner: LineEditor | None
 
 
 SOURCE_RUN = 0
@@ -41,7 +41,7 @@ _UNKNOWN_END = (1 << 64) - 1
 class LinePieceTable:
     """Compact run table for editor line content."""
 
-    def __init__(self, source: Sequence[LineLike], owner: Editor) -> None:
+    def __init__(self, source: Sequence[LineLike], owner: LineEditor) -> None:
         self._sources: list[LineSource] = []
         self._source_lookup: dict[tuple[int, int], int] = {}
         self._run_kinds = bytearray()
@@ -58,7 +58,7 @@ class LinePieceTable:
     def run(
         self,
         index: int,
-    ) -> tuple[int, Sequence[LineLike], int, int | None, Editor | None]:
+    ) -> tuple[int, Sequence[LineLike], int, int | None, LineEditor | None]:
         source = self._sources[self._run_source_ids[index]]
         end = self._run_ends[index]
         return (
@@ -77,7 +77,7 @@ class LinePieceTable:
         lines: Sequence[LineLike],
         start: int,
         end: int,
-        owner: Editor | None,
+        owner: LineEditor | None,
     ) -> None:
         source_id = self._source_id(lines, owner)
         self._append_run(_INDEXED_RUN, source_id, start, end)
@@ -211,7 +211,7 @@ class LinePieceTable:
         self._run_starts = replacement_starts
         self._run_ends = replacement_ends
 
-    def active_owners(self) -> Iterator[Editor]:
+    def active_owners(self) -> Iterator[LineEditor]:
         for source_id in self._run_source_ids:
             owner = self._sources[source_id].owner
             if owner is not None:
@@ -220,7 +220,7 @@ class LinePieceTable:
     def _source_id(
         self,
         lines: Sequence[LineLike],
-        owner: Editor | None,
+        owner: LineEditor | None,
     ) -> int:
         key = (id(lines), id(owner))
         source_id = self._source_lookup.get(key)

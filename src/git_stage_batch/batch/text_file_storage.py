@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from .metadata_validation import get_validated_baseline_commit
-from .operations import create_batch
+from .lifecycle import create_batch
 from .query import get_batch_commit_sha, read_batch_metadata
 from .validation import batch_exists, validate_batch_name
 from ..core.text_lifecycle import (
@@ -15,7 +15,7 @@ from ..core.text_lifecycle import (
     normalized_text_change_type,
     resolve_text_change_type,
 )
-from ..data.batch_sources import (
+from .source_snapshots import (
     create_batch_source_commits,
     load_session_batch_sources,
     save_session_batch_sources,

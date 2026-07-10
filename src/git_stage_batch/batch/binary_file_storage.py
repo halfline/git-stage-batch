@@ -6,7 +6,7 @@ import json
 
 from ..core.buffer import LineBuffer
 from ..core.models import BinaryFileChange
-from ..data.batch_sources import (
+from .source_snapshots import (
     create_batch_source_commit,
     get_batch_source_for_file,
     load_session_batch_sources,
@@ -17,7 +17,7 @@ from ..utils.git_object_io import create_git_blob
 from ..utils.git_repository import get_git_repository_root_path
 from ..utils.paths import get_batch_metadata_file_path
 from . import content_commits as _content_commits
-from .operations import create_batch
+from .lifecycle import create_batch
 from .query import read_batch_metadata
 from .validation import batch_exists, validate_batch_name
 

@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from hashlib import sha256
 
 from ..batch.query import get_batch_commit_sha
-from ..exceptions import exit_with_error
+from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.git_command import run_git_command
 from .selected_change.lifecycle import clear_selected_change_state_files
@@ -136,7 +136,7 @@ def require_current_selected_batch_binary_file_for_batch(
         batch_name=batch_name,
         file_path=file_path,
     )
-    exit_with_error(
+    raise CommandError(
         _(
             "The selected batch binary no longer matches batch '{name}'.\n"
             "Show the batch again before using a pathless batch action."
@@ -228,7 +228,7 @@ def require_current_selected_batch_gitlink_file_for_batch(
         batch_name=batch_name,
         file_path=file_path,
     )
-    exit_with_error(
+    raise CommandError(
         _(
             "The selected batch submodule pointer no longer matches batch '{name}'.\n"
             "Show the batch again before using a pathless batch action."

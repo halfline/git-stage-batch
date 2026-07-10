@@ -17,7 +17,7 @@ from .models import (
     TextFileDeletionChange,
 )
 from .buffer import LineBuffer
-from ..exceptions import exit_with_error
+from ..exceptions import CommandError
 from ..i18n import _
 
 
@@ -624,7 +624,7 @@ def build_line_changes_from_patch_lines(
             captured_header_line = line.decode('utf-8', errors='replace')
             header_match = HUNK_HEADER_PATTERN.match(captured_header_line)
             if not header_match:
-                exit_with_error(f"Bad hunk header: {captured_header_line}")
+                raise CommandError(f"Bad hunk header: {captured_header_line}")
 
             old_start = int(header_match.group(1))
             old_length = int(header_match.group(2) or "1")
@@ -703,7 +703,7 @@ def build_line_changes_from_patch_lines(
         path_value = new_path_value or old_path_value or ""
 
     if hunk_header is None:
-        exit_with_error(_("Failed to parse hunk header."))
+        raise CommandError(_("Failed to parse hunk header."))
 
     line_changes = LineLevelChange(path=path_value, header=hunk_header, lines=line_entries)
 

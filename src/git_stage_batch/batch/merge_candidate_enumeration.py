@@ -29,7 +29,7 @@ from . import presence_placement_choices as _presence_placement_choices
 from ..core.line_selection import LineRanges, LineSelection, coerce_line_ranges
 from ..exceptions import MergeError as _MergeError
 from ..i18n import _
-from ..utils.text import normalize_line_endings
+from ..core.text_lines import normalize_line_endings
 
 if TYPE_CHECKING:
     from .ownership import AbsenceClaim, BatchOwnership

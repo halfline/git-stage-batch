@@ -19,7 +19,7 @@ from ...data.selected_change.store import (
 from ...data.undo import undo_checkpoint
 from ...exceptions import exit_with_error
 from ...i18n import _
-from ...staging.operations import build_target_index_buffer_from_lines
+from ...staging.content_buffers import build_target_index_buffer_from_lines
 from ...utils.journal import log_journal
 from ...utils.paths import (
     get_index_snapshot_file_path,

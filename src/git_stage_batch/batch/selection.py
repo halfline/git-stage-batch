@@ -19,7 +19,7 @@ from ..core.line_selection import (
     parse_line_selection,
     parse_line_selection_ranges,
 )
-from ..exceptions import exit_with_error
+from ..exceptions import CommandError
 from ..i18n import _
 
 if TYPE_CHECKING:
@@ -81,7 +81,7 @@ def require_display_ids_available(
         else LineRanges.from_lines(available_ids)
     )
     if requested_ranges.difference(available_ranges):
-        exit_with_error(
+        raise CommandError(
             line_selection_not_valid_message(
                 line_id_specification=line_id_specification,
                 file_path=file_path,
@@ -128,7 +128,7 @@ def require_single_file_context_for_line_selection(
         Set of selected line IDs if line_ids provided, otherwise None
 
     Raises:
-        SystemExit: If line_ids provided but multiple files in scope
+        CommandError: If line_ids provided but multiple files in scope
     """
     if not _line_selection_has_single_file_context(
         batch_name,
@@ -170,7 +170,7 @@ def _line_selection_has_single_file_context(
         return False
 
     if len(files) != 1:
-        exit_with_error(
+        raise CommandError(
             _("Line-level {operation} (--line) requires single-file context.\n"
               "Use --file to specify a file, or open one listed file with "
               "'show --from {name} --file PATH'.").format(

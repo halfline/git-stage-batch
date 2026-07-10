@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from ..exceptions import exit_with_error
+from ..exceptions import CommandError
 from ..i18n import _
 from .git_command import run_git_command
 
@@ -18,11 +18,11 @@ _GIT_DIRECTORY_CACHE: dict[Path, Path] = {}
 def require_git_repository() -> None:
     """Verify that we are inside a git repository.
 
-    Calls exit_with_error if not in a git repository, printing git's
+    Raises CommandError if not in a git repository, printing git's
     error message for context.
 
     Raises:
-        SystemExit: Via exit_with_error if not in a git repository
+        CommandError: If not in a git repository
     """
     try:
         run_git_command(["rev-parse", "--git-dir"], requires_index_lock=False)
@@ -30,7 +30,10 @@ def require_git_repository() -> None:
         # Print git's actual error message which contains helpful context
         if error.stderr:
             print(error.stderr.rstrip(), file=sys.stderr)
-        exit_with_error(_("Not inside a git repository."), exit_code=error.returncode)
+        raise CommandError(
+            _("Not inside a git repository."),
+            exit_code=error.returncode,
+        )
 
 
 def get_git_repository_root_path() -> Path:

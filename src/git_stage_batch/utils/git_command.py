@@ -9,7 +9,7 @@ from collections.abc import Iterable, Iterator, Sequence
 from . import command_events, git_index_lock
 from .command import run_command, stream_command
 from .git_environment import git_environment_with_optional_locks_disabled
-from .text import bytes_to_lines
+from ..core.text_lines import bytes_to_lines
 
 
 def _prepare_git_command_environment(

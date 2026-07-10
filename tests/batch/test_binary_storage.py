@@ -1,6 +1,6 @@
 """Tests for binary file batch storage."""
 
-from git_stage_batch.batch.operations import create_batch
+from git_stage_batch.batch.lifecycle import create_batch
 
 import subprocess
 

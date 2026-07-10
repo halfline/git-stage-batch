@@ -11,10 +11,8 @@ from ...data.file_change_display import (
     render_rename_change,
     render_text_deletion_change,
 )
-from ...data.file_hunk_display import (
-    cache_file_as_single_hunk,
-    render_file_as_single_hunk,
-)
+from ...data.file_hunk_display import render_file_as_single_hunk
+from ...data.selected_change.file_hunk_cache import cache_file_as_single_hunk
 from ...data.file_review.pages import normalize_page_spec
 from ...data.file_review.records import ReviewSource
 from ...data.file_review.state import (

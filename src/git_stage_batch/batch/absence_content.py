@@ -8,14 +8,14 @@ from ..core.buffer import (
     LineBuffer,
     buffer_byte_chunks,
 )
-from ..editor.edit import Editor
+from ..editor.line_editor import LineEditor
 
 
 class AbsenceContentBuilder:
     """Build absence content as a LineBuffer from appended line ranges."""
 
     def __init__(self) -> None:
-        self._editor: Editor | None = Editor(())
+        self._editor: LineEditor | None = LineEditor(())
 
     def __enter__(self) -> AbsenceContentBuilder:
         self._check_open()
@@ -48,7 +48,7 @@ class AbsenceContentBuilder:
         self._editor = None
         editor.close()
 
-    def _check_open(self) -> Editor:
+    def _check_open(self) -> LineEditor:
         editor = self._editor
         if editor is None:
             raise RuntimeError("absence content builder is closed")

@@ -24,7 +24,6 @@ from .attribution_units import (
 )
 from .query import list_batch_names, read_batch_metadata
 from ..core.line_selection import parse_line_selection
-from ..data.consumed_selections import read_consumed_file_metadata
 from ..utils.repository_buffers import (
     load_git_object_as_buffer_or_empty,
     load_working_tree_file_as_buffer,
@@ -80,7 +79,11 @@ def _has_presence_source_lines(file_metadata: dict) -> bool:
     )
 
 
-def build_file_attribution(file_path: str) -> FileAttribution:
+def build_file_attribution(
+    file_path: str,
+    *,
+    supplemental_batch_metadata: dict[str, dict] | None = None,
+) -> FileAttribution:
     """Build complete ownership attribution for a file."""
     all_batch_metadata = {}
     for batch_name in list_batch_names():
@@ -88,13 +91,8 @@ def build_file_attribution(file_path: str) -> FileAttribution:
         if file_path in metadata.get("files", {}):
             all_batch_metadata[batch_name] = metadata
 
-    consumed_file_metadata = read_consumed_file_metadata(file_path)
-    if consumed_file_metadata is not None:
-        all_batch_metadata["__consumed__"] = {
-            "files": {
-                file_path: consumed_file_metadata,
-            }
-        }
+    if supplemental_batch_metadata:
+        all_batch_metadata.update(supplemental_batch_metadata)
 
     baseline_buffer = load_git_object_as_buffer_or_empty(f"HEAD:{file_path}")
     working_tree_buffer = load_working_tree_file_as_buffer(file_path)

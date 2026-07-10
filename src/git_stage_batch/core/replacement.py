@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..utils.text import bytes_to_lines
+from .text_lines import bytes_to_lines
 
 
 @dataclass(frozen=True, slots=True)

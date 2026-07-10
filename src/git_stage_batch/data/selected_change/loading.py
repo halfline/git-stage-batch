@@ -12,7 +12,7 @@ from ...core.models import (
     RenameChange,
     TextFileDeletionChange,
 )
-from ...exceptions import CommandError, exit_with_error
+from ...exceptions import CommandError
 from ...i18n import _
 from ...utils.file_io import read_text_file_contents
 from ...utils.paths import (
@@ -118,12 +118,12 @@ def load_selected_change() -> Optional[SelectedChange]:
 
 
 def require_selected_hunk() -> None:
-    """Ensure selected hunk exists and is not stale, exit with error otherwise."""
+    """Ensure selected hunk exists and is not stale."""
     if _selected_store.read_selected_change_kind() in (
         _selected_store.SelectedChangeKind.BATCH_FILE,
         _selected_store.SelectedChangeKind.BATCH_BINARY,
     ):
-        exit_with_error(
+        raise CommandError(
             _(
                 "Selected file came from a batch, not a live hunk. "
                 "Open a live hunk with 'show' or use the matching '--from' command."
@@ -131,14 +131,14 @@ def require_selected_hunk() -> None:
         )
 
     if not get_selected_hunk_patch_file_path().exists():
-        exit_with_error(_("No selected hunk. Run 'start' first."))
+        raise CommandError(_("No selected hunk. Run 'start' first."))
 
     if get_line_changes_json_file_path().exists():
         data = json.loads(read_text_file_contents(get_line_changes_json_file_path()))
         file_path = data["path"]
         if _snapshots_are_stale(file_path):
             _clear_selected_change_state_files()
-            exit_with_error(
+            raise CommandError(
                 _(
                     "Cached hunk is stale (file was changed). "
                     "Run 'start' or 'again' to continue."

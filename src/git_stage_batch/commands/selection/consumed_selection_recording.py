@@ -14,7 +14,7 @@ from ...batch.selected_line_source_refresh import (
     refresh_selected_lines_against_source_lines,
 )
 from ...core.buffer import LineBuffer
-from ...data.batch_sources import create_batch_source_commit
+from ...batch.source_snapshots import create_batch_source_commit
 from ...data.consumed_selections import (
     read_consumed_file_metadata,
     write_consumed_file_metadata,

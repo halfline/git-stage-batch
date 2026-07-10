@@ -11,15 +11,15 @@ from ...batch.hunk_ownership_translation import (
     translate_hunk_selection_to_batch_ownership,
 )
 from ...batch.merge import merge_batch_from_line_sequences_as_buffer
-from ...batch.operations import create_batch, delete_batch
+from ...batch.lifecycle import create_batch, delete_batch
 from ...batch.ownership import BatchOwnership
 from ...batch.query import read_batch_metadata
 from ...batch.selection import line_selection_not_valid_message
 from ...batch.text_file_storage import add_file_to_batch
 from ...batch.validation import batch_exists
 from ...core.buffer import LineBuffer, buffer_matches
-from ...data.batch_sources import create_batch_source_commit
-from ...data.file_hunk_display import cache_unstaged_file_as_single_hunk
+from ...batch.source_snapshots import create_batch_source_commit
+from ...data.selected_change.file_hunk_cache import cache_unstaged_file_as_single_hunk
 from ...data.file_modes import detect_file_mode
 from ...data.file_tracking import auto_add_untracked_files
 from ...data.line_state import load_line_changes_from_state
@@ -37,7 +37,7 @@ from ...data.selected_change.store import (
 from ...data.selected_change.snapshots import snapshots_are_stale
 from ...exceptions import exit_with_error
 from ...i18n import _
-from ...staging.operations import update_index_with_blob_buffer
+from ...staging.index_update import update_index_with_blob_buffer
 from ...utils.paths import get_session_batch_sources_file_path
 from . import replacement_selection
 

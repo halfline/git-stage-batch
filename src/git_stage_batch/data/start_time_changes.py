@@ -1,4 +1,4 @@
-"""Session handling for staged renames normalized into the workflow."""
+"""Start-time staged change normalization for session workflows."""
 
 from __future__ import annotations
 

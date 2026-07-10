@@ -31,7 +31,7 @@ from ...core.text_lifecycle import (
 from ...utils.repository_buffers import load_git_object_as_buffer_or_empty
 from ...utils.repository_buffers import load_working_tree_file_as_buffer
 from ...exceptions import MergeError
-from ...utils.text import normalize_line_sequence_endings
+from ...core.text_lines import normalize_line_sequence_endings
 
 
 @dataclass

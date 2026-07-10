@@ -6,7 +6,7 @@ from contextlib import ExitStack
 import sys
 
 from ...batch.display import annotate_with_batch_source
-from ...batch.operations import create_batch
+from ...batch.lifecycle import create_batch
 from ...batch.ownership import BatchOwnership
 from ...batch.query import read_batch_metadata
 from ...batch.source_refresh import acquire_batch_ownership_update_for_selection

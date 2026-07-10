@@ -14,6 +14,6 @@ def command_drop_batch(batch_name: str) -> None:
     """Delete a batch."""
     require_git_repository()
     batch_name = require_plain_batch_name(batch_name, "drop")
-    with undo_checkpoint(f"drop {batch_name}"):
+    with undo_checkpoint(f"drop {batch_name}", worktree_paths=[]):
         delete_batch(batch_name)
     print(_("✓ Deleted batch '{name}'").format(name=batch_name), file=sys.stderr)

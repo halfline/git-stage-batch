@@ -217,9 +217,9 @@ There are two broad paths:
 Text hunks are handled either as whole hunks or line-scoped selections.
 
 - Whole-hunk include/discard often delegates directly to Git patch application.
-- Line-level include/discard uses the `staging/operations.py` helpers to build
-  exact target content for the index or working tree from the parsed hunk plus
-  the selected line IDs.
+- Line-level include/discard uses `staging.content_buffers` to build exact
+  target content from the parsed hunk plus selected line IDs, then
+  `staging.index_update` writes index targets through Git objects.
 
 That split is important. The program does not always ask Git to apply a smaller
 patch. For fine-grained line operations, it often computes the intended file

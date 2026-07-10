@@ -35,9 +35,13 @@ def handle_quit(*, stop_session: bool = True) -> None:
     start_index_tree = read_text_file_contents(start_index_tree_file).strip()
 
     selected_head = run_git_command(
-        ["rev-parse", "HEAD"],
+        ["rev-parse", "--verify", "HEAD^{commit}"],
+        check=False,
         requires_index_lock=False,
-    ).stdout.strip()
+    )
+    selected_head_value = (
+        selected_head.stdout.strip() if selected_head.returncode == 0 else "UNBORN"
+    )
     selected_index_tree = run_git_command(
         ["write-tree"],
         requires_index_lock=False,
@@ -47,7 +51,7 @@ def handle_quit(*, stop_session: bool = True) -> None:
     has_discards = stats.get("discarded", 0) > 0
 
     if (
-        selected_head == start_head
+        selected_head_value == start_head
         and selected_index_tree == start_index_tree
         and not has_discards
     ):

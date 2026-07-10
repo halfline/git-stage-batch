@@ -74,7 +74,7 @@ def _materialize_target_candidate(
     destination_exists: bool,
     selected_ids: set[int] | None,
 ) -> _TargetCandidatePreview:
-    before_copy = LineBuffer.from_bytes(before_lines.to_bytes())
+    before_copy = before_lines.clone()
     after = merge_batch_from_line_sequences_as_buffer(
         source_lines,
         ownership,

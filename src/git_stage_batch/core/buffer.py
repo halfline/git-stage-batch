@@ -22,6 +22,41 @@ _BytesLike = bytes | bytearray | memoryview
 _LineT = TypeVar("_LineT")
 
 
+class _BufferBacking:
+    """Reference-counted immutable byte storage shared by line buffers."""
+
+    def __init__(
+        self,
+        data: bytes | mmap.mmap,
+        file_handle: BinaryIO | None = None,
+    ) -> None:
+        self.data = data
+        self.file_handle = file_handle
+        self._reference_count = 1
+        self._closed = False
+
+    def retain(self) -> _BufferBacking:
+        if self._closed:
+            raise ValueError("buffer backing is closed")
+        self._reference_count += 1
+        return self
+
+    def release(self) -> None:
+        if self._closed:
+            return
+        self._reference_count -= 1
+        if self._reference_count > 0:
+            return
+
+        self._closed = True
+        try:
+            if isinstance(self.data, mmap.mmap):
+                self.data.close()
+        finally:
+            if self.file_handle is not None:
+                self.file_handle.close()
+
+
 class _LineSpanVector:
     """Compact append-only storage for byte line spans."""
 
@@ -54,12 +89,25 @@ class LineBuffer(Sequence[bytes]):
         *,
         file_handle: BinaryIO | None = None,
     ) -> None:
-        self._data = data
-        self._file_handle = file_handle
+        self._backing = _BufferBacking(data, file_handle)
+        self._initialize_line_index()
+
+    def _initialize_line_index(self) -> None:
         self._line_spans = _LineSpanVector()
         self._scan_position = 0
-        self._scan_complete = len(data) == 0
+        self._scan_complete = len(self._data) == 0
         self._closed = False
+
+    @classmethod
+    def _from_backing(cls, backing: _BufferBacking) -> LineBuffer:
+        buffer = cls.__new__(cls)
+        buffer._backing = backing.retain()
+        buffer._initialize_line_index()
+        return buffer
+
+    @property
+    def _data(self) -> bytes | mmap.mmap:
+        return self._backing.data
 
     @classmethod
     def from_bytes(cls, data: _BytesLike) -> LineBuffer:
@@ -86,6 +134,11 @@ class LineBuffer(Sequence[bytes]):
         )
         return cls(data, file_handle=file_handle)
 
+    def clone(self) -> LineBuffer:
+        """Return an independently closable buffer sharing immutable storage."""
+        self._require_open()
+        return LineBuffer._from_backing(self._backing)
+
     @property
     def uses_mapped_storage(self) -> bool:
         """Return whether this buffer uses mapped storage."""
@@ -101,14 +154,11 @@ class LineBuffer(Sequence[bytes]):
         """Close any open mmap and file resources."""
         if self._closed:
             return
-
-        data = self._data
-        if isinstance(data, mmap.mmap):
-            data.close()
-        if self._file_handle is not None:
-            self._file_handle.close()
-        self._line_spans.close()
         self._closed = True
+        try:
+            self._line_spans.close()
+        finally:
+            self._backing.release()
 
     def __del__(self) -> None:
         try:

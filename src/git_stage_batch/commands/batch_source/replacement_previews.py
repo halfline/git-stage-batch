@@ -75,20 +75,16 @@ def print_batch_source_replacement_preview(
             except ValueError as e:
                 exit_with_error(str(e))
             with replacement_view:
-                before = LineBuffer.from_bytes(batch_source_buffer.to_bytes())
-                try:
-                    diff_text = render_candidate_buffer_diff(
-                        file_path,
-                        before,
-                        replacement_view.source_buffer,
-                        label_before="batch",
-                        label_after="replacement-preview",
-                        context_lines=get_context_lines(),
+                diff_text = render_candidate_buffer_diff(
+                    file_path,
+                    batch_source_buffer,
+                    replacement_view.source_buffer,
+                    label_before="batch",
+                    label_after="replacement-preview",
+                    context_lines=get_context_lines(),
+                )
+                if diff_text:
+                    print(
+                        diff_text,
+                        end="" if diff_text.endswith("\n") else "\n",
                     )
-                    if diff_text:
-                        print(
-                            diff_text,
-                            end="" if diff_text.endswith("\n") else "\n",
-                        )
-                finally:
-                    before.close()

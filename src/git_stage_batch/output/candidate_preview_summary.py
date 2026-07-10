@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import difflib
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from ..batch.operation_candidate_types import OperationCandidatePreview
-from ..core.buffer import LineBuffer
 from ..i18n import _
 from . import candidate_preview_snippets
 
@@ -80,28 +80,55 @@ def candidate_target_subject_label(target_name: str) -> str:
     return _("working tree")
 
 
-def summarize_ambiguity_block(lines: list[str]) -> str:
+def _ambiguity_block_line_text(line: object) -> str:
+    if not isinstance(line, str):
+        return _overview_line_text(bytes(line))
+    return line.rstrip("\n").rstrip("\r")
+
+
+def summarize_ambiguity_block(lines: Sequence[bytes | str]) -> str:
     if not lines:
         return _("ambiguous block")
     if len(lines) == 1:
         text = candidate_preview_snippets.shorten_candidate_overview_text(
-            lines[0],
+            _ambiguity_block_line_text(lines[0]),
             36,
         )
         if text:
             return f'"{text}"'
         return _("an empty line")
 
-    first = candidate_preview_snippets.shorten_candidate_overview_text(lines[0], 24)
-    last = candidate_preview_snippets.shorten_candidate_overview_text(lines[-1], 24)
+    first = candidate_preview_snippets.shorten_candidate_overview_text(
+        _ambiguity_block_line_text(lines[0]),
+        24,
+    )
+    last = candidate_preview_snippets.shorten_candidate_overview_text(
+        _ambiguity_block_line_text(lines[-1]),
+        24,
+    )
     if first and last:
         return f'"{first} … {last}"'
     return _("{count} lines").format(count=len(lines))
 
 
 def candidate_target_summary(target) -> CandidateTargetSummary:
-    before_lines = _decode_overview_lines(target.before_buffer)
-    after_lines = _decode_overview_lines(target.after_buffer)
+    with (
+        target.before_buffer.acquire_lines() as before_lines,
+        target.after_buffer.acquire_lines() as after_lines,
+    ):
+        return _candidate_target_summary_from_lines(
+            target,
+            before_lines,
+            after_lines,
+        )
+
+
+def _candidate_target_summary_from_lines(
+    target,
+    before_lines: Sequence[bytes],
+    after_lines: Sequence[bytes],
+) -> CandidateTargetSummary:
+    """Build a summary while scoped no-copy line views are active."""
     opcode = _first_changed_opcode(before_lines, after_lines)
     label = candidate_target_label(target.target)
     if opcode is None:
@@ -184,17 +211,21 @@ def common_candidate_target_indexes(
     return tuple(common_indexes)
 
 
-def _decode_overview_lines(buffer: LineBuffer) -> list[str]:
-    text = buffer.to_bytes().decode("utf-8", errors="surrogateescape")
-    return text.splitlines()
+def _overview_line_text(line: bytes) -> str:
+    line = bytes(line)
+    if line.endswith(b"\n"):
+        line = line[:-1]
+        if line.endswith(b"\r"):
+            line = line[:-1]
+    return line.decode("utf-8", errors="surrogateescape")
 
 
-def _summarize_overview_lines(lines: list[str]) -> str:
+def _summarize_overview_lines(lines: Sequence[bytes]) -> str:
     if not lines:
         return _("nothing")
     if len(lines) == 1:
         text = candidate_preview_snippets.shorten_candidate_overview_text(
-            lines[0],
+            _overview_line_text(lines[0]),
             36,
         )
         if text:
@@ -204,7 +235,7 @@ def _summarize_overview_lines(lines: list[str]) -> str:
 
 
 def _delete_ambiguity_block_context(
-    before_lines: list[str],
+    before_lines: Sequence[bytes],
     before_start: int,
     before_end: int,
     ambiguity_target_line_range: tuple[int, int] | None,
@@ -258,8 +289,8 @@ def _delete_ambiguity_block_context(
 
 
 def _first_changed_opcode(
-    before_lines: list[str],
-    after_lines: list[str],
+    before_lines: Sequence[bytes],
+    after_lines: Sequence[bytes],
 ) -> tuple[str, int, int, int, int] | None:
     matcher = difflib.SequenceMatcher(a=before_lines, b=after_lines, autojunk=False)
     for tag, before_start, before_end, after_start, after_end in matcher.get_opcodes():
@@ -269,12 +300,16 @@ def _first_changed_opcode(
 
 
 def _nearby_context_summary(
-    before_lines: list[str],
+    before_lines: Sequence[bytes],
     before_start: int,
     before_end: int,
-    changed_lines: list[str],
+    changed_lines: Sequence[bytes],
 ) -> str:
-    changed_text = {line.strip() for line in changed_lines if line.strip()}
+    changed_text = {
+        text.strip()
+        for line in changed_lines
+        if (text := _overview_line_text(line)).strip()
+    }
     candidates = []
     if before_start > 0:
         candidates.append(before_lines[before_start - 1])
@@ -282,12 +317,16 @@ def _nearby_context_summary(
         candidates.append(before_lines[before_end])
 
     for line in candidates:
-        text = candidate_preview_snippets.shorten_candidate_overview_text(line, 36)
+        text = candidate_preview_snippets.shorten_candidate_overview_text(
+            _overview_line_text(line), 36
+        )
         if text and text not in changed_text:
             return _(' near "{context}"').format(context=text)
 
     for line in candidates:
-        text = candidate_preview_snippets.shorten_candidate_overview_text(line, 36)
+        text = candidate_preview_snippets.shorten_candidate_overview_text(
+            _overview_line_text(line), 36
+        )
         if text:
             return _(' near "{context}"').format(context=text)
     return ""
@@ -295,8 +334,8 @@ def _nearby_context_summary(
 
 def _overview_action_title(
     tag: str,
-    before_lines: list[str],
-    after_lines: list[str],
+    before_lines: Sequence[bytes],
+    after_lines: Sequence[bytes],
     before_start: int,
     before_end: int,
     after_start: int,
@@ -360,8 +399,8 @@ def _append_overview_line(
 
 
 def _overview_snippet_lines(
-    before_lines: list[str],
-    after_lines: list[str],
+    before_lines: Sequence[bytes],
+    after_lines: Sequence[bytes],
     before_start: int,
     before_end: int,
     after_start: int,
@@ -378,7 +417,7 @@ def _overview_snippet_lines(
             lines,
             line_number=index + 1,
             marker=" ",
-            text=before_lines[index],
+            text=_overview_line_text(before_lines[index]),
             highlight=candidate_preview_snippets.candidate_line_in_range(
                 index + 1,
                 ambiguity_target_line_range,
@@ -390,7 +429,7 @@ def _overview_snippet_lines(
             lines,
             line_number=index + 1,
             marker="-",
-            text=before_lines[index],
+            text=_overview_line_text(before_lines[index]),
         )
 
     for index in range(after_start, after_end):
@@ -398,7 +437,7 @@ def _overview_snippet_lines(
             lines,
             line_number=index + 1,
             marker="+",
-            text=after_lines[index],
+            text=_overview_line_text(after_lines[index]),
         )
 
     for index in range(before_end, context_end):
@@ -406,7 +445,7 @@ def _overview_snippet_lines(
             lines,
             line_number=index + 1,
             marker=" ",
-            text=before_lines[index],
+            text=_overview_line_text(before_lines[index]),
             highlight=candidate_preview_snippets.candidate_line_in_range(
                 index + 1,
                 ambiguity_target_line_range,

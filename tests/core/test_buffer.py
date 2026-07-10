@@ -267,6 +267,77 @@ def test_line_buffer_uses_mapped_storage_for_page_sized_files(tmp_path):
         assert buffer[1] == b"x" * (mmap.PAGESIZE - len(b"alpha\n"))
 
 
+def test_line_buffer_clone_survives_original_close():
+    """A clone retains shared heap storage after its original closes."""
+    original = LineBuffer.from_bytes(b"alpha\nbeta\n")
+    clone = original.clone()
+
+    original.close()
+
+    with pytest.raises(ValueError, match="buffer is closed"):
+        _ = original[0]
+    assert clone[0] == b"alpha\n"
+    assert clone[1] == b"beta\n"
+    clone.close()
+
+
+def test_line_buffer_original_survives_clone_close():
+    """Closing a clone does not release storage retained by its original."""
+    original = LineBuffer.from_bytes(b"alpha\nbeta\n")
+    clone = original.clone()
+
+    clone.close()
+
+    with pytest.raises(ValueError, match="buffer is closed"):
+        _ = clone[0]
+    assert original[0] == b"alpha\n"
+    assert original[1] == b"beta\n"
+    original.close()
+
+
+def test_line_buffer_clones_have_independent_line_indexes():
+    """Clones share bytes without sharing mutable line-scan state."""
+    original = LineBuffer.from_bytes(b"alpha\nbeta\ngamma\n")
+    clone = original.clone()
+
+    assert original[0] == b"alpha\n"
+    assert clone[2] == b"gamma\n"
+    assert original._line_span_count() == 1
+    assert clone._line_span_count() == 3
+
+    original.close()
+    clone.close()
+
+
+def test_line_buffer_mapped_backing_closes_after_final_clone(tmp_path):
+    """Mapped storage and its file remain open until every clone closes."""
+    data = b"alpha\n" + b"x" * (mmap.PAGESIZE - len(b"alpha\n"))
+    file_path = tmp_path / "buffer.txt"
+    file_path.write_bytes(data)
+    original = LineBuffer.from_path(file_path)
+    first_clone = original.clone()
+    final_clone = original.clone()
+    mapped_data = original._data
+    file_handle = original._backing.file_handle
+
+    assert isinstance(mapped_data, mmap.mmap)
+    assert file_handle is not None
+    assert original._backing is first_clone._backing
+    assert original._backing is final_clone._backing
+
+    original.close()
+    first_clone.close()
+
+    assert mapped_data.closed is False
+    assert file_handle.closed is False
+    assert final_clone[0] == b"alpha\n"
+
+    final_clone.close()
+
+    assert mapped_data.closed is True
+    assert file_handle.closed is True
+
+
 def test_line_buffer_skips_mapped_storage_for_empty_files(tmp_path):
     """Empty files do not use mapped storage but still expose an empty buffer."""
     file_path = tmp_path / "empty.txt"

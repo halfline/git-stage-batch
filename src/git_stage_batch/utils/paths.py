@@ -491,3 +491,8 @@ def get_batch_refs_snapshot_file_path() -> Path:
 def get_abort_recovery_anchors_file_path() -> Path:
     """Get the path recording abort recovery anchor refs and object IDs."""
     return get_abort_state_directory_path() / "recovery-anchors.json"
+
+
+def get_session_start_point_file_path() -> Path:
+    """Get the persisted commit-backed or unborn session start point."""
+    return get_abort_state_directory_path() / "start-point.json"

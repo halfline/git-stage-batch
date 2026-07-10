@@ -10,6 +10,7 @@ from git_stage_batch.utils.git_index import git_write_tree, temp_git_index
 from git_stage_batch.utils.git_object_io import (
     create_git_blob,
     create_git_blobs_from_paths,
+    get_empty_git_tree_object_id,
     read_git_blobs_as_bytes,
 )
 
@@ -45,6 +46,14 @@ def temp_git_repo(tmp_path, monkeypatch):
     )
 
     return repo
+
+
+def test_empty_tree_helper_returns_a_tree_object(temp_git_repo):
+    """The shared empty-tree helper should create a repository tree object."""
+    object_id = get_empty_git_tree_object_id()
+
+    assert run_git_command(["cat-file", "-t", object_id]).stdout.strip() == "tree"
+    assert run_git_command(["ls-tree", object_id]).stdout == ""
 
 
 def test_create_git_blobs_from_paths_hashes_path_bytes(temp_git_repo):

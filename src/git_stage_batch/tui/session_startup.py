@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import sys
 
 from ..data.session import session_is_active
+from ..utils.session_start_point import load_session_start_point
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_io import write_text_file_contents
@@ -49,8 +50,11 @@ def prepare_interactive_session() -> InteractiveSessionStartup:
 
 
 def _record_start_repository_state() -> None:
-    head_result = run_git_command(["rev-parse", "HEAD"], requires_index_lock=False)
-    write_text_file_contents(get_start_head_file_path(), head_result.stdout.strip())
+    start_point = load_session_start_point()
+    write_text_file_contents(
+        get_start_head_file_path(),
+        start_point.head_commit or "UNBORN",
+    )
 
     index_tree_result = run_git_command(["write-tree"], requires_index_lock=False)
     write_text_file_contents(

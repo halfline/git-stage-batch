@@ -13,6 +13,7 @@ from ..i18n import _
 from ..utils.file_io import write_text_file_contents
 from ..utils.git_command import run_git_command
 from ..utils.git_index import git_commit_tree
+from ..utils.git_object_io import get_empty_git_tree_object_id, get_git_object_type
 from ..utils.paths import get_batch_directory_path, get_batch_metadata_file_path
 
 
@@ -31,7 +32,11 @@ def create_batch(name: str, note: str = "", baseline_commit: str | None = None) 
     # Determine baseline (selected HEAD or caller-provided baseline)
     if baseline_commit is None:
         head_result = run_git_command(["rev-parse", "--verify", "HEAD"], check=False, requires_index_lock=False)
-        baseline_commit = head_result.stdout.strip() if head_result.returncode == 0 else None
+        baseline_commit = (
+            head_result.stdout.strip()
+            if head_result.returncode == 0
+            else get_empty_git_tree_object_id()
+        )
 
     metadata = {
         "note": note,
@@ -42,16 +47,10 @@ def create_batch(name: str, note: str = "", baseline_commit: str | None = None) 
     metadata_path = get_batch_metadata_file_path(name)
     write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
 
-    if baseline_commit:
-        tree_result = run_git_command(["rev-parse", f"{baseline_commit}^{{tree}}"], requires_index_lock=False)
-        tree_sha = tree_result.stdout.strip()
-
-        commit_sha = git_commit_tree(tree_sha, parents=[baseline_commit], message=f"Batch: {name}")
-    else:
-        tree_result = run_git_command(["hash-object", "-t", "tree", "/dev/null"], requires_index_lock=False)
-        tree_sha = tree_result.stdout.strip()
-
-        commit_sha = git_commit_tree(tree_sha, message=f"Batch: {name}")
+    tree_result = run_git_command(["rev-parse", f"{baseline_commit}^{{tree}}"], requires_index_lock=False)
+    tree_sha = tree_result.stdout.strip()
+    parents = [baseline_commit] if get_git_object_type(baseline_commit) == "commit" else []
+    commit_sha = git_commit_tree(tree_sha, parents=parents, message=f"Batch: {name}")
 
     from .state_refs import sync_batch_state_refs
     sync_batch_state_refs(name, content_commit=commit_sha)

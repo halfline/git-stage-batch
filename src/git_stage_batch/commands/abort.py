@@ -15,6 +15,7 @@ from ..data.session_ownership import (
     require_no_foreign_session_owner,
 )
 from ..data.recovery_anchors import validate_recovery_objects
+from ..utils.session_start_point import load_session_start_point
 from ..data.start_time_changes import read_staged_renames
 from ..exceptions import exit_with_error
 from ..i18n import _
@@ -26,8 +27,10 @@ from ..utils.git_worktree import (
 )
 from ..utils.git_index import (
     git_add_paths,
+    git_read_tree,
     git_reset_paths,
 )
+from ..utils.git_refs import update_git_refs
 from ..utils.git_repository import (
     get_git_repository_root_path,
     require_git_repository,
@@ -77,9 +80,10 @@ def command_abort(*, quiet: bool = False) -> None:
 
     # Read abort state
     abort_head = read_text_file_contents(get_abort_head_file_path()).strip()
+    start_point = load_session_start_point()
     abort_stash_path = get_abort_stash_file_path()
     abort_stash = read_text_file_contents(abort_stash_path).strip() if abort_stash_path.exists() else None
-    recovery_objects = [abort_head, abort_stash]
+    recovery_objects = [start_point.head_commit, start_point.index_tree, abort_stash]
     batch_snapshot_path = get_abort_state_directory_path() / "batch-refs.json"
     try:
         batch_snapshot = json.loads(read_text_file_contents(batch_snapshot_path))
@@ -98,7 +102,7 @@ def command_abort(*, quiet: bool = False) -> None:
     validate_recovery_objects(recovery_objects, anchors=recovery_anchors)
 
     # Reset auto-added files first
-    if get_auto_added_files_file_path().exists():
+    if not start_point.is_unborn and get_auto_added_files_file_path().exists():
         auto_added = read_file_paths_file(get_auto_added_files_file_path())
         for file_path in auto_added:
             git_reset_paths([file_path], check=False)
@@ -108,10 +112,15 @@ def command_abort(*, quiet: bool = False) -> None:
     env = os.environ.copy()
     env["GIT_REFLOG_ACTION"] = "stage-batch abort"
 
-    if not quiet:
-        print(_("Resetting to {}...").format(abort_head[:7]), file=sys.stderr)
-    git_reset_hard(abort_head, env=env)
-    _remove_normalized_rename_destinations_before_stash_apply()
+    if start_point.is_unborn:
+        if start_point.symbolic_head:
+            update_git_refs(deletes=[start_point.symbolic_head])
+        git_read_tree(start_point.index_tree)
+    else:
+        if not quiet:
+            print(_("Resetting to {}...").format(abort_head[:7]), file=sys.stderr)
+        git_reset_hard(abort_head, env=env)
+        _remove_normalized_rename_destinations_before_stash_apply()
 
     # Apply original stash if it exists (with --index to restore staged state)
     if abort_stash:

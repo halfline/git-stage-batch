@@ -21,6 +21,7 @@ from ...data.file_change_display import (
 from ...data.file_modes import detect_file_mode
 from ...data.file_tracking import auto_add_untracked_files
 from ...data.live_diff import stream_live_git_diff
+from ...utils.session_start_point import session_comparison_base
 from ...data.session import snapshot_file_if_untracked
 from ...exceptions import exit_with_error
 from ...i18n import _
@@ -76,7 +77,7 @@ def include_file_to_batch(
 
     with acquire_unified_diff(
         stream_live_git_diff(
-            base="HEAD",
+            base=session_comparison_base(),
             context_lines=get_context_lines(),
             paths=[file_path],
         )

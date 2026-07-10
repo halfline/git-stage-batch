@@ -590,7 +590,13 @@ class TestDegradedMode:
     def test_start_interactive_mode_quit_preserves_existing_session(self, temp_git_repo):
         """Test quitting does not stop a session that already existed."""
         ensure_state_directory_exists()
-        write_text_file_contents(get_abort_head_file_path(), "existing-session\n")
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        write_text_file_contents(get_abort_head_file_path(), head + "\n")
 
         with patch("git_stage_batch.commands.start.command_start"):
             with patch("git_stage_batch.tui.interactive.prompt_action", return_value="q"):

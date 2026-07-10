@@ -11,6 +11,7 @@ from ..utils.git_index import (
     git_write_tree,
     temp_git_index,
 )
+from ..utils.git_object_io import get_git_object_type
 from .query import get_batch_baseline_commit, get_batch_commit_sha
 from .state_refs import read_file_backed_batch_metadata, sync_batch_state_refs
 
@@ -19,7 +20,7 @@ def batch_content_commit_parents(batch_name: str) -> list[str]:
     """Return parent commits for a batch content commit."""
     parents = []
     baseline = get_batch_baseline_commit(batch_name)
-    if baseline:
+    if baseline and get_git_object_type(baseline) == "commit":
         parents.append(baseline)
 
     metadata = read_file_backed_batch_metadata(batch_name)

@@ -12,7 +12,6 @@ from ...batch.hunk_ownership_translation import (
 )
 from ...batch.merge import merge_batch_from_line_sequences_as_buffer
 from ...batch.lifecycle import create_batch, delete_batch
-from ...batch.ownership import BatchOwnership
 from ...batch.ownership_metadata_loading import acquire_ownership_for_metadata_dict
 from ...batch.query import read_batch_metadata
 from ...batch.selection import line_selection_not_valid_message
@@ -258,6 +257,18 @@ def try_build_index_content_via_transient_batch(
     if not selected_lines:
         return TransientIncludeResult.failure(
             TransientIncludeFailureReason.NO_SELECTED_LINES
+        )
+
+    if (
+        not current_index_lines
+        and all(line.kind == "+" for line in line_changes.lines)
+    ):
+        return TransientIncludeResult.success(
+            LineBuffer.from_chunks(
+                hunk_source_lines[line.source_line - 1]
+                for line in selected_lines
+                if line.source_line is not None
+            )
         )
 
     batch_name = f"include-line-{uuid.uuid4().hex}"

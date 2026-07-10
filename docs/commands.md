@@ -339,6 +339,14 @@ can reclaim the stale ownership record safely. An invalid ownership record is
 not removed automatically; its error identifies the file to inspect after
 confirming that no linked worktree still has an active session.
 
+A session can start before the repository has its first commit. In that case,
+Git's empty tree is used only as the staging comparison baseline while the
+unborn symbolic branch and initial index are recorded explicitly. `stop`
+preserves a first commit created during the session. `abort` removes that
+session-created branch tip, restores the original index, and leaves original
+first-commit files in the worktree. History-dependent commands such as
+`suggest-fixup` remain unavailable until the first commit exists.
+
 ### `again`
 
 Clear the blocklist and restart iteration through all hunks.

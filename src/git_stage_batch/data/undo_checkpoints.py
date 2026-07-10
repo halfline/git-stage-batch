@@ -25,6 +25,7 @@ from .recovery_anchors import (
     state_recovery_objects,
     validate_recovery_state,
 )
+from ..utils.session_start_point import current_head_commit
 from . import undo_restore as _undo_restore
 from . import undo_worktree as _undo_worktree
 from ..exceptions import CommandError
@@ -142,7 +143,7 @@ def _create_undo_checkpoint(operation: str, *, worktree_paths: list[str] | None 
 
     manifest = {
         "operation": operation,
-        "head": run_git_command(["rev-parse", "HEAD"], check=False, requires_index_lock=False).stdout.strip(),
+        "head": current_head_commit(),
         "index_tree": before["index_tree"],
         "refs": before["refs"],
         "worktree_paths": [
@@ -367,7 +368,7 @@ def _push_redo_node(
         "undo_checkpoint": undo_checkpoint,
         "head": target.get(
             "head",
-            run_git_command(["rev-parse", "HEAD"], check=False, requires_index_lock=False).stdout.strip(),
+            current_head_commit(),
         ),
         "index_tree": target.get("index_tree"),
         "refs": target.get("refs", {}),

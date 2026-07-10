@@ -90,16 +90,25 @@ def _diff_index_name_status(*, intent_to_add_visible: bool) -> dict[str, str]:
     return dict(zip(fields[1::2], fields[0::2]))
 
 
-def _intent_to_add_files() -> list[str]:
+def _intent_to_add_files(file_paths: list[str] | None = None) -> list[str]:
     """Return paths whose cached status changes with Git's intent visibility."""
     visible_statuses = _diff_index_name_status(intent_to_add_visible=True)
     invisible_statuses = _diff_index_name_status(intent_to_add_visible=False)
     candidate_paths = visible_statuses.keys() | invisible_statuses.keys()
-    return sorted(
+    intent_paths = sorted(
         file_path
         for file_path in candidate_paths
         if visible_statuses.get(file_path) != invisible_statuses.get(file_path)
     )
+    if file_paths is None:
+        return intent_paths
+    selected = set(file_paths)
+    return [file_path for file_path in intent_paths if file_path in selected]
+
+
+def path_is_intent_to_add(file_path: str) -> bool:
+    """Return whether one path is represented by an intent-to-add entry."""
+    return bool(_intent_to_add_files([file_path]))
 
 
 def _snapshot_intent_to_add_files() -> tuple[list[str], list[str]]:
@@ -118,7 +127,7 @@ def _snapshot_intent_to_add_files() -> tuple[list[str], list[str]]:
     new_intent_to_add_files = []
 
     for file_path in all_intent_to_add_files:
-        snapshot_file_if_untracked(file_path)
+        snapshot_file_if_untracked(file_path, intent_to_add=True)
 
         # Only new files absent from HEAD are safe to git rm --cached.
         head_check = run_git_command(
@@ -263,18 +272,16 @@ def require_session_started() -> None:
     require_current_session_owner()
 
 
-def snapshot_file_if_untracked(file_path: str) -> None:
+def snapshot_file_if_untracked(
+    file_path: str,
+    *,
+    intent_to_add: bool | None = None,
+) -> None:
     """Snapshot an untracked file before modification for abort functionality.
 
     Args:
         file_path: Repository-relative path to the file
     """
-    # Check index status using git ls-files --stage
-    # - Not in output: untracked (should snapshot)
-    # - Empty blob hash (e69de29...): intent-to-add (should snapshot)
-    # - Real blob hash: tracked with content (don't snapshot)
-    EMPTY_BLOB_HASH = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
-
     stage_result = run_git_command(
         ["ls-files", "--stage", "--", file_path],
         check=False,
@@ -284,13 +291,13 @@ def snapshot_file_if_untracked(file_path: str) -> None:
         # File not in index at all - it's untracked
         pass  # Continue to snapshot
     else:
-        # File is in index - check if it has real content or is intent-to-add
-        # Format: <mode> <hash> <stage>\t<path>
-        parts = stage_result.stdout.strip().split()
-        if len(parts) >= 2:
-            blob_hash = parts[1]
-            if blob_hash != EMPTY_BLOB_HASH:
-                return  # File has real content in index, don't snapshot
+        is_intent_to_add = (
+            path_is_intent_to_add(file_path)
+            if intent_to_add is None
+            else intent_to_add
+        )
+        if not is_intent_to_add:
+            return  # File has real content in index, don't snapshot
 
     # Check if already snapshotted
     snapshotted_files = read_file_paths_file(get_abort_snapshot_list_file_path())
@@ -322,7 +329,7 @@ def snapshot_files_if_untracked(file_paths: list[str]) -> None:
     if not unique_file_paths:
         return
 
-    empty_blob_hash = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+    intent_to_add_paths = set(_intent_to_add_files(unique_file_paths))
     stage_result = run_git_command(
         ["ls-files", "--stage", "-z", "--", *unique_file_paths],
         check=False,
@@ -331,7 +338,6 @@ def snapshot_files_if_untracked(file_paths: list[str]) -> None:
     )
 
     tracked_real_content: set[str] = set()
-    tracked_empty_content: set[str] = set()
     for record in stage_result.stdout.split(b"\0"):
         if not record:
             continue
@@ -343,10 +349,7 @@ def snapshot_files_if_untracked(file_paths: list[str]) -> None:
         if len(parts) < 2:
             continue
         file_path = path_bytes.decode("utf-8")
-        blob_hash = parts[1].decode("ascii", errors="replace")
-        if blob_hash == empty_blob_hash:
-            tracked_empty_content.add(file_path)
-        else:
+        if file_path not in intent_to_add_paths:
             tracked_real_content.add(file_path)
 
     snapshotted_files = set(read_file_paths_file(get_abort_snapshot_list_file_path()))

@@ -169,7 +169,7 @@ def absence_choices_for_claim(
     def add_position(position: int, explanation: str) -> None:
         if position in seen:
             return
-        if not _sequence_matches_at_position(entries, position, list(forbidden_sequence)):
+        if not _sequence_matches_at_position(entries, position, forbidden_sequence):
             return
         seen.add(position)
         positions.append((position, explanation))
@@ -249,7 +249,7 @@ def _normalize_line_content(content: Any) -> bytes:
 def _sequence_matches_at_position(
     entries: Sequence[_RealizedEntry],
     position: int,
-    sequence: list[bytes],
+    sequence: Sequence[bytes],
 ) -> bool:
     """Check if sequence matches entries starting at exact position."""
     if position + len(sequence) > len(entries):
@@ -266,7 +266,7 @@ def _sequence_matches_at_position(
 def _find_sequence_nearby(
     entries: Sequence[_RealizedEntry],
     position: int,
-    sequence: list[bytes],
+    sequence: Sequence[bytes],
     window: int = 20,
 ) -> int | None:
     """Search for sequence within window after position."""
@@ -291,7 +291,7 @@ def _iter_sequence_occurrences_nearby(
     search_end = min(position + window, len(entries) - len(sequence) + 1)
     result_count = 0
     for check_pos in range(position + 1, search_end):
-        if _sequence_matches_at_position(entries, check_pos, list(sequence)):
+        if _sequence_matches_at_position(entries, check_pos, sequence):
             yield check_pos
             result_count += 1
             if result_count >= max_results:
@@ -301,7 +301,7 @@ def _iter_sequence_occurrences_nearby(
 def _remove_sequence_at_position(
     entries: Sequence[_RealizedEntry],
     position: int,
-    sequence: list[bytes],
+    sequence: Sequence[bytes],
 ) -> RealizedEntries:
     """Remove sequence from entries at exact position."""
     return as_realized_entries(entries).without_range(
@@ -336,7 +336,7 @@ def _position_after_claimed_insertions_at_boundary(
 def _suppress_at_boundary_strict(
     entries: Sequence[_RealizedEntry],
     position: int,
-    forbidden_sequence: list[bytes],
+    forbidden_sequence: Sequence[bytes],
 ) -> RealizedEntries:
     """Suppress forbidden sequence with strict enforcement for merge operations."""
     if _sequence_matches_at_position(entries, position, forbidden_sequence):
@@ -370,7 +370,7 @@ def _suppress_at_boundary_strict(
 def _suppress_at_boundary_for_realization(
     entries: Sequence[_RealizedEntry],
     position: int,
-    forbidden_sequence: list[bytes],
+    forbidden_sequence: Sequence[bytes],
 ) -> RealizedEntries:
     """Suppress forbidden sequence leniently for content realization."""
     if _sequence_matches_at_position(entries, position, forbidden_sequence):

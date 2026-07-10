@@ -12,12 +12,9 @@ from ..core.replacement import (
 from ..batch.selection import (
     require_line_selection_in_view,
 )
-from ..core.line_selection import (
-    parse_line_selection,
-    read_line_ids_file,
-    write_line_ids_file,
-)
+from ..core.line_selection import parse_line_selection
 from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
+from ..data.line_id_files import read_line_ids_file, write_line_ids_file
 from ..data.selected_change.loading import (
     load_selected_change,
 )

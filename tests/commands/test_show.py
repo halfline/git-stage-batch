@@ -2,7 +2,7 @@
 
 from git_stage_batch.core.hashing import compute_stable_hunk_hash_from_lines
 from tests.diff_parser_helpers import collect_unified_diff
-from git_stage_batch.utils.git import stream_git_command
+from git_stage_batch.utils.git_command import stream_git_command
 from git_stage_batch.utils.paths import get_block_list_file_path, get_context_lines
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.utils.paths import ensure_state_directory_exists
@@ -15,7 +15,7 @@ import subprocess
 
 import pytest
 
-import git_stage_batch.commands.show as show_module
+import git_stage_batch.commands.selection.next_change_display as next_change_display
 from git_stage_batch.commands.show import command_show
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.selected_change.paths import get_selected_change_file_path
@@ -80,7 +80,11 @@ class TestCommandShow:
         command_show(file="a.txt", porcelain=True)
         assert get_selected_change_file_path() == "a.txt"
 
-        monkeypatch.setattr(show_module, "apply_line_level_batch_filter_to_cached_hunk", lambda: True)
+        monkeypatch.setattr(
+            next_change_display,
+            "apply_line_level_batch_filter_to_cached_hunk",
+            lambda: True,
+        )
 
         command_show()
 

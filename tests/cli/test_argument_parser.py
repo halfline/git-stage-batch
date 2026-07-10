@@ -5,8 +5,19 @@ from unittest.mock import Mock, call
 
 import pytest
 
-from git_stage_batch.cli import argument_parser, file_scope, git_help, replacement_input
+from git_stage_batch.cli import (
+    apply_dispatch,
+    argument_parser,
+    discard_dispatch,
+    file_scope,
+    git_help,
+    include_dispatch,
+    replacement_input,
+    show_dispatch,
+    skip_dispatch,
+)
 from git_stage_batch.cli.argument_parser import parse_command_line
+from git_stage_batch.exceptions import CommandError
 
 
 def _stdin_with_bytes(data: bytes) -> io.TextIOWrapper:
@@ -35,10 +46,10 @@ def _mock_batch_files(monkeypatch, files, *, exists=True):
     """Provide deterministic batch file candidates for parser scope resolution."""
     metadata = {"files": {path: {} for path in files}}
 
-    monkeypatch.setattr(argument_parser, "batch_exists", lambda name: exists)
-    monkeypatch.setattr(argument_parser, "read_batch_metadata", lambda name: metadata)
     monkeypatch.setattr(file_scope, "batch_exists", lambda name: exists)
     monkeypatch.setattr(file_scope, "read_batch_metadata", lambda name: metadata)
+    monkeypatch.setattr(show_dispatch, "batch_exists", lambda name: exists)
+    monkeypatch.setattr(show_dispatch, "read_batch_metadata", lambda name: metadata)
 
 
 def test_resolve_live_file_scope_marks_implicit_scope():
@@ -293,7 +304,7 @@ def test_parse_command_line_show():
 
 def test_parse_command_line_show_no_advance_peeks_without_selecting(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_show", mock_command)
+    monkeypatch.setattr(show_dispatch, "command_show", mock_command)
 
     args = parse_command_line(["show", "--no-advance"], quiet=True)
 
@@ -304,7 +315,7 @@ def test_parse_command_line_show_no_advance_peeks_without_selecting(monkeypatch)
 
 def test_parse_command_line_show_no_auto_advance_is_show_local(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_show", mock_command)
+    monkeypatch.setattr(show_dispatch, "command_show", mock_command)
 
     args = parse_command_line(["show", "--no-auto-advance"], quiet=True)
 
@@ -317,7 +328,7 @@ def test_parse_command_line_show_no_auto_advance_is_show_local(monkeypatch):
 def test_show_page_requires_file():
     args = parse_command_line(["show", "--page", "2"], quiet=True)
     assert args is not None
-    with pytest.raises(argument_parser.CommandError, match="requires `--file`"):
+    with pytest.raises(CommandError, match="requires `--file`"):
         args.func(args)
 
 
@@ -325,13 +336,13 @@ def test_show_pages_alias_requires_file():
     args = parse_command_line(["show", "--pages", "2"], quiet=True)
     assert args is not None
     assert args.page == "2"
-    with pytest.raises(argument_parser.CommandError, match="requires `--file` or a single-file `--files` match"):
+    with pytest.raises(CommandError, match="requires `--file` or a single-file `--files` match"):
         args.func(args)
 
 
 def test_show_page_accepts_single_files_match(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_show", mock_command)
+    monkeypatch.setattr(show_dispatch, "command_show", mock_command)
     _mock_live_file_candidates(monkeypatch, ["src/parser.py", "notes.txt"])
 
     args = parse_command_line(["show", "--files", "*.py", "--page", "2"], quiet=True)
@@ -343,7 +354,7 @@ def test_show_page_accepts_single_files_match(monkeypatch):
 
 def test_show_file_no_advance_peeks_without_selecting(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_show", mock_command)
+    monkeypatch.setattr(show_dispatch, "command_show", mock_command)
     _mock_live_file_candidates(monkeypatch, ["src/parser.py"])
 
     args = parse_command_line(["show", "--file", "src/parser.py", "--no-advance"], quiet=True)
@@ -360,7 +371,7 @@ def test_show_file_no_advance_peeks_without_selecting(monkeypatch):
 
 def test_show_from_no_advance_peeks_without_selecting(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_show_from_batch", mock_command)
+    monkeypatch.setattr(show_dispatch, "command_show_from_batch", mock_command)
     _mock_batch_files(monkeypatch, ["src/parser.py"])
 
     args = parse_command_line(
@@ -381,7 +392,7 @@ def test_show_from_no_advance_peeks_without_selecting(monkeypatch):
 
 def test_show_page_accepts_single_file_pattern_match(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_show", mock_command)
+    monkeypatch.setattr(show_dispatch, "command_show", mock_command)
     _mock_live_file_candidates(monkeypatch, ["src/parser.py", "notes.txt"])
 
     args = parse_command_line(["show", "--file", "*.py", "--page", "2"], quiet=True)
@@ -397,7 +408,7 @@ def test_show_page_rejects_multiple_files_matches(monkeypatch):
     args = parse_command_line(["show", "--files", "*.py", "--page", "2"], quiet=True)
 
     assert args is not None
-    with pytest.raises(argument_parser.CommandError, match="requires exactly one resolved file"):
+    with pytest.raises(CommandError, match="requires exactly one resolved file"):
         args.func(args)
 
 
@@ -407,7 +418,7 @@ def test_show_page_rejects_multiple_file_pattern_matches(monkeypatch):
     args = parse_command_line(["show", "--file", "*.py", "--page", "2"], quiet=True)
 
     assert args is not None
-    with pytest.raises(argument_parser.CommandError, match="requires exactly one resolved file"):
+    with pytest.raises(CommandError, match="requires exactly one resolved file"):
         args.func(args)
 
 
@@ -415,7 +426,7 @@ def test_show_page_rejects_line_selection(monkeypatch):
     _mock_live_file_candidates(monkeypatch, ["src/parser.py"])
     args = parse_command_line(["show", "--file", "src/parser.py", "--page", "2", "--line", "1"], quiet=True)
     assert args is not None
-    with pytest.raises(argument_parser.CommandError, match="together with `show --line`"):
+    with pytest.raises(CommandError, match="together with `show --line`"):
         args.func(args)
 
 
@@ -423,13 +434,13 @@ def test_show_page_rejects_porcelain(monkeypatch):
     _mock_live_file_candidates(monkeypatch, ["src/parser.py"])
     args = parse_command_line(["show", "--file", "src/parser.py", "--page", "2", "--porcelain"], quiet=True)
     assert args is not None
-    with pytest.raises(argument_parser.CommandError, match="with `--porcelain`"):
+    with pytest.raises(CommandError, match="with `--porcelain`"):
         args.func(args)
 
 
 def test_show_from_page_accepts_single_file_batch_without_file(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_show_from_batch", mock_command)
+    monkeypatch.setattr(show_dispatch, "command_show_from_batch", mock_command)
     _mock_batch_files(monkeypatch, ["src/parser.py"])
 
     args = parse_command_line(["show", "--from", "batch", "--page", "2"], quiet=True)
@@ -441,23 +452,23 @@ def test_show_from_page_accepts_single_file_batch_without_file(monkeypatch):
 
 def test_show_from_page_rejects_multi_file_batch_without_file(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_show_from_batch", mock_command)
+    monkeypatch.setattr(show_dispatch, "command_show_from_batch", mock_command)
     _mock_batch_files(monkeypatch, ["src/parser.py", "src/render.py"])
 
     args = parse_command_line(["show", "--from", "batch", "--page", "2"], quiet=True)
 
     assert args is not None
-    with pytest.raises(argument_parser.CommandError, match="single-file batch"):
+    with pytest.raises(CommandError, match="single-file batch"):
         args.func(args)
     mock_command.assert_not_called()
 
 
 def test_show_from_page_missing_batch_reports_missing_batch(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_show_from_batch", mock_command)
-    monkeypatch.setattr(argument_parser, "batch_exists", lambda name: False)
+    monkeypatch.setattr(show_dispatch, "command_show_from_batch", mock_command)
+    monkeypatch.setattr(show_dispatch, "batch_exists", lambda name: False)
     monkeypatch.setattr(
-        argument_parser,
+        show_dispatch,
         "read_batch_metadata",
         Mock(side_effect=AssertionError("missing batch should not be read")),
     )
@@ -465,7 +476,7 @@ def test_show_from_page_missing_batch_reports_missing_batch(monkeypatch):
     args = parse_command_line(["show", "--from", "missing", "--page", "2"], quiet=True)
 
     assert args is not None
-    with pytest.raises(argument_parser.CommandError, match="Batch 'missing' does not exist"):
+    with pytest.raises(CommandError, match="Batch 'missing' does not exist"):
         args.func(args)
     mock_command.assert_not_called()
 
@@ -527,7 +538,7 @@ def test_parse_command_line_include_alias():
 
 def test_parse_command_line_include_passes_auto_advance(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_include", mock_command)
+    monkeypatch.setattr(include_dispatch, "command_include", mock_command)
 
     args = parse_command_line(["include", "--no-auto-advance"], quiet=True)
 
@@ -581,7 +592,7 @@ def test_parse_command_line_include_with_file_and_as():
 def test_parse_command_line_include_with_file_and_as_dispatches_file_replacement(monkeypatch):
     """Include --file --as without --line should dispatch file replacement staging."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_include_file_as", mock_command)
+    monkeypatch.setattr(include_dispatch, "command_include_file_as", mock_command)
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
     args = parse_command_line(
@@ -601,7 +612,7 @@ def test_parse_command_line_include_with_file_and_as_dispatches_file_replacement
 def test_parse_command_line_include_with_file_and_as_stdin_dispatches_file_replacement(monkeypatch):
     """Include --file --as-stdin should preserve trailing newlines."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_include_file_as", mock_command)
+    monkeypatch.setattr(include_dispatch, "command_include_file_as", mock_command)
     monkeypatch.setattr(replacement_input.sys, "stdin", _stdin_with_bytes(b"replacement\n"))
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
@@ -622,7 +633,7 @@ def test_parse_command_line_include_with_file_and_as_stdin_dispatches_file_repla
 def test_parse_command_line_include_file_as_can_resolve_staged_file(monkeypatch):
     """Include --file --as should accept already-staged paths."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_include_file_as", mock_command)
+    monkeypatch.setattr(include_dispatch, "command_include_file_as", mock_command)
     _mock_live_file_candidates(monkeypatch, [], staged=["path.txt"])
 
     args = parse_command_line(
@@ -642,7 +653,7 @@ def test_parse_command_line_include_file_as_can_resolve_staged_file(monkeypatch)
 def test_parse_command_line_include_with_line_range_and_as_stdin_dispatches_line_replacement(monkeypatch):
     """Include --line range --as-stdin should forward exact replacement text."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_include_line_as", mock_command)
+    monkeypatch.setattr(include_dispatch, "command_include_line_as", mock_command)
     monkeypatch.setattr(replacement_input.sys, "stdin", _stdin_with_bytes(b"replacement one\nreplacement two\n"))
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
@@ -665,7 +676,7 @@ def test_parse_command_line_include_with_line_range_and_as_stdin_dispatches_line
 def test_parse_command_line_include_with_file_and_line_dispatches_file_scope(monkeypatch):
     """Include --file --line should dispatch to file-scoped line staging."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_include_line", mock_command)
+    monkeypatch.setattr(include_dispatch, "command_include_line", mock_command)
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
     args = parse_command_line(
@@ -686,7 +697,7 @@ def test_parse_command_line_include_with_files_dispatches_per_file(monkeypatch):
     """Include should dispatch once per file resolved from --files."""
     mock_command = Mock()
     monkeypatch.setattr(
-        argument_parser,
+        include_dispatch,
         "include_each_resolved_file",
         mock_command,
     )
@@ -712,7 +723,7 @@ def test_parse_command_line_include_with_file_pattern_dispatches_per_file(monkey
     """Include --file with a pattern should dispatch like --files."""
     mock_command = Mock()
     monkeypatch.setattr(
-        argument_parser,
+        include_dispatch,
         "include_each_resolved_file",
         mock_command,
     )
@@ -731,7 +742,7 @@ def test_parse_command_line_include_with_file_pattern_dispatches_per_file(monkey
 def test_parse_command_line_include_with_file_pattern_honors_exclusions(monkeypatch):
     """Include --file should accept multiple gitignore-style patterns."""
     mock_command = Mock(return_value=1)
-    monkeypatch.setattr(argument_parser, "command_include_file", mock_command)
+    monkeypatch.setattr(include_dispatch, "command_include_file", mock_command)
     _mock_live_file_candidates(monkeypatch, ["foo.py", "bar.py", "baz.txt"])
 
     args = parse_command_line(["include", "--file", "*.py", "!bar.py"], quiet=True)
@@ -744,7 +755,7 @@ def test_parse_command_line_include_with_file_pattern_honors_exclusions(monkeypa
 def test_parse_command_line_include_with_file_preserves_exact_metachar_path(monkeypatch):
     """Include --file PATH should still handle exact paths that look like patterns."""
     mock_command = Mock(return_value=1)
-    monkeypatch.setattr(argument_parser, "command_include_file", mock_command)
+    monkeypatch.setattr(include_dispatch, "command_include_file", mock_command)
     _mock_live_file_candidates(monkeypatch, ["src/[parser].py", "src/p.py"])
 
     args = parse_command_line(["include", "--file", "src/[parser].py"], quiet=True)
@@ -761,14 +772,14 @@ def test_parse_command_line_include_line_rejects_multiple_file_pattern_matches(m
     args = parse_command_line(["include", "--file", "*.py", "--line", "1"], quiet=True)
 
     assert args is not None
-    with pytest.raises(argument_parser.CommandError, match="Cannot use --lines with multiple files"):
+    with pytest.raises(CommandError, match="Cannot use --lines with multiple files"):
         args.func(args)
 
 
 def test_parse_command_line_include_with_files_and_as_dispatches_single_match(monkeypatch):
     """Include --files --as should work when patterns resolve to one file."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_include_file_as", mock_command)
+    monkeypatch.setattr(include_dispatch, "command_include_file_as", mock_command)
     _mock_live_file_candidates(monkeypatch, ["path.txt", "notes.md"])
 
     args = parse_command_line(["include", "--files", "*.txt", "--as", "replacement"], quiet=True)
@@ -789,14 +800,14 @@ def test_parse_command_line_include_with_files_and_as_rejects_multiple_matches(m
     args = parse_command_line(["include", "--files", "*.py", "--as", "replacement"], quiet=True)
 
     assert args is not None
-    with pytest.raises(argument_parser.CommandError, match="Cannot use --as with multiple files"):
+    with pytest.raises(CommandError, match="Cannot use --as with multiple files"):
         args.func(args)
 
 
 def test_parse_command_line_include_from_with_files_resolves_batch_scope_only(monkeypatch):
     """include --from --files should match batch files, not current live changes."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_include_from_batch", mock_command)
+    monkeypatch.setattr(include_dispatch, "command_include_from_batch", mock_command)
     _mock_batch_files(monkeypatch, ["foo.py", "bar.py", "notes.txt"])
     monkeypatch.setattr(
         file_scope,
@@ -837,14 +848,14 @@ def test_parse_command_line_include_rejects_as_and_as_stdin_together(monkeypatch
     )
     assert args is not None
 
-    with pytest.raises(argument_parser.CommandError, match="Cannot use `--as` and `--as-stdin` together"):
+    with pytest.raises(CommandError, match="Cannot use `--as` and `--as-stdin` together"):
         args.func(args)
 
 
 def test_parse_command_line_include_with_no_edge_overlap_dispatches_line_replacement(monkeypatch):
     """Include --line --as --no-edge-overlap should forward the no-edge-overlap flag."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_include_line_as", mock_command)
+    monkeypatch.setattr(include_dispatch, "command_include_line_as", mock_command)
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
     args = parse_command_line(
@@ -871,7 +882,7 @@ def test_parse_command_line_include_rejects_no_edge_overlap_without_line_as():
     )
     assert args is not None
 
-    with pytest.raises(argument_parser.CommandError, match="`--no-edge-overlap` requires `include --line --as`"):
+    with pytest.raises(CommandError, match="`--no-edge-overlap` requires `include --line --as`"):
         args.func(args)
 
 
@@ -881,7 +892,7 @@ def test_parse_command_line_include_invalid_as_stdin_shape_does_not_read(monkeyp
     args = parse_command_line(["include", "--to", "batch", "--as-stdin"], quiet=True)
     assert args is not None
 
-    with pytest.raises(argument_parser.CommandError, match="`include --as` requires"):
+    with pytest.raises(CommandError, match="`include --as` requires"):
         args.func(args)
 
 
@@ -905,7 +916,7 @@ def test_parse_command_line_skip_alias():
 
 def test_parse_command_line_skip_passes_auto_advance(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_skip", mock_command)
+    monkeypatch.setattr(skip_dispatch, "command_skip", mock_command)
 
     args = parse_command_line(["skip", "--no-auto-advance"], quiet=True)
 
@@ -966,7 +977,7 @@ def test_parse_command_line_skip_files_dispatches_per_file(monkeypatch):
     """Skip should dispatch once per file resolved from --files."""
     mock_command = Mock()
     monkeypatch.setattr(
-        argument_parser,
+        skip_dispatch,
         "skip_each_resolved_file",
         mock_command,
     )
@@ -988,7 +999,7 @@ def test_parse_command_line_skip_rejects_lines_with_multiple_files(monkeypatch):
     args = parse_command_line(["skip", "--files", "*.py", "--lines", "1"], quiet=True)
     assert args is not None
 
-    with pytest.raises(argument_parser.CommandError, match="Cannot use --lines with multiple files"):
+    with pytest.raises(CommandError, match="Cannot use --lines with multiple files"):
         args.func(args)
 
 
@@ -997,7 +1008,7 @@ def test_parse_command_line_skip_rejects_pathless_file_with_files():
     args = parse_command_line(["skip", "--file", "--files", "*.py"], quiet=True)
     assert args is not None
 
-    with pytest.raises(argument_parser.CommandError, match="Cannot use --file together with --files"):
+    with pytest.raises(CommandError, match="Cannot use --file together with --files"):
         args.func(args)
 
 
@@ -1005,7 +1016,7 @@ def test_parse_command_line_skip_combines_file_and_files_patterns(monkeypatch):
     """Argument-bearing --file and --files should resolve together."""
     mock_command = Mock()
     monkeypatch.setattr(
-        argument_parser,
+        skip_dispatch,
         "skip_each_resolved_file",
         mock_command,
     )
@@ -1024,7 +1035,7 @@ def test_parse_command_line_skip_combines_file_and_files_patterns(monkeypatch):
 def test_parse_command_line_discard_with_files_dispatches_per_file(monkeypatch):
     """Discard should dispatch once per file resolved from --files."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_discard_file", mock_command)
+    monkeypatch.setattr(discard_dispatch, "command_discard_file", mock_command)
     _mock_live_file_candidates(monkeypatch, ["foo.py", "bar.py", "notes.txt"])
 
     args = parse_command_line(["discard", "--files", "*.py"], quiet=True)
@@ -1040,7 +1051,7 @@ def test_parse_command_line_discard_with_files_dispatches_per_file(monkeypatch):
 def test_parse_command_line_discard_with_file_pattern_dispatches_per_file(monkeypatch):
     """Discard --file with a pattern should dispatch like --files."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_discard_file", mock_command)
+    monkeypatch.setattr(discard_dispatch, "command_discard_file", mock_command)
     _mock_live_file_candidates(monkeypatch, ["foo.py", "bar.py", "notes.txt"])
 
     args = parse_command_line(["discard", "--file", "*.py"], quiet=True)
@@ -1056,7 +1067,7 @@ def test_parse_command_line_discard_with_file_pattern_dispatches_per_file(monkey
 def test_parse_command_line_discard_from_with_files_resolves_batch_scope_only(monkeypatch):
     """discard --from --files should match batch files, not current live changes."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_discard_from_batch", mock_command)
+    monkeypatch.setattr(discard_dispatch, "command_discard_from_batch", mock_command)
     _mock_batch_files(monkeypatch, ["foo.py", "bar.py", "notes.txt"])
     monkeypatch.setattr(
         file_scope,
@@ -1078,7 +1089,7 @@ def test_parse_command_line_discard_to_with_files_uses_aggregate_dispatch(monkey
     """discard --to --files should suppress per-file selected-change display."""
     mock_command = Mock()
     monkeypatch.setattr(
-        argument_parser,
+        discard_dispatch,
         "discard_to_batch_each_resolved_file",
         mock_command,
     )
@@ -1098,7 +1109,7 @@ def test_parse_command_line_discard_to_with_files_uses_aggregate_dispatch(monkey
 def test_parse_command_line_apply_with_files_dispatches_per_file(monkeypatch):
     """Apply should dispatch once per file resolved from --files."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_apply_from_batch", mock_command)
+    monkeypatch.setattr(apply_dispatch, "command_apply_from_batch", mock_command)
     _mock_batch_files(monkeypatch, ["foo.py", "bar.py", "notes.txt"])
 
     args = parse_command_line(
@@ -1117,7 +1128,7 @@ def test_parse_command_line_apply_with_files_dispatches_per_file(monkeypatch):
 def test_parse_command_line_show_with_files_uses_file_list(monkeypatch):
     """Show should route multi-file matches to a navigational file list."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_show_file_list", mock_command)
+    monkeypatch.setattr(show_dispatch, "command_show_file_list", mock_command)
     _mock_live_file_candidates(monkeypatch, ["foo.py", "bar.py", "notes.txt"])
 
     args = parse_command_line(["show", "--files", "*.py"], quiet=True)
@@ -1134,7 +1145,7 @@ def test_parse_command_line_show_with_files_raises_command_error_for_no_matches(
     args = parse_command_line(["show", "--files", "*.md"], quiet=True)
 
     assert args is not None
-    with pytest.raises(argument_parser.CommandError, match="No changed files matched: \\*.md"):
+    with pytest.raises(CommandError, match="No changed files matched: \\*.md"):
         args.func(args)
 
 
@@ -1256,7 +1267,7 @@ def test_parse_command_line_discard_to_with_file_and_as():
 def test_parse_command_line_discard_with_file_and_as_dispatches_file_replacement(monkeypatch):
     """Discard --file --as without --line should dispatch file replacement."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_discard_file_as", mock_command)
+    monkeypatch.setattr(discard_dispatch, "command_discard_file_as", mock_command)
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
     args = parse_command_line(
@@ -1276,7 +1287,7 @@ def test_parse_command_line_discard_with_file_and_as_dispatches_file_replacement
 def test_parse_command_line_discard_with_file_and_as_stdin_dispatches_file_replacement(monkeypatch):
     """Discard --file --as-stdin should preserve trailing newlines."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_discard_file_as", mock_command)
+    monkeypatch.setattr(discard_dispatch, "command_discard_file_as", mock_command)
     monkeypatch.setattr(replacement_input.sys, "stdin", _stdin_with_bytes(b"replacement\n"))
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
@@ -1297,7 +1308,7 @@ def test_parse_command_line_discard_with_file_and_as_stdin_dispatches_file_repla
 def test_parse_command_line_discard_to_line_range_and_as_stdin_dispatches_replacement(monkeypatch):
     """Discard --to --line range --as-stdin should forward exact replacement text."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_discard_line_as_to_batch", mock_command)
+    monkeypatch.setattr(discard_dispatch, "command_discard_line_as_to_batch", mock_command)
     monkeypatch.setattr(replacement_input.sys, "stdin", _stdin_with_bytes(b"replacement one\nreplacement two\n"))
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
@@ -1327,14 +1338,14 @@ def test_parse_command_line_discard_rejects_as_and_as_stdin_together(monkeypatch
     )
     assert args is not None
 
-    with pytest.raises(argument_parser.CommandError, match="Cannot use `--as` and `--as-stdin` together"):
+    with pytest.raises(CommandError, match="Cannot use `--as` and `--as-stdin` together"):
         args.func(args)
 
 
 def test_parse_command_line_discard_with_no_edge_overlap_dispatches_line_replacement(monkeypatch):
     """Discard --to --line --as --no-edge-overlap should forward the no-edge-overlap flag."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_discard_line_as_to_batch", mock_command)
+    monkeypatch.setattr(discard_dispatch, "command_discard_line_as_to_batch", mock_command)
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
     args = parse_command_line(
@@ -1362,7 +1373,7 @@ def test_parse_command_line_discard_rejects_no_edge_overlap_without_to_line_as()
     )
     assert args is not None
 
-    with pytest.raises(argument_parser.CommandError, match="`--no-edge-overlap` requires `discard --to --line --as`"):
+    with pytest.raises(CommandError, match="`--no-edge-overlap` requires `discard --to --line --as`"):
         args.func(args)
 
 
@@ -1372,14 +1383,14 @@ def test_parse_command_line_discard_invalid_as_stdin_shape_does_not_read(monkeyp
     args = parse_command_line(["discard", "--from", "batch", "--as-stdin"], quiet=True)
     assert args is not None
 
-    with pytest.raises(argument_parser.CommandError, match="`discard --as` requires"):
+    with pytest.raises(CommandError, match="`discard --as` requires"):
         args.func(args)
 
 
 def test_parse_command_line_discard_with_file_and_line_dispatches_file_scope(monkeypatch):
     """Discard --file --line should dispatch to file-scoped line discard."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_discard_line", mock_command)
+    monkeypatch.setattr(discard_dispatch, "command_discard_line", mock_command)
     _mock_live_file_candidates(monkeypatch, ["path.txt"])
 
     args = parse_command_line(
@@ -1407,7 +1418,7 @@ def test_parse_command_line_discard_alias():
 
 def test_parse_command_line_discard_passes_auto_advance(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_discard", mock_command)
+    monkeypatch.setattr(discard_dispatch, "command_discard", mock_command)
 
     args = parse_command_line(["discard", "--no-auto-advance"], quiet=True)
 

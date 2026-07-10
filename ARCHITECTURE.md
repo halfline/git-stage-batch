@@ -30,12 +30,15 @@ its output, and stores tool-specific metadata alongside that workflow.
 The codebase is organized as a set of layers:
 
 - `cli/`
-  Argument parsing, help, completion, and top-level command dispatch.
+  Argument parsing, help, completion, and command-specific dispatch helpers.
+- `runtime.py`
+  Top-level mode dispatch between parsed CLI arguments and the interactive TUI.
 - `commands/`
   User-facing command implementations.
 - `data/`
-  Session-persistent state, selected-hunk caches, progress tracking, undo/redo,
-  page-aware file review safety state, and other workflow bookkeeping.
+  Session-persistent state, selected-change caches, progress tracking,
+  undo/redo, page-aware file review safety state, and other workflow
+  bookkeeping.
 - `core/`
   Neutral models and parsing logic for diffs, hunks, hashes, and line
   selections.
@@ -67,9 +70,11 @@ That split is intentional:
 The usual entry path is:
 
 1. `cli.argument_parser` builds the command-line interface.
-2. `cli.dispatch` selects the command implementation.
-3. A function in `commands/` performs the operation.
-4. That command uses `data/`, `core/`, `staging/`, `batch/`, and `utils/`
+2. `runtime.dispatch_cli_mode` chooses interactive mode or noninteractive
+   execution.
+3. `cli.execution` invokes the parsed command function.
+4. A function in `commands/` performs the operation.
+5. That command uses `data/`, `core/`, `staging/`, `batch/`, and `utils/`
    modules as needed.
 
 For a typical non-batch staging workflow:
@@ -143,16 +148,26 @@ Important modules include:
 - `data.session`
   Session lifecycle, abort initialization, snapshotting, and cleanup.
 - `data.hunk_tracking`
-  Discovery, caching, navigation, hunk selection, and live filtering.
+  Discovery, navigation, selected-change orchestration, and live filtering.
+- `data.selected_change`
+  Persistence, loading, snapshots, stale-cache validation, and file-scoped views
+  for the current selected change.
 - `data.undo`
   Undo/redo checkpoints for session operations.
 - `data.line_state`
   Serialization of the currently selected line-level view.
-- `data.file_review_state`
-  Safety metadata for page-aware file reviews. It records the review source,
-  shown pages, complete actionable selections, and fingerprints of the selected
-  file view so later pathless actions can refuse stale or ambiguous operations.
-- `data.progress`, `data.file_tracking`, `data.hunk_tracking`
+- `data.line_id_files`
+  Persistence for processed include, skip, and batch line ID files.
+- `data.file_review.state`
+  Persistence for page-aware file review safety state.
+- `data.file_review.records`
+  Dataclasses and enums that describe persisted file review state.
+- `data.file_review.pages`
+  Parsing and normalization for persisted review page selections.
+- `data.file_review.fingerprints`
+  Fingerprints of selected file views so later pathless actions can refuse
+  stale or ambiguous operations.
+- `data.progress`, `data.file_tracking`
   Progress bookkeeping across files and hunks.
 
 This layer is what makes the tool feel interactive even though many commands
@@ -227,8 +242,16 @@ Key modules:
   Reading batch metadata and refs.
 - `batch.ownership`
   Ownership data structures and ownership transformations.
+- `batch.absence_content`
+  Streaming builders for absence-claim content buffers.
 - `batch.merge`
   Structural merge and reverse-merge logic.
+- `batch.baseline_correspondence`
+  Baseline restoration mapping for discarding batch-owned changes.
+- `batch.discard_reversal`
+  Presence-constraint reversal for batch discard operations.
+- `batch.realized_boundaries`
+  Boundary lookup and sequence checks over realized entries.
 - `batch.attribution`
   Ownership attribution for filtering live diffs.
 - `batch.source_refresh`
@@ -246,7 +269,9 @@ The program separates data modeling from terminal rendering.
 
 - `output/`
   Knows how to print line-level changes, page-aware file reviews, multi-file
-  review lists, binary changes, patches, and colors.
+  review lists, binary changes, patches, and colors. Page-selection state
+  belongs to `data.file_review`, while `output/` owns terminal models and
+  rendering.
 - `tui/`
   Adds the interactive menu-driven front end.
 
@@ -257,8 +282,9 @@ workflow rather than a parallel implementation.
 
 ## Git Integration Philosophy
 
-The `utils.git` layer wraps subprocess calls to Git and provides streaming and
-transactional helpers such as:
+The `utils.git_command`, `utils.git_refs`, and related `utils.git_*` modules
+wrap subprocess calls to Git and provide streaming and transactional helpers
+such as:
 
 - `run_git_command()`
 - `stream_git_command()`
@@ -381,15 +407,21 @@ For a contributor new to the codebase, a good reading order is:
    Understand the product-level workflow.
 2. `src/git_stage_batch/cli/argument_parser.py`
    See the public command surface.
-3. `src/git_stage_batch/cli/dispatch.py`
-   See how parsed commands are routed.
+3. `src/git_stage_batch/runtime.py` and
+   `src/git_stage_batch/cli/execution.py`
+   See how parsed arguments enter interactive mode or command execution.
 4. `src/git_stage_batch/commands/start.py`,
-   `show.py`, `include.py`, `skip.py`, `discard.py`
+   `src/git_stage_batch/commands/show.py`,
+   `src/git_stage_batch/commands/include.py`,
+   `src/git_stage_batch/commands/skip.py`,
+   `src/git_stage_batch/commands/discard.py`
    Understand the core non-batch workflow.
 5. `src/git_stage_batch/data/session.py` and
-   `src/git_stage_batch/data/hunk_tracking.py`
-   Understand state and navigation.
-6. `src/git_stage_batch/core/diff_parser.py` and `core/models.py`
+   `src/git_stage_batch/data/hunk_tracking.py`, then
+   `src/git_stage_batch/data/selected_change/`
+   Understand state, navigation, and selected-change persistence.
+6. `src/git_stage_batch/core/diff_parser.py` and
+   `src/git_stage_batch/core/models.py`
    Understand the shared representation of change.
 7. `BATCHES.md` and then `src/git_stage_batch/batch/*`
    Understand the advanced deferred-change architecture.

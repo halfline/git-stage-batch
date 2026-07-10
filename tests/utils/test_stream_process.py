@@ -10,13 +10,15 @@ import sys
 import pytest
 
 from git_stage_batch.utils.command import (
+    run_command,
+    start_command,
+    stream_command,
+)
+from git_stage_batch.utils.command_events import (
     CapturedFd,
     ExitEvent,
     OutputEvent,
-    run_command,
     StdinClosedEvent,
-    start_command,
-    stream_command,
 )
 
 

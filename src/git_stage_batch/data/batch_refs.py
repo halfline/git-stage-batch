@@ -16,7 +16,8 @@ from ..batch.state_refs import (
     sync_batch_state_refs,
 )
 from ..utils.file_io import read_text_file_contents, write_text_file_contents
-from ..utils.git import run_git_command, update_git_refs
+from ..utils.git_command import run_git_command
+from ..utils.git_refs import update_git_refs
 from ..utils.paths import (
     get_batch_directory_path,
     get_batch_metadata_file_path,

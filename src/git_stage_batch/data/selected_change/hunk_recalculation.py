@@ -17,7 +17,6 @@ from ...core.hashing import (
     compute_text_file_deletion_hash,
 )
 from ...core.line_identity import preserve_line_ids_from_previous_view
-from ...core.line_selection import write_line_ids_file
 from ...core.models import (
     BinaryFileChange,
     GitlinkChange,
@@ -32,6 +31,7 @@ from ...utils.paths import (
     get_processed_skip_ids_file_path,
 )
 from ..auto_advance import resolve_auto_advance
+from ..line_id_files import write_line_ids_file
 from .. import change_freshness as _change_freshness
 from .. import file_hunk_display as _file_hunk_display
 from .. import line_state as _line_state

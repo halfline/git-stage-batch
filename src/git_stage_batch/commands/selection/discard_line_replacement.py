@@ -12,13 +12,15 @@ from ...batch.display import annotate_with_batch_source_working_lines
 from ...batch.operations import create_batch
 from ...batch.ownership import (
     BatchOwnership,
-    ReplacementLineRun,
-    derive_replacement_line_runs_from_lines,
     merge_batch_ownership,
     remap_batch_ownership_with_lineage,
     translate_lines_to_batch_ownership,
 )
 from ...batch.query import read_batch_metadata
+from ...batch.replacement_line_runs import (
+    ReplacementLineRun,
+    derive_replacement_line_runs_from_lines,
+)
 from ...batch.selection import require_line_selection_in_view
 from ...batch.source_advancement import advance_source_lines_preserving_existing_presence
 from ...batch.source_refresh import (

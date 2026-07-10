@@ -21,7 +21,7 @@ from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import BatchMetadataError
 from git_stage_batch.utils.file_io import write_text_file_contents
-from git_stage_batch.utils.git import run_git_command
+from git_stage_batch.utils.git_command import run_git_command
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,
     get_batch_metadata_file_path,

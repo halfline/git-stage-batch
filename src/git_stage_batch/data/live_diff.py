@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..utils.git import stream_git_diff
+from ..utils.git_command import stream_git_diff
 
 
 def stream_live_git_diff(**kwargs):

@@ -26,7 +26,8 @@ from ...data.session import snapshot_file_if_untracked
 from ...data.undo import undo_checkpoint
 from ...i18n import _
 from ...utils.file_io import append_lines_to_file, read_text_file_line_set
-from ...utils.git import git_remove_paths, run_git_command
+from ...utils.git_command import run_git_command
+from ...utils.git_worktree import git_remove_paths
 from ...utils.paths import get_block_list_file_path, get_context_lines
 from ..selection.action_completion import finish_selected_change_action
 from ..selection.selected_change_discarding import (

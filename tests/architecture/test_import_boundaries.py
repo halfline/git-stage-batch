@@ -73,7 +73,7 @@ def test_diff_parser_does_not_import_snapshot_runtime_io():
     }
 
     assert "git_stage_batch.data.selected_change.snapshots" not in imported_modules
-    assert "git_stage_batch.utils.git" not in imported_modules
+    assert "git_stage_batch.utils.git_command" not in imported_modules
     assert "git_stage_batch.utils.journal" not in imported_modules
     assert "git_stage_batch.utils.paths" not in imported_modules
     assert not hasattr(
@@ -169,6 +169,67 @@ def test_core_modules_do_not_import_editor():
                 relative_path = path.relative_to(REPO_ROOT)
                 violations.append(f"{relative_path}:{node.lineno} imports {imported_module}")
 
+    assert violations == []
+
+
+def test_line_id_file_persistence_stays_in_data_layer():
+    """Line-selection core code should not own processed-ID files."""
+    line_selection_path = SRC_ROOT / "core" / "line_selection.py"
+    line_id_files_path = SRC_ROOT / "data" / "line_id_files.py"
+    line_selection = __import__(
+        "git_stage_batch.core.line_selection",
+        fromlist=["line_selection"],
+    )
+    line_id_files = __import__(
+        "git_stage_batch.data.line_id_files",
+        fromlist=["line_id_files"],
+    )
+    file_helper_names = {
+        "read_line_ids_file",
+        "write_line_ids_file",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "include.py": file_helper_names,
+        SRC_ROOT / "commands" / "skip.py": file_helper_names,
+        SRC_ROOT / "commands" / "file_scope" / "include_file_replacement.py": {
+            "write_line_ids_file",
+        },
+        SRC_ROOT / "data" / "file_hunk_display.py": {"write_line_ids_file"},
+        SRC_ROOT / "data" / "line_state.py": {"read_line_ids_file"},
+        SRC_ROOT / "data" / "selected_change" / "hunk_recalculation.py": {
+            "write_line_ids_file",
+        },
+    }
+    line_selection_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(line_selection_path)
+    }
+    line_id_file_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(line_id_files_path)
+    }
+    violations = []
+
+    for path in SRC_ROOT.rglob("*.py"):
+        imported_line_id_names = set()
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.core.line_selection":
+                disallowed_names = imported_names & file_helper_names
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+            if imported_module == "git_stage_batch.data.line_id_files":
+                imported_line_id_names |= imported_names & file_helper_names
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_line_id_names
+
+    assert file_helper_names <= vars(line_id_files).keys()
+    assert file_helper_names.isdisjoint(vars(line_selection))
+    assert "git_stage_batch.utils.file_io" not in line_selection_imports
+    assert "git_stage_batch.utils.file_io" in line_id_file_imports
     assert violations == []
 
 
@@ -841,9 +902,9 @@ def test_ignore_file_helpers_stay_in_data_layer():
         "git_stage_batch.data.ignore_files",
         fromlist=["ignore_files"],
     )
-    git_utils = __import__(
-        "git_stage_batch.utils.git",
-        fromlist=["git"],
+    git_command = __import__(
+        "git_stage_batch.utils.git_command",
+        fromlist=["git_command"],
     )
     public_names = {
         "add_file_to_gitignore",
@@ -875,7 +936,7 @@ def test_ignore_file_helpers_stay_in_data_layer():
 
     for public_name in public_names:
         assert public_name in vars(ignore_files)
-    assert public_names.isdisjoint(vars(git_utils))
+    assert public_names.isdisjoint(vars(git_command))
 
     for path in SRC_ROOT.rglob("*.py"):
         if path == SRC_ROOT / "data" / "ignore_files.py":
@@ -888,7 +949,7 @@ def test_ignore_file_helpers_stay_in_data_layer():
             imported_names = {alias.name for alias in node.names}
             if imported_module == "git_stage_batch.data.ignore_files":
                 imported_public_names |= imported_names & public_names
-            if imported_module == "git_stage_batch.utils.git":
+            if imported_module == "git_stage_batch.utils.git_command":
                 moved_names = imported_names & public_names
                 if moved_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -903,9 +964,15 @@ def test_ignore_file_helpers_stay_in_data_layer():
     assert violations == []
 
 
+def test_git_command_module_uses_specific_filename():
+    """Git command execution should not use the generic git module name."""
+    assert not (SRC_ROOT / "utils" / "git.py").exists()
+    assert (SRC_ROOT / "utils" / "git_command.py").exists()
+
+
 def test_git_index_lock_waiting_stays_out_of_git_command_module():
     """Git command execution should delegate index-lock waiting."""
-    git_path = SRC_ROOT / "utils" / "git.py"
+    git_path = SRC_ROOT / "utils" / "git_command.py"
     git_text = git_path.read_text()
     git_imports = _import_from_nodes(git_path)
     imports_lock_module = any(
@@ -913,7 +980,10 @@ def test_git_index_lock_waiting_stays_out_of_git_command_module():
         and any(alias.name == "git_index_lock" for alias in node.names)
         for imported_module, node in git_imports
     )
-    git_utils = __import__("git_stage_batch.utils.git", fromlist=["git"])
+    git_command = __import__(
+        "git_stage_batch.utils.git_command",
+        fromlist=["git_command"],
+    )
     git_index_lock = __import__(
         "git_stage_batch.utils.git_index_lock",
         fromlist=["git_index_lock"],
@@ -922,7 +992,7 @@ def test_git_index_lock_waiting_stays_out_of_git_command_module():
     assert imports_lock_module
     assert "wait_for_git_index_lock" in vars(git_index_lock)
     assert "DEFAULT_INDEX_LOCK_WAIT_SECONDS" in vars(git_index_lock)
-    assert "wait_for_git_index_lock" not in vars(git_utils)
+    assert "wait_for_git_index_lock" not in vars(git_command)
     assert "def wait_for_git_index_lock" not in git_text
     assert "def _git_index_lock_path" not in git_text
     assert "def _custom_index_lock_path" not in git_text
@@ -930,10 +1000,13 @@ def test_git_index_lock_waiting_stays_out_of_git_command_module():
 
 def test_git_object_io_stays_out_of_git_command_module():
     """Git object IO should live beside the command wrapper."""
-    git_path = SRC_ROOT / "utils" / "git.py"
+    git_path = SRC_ROOT / "utils" / "git_command.py"
     object_io_path = SRC_ROOT / "utils" / "git_object_io.py"
     git_text = git_path.read_text()
-    git_utils = __import__("git_stage_batch.utils.git", fromlist=["git"])
+    git_command = __import__(
+        "git_stage_batch.utils.git_command",
+        fromlist=["git_command"],
+    )
     git_object_io = __import__(
         "git_stage_batch.utils.git_object_io",
         fromlist=["git_object_io"],
@@ -948,7 +1021,7 @@ def test_git_object_io_stays_out_of_git_command_module():
     violations = []
 
     assert public_names <= vars(git_object_io).keys()
-    assert public_names.isdisjoint(vars(git_utils))
+    assert public_names.isdisjoint(vars(git_command))
 
     for public_name in public_names:
         assert f"def {public_name}" not in git_text
@@ -965,7 +1038,7 @@ def test_git_object_io_stays_out_of_git_command_module():
             continue
 
         for imported_module, node in _import_from_nodes(path):
-            if imported_module != "git_stage_batch.utils.git":
+            if imported_module != "git_stage_batch.utils.git_command":
                 continue
 
             moved_names = {alias.name for alias in node.names} & public_names
@@ -975,6 +1048,318 @@ def test_git_object_io_stays_out_of_git_command_module():
                 violations.append(f"{relative_path}:{node.lineno} imports {names}")
 
     assert violations == []
+
+
+def test_git_repository_helpers_stay_out_of_git_command_module():
+    """Git repository helpers should live beside the command wrapper."""
+    git_path = SRC_ROOT / "utils" / "git_command.py"
+    repository_path = SRC_ROOT / "utils" / "git_repository.py"
+    git_text = git_path.read_text()
+    git_command = __import__(
+        "git_stage_batch.utils.git_command",
+        fromlist=["git_command"],
+    )
+    git_repository = __import__(
+        "git_stage_batch.utils.git_repository",
+        fromlist=["git_repository"],
+    )
+    public_names = {
+        "require_git_repository",
+        "get_git_repository_root_path",
+        "get_git_directory_path",
+        "resolve_file_path_to_repo_relative",
+    }
+    violations = []
+
+    assert public_names <= vars(git_repository).keys()
+    assert public_names.isdisjoint(vars(git_command))
+
+    for public_name in public_names:
+        assert f"def {public_name}" not in git_text
+
+    git_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(git_path)
+    }
+    assert "git_stage_batch.utils.git_repository" not in git_imports
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == repository_path:
+            continue
+
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.utils.git_command":
+                continue
+
+            moved_names = {alias.name for alias in node.names} & public_names
+            if moved_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(moved_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
+def test_git_index_helpers_stay_out_of_git_command_module():
+    """Git index helpers should live beside the command wrapper."""
+    git_path = SRC_ROOT / "utils" / "git_command.py"
+    index_path = SRC_ROOT / "utils" / "git_index.py"
+    git_text = git_path.read_text()
+    git_command = __import__(
+        "git_stage_batch.utils.git_command",
+        fromlist=["git_command"],
+    )
+    git_index = __import__(
+        "git_stage_batch.utils.git_index",
+        fromlist=["git_index"],
+    )
+    public_names = {
+        "GitIndexEntryUpdate",
+        "temp_git_index",
+        "git_read_tree",
+        "git_update_index",
+        "git_refresh_index",
+        "git_update_gitlink",
+        "git_update_index_entries",
+        "git_write_tree",
+        "git_commit_tree",
+        "git_apply_to_index",
+        "git_add_paths",
+        "git_reset_paths",
+    }
+    violations = []
+
+    assert public_names <= vars(git_index).keys()
+    assert public_names.isdisjoint(vars(git_command))
+
+    for public_name in public_names:
+        assert f"def {public_name}" not in git_text
+        assert f"class {public_name}" not in git_text
+
+    git_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(git_path)
+    }
+    assert "git_stage_batch.utils.git_index" not in git_imports
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == index_path:
+            continue
+
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.utils.git_command":
+                continue
+
+            moved_names = {alias.name for alias in node.names} & public_names
+            if moved_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(moved_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
+def test_git_worktree_helpers_stay_out_of_git_command_module():
+    """Git worktree helpers should live beside the command wrapper."""
+    git_path = SRC_ROOT / "utils" / "git_command.py"
+    worktree_path = SRC_ROOT / "utils" / "git_worktree.py"
+    git_text = git_path.read_text()
+    git_command = __import__(
+        "git_stage_batch.utils.git_command",
+        fromlist=["git_command"],
+    )
+    git_worktree = __import__(
+        "git_stage_batch.utils.git_worktree",
+        fromlist=["git_worktree"],
+    )
+    public_names = {
+        "git_apply_to_worktree",
+        "git_checkout_paths",
+        "git_checkout_detached",
+        "git_remove_paths",
+        "git_reset_hard",
+        "git_apply_stash",
+        "git_submodule_update_checkout",
+    }
+    violations = []
+
+    assert public_names <= vars(git_worktree).keys()
+    assert public_names.isdisjoint(vars(git_command))
+
+    for public_name in public_names:
+        assert f"def {public_name}" not in git_text
+
+    git_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(git_path)
+    }
+    assert "git_stage_batch.utils.git_worktree" not in git_imports
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == worktree_path:
+            continue
+
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.utils.git_command":
+                continue
+
+            moved_names = {alias.name for alias in node.names} & public_names
+            if moved_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(moved_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
+def test_git_ref_helpers_stay_out_of_git_command_module():
+    """Git ref helpers should live beside the command wrapper."""
+    git_path = SRC_ROOT / "utils" / "git_command.py"
+    refs_path = SRC_ROOT / "utils" / "git_refs.py"
+    git_text = git_path.read_text()
+    git_command = __import__(
+        "git_stage_batch.utils.git_command",
+        fromlist=["git_command"],
+    )
+    git_refs = __import__(
+        "git_stage_batch.utils.git_refs",
+        fromlist=["git_refs"],
+    )
+    public_names = {"update_git_refs"}
+    violations = []
+
+    assert public_names <= vars(git_refs).keys()
+    assert public_names.isdisjoint(vars(git_command))
+    assert "_git_ref_exists" in vars(git_refs)
+
+    assert "def update_git_refs" not in git_text
+    assert "def _git_ref_exists" not in git_text
+
+    git_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(git_path)
+    }
+    assert "git_stage_batch.utils.git_refs" not in git_imports
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == refs_path:
+            continue
+
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.utils.git_command":
+                continue
+
+            moved_names = {alias.name for alias in node.names} & public_names
+            if moved_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(moved_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
+def test_command_event_models_stay_out_of_command_runner():
+    """Command event models should live beside the subprocess runner."""
+    command_runner = __import__(
+        "git_stage_batch.utils.command",
+        fromlist=["command"],
+    )
+    command_events = __import__(
+        "git_stage_batch.utils.command_events",
+        fromlist=["command_events"],
+    )
+    command_path = SRC_ROOT / "utils" / "command.py"
+    command_events_path = SRC_ROOT / "utils" / "command_events.py"
+    event_names = {
+        "CapturedFd",
+        "CommandEvent",
+        "CommandEventRole",
+        "ExitEvent",
+        "OutputEvent",
+        "StdinClosedEvent",
+    }
+    runner_names = {
+        "run_command",
+        "start_command",
+        "stream_command",
+    }
+    command_imports = _import_from_nodes(command_path)
+    imports_event_module = any(
+        imported_module == "git_stage_batch.utils"
+        and any(alias.name == "command_events" for alias in node.names)
+        for imported_module, node in command_imports
+    )
+    violations = []
+
+    assert event_names <= vars(command_events).keys()
+    assert event_names.isdisjoint(vars(command_runner))
+    assert runner_names <= vars(command_runner).keys()
+    assert "StreamingProcess" not in vars(command_runner)
+    assert imports_event_module
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == command_events_path:
+            continue
+
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.utils.command":
+                continue
+
+            moved_names = {alias.name for alias in node.names} & event_names
+            if moved_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(moved_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
+def test_command_streaming_process_state_stays_out_of_command_runner():
+    """Command process state should live beside the subprocess runner."""
+    command_runner = __import__(
+        "git_stage_batch.utils.command",
+        fromlist=["command"],
+    )
+    command_streaming = __import__(
+        "git_stage_batch.utils.command_streaming",
+        fromlist=["command_streaming"],
+    )
+    command_path = SRC_ROOT / "utils" / "command.py"
+    command_streaming_path = SRC_ROOT / "utils" / "command_streaming.py"
+    command_text = command_path.read_text()
+    command_streaming_text = command_streaming_path.read_text()
+    process_names = {
+        "SpawnedProcess",
+        "StreamingProcess",
+        "terminate_then_kill",
+    }
+    runner_names = {
+        "run_command",
+        "start_command",
+        "stream_command",
+    }
+    command_imports = _import_from_nodes(command_path)
+    command_streaming_imports = _import_from_nodes(command_streaming_path)
+    imports_streaming_module = any(
+        imported_module == "git_stage_batch.utils"
+        and any(alias.name == "command_streaming" for alias in node.names)
+        for imported_module, node in command_imports
+    )
+    streaming_imports_events = any(
+        imported_module == "git_stage_batch.utils"
+        and any(alias.name == "command_events" for alias in node.names)
+        for imported_module, node in command_streaming_imports
+    )
+
+    assert process_names <= vars(command_streaming).keys()
+    assert process_names.isdisjoint(vars(command_runner))
+    assert runner_names <= vars(command_runner).keys()
+    assert imports_streaming_module
+    assert streaming_imports_events
+    assert "import selectors" not in command_text
+    assert "import signal" not in command_text
+    assert "class StreamingProcess" not in command_text
+    assert "class StreamingProcess" in command_streaming_text
 
 
 def test_selected_change_batch_file_cache_does_not_import_hunk_navigation():
@@ -2204,6 +2589,20 @@ def test_argument_parser_delegates_multi_file_action_flow():
         imported_module
         for imported_module, _node in _import_from_nodes(parser_path)
     }
+    dispatch_paths = [
+        SRC_ROOT / "cli" / "apply_dispatch.py",
+        SRC_ROOT / "cli" / "discard_dispatch.py",
+        SRC_ROOT / "cli" / "include_dispatch.py",
+        SRC_ROOT / "cli" / "reset_dispatch.py",
+        SRC_ROOT / "cli" / "skip_dispatch.py",
+    ]
+    dispatch_imports = {
+        path: {
+            imported_module
+            for imported_module, _node in _import_from_nodes(path)
+        }
+        for path in dispatch_paths
+    }
     helper_path = (
         SRC_ROOT / "commands" / "file_scope" / "multi_file_actions.py"
     )
@@ -2216,7 +2615,11 @@ def test_argument_parser_delegates_multi_file_action_flow():
     assert "git_stage_batch.data.undo" not in parser_imports
     assert (
         "git_stage_batch.commands.file_scope.multi_file_actions"
-        in parser_imports
+        not in parser_imports
+    )
+    assert all(
+        "git_stage_batch.commands.file_scope.multi_file_actions" in imports
+        for imports in dispatch_imports.values()
     )
     assert "git_stage_batch.data.hunk_tracking" in helper_imports
     assert "git_stage_batch.data.undo" in helper_imports
@@ -2262,9 +2665,9 @@ def test_argument_parser_delegates_git_help_display():
 
     assert "git_stage_batch.cli.git_help" in parser_imports
     assert "git_stage_batch.utils.command" not in parser_imports
-    assert "git_stage_batch.utils.git" not in parser_imports
+    assert "git_stage_batch.utils.git_command" not in parser_imports
     assert "git_stage_batch.utils.command" in git_help_imports
-    assert "git_stage_batch.utils.git" in git_help_imports
+    assert "git_stage_batch.utils.git_command" in git_help_imports
     assert "GitHelpArgumentParser" in vars(git_help)
     assert moved_names.isdisjoint(vars(parser))
     assert "_show_git_stage_batch_help(" not in parser_text
@@ -2296,6 +2699,288 @@ def test_argument_parser_delegates_quick_action_expansion():
     assert "'if': ['include', '--file']" not in parser_text
 
 
+def test_argument_parser_delegates_show_dispatch():
+    """Parser construction should not own show workflow dispatch."""
+    parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    show_dispatch_path = SRC_ROOT / "cli" / "show_dispatch.py"
+    parser_text = parser_path.read_text()
+    parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    show_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(show_dispatch_path)
+    }
+    parser = __import__(
+        "git_stage_batch.cli.argument_parser",
+        fromlist=["argument_parser"],
+    )
+    show_dispatch = __import__(
+        "git_stage_batch.cli.show_dispatch",
+        fromlist=["show_dispatch"],
+    )
+    dispatch_helper_names = {
+        "_dispatch_show_from_batch",
+        "_dispatch_show_live",
+        "_validate_show_page_request",
+    }
+    show_runtime_imports = {
+        "git_stage_batch.batch.query",
+        "git_stage_batch.batch.source_selector",
+        "git_stage_batch.batch.validation",
+        "git_stage_batch.commands.show",
+        "git_stage_batch.commands.show_from",
+    }
+
+    assert "git_stage_batch.cli.show_dispatch" in parser_imports
+    assert show_runtime_imports.isdisjoint(parser_imports)
+    assert show_runtime_imports <= show_dispatch_imports
+    assert "git_stage_batch.cli.file_scope" in show_dispatch_imports
+    assert "git_stage_batch.cli.replacement_input" in show_dispatch_imports
+    assert "dispatch_show_command" in vars(show_dispatch)
+    assert dispatch_helper_names <= vars(show_dispatch).keys()
+    assert dispatch_helper_names.isdisjoint(vars(parser))
+    assert "def dispatch_show(" not in parser_text
+    assert "read_batch_metadata(" not in parser_text
+    assert "command_show_from_batch(" not in parser_text
+    assert "command_show(" not in parser_text
+
+
+def test_argument_parser_delegates_skip_dispatch():
+    """Parser construction should not own skip workflow dispatch."""
+    parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    skip_dispatch_path = SRC_ROOT / "cli" / "skip_dispatch.py"
+    parser_text = parser_path.read_text()
+    parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    skip_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(skip_dispatch_path)
+    }
+    parser = __import__(
+        "git_stage_batch.cli.argument_parser",
+        fromlist=["argument_parser"],
+    )
+    skip_dispatch = __import__(
+        "git_stage_batch.cli.skip_dispatch",
+        fromlist=["skip_dispatch"],
+    )
+
+    assert "git_stage_batch.cli.skip_dispatch" in parser_imports
+    assert "git_stage_batch.commands.skip" not in parser_imports
+    assert "git_stage_batch.commands.skip" in skip_dispatch_imports
+    assert (
+        "git_stage_batch.commands.file_scope.multi_file_actions"
+        in skip_dispatch_imports
+    )
+    assert "git_stage_batch.cli.file_scope" in skip_dispatch_imports
+    assert "dispatch_skip_command" in vars(skip_dispatch)
+    assert "command_skip" not in vars(parser)
+    assert "command_skip_file" not in vars(parser)
+    assert "command_skip_line" not in vars(parser)
+    assert "def dispatch_skip(" not in parser_text
+    assert "skip_each_resolved_file(" not in parser_text
+    assert "command_skip(" not in parser_text
+    assert "command_skip_file(" not in parser_text
+    assert "command_skip_line(" not in parser_text
+
+
+def test_argument_parser_delegates_apply_dispatch():
+    """Parser construction should not own apply workflow dispatch."""
+    parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    apply_dispatch_path = SRC_ROOT / "cli" / "apply_dispatch.py"
+    parser_text = parser_path.read_text()
+    parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    apply_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(apply_dispatch_path)
+    }
+    parser = __import__(
+        "git_stage_batch.cli.argument_parser",
+        fromlist=["argument_parser"],
+    )
+    apply_dispatch = __import__(
+        "git_stage_batch.cli.apply_dispatch",
+        fromlist=["apply_dispatch"],
+    )
+    apply_runtime_imports = {
+        "git_stage_batch.commands.apply_from",
+        "git_stage_batch.commands.file_scope.multi_file_actions",
+    }
+
+    assert "git_stage_batch.cli.apply_dispatch" in parser_imports
+    assert "git_stage_batch.commands.apply_from" not in parser_imports
+    assert apply_runtime_imports <= apply_dispatch_imports
+    assert "git_stage_batch.cli.file_scope" in apply_dispatch_imports
+    assert "dispatch_apply_command" in vars(apply_dispatch)
+    assert "command_apply_from_batch" not in vars(parser)
+    assert "def dispatch_apply(" not in parser_text
+    assert "command_apply_from_batch(" not in parser_text
+    assert "apply --from" not in parser_text
+
+
+def test_argument_parser_delegates_reset_dispatch():
+    """Parser construction should not own reset workflow dispatch."""
+    parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    reset_dispatch_path = SRC_ROOT / "cli" / "reset_dispatch.py"
+    parser_text = parser_path.read_text()
+    parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    reset_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(reset_dispatch_path)
+    }
+    parser = __import__(
+        "git_stage_batch.cli.argument_parser",
+        fromlist=["argument_parser"],
+    )
+    reset_dispatch = __import__(
+        "git_stage_batch.cli.reset_dispatch",
+        fromlist=["reset_dispatch"],
+    )
+    reset_runtime_imports = {
+        "git_stage_batch.commands.reset",
+        "git_stage_batch.commands.file_scope.multi_file_actions",
+    }
+
+    assert "git_stage_batch.cli.reset_dispatch" in parser_imports
+    assert "git_stage_batch.commands.reset" not in parser_imports
+    assert reset_runtime_imports <= reset_dispatch_imports
+    assert "git_stage_batch.cli.file_scope" in reset_dispatch_imports
+    assert "dispatch_reset_command" in vars(reset_dispatch)
+    assert "command_reset_from_batch" not in vars(parser)
+    assert "def dispatch_reset(" not in parser_text
+    assert "command_reset_from_batch(" not in parser_text
+    assert "reset --from" not in parser_text
+
+
+def test_argument_parser_delegates_include_dispatch():
+    """Parser construction should not own include workflow dispatch."""
+    parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    include_dispatch_path = SRC_ROOT / "cli" / "include_dispatch.py"
+    parser_text = parser_path.read_text()
+    parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    include_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(include_dispatch_path)
+    }
+    parser = __import__(
+        "git_stage_batch.cli.argument_parser",
+        fromlist=["argument_parser"],
+    )
+    include_dispatch = __import__(
+        "git_stage_batch.cli.include_dispatch",
+        fromlist=["include_dispatch"],
+    )
+    include_runtime_imports = {
+        "git_stage_batch.commands.include",
+        "git_stage_batch.commands.include_from",
+        "git_stage_batch.commands.file_scope.multi_file_actions",
+    }
+    include_command_names = {
+        "command_include",
+        "command_include_file",
+        "command_include_file_as",
+        "command_include_from_batch",
+        "command_include_line",
+        "command_include_line_as",
+        "command_include_to_batch",
+        "include_each_resolved_file",
+    }
+
+    assert "git_stage_batch.cli.include_dispatch" in parser_imports
+    assert "git_stage_batch.commands.include" not in parser_imports
+    assert "git_stage_batch.commands.include_from" not in parser_imports
+    assert include_runtime_imports <= include_dispatch_imports
+    assert "git_stage_batch.cli.file_scope" in include_dispatch_imports
+    assert "git_stage_batch.cli.replacement_input" in include_dispatch_imports
+    assert "dispatch_include_command" in vars(include_dispatch)
+    assert "_dispatch_include_replacement" in vars(include_dispatch)
+    assert include_command_names.isdisjoint(vars(parser))
+    assert "def dispatch_include(" not in parser_text
+    assert "include_each_resolved_file(" not in parser_text
+    assert "command_include_from_batch(" not in parser_text
+    assert "command_include_to_batch(" not in parser_text
+    assert "command_include_line_as(" not in parser_text
+    assert "command_include_line(" not in parser_text
+    assert "command_include_file_as(" not in parser_text
+    assert "command_include_file(" not in parser_text
+    assert "command_include(" not in parser_text
+    assert "include --from" not in parser_text
+    assert "include --to" not in parser_text
+
+
+def test_argument_parser_delegates_discard_dispatch():
+    """Parser construction should not own discard workflow dispatch."""
+    parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    discard_dispatch_path = SRC_ROOT / "cli" / "discard_dispatch.py"
+    parser_text = parser_path.read_text()
+    parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    discard_dispatch_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(discard_dispatch_path)
+    }
+    parser = __import__(
+        "git_stage_batch.cli.argument_parser",
+        fromlist=["argument_parser"],
+    )
+    discard_dispatch = __import__(
+        "git_stage_batch.cli.discard_dispatch",
+        fromlist=["discard_dispatch"],
+    )
+    discard_runtime_imports = {
+        "git_stage_batch.commands.discard",
+        "git_stage_batch.commands.discard_from",
+        "git_stage_batch.commands.file_scope.multi_file_actions",
+    }
+    discard_command_names = {
+        "command_discard",
+        "command_discard_file",
+        "command_discard_file_as",
+        "command_discard_from_batch",
+        "command_discard_line",
+        "command_discard_line_as_to_batch",
+        "command_discard_to_batch",
+        "discard_to_batch_each_resolved_file",
+    }
+
+    assert "git_stage_batch.cli.discard_dispatch" in parser_imports
+    assert "git_stage_batch.commands.discard" not in parser_imports
+    assert "git_stage_batch.commands.discard_from" not in parser_imports
+    assert discard_runtime_imports <= discard_dispatch_imports
+    assert "git_stage_batch.cli.file_scope" in discard_dispatch_imports
+    assert "git_stage_batch.cli.replacement_input" in discard_dispatch_imports
+    assert "dispatch_discard_command" in vars(discard_dispatch)
+    assert "_dispatch_discard_replacement" in vars(discard_dispatch)
+    assert discard_command_names.isdisjoint(vars(parser))
+    assert "def dispatch_discard(" not in parser_text
+    assert "discard_to_batch_each_resolved_file(" not in parser_text
+    assert "command_discard_from_batch(" not in parser_text
+    assert "command_discard_to_batch(" not in parser_text
+    assert "command_discard_line_as_to_batch(" not in parser_text
+    assert "command_discard_line(" not in parser_text
+    assert "command_discard_file_as(" not in parser_text
+    assert "command_discard_file(" not in parser_text
+    assert "command_discard(" not in parser_text
+    assert "discard --from" not in parser_text
+    assert "discard --to" not in parser_text
+    assert "git_stage_batch.exceptions" not in parser_imports
+
+
 def test_argument_parser_delegates_replacement_input_decoding():
     """Parser branches should not own replacement payload decoding."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"
@@ -2309,6 +2994,18 @@ def test_argument_parser_delegates_replacement_input_decoding():
         imported_module
         for imported_module, _node in _import_from_nodes(replacement_input_path)
     }
+    dispatch_paths = [
+        SRC_ROOT / "cli" / "discard_dispatch.py",
+        SRC_ROOT / "cli" / "include_dispatch.py",
+        SRC_ROOT / "cli" / "show_dispatch.py",
+    ]
+    dispatch_imports = {
+        path: {
+            imported_module
+            for imported_module, _node in _import_from_nodes(path)
+        }
+        for path in dispatch_paths
+    }
     parser = __import__(
         "git_stage_batch.cli.argument_parser",
         fromlist=["argument_parser"],
@@ -2318,10 +3015,15 @@ def test_argument_parser_delegates_replacement_input_decoding():
         fromlist=["replacement_input"],
     )
 
-    assert "git_stage_batch.cli.replacement_input" in parser_imports
+    assert "git_stage_batch.cli.replacement_input" not in parser_imports
+    assert all(
+        "git_stage_batch.cli.replacement_input" in imports
+        for imports in dispatch_imports.values()
+    )
     assert "git_stage_batch.core.replacement" not in parser_imports
     assert "git_stage_batch.core.replacement" in replacement_input_imports
     assert "resolve_replacement_text" in vars(replacement_input)
+    assert "resolve_replacement_text" not in vars(parser)
     assert "_resolve_replacement_text" not in vars(parser)
     assert "ReplacementText" not in parser_text
     assert "stdin.buffer.read" not in parser_text
@@ -3082,14 +3784,21 @@ def test_argument_parser_uses_auto_advance_option_module():
     assert "Leave no hunk selected after the command completes" not in parser_text
 
 
-def test_cli_dispatch_delegates_noninteractive_execution():
-    """CLI dispatch should launch TUI or delegate parsed command execution."""
-    dispatch_path = SRC_ROOT / "cli" / "dispatch.py"
+def test_runtime_dispatch_delegates_noninteractive_execution():
+    """Runtime dispatch should launch TUI or delegate parsed command execution."""
+    runtime_path = SRC_ROOT / "runtime.py"
     imported_modules = {
         imported_module
-        for imported_module, _node in _import_from_nodes(dispatch_path)
+        for imported_module, _node in _import_from_nodes(runtime_path)
     }
+    runtime = __import__(
+        "git_stage_batch.runtime",
+        fromlist=["runtime"],
+    )
 
+    assert not (SRC_ROOT / "cli" / "mode_dispatch.py").exists()
+    assert not (SRC_ROOT / "cli" / "dispatch.py").exists()
+    assert "dispatch_cli_mode" in vars(runtime)
     assert "git_stage_batch.commands" not in imported_modules
     assert "git_stage_batch.commands.interactive" not in imported_modules
     assert "git_stage_batch.cli.execution" in imported_modules
@@ -3102,7 +3811,7 @@ def test_tui_cli_escape_does_not_import_dispatch():
     action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
     cli_escape_path = SRC_ROOT / "tui" / "cli_escape.py"
     execution_path = SRC_ROOT / "cli" / "execution.py"
-    dispatch_path = SRC_ROOT / "cli" / "dispatch.py"
+    runtime_path = SRC_ROOT / "runtime.py"
     interactive_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(interactive_path)
@@ -3119,9 +3828,9 @@ def test_tui_cli_escape_does_not_import_dispatch():
         imported_module
         for imported_module, _node in _import_from_nodes(execution_path)
     }
-    dispatch_imports = {
+    runtime_imports = {
         imported_module
-        for imported_module, _node in _import_from_nodes(dispatch_path)
+        for imported_module, _node in _import_from_nodes(runtime_path)
     }
 
     assert "git_stage_batch.tui.action_dispatch" in interactive_imports
@@ -3129,8 +3838,10 @@ def test_tui_cli_escape_does_not_import_dispatch():
     assert "git_stage_batch.cli.argument_parser" in cli_escape_imports
     assert "git_stage_batch.cli.execution" in cli_escape_imports
     assert "git_stage_batch.cli.dispatch" not in cli_escape_imports
+    assert "git_stage_batch.cli.mode_dispatch" not in cli_escape_imports
+    assert "git_stage_batch.runtime" not in cli_escape_imports
     assert "git_stage_batch.tui.interactive" not in execution_imports
-    assert "git_stage_batch.tui.interactive" in dispatch_imports
+    assert "git_stage_batch.tui.interactive" in runtime_imports
 
 
 def test_tui_batch_menu_owns_batch_management_actions():
@@ -4627,9 +5338,15 @@ def test_argument_parser_does_not_import_command_facade():
     assert "from .. import commands" not in parser_text
     assert "commands.command_" not in parser_text
     assert "commands.DEFAULT_PROMPT_FORMAT" not in parser_text
-    assert "git_stage_batch.commands.show" in imported_modules
-    assert "git_stage_batch.commands.include" in imported_modules
-    assert "git_stage_batch.commands.discard" in imported_modules
+    assert "git_stage_batch.cli.show_dispatch" in imported_modules
+    assert "git_stage_batch.commands.show" not in imported_modules
+    assert "git_stage_batch.commands.show_from" not in imported_modules
+    assert "git_stage_batch.cli.include_dispatch" in imported_modules
+    assert "git_stage_batch.commands.include" not in imported_modules
+    assert "git_stage_batch.commands.include_from" not in imported_modules
+    assert "git_stage_batch.cli.discard_dispatch" in imported_modules
+    assert "git_stage_batch.commands.discard" not in imported_modules
+    assert "git_stage_batch.commands.discard_from" not in imported_modules
     assert "git_stage_batch.commands.interactive" not in imported_modules
     assert "git_stage_batch.commands.status" in imported_modules
 
@@ -4730,6 +5447,50 @@ def test_suggest_fixup_state_stays_in_data_layer():
     assert "git_stage_batch.utils.paths" in data_imports
     assert command_state_names.isdisjoint(vars(suggest_fixup))
     assert violations == []
+
+
+def test_suggest_fixup_history_stays_in_fixup_support():
+    """Git-history lookup should stay below suggest-fixup entrypoints."""
+    command_path = SRC_ROOT / "commands" / "suggest_fixup.py"
+    history_path = SRC_ROOT / "commands" / "fixup" / "history.py"
+    command_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(command_path)
+    }
+    history_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(history_path)
+    }
+    command_tree = ast.parse(command_path.read_text(), filename=str(command_path))
+    command_defined_functions = {
+        node.name
+        for node in command_tree.body
+        if isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef))
+    }
+    history = __import__(
+        "git_stage_batch.commands.fixup.history",
+        fromlist=["history"],
+    )
+    history_names = {
+        "get_commit_details",
+        "find_next_fixup_candidate",
+        "show_commit_diff_for_file",
+    }
+    old_command_helper_names = {
+        "_get_commit_details",
+        "_find_next_fixup_candidate",
+        "_show_commit_diff_for_file",
+    }
+    command_names = {
+        "command_suggest_fixup",
+        "command_suggest_fixup_line",
+    }
+
+    assert history_names <= vars(history).keys()
+    assert old_command_helper_names.isdisjoint(command_defined_functions)
+    assert command_names.isdisjoint(vars(history))
+    assert "git_stage_batch.commands.fixup.history" in command_imports
+    assert "git_stage_batch.utils.git_command" in history_imports
 
 
 def test_selected_line_source_refresh_uses_public_api():
@@ -4959,35 +5720,112 @@ def test_batch_source_advancement_uses_public_entry_helpers():
     assert violations == []
 
 
-def test_batch_ownership_uses_public_absence_builder():
-    """Cross-module ownership callers should import the public absence builder."""
+def test_batch_absence_content_owns_public_builders():
+    """Absence content construction should live outside ownership metadata."""
+    absence_content = __import__(
+        "git_stage_batch.batch.absence_content",
+        fromlist=["absence_content"],
+    )
     ownership = __import__(
         "git_stage_batch.batch.ownership",
         fromlist=["ownership"],
     )
     public_names = {
         "AbsenceContentBuilder",
+        "build_absence_content_from_range",
+        "copy_absence_content",
     }
     private_names = {
         "_AbsenceContentBuilder",
+        "_build_absence_content_from_range",
+        "_copy_absence_content",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "batch_transform" / "sift_results.py": public_names,
+        SRC_ROOT / "batch" / "ownership.py": public_names,
+        SRC_ROOT / "commands" / "batch_transform" / "sift_results.py": {
+            "AbsenceContentBuilder",
+        },
     }
     violations = []
 
-    assert "AbsenceContentBuilder" in vars(ownership)
-    assert private_names.isdisjoint(vars(ownership))
+    for public_name in public_names:
+        assert public_name in vars(absence_content)
+    assert "AbsenceContentBuilder" not in vars(ownership)
+    assert private_names.isdisjoint(vars(absence_content))
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == SRC_ROOT / "batch" / "ownership.py":
+        if path == SRC_ROOT / "batch" / "absence_content.py":
             continue
 
         imports = _import_from_nodes(path)
         imported_public_names = set()
 
         for imported_module, node in imports:
-            if imported_module != "git_stage_batch.batch.ownership":
+            if imported_module != "git_stage_batch.batch.absence_content":
+                continue
+
+            imported_names = {alias.name for alias in node.names}
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & private_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
+def test_batch_replacement_line_runs_own_public_derivation():
+    """Replacement run derivation should live outside ownership metadata."""
+    replacement_line_runs = __import__(
+        "git_stage_batch.batch.replacement_line_runs",
+        fromlist=["replacement_line_runs"],
+    )
+    ownership = __import__(
+        "git_stage_batch.batch.ownership",
+        fromlist=["ownership"],
+    )
+    public_names = {
+        "ReplacementLineRun",
+        "derive_replacement_line_runs_from_lines",
+    }
+    private_names = {
+        "_ReplacementLineRun",
+        "_derive_replacement_line_runs_from_lines",
+    }
+    expected_imports = {
+        SRC_ROOT / "batch" / "ownership.py": {
+            "ReplacementLineRun",
+        },
+        SRC_ROOT / "batch" / "source_refresh.py": {
+            "ReplacementLineRun",
+        },
+        SRC_ROOT / "commands" / "selection" / "discard_line_replacement.py": (
+            public_names
+        ),
+        SRC_ROOT / "commands" / "selection" / "replacement_selection.py": (
+            public_names
+        ),
+    }
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(replacement_line_runs)
+        assert public_name not in vars(ownership)
+    assert private_names.isdisjoint(vars(replacement_line_runs))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "batch" / "replacement_line_runs.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            if imported_module != "git_stage_batch.batch.replacement_line_runs":
                 continue
 
             imported_names = {alias.name for alias in node.names}
@@ -5210,14 +6048,18 @@ def test_batch_transform_sift_persistence_owns_file_writes():
             "TextFileChangeType",
             "normalized_text_change_type",
         },
-        "git_stage_batch.utils.git": {
-            "create_git_blob",
+        "git_stage_batch.utils.git_command": {
+            "run_git_command",
+        },
+        "git_stage_batch.utils.git_index": {
             "git_commit_tree",
             "git_read_tree",
             "git_update_index",
             "git_write_tree",
-            "run_git_command",
             "temp_git_index",
+        },
+        "git_stage_batch.utils.git_object_io": {
+            "create_git_blob",
         },
         "git_stage_batch.utils.file_io": {
             "write_text_file_contents",
@@ -5387,6 +6229,197 @@ def test_batch_realized_entries_uses_public_entry_helpers():
     assert violations == []
 
 
+def test_baseline_correspondence_stays_out_of_merge_module():
+    """Baseline restoration mapping should live outside merge operations."""
+    baseline_correspondence = __import__(
+        "git_stage_batch.batch.baseline_correspondence",
+        fromlist=["baseline_correspondence"],
+    )
+    merge = __import__(
+        "git_stage_batch.batch.merge",
+        fromlist=["merge"],
+    )
+    correspondence_path = SRC_ROOT / "batch" / "baseline_correspondence.py"
+    merge_path = SRC_ROOT / "batch" / "merge.py"
+    public_names = {
+        "BaselineCorrespondence",
+        "BaselineRegion",
+        "RegionKind",
+        "build_baseline_correspondence",
+    }
+    merge_dependency_names = {
+        "build_baseline_correspondence",
+    }
+    stale_merge_names = public_names | {"_build_baseline_correspondence"}
+    imported_by_merge = set()
+    violations = []
+
+    assert public_names <= vars(baseline_correspondence).keys()
+    assert stale_merge_names.isdisjoint(vars(merge))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == correspondence_path:
+            continue
+
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+
+            if imported_module == "git_stage_batch.batch.merge":
+                disallowed_names = imported_names & stale_merge_names
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+            if imported_module != "git_stage_batch.batch.baseline_correspondence":
+                continue
+
+            if path == merge_path:
+                imported_by_merge |= imported_names & public_names
+                for alias in node.names:
+                    if alias.name not in public_names:
+                        continue
+                    if alias.asname is None or not alias.asname.startswith("_"):
+                        relative_path = path.relative_to(REPO_ROOT)
+                        violations.append(
+                            f"{relative_path}:{node.lineno} imports {alias.name} without private alias"
+                        )
+
+    assert merge_dependency_names <= imported_by_merge
+    assert violations == []
+
+
+def test_discard_reversal_stays_out_of_merge_module():
+    """Discard presence reversal should live outside merge operations."""
+    discard_reversal = __import__(
+        "git_stage_batch.batch.discard_reversal",
+        fromlist=["discard_reversal"],
+    )
+    merge = __import__(
+        "git_stage_batch.batch.merge",
+        fromlist=["merge"],
+    )
+    discard_reversal_path = SRC_ROOT / "batch" / "discard_reversal.py"
+    merge_path = SRC_ROOT / "batch" / "merge.py"
+    public_names = {
+        "reverse_presence_constraints",
+    }
+    stale_merge_names = public_names | {"_reverse_presence_constraints"}
+    dependency_names = {
+        "BaselineCorrespondence",
+        "RegionKind",
+    }
+    imported_by_merge = set()
+    violations = []
+    discard_reversal_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(discard_reversal_path)
+    }
+
+    assert public_names <= vars(discard_reversal).keys()
+    assert stale_merge_names.isdisjoint(vars(merge))
+    assert dependency_names.isdisjoint(vars(discard_reversal))
+    assert "git_stage_batch.batch.merge" not in discard_reversal_imports
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == discard_reversal_path:
+            continue
+
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+
+            if imported_module == "git_stage_batch.batch.merge":
+                disallowed_names = imported_names & stale_merge_names
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+            if imported_module != "git_stage_batch.batch.discard_reversal":
+                continue
+
+            if path == merge_path:
+                imported_by_merge |= imported_names & public_names
+                for alias in node.names:
+                    if alias.name not in public_names:
+                        continue
+                    if alias.asname is None or not alias.asname.startswith("_"):
+                        relative_path = path.relative_to(REPO_ROOT)
+                        violations.append(
+                            f"{relative_path}:{node.lineno} imports {alias.name} without private alias"
+                        )
+
+    assert public_names <= imported_by_merge
+    assert violations == []
+
+
+def test_realized_boundaries_stay_out_of_merge_module():
+    """Realized-entry boundary lookup should live outside merge operations."""
+    realized_boundaries = __import__(
+        "git_stage_batch.batch.realized_boundaries",
+        fromlist=["realized_boundaries"],
+    )
+    merge = __import__(
+        "git_stage_batch.batch.merge",
+        fromlist=["merge"],
+    )
+    realized_boundaries_path = SRC_ROOT / "batch" / "realized_boundaries.py"
+    merge_path = SRC_ROOT / "batch" / "merge.py"
+    public_names = {
+        "boundary_choices_after_source_line",
+        "find_boundary_after_source_line",
+        "find_realization_fallback_boundary",
+        "sequence_present_at_boundary",
+    }
+    stale_merge_names = public_names | {
+        "_boundary_choices_after_source_line",
+        "_find_boundary_after_source_line",
+        "_find_realization_fallback_boundary",
+        "_sequence_present_at_boundary",
+    }
+    imported_by_merge = set()
+    violations = []
+    realized_boundary_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(realized_boundaries_path)
+    }
+
+    assert public_names <= vars(realized_boundaries).keys()
+    assert stale_merge_names.isdisjoint(vars(merge))
+    assert "git_stage_batch.batch.merge" not in realized_boundary_imports
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == realized_boundaries_path:
+            continue
+
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+
+            if imported_module == "git_stage_batch.batch.merge":
+                disallowed_names = imported_names & stale_merge_names
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+            if imported_module != "git_stage_batch.batch.realized_boundaries":
+                continue
+
+            if path == merge_path:
+                imported_by_merge |= imported_names & public_names
+                for alias in node.names:
+                    if alias.name not in public_names:
+                        continue
+                    if alias.asname is None or not alias.asname.startswith("_"):
+                        relative_path = path.relative_to(REPO_ROOT)
+                        violations.append(
+                            f"{relative_path}:{node.lineno} imports {alias.name} without private alias"
+                        )
+
+    assert public_names <= imported_by_merge
+    assert violations == []
+
+
 def test_batch_merge_candidates_uses_public_data_types():
     """Batch callers should import public merge-candidate data types."""
     merge_candidates = __import__(
@@ -5502,21 +6535,37 @@ def test_output_owns_operation_candidate_preview_rendering():
         "git_stage_batch.output.candidate_preview",
         fromlist=["candidate_preview"],
     )
+    candidate_preview_summary = __import__(
+        "git_stage_batch.output.candidate_preview_summary",
+        fromlist=["candidate_preview_summary"],
+    )
     show_from_path = SRC_ROOT / "commands" / "show_from.py"
     candidate_preview_path = SRC_ROOT / "output" / "candidate_preview.py"
-    public_names = {
+    candidate_summary_path = SRC_ROOT / "output" / "candidate_preview_summary.py"
+    public_renderer_names = {
         "render_operation_candidate",
         "render_operation_candidate_overview",
     }
-    moved_names = {
-        "_candidate_overview_subject",
+    renderer_helper_names = {
         "_execute_candidate_command",
         "_print_candidate_buffer_diff",
         "_show_candidate_command",
-        "_summarize_ambiguity_block",
-        "_summarize_candidate_target",
+    }
+    summary_names = {
+        "CandidateSnippetLine",
+        "CandidateTargetSummary",
+        "candidate_overview_subject",
+        "candidate_target_summary",
+        "common_candidate_target_indexes",
+        "plain_candidate_snippet_lines",
+        "summarize_ambiguity_block",
+    }
+    old_renderer_summary_names = {
         "_CandidateSnippetLine",
         "_CandidateTargetSummary",
+        "_candidate_overview_subject",
+        "_summarize_ambiguity_block",
+        "_summarize_candidate_target",
     }
     show_from_tree = ast.parse(show_from_path.read_text(), filename=str(show_from_path))
     show_from_helpers = {
@@ -5529,18 +6578,28 @@ def test_output_owns_operation_candidate_preview_rendering():
         imported_module
         for imported_module, _node in _import_from_nodes(candidate_preview_path)
     }
+    candidate_summary_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(candidate_summary_path)
+    }
 
     for imported_module, node in _import_from_nodes(show_from_path):
         if imported_module != "git_stage_batch.output.candidate_preview":
             continue
         show_from_renderer_imports |= {alias.name for alias in node.names}
 
-    assert public_names <= vars(candidate_preview).keys()
-    assert moved_names <= vars(candidate_preview).keys()
-    assert public_names <= show_from_renderer_imports
-    assert moved_names.isdisjoint(show_from_helpers)
+    assert public_renderer_names <= vars(candidate_preview).keys()
+    assert renderer_helper_names <= vars(candidate_preview).keys()
+    assert summary_names <= vars(candidate_preview_summary).keys()
+    assert public_renderer_names <= show_from_renderer_imports
+    assert renderer_helper_names.isdisjoint(show_from_helpers)
+    assert summary_names.isdisjoint(vars(candidate_preview))
+    assert old_renderer_summary_names.isdisjoint(vars(candidate_preview))
+    assert "git_stage_batch.output" in candidate_preview_imports
     assert "git_stage_batch.output.colors" in candidate_preview_imports
     assert "git_stage_batch.core.diff_parser" in candidate_preview_imports
+    assert "git_stage_batch.output.colors" not in candidate_summary_imports
+    assert "git_stage_batch.core.diff_parser" not in candidate_summary_imports
 
 
 def test_batch_owns_atomic_file_change_metadata_conversion():
@@ -5727,7 +6786,7 @@ def test_batch_source_text_plan_builders_own_apply_text_planning():
             "load_git_object_as_buffer",
             "load_working_tree_file_as_buffer",
         },
-        "git_stage_batch.utils.git": {
+        "git_stage_batch.utils.git_repository": {
             "get_git_repository_root_path",
         },
     }
@@ -5790,7 +6849,7 @@ def test_batch_source_text_plan_builders_own_include_text_planning():
             "load_git_object_as_buffer",
             "load_working_tree_file_as_buffer",
         },
-        "git_stage_batch.utils.git": {
+        "git_stage_batch.utils.git_repository": {
             "get_git_repository_root_path",
         },
     }
@@ -6077,7 +7136,7 @@ def test_batch_source_candidate_inputs_own_text_candidate_metadata():
             "mode_for_text_materialization",
             "normalized_text_change_type",
         },
-        "git_stage_batch.utils.git": {
+        "git_stage_batch.utils.git_repository": {
             "get_git_repository_root_path",
         },
     }
@@ -7403,7 +8462,7 @@ def test_selected_hunk_filtering_stays_out_of_hunk_tracking():
         "apply_line_level_batch_filter_to_cached_hunk",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "show.py": moved_names,
+        SRC_ROOT / "commands" / "selection" / "next_change_display.py": moved_names,
     }
     violations = []
 
@@ -7559,7 +8618,7 @@ def test_selected_hunk_cache_writes_stay_in_selected_change_store():
     caller_paths = (
         SRC_ROOT / "data" / "hunk_tracking.py",
         SRC_ROOT / "data" / "selected_change" / "hunk_recalculation.py",
-        SRC_ROOT / "commands" / "show.py",
+        SRC_ROOT / "commands" / "selection" / "next_change_display.py",
     )
     forbidden_imports = {
         "git_stage_batch.data.selected_change.snapshots": {
@@ -8738,6 +9797,41 @@ def test_selected_change_display_stays_in_command_helper():
                     f"{relative_path}:{node.lineno} imports show_selected_change"
                 )
 
+    assert violations == []
+
+
+def test_next_change_display_stays_in_selection_helper():
+    """Selected-hunk refresh should not import the show command entrypoint."""
+    show_path = SRC_ROOT / "commands" / "show.py"
+    refresh_path = SRC_ROOT / "commands" / "selection" / "selected_hunk_refresh.py"
+    helper_path = SRC_ROOT / "commands" / "selection" / "next_change_display.py"
+    helper = __import__(
+        "git_stage_batch.commands.selection.next_change_display",
+        fromlist=["next_change_display"],
+    )
+    expected_imports = {
+        show_path: {"show_next_unprocessed_change"},
+        refresh_path: {"show_next_unprocessed_change"},
+    }
+    violations = []
+
+    for path in (show_path, refresh_path, helper_path):
+        imported_helper_names = set()
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.commands.show":
+                relative_path = path.relative_to(REPO_ROOT)
+                violations.append(f"{relative_path}:{node.lineno} imports show")
+            if (
+                imported_module
+                == "git_stage_batch.commands.selection.next_change_display"
+            ):
+                imported_helper_names |= imported_names
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_helper_names
+
+    assert "show_next_unprocessed_change" in vars(helper)
     assert violations == []
 
 

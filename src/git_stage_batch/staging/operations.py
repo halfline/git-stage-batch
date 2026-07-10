@@ -16,7 +16,8 @@ from ..core.buffer import (
     buffer_preview,
 )
 from ..editor.edit import edit_lines_as_buffer
-from ..utils.git import git_update_index, run_git_command
+from ..utils.git_command import run_git_command
+from ..utils.git_index import git_update_index
 from ..utils.git_object_io import create_git_blob
 from ..utils.journal import log_journal
 

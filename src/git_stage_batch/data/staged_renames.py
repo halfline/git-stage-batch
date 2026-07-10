@@ -7,11 +7,11 @@ import os
 from dataclasses import dataclass
 
 from ..utils.file_io import read_text_file_contents, write_text_file_contents
-from ..utils.git import (
+from ..utils.git_command import run_git_command
+from ..utils.git_index import (
     GitIndexEntryUpdate,
     git_reset_paths,
     git_update_index_entries,
-    run_git_command,
 )
 from ..utils.git_repository import get_git_repository_root_path
 from ..utils.journal import log_journal

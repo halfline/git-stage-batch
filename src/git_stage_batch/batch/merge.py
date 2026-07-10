@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-from array import array
-from bisect import bisect_right
 from collections.abc import Iterable, Iterator, Sequence
-from dataclasses import dataclass, field
-from enum import Enum, auto
+from dataclasses import dataclass
 import hashlib
 from typing import TYPE_CHECKING, Any
 
+from .baseline_correspondence import (
+    build_baseline_correspondence as _build_discard_baseline_correspondence,
+)
+from .discard_reversal import (
+    reverse_presence_constraints as _reverse_batch_presence_constraints,
+)
 from .merge_candidates import (
     MergeCandidate as _MergeCandidate,
     MergeCandidateSet as _MergeCandidateSet,
@@ -19,7 +22,6 @@ from .merge_candidates import (
 from .match import LineMapping, iter_exact_context_gaps, match_lines
 from .realized_entries import (
     RealizedEntry as _RealizedEntry,
-    _LineRange,
     _RealizedEntries,
     _RealizedEntryContentSequence,
     _as_realized_entries,
@@ -29,6 +31,12 @@ from .realized_entries import (
     _entry_source_line_at,
     _entry_target_line_at,
     realized_entry_content_chunks as _realized_entry_content_chunks,
+)
+from .realized_boundaries import (
+    boundary_choices_after_source_line as _boundary_choices_for_source_line,
+    find_boundary_after_source_line as _locate_boundary_after_source_line,
+    find_realization_fallback_boundary as _realization_fallback_boundary,
+    sequence_present_at_boundary as _boundary_sequence_present,
 )
 from ..core.line_selection import LineRanges, LineSelection
 from ..core.buffer import (
@@ -56,21 +64,6 @@ if TYPE_CHECKING:
 
 
 _MERGE_CANDIDATE_CAP = 50
-
-
-class RegionKind(Enum):
-    """Region kind for baseline restoration correspondence.
-
-    Defines how a source-space region should be restored during discard:
-    - EQUAL: Unchanged lines, restored line-by-line
-    - INSERT: Source-only (batch added), removed during discard
-    - REPLACE_LINE_BY_LINE: Changed region with same size, restored line-by-line
-    - REPLACE_BY_HUNK: Changed region with different sizes, restored as whole unit
-    """
-    EQUAL = auto()
-    INSERT = auto()
-    REPLACE_LINE_BY_LINE = auto()
-    REPLACE_BY_HUNK = auto()
 
 
 _BaselineLineEdit = tuple[int, int, list[Any]]
@@ -105,72 +98,6 @@ def _discard_result_line_ending_from_lines(
     if buffer_has_data(baseline_lines):
         return choose_line_ending(baseline_lines)
     return choose_line_ending(source_lines)
-
-
-@dataclass
-class BaselineRegion:
-    """A source-space region with baseline restoration content.
-
-    Represents one contiguous source-side region and the baseline content
-    that should be restored when that region is batch-owned and discarded.
-
-    Region kinds:
-    - EQUAL: unchanged lines, restored line-by-line
-    - INSERT: source-only (batch added), removed when discarded
-    - REPLACE_LINE_BY_LINE: changed region (same size), restored line-by-line
-    - REPLACE_BY_HUNK: changed region (different sizes), restored as whole unit
-    """
-    source_start_line: int          # 1-based inclusive
-    source_end_line: int            # 1-based inclusive
-    baseline_lines: Sequence[bytes]  # baseline content for restoration
-    kind: RegionKind                # Region restoration kind
-    region_id: int = 0              # Unique region identifier (assigned during construction)
-
-
-@dataclass
-class BaselineCorrespondence:
-    """Restoration correspondence from source lines back to baseline regions."""
-    regions: list['BaselineRegion']
-    _region_start_lines: array = field(init=False, repr=False)
-
-    def __post_init__(self) -> None:
-        self._region_start_lines = array(
-            "Q",
-            (
-                region.source_start_line
-                for region in self.regions
-            )
-        )
-
-    def get_region_for_source_line(
-        self,
-        source_line: int
-    ) -> 'BaselineRegion | None':
-        region_index = bisect_right(self._region_start_lines, source_line) - 1
-        if region_index < 0:
-            return None
-
-        region = self.regions[region_index]
-        if source_line > region.source_end_line:
-            return None
-        return region
-
-
-@dataclass(slots=True)
-class _BaselineCorrespondenceScanState:
-    """Cursors and pending anchor-run bounds while building correspondence."""
-
-    next_region_id: int = 1
-    baseline_cursor: int = 0
-    source_cursor: int = 0
-    run_base_start: int | None = None
-    run_source_start: int | None = None
-    run_base_end: int = 0
-    run_source_end: int = 0
-
-    @property
-    def has_run(self) -> bool:
-        return self.run_base_start is not None and self.run_source_start is not None
 
 
 @dataclass
@@ -962,11 +889,11 @@ def _apply_absence_constraints(
 
         # Find boundary (fails if ambiguous or missing - appropriate for both modes)
         try:
-            boundary = _find_boundary_after_source_line(result, claim.anchor_line)
+            boundary = _locate_boundary_after_source_line(result, claim.anchor_line)
         except _MissingAnchorError:
             if strict:
                 raise
-            boundary = _find_realization_fallback_boundary(result, claim.anchor_line)
+            boundary = _realization_fallback_boundary(result, claim.anchor_line)
 
         old_result = result
         result = suppress_fn(result, boundary, forbidden_sequence)
@@ -1076,151 +1003,6 @@ def satisfy_constraints(
     except Exception:
         realized_entries.close()
         raise
-
-
-def _find_realization_fallback_boundary(
-    entries: Sequence[_RealizedEntry],
-    source_line: int | None
-) -> int:
-    """Find a lenient boundary for realization when an anchor is absent.
-
-    Realized batch content may intentionally omit unclaimed source-only lines,
-    and earlier absence constraints may remove entries that carried later anchor
-    provenance. In that storage/display path, fall back to the nearest earlier
-    realized source line and let exact sequence matching decide whether anything
-    should be suppressed.
-    """
-    if source_line is None:
-        return 0
-
-    prior_source_line: int | None = None
-    if isinstance(entries, _RealizedEntries):
-        for run in entries.provenance_runs():
-            if run.source_start == 0:
-                continue
-            run_length = run.dest_end - run.dest_start
-            run_source_end = run.source_start + run_length
-            if run.source_start >= source_line:
-                continue
-            candidate = min(source_line - 1, run_source_end - 1)
-            if candidate >= run.source_start:
-                prior_source_line = max(prior_source_line or candidate, candidate)
-    else:
-        for index in range(len(entries)):
-            entry_source_line = _entry_source_line_at(entries, index)
-            if entry_source_line is not None and entry_source_line < source_line:
-                prior_source_line = max(
-                    prior_source_line or entry_source_line,
-                    entry_source_line,
-                )
-
-    if prior_source_line is None:
-        return 0
-
-    return _find_boundary_after_source_line(entries, prior_source_line)
-
-
-def _find_boundary_after_source_line(
-    entries: Sequence[_RealizedEntry],
-    source_line: int | None
-) -> int:
-    """Find the index representing the boundary after a source line.
-
-    The boundary is the position where content anchored "after source line N"
-    would appear in the realized output.
-
-    This is strict about ambiguity: if multiple distinct occurrences of the
-    same source line exist (e.g., from duplicates or working tree extras),
-    we verify there is exactly one claimed occurrence to use as the anchor.
-
-    Args:
-        entries: Realized entries with source provenance
-        source_line: Anchor line (1-indexed), or None for start-of-file
-
-    Returns:
-        Index in entries representing the boundary (0 = start of file)
-
-    Raises:
-        MissingAnchorError: If anchor line not present in realized content
-        AmbiguousAnchorError: If boundary cannot be determined uniquely
-    """
-    if source_line is None:
-        return 0
-
-    matching_indices = []
-    claimed_indices = []
-
-    if isinstance(entries, _RealizedEntries):
-        for run in entries.provenance_runs():
-            if run.source_start == 0:
-                continue
-            run_length = run.dest_end - run.dest_start
-            if not run.source_start <= source_line < run.source_start + run_length:
-                continue
-            index = run.dest_start + (source_line - run.source_start)
-            matching_indices.append(index)
-            if run.is_claimed:
-                claimed_indices.append(index)
-    else:
-        for i in range(len(entries)):
-            if _entry_source_line_at(entries, i) == source_line:
-                matching_indices.append(i)
-                if _entry_is_claimed_at(entries, i):
-                    claimed_indices.append(i)
-
-    if not matching_indices:
-        raise _MissingAnchorError(
-            _("Cannot locate anchor boundary after source line {line}: "
-              "anchor not present in realized content").format(line=source_line)
-        )
-
-    if len(matching_indices) > 1:
-        if len(claimed_indices) == 1:
-            return claimed_indices[0] + 1
-        elif len(claimed_indices) == 0:
-            raise _AmbiguousAnchorError(
-                _("Anchor ambiguity: source line {line} appears {count} times "
-                  "in realized content but none are claimed").format(
-                    line=source_line, count=len(matching_indices))
-            )
-        else:
-            raise _AmbiguousAnchorError(
-                _("Anchor ambiguity: source line {line} claimed {count} times").format(
-                    line=source_line, count=len(claimed_indices))
-            )
-
-    return matching_indices[0] + 1
-
-
-def _boundary_choices_after_source_line(
-    entries: Sequence[_RealizedEntry],
-    source_line: int | None,
-) -> tuple[int, ...]:
-    """Return all concrete boundary positions after a source line."""
-    if source_line is None:
-        return (0,)
-
-    matching_indices: list[int] = []
-    if isinstance(entries, _RealizedEntries):
-        for run in entries.provenance_runs():
-            if run.source_start == 0:
-                continue
-            run_length = run.dest_end - run.dest_start
-            if not run.source_start <= source_line < run.source_start + run_length:
-                continue
-            matching_indices.append(run.dest_start + (source_line - run.source_start))
-    else:
-        for index in range(len(entries)):
-            if _entry_source_line_at(entries, index) == source_line:
-                matching_indices.append(index)
-
-    if not matching_indices:
-        raise _MissingAnchorError(
-            _("Cannot locate anchor boundary after source line {line}: "
-              "anchor not present in realized content").format(line=source_line)
-        )
-
-    return tuple(index + 1 for index in matching_indices)
 
 
 def _absence_ambiguity_key(
@@ -1388,7 +1170,7 @@ def _absence_choices_for_claim(
         seen.add(position)
         positions.append((position, explanation))
 
-    for boundary in _boundary_choices_after_source_line(entries, anchor_line):
+    for boundary in _boundary_choices_for_source_line(entries, anchor_line):
         add_position(boundary, _("deletion content appears at the anchored boundary"))
         after_claimed = _position_after_claimed_insertions_at_boundary(entries, boundary)
         if after_claimed != boundary:
@@ -1400,7 +1182,7 @@ def _absence_choices_for_claim(
     if len(positions) <= 1:
         for position in iter_sequence_occurrences_nearby(
             entries,
-            _boundary_choices_after_source_line(entries, anchor_line)[0],
+            _boundary_choices_for_source_line(entries, anchor_line)[0],
             forbidden_sequence,
             window=20,
             max_results=(max_results or _MERGE_CANDIDATE_CAP) + 1,
@@ -2866,7 +2648,7 @@ def _discard_batch_acquired_line_chunks(
     deletion_claims = resolved.deletion_claims
 
     with match_lines(source_lines, working_lines) as working_to_source:
-        correspondence = _build_baseline_correspondence(
+        correspondence = _build_discard_baseline_correspondence(
             baseline_lines,
             source_lines
         )
@@ -2878,7 +2660,7 @@ def _discard_batch_acquired_line_chunks(
         )
 
     try:
-        updated_entries = _reverse_presence_constraints(
+        updated_entries = _reverse_batch_presence_constraints(
             realized_entries,
             presence_line_set,
             correspondence
@@ -2898,280 +2680,6 @@ def _discard_batch_acquired_line_chunks(
         yield from _realized_entry_content_chunks(realized_entries)
     finally:
         realized_entries.close()
-
-
-def _build_baseline_correspondence(
-    baseline_lines: Sequence[bytes],
-    source_lines: Sequence[bytes]
-) -> BaselineCorrespondence:
-    """Build restoration correspondence from source lines to baseline regions.
-
-    This is a discard-specific helper that maps source lines to baseline restoration
-    regions. It uses the same conservative structural matching policy as
-    source-to-working provenance, then classifies the gaps between mapped anchor
-    runs.
-
-    Key distinction from match_lines:
-    - match_lines: "which source lines are definitely present in working?"
-    - This helper: "what baseline content restores each source position?"
-
-    Region kinds:
-    - EQUAL: unchanged lines → restored line-by-line
-    - INSERT: source-only (batch added) → removed during discard
-    - REPLACE_LINE_BY_LINE: changed region (same size) → restored line-by-line
-    - REPLACE_BY_HUNK: changed region (different sizes) → restored as whole unit
-
-    Replace regions are subdivided when possible:
-    - If baseline and source have same number of lines: REPLACE_LINE_BY_LINE
-    - If sizes differ: REPLACE_BY_HUNK (must restore entire baseline block)
-
-    For by-hunk replace regions, discard requires full ownership:
-    - If batch owns entire source-side region → restore entire baseline block
-    - If batch owns only part → raise MergeError (partial discard not safe)
-
-    Args:
-        baseline_lines: Baseline file lines (bytes with newlines)
-        source_lines: Batch source file lines (bytes with newlines)
-
-    Returns:
-        BaselineCorrespondence mapping source lines to restoration regions
-    """
-    regions: list[BaselineRegion] = []
-    state = _BaselineCorrespondenceScanState()
-
-    with match_lines(baseline_lines, source_lines) as mapping:
-        for baseline_index in range(len(baseline_lines)):
-            source_line = mapping.get_target_line_from_source_line(baseline_index + 1)
-            if source_line is None:
-                continue
-
-            source_index = source_line - 1
-
-            if not state.has_run:
-                state = _start_baseline_anchor_run(
-                    state,
-                    baseline_index,
-                    source_index,
-                )
-                continue
-
-            if (
-                baseline_index == state.run_base_end
-                and source_index == state.run_source_end
-            ):
-                state = _extend_baseline_anchor_run(state)
-                continue
-
-            state = _flush_baseline_anchor_run(
-                regions,
-                state,
-                baseline_lines,
-                source_lines,
-            )
-            state = _start_baseline_anchor_run(
-                state,
-                baseline_index,
-                source_index,
-            )
-
-    state = _flush_baseline_anchor_run(
-        regions,
-        state,
-        baseline_lines,
-        source_lines,
-    )
-    _append_baseline_gap_region(
-        regions,
-        state.next_region_id,
-        baseline_lines,
-        source_lines,
-        state.baseline_cursor,
-        len(baseline_lines),
-        state.source_cursor,
-        len(source_lines),
-    )
-
-    return BaselineCorrespondence(regions=regions)
-
-
-def _start_baseline_anchor_run(
-    state: _BaselineCorrespondenceScanState,
-    baseline_index: int,
-    source_index: int,
-) -> _BaselineCorrespondenceScanState:
-    """Return state with a new pending anchor run."""
-    return _BaselineCorrespondenceScanState(
-        next_region_id=state.next_region_id,
-        baseline_cursor=state.baseline_cursor,
-        source_cursor=state.source_cursor,
-        run_base_start=baseline_index,
-        run_source_start=source_index,
-        run_base_end=baseline_index + 1,
-        run_source_end=source_index + 1,
-    )
-
-
-def _extend_baseline_anchor_run(
-    state: _BaselineCorrespondenceScanState,
-) -> _BaselineCorrespondenceScanState:
-    """Return state with the pending anchor run extended by one pair."""
-    return _BaselineCorrespondenceScanState(
-        next_region_id=state.next_region_id,
-        baseline_cursor=state.baseline_cursor,
-        source_cursor=state.source_cursor,
-        run_base_start=state.run_base_start,
-        run_source_start=state.run_source_start,
-        run_base_end=state.run_base_end + 1,
-        run_source_end=state.run_source_end + 1,
-    )
-
-
-def _flush_baseline_anchor_run(
-    regions: list[BaselineRegion],
-    state: _BaselineCorrespondenceScanState,
-    baseline_lines: Sequence[bytes],
-    source_lines: Sequence[bytes],
-) -> _BaselineCorrespondenceScanState:
-    """Append gap/equal regions for a pending anchor run and advance cursors."""
-    if not state.has_run:
-        return state
-
-    assert state.run_base_start is not None
-    assert state.run_source_start is not None
-
-    next_region_id = _append_baseline_gap_region(
-        regions,
-        state.next_region_id,
-        baseline_lines,
-        source_lines,
-        state.baseline_cursor,
-        state.run_base_start,
-        state.source_cursor,
-        state.run_source_start,
-    )
-    next_region_id = _append_baseline_region(
-        regions,
-        next_region_id,
-        baseline_lines,
-        state.run_base_start,
-        state.run_base_end,
-        state.run_source_start,
-        state.run_source_end,
-        RegionKind.EQUAL,
-    )
-
-    return _BaselineCorrespondenceScanState(
-        next_region_id=next_region_id,
-        baseline_cursor=state.run_base_end,
-        source_cursor=state.run_source_end,
-    )
-
-
-def _append_baseline_gap_region(
-    regions: list[BaselineRegion],
-    next_region_id: int,
-    baseline_lines: Sequence[bytes],
-    source_lines: Sequence[bytes],
-    base_start: int,
-    base_end: int,
-    src_start: int,
-    src_end: int,
-) -> int:
-    """Append a source-space region for an unmatched baseline/source gap."""
-    base_len = base_end - base_start
-    src_len = src_end - src_start
-
-    if base_len == 0 and src_len == 0:
-        return next_region_id
-
-    if src_len == 0:
-        return next_region_id
-
-    if base_len == 0:
-        return _append_baseline_region(
-            regions,
-            next_region_id,
-            baseline_lines,
-            base_start,
-            base_end,
-            src_start,
-            src_end,
-            RegionKind.INSERT,
-        )
-
-    if base_len == src_len:
-        baseline_segment = _LineRange(baseline_lines, base_start, base_end)
-        source_segment = _LineRange(source_lines, src_start, src_end)
-
-        with match_lines(baseline_segment, source_segment) as sub_mapping:
-            all_baseline_mapped = all(
-                sub_mapping.get_target_line_from_source_line(index + 1) is not None
-                for index in range(len(baseline_segment))
-            )
-            all_source_mapped = all(
-                sub_mapping.get_source_line_from_target_line(index + 1) is not None
-                for index in range(len(source_segment))
-            )
-
-        kind = (
-            RegionKind.REPLACE_LINE_BY_LINE
-            if all_baseline_mapped and all_source_mapped
-            else RegionKind.REPLACE_BY_HUNK
-        )
-        return _append_baseline_region(
-            regions,
-            next_region_id,
-            baseline_lines,
-            base_start,
-            base_end,
-            src_start,
-            src_end,
-            kind,
-        )
-
-    return _append_baseline_region(
-        regions,
-        next_region_id,
-        baseline_lines,
-        base_start,
-        base_end,
-        src_start,
-        src_end,
-        RegionKind.REPLACE_BY_HUNK,
-    )
-
-
-def _append_baseline_region(
-    regions: list[BaselineRegion],
-    next_region_id: int,
-    baseline_lines: Sequence[bytes],
-    base_start: int,
-    base_end: int,
-    src_start: int,
-    src_end: int,
-    kind: RegionKind,
-) -> int:
-    """Append one baseline correspondence region."""
-    baseline_region_lines: Sequence[bytes]
-
-    if src_start == src_end:
-        return next_region_id
-
-    if kind == RegionKind.INSERT:
-        baseline_region_lines = ()
-    else:
-        baseline_region_lines = _LineRange(baseline_lines, base_start, base_end)
-
-    regions.append(
-        BaselineRegion(
-            source_start_line=src_start + 1,
-            source_end_line=src_end,
-            baseline_lines=baseline_region_lines,
-            kind=kind,
-            region_id=next_region_id,
-        )
-    )
-    return next_region_id + 1
 
 
 def _build_realized_entries_for_discard(
@@ -3202,166 +2710,6 @@ def _build_realized_entries_for_discard(
         len(working_lines),
         set(),
     )
-
-    return result
-
-
-def _count_lines_in_range(
-    line_selection: LineSelection,
-    start_line: int,
-    end_line: int,
-) -> int:
-    return _as_line_ranges(line_selection).count(start_line, end_line)
-
-
-def _reverse_presence_constraints(
-    entries: Sequence[_RealizedEntry],
-    presence_line_set: LineSelection,
-    correspondence: BaselineCorrespondence
-) -> _RealizedEntries:
-    """Reverse presence constraints: replace/remove batch-owned claimed lines.
-
-    For each entry in the working tree that corresponds to a claimed source line:
-    - If from EQUAL or REPLACE_LINE_BY_LINE region: replace with baseline line-by-line
-    - If from INSERT region: remove (batch-added content)
-    - If from REPLACE_BY_HUNK region: verify full ownership, then restore as unit
-
-    This is the inverse of presence constraint application: where merge ensures
-    claimed lines are present, discard ensures they are removed or restored to baseline.
-
-    Replace regions are handled intelligently:
-    - Line-by-line replace (same size): restored line-by-line like equal regions
-    - By-hunk replace (different sizes): requires full region ownership
-      - If batch owns entire region → restore entire baseline block
-      - If batch owns only part → raise MergeError (cannot safely discard partial)
-
-    Args:
-        entries: Realized entries from working tree with source provenance
-        presence_line_set: Source line numbers that are batch-owned
-        correspondence: Baseline restoration correspondence
-
-    Returns:
-        Entries with batch-owned claimed lines replaced or removed
-
-    Raises:
-        MergeError: If the restoration region is missing or cannot be
-            partially discarded
-    """
-    result = _RealizedEntries()
-    processed_replace_regions: set[int] = set()
-
-    def flush_copy(start: int | None, stop: int) -> None:
-        if start is not None and start < stop:
-            result.copy_slice_from(entries, start, stop)
-
-    def restore_source_line(source_line: int) -> None:
-        region = correspondence.get_region_for_source_line(source_line)
-
-        if region is None:
-            raise _MergeError(
-                _("Cannot discard source line {line}: no baseline restoration region found").format(
-                    line=source_line
-                )
-            )
-
-        if region.kind in (RegionKind.EQUAL, RegionKind.REPLACE_LINE_BY_LINE):
-            offset = source_line - region.source_start_line
-            if 0 <= offset < len(region.baseline_lines):
-                result.append_line_range_from(
-                    region.baseline_lines,
-                    offset,
-                    offset + 1,
-                    source_line_start=None,
-                    is_claimed=False,
-                )
-            else:
-                raise _MergeError(
-                    _("Source line {line} offset {offset} outside region bounds").format(
-                        line=source_line, offset=offset
-                    )
-                )
-
-        elif region.kind == RegionKind.INSERT:
-            pass
-
-        elif region.kind == RegionKind.REPLACE_BY_HUNK:
-            if region.region_id not in processed_replace_regions:
-                total_lines_in_region = (
-                    region.source_end_line - region.source_start_line + 1
-                )
-                claimed_line_count = _count_lines_in_range(
-                    presence_line_set,
-                    region.source_start_line,
-                    region.source_end_line
-                )
-
-                if claimed_line_count != total_lines_in_region:
-                    raise _MergeError(
-                        _("Cannot discard partial ownership of by-hunk replace region "
-                          "(source lines {start}-{end}): batch owns {owned} of {total} lines").format(
-                            start=region.source_start_line,
-                            end=region.source_end_line,
-                            owned=claimed_line_count,
-                            total=total_lines_in_region
-                        )
-                    )
-
-                result.append_line_range_from(
-                    region.baseline_lines,
-                    0,
-                    len(region.baseline_lines),
-                    source_line_start=None,
-                    is_claimed=False,
-                )
-                processed_replace_regions.add(region.region_id)
-
-        else:
-            raise _MergeError(
-                _("Unknown region kind: {kind}").format(kind=region.kind)
-            )
-
-    copy_start: int | None = 0
-
-    if isinstance(entries, _RealizedEntries):
-        presence_lines = _as_line_ranges(presence_line_set)
-        for run in entries.provenance_runs():
-            if run.source_start == 0:
-                continue
-
-            run_length = run.dest_end - run.dest_start
-            run_source_end = run.source_start + run_length - 1
-            selected_lines = presence_lines.intersection(
-                LineRanges.from_ranges([(run.source_start, run_source_end)])
-            )
-            if not selected_lines:
-                continue
-
-            for selected_start, selected_end in selected_lines.ranges():
-                for source_line in range(selected_start, selected_end + 1):
-                    index = run.dest_start + (source_line - run.source_start)
-                    flush_copy(copy_start, index)
-                    copy_start = None
-                    restore_source_line(source_line)
-                    copy_start = index + 1
-
-        if copy_start is not None:
-            flush_copy(copy_start, len(entries))
-
-        return result
-
-    for index in range(len(entries)):
-        source_line = _entry_source_line_at(entries, index)
-        if source_line is not None and source_line in presence_line_set:
-            flush_copy(copy_start, index)
-            copy_start = None
-            restore_source_line(source_line)
-            copy_start = index + 1
-        else:
-            if copy_start is None:
-                copy_start = index
-
-    if copy_start is not None:
-        flush_copy(copy_start, len(entries))
 
     return result
 
@@ -3404,13 +2752,13 @@ def _restore_absence_constraints(
 
     for claim in deletion_claims:
         try:
-            boundary = _find_boundary_after_source_line(result, claim.anchor_line)
+            boundary = _locate_boundary_after_source_line(result, claim.anchor_line)
         except _MissingAnchorError:
             continue
         except _AmbiguousAnchorError:
             raise
 
-        if _sequence_present_at_boundary(result, boundary, claim.content_lines):
+        if _boundary_sequence_present(result, boundary, claim.content_lines):
             continue
 
         with _RealizedEntries() as restored_entries:
@@ -3428,31 +2776,3 @@ def _restore_absence_constraints(
             old_result.close()
 
     return result
-
-
-def _sequence_present_at_boundary(
-    entries: Sequence[_RealizedEntry],
-    boundary: int,
-    sequence: list[bytes]
-) -> bool:
-    """Check if a byte sequence is present at the exact boundary position.
-
-    Normalizes both entry content and sequence elements to LF line endings
-    for consistent comparison across CRLF/LF representations.
-
-    Args:
-        entries: Realized entries
-        boundary: Boundary position (0-indexed)
-        sequence: Byte sequence to check for
-
-    Returns:
-        True if sequence is present at boundary, False otherwise
-    """
-    if boundary + len(sequence) > len(entries):
-        return False
-
-    return all(
-        _normalize_line_content(_entry_content_at(entries, boundary + i))
-        == normalize_line_endings(sequence[i])
-        for i in range(len(sequence))
-    )

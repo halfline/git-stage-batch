@@ -11,6 +11,7 @@ import git_stage_batch.commands.batch_source.action_selection as action_selectio
 import git_stage_batch.commands.batch_source.candidate_preview_counts as candidate_preview_counts
 import git_stage_batch.commands.show_from as show_from_module
 import git_stage_batch.output.candidate_preview as candidate_preview_module
+import git_stage_batch.output.candidate_preview_summary as candidate_preview_summary
 from git_stage_batch.batch.operations import create_batch
 from git_stage_batch.batch.ownership import (
     AbsenceClaim,
@@ -223,7 +224,7 @@ def test_show_candidate_set_lists_context_and_commands(temp_git_repo, capsys):
 
 def test_multiline_ambiguous_block_summary_uses_ellipsis():
     """Candidate summaries should name a multi-line block by its endpoints."""
-    assert candidate_preview_module._summarize_ambiguity_block(
+    assert candidate_preview_summary.summarize_ambiguity_block(
         ["vanilla extract", "nutmeg"],
     ) == '"vanilla extract … nutmeg"'
 
@@ -236,7 +237,7 @@ def test_candidate_overview_subject_names_only_ambiguous_targets():
             SimpleNamespace(target="worktree", resolution_count=2),
         ),
     )
-    assert candidate_preview_module._candidate_overview_subject((preview,)) == (
+    assert candidate_preview_summary.candidate_overview_subject((preview,)) == (
         "working tree",
         "has",
     )
@@ -247,7 +248,7 @@ def test_candidate_overview_subject_names_only_ambiguous_targets():
             SimpleNamespace(target="worktree", resolution_count=1),
         ),
     )
-    assert candidate_preview_module._candidate_overview_subject((preview,)) == (
+    assert candidate_preview_summary.candidate_overview_subject((preview,)) == (
         "index",
         "has",
     )
@@ -258,7 +259,7 @@ def test_candidate_overview_subject_names_only_ambiguous_targets():
             SimpleNamespace(target="worktree", resolution_count=2),
         ),
     )
-    assert candidate_preview_module._candidate_overview_subject((preview,)) == (
+    assert candidate_preview_summary.candidate_overview_subject((preview,)) == (
         "working tree and index",
         "have",
     )

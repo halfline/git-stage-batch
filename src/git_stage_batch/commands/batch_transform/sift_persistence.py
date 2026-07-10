@@ -23,12 +23,12 @@ from ...core.text_lifecycle import TextFileChangeType, normalized_text_change_ty
 from ...exceptions import exit_with_error
 from ...i18n import _
 from ...utils.file_io import write_text_file_contents
-from ...utils.git import (
+from ...utils.git_command import run_git_command
+from ...utils.git_index import (
     git_commit_tree,
     git_read_tree,
     git_update_index,
     git_write_tree,
-    run_git_command,
     temp_git_index,
 )
 from ...utils.git_object_io import create_git_blob

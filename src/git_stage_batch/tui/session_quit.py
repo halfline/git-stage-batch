@@ -6,7 +6,7 @@ from ..commands.abort import command_abort
 from ..commands.stop import command_stop
 from ..data.progress import get_hunk_counts
 from ..utils.file_io import read_text_file_contents
-from ..utils.git import run_git_command
+from ..utils.git_command import run_git_command
 from ..utils.paths import (
     get_start_head_file_path,
     get_start_index_tree_file_path,

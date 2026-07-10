@@ -3,53 +3,20 @@
 from __future__ import annotations
 
 import argparse
-import shlex
 import sys
 
 from .. import __version__
-from ..batch.query import read_batch_metadata
-from ..batch.source_selector import batch_name_for_source_lookup
-from ..batch.validation import batch_exists
 from ..commands.abort import command_abort
 from ..commands.again import command_again
 from ..commands.annotate import command_annotate_batch
-from ..commands.apply_from import command_apply_from_batch
 from ..commands.block_file import command_block_file
 from ..commands.check_unstaged import command_check_unstaged
-from ..commands.discard import (
-    command_discard,
-    command_discard_file,
-    command_discard_file_as,
-    command_discard_line,
-    command_discard_line_as_to_batch,
-    command_discard_to_batch,
-)
-from ..commands.discard_from import command_discard_from_batch
 from ..commands.drop import command_drop_batch
-from ..commands.file_scope.multi_file_actions import (
-    discard_to_batch_each_resolved_file,
-    include_each_resolved_file,
-    run_for_each_resolved_file,
-    skip_each_resolved_file,
-)
-from ..commands.include import (
-    command_include,
-    command_include_file,
-    command_include_file_as,
-    command_include_line,
-    command_include_line_as,
-    command_include_to_batch,
-)
-from ..commands.include_from import command_include_from_batch
 from ..commands.install_assets import command_install_assets
 from ..commands.list import command_list_batches
 from ..commands.new import command_new_batch
 from ..commands.redo import command_redo
-from ..commands.reset import command_reset_from_batch
-from ..commands.show import command_show, command_show_file_list
-from ..commands.show_from import command_show_from_batch
 from ..commands.sift import command_sift_batch
-from ..commands.skip import command_skip, command_skip_file, command_skip_line
 from ..commands.start import command_start
 from ..commands.status import command_status
 from ..commands.stop import command_stop
@@ -59,20 +26,22 @@ from ..commands.suggest_fixup import (
 )
 from ..commands.unblock_file import command_unblock_file
 from ..commands.undo import command_undo
-from ..exceptions import CommandError
 from ..i18n import _
 from ..output.status_prompt import DEFAULT_PROMPT_FORMAT
+from .apply_dispatch import dispatch_apply_command
 from .auto_advance_options import add_auto_advance_arguments
 from .completion import command_complete_files
+from .discard_dispatch import dispatch_discard_command
 from .file_arguments import add_file_argument, normalize_parsed_file_arguments
 from .file_scope import (
     FileArgument,
-    resolve_batch_file_scope,
-    resolve_live_file_scope,
 )
 from .git_help import GitHelpArgumentParser
+from .include_dispatch import dispatch_include_command
 from .quick_actions import expand_quick_actions
-from .replacement_input import resolve_replacement_text
+from .reset_dispatch import dispatch_reset_command
+from .show_dispatch import dispatch_show_command
+from .skip_dispatch import dispatch_skip_command
 
 
 def _add_subcommand_parser(
@@ -280,99 +249,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
         action="store_true",
         help=_("Read replacement preview text from standard input exactly"),
     )
-    def dispatch_show(args: argparse.Namespace) -> None:
-        replacement_requested = args.as_text is not None or args.as_stdin
-        if replacement_requested and not args.from_batch:
-            raise CommandError(_("`show --as` requires `--from`."))
-        if args.as_text is not None and args.as_stdin:
-            raise CommandError(_("Cannot use `--as` and `--as-stdin` together."))
-        resolved_file_scope = (
-            resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
-            if args.from_batch
-            else resolve_live_file_scope(args.file, args.file_patterns)
-        )
-        if args.page is not None:
-            lookup_batch = batch_name_for_source_lookup(args.from_batch) if args.from_batch else None
-            if lookup_batch and not batch_exists(lookup_batch):
-                raise CommandError(_("Batch '{name}' does not exist").format(name=lookup_batch))
-            if resolved_file_scope.is_implicit:
-                if not (
-                    args.from_batch
-                    and lookup_batch is not None
-                    and batch_exists(lookup_batch)
-                    and len(read_batch_metadata(lookup_batch).get("files", {})) == 1
-                ):
-                    raise CommandError(
-                        _(
-                            "`show --page` requires `--file` or a single-file `--files` match, "
-                            "unless `--from` names a single-file batch."
-                        )
-                    )
-            if resolved_file_scope.is_multiple:
-                raise CommandError(_("`show --page` requires exactly one resolved file."))
-            if args.line_ids is not None:
-                raise CommandError(_("Cannot use `show --page` together with `show --line`."))
-            if args.porcelain:
-                raise CommandError(_("Cannot use `show --page` with `--porcelain`."))
-        if args.from_batch:
-            replacement_text = resolve_replacement_text(args) if replacement_requested else None
-            show_kwargs = {"page": args.page}
-            if args.porcelain:
-                show_kwargs["porcelain"] = args.porcelain
-            if not args.advance:
-                show_kwargs["selectable"] = False
-            if replacement_text is not None:
-                show_kwargs["replacement_text"] = replacement_text
-            if resolved_file_scope.is_multiple:
-                if args.line_ids:
-                    raise CommandError(_("Cannot use --lines with multiple files."))
-                if replacement_requested:
-                    raise CommandError(_("`show --as` requires exactly one resolved file."))
-                command_show_from_batch(
-                    args.from_batch,
-                    args.line_ids,
-                    patterns=args.file_patterns,
-                    **show_kwargs,
-                )
-            else:
-                command_show_from_batch(
-                    args.from_batch,
-                    args.line_ids,
-                    resolved_file_scope.optional_file(),
-                    **show_kwargs,
-                )
-            return
-        if args.line_ids or not resolved_file_scope.is_implicit:
-            if resolved_file_scope.is_multiple and args.porcelain:
-                raise CommandError(_("Cannot use --porcelain with multiple files."))
-            if resolved_file_scope.is_multiple:
-                if args.line_ids:
-                    raise CommandError(_("Cannot use --lines with multiple files."))
-                show_list_kwargs = {}
-                if not args.advance:
-                    show_list_kwargs["selectable"] = False
-                command_show_file_list(
-                    list(resolved_file_scope.files),
-                    **show_list_kwargs,
-                )
-            else:
-                show_kwargs = {
-                    "file": resolved_file_scope.optional_file(),
-                    "page": args.page,
-                    "porcelain": args.porcelain,
-                }
-                if not args.advance:
-                    show_kwargs["selectable"] = False
-                command_show(
-                    **show_kwargs,
-                )
-            return
-        show_kwargs = {"porcelain": args.porcelain}
-        if not args.advance:
-            show_kwargs["selectable"] = False
-        command_show(**show_kwargs)
-
-    parser_show.set_defaults(func=dispatch_show)
+    parser_show.set_defaults(func=dispatch_show_command)
 
     # status - Show selected session status
     parser_status = _add_subcommand_parser(
@@ -461,112 +338,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     add_auto_advance_arguments(parser_include)
 
-    def dispatch_include(args: argparse.Namespace) -> None:
-        replacement_requested = args.as_text is not None or args.as_stdin
-        if replacement_requested:
-            if args.as_text is not None and args.as_stdin:
-                raise CommandError(_("Cannot use `--as` and `--as-stdin` together."))
-            if args.line_ids and args.from_batch and not args.to_batch:
-                if args.no_edge_overlap:
-                    raise CommandError(_("`--no-edge-overlap` only applies to live `include --line --as` operations."))
-                resolved_batch_scope = resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
-                resolved_file = resolved_batch_scope.require_single_file(_("Cannot use --lines with multiple files."))
-                replacement_text = resolve_replacement_text(args)
-                command_include_from_batch(
-                    args.from_batch,
-                    args.line_ids,
-                    file=resolved_file,
-                    replacement_text=replacement_text,
-                )
-                return
-            if args.line_ids and not args.from_batch and not args.to_batch:
-                resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
-                resolved_file = resolved_live_scope.require_single_file(_("Cannot use --lines with multiple files."))
-                replacement_text = resolve_replacement_text(args)
-                command_include_line_as(
-                    args.line_ids,
-                    replacement_text,
-                    file=resolved_file,
-                    no_edge_overlap=args.no_edge_overlap,
-                    auto_advance=args.auto_advance,
-                )
-                return
-            if (
-                args.line_ids is None
-                and args.from_batch is None
-                and args.to_batch is None
-            ):
-                resolved_live_scope = resolve_live_file_scope(
-                    args.file,
-                    args.file_patterns,
-                    include_staged=True,
-                )
-                if resolved_live_scope.is_implicit:
-                    raise CommandError(
-                        _("`include --as` requires `--file` or `--line` and does not support `--to`.")
-                    )
-                if args.no_edge_overlap:
-                    raise CommandError(_("`--no-edge-overlap` requires `include --line --as`."))
-                if resolved_live_scope.is_multiple:
-                    raise CommandError(_("Cannot use --as with multiple files."))
-                replacement_text = resolve_replacement_text(args)
-                command_include_file_as(
-                    replacement_text,
-                    file=resolved_live_scope.optional_file(),
-                    auto_advance=args.auto_advance,
-                )
-                return
-            raise CommandError(
-                _("`include --as` requires `--file` or `--line` and does not support `--to`.")
-            )
-        if args.no_edge_overlap:
-            raise CommandError(_("`--no-edge-overlap` requires `include --line --as`."))
-        if args.from_batch:
-            resolved_batch_scope = resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
-            run_for_each_resolved_file(
-                resolved_batch_scope,
-                lambda file: command_include_from_batch(args.from_batch, args.line_ids, file),
-                line_ids=args.line_ids,
-                undo_operation=f"include --from {shlex.quote(args.from_batch)}",
-                worktree_paths=resolved_batch_scope.files,
-            )
-        elif args.to_batch:
-            resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
-            run_for_each_resolved_file(
-                resolved_live_scope,
-                lambda file: command_include_to_batch(
-                    args.to_batch,
-                    args.line_ids,
-                    file,
-                    auto_advance=args.auto_advance,
-                ),
-                line_ids=args.line_ids,
-                undo_operation=f"include --to {shlex.quote(args.to_batch)}",
-            )
-        elif args.line_ids:
-            resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
-            resolved_file = resolved_live_scope.require_single_file(_("Cannot use --lines with multiple files."))
-            command_include_line(
-                args.line_ids,
-                file=resolved_file,
-                auto_advance=args.auto_advance,
-            )
-        else:
-            resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
-            if resolved_live_scope.is_multiple:
-                include_each_resolved_file(
-                    list(resolved_live_scope.files),
-                    auto_advance=args.auto_advance,
-                )
-            elif not resolved_live_scope.is_implicit:
-                command_include_file(
-                    resolved_live_scope.optional_file(),
-                    auto_advance=args.auto_advance,
-                )
-            else:
-                command_include(auto_advance=args.auto_advance)
-
-    parser_include.set_defaults(func=dispatch_include)
+    parser_include.set_defaults(func=dispatch_include_command)
 
     # skip - Skip the selected hunk without staging
     parser_skip = _add_subcommand_parser(
@@ -590,30 +362,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     add_auto_advance_arguments(parser_skip)
 
-    def dispatch_skip(args: argparse.Namespace) -> None:
-        resolved_file_scope = resolve_live_file_scope(args.file, args.file_patterns)
-        if args.line_ids:
-            resolved_file = resolved_file_scope.require_single_file(_("Cannot use --lines with multiple files."))
-            command_skip_line(
-                args.line_ids,
-                file=resolved_file,
-                auto_advance=args.auto_advance,
-            )
-        elif not resolved_file_scope.is_implicit:
-            if resolved_file_scope.is_multiple:
-                skip_each_resolved_file(
-                    list(resolved_file_scope.files),
-                    auto_advance=args.auto_advance,
-                )
-            else:
-                command_skip_file(
-                    resolved_file_scope.optional_file(),
-                    auto_advance=args.auto_advance,
-                )
-        else:
-            command_skip(auto_advance=args.auto_advance)
-
-    parser_skip.set_defaults(func=dispatch_skip)
+    parser_skip.set_defaults(func=dispatch_skip_command)
 
     # discard - Remove the selected hunk from working tree
     parser_discard = _add_subcommand_parser(
@@ -674,104 +423,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
     )
     add_auto_advance_arguments(parser_discard)
 
-    def dispatch_discard(args: argparse.Namespace) -> None:
-        replacement_requested = args.as_text is not None or args.as_stdin
-        if replacement_requested:
-            if args.as_text is not None and args.as_stdin:
-                raise CommandError(_("Cannot use `--as` and `--as-stdin` together."))
-            if args.to_batch and args.line_ids and not args.from_batch:
-                resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
-                resolved_file = resolved_live_scope.require_single_file(_("Cannot use --lines with multiple files."))
-                replacement_text = resolve_replacement_text(args)
-                command_discard_line_as_to_batch(
-                    args.to_batch,
-                    args.line_ids,
-                    replacement_text,
-                    file=resolved_file,
-                    no_edge_overlap=args.no_edge_overlap,
-                    auto_advance=args.auto_advance,
-                )
-                return
-            if (
-                args.to_batch is None
-                and args.from_batch is None
-                and args.line_ids is None
-            ):
-                resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
-                if resolved_live_scope.is_implicit:
-                    raise CommandError(
-                        _("`discard --as` requires `--file`, or `--to` with `--line`.")
-                    )
-                if args.no_edge_overlap:
-                    raise CommandError(_("`--no-edge-overlap` requires `discard --to --line --as`."))
-                if resolved_live_scope.is_multiple:
-                    raise CommandError(_("Cannot use --as with multiple files."))
-                replacement_text = resolve_replacement_text(args)
-                command_discard_file_as(
-                    replacement_text,
-                    file=resolved_live_scope.optional_file(),
-                    auto_advance=args.auto_advance,
-                )
-                return
-            raise CommandError(
-                _("`discard --as` requires `--file`, or `--to` with `--line`.")
-            )
-        if args.no_edge_overlap:
-            raise CommandError(_("`--no-edge-overlap` requires `discard --to --line --as`."))
-        if args.from_batch:
-            resolved_batch_scope = resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
-            run_for_each_resolved_file(
-                resolved_batch_scope,
-                lambda file: command_discard_from_batch(args.from_batch, args.line_ids, file),
-                line_ids=args.line_ids,
-                undo_operation=f"discard --from {shlex.quote(args.from_batch)}",
-                worktree_paths=resolved_batch_scope.files,
-            )
-        elif args.to_batch:
-            resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
-            if resolved_live_scope.is_multiple and args.line_ids is None:
-                discard_to_batch_each_resolved_file(
-                    args.to_batch,
-                    list(resolved_live_scope.files),
-                    auto_advance=args.auto_advance,
-                )
-            else:
-                run_for_each_resolved_file(
-                    resolved_live_scope,
-                    lambda file: command_discard_to_batch(
-                        args.to_batch,
-                        args.line_ids,
-                        file,
-                        auto_advance=args.auto_advance,
-                    ),
-                    line_ids=args.line_ids,
-                    undo_operation=f"discard --to {shlex.quote(args.to_batch)}",
-                    worktree_paths=resolved_live_scope.files,
-                )
-        elif args.line_ids:
-            resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
-            resolved_file = resolved_live_scope.require_single_file(_("Cannot use --lines with multiple files."))
-            command_discard_line(
-                args.line_ids,
-                file=resolved_file,
-                auto_advance=args.auto_advance,
-            )
-        else:
-            resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
-            if not resolved_live_scope.is_implicit:
-                run_for_each_resolved_file(
-                    resolved_live_scope,
-                    lambda file: command_discard_file(
-                        file,
-                        auto_advance=args.auto_advance,
-                    ),
-                    undo_operation="discard",
-                    worktree_paths=resolved_live_scope.files,
-                )
-            else:
-                command_discard(auto_advance=args.auto_advance)
-
-    parser_discard.set_defaults(func=dispatch_discard)
+    parser_discard.set_defaults(func=dispatch_discard_command)
 
     # abort - Restore repository to pre-session state
     parser_abort = _add_subcommand_parser(
@@ -946,21 +598,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
           "With --line, operates on line IDs from entire file."),
     )
 
-    def dispatch_apply(args: argparse.Namespace) -> None:
-        resolved_file_scope = resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
-        run_for_each_resolved_file(
-            resolved_file_scope,
-            lambda file: command_apply_from_batch(
-                args.from_batch,
-                line_ids=args.line_ids if hasattr(args, "line_ids") else None,
-                file=file,
-            ),
-            line_ids=args.line_ids if hasattr(args, "line_ids") else None,
-            undo_operation=f"apply --from {shlex.quote(args.from_batch)}",
-            worktree_paths=resolved_file_scope.files,
-        )
-
-    parser_apply.set_defaults(func=dispatch_apply)
+    parser_apply.set_defaults(func=dispatch_apply_command)
 
     # reset - Remove claims from batch
     parser_reset = _add_subcommand_parser(
@@ -995,27 +633,7 @@ def parse_command_line(args: list[str], *, quiet: bool = False) -> argparse.Name
           "With --line, operates on line IDs from entire file."),
     )
 
-    def dispatch_reset(args: argparse.Namespace) -> None:
-        resolved_file_scope = resolve_batch_file_scope(args.from_batch, args.file, args.file_patterns)
-        command_parts = ["reset", "--from", shlex.quote(args.from_batch)]
-        if args.to_batch is not None:
-            command_parts.extend(["--to", shlex.quote(args.to_batch)])
-        if args.line_ids is not None:
-            command_parts.extend(["--line", shlex.quote(args.line_ids)])
-        run_for_each_resolved_file(
-            resolved_file_scope,
-            lambda file: command_reset_from_batch(
-                args.from_batch,
-                args.line_ids,
-                file,
-                None,
-                args.to_batch,
-            ),
-            line_ids=args.line_ids,
-            undo_operation=" ".join(command_parts),
-        )
-
-    parser_reset.set_defaults(func=dispatch_reset)
+    parser_reset.set_defaults(func=dispatch_reset_command)
 
     # sift - Reconcile batch against current tip
     parser_sift = _add_subcommand_parser(

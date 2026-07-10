@@ -1,26 +1,17 @@
 """Tests for git command execution utilities."""
 
-from git_stage_batch.utils import git as git_utils
+from git_stage_batch.utils import git_command as git_command_utils
 from git_stage_batch.utils import git_index_lock
-from git_stage_batch.utils.git import stream_git_command
-from git_stage_batch.utils.git import stream_git_diff
+from git_stage_batch.utils.git_command import stream_git_command
+from git_stage_batch.utils.git_command import stream_git_diff
 
 import subprocess
 from pathlib import Path
 
 import pytest
 
-from git_stage_batch.exceptions import CommandError
-from git_stage_batch.utils.git import (
-    git_commit_tree,
-    git_read_tree,
-    git_update_index,
-    git_write_tree,
-    run_git_command,
-    temp_git_index,
-)
+from git_stage_batch.utils.git_command import run_git_command
 from git_stage_batch.utils.git_index_lock import wait_for_git_index_lock
-from git_stage_batch.utils.git_object_io import create_git_blob
 
 
 @pytest.fixture
@@ -96,7 +87,7 @@ class TestRunGitCommand:
             return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
 
         monkeypatch.setattr(git_index_lock, "wait_for_git_index_lock", fake_wait)
-        monkeypatch.setattr(git_utils, "run_command", fake_run_command)
+        monkeypatch.setattr(git_command_utils, "run_command", fake_run_command)
 
         run_git_command(["add", "--", "file.txt"], env=command_env, cwd="/repo")
 
@@ -123,7 +114,7 @@ class TestRunGitCommand:
             return subprocess.CompletedProcess(arguments, 0, stdout="ok\n", stderr="")
 
         monkeypatch.setattr(git_index_lock, "wait_for_git_index_lock", fake_wait)
-        monkeypatch.setattr(git_utils, "run_command", fake_run_command)
+        monkeypatch.setattr(git_command_utils, "run_command", fake_run_command)
 
         result = run_git_command(["apply", "--cached"], check=False, cwd="/repo")
 
@@ -154,7 +145,7 @@ class TestRunGitCommand:
             yield b"+new line\n"
 
         monkeypatch.setattr(git_index_lock, "wait_for_git_index_lock", fake_wait)
-        monkeypatch.setattr(git_utils, "run_command", fake_run_command)
+        monkeypatch.setattr(git_command_utils, "run_command", fake_run_command)
 
         result = run_git_command(
             ["apply", "--cached"],
@@ -182,7 +173,7 @@ class TestRunGitCommand:
             return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
 
         monkeypatch.setattr(git_index_lock, "wait_for_git_index_lock", fail_wait)
-        monkeypatch.setattr(git_utils, "run_command", fake_run_command)
+        monkeypatch.setattr(git_command_utils, "run_command", fake_run_command)
 
         original_env = {"CUSTOM": "1"}
         run_git_command(["status", "--short"], env=original_env, requires_index_lock=False)
@@ -393,88 +384,3 @@ class TestStreamGitDiff:
 
         assert lines
         assert not any(b"\x1b[" in line for line in lines)
-
-
-class TestGitIndexPlumbing:
-    """Tests for temporary index plumbing helpers."""
-
-    def test_temp_index_builds_commit_without_touching_main_index(self, temp_git_repo):
-        """Test creating a commit from a temporary index."""
-        blob_sha = create_git_blob([b"from temp index\n"])
-
-        with temp_git_index() as env:
-            temp_index_path = Path(env["GIT_INDEX_FILE"])
-            git_read_tree("HEAD", env=env)
-            git_update_index(
-                mode="100644",
-                blob_sha=blob_sha,
-                file_path="nested/file.txt",
-                env=env,
-            )
-            tree_sha = git_write_tree(env=env)
-
-        assert not temp_index_path.exists()
-
-        commit_sha = git_commit_tree(
-            tree_sha,
-            parents=["HEAD"],
-            message="Temporary index commit",
-        )
-        result = run_git_command(["show", f"{commit_sha}:nested/file.txt"])
-
-        assert result.stdout == "from temp index\n"
-        assert run_git_command(["status", "--short"]).stdout == ""
-
-    def test_update_index_cacheinfo_handles_comma_paths(self, temp_git_repo):
-        """Test that cacheinfo paths are passed as separate arguments."""
-        blob_sha = create_git_blob([b"comma path\n"])
-        file_path = "dir/name,with,commas.txt"
-
-        with temp_git_index() as env:
-            git_read_tree("HEAD", env=env)
-            git_update_index(
-                mode="100644",
-                blob_sha=blob_sha,
-                file_path=file_path,
-                env=env,
-            )
-            tree_sha = git_write_tree(env=env)
-
-        commit_sha = git_commit_tree(
-            tree_sha,
-            parents=["HEAD"],
-            message="Comma path commit",
-        )
-        result = run_git_command(["show", f"{commit_sha}:{file_path}"])
-
-        assert result.stdout == "comma path\n"
-
-    def test_update_index_force_remove_deletes_index_entry(self, temp_git_repo):
-        """Test force-removing a path from a temporary index."""
-        with temp_git_index() as env:
-            git_read_tree("HEAD", env=env)
-            git_update_index(file_path="README.md", force_remove=True, env=env)
-            tree_sha = git_write_tree(env=env)
-
-        commit_sha = git_commit_tree(
-            tree_sha,
-            parents=["HEAD"],
-            message="Remove file from temp index",
-        )
-        result = run_git_command(["show", f"{commit_sha}:README.md"], check=False)
-
-        assert result.returncode != 0
-        assert run_git_command(["status", "--short"]).stdout == ""
-
-    def test_update_index_rejects_ambiguous_modes(self, temp_git_repo):
-        """Test that update-index helper modes are explicit."""
-        with pytest.raises(ValueError, match="mode and blob_sha are required"):
-            git_update_index(file_path="README.md")
-
-        with pytest.raises(ValueError, match="cannot be used with force_remove"):
-            git_update_index(
-                file_path="README.md",
-                mode="100644",
-                blob_sha="0" * 40,
-                force_remove=True,
-            )

@@ -14,7 +14,6 @@ from ..core.diff_parser import (
     build_line_changes_from_patch_lines,
 )
 from ..core.hashing import compute_stable_hunk_hash_from_lines
-from ..core.line_selection import write_line_ids_file
 from ..core.models import (
     BinaryFileChange,
     GitlinkChange,
@@ -25,10 +24,11 @@ from ..core.models import (
     TextFileDeletionChange,
 )
 from ..core.buffer import LineBuffer
+from .line_id_files import write_line_ids_file
 from ..utils.repository_buffers import load_git_object_as_buffer
 from ..i18n import ngettext
 from ..utils.file_io import write_text_file_contents
-from ..utils.git import stream_git_command
+from ..utils.git_command import stream_git_command
 from ..utils.paths import (
     get_context_lines,
     get_line_changes_json_file_path,

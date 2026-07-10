@@ -6,13 +6,13 @@ from contextlib import ExitStack
 import sys
 
 from ...core.buffer import LineBuffer
-from ...core.line_selection import write_line_ids_file
 from ...core.replacement import ReplacementPayload, coerce_replacement_payload
 from ...data.file_change_status import (
     file_has_staged_changes,
     file_has_unstaged_changes,
 )
 from ...data.file_hunk_display import cache_unstaged_file_as_single_hunk
+from ...data.line_id_files import write_line_ids_file
 from ...data.file_review.state import clear_last_file_review_state_if_file_matches
 from ...data.file_tracking import auto_add_untracked_files
 from ...data.line_state import load_line_changes_from_state

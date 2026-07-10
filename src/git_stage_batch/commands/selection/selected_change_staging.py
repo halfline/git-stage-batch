@@ -22,7 +22,7 @@ from ...exceptions import NoMoreHunks, exit_with_error
 from ...i18n import _
 from ...staging.operations import update_index_with_blob_buffer
 from ...utils.file_io import read_text_file_contents
-from ...utils.git import (
+from ...utils.git_index import (
     GitIndexEntryUpdate,
     git_add_paths,
     git_apply_to_index,

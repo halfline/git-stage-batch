@@ -9,9 +9,7 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.commands.suggest_fixup import (
-    _find_next_fixup_candidate,
-)
+from git_stage_batch.commands.fixup.history import find_next_fixup_candidate
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.suggest_fixup_state import write_suggest_fixup_state
 from git_stage_batch.data.hunk_tracking import fetch_next_change
@@ -66,7 +64,7 @@ class TestFindNextFixupCandidate:
         expected_commit = result.stdout.strip()
 
         # Find candidate for line 1
-        candidate = _find_next_fixup_candidate("test.py", 1, 1, "HEAD~2", None)
+        candidate = find_next_fixup_candidate("test.py", 1, 1, "HEAD~2", None)
 
         assert candidate == expected_commit
 
@@ -79,7 +77,7 @@ class TestFindNextFixupCandidate:
         subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
 
         # Try to find candidate with boundary that excludes all commits
-        candidate = _find_next_fixup_candidate("test.py", 1, 1, "HEAD", None)
+        candidate = find_next_fixup_candidate("test.py", 1, 1, "HEAD", None)
 
         assert candidate is None
 
@@ -108,19 +106,19 @@ class TestFindNextFixupCandidate:
         commit2 = result.stdout.strip()
 
         # Find first candidate (most recent)
-        candidate1 = _find_next_fixup_candidate("test.py", 1, 1, "HEAD~3", None)
+        candidate1 = find_next_fixup_candidate("test.py", 1, 1, "HEAD~3", None)
         assert candidate1 == commit2
 
         # Find second candidate (pass first as last_shown)
-        candidate2 = _find_next_fixup_candidate("test.py", 1, 1, "HEAD~3", candidate1)
+        candidate2 = find_next_fixup_candidate("test.py", 1, 1, "HEAD~3", candidate1)
         assert candidate2 == commit1
 
         # Find third candidate (the original addition)
-        candidate3 = _find_next_fixup_candidate("test.py", 1, 1, "HEAD~3", candidate2)
+        candidate3 = find_next_fixup_candidate("test.py", 1, 1, "HEAD~3", candidate2)
         assert candidate3 == commit0
 
         # Find fourth candidate (should be None - exhausted)
-        candidate4 = _find_next_fixup_candidate("test.py", 1, 1, "HEAD~3", candidate3)
+        candidate4 = find_next_fixup_candidate("test.py", 1, 1, "HEAD~3", candidate3)
         assert candidate4 is None
 
 

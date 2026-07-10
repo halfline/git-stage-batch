@@ -1,7 +1,7 @@
 """Tests for TUI interactive mode."""
 
 from git_stage_batch.utils.file_io import write_text_file_contents
-from git_stage_batch.utils.git import run_git_command
+from git_stage_batch.utils.git_command import run_git_command
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,
     get_abort_head_file_path,

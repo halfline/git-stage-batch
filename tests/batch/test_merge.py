@@ -2,15 +2,17 @@
 
 import pytest
 
+from git_stage_batch.batch.baseline_correspondence import (
+    RegionKind,
+    build_baseline_correspondence,
+)
+from git_stage_batch.batch.discard_reversal import reverse_presence_constraints
 from git_stage_batch.batch.match import match_lines
 from git_stage_batch.batch.merge import (
-    RegionKind,
-    _build_baseline_correspondence,
     _build_realized_entries_for_discard,
     _check_structural_validity,
     _discard_batch_line_chunks,
     _merge_batch_line_chunks,
-    _reverse_presence_constraints,
     _try_apply_baseline_replacement_units,
     can_merge_batch_from_line_sequences,
     discard_batch_from_line_sequences_as_buffer,
@@ -196,7 +198,7 @@ class TestMatchLines:
         assert mapping.get_target_line_from_source_line(3) == 4
         assert mapping.get_source_line_from_target_line(2) is None
 
-    def test_acquires_editor_buffer_lines(self):
+    def test_acquires_line_buffer_lines(self):
         """LineBuffer inputs are matched through scoped line acquisition."""
         with (
             _IndexGuardedLineBuffer.from_bytes(
@@ -213,7 +215,7 @@ class TestMatchLines:
         assert mapping.get_target_line_from_source_line(3) == 4
         assert mapping.get_source_line_from_target_line(2) is None
 
-    def test_acquires_normalized_editor_buffer_lines(self):
+    def test_acquires_normalized_line_buffer_lines(self):
         """Normalized LineBuffer inputs forward scoped acquisition."""
         with (
             _IndexGuardedLineBuffer.from_bytes(
@@ -685,7 +687,7 @@ class TestMergeLineSequences:
         """Discard restore scans realized runs instead of per-line lookups."""
         baseline = [b"one\n", b"old\n", b"three\n"]
         source = [b"one\n", b"new\n", b"three\n"]
-        correspondence = _build_baseline_correspondence(baseline, source)
+        correspondence = build_baseline_correspondence(baseline, source)
         entries = _SourceLookupGuardedRealizedEntries()
         entries.append_line_range_from(
             source,
@@ -696,7 +698,7 @@ class TestMergeLineSequences:
         )
 
         try:
-            result = _reverse_presence_constraints(entries, {2}, correspondence)
+            result = reverse_presence_constraints(entries, {2}, correspondence)
         finally:
             entries.close()
 
@@ -710,7 +712,7 @@ class TestMergeLineSequences:
         baseline = line_sequence([b"line1\n", b"old\n", b"line3\n"])
         source = line_sequence([b"line1\n", b"new\n", b"line3\n"])
 
-        correspondence = _build_baseline_correspondence(baseline, source)
+        correspondence = build_baseline_correspondence(baseline, source)
         region = correspondence.get_region_for_source_line(2)
 
         assert region is not None
@@ -723,7 +725,7 @@ class TestMergeLineSequences:
         baseline = [b"line1\n", b"line3\n"]
         source = [b"line1\n", b"line2\n", b"line3\n"]
 
-        correspondence = _build_baseline_correspondence(baseline, source)
+        correspondence = build_baseline_correspondence(baseline, source)
 
         assert correspondence.get_region_for_source_line(0) is None
         assert correspondence.get_region_for_source_line(1).kind == RegionKind.EQUAL
@@ -769,7 +771,7 @@ class TestMergeLineSequences:
         ) as result:
             assert result.to_bytes() == b"line1\r\nold\r\nline3\r\n"
 
-    def test_merge_chunks_acquire_normalized_editor_buffer_lines(self):
+    def test_merge_chunks_acquire_normalized_line_buffer_lines(self):
         """Merge realization uses scoped normalized line acquisition."""
         with (
             _IndexGuardedLineBuffer.from_bytes(
@@ -792,7 +794,7 @@ class TestMergeLineSequences:
 
         assert result == b"line1\nline2\nline3\n"
 
-    def test_discard_chunks_acquire_normalized_editor_buffer_lines(self):
+    def test_discard_chunks_acquire_normalized_line_buffer_lines(self):
         """Discard realization uses scoped normalized line acquisition."""
         with (
             _IndexGuardedLineBuffer.from_bytes(

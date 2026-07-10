@@ -4,24 +4,10 @@ from __future__ import annotations
 
 import sys
 
-from ..batch.display import annotate_with_batch_source
-from ..core.diff_parser import acquire_unified_diff, build_line_changes_from_patch_lines
-from ..core.hashing import (
-    compute_binary_file_hash,
-    compute_gitlink_change_hash,
-    compute_rename_change_hash,
-    compute_stable_hunk_hash_from_lines,
-    compute_text_file_deletion_hash,
-)
-from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
-from ..data.selected_change.hunk_filtering import (
-    apply_line_level_batch_filter_to_cached_hunk,
-)
+from ..core.hashing import compute_rename_change_hash
+from ..core.models import GitlinkChange, RenameChange, TextFileDeletionChange
 from ..data.selected_change.store import (
     SelectedChangeKind,
-    cache_hunk_change,
-    restore_selected_change_state,
-    snapshot_selected_change_state,
 )
 from ..data.selected_change.paths import get_selected_change_file_path
 from ..data.selected_change.clear_reasons import (
@@ -41,13 +27,13 @@ from ..data.file_change_display import (
     render_rename_change,
     render_text_deletion_change,
 )
+from ..data.file_review.pages import normalize_page_spec
 from ..data.file_review.records import ReviewSource
 from ..data.file_review.state import (
     clear_last_file_review_state,
     write_last_file_review_state,
 )
 from ..data.line_state import load_line_changes_from_state
-from ..data.live_diff import stream_live_git_diff
 from ..data.session import require_session_started
 from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..exceptions import exit_with_error
@@ -63,7 +49,6 @@ from ..output.file_review import (
     print_file_review,
 )
 from ..output.file_review_model_builder import build_file_review_model
-from ..data.file_review.pages import normalize_page_spec
 from ..output.file_review_state_builder import (
     make_file_review_state,
     resolve_default_review_pages,
@@ -76,13 +61,11 @@ from ..output.file_review_list import (
     make_text_deletion_file_review_list_entry,
     print_file_review_list,
 )
-from ..utils.file_io import read_text_file_line_set
 from ..utils.git_repository import require_git_repository
 from ..utils.paths import (
     ensure_state_directory_exists,
-    get_block_list_file_path,
-    get_context_lines,
 )
+from .selection.next_change_display import show_next_unprocessed_change
 
 
 def _load_previous_selection_for_review():
@@ -311,109 +294,4 @@ def command_show(
                     print_line_level_changes(file_lines, gutter_to_selection_id={})
         return
 
-    preview_state = snapshot_selected_change_state() if not selectable else None
-    try:
-        # Hunk-scoped operation (selected behavior)
-        # Load blocklist
-        blocklist_path = get_block_list_file_path()
-        blocked_hashes = read_text_file_line_set(blocklist_path)
-
-        # Stream diff and show first unblocked hunk
-        with acquire_unified_diff(
-            stream_live_git_diff(
-                context_lines=get_context_lines(),
-                full_index=True,
-                ignore_submodules="none",
-                submodule_format="short",
-            )
-        ) as patches:
-            for patch in patches:
-                if isinstance(patch, RenameChange):
-                    rename_hash = compute_rename_change_hash(patch)
-                    if rename_hash not in blocked_hashes:
-                        cache_rename_change(patch)
-                        if selectable:
-                            clear_last_file_review_state()
-                        if not porcelain:
-                            print_rename_change(patch)
-                        return
-                    continue
-
-                if isinstance(patch, TextFileDeletionChange):
-                    deletion_hash = compute_text_file_deletion_hash(patch)
-                    if deletion_hash not in blocked_hashes and not text_deletion_change_is_batched(patch):
-                        cache_text_deletion_change(patch)
-                        if selectable:
-                            clear_last_file_review_state()
-                        if not porcelain:
-                            print_text_file_deletion_change(patch)
-                        return
-                    continue
-
-                if isinstance(patch, GitlinkChange):
-                    gitlink_hash = compute_gitlink_change_hash(patch)
-                    if gitlink_hash not in blocked_hashes:
-                        cache_gitlink_change(patch)
-                        if selectable:
-                            clear_last_file_review_state()
-                        if not porcelain:
-                            print_gitlink_change(patch)
-                        return
-                    continue
-
-                if isinstance(patch, BinaryFileChange):
-                    binary_hash = compute_binary_file_hash(patch)
-                    if binary_hash not in blocked_hashes:
-                        cache_binary_file_change(patch)
-                        if selectable:
-                            clear_last_file_review_state()
-                        if not porcelain:
-                            print_binary_file_change(patch)
-                        return
-                    continue
-
-                if patch.old_path != patch.new_path:
-                    rename_hash = compute_rename_change_hash(
-                        RenameChange(old_path=patch.old_path, new_path=patch.new_path)
-                    )
-                    if rename_hash in blocked_hashes:
-                        continue
-
-                patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
-                if patch_hash not in blocked_hashes:
-                    with snapshot_selected_change_state() as previous_selected_state:
-                        line_changes = build_line_changes_from_patch_lines(
-                            patch.lines,
-                            annotator=annotate_with_batch_source,
-                        )
-                        cache_hunk_change(patch.lines, patch_hash, line_changes)
-
-                        # Apply line-level batch filtering
-                        if apply_line_level_batch_filter_to_cached_hunk():
-                            # All lines in this hunk are batched, skip to next
-                            restore_selected_change_state(previous_selected_state)
-                            continue
-
-                    if selectable:
-                        clear_last_file_review_state()
-
-                    # Display this unprocessed hunk (unless porcelain mode)
-                    if not porcelain:
-                        line_changes = load_line_changes_from_state()
-                        if line_changes is not None:
-                            print_line_level_changes(
-                                line_changes,
-                                gutter_to_selection_id=None if selectable else {},
-                            )
-                    return
-
-        # Either no changes or all hunks are blocked
-        if porcelain:
-            # Exit with code 1 for scripts
-            sys.exit(1)
-        else:
-            print(_("No more hunks to process."), file=sys.stderr)
-    finally:
-        if preview_state is not None:
-            restore_selected_change_state(preview_state)
-            preview_state.close()
+    show_next_unprocessed_change(porcelain=porcelain, selectable=selectable)

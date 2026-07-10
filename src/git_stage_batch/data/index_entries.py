@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..utils.git import run_git_command
+from ..utils.git_command import run_git_command
 
 
 @dataclass(frozen=True)

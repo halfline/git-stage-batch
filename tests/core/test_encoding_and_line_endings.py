@@ -18,7 +18,7 @@ from git_stage_batch.core.diff_parser import (
 )
 from git_stage_batch.core.models import LineEntry
 from tests.diff_parser_helpers import collect_unified_diff
-from git_stage_batch.utils.git import stream_git_command, stream_git_diff
+from git_stage_batch.utils.git_command import stream_git_command, stream_git_diff
 
 
 def _batch_diff(batch_name: str) -> bytes:

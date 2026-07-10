@@ -11,7 +11,8 @@ from .validation import batch_exists, validate_batch_name
 from ..exceptions import exit_with_error
 from ..i18n import _
 from ..utils.file_io import write_text_file_contents
-from ..utils.git import git_commit_tree, run_git_command
+from ..utils.git_command import run_git_command
+from ..utils.git_index import git_commit_tree
 from ..utils.paths import get_batch_directory_path, get_batch_metadata_file_path
 
 

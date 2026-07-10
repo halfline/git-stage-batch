@@ -25,12 +25,12 @@ from .lineage import BatchSourceLineage
 from .match import match_lines
 from .ownership import (
     BatchOwnership,
-    ReplacementLineRun,
     detect_stale_batch_source_for_selection,
     merge_batch_ownership,
     translate_hunk_selection_to_batch_ownership,
     translate_lines_to_batch_ownership,
 )
+from .replacement_line_runs import ReplacementLineRun
 from .source_advancement import advance_batch_source_for_file_with_provenance
 
 

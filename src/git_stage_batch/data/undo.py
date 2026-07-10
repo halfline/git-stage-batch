@@ -23,15 +23,19 @@ from . import undo_restore as _undo_restore
 from . import undo_worktree as _undo_worktree
 from ..exceptions import CommandError
 from ..i18n import _
-from ..utils.git import (
+from ..utils.git_command import (
+    run_git_command,
+)
+from ..utils.git_refs import (
+    update_git_refs,
+)
+from ..utils.git_index import (
     GitIndexEntryUpdate,
     git_commit_tree,
     git_read_tree,
     git_update_index_entries,
     git_write_tree,
-    run_git_command,
     temp_git_index,
-    update_git_refs,
 )
 from ..utils.git_repository import get_git_repository_root_path
 from ..utils.git_object_io import create_git_blob

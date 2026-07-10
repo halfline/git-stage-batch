@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from git_stage_batch.batch.ownership import (
     AbsenceClaim,
-    ReplacementLineRun,
     ReplacementUnit,
     ReplacementUnitOrigin,
-    derive_replacement_line_runs_from_lines,
     translate_hunk_selection_to_batch_ownership,
     translate_lines_to_batch_ownership,
+)
+from git_stage_batch.batch.replacement_line_runs import (
+    ReplacementLineRun,
+    derive_replacement_line_runs_from_lines,
 )
 from git_stage_batch.core.line_selection import LineRanges
 from git_stage_batch.core.models import LineEntry
@@ -91,7 +93,7 @@ def test_translate_lines_builds_selected_ranges_without_line_sets(monkeypatch):
     ]
 
 
-def test_translate_lines_stores_large_deletion_as_editor_buffer():
+def test_translate_lines_stores_large_deletion_as_line_buffer():
     """Large selected deletions should keep absence content buffer-backed."""
     lines = [
         LineEntry(

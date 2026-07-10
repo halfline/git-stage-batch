@@ -8,6 +8,11 @@ import shutil
 
 from .batch_refs import snapshot_batch_refs
 from .recovery_anchors import anchor_recovery_objects
+from ..utils.session_start_point import (
+    resolve_session_start_point,
+    save_session_start_point,
+    session_comparison_base,
+)
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_io import (
@@ -76,7 +81,7 @@ def _diff_index_name_status(*, intent_to_add_visible: bool) -> dict[str, str]:
             "-z",
             "--no-renames",
             visibility_option,
-            "HEAD",
+            session_comparison_base(),
             "--",
         ],
         check=True,
@@ -157,8 +162,22 @@ def initialize_abort_state() -> None:
 
 def _initialize_abort_state() -> None:
     """Build abort state, writing the active-session marker last."""
-    head_result = run_git_command(["rev-parse", "HEAD"], requires_index_lock=False)
-    abort_head = head_result.stdout.strip()
+    start_point = resolve_session_start_point()
+    save_session_start_point(start_point)
+    abort_head = start_point.head_commit or "UNBORN"
+
+    if start_point.is_unborn:
+        indexed_paths_result = run_git_command(
+            ["ls-files", "-z"],
+            text_output=False,
+            requires_index_lock=False,
+        )
+        indexed_paths = [
+            path.decode("utf-8", errors="surrogateescape")
+            for path in indexed_paths_result.stdout.split(b"\0")
+            if path
+        ]
+        _snapshot_worktree_paths_for_unborn_abort(indexed_paths)
 
     # Snapshot all intent-to-add files upfront
     # These files won't survive git reset --hard but aren't in the stash
@@ -193,12 +212,20 @@ def _initialize_abort_state() -> None:
 
         # The stash covers tracked worktree and index changes. Untracked files
         # that the session may modify are handled by lazy snapshots.
-        log_journal("session_creating_stash")
-        stash_result = run_git_command(
-            ["stash", "create"],
-            check=False,
-            requires_index_lock=False,
-        )
+        if start_point.is_unborn:
+            stash_hash = ""
+            stash_returncode = 0
+            stash_stderr = ""
+        else:
+            log_journal("session_creating_stash")
+            stash_result = run_git_command(
+                ["stash", "create"],
+                check=False,
+                requires_index_lock=False,
+            )
+            stash_hash = stash_result.stdout.strip()
+            stash_returncode = stash_result.returncode
+            stash_stderr = stash_result.stderr
     finally:
         # Restore all intent-to-add entries even when snapshot creation fails.
         if all_intent_to_add_files:
@@ -231,24 +258,24 @@ def _initialize_abort_state() -> None:
                     index_after=ls_after,
                 )
 
-    if stash_result.returncode != 0:
+    if stash_returncode != 0:
         log_journal(
             "session_stash_failed",
-            returncode=stash_result.returncode,
-            stderr=stash_result.stderr,
+            returncode=stash_returncode,
+            stderr=stash_stderr,
         )
         raise CommandError(
             _("Could not create the recovery snapshot required to start a session: {error}").format(
-                error=stash_result.stderr.strip() or _("git stash create failed")
+                error=stash_stderr.strip() or _("git stash create failed")
             )
         )
 
-    write_text_file_contents(get_abort_stash_file_path(), stash_result.stdout.strip())
-    if stash_result.stdout.strip():
-        log_journal("session_stash_created", stash_hash=stash_result.stdout.strip())
+    write_text_file_contents(get_abort_stash_file_path(), stash_hash)
+    if stash_hash:
+        log_journal("session_stash_created", stash_hash=stash_hash)
 
     batch_snapshot = snapshot_batch_refs()
-    recovery_objects = [abort_head, stash_result.stdout.strip()]
+    recovery_objects = [start_point.head_commit, stash_hash, start_point.index_tree]
     for batch_state in batch_snapshot.values():
         recovery_objects.extend(
             [batch_state.get("commit_sha"), batch_state.get("state_commit_sha")]
@@ -259,6 +286,29 @@ def _initialize_abort_state() -> None:
         json.dumps(recovery_anchors, indent=2, sort_keys=True),
     )
     write_text_file_contents(get_abort_head_file_path(), abort_head)
+
+
+def _snapshot_worktree_paths_for_unborn_abort(file_paths: list[str]) -> None:
+    """Snapshot initially indexed paths that unborn abort may need to restore."""
+    if not file_paths:
+        return
+    repo_root = get_git_repository_root_path()
+    snapshot_dir = get_abort_snapshots_directory_path()
+    existing = set(read_file_paths_file(get_abort_snapshot_list_file_path()))
+    captured: list[str] = []
+    for file_path in file_paths:
+        source = repo_root / file_path
+        if not source.exists() or source.is_dir():
+            continue
+        target = snapshot_dir / file_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target, follow_symlinks=False)
+        captured.append(file_path)
+    if captured:
+        write_file_paths_file(
+            get_abort_snapshot_list_file_path(),
+            [*existing, *captured],
+        )
 
 
 def require_session_started() -> None:

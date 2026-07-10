@@ -112,12 +112,12 @@ def validate_batch_metadata_structure(metadata: dict[str, Any], batch_name: str)
     baseline = metadata.get("baseline")
     if baseline is None:
         raise BatchMetadataError(
-            _("Batch '{name}' has no baseline commit.\n"
+            _("Batch '{name}' has no baseline object.\n"
               "The batch metadata exists but baseline is null or missing.\n"
               "This indicates corrupted or incomplete batch state.").format(name=batch_name)
         )
 
-    # Validate baseline commit is a valid git object
+    # A normal batch uses a commit; a no-history batch uses the empty tree.
     if baseline:
         result = run_git_command(
             ["cat-file", "-e", baseline],
@@ -126,8 +126,8 @@ def validate_batch_metadata_structure(metadata: dict[str, Any], batch_name: str)
         )
         if result.returncode != 0:
             raise BatchMetadataError(
-                _("Batch '{name}' has invalid baseline commit: {baseline}\n"
-                  "The baseline commit does not exist in the repository.\n"
+                _("Batch '{name}' has invalid baseline object: {baseline}\n"
+                  "The baseline object does not exist in the repository.\n"
                   "The batch metadata may be corrupted.").format(
                     name=batch_name,
                     baseline=baseline
@@ -267,7 +267,7 @@ def require_batch_metadata_sane(batch_name: str) -> None:
 
 
 def get_validated_baseline_commit(batch_name: str) -> str:
-    """Get baseline commit for a batch with validation.
+    """Get the commit-or-tree baseline for a batch with validation.
 
     This is a helper for commands that require a valid baseline commit.
     It validates metadata structure and ensures baseline is present.
@@ -276,7 +276,7 @@ def get_validated_baseline_commit(batch_name: str) -> str:
         batch_name: Name of the batch
 
     Returns:
-        Baseline commit SHA (guaranteed non-None)
+        Baseline object ID (guaranteed non-None)
 
     Raises:
         BatchMetadataError: If metadata is missing, corrupted, or baseline is None

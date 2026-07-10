@@ -57,7 +57,7 @@ def _remove_normalized_rename_destinations_before_stash_apply() -> None:
             target_path.unlink(missing_ok=True)
 
 
-def command_abort() -> None:
+def command_abort(*, quiet: bool = False) -> None:
     """Abort the session and undo all changes including commits and discards."""
     require_git_repository()
 
@@ -81,16 +81,19 @@ def command_abort() -> None:
     env = os.environ.copy()
     env["GIT_REFLOG_ACTION"] = "stage-batch abort"
 
-    print(_("Resetting to {}...").format(abort_head[:7]), file=sys.stderr)
+    if not quiet:
+        print(_("Resetting to {}...").format(abort_head[:7]), file=sys.stderr)
     git_reset_hard(abort_head, env=env)
     _remove_normalized_rename_destinations_before_stash_apply()
 
     # Apply original stash if it exists (with --index to restore staged state)
     if abort_stash:
-        print(_("Applying original changes..."), file=sys.stderr)
+        if not quiet:
+            print(_("Applying original changes..."), file=sys.stderr)
         result = git_apply_stash(abort_stash, restore_index=True, env=env, check=False)
         if result.returncode != 0:
-            print(_("⚠ Warning: Could not apply stash cleanly: {}").format(result.stderr), file=sys.stderr)
+            if not quiet:
+                print(_("⚠ Warning: Could not apply stash cleanly: {}").format(result.stderr), file=sys.stderr)
 
     # Restore snapshotted untracked files
     snapshot_list_path = get_abort_snapshot_list_file_path()
@@ -105,7 +108,8 @@ def command_abort() -> None:
                 target_path = repo_root / file_path
                 target_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(snapshot_path, target_path)
-                print(_("Restored: {}").format(file_path), file=sys.stderr)
+                if not quiet:
+                    print(_("Restored: {}").format(file_path), file=sys.stderr)
 
     # Restore intent-to-add status for files that had it before session
     intent_to_add_path = get_abort_state_directory_path() / "intent-to-add-files.txt"
@@ -123,4 +127,5 @@ def command_abort() -> None:
     # Do this AFTER restore_batch_refs so snapshot file is available
     clear_session_state()
 
-    print(_("✓ Session aborted. All changes reverted."), file=sys.stderr)
+    if not quiet:
+        print(_("✓ Session aborted. All changes reverted."), file=sys.stderr)

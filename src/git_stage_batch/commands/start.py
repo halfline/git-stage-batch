@@ -52,32 +52,36 @@ def command_start(
     # Initialize abort state for new session
     initialize_abort_state()
 
-    # Staged renames and text deletions are already in the index, so a plain
-    # worktree-vs-index pass would otherwise never offer them as workflow
-    # choices. Preserve the exact start state in abort metadata first, then
-    # expose those staged entries as unstaged choices for this session.
-    normalize_start_time_staged_renames()
-    normalize_start_time_staged_deletions()
-
-    write_auto_advance_default(
-        DEFAULT_AUTO_ADVANCE
-        if auto_advance is None else
-        auto_advance
-    )
-
-    # Save context lines setting if provided
-    if context_lines is not None:
-        write_text_file_contents(get_context_lines_file_path(), str(context_lines))
-
-    # Make untracked files visible to git diff so they can be staged, blocked by .gitignore, or deleted
-    auto_add_untracked_files()
-
-    # Find and cache first hunk
     try:
-        fetch_next_change()
-    except NoMoreHunks:
-        raise CommandError(_("No changes to process."), exit_code=2)
+        # Staged renames and text deletions are already in the index, so a plain
+        # worktree-vs-index pass would otherwise never offer them as workflow
+        # choices. Preserve the exact start state in abort metadata first, then
+        # expose those staged entries as unstaged choices for this session.
+        normalize_start_time_staged_renames()
+        normalize_start_time_staged_deletions()
 
-    # Display the first hunk
-    if not quiet:
-        show_selected_change()
+        write_auto_advance_default(
+            DEFAULT_AUTO_ADVANCE
+            if auto_advance is None else
+            auto_advance
+        )
+
+        if context_lines is not None:
+            write_text_file_contents(get_context_lines_file_path(), str(context_lines))
+
+        # Make untracked files visible to git diff so they can be staged,
+        # blocked by .gitignore, or deleted.
+        auto_add_untracked_files()
+
+        try:
+            fetch_next_change()
+        except NoMoreHunks:
+            raise CommandError(_("No changes to process."), exit_code=2)
+
+        if not quiet:
+            show_selected_change()
+    except BaseException:
+        from .abort import command_abort
+
+        command_abort(quiet=True)
+        raise

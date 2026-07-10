@@ -19,6 +19,7 @@ from .undo_refs import (
     current_undo_commit,
     list_restorable_refs,
 )
+from .recovery_anchors import anchor_recovery_state
 from . import undo_restore as _undo_restore
 from . import undo_worktree as _undo_worktree
 from ..exceptions import CommandError
@@ -132,6 +133,7 @@ def _create_undo_checkpoint(operation: str, *, worktree_paths: list[str] | None 
         worktree_paths
     )
     before = _snapshot_current_state(tracked_worktree_paths)
+    recovery_anchors = anchor_recovery_state(before)
 
     manifest = {
         "operation": operation,
@@ -144,6 +146,7 @@ def _create_undo_checkpoint(operation: str, *, worktree_paths: list[str] | None 
         ],
         "tracked_worktree_paths": tracked_worktree_paths,
         "worktree_path_scope": worktree_path_scope,
+        "recovery_anchors": recovery_anchors,
     }
 
     with temp_git_index() as env:
@@ -215,6 +218,7 @@ def finalize_pending_checkpoint() -> None:
     paths = sorted(paths)
     manifest["after"] = _snapshot_current_state(paths)
     manifest["after"]["worktree_paths"] = manifest["after"]["worktree_paths"]
+    manifest["recovery_anchors"].update(anchor_recovery_state(manifest["after"]))
 
     with temp_git_index() as env:
         git_read_tree(checkpoint, env=env)

@@ -1,7 +1,10 @@
 """Tests for file I/O utilities."""
 
+import os
 
+import pytest
 
+import git_stage_batch.utils.file_io as file_io
 from git_stage_batch.utils.file_io import read_file_paths_file
 from git_stage_batch.utils.file_io import write_file_paths_file
 from git_stage_batch.utils.file_io import append_file_path_to_file
@@ -91,6 +94,27 @@ class TestWriteTextFileContents:
 
         assert test_file.exists()
         assert test_file.read_text(encoding="utf-8") == ""
+
+    def test_failed_atomic_replace_preserves_existing_contents(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """A failed replacement should leave the previous state file intact."""
+        test_file = tmp_path / "test.txt"
+        test_file.write_text("Old content", encoding="utf-8")
+
+        def fail_replace(source, destination):
+            assert destination == test_file
+            raise OSError("replace failed")
+
+        monkeypatch.setattr(os, "replace", fail_replace)
+
+        with pytest.raises(OSError, match="replace failed"):
+            file_io.write_text_file_contents(test_file, "New content")
+
+        assert test_file.read_text(encoding="utf-8") == "Old content"
+        assert list(tmp_path.glob(".test.txt.*.tmp")) == []
 
 
 class TestAppendLinesToFile:

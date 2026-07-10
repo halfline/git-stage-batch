@@ -112,15 +112,19 @@ def selected_batch_binary_file_for_batch(
     return file_path
 
 
-def load_current_selected_batch_binary_file() -> BinaryFileChange | None:
-    """Return the selected batch binary, clearing it if stale."""
+def load_current_selected_batch_binary_file(
+    *,
+    clear_stale: bool = True,
+) -> BinaryFileChange | None:
+    """Return the selected batch binary, optionally clearing stale state."""
     binary_file = load_selected_binary_file()
     if binary_file is None:
         return None
 
     batch_name = selected_batch_binary_batch_name()
     if batch_name is None:
-        clear_selected_change_state_files()
+        if clear_stale:
+            clear_selected_change_state_files()
         return None
 
     file_path = binary_file.path()
@@ -128,11 +132,12 @@ def load_current_selected_batch_binary_file() -> BinaryFileChange | None:
     if selected_batch_binary_file_for_batch(batch_name, metadata.get("files", {})):
         return binary_file
 
-    clear_selected_change_state_files()
-    mark_selected_change_cleared_by_stale_batch_selection(
-        batch_name=batch_name,
-        file_path=file_path,
-    )
+    if clear_stale:
+        clear_selected_change_state_files()
+        mark_selected_change_cleared_by_stale_batch_selection(
+            batch_name=batch_name,
+            file_path=file_path,
+        )
     return None
 
 

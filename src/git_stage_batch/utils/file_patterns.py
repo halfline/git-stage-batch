@@ -28,17 +28,6 @@ def _validate_patterns(patterns: Iterable[str]) -> list[str]:
     return normalized_patterns
 
 
-def _materialize_candidates(root: Path, candidates: list[str]) -> None:
-    """Create candidate paths in a temporary repository for Git-backed matching."""
-    for candidate in candidates:
-        candidate_path = root / candidate
-        if candidate.endswith("/"):
-            candidate_path.mkdir(parents=True, exist_ok=True)
-            continue
-        candidate_path.parent.mkdir(parents=True, exist_ok=True)
-        candidate_path.touch(exist_ok=True)
-
-
 def resolve_gitignore_style_patterns(
     candidates: Iterable[str],
     patterns: Iterable[str],
@@ -63,7 +52,6 @@ def resolve_gitignore_style_patterns(
             requires_index_lock=False,
         )
         write_text_file_contents(temp_root / ".gitignore", "".join(f"{pattern}\n" for pattern in normalized_patterns))
-        _materialize_candidates(temp_root, normalized_candidates)
 
         payload = b"".join(candidate.encode("utf-8") + b"\0" for candidate in normalized_candidates)
         result = run_git_command(

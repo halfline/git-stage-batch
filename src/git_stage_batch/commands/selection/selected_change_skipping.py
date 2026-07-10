@@ -19,7 +19,7 @@ from ...data.progress import (
     record_text_deletion_hunk_skipped,
 )
 from ...data.selected_change.loading import load_selected_change
-from ...data.undo import undo_checkpoint
+from ...data.undo_checkpoints import undo_checkpoint
 from ...exceptions import NoMoreHunks
 from ...i18n import _
 from ...utils.file_io import append_lines_to_file, read_text_file_contents

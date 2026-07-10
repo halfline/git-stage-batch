@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 
 from ...data.file_review.action_scope import finish_review_scoped_line_action
-from ...data.undo import undo_checkpoint
+from ...data.undo_checkpoints import undo_checkpoint
 from ...i18n import _
 from . import discard_line_selection as _discard_line_selection
 from .selected_hunk_refresh import refresh_selected_hunk_after_line_action

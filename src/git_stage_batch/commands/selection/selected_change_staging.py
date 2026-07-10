@@ -17,7 +17,7 @@ from ...data.hunk_tracking import fetch_next_change
 from ...data.index_entries import read_index_entry
 from ...data.progress import record_hunk_included
 from ...data.selected_change.loading import load_selected_change
-from ...data.undo import undo_checkpoint
+from ...data.undo_checkpoints import undo_checkpoint
 from ...exceptions import NoMoreHunks, exit_with_error
 from ...i18n import _
 from ...staging.index_update import update_index_with_blob_buffer

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-import shutil
 
 try:
     import readline
@@ -28,61 +27,13 @@ except ImportError:
     INPUT_USES_LIBEDIT = False
     readline = None  # type: ignore
 
+from . import action_prompt_choices
+from . import action_prompt_menu
 from ..output.colors import Colors, format_hotkey
 from ..i18n import _, pgettext
 
 # Module-level storage for shell command history
 _shell_command_history: list[str] = []
-
-ANSI_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
-
-
-def _visible_len(text: str) -> int:
-    """Return display length without ANSI color sequences."""
-    return len(ANSI_PATTERN.sub("", text))
-
-
-def _format_menu_section_lines(
-    label: str,
-    options: list[tuple[str, str, str]],
-    use_color: bool,
-) -> list[str]:
-    """Format one menu section, wrapping options across continuation lines."""
-    width = max(40, shutil.get_terminal_size((88, 20)).columns)
-    formatted_options = [
-        format_hotkey(text, hotkey, color)
-        for text, hotkey, color in options
-    ]
-
-    if use_color and Colors.enabled():
-        rendered_label = f"{Colors.GRAY}{label}{Colors.RESET}"
-        rendered_prefix = f"{rendered_label}: {Colors.CYAN}"
-        rendered_suffix = Colors.RESET
-    else:
-        rendered_prefix = _("{label}: ").format(label=label)
-        rendered_suffix = ""
-
-    continuation_prefix = " " * (_visible_len(label) + 2)
-    lines: list[str] = []
-    current = rendered_prefix
-    current_visible_len = _visible_len(current)
-
-    for option in formatted_options:
-        separator = "" if current == rendered_prefix else ", "
-        candidate_len = current_visible_len + len(separator) + _visible_len(option)
-        if current != rendered_prefix and candidate_len > width:
-            lines.append(f"{current}{rendered_suffix}")
-            current = continuation_prefix + option
-            current_visible_len = _visible_len(current)
-            continue
-
-        current = f"{current}{separator}{option}"
-        current_visible_len = candidate_len
-
-    if current != rendered_prefix:
-        lines.append(f"{current}{rendered_suffix}")
-
-    return lines
 
 
 def wrap_prompt_for_readline(prompt: str) -> str:
@@ -123,67 +74,10 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
     Returns:
         Normalized choice (e.g., 'i', 's', 'd', 'q', 'a', 'l', 'x', '!', etc.)
     """
-    if has_hunk:
-        # Primary actions
-        primary_options = [
-            ("include", "i", Colors.GREEN if use_color else ""),
-            ("skip", "s", ""),
-            ("discard", "d", Colors.RED if use_color else ""),
-            ("quit", "q", ""),
-        ]
-
-        # Scope options
-        scope_options = [
-            ("lines", "l", ""),
-            ("file", "f", ""),
-            ("view", "v", ""),
-        ]
-
-        # Flow options
-        flow_options = [
-            ("from", "<", ""),
-            ("to", ">", ""),
-        ]
-
-        # More options
-        more_options = [
-            ("again", "a", ""),
-            ("undo", "u", ""),
-            ("redo", "U", ""),
-            ("status", "S", ""),
-            ("assets", "A", ""),
-            ("batch", "b", ""),
-            ("open", "o", ""),
-            ("fixup", "x", ""),
-            ("cmd", "!", ""),
-            ("help", "?", ""),
-        ]
-    else:
-        # No hunk available - only show non-hunk actions
-        primary_options = [
-            ("quit", "q", ""),
-            ("help", "?", ""),
-        ]
-
-        # Scope options - none in degraded mode
-        scope_options = []
-
-        # Flow options - still available
-        flow_options = [
-            ("from", "<", ""),
-            ("to", ">", ""),
-        ]
-
-        # More options - limited set
-        more_options = [
-            ("undo", "u", ""),
-            ("redo", "U", ""),
-            ("status", "S", ""),
-            ("assets", "A", ""),
-            ("batch", "b", ""),
-            ("open", "o", ""),
-            ("cmd", "!", ""),
-        ]
+    option_groups = action_prompt_choices.action_prompt_option_groups(
+        has_hunk=has_hunk,
+        use_color=use_color,
+    )
 
     if show_question:
         print()
@@ -191,7 +85,7 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
             print(_("What do you want to do with this hunk?"))
         else:
             print(_("What do you want to do?"))
-        for text, hotkey, color in primary_options:
+        for text, hotkey, color in option_groups.primary:
             formatted = format_hotkey(text, hotkey, color)
             print(f"  {formatted}")
 
@@ -207,13 +101,17 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
                 use_color,
         ):
                 rendered_sections.extend(
-                        _format_menu_section_lines(label, options, use_color)
+                        action_prompt_menu.format_menu_section_lines(
+                                label,
+                                options,
+                                use_color,
+                        )
                 )
 
         section_specs = [
-                (pgettext("menu section label", "Other scope"), scope_options),
-                (pgettext("menu section label", "Flow"), flow_options),
-                (pgettext("menu section label", "More"), more_options),
+                (pgettext("menu section label", "Other scope"), option_groups.scope),
+                (pgettext("menu section label", "Flow"), option_groups.flow),
+                (pgettext("menu section label", "More"), option_groups.more),
         ]
 
         for label, options in section_specs:
@@ -239,34 +137,7 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
     except (KeyboardInterrupt, EOFError):
         return "q"  # Ctrl-C or Ctrl-D exits
 
-    # Normalize full words to single letters (case-insensitive)
-    choice_lower = choice.lower()
-    word_to_letter = {
-        "include": "i",
-        "skip": "s",
-        "discard": "d",
-        "quit": "q",
-        "again": "a",
-        "undo": "u",
-        "redo": "U",
-        "status": "S",
-        "assets": "A",
-        "install-assets": "A",
-        "lines": "l",
-        "file": "f",
-        "review": "v",
-        "view": "v",
-        "open": "o",
-        "files": "o",
-        "batch": "b",
-        "fixup": "x",
-        "command": "!",
-        "help": "?",
-        "from": "<",
-        "to": ">",
-    }
-
-    return word_to_letter.get(choice_lower, choice_lower)
+    return action_prompt_choices.normalize_action_prompt_choice(choice)
 
 
 def confirm_destructive_operation(_operation: str, message: str) -> bool:

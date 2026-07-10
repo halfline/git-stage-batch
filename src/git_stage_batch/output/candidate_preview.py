@@ -2,55 +2,22 @@
 
 from __future__ import annotations
 
-import json
-import shlex
-
-from ..batch.operation_candidates import (
-    OperationCandidatePreview,
-    render_candidate_buffer_diff,
-)
-from ..core.buffer import LineBuffer
-from ..core.diff_parser import build_line_changes_from_patch_lines
+from ..batch.operation_candidates import OperationCandidatePreview
 from ..i18n import _
 from ..utils.paths import get_context_lines
+from . import candidate_preview_snippets
 from . import candidate_preview_summary
+from .candidate_preview_commands import (
+    candidate_selector_text,
+    execute_candidate_command,
+    show_candidate_command,
+)
+from .candidate_preview_diff import print_candidate_buffer_diff
+from . import candidate_preview_porcelain
 from .colors import Colors
 
 
 _CANDIDATE_OVERVIEW_MAX_CANDIDATES = 10
-
-
-def _candidate_selector_text(
-    batch_name: str,
-    operation: str,
-    ordinal: int | None = None,
-) -> str:
-    if ordinal is None:
-        return f"{batch_name}:{operation}"
-    return f"{batch_name}:{operation}:{ordinal}"
-
-
-def _show_candidate_command(preview: OperationCandidatePreview, ordinal: int | None = None) -> str:
-    return "git-stage-batch show --from {selector} --file {file}".format(
-        selector=_candidate_selector_text(
-            preview.batch_name,
-            preview.operation,
-            ordinal,
-        ),
-        file=shlex.quote(preview.file_path),
-    )
-
-
-def _execute_candidate_command(preview: OperationCandidatePreview) -> str:
-    return "git-stage-batch {command} --from {selector} --file {file}".format(
-        command=preview.operation,
-        selector=_candidate_selector_text(
-            preview.batch_name,
-            preview.operation,
-            preview.ordinal,
-        ),
-        file=shlex.quote(preview.file_path),
-    )
 
 
 def _candidate_choice_count(count: int) -> str:
@@ -122,7 +89,7 @@ def _print_candidate_detail_header(
 
 
 def _style_candidate_snippet_line(
-    line: candidate_preview_summary.CandidateSnippetLine,
+    line: candidate_preview_snippets.CandidateSnippetLine,
     *,
     width: int,
 ) -> str:
@@ -132,11 +99,11 @@ def _style_candidate_snippet_line(
 
     line_number = " " * width if line.line_number is None else f"{line.line_number:>{width}}"
     gutter = (
-        f"{line_number}{candidate_preview_summary.CANDIDATE_GUTTER_SEPARATOR} "
+        f"{line_number}{candidate_preview_snippets.CANDIDATE_GUTTER_SEPARATOR} "
     )
     body = (
         f"{line.marker}"
-        f"{candidate_preview_summary.shorten_candidate_overview_text(line.text)}"
+        f"{candidate_preview_snippets.shorten_candidate_overview_text(line.text)}"
     )
     if line.highlight:
         return f"{Colors.GRAY}{gutter}{Colors.RESET}{Colors.REVERSE}{Colors.GRAY}{body}{Colors.RESET}"
@@ -147,126 +114,12 @@ def _style_candidate_snippet_line(
     return f"{Colors.GRAY}{gutter}{Colors.RESET}{body}"
 
 
-def _candidate_diff_hunks(diff_text: str) -> tuple[tuple[bytes, ...], ...]:
-    headers: list[bytes] = []
-    current_hunk: list[bytes] = []
-    hunks: list[tuple[bytes, ...]] = []
-    for line in diff_text.splitlines(keepends=True):
-        line_bytes = line.encode("utf-8", errors="surrogateescape")
-        if line_bytes.startswith((b"--- ", b"+++ ")):
-            headers.append(line_bytes)
-            continue
-        if line_bytes.startswith(b"@@ "):
-            if current_hunk:
-                hunks.append(tuple(headers + current_hunk))
-            current_hunk = [line_bytes]
-            continue
-        if current_hunk:
-            current_hunk.append(line_bytes)
-
-    if current_hunk:
-        hunks.append(tuple(headers + current_hunk))
-    return tuple(hunks)
-
-
-def _candidate_line_number(line) -> int | None:
-    if line.kind == "+":
-        return line.new_line_number
-    return line.old_line_number if line.old_line_number is not None else line.new_line_number
-
-
-def _print_candidate_line_changes(
-    line_changes,
-    *,
-    ambiguity_target_line_range: tuple[int, int] | None,
-) -> None:
-    use_color = Colors.enabled()
-    header = line_changes.header
-    header_part = f"@@ -{header.old_start},{header.old_len} +{header.new_start},{header.new_len} @@"
-    if use_color:
-        print(f"{Colors.BOLD}{line_changes.path}{Colors.RESET} :: {Colors.CYAN}{header_part}{Colors.RESET}")
-    else:
-        print(f"{line_changes.path} :: {header_part}")
-
-    line_numbers = [
-        line_number
-        for line_number in (_candidate_line_number(line) for line in line_changes.lines)
-        if line_number is not None
-    ]
-    width = max((len(str(line_number)) for line_number in line_numbers), default=1)
-
-    for line in line_changes.lines:
-        line_number = _candidate_line_number(line)
-        gutter_number = " " * width if line_number is None else f"{line_number:>{width}}"
-        gutter = (
-            f"{gutter_number}"
-            f"{candidate_preview_summary.CANDIDATE_GUTTER_SEPARATOR} "
-        )
-        body = f"{line.kind}{line.display_text()}"
-
-        if not use_color:
-            print(f"{gutter}{body}")
-            continue
-
-        styled_gutter = f"{Colors.GRAY}{gutter}{Colors.RESET}"
-        if line.kind == "+":
-            print(f"{styled_gutter}{Colors.GREEN}{body}{Colors.RESET}")
-        elif line.kind == "-":
-            print(f"{styled_gutter}{Colors.RED}{body}{Colors.RESET}")
-        elif candidate_preview_summary.candidate_line_in_range(
-            line_number,
-            ambiguity_target_line_range,
-        ):
-            print(f"{styled_gutter}{Colors.REVERSE}{Colors.GRAY}{body}{Colors.RESET}")
-        else:
-            print(f"{styled_gutter}{body}")
-
-
-def _print_candidate_buffer_diff(
-    file_path: str,
-    before_buffer: LineBuffer,
-    after_buffer: LineBuffer,
-    *,
-    context_lines: int,
-    ambiguity_target_line_range: tuple[int, int] | None,
-    leading_blank: bool = False,
-) -> bool:
-    diff_text = render_candidate_buffer_diff(
-        file_path,
-        before_buffer,
-        after_buffer,
-        label_before="a",
-        label_after="b",
-        context_lines=context_lines,
-    )
-    if not diff_text:
-        return False
-
-    if leading_blank:
-        print()
-
-    hunks = _candidate_diff_hunks(diff_text)
-    if not hunks:
-        print(diff_text, end="" if diff_text.endswith("\n") else "\n")
-        return True
-
-    for index, hunk in enumerate(hunks):
-        if index:
-            print()
-        line_changes = build_line_changes_from_patch_lines(hunk)
-        _print_candidate_line_changes(
-            line_changes,
-            ambiguity_target_line_range=ambiguity_target_line_range,
-        )
-    return True
-
-
 def _print_candidate_summary_block(
     summary: candidate_preview_summary.CandidateTargetSummary,
     *,
     indent: str,
 ) -> None:
-    width = candidate_preview_summary.snippet_line_width(summary.lines)
+    width = candidate_preview_snippets.snippet_line_width(summary.lines)
     for line in summary.lines:
         print(f"{indent}{_style_candidate_snippet_line(line, width=width)}")
 
@@ -312,56 +165,10 @@ def render_operation_candidate_overview(
     ]
 
     if porcelain:
-        print(json.dumps({
-            "status": "candidates",
-            "changed": False,
-            "batch": first.batch_name,
-            "selector": {
-                "operation": first.operation,
-                "count": len(previews),
-            },
-            "scope": {
-                "file": first.file_path,
-            },
-            "candidates": [
-                {
-                    "ordinal": preview.ordinal,
-                    "selector": _candidate_selector_text(
-                        preview.batch_name,
-                        preview.operation,
-                        preview.ordinal,
-                    ),
-                    "commands": {
-                        "preview": (
-                            "git-stage-batch show --from {selector} --file {file}".format(
-                                selector=_candidate_selector_text(
-                                    preview.batch_name,
-                                    preview.operation,
-                                    preview.ordinal,
-                                ),
-                                file=shlex.quote(preview.file_path),
-                            )
-                        ),
-                        "execute": (
-                            _execute_candidate_command(preview)
-                        ),
-                    },
-                    "targets": [
-                        {
-                            "target": target.target,
-                            "summary": summary.title,
-                            "context": list(
-                                candidate_preview_summary.plain_candidate_snippet_lines(
-                                    summary.lines
-                                )
-                            ),
-                        }
-                        for target, summary in zip(preview.targets, summaries)
-                    ],
-                }
-                for preview, summaries in zip(previews, candidate_summaries)
-            ],
-        }, sort_keys=True))
+        candidate_preview_porcelain.print_operation_candidate_overview_porcelain(
+            previews,
+            candidate_summaries,
+        )
         return previews
 
     targets, verb = candidate_preview_summary.candidate_overview_subject(previews)
@@ -411,9 +218,9 @@ def render_operation_candidate_overview(
                 _print_candidate_summary_block(summary, indent="      ")
         action = _("Apply") if preview.operation == "apply" else _("Include")
         print(f"   {_('Preview this candidate:')}")
-        print(f"     {_show_candidate_command(preview, preview.ordinal)}")
+        print(f"     {show_candidate_command(preview, preview.ordinal)}")
         print(f"   {_('{action} this candidate:').format(action=action)}")
-        print(f"     {_execute_candidate_command(preview)}")
+        print(f"     {execute_candidate_command(preview)}")
         print()
 
     if len(previews) > len(shown_previews):
@@ -421,7 +228,10 @@ def render_operation_candidate_overview(
         print(
             _("... {count} more candidates. Preview another candidate with {selector}:N.").format(
                 count=remaining,
-                selector=_candidate_selector_text(first.batch_name, first.operation),
+                selector=candidate_selector_text(
+                    first.batch_name,
+                    first.operation,
+                ),
             )
         )
         print()
@@ -440,30 +250,7 @@ def render_operation_candidate(
     note: str | None,
 ) -> None:
     if porcelain:
-        print(json.dumps({
-            "status": "candidate",
-            "changed": False,
-            "batch": preview.batch_name,
-            "selector": {
-                "operation": preview.operation,
-                "ordinal": preview.ordinal,
-                "count": preview.count,
-                "id": preview.candidate_id,
-            },
-            "scope": {
-                "file": preview.file_path,
-            },
-            "targets": [
-                {
-                    "target": target.target,
-                    "file": target.file_path,
-                    "summary": target.summary,
-                    "resolution_ordinal": target.resolution_ordinal,
-                    "resolution_count": target.resolution_count,
-                }
-                for target in preview.targets
-            ],
-        }, sort_keys=True))
+        candidate_preview_porcelain.print_operation_candidate_porcelain(preview)
         return
 
     _print_candidate_detail_header(preview, note=note)
@@ -486,7 +273,7 @@ def render_operation_candidate(
             )
         else:
             print(summary.title)
-        _print_candidate_buffer_diff(
+        print_candidate_buffer_diff(
             preview.file_path,
             target.before_buffer,
             target.after_buffer,
@@ -500,19 +287,19 @@ def render_operation_candidate(
     print(
         _("{action} this candidate:\n  {command}").format(
             action=action,
-            command=_execute_candidate_command(preview),
+            command=execute_candidate_command(preview),
         ),
     )
     print()
     print(_("Review candidates:"))
     print(_("  overview: {command}").format(
-        command=_show_candidate_command(preview),
+        command=show_candidate_command(preview),
     ))
     if preview.ordinal > 1:
         print(_("  previous: {command}").format(
-            command=_show_candidate_command(preview, preview.ordinal - 1),
+            command=show_candidate_command(preview, preview.ordinal - 1),
         ))
     if preview.ordinal < preview.count:
         print(_("  next: {command}").format(
-            command=_show_candidate_command(preview, preview.ordinal + 1),
+            command=show_candidate_command(preview, preview.ordinal + 1),
         ))

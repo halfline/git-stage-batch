@@ -8,20 +8,17 @@ from dataclasses import dataclass
 from ..batch.operation_candidates import OperationCandidatePreview
 from ..core.buffer import LineBuffer
 from ..i18n import _
-
-
-CANDIDATE_GUTTER_SEPARATOR = "│"
+from . import candidate_preview_snippets
 
 _CANDIDATE_OVERVIEW_CONTEXT_LINES = 2
 _CANDIDATE_OVERVIEW_MAX_LINES = 9
-_CANDIDATE_OVERVIEW_MAX_LINE_WIDTH = 64
 
 
 @dataclass(frozen=True)
 class CandidateTargetSummary:
     label: str
     title: str
-    lines: tuple["CandidateSnippetLine", ...]
+    lines: tuple[candidate_preview_snippets.CandidateSnippetLine, ...]
     ambiguity_line_range: tuple[int, int] | None = None
 
 
@@ -30,25 +27,6 @@ class AmbiguityBlockContext:
     relation: str
     line_range: tuple[int, int]
     description: str
-
-
-@dataclass(frozen=True)
-class CandidateSnippetLine:
-    line_number: int | None
-    marker: str
-    text: str
-    highlight: bool = False
-
-    def plain(self, *, width: int) -> str:
-        line_number = (
-            " " * width
-            if self.line_number is None
-            else f"{self.line_number:>{width}}"
-        )
-        return (
-            f"{line_number}{CANDIDATE_GUTTER_SEPARATOR} "
-            f"{self.marker}{shorten_candidate_overview_text(self.text)}"
-        )
 
 
 def candidate_overview_subject(
@@ -102,56 +80,23 @@ def candidate_target_subject_label(target_name: str) -> str:
     return _("working tree")
 
 
-def shorten_candidate_overview_text(
-    text: str,
-    max_width: int = _CANDIDATE_OVERVIEW_MAX_LINE_WIDTH,
-) -> str:
-    compact = text.strip()
-    if len(compact) <= max_width:
-        return compact
-    if max_width <= 3:
-        return compact[:max_width]
-    return compact[: max_width - 3] + "..."
-
-
 def summarize_ambiguity_block(lines: list[str]) -> str:
     if not lines:
         return _("ambiguous block")
     if len(lines) == 1:
-        text = shorten_candidate_overview_text(lines[0], 36)
+        text = candidate_preview_snippets.shorten_candidate_overview_text(
+            lines[0],
+            36,
+        )
         if text:
             return f'"{text}"'
         return _("an empty line")
 
-    first = shorten_candidate_overview_text(lines[0], 24)
-    last = shorten_candidate_overview_text(lines[-1], 24)
+    first = candidate_preview_snippets.shorten_candidate_overview_text(lines[0], 24)
+    last = candidate_preview_snippets.shorten_candidate_overview_text(lines[-1], 24)
     if first and last:
         return f'"{first} … {last}"'
     return _("{count} lines").format(count=len(lines))
-
-
-def snippet_line_width(lines: tuple[CandidateSnippetLine, ...]) -> int:
-    numbered_lines = [line for line in lines if line.line_number is not None]
-    if not numbered_lines:
-        return 1
-    return max(len(str(line.line_number)) for line in numbered_lines)
-
-
-def plain_candidate_snippet_lines(
-    lines: tuple[CandidateSnippetLine, ...],
-) -> tuple[str, ...]:
-    width = snippet_line_width(lines)
-    return tuple(line.plain(width=width) for line in lines)
-
-
-def candidate_line_in_range(
-    line_number: int | None,
-    line_range: tuple[int, int] | None,
-) -> bool:
-    if line_number is None or line_range is None:
-        return False
-    start, end = line_range
-    return start <= line_number <= end
 
 
 def candidate_target_summary(target) -> CandidateTargetSummary:
@@ -204,7 +149,9 @@ def candidate_target_summary(target) -> CandidateTargetSummary:
 def candidate_summary_key(
     summary: CandidateTargetSummary,
 ) -> tuple[str, tuple[str, ...]]:
-    return summary.title, plain_candidate_snippet_lines(summary.lines)
+    return summary.title, candidate_preview_snippets.plain_candidate_snippet_lines(
+        summary.lines,
+    )
 
 
 def common_candidate_target_indexes(
@@ -246,7 +193,10 @@ def _summarize_overview_lines(lines: list[str]) -> str:
     if not lines:
         return _("nothing")
     if len(lines) == 1:
-        text = shorten_candidate_overview_text(lines[0], 36)
+        text = candidate_preview_snippets.shorten_candidate_overview_text(
+            lines[0],
+            36,
+        )
         if text:
             return f'"{text}"'
         return _("an empty line")
@@ -332,12 +282,12 @@ def _nearby_context_summary(
         candidates.append(before_lines[before_end])
 
     for line in candidates:
-        text = shorten_candidate_overview_text(line, 36)
+        text = candidate_preview_snippets.shorten_candidate_overview_text(line, 36)
         if text and text not in changed_text:
             return _(' near "{context}"').format(context=text)
 
     for line in candidates:
-        text = shorten_candidate_overview_text(line, 36)
+        text = candidate_preview_snippets.shorten_candidate_overview_text(line, 36)
         if text:
             return _(' near "{context}"').format(context=text)
     return ""
@@ -392,14 +342,21 @@ def _overview_action_title(
 
 
 def _append_overview_line(
-    lines: list[CandidateSnippetLine],
+    lines: list[candidate_preview_snippets.CandidateSnippetLine],
     *,
     line_number: int,
     marker: str,
     text: str,
     highlight: bool = False,
 ) -> None:
-    lines.append(CandidateSnippetLine(line_number, marker, text, highlight))
+    lines.append(
+        candidate_preview_snippets.CandidateSnippetLine(
+            line_number,
+            marker,
+            text,
+            highlight,
+        )
+    )
 
 
 def _overview_snippet_lines(
@@ -410,8 +367,8 @@ def _overview_snippet_lines(
     after_start: int,
     after_end: int,
     ambiguity_target_line_range: tuple[int, int] | None,
-) -> tuple[CandidateSnippetLine, ...]:
-    lines: list[CandidateSnippetLine] = []
+) -> tuple[candidate_preview_snippets.CandidateSnippetLine, ...]:
+    lines: list[candidate_preview_snippets.CandidateSnippetLine] = []
 
     context_start = max(0, before_start - _CANDIDATE_OVERVIEW_CONTEXT_LINES)
     context_end = min(len(before_lines), before_end + _CANDIDATE_OVERVIEW_CONTEXT_LINES)
@@ -422,7 +379,10 @@ def _overview_snippet_lines(
             line_number=index + 1,
             marker=" ",
             text=before_lines[index],
-            highlight=candidate_line_in_range(index + 1, ambiguity_target_line_range),
+            highlight=candidate_preview_snippets.candidate_line_in_range(
+                index + 1,
+                ambiguity_target_line_range,
+            ),
         )
 
     for index in range(before_start, before_end):
@@ -447,12 +407,15 @@ def _overview_snippet_lines(
             line_number=index + 1,
             marker=" ",
             text=before_lines[index],
-            highlight=candidate_line_in_range(index + 1, ambiguity_target_line_range),
+            highlight=candidate_preview_snippets.candidate_line_in_range(
+                index + 1,
+                ambiguity_target_line_range,
+            ),
         )
 
     if len(lines) > _CANDIDATE_OVERVIEW_MAX_LINES:
         return tuple(
             lines[:_CANDIDATE_OVERVIEW_MAX_LINES]
-            + [CandidateSnippetLine(None, " ", "...")]
+            + [candidate_preview_snippets.CandidateSnippetLine(None, " ", "...")]
         )
     return tuple(lines)

@@ -9,7 +9,7 @@ from . import text_file_actions as _text_file_actions
 from ...batch.operation_candidate_state import clear_candidate_preview_state_for_file
 from ...core.replacement import ReplacementPayload
 from ...data.session import snapshot_file_if_untracked
-from ...data.undo import undo_checkpoint
+from ...data.undo_checkpoints import undo_checkpoint
 from ...i18n import _
 
 

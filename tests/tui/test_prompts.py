@@ -190,7 +190,7 @@ class TestPromptAction:
             with patch("sys.stdout", new=StringIO()) as fake_out:
                 with patch("sys.stdout.isatty", return_value=False):
                     with patch(
-                        "git_stage_batch.tui.prompts.shutil.get_terminal_size",
+                        "git_stage_batch.tui.action_prompt_menu.shutil.get_terminal_size",
                         return_value=terminal_size((56, 20)),
                     ):
                         result = prompt_action(use_color=False, has_hunk=True)

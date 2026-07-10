@@ -28,7 +28,7 @@ from ...data.progress import (
     record_text_deletion_hunk_skipped,
 )
 from ...data.selected_change.paths import get_selected_change_file_path
-from ...data.undo import undo_checkpoint
+from ...data.undo_checkpoints import undo_checkpoint
 from ...i18n import _, ngettext
 from ...utils.file_io import append_lines_to_file, read_text_file_line_set
 from ...utils.paths import get_block_list_file_path, get_context_lines

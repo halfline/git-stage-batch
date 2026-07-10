@@ -1771,9 +1771,10 @@ def test_selected_change_path_query_stays_in_path_module():
 
 def test_undo_ref_bookkeeping_stays_in_undo_refs():
     """Undo stack ref helpers should stay out of undo snapshot storage."""
+    old_undo_path = SRC_ROOT / "data" / "undo.py"
     undo = __import__(
-        "git_stage_batch.data.undo",
-        fromlist=["undo"],
+        "git_stage_batch.data.undo_checkpoints",
+        fromlist=["undo_checkpoints"],
     )
     undo_refs = __import__(
         "git_stage_batch.data.undo_refs",
@@ -1802,9 +1803,20 @@ def test_undo_ref_bookkeeping_stays_in_undo_refs():
     }
     session_path = SRC_ROOT / "data" / "session.py"
     session_imports_undo_refs = False
+    old_imports = []
 
     assert ref_names <= vars(undo_refs).keys()
     assert old_undo_names.isdisjoint(vars(undo))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != "git_stage_batch.data.undo":
+                continue
+
+            relative_path = path.relative_to(REPO_ROOT)
+            old_imports.append(
+                f"{relative_path}:{node.lineno} imports {imported_module}"
+            )
 
     for imported_module, node in _import_from_nodes(session_path):
         imported_names = {alias.name for alias in node.names}
@@ -1814,14 +1826,16 @@ def test_undo_ref_bookkeeping_stays_in_undo_refs():
         ):
             session_imports_undo_refs = True
 
+    assert not old_undo_path.exists()
+    assert old_imports == []
     assert session_imports_undo_refs
 
 
 def test_undo_worktree_capture_stays_in_worktree_module():
     """Undo worktree capture should stay out of checkpoint orchestration."""
     undo = __import__(
-        "git_stage_batch.data.undo",
-        fromlist=["undo"],
+        "git_stage_batch.data.undo_checkpoints",
+        fromlist=["undo_checkpoints"],
     )
     undo_worktree = __import__(
         "git_stage_batch.data.undo_worktree",
@@ -1857,10 +1871,10 @@ def test_undo_worktree_capture_stays_in_worktree_module():
 
 def test_undo_snapshot_restore_stays_in_restore_module():
     """Undo snapshot restoration should stay out of checkpoint orchestration."""
-    undo_path = SRC_ROOT / "data" / "undo.py"
+    undo_path = SRC_ROOT / "data" / "undo_checkpoints.py"
     undo = __import__(
-        "git_stage_batch.data.undo",
-        fromlist=["undo"],
+        "git_stage_batch.data.undo_checkpoints",
+        fromlist=["undo_checkpoints"],
     )
     undo_restore = __import__(
         "git_stage_batch.data.undo_restore",
@@ -2646,8 +2660,9 @@ def test_file_review_records_stay_out_of_state_module():
         },
         SRC_ROOT / "data" / "file_review" / "batch_selection.py": {"FileReviewAction"},
         SRC_ROOT / "output" / "file_review.py": {
-            "FileReviewAction",
-            "FileReviewState",
+            "ReviewSource",
+        },
+        SRC_ROOT / "output" / "file_review_footer.py": {
             "ReviewSource",
         },
         SRC_ROOT / "output" / "file_review_action_selections.py": {
@@ -2793,12 +2808,6 @@ def test_file_review_model_builder_uses_layout_module():
     review_output_text = review_output_path.read_text()
     review_model_builder_path = SRC_ROOT / "output" / "file_review_model_builder.py"
     review_model_builder_text = review_model_builder_path.read_text()
-    imports = _import_from_nodes(review_model_builder_path)
-    imports_layout_module = any(
-        imported_module == "git_stage_batch.output"
-        and any(alias.name == "file_review_layout" for alias in node.names)
-        for imported_module, node in imports
-    )
     file_review_model_builder = __import__(
         "git_stage_batch.output.file_review_model_builder",
         fromlist=["file_review_model_builder"],
@@ -2808,7 +2817,6 @@ def test_file_review_model_builder_uses_layout_module():
         fromlist=["file_review_layout"],
     )
 
-    assert imports_layout_module
     assert "body_budget" in vars(file_review_layout)
     assert "body_budget" not in vars(file_review_model_builder)
     assert "git_stage_batch.output.file_review_layout" not in {
@@ -2820,6 +2828,127 @@ def test_file_review_model_builder_uses_layout_module():
     assert "DEFAULT_NON_TTY_REVIEW_LINES" not in review_model_builder_text
     assert "REVIEW_HEADER_LINES" not in review_model_builder_text
     assert "file_review_layout" not in review_output_text
+
+
+def test_file_review_pagination_owns_page_assembly():
+    """File-review pagination should stay out of change construction."""
+    review_model_builder_path = SRC_ROOT / "output" / "file_review_model_builder.py"
+    pagination_path = SRC_ROOT / "output" / "file_review_pagination.py"
+    review_model_builder_text = review_model_builder_path.read_text()
+    pagination_text = pagination_path.read_text()
+    builder_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_model_builder_path)
+    }
+    pagination_imports = tuple(_import_from_nodes(pagination_path))
+    pagination_imports_layout = any(
+        imported_module == "git_stage_batch.output"
+        and any(alias.name == "file_review_layout" for alias in node.names)
+        for imported_module, node in pagination_imports
+    )
+    builder_imports_layout = any(
+        imported_module == "git_stage_batch.output"
+        and any(alias.name == "file_review_layout" for alias in node.names)
+        for imported_module, node in _import_from_nodes(review_model_builder_path)
+    )
+    file_review_pagination = __import__(
+        "git_stage_batch.output.file_review_pagination",
+        fromlist=["file_review_pagination"],
+    )
+
+    assert "git_stage_batch.output.file_review_pagination" in builder_imports
+    assert "paginate_file_review_changes" in vars(file_review_pagination)
+    assert not builder_imports_layout
+    assert pagination_imports_layout
+    assert "file_review_layout.body_budget" not in review_model_builder_text
+    assert "ReviewChangeFragment" not in review_model_builder_text
+    assert "FileReviewPage" not in review_model_builder_text
+    assert "page_fragments" not in review_model_builder_text
+    assert "change_pages" not in review_model_builder_text
+    assert "is_first_fragment" not in review_model_builder_text
+    assert "file_review_layout.body_budget" in pagination_text
+    assert "ReviewChangeFragment" in pagination_text
+    assert "page_fragments" in pagination_text
+
+
+def test_file_review_model_selections_own_actionable_derivation():
+    """File-review selection derivation should stay out of change assembly."""
+    review_model_builder_path = SRC_ROOT / "output" / "file_review_model_builder.py"
+    model_selections_path = SRC_ROOT / "output" / "file_review_model_selections.py"
+    review_model_builder_text = review_model_builder_path.read_text()
+    model_selections_text = model_selections_path.read_text()
+    builder_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_model_builder_path)
+    }
+    builder_core_imports = {
+        alias.name
+        for imported_module, node in _import_from_nodes(review_model_builder_path)
+        if imported_module == "git_stage_batch.core.actionable_changes"
+        for alias in node.names
+    }
+    model_selection_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(model_selections_path)
+    }
+    file_review_model_selections = __import__(
+        "git_stage_batch.output.file_review_model_selections",
+        fromlist=["file_review_model_selections"],
+    )
+
+    assert "git_stage_batch.output.file_review_model_selections" in builder_imports
+    assert "derive_file_review_actionable_selections" in vars(
+        file_review_model_selections
+    )
+    assert "derive_actionable_selections" not in builder_core_imports
+    assert "_partly_selects_ownership_group" not in review_model_builder_text
+    assert "_reason_for_selection_ids" not in review_model_builder_text
+    assert "_actionable_selections_from_selection_groups" not in (
+        review_model_builder_text
+    )
+    assert "_display_actionable_selections_from_review_action_groups" not in (
+        review_model_builder_text
+    )
+    assert "git_stage_batch.core.actionable_changes" in model_selection_imports
+    assert "_partly_selects_ownership_group" in model_selections_text
+    assert "_display_actionable_selections_from_review_action_groups" in (
+        model_selections_text
+    )
+
+
+def test_file_review_changes_own_review_change_assembly():
+    """ReviewChange assembly should stay out of model orchestration."""
+    review_model_builder_path = SRC_ROOT / "output" / "file_review_model_builder.py"
+    changes_path = SRC_ROOT / "output" / "file_review_changes.py"
+    review_model_builder_text = review_model_builder_path.read_text()
+    changes_text = changes_path.read_text()
+    builder_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_model_builder_path)
+    }
+    builder_model_imports = {
+        alias.name
+        for imported_module, node in _import_from_nodes(review_model_builder_path)
+        if imported_module == "git_stage_batch.output.file_review_model"
+        for alias in node.names
+    }
+    file_review_changes = __import__(
+        "git_stage_batch.output.file_review_changes",
+        fromlist=["file_review_changes"],
+    )
+
+    assert "git_stage_batch.output.file_review_changes" in builder_imports
+    assert "build_file_review_changes" in vars(file_review_changes)
+    assert builder_model_imports == {"FileReviewModel"}
+    assert "ActionableSelectionReason" not in review_model_builder_text
+    assert "format_line_ids" not in review_model_builder_text
+    assert "LineEntry" not in review_model_builder_text
+    assert "ReviewChange" not in review_model_builder_text
+    assert "not currently selectable" not in review_model_builder_text
+    assert "flush_segment" not in review_model_builder_text
+    assert "ReviewChange" in changes_text
+    assert "format_line_ids" in changes_text
+    assert "flush_segment" in changes_text
 
 
 def test_file_review_output_uses_model_module():
@@ -2866,6 +2995,144 @@ def test_file_review_output_uses_display_id_module():
     assert "display_ids_for_rows" in vars(file_review_display_ids)
     assert "def display_ids_for_rows" not in review_output_text
     assert "def _display_ids_for_rows" not in review_output_text
+
+
+def test_file_review_output_uses_summary_module():
+    """File-review output should not own shared status summary formatting."""
+    review_output_path = SRC_ROOT / "output" / "file_review.py"
+    review_output_text = review_output_path.read_text()
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_output_path)
+    }
+    file_review_summary = __import__(
+        "git_stage_batch.output.file_review_summary",
+        fromlist=["file_review_summary"],
+    )
+    public_names = {
+        "change_spec_for_fragments",
+        "change_summary",
+        "display_line_spec",
+        "line_spec_for_display_ids",
+        "page_summary",
+        "review_source_summary",
+    }
+
+    assert "git_stage_batch.output.file_review_summary" in imported_modules
+    assert public_names <= vars(file_review_summary).keys()
+    assert "ReviewChangeFragment" not in review_output_text
+    assert "def _line_spec_for_display_ids" not in review_output_text
+    assert "def _change_spec_for_fragments" not in review_output_text
+    assert "def _display_line_spec" not in review_output_text
+    assert "def _page_summary" not in review_output_text
+    assert "def _change_summary" not in review_output_text
+    assert "def _review_source_summary" not in review_output_text
+
+
+def test_file_review_footer_owns_command_rendering():
+    """File-review footer rendering should stay out of page orchestration."""
+    review_output_path = SRC_ROOT / "output" / "file_review.py"
+    review_output_text = review_output_path.read_text()
+    footer_output_path = SRC_ROOT / "output" / "file_review_footer.py"
+    footer_output_text = footer_output_path.read_text()
+    review_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_output_path)
+    }
+    footer_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(footer_output_path)
+    }
+    file_review_footer = __import__(
+        "git_stage_batch.output.file_review_footer",
+        fromlist=["file_review_footer"],
+    )
+
+    assert "git_stage_batch.output.file_review_footer" in review_imports
+    assert "print_file_review_footer" in vars(file_review_footer)
+    assert "git_stage_batch.data.file_review.action_commands" not in review_imports
+    assert "git_stage_batch.data.selected_change.store" not in review_imports
+    assert "def _print_footer" not in review_output_text
+    assert "def _style_footer_command" not in review_output_text
+    assert "def _display_footer_command" not in review_output_text
+    assert "def _footer_review_state" not in review_output_text
+    assert "line_action_command" not in review_output_text
+
+
+def test_file_review_footer_hints_own_command_construction():
+    """File-review footer hints should stay out of terminal styling."""
+    file_review_footer = __import__(
+        "git_stage_batch.output.file_review_footer",
+        fromlist=["file_review_footer"],
+    )
+    footer_hints = __import__(
+        "git_stage_batch.output.file_review_footer_hints",
+        fromlist=["file_review_footer_hints"],
+    )
+    footer_output_path = SRC_ROOT / "output" / "file_review_footer.py"
+    footer_hints_path = SRC_ROOT / "output" / "file_review_footer_hints.py"
+    footer_output_text = footer_output_path.read_text()
+    footer_hints_text = footer_hints_path.read_text()
+    footer_imports_hints = any(
+        imported_module == "git_stage_batch.output"
+        and any(alias.name == "file_review_footer_hints" for alias in node.names)
+        for imported_module, node in _import_from_nodes(footer_output_path)
+    )
+    hint_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(footer_hints_path)
+    }
+    public_names = {
+        "FileReviewFooterHint",
+        "build_file_review_footer_hints",
+    }
+
+    assert public_names <= vars(footer_hints).keys()
+    assert public_names.isdisjoint(vars(file_review_footer))
+    assert footer_imports_hints
+    assert "line_action_command" not in footer_output_text
+    assert "FileReviewState" not in footer_output_text
+    assert "SelectedChangeKind" not in footer_output_text
+    assert "format_line_ids" not in footer_output_text
+    assert "line_action_command" in footer_hints_text
+    assert "FileReviewState" in footer_hints_text
+    assert "SelectedChangeKind" in footer_hints_text
+    assert "format_line_ids" in footer_hints_text
+    assert "git_stage_batch.output.colors" not in hint_imports
+
+
+def test_file_review_rows_own_row_rendering():
+    """File-review row rendering should stay out of page orchestration."""
+    review_output_path = SRC_ROOT / "output" / "file_review.py"
+    review_output_text = review_output_path.read_text()
+    row_output_path = SRC_ROOT / "output" / "file_review_rows.py"
+    row_output_text = row_output_path.read_text()
+    review_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(review_output_path)
+    }
+    row_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(row_output_path)
+    }
+    file_review_rows = __import__(
+        "git_stage_batch.output.file_review_rows",
+        fromlist=["file_review_rows"],
+    )
+    public_names = {
+        "maximum_display_id_digit_count",
+        "print_file_review_rows",
+    }
+
+    assert "git_stage_batch.output.file_review_rows" in review_imports
+    assert "git_stage_batch.core.models" not in review_imports
+    assert "git_stage_batch.core.models" in row_imports
+    assert public_names <= vars(file_review_rows).keys()
+    assert "def _maximum_display_id_digit_count" not in review_output_text
+    assert "def _print_rows" not in review_output_text
+    assert "LineEntry" not in review_output_text
+    assert "display_text()" not in review_output_text
+    assert "display_text()" in row_output_text
 
 
 def test_file_review_callers_use_model_builder():
@@ -3034,7 +3301,6 @@ def test_file_review_action_commands_stay_out_of_state_module():
             "line_action_command",
             "show_command_for_review_state",
         },
-        SRC_ROOT / "output" / "file_review.py": {"line_action_command"},
     }
     violations = []
 
@@ -3932,7 +4198,7 @@ def test_argument_parser_delegates_multi_file_action_flow():
             helper_file_scope_imported_names |= {alias.name for alias in node.names}
 
     assert "git_stage_batch.data.hunk_tracking" not in parser_imports
-    assert "git_stage_batch.data.undo" not in parser_imports
+    assert "git_stage_batch.data.undo_checkpoints" not in parser_imports
     assert (
         "git_stage_batch.commands.file_scope.multi_file_actions"
         not in parser_imports
@@ -3942,7 +4208,7 @@ def test_argument_parser_delegates_multi_file_action_flow():
         for imports in dispatch_imports.values()
     )
     assert "git_stage_batch.data.hunk_tracking" in helper_imports
-    assert "git_stage_batch.data.undo" in helper_imports
+    assert "git_stage_batch.data.undo_checkpoints" in helper_imports
     assert "git_stage_batch.commands.include" not in helper_imports
     assert "git_stage_batch.commands.skip" not in helper_imports
     assert {"include_file", "skip_file"} <= helper_file_scope_imported_names
@@ -4728,7 +4994,7 @@ def test_include_to_batch_action_owns_resolved_dispatch():
     assert "load_selected_change" in action_imports[
         "git_stage_batch.data.selected_change.loading"
     ]
-    assert "undo_checkpoint" in action_imports["git_stage_batch.data.undo"]
+    assert "undo_checkpoint" in action_imports["git_stage_batch.data.undo_checkpoints"]
     assert {
         "BinaryFileChange",
         "GitlinkChange",
@@ -4780,7 +5046,7 @@ def test_include_delegates_include_to_batch_action_routing():
         "git_stage_batch.data.selected_change.loading": {
             "load_selected_change",
         },
-        "git_stage_batch.data.undo": {
+        "git_stage_batch.data.undo_checkpoints": {
             "undo_checkpoint",
         },
         "git_stage_batch.exceptions": {
@@ -4833,7 +5099,7 @@ def test_discard_to_batch_action_owns_resolved_dispatch():
     assert "load_selected_change" in action_imports[
         "git_stage_batch.data.selected_change.loading"
     ]
-    assert "undo_checkpoint" in action_imports["git_stage_batch.data.undo"]
+    assert "undo_checkpoint" in action_imports["git_stage_batch.data.undo_checkpoints"]
     assert {
         "BinaryFileChange",
         "RenameChange",
@@ -4883,7 +5149,7 @@ def test_discard_delegates_discard_to_batch_action_routing():
         "git_stage_batch.data.selected_change.loading": {
             "load_selected_change",
         },
-        "git_stage_batch.data.undo": {
+        "git_stage_batch.data.undo_checkpoints": {
             "undo_checkpoint",
         },
         "git_stage_batch.exceptions": {
@@ -7308,6 +7574,76 @@ def test_tui_file_review_prompts_own_action_vocabulary():
     assert "git_stage_batch.tui.prompts" in prompt_imports
     assert "Review action:" not in browser_text
     assert "Review action:" in prompt_text
+
+
+def test_tui_action_prompt_menu_owns_grouped_section_layout():
+    """Interactive action prompt menu layout should stay out of input prompts."""
+    prompts = __import__(
+        "git_stage_batch.tui.prompts",
+        fromlist=["prompts"],
+    )
+    action_prompt_menu = __import__(
+        "git_stage_batch.tui.action_prompt_menu",
+        fromlist=["action_prompt_menu"],
+    )
+    prompts_path = SRC_ROOT / "tui" / "prompts.py"
+    menu_path = SRC_ROOT / "tui" / "action_prompt_menu.py"
+    prompts_text = prompts_path.read_text()
+    menu_text = menu_path.read_text()
+    prompts_imports_menu = any(
+        imported_module == "git_stage_batch.tui"
+        and any(alias.name == "action_prompt_menu" for alias in node.names)
+        for imported_module, node in _import_from_nodes(prompts_path)
+    )
+    public_names = {
+        "format_menu_section_lines",
+    }
+
+    assert public_names <= vars(action_prompt_menu).keys()
+    assert public_names.isdisjoint(vars(prompts))
+    assert prompts_imports_menu
+    assert "shutil.get_terminal_size" not in prompts_text
+    assert "ANSI_PATTERN" not in prompts_text
+    assert "_visible_len" not in prompts_text
+    assert "format_menu_section_lines" in menu_text
+    assert "shutil.get_terminal_size" in menu_text
+    assert "ANSI_PATTERN" in menu_text
+    assert "format_hotkey" in menu_text
+
+
+def test_tui_action_prompt_choices_own_action_vocabulary():
+    """Interactive action prompt choices should stay out of input prompts."""
+    prompts = __import__(
+        "git_stage_batch.tui.prompts",
+        fromlist=["prompts"],
+    )
+    action_prompt_choices = __import__(
+        "git_stage_batch.tui.action_prompt_choices",
+        fromlist=["action_prompt_choices"],
+    )
+    prompts_path = SRC_ROOT / "tui" / "prompts.py"
+    choices_path = SRC_ROOT / "tui" / "action_prompt_choices.py"
+    prompts_text = prompts_path.read_text()
+    choices_text = choices_path.read_text()
+    prompts_imports_choices = any(
+        imported_module == "git_stage_batch.tui"
+        and any(alias.name == "action_prompt_choices" for alias in node.names)
+        for imported_module, node in _import_from_nodes(prompts_path)
+    )
+    public_names = {
+        "ActionPromptOptionGroups",
+        "action_prompt_option_groups",
+        "normalize_action_prompt_choice",
+    }
+
+    assert public_names <= vars(action_prompt_choices).keys()
+    assert public_names.isdisjoint(vars(prompts))
+    assert prompts_imports_choices
+    assert '"install-assets"' not in prompts_text
+    assert "action_prompt_option_groups" in choices_text
+    assert "normalize_action_prompt_choice" in choices_text
+    assert '"install-assets"' in choices_text
+    assert "Colors.GREEN" in choices_text
 
 
 def test_tui_file_review_action_router_owns_standard_actions():
@@ -11311,18 +11647,12 @@ def test_output_owns_operation_candidate_preview_rendering():
         "render_operation_candidate",
         "render_operation_candidate_overview",
     }
-    renderer_helper_names = {
-        "_execute_candidate_command",
-        "_print_candidate_buffer_diff",
-        "_show_candidate_command",
-    }
+    renderer_helper_names: set[str] = set()
     summary_names = {
-        "CandidateSnippetLine",
         "CandidateTargetSummary",
         "candidate_overview_subject",
         "candidate_target_summary",
         "common_candidate_target_indexes",
-        "plain_candidate_snippet_lines",
         "summarize_ambiguity_block",
     }
     old_renderer_summary_names = {
@@ -11362,9 +11692,212 @@ def test_output_owns_operation_candidate_preview_rendering():
     assert old_renderer_summary_names.isdisjoint(vars(candidate_preview))
     assert "git_stage_batch.output" in candidate_preview_imports
     assert "git_stage_batch.output.colors" in candidate_preview_imports
-    assert "git_stage_batch.core.diff_parser" in candidate_preview_imports
     assert "git_stage_batch.output.colors" not in candidate_summary_imports
     assert "git_stage_batch.core.diff_parser" not in candidate_summary_imports
+
+
+def test_candidate_preview_snippets_own_snippet_formatting():
+    """Candidate preview snippets should stay out of target-summary derivation."""
+    candidate_preview_summary = __import__(
+        "git_stage_batch.output.candidate_preview_summary",
+        fromlist=["candidate_preview_summary"],
+    )
+    candidate_preview_snippets = __import__(
+        "git_stage_batch.output.candidate_preview_snippets",
+        fromlist=["candidate_preview_snippets"],
+    )
+    candidate_preview_path = SRC_ROOT / "output" / "candidate_preview.py"
+    candidate_diff_path = SRC_ROOT / "output" / "candidate_preview_diff.py"
+    candidate_summary_path = SRC_ROOT / "output" / "candidate_preview_summary.py"
+    candidate_snippets_path = SRC_ROOT / "output" / "candidate_preview_snippets.py"
+    candidate_preview_text = candidate_preview_path.read_text()
+    candidate_diff_text = candidate_diff_path.read_text()
+    candidate_summary_text = candidate_summary_path.read_text()
+    candidate_snippets_text = candidate_snippets_path.read_text()
+    imports_snippets = {
+        path: any(
+            imported_module == "git_stage_batch.output"
+            and any(alias.name == "candidate_preview_snippets" for alias in node.names)
+            for imported_module, node in _import_from_nodes(path)
+        )
+        for path in (
+            candidate_preview_path,
+            candidate_diff_path,
+            candidate_summary_path,
+        )
+    }
+    snippet_names = {
+        "CANDIDATE_GUTTER_SEPARATOR",
+        "CandidateSnippetLine",
+        "candidate_line_in_range",
+        "plain_candidate_snippet_lines",
+        "shorten_candidate_overview_text",
+        "snippet_line_width",
+    }
+
+    assert snippet_names <= vars(candidate_preview_snippets).keys()
+    assert snippet_names.isdisjoint(vars(candidate_preview_summary))
+    assert all(imports_snippets.values())
+    assert "class CandidateSnippetLine" not in candidate_summary_text
+    assert "def shorten_candidate_overview_text" not in candidate_summary_text
+    assert "def plain_candidate_snippet_lines" not in candidate_summary_text
+    assert "def candidate_line_in_range" not in candidate_summary_text
+    assert "CANDIDATE_GUTTER_SEPARATOR =" not in candidate_summary_text
+    assert "candidate_preview_summary.CANDIDATE_GUTTER_SEPARATOR" not in (
+        candidate_preview_text
+    )
+    assert "candidate_preview_summary.shorten_candidate_overview_text" not in (
+        candidate_preview_text
+    )
+    assert "candidate_preview_summary.plain_candidate_snippet_lines" not in (
+        candidate_preview_text
+    )
+    assert "candidate_preview_summary.snippet_line_width" not in (
+        candidate_preview_text
+    )
+    assert "candidate_preview_summary.CANDIDATE_GUTTER_SEPARATOR" not in (
+        candidate_diff_text
+    )
+    assert "candidate_preview_summary.candidate_line_in_range" not in (
+        candidate_diff_text
+    )
+    assert "class CandidateSnippetLine" in candidate_snippets_text
+    assert "def shorten_candidate_overview_text" in candidate_snippets_text
+    assert "def plain_candidate_snippet_lines" in candidate_snippets_text
+    assert "def candidate_line_in_range" in candidate_snippets_text
+
+
+def test_candidate_preview_porcelain_owns_json_rendering():
+    """Candidate preview porcelain should stay out of terminal rendering."""
+    candidate_preview = __import__(
+        "git_stage_batch.output.candidate_preview",
+        fromlist=["candidate_preview"],
+    )
+    candidate_preview_porcelain = __import__(
+        "git_stage_batch.output.candidate_preview_porcelain",
+        fromlist=["candidate_preview_porcelain"],
+    )
+    candidate_preview_path = SRC_ROOT / "output" / "candidate_preview.py"
+    candidate_porcelain_path = SRC_ROOT / "output" / "candidate_preview_porcelain.py"
+    candidate_preview_text = candidate_preview_path.read_text()
+    candidate_porcelain_text = candidate_porcelain_path.read_text()
+    preview_imports = tuple(_import_from_nodes(candidate_preview_path))
+    preview_imports_porcelain = any(
+        imported_module == "git_stage_batch.output"
+        and any(alias.name == "candidate_preview_porcelain" for alias in node.names)
+        for imported_module, node in preview_imports
+    )
+    porcelain_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(candidate_porcelain_path)
+    }
+    public_names = {
+        "print_operation_candidate_overview_porcelain",
+        "print_operation_candidate_porcelain",
+    }
+
+    assert public_names <= vars(candidate_preview_porcelain).keys()
+    assert public_names.isdisjoint(vars(candidate_preview))
+    assert preview_imports_porcelain
+    assert "import json" not in candidate_preview_text
+    assert "json.dumps" not in candidate_preview_text
+    assert "import json" in candidate_porcelain_text
+    assert "json.dumps" in candidate_porcelain_text
+    assert "git_stage_batch.output.colors" not in porcelain_imports
+    assert "candidate_preview_snippets" in candidate_porcelain_text
+
+
+def test_candidate_preview_diff_owns_buffer_diff_rendering():
+    """Candidate preview diff rendering should stay out of overview pages."""
+    candidate_preview = __import__(
+        "git_stage_batch.output.candidate_preview",
+        fromlist=["candidate_preview"],
+    )
+    candidate_preview_diff = __import__(
+        "git_stage_batch.output.candidate_preview_diff",
+        fromlist=["candidate_preview_diff"],
+    )
+    candidate_preview_path = SRC_ROOT / "output" / "candidate_preview.py"
+    candidate_diff_path = SRC_ROOT / "output" / "candidate_preview_diff.py"
+    candidate_preview_text = candidate_preview_path.read_text()
+    candidate_diff_text = candidate_diff_path.read_text()
+    candidate_preview_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(candidate_preview_path)
+    }
+    candidate_diff_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(candidate_diff_path)
+    }
+    old_diff_names = {
+        "_candidate_diff_hunks",
+        "_candidate_line_number",
+        "_print_candidate_buffer_diff",
+        "_print_candidate_line_changes",
+    }
+
+    assert "git_stage_batch.output.candidate_preview_diff" in candidate_preview_imports
+    assert "print_candidate_buffer_diff" in vars(candidate_preview_diff)
+    assert old_diff_names.isdisjoint(vars(candidate_preview))
+    assert "git_stage_batch.core.diff_parser" not in candidate_preview_imports
+    assert "git_stage_batch.core.diff_parser" in candidate_diff_imports
+    assert "git_stage_batch.core.buffer" not in candidate_preview_imports
+    assert "git_stage_batch.core.buffer" in candidate_diff_imports
+    assert "def _candidate_diff_hunks" not in candidate_preview_text
+    assert "def _candidate_line_number" not in candidate_preview_text
+    assert "def _print_candidate_buffer_diff" not in candidate_preview_text
+    assert "def _print_candidate_line_changes" not in candidate_preview_text
+    assert "render_candidate_buffer_diff" not in candidate_preview_text
+    assert "splitlines(keepends=True)" not in candidate_preview_text
+    assert "render_candidate_buffer_diff" in candidate_diff_text
+    assert "splitlines(keepends=True)" in candidate_diff_text
+
+
+def test_candidate_preview_commands_own_command_text():
+    """Candidate preview command text should stay out of rendering."""
+    candidate_preview = __import__(
+        "git_stage_batch.output.candidate_preview",
+        fromlist=["candidate_preview"],
+    )
+    candidate_preview_commands = __import__(
+        "git_stage_batch.output.candidate_preview_commands",
+        fromlist=["candidate_preview_commands"],
+    )
+    candidate_preview_path = SRC_ROOT / "output" / "candidate_preview.py"
+    candidate_commands_path = SRC_ROOT / "output" / "candidate_preview_commands.py"
+    candidate_preview_text = candidate_preview_path.read_text()
+    candidate_commands_text = candidate_commands_path.read_text()
+    candidate_preview_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(candidate_preview_path)
+    }
+    candidate_commands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(candidate_commands_path)
+    }
+    command_names = {
+        "candidate_selector_text",
+        "execute_candidate_command",
+        "show_candidate_command",
+    }
+    old_command_names = {
+        "_candidate_selector_text",
+        "_execute_candidate_command",
+        "_show_candidate_command",
+    }
+
+    assert "git_stage_batch.output.candidate_preview_commands" in candidate_preview_imports
+    assert command_names <= vars(candidate_preview_commands).keys()
+    assert old_command_names.isdisjoint(vars(candidate_preview))
+    assert "shlex" not in candidate_preview_imports
+    assert "import shlex" in candidate_commands_text
+    assert "def _candidate_selector_text" not in candidate_preview_text
+    assert "def _show_candidate_command" not in candidate_preview_text
+    assert "def _execute_candidate_command" not in candidate_preview_text
+    assert "git-stage-batch show --from" not in candidate_preview_text
+    assert "git-stage-batch {command} --from" not in candidate_preview_text
+    assert "git-stage-batch show --from" in candidate_commands_text
+    assert "git-stage-batch {command} --from" in candidate_commands_text
 
 
 def test_batch_owns_atomic_file_change_metadata_conversion():
@@ -13095,7 +13628,7 @@ def test_batch_source_apply_action_owns_apply_execution():
         ("git_stage_batch.batch.binary_file_content", "read_binary_file_from_batch"),
         ("git_stage_batch.batch.submodule_pointer", "apply_submodule_pointer_from_batch"),
         ("git_stage_batch.data.session", "snapshot_file_if_untracked"),
-        ("git_stage_batch.data.undo", "undo_checkpoint"),
+        ("git_stage_batch.data.undo_checkpoints", "undo_checkpoint"),
     }
     action_imports = set()
 
@@ -13142,7 +13675,7 @@ def test_apply_from_delegates_apply_action_execution():
         "git_stage_batch.data.session": {
             "snapshot_file_if_untracked",
         },
-        "git_stage_batch.data.undo": {
+        "git_stage_batch.data.undo_checkpoints": {
             "undo_checkpoint",
         },
     }
@@ -13195,7 +13728,7 @@ def test_batch_source_include_action_owns_include_execution():
         ("git_stage_batch.batch.binary_file_content", "read_binary_file_from_batch"),
         ("git_stage_batch.batch.submodule_pointer", "stage_submodule_pointer_from_batch"),
         ("git_stage_batch.data.session", "snapshot_file_if_untracked"),
-        ("git_stage_batch.data.undo", "undo_checkpoint"),
+        ("git_stage_batch.data.undo_checkpoints", "undo_checkpoint"),
     }
     action_imports = set()
 
@@ -13242,7 +13775,7 @@ def test_include_from_delegates_include_action_execution():
         "git_stage_batch.data.session": {
             "snapshot_file_if_untracked",
         },
-        "git_stage_batch.data.undo": {
+        "git_stage_batch.data.undo_checkpoints": {
             "undo_checkpoint",
         },
     }
@@ -13289,7 +13822,7 @@ def test_batch_source_discard_action_owns_discard_execution():
         ("git_stage_batch.batch.metadata_validation", "get_validated_baseline_commit"),
         ("git_stage_batch.batch.submodule_pointer", "discard_submodule_pointer_from_batch"),
         ("git_stage_batch.data.session", "snapshot_file_if_untracked"),
-        ("git_stage_batch.data.undo", "undo_checkpoint"),
+        ("git_stage_batch.data.undo_checkpoints", "undo_checkpoint"),
     }
     action_imports = set()
 
@@ -13329,7 +13862,7 @@ def test_discard_from_delegates_discard_action_execution():
         "git_stage_batch.data.session": {
             "snapshot_file_if_untracked",
         },
-        "git_stage_batch.data.undo": {
+        "git_stage_batch.data.undo_checkpoints": {
             "undo_checkpoint",
         },
     }

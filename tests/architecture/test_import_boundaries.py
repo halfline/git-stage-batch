@@ -1030,9 +1030,9 @@ def test_file_review_records_stay_out_of_state_module():
             "ReviewSource",
         },
         SRC_ROOT / "commands" / "show.py": {"ReviewSource"},
-        SRC_ROOT / "commands" / "show_from.py": {
+        SRC_ROOT / "commands" / "show_from.py": {"ReviewSource"},
+        SRC_ROOT / "commands" / "batch_source" / "replacement_previews.py": {
             "FileReviewAction",
-            "ReviewSource",
         },
         SRC_ROOT / "commands" / "skip.py": {"FileReviewAction"},
         SRC_ROOT / "commands" / "status.py": {
@@ -3819,8 +3819,11 @@ def test_operation_candidates_owns_candidate_preview_count():
         "_IncludeCandidateCount",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "apply_from.py": public_names,
-        SRC_ROOT / "commands" / "include_from.py": public_names,
+        SRC_ROOT
+        / "commands"
+        / "batch_source"
+        / "candidate_preview_counts.py": public_names,
+        SRC_ROOT / "commands" / "batch_source" / "candidate_refusals.py": public_names,
     }
 
     assert public_names <= vars(operation_candidates).keys()
@@ -4040,6 +4043,692 @@ def test_batch_source_action_plans_own_resource_plans():
     assert imports_action_plans[include_from_path]
     assert old_apply_names.isdisjoint(apply_from_helpers)
     assert old_include_names.isdisjoint(include_from_helpers)
+
+
+def test_batch_source_text_plan_builders_own_apply_text_planning():
+    """Regular apply-from text plan construction should live in batch-source support."""
+    text_plan_builders = __import__(
+        "git_stage_batch.commands.batch_source.text_plan_builders",
+        fromlist=["text_plan_builders"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    public_names = {
+        "ApplyTextPlanBuildResult",
+        "build_apply_text_file_action_plan",
+    }
+    disallowed_imports = {
+        "git_stage_batch.batch.merge": {
+            "merge_batch_from_line_sequences_as_buffer",
+        },
+        "git_stage_batch.batch.selection": {
+            "acquire_batch_ownership_for_display_ids_from_lines",
+        },
+        "git_stage_batch.core.buffer": {
+            "LineBuffer",
+        },
+        "git_stage_batch.core.text_lifecycle": {
+            "TextFileChangeType",
+            "mode_for_text_materialization",
+            "normalized_text_change_type",
+            "selected_text_target_change_type",
+        },
+        "git_stage_batch.utils.repository_buffers": {
+            "load_git_object_as_buffer",
+            "load_working_tree_file_as_buffer",
+        },
+        "git_stage_batch.utils.git": {
+            "get_git_repository_root_path",
+        },
+    }
+    imports_text_plan_builders = False
+    direct_plan_imports = set()
+
+    for imported_module, node in _import_from_nodes(apply_from_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_source"
+            and "text_plan_builders" in imported_names
+        ):
+            imports_text_plan_builders = True
+        direct_plan_imports |= imported_names & disallowed_imports.get(
+            imported_module,
+            set(),
+        )
+
+    command_text = apply_from_path.read_text()
+
+    assert public_names <= vars(text_plan_builders).keys()
+    assert imports_text_plan_builders
+    assert direct_plan_imports == set()
+    assert "build_apply_text_file_action_plan(" in command_text
+    assert "merge_batch_from_line_sequences_as_buffer(" not in command_text
+    assert "selected_text_target_change_type(" not in command_text
+
+
+def test_batch_source_text_plan_builders_own_include_text_planning():
+    """Regular include-from text plan construction should live in batch-source support."""
+    text_plan_builders = __import__(
+        "git_stage_batch.commands.batch_source.text_plan_builders",
+        fromlist=["text_plan_builders"],
+    )
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    public_names = {
+        "IncludeTextPlanBuildResult",
+        "build_include_text_file_action_plan",
+    }
+    disallowed_imports = {
+        "git_stage_batch.batch.merge": {
+            "merge_batch_from_line_sequences_as_buffer",
+        },
+        "git_stage_batch.batch.replacement": {
+            "build_replacement_batch_view_from_lines",
+        },
+        "git_stage_batch.batch.selection": {
+            "acquire_batch_ownership_for_display_ids_from_lines",
+        },
+        "git_stage_batch.core.buffer": {
+            "LineBuffer",
+        },
+        "git_stage_batch.core.text_lifecycle": {
+            "TextFileChangeType",
+            "mode_for_text_materialization",
+            "normalized_text_change_type",
+            "selected_text_target_change_type",
+        },
+        "git_stage_batch.utils.repository_buffers": {
+            "load_git_object_as_buffer",
+            "load_working_tree_file_as_buffer",
+        },
+        "git_stage_batch.utils.git": {
+            "get_git_repository_root_path",
+        },
+    }
+    imports_text_plan_builders = False
+    direct_plan_imports = set()
+
+    for imported_module, node in _import_from_nodes(include_from_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_source"
+            and "text_plan_builders" in imported_names
+        ):
+            imports_text_plan_builders = True
+        direct_plan_imports |= imported_names & disallowed_imports.get(
+            imported_module,
+            set(),
+        )
+
+    command_text = include_from_path.read_text()
+
+    assert public_names <= vars(text_plan_builders).keys()
+    assert imports_text_plan_builders
+    assert direct_plan_imports == set()
+    assert "build_include_text_file_action_plan(" in command_text
+    assert "merge_batch_from_line_sequences_as_buffer(" not in command_text
+    assert "build_replacement_batch_view_from_lines(" not in command_text
+    assert "selected_text_target_change_type(" not in command_text
+
+
+def test_batch_source_candidate_previews_own_candidate_preview_checks():
+    """Shared candidate preview checks should live outside command entries."""
+    candidate_previews = __import__(
+        "git_stage_batch.commands.batch_source.candidate_previews",
+        fromlist=["candidate_previews"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    show_from_path = SRC_ROOT / "commands" / "show_from.py"
+    public_names = {
+        "candidate_preview_for_ordinal",
+        "candidate_preview_state_matches",
+        "close_candidate_previews",
+        "require_candidate_preview_for_ordinal",
+        "require_candidate_preview_state",
+    }
+    command_paths = {
+        apply_from_path,
+        include_from_path,
+        show_from_path,
+    }
+    imports_candidate_previews = {
+        path: False
+        for path in command_paths
+    }
+    direct_state_imports = {
+        path: set()
+        for path in command_paths
+    }
+
+    for path in command_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "candidate_previews" in imported_names
+            ):
+                imports_candidate_previews[path] = True
+            if imported_module == "git_stage_batch.batch.operation_candidates":
+                direct_state_imports[path] |= (
+                    imported_names & {"load_candidate_preview_state"}
+                )
+
+    assert public_names <= vars(candidate_previews).keys()
+    assert imports_candidate_previews == {
+        apply_from_path: False,
+        include_from_path: False,
+        show_from_path: True,
+    }
+    assert direct_state_imports == {
+        apply_from_path: set(),
+        include_from_path: set(),
+        show_from_path: set(),
+    }
+    for path in command_paths:
+        command_text = path.read_text()
+        assert "_resolve_candidate_ordinal" not in command_text
+        assert ".candidate_preview_for_ordinal(" not in command_text
+        assert ".candidate_preview_state_matches(" not in command_text
+
+
+def test_batch_source_candidate_preview_builders_own_show_candidate_construction():
+    """Show-from candidate construction should live in batch-source support."""
+    candidate_preview_builders = __import__(
+        "git_stage_batch.commands.batch_source.candidate_preview_builders",
+        fromlist=["candidate_preview_builders"],
+    )
+    show_from_path = SRC_ROOT / "commands" / "show_from.py"
+    public_names = {
+        "build_batch_source_candidate_previews",
+    }
+    old_function_names = {
+        "_build_candidate_previews",
+    }
+    old_import_names = {
+        "build_apply_candidate_previews",
+        "build_include_candidate_previews",
+    }
+    show_from_tree = ast.parse(
+        show_from_path.read_text(),
+        filename=str(show_from_path),
+    )
+    show_from_helpers = {
+        node.name
+        for node in ast.walk(show_from_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    imports_candidate_preview_builders = False
+    direct_operation_builder_imports = set()
+
+    for imported_module, node in _import_from_nodes(show_from_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_source"
+            and "candidate_preview_builders" in imported_names
+        ):
+            imports_candidate_preview_builders = True
+        if imported_module == "git_stage_batch.batch.operation_candidates":
+            direct_operation_builder_imports |= imported_names & old_import_names
+
+    assert public_names <= vars(candidate_preview_builders).keys()
+    assert imports_candidate_preview_builders
+    assert old_function_names.isdisjoint(show_from_helpers)
+    assert direct_operation_builder_imports == set()
+
+
+def test_batch_source_candidate_preview_counts_own_failure_enumeration():
+    """Apply/include candidate count enumeration should live in batch-source support."""
+    candidate_preview_counts = __import__(
+        "git_stage_batch.commands.batch_source.candidate_preview_counts",
+        fromlist=["candidate_preview_counts"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    public_names = {
+        "count_apply_candidate_previews_for_file",
+        "count_include_candidate_previews_for_file",
+    }
+    old_function_names = {
+        apply_from_path: {
+            "_apply_candidate_count_for_file",
+        },
+        include_from_path: {
+            "_include_candidate_count_for_file",
+        },
+    }
+    old_import_names = {
+        "CandidateEnumerationLimitError",
+        "CandidatePreviewCount",
+    }
+    command_paths = set(old_function_names)
+    imports_candidate_preview_counts = {
+        path: False
+        for path in command_paths
+    }
+    direct_count_imports = {
+        path: set()
+        for path in command_paths
+    }
+    helper_names = {}
+
+    for path in command_paths:
+        tree = ast.parse(path.read_text(), filename=str(path))
+        helper_names[path] = {
+            node.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef)
+        }
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "candidate_preview_counts" in imported_names
+            ):
+                imports_candidate_preview_counts[path] = True
+            if imported_module == "git_stage_batch.batch.operation_candidates":
+                direct_count_imports[path] |= imported_names & old_import_names
+
+    assert public_names <= vars(candidate_preview_counts).keys()
+    assert imports_candidate_preview_counts == {
+        apply_from_path: True,
+        include_from_path: True,
+    }
+    assert direct_count_imports == {
+        apply_from_path: set(),
+        include_from_path: set(),
+    }
+    for path, old_names in old_function_names.items():
+        assert old_names.isdisjoint(helper_names[path])
+
+
+def test_batch_source_candidate_inputs_own_text_candidate_metadata():
+    """Candidate input metadata should live in batch-source support."""
+    candidate_inputs = __import__(
+        "git_stage_batch.commands.batch_source.candidate_inputs",
+        fromlist=["candidate_inputs"],
+    )
+    support_paths = {
+        SRC_ROOT / "commands" / "batch_source" / "candidate_preview_builders.py",
+        SRC_ROOT / "commands" / "batch_source" / "candidate_preview_counts.py",
+        SRC_ROOT / "commands" / "batch_source" / "candidate_materialization.py",
+    }
+    public_names = {
+        "CandidateBatchSourceRef",
+        "CandidateIndexTarget",
+        "CandidateWorktreeTarget",
+        "candidate_batch_source_ref",
+        "candidate_index_text_target",
+        "candidate_worktree_text_target",
+        "is_text_candidate_entry",
+        "require_candidate_batch_source_ref",
+    }
+    disallowed_imports = {
+        "git_stage_batch.batch.submodule_pointer": {
+            "is_batch_submodule_pointer",
+        },
+        "git_stage_batch.core.text_lifecycle": {
+            "mode_for_text_materialization",
+            "normalized_text_change_type",
+        },
+        "git_stage_batch.utils.git": {
+            "get_git_repository_root_path",
+        },
+    }
+    imports_candidate_inputs = {
+        path: False
+        for path in support_paths
+    }
+    direct_metadata_imports = {
+        path: set()
+        for path in support_paths
+    }
+
+    for path in support_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "candidate_inputs" in imported_names
+            ):
+                imports_candidate_inputs[path] = True
+            direct_metadata_imports[path] |= imported_names & disallowed_imports.get(
+                imported_module,
+                set(),
+            )
+
+    assert public_names <= vars(candidate_inputs).keys()
+    assert imports_candidate_inputs == {
+        path: True
+        for path in support_paths
+    }
+    assert direct_metadata_imports == {
+        path: set()
+        for path in support_paths
+    }
+
+
+def test_batch_source_candidate_materialization_owns_reviewed_candidate_loading():
+    """Apply/include reviewed candidate loading should live in batch-source support."""
+    candidate_materialization = __import__(
+        "git_stage_batch.commands.batch_source.candidate_materialization",
+        fromlist=["candidate_materialization"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    materialization_path = (
+        SRC_ROOT / "commands" / "batch_source" / "candidate_materialization.py"
+    )
+    public_names = {
+        "ApplyCandidateMaterialization",
+        "IncludeCandidateMaterialization",
+        "materialize_apply_candidate",
+        "materialize_include_candidate",
+    }
+    builder_names = {
+        "build_apply_candidate_previews",
+        "build_include_candidate_previews",
+    }
+    command_paths = {
+        apply_from_path,
+        include_from_path,
+    }
+    imports_candidate_materialization = {
+        path: False
+        for path in command_paths
+    }
+    imports_candidate_previews = {
+        path: False
+        for path in command_paths
+    }
+    direct_builder_imports = {
+        path: set()
+        for path in command_paths
+    }
+    materialization_imports_candidate_previews = False
+    materialization_builder_imports = set()
+
+    for path in command_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "candidate_materialization" in imported_names
+            ):
+                imports_candidate_materialization[path] = True
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "candidate_previews" in imported_names
+            ):
+                imports_candidate_previews[path] = True
+            if imported_module == "git_stage_batch.batch.operation_candidates":
+                direct_builder_imports[path] |= imported_names & builder_names
+
+    for imported_module, node in _import_from_nodes(materialization_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_source"
+            and "candidate_previews" in imported_names
+        ):
+            materialization_imports_candidate_previews = True
+        if imported_module == "git_stage_batch.batch.operation_candidates":
+            materialization_builder_imports |= imported_names & builder_names
+
+    assert public_names <= vars(candidate_materialization).keys()
+    assert imports_candidate_materialization == {
+        apply_from_path: True,
+        include_from_path: True,
+    }
+    assert imports_candidate_previews == {
+        apply_from_path: False,
+        include_from_path: False,
+    }
+    assert direct_builder_imports == {
+        apply_from_path: set(),
+        include_from_path: set(),
+    }
+    assert materialization_imports_candidate_previews
+    assert materialization_builder_imports == builder_names
+
+    for path in command_paths:
+        command_text = path.read_text()
+        assert ".require_candidate_preview_for_ordinal(" not in command_text
+        assert ".require_candidate_preview_state(" not in command_text
+        assert ".close_candidate_previews(" not in command_text
+        assert "build_apply_candidate_previews(" not in command_text
+        assert "build_include_candidate_previews(" not in command_text
+
+
+def test_batch_source_replacement_previews_own_show_replacement_preview():
+    """Show-from replacement preview rendering should live in batch-source support."""
+    replacement_previews = __import__(
+        "git_stage_batch.commands.batch_source.replacement_previews",
+        fromlist=["replacement_previews"],
+    )
+    show_from_path = SRC_ROOT / "commands" / "show_from.py"
+    public_names = {
+        "print_batch_source_replacement_preview",
+    }
+    old_function_names = {
+        "_preview_replacement_batch_view",
+    }
+    old_import_names_by_module = {
+        "git_stage_batch.batch.operation_candidates": {
+            "render_candidate_buffer_diff",
+        },
+        "git_stage_batch.batch.replacement": {
+            "build_replacement_batch_view_from_lines",
+        },
+        "git_stage_batch.batch.selection": {
+            "acquire_batch_ownership_for_display_ids_from_lines",
+        },
+        "git_stage_batch.commands.selection": {
+            "replacement_selection",
+        },
+        "git_stage_batch.core.replacement": {
+            "coerce_replacement_payload",
+        },
+        "git_stage_batch.utils.repository_buffers": {
+            "load_git_object_as_buffer",
+        },
+    }
+    show_from_tree = ast.parse(
+        show_from_path.read_text(),
+        filename=str(show_from_path),
+    )
+    show_from_helpers = {
+        node.name
+        for node in ast.walk(show_from_tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    imports_replacement_previews = False
+    direct_preview_imports = set()
+
+    for imported_module, node in _import_from_nodes(show_from_path):
+        imported_names = {alias.name for alias in node.names}
+        if (
+            imported_module == "git_stage_batch.commands.batch_source"
+            and "replacement_previews" in imported_names
+        ):
+            imports_replacement_previews = True
+        direct_preview_imports |= imported_names & old_import_names_by_module.get(
+            imported_module,
+            set(),
+        )
+
+    assert public_names <= vars(replacement_previews).keys()
+    assert imports_replacement_previews
+    assert old_function_names.isdisjoint(show_from_helpers)
+    assert direct_preview_imports == set()
+
+
+def test_batch_source_candidate_refusals_own_candidate_count_refusals():
+    """Shared candidate count refusals should live outside command entries."""
+    candidate_refusals = __import__(
+        "git_stage_batch.commands.batch_source.candidate_refusals",
+        fromlist=["candidate_refusals"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    public_names = {
+        "refuse_candidate_conflicts",
+    }
+    old_snippets_by_path = {
+        apply_from_path: {
+            "too many apply candidates",
+            "Cannot enumerate apply candidates",
+            "multiple files need apply decisions",
+        },
+        include_from_path: {
+            "too many include candidates",
+            "Cannot enumerate include candidates",
+            "multiple files need include decisions",
+        },
+    }
+    command_paths = set(old_snippets_by_path)
+    imports_candidate_refusals = {
+        path: False
+        for path in command_paths
+    }
+
+    for path in command_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "candidate_refusals" in imported_names
+            ):
+                imports_candidate_refusals[path] = True
+
+    assert public_names <= vars(candidate_refusals).keys()
+    assert imports_candidate_refusals == {
+        apply_from_path: True,
+        include_from_path: True,
+    }
+    for path, old_snippets in old_snippets_by_path.items():
+        command_text = path.read_text()
+        for snippet in old_snippets:
+            assert snippet not in command_text
+
+
+def test_batch_source_candidate_selectors_own_action_selector_validation():
+    """Shared candidate selector validation should live outside action entries."""
+    candidate_selectors = __import__(
+        "git_stage_batch.commands.batch_source.candidate_selectors",
+        fromlist=["candidate_selectors"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    public_names = {
+        "resolve_batch_source_action_selector",
+    }
+    old_source_selector_names = {
+        "parse_batch_source_selector",
+        "require_candidate_operation",
+    }
+    old_snippets_by_path = {
+        apply_from_path: {
+            "names the apply candidate preview set",
+            "requires --file in this implementation",
+        },
+        include_from_path: {
+            "names the include candidate preview set",
+            "requires --file in this implementation",
+        },
+    }
+    command_paths = set(old_snippets_by_path)
+    imports_candidate_selectors = {
+        path: False
+        for path in command_paths
+    }
+    direct_selector_imports = {
+        path: set()
+        for path in command_paths
+    }
+
+    for path in command_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "candidate_selectors" in imported_names
+            ):
+                imports_candidate_selectors[path] = True
+            if imported_module == "git_stage_batch.batch.source_selector":
+                direct_selector_imports[path] |= (
+                    imported_names & old_source_selector_names
+                )
+
+    assert public_names <= vars(candidate_selectors).keys()
+    assert imports_candidate_selectors == {
+        apply_from_path: True,
+        include_from_path: True,
+    }
+    assert direct_selector_imports == {
+        apply_from_path: set(),
+        include_from_path: set(),
+    }
+    for path, old_snippets in old_snippets_by_path.items():
+        command_text = path.read_text()
+        for snippet in old_snippets:
+            assert snippet not in command_text
+
+
+def test_batch_source_merge_refusals_own_merge_failure_refusals():
+    """Shared merge failure refusals should live outside command entries."""
+    merge_refusals = __import__(
+        "git_stage_batch.commands.batch_source.merge_refusals",
+        fromlist=["merge_refusals"],
+    )
+    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    public_names = {
+        "refuse_batch_source_merge_failures",
+    }
+    old_snippets_by_path = {
+        apply_from_path: {
+            "gutter_to_selection_id",
+            "Failed for: {files}",
+        },
+        include_from_path: {
+            "gutter_to_selection_id",
+            "Failed for: {files}",
+        },
+    }
+    command_paths = set(old_snippets_by_path)
+    imports_merge_refusals = {
+        path: False
+        for path in command_paths
+    }
+    direct_display_imports = {
+        path: set()
+        for path in command_paths
+    }
+
+    for path in command_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "merge_refusals" in imported_names
+            ):
+                imports_merge_refusals[path] = True
+            if imported_module == "git_stage_batch.batch.file_display":
+                direct_display_imports[path] |= (
+                    imported_names & {"render_batch_file_display"}
+                )
+
+    assert public_names <= vars(merge_refusals).keys()
+    assert imports_merge_refusals == {
+        apply_from_path: True,
+        include_from_path: True,
+    }
+    assert direct_display_imports == {
+        apply_from_path: set(),
+        include_from_path: set(),
+    }
+    for path, old_snippets in old_snippets_by_path.items():
+        command_text = path.read_text()
+        for snippet in old_snippets:
+            assert snippet not in command_text
 
 
 def test_batch_source_text_actions_own_text_file_mutations():
@@ -5942,6 +6631,9 @@ def test_replacement_selection_stays_in_command_helper():
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
     discard_path = SRC_ROOT / "commands" / "discard.py"
     show_from_path = SRC_ROOT / "commands" / "show_from.py"
+    replacement_previews_path = (
+        SRC_ROOT / "commands" / "batch_source" / "replacement_previews.py"
+    )
     discard_replacement_path = (
         SRC_ROOT / "commands" / "selection" / "discard_line_replacement.py"
     )
@@ -5973,7 +6665,7 @@ def test_replacement_selection_stays_in_command_helper():
         include_path,
         include_from_path,
         discard_replacement_path,
-        show_from_path,
+        replacement_previews_path,
     )
     violations = []
 

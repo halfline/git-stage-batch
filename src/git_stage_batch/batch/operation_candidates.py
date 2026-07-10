@@ -86,6 +86,13 @@ class OperationCandidatePreview:
     target_result_fingerprints: dict[str, str]
     scope_fingerprint: str
 
+    def require_target(self, target: CandidateTarget) -> TargetCandidatePreview:
+        """Return a target preview or raise when the candidate shape is invalid."""
+        for candidate_target in self.targets:
+            if candidate_target.target == target:
+                return candidate_target
+        raise KeyError(target)
+
     def close(self) -> None:
         for target in self.targets:
             target.close()

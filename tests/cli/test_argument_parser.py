@@ -9,10 +9,13 @@ from git_stage_batch.cli import (
     apply_dispatch,
     argument_parser,
     discard_dispatch,
+    file_blocking_subcommands,
     file_scope,
+    fixup_subcommands,
     git_help,
     include_dispatch,
     replacement_input,
+    session_subcommands,
     show_dispatch,
     skip_dispatch,
 )
@@ -233,7 +236,7 @@ def test_parse_command_line_interactive_marks_launch_intent():
 
 def test_parse_command_line_start_passes_auto_advance(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_start", mock_command)
+    monkeypatch.setattr(session_subcommands, "command_start", mock_command)
 
     args = parse_command_line(["start", "--no-auto-advance"], quiet=True)
 
@@ -245,7 +248,7 @@ def test_parse_command_line_start_passes_auto_advance(monkeypatch):
 def test_parse_command_line_check_unstaged(monkeypatch):
     """check-unstaged dispatches to the unstaged-only index guard."""
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_check_unstaged", mock_command)
+    monkeypatch.setattr(session_subcommands, "command_check_unstaged", mock_command)
 
     args = parse_command_line(["check-unstaged"], quiet=True)
 
@@ -284,7 +287,7 @@ def test_parse_command_line_again_alias():
 
 def test_parse_command_line_again_passes_auto_advance(monkeypatch):
     mock_command = Mock()
-    monkeypatch.setattr(argument_parser, "command_again", mock_command)
+    monkeypatch.setattr(session_subcommands, "command_again", mock_command)
 
     args = parse_command_line(["again", "--auto-advance"], quiet=True)
 
@@ -1474,6 +1477,18 @@ def test_parse_command_line_block_file_alias():
     assert callable(args.func)
 
 
+def test_parse_command_line_block_file_passes_args(monkeypatch):
+    """block-file dispatches through the file-blocking parser owner."""
+    mock_command = Mock()
+    monkeypatch.setattr(file_blocking_subcommands, "command_block_file", mock_command)
+
+    args = parse_command_line(["block-file", "--local-only", "test.txt"], quiet=True)
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with("test.txt", local_only=True)
+
+
 def test_parse_command_line_unblock_file():
     """Test parsing unblock-file command."""
     args = parse_command_line(["unblock-file", "test.txt"], quiet=True)
@@ -1492,6 +1507,22 @@ def test_parse_command_line_unblock_file_alias():
     assert args.file_path == "test.txt"
     assert hasattr(args, "func")
     assert callable(args.func)
+
+
+def test_parse_command_line_unblock_file_passes_args(monkeypatch):
+    """unblock-file dispatches through the file-blocking parser owner."""
+    mock_command = Mock()
+    monkeypatch.setattr(
+        file_blocking_subcommands,
+        "command_unblock_file",
+        mock_command,
+    )
+
+    args = parse_command_line(["unblock-file", "test.txt"], quiet=True)
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with("test.txt")
 
 
 def test_parse_command_line_suggest_fixup():
@@ -1542,6 +1573,51 @@ def test_parse_command_line_suggest_fixup_with_flags():
     assert args.reset is True
     assert hasattr(args, "func")
     assert callable(args.func)
+
+
+def test_parse_command_line_suggest_fixup_passes_hunk_args(monkeypatch):
+    """suggest-fixup dispatches hunk scope through the fixup parser owner."""
+    mock_command = Mock()
+    monkeypatch.setattr(fixup_subcommands, "command_suggest_fixup", mock_command)
+
+    args = parse_command_line(
+        ["suggest-fixup", "--reset", "--last", "main"],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "main",
+        reset=True,
+        abort=False,
+        show_last=True,
+    )
+
+
+def test_parse_command_line_suggest_fixup_passes_line_args(monkeypatch):
+    """suggest-fixup dispatches line scope through the fixup parser owner."""
+    mock_command = Mock()
+    monkeypatch.setattr(
+        fixup_subcommands,
+        "command_suggest_fixup_line",
+        mock_command,
+    )
+
+    args = parse_command_line(
+        ["suggest-fixup", "--line", "1,3", "--abort", "main"],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "1,3",
+        "main",
+        reset=False,
+        abort=True,
+        show_last=False,
+    )
 
 
 def test_parse_command_line_new():

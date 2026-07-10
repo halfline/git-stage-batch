@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Sequence
-from dataclasses import dataclass
-import hashlib
 from typing import TYPE_CHECKING, Any
 
 from .absence_constraints import (
@@ -14,6 +12,7 @@ from .absence_constraints import (
     apply_absence_constraints as _apply_merge_absence_constraints,
 )
 from . import baseline_edits as _baseline_edits
+from . import presence_constraints as _presence_constraints
 from .baseline_edits import ReplacementOriginChoice as _BaselineReplacementOriginChoice
 from .baseline_correspondence import (
     build_baseline_correspondence as _build_discard_baseline_correspondence,
@@ -30,23 +29,20 @@ from .merge_candidates import (
 from .merge_validation import (
     check_structural_validity as _check_merge_structural_validity,
 )
-from .match import LineMapping, iter_exact_context_gaps, match_lines
+from .match import LineMapping, match_lines
 from .realized_entries import (
     RealizedEntry as _RealizedEntry,
     _RealizedEntries,
-    _RealizedEntryContentSequence,
     _as_realized_entries,
-    _backing_content_sequence,
-    _entry_is_claimed_at,
-    _entry_source_line_at,
     _entry_target_line_at,
     realized_entry_content_chunks as _realized_entry_content_chunks,
 )
+from . import realized_mapping as _realized_mapping
 from .realized_boundaries import (
     find_boundary_after_source_line as _locate_boundary_after_source_line,
     sequence_present_at_boundary as _boundary_sequence_present,
 )
-from ..core.line_selection import LineRanges, LineSelection
+from ..core.line_selection import LineRanges, LineSelection, coerce_line_ranges
 from ..core.buffer import (
     LineBuffer,
     buffer_has_data,
@@ -101,518 +97,6 @@ def _discard_result_line_ending_from_lines(
     return choose_line_ending(source_lines)
 
 
-def _as_line_ranges(lines: LineSelection | Iterable[int]) -> LineRanges:
-    if isinstance(lines, LineRanges):
-        return lines
-    ranges = getattr(lines, "ranges", None)
-    if ranges is not None:
-        return LineRanges.from_ranges(ranges())
-    return LineRanges.from_lines(lines)
-
-
-def apply_presence_constraints(
-    source_lines: Sequence[bytes],
-    working_lines: Sequence[bytes],
-    presence_line_set: LineSelection,
-    *,
-    source_to_working_mapping: LineMapping | None = None,
-    resolution: _MergeResolution | None = None,
-) -> _RealizedEntries:
-    """Apply presence constraints: ensure all claimed lines exist in result.
-
-    Uses structural alignment to determine which claimed lines are already present
-    and adds missing ones at appropriate positions. Returns structured entries
-    that preserve batch-source provenance for anchored absence constraints.
-
-    Args:
-        source_lines: Batch source file lines (bytes with newlines)
-        working_lines: Working tree file lines (bytes with newlines)
-        presence_line_set: Source line numbers that must be present
-
-    Returns:
-        Realized entries with all claimed lines present and provenance preserved
-    """
-    owned_mapping: LineMapping | None = None
-    mapping = source_to_working_mapping
-    if mapping is None:
-        owned_mapping = match_lines(source_lines, working_lines)
-        mapping = owned_mapping
-
-    try:
-        return _apply_presence_constraints_with_mapping(
-            source_lines,
-            working_lines,
-            presence_line_set,
-            mapping,
-            resolution=resolution,
-        )
-    finally:
-        if owned_mapping is not None:
-            owned_mapping.close()
-
-
-def _source_lines_are_contiguous(
-    previous_source_line: int | None,
-    source_line: int | None,
-) -> bool:
-    if previous_source_line is None or source_line is None:
-        return previous_source_line is None and source_line is None
-    return source_line == previous_source_line + 1
-
-
-def _mapped_missing_source_lines(
-    source_lines: LineSelection,
-    source_line_count: int,
-    mapping: LineMapping,
-) -> LineRanges:
-    missing_ranges: list[tuple[int, int]] = []
-    current_start: int | None = None
-    current_end: int | None = None
-    source_selection = _as_line_ranges(source_lines)
-
-    for start, end in source_selection.ranges():
-        for source_line in range(max(1, start), min(end, source_line_count) + 1):
-            if mapping.get_target_line_from_source_line(source_line) is not None:
-                if current_start is not None and current_end is not None:
-                    missing_ranges.append((current_start, current_end))
-                    current_start = None
-                    current_end = None
-                continue
-
-            if current_start is None:
-                current_start = source_line
-            current_end = source_line
-
-        if current_start is not None and current_end is not None:
-            missing_ranges.append((current_start, current_end))
-            current_start = None
-            current_end = None
-
-    if current_start is not None and current_end is not None:
-        missing_ranges.append((current_start, current_end))
-
-    return LineRanges.from_ranges(missing_ranges)
-
-
-def _append_working_range_with_mapping(
-    result: _RealizedEntries,
-    working_lines: Sequence[bytes],
-    mapping: LineMapping,
-    start: int,
-    end: int,
-    presence_line_set: LineSelection,
-) -> None:
-    """Append a target range split only where provenance stops being contiguous."""
-    if start == end:
-        return
-
-    content_lines = _backing_content_sequence(working_lines)
-    run_start = start
-    run_source_start = mapping.get_source_line_from_target_line(start + 1)
-    previous_source_line = run_source_start
-    run_is_claimed = (
-        run_source_start in presence_line_set
-        if run_source_start is not None
-        else False
-    )
-
-    for working_idx in range(start + 1, end):
-        source_line = mapping.get_source_line_from_target_line(working_idx + 1)
-        is_claimed = (
-            source_line in presence_line_set
-            if source_line is not None
-            else False
-        )
-        if (
-            is_claimed == run_is_claimed
-            and _source_lines_are_contiguous(
-                previous_source_line,
-                source_line,
-            )
-        ):
-            previous_source_line = source_line
-            continue
-
-        result.append_line_range_from(
-            content_lines,
-            run_start,
-            working_idx,
-            source_line_start=run_source_start,
-            target_line_start=run_start + 1,
-            is_claimed=run_is_claimed,
-        )
-        run_start = working_idx
-        run_source_start = source_line
-        previous_source_line = source_line
-        run_is_claimed = is_claimed
-
-    result.append_line_range_from(
-        content_lines,
-        run_start,
-        end,
-        source_line_start=run_source_start,
-        target_line_start=run_start + 1,
-        is_claimed=run_is_claimed,
-    )
-
-
-def _apply_presence_constraints_with_mapping(
-    source_lines: Sequence[bytes],
-    working_lines: Sequence[bytes],
-    presence_line_set: LineSelection,
-    mapping: LineMapping,
-    *,
-    resolution: _MergeResolution | None = None,
-) -> _RealizedEntries:
-    """Apply presence constraints using an existing source-to-working mapping."""
-
-    if not presence_line_set:
-        result = _RealizedEntries()
-        _append_working_range_with_mapping(
-            result,
-            working_lines,
-            mapping,
-            0,
-            len(working_lines),
-            presence_line_set,
-        )
-        return result
-
-    missing_claimed = _mapped_missing_source_lines(
-        presence_line_set,
-        len(source_lines),
-        mapping,
-    )
-
-    if not missing_claimed:
-        result = _RealizedEntries()
-        _append_working_range_with_mapping(
-            result,
-            working_lines,
-            mapping,
-            0,
-            len(working_lines),
-            presence_line_set,
-        )
-        return result
-
-    if resolution is not None:
-        presence_key, presence_choices = _presence_choices_for_missing_claimed_run(
-            source_lines,
-            working_lines,
-            presence_line_set,
-            mapping,
-            max_results=_MERGE_CANDIDATE_CAP + 1,
-        )
-        if presence_key is not None and presence_key in resolution.decisions:
-            selected_choice_index = resolution.decisions[presence_key]
-            for choice in presence_choices:
-                if choice.choice_index == selected_choice_index:
-                    result = _RealizedEntries()
-                    _append_working_range_with_mapping(
-                        result,
-                        working_lines,
-                        mapping,
-                        0,
-                        choice.gap_index,
-                        presence_line_set,
-                    )
-                    result.append_line_range_from(
-                        source_lines,
-                        choice.run_start - 1,
-                        choice.run_end,
-                        source_line_start=choice.run_start,
-                        is_claimed=True,
-                    )
-                    _append_working_range_with_mapping(
-                        result,
-                        working_lines,
-                        mapping,
-                        choice.gap_index,
-                        len(working_lines),
-                        presence_line_set,
-                    )
-                    return result
-            raise _MergeError(_("Selected merge resolution is no longer valid"))
-
-    result = _RealizedEntries()
-    working_idx = 0
-
-    for source_line in range(1, len(source_lines) + 1):
-        working_line = mapping.get_target_line_from_source_line(source_line)
-
-        if working_line is not None:
-            if working_idx < working_line - 1:
-                _append_working_range_with_mapping(
-                    result,
-                    working_lines,
-                    mapping,
-                    working_idx,
-                    working_line - 1,
-                    presence_line_set,
-                )
-                working_idx = working_line - 1
-
-            is_claimed = source_line in presence_line_set
-            if is_claimed:
-                result.append_line_from(
-                    source_lines,
-                    source_line - 1,
-                    source_line=source_line,
-                    target_line=working_idx + 1,
-                    is_claimed=True
-                )
-            else:
-                result.append_line_from(
-                    working_lines,
-                    working_idx,
-                    source_line=source_line,
-                    target_line=working_idx + 1,
-                    is_claimed=False
-                )
-            working_idx += 1
-        else:
-            if source_line in missing_claimed:
-                result.append_line_from(
-                    source_lines,
-                    source_line - 1,
-                    source_line=source_line,
-                    is_claimed=True
-                )
-
-    while working_idx < len(working_lines):
-        _append_working_range_with_mapping(
-            result,
-            working_lines,
-            mapping,
-            working_idx,
-            len(working_lines),
-            presence_line_set,
-        )
-        working_idx = len(working_lines)
-
-    return result
-
-
-def _missing_claimed_lines(
-    entries: Sequence[_RealizedEntry],
-    presence_line_set: LineSelection
-) -> LineRanges:
-    """Return claimed source lines that are not present as claimed entries."""
-    claimed_ranges: list[tuple[int, int]] = []
-    presence_lines = _as_line_ranges(presence_line_set)
-
-    if isinstance(entries, _RealizedEntries):
-        for run in entries.provenance_runs():
-            if not run.is_claimed or run.source_start == 0:
-                continue
-            claimed_ranges.append((
-                run.source_start,
-                run.source_start + (run.dest_end - run.dest_start) - 1,
-            ))
-        return presence_lines.difference(
-            LineRanges.from_ranges(claimed_ranges)
-        )
-
-    for index in range(len(entries)):
-        source_line = _entry_source_line_at(entries, index)
-        if source_line is not None and _entry_is_claimed_at(entries, index):
-            claimed_ranges.append((source_line, source_line))
-    return presence_lines.difference(
-        LineRanges.from_ranges(claimed_ranges)
-    )
-
-
-def satisfy_constraints(
-    source_lines: Sequence[bytes],
-    working_lines: Sequence[bytes],
-    presence_line_set: LineSelection,
-    deletion_claims: list['AbsenceClaim'],
-    *,
-    strict: bool = True,
-    source_to_working_mapping: LineMapping | None = None,
-    resolution: _MergeResolution | None = None,
-) -> _RealizedEntries:
-    """Apply presence and absence constraints until claimed lines survive."""
-    realized_entries = apply_presence_constraints(
-        source_lines,
-        working_lines,
-        presence_line_set,
-        source_to_working_mapping=source_to_working_mapping,
-        resolution=resolution,
-    )
-
-    try:
-        updated_entries = _apply_merge_absence_constraints(
-            realized_entries,
-            deletion_claims,
-            strict=strict,
-            resolution=resolution,
-        )
-        if updated_entries is not realized_entries:
-            realized_entries.close()
-        realized_entries = updated_entries
-
-        if not _missing_claimed_lines(realized_entries, presence_line_set):
-            return realized_entries
-
-        previous_entries = realized_entries
-        current_lines = _RealizedEntryContentSequence(previous_entries)
-        try:
-            updated_entries = apply_presence_constraints(
-                source_lines,
-                current_lines,
-                presence_line_set,
-                resolution=resolution,
-            )
-        finally:
-            previous_entries.close()
-        realized_entries = updated_entries
-
-        updated_entries = _apply_merge_absence_constraints(
-            realized_entries,
-            deletion_claims,
-            strict=strict,
-            resolution=resolution,
-        )
-        if updated_entries is not realized_entries:
-            realized_entries.close()
-        realized_entries = updated_entries
-
-        missing_claimed = _missing_claimed_lines(realized_entries, presence_line_set)
-        if missing_claimed:
-            if not strict:
-                return realized_entries
-            first_missing = missing_claimed.first()
-            raise _MergeError(
-                _("Cannot satisfy claimed line {line}: removed by absence constraints").format(
-                    line=first_missing
-                )
-            )
-
-        return realized_entries
-    except Exception:
-        realized_entries.close()
-        raise
-
-
-def _presence_ambiguity_key(
-    run_start: int,
-    run_end: int,
-    claimed_run: Sequence[bytes],
-    before_source_line: int,
-    after_source_line: int,
-) -> str:
-    digest = hashlib.sha256(b"".join(claimed_run)).hexdigest()[:12]
-    return (
-        f"presence:{run_start}-{run_end}:claimed:{digest}:"
-        f"between:{before_source_line}-{after_source_line}"
-    )
-
-
-def _presence_choices_for_missing_claimed_run(
-    source_lines: Sequence[bytes],
-    working_lines: Sequence[bytes],
-    presence_line_set: LineSelection,
-    mapping: LineMapping,
-    *,
-    max_results: int,
-) -> tuple[str | None, tuple[_PresenceChoice, ...]]:
-    missing_claimed = _mapped_missing_source_lines(
-        presence_line_set,
-        len(source_lines),
-        mapping,
-    )
-    ranges = list(missing_claimed.ranges())
-    if len(ranges) != 1:
-        return None, ()
-
-    run_start, run_end = ranges[0]
-    before_source_line = run_start - 1
-    after_source_line = run_end + 1
-    if before_source_line < 1 or after_source_line > len(source_lines):
-        return None, ()
-    before_target_line = mapping.get_target_line_from_source_line(before_source_line)
-    after_target_line = mapping.get_target_line_from_source_line(after_source_line)
-    if before_target_line is None or after_target_line is None:
-        return None, ()
-    if before_target_line >= after_target_line:
-        return None, ()
-
-    left_context = (bytes(source_lines[before_source_line - 1]),)
-    right_context = (bytes(source_lines[after_source_line - 1]),)
-    claimed_run = tuple(bytes(source_lines[index]) for index in range(run_start - 1, run_end))
-    key = _presence_ambiguity_key(
-        run_start,
-        run_end,
-        claimed_run,
-        before_source_line,
-        after_source_line,
-    )
-    choices: list[_PresenceChoice] = []
-    for gap in iter_exact_context_gaps(
-        working_lines,
-        left_context=left_context,
-        right_context=right_context,
-        start_gap=before_target_line,
-        end_gap=after_target_line - 1,
-        max_results=max_results,
-    ):
-        if _line_slice_equals(working_lines, gap.gap_index, claimed_run):
-            continue
-        choices.append(
-            _PresenceChoice(
-                choice_index=len(choices) + 1,
-                gap_index=gap.gap_index,
-                run_start=run_start,
-                run_end=run_end,
-                target_after_line=gap.target_after_line,
-                target_before_line=gap.target_before_line,
-            )
-        )
-    return key, tuple(choices)
-
-
-@dataclass(frozen=True)
-class _PresenceChoice:
-    choice_index: int
-    gap_index: int
-    run_start: int
-    run_end: int
-    target_after_line: int | None
-    target_before_line: int | None
-
-
-def _presence_ambiguity_target_line_range(
-    choices: Sequence[_PresenceChoice],
-    target_line_count: int,
-) -> tuple[int, int] | None:
-    """Return existing target lines spanning compatible insertion gaps."""
-    if target_line_count == 0:
-        return None
-
-    positions = [choice.gap_index for choice in choices]
-    start = max(1, min(positions))
-    end = min(target_line_count, max(positions) + 1)
-    if start > end:
-        return None
-    return start, end
-
-
-def _line_slice_equals(
-    lines: Sequence[bytes],
-    start: int,
-    expected: Sequence[bytes],
-) -> bool:
-    """Return whether a sequence slice equals the expected byte lines."""
-    if start < 0 or start + len(expected) > len(lines):
-        return False
-    return all(
-        lines[start + offset] == expected[offset]
-        for offset in range(len(expected))
-    )
-
-
 def _replacement_origin_candidate_set(
     source_lines: Sequence[bytes],
     ownership: 'BatchOwnership',
@@ -625,7 +109,7 @@ def _replacement_origin_candidate_set(
     """Enumerate reviewed placements for one unresolved split replacement."""
     owned_mapping = match_lines(source_lines, working_lines)
     try:
-        selected_presence = _as_line_ranges(presence_line_set)
+        selected_presence = coerce_line_ranges(presence_line_set)
         unresolved: list[
             tuple[list[int], int, str, tuple[_BaselineReplacementOriginChoice, ...]]
         ] = []
@@ -874,7 +358,7 @@ def _merge_batch_acquired_line_chunks(
             if resolution is None:
                 raise
 
-        realized_entries = satisfy_constraints(
+        realized_entries = _presence_constraints.satisfy_constraints(
             source_lines,
             working_lines,
             presence_line_set,
@@ -968,12 +452,14 @@ def _enumerate_merge_batch_candidates_acquired(
 
     presence_mapping = match_lines(source_lines, working_lines)
     try:
-        presence_key, presence_choices = _presence_choices_for_missing_claimed_run(
-            source_lines,
-            working_lines,
-            presence_line_set,
-            presence_mapping,
-            max_results=max_candidates + 1,
+        presence_key, presence_choices = (
+            _presence_constraints.presence_choices_for_missing_claimed_run(
+                source_lines,
+                working_lines,
+                presence_line_set,
+                presence_mapping,
+                max_results=max_candidates + 1,
+            )
         )
     finally:
         presence_mapping.close()
@@ -981,7 +467,7 @@ def _enumerate_merge_batch_candidates_acquired(
     if presence_key is not None and len(presence_choices) > max_candidates:
         raise _MergeError(_("Too many merge candidates to preview safely"))
     if presence_key is not None and len(presence_choices) > 1:
-        valid_choices: list[_PresenceChoice] = []
+        valid_choices: list[_presence_constraints.PresenceChoice] = []
         for choice in presence_choices:
             resolution = _MergeResolution({presence_key: choice.choice_index})
             try:
@@ -997,9 +483,11 @@ def _enumerate_merge_batch_candidates_acquired(
             valid_choices.append(choice)
         if len(valid_choices) > 1:
             count = len(valid_choices)
-            ambiguity_target_line_range = _presence_ambiguity_target_line_range(
-                valid_choices,
-                len(working_lines),
+            ambiguity_target_line_range = (
+                _presence_constraints.presence_ambiguity_target_line_range(
+                    valid_choices,
+                    len(working_lines),
+                )
             )
             candidates = []
             for ordinal, choice in enumerate(valid_choices, start=1):
@@ -1047,7 +535,7 @@ def _enumerate_merge_batch_candidates_acquired(
             source_lines,
             working_lines,
         )
-        realized_entries = apply_presence_constraints(
+        realized_entries = _presence_constraints.apply_presence_constraints(
             source_lines,
             working_lines,
             presence_line_set,
@@ -1260,7 +748,7 @@ def _build_realized_entries_for_discard(
         Realized entries representing working tree with source provenance
     """
     result = _RealizedEntries()
-    _append_working_range_with_mapping(
+    _realized_mapping.append_working_range_with_mapping(
         result,
         working_lines,
         working_to_source,

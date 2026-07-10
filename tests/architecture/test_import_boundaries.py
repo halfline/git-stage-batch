@@ -12,6 +12,28 @@ from .import_boundary_helpers import (
 )
 
 
+def _imported_modules_for(path):
+    return {imported_module for imported_module, _node in _import_from_nodes(path)}
+
+
+def _assert_parser_delegates_subcommand_registry(
+    parser_imports: set[str],
+    delegated_module: str,
+) -> None:
+    delegated_module_name = f"git_stage_batch.cli.{delegated_module}"
+    root_parser_imports = _imported_modules_for(SRC_ROOT / "cli" / "root_parser.py")
+    registry_imports = _imported_modules_for(
+        SRC_ROOT / "cli" / "subcommand_registry.py"
+    )
+
+    assert "git_stage_batch.cli.root_parser" in parser_imports
+    assert "git_stage_batch.cli.subcommand_registry" not in parser_imports
+    assert "git_stage_batch.cli.subcommand_registry" in root_parser_imports
+    assert delegated_module_name not in parser_imports
+    assert delegated_module_name not in root_parser_imports
+    assert delegated_module_name in registry_imports
+
+
 def test_selected_change_display_names_data_modules_at_import_sites():
     """Selected-change display should not import data modules through the package."""
     assert _child_import_violations(
@@ -60,6 +82,41 @@ def test_replacement_payload_imports_use_core_boundary():
                 relative_path = path.relative_to(REPO_ROOT)
                 names = ", ".join(sorted(disallowed_names))
                 violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+    assert violations == []
+
+
+def test_line_range_coercion_stays_in_core_line_selection():
+    """ID-based line range coercion should stay on the core line-selection boundary."""
+    line_selection = __import__(
+        "git_stage_batch.core.line_selection",
+        fromlist=["line_selection"],
+    )
+    forbidden_function_names = {
+        "_as_line_ranges",
+        "as_line_ranges",
+        "_coerce_line_ranges",
+    }
+    allowed_paths = {
+        SRC_ROOT / "core" / "line_selection.py",
+        SRC_ROOT / "editor" / "edit.py",
+    }
+    violations = []
+
+    assert "coerce_line_ranges" in vars(line_selection)
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path in allowed_paths:
+            continue
+
+        tree = ast.parse(path.read_text(), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            if node.name not in forbidden_function_names:
+                continue
+            relative_path = path.relative_to(REPO_ROOT)
+            violations.append(f"{relative_path}:{node.lineno} defines {node.name}")
 
     assert violations == []
 
@@ -388,24 +445,661 @@ def test_cli_package_does_not_reexport_cli_apis():
     assert violations == []
 
 
-def test_cli_argument_parser_uses_subcommand_parser_module():
-    """Argument parsing should not own reusable subcommand construction."""
+def test_cli_subcommand_modules_use_subcommand_parser_module():
+    """Subcommand registration should own reusable parser construction."""
     argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
     subcommand_parser_path = SRC_ROOT / "cli" / "subcommand_parser.py"
+    registration_paths = (
+        SRC_ROOT / "cli" / "asset_subcommands.py",
+        SRC_ROOT / "cli" / "batch_subcommands.py",
+        SRC_ROOT / "cli" / "file_blocking_subcommands.py",
+        SRC_ROOT / "cli" / "fixup_subcommands.py",
+        SRC_ROOT / "cli" / "selection_subcommands.py",
+        SRC_ROOT / "cli" / "session_subcommands.py",
+        SRC_ROOT / "cli" / "tui_subcommands.py",
+    )
     argument_parser_text = argument_parser_path.read_text()
     argument_parser_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    registration_imports = {
+        path: {imported_module for imported_module, _node in _import_from_nodes(path)}
+        for path in registration_paths
     }
     subcommand_parser = __import__(
         "git_stage_batch.cli.subcommand_parser",
         fromlist=["subcommand_parser"],
     )
 
-    assert "git_stage_batch.cli.subcommand_parser" in argument_parser_imports
+    assert "git_stage_batch.cli.subcommand_parser" not in argument_parser_imports
+    assert all(
+        "git_stage_batch.cli.subcommand_parser" in imports
+        for imports in registration_imports.values()
+    )
     assert "add_subcommand_parser" in vars(subcommand_parser)
     assert "def _add_subcommand_parser" not in argument_parser_text
     assert subcommand_parser_path.exists()
+
+
+def test_cli_argument_parser_delegates_asset_subcommand_registration():
+    """Argument parsing should not own install-assets parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    asset_subcommands_path = SRC_ROOT / "cli" / "asset_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    asset_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(asset_subcommands_path)
+    }
+    asset_subcommands = __import__(
+        "git_stage_batch.cli.asset_subcommands",
+        fromlist=["asset_subcommands"],
+    )
+
+    assert "add_install_assets_subcommand" in vars(asset_subcommands)
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "asset_subcommands")
+    assert "git_stage_batch.commands.install_assets" not in argument_parser_imports
+    assert "git_stage_batch.commands.install_assets" in asset_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in asset_subcommands_imports
+
+
+def test_cli_argument_parser_delegates_completion_subcommand_registration():
+    """Argument parsing should not own hidden completion parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    argument_parser_text = argument_parser_path.read_text()
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    completion = __import__(
+        "git_stage_batch.cli.completion",
+        fromlist=["completion"],
+    )
+
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "completion")
+    assert "add_completion_subcommand" in vars(completion)
+    assert "command_complete_files" in vars(completion)
+    assert "__complete-files" not in argument_parser_text
+
+
+def test_cli_argument_parser_delegates_interactive_subcommand_registration():
+    """Argument parsing should not own interactive parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    tui_subcommands_path = SRC_ROOT / "cli" / "tui_subcommands.py"
+    argument_parser_text = argument_parser_path.read_text()
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    tui_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(tui_subcommands_path)
+    }
+    tui_subcommands = __import__(
+        "git_stage_batch.cli.tui_subcommands",
+        fromlist=["tui_subcommands"],
+    )
+
+    assert "add_interactive_subcommand" in vars(tui_subcommands)
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "tui_subcommands")
+    assert "git_stage_batch.cli.subcommand_parser" not in argument_parser_imports
+    assert "git_stage_batch.cli.subcommand_parser" in tui_subcommands_imports
+    assert "interactive_command=True" not in argument_parser_text
+
+
+def test_cli_argument_parser_delegates_sift_subcommand_registration():
+    """Argument parsing should not own sift parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    batch_subcommands_path = SRC_ROOT / "cli" / "batch_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    batch_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(batch_subcommands_path)
+    }
+    batch_subcommands = __import__(
+        "git_stage_batch.cli.batch_subcommands",
+        fromlist=["batch_subcommands"],
+    )
+
+    assert "add_sift_subcommand" in vars(batch_subcommands)
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "batch_subcommands")
+    assert "git_stage_batch.commands.sift" not in argument_parser_imports
+    assert "git_stage_batch.commands.sift" in batch_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in batch_subcommands_imports
+
+
+def test_cli_argument_parser_delegates_apply_subcommand_registration():
+    """Argument parsing should not own apply parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    batch_subcommands_path = SRC_ROOT / "cli" / "batch_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    batch_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(batch_subcommands_path)
+    }
+    batch_subcommands = __import__(
+        "git_stage_batch.cli.batch_subcommands",
+        fromlist=["batch_subcommands"],
+    )
+
+    assert "add_apply_subcommand" in vars(batch_subcommands)
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "batch_subcommands")
+    assert "git_stage_batch.cli.apply_dispatch" not in argument_parser_imports
+    assert "git_stage_batch.cli.apply_dispatch" in batch_subcommands_imports
+    assert "git_stage_batch.cli.file_arguments" in batch_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in batch_subcommands_imports
+
+
+def test_cli_argument_parser_delegates_reset_subcommand_registration():
+    """Argument parsing should not own reset parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    batch_subcommands_path = SRC_ROOT / "cli" / "batch_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    batch_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(batch_subcommands_path)
+    }
+    batch_subcommands = __import__(
+        "git_stage_batch.cli.batch_subcommands",
+        fromlist=["batch_subcommands"],
+    )
+
+    assert "add_reset_subcommand" in vars(batch_subcommands)
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "batch_subcommands")
+    assert "git_stage_batch.cli.reset_dispatch" not in argument_parser_imports
+    assert "git_stage_batch.cli.reset_dispatch" in batch_subcommands_imports
+    assert "git_stage_batch.cli.file_arguments" in batch_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in batch_subcommands_imports
+
+
+def test_cli_argument_parser_delegates_new_batch_subcommand_registration():
+    """Argument parsing should not own new-batch parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    batch_subcommands_path = SRC_ROOT / "cli" / "batch_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    batch_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(batch_subcommands_path)
+    }
+    batch_subcommands = __import__(
+        "git_stage_batch.cli.batch_subcommands",
+        fromlist=["batch_subcommands"],
+    )
+
+    assert "add_new_subcommand" in vars(batch_subcommands)
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "batch_subcommands")
+    assert "git_stage_batch.commands.new" not in argument_parser_imports
+    assert "git_stage_batch.commands.new" in batch_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in batch_subcommands_imports
+
+
+def test_cli_argument_parser_delegates_list_batch_subcommand_registration():
+    """Argument parsing should not own list-batches parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    batch_subcommands_path = SRC_ROOT / "cli" / "batch_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    batch_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(batch_subcommands_path)
+    }
+    batch_subcommands = __import__(
+        "git_stage_batch.cli.batch_subcommands",
+        fromlist=["batch_subcommands"],
+    )
+
+    assert "add_list_subcommand" in vars(batch_subcommands)
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "batch_subcommands")
+    assert "git_stage_batch.commands.list" not in argument_parser_imports
+    assert "git_stage_batch.commands.list" in batch_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in batch_subcommands_imports
+
+
+def test_cli_argument_parser_delegates_drop_batch_subcommand_registration():
+    """Argument parsing should not own drop-batch parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    batch_subcommands_path = SRC_ROOT / "cli" / "batch_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    batch_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(batch_subcommands_path)
+    }
+    batch_subcommands = __import__(
+        "git_stage_batch.cli.batch_subcommands",
+        fromlist=["batch_subcommands"],
+    )
+
+    assert "add_drop_subcommand" in vars(batch_subcommands)
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "batch_subcommands")
+    assert "git_stage_batch.commands.drop" not in argument_parser_imports
+    assert "git_stage_batch.commands.drop" in batch_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in batch_subcommands_imports
+
+
+def test_cli_argument_parser_delegates_annotate_batch_subcommand_registration():
+    """Argument parsing should not own annotate-batch parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    batch_subcommands_path = SRC_ROOT / "cli" / "batch_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    batch_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(batch_subcommands_path)
+    }
+    batch_subcommands = __import__(
+        "git_stage_batch.cli.batch_subcommands",
+        fromlist=["batch_subcommands"],
+    )
+
+    assert "add_annotate_subcommand" in vars(batch_subcommands)
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "batch_subcommands")
+    assert "git_stage_batch.commands.annotate" not in argument_parser_imports
+    assert "git_stage_batch.commands.annotate" in batch_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in batch_subcommands_imports
+
+
+def test_cli_argument_parser_delegates_check_unstaged_subcommand_registration():
+    """Argument parsing should not own check-unstaged parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    session_subcommands_path = SRC_ROOT / "cli" / "session_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    session_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(session_subcommands_path)
+    }
+    session_subcommands = __import__(
+        "git_stage_batch.cli.session_subcommands",
+        fromlist=["session_subcommands"],
+    )
+
+    assert "add_check_unstaged_subcommand" in vars(session_subcommands)
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "session_subcommands")
+    assert "git_stage_batch.commands.check_unstaged" not in argument_parser_imports
+    assert "git_stage_batch.commands.check_unstaged" in session_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in session_subcommands_imports
+
+
+def test_cli_argument_parser_delegates_start_subcommand_registration():
+    """Argument parsing should not own start parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    session_subcommands_path = SRC_ROOT / "cli" / "session_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    session_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(session_subcommands_path)
+    }
+    session_subcommands = __import__(
+        "git_stage_batch.cli.session_subcommands",
+        fromlist=["session_subcommands"],
+    )
+
+    assert "add_start_subcommand" in vars(session_subcommands)
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "session_subcommands")
+    assert "git_stage_batch.commands.start" not in argument_parser_imports
+    assert "git_stage_batch.commands.start" in session_subcommands_imports
+    assert "git_stage_batch.cli.auto_advance_options" in session_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in session_subcommands_imports
+
+
+def test_cli_argument_parser_delegates_again_subcommand_registration():
+    """Argument parsing should not own again parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    session_subcommands_path = SRC_ROOT / "cli" / "session_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    session_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(session_subcommands_path)
+    }
+    session_subcommands = __import__(
+        "git_stage_batch.cli.session_subcommands",
+        fromlist=["session_subcommands"],
+    )
+
+    assert "add_again_subcommand" in vars(session_subcommands)
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "session_subcommands")
+    assert "git_stage_batch.commands.again" not in argument_parser_imports
+    assert "git_stage_batch.commands.again" in session_subcommands_imports
+    assert "git_stage_batch.cli.auto_advance_options" in session_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in session_subcommands_imports
+
+
+def test_cli_argument_parser_delegates_block_file_subcommand_registration():
+    """Argument parsing should not own block-file parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    file_blocking_subcommands_path = (
+        SRC_ROOT / "cli" / "file_blocking_subcommands.py"
+    )
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    file_blocking_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(
+            file_blocking_subcommands_path
+        )
+    }
+    file_blocking_subcommands = __import__(
+        "git_stage_batch.cli.file_blocking_subcommands",
+        fromlist=["file_blocking_subcommands"],
+    )
+
+    assert "add_block_file_subcommand" in vars(file_blocking_subcommands)
+    _assert_parser_delegates_subcommand_registry(
+        argument_parser_imports, "file_blocking_subcommands"
+    )
+    assert "git_stage_batch.commands.block_file" not in argument_parser_imports
+    assert "git_stage_batch.commands.block_file" in file_blocking_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in file_blocking_subcommands_imports
+
+
+def test_cli_argument_parser_delegates_unblock_file_subcommand_registration():
+    """Argument parsing should not own unblock-file parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    file_blocking_subcommands_path = (
+        SRC_ROOT / "cli" / "file_blocking_subcommands.py"
+    )
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    file_blocking_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(
+            file_blocking_subcommands_path
+        )
+    }
+    file_blocking_subcommands = __import__(
+        "git_stage_batch.cli.file_blocking_subcommands",
+        fromlist=["file_blocking_subcommands"],
+    )
+
+    assert "add_unblock_file_subcommand" in vars(file_blocking_subcommands)
+    _assert_parser_delegates_subcommand_registry(
+        argument_parser_imports, "file_blocking_subcommands"
+    )
+    assert "git_stage_batch.commands.unblock_file" not in argument_parser_imports
+    assert "git_stage_batch.commands.unblock_file" in file_blocking_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in file_blocking_subcommands_imports
+
+
+def test_cli_argument_parser_delegates_suggest_fixup_subcommand_registration():
+    """Argument parsing should not own suggest-fixup parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    fixup_subcommands_path = SRC_ROOT / "cli" / "fixup_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    fixup_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(fixup_subcommands_path)
+    }
+    fixup_subcommands = __import__(
+        "git_stage_batch.cli.fixup_subcommands",
+        fromlist=["fixup_subcommands"],
+    )
+
+    assert "add_suggest_fixup_subcommand" in vars(fixup_subcommands)
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "fixup_subcommands")
+    assert "git_stage_batch.commands.suggest_fixup" not in argument_parser_imports
+    assert "git_stage_batch.commands.suggest_fixup" in fixup_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in fixup_subcommands_imports
+
+
+def test_cli_argument_parser_delegates_show_subcommand_registration():
+    """Argument parsing should not own show parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    selection_subcommands_path = SRC_ROOT / "cli" / "selection_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    selection_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(selection_subcommands_path)
+    }
+    selection_subcommands = __import__(
+        "git_stage_batch.cli.selection_subcommands",
+        fromlist=["selection_subcommands"],
+    )
+
+    assert "add_show_subcommand" in vars(selection_subcommands)
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "selection_subcommands")
+    assert "git_stage_batch.cli.show_dispatch" not in argument_parser_imports
+    assert "git_stage_batch.cli.show_dispatch" in selection_subcommands_imports
+    assert "git_stage_batch.cli.file_arguments" in selection_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in selection_subcommands_imports
+
+
+def test_cli_argument_parser_delegates_include_subcommand_registration():
+    """Argument parsing should not own include parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    selection_subcommands_path = SRC_ROOT / "cli" / "selection_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    selection_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(selection_subcommands_path)
+    }
+    selection_subcommands = __import__(
+        "git_stage_batch.cli.selection_subcommands",
+        fromlist=["selection_subcommands"],
+    )
+
+    assert "add_include_subcommand" in vars(selection_subcommands)
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "selection_subcommands")
+    assert "git_stage_batch.cli.include_dispatch" not in argument_parser_imports
+    assert "git_stage_batch.cli.include_dispatch" in selection_subcommands_imports
+    assert "git_stage_batch.cli.auto_advance_options" in selection_subcommands_imports
+    assert "git_stage_batch.cli.file_arguments" in selection_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in selection_subcommands_imports
+
+
+def test_cli_argument_parser_delegates_skip_subcommand_registration():
+    """Argument parsing should not own skip parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    selection_subcommands_path = SRC_ROOT / "cli" / "selection_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    selection_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(selection_subcommands_path)
+    }
+    selection_subcommands = __import__(
+        "git_stage_batch.cli.selection_subcommands",
+        fromlist=["selection_subcommands"],
+    )
+
+    assert "add_skip_subcommand" in vars(selection_subcommands)
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "selection_subcommands")
+    assert "git_stage_batch.cli.skip_dispatch" not in argument_parser_imports
+    assert "git_stage_batch.cli.skip_dispatch" in selection_subcommands_imports
+    assert "git_stage_batch.cli.auto_advance_options" in selection_subcommands_imports
+    assert "git_stage_batch.cli.file_arguments" in selection_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in selection_subcommands_imports
+
+
+def test_cli_argument_parser_delegates_discard_subcommand_registration():
+    """Argument parsing should not own discard parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    selection_subcommands_path = SRC_ROOT / "cli" / "selection_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    selection_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(selection_subcommands_path)
+    }
+    selection_subcommands = __import__(
+        "git_stage_batch.cli.selection_subcommands",
+        fromlist=["selection_subcommands"],
+    )
+
+    assert "add_discard_subcommand" in vars(selection_subcommands)
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "selection_subcommands")
+    assert "git_stage_batch.cli.discard_dispatch" not in argument_parser_imports
+    assert "git_stage_batch.cli.discard_dispatch" in selection_subcommands_imports
+    assert "git_stage_batch.cli.auto_advance_options" in selection_subcommands_imports
+    assert "git_stage_batch.cli.file_arguments" in selection_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in selection_subcommands_imports
+
+
+def test_cli_argument_parser_delegates_stop_subcommand_registration():
+    """Argument parsing should not own stop parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    session_subcommands_path = SRC_ROOT / "cli" / "session_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    session_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(session_subcommands_path)
+    }
+    session_subcommands = __import__(
+        "git_stage_batch.cli.session_subcommands",
+        fromlist=["session_subcommands"],
+    )
+
+    assert "add_stop_subcommand" in vars(session_subcommands)
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "session_subcommands")
+    assert "git_stage_batch.commands.stop" not in argument_parser_imports
+    assert "git_stage_batch.commands.stop" in session_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in session_subcommands_imports
+
+
+def test_cli_argument_parser_delegates_undo_subcommand_registration():
+    """Argument parsing should not own undo parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    session_subcommands_path = SRC_ROOT / "cli" / "session_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    session_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(session_subcommands_path)
+    }
+    session_subcommands = __import__(
+        "git_stage_batch.cli.session_subcommands",
+        fromlist=["session_subcommands"],
+    )
+
+    assert "add_undo_subcommand" in vars(session_subcommands)
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "session_subcommands")
+    assert "git_stage_batch.commands.undo" not in argument_parser_imports
+    assert "git_stage_batch.commands.undo" in session_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in session_subcommands_imports
+
+
+def test_cli_argument_parser_delegates_redo_subcommand_registration():
+    """Argument parsing should not own redo parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    session_subcommands_path = SRC_ROOT / "cli" / "session_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    session_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(session_subcommands_path)
+    }
+    session_subcommands = __import__(
+        "git_stage_batch.cli.session_subcommands",
+        fromlist=["session_subcommands"],
+    )
+
+    assert "add_redo_subcommand" in vars(session_subcommands)
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "session_subcommands")
+    assert "git_stage_batch.commands.redo" not in argument_parser_imports
+    assert "git_stage_batch.commands.redo" in session_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in session_subcommands_imports
+
+
+def test_cli_argument_parser_delegates_abort_subcommand_registration():
+    """Argument parsing should not own abort parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    session_subcommands_path = SRC_ROOT / "cli" / "session_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    session_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(session_subcommands_path)
+    }
+    session_subcommands = __import__(
+        "git_stage_batch.cli.session_subcommands",
+        fromlist=["session_subcommands"],
+    )
+
+    assert "add_abort_subcommand" in vars(session_subcommands)
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "session_subcommands")
+    assert "git_stage_batch.commands.abort" not in argument_parser_imports
+    assert "git_stage_batch.commands.abort" in session_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in session_subcommands_imports
+
+
+def test_cli_argument_parser_delegates_status_subcommand_registration():
+    """Argument parsing should not own status parser details."""
+    argument_parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    session_subcommands_path = SRC_ROOT / "cli" / "session_subcommands.py"
+    argument_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(argument_parser_path)
+    }
+    session_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(session_subcommands_path)
+    }
+    session_subcommands = __import__(
+        "git_stage_batch.cli.session_subcommands",
+        fromlist=["session_subcommands"],
+    )
+
+    assert "add_status_subcommand" in vars(session_subcommands)
+    _assert_parser_delegates_subcommand_registry(argument_parser_imports, "session_subcommands")
+    assert "git_stage_batch.commands.status" not in argument_parser_imports
+    assert "git_stage_batch.commands.status" in session_subcommands_imports
+    assert "git_stage_batch.output.status_prompt" in session_subcommands_imports
+    assert "git_stage_batch.cli.subcommand_parser" in session_subcommands_imports
 
 
 def test_tui_package_does_not_reexport_tui_apis():
@@ -2435,7 +3129,7 @@ def test_active_session_query_stays_in_session_data():
         SRC_ROOT / "commands" / "start.py",
         SRC_ROOT / "commands" / "status.py",
         SRC_ROOT / "commands" / "unblock_file.py",
-        SRC_ROOT / "tui" / "interactive.py",
+        SRC_ROOT / "tui" / "session_startup.py",
     )
     session = __import__(
         "git_stage_batch.data.session",
@@ -2475,7 +3169,7 @@ def test_active_session_query_stays_in_session_data():
 def test_status_prompt_rendering_stays_in_output_module():
     """Status prompt formatting should stay out of the command module."""
     status_path = SRC_ROOT / "commands" / "status.py"
-    parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    session_subcommands_path = SRC_ROOT / "cli" / "session_subcommands.py"
     prompt = __import__(
         "git_stage_batch.output.status_prompt",
         fromlist=["status_prompt"],
@@ -2507,17 +3201,17 @@ def test_status_prompt_rendering_stays_in_output_module():
         if isinstance(node, ast.ClassDef | ast.FunctionDef)
     }
     status_imported_prompt_names = set()
-    parser_imported_prompt_names = set()
+    session_imported_prompt_names = set()
 
     for imported_module, node in _import_from_nodes(status_path):
         if imported_module != "git_stage_batch.output.status_prompt":
             continue
         status_imported_prompt_names |= {alias.name for alias in node.names}
 
-    for imported_module, node in _import_from_nodes(parser_path):
+    for imported_module, node in _import_from_nodes(session_subcommands_path):
         if imported_module != "git_stage_batch.output.status_prompt":
             continue
-        parser_imported_prompt_names |= {alias.name for alias in node.names}
+        session_imported_prompt_names |= {alias.name for alias in node.names}
 
     assert old_status_names.isdisjoint(vars(status_module))
     assert old_status_names.isdisjoint(status_names)
@@ -2525,7 +3219,7 @@ def test_status_prompt_rendering_stays_in_output_module():
         "prompt_needs_status_summary",
         "render_prompt_status",
     } <= status_imported_prompt_names
-    assert "DEFAULT_PROMPT_FORMAT" in parser_imported_prompt_names
+    assert "DEFAULT_PROMPT_FORMAT" in session_imported_prompt_names
 
 
 def test_status_summary_rendering_stays_in_output_module():
@@ -2697,11 +3391,16 @@ def test_argument_parser_delegates_multi_file_action_flow():
 def test_argument_parser_delegates_git_help_display():
     """Parser construction should not own Git help manpage lookup."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    root_parser_path = SRC_ROOT / "cli" / "root_parser.py"
     git_help_path = SRC_ROOT / "cli" / "git_help.py"
     parser_text = parser_path.read_text()
     parser_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    root_parser_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(root_parser_path)
     }
     git_help_imports = {
         imported_module
@@ -2725,7 +3424,9 @@ def test_argument_parser_delegates_git_help_display():
         "_with_real_manpath_root",
     }
 
-    assert "git_stage_batch.cli.git_help" in parser_imports
+    assert "git_stage_batch.cli.root_parser" in parser_imports
+    assert "git_stage_batch.cli.git_help" not in parser_imports
+    assert "git_stage_batch.cli.git_help" in root_parser_imports
     assert "git_stage_batch.utils.command" not in parser_imports
     assert "git_stage_batch.utils.git_command" not in parser_imports
     assert "git_stage_batch.utils.command" in git_help_imports
@@ -2764,11 +3465,16 @@ def test_argument_parser_delegates_quick_action_expansion():
 def test_argument_parser_delegates_show_dispatch():
     """Parser construction should not own show workflow dispatch."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    selection_subcommands_path = SRC_ROOT / "cli" / "selection_subcommands.py"
     show_dispatch_path = SRC_ROOT / "cli" / "show_dispatch.py"
     parser_text = parser_path.read_text()
     parser_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    selection_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(selection_subcommands_path)
     }
     show_dispatch_imports = {
         imported_module
@@ -2795,7 +3501,9 @@ def test_argument_parser_delegates_show_dispatch():
         "git_stage_batch.commands.show_from",
     }
 
-    assert "git_stage_batch.cli.show_dispatch" in parser_imports
+    _assert_parser_delegates_subcommand_registry(parser_imports, "selection_subcommands")
+    assert "git_stage_batch.cli.show_dispatch" not in parser_imports
+    assert "git_stage_batch.cli.show_dispatch" in selection_subcommands_imports
     assert show_runtime_imports.isdisjoint(parser_imports)
     assert show_runtime_imports <= show_dispatch_imports
     assert "git_stage_batch.cli.file_scope" in show_dispatch_imports
@@ -2812,11 +3520,16 @@ def test_argument_parser_delegates_show_dispatch():
 def test_argument_parser_delegates_skip_dispatch():
     """Parser construction should not own skip workflow dispatch."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    selection_subcommands_path = SRC_ROOT / "cli" / "selection_subcommands.py"
     skip_dispatch_path = SRC_ROOT / "cli" / "skip_dispatch.py"
     parser_text = parser_path.read_text()
     parser_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    selection_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(selection_subcommands_path)
     }
     skip_dispatch_imports = {
         imported_module
@@ -2831,7 +3544,9 @@ def test_argument_parser_delegates_skip_dispatch():
         fromlist=["skip_dispatch"],
     )
 
-    assert "git_stage_batch.cli.skip_dispatch" in parser_imports
+    _assert_parser_delegates_subcommand_registry(parser_imports, "selection_subcommands")
+    assert "git_stage_batch.cli.skip_dispatch" not in parser_imports
+    assert "git_stage_batch.cli.skip_dispatch" in selection_subcommands_imports
     assert "git_stage_batch.commands.skip" not in parser_imports
     assert "git_stage_batch.commands.skip" in skip_dispatch_imports
     assert (
@@ -2853,11 +3568,16 @@ def test_argument_parser_delegates_skip_dispatch():
 def test_argument_parser_delegates_apply_dispatch():
     """Parser construction should not own apply workflow dispatch."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    batch_subcommands_path = SRC_ROOT / "cli" / "batch_subcommands.py"
     apply_dispatch_path = SRC_ROOT / "cli" / "apply_dispatch.py"
     parser_text = parser_path.read_text()
     parser_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    batch_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(batch_subcommands_path)
     }
     apply_dispatch_imports = {
         imported_module
@@ -2876,7 +3596,9 @@ def test_argument_parser_delegates_apply_dispatch():
         "git_stage_batch.commands.file_scope.multi_file_actions",
     }
 
-    assert "git_stage_batch.cli.apply_dispatch" in parser_imports
+    _assert_parser_delegates_subcommand_registry(parser_imports, "batch_subcommands")
+    assert "git_stage_batch.cli.apply_dispatch" not in parser_imports
+    assert "git_stage_batch.cli.apply_dispatch" in batch_subcommands_imports
     assert "git_stage_batch.commands.apply_from" not in parser_imports
     assert apply_runtime_imports <= apply_dispatch_imports
     assert "git_stage_batch.cli.file_scope" in apply_dispatch_imports
@@ -2890,11 +3612,16 @@ def test_argument_parser_delegates_apply_dispatch():
 def test_argument_parser_delegates_reset_dispatch():
     """Parser construction should not own reset workflow dispatch."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    batch_subcommands_path = SRC_ROOT / "cli" / "batch_subcommands.py"
     reset_dispatch_path = SRC_ROOT / "cli" / "reset_dispatch.py"
     parser_text = parser_path.read_text()
     parser_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    batch_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(batch_subcommands_path)
     }
     reset_dispatch_imports = {
         imported_module
@@ -2913,7 +3640,9 @@ def test_argument_parser_delegates_reset_dispatch():
         "git_stage_batch.commands.file_scope.multi_file_actions",
     }
 
-    assert "git_stage_batch.cli.reset_dispatch" in parser_imports
+    _assert_parser_delegates_subcommand_registry(parser_imports, "batch_subcommands")
+    assert "git_stage_batch.cli.reset_dispatch" not in parser_imports
+    assert "git_stage_batch.cli.reset_dispatch" in batch_subcommands_imports
     assert "git_stage_batch.commands.reset" not in parser_imports
     assert reset_runtime_imports <= reset_dispatch_imports
     assert "git_stage_batch.cli.file_scope" in reset_dispatch_imports
@@ -2927,11 +3656,16 @@ def test_argument_parser_delegates_reset_dispatch():
 def test_argument_parser_delegates_include_dispatch():
     """Parser construction should not own include workflow dispatch."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    selection_subcommands_path = SRC_ROOT / "cli" / "selection_subcommands.py"
     include_dispatch_path = SRC_ROOT / "cli" / "include_dispatch.py"
     parser_text = parser_path.read_text()
     parser_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    selection_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(selection_subcommands_path)
     }
     include_dispatch_imports = {
         imported_module
@@ -2961,7 +3695,9 @@ def test_argument_parser_delegates_include_dispatch():
         "include_each_resolved_file",
     }
 
-    assert "git_stage_batch.cli.include_dispatch" in parser_imports
+    _assert_parser_delegates_subcommand_registry(parser_imports, "selection_subcommands")
+    assert "git_stage_batch.cli.include_dispatch" not in parser_imports
+    assert "git_stage_batch.cli.include_dispatch" in selection_subcommands_imports
     assert "git_stage_batch.commands.include" not in parser_imports
     assert "git_stage_batch.commands.include_from" not in parser_imports
     assert include_runtime_imports <= include_dispatch_imports
@@ -2986,11 +3722,16 @@ def test_argument_parser_delegates_include_dispatch():
 def test_argument_parser_delegates_discard_dispatch():
     """Parser construction should not own discard workflow dispatch."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    selection_subcommands_path = SRC_ROOT / "cli" / "selection_subcommands.py"
     discard_dispatch_path = SRC_ROOT / "cli" / "discard_dispatch.py"
     parser_text = parser_path.read_text()
     parser_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    selection_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(selection_subcommands_path)
     }
     discard_dispatch_imports = {
         imported_module
@@ -3020,7 +3761,9 @@ def test_argument_parser_delegates_discard_dispatch():
         "discard_to_batch_each_resolved_file",
     }
 
-    assert "git_stage_batch.cli.discard_dispatch" in parser_imports
+    _assert_parser_delegates_subcommand_registry(parser_imports, "selection_subcommands")
+    assert "git_stage_batch.cli.discard_dispatch" not in parser_imports
+    assert "git_stage_batch.cli.discard_dispatch" in selection_subcommands_imports
     assert "git_stage_batch.commands.discard" not in parser_imports
     assert "git_stage_batch.commands.discard_from" not in parser_imports
     assert discard_runtime_imports <= discard_dispatch_imports
@@ -4344,12 +5087,24 @@ def test_selected_file_discarding_owns_selected_file_pipeline():
     assert helper_imports <= helper_imported_names
 
 
-def test_argument_parser_uses_file_scope_resolver_module():
-    """Parser branches should not own repository file-scope resolution."""
+def test_cli_dispatch_uses_file_scope_resolver_module():
+    """CLI dispatch should not own repository file-scope resolution."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    dispatch_paths = (
+        SRC_ROOT / "cli" / "apply_dispatch.py",
+        SRC_ROOT / "cli" / "discard_dispatch.py",
+        SRC_ROOT / "cli" / "include_dispatch.py",
+        SRC_ROOT / "cli" / "reset_dispatch.py",
+        SRC_ROOT / "cli" / "show_dispatch.py",
+        SRC_ROOT / "cli" / "skip_dispatch.py",
+    )
     parser_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    dispatch_imports = {
+        path: {imported_module for imported_module, _node in _import_from_nodes(path)}
+        for path in dispatch_paths
     }
     file_scope_path = SRC_ROOT / "cli" / "file_scope.py"
     file_scope_imports = {
@@ -4367,7 +5122,11 @@ def test_argument_parser_uses_file_scope_resolver_module():
         "_resolve_batch_file_scope",
     }
 
-    assert "git_stage_batch.cli.file_scope" in parser_imports
+    assert "git_stage_batch.cli.file_scope" not in parser_imports
+    assert all(
+        "git_stage_batch.cli.file_scope" in imports
+        for imports in dispatch_imports.values()
+    )
     assert "git_stage_batch.data.file_tracking" not in parser_imports
     assert "git_stage_batch.utils.file_patterns" not in parser_imports
     assert "git_stage_batch.data.file_tracking" in file_scope_imports
@@ -4408,10 +5167,20 @@ def test_argument_parser_uses_file_argument_module():
 def test_argument_parser_uses_auto_advance_option_module():
     """Parser branches should not own shared auto-advance option setup."""
     parser_path = SRC_ROOT / "cli" / "argument_parser.py"
+    selection_subcommands_path = SRC_ROOT / "cli" / "selection_subcommands.py"
+    session_subcommands_path = SRC_ROOT / "cli" / "session_subcommands.py"
     parser_text = parser_path.read_text()
     parser_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(parser_path)
+    }
+    selection_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(selection_subcommands_path)
+    }
+    session_subcommands_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(session_subcommands_path)
     }
     parser = __import__(
         "git_stage_batch.cli.argument_parser",
@@ -4422,7 +5191,9 @@ def test_argument_parser_uses_auto_advance_option_module():
         fromlist=["auto_advance_options"],
     )
 
-    assert "git_stage_batch.cli.auto_advance_options" in parser_imports
+    assert "git_stage_batch.cli.auto_advance_options" not in parser_imports
+    assert "git_stage_batch.cli.auto_advance_options" in selection_subcommands_imports
+    assert "git_stage_batch.cli.auto_advance_options" in session_subcommands_imports
     assert "add_auto_advance_arguments" in vars(auto_advance_options)
     assert "_add_auto_advance_arguments" not in vars(parser)
     assert 'dest="auto_advance"' not in parser_text
@@ -4489,6 +5260,84 @@ def test_tui_cli_escape_does_not_import_dispatch():
     assert "git_stage_batch.runtime" not in cli_escape_imports
     assert "git_stage_batch.tui.interactive" not in execution_imports
     assert "git_stage_batch.tui.interactive" in runtime_imports
+
+
+def test_tui_session_startup_owns_interactive_startup():
+    """TUI startup should live outside the interactive loop."""
+    interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    session_startup_path = SRC_ROOT / "tui" / "session_startup.py"
+    interactive = __import__(
+        "git_stage_batch.tui.interactive",
+        fromlist=["interactive"],
+    )
+    session_startup = __import__(
+        "git_stage_batch.tui.session_startup",
+        fromlist=["session_startup"],
+    )
+    interactive_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    session_startup_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(session_startup_path)
+    }
+    startup_imports = {
+        "git_stage_batch.commands.start",
+        "git_stage_batch.data.session",
+        "git_stage_batch.utils.file_io",
+        "git_stage_batch.utils.git_command",
+        "git_stage_batch.utils.paths",
+    }
+
+    assert "prepare_interactive_session" in vars(session_startup)
+    assert "InteractiveSessionStartup" in vars(session_startup)
+    assert "_record_start_repository_state" not in vars(interactive)
+    assert "git_stage_batch.tui.session_startup" in interactive_imports
+    assert startup_imports.isdisjoint(interactive_imports)
+    assert startup_imports <= session_startup_imports
+
+
+def test_tui_current_change_owns_interactive_change_display():
+    """Current-change loading and display should live outside the TUI loop."""
+    interactive_path = SRC_ROOT / "tui" / "interactive.py"
+    current_change_path = SRC_ROOT / "tui" / "current_change.py"
+    interactive = __import__(
+        "git_stage_batch.tui.interactive",
+        fromlist=["interactive"],
+    )
+    current_change = __import__(
+        "git_stage_batch.tui.current_change",
+        fromlist=["current_change"],
+    )
+    interactive_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(interactive_path)
+    }
+    interactive_tui_imported_names = set()
+    for imported_module, node in _import_from_nodes(interactive_path):
+        if imported_module == "git_stage_batch.tui":
+            interactive_tui_imported_names |= {alias.name for alias in node.names}
+    current_change_imports = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(current_change_path)
+    }
+    current_change_owner_imports = {
+        "git_stage_batch.data.selected_change.batch_file_cache",
+        "git_stage_batch.data.line_state",
+        "git_stage_batch.data.progress",
+        "git_stage_batch.output.hunk",
+        "git_stage_batch.tui.display",
+    }
+
+    assert "CurrentChange" in vars(current_change)
+    assert "load_current_change" in vars(current_change)
+    assert "display_current_change" in vars(current_change)
+    assert "load_current_change" not in vars(interactive)
+    assert "display_current_change" not in vars(interactive)
+    assert "current_change" in interactive_tui_imported_names
+    assert current_change_owner_imports.isdisjoint(interactive_imports)
+    assert current_change_owner_imports <= current_change_imports
 
 
 def test_tui_batch_menu_owns_batch_management_actions():
@@ -5980,22 +6829,46 @@ def test_argument_parser_does_not_import_command_facade():
         imported_module
         for imported_module, _node in _import_from_nodes(parser_path)
     }
+    root_parser_imports = _imported_modules_for(SRC_ROOT / "cli" / "root_parser.py")
+    registry_imports = _imported_modules_for(SRC_ROOT / "cli" / "subcommand_registry.py")
+    delegated_subcommand_modules = {
+        "git_stage_batch.cli.asset_subcommands",
+        "git_stage_batch.cli.batch_subcommands",
+        "git_stage_batch.cli.completion",
+        "git_stage_batch.cli.file_blocking_subcommands",
+        "git_stage_batch.cli.fixup_subcommands",
+        "git_stage_batch.cli.selection_subcommands",
+        "git_stage_batch.cli.session_subcommands",
+        "git_stage_batch.cli.tui_subcommands",
+    }
 
     assert "git_stage_batch.commands" not in imported_modules
     assert "from .. import commands" not in parser_text
     assert "commands.command_" not in parser_text
     assert "commands.DEFAULT_PROMPT_FORMAT" not in parser_text
-    assert "git_stage_batch.cli.show_dispatch" in imported_modules
+    assert "git_stage_batch.cli.show_dispatch" not in imported_modules
     assert "git_stage_batch.commands.show" not in imported_modules
     assert "git_stage_batch.commands.show_from" not in imported_modules
-    assert "git_stage_batch.cli.include_dispatch" in imported_modules
+    assert "git_stage_batch.cli.include_dispatch" not in imported_modules
     assert "git_stage_batch.commands.include" not in imported_modules
     assert "git_stage_batch.commands.include_from" not in imported_modules
-    assert "git_stage_batch.cli.discard_dispatch" in imported_modules
+    assert "git_stage_batch.cli.discard_dispatch" not in imported_modules
     assert "git_stage_batch.commands.discard" not in imported_modules
     assert "git_stage_batch.commands.discard_from" not in imported_modules
+    assert "git_stage_batch.commands.block_file" not in imported_modules
+    assert "git_stage_batch.commands.unblock_file" not in imported_modules
+    assert "git_stage_batch.commands.suggest_fixup" not in imported_modules
     assert "git_stage_batch.commands.interactive" not in imported_modules
-    assert "git_stage_batch.commands.status" in imported_modules
+    assert "git_stage_batch.commands.again" not in imported_modules
+    assert "git_stage_batch.commands.check_unstaged" not in imported_modules
+    assert "git_stage_batch.commands.start" not in imported_modules
+    assert "git_stage_batch.commands.status" not in imported_modules
+    assert "git_stage_batch.cli.root_parser" in imported_modules
+    assert "git_stage_batch.cli.subcommand_registry" not in imported_modules
+    assert "git_stage_batch.cli.subcommand_registry" in root_parser_imports
+    assert delegated_subcommand_modules.isdisjoint(imported_modules)
+    assert delegated_subcommand_modules.isdisjoint(root_parser_imports)
+    assert delegated_subcommand_modules <= registry_imports
 
 
 def test_argument_parser_command_entries_stay_in_commands_modules():
@@ -6970,31 +7843,21 @@ def test_batch_replacement_line_runs_own_public_derivation():
     assert violations == []
 
 
-def test_batch_storage_uses_public_content_helpers():
-    """Cross-module storage callers should import public content helpers."""
+def test_batch_storage_uses_public_binary_helper():
+    """Cross-module storage callers should import the public binary helper."""
     storage = __import__(
         "git_stage_batch.batch.storage",
         fromlist=["storage"],
     )
     public_names = {
         "add_binary_file_to_batch",
-        "build_realized_buffer_from_lines",
-        "remove_file_from_batch_commit",
-        "update_batch_commit",
     }
     private_names = {
-        "_build_realized_buffer_from_lines",
-        "_remove_file_from_batch_commit",
-        "_update_batch_commit",
+        "_add_binary_file_to_batch",
     }
     expected_imports = {
-        SRC_ROOT / "commands" / "batch_transform" / "sift_results.py": {
-            "build_realized_buffer_from_lines",
-        },
         SRC_ROOT / "commands" / "batch_transform" / "sift_persistence.py": {
             "add_binary_file_to_batch",
-            "remove_file_from_batch_commit",
-            "update_batch_commit",
         },
     }
     violations = []
@@ -7015,6 +7878,159 @@ def test_batch_storage_uses_public_content_helpers():
                 continue
 
             imported_names = {alias.name for alias in node.names}
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & private_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
+def test_batch_content_commits_own_tree_publication():
+    """Batch commit tree publication should live outside storage."""
+    content_commits = __import__(
+        "git_stage_batch.batch.content_commits",
+        fromlist=["content_commits"],
+    )
+    storage = __import__(
+        "git_stage_batch.batch.storage",
+        fromlist=["storage"],
+    )
+    public_names = {
+        "batch_content_commit_parents",
+        "remove_file_from_batch_commit",
+        "update_batch_commit",
+        "update_batch_gitlink_commit",
+    }
+    private_names = {
+        "_batch_commit_parents",
+        "_remove_file_from_batch_commit",
+        "_update_batch_commit",
+        "_update_batch_gitlink_commit",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "batch_transform" / "sift_persistence.py": {
+            "remove_file_from_batch_commit",
+            "update_batch_commit",
+        },
+    }
+    storage_module_imports = _import_from_nodes(SRC_ROOT / "batch" / "storage.py")
+    violations = []
+
+    for public_name in public_names:
+        assert public_name in vars(content_commits)
+    assert public_names.isdisjoint(vars(storage))
+    assert private_names.isdisjoint(vars(content_commits))
+    assert private_names.isdisjoint(vars(storage))
+    assert any(
+        imported_module == "git_stage_batch.batch"
+        and any(
+            alias.name == "content_commits"
+            and alias.asname == "_content_commits"
+            for alias in node.names
+        )
+        for imported_module, node in storage_module_imports
+    )
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "batch" / "content_commits.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.storage":
+                disallowed_names = imported_names & public_names
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(
+                        f"{relative_path}:{node.lineno} imports {names} "
+                        "from batch.storage"
+                    )
+                continue
+
+            if imported_module != "git_stage_batch.batch.content_commits":
+                continue
+
+            imported_public_names |= imported_names & public_names
+            disallowed_names = imported_names & private_names
+            if disallowed_names:
+                relative_path = path.relative_to(REPO_ROOT)
+                names = ", ".join(sorted(disallowed_names))
+                violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+
+    assert violations == []
+
+
+def test_realized_file_content_owns_text_materialization():
+    """Text materialization should live outside batch storage."""
+    realized_file_content = __import__(
+        "git_stage_batch.batch.realized_file_content",
+        fromlist=["realized_file_content"],
+    )
+    storage = __import__(
+        "git_stage_batch.batch.storage",
+        fromlist=["storage"],
+    )
+    public_names = {
+        "build_realized_buffer_from_lines",
+    }
+    private_names = {
+        "_build_realized_buffer_from_lines",
+    }
+    expected_imports = {
+        SRC_ROOT / "commands" / "batch_transform" / "sift_results.py": {
+            "build_realized_buffer_from_lines",
+        },
+    }
+    storage_module_imports = _import_from_nodes(SRC_ROOT / "batch" / "storage.py")
+    violations = []
+
+    assert public_names <= vars(realized_file_content).keys()
+    assert public_names.isdisjoint(vars(storage))
+    assert private_names.isdisjoint(vars(realized_file_content))
+    assert any(
+        imported_module == "git_stage_batch.batch"
+        and any(
+            alias.name == "realized_file_content"
+            and alias.asname == "_realized_file_content"
+            for alias in node.names
+        )
+        for imported_module, node in storage_module_imports
+    )
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == SRC_ROOT / "batch" / "realized_file_content.py":
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_public_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.storage":
+                disallowed_names = imported_names & public_names
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(
+                        f"{relative_path}:{node.lineno} imports {names} "
+                        "from batch.storage"
+                    )
+            if imported_module != "git_stage_batch.batch.realized_file_content":
+                continue
+
             imported_public_names |= imported_names & public_names
             disallowed_names = imported_names & private_names
             if disallowed_names:
@@ -7167,10 +8183,12 @@ def test_batch_transform_sift_persistence_owns_file_writes():
             "get_batch_content_ref_name",
             "sync_batch_state_refs",
         },
-        "git_stage_batch.batch.storage": {
-            "add_binary_file_to_batch",
+        "git_stage_batch.batch.content_commits": {
             "remove_file_from_batch_commit",
             "update_batch_commit",
+        },
+        "git_stage_batch.batch.storage": {
+            "add_binary_file_to_batch",
         },
         "git_stage_batch.core.text_lifecycle": {
             "TextFileChangeType",
@@ -7345,7 +8363,7 @@ def test_batch_realized_entries_uses_public_entry_helpers():
         SRC_ROOT / "batch" / "source_advancement.py": {
             "realized_entry_content_chunks",
         },
-        SRC_ROOT / "batch" / "storage.py": {
+        SRC_ROOT / "batch" / "realized_file_content.py": {
             "realized_entry_content_chunks",
         },
     }
@@ -10332,11 +11350,15 @@ def test_batch_merge_does_not_reexport_merge_exceptions():
     assert violations == []
 
 
-def test_batch_merge_uses_public_entry_helpers():
-    """Batch callers should import public merge entry helpers."""
+def test_batch_presence_constraints_own_presence_entry_helpers():
+    """Presence helpers should stay on the presence constraint boundary."""
     merge = __import__(
         "git_stage_batch.batch.merge",
         fromlist=["merge"],
+    )
+    presence_constraints = __import__(
+        "git_stage_batch.batch.presence_constraints",
+        fromlist=["presence_constraints"],
     )
     public_names = {
         "apply_presence_constraints",
@@ -10354,26 +11376,36 @@ def test_batch_merge_uses_public_entry_helpers():
         SRC_ROOT / "batch" / "source_advancement.py": {
             "apply_presence_constraints",
         },
-        SRC_ROOT / "batch" / "storage.py": {
+        SRC_ROOT / "batch" / "realized_file_content.py": {
             "satisfy_constraints",
         },
     }
     violations = []
 
     for public_name in public_names:
-        assert public_name in vars(merge)
+        assert public_name in vars(presence_constraints)
+    assert public_names.isdisjoint(vars(merge))
     assert private_names.isdisjoint(vars(merge))
     assert moved_names.isdisjoint(vars(merge))
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == SRC_ROOT / "batch" / "merge.py":
+        if path == SRC_ROOT / "batch" / "presence_constraints.py":
             continue
 
         imports = _import_from_nodes(path)
         imported_public_names = set()
 
         for imported_module, node in imports:
-            if imported_module != "git_stage_batch.batch.merge":
+            if imported_module == "git_stage_batch.batch.merge":
+                imported_names = {alias.name for alias in node.names}
+                disallowed_names = imported_names & public_names
+                if disallowed_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(disallowed_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+                continue
+
+            if imported_module != "git_stage_batch.batch.presence_constraints":
                 continue
 
             imported_names = {alias.name for alias in node.names}
@@ -10388,6 +11420,30 @@ def test_batch_merge_uses_public_entry_helpers():
             assert expected_imports[path] <= imported_public_names
 
     assert violations == []
+
+
+def test_realized_mapping_owns_working_range_builder():
+    """Working-range realization should stay on the realized mapping boundary."""
+    merge = __import__(
+        "git_stage_batch.batch.merge",
+        fromlist=["merge"],
+    )
+    presence_constraints = __import__(
+        "git_stage_batch.batch.presence_constraints",
+        fromlist=["presence_constraints"],
+    )
+    realized_mapping = __import__(
+        "git_stage_batch.batch.realized_mapping",
+        fromlist=["realized_mapping"],
+    )
+    moved_names = {
+        "_append_working_range_with_mapping",
+        "_source_lines_are_contiguous",
+    }
+
+    assert "append_working_range_with_mapping" in vars(realized_mapping)
+    assert moved_names.isdisjoint(vars(merge))
+    assert moved_names.isdisjoint(vars(presence_constraints))
 
 
 def test_hunk_tracking_does_not_reexport_live_change_helpers():
@@ -10688,6 +11744,112 @@ def test_selected_hunk_filtering_stays_out_of_hunk_tracking():
 
         if path in expected_imports:
             assert expected_imports[path] <= imported_filtering_names
+
+    assert violations == []
+
+
+def test_attribution_projection_stays_out_of_attribution_builder():
+    """Displayed-diff projection should live outside attribution building."""
+    attribution = __import__(
+        "git_stage_batch.batch.attribution",
+        fromlist=["attribution"],
+    )
+    attribution_projection = __import__(
+        "git_stage_batch.batch.attribution_projection",
+        fromlist=["attribution_projection"],
+    )
+    projection_path = SRC_ROOT / "batch" / "attribution_projection.py"
+    public_names = {
+        "filter_owned_diff_fragments",
+        "project_attribution_to_diff",
+    }
+    stale_builder_names = public_names | {
+        "_CollectedAddedRun",
+        "_CollectedDeletedRun",
+        "_anchor_consistent_with_diff_position",
+        "_collect_added_run",
+        "_collect_deleted_run",
+    }
+    expected_imports = {
+        SRC_ROOT
+        / "data"
+        / "selected_change"
+        / "hunk_filtering.py": {
+            "filter_owned_diff_fragments",
+        },
+    }
+    violations = []
+
+    assert public_names <= vars(attribution_projection).keys()
+    assert stale_builder_names.isdisjoint(vars(attribution))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == projection_path:
+            continue
+
+        imports = _import_from_nodes(path)
+        imported_projection_names = set()
+
+        for imported_module, node in imports:
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.attribution_projection":
+                imported_projection_names |= imported_names & public_names
+            if imported_module == "git_stage_batch.batch.attribution":
+                moved_names = imported_names & stale_builder_names
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_projection_names
+
+    assert violations == []
+
+
+def test_attribution_fingerprints_stay_out_of_attribution_builder():
+    """Attribution content hashing should live outside attribution building."""
+    attribution = __import__(
+        "git_stage_batch.batch.attribution",
+        fromlist=["attribution"],
+    )
+    attribution_fingerprints = __import__(
+        "git_stage_batch.batch.attribution_fingerprints",
+        fromlist=["attribution_fingerprints"],
+    )
+    fingerprint_path = SRC_ROOT / "batch" / "attribution_fingerprints.py"
+    public_names = {
+        "ContentFingerprint",
+        "blob_matches_content",
+        "fingerprint_bytes",
+        "fingerprint_chunks",
+        "fingerprint_git_blob",
+        "fingerprint_numbered_lines",
+    }
+    stale_builder_names = public_names | {
+        "_deletion_blob_matches_content",
+        "_fingerprint_bytes",
+        "_fingerprint_chunks",
+        "_fingerprint_git_blob",
+        "_fingerprint_numbered_lines",
+    }
+    violations = []
+
+    assert public_names <= vars(attribution_fingerprints).keys()
+    assert stale_builder_names.isdisjoint(vars(attribution))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == fingerprint_path:
+            continue
+
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if imported_module == "git_stage_batch.batch.attribution":
+                moved_names = imported_names & stale_builder_names
+                if moved_names:
+                    relative_path = path.relative_to(REPO_ROOT)
+                    names = ", ".join(sorted(moved_names))
+                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
 
     assert violations == []
 

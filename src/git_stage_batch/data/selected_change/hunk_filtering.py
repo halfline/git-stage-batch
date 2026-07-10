@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 
-from ...batch.attribution import build_file_attribution, filter_owned_diff_fragments
+from ...batch.attribution import build_file_attribution
+from ...batch.attribution_projection import filter_owned_diff_fragments
 from ...utils.file_io import write_text_file_contents
 from ...utils.paths import get_line_changes_json_file_path
 from .. import change_freshness as _change_freshness

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ..core.line_selection import LineRanges, LineSelection
+from ..core.line_selection import LineRanges, LineSelection, coerce_line_ranges
 from ..exceptions import MergeError as _MergeError
 from ..i18n import _
 from .match import LineMapping
@@ -210,15 +210,6 @@ def _first_selected_line(lines: LineSelection) -> int | None:
     return min(lines) if lines else None
 
 
-def _as_line_ranges(lines: LineSelection | Iterable[int]) -> LineRanges:
-    if isinstance(lines, LineRanges):
-        return lines
-    ranges = getattr(lines, "ranges", None)
-    if ranges is not None:
-        return LineRanges.from_ranges(ranges())
-    return LineRanges.from_lines(lines)
-
-
 def _mapped_missing_source_lines(
     source_lines: LineSelection,
     source_line_count: int,
@@ -227,7 +218,7 @@ def _mapped_missing_source_lines(
     missing_ranges: list[tuple[int, int]] = []
     current_start: int | None = None
     current_end: int | None = None
-    source_selection = _as_line_ranges(source_lines)
+    source_selection = coerce_line_ranges(source_lines)
 
     for start, end in source_selection.ranges():
         for source_line in range(max(1, start), min(end, source_line_count) + 1):

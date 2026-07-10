@@ -8,20 +8,17 @@ content that may not currently be visible in the working tree.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from contextlib import ExitStack
-import hashlib
 from dataclasses import dataclass
 from enum import Enum
 
 from ..batch.match import LineMapping, match_lines
+from . import attribution_fingerprints as _attribution_fingerprints
 from ..batch.query import list_batch_names, read_batch_metadata
 from ..core.line_selection import parse_line_selection
-from ..core.models import LineLevelChange
 from ..data.consumed_selections import read_consumed_file_metadata
-from ..core.buffer import buffer_matches
 from ..utils.repository_buffers import (
-    load_git_blob_as_buffer,
     load_git_object_as_buffer_or_empty,
     load_working_tree_file_as_buffer,
 )
@@ -40,33 +37,6 @@ class AttributionUnitKind(Enum):
     """Pure deletion (no coupled addition)."""
 
 
-@dataclass(frozen=True)
-class ContentFingerprint:
-    """Byte count and digest for matching content without retaining it."""
-
-    byte_count: int
-    sha1: str
-
-
-@dataclass(frozen=True)
-class _CollectedDeletedRun:
-    """Deleted diff run data used while projecting attribution."""
-
-    end_index: int
-    fingerprint: ContentFingerprint
-
-
-@dataclass(frozen=True)
-class _CollectedAddedRun:
-    """Added diff run data used while projecting attribution."""
-
-    end_index: int
-    first_line_number: int | None
-    line_count: int
-    content: bytes | None
-    fingerprint: ContentFingerprint
-
-
 @dataclass
 class AttributionUnit:
     """A semantic unit in the working tree file for attribution.
@@ -82,8 +52,8 @@ class AttributionUnit:
     claimed_content: bytes | None
     deletion_anchor_in_working_tree: int | None
     deletion_content: bytes | None
-    deletion_fingerprint: ContentFingerprint | None = None
-    claimed_fingerprint: ContentFingerprint | None = None
+    deletion_fingerprint: _attribution_fingerprints.ContentFingerprint | None = None
+    claimed_fingerprint: _attribution_fingerprints.ContentFingerprint | None = None
     claimed_line_count: int | None = None
 
 
@@ -138,15 +108,15 @@ def _make_unit_id(
     file_path: str,
     claimed_line: int | None = None,
     claimed_content: bytes | None = None,
-    claimed_fingerprint: ContentFingerprint | None = None,
+    claimed_fingerprint: _attribution_fingerprints.ContentFingerprint | None = None,
     deletion_anchor: int | None = None,
     deletion_content: bytes | None = None,
-    deletion_fingerprint: ContentFingerprint | None = None,
+    deletion_fingerprint: _attribution_fingerprints.ContentFingerprint | None = None,
 ) -> str:
     """Create a semantic, batch-independent identifier for a unit."""
     def _hash(
         content: bytes | None,
-        fingerprint: ContentFingerprint | None = None,
+        fingerprint: _attribution_fingerprints.ContentFingerprint | None = None,
     ) -> str:
         if fingerprint is not None:
             if fingerprint.byte_count == 0:
@@ -154,7 +124,7 @@ def _make_unit_id(
             return fingerprint.sha1[:8]
         if content is None or not content:
             return "none"
-        return hashlib.sha1(content).hexdigest()[:8]
+        return _attribution_fingerprints.fingerprint_bytes(content).sha1[:8]
 
     if kind == AttributionUnitKind.PRESENCE_ONLY:
         line_str = str(claimed_line) if claimed_line is not None else "missing"
@@ -180,36 +150,6 @@ def _make_unit_id(
         )
 
     return f"UNKNOWN:{file_path}"
-
-
-def _fingerprint_chunks(chunks: Iterable[bytes]) -> ContentFingerprint:
-    digest = hashlib.sha1()
-    byte_count = 0
-    for chunk in chunks:
-        digest.update(chunk)
-        byte_count += len(chunk)
-    return ContentFingerprint(byte_count=byte_count, sha1=digest.hexdigest())
-
-
-def _fingerprint_bytes(content: bytes | None) -> ContentFingerprint | None:
-    if content is None:
-        return None
-    return _fingerprint_chunks([content])
-
-
-def _fingerprint_git_blob(blob_hash: str) -> ContentFingerprint | None:
-    try:
-        with load_git_blob_as_buffer(blob_hash) as blob_buffer:
-            return _fingerprint_chunks(blob_buffer.byte_chunks())
-    except RuntimeError:
-        return None
-
-
-def _fingerprint_numbered_lines(
-    lines: Sequence[bytes],
-    line_numbers: Iterable[int],
-) -> ContentFingerprint:
-    return _fingerprint_chunks(lines[line_number - 1] for line_number in line_numbers)
 
 
 def _single_line_content(
@@ -329,11 +269,14 @@ def enumerate_units_from_file_comparison(
     ]
 
     for del_run, add_run, anchor in replacements:
-        deletion_fingerprint = _fingerprint_numbered_lines(baseline_lines, del_run)
+        deletion_fingerprint = _attribution_fingerprints.fingerprint_numbered_lines(
+            baseline_lines,
+            del_run,
+        )
         addition_content = _single_line_content(working_tree_lines, add_run)
         addition_fingerprint = None
         if addition_content is None:
-            addition_fingerprint = _fingerprint_numbered_lines(
+            addition_fingerprint = _attribution_fingerprints.fingerprint_numbered_lines(
                 working_tree_lines,
                 add_run,
             )
@@ -362,7 +305,10 @@ def enumerate_units_from_file_comparison(
         units_map.setdefault(unit.unit_id, unit)
 
     for del_run in remaining_deletions:
-        deletion_fingerprint = _fingerprint_numbered_lines(baseline_lines, del_run)
+        deletion_fingerprint = _attribution_fingerprints.fingerprint_numbered_lines(
+            baseline_lines,
+            del_run,
+        )
         anchor_baseline = _find_structural_predecessor(del_run, baseline_to_working)
         anchor_working = None if anchor_baseline is None else baseline_to_working.get(anchor_baseline)
 
@@ -563,7 +509,9 @@ def _enumerate_units_from_batches(
             if not blob_hash:
                 continue
 
-            deletion_fingerprint = _fingerprint_git_blob(blob_hash)
+            deletion_fingerprint = _attribution_fingerprints.fingerprint_git_blob(
+                blob_hash
+            )
             if deletion_fingerprint is None:
                 continue
 
@@ -676,7 +624,10 @@ def _batch_owns_presence_unit(
         if any(source_line not in claimed_source_line_set for source_line in source_line_range):
             return False
         return (
-            _fingerprint_numbered_lines(batch_source_lines, source_line_range)
+            _attribution_fingerprints.fingerprint_numbered_lines(
+                batch_source_lines,
+                source_line_range,
+            )
             == unit.claimed_fingerprint
         )
 
@@ -705,13 +656,15 @@ def _batch_owns_presence_unit(
         ):
             continue
         if (
-            _fingerprint_numbered_lines(batch_source_lines, source_line_range)
+            _attribution_fingerprints.fingerprint_numbered_lines(
+                batch_source_lines,
+                source_line_range,
+            )
             == unit.claimed_fingerprint
         ):
             return True
 
     return False
-
 
 def _batch_owns_deletion_unit(
     unit: AttributionUnit,
@@ -738,227 +691,18 @@ def _batch_owns_deletion_unit(
 
         if (
             unit.deletion_content is not None
-            and _deletion_blob_matches_content(blob_hash, unit.deletion_content)
+            and _attribution_fingerprints.blob_matches_content(
+                blob_hash,
+                unit.deletion_content,
+            )
         ):
             return True
 
         if (
             unit.deletion_fingerprint is not None
-            and _fingerprint_git_blob(blob_hash) == unit.deletion_fingerprint
+            and _attribution_fingerprints.fingerprint_git_blob(blob_hash)
+            == unit.deletion_fingerprint
         ):
             return True
 
     return False
-
-
-def _deletion_blob_matches_content(blob_hash: str, content: bytes) -> bool:
-    try:
-        with load_git_blob_as_buffer(blob_hash) as blob_buffer:
-            return buffer_matches(blob_buffer, content)
-    except RuntimeError:
-        return False
-
-
-def _collect_deleted_run(
-    lines: list,
-    start_idx: int,
-) -> _CollectedDeletedRun:
-    end_idx = start_idx
-    while end_idx < len(lines) and lines[end_idx].kind == "-":
-        end_idx += 1
-
-    deletion_fingerprint = _fingerprint_chunks(
-        lines[idx].text_bytes + b"\n"
-        for idx in range(start_idx, end_idx)
-    )
-    return _CollectedDeletedRun(
-        end_index=end_idx,
-        fingerprint=deletion_fingerprint,
-    )
-
-
-def _collect_added_run(
-    lines: list,
-    start_idx: int,
-) -> _CollectedAddedRun:
-    end_idx = start_idx
-    first_line_number = None
-
-    while end_idx < len(lines) and lines[end_idx].kind == "+":
-        if first_line_number is None:
-            first_line_number = lines[end_idx].new_line_number
-        end_idx += 1
-
-    line_count = end_idx - start_idx
-    fingerprint = _fingerprint_chunks(
-        lines[idx].text_bytes + b"\n"
-        for idx in range(start_idx, end_idx)
-    )
-    content = None
-    if line_count == 1:
-        content = lines[start_idx].text_bytes + b"\n"
-
-    return _CollectedAddedRun(
-        end_index=end_idx,
-        first_line_number=first_line_number,
-        line_count=line_count,
-        content=content,
-        fingerprint=fingerprint,
-    )
-
-
-def project_attribution_to_diff(
-    attribution: FileAttribution,
-    line_changes,
-) -> dict[int, AttributedUnit]:
-    """Project file attribution onto diff fragments."""
-    display_to_unit: dict[int, AttributedUnit] = {}
-    lines = line_changes.lines
-
-    presence_by_line: dict[int, list[AttributedUnit]] = {}
-    replacement_by_line: dict[int, list[AttributedUnit]] = {}
-    deletion_by_fingerprint: dict[ContentFingerprint, list[AttributedUnit]] = {}
-
-    for attr_unit in attribution.units:
-        unit = attr_unit.unit
-        if unit.kind == AttributionUnitKind.PRESENCE_ONLY:
-            if unit.claimed_line_in_working_tree is not None:
-                presence_by_line.setdefault(unit.claimed_line_in_working_tree, []).append(attr_unit)
-        elif unit.kind == AttributionUnitKind.REPLACEMENT:
-            if unit.claimed_line_in_working_tree is not None:
-                replacement_by_line.setdefault(unit.claimed_line_in_working_tree, []).append(attr_unit)
-        elif unit.kind == AttributionUnitKind.DELETION_ONLY:
-            deletion_fingerprint = (
-                unit.deletion_fingerprint
-                or _fingerprint_bytes(unit.deletion_content)
-            )
-            if deletion_fingerprint is not None:
-                deletion_by_fingerprint.setdefault(
-                    deletion_fingerprint,
-                    [],
-                ).append(attr_unit)
-
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-
-        if line.kind == "-":
-            deleted_run = _collect_deleted_run(lines, i)
-            add_start = deleted_run.end_index
-            added_run = _collect_added_run(lines, add_start)
-
-            if (
-                added_run.end_index > add_start
-                and added_run.first_line_number is not None
-            ):
-                candidates = replacement_by_line.get(added_run.first_line_number, [])
-                matched = False
-                for attr_unit in candidates:
-                    unit = attr_unit.unit
-                    if unit.deletion_fingerprint != deleted_run.fingerprint:
-                        continue
-                    if unit.claimed_content is not None:
-                        if unit.claimed_content != added_run.content:
-                            continue
-                    elif unit.claimed_fingerprint is not None:
-                        if unit.claimed_line_count != added_run.line_count:
-                            continue
-                        if unit.claimed_fingerprint != added_run.fingerprint:
-                            continue
-                    else:
-                        continue
-                    if not _anchor_consistent_with_diff_position(
-                        unit.deletion_anchor_in_working_tree,
-                        i,
-                        lines,
-                    ):
-                        continue
-                    for idx in range(i, added_run.end_index):
-                        display_to_unit[idx] = attr_unit
-                    matched = True
-                    break
-
-                if matched:
-                    i = added_run.end_index
-                    continue
-
-            candidates = deletion_by_fingerprint.get(deleted_run.fingerprint, [])
-            for attr_unit in candidates:
-                unit = attr_unit.unit
-                if not _anchor_consistent_with_diff_position(
-                    unit.deletion_anchor_in_working_tree,
-                    i,
-                    lines,
-                ):
-                    continue
-                for idx in range(i, deleted_run.end_index):
-                    display_to_unit[idx] = attr_unit
-                break
-            i = deleted_run.end_index
-            continue
-
-        if line.kind == "+":
-            if line.new_line_number is not None:
-                for attr_unit in presence_by_line.get(line.new_line_number, []):
-                    unit = attr_unit.unit
-                    if unit.claimed_content == line.text_bytes + b"\n":
-                        display_to_unit[i] = attr_unit
-                        break
-            i += 1
-            continue
-
-        i += 1
-
-    return display_to_unit
-
-
-def _anchor_consistent_with_diff_position(
-    unit_anchor: int | None,
-    deletion_start_idx: int,
-    lines: list,
-) -> bool:
-    """Sanity-check a unit-defined anchor against available diff context."""
-    preceding_working_line = None
-    for idx in range(deletion_start_idx - 1, -1, -1):
-        if lines[idx].kind in (" ", "+") and lines[idx].new_line_number is not None:
-            preceding_working_line = lines[idx].new_line_number
-            break
-
-    if preceding_working_line is None:
-        return True
-    if unit_anchor is None:
-        return False
-    return unit_anchor == preceding_working_line
-
-
-def filter_owned_diff_fragments(
-    line_changes,
-    attribution: FileAttribution,
-) -> tuple[bool, any]:
-    """Filter displayed diff fragments that correspond to owned units."""
-    display_to_unit = project_attribution_to_diff(attribution, line_changes)
-    filtered_lines = []
-
-    for idx, line_entry in enumerate(line_changes.lines):
-        attr_unit = display_to_unit.get(idx)
-        if attr_unit and attr_unit.owning_batches:
-            continue
-
-        filtered_lines.append(line_entry)
-
-    # Skip only if we had changes but they were all filtered out
-    # Don't skip empty files (which have no lines to begin with)
-    had_changes = any(line.kind in ("+", "-") for line in line_changes.lines)
-    has_changes_after_filter = any(line.kind in ("+", "-") for line in filtered_lines)
-
-    if had_changes and not has_changes_after_filter:
-        return (True, None)
-
-    return (
-        False,
-        LineLevelChange(
-            path=line_changes.path,
-            header=line_changes.header,
-            lines=filtered_lines,
-        ),
-    )

@@ -12,11 +12,11 @@ from ...batch.state_refs import (
     get_batch_content_ref_name,
     sync_batch_state_refs,
 )
-from ...batch.storage import (
-    add_binary_file_to_batch,
+from ...batch.content_commits import (
     remove_file_from_batch_commit,
     update_batch_commit,
 )
+from ...batch.storage import add_binary_file_to_batch
 from ...batch.validation import batch_exists, validate_batch_name
 from ...core.buffer import LineBuffer
 from ...core.text_lifecycle import TextFileChangeType, normalized_text_change_type

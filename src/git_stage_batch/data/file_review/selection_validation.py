@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from ...core.line_selection import LineRanges, LineSelection
+from ...core.line_selection import LineRanges, LineSelection, coerce_line_ranges
 from ...exceptions import CommandError
 from ...i18n import _
 from . import records as _records
@@ -17,12 +17,6 @@ def _coerce_review_action(action: _records.FileReviewAction | str) -> _records.F
 
 def _format_line_ranges(selection: LineRanges) -> str:
     return selection.to_line_spec()
-
-
-def _coerce_line_ranges(selection: LineSelection | Iterable[int]) -> LineRanges:
-    if isinstance(selection, LineRanges):
-        return selection
-    return LineRanges.from_lines(selection)
 
 
 @dataclass(frozen=True)
@@ -55,7 +49,7 @@ def validate_review_scoped_line_selection(
     valid_selections: Iterable[_records.FileReviewSelectionState],
 ) -> None:
     """Validate a union of complete actionable review selections."""
-    requested_ranges = _coerce_line_ranges(requested_ids)
+    requested_ranges = coerce_line_ranges(requested_ids)
     groups: list[_ReviewValidationGroup] = []
     for selection in valid_selections:
         display_ids = LineRanges.from_lines(selection.display_ids)

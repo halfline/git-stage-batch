@@ -5,6 +5,7 @@ from __future__ import annotations
 import subprocess
 from typing import Union
 
+from ..batch.query import list_batch_names, read_batch_metadata_for_batches
 from ..batch.source_annotation import annotate_with_batch_source
 from ..core.hashing import (
     compute_binary_file_hash,
@@ -48,6 +49,20 @@ from .selected_change.lifecycle import (
 )
 
 
+class _BatchMetadataSnapshot:
+    """Lazy batch metadata snapshot for one hunk navigation scan."""
+
+    def __init__(self) -> None:
+        self._metadata_by_name: dict[str, dict] | None = None
+
+    def metadata_by_name(self) -> dict[str, dict]:
+        if self._metadata_by_name is None:
+            self._metadata_by_name = read_batch_metadata_for_batches(
+                list_batch_names()
+            )
+        return self._metadata_by_name
+
+
 def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange]:
     """Find the next hunk or binary file that isn't blocked and cache it as selected.
 
@@ -62,6 +77,7 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
 
     # Load blocklist (includes selected iteration)
     blocked_hashes = read_text_file_line_set(get_block_list_file_path())
+    batch_metadata_snapshot = _BatchMetadataSnapshot()
 
     # Stream git diff and parse incrementally - stops after first unblocked item found
     try:
@@ -92,7 +108,12 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
                     deletion_hash = compute_text_file_deletion_hash(item)
                     if (
                         deletion_hash in blocked_hashes
-                        or _change_freshness.text_deletion_change_is_batched(item)
+                        or _change_freshness.text_deletion_change_is_batched(
+                            item,
+                            batch_metadata_by_name=(
+                                batch_metadata_snapshot.metadata_by_name()
+                            ),
+                        )
                     ):
                         continue
 
@@ -157,7 +178,11 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
 
                 # Apply line-level batch filtering
                 if (
-                    _selected_hunk_filtering.apply_line_level_batch_filter_to_cached_hunk()
+                    _selected_hunk_filtering.apply_line_level_batch_filter_to_cached_hunk(
+                        batch_metadata_by_name=(
+                            batch_metadata_snapshot.metadata_by_name()
+                        ),
+                    )
                 ):
                     # All lines were batched, skip this hunk and continue
                     _clear_selected_change_state_files()

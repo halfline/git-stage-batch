@@ -148,7 +148,10 @@ def absence_ambiguity_key(
 ) -> str:
     """Return the merge-resolution key for one absence ambiguity."""
     anchor = "start" if anchor_line is None else str(anchor_line)
-    digest = hashlib.sha256(b"".join(forbidden_sequence)).hexdigest()[:12]
+    hasher = hashlib.sha256()
+    for line in forbidden_sequence:
+        hasher.update(line)
+    digest = hasher.hexdigest()[:12]
     return f"absence:{claim_index}:{anchor}:{digest}"
 
 

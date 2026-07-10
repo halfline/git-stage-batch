@@ -56,10 +56,7 @@ def presence_choices_for_missing_claimed_run(
 
     left_context = (bytes(source_lines[before_source_line - 1]),)
     right_context = (bytes(source_lines[after_source_line - 1]),)
-    claimed_run = tuple(
-        bytes(source_lines[index])
-        for index in range(run_start - 1, run_end)
-    )
+    claimed_run = source_lines[run_start - 1:run_end]
     key = presence_ambiguity_key(
         run_start,
         run_end,

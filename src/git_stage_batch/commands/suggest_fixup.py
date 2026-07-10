@@ -11,7 +11,7 @@ from ..data.file_review.fingerprints import compute_current_file_review_diff_fin
 from ..data.selected_change.loading import require_selected_hunk
 from ..data.file_hunk_display import render_file_as_single_hunk
 from ..data.line_state import load_line_changes_from_state
-from ..data.selected_change.store import get_selected_change_file_path
+from ..data.selected_change.paths import get_selected_change_file_path
 from ..data.session import require_session_started
 from ..data.suggest_fixup_state import (
     clear_suggest_fixup_state,

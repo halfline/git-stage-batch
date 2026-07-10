@@ -37,10 +37,11 @@ from ..batch.selection import require_line_selection_in_view
 from ..batch.source_refresh import acquire_batch_ownership_update_for_selection
 from ..batch.source_refresh import refresh_selected_lines_against_source_lines
 from ..batch.validation import batch_exists
-from ..batch.submodule_pointer import discard_submodule_pointer_from_batch
 from ..core.diff_parser import (
     acquire_unified_diff,
     build_line_changes_from_patch_lines,
+    patch_is_empty_file_change,
+    patch_is_new_file,
 )
 from ..core.hashing import (
     compute_binary_file_hash,
@@ -62,12 +63,14 @@ from ..data.selected_change.loading import (
 )
 from ..data.selected_change.store import (
     SelectedChangeKind,
-    get_selected_change_file_path,
     read_selected_change_kind,
-    refuse_bare_action_after_auto_advance_disabled,
-    refuse_bare_action_after_file_list,
     restore_selected_change_state,
     snapshot_selected_change_state,
+)
+from ..data.selected_change.paths import get_selected_change_file_path
+from ..data.selected_change.clear_reasons import (
+    refuse_bare_action_after_auto_advance_disabled,
+    refuse_bare_action_after_file_list,
 )
 from ..data.file_change_display import (
     render_binary_file_change,
@@ -98,6 +101,7 @@ from ..data.session import require_session_started, snapshot_file_if_untracked, 
 from ..data.undo import undo_checkpoint
 from ..core.buffer import (
     LineBuffer,
+    buffer_ends_with_lf,
     write_buffer_to_path,
 )
 from ..utils.repository_buffers import (
@@ -113,6 +117,7 @@ from ..staging.operations import (
 )
 from ..utils.file_io import (
     append_lines_to_file,
+    path_is_empty,
     read_text_file_line_set,
     read_text_file_contents,
 )
@@ -121,8 +126,6 @@ from ..utils.git import (
     git_apply_to_worktree,
     git_checkout_paths,
     git_remove_paths,
-    git_update_index,
-    git_update_gitlink,
     require_git_repository,
     run_git_command,
 )
@@ -135,9 +138,15 @@ from ..utils.paths import (
     get_selected_hunk_patch_file_path,
 )
 from .selection import replacement_selection
+from .selection import discard_file_selection as _discard_file_selection
 from .selection.selected_hunk_refresh import (
     recalculate_selected_hunk_for_command,
     refresh_selected_hunk_after_line_action,
+)
+from .selection.selected_change_discarding import (
+    discard_gitlink_change,
+    discard_rename_change,
+    discard_text_deletion_change,
 )
 from .selection.action_completion import finish_selected_change_action
 
@@ -156,122 +165,10 @@ class _TextFileDiscardInput:
     patches_to_discard: list[_PreparedPatchDiscard]
 
 
-def _discard_gitlink_change(gitlink_change: GitlinkChange) -> None:
-    """Restore one submodule pointer change to its baseline state."""
-    file_path = gitlink_change.path()
-    file_meta = {
-        "file_type": "gitlink",
-        "change_type": gitlink_change.change_type,
-        "old_oid": gitlink_change.old_oid,
-        "new_oid": gitlink_change.new_oid,
-    }
-    discard_submodule_pointer_from_batch(file_path, file_meta)
-
-    if gitlink_change.is_new_file():
-        return
-    if gitlink_change.old_oid is None:
-        exit_with_error(
-            _("Cannot discard submodule pointer for {file}: missing baseline commit.").format(
-                file=file_path,
-            )
-        )
-    index_result = git_update_gitlink(
-        file_path=file_path,
-        oid=gitlink_change.old_oid,
-        check=False,
-    )
-    if index_result.returncode != 0:
-        exit_with_error(
-            _("Failed to update submodule pointer in the index for {file}: {error}").format(
-                file=file_path,
-                error=index_result.stderr,
-            )
-        )
-
-
-def _remove_worktree_path(file_path: str) -> None:
-    """Remove a working-tree path if it still exists after index cleanup."""
-    absolute_path = get_git_repository_root_path() / file_path
-    if not os.path.lexists(absolute_path):
-        return
-    if absolute_path.is_dir() and not absolute_path.is_symlink():
-        # A rename diff is file-oriented, but avoid leaving an untracked directory
-        # behind if the destination path was replaced while the prompt was open.
-        for child in sorted(absolute_path.rglob("*"), reverse=True):
-            if child.is_dir() and not child.is_symlink():
-                child.rmdir()
-            else:
-                child.unlink()
-        absolute_path.rmdir()
-        return
-    absolute_path.unlink()
-
-
-def _discard_rename_change(rename_change: RenameChange) -> None:
-    """Restore the old path and remove the renamed destination."""
-    snapshot_files_if_untracked([rename_change.new_path])
-
-    remove_result = git_remove_paths(
-        [rename_change.new_path],
-        force=True,
-        ignore_unmatch=True,
-        check=False,
-    )
-    if remove_result.returncode != 0:
-        index_result = git_update_index(
-            file_path=rename_change.new_path,
-            force_remove=True,
-            check=False,
-        )
-        if index_result.returncode != 0:
-            exit_with_error(
-                _("Failed to remove renamed path {file}: {error}").format(
-                    file=rename_change.new_path,
-                    error=index_result.stderr,
-                )
-            )
-        _remove_worktree_path(rename_change.new_path)
-
-    restore_result = git_checkout_paths("HEAD", [rename_change.old_path], check=False)
-    if restore_result.returncode != 0:
-        exit_with_error(
-            _("Failed to restore renamed source {file}: {error}").format(
-                file=rename_change.old_path,
-                error=restore_result.stderr,
-            )
-        )
-
-
-def _discard_text_deletion_change(deletion_change: TextFileDeletionChange) -> None:
-    """Restore a whole-text-file path deletion from the current index."""
-    file_path = deletion_change.path()
-    snapshot_file_if_untracked(file_path)
-
-    restore_result = run_git_command(
-        ["checkout", "--", file_path],
-        check=False,
-        requires_index_lock=True,
-    )
-    if restore_result.returncode != 0:
-        exit_with_error(
-            _("Failed to restore deleted file {file}: {error}").format(
-                file=file_path,
-                error=restore_result.stderr,
-            )
-        )
-
-
 @dataclass(frozen=True)
 class _CollectedTextFileDiscards:
     inputs_by_file: dict[str, _TextFileDiscardInput]
     files_with_text_patches: set[str]
-
-
-def _patch_lines_contain_line(
-    patch_lines: Sequence[bytes],
-    line_content: bytes,
-) -> bool:
-    return any(line.rstrip(b"\n") == line_content for line in patch_lines)
 
 
 @dataclass(frozen=True)
@@ -287,39 +184,6 @@ class _PreparedTextFileDiscardToBatch:
 class DiscardFilesToBatchResult:
     discarded_hunks: int
     discarded_files: list[str]
-
-
-def _buffer_ends_with_lf(buffer: LineBuffer) -> bool:
-    last_chunk = b""
-    for chunk in buffer.byte_chunks():
-        if chunk:
-            last_chunk = chunk
-    return bool(last_chunk) and last_chunk.endswith(b"\n")
-
-
-def _path_is_empty(path: Path) -> bool:
-    with path.open("rb") as file_handle:
-        while chunk := file_handle.read(1024 * 1024):
-            if chunk:
-                return False
-    return True
-
-
-def _load_explicit_file_selection(file_path: str):
-    """Return the active file-scoped view for an explicit discard target."""
-    auto_add_untracked_files([file_path])
-    reuse_selected_file_view = (
-        read_selected_change_kind() == SelectedChangeKind.FILE
-        and get_selected_change_file_path() == file_path
-    )
-    if reuse_selected_file_view:
-        line_changes = load_line_changes_from_state()
-    else:
-        line_changes = cache_unstaged_file_as_single_hunk(file_path)
-
-    if line_changes is None:
-        exit_with_error(_("No changes in file '{file}'.").format(file=file_path))
-    return line_changes
 
 
 def command_discard(
@@ -370,7 +234,7 @@ def command_discard(
 
         # Handle based on item type
         if isinstance(item, RenameChange):
-            _discard_rename_change(item)
+            discard_rename_change(item)
             append_lines_to_file(get_block_list_file_path(), [patch_hash])
             record_hunk_discarded(patch_hash)
 
@@ -390,7 +254,7 @@ def command_discard(
             return
 
         if isinstance(item, TextFileDeletionChange):
-            _discard_text_deletion_change(item)
+            discard_text_deletion_change(item)
             append_lines_to_file(get_block_list_file_path(), [patch_hash])
             record_hunk_discarded(patch_hash)
 
@@ -404,7 +268,7 @@ def command_discard(
             return
 
         if isinstance(item, GitlinkChange):
-            _discard_gitlink_change(item)
+            discard_gitlink_change(item)
             append_lines_to_file(get_block_list_file_path(), [patch_hash])
             record_hunk_discarded(patch_hash)
 
@@ -473,10 +337,7 @@ def command_discard(
             # Extract filename for user feedback and snapshotting
             line_changes = build_line_changes_from_patch_lines(patch_buffer)
             filename = line_changes.path
-            is_new_file = any(
-                line.rstrip(b"\n") == b"--- /dev/null"
-                for line in patch_buffer
-            )
+            is_new_file = patch_is_new_file(patch_buffer)
 
             # Snapshot file if untracked before discarding
             if filename != "/dev/null":
@@ -503,7 +364,7 @@ def command_discard(
         if is_new_file:
             absolute_path = get_git_repository_root_path() / filename
             if absolute_path.exists():
-                if _path_is_empty(absolute_path):
+                if path_is_empty(absolute_path):
                     absolute_path.unlink()
 
         # Add hash to blocklist
@@ -620,7 +481,7 @@ def command_discard_file(
         deletion_change = render_text_deletion_change(target_file)
         if deletion_change is not None:
             patch_hash = compute_text_file_deletion_hash(deletion_change)
-            _discard_text_deletion_change(deletion_change)
+            discard_text_deletion_change(deletion_change)
             if patch_hash not in blocked_hashes:
                 append_lines_to_file(blocklist_path, [patch_hash])
                 record_hunk_discarded(patch_hash)
@@ -634,7 +495,7 @@ def command_discard_file(
         gitlink_change = render_gitlink_change(target_file)
         if gitlink_change is not None:
             patch_hash = compute_gitlink_change_hash(gitlink_change)
-            _discard_gitlink_change(gitlink_change)
+            discard_gitlink_change(gitlink_change)
             if patch_hash not in blocked_hashes:
                 append_lines_to_file(blocklist_path, [patch_hash])
                 record_hunk_discarded(patch_hash)
@@ -648,7 +509,7 @@ def command_discard_file(
         rename_change = render_rename_change(target_file)
         if rename_change is not None:
             patch_hash = compute_rename_change_hash(rename_change)
-            _discard_rename_change(rename_change)
+            discard_rename_change(rename_change)
             if patch_hash not in blocked_hashes:
                 append_lines_to_file(blocklist_path, [patch_hash])
                 record_hunk_discarded(patch_hash)
@@ -763,7 +624,7 @@ def command_discard_file_as(
                 snapshot_selected_change_state()
             )
 
-        line_changes = _load_explicit_file_selection(target_file)
+        line_changes = _discard_file_selection.load_explicit_file_selection(target_file)
         snapshot_file_if_untracked(target_file)
 
         absolute_path = get_git_repository_root_path() / target_file
@@ -826,7 +687,7 @@ def command_discard_line(
             else:
                 target_file = file
 
-            line_changes = _load_explicit_file_selection(target_file)
+            line_changes = _discard_file_selection.load_explicit_file_selection(target_file)
 
         requested_ids = parse_line_selection(line_id_specification)
         require_line_selection_in_view(
@@ -844,7 +705,7 @@ def command_discard_line(
                 line_changes,
                 set(requested_ids),
                 working_lines,
-                working_has_trailing_newline=_buffer_ends_with_lf(working_lines),
+                working_has_trailing_newline=buffer_ends_with_lf(working_lines),
             )
 
         # Write back to working tree
@@ -1077,7 +938,7 @@ def command_discard_line_as_to_batch(
                 else:
                     target_file = file
 
-                _load_explicit_file_selection(target_file)
+                _discard_file_selection.load_explicit_file_selection(target_file)
 
             _command_discard_lines_to_batch_as(
                 batch_name,
@@ -1153,7 +1014,7 @@ def _command_discard_lines_to_batch_as(
                     effective_ids,
                     replacement_payload,
                     working_lines,
-                    working_has_trailing_newline=_buffer_ends_with_lf(working_lines),
+                    working_has_trailing_newline=buffer_ends_with_lf(working_lines),
                     trim_unchanged_edge_anchors=not no_edge_overlap,
                 )
             )
@@ -1278,7 +1139,7 @@ def _command_discard_lines_to_batch_as(
                 rewritten_line_changes,
                 rewritten_selected_ids,
                 rewritten_working_lines,
-                working_has_trailing_newline=_buffer_ends_with_lf(rewritten_working_lines),
+                working_has_trailing_newline=buffer_ends_with_lf(rewritten_working_lines),
             )
 
     except Exception:
@@ -1411,7 +1272,7 @@ def _command_discard_text_deletion_to_batch(
         detect_file_mode(file_path),
         change_type=TextFileChangeType.DELETED.value,
     )
-    _discard_text_deletion_change(deletion_change)
+    discard_text_deletion_change(deletion_change)
 
     append_lines_to_file(get_block_list_file_path(), [patch_hash])
     record_hunk_discarded(patch_hash)
@@ -1911,7 +1772,7 @@ def _command_discard_file_lines_to_batch(
 ) -> int:
     """Discard specific lines from a file to batch (file-scoped with line IDs)."""
 
-    cached_lines = _load_explicit_file_selection(file_path)
+    cached_lines = _discard_file_selection.load_explicit_file_selection(file_path)
 
     # Annotate with batch source line numbers
     line_changes = annotate_with_batch_source(file_path, cached_lines)
@@ -1984,7 +1845,7 @@ def _command_discard_file_lines_to_batch(
             line_changes,
             requested_ids,
             working_lines,
-            working_has_trailing_newline=_buffer_ends_with_lf(working_lines),
+            working_has_trailing_newline=buffer_ends_with_lf(working_lines),
         )
 
     # Write back to working tree
@@ -2086,7 +1947,7 @@ def _command_discard_lines_to_batch(
             line_changes,
             requested_ids,
             working_lines,
-            working_has_trailing_newline=_buffer_ends_with_lf(working_lines),
+            working_has_trailing_newline=buffer_ends_with_lf(working_lines),
         )
 
     # Write back to working tree
@@ -2272,18 +2133,14 @@ def _command_discard_text_hunk_to_batch(
 
         # Check if this is a new file (before applying patches)
         is_new_file = any(
-            _patch_lines_contain_line(patch_lines_item, b"--- /dev/null")
+            patch_is_new_file(patch_lines_item)
             for patch_lines_item, _ in patches_to_discard
         )
 
         # Apply reverse patches to discard from working tree
         for patch_lines_item, patch_hash in patches_to_discard:
-            # Check if this is an empty file patch (@@ -0,0 +0,0 @@)
             # Empty file patches are synthetic and cannot be reversed with git apply
-            is_empty_file_patch = _patch_lines_contain_line(
-                patch_lines_item,
-                b"@@ -0,0 +0,0 @@",
-            )
+            is_empty_file_patch = patch_is_empty_file_change(patch_lines_item)
 
             if not is_empty_file_patch:
                 log_journal(
@@ -2333,7 +2190,7 @@ def _command_discard_text_hunk_to_batch(
                 git_remove_paths([file_path], cached=True, quiet=True, check=False)
             elif is_new_file:
                 # New file: only remove if it's empty after reverse patches
-                if _path_is_empty(absolute_path):
+                if path_is_empty(absolute_path):
                     absolute_path.unlink()
                     git_remove_paths([file_path], cached=True, quiet=True, check=False)
             # else: file still exists with content (reverted to HEAD state), leave it alone

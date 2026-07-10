@@ -32,6 +32,21 @@ SUBPROJECT_COMMIT_PATTERN = re.compile(br"^([+-])Subproject commit ([0-9a-f]+)(?
 NULL_OBJECT_PREFIX = "0" * 7
 
 
+def patch_is_file_deletion(patch_lines: Iterable[bytes]) -> bool:
+    """Return whether patch lines target a deleted file path."""
+    return any(line.rstrip(b"\n") == b"+++ /dev/null" for line in patch_lines)
+
+
+def patch_is_new_file(patch_lines: Iterable[bytes]) -> bool:
+    """Return whether patch lines target a newly added file path."""
+    return any(line.rstrip(b"\n") == b"--- /dev/null" for line in patch_lines)
+
+
+def patch_is_empty_file_change(patch_lines: Iterable[bytes]) -> bool:
+    """Return whether patch lines describe a synthetic empty-file change."""
+    return any(line.rstrip(b"\n") == b"@@ -0,0 +0,0 @@" for line in patch_lines)
+
+
 def _metadata_indicates_gitlink(metadata_lines: list[bytes]) -> bool:
     """Return whether diff metadata describes a mode-160000 entry."""
     for line in metadata_lines:

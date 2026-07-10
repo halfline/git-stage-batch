@@ -20,13 +20,13 @@ from git_stage_batch.tui.flow import FlowLocation, FlowState
 from git_stage_batch.tui.interactive import (
     ACTION_HANDLERS,
     _dispatch_action,
-    handle_install_assets,
-    handle_file_selection,
-    handle_line_selection,
     handle_quit,
     print_help,
     start_interactive_mode,
 )
+from git_stage_batch.tui.asset_menu import handle_asset_menu
+from git_stage_batch.tui.file_selection_menu import handle_file_selection_menu
+from git_stage_batch.tui.line_selection_menu import handle_line_selection_menu
 
 
 @pytest.fixture
@@ -102,6 +102,67 @@ class TestActionHandlers:
 
         assert handler.needs_hunk is False
 
+    def test_include_action_dispatches_hunk_action(self):
+        """Test include action routes through the hunk action adapter."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch("git_stage_batch.tui.hunk_actions.command_include") as mock_include:
+            _dispatch_action(
+                "i",
+                has_hunk=True,
+                use_color=False,
+                flow_state=flow_state,
+            )
+
+        mock_include.assert_called_once_with(quiet=True, auto_advance=True)
+
+    def test_skip_action_dispatches_hunk_action(self):
+        """Test skip action routes through the hunk action adapter."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch("git_stage_batch.tui.hunk_actions.command_skip") as mock_skip:
+            _dispatch_action(
+                "s",
+                has_hunk=True,
+                use_color=False,
+                flow_state=flow_state,
+            )
+
+        mock_skip.assert_called_once_with(quiet=True, auto_advance=True)
+
+    def test_discard_action_dispatches_hunk_action(self):
+        """Test discard action routes through the hunk action adapter."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.STAGING_AREA,
+        )
+
+        with patch(
+            "git_stage_batch.tui.hunk_actions.confirm_destructive_operation",
+            return_value=True,
+        ) as mock_confirm:
+            with patch(
+                "git_stage_batch.tui.hunk_actions.command_discard"
+            ) as mock_discard:
+                _dispatch_action(
+                    "d",
+                    has_hunk=True,
+                    use_color=False,
+                    flow_state=flow_state,
+                )
+
+        mock_confirm.assert_called_once_with(
+            "discard",
+            "This will remove the hunk from your working tree.",
+        )
+        mock_discard.assert_called_once_with(quiet=True, auto_advance=True)
+
     def test_status_action_dispatches_status_command(self):
         """Test status action routes through the status command."""
         flow_state = FlowState(
@@ -128,7 +189,7 @@ class TestActionHandlers:
         )
 
         with patch("builtins.input", side_effect=["codex-skills", "commit-*", "yes"]):
-            with patch("git_stage_batch.commands.install_assets.command_install_assets") as mock_install:
+            with patch("git_stage_batch.tui.asset_menu.command_install_assets") as mock_install:
                 with pytest.raises(BypassRefresh):
                     _dispatch_action(
                         "A",
@@ -146,8 +207,8 @@ class TestActionHandlers:
     def test_handle_install_assets_cancels_on_bad_filter_syntax(self, capsys):
         """Test invalid filter syntax does not call the installer."""
         with patch("builtins.input", side_effect=["claude-skills", "'unterminated"]):
-            with patch("git_stage_batch.commands.install_assets.command_install_assets") as mock_install:
-                handle_install_assets()
+            with patch("git_stage_batch.tui.asset_menu.command_install_assets") as mock_install:
+                handle_asset_menu()
 
         mock_install.assert_not_called()
         captured = capsys.readouterr()
@@ -294,7 +355,7 @@ class TestHandleQuit:
 
 
 class TestHandleFileSelection:
-    """Tests for handle_file_selection function."""
+    """Tests for handle_file_selection_menu function."""
 
     def test_handle_file_selection_include(self):
         """Test file selection with include action."""
@@ -306,11 +367,11 @@ class TestHandleFileSelection:
             lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text_bytes=b"test\n", text="test\n")]
         )
 
-        with patch("git_stage_batch.tui.interactive.load_line_changes_from_state", return_value=line_changes):
-            with patch("git_stage_batch.commands.include.command_include_file") as mock_include:
-                with patch("git_stage_batch.tui.interactive.fetch_next_change", return_value=None):
+        with patch("git_stage_batch.tui.file_selection_menu.load_line_changes_from_state", return_value=line_changes):
+            with patch("git_stage_batch.tui.file_selection_menu.command_include_file") as mock_include:
+                with patch("git_stage_batch.tui.file_selection_menu.fetch_next_change", return_value=None):
                     with patch("builtins.input", return_value="i"):
-                        handle_file_selection(FlowState(
+                        handle_file_selection_menu(FlowState(
                             source=FlowLocation.WORKING_TREE,
                             target=FlowLocation.STAGING_AREA
                         ))
@@ -326,11 +387,11 @@ class TestHandleFileSelection:
             lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text_bytes=b"test\n", text="test\n")]
         )
 
-        with patch("git_stage_batch.tui.interactive.load_line_changes_from_state", return_value=line_changes):
-            with patch("git_stage_batch.commands.skip.command_skip_file") as mock_skip:
-                with patch("git_stage_batch.tui.interactive.fetch_next_change", return_value=None):
+        with patch("git_stage_batch.tui.file_selection_menu.load_line_changes_from_state", return_value=line_changes):
+            with patch("git_stage_batch.tui.file_selection_menu.command_skip_file") as mock_skip:
+                with patch("git_stage_batch.tui.file_selection_menu.fetch_next_change", return_value=None):
                     with patch("builtins.input", return_value="s"):
-                        handle_file_selection(FlowState(
+                        handle_file_selection_menu(FlowState(
                             source=FlowLocation.WORKING_TREE,
                             target=FlowLocation.STAGING_AREA
                         ))
@@ -346,12 +407,12 @@ class TestHandleFileSelection:
             lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text_bytes=b"test\n", text="test\n")]
         )
 
-        with patch("git_stage_batch.tui.interactive.load_line_changes_from_state", return_value=line_changes):
-            with patch("git_stage_batch.commands.discard.command_discard_file") as mock_discard:
-                with patch("git_stage_batch.tui.interactive.fetch_next_change", return_value=None):
-                    with patch("git_stage_batch.tui.interactive.confirm_destructive_operation", return_value=True):
+        with patch("git_stage_batch.tui.file_selection_menu.load_line_changes_from_state", return_value=line_changes):
+            with patch("git_stage_batch.tui.file_selection_menu.command_discard_file") as mock_discard:
+                with patch("git_stage_batch.tui.file_selection_menu.fetch_next_change", return_value=None):
+                    with patch("git_stage_batch.tui.file_selection_menu.confirm_destructive_operation", return_value=True):
                         with patch("builtins.input", return_value="d"):
-                            handle_file_selection(FlowState(
+                            handle_file_selection_menu(FlowState(
                                 source=FlowLocation.WORKING_TREE,
                                 target=FlowLocation.STAGING_AREA
                             ))
@@ -367,11 +428,11 @@ class TestHandleFileSelection:
             lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text_bytes=b"test\n", text="test\n")]
         )
 
-        with patch("git_stage_batch.tui.interactive.load_line_changes_from_state", return_value=line_changes):
-            with patch("git_stage_batch.commands.discard.command_discard_to_batch") as mock_discard:
-                with patch("git_stage_batch.tui.interactive.fetch_next_change", return_value=None):
+        with patch("git_stage_batch.tui.file_selection_menu.load_line_changes_from_state", return_value=line_changes):
+            with patch("git_stage_batch.tui.file_selection_menu.command_discard_to_batch") as mock_discard:
+                with patch("git_stage_batch.tui.file_selection_menu.fetch_next_change", return_value=None):
                     with patch("builtins.input", return_value="d"):
-                        handle_file_selection(FlowState(
+                        handle_file_selection_menu(FlowState(
                             source=FlowLocation.WORKING_TREE,
                             target=FlowLocation.for_batch("mybatch")
                         ))
@@ -392,17 +453,17 @@ class TestHandleFileSelection:
             lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text_bytes=b"test\n", text="test\n")]
         )
 
-        with patch("git_stage_batch.tui.interactive.load_line_changes_from_state", return_value=line_changes):
+        with patch("git_stage_batch.tui.file_selection_menu.load_line_changes_from_state", return_value=line_changes):
             with patch("builtins.input", side_effect=KeyboardInterrupt):
                 # Should return without raising
-                handle_file_selection(FlowState(
+                handle_file_selection_menu(FlowState(
                             source=FlowLocation.WORKING_TREE,
                             target=FlowLocation.STAGING_AREA
                         ))
 
 
 class TestHandleLineSelection:
-    """Tests for handle_line_selection function."""
+    """Tests for handle_line_selection_menu function."""
 
     def test_handle_line_selection_include(self):
         """Test line selection with include action."""
@@ -417,11 +478,11 @@ class TestHandleLineSelection:
             ]
         )
 
-        with patch("git_stage_batch.tui.interactive.load_line_changes_from_state", return_value=line_changes):
-            with patch("git_stage_batch.commands.include.command_include_line") as mock_include:
-                with patch("git_stage_batch.tui.interactive.prompt_line_ids", return_value="1"):
+        with patch("git_stage_batch.tui.line_selection_menu.load_line_changes_from_state", return_value=line_changes):
+            with patch("git_stage_batch.tui.line_selection_menu.command_include_line") as mock_include:
+                with patch("git_stage_batch.tui.line_selection_menu.prompt_line_ids", return_value="1"):
                     with patch("builtins.input", return_value="i"):
-                        handle_line_selection(FlowState(
+                        handle_line_selection_menu(FlowState(
                             source=FlowLocation.WORKING_TREE,
                             target=FlowLocation.STAGING_AREA
                         ))
@@ -437,8 +498,8 @@ class TestHandleLineSelection:
             lines=[LineEntry(id=None, kind=" ", old_line_number=1, new_line_number=1, text_bytes=b" unchanged\n", text=" unchanged\n")]
         )
 
-        with patch("git_stage_batch.tui.interactive.load_line_changes_from_state", return_value=line_changes):
-            handle_line_selection(FlowState(
+        with patch("git_stage_batch.tui.line_selection_menu.load_line_changes_from_state", return_value=line_changes):
+            handle_line_selection_menu(FlowState(
                             source=FlowLocation.WORKING_TREE,
                             target=FlowLocation.STAGING_AREA
                         ))
@@ -454,10 +515,10 @@ class TestHandleLineSelection:
             lines=[LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text_bytes=b"test\n", text="test\n")]
         )
 
-        with patch("git_stage_batch.tui.interactive.load_line_changes_from_state", return_value=line_changes):
+        with patch("git_stage_batch.tui.line_selection_menu.load_line_changes_from_state", return_value=line_changes):
             with patch("builtins.input", side_effect=KeyboardInterrupt):
                 # Should return without raising
-                handle_line_selection(FlowState(
+                handle_line_selection_menu(FlowState(
                             source=FlowLocation.WORKING_TREE,
                             target=FlowLocation.STAGING_AREA
                         ))
@@ -534,10 +595,10 @@ class TestBatchSubmenu:
     def test_batch_create(self, temp_git_repo):
         """Test creating a batch from submenu."""
         with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
-            with patch("git_stage_batch.tui.interactive.list_batch_names", return_value=["existing-batch"]):
-                with patch("git_stage_batch.tui.interactive.read_batch_metadata", return_value={"note": "", "created_at": ""}):
+            with patch("git_stage_batch.tui.batch_menu.list_batch_names", return_value=["existing-batch"]):
+                with patch("git_stage_batch.tui.batch_menu.read_batch_metadata", return_value={"note": "", "created_at": ""}):
                     with patch("builtins.input", side_effect=["c", "my-batch", "my note", KeyboardInterrupt]):
-                        with patch("git_stage_batch.commands.new.command_new_batch") as mock_new:
+                        with patch("git_stage_batch.tui.batch_menu.command_new_batch") as mock_new:
                             with patch("git_stage_batch.tui.interactive.handle_quit"):
                                 start_interactive_mode()
                                 mock_new.assert_called_once_with(batch_name="my-batch", note="my note")
@@ -545,10 +606,10 @@ class TestBatchSubmenu:
     def test_batch_create_no_note(self, temp_git_repo):
         """Test creating a batch without note from submenu."""
         with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
-            with patch("git_stage_batch.tui.interactive.list_batch_names", return_value=["existing-batch"]):
-                with patch("git_stage_batch.tui.interactive.read_batch_metadata", return_value={"note": "", "created_at": ""}):
+            with patch("git_stage_batch.tui.batch_menu.list_batch_names", return_value=["existing-batch"]):
+                with patch("git_stage_batch.tui.batch_menu.read_batch_metadata", return_value={"note": "", "created_at": ""}):
                     with patch("builtins.input", side_effect=["c", "my-batch", "", KeyboardInterrupt]):
-                        with patch("git_stage_batch.commands.new.command_new_batch") as mock_new:
+                        with patch("git_stage_batch.tui.batch_menu.command_new_batch") as mock_new:
                             with patch("git_stage_batch.tui.interactive.handle_quit"):
                                 start_interactive_mode()
                                 mock_new.assert_called_once_with(batch_name="my-batch", note=None)
@@ -556,10 +617,10 @@ class TestBatchSubmenu:
     def test_batch_create_cancel(self, temp_git_repo):
         """Test cancelling batch creation."""
         with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
-            with patch("git_stage_batch.tui.interactive.list_batch_names", return_value=["existing-batch"]):
-                with patch("git_stage_batch.tui.interactive.read_batch_metadata", return_value={"note": "", "created_at": ""}):
+            with patch("git_stage_batch.tui.batch_menu.list_batch_names", return_value=["existing-batch"]):
+                with patch("git_stage_batch.tui.batch_menu.read_batch_metadata", return_value={"note": "", "created_at": ""}):
                     with patch("builtins.input", side_effect=["c", "", KeyboardInterrupt]):
-                        with patch("git_stage_batch.commands.new.command_new_batch") as mock_new:
+                        with patch("git_stage_batch.tui.batch_menu.command_new_batch") as mock_new:
                             with patch("git_stage_batch.tui.interactive.handle_quit"):
                                 start_interactive_mode()
                                 mock_new.assert_not_called()
@@ -567,10 +628,10 @@ class TestBatchSubmenu:
     def test_batch_edit(self, temp_git_repo):
         """Test editing batch note from submenu with multiple batches."""
         with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
-            with patch("git_stage_batch.tui.interactive.list_batch_names", return_value=["test-batch", "other-batch"]):
-                with patch("git_stage_batch.tui.interactive.read_batch_metadata", return_value={"note": "old note", "created_at": ""}):
+            with patch("git_stage_batch.tui.batch_menu.list_batch_names", return_value=["test-batch", "other-batch"]):
+                with patch("git_stage_batch.tui.batch_menu.read_batch_metadata", return_value={"note": "old note", "created_at": ""}):
                     with patch("builtins.input", side_effect=["e", "1", "new note", KeyboardInterrupt]):
-                        with patch("git_stage_batch.commands.annotate.command_annotate_batch") as mock_annotate:
+                        with patch("git_stage_batch.tui.batch_menu.command_annotate_batch") as mock_annotate:
                             with patch("git_stage_batch.tui.interactive.handle_quit"):
                                 start_interactive_mode()
                                 mock_annotate.assert_called_once_with("test-batch", "new note")
@@ -578,10 +639,10 @@ class TestBatchSubmenu:
     def test_batch_drop(self, temp_git_repo):
         """Test dropping a batch from submenu with multiple batches."""
         with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
-            with patch("git_stage_batch.tui.interactive.list_batch_names", return_value=["test-batch", "other-batch"]):
-                with patch("git_stage_batch.tui.interactive.read_batch_metadata", return_value={"note": "some note", "created_at": ""}):
+            with patch("git_stage_batch.tui.batch_menu.list_batch_names", return_value=["test-batch", "other-batch"]):
+                with patch("git_stage_batch.tui.batch_menu.read_batch_metadata", return_value={"note": "some note", "created_at": ""}):
                     with patch("builtins.input", side_effect=["d", "1", KeyboardInterrupt]):
-                        with patch("git_stage_batch.commands.drop.command_drop_batch") as mock_drop:
+                        with patch("git_stage_batch.tui.batch_menu.command_drop_batch") as mock_drop:
                             with patch("git_stage_batch.tui.interactive.handle_quit"):
                                 start_interactive_mode()
                                 mock_drop.assert_called_once_with("test-batch")
@@ -589,10 +650,10 @@ class TestBatchSubmenu:
     def test_batch_apply(self, temp_git_repo):
         """Test applying a batch from submenu."""
         with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
-            with patch("git_stage_batch.tui.interactive.list_batch_names", return_value=["test-batch"]):
-                with patch("git_stage_batch.tui.interactive.read_batch_metadata", return_value={"note": "some note", "created_at": ""}):
+            with patch("git_stage_batch.tui.batch_menu.list_batch_names", return_value=["test-batch"]):
+                with patch("git_stage_batch.tui.batch_menu.read_batch_metadata", return_value={"note": "some note", "created_at": ""}):
                     with patch("builtins.input", side_effect=["a", "1", KeyboardInterrupt]):
-                        with patch("git_stage_batch.commands.apply_from.command_apply_from_batch") as mock_apply:
+                        with patch("git_stage_batch.tui.batch_menu.command_apply_from_batch") as mock_apply:
                             with patch("git_stage_batch.tui.interactive.handle_quit"):
                                 start_interactive_mode()
                                 mock_apply.assert_called_once_with("test-batch")
@@ -600,10 +661,10 @@ class TestBatchSubmenu:
     def test_batch_sift_in_place(self, temp_git_repo):
         """Test sifting a single batch in place from submenu."""
         with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
-            with patch("git_stage_batch.tui.interactive.list_batch_names", return_value=["test-batch"]):
-                with patch("git_stage_batch.tui.interactive.read_batch_metadata", return_value={"note": "some note", "created_at": ""}):
+            with patch("git_stage_batch.tui.batch_menu.list_batch_names", return_value=["test-batch"]):
+                with patch("git_stage_batch.tui.batch_menu.read_batch_metadata", return_value={"note": "some note", "created_at": ""}):
                     with patch("builtins.input", side_effect=["s", "", KeyboardInterrupt]):
-                        with patch("git_stage_batch.commands.sift.command_sift_batch") as mock_sift:
+                        with patch("git_stage_batch.tui.batch_menu.command_sift_batch") as mock_sift:
                             with patch("git_stage_batch.tui.interactive.handle_quit"):
                                 start_interactive_mode()
                                 mock_sift.assert_called_once_with("test-batch", "test-batch")
@@ -611,10 +672,10 @@ class TestBatchSubmenu:
     def test_batch_sift_to_destination(self, temp_git_repo):
         """Test sifting a selected batch to a destination batch."""
         with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
-            with patch("git_stage_batch.tui.interactive.list_batch_names", return_value=["first", "second"]):
-                with patch("git_stage_batch.tui.interactive.read_batch_metadata", return_value={"note": "", "created_at": ""}):
+            with patch("git_stage_batch.tui.batch_menu.list_batch_names", return_value=["first", "second"]):
+                with patch("git_stage_batch.tui.batch_menu.read_batch_metadata", return_value={"note": "", "created_at": ""}):
                     with patch("builtins.input", side_effect=["s", "2", "filtered", KeyboardInterrupt]):
-                        with patch("git_stage_batch.commands.sift.command_sift_batch") as mock_sift:
+                        with patch("git_stage_batch.tui.batch_menu.command_sift_batch") as mock_sift:
                             with patch("git_stage_batch.tui.interactive.handle_quit"):
                                 start_interactive_mode()
                                 mock_sift.assert_called_once_with("second", "filtered")
@@ -626,10 +687,10 @@ class TestBatchSubmenu:
         # - After create, return ["my-batch"] so menu shows
         batch_list_mock = [[], ["my-batch"]]
         with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
-            with patch("git_stage_batch.tui.interactive.list_batch_names", side_effect=batch_list_mock):
-                with patch("git_stage_batch.tui.interactive.read_batch_metadata", return_value={"note": "my note", "created_at": ""}):
+            with patch("git_stage_batch.tui.batch_menu.list_batch_names", side_effect=batch_list_mock):
+                with patch("git_stage_batch.tui.batch_menu.read_batch_metadata", return_value={"note": "my note", "created_at": ""}):
                     with patch("builtins.input", side_effect=["my-batch", "my note", KeyboardInterrupt]):
-                        with patch("git_stage_batch.commands.new.command_new_batch") as mock_new:
+                        with patch("git_stage_batch.tui.batch_menu.command_new_batch") as mock_new:
                             with patch("git_stage_batch.tui.interactive.handle_quit"):
                                 start_interactive_mode()
                                 captured = capsys.readouterr()
@@ -639,10 +700,10 @@ class TestBatchSubmenu:
     def test_batch_select_invalid(self, temp_git_repo, capsys):
         """Test invalid batch selection with multiple batches."""
         with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
-            with patch("git_stage_batch.tui.interactive.list_batch_names", return_value=["test-batch", "other-batch"]):
-                with patch("git_stage_batch.tui.interactive.read_batch_metadata", return_value={"note": "note", "created_at": ""}):
+            with patch("git_stage_batch.tui.batch_menu.list_batch_names", return_value=["test-batch", "other-batch"]):
+                with patch("git_stage_batch.tui.batch_menu.read_batch_metadata", return_value={"note": "note", "created_at": ""}):
                     with patch("builtins.input", side_effect=["e", "999", KeyboardInterrupt]):
-                        with patch("git_stage_batch.commands.annotate.command_annotate_batch") as mock_annotate:
+                        with patch("git_stage_batch.tui.batch_menu.command_annotate_batch") as mock_annotate:
                             with patch("git_stage_batch.tui.interactive.handle_quit"):
                                 start_interactive_mode()
                                 mock_annotate.assert_not_called()
@@ -660,8 +721,8 @@ class TestBatchSubmenu:
     def test_batch_submenu_unknown_action(self, temp_git_repo, capsys):
         """Test unknown action in batch submenu."""
         with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
-            with patch("git_stage_batch.tui.interactive.list_batch_names", return_value=["existing-batch"]):
-                with patch("git_stage_batch.tui.interactive.read_batch_metadata", return_value={"note": "", "created_at": ""}):
+            with patch("git_stage_batch.tui.batch_menu.list_batch_names", return_value=["existing-batch"]):
+                with patch("git_stage_batch.tui.batch_menu.read_batch_metadata", return_value={"note": "", "created_at": ""}):
                     with patch("builtins.input", side_effect=["x", KeyboardInterrupt]):
                         with patch("git_stage_batch.tui.interactive.handle_quit"):
                             start_interactive_mode()
@@ -671,10 +732,10 @@ class TestBatchSubmenu:
     def test_batch_select_by_name(self, temp_git_repo):
         """Test selecting batch by full name instead of number."""
         with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
-            with patch("git_stage_batch.tui.interactive.list_batch_names", return_value=["first-batch", "second-batch"]):
-                with patch("git_stage_batch.tui.interactive.read_batch_metadata", return_value={"note": "note", "created_at": ""}):
+            with patch("git_stage_batch.tui.batch_menu.list_batch_names", return_value=["first-batch", "second-batch"]):
+                with patch("git_stage_batch.tui.batch_menu.read_batch_metadata", return_value={"note": "note", "created_at": ""}):
                     with patch("builtins.input", side_effect=["d", "second-batch", KeyboardInterrupt]):
-                        with patch("git_stage_batch.commands.drop.command_drop_batch") as mock_drop:
+                        with patch("git_stage_batch.tui.batch_menu.command_drop_batch") as mock_drop:
                             with patch("git_stage_batch.tui.interactive.handle_quit"):
                                 start_interactive_mode()
                                 mock_drop.assert_called_once_with("second-batch")
@@ -682,11 +743,11 @@ class TestBatchSubmenu:
     def test_batch_edit_single_batch_skips_prompt(self, temp_git_repo):
         """Test editing when only one batch exists skips selection prompt."""
         with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
-            with patch("git_stage_batch.tui.interactive.list_batch_names", return_value=["only-batch"]):
-                with patch("git_stage_batch.tui.interactive.read_batch_metadata", return_value={"note": "old", "created_at": ""}):
+            with patch("git_stage_batch.tui.batch_menu.list_batch_names", return_value=["only-batch"]):
+                with patch("git_stage_batch.tui.batch_menu.read_batch_metadata", return_value={"note": "old", "created_at": ""}):
                     # Only "e" and "new note" in input - no batch selection prompt
                     with patch("builtins.input", side_effect=["e", "new note", KeyboardInterrupt]):
-                        with patch("git_stage_batch.commands.annotate.command_annotate_batch") as mock_annotate:
+                        with patch("git_stage_batch.tui.batch_menu.command_annotate_batch") as mock_annotate:
                             with patch("git_stage_batch.tui.interactive.handle_quit"):
                                 start_interactive_mode()
                                 mock_annotate.assert_called_once_with("only-batch", "new note")
@@ -694,11 +755,11 @@ class TestBatchSubmenu:
     def test_batch_drop_single_batch_skips_prompt(self, temp_git_repo):
         """Test dropping when only one batch exists skips selection prompt."""
         with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
-            with patch("git_stage_batch.tui.interactive.list_batch_names", return_value=["only-batch"]):
-                with patch("git_stage_batch.tui.interactive.read_batch_metadata", return_value={"note": "note", "created_at": ""}):
+            with patch("git_stage_batch.tui.batch_menu.list_batch_names", return_value=["only-batch"]):
+                with patch("git_stage_batch.tui.batch_menu.read_batch_metadata", return_value={"note": "note", "created_at": ""}):
                     # Only "d" in input - no batch selection prompt
                     with patch("builtins.input", side_effect=["d", KeyboardInterrupt]):
-                        with patch("git_stage_batch.commands.drop.command_drop_batch") as mock_drop:
+                        with patch("git_stage_batch.tui.batch_menu.command_drop_batch") as mock_drop:
                             with patch("git_stage_batch.tui.interactive.handle_quit"):
                                 start_interactive_mode()
                                 mock_drop.assert_called_once_with("only-batch")
@@ -706,11 +767,11 @@ class TestBatchSubmenu:
     def test_batch_apply_multiple_batches_shows_prompt(self, temp_git_repo):
         """Test applying with multiple batches shows selection prompt."""
         with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["b", "q"]):
-            with patch("git_stage_batch.tui.interactive.list_batch_names", return_value=["first", "second"]):
-                with patch("git_stage_batch.tui.interactive.read_batch_metadata", return_value={"note": "", "created_at": ""}):
+            with patch("git_stage_batch.tui.batch_menu.list_batch_names", return_value=["first", "second"]):
+                with patch("git_stage_batch.tui.batch_menu.read_batch_metadata", return_value={"note": "", "created_at": ""}):
                     # Apply always prompts, even with one batch
                     with patch("builtins.input", side_effect=["a", "1", KeyboardInterrupt]):
-                        with patch("git_stage_batch.commands.apply_from.command_apply_from_batch") as mock_apply:
+                        with patch("git_stage_batch.tui.batch_menu.command_apply_from_batch") as mock_apply:
                             with patch("git_stage_batch.tui.interactive.handle_quit"):
                                 start_interactive_mode()
                                 mock_apply.assert_called_once_with("first")
@@ -721,8 +782,8 @@ class TestFlowMenus:
     def test_from_menu_select_working_tree(self, temp_git_repo):
         """Test selecting working tree as source."""
         with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["<", "q"]):
-            with patch("git_stage_batch.tui.interactive.list_batch_names", return_value=["test-batch"]):
-                with patch("git_stage_batch.tui.interactive.read_batch_metadata", return_value={"note": "note", "created_at": ""}):
+            with patch("git_stage_batch.tui.flow_menu.list_batch_names", return_value=["test-batch"]):
+                with patch("git_stage_batch.tui.flow_menu.read_batch_metadata", return_value={"note": "note", "created_at": ""}):
                     with patch("builtins.input", side_effect=["1", KeyboardInterrupt]):
                         with patch("git_stage_batch.tui.interactive.handle_quit"):
                             start_interactive_mode()
@@ -731,8 +792,8 @@ class TestFlowMenus:
     def test_from_menu_select_batch(self, temp_git_repo):
         """Test selecting batch as source."""
         with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["<", "q"]):
-            with patch("git_stage_batch.tui.interactive.list_batch_names", return_value=["my-batch", "other-batch"]):
-                with patch("git_stage_batch.tui.interactive.read_batch_metadata", return_value={"note": "note", "created_at": ""}):
+            with patch("git_stage_batch.tui.flow_menu.list_batch_names", return_value=["my-batch", "other-batch"]):
+                with patch("git_stage_batch.tui.flow_menu.read_batch_metadata", return_value={"note": "note", "created_at": ""}):
                     with patch("builtins.input", side_effect=["2", KeyboardInterrupt]):
                         with patch("git_stage_batch.tui.interactive.handle_quit"):
                             start_interactive_mode()
@@ -741,8 +802,8 @@ class TestFlowMenus:
     def test_from_menu_cancel(self, temp_git_repo):
         """Test cancelling from menu."""
         with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=["<", "q"]):
-            with patch("git_stage_batch.tui.interactive.list_batch_names", return_value=["test-batch"]):
-                with patch("git_stage_batch.tui.interactive.read_batch_metadata", return_value={"note": "", "created_at": ""}):
+            with patch("git_stage_batch.tui.flow_menu.list_batch_names", return_value=["test-batch"]):
+                with patch("git_stage_batch.tui.flow_menu.read_batch_metadata", return_value={"note": "", "created_at": ""}):
                     with patch("builtins.input", side_effect=[KeyboardInterrupt, KeyboardInterrupt]):
                         with patch("git_stage_batch.tui.interactive.handle_quit"):
                             start_interactive_mode()
@@ -751,8 +812,8 @@ class TestFlowMenus:
     def test_to_menu_select_staging(self, temp_git_repo):
         """Test selecting staging as target."""
         with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=[">", "q"]):
-            with patch("git_stage_batch.tui.interactive.list_batch_names", return_value=["test-batch"]):
-                with patch("git_stage_batch.tui.interactive.read_batch_metadata", return_value={"note": "", "created_at": ""}):
+            with patch("git_stage_batch.tui.flow_menu.list_batch_names", return_value=["test-batch"]):
+                with patch("git_stage_batch.tui.flow_menu.read_batch_metadata", return_value={"note": "", "created_at": ""}):
                     with patch("builtins.input", side_effect=["1", KeyboardInterrupt]):
                         with patch("git_stage_batch.tui.interactive.handle_quit"):
                             start_interactive_mode()
@@ -761,8 +822,8 @@ class TestFlowMenus:
     def test_to_menu_select_existing_batch(self, temp_git_repo):
         """Test selecting existing batch as target."""
         with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=[">", "q"]):
-            with patch("git_stage_batch.tui.interactive.list_batch_names", return_value=["batch1", "batch2"]):
-                with patch("git_stage_batch.tui.interactive.read_batch_metadata", return_value={"note": "test note", "created_at": ""}):
+            with patch("git_stage_batch.tui.flow_menu.list_batch_names", return_value=["batch1", "batch2"]):
+                with patch("git_stage_batch.tui.flow_menu.read_batch_metadata", return_value={"note": "test note", "created_at": ""}):
                     with patch("builtins.input", side_effect=["2", KeyboardInterrupt]):
                         with patch("git_stage_batch.tui.interactive.handle_quit"):
                             start_interactive_mode()
@@ -771,11 +832,11 @@ class TestFlowMenus:
     def test_to_menu_create_new_batch(self, temp_git_repo):
         """Test creating new batch from to menu."""
         with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=[">", "q"]):
-            with patch("git_stage_batch.tui.interactive.list_batch_names", return_value=["existing"]):
-                with patch("git_stage_batch.tui.interactive.read_batch_metadata", return_value={"note": "", "created_at": ""}):
+            with patch("git_stage_batch.tui.flow_menu.list_batch_names", return_value=["existing"]):
+                with patch("git_stage_batch.tui.flow_menu.read_batch_metadata", return_value={"note": "", "created_at": ""}):
                     # Select "New Batch..." option (3), then provide batch ID and note
                     with patch("builtins.input", side_effect=["3", "new-batch", "my note", KeyboardInterrupt]):
-                        with patch("git_stage_batch.commands.new.command_new_batch") as mock_new:
+                        with patch("git_stage_batch.tui.flow_menu.command_new_batch") as mock_new:
                             with patch("git_stage_batch.tui.interactive.handle_quit"):
                                 start_interactive_mode()
                                 mock_new.assert_called_once_with(batch_name="new-batch", note="my note")
@@ -783,11 +844,11 @@ class TestFlowMenus:
     def test_to_menu_create_new_batch_no_note(self, temp_git_repo):
         """Test creating new batch without note from to menu."""
         with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=[">", "q"]):
-            with patch("git_stage_batch.tui.interactive.list_batch_names", return_value=[]):
-                with patch("git_stage_batch.tui.interactive.read_batch_metadata", return_value={"note": "", "created_at": ""}):
+            with patch("git_stage_batch.tui.flow_menu.list_batch_names", return_value=[]):
+                with patch("git_stage_batch.tui.flow_menu.read_batch_metadata", return_value={"note": "", "created_at": ""}):
                     # Select "New Batch..." option (2 when no batches), then provide batch ID with no note
                     with patch("builtins.input", side_effect=["2", "new-batch", "", KeyboardInterrupt]):
-                        with patch("git_stage_batch.commands.new.command_new_batch") as mock_new:
+                        with patch("git_stage_batch.tui.flow_menu.command_new_batch") as mock_new:
                             with patch("git_stage_batch.tui.interactive.handle_quit"):
                                 start_interactive_mode()
                                 mock_new.assert_called_once_with(batch_name="new-batch", note=None)
@@ -795,11 +856,11 @@ class TestFlowMenus:
     def test_to_menu_cancel_new_batch(self, temp_git_repo):
         """Test cancelling new batch creation from to menu."""
         with patch("git_stage_batch.tui.interactive.prompt_action", side_effect=[">", "q"]):
-            with patch("git_stage_batch.tui.interactive.list_batch_names", return_value=[]):
-                with patch("git_stage_batch.tui.interactive.read_batch_metadata", return_value={"note": "", "created_at": ""}):
+            with patch("git_stage_batch.tui.flow_menu.list_batch_names", return_value=[]):
+                with patch("git_stage_batch.tui.flow_menu.read_batch_metadata", return_value={"note": "", "created_at": ""}):
                     # Select "New Batch...", then cancel with empty batch ID
                     with patch("builtins.input", side_effect=["2", "", KeyboardInterrupt]):
-                        with patch("git_stage_batch.commands.new.command_new_batch") as mock_new:
+                        with patch("git_stage_batch.tui.flow_menu.command_new_batch") as mock_new:
                             with patch("git_stage_batch.tui.interactive.handle_quit"):
                                 start_interactive_mode()
                                 mock_new.assert_not_called()

@@ -62,6 +62,15 @@ def write_file_bytes(path: Path, data: bytes) -> None:
     path.write_bytes(data)
 
 
+def path_is_empty(path: Path) -> bool:
+    """Return whether a file contains no bytes."""
+    with path.open("rb") as file_handle:
+        while chunk := file_handle.read(1024 * 1024):
+            if chunk:
+                return False
+    return True
+
+
 def append_lines_to_file(path: Path, lines: Iterable[str]) -> None:
     """Append lines to a file, creating parent directories as needed.
 

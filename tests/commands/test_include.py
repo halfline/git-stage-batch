@@ -8,13 +8,13 @@ import pytest
 from git_stage_batch.batch.ownership import BatchOwnership
 from git_stage_batch.batch.query import get_batch_commit_sha, read_batch_metadata
 from git_stage_batch.batch.validation import batch_exists
-from git_stage_batch.commands import include as include_command
 from git_stage_batch.commands.include import (
     command_include,
     command_include_line,
     command_include_line_as,
     command_include_to_batch,
 )
+from git_stage_batch.commands.selection import include_line_selection
 from git_stage_batch.commands.selection.replacement_selection import (
     derive_replacement_line_runs,
 )
@@ -26,7 +26,7 @@ from git_stage_batch.data.hunk_tracking import (
 )
 from git_stage_batch.data.selected_change.loading import load_selected_change
 from git_stage_batch.data.line_state import load_line_changes_from_state
-from git_stage_batch.data.selected_change.store import (
+from git_stage_batch.data.selected_change.clear_reasons import (
     selected_change_was_cleared_by_auto_advance_disabled,
 )
 from git_stage_batch.exceptions import CommandError, NoMoreHunks
@@ -669,10 +669,10 @@ class TestCommandIncludeLine:
         fetch_next_change()
 
         monkeypatch.setattr(
-            include_command,
-            "_try_build_index_content_via_transient_batch",
-            lambda **_kwargs: include_command.TransientIncludeResult.failure(
-                include_command.TransientIncludeFailureReason.WORKING_TREE_WOULD_CHANGE
+            include_line_selection,
+            "try_build_index_content_via_transient_batch",
+            lambda **_kwargs: include_line_selection.TransientIncludeResult.failure(
+                include_line_selection.TransientIncludeFailureReason.WORKING_TREE_WOULD_CHANGE
             ),
         )
 

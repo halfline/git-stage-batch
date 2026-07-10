@@ -47,9 +47,13 @@ from ..data.file_review.batch_selection import translate_batch_file_gutter_ids_t
 from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..data.selected_change.store import (
     SelectedChangeKind,
+)
+from ..data.selected_change.clear_reasons import (
+    mark_selected_change_cleared_by_file_list,
+)
+from ..data.selected_change.file_changes import (
     cache_binary_file_change,
     cache_gitlink_change,
-    mark_selected_change_cleared_by_file_list,
 )
 from ..data.file_review.records import FileReviewAction, ReviewSource
 from ..data.file_review.state import (

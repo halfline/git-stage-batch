@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import shutil
 
 from .batch_refs import snapshot_batch_refs
@@ -46,6 +47,21 @@ SESSION_STATE_FILES = [
     "session",
     "journal.jsonl",
 ]
+
+
+def active_session_marker_path(git_dir: Path | None = None) -> Path:
+    """Return the active-session marker path without creating state directories."""
+    state_dir = (
+        git_dir / "git-stage-batch"
+        if git_dir is not None
+        else get_state_directory_path()
+    )
+    return state_dir / "session" / "abort" / "head.txt"
+
+
+def session_is_active(git_dir: Path | None = None) -> bool:
+    """Return whether a batch staging session marker exists."""
+    return active_session_marker_path(git_dir).exists()
 
 
 def _snapshot_intent_to_add_files() -> tuple[list[str], list[str]]:
@@ -154,7 +170,7 @@ def require_session_started() -> None:
     Raises:
         CommandError: If no session is active
     """
-    if not get_abort_head_file_path().exists():
+    if not session_is_active():
         raise CommandError(_("No session in progress. Run 'git-stage-batch start' first."))
 
 
@@ -326,7 +342,7 @@ def clear_session_state() -> None:
     """
     state_dir = get_state_directory_path()
 
-    from .undo import clear_undo_history
+    from .undo_refs import clear_undo_history
     clear_undo_history()
 
     # Clear session state files

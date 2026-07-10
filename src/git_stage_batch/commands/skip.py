@@ -30,8 +30,10 @@ from ..data.selected_change.loading import (
 )
 from ..data.selected_change.store import (
     SelectedChangeKind,
-    get_selected_change_file_path,
     read_selected_change_kind,
+)
+from ..data.selected_change.paths import get_selected_change_file_path
+from ..data.selected_change.clear_reasons import (
     refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
 )

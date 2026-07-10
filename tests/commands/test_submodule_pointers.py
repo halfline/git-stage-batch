@@ -28,9 +28,9 @@ from git_stage_batch.commands.status import command_status
 from git_stage_batch.commands.undo import command_undo
 from git_stage_batch.data.selected_change.store import (
     SelectedChangeKind,
-    get_selected_change_file_path,
     read_selected_change_kind,
 )
+from git_stage_batch.data.selected_change.paths import get_selected_change_file_path
 from git_stage_batch.exceptions import CommandError
 
 EMPTY_BLOB_HASH = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"

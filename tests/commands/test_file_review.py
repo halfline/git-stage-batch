@@ -37,9 +37,9 @@ from git_stage_batch.data.file_review.state import (
 )
 from git_stage_batch.data.selected_change.store import (
     SelectedChangeKind,
-    get_selected_change_file_path,
     read_selected_change_kind,
 )
+from git_stage_batch.data.selected_change.paths import get_selected_change_file_path
 from git_stage_batch.data.line_state import load_line_changes_from_state
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.core.line_selection import format_line_ids

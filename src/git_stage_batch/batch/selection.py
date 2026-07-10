@@ -20,7 +20,18 @@ from ..core.line_selection import (
     parse_line_selection,
     parse_line_selection_ranges,
 )
-from ..exceptions import exit_with_error
+from ..batch.file_display import render_batch_file_display
+from ..data.batch_selected_changes import (
+    require_current_selected_batch_binary_file_for_batch,
+    require_current_selected_batch_gitlink_file_for_batch,
+)
+from ..data.progress import format_id_range
+from ..data.selected_change.store import (
+    SelectedChangeKind,
+    get_selected_change_file_path,
+    read_selected_change_kind,
+)
+from ..exceptions import CommandError, exit_with_error
 from ..i18n import _
 from ..utils.file_patterns import resolve_gitignore_style_patterns
 
@@ -136,9 +147,6 @@ def resolve_batch_file_scope(
         SystemExit: If file not found or no hunk selected when using ""
     """
     if file is not None:
-        # Specific file requested
-        from ..data.hunk_tracking import get_batch_file_for_line_operation, get_selected_change_file_path
-
         # If file is empty string, use selected hunk's file
         if file == "":
             file_to_use = get_selected_change_file_path()
@@ -147,7 +155,7 @@ def resolve_batch_file_scope(
         else:
             file_to_use = file
 
-        target_file = get_batch_file_for_line_operation(batch_name, file_to_use)
+        target_file = _get_batch_file_for_line_operation(batch_name, all_files, file_to_use)
         return {target_file: all_files[target_file]}
     if patterns is not None:
         resolved_files = resolve_gitignore_style_patterns(all_files.keys(), patterns)
@@ -181,13 +189,6 @@ def resolve_current_batch_atomic_file_scope(
     if patterns is not None or line_ids is not None or file not in (None, ""):
         return file
 
-    from ..data.hunk_tracking import (
-        SelectedChangeKind,
-        read_selected_change_kind,
-        require_current_selected_batch_binary_file_for_batch,
-        require_current_selected_batch_gitlink_file_for_batch,
-    )
-
     selected_kind = read_selected_change_kind()
     if selected_kind == SelectedChangeKind.BATCH_BINARY:
         selected_file = require_current_selected_batch_binary_file_for_batch(batch_name, all_files)
@@ -214,6 +215,26 @@ def resolve_current_batch_binary_file_scope(
         patterns,
         line_ids,
     )
+
+
+def _get_batch_file_for_line_operation(
+    batch_name: str,
+    all_files: dict[str, dict],
+    file: str | None,
+) -> str:
+    """Determine which file in batch to operate on."""
+    files = sorted(all_files.keys())
+
+    if not files:
+        raise CommandError(f"Batch '{batch_name}' is empty")
+
+    if file is None:
+        return files[0]
+
+    if file not in all_files:
+        raise CommandError(f"File '{file}' not found in batch '{batch_name}'")
+
+    return file
 
 
 def require_single_file_context_for_line_selection(
@@ -308,8 +329,6 @@ def translate_atomic_unit_error_to_gutter_ids(
     Raises:
         CommandError: Always exits with translated error message
     """
-    from ..data.hunk_tracking import format_id_range
-
     if error.required_selection_ids:
         # Translate required selection IDs to gutter IDs
         gutter_ids = []
@@ -362,7 +381,6 @@ def translate_batch_file_gutter_ids_to_selection_ids(
         fresh_batch_review_selections_for_action,
         validate_review_scoped_line_selection,
     )
-    from ..data.hunk_tracking import render_batch_file_display
 
     review_selections = fresh_batch_review_selections_for_action(batch_name, file_path, action)
     if review_selections is not None:

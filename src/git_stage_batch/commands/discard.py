@@ -54,26 +54,29 @@ from ..core.line_selection import parse_line_selection
 from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
 from ..core.text_lifecycle import TextFileChangeType, detect_empty_text_lifecycle_change
 from ..data.hunk_tracking import (
-    SelectedChangeKind,
-    build_file_hunk_from_buffer,
-    cache_unstaged_file_as_single_hunk,
     fetch_next_change,
     finish_selected_change_action,
-    get_selected_change_file_path,
     load_selected_change,
+    require_selected_hunk,
+)
+from ..data.selected_change.store import (
+    SelectedChangeKind,
+    get_selected_change_file_path,
     read_selected_change_kind,
-    record_hunk_discarded,
-    record_hunks_discarded,
     refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
+    restore_selected_change_state,
+    snapshot_selected_change_state,
+)
+from ..data.file_change_display import (
     render_binary_file_change,
     render_gitlink_change,
     render_rename_change,
     render_text_deletion_change,
-    require_selected_hunk,
-    restore_selected_change_state,
-    snapshot_selected_change_state,
-    stream_live_git_diff,
+)
+from ..data.file_hunk_display import (
+    build_file_hunk_from_buffer,
+    cache_unstaged_file_as_single_hunk,
 )
 from ..data.file_review.state import (
     FileReviewAction,
@@ -87,6 +90,8 @@ from ..data.file_review.state import (
 )
 from ..data.file_tracking import auto_add_untracked_files
 from ..data.line_state import load_line_changes_from_state
+from ..data.live_diff import stream_live_git_diff
+from ..data.progress import record_hunk_discarded, record_hunks_discarded
 from ..data.batch_sources import create_batch_source_commit, load_session_batch_sources, save_session_batch_sources
 from ..data.session import require_session_started, snapshot_file_if_untracked, snapshot_files_if_untracked
 from ..data.undo import undo_checkpoint

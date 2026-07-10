@@ -16,7 +16,7 @@ from git_stage_batch.commands.include import command_include_to_batch
 from git_stage_batch.commands.include_from import command_include_from_batch
 from git_stage_batch.commands.show_from import command_show_from_batch
 from git_stage_batch.commands.start import command_start
-from git_stage_batch.data.hunk_tracking import render_batch_file_display
+from git_stage_batch.batch.file_display import render_batch_file_display
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.git import run_git_command

@@ -22,21 +22,17 @@ from ..core.line_selection import (
 from ..batch.selection import require_line_selection_in_view
 from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
 from ..data.hunk_tracking import (
-    SelectedChangeKind,
     fetch_next_change,
     finish_selected_change_action,
-    get_selected_change_file_path,
     load_selected_change,
+    require_selected_hunk,
+)
+from ..data.selected_change.store import (
+    SelectedChangeKind,
+    get_selected_change_file_path,
     read_selected_change_kind,
-    record_binary_hunk_skipped,
-    record_gitlink_hunk_skipped,
-    record_hunk_skipped,
-    record_rename_hunk_skipped,
-    record_text_deletion_hunk_skipped,
     refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
-    require_selected_hunk,
-    stream_live_git_diff,
 )
 from ..data.file_review.state import (
     FileReviewAction,
@@ -45,8 +41,20 @@ from ..data.file_review.state import (
     refuse_live_action_for_batch_selection,
     resolve_live_line_action_scope,
 )
+from ..data.file_hunk_display import (
+    cache_unstaged_file_as_single_hunk,
+    render_unstaged_file_as_single_hunk,
+)
 from ..data.file_tracking import auto_add_untracked_files
 from ..data.line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
+from ..data.live_diff import stream_live_git_diff
+from ..data.progress import (
+    record_binary_hunk_skipped,
+    record_gitlink_hunk_skipped,
+    record_hunk_skipped,
+    record_rename_hunk_skipped,
+    record_text_deletion_hunk_skipped,
+)
 from ..data.session import require_session_started
 from ..data.undo import undo_checkpoint
 from ..exceptions import NoMoreHunks, exit_with_error
@@ -389,8 +397,6 @@ def command_skip_line(
         else:
             target_file = file
         auto_add_untracked_files([target_file])
-        from ..data.hunk_tracking import cache_unstaged_file_as_single_hunk
-        from ..data.hunk_tracking import render_unstaged_file_as_single_hunk
 
         reuse_selected_file_view = (
             read_selected_change_kind() == SelectedChangeKind.FILE

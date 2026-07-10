@@ -18,6 +18,17 @@ from ..core.hashing import (
 )
 from ..core.diff_parser import acquire_unified_diff
 from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
+from ..data.batch_selected_changes import (
+    selected_batch_binary_batch_name,
+    selected_batch_binary_file_for_batch,
+)
+from ..data.change_freshness import (
+    binary_file_change_is_stale,
+    gitlink_change_is_stale,
+    rename_change_is_stale,
+    text_deletion_change_is_batched,
+    text_deletion_change_is_stale,
+)
 from ..data.file_review.state import (
     FileReviewAction,
     ReviewSource,
@@ -25,27 +36,20 @@ from ..data.file_review.state import (
     selected_change_matches_review_state,
     shown_review_selections_for_action,
 )
-from ..data.hunk_tracking import (
+from ..data.line_state import load_line_changes_from_state
+from ..data.live_diff import stream_live_git_diff
+from ..data.progress import format_id_range
+from ..data.selected_change.lifecycle import clear_selected_change_state_files
+from ..data.selected_change.store import (
     SelectedChangeKind,
-    binary_file_change_is_stale,
-    clear_selected_change_state_files,
-    format_id_range,
-    gitlink_change_is_stale,
     load_selected_binary_file,
     load_selected_gitlink_change,
     load_selected_rename_change,
     load_selected_text_deletion_change,
     mark_selected_change_cleared_by_stale_batch_selection,
     read_selected_change_kind,
-    rename_change_is_stale,
-    selected_batch_binary_batch_name,
-    selected_batch_binary_file_for_batch,
-    snapshots_are_stale,
-    stream_live_git_diff,
-    text_deletion_change_is_batched,
-    text_deletion_change_is_stale,
 )
-from ..data.line_state import load_line_changes_from_state
+from ..data.selected_change.snapshots import snapshots_are_stale
 from ..data.session import get_iteration_count
 from ..exceptions import CommandError
 from ..i18n import _

@@ -8,7 +8,7 @@ import subprocess
 import pytest
 
 from git_stage_batch.batch import create_batch
-from git_stage_batch.data.hunk_tracking import render_batch_file_display
+from git_stage_batch.batch.file_display import render_batch_file_display
 from git_stage_batch.commands.discard_from import command_discard_from_batch
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import CommandError

@@ -16,27 +16,28 @@ from ..core.hashing import (
 )
 from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
 from ..data.hunk_tracking import (
-    SelectedChangeKind,
     apply_line_level_batch_filter_to_cached_hunk,
+)
+from ..data.selected_change.store import (
+    SelectedChangeKind,
     cache_binary_file_change,
-    cache_file_as_single_hunk,
     cache_gitlink_change,
     cache_rename_change,
     cache_text_deletion_change,
-    clear_selected_change_state_files,
     get_selected_change_file_path,
     mark_selected_change_cleared_by_file_list,
+    restore_selected_change_state,
+    snapshot_selected_change_state,
+    write_selected_hunk_patch_lines,
+    write_selected_change_kind,
+)
+from ..data.change_freshness import text_deletion_change_is_batched
+from ..data.file_hunk_display import cache_file_as_single_hunk, render_file_as_single_hunk
+from ..data.file_change_display import (
     render_binary_file_change,
     render_gitlink_change,
     render_rename_change,
     render_text_deletion_change,
-    render_file_as_single_hunk,
-    restore_selected_change_state,
-    snapshot_selected_change_state,
-    stream_live_git_diff,
-    text_deletion_change_is_batched,
-    write_selected_hunk_patch_lines,
-    write_selected_change_kind,
 )
 from ..data.file_review.state import (
     clear_last_file_review_state,
@@ -44,7 +45,9 @@ from ..data.file_review.state import (
     write_last_file_review_state,
 )
 from ..data.line_state import convert_line_changes_to_serializable_dict, load_line_changes_from_state
+from ..data.live_diff import stream_live_git_diff
 from ..data.session import require_session_started
+from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..data.selected_change.snapshots import write_snapshots_for_selected_file_path
 from ..exceptions import exit_with_error
 from ..i18n import _

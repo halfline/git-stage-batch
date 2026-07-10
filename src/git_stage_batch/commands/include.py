@@ -52,31 +52,29 @@ from ..core.line_selection import (
 from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
 from ..core.text_lifecycle import TextFileChangeType, detect_empty_text_lifecycle_change
 from ..data.hunk_tracking import (
-    SelectedChangeKind,
     apply_line_level_batch_filter_to_cached_hunk,
-    cache_unstaged_file_as_single_hunk,
-    clear_selected_change_state_files,
     fetch_next_change,
     finish_selected_change_action,
-    get_selected_change_file_path,
     load_selected_change,
+    require_selected_hunk,
+)
+from ..data.selected_change.store import (
+    SelectedChangeKind,
+    get_selected_change_file_path,
     read_selected_change_kind,
-    record_binary_hunk_skipped,
-    record_gitlink_hunk_skipped,
-    record_hunk_included,
-    record_hunk_skipped,
-    record_text_deletion_hunk_skipped,
     refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
-    render_unstaged_file_as_single_hunk,
+    restore_selected_change_state,
+    snapshot_selected_change_state,
+)
+from ..data.file_change_display import (
     render_binary_file_change,
     render_gitlink_change,
     render_text_deletion_change,
-    require_selected_hunk,
-    restore_selected_change_state,
-    snapshot_selected_change_state,
-    snapshots_are_stale,
-    stream_live_git_diff,
+)
+from ..data.file_hunk_display import (
+    cache_unstaged_file_as_single_hunk,
+    render_unstaged_file_as_single_hunk,
 )
 from ..data.file_review.state import (
     FileReviewAction,
@@ -91,6 +89,16 @@ from ..data.consumed_selections import record_consumed_selection
 from ..data.batch_sources import create_batch_source_commit
 from ..data.file_tracking import auto_add_untracked_files
 from ..data.line_state import load_line_changes_from_state
+from ..data.live_diff import stream_live_git_diff
+from ..data.progress import (
+    record_binary_hunk_skipped,
+    record_gitlink_hunk_skipped,
+    record_hunk_included,
+    record_hunk_skipped,
+    record_text_deletion_hunk_skipped,
+)
+from ..data.selected_change.lifecycle import clear_selected_change_state_files
+from ..data.selected_change.snapshots import snapshots_are_stale
 from ..data.session import require_session_started, snapshot_file_if_untracked
 from ..data.undo import undo_checkpoint
 from ..editor import (

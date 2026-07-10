@@ -8,7 +8,7 @@ from git_stage_batch.commands.include import command_include_line, command_inclu
 from git_stage_batch.commands.reset import command_reset_from_batch
 from git_stage_batch.commands.show import command_show, command_show_file_list
 from git_stage_batch.commands.show_from import command_show_from_batch
-from git_stage_batch.data.hunk_tracking import SelectedChangeKind, read_selected_change_kind
+from git_stage_batch.data.selected_change.store import SelectedChangeKind, read_selected_change_kind
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.utils.paths import get_iteration_count_file_path
 from git_stage_batch.utils.paths import ensure_state_directory_exists, get_state_directory_path

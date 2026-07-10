@@ -4,7 +4,10 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.data.selected_change.snapshots import write_snapshots_for_selected_file_path
+from git_stage_batch.data.selected_change.snapshots import (
+    snapshots_are_stale,
+    write_snapshots_for_selected_file_path,
+)
 from git_stage_batch.utils.file_io import read_text_file_contents
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,
@@ -154,3 +157,69 @@ def new_function():
         working_tree_snapshot_path = get_working_tree_snapshot_file_path()
         working_tree_snapshot_content = read_text_file_contents(working_tree_snapshot_path)
         assert working_tree_snapshot_content == working_content
+
+
+class TestSnapshotsAreStale:
+    """Tests for snapshots_are_stale()."""
+
+    @pytest.fixture
+    def temp_git_repo(self, tmp_path, monkeypatch):
+        """Create a temporary git repository."""
+        monkeypatch.chdir(tmp_path)
+        subprocess.run(["git", "init"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test User"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@example.com"], check=True, capture_output=True)
+
+        (tmp_path / "README.md").write_text("# Test\n")
+        subprocess.run(["git", "add", "README.md"], check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial commit"], check=True, capture_output=True)
+
+        ensure_state_directory_exists()
+
+        return tmp_path
+
+    def test_detects_missing_snapshots(self, temp_git_repo):
+        """Missing snapshots should be considered stale."""
+        assert snapshots_are_stale("test.txt") is True
+
+    def test_detects_fresh_snapshots(self, temp_git_repo):
+        """Current index and working tree snapshots should not be stale."""
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("content\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("modified\n")
+
+        write_snapshots_for_selected_file_path("test.txt")
+
+        assert snapshots_are_stale("test.txt") is False
+
+    def test_detects_index_change(self, temp_git_repo):
+        """Index changes should make selected-file snapshots stale."""
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("content\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("modified\n")
+        write_snapshots_for_selected_file_path("test.txt")
+
+        test_file.write_text("changed again\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        assert snapshots_are_stale("test.txt") is True
+
+    def test_detects_working_tree_change(self, temp_git_repo):
+        """Working tree changes should make selected-file snapshots stale."""
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("content\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+
+        test_file.write_text("modified\n")
+        write_snapshots_for_selected_file_path("test.txt")
+
+        test_file.write_text("different content\n")
+
+        assert snapshots_are_stale("test.txt") is True

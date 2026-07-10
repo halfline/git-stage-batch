@@ -39,16 +39,18 @@ from ..core.text_lifecycle import (
     normalized_text_change_type,
 )
 from ..core.diff_parser import build_line_changes_from_patch_lines
-from ..data.hunk_tracking import (
+from ..batch.file_display import render_batch_file_display
+from ..data.batch_selected_changes import (
+    compute_batch_binary_fingerprint,
+    compute_batch_gitlink_fingerprint,
+)
+from ..data.selected_change.batch_file_cache import cache_rendered_batch_file_display
+from ..data.selected_change.lifecycle import clear_selected_change_state_files
+from ..data.selected_change.store import (
     SelectedChangeKind,
     cache_binary_file_change,
     cache_gitlink_change,
-    cache_rendered_batch_file_display,
-    clear_selected_change_state_files,
-    compute_batch_binary_fingerprint,
-    compute_batch_gitlink_fingerprint,
     mark_selected_change_cleared_by_file_list,
-    render_batch_file_display,
 )
 from ..data.file_review.state import (
     FileReviewAction,

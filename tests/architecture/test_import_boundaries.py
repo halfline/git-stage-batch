@@ -122,6 +122,17 @@ def test_batch_file_display_stays_below_hunk_navigation():
     assert "git_stage_batch.data.file_review.state" not in imported_modules
 
 
+def test_selected_change_batch_file_cache_does_not_import_hunk_navigation():
+    """Batch file selection caching should not depend on hunk navigation."""
+    cache_path = SRC_ROOT / "data" / "selected_change" / "batch_file_cache.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(cache_path)
+    }
+
+    assert "git_stage_batch.data.hunk_tracking" not in imported_modules
+
+
 def test_file_review_state_does_not_import_hunk_navigation():
     """File-review safety state should not depend on hunk navigation."""
     review_state_path = SRC_ROOT / "data" / "file_review" / "state.py"
@@ -142,6 +153,196 @@ def test_file_review_output_does_not_import_hunk_navigation():
     }
 
     assert "git_stage_batch.data.hunk_tracking" not in imported_modules
+
+
+def test_batch_selection_does_not_import_hunk_navigation():
+    """Batch selection should use focused data helpers instead of hunk navigation."""
+    selection_path = SRC_ROOT / "batch" / "selection.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(selection_path)
+    }
+
+    assert "git_stage_batch.data.hunk_tracking" not in imported_modules
+
+
+def test_batch_selected_changes_does_not_import_hunk_navigation():
+    """Batch atomic-selection state should not depend on live hunk navigation."""
+    batch_selected_path = SRC_ROOT / "data" / "batch_selected_changes.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(batch_selected_path)
+    }
+
+    assert "git_stage_batch.data.hunk_tracking" not in imported_modules
+
+
+def test_selected_change_lifecycle_does_not_import_hunk_navigation():
+    """Selected-change lifecycle clearing should stay independent from hunk navigation."""
+    lifecycle_path = SRC_ROOT / "data" / "selected_change" / "lifecycle.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(lifecycle_path)
+    }
+
+    assert "git_stage_batch.data.hunk_tracking" not in imported_modules
+
+
+def test_file_change_display_does_not_import_hunk_navigation():
+    """Live file-change rendering should not depend on hunk navigation."""
+    display_path = SRC_ROOT / "data" / "file_change_display.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(display_path)
+    }
+
+    assert "git_stage_batch.data.hunk_tracking" not in imported_modules
+
+
+def test_file_hunk_display_does_not_import_hunk_navigation():
+    """File-scoped text rendering should not depend on hunk navigation."""
+    display_path = SRC_ROOT / "data" / "file_hunk_display.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(display_path)
+    }
+
+    assert "git_stage_batch.data.hunk_tracking" not in imported_modules
+
+
+def test_change_freshness_does_not_import_hunk_navigation():
+    """Cached change freshness checks should not depend on hunk navigation."""
+    freshness_path = SRC_ROOT / "data" / "change_freshness.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(freshness_path)
+    }
+
+    assert "git_stage_batch.data.hunk_tracking" not in imported_modules
+
+
+def test_status_does_not_import_hunk_navigation():
+    """Status should read focused data helpers instead of hunk navigation."""
+    status_path = SRC_ROOT / "commands" / "status.py"
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(status_path)
+    }
+
+    assert "git_stage_batch.data.hunk_tracking" not in imported_modules
+
+
+def test_hunk_tracking_does_not_reexport_live_change_helpers():
+    """Moved live-change helpers should not stay available from hunk tracking."""
+    hunk_tracking = __import__(
+        "git_stage_batch.data.hunk_tracking",
+        fromlist=["hunk_tracking"],
+    )
+    moved_names = {
+        "binary_file_change_is_stale",
+        "gitlink_change_is_stale",
+        "rename_change_is_stale",
+        "render_binary_file_change",
+        "render_gitlink_change",
+        "render_rename_change",
+        "render_text_deletion_change",
+        "stream_live_git_diff",
+        "text_deletion_change_is_batched",
+        "text_deletion_change_is_stale",
+    }
+
+    assert moved_names.isdisjoint(vars(hunk_tracking))
+
+
+def test_hunk_tracking_does_not_reexport_file_hunk_helpers():
+    """Moved file-scoped hunk helpers should not stay on hunk tracking."""
+    hunk_tracking = __import__(
+        "git_stage_batch.data.hunk_tracking",
+        fromlist=["hunk_tracking"],
+    )
+    moved_names = {
+        "build_file_hunk_from_buffer",
+        "cache_file_as_single_hunk",
+        "cache_unstaged_file_as_single_hunk",
+        "render_file_as_single_hunk",
+        "render_unstaged_file_as_single_hunk",
+    }
+
+    assert moved_names.isdisjoint(vars(hunk_tracking))
+
+
+def test_hunk_tracking_does_not_reexport_batch_hunk_helpers():
+    """Batch display helpers should not stay on hunk tracking."""
+    hunk_tracking = __import__(
+        "git_stage_batch.data.hunk_tracking",
+        fromlist=["hunk_tracking"],
+    )
+    moved_or_removed_names = {
+        "cache_batch_as_single_hunk",
+        "cache_batch_files_generator",
+        "cache_rendered_batch_file_display",
+        "get_batch_file_for_line_operation",
+        "render_batch_file_display",
+    }
+
+    assert moved_or_removed_names.isdisjoint(vars(hunk_tracking))
+
+
+def test_hunk_tracking_does_not_reexport_progress_helpers():
+    """Progress helpers should not stay on hunk tracking."""
+    hunk_tracking = __import__(
+        "git_stage_batch.data.hunk_tracking",
+        fromlist=["hunk_tracking"],
+    )
+    progress_names = {
+        "format_id_range",
+        "record_binary_hunk_skipped",
+        "record_gitlink_hunk_skipped",
+        "record_hunk_discarded",
+        "record_hunk_included",
+        "record_hunk_skipped",
+        "record_hunks_discarded",
+        "record_rename_hunk_skipped",
+        "record_text_deletion_hunk_skipped",
+    }
+
+    assert progress_names.isdisjoint(vars(hunk_tracking))
+
+
+def test_hunk_tracking_does_not_reexport_selected_state_helpers():
+    """Selected-state helpers should not stay on hunk tracking."""
+    hunk_tracking = __import__(
+        "git_stage_batch.data.hunk_tracking",
+        fromlist=["hunk_tracking"],
+    )
+    selected_state_names = {
+        "clear_selected_change_state_files",
+        "snapshots_are_stale",
+        "write_snapshots_for_selected_file_path",
+    }
+
+    assert selected_state_names.isdisjoint(vars(hunk_tracking))
+
+
+def test_hunk_tracking_does_not_reexport_batch_selection_helpers():
+    """Batch selection helpers should not stay on hunk tracking."""
+    hunk_tracking = __import__(
+        "git_stage_batch.data.hunk_tracking",
+        fromlist=["hunk_tracking"],
+    )
+    batch_selection_names = {
+        "compute_batch_binary_fingerprint",
+        "compute_batch_gitlink_fingerprint",
+        "require_current_selected_batch_binary_file_for_batch",
+        "require_current_selected_batch_gitlink_file_for_batch",
+        "selected_batch_binary_batch_name",
+        "selected_batch_binary_file_for_batch",
+        "selected_batch_binary_matches_batch",
+        "selected_batch_gitlink_file_for_batch",
+        "selected_batch_gitlink_matches_batch",
+    }
+
+    assert batch_selection_names.isdisjoint(vars(hunk_tracking))
 
 
 def test_recalc_handoff_stays_in_command_helper():

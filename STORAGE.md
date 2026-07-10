@@ -634,6 +634,12 @@ Session files are scratch state. They are allowed to be direct files because:
 Undo support can checkpoint these files without making the live state itself a
 Git ref.
 
+Replacement-style session files are written to a same-directory temporary file
+and published with an atomic rename. Readers therefore see either the previous
+complete value or the next complete value, not a partially overwritten JSON or
+text file. Append-only journal and progress records retain their streaming
+format rather than using replacement writes.
+
 ---
 
 ## Abort and Recovery State

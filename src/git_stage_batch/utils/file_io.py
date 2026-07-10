@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 from collections.abc import Collection
 from pathlib import Path
 from typing import Iterable
@@ -20,14 +22,16 @@ def read_text_file_contents(path: Path) -> str:
 
 
 def write_text_file_contents(path: Path, data: str) -> None:
-    """Write text to a file, creating parent directories as needed.
+    """Atomically write text, creating parent directories as needed.
 
     Args:
         path: Path to the file to write
         data: Text content to write
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(data, encoding="utf-8", errors="surrogateescape")
+    _write_file_contents_atomically(
+        path,
+        data.encode("utf-8", errors="surrogateescape"),
+    )
 
 
 def stream_text_file_lines(path: Path) -> Iterable[str]:
@@ -57,9 +61,27 @@ def count_nonblank_text_file_lines(path: Path) -> int:
 
 
 def write_file_bytes(path: Path, data: bytes) -> None:
-    """Write raw bytes to a file, creating parent directories as needed."""
+    """Atomically write raw bytes, creating parent directories as needed."""
+    _write_file_contents_atomically(path, data)
+
+
+def _write_file_contents_atomically(path: Path, data: bytes) -> None:
+    """Replace one state file without exposing partial contents."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(data)
+    file_descriptor, temporary_name = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(file_descriptor, "wb") as file_handle:
+            file_handle.write(data)
+            file_handle.flush()
+            os.fsync(file_handle.fileno())
+        os.replace(temporary_path, path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 
 def path_is_empty(path: Path) -> bool:

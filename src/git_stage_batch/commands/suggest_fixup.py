@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ..data.session import require_session_started
+from ..utils.session_start_point import require_repository_history
 from ..utils.git_repository import require_git_repository
 from ..utils.paths import ensure_state_directory_exists
 from .fixup.iteration_state import prepare_suggest_fixup_iteration
@@ -39,6 +40,7 @@ def command_suggest_fixup(
     """
     require_git_repository()
     ensure_state_directory_exists()
+    require_repository_history()
 
     iteration_context = prepare_suggest_fixup_iteration(
         boundary=boundary,
@@ -95,6 +97,7 @@ def command_suggest_fixup_line(
     require_git_repository()
     ensure_state_directory_exists()
     require_session_started()
+    require_repository_history()
 
     iteration_context = prepare_suggest_fixup_iteration(
         boundary=boundary,

@@ -12,6 +12,7 @@ import subprocess
 
 import pytest
 
+import git_stage_batch.data.hunk_tracking as hunk_tracking
 from git_stage_batch.commands.again import command_again
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.hunk_tracking import (
@@ -49,6 +50,32 @@ def temp_git_repo(tmp_path, monkeypatch):
     ensure_state_directory_exists()
 
     return repo
+
+
+def test_batch_metadata_snapshot_loads_once(monkeypatch):
+    """One hunk scan should reuse a single batch metadata snapshot."""
+    calls = []
+
+    monkeypatch.setattr(hunk_tracking, "list_batch_names", lambda: ["batch-a"])
+
+    def fake_read_batch_metadata_for_batches(batch_names):
+        calls.append(tuple(batch_names))
+        return {"batch-a": {"files": {}}}
+
+    monkeypatch.setattr(
+        hunk_tracking,
+        "read_batch_metadata_for_batches",
+        fake_read_batch_metadata_for_batches,
+    )
+
+    snapshot = hunk_tracking._BatchMetadataSnapshot()
+
+    first = snapshot.metadata_by_name()
+    second = snapshot.metadata_by_name()
+
+    assert first == {"batch-a": {"files": {}}}
+    assert second is first
+    assert calls == [("batch-a",)]
 
 
 class TestFindAndCacheNextUnblockedHunk:

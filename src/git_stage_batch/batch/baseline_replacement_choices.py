@@ -100,4 +100,7 @@ def _replacement_origin_ambiguity_key(
 
 
 def _sequence_digest(lines: Sequence[bytes]) -> str:
-    return hashlib.sha256(b"".join(lines)).hexdigest()[:12]
+    hasher = hashlib.sha256()
+    for line in lines:
+        hasher.update(line)
+    return hasher.hexdigest()[:12]

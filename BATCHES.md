@@ -147,7 +147,9 @@ is built from:
 - batch source file content
 - batch ownership
 
-The materialization path lives in `src/git_stage_batch/batch/storage.py`.
+Text materialization lives in `src/git_stage_batch/batch/text_file_storage.py`
+and `src/git_stage_batch/batch/realized_file_content.py`. Batch content trees
+are published through `src/git_stage_batch/batch/content_commits.py`.
 
 ### What the state ref stores
 
@@ -307,16 +309,18 @@ That means:
 
 ## Materialization and Realized Batch Content
 
-Once baseline, source, and ownership exist, the realized file content for a
-batch is built by
-`_build_realized_content()` in `src/git_stage_batch/batch/storage.py`.
+Once baseline, source, and ownership exist, the realized text content for a
+batch is built by `build_realized_buffer_from_lines()` in
+`src/git_stage_batch/batch/realized_file_content.py` and persisted by
+`src/git_stage_batch/batch/text_file_storage.py`.
 
 That function:
 
 1. reads baseline bytes
 2. reads batch source bytes
 3. resolves ownership
-4. calls `_satisfy_constraints()` from `src/git_stage_batch/batch/merge.py`
+4. calls `satisfy_constraints()` from
+   `src/git_stage_batch/batch/presence_constraints.py`
 5. emits full file bytes while preserving the source line-ending style
 
 Important detail: realization uses lenient absence enforcement. If a deletion's
@@ -750,7 +754,8 @@ Binary files are stored as atomic file changes.
 
 Implementation:
 
-- `add_binary_file_to_batch()` in `src/git_stage_batch/batch/storage.py`
+- `add_binary_file_to_batch()` in
+  `src/git_stage_batch/batch/binary_file_storage.py`
 
 There is no line-level ownership for binary files. A binary batch entry records:
 
@@ -793,7 +798,12 @@ Core batch state:
 
 - `src/git_stage_batch/batch/state_refs.py`
 - `src/git_stage_batch/batch/query.py`
-- `src/git_stage_batch/batch/storage.py`
+- `src/git_stage_batch/batch/content_commits.py`
+- `src/git_stage_batch/batch/text_file_storage.py`
+- `src/git_stage_batch/batch/binary_file_storage.py`
+- `src/git_stage_batch/batch/gitlink_storage.py`
+- `src/git_stage_batch/batch/file_entry_storage.py`
+- `src/git_stage_batch/batch/realized_file_content.py`
 - `src/git_stage_batch/batch/operations.py`
 
 Ownership and repair:

@@ -14,6 +14,7 @@ from .git_command import run_git_command
 _GIT_REPOSITORY_ROOT_CACHE: dict[Path, Path] = {}
 _GIT_DIRECTORY_CACHE: dict[Path, Path] = {}
 _GIT_COMMON_DIRECTORY_CACHE: dict[Path, Path] = {}
+_GIT_OBJECT_FORMAT_CACHE: dict[Path, str] = {}
 
 
 def require_git_repository() -> None:
@@ -94,6 +95,37 @@ def get_git_common_directory_path() -> Path:
     path = Path(output)
     _GIT_COMMON_DIRECTORY_CACHE[cwd] = path
     return path
+
+
+def get_git_object_format() -> str:
+    """Return the repository object format reported by Git."""
+    cwd = Path.cwd()
+    cached = _GIT_OBJECT_FORMAT_CACHE.get(cwd)
+    if cached is not None:
+        return cached
+
+    object_format = run_git_command(
+        ["rev-parse", "--show-object-format"],
+        requires_index_lock=False,
+    ).stdout.strip()
+    if object_format not in {"sha1", "sha256"}:
+        raise CommandError(
+            _("Unsupported Git object format: {object_format}").format(
+                object_format=object_format or _("unknown")
+            )
+        )
+    _GIT_OBJECT_FORMAT_CACHE[cwd] = object_format
+    return object_format
+
+
+def object_id_hex_length() -> int:
+    """Return the full hexadecimal object-ID width for this repository."""
+    return 40 if get_git_object_format() == "sha1" else 64
+
+
+def null_object_id() -> str:
+    """Return Git's all-zero object ID at the repository's native width."""
+    return "0" * object_id_hex_length()
 
 
 def resolve_file_path_to_repo_relative(file_path: str) -> str:

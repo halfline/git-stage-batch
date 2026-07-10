@@ -8,7 +8,12 @@ from ..data.start_time_changes import (
     restore_unstaged_start_time_deletions,
     restore_unstaged_start_time_renames,
 )
-from ..data.session import clear_session_state
+from ..data.session import clear_session_state, session_is_active
+from ..data.session_ownership import (
+    release_session_ownership,
+    require_current_session_owner,
+    require_no_foreign_session_owner,
+)
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file
 from ..utils.git_command import run_git_command
@@ -29,6 +34,10 @@ def _path_has_staged_content(file_path: str) -> bool:
 def command_stop() -> None:
     """Stop the selected batch staging session."""
     require_git_repository()
+    require_no_foreign_session_owner()
+    session_owned = session_is_active()
+    if session_owned:
+        require_current_session_owner()
 
     # Undo auto-added files before clearing state
     auto_added_path = get_auto_added_files_file_path()
@@ -44,5 +53,7 @@ def command_stop() -> None:
 
     # Clear all session state (preserves batches and batch-sources)
     clear_session_state()
+    if session_owned:
+        release_session_ownership()
 
     print(_("✓ State cleared."), file=sys.stderr)

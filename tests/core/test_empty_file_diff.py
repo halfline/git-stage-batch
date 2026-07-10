@@ -5,12 +5,12 @@ from __future__ import annotations
 from git_stage_batch.core import empty_file_diff
 
 
-def test_new_empty_file_metadata_detection_requires_mode_and_empty_blob():
-    """New empty file metadata should require both path creation and empty blob."""
+def test_new_empty_file_metadata_detection_uses_new_file_mode_without_digest():
+    """A no-hunk new file is empty without inspecting its hash algorithm."""
     assert empty_file_diff.metadata_indicates_new_empty_file(
         [b"new file mode 100644", b"index 0000000..e69de29"]
     )
-    assert not empty_file_diff.metadata_indicates_new_empty_file(
+    assert empty_file_diff.metadata_indicates_new_empty_file(
         [b"new file mode 100644", b"index 0000000..1111111"]
     )
     assert not empty_file_diff.metadata_indicates_new_empty_file(

@@ -922,7 +922,6 @@ def test_empty_file_diff_owns_empty_file_parser_helpers():
         "synthetic_empty_file_patch_lines",
     }
     helper_constants = {
-        "EMPTY_BLOB_SHORT_HASH",
         "NEW_FILE_MODE_MARKER",
     }
     diff_imports = {}

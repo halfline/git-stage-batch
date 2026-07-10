@@ -63,6 +63,45 @@ def test_main_acquires_session_lock_before_dispatch():
     assert events == ["lock-enter", "dispatch", "lock-exit"]
 
 
+def test_main_rejects_mutation_owned_by_another_worktree(capsys):
+    """Foreign ownership is checked before a mutating command dispatches."""
+    args = Namespace(working_directory=None, command="drop")
+
+    with patch.object(sys, "argv", ["git-stage-batch", "drop", "batch"]):
+        with patch.object(main_module, "parse_command_line", return_value=args):
+            with patch.object(main_module, "should_page_output", return_value=False):
+                with patch.object(
+                    main_module,
+                    "require_no_foreign_session_owner",
+                    side_effect=main_module.CommandError("foreign session"),
+                ):
+                    with patch.object(main_module, "dispatch_cli_mode") as dispatch:
+                        with pytest.raises(SystemExit) as exc_info:
+                            main_module.main()
+
+    assert exc_info.value.code == 1
+    assert "foreign session" in capsys.readouterr().err
+    dispatch.assert_not_called()
+
+
+def test_main_allows_read_only_command_with_foreign_owner():
+    """Read-only repository inspection does not require session ownership."""
+    args = Namespace(working_directory=None, command="status")
+
+    with patch.object(sys, "argv", ["git-stage-batch", "status"]):
+        with patch.object(main_module, "parse_command_line", return_value=args):
+            with patch.object(main_module, "should_page_output", return_value=False):
+                with patch.object(
+                    main_module,
+                    "require_no_foreign_session_owner",
+                    side_effect=AssertionError("status must remain readable"),
+                ):
+                    with patch.object(main_module, "dispatch_cli_mode") as dispatch:
+                        main_module.main()
+
+    dispatch.assert_called_once_with(args)
+
+
 def test_main_skips_session_lock_for_prompt_status():
     """Prompt status should not create or lock session state before dispatch."""
     events = []

@@ -52,6 +52,23 @@ class TestIntentToAddHandling:
         )
         assert status_result.stdout == ""
 
+    def test_staged_new_empty_file_remains_fully_staged(self, temp_git_repo):
+        """A staged empty blob must not be downgraded to intent-to-add."""
+        test_file = temp_git_repo / "staged-empty.py"
+        test_file.write_bytes(b"")
+        subprocess.run(["git", "add", test_file.name], cwd=temp_git_repo, check=True, capture_output=True)
+
+        initialize_abort_state()
+
+        status_result = subprocess.run(
+            ["git", "status", "--porcelain", "--", test_file.name],
+            cwd=temp_git_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert status_result.stdout == "A  staged-empty.py\n"
+
     def test_tracked_file_with_intent_to_add_not_removed_from_index(self, temp_git_repo):
         """Tracked files with intent-to-add should keep their index entry."""
         # Create and commit a tracked file

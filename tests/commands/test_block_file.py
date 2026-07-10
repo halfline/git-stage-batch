@@ -214,6 +214,40 @@ class TestCommandBlockFile:
         blocked = read_file_paths_file(get_blocked_files_file_path())
         assert "local.txt" in blocked
 
+    def test_block_file_local_only_uses_empty_worktree_checkpoint_scope(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """Local excludes should not checkpoint unrelated dirty worktree paths."""
+        import git_stage_batch.commands.block_file as block_file
+
+        calls = []
+
+        class Checkpoint:
+            def __enter__(self):
+                return None
+
+            def __exit__(self, exc_type, exc, traceback):
+                return False
+
+        def fake_undo_checkpoint(operation, *, worktree_paths=None):
+            calls.append((operation, worktree_paths))
+            return Checkpoint()
+
+        (temp_git_repo / "local.txt").write_text("local content\n")
+        monkeypatch.setattr(block_file, "session_is_active", lambda: True)
+        monkeypatch.setattr(block_file, "undo_checkpoint", fake_undo_checkpoint)
+        monkeypatch.setattr(
+            block_file,
+            "advance_to_and_show_next_change",
+            lambda: None,
+        )
+
+        command_block_file("local.txt", local_only=True)
+
+        assert calls == [("block-file local.txt", [])]
+
     def test_block_file_local_only_no_duplicates_in_exclude(self, temp_git_repo):
         """Test that --local-only blocking the same file twice doesn't duplicate entries."""
         (temp_git_repo / "dup.txt").write_text("content\n")

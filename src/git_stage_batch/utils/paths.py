@@ -486,3 +486,8 @@ def get_batch_refs_snapshot_file_path() -> Path:
         Path to batch refs snapshot JSON file
     """
     return get_abort_state_directory_path() / "batch-refs.json"
+
+
+def get_abort_recovery_anchors_file_path() -> Path:
+    """Get the path recording abort recovery anchor refs and object IDs."""
+    return get_abort_state_directory_path() / "recovery-anchors.json"

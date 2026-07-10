@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import shutil
 
 from .batch_refs import snapshot_batch_refs
+from .recovery_anchors import anchor_recovery_objects
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_io import (
@@ -25,6 +27,7 @@ from ..utils.paths import (
     get_abort_snapshot_list_file_path,
     get_abort_snapshots_directory_path,
     get_abort_stash_file_path,
+    get_abort_recovery_anchors_file_path,
     get_iteration_count_file_path,
     get_state_directory_path,
 )
@@ -235,7 +238,17 @@ def _initialize_abort_state() -> None:
     if stash_result.stdout.strip():
         log_journal("session_stash_created", stash_hash=stash_result.stdout.strip())
 
-    snapshot_batch_refs()
+    batch_snapshot = snapshot_batch_refs()
+    recovery_objects = [abort_head, stash_result.stdout.strip()]
+    for batch_state in batch_snapshot.values():
+        recovery_objects.extend(
+            [batch_state.get("commit_sha"), batch_state.get("state_commit_sha")]
+        )
+    recovery_anchors = anchor_recovery_objects(recovery_objects)
+    write_text_file_contents(
+        get_abort_recovery_anchors_file_path(),
+        json.dumps(recovery_anchors, indent=2, sort_keys=True),
+    )
     write_text_file_contents(get_abort_head_file_path(), abort_head)
 
 

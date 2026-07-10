@@ -1,10 +1,13 @@
 """Tests for start command."""
 
 import subprocess
+from unittest.mock import patch
 
 import pytest
 
 from git_stage_batch.commands.start import command_start
+from git_stage_batch.data.session import session_is_active
+from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.file_io import read_text_file_contents
 from git_stage_batch.utils.paths import (
     get_abort_head_file_path,
@@ -81,3 +84,29 @@ class TestCommandStart:
         # Verify abort-stash file was created (may be empty if no tracked changes)
         abort_stash_path = get_abort_stash_file_path()
         assert abort_stash_path.exists()
+
+    def test_start_refuses_failed_recovery_snapshot(self, temp_git_repo):
+        """Startup should fail closed when Git cannot create the abort stash."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nModified\n")
+
+        from git_stage_batch.data import session as session_module
+
+        real_run_git_command = session_module.run_git_command
+
+        def fail_stash(command, *args, **kwargs):
+            if command == ["stash", "create"]:
+                return subprocess.CompletedProcess(
+                    command,
+                    1,
+                    stdout="",
+                    stderr="snapshot failed",
+                )
+            return real_run_git_command(command, *args, **kwargs)
+
+        with patch.object(session_module, "run_git_command", side_effect=fail_stash):
+            with pytest.raises(CommandError, match="snapshot failed"):
+                command_start()
+
+        assert not session_is_active()
+        assert readme.read_text() == "# Test\nModified\n"

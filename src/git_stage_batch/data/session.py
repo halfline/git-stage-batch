@@ -114,52 +114,108 @@ def _snapshot_intent_to_add_files() -> tuple[list[str], list[str]]:
 
 
 def initialize_abort_state() -> None:
-    """Save selected HEAD and stash for abort functionality."""
-    # Save selected HEAD
+    """Save the recovery state required before publishing an active session."""
+    try:
+        _initialize_abort_state()
+    except BaseException:
+        clear_session_state()
+        raise
+
+
+def _initialize_abort_state() -> None:
+    """Build abort state, writing the active-session marker last."""
     head_result = run_git_command(["rev-parse", "HEAD"], requires_index_lock=False)
-    write_text_file_contents(get_abort_head_file_path(), head_result.stdout.strip())
+    abort_head = head_result.stdout.strip()
 
     # Snapshot all intent-to-add files upfront
     # These files won't survive git reset --hard but aren't in the stash
     # We need to snapshot them now so they can be restored on abort
     all_intent_to_add_files, new_intent_to_add_files = _snapshot_intent_to_add_files()
+    tracked_intent_to_add_files = sorted(
+        set(all_intent_to_add_files) - set(new_intent_to_add_files)
+    )
 
-    # Temporarily remove new intent-to-add files from index so git stash create can succeed.
-    # Intent-to-add files with content in working tree cause "not uptodate" errors
-    # Only remove files absent from HEAD. Removing tracked files stages deletions.
-    if new_intent_to_add_files:
-        log_journal("session_removing_intent_to_add_files_for_stash", files=new_intent_to_add_files)
-        git_remove_paths(new_intent_to_add_files, cached=True, quiet=True, check=False)
+    try:
+        # Normalize intent-to-add entries so stash creation sees valid index state.
+        if new_intent_to_add_files:
+            log_journal(
+                "session_removing_intent_to_add_files_for_stash",
+                files=new_intent_to_add_files,
+            )
+            git_remove_paths(
+                new_intent_to_add_files,
+                cached=True,
+                quiet=True,
+                check=False,
+            )
+        if tracked_intent_to_add_files:
+            log_journal(
+                "session_normalizing_tracked_intent_to_add_files_for_stash",
+                files=tracked_intent_to_add_files,
+            )
+            run_git_command(
+                ["reset", "-q", "HEAD", "--", *tracked_intent_to_add_files],
+                requires_index_lock=True,
+            )
 
-    # Create stash of tracked file changes
-    # git stash create (without -u) only captures changes to tracked files
-    # Untracked files that we modify will be handled by lazy snapshots
-    log_journal("session_creating_stash")
-    stash_result = run_git_command(["stash", "create"], check=False, requires_index_lock=False)
-    if stash_result.returncode == 0 and stash_result.stdout.strip():
-        write_text_file_contents(get_abort_stash_file_path(), stash_result.stdout.strip())
+        # The stash covers tracked worktree and index changes. Untracked files
+        # that the session may modify are handled by lazy snapshots.
+        log_journal("session_creating_stash")
+        stash_result = run_git_command(
+            ["stash", "create"],
+            check=False,
+            requires_index_lock=False,
+        )
+    finally:
+        # Restore all intent-to-add entries even when snapshot creation fails.
+        if all_intent_to_add_files:
+            log_journal(
+                "session_re_adding_intent_to_add_files",
+                files=all_intent_to_add_files,
+            )
+            git_remove_paths(
+                all_intent_to_add_files,
+                cached=True,
+                quiet=True,
+                check=False,
+            )
+            for file_path in all_intent_to_add_files:
+                ls_before = run_git_command(
+                    ["ls-files", "--stage", "--", file_path],
+                    check=False,
+                    requires_index_lock=False,
+                ).stdout.strip()
+                git_add_paths([file_path], intent_to_add=True, check=False)
+                ls_after = run_git_command(
+                    ["ls-files", "--stage", "--", file_path],
+                    check=False,
+                    requires_index_lock=False,
+                ).stdout.strip()
+                log_journal(
+                    "session_re_add_intent_to_add",
+                    file_path=file_path,
+                    index_before=ls_before,
+                    index_after=ls_after,
+                )
+
+    if stash_result.returncode != 0:
+        log_journal(
+            "session_stash_failed",
+            returncode=stash_result.returncode,
+            stderr=stash_result.stderr,
+        )
+        raise CommandError(
+            _("Could not create the recovery snapshot required to start a session: {error}").format(
+                error=stash_result.stderr.strip() or _("git stash create failed")
+            )
+        )
+
+    write_text_file_contents(get_abort_stash_file_path(), stash_result.stdout.strip())
+    if stash_result.stdout.strip():
         log_journal("session_stash_created", stash_hash=stash_result.stdout.strip())
-    else:
-        log_journal("session_stash_failed", returncode=stash_result.returncode, stderr=stash_result.stderr)
-
-    # Re-add NEW intent-to-add files to index (the ones we removed)
-    if new_intent_to_add_files:
-        log_journal("session_re_adding_intent_to_add_files", files=new_intent_to_add_files)
-        for file_path in new_intent_to_add_files:
-            ls_before = run_git_command(
-                ["ls-files", "--stage", "--", file_path],
-                check=False,
-                requires_index_lock=False,
-            ).stdout.strip()
-            git_add_paths([file_path], intent_to_add=True, check=False)
-            ls_after = run_git_command(
-                ["ls-files", "--stage", "--", file_path],
-                check=False,
-                requires_index_lock=False,
-            ).stdout.strip()
-            log_journal("session_re_add_intent_to_add", file_path=file_path, index_before=ls_before, index_after=ls_after)
 
     snapshot_batch_refs()
+    write_text_file_contents(get_abort_head_file_path(), abort_head)
 
 
 def require_session_started() -> None:

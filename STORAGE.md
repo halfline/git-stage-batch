@@ -671,6 +671,11 @@ reset target:
 git reset --hard <head>
 ```
 
+This file is also the active-session marker. Startup writes it only after the
+stash, untracked-file metadata, intent-to-add restoration, and batch-ref
+snapshot have completed. Failure to create any required recovery state aborts
+startup and removes the incomplete session state.
+
 ### `stash.txt`
 
 Stores the commit SHA returned by:
@@ -682,6 +687,9 @@ git stash create
 The stash commit captures tracked worktree and index changes at session start.
 Abort applies it with `--index` to restore both staged and unstaged tracked
 state.
+
+If `git stash create` fails, the session is not started. Continuing without
+this recovery object would make a later hard reset destructive.
 
 ### `untracked-paths.txt` and `untracked/`
 

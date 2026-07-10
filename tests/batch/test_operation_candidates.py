@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from git_stage_batch.batch import operation_candidates
 from git_stage_batch.batch.operation_candidate_types import (
     OperationCandidatePreview,
     TargetCandidatePreview,
@@ -71,3 +72,44 @@ def test_operation_candidate_preview_rejects_missing_target():
         preview.close()
 
     assert exc_info.value.args == ("index",)
+
+
+def test_target_candidate_materialization_clones_before_buffer(monkeypatch):
+    """Candidate previews share immutable before-storage without copying it."""
+    before = LineBuffer.from_bytes(b"before\n")
+
+    monkeypatch.setattr(
+        operation_candidates,
+        "merge_batch_from_line_sequences_as_buffer",
+        lambda *args, **kwargs: LineBuffer.from_bytes(b"after\n"),
+    )
+
+    class _ChangeType:
+        value = "modified"
+
+    monkeypatch.setattr(
+        operation_candidates,
+        "selected_text_target_change_type",
+        lambda *args, **kwargs: _ChangeType(),
+    )
+
+    preview = operation_candidates._materialize_target_candidate(
+        target="worktree",
+        file_path="notes.txt",
+        source_lines=LineBuffer.from_bytes(b"source\n"),
+        ownership=object(),
+        before_lines=before,
+        candidate=None,
+        file_mode=None,
+        text_change_type=object(),
+        destination_exists=True,
+        selected_ids=None,
+    )
+
+    try:
+        assert preview.before_buffer._backing is before._backing
+        before.close()
+        assert preview.before_buffer[0] == b"before\n"
+    finally:
+        before.close()
+        preview.close()

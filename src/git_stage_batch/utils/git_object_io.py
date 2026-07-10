@@ -5,6 +5,7 @@ from __future__ import annotations
 import subprocess
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
+from pathlib import Path
 
 from .git_command import run_git_command, stream_git_command
 
@@ -50,6 +51,47 @@ def create_git_blob(content_chunks: Iterable[bytes]) -> str:
     stdout_bytes = b"".join(stdout_chunks)
     blob_sha = stdout_bytes.strip().decode("utf-8")
     return blob_sha
+
+
+def create_git_blobs_from_paths(paths: Iterable[Path]) -> dict[Path, str]:
+    """Create git blobs for filesystem paths with batched hash-object calls."""
+    unique_paths = list(dict.fromkeys(paths))
+    if not unique_paths:
+        return {}
+
+    blob_shas: dict[Path, str] = {}
+    chunk_size = 512
+    for offset in range(0, len(unique_paths), chunk_size):
+        chunk = unique_paths[offset:offset + chunk_size]
+        try:
+            result = run_git_command(
+                [
+                    "hash-object",
+                    "-w",
+                    "--no-filters",
+                    "--",
+                    *(str(path) for path in chunk),
+                ],
+                requires_index_lock=False,
+            )
+        except subprocess.CalledProcessError as error:
+            raise RuntimeError(
+                f"git hash-object failed with exit code {error.returncode}: "
+                f"{error.stderr}"
+            ) from error
+
+        chunk_shas = [
+            line.strip()
+            for line in result.stdout.splitlines()
+            if line.strip()
+        ]
+        if len(chunk_shas) != len(chunk):
+            raise RuntimeError(
+                "git hash-object produced an unexpected number of blobs"
+            )
+        blob_shas.update(zip(chunk, chunk_shas, strict=True))
+
+    return blob_shas
 
 
 def read_git_blob(blob_sha: str) -> Iterator[bytes]:

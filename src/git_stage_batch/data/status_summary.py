@@ -19,16 +19,12 @@ from .file_review.selection_validation import shown_review_selections_for_action
 from .file_review.state import read_last_file_review_state
 from .line_state import load_line_changes_from_state
 from .remaining_hunks import estimate_remaining_hunks as _estimate_remaining_hunks
-from .selected_change.clear_reasons import (
-    mark_selected_change_cleared_by_stale_batch_selection,
-)
 from .selected_change.file_changes import (
     load_selected_binary_file,
     load_selected_gitlink_change,
     load_selected_rename_change,
     load_selected_text_deletion_change,
 )
-from .selected_change.lifecycle import clear_selected_change_state_files
 from .selected_change.snapshots import snapshots_are_stale
 from .selected_change.store import (
     SelectedChangeKind,
@@ -107,7 +103,7 @@ def _selected_change_is_stale(
 
 def _read_batch_review_display_ids(file_path: str) -> list[int]:
     """Return user-visible gutter IDs for the current batch file review."""
-    review_state = read_last_file_review_state()
+    review_state = read_last_file_review_state(clear_invalid=False)
     if review_state is None:
         return []
     if review_state.source != ReviewSource.BATCH or review_state.file_path != file_path:
@@ -134,7 +130,7 @@ def _read_live_review_display_ids(file_path: str) -> list[int] | None:
     None means no matching live review exists; an empty list can also mean a
     matching review exists but is no longer fresh.
     """
-    review_state = read_last_file_review_state()
+    review_state = read_last_file_review_state(clear_invalid=False)
     if review_state is None:
         return None
     if review_state.source != ReviewSource.FILE_VS_HEAD or review_state.file_path != file_path:
@@ -208,7 +204,7 @@ def _read_selected_change_summary() -> tuple[bool, dict | None]:
 
     if selected_kind in (SelectedChangeKind.BINARY, SelectedChangeKind.BATCH_BINARY):
         binary_file = (
-            load_current_selected_batch_binary_file()
+            load_current_selected_batch_binary_file(clear_stale=False)
             if selected_kind == SelectedChangeKind.BATCH_BINARY
             else load_selected_binary_file()
         )
@@ -238,28 +234,12 @@ def _read_selected_change_summary() -> tuple[bool, dict | None]:
         if line_changes is None:
             return False, None
         if selected_kind == SelectedChangeKind.BATCH_FILE:
-            review_state = read_last_file_review_state()
+            review_state = read_last_file_review_state(clear_invalid=False)
             if review_state is not None:
                 try:
                     if not selected_change_matches_review_state(review_state):
-                        if (
-                            review_state.source == ReviewSource.BATCH
-                            and review_state.batch_name is not None
-                        ):
-                            mark_batch_name = review_state.batch_name
-                            mark_file_path = review_state.file_path
-                        else:
-                            mark_batch_name = None
-                            mark_file_path = None
-                        clear_selected_change_state_files()
-                        if mark_batch_name is not None and mark_file_path is not None:
-                            mark_selected_change_cleared_by_stale_batch_selection(
-                                batch_name=mark_batch_name,
-                                file_path=mark_file_path,
-                            )
                         return False, None
                 except Exception:
-                    clear_selected_change_state_files()
                     return False, None
         if _selected_change_is_stale(selected_kind, line_changes.path):
             return False, None
@@ -287,7 +267,7 @@ def _read_selected_change_summary() -> tuple[bool, dict | None]:
 
 
 def _read_file_review_summary() -> dict | None:
-    review_state = read_last_file_review_state()
+    review_state = read_last_file_review_state(clear_invalid=False)
     if review_state is None:
         return None
     try:

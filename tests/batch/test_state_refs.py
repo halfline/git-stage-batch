@@ -7,7 +7,12 @@ import pytest
 
 from git_stage_batch.batch.lifecycle import create_batch, delete_batch, update_batch_note
 from git_stage_batch.batch.ownership import BatchOwnership
-from git_stage_batch.batch.state_refs import get_batch_content_ref_name, get_batch_state_ref_name
+import git_stage_batch.batch.state_refs as state_refs_module
+from git_stage_batch.batch.state_refs import (
+    get_batch_content_ref_name,
+    get_batch_state_ref_name,
+    read_batch_state_metadata_for_batches,
+)
 from git_stage_batch.batch.text_file_storage import add_file_to_batch
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.utils.paths import ensure_state_directory_exists
@@ -82,6 +87,38 @@ def test_state_ref_updates_note_history(temp_git_repo):
     assert second_state != first_state
     batch_json = json.loads(_git_show(f"{state_ref}:batch.json"))
     assert batch_json["note"] == "After"
+
+
+def test_read_batch_state_metadata_for_batches_uses_one_batch_object_read(
+    temp_git_repo,
+    monkeypatch,
+):
+    """Many state metadata loads should share one cat-file batch process."""
+    create_batch("batch-a", "A")
+    create_batch("batch-b", "B")
+    calls = []
+    original_read_git_blobs_as_bytes = state_refs_module.read_git_blobs_as_bytes
+
+    def counting_read_git_blobs_as_bytes(refspecs):
+        refspecs = tuple(refspecs)
+        calls.append(refspecs)
+        return original_read_git_blobs_as_bytes(refspecs)
+
+    monkeypatch.setattr(
+        state_refs_module,
+        "read_git_blobs_as_bytes",
+        counting_read_git_blobs_as_bytes,
+    )
+
+    metadata_by_name = read_batch_state_metadata_for_batches(["batch-a", "batch-b"])
+
+    assert metadata_by_name["batch-a"]["note"] == "A"
+    assert metadata_by_name["batch-b"]["note"] == "B"
+    assert len(calls) == 1
+    assert calls[0] == (
+        f"{get_batch_state_ref_name('batch-a')}:batch.json",
+        f"{get_batch_state_ref_name('batch-b')}:batch.json",
+    )
 
 
 def test_delete_batch_removes_experimental_refs(temp_git_repo):

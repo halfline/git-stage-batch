@@ -5,7 +5,10 @@ import subprocess
 import pytest
 
 from git_stage_batch.utils.git_command import run_git_command
-from git_stage_batch.utils.git_object_io import create_git_blobs_from_paths
+from git_stage_batch.utils.git_object_io import (
+    create_git_blobs_from_paths,
+    read_git_blobs_as_bytes,
+)
 
 
 @pytest.fixture
@@ -63,3 +66,19 @@ def test_create_git_blobs_from_paths_hashes_path_bytes(temp_git_repo):
             requires_index_lock=False,
         )
         assert result.stdout == file_path.read_bytes()
+
+
+def test_read_git_blobs_as_bytes_accepts_revision_paths(temp_git_repo):
+    """Batch object reads should support Git revision:path expressions."""
+    file_path = temp_git_repo / "unicodé.txt"
+    file_path.write_text("accented\n")
+    subprocess.run(["git", "add", file_path.name], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Add unicode path"],
+        check=True,
+        capture_output=True,
+    )
+
+    blobs = read_git_blobs_as_bytes([f"HEAD:{file_path.name}"])
+
+    assert blobs[f"HEAD:{file_path.name}"] == b"accented\n"

@@ -6,9 +6,10 @@ import os
 import stat
 import tempfile
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from ..core.buffer import LineBuffer
+from ..utils.session_start_point import load_session_start_point
 from ..utils.repository_buffers import (
     load_working_tree_file_as_buffer,
 )
@@ -29,9 +30,7 @@ from ..utils.git_index import (
 from ..utils.git_repository import get_git_repository_root_path
 from ..utils.git_object_io import create_git_blob
 from ..utils.journal import log_journal
-from ..utils.paths import (
-    get_abort_head_file_path,
-)
+from ..utils.paths import get_abort_head_file_path
 from .source_buffers import (
     load_saved_session_file_as_buffer as _load_saved_session_file_as_buffer,
     read_session_file_buffers as _read_session_file_buffers,
@@ -84,11 +83,36 @@ def create_batch_source_commits(file_paths: list[str]) -> dict[str, BatchSourceC
     if not unique_file_paths:
         return {}
 
-    baseline_commit = read_text_file_contents(get_abort_head_file_path()).strip()
+    start_point = load_session_start_point()
+    abort_head = read_text_file_contents(get_abort_head_file_path()).strip()
+    if abort_head != "UNBORN":
+        start_point = replace(
+            start_point,
+            head_commit=abort_head,
+            symbolic_head=None,
+        )
+    baseline_commit = start_point.head_commit or start_point.index_tree
     file_buffers, files_existing_at_session_start = _read_session_file_buffers(
         unique_file_paths,
         baseline_commit=baseline_commit,
     )
+
+    if start_point.is_unborn:
+        try:
+            return {
+                file_path: BatchSourceCommit(
+                    commit_sha=create_batch_source_commit(
+                        file_path,
+                        file_buffer_override=file_buffers[file_path],
+                    ),
+                    file_buffer=file_buffers[file_path],
+                )
+                for file_path in unique_file_paths
+            }
+        except Exception:
+            for buffer in file_buffers.values():
+                buffer.close()
+            raise
 
     return_file_buffers = False
     try:
@@ -234,12 +258,20 @@ def create_batch_source_commit(
     Raises:
         CommandError: If batch source commit cannot be created
     """
-    # Get baseline commit (HEAD at session start)
-    baseline_commit = read_text_file_contents(get_abort_head_file_path()).strip()
+    start_point = load_session_start_point()
+    abort_head = read_text_file_contents(get_abort_head_file_path()).strip()
+    if abort_head != "UNBORN":
+        start_point = replace(
+            start_point,
+            head_commit=abort_head,
+            symbolic_head=None,
+        )
+    baseline_commit = start_point.head_commit
+    baseline_treeish = baseline_commit or start_point.index_tree
 
     # Check if file existed at session start
     baseline_result = run_git_command(
-        ["cat-file", "-e", f"{baseline_commit}:{file_path}"],
+        ["cat-file", "-e", f"{baseline_treeish}:{file_path}"],
         check=False,
         requires_index_lock=False,
     )
@@ -295,13 +327,13 @@ def create_batch_source_commit(
         mode = "100644"
 
     with temp_git_index() as env:
-        git_read_tree(baseline_commit, env=env)
+        git_read_tree(baseline_treeish, env=env)
         git_update_index(mode=mode, blob_sha=blob_sha, file_path=file_path, env=env)
         new_tree = git_write_tree(env=env)
 
     batch_source_commit = git_commit_tree(
         new_tree,
-        parents=[baseline_commit],
+        parents=[baseline_commit] if baseline_commit else [],
         message=f"Batch source for {file_path}",
     )
 

@@ -342,7 +342,9 @@ class StreamingProcess:
         if self._stdin_selected_chunk is None:
             return None
 
-        view = self._stdin_selected_chunk[self._stdin_chunk_offset:]
+        view = self._stdin_selected_chunk[
+            self._stdin_chunk_offset:self._stdin_chunk_offset + _CHUNK_SIZE
+        ]
 
         try:
             written = os.write(self._stdin_fd, view)

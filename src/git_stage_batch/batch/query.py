@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from typing import Optional
 
 from .ref_names import BATCH_CONTENT_REF_PREFIX, LEGACY_BATCH_REF_PREFIX
 from .state_refs import (
     get_authoritative_batch_commit_sha,
     get_legacy_batch_ref_name,
+    read_batch_state_metadata_for_batches,
     read_batch_state_metadata,
 )
 from .validation import validate_batch_name
@@ -43,14 +45,43 @@ def read_batch_metadata(name: str) -> dict:
     if state_metadata is not None:
         return state_metadata
 
+    return _read_file_backed_batch_metadata_or_empty(name)
+
+
+def read_batch_metadata_for_batches(batch_names: Iterable[str]) -> dict[str, dict]:
+    """Read metadata for many batches with one state-ref lookup pass."""
+    unique_batch_names = list(dict.fromkeys(batch_names))
+    for batch_name in unique_batch_names:
+        validate_batch_name(batch_name)
+    if not unique_batch_names:
+        return {}
+
+    metadata_by_name = read_batch_state_metadata_for_batches(unique_batch_names)
+    missing_batch_names = [
+        batch_name
+        for batch_name in unique_batch_names
+        if batch_name not in metadata_by_name
+    ]
+    for batch_name in missing_batch_names:
+        metadata_by_name[batch_name] = _read_file_backed_batch_metadata_or_empty(
+            batch_name
+        )
+    return metadata_by_name
+
+
+def _empty_batch_metadata() -> dict:
+    return {
+        "note": "",
+        "created_at": "",
+        "baseline": None,
+        "files": {},
+    }
+
+
+def _read_file_backed_batch_metadata_or_empty(name: str) -> dict:
     metadata_path = get_batch_metadata_file_path(name)
     if not metadata_path.exists():
-        return {
-            "note": "",
-            "created_at": "",
-            "baseline": None,
-            "files": {}
-        }
+        return _empty_batch_metadata()
 
     try:
         metadata = json.loads(read_text_file_contents(metadata_path))
@@ -61,12 +92,7 @@ def read_batch_metadata(name: str) -> dict:
             "files": metadata.get("files", {})
         }
     except (json.JSONDecodeError, KeyError):
-        return {
-            "note": "",
-            "created_at": "",
-            "baseline": None,
-            "files": {}
-        }
+        return _empty_batch_metadata()
 
 
 def get_batch_commit_sha(name: str) -> Optional[str]:

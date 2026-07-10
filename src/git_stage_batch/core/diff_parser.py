@@ -158,50 +158,66 @@ class _UnifiedDiffParserBuildContext:
             new_file_line: bytes,
             hunk_header_line: bytes,
         ) -> Iterator[bytes]:
-            nonlocal lookahead
-
             yield old_file_line + b'\n'
             yield new_file_line + b'\n'
             yield hunk_header_line + b'\n'
 
-            # Collect hunk body (lines starting with space, +, or -)
+            header = _hunk_headers.parse_hunk_header_line(hunk_header_line)
+            old_consumed = 0
+            new_consumed = 0
+
             while True:
                 body_line = peek_line()
+                old_remaining, new_remaining = header.remaining_body_counts(
+                    old_consumed,
+                    new_consumed,
+                )
+
                 if body_line is None:
-                    # End of input
-                    break
+                    if old_remaining or new_remaining:
+                        raise CommandError(
+                            _("Diff ended before the hunk body was complete")
+                        )
+                    return
 
                 body_line_stripped = body_line.rstrip(b'\n')
 
-                if _diff_headers.line_is_diff_git_header(body_line_stripped):
-                    # Next file starting
-                    break
-                if _hunk_headers.line_is_hunk_header(body_line_stripped):
-                    # Next hunk for same file
-                    break
-                # Check for start of new file diff (---/+++)
-                if body_line_stripped.startswith(b"---"):
-                    # Peek ahead one more line to see if it's followed by +++
-                    next_line()  # consume ---
-                    peek_plus = peek_line()
-                    if peek_plus and peek_plus.rstrip(b'\n').startswith(b"+++"):
-                        # This is a new file diff, put --- back in lookahead
-                        lookahead = body_line
-                        break
-
-                    # False alarm, this --- is part of the hunk body
-                    # Add with \n terminator
-                    yield body_line_stripped + b'\n'
+                if body_line_stripped.startswith(b"\\"):
+                    if body_line_stripped != b"\\ No newline at end of file":
+                        raise CommandError(_("Invalid marker in diff hunk body"))
+                    next_line()
+                    yield body_line
                     continue
 
-                # Include lines that are part of the hunk
-                if body_line_stripped.startswith((b" ", b"+", b"-", b"\\")):
-                    next_line()  # consume
-                    # Add with \n terminator
-                    yield body_line_stripped + b'\n'
+                if not old_remaining and not new_remaining:
+                    if (
+                        _diff_headers.line_is_diff_git_header(body_line_stripped)
+                        or _hunk_headers.line_is_hunk_header(body_line_stripped)
+                    ):
+                        return
+                    if body_line_stripped.startswith((b" ", b"+", b"-")):
+                        raise CommandError(_("Diff hunk body exceeds declared counts"))
+                    raise CommandError(_("Invalid line prefix after diff hunk body"))
+
+                prefix = body_line_stripped[:1]
+                if prefix == b" ":
+                    if not old_remaining or not new_remaining:
+                        raise CommandError(_("Diff hunk body exceeds declared counts"))
+                    old_consumed += 1
+                    new_consumed += 1
+                elif prefix == b"-":
+                    if not old_remaining:
+                        raise CommandError(_("Diff hunk body exceeds declared old count"))
+                    old_consumed += 1
+                elif prefix == b"+":
+                    if not new_remaining:
+                        raise CommandError(_("Diff hunk body exceeds declared new count"))
+                    new_consumed += 1
                 else:
-                    # Unknown line, stop collecting this hunk
-                    break
+                    raise CommandError(_("Invalid line prefix in diff hunk body"))
+
+                next_line()
+                yield body_line
 
         try:
             while True:

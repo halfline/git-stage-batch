@@ -31,6 +31,13 @@ class TestHunkHeader:
         assert header1 == header2
         assert header1 != header3
 
+    def test_remaining_body_counts(self):
+        """Hunk headers report independent old- and new-side counts."""
+        header = HunkHeader(10, 5, 15, 7)
+
+        assert header.remaining_body_counts() == (5, 7)
+        assert header.remaining_body_counts(2, 4) == (3, 3)
+
     def test_old_prefix_line_count_for_non_empty_range(self):
         """Non-empty old ranges start at the first changed old line."""
         header = HunkHeader(old_start=10, old_len=3, new_start=12, new_len=5)

@@ -11,6 +11,7 @@ from git_stage_batch.core.diff_parser import (
 )
 from git_stage_batch.core.models import SingleHunkPatch
 from git_stage_batch.core.buffer import LineBuffer
+from git_stage_batch.exceptions import CommandError
 from tests.diff_parser_helpers import collect_unified_diff
 
 
@@ -140,6 +141,65 @@ diff --git a/file2.txt b/file2.txt
         assert len(patches) == 2
         assert patches[0].old_path == "file1.txt"
         assert patches[1].old_path == "file2.txt"
+
+    @pytest.mark.parametrize(
+        ("hunk_header", "body"),
+        [
+            (b"@@ -1 +1 @@\n", b"---old\n+++new\n"),
+            (b"@@ -1,2 +1,2 @@\n", b"---old\n+++new\n trailing\n"),
+            (b"@@ -1,2 +1,2 @@\n", b" leading\n---old\n+++new\n"),
+            (
+                b"@@ -1,3 +1,3 @@\n",
+                b" leading\n---old\n+++new\n trailing\n",
+            ),
+        ],
+    )
+    def test_header_like_changed_content_uses_declared_counts(
+        self,
+        hunk_header,
+        body,
+    ):
+        """Changed lines resembling file headers remain in the hunk body."""
+        diff = (
+            b"diff --git a/file.txt b/file.txt\n"
+            b"--- a/file.txt\n"
+            b"+++ b/file.txt\n"
+            + hunk_header
+            + body
+            + b"diff --git a/next.txt b/next.txt\n"
+            b"--- a/next.txt\n"
+            b"+++ b/next.txt\n"
+            b"@@ -1 +1 @@\n"
+            b"-before\n"
+            b"+after\n"
+        )
+
+        patches = collect_unified_diff(diff.splitlines(keepends=True))
+
+        assert len(patches) == 2
+        assert b"---old\n+++new\n" in b"".join(patches[0].lines)
+        assert patches[1].path() == "next.txt"
+
+    @pytest.mark.parametrize(
+        ("body", "message"),
+        [
+            (b"-old\n", "before the hunk body was complete"),
+            (b"-old\n+new\n+extra\n", "exceeds declared counts"),
+            (b"-old\ninvalid\n", "Invalid line prefix"),
+        ],
+    )
+    def test_malformed_hunk_body_is_rejected(self, body, message):
+        """Malformed bodies never produce a partial parsed patch."""
+        diff = (
+            b"diff --git a/file.txt b/file.txt\n"
+            b"--- a/file.txt\n"
+            b"+++ b/file.txt\n"
+            b"@@ -1 +1 @@\n"
+            + body
+        )
+
+        with pytest.raises(CommandError, match=message):
+            collect_unified_diff(diff.splitlines(keepends=True))
 
     def test_new_file(self):
         """Test parsing a diff for a newly created file."""

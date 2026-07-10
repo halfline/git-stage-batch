@@ -17,6 +17,7 @@ from ...core.models import (
 from ...data.hunk_tracking import fetch_next_change
 from ...data.progress import record_hunk_discarded
 from ...data.selected_change.loading import load_selected_change
+from ...data.selected_change.paths import worktree_paths_for_selected_change
 from ...data.session import snapshot_file_if_untracked, snapshot_files_if_untracked
 from ...data.undo_checkpoints import undo_checkpoint
 from ...exceptions import CommandError, NoMoreHunks, exit_with_error
@@ -67,7 +68,10 @@ def discard_selected_change(
                 print(_("No more hunks to process."), file=sys.stderr)
             return
 
-    with undo_checkpoint("discard"):
+    with undo_checkpoint(
+        "discard",
+        worktree_paths=worktree_paths_for_selected_change(item),
+    ):
         _discard_loaded_selected_change(
             item,
             quiet=quiet,

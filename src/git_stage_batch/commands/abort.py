@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import sys
+import json
 
 from ..data.batch_refs import restore_batch_refs
 from ..data.session import clear_session_state
@@ -13,6 +14,7 @@ from ..data.session_ownership import (
     require_current_session_owner,
     require_no_foreign_session_owner,
 )
+from ..data.recovery_anchors import validate_recovery_objects
 from ..data.start_time_changes import read_staged_renames
 from ..exceptions import exit_with_error
 from ..i18n import _
@@ -37,6 +39,7 @@ from ..utils.paths import (
     get_abort_stash_file_path,
     get_auto_added_files_file_path,
     get_abort_state_directory_path,
+    get_abort_recovery_anchors_file_path,
 )
 
 
@@ -76,6 +79,23 @@ def command_abort(*, quiet: bool = False) -> None:
     abort_head = read_text_file_contents(get_abort_head_file_path()).strip()
     abort_stash_path = get_abort_stash_file_path()
     abort_stash = read_text_file_contents(abort_stash_path).strip() if abort_stash_path.exists() else None
+    recovery_objects = [abort_head, abort_stash]
+    batch_snapshot_path = get_abort_state_directory_path() / "batch-refs.json"
+    try:
+        batch_snapshot = json.loads(read_text_file_contents(batch_snapshot_path))
+    except json.JSONDecodeError:
+        batch_snapshot = {}
+    for batch_state in batch_snapshot.values():
+        recovery_objects.extend(
+            [batch_state.get("commit_sha"), batch_state.get("state_commit_sha")]
+        )
+    try:
+        recovery_anchors = json.loads(
+            read_text_file_contents(get_abort_recovery_anchors_file_path())
+        )
+    except json.JSONDecodeError:
+        recovery_anchors = None
+    validate_recovery_objects(recovery_objects, anchors=recovery_anchors)
 
     # Reset auto-added files first
     if get_auto_added_files_file_path().exists():

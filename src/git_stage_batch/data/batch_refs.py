@@ -59,7 +59,7 @@ def _get_batch_state_ref_commit(batch_name: str) -> str | None:
     return result.stdout.strip()
 
 
-def snapshot_batch_refs() -> None:
+def snapshot_batch_refs() -> dict[str, dict[str, Any]]:
     """Save selected state of all batch refs to snapshot file for abort support.
 
     Stores a single JSON object mapping batch names to their state:
@@ -78,6 +78,7 @@ def snapshot_batch_refs() -> None:
         }
 
     write_text_file_contents(get_batch_refs_snapshot_file_path(), json.dumps(snapshot_data, indent=2))
+    return snapshot_data
 
 
 def restore_batch_refs() -> None:

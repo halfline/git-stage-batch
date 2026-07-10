@@ -70,6 +70,7 @@ nav:
     - AI Assistants: ai-assistants.md
   - Advanced Features:
     - Batch Operations: batches.md
+    - Storage and Recovery: storage.md
 
 plugins:
   - search

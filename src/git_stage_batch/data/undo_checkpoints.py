@@ -47,6 +47,22 @@ from ..utils.paths import (
 
 
 _PENDING_CHECKPOINT: str | None = None
+EXPLICIT_WORKTREE_SCOPE = "explicit"
+CHANGED_WORKTREE_SCOPE = "changed"
+
+
+def _checkpoint_worktree_scope(
+    worktree_paths: list[str] | None,
+) -> tuple[str, list[str]]:
+    """Return checkpoint scope metadata and paths to snapshot."""
+    if worktree_paths is None:
+        return CHANGED_WORKTREE_SCOPE, _undo_worktree.changed_worktree_paths()
+    return EXPLICIT_WORKTREE_SCOPE, sorted(set(worktree_paths))
+
+
+def _uses_explicit_worktree_scope(manifest: dict[str, Any]) -> bool:
+    """Return whether a checkpoint intentionally scoped worktree snapshots."""
+    return manifest.get("worktree_path_scope") == EXPLICIT_WORKTREE_SCOPE
 
 
 def _snapshot_current_state(paths: list[str]) -> dict[str, Any]:
@@ -112,8 +128,8 @@ def _create_undo_checkpoint(operation: str, *, worktree_paths: list[str] | None 
 
     global _PENDING_CHECKPOINT
 
-    tracked_worktree_paths = sorted(
-        set(_undo_worktree.changed_worktree_paths()) | set(worktree_paths or [])
+    worktree_path_scope, tracked_worktree_paths = _checkpoint_worktree_scope(
+        worktree_paths
     )
     before = _snapshot_current_state(tracked_worktree_paths)
 
@@ -127,6 +143,7 @@ def _create_undo_checkpoint(operation: str, *, worktree_paths: list[str] | None 
             for entry in before["worktree_paths"]
         ],
         "tracked_worktree_paths": tracked_worktree_paths,
+        "worktree_path_scope": worktree_path_scope,
     }
 
     with temp_git_index() as env:
@@ -192,10 +209,10 @@ def finalize_pending_checkpoint() -> None:
     except CommandError:
         return
 
-    paths = sorted(
-        set(manifest.get("tracked_worktree_paths", []))
-        | set(_undo_worktree.changed_worktree_paths())
-    )
+    paths = set(manifest.get("tracked_worktree_paths", []))
+    if not _uses_explicit_worktree_scope(manifest):
+        paths.update(_undo_worktree.changed_worktree_paths())
+    paths = sorted(paths)
     manifest["after"] = _snapshot_current_state(paths)
     manifest["after"]["worktree_paths"] = manifest["after"]["worktree_paths"]
 
@@ -260,7 +277,8 @@ def _redo_relevant_paths(manifest: dict[str, Any]) -> list[str]:
     if isinstance(after, dict):
         for entry in after.get("worktree_paths", []):
             paths.add(entry["path"])
-    paths.update(_undo_worktree.changed_worktree_paths())
+    if not _uses_explicit_worktree_scope(manifest):
+        paths.update(_undo_worktree.changed_worktree_paths())
     return sorted(paths)
 
 

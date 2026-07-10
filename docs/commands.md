@@ -326,6 +326,19 @@ Format fields include `{status}`, `{status_label}`, `{progress_status}`,
 
 ## Session Management
 
+Only one linked worktree in a repository may own an active staging session at
+a time. Session scratch data remains local to its worktree, while batch and
+undo refs are shared by the repository. Mutating commands in another linked
+worktree therefore stop with an error until the owning worktree runs `stop` or
+`abort`. Read-only commands such as `status`, `show`, and `list` remain
+available.
+
+Ownership is released automatically by a successful `stop` or `abort`. If a
+worktree's session marker has already been removed, the next mutating command
+can reclaim the stale ownership record safely. An invalid ownership record is
+not removed automatically; its error identifies the file to inspect after
+confirming that no linked worktree still has an active session.
+
 ### `again`
 
 Clear the blocklist and restart iteration through all hunks.

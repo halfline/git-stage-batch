@@ -17,6 +17,7 @@ from ...data.hunk_tracking import fetch_next_change
 from ...data.index_entries import read_index_entry
 from ...data.progress import record_hunk_included
 from ...data.selected_change.loading import load_selected_change
+from ...data.selected_change.paths import worktree_paths_for_selected_change
 from ...data.undo_checkpoints import undo_checkpoint
 from ...exceptions import NoMoreHunks, exit_with_error
 from ...i18n import _
@@ -52,7 +53,10 @@ def include_selected_change(
                 print(_("No more hunks to process."), file=sys.stderr)
             return 0
 
-    with undo_checkpoint("include"):
+    with undo_checkpoint(
+        "include",
+        worktree_paths=worktree_paths_for_selected_change(item),
+    ):
         return _include_loaded_selected_change(
             item,
             quiet=quiet,

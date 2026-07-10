@@ -15,6 +15,14 @@ class HunkHeader:
     new_start: int
     new_len: int
 
+    def remaining_body_counts(
+        self,
+        old_consumed: int = 0,
+        new_consumed: int = 0,
+    ) -> tuple[int, int]:
+        """Return unconsumed old- and new-side lines in this hunk."""
+        return self.old_len - old_consumed, self.new_len - new_consumed
+
     def old_prefix_line_count(self) -> int:
         """Return the number of old-file lines before this hunk applies.
 

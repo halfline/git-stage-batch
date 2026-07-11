@@ -2266,6 +2266,7 @@ def test_repository_buffer_helpers_stay_in_utils_layer():
         "load_git_object_as_buffer_or_empty",
         "load_git_tree_files_as_buffers",
         "load_working_tree_file_as_buffer",
+        "stream_git_blob_buffers",
     }
     violations = []
 

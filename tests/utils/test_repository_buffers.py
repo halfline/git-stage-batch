@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import subprocess
 
+import pytest
+
 from git_stage_batch.core.buffer import LineBuffer
 import git_stage_batch.utils.repository_buffers as repository_buffers
 from git_stage_batch.utils.repository_buffers import (
@@ -12,8 +14,9 @@ from git_stage_batch.utils.repository_buffers import (
     load_git_object_as_buffer_or_empty,
     load_git_tree_files_as_buffers,
     load_working_tree_file_as_buffer,
+    stream_git_blob_buffers,
 )
-from git_stage_batch.utils.git_object_io import GitTreeBlob
+from git_stage_batch.utils.git_object_io import GitBlobStream, GitTreeBlob
 
 
 def test_load_git_blob_as_buffer_loads_streamed_blob(monkeypatch):
@@ -30,6 +33,40 @@ def test_load_git_blob_as_buffer_loads_streamed_blob(monkeypatch):
         assert calls == ["abc123"]
         assert buffer.uses_mapped_storage is False
         assert buffer[1] == b"beta\n"
+
+
+def test_stream_git_blob_buffers_spools_and_closes_each_source(monkeypatch):
+    """Batch-loaded source buffers should be mmap-backed and file-local."""
+    payload = b"line\n" * 2_000
+
+    def fake_stream_git_blobs(blob_names):
+        for blob_name in blob_names:
+            yield GitBlobStream(
+                requested_name=blob_name,
+                object_id=f"oid-{blob_name}",
+                size=len(payload),
+                content_chunks=iter((payload[:4_000], payload[4_000:])),
+            )
+
+    monkeypatch.setattr(
+        repository_buffers,
+        "stream_git_blobs",
+        fake_stream_git_blobs,
+    )
+
+    buffers = stream_git_blob_buffers(["first", "second"])
+    first = next(buffers)
+    assert first.buffer.uses_mapped_storage is True
+    assert first.buffer[0] == b"line\n"
+
+    second = next(buffers)
+    with pytest.raises(ValueError, match="closed"):
+        len(first.buffer)
+    assert second.buffer.uses_mapped_storage is True
+
+    buffers.close()
+    with pytest.raises(ValueError, match="closed"):
+        len(second.buffer)
 
 
 def test_load_git_tree_files_as_buffers_loads_tree_blobs(monkeypatch):

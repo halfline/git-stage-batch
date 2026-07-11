@@ -298,6 +298,46 @@ footer 2
     assert b"footer 2" in result
 
 
+def test_claimed_run_rejects_large_unmapped_leading_context():
+    """Repeated claimed braces must not anchor inside an unrelated method."""
+    batch_source = b"""class Example {
+    @Test
+    fun firstBatchMethod() {
+        val view = createView().apply {
+            configure()
+        }
+        assertFirstState()
+    }
+
+    @Test
+    fun secondBatchMethod() {
+        val view = createView().apply {
+            configure()
+        }
+        assertSecondState()
+    }
+
+    private fun helper() = Unit
+}
+"""
+    working = b"""class Example {
+    @Test
+    fun existingMethod() {
+        val view = createView().apply {
+            configure()
+        }
+        assertExistingState()
+    }
+
+    private fun helper() = Unit
+}
+"""
+    ownership = BatchOwnership.from_presence_lines(["1", "9-19"], [])
+
+    with pytest.raises(MergeError, match="different version"):
+        merge_batch(batch_source, ownership, working)
+
+
 def test_append_only_interleaved_batch_first_application_succeeds():
     """One-sided anchoring is safe when applying into an empty target tail."""
     batch_source = b"""Header

@@ -374,7 +374,7 @@ class TestCommandIncludeFromBatch:
         subprocess.run(["git", "commit", "-m", "Partial"], check=True, cwd=temp_git_repo, capture_output=True)
         clear_last_file_review_state()
 
-        with pytest.raises(CommandError, match="Line selection #8-14"):
+        with pytest.raises(CommandError, match="Line selection #8-16"):
             command_include_from_batch("test-batch", line_ids="7-16", file="Test.kt")
 
         assert run_git_command(["diff", "--cached", "--", "Test.kt"]).stdout == ""

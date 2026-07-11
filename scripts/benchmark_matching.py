@@ -968,6 +968,167 @@ def run_suite(
     }
 
 
+def compare_reports(
+    before: dict[str, Any],
+    after: dict[str, Any],
+    *,
+    threshold_percent: float = 20.0,
+) -> dict[str, Any]:
+    """Compare median phase time and memory from two compatible reports."""
+    if before.get("schema_version") != SCHEMA_VERSION:
+        raise ValueError("baseline has an unsupported schema version")
+    if after.get("schema_version") != SCHEMA_VERSION:
+        raise ValueError("candidate has an unsupported schema version")
+    if not math.isfinite(threshold_percent) or threshold_percent < 0:
+        raise ValueError("regression threshold must be finite and non-negative")
+
+    for field in ("suite", "mode"):
+        before_value = before.get(field)
+        after_value = after.get(field)
+        if before_value is None or after_value is None:
+            raise ValueError(f"reports are missing required {field!r} metadata")
+        if before_value != after_value:
+            raise ValueError(
+                f"reports use different {field} values: "
+                f"{before_value!r} != {after_value!r}"
+            )
+
+    before_metadata = before.get("metadata")
+    after_metadata = after.get("metadata")
+    if not isinstance(before_metadata, dict) or not isinstance(after_metadata, dict):
+        raise ValueError("reports are missing benchmark metadata")
+    for field in (
+        "seed",
+        "warmups",
+        "repeats",
+        "memory_repeats",
+        "clock",
+        "timing_metric",
+        "memory_metric",
+    ):
+        if field not in before_metadata or field not in after_metadata:
+            raise ValueError(f"reports are missing required {field!r} metadata")
+        if before_metadata[field] != after_metadata[field]:
+            raise ValueError(
+                f"reports use different {field} values: "
+                f"{before_metadata[field]!r} != {after_metadata[field]!r}"
+            )
+
+    before_cases = {case["name"]: case for case in before.get("cases", [])}
+    after_cases = {case["name"]: case for case in after.get("cases", [])}
+    common_case_names = before_cases.keys() & after_cases.keys()
+    if not common_case_names:
+        raise ValueError("reports do not contain any matching benchmark cases")
+
+    environment_warnings = []
+    for field in (
+        "python_version",
+        "python_implementation",
+        "git_version",
+        "platform",
+        "working_tree_dirty",
+    ):
+        if field not in before_metadata or field not in after_metadata:
+            raise ValueError(f"reports are missing required {field!r} metadata")
+        before_value = before_metadata.get(field)
+        after_value = after_metadata.get(field)
+        if before_value != after_value or (
+            field == "working_tree_dirty" and (before_value or after_value)
+        ):
+            environment_warnings.append(
+                {
+                    "field": field,
+                    "before": before_value,
+                    "after": after_value,
+                }
+            )
+
+    comparisons = []
+    unmatched_phases = []
+    for case_name in sorted(common_case_names):
+        before_dimensions = before_cases[case_name].get("dimensions")
+        after_dimensions = after_cases[case_name].get("dimensions")
+        if before_dimensions != after_dimensions:
+            raise ValueError(
+                f"case {case_name!r} uses different input dimensions"
+            )
+        before_phases = before_cases[case_name].get("phases", {})
+        after_phases = after_cases[case_name].get("phases", {})
+        before_only = sorted(before_phases.keys() - after_phases.keys())
+        after_only = sorted(after_phases.keys() - before_phases.keys())
+        if before_only or after_only:
+            unmatched_phases.append(
+                {
+                    "case": case_name,
+                    "baseline_only": before_only,
+                    "candidate_only": after_only,
+                }
+            )
+        for phase_name in sorted(before_phases.keys() & after_phases.keys()):
+            for metric in ("seconds", "tracemalloc_peak_bytes"):
+                if (
+                    metric not in before_phases[phase_name]
+                    or metric not in after_phases[phase_name]
+                ):
+                    raise ValueError(
+                        f"phase {case_name}/{phase_name} is missing {metric}"
+                    )
+                before_median = before_phases[phase_name][metric]["median"]
+                after_median = after_phases[phase_name][metric]["median"]
+                for label, value in (
+                    ("baseline", before_median),
+                    ("candidate", after_median),
+                ):
+                    if (
+                        isinstance(value, bool)
+                        or not isinstance(value, (int, float))
+                        or not math.isfinite(value)
+                        or value < 0
+                    ):
+                        raise ValueError(
+                            f"{label} {case_name}/{phase_name} {metric} "
+                            "median must be finite and non-negative"
+                        )
+                change_percent = (
+                    None
+                    if before_median == 0
+                    else (after_median - before_median) / before_median * 100
+                )
+                regression = (
+                    after_median > 0
+                    if change_percent is None
+                    else change_percent > threshold_percent
+                )
+                comparisons.append(
+                    {
+                        "case": case_name,
+                        "phase": phase_name,
+                        "metric": metric,
+                        "before_median": before_median,
+                        "after_median": after_median,
+                        "change_percent": change_percent,
+                        "regression": regression,
+                    }
+                )
+
+    if not comparisons:
+        raise ValueError("reports do not contain any matching phase measurements")
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "comparison": "median phase time and memory",
+        "regression_threshold_percent": threshold_percent,
+        "regressions": sum(item["regression"] for item in comparisons),
+        "environment_warnings": environment_warnings,
+        "unmatched_cases": {
+            "baseline_only": sorted(before_cases.keys() - after_cases.keys()),
+            "candidate_only": sorted(after_cases.keys() - before_cases.keys()),
+        },
+        "unmatched_phases": unmatched_phases,
+        "measurements": comparisons,
+    }
+
+
 def _write_report(report: dict[str, Any], output: Path | None) -> None:
     rendered = json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n"
     if output is not None:
@@ -990,12 +1151,49 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--warmups", type=int)
     parser.add_argument("--repeats", type=int)
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--compare",
+        nargs=2,
+        type=Path,
+        metavar=("BASELINE", "CANDIDATE"),
+        help="compare two existing JSON reports instead of running cases",
+    )
+    parser.add_argument("--regression-threshold-percent", type=float, default=20.0)
+    parser.add_argument("--fail-on-regression", action="store_true")
     return parser
 
 
 def main() -> None:
     parser = _parser()
     args = parser.parse_args()
+    if args.compare:
+        try:
+            before = json.loads(args.compare[0].read_text(encoding="utf-8"))
+            after = json.loads(args.compare[1].read_text(encoding="utf-8"))
+            report = compare_reports(
+                before,
+                after,
+                threshold_percent=args.regression_threshold_percent,
+            )
+        except (
+            AttributeError,
+            IndexError,
+            KeyError,
+            OSError,
+            TypeError,
+            ValueError,
+        ) as error:
+            parser.error(str(error))
+        try:
+            _write_report(report, args.output)
+        except OSError as error:
+            parser.error(str(error))
+        if args.fail_on_regression and report["regressions"]:
+            raise SystemExit(1)
+        return
+
+    if args.fail_on_regression:
+        parser.error("--fail-on-regression requires --compare")
 
     warmups = (
         args.warmups

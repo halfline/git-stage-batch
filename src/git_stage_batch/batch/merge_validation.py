@@ -352,6 +352,13 @@ def _is_claimed_run_structurally_coherent(
         if facts.before_target_line >= facts.after_target_line:
             return False
 
+        # A large source-only region before the claimed run means the preceding
+        # mapped line may belong to unrelated target content with common text.
+        # Automatic placement cannot distinguish that false anchor from an
+        # intentionally shared prefix.
+        if significant_leading_gap:
+            return False
+
         if significant_trailing_gap:
             if (
                 facts.target_interval_span is None

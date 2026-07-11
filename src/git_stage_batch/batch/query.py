@@ -13,7 +13,9 @@ from .state_refs import (
     read_batch_state_metadata_for_batches,
     read_batch_state_metadata,
 )
-from .validation import validate_batch_name
+from .validation import invalid_file_backed_batch_names, validate_batch_name
+from ..exceptions import CommandError
+from ..i18n import _
 from ..utils.file_io import read_text_file_contents
 from ..utils.git_command import run_git_command
 from ..git_paths import decode_path, nul_records
@@ -117,6 +119,17 @@ def get_batch_commit_sha(name: str) -> Optional[str]:
 
 def list_batch_names() -> list[str]:
     """List all batch names by querying authoritative refs and legacy imports."""
+    invalid_legacy_names = invalid_file_backed_batch_names()
+    if invalid_legacy_names:
+        formatted_names = ", ".join(repr(name) for name in invalid_legacy_names)
+        raise CommandError(
+            _(
+                "Legacy batch metadata has invalid batch name(s): {names}. "
+                "Move these entries out of the batch metadata directory or rename "
+                "them and any corresponding refs/batches refs to valid, unused names."
+            ).format(names=formatted_names)
+        )
+
     batch_names: set[str] = set()
     for prefix in (BATCH_CONTENT_REF_PREFIX, LEGACY_BATCH_REF_PREFIX):
         result = run_git_command(["for-each-ref", "--format=%(refname)", prefix], check=False, requires_index_lock=False)

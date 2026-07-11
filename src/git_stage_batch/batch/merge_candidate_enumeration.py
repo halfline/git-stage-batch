@@ -168,6 +168,7 @@ def _presence_candidate_set(
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
     presence_line_set: LineSelection,
+    deletion_claims: list["AbsenceClaim"],
     *,
     resolution_is_valid: _MergeResolutionValidator,
     max_candidates: int,
@@ -181,6 +182,11 @@ def _presence_candidate_set(
                 presence_line_set,
                 presence_mapping,
                 max_results=max_candidates + 1,
+                trusted_source_lines={
+                    deletion.anchor_line
+                    for deletion in deletion_claims
+                    if deletion.anchor_line is not None
+                },
             )
         )
     finally:
@@ -388,6 +394,7 @@ def enumerate_merge_batch_candidates_for_lines(
         source_lines,
         working_lines,
         presence_line_set,
+        deletion_claims,
         resolution_is_valid=resolution_is_valid,
         max_candidates=max_candidates,
     )

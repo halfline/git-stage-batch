@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 import hashlib
 
@@ -10,6 +10,9 @@ from ..core.line_selection import LineSelection
 from .line_mapping import LineMapping
 from .line_sequence_equality import line_slice_equals as _line_slice_matches
 from .line_sequence_search import iter_exact_context_gaps
+from .presence_context import (
+    contextual_presence_ambiguities as _contextual_presence_ambiguities,
+)
 from .presence_missing_claims import (
     mapped_missing_source_lines as _mapped_missing_source_lines,
 )
@@ -32,6 +35,7 @@ def presence_choices_for_missing_claimed_run(
     mapping: LineMapping,
     *,
     max_results: int,
+    trusted_source_lines: Collection[int] = (),
 ) -> tuple[str | None, tuple["PresenceChoice", ...]]:
     missing_claimed = _mapped_missing_source_lines(
         presence_line_set,
@@ -43,6 +47,39 @@ def presence_choices_for_missing_claimed_run(
         return None, ()
 
     run_start, run_end = ranges[0]
+    adjacent_key, adjacent_choices = _adjacent_context_choices(
+        source_lines,
+        working_lines,
+        mapping,
+        run_start=run_start,
+        run_end=run_end,
+        max_results=max_results,
+    )
+    if adjacent_key is not None:
+        return adjacent_key, adjacent_choices
+
+    return _contextual_choices(
+        source_lines,
+        working_lines,
+        presence_line_set,
+        mapping,
+        run_start=run_start,
+        run_end=run_end,
+        max_results=max_results,
+        trusted_source_lines=trusted_source_lines,
+    )
+
+
+def _adjacent_context_choices(
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    mapping: LineMapping,
+    *,
+    run_start: int,
+    run_end: int,
+    max_results: int,
+) -> tuple[str | None, tuple[PresenceChoice, ...]]:
+    """Return choices bracketed by immediately adjacent source lines."""
     before_source_line = run_start - 1
     after_source_line = run_end + 1
     if before_source_line < 1 or after_source_line > len(source_lines):
@@ -88,6 +125,62 @@ def presence_choices_for_missing_claimed_run(
     return key, tuple(choices)
 
 
+def _contextual_choices(
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    presence_line_set: LineSelection,
+    mapping: LineMapping,
+    *,
+    run_start: int,
+    run_end: int,
+    max_results: int,
+    trusted_source_lines: Collection[int],
+) -> tuple[str | None, tuple[PresenceChoice, ...]]:
+    """Return reviewed gaps bounded by distinctive contextual anchors."""
+    ambiguities = _contextual_presence_ambiguities(
+        source_lines,
+        working_lines,
+        presence_line_set,
+        mapping,
+        trusted_source_lines=trusted_source_lines,
+    )
+    if len(ambiguities) != 1:
+        return None, ()
+
+    ambiguity = ambiguities[0]
+    if ambiguity.run_start != run_start or ambiguity.run_end != run_end:
+        return None, ()
+
+    claimed_run = source_lines[run_start - 1:run_end]
+    before_source_line = ambiguity.before_source_line or 0
+    after_source_line = ambiguity.after_source_line or len(source_lines) + 1
+    key = presence_ambiguity_key(
+        run_start,
+        run_end,
+        claimed_run,
+        before_source_line,
+        after_source_line,
+    )
+    choices: list[PresenceChoice] = []
+    for gap_index in range(ambiguity.start_gap, ambiguity.end_gap + 1):
+        if _line_slice_matches(working_lines, gap_index, claimed_run):
+            continue
+        choices.append(PresenceChoice(
+            choice_index=len(choices) + 1,
+            gap_index=gap_index,
+            run_start=run_start,
+            run_end=run_end,
+            target_after_line=gap_index if gap_index > 0 else None,
+            target_before_line=(
+                gap_index + 1 if gap_index < len(working_lines) else None
+            ),
+        ))
+        if len(choices) >= max_results:
+            break
+
+    return key, tuple(choices)
+
+
 def presence_ambiguity_key(
     run_start: int,
     run_end: int,
@@ -97,7 +190,7 @@ def presence_ambiguity_key(
 ) -> str:
     hasher = hashlib.sha256()
     for line in claimed_run:
-        hasher.update(line)
+        hasher.update(bytes(line))
     digest = hasher.hexdigest()[:12]
     return (
         f"presence:{run_start}-{run_end}:claimed:{digest}:"

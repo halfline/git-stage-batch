@@ -130,6 +130,7 @@ def _apply_presence_constraints_with_mapping(
                 presence_line_set,
                 mapping,
                 max_results=_PRESENCE_CANDIDATE_CAP + 1,
+                trusted_source_lines=trusted_source_lines,
             )
         )
         if presence_key is not None and presence_key in resolution.decisions:

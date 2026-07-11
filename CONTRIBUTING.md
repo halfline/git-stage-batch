@@ -33,6 +33,20 @@ Use the xdist form (`-n auto`) for full-suite runs. The suite is large enough
 that serial `uv run pytest` is mainly useful for focused debugging or when
 reproducing ordering-sensitive failures.
 
+## Find the Code for a Change
+
+Read [the codebase guide](ARCHITECTURE.md) before changing source. It follows
+real commands from argument parsing through command behavior, persisted state,
+Git updates, and output. It also lists the files that normally change when a
+command or option is added or removed.
+
+Do not begin with `src/git_stage_batch/batch/` for ordinary command or session
+work. That package is documented separately because its saved-change storage
+and merge rules are much larger than the introductory path. Read
+[the batch internals guide](BATCHES.md) when changing a command that uses
+`--to` or `--from`, saved ownership, batch display, batch merge, source refresh,
+or the temporary batch merge used by `include --line`.
+
 ## Commit Message Guidelines
 
 We follow strict commit message conventions to maintain a clear and understandable project history.

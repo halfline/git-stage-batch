@@ -91,8 +91,13 @@ def command_sift_batch(source_batch: str, dest_batch: str) -> None:
 
         for file_path, file_meta in source_files.items():
             is_binary = file_meta.get("file_type") == "binary"
+            is_mode = file_meta.get("file_type") == "mode"
 
-            if is_binary:
+            if is_mode:
+                result = _sift_results.compute_sifted_mode_file(
+                    file_path, file_meta, repo_root
+                )
+            elif is_binary:
                 result = _sift_results.compute_sifted_binary_file(
                     file_path,
                     file_meta,

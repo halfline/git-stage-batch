@@ -57,14 +57,16 @@ def changed_worktree_paths() -> list[str]:
 
 def _gitlink_oid_from_index(path: str) -> str | None:
     result = run_git_command(
-        ["ls-files", "--stage", "--", path],
+        ["ls-files", "--stage", "-z", "--", path],
         check=False,
+        text_output=False,
         requires_index_lock=False,
     )
     if result.returncode != 0:
         return None
-    for line in result.stdout.splitlines():
-        parts = line.split()
+    for record in nul_records(result.stdout):
+        metadata, _separator, _entry_path = record.partition(b"\t")
+        parts = metadata.decode("ascii", errors="replace").split()
         if len(parts) >= 2 and parts[0] == "160000":
             return parts[1]
     return None
@@ -72,15 +74,16 @@ def _gitlink_oid_from_index(path: str) -> str | None:
 
 def _gitlink_oid_from_head(path: str) -> str | None:
     result = run_git_command(
-        ["ls-tree", "HEAD", "--", path],
+        ["ls-tree", "-z", "HEAD", "--", path],
         check=False,
+        text_output=False,
         requires_index_lock=False,
     )
     if result.returncode != 0:
         return None
-    for line in result.stdout.splitlines():
-        metadata, _separator, _entry_path = line.partition("\t")
-        parts = metadata.split()
+    for record in nul_records(result.stdout):
+        metadata, _separator, _entry_path = record.partition(b"\t")
+        parts = metadata.decode("ascii", errors="replace").split()
         if len(parts) >= 3 and parts[0] == "160000" and parts[1] == "commit":
             return parts[2]
     return None

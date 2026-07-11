@@ -17,6 +17,7 @@ from ..utils.file_io import read_text_file_contents
 from ..utils.git_command import (
     run_git_command,
 )
+from ..git_paths import encode_path
 from ..utils.git_refs import (
     update_git_refs,
 )
@@ -54,7 +55,7 @@ def _buffer_preview(buffer: LineBuffer) -> bytes:
 
 def _fast_import_quote_path(file_path: str) -> str:
     """Quote a repository path for fast-import commands."""
-    raw_path = file_path.encode("utf-8")
+    raw_path = encode_path(file_path)
     if raw_path and all(byte not in b' \t\r\n"\\' and 32 <= byte < 127 for byte in raw_path):
         return file_path
 
@@ -165,7 +166,7 @@ def create_batch_source_commits(file_paths: list[str]) -> dict[str, BatchSourceC
             for index, file_path in enumerate(unique_file_paths):
                 commit_mark = commit_mark_start + index
                 blob_mark = blob_mark_start + index
-                message = f"Batch source for {file_path}".encode("utf-8")
+                message = b"Batch source for " + encode_path(file_path)
                 quoted_path = _fast_import_quote_path(file_path)
                 yield (
                     f"commit {temp_refs[index]}\n"

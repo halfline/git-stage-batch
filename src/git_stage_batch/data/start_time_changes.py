@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 from ..utils.file_io import read_text_file_contents, write_text_file_contents
 from ..utils.git_command import run_git_command
+from ..git_paths import decode_path
 from ..utils.git_index import (
     GitIndexEntryUpdate,
     git_reset_paths,
@@ -78,7 +79,15 @@ def _parse_name_status_z(data: bytes) -> list[StagedChangeRecord]:
 def list_staged_change_records() -> list[StagedChangeRecord]:
     """Return staged change records using Git's normal rename detection."""
     result = run_git_command(
-        ["diff", "--cached", "--name-status", "-M", "-z"],
+        [
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--cached",
+            "--name-status",
+            "-M",
+            "-z",
+        ],
         check=False,
         text_output=False,
         requires_index_lock=False,
@@ -127,7 +136,7 @@ def _head_entry_for_path(file_path: str) -> tuple[str, str] | None:
             metadata, path_bytes = record.split(b"\t", 1)
         except ValueError:
             continue
-        if path_bytes.decode("utf-8", errors="surrogateescape") != file_path:
+        if decode_path(path_bytes) != file_path:
             continue
         parts = metadata.split()
         if len(parts) < 3 or parts[1] != b"blob":
@@ -141,7 +150,16 @@ def _head_entry_for_path(file_path: str) -> tuple[str, str] | None:
 
 def _staged_deletion_is_text(file_path: str) -> bool:
     result = run_git_command(
-        ["diff", "--cached", "--numstat", "-z", "--", file_path],
+        [
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--cached",
+            "--numstat",
+            "-z",
+            "--",
+            file_path,
+        ],
         check=False,
         text_output=False,
         requires_index_lock=False,

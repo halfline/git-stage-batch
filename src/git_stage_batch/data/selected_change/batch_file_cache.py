@@ -10,6 +10,7 @@ from ...core.hashing import compute_stable_hunk_hash_from_lines
 from ...core.models import RenderedBatchDisplay
 from ...exceptions import CommandError
 from ...utils.file_io import write_text_file_contents
+from ...git_paths import encode_path, quote_path_token
 from ...utils.paths import (
     get_index_snapshot_file_path,
     get_line_changes_json_file_path,
@@ -23,6 +24,12 @@ from .store import (
     write_selected_change_kind,
     write_selected_hunk_patch_lines,
 )
+
+
+def _patch_path_token(path: str) -> bytes:
+    if path == "/dev/null":
+        return b"/dev/null"
+    return quote_path_token(encode_path(path))
 
 
 def cache_batch_as_single_hunk(
@@ -75,8 +82,8 @@ def cache_rendered_batch_file_display(
     )
 
     patch_lines = [
-        f"--- {old_path}\n".encode("utf-8"),
-        f"+++ {new_path}\n".encode("utf-8"),
+        b"--- " + _patch_path_token(old_path) + b"\n",
+        b"+++ " + _patch_path_token(new_path) + b"\n",
         (
             f"@@ -{header.old_start},{header.old_len} "
             f"+{header.new_start},{header.new_len} @@\n"

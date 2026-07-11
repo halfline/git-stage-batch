@@ -176,9 +176,8 @@ def _initialize_abort_state() -> None:
             requires_index_lock=False,
         )
         indexed_paths = [
-            path.decode("utf-8", errors="surrogateescape")
-            for path in indexed_paths_result.stdout.split(b"\0")
-            if path
+            decode_path(path)
+            for path in nul_records(indexed_paths_result.stdout)
         ]
         _snapshot_worktree_paths_for_unborn_abort(indexed_paths)
 
@@ -391,7 +390,7 @@ def snapshot_files_if_untracked(file_paths: list[str]) -> None:
     )
 
     tracked_real_content: set[str] = set()
-    for record in stage_result.stdout.split(b"\0"):
+    for record in nul_records(stage_result.stdout):
         if not record:
             continue
         try:
@@ -401,7 +400,7 @@ def snapshot_files_if_untracked(file_paths: list[str]) -> None:
         parts = metadata.split()
         if len(parts) < 2:
             continue
-        file_path = path_bytes.decode("utf-8")
+        file_path = decode_path(path_bytes)
         if file_path not in intent_to_add_paths:
             tracked_real_content.add(file_path)
 

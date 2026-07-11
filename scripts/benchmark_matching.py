@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
-"""Benchmark public structural matching workflows."""
+"""Benchmark public matching and ownership-attribution workflows."""
 
 from __future__ import annotations
 
 import argparse
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass
 import gc
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import platform
 import random
 import statistics
 import subprocess
 import sys
+import tempfile
 import time
 import tracemalloc
 from typing import Any, TypeVar
@@ -25,6 +28,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from git_stage_batch import __version__
+from git_stage_batch.batch.attribution import (
+    AttributionMetrics,
+    FileAttribution,
+    build_file_attribution,
+)
 from git_stage_batch.batch.attribution_units import (
     AttributionUnit,
     FileComparison,
@@ -33,7 +41,14 @@ from git_stage_batch.batch.attribution_units import (
 )
 from git_stage_batch.batch.line_mapping import LineMapping
 from git_stage_batch.batch.match import match_lines
+from git_stage_batch.batch.state_refs import get_batch_state_ref_name
 from git_stage_batch.core.buffer import LineBuffer
+from git_stage_batch.utils.git_object_io import resolve_git_objects
+from git_stage_batch.utils.repository_buffers import (
+    load_git_object_as_buffer_or_empty,
+    load_working_tree_file_as_buffer,
+    stream_git_blob_buffers,
+)
 
 
 SCHEMA_VERSION = 1
@@ -65,6 +80,20 @@ class CaseDefinition:
     full_size: int | None
 
 
+@dataclass(frozen=True)
+class AttributionFixture:
+    """Prepared repository and metadata for the attribution benchmark."""
+
+    file_path: str
+    metadata: dict[str, dict[str, Any]]
+    object_names: tuple[str, ...]
+    source_object_ids: tuple[str, ...]
+    baseline_line_count: int
+    working_line_count: int
+    baseline_sha256: str
+    working_sha256: str
+    batch_count: int
+
 
 @dataclass
 class _BufferLoadingState:
@@ -93,6 +122,13 @@ class _UnitEnumerationState:
     comparison: FileComparison
     units: dict[str, AttributionUnit] | None = None
 
+
+@dataclass
+class _ClaimAttributionState:
+    """Prepared claim fixture and result retained until measurement ends."""
+
+    fixture: AttributionFixture
+    attribution: FileAttribution | None = None
 
 
 CASES = (
@@ -137,6 +173,13 @@ CASES = (
         "binary",
         32,
         1_024,
+    ),
+    CaseDefinition(
+        "many-batches",
+        "Many ownership claims sharing one source blob and line mapping.",
+        "attribution",
+        50,
+        1_000,
     ),
     CaseDefinition(
         "large-file",
@@ -506,6 +549,305 @@ def run_matching_case(
     }
 
 
+def _git(repo: Path, *arguments: str, input_text: str | None = None) -> str:
+    return subprocess.run(
+        ["git", *arguments],
+        cwd=repo,
+        input=input_text,
+        text=True,
+        check=True,
+        capture_output=True,
+    ).stdout.strip()
+
+
+def _build_attribution_fixture(repo: Path, batch_count: int) -> AttributionFixture:
+    if batch_count <= 0:
+        raise ValueError("batch count must be positive")
+    file_path = "benchmark.txt"
+    line_count = 300
+    baseline = _unique_lines("baseline", line_count)
+    working = list(baseline)
+    claim_line = max(1, line_count // 2)
+    working[claim_line - 1] = b"owned replacement\n"
+    working.append(b"owned addition\n")
+    baseline_payload = b"".join(baseline)
+    working_payload = b"".join(working)
+
+    _git(repo, "init", "--quiet")
+    _git(repo, "config", "user.name", "Benchmark")
+    _git(repo, "config", "user.email", "benchmark@example.invalid")
+    path = repo / file_path
+    path.write_bytes(baseline_payload)
+    _git(repo, "add", "--", file_path)
+    _git(repo, "commit", "--quiet", "-m", "benchmark baseline")
+
+    path.write_bytes(working_payload)
+    _git(repo, "add", "--", file_path)
+    source_tree = _git(repo, "write-tree")
+    source_commit = _git(
+        repo,
+        "commit-tree",
+        source_tree,
+        "-p",
+        "HEAD",
+        "-m",
+        "benchmark source",
+    )
+    _git(repo, "reset", "--mixed", "HEAD")
+
+    batch_names = tuple(f"benchmark-{index:04d}" for index in range(batch_count))
+    metadata = {
+        name: {
+            "files": {
+                file_path: {
+                    "batch_source_commit": source_commit,
+                    "source_path": f"sources/{file_path}",
+                    "presence_claims": [
+                        {"source_lines": [str(claim_line), str(line_count + 1)]}
+                    ],
+                    "deletions": [],
+                }
+            }
+        }
+        for name in batch_names
+    }
+    fallback = f"{source_commit}:{file_path}"
+    source_object_id = _git(repo, "rev-parse", fallback)
+    sources_tree = _git(
+        repo,
+        "mktree",
+        input_text=f"100644 blob {source_object_id}\t{file_path}\n",
+    )
+    state_tree = _git(
+        repo,
+        "mktree",
+        input_text=f"040000 tree {sources_tree}\tsources\n",
+    )
+    state_commits = {
+        name: _git(
+            repo,
+            "commit-tree",
+            state_tree,
+            "-p",
+            "HEAD",
+            "-m",
+            f"benchmark state {name}",
+        )
+        for name in batch_names
+    }
+    _git(
+        repo,
+        "update-ref",
+        "--stdin",
+        input_text="".join(
+            f"update {get_batch_state_ref_name(name)} {state_commits[name]}\n"
+            for name in batch_names
+        ),
+    )
+    object_names = tuple(
+        [
+            *(
+                f"{get_batch_state_ref_name(name)}:sources/{file_path}"
+                for name in batch_names
+            ),
+            fallback,
+        ]
+    )
+    return AttributionFixture(
+        file_path=file_path,
+        metadata=metadata,
+        object_names=object_names,
+        source_object_ids=(source_object_id,),
+        baseline_line_count=len(baseline),
+        working_line_count=len(working),
+        baseline_sha256=hashlib.sha256(baseline_payload).hexdigest(),
+        working_sha256=hashlib.sha256(working_payload).hexdigest(),
+        batch_count=batch_count,
+    )
+
+
+@contextmanager
+def _working_directory(path: Path):
+    previous = Path.cwd()
+    os.chdir(path)
+    try:
+        yield
+    finally:
+        os.chdir(previous)
+
+
+def _measure_object_resolution(fixture: AttributionFixture) -> dict[str, Any]:
+    resolved = resolve_git_objects(fixture.object_names)
+    return {
+        "requests": len(fixture.object_names),
+        "resolved": len(resolved),
+        "unique_object_ids": len({info.object_id for info in resolved.values()}),
+    }
+
+
+def _measure_blob_loading(fixture: AttributionFixture) -> dict[str, Any]:
+    object_count = 0
+    byte_count = 0
+    line_count = 0
+    for blob in stream_git_blob_buffers(fixture.source_object_ids):
+        object_count += 1
+        byte_count += blob.size
+        line_count += len(blob.buffer)
+    return {"objects": object_count, "bytes": byte_count, "lines": line_count}
+
+
+def _open_repository_buffers(
+    fixture: AttributionFixture,
+) -> _MappingState:
+    source = load_git_object_as_buffer_or_empty(
+        next(iter(fixture.metadata.values()))["files"][fixture.file_path][
+            "batch_source_commit"
+        ]
+        + f":{fixture.file_path}"
+    )
+    working: LineBuffer | None = None
+    try:
+        working = load_working_tree_file_as_buffer(fixture.file_path)
+        len(source)
+        len(working)
+    except Exception:
+        source.close()
+        if working is not None:
+            working.close()
+        raise
+    return _MappingState(source=source, target=working)
+
+
+def _measure_claim_attribution(state: _ClaimAttributionState) -> dict[str, Any]:
+    metrics = AttributionMetrics()
+    state.attribution = build_file_attribution(
+        state.fixture.file_path,
+        batch_metadata_by_name=state.fixture.metadata,
+        metrics=metrics,
+    )
+    owned_units = sum(
+        bool(unit.owning_batches) for unit in state.attribution.units
+    )
+    owner_links = sum(
+        len(unit.owning_batches) for unit in state.attribution.units
+    )
+    return {
+        "units": len(state.attribution.units),
+        "owned_units": owned_units,
+        "owner_links": owner_links,
+        "metrics": asdict(metrics),
+    }
+
+
+def _close_claim_attribution(state: _ClaimAttributionState) -> None:
+    state.attribution = None
+
+
+def run_attribution_case(
+    case: CaseDefinition,
+    batch_count: int,
+    seed: int,
+    *,
+    warmups: int,
+    repeats: int,
+) -> dict[str, Any]:
+    """Run the public attribution workflow in an isolated prepared repository."""
+    del seed  # This fixture is fully enumerated; keep the shared schema explicit.
+    with tempfile.TemporaryDirectory(prefix="git-stage-batch-matching-") as directory:
+        repo = Path(directory)
+        fixture = _build_attribution_fixture(repo, batch_count)
+        with _working_directory(repo):
+            phases = {
+                "git_object_resolution": _measure_phase(
+                    lambda: fixture,
+                    _measure_object_resolution,
+                    lambda _state: None,
+                    warmups=warmups,
+                    repeats=repeats,
+                ),
+                "blob_loading": _measure_phase(
+                    lambda: fixture,
+                    _measure_blob_loading,
+                    lambda _state: None,
+                    warmups=warmups,
+                    repeats=repeats,
+                ),
+                "mapping": _measure_phase(
+                    lambda: _open_repository_buffers(fixture),
+                    _measure_mapping,
+                    _close_mapping,
+                    warmups=warmups,
+                    repeats=repeats,
+                ),
+                "unit_attribution": _measure_phase(
+                    lambda: _prepare_repository_unit_enumeration(fixture),
+                    _measure_unit_enumeration,
+                    _close_unit_enumeration,
+                    warmups=warmups,
+                    repeats=repeats,
+                ),
+                "claim_attribution": _measure_phase(
+                    lambda: _ClaimAttributionState(fixture),
+                    _measure_claim_attribution,
+                    _close_claim_attribution,
+                    warmups=warmups,
+                    repeats=repeats,
+                ),
+            }
+
+    return {
+        "name": case.name,
+        "description": case.description,
+        "category": "attribution",
+        "status": "measured",
+        "dimensions": {
+            "batches": fixture.batch_count,
+            "baseline_lines": fixture.baseline_line_count,
+            "source_lines": fixture.working_line_count,
+            "target_lines": fixture.working_line_count,
+            "baseline_sha256": fixture.baseline_sha256,
+            "source_sha256": fixture.working_sha256,
+            "target_sha256": fixture.working_sha256,
+            "object_resolution_requests": len(fixture.object_names),
+        },
+        "setup": {
+            "measured": False,
+            "description": (
+                "Repository, commits, metadata, and prerequisites are excluded."
+            ),
+        },
+        "phases": phases,
+    }
+
+
+def _prepare_repository_unit_enumeration(
+    fixture: AttributionFixture,
+) -> _UnitEnumerationState:
+    source = load_git_object_as_buffer_or_empty(f"HEAD:{fixture.file_path}")
+    try:
+        working = load_working_tree_file_as_buffer(fixture.file_path)
+    except Exception:
+        source.close()
+        raise
+    try:
+        len(source)
+        len(working)
+        comparison = build_file_comparison_from_lines(
+            fixture.file_path,
+            baseline_lines=source,
+            working_tree_lines=working,
+        )
+    except Exception:
+        source.close()
+        working.close()
+        raise
+    return _UnitEnumerationState(
+        source=source,
+        target=working,
+        comparison=comparison,
+    )
+
+
 def _command_output(arguments: Sequence[str]) -> str:
     try:
         return subprocess.run(
@@ -599,18 +941,27 @@ def run_suite(
         size = case.quick_size if mode == "quick" else case.full_size
         if size is None or size <= 0:
             continue
-        result = run_matching_case(
-            case,
-            size,
-            seed,
-            warmups=warmups,
-            repeats=repeats,
-        )
+        if case.kind == "attribution":
+            result = run_attribution_case(
+                case,
+                size,
+                seed,
+                warmups=warmups,
+                repeats=repeats,
+            )
+        else:
+            result = run_matching_case(
+                case,
+                size,
+                seed,
+                warmups=warmups,
+                repeats=repeats,
+            )
         results.append(result)
 
     return {
         "schema_version": SCHEMA_VERSION,
-        "suite": "matching",
+        "suite": "matching-and-attribution",
         "mode": mode,
         "metadata": _metadata(seed, warmups, repeats),
         "cases": results,

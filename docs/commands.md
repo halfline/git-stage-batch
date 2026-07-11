@@ -878,6 +878,32 @@ Installing `codex-skills` also writes the shared internal drafter brief at
 
 ---
 
+## Diagnostics
+
+### `journal`
+
+Locate, summarize, or remove private diagnostic journal data.
+
+```bash
+git-stage-batch journal
+git-stage-batch journal --path
+git-stage-batch journal --purge
+```
+
+Journaling is disabled by default. Enable content-free operation metadata for
+a reproduction with `GIT_STAGE_BATCH_JOURNAL=metadata-only`, or add bounded
+call stacks with `verbose`. The `content-debug` level also records raw paths,
+Git command output, and short content previews, so use it only for a limited
+reproduction and purge it afterward.
+
+The default command prints the configured level, private per-user path, file
+count, entry count, and total size. `--porcelain` returns the same summary as
+stable JSON. `--path` prints only the current repository's location. `--purge`
+removes its active and rotated files; combine it with `--all` to remove journal
+data for every repository.
+
+---
+
 ## Batch Operations
 
 ### `validate`

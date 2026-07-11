@@ -187,6 +187,8 @@ pip install git-stage-batch
 Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for:
 
 - Development setup instructions
+- A [codebase guide](ARCHITECTURE.md) with command paths and change checklists
+- A separate [batch internals guide](BATCHES.md) for saved-change storage and merge behavior
 - Commit message guidelines
 - Code style conventions
 

@@ -242,6 +242,25 @@ class TestAutoAddUntrackedFiles:
         auto_added = read_file_paths_file(get_auto_added_files_file_path())
         assert "my file.txt" in auto_added
 
+    def test_auto_add_preserves_file_kinds_and_unicode_paths(self, temp_git_repo):
+        """Bulk startup should preserve empty, binary, symlink, and Unicode paths."""
+        ensure_state_directory_exists()
+        (temp_git_repo / "empty.txt").write_bytes(b"")
+        (temp_git_repo / "binary.bin").write_bytes(b"\x00\xffbinary")
+        (temp_git_repo / "unicodé.txt").write_text("accented\n")
+        (temp_git_repo / "target.txt").write_text("target\n")
+        (temp_git_repo / "link").symlink_to("target.txt")
+
+        auto_add_untracked_files()
+
+        assert set(read_file_paths_file(get_auto_added_files_file_path())) == {
+            "binary.bin",
+            "empty.txt",
+            "link",
+            "target.txt",
+            "unicodé.txt",
+        }
+
     def test_auto_add_marks_untracked_embedded_git_repository_as_gitlink(self, temp_git_repo):
         """Test that untracked embedded repositories are auto-added as gitlinks."""
         ensure_state_directory_exists()
@@ -285,3 +304,211 @@ class TestAutoAddUntrackedFiles:
             text=True,
         )
         assert f"+Subproject commit {embedded_oid}" in diff_result.stdout
+
+    def test_auto_add_process_and_state_writes_are_constant(self, temp_git_repo, monkeypatch):
+        """A large candidate set should use one add and one manifest write."""
+        from git_stage_batch.data import file_tracking
+
+        candidates = [f"generated/file-{index}.txt" for index in range(10_000)]
+        add_calls = []
+        write_calls = []
+
+        monkeypatch.setattr(
+            file_tracking,
+            "list_untracked_files",
+            lambda paths=None: candidates,
+        )
+        monkeypatch.setattr(
+            file_tracking,
+            "_embedded_git_repository_index_path",
+            lambda path: None,
+        )
+
+        def fake_add(paths, *, intent_to_add=False, check=True):
+            add_calls.append((tuple(paths), intent_to_add, check))
+            return subprocess.CompletedProcess(["git", "add"], 0, "", "")
+
+        def fake_write(path, paths):
+            write_calls.append((path, tuple(paths)))
+
+        monkeypatch.setattr(file_tracking, "git_add_paths_from_stdin", fake_add)
+        monkeypatch.setattr(file_tracking, "write_file_paths_file", fake_write)
+
+        auto_add_untracked_files()
+
+        assert len(add_calls) == 1
+        assert len(add_calls[0][0]) == 10_000
+        assert len(write_calls) == 1
+        assert len(write_calls[0][1]) == 10_000
+
+    def test_auto_add_reports_large_bulk_transition(
+        self,
+        temp_git_repo,
+        monkeypatch,
+        capsys,
+    ):
+        """Interactive startup should expose progress for a large candidate set."""
+        from git_stage_batch.data import file_tracking
+
+        candidates = [f"file-{index}.txt" for index in range(1_000)]
+        monkeypatch.setattr(
+            file_tracking,
+            "list_untracked_files",
+            lambda paths=None: candidates,
+        )
+        monkeypatch.setattr(
+            file_tracking,
+            "_embedded_git_repository_index_path",
+            lambda path: None,
+        )
+        monkeypatch.setattr(
+            file_tracking,
+            "git_add_paths_from_stdin",
+            lambda paths, **kwargs: subprocess.CompletedProcess(
+                ["git", "add"], 0, "", ""
+            ),
+        )
+        monkeypatch.setattr(file_tracking, "write_file_paths_file", lambda *args: None)
+
+        auto_add_untracked_files(show_progress=True)
+
+        assert "Preparing 1000 untracked paths for review" in capsys.readouterr().err
+
+    def test_auto_add_thousand_files_uses_one_discovery_add_and_write(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """The real 1,000-file path should remain constant in process topology."""
+        from git_stage_batch.data import file_tracking
+
+        ensure_state_directory_exists()
+        generated = temp_git_repo / "generated"
+        generated.mkdir()
+        for index in range(1_000):
+            (generated / f"file-{index}.txt").write_text("generated\n")
+
+        discovery_calls = 0
+        add_calls = 0
+        write_calls = 0
+        original_discovery = file_tracking.run_git_command
+        original_add = file_tracking.git_add_paths_from_stdin
+        original_write = file_tracking.write_file_paths_file
+
+        def recording_discovery(*args, **kwargs):
+            nonlocal discovery_calls
+            discovery_calls += 1
+            return original_discovery(*args, **kwargs)
+
+        def recording_add(*args, **kwargs):
+            nonlocal add_calls
+            add_calls += 1
+            return original_add(*args, **kwargs)
+
+        def recording_write(*args, **kwargs):
+            nonlocal write_calls
+            write_calls += 1
+            return original_write(*args, **kwargs)
+
+        monkeypatch.setattr(file_tracking, "run_git_command", recording_discovery)
+        monkeypatch.setattr(file_tracking, "git_add_paths_from_stdin", recording_add)
+        monkeypatch.setattr(file_tracking, "write_file_paths_file", recording_write)
+
+        auto_add_untracked_files()
+
+        assert (discovery_calls, add_calls, write_calls) == (1, 1, 1)
+        assert len(read_file_paths_file(get_auto_added_files_file_path())) == 1_000
+
+    def test_auto_add_retries_paths_removed_during_scan(self, temp_git_repo, monkeypatch):
+        """A disappearing candidate should be dropped by one refreshed retry."""
+        from git_stage_batch.data import file_tracking
+
+        discoveries = iter((["gone.txt", "kept.txt"], ["kept.txt"]))
+        add_calls = []
+
+        monkeypatch.setattr(
+            file_tracking,
+            "list_untracked_files",
+            lambda paths=None: list(next(discoveries)),
+        )
+        monkeypatch.setattr(
+            file_tracking,
+            "_embedded_git_repository_index_path",
+            lambda path: None,
+        )
+
+        def fake_add(paths, *, intent_to_add=False, check=True):
+            add_calls.append(tuple(paths))
+            return subprocess.CompletedProcess(
+                ["git", "add"],
+                1 if len(add_calls) == 1 else 0,
+                "",
+                "",
+            )
+
+        monkeypatch.setattr(file_tracking, "git_add_paths_from_stdin", fake_add)
+        auto_add_untracked_files()
+
+        assert add_calls == [("gone.txt", "kept.txt"), ("kept.txt",)]
+        assert read_file_paths_file(get_auto_added_files_file_path()) == ["kept.txt"]
+
+    def test_auto_add_rolls_back_manifest_when_index_update_fails(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """A failed initial and retry update should leave no declared transition."""
+        from git_stage_batch.data import file_tracking
+
+        (temp_git_repo / "failed.txt").write_text("content\n")
+        monkeypatch.setattr(
+            file_tracking,
+            "git_add_paths_from_stdin",
+            lambda paths, **kwargs: subprocess.CompletedProcess(
+                ["git", "add"],
+                1,
+                "",
+                "failed",
+            ),
+        )
+        auto_add_untracked_files()
+
+        assert not get_auto_added_files_file_path().exists()
+
+    def test_auto_add_does_not_touch_index_when_manifest_write_fails(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """Manifest persistence must succeed before the bulk index transition."""
+        from git_stage_batch.data import file_tracking
+
+        (temp_git_repo / "private.txt").write_text("content\n")
+        add_calls = []
+
+        def fail_manifest_write(*args, **kwargs):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(
+            file_tracking,
+            "write_file_paths_file",
+            fail_manifest_write,
+        )
+        monkeypatch.setattr(
+            file_tracking,
+            "git_add_paths_from_stdin",
+            lambda *args, **kwargs: add_calls.append(args),
+        )
+
+        with pytest.raises(OSError, match="disk full"):
+            auto_add_untracked_files()
+
+        assert add_calls == []
+        result = subprocess.run(
+            ["git", "ls-files", "--", "private.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert result.stdout == ""

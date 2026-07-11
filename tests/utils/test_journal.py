@@ -24,6 +24,8 @@ from git_stage_batch.utils.journal import (
     get_journal_path,
     journal_enabled,
     log_journal,
+    purge_journal,
+    summarize_journal,
 )
 
 
@@ -230,6 +232,20 @@ def test_default_path_is_private_per_user_and_uses_repository_id(
     assert path.suffix == ".jsonl"
     assert len(path.stem) == 24
     assert str(temp_git_repo) not in path.name
+
+
+def test_summary_and_purge_are_content_free(temp_git_repo, monkeypatch):
+    monkeypatch.setenv(JOURNAL_LEVEL_ENV, "metadata-only")
+    log_journal("one", file_path="secret.txt")
+    log_journal("two", file_path="secret.txt")
+
+    summary = summarize_journal()
+
+    assert summary["entry_count"] == 2
+    assert summary["operations"] == {"one": 1, "two": 1}
+    assert "secret.txt" not in json.dumps(summary)
+    assert purge_journal() == 1
+    assert not get_journal_path().exists()
 
 
 def test_legacy_debug_switch_selects_verbose_not_content(temp_git_repo, monkeypatch):

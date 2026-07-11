@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from git_stage_batch.batch.match_storage import MatcherWorkspace
+from git_stage_batch.batch.line_matching.match_workspace import MatcherWorkspace
 
 
 def test_matcher_workspace_tracks_and_closes_resources():

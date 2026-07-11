@@ -9,7 +9,7 @@ import sys
 import pytest
 
 
-SCRIPT_PATH = Path(__file__).parents[1] / "scripts" / "benchmark_matching.py"
+SCRIPT_PATH = Path(__file__).parents[3] / "scripts" / "benchmark_matching.py"
 SPEC = importlib.util.spec_from_file_location("benchmark_matching", SCRIPT_PATH)
 assert SPEC is not None
 assert SPEC.loader is not None

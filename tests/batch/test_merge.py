@@ -15,7 +15,7 @@ from git_stage_batch.batch.discard import (
     _discard_batch_line_chunks,
     discard_batch_from_line_sequences_as_buffer,
 )
-from git_stage_batch.batch.match import match_lines
+from git_stage_batch.batch.line_matching.match import match_lines
 from git_stage_batch.batch.merge_validation import check_structural_validity
 from git_stage_batch.batch.merge import (
     _merge_batch_line_chunks,

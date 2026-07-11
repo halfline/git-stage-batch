@@ -2,7 +2,7 @@
 
 import pytest
 
-from git_stage_batch.batch.comparison import (
+from git_stage_batch.batch.line_matching.comparison import (
     SemanticChangeKind,
     SemanticChangeRun,
     derive_replacement_display_id_run_sets_from_lines,

@@ -19,7 +19,7 @@ from git_stage_batch.batch.attribution_units import (
     enumerate_units_from_file_comparison,
 )
 from git_stage_batch.batch.attribution_projection import project_attribution_to_diff
-from git_stage_batch.batch.match import match_lines
+from git_stage_batch.batch.line_matching.match import match_lines
 from git_stage_batch.batch.state_refs import get_batch_state_ref_name
 from git_stage_batch.core.diff_parser import (
     build_line_changes_from_patch_lines,

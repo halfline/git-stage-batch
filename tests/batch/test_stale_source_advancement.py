@@ -22,7 +22,7 @@ from git_stage_batch.batch.ownership_replacement_units import ReplacementUnit
 from git_stage_batch.batch.source_advancement import (
     advance_source_lines_preserving_existing_presence,
 )
-from git_stage_batch.batch.lineage import BatchSourceLineage, LineageRun
+from git_stage_batch.batch.line_matching.lineage import BatchSourceLineage, LineageRun
 from git_stage_batch.core.line_selection import LineRanges
 from git_stage_batch.core.models import LineEntry
 from git_stage_batch.core.buffer import LineBuffer

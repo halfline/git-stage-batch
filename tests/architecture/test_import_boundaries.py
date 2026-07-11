@@ -9189,7 +9189,7 @@ def test_batch_ownership_update_owns_prepared_update_api():
 def test_batch_lineage_uses_public_data_types():
     """Batch modules should import public lineage data types."""
     lineage = __import__(
-        "git_stage_batch.batch.lineage",
+        "git_stage_batch.batch.line_matching.lineage",
         fromlist=["lineage"],
     )
     public_names = {
@@ -10942,7 +10942,7 @@ def test_batch_transform_sift_results_own_result_planning():
         "validate_sifted_text_file_result_from_lines",
     }
     disallowed_imports = {
-        "git_stage_batch.batch.comparison": {
+        "git_stage_batch.batch.line_matching.comparison": {
             "SemanticChangeKind",
             "derive_semantic_change_runs",
         },
@@ -11849,7 +11849,7 @@ def test_batch_realized_entry_storage_owns_compact_storage():
 def test_batch_line_range_view_stays_out_of_realized_entries():
     """Generic line range views should live outside realized-entry storage."""
     line_range_view = __import__(
-        "git_stage_batch.batch.line_range_view",
+        "git_stage_batch.batch.line_matching.line_range_view",
         fromlist=["line_range_view"],
     )
     realized_entries = __import__(
@@ -11989,11 +11989,11 @@ def test_batch_realized_provenance_owns_run_storage():
 def test_batch_line_mapping_owns_public_mapping_type():
     """Line mapping data types should live outside the match algorithm."""
     line_mapping = __import__(
-        "git_stage_batch.batch.line_mapping",
+        "git_stage_batch.batch.line_matching.line_mapping",
         fromlist=["line_mapping"],
     )
     match = __import__(
-        "git_stage_batch.batch.match",
+        "git_stage_batch.batch.line_matching.match",
         fromlist=["match"],
     )
     line_mapping_module_names = _batch_module_names(
@@ -12073,11 +12073,11 @@ def test_batch_line_mapping_owns_public_mapping_type():
 def test_batch_line_sequence_search_stays_out_of_match_module():
     """Exact sequence search should live outside the match algorithm."""
     line_sequence_search = __import__(
-        "git_stage_batch.batch.line_sequence_search",
+        "git_stage_batch.batch.line_matching.sequence_search",
         fromlist=["line_sequence_search"],
     )
     match = __import__(
-        "git_stage_batch.batch.match",
+        "git_stage_batch.batch.line_matching.match",
         fromlist=["match"],
     )
     line_sequence_search_module_names = _batch_module_names(
@@ -12769,7 +12769,7 @@ def test_batch_baseline_reference_positions_own_position_lookup():
 def test_batch_line_sequence_equality_owns_exact_comparison():
     """Exact byte-line comparisons should live outside batch merge policies."""
     line_sequence_equality = __import__(
-        "git_stage_batch.batch.line_sequence_equality",
+        "git_stage_batch.batch.line_matching.sequence_equality",
         fromlist=["line_sequence_equality"],
     )
     baseline_edits = __import__(

@@ -5,7 +5,9 @@ import subprocess
 import pytest
 
 from git_stage_batch.core.buffer import LineBuffer
+from git_stage_batch.staging import index_update
 from git_stage_batch.staging.index_update import update_index_with_blob_buffer
+from git_stage_batch.utils.journal import JOURNAL_LEVEL_ENV
 from git_stage_batch.utils.paths import ensure_state_directory_exists
 
 
@@ -212,3 +214,29 @@ class TestUpdateIndexWithBlobContent:
             text=True,
         )
         assert result.stdout == "generated\ncontent\n"
+
+    def test_disabled_journal_does_not_add_index_observations_or_previews(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """Normal index updates should perform only the mode lookup they need."""
+        monkeypatch.delenv(JOURNAL_LEVEL_ENV, raising=False)
+        monkeypatch.delenv("GIT_STAGE_BATCH_DEBUG", raising=False)
+        original_read = index_update.read_index_entry
+        observed_paths = []
+
+        def recording_read(file_path):
+            observed_paths.append(file_path)
+            return original_read(file_path)
+
+        monkeypatch.setattr(index_update, "read_index_entry", recording_read)
+        monkeypatch.setattr(
+            index_update,
+            "buffer_preview",
+            lambda _buffer: pytest.fail("constructed a journal preview"),
+        )
+
+        _update_index_with_bytes("newfile.txt", b"content\n")
+
+        assert observed_paths == ["newfile.txt"]

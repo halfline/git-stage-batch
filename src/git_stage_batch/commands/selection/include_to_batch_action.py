@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ...core.models import (
     BinaryFileChange,
+    FileModeChange,
     GitlinkChange,
     RenameChange,
     TextFileDeletionChange,
@@ -42,6 +43,21 @@ def execute_include_to_batch_action(
         operation_parts.extend(["--file", file])
 
     with undo_checkpoint(" ".join(operation_parts)):
+        if (
+            file is None
+            and line_ids is None
+            and read_selected_change_kind() == SelectedChangeKind.MODE
+        ):
+            selected_change = load_selected_change()
+            if isinstance(selected_change, FileModeChange):
+                _whole_file_batch_staging.include_mode_to_batch(
+                    batch_name,
+                    selected_change,
+                    quiet=quiet,
+                    auto_advance=auto_advance,
+                )
+                return
+
         if (
             file is None
             and line_ids is None

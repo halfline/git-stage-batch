@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ...core.models import BinaryFileChange, RenameChange, TextFileDeletionChange
+from ...core.models import BinaryFileChange, FileModeChange, RenameChange, TextFileDeletionChange
 from ...data.file_review.action_scope import finish_review_scoped_line_action
 from ...data.selected_change.loading import load_selected_change
 from ...data.selected_change.store import (
@@ -38,6 +38,20 @@ def execute_discard_to_batch_action(
         operation_parts.extend(["--file", file])
 
     with undo_checkpoint(" ".join(operation_parts)):
+        if (
+            file is None
+            and line_ids is None
+            and read_selected_change_kind() == SelectedChangeKind.MODE
+        ):
+            selected_change = load_selected_change()
+            if isinstance(selected_change, FileModeChange):
+                return _whole_file_batch_discarding.discard_mode_to_batch(
+                    batch_name,
+                    selected_change,
+                    quiet=quiet,
+                    auto_advance=auto_advance,
+                )
+
         if (
             file is None
             and line_ids is None

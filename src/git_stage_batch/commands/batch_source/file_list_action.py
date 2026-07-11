@@ -9,6 +9,7 @@ from ...batch.atomic_file_changes import (
     gitlink_change_from_batch_file_metadata,
 )
 from ...batch.file_display import render_batch_file_display
+from ...core.models import FileModeChange
 from ...data.file_review.records import ReviewSource
 from ...data.selected_change.clear_reasons import (
     mark_selected_change_cleared_by_file_list,
@@ -19,6 +20,7 @@ from ...output.file_review_list import (
     make_binary_file_review_list_entry,
     make_file_review_list_entry,
     make_gitlink_file_review_list_entry,
+    make_mode_file_review_list_entry,
     print_file_review_list,
 )
 
@@ -34,6 +36,17 @@ def show_batch_source_file_list(
     """Show a navigational list for multiple files from a batch."""
     entries = []
     for file_path, file_meta in files.items():
+        if file_meta.get("file_type") == "mode":
+            entries.append(
+                make_mode_file_review_list_entry(
+                    FileModeChange(
+                        file_path,
+                        file_meta["old_mode"],
+                        file_meta["new_mode"],
+                    )
+                )
+            )
+            continue
         binary_change = binary_change_from_batch_file_metadata(file_path, file_meta)
         if binary_change is not None:
             entries.append(make_binary_file_review_list_entry(binary_change))

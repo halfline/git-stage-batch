@@ -42,9 +42,7 @@ class CandidateIndexTarget:
 
 def is_text_candidate_entry(file_meta: dict) -> bool:
     """Return whether a batch file entry supports text candidate handling."""
-    return file_meta.get("file_type") != "binary" and not is_batch_submodule_pointer(
-        file_meta
-    )
+    return file_meta.get("file_type") not in {"binary", "mode"} and not is_batch_submodule_pointer(file_meta)
 
 
 def candidate_batch_source_ref(

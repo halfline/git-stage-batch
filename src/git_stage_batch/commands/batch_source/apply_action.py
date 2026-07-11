@@ -10,6 +10,7 @@ from . import action_plans as _action_plans
 from . import action_selection as _action_selection
 from . import atomic_unit_refusals as _atomic_unit_refusals
 from . import binary_file_actions as _binary_file_actions
+from . import file_mode_actions as _file_mode_actions
 from . import candidate_preview_counts as _candidate_preview_counts
 from . import candidate_refusals as _candidate_refusals
 from . import merge_refusals as _merge_refusals
@@ -69,9 +70,13 @@ def execute_apply_action(
     failed_files = []
     candidate_counts = {}
     apply_plans = []
+    mode_actions = []
 
     for file_path, file_meta in files.items():
         try:
+            if _file_mode_actions.is_file_mode_action(file_meta):
+                mode_actions.append((file_path, file_meta))
+                continue
             if file_meta.get("file_type") == "binary":
                 batch_buffer = read_binary_file_from_batch(
                     batch_name,
@@ -191,6 +196,8 @@ def execute_apply_action(
                             plan.file_path,
                             plan.file_meta,
                         )
+                for file_path, file_meta in mode_actions:
+                    _file_mode_actions.apply_new_file_mode(file_path, file_meta)
         except CommandError:
             raise
         except Exception:

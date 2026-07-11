@@ -5,12 +5,14 @@ from __future__ import annotations
 import sys
 
 from ...batch.binary_file_storage import add_binary_file_to_batch
+from ...batch.file_mode_storage import add_file_mode_to_batch
 from ...batch.ownership import BatchOwnership
 from ...batch.text_file_storage import add_file_to_batch
-from ...core.hashing import compute_binary_file_hash, compute_text_file_deletion_hash
-from ...core.models import BinaryFileChange, TextFileDeletionChange
+from ...core.hashing import compute_binary_file_hash, compute_file_mode_change_hash, compute_text_file_deletion_hash
+from ...core.models import BinaryFileChange, FileModeChange, TextFileDeletionChange
 from ...core.text_lifecycle import TextFileChangeType
 from ...data.file_modes import detect_file_mode
+from ...data.file_modes import apply_git_file_mode
 from ...data.progress import record_hunk_discarded
 from ...data.session import snapshot_file_if_untracked
 from ...exceptions import exit_with_error
@@ -76,6 +78,33 @@ def discard_binary_to_batch(
 
     if advance:
         finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
+    return 1
+
+
+def discard_mode_to_batch(
+    batch_name: str,
+    mode_change: FileModeChange,
+    *,
+    quiet: bool = False,
+    auto_advance: bool | None = None,
+) -> int:
+    """Save a mode action to a batch and restore its old worktree mode."""
+    patch_hash = compute_file_mode_change_hash(mode_change)
+    add_file_mode_to_batch(batch_name, mode_change)
+    apply_git_file_mode(
+        get_git_repository_root_path() / mode_change.path(),
+        mode_change.old_mode,
+    )
+    append_lines_to_file(get_block_list_file_path(), [patch_hash])
+    record_hunk_discarded(patch_hash)
+    if not quiet:
+        print(
+            _("Discarded file mode '{file}' to batch '{batch}'").format(
+                file=mode_change.path(), batch=batch_name
+            ),
+            file=sys.stderr,
+        )
+    finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
     return 1
 
 

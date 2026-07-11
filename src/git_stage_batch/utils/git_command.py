@@ -44,8 +44,7 @@ def _index_lock_error_text(stream: str | bytes | None) -> str:
 def _is_git_index_lock_error(result: subprocess.CompletedProcess) -> bool:
     stderr_text = _index_lock_error_text(result.stderr).lower()
     return "index.lock" in stderr_text and (
-        "file exists" in stderr_text
-        or "unable to create" in stderr_text
+        "file exists" in stderr_text or "unable to create" in stderr_text
     )
 
 
@@ -91,34 +90,47 @@ def stream_git_command(
     Raises:
         subprocess.CalledProcessError: If git command fails (includes stderr)
     """
-    def stdout_chunks():
-        """Generator that yields only stdout chunks from command events."""
-        nonlocal exit_code, stderr_chunks
-        for event in stream_command(
-            ["git", *arguments],
+
+    yield from bytes_to_lines(
+        stream_git_command_bytes(
+            arguments,
             stdin_chunks,
             cwd=cwd,
-            env=_prepare_git_command_environment(
-                requires_index_lock=requires_index_lock,
-                cwd=cwd,
-                env=env,
-            ),
-        ):
-            if isinstance(event, command_events.ExitEvent):
-                exit_code = event.exit_code
-            elif isinstance(event, command_events.OutputEvent):
-                if event.fd == 1:  # stdout
-                    yield event.data
-                elif event.fd == 2:  # stderr
-                    stderr_chunks.append(event.data)
+            env=env,
+            requires_index_lock=requires_index_lock,
+        )
+    )
 
+
+def stream_git_command_bytes(
+    arguments: list[str],
+    stdin_chunks: Iterable[bytes] | None = None,
+    *,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+    requires_index_lock: bool = True,
+) -> Iterator[bytes]:
+    """Stream raw Git stdout chunks without line-oriented buffering."""
     exit_code = 0
     stderr_chunks = []
+    for event in stream_command(
+        ["git", *arguments],
+        stdin_chunks,
+        cwd=cwd,
+        env=_prepare_git_command_environment(
+            requires_index_lock=requires_index_lock,
+            cwd=cwd,
+            env=env,
+        ),
+    ):
+        if isinstance(event, command_events.ExitEvent):
+            exit_code = event.exit_code
+        elif isinstance(event, command_events.OutputEvent):
+            if event.fd == 1:
+                yield event.data
+            elif event.fd == 2:
+                stderr_chunks.append(event.data)
 
-    # Convert binary stdout chunks to text lines
-    yield from bytes_to_lines(stdout_chunks())
-
-    # Check exit code after stream completes
     if exit_code != 0:
         stderr_text = b"".join(stderr_chunks).decode("utf-8", errors="replace")
         raise subprocess.CalledProcessError(

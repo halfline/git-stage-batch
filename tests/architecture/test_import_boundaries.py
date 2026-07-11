@@ -9901,14 +9901,14 @@ def test_batch_ownership_absence_claims_own_value_records():
         "AbsenceClaim",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "absence_constraints.py": public_names,
-        SRC_ROOT / "batch" / "baseline_edits.py": public_names,
-        SRC_ROOT / "batch" / "baseline_replacement_choices.py": public_names,
+        _batch_module_path("merge/absence_constraints.py", "absence_constraints.py"): public_names,
+        _batch_module_path("merge/baseline_edits.py", "baseline_edits.py"): public_names,
+        _batch_module_path("merge/baseline_replacement_choices.py", "baseline_replacement_choices.py"): public_names,
         SRC_ROOT / "batch" / "discard.py": public_names,
         SRC_ROOT / "batch" / "ownership/display_lines.py": public_names,
         SRC_ROOT / "batch" / "ownership/hunk_translation.py": public_names,
-        SRC_ROOT / "batch" / "merge_candidate_enumeration.py": public_names,
-        SRC_ROOT / "batch" / "merge_validation.py": public_names,
+        _batch_module_path("merge/candidate_enumeration.py", "merge_candidate_enumeration.py"): public_names,
+        _batch_module_path("merge/validation.py", "merge_validation.py"): public_names,
         SRC_ROOT / "batch" / "ownership/model.py": public_names,
         SRC_ROOT / "batch" / "ownership/detachment.py": public_names,
         SRC_ROOT / "batch" / "ownership/merging.py": public_names,
@@ -9916,7 +9916,7 @@ def test_batch_ownership_absence_claims_own_value_records():
         SRC_ROOT / "batch" / "ownership/remapping.py": public_names,
         SRC_ROOT / "batch" / "ownership/translation.py": public_names,
         SRC_ROOT / "batch" / "ownership/unit_types.py": public_names,
-        SRC_ROOT / "batch" / "presence_constraints.py": public_names,
+        _batch_module_path("merge/presence_constraints.py", "presence_constraints.py"): public_names,
         SRC_ROOT / "batch" / "replacement.py": public_names,
         SRC_ROOT / "commands" / "batch_transform" / "sift_results.py": public_names,
     }
@@ -11690,10 +11690,10 @@ def test_batch_realized_entries_owns_entry_view_model():
         "_realized_entry_content_chunks",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "absence_constraints.py": public_names,
+        _batch_module_path("merge/absence_constraints.py", "absence_constraints.py"): public_names,
         SRC_ROOT / "batch" / "discard.py": public_names,
         SRC_ROOT / "batch" / "discard_reversal.py": public_names,
-        SRC_ROOT / "batch" / "presence_constraints.py": public_names,
+        _batch_module_path("merge/presence_constraints.py", "presence_constraints.py"): public_names,
         SRC_ROOT / "batch" / "realization/boundaries.py": public_names,
         SRC_ROOT / "batch" / "realization/entry_storage.py": public_names,
     }
@@ -11765,7 +11765,7 @@ def test_batch_realized_entry_storage_owns_compact_storage():
         "RealizedEntry",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "absence_constraints.py": {
+        _batch_module_path("merge/absence_constraints.py", "absence_constraints.py"): {
             "RealizedEntries",
             "as_realized_entries",
             "realized_entry_content_at",
@@ -11780,13 +11780,13 @@ def test_batch_realized_entry_storage_owns_compact_storage():
             "RealizedEntries",
             "realized_entry_source_line_at",
         },
-        SRC_ROOT / "batch" / "merge.py": {
+        _batch_module_path("merge/merge.py", "merge.py"): {
             "realized_entry_content_chunks",
         },
         SRC_ROOT / "batch" / "realized_file_content.py": {
             "realized_entry_content_chunks",
         },
-        SRC_ROOT / "batch" / "presence_constraints.py": {
+        _batch_module_path("merge/presence_constraints.py", "presence_constraints.py"): {
             "RealizedEntries",
             "RealizedEntryContentSequence",
             "realized_entry_is_claimed_at",
@@ -11865,7 +11865,7 @@ def test_batch_line_range_view_stays_out_of_realized_entries():
         "_LineRange",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "baseline_correspondence.py": public_names,
+        _batch_module_path("merge/baseline_correspondence.py", "baseline_correspondence.py"): public_names,
         SRC_ROOT / "batch" / "realization/entry_storage.py": public_names,
     }
     violations = []
@@ -12003,12 +12003,12 @@ def test_batch_line_mapping_owns_public_mapping_type():
     }
     expected_imports = {
         SRC_ROOT / "batch" / "attribution.py": public_names,
-        SRC_ROOT / "batch" / "baseline_edits.py": public_names,
+        _batch_module_path("merge/baseline_edits.py", "baseline_edits.py"): public_names,
         SRC_ROOT / "batch" / "discard.py": public_names,
-        SRC_ROOT / "batch" / "merge.py": public_names,
-        SRC_ROOT / "batch" / "merge_validation.py": public_names,
+        _batch_module_path("merge/merge.py", "merge.py"): public_names,
+        _batch_module_path("merge/validation.py", "merge_validation.py"): public_names,
         SRC_ROOT / "batch" / "ownership/remapping.py": public_names,
-        SRC_ROOT / "batch" / "presence_constraints.py": public_names,
+        _batch_module_path("merge/presence_constraints.py", "presence_constraints.py"): public_names,
         SRC_ROOT / "batch" / "realization/mapping.py": public_names,
         SRC_ROOT / "batch" / "source_annotation.py": public_names,
     }
@@ -12074,7 +12074,7 @@ def test_batch_line_sequence_search_stays_out_of_match_module():
         "iter_exact_sequence_occurrences",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "presence_placement_choices.py": {
+        _batch_module_path("merge/presence_placement_choices.py", "presence_placement_choices.py"): {
             "iter_exact_context_gaps",
         },
     }
@@ -12121,9 +12121,9 @@ def test_baseline_correspondence_stays_out_of_merge_module():
         "git_stage_batch.batch.merge",
         fromlist=["merge"],
     )
-    correspondence_path = SRC_ROOT / "batch" / "baseline_correspondence.py"
+    correspondence_path = _batch_module_path("merge/baseline_correspondence.py", "baseline_correspondence.py")
     discard_path = SRC_ROOT / "batch" / "discard.py"
-    merge_path = SRC_ROOT / "batch" / "merge.py"
+    merge_path = _batch_module_path("merge/merge.py", "merge.py")
     public_names = {
         "BaselineCorrespondence",
         "BaselineRegion",
@@ -12147,14 +12147,14 @@ def test_baseline_correspondence_stays_out_of_merge_module():
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
 
-            if imported_module == "git_stage_batch.batch.merge":
+            if imported_module in _batch_module_names("merge", "merge.merge"):
                 disallowed_names = imported_names & stale_merge_names
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
                     names = ", ".join(sorted(disallowed_names))
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
 
-            if imported_module != "git_stage_batch.batch.baseline_correspondence":
+            if imported_module not in _batch_module_names("baseline_correspondence", "merge.baseline_correspondence"):
                 continue
 
             if path == discard_path:
@@ -12184,7 +12184,7 @@ def test_discard_reversal_stays_out_of_merge_module():
     )
     discard_reversal_path = SRC_ROOT / "batch" / "discard_reversal.py"
     discard_path = SRC_ROOT / "batch" / "discard.py"
-    merge_path = SRC_ROOT / "batch" / "merge.py"
+    merge_path = _batch_module_path("merge/merge.py", "merge.py")
     public_names = {
         "reverse_presence_constraints",
     }
@@ -12212,7 +12212,7 @@ def test_discard_reversal_stays_out_of_merge_module():
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
 
-            if imported_module == "git_stage_batch.batch.merge":
+            if imported_module in _batch_module_names("merge", "merge.merge"):
                 disallowed_names = imported_names & stale_merge_names
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -12248,9 +12248,9 @@ def test_realized_boundaries_stay_out_of_merge_module():
         fromlist=["merge"],
     )
     realized_boundaries_path = SRC_ROOT / "batch" / "realization/boundaries.py"
-    absence_constraints_path = SRC_ROOT / "batch" / "absence_constraints.py"
+    absence_constraints_path = _batch_module_path("merge/absence_constraints.py", "absence_constraints.py")
     discard_path = SRC_ROOT / "batch" / "discard.py"
-    merge_path = SRC_ROOT / "batch" / "merge.py"
+    merge_path = _batch_module_path("merge/merge.py", "merge.py")
     public_names = {
         "boundary_choices_after_source_line",
         "find_boundary_after_source_line",
@@ -12293,7 +12293,7 @@ def test_realized_boundaries_stay_out_of_merge_module():
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
 
-            if imported_module == "git_stage_batch.batch.merge":
+            if imported_module in _batch_module_names("merge", "merge.merge"):
                 disallowed_names = imported_names & stale_merge_names
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -12362,7 +12362,7 @@ def test_batch_discard_owns_discard_application():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.merge":
+            if imported_module in _batch_module_names("merge", "merge.merge"):
                 disallowed_names = imported_names & (
                     public_names | moved_private_names
                 )
@@ -12399,7 +12399,7 @@ def test_batch_merge_candidates_uses_public_data_types():
         fromlist=["merge"],
     )
     merge_candidate_enumeration_path = (
-        SRC_ROOT / "batch" / "merge_candidate_enumeration.py"
+        _batch_module_path("merge/candidate_enumeration.py", "merge_candidate_enumeration.py")
     )
     operation_candidate_types_path = (
         SRC_ROOT / "batch" / "operation_candidate_types.py"
@@ -12417,7 +12417,7 @@ def test_batch_merge_candidates_uses_public_data_types():
         "_MergeResolutionDecision",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "merge.py": {
+        _batch_module_path("merge/merge.py", "merge.py"): {
             "MergeCandidateSet",
             "MergeResolution",
         },
@@ -12435,7 +12435,7 @@ def test_batch_merge_candidates_uses_public_data_types():
     assert public_names.isdisjoint(vars(merge))
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == SRC_ROOT / "batch" / "merge_candidates.py":
+        if path == _batch_module_path("merge/candidates.py", "merge_candidates.py"):
             continue
 
         imports = _import_from_nodes(path)
@@ -12443,7 +12443,7 @@ def test_batch_merge_candidates_uses_public_data_types():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.merge_candidates":
+            if imported_module in _batch_module_names("merge_candidates", "merge.candidates"):
                 imported_public_names |= imported_names & public_names
                 disallowed_names = imported_names & private_names
                 if disallowed_names:
@@ -12452,7 +12452,7 @@ def test_batch_merge_candidates_uses_public_data_types():
                     violations.append(
                         f"{relative_path}:{node.lineno} imports {names}"
                     )
-            if imported_module == "git_stage_batch.batch.merge":
+            if imported_module in _batch_module_names("merge", "merge.merge"):
                 moved_names = imported_names & public_names
                 if moved_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -12477,9 +12477,9 @@ def test_batch_merge_candidate_enumeration_owns_preview_building():
         "git_stage_batch.batch.merge",
         fromlist=["merge"],
     )
-    merge_path = SRC_ROOT / "batch" / "merge.py"
+    merge_path = _batch_module_path("merge/merge.py", "merge.py")
     merge_candidate_enumeration_path = (
-        SRC_ROOT / "batch" / "merge_candidate_enumeration.py"
+        _batch_module_path("merge/candidate_enumeration.py", "merge_candidate_enumeration.py")
     )
     public_names = {
         "enumerate_merge_batch_candidates_for_lines",
@@ -12511,7 +12511,7 @@ def test_batch_merge_candidate_enumeration_owns_preview_building():
         direct_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.merge":
+            if imported_module in _batch_module_names("merge", "merge.merge"):
                 moved_names = imported_names & stale_merge_names
                 if moved_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -12519,7 +12519,7 @@ def test_batch_merge_candidate_enumeration_owns_preview_building():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.merge_candidate_enumeration":
+            if imported_module not in _batch_module_names("merge_candidate_enumeration", "merge.candidate_enumeration"):
                 continue
 
             direct_public_names |= imported_names & public_names
@@ -12547,8 +12547,8 @@ def test_batch_baseline_edits_own_replacement_fallback():
         "git_stage_batch.batch.merge",
         fromlist=["merge"],
     )
-    baseline_edits_path = SRC_ROOT / "batch" / "baseline_edits.py"
-    merge_path = SRC_ROOT / "batch" / "merge.py"
+    baseline_edits_path = _batch_module_path("merge/baseline_edits.py", "baseline_edits.py")
+    merge_path = _batch_module_path("merge/merge.py", "merge.py")
     public_names = {
         "has_missing_origin_replacement_claims",
         "try_apply_baseline_replacement_units",
@@ -12590,7 +12590,7 @@ def test_batch_baseline_edits_own_replacement_fallback():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.merge":
+            if imported_module in _batch_module_names("merge", "merge.merge"):
                 disallowed_names = imported_names & stale_merge_names
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -12602,7 +12602,7 @@ def test_batch_baseline_edits_own_replacement_fallback():
                 child_module_names |= imported_names & {"baseline_edits"}
                 continue
 
-            if imported_module != "git_stage_batch.batch.baseline_edits":
+            if imported_module not in _batch_module_names("baseline_edits", "merge.baseline_edits"):
                 continue
 
             private_old_names = imported_names & {
@@ -12630,11 +12630,11 @@ def test_batch_baseline_replacement_choices_own_origin_placements():
         fromlist=["baseline_edits"],
     )
     baseline_replacement_choices_path = (
-        SRC_ROOT / "batch" / "baseline_replacement_choices.py"
+        _batch_module_path("merge/baseline_replacement_choices.py", "baseline_replacement_choices.py")
     )
-    baseline_edits_path = SRC_ROOT / "batch" / "baseline_edits.py"
+    baseline_edits_path = _batch_module_path("merge/baseline_edits.py", "baseline_edits.py")
     merge_candidate_enumeration_path = (
-        SRC_ROOT / "batch" / "merge_candidate_enumeration.py"
+        _batch_module_path("merge/candidate_enumeration.py", "merge_candidate_enumeration.py")
     )
     public_names = {
         "ReplacementOriginChoice",
@@ -12671,7 +12671,7 @@ def test_batch_baseline_replacement_choices_own_origin_placements():
         direct_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module != "git_stage_batch.batch.baseline_replacement_choices":
+            if imported_module not in _batch_module_names("baseline_replacement_choices", "merge.baseline_replacement_choices"):
                 continue
 
             direct_public_names |= imported_names & public_names
@@ -12698,9 +12698,9 @@ def test_batch_baseline_reference_positions_own_position_lookup():
         fromlist=["baseline_edits"],
     )
     baseline_reference_positions_path = (
-        SRC_ROOT / "batch" / "baseline_reference_positions.py"
+        _batch_module_path("merge/baseline_reference_positions.py", "baseline_reference_positions.py")
     )
-    baseline_edits_path = SRC_ROOT / "batch" / "baseline_edits.py"
+    baseline_edits_path = _batch_module_path("merge/baseline_edits.py", "baseline_edits.py")
     public_names = {
         "baseline_reference_absence_position",
         "baseline_reference_insertion_position",
@@ -12726,7 +12726,7 @@ def test_batch_baseline_reference_positions_own_position_lookup():
         direct_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module != "git_stage_batch.batch.baseline_reference_positions":
+            if imported_module not in _batch_module_names("baseline_reference_positions", "merge.baseline_reference_positions"):
                 continue
 
             direct_public_names |= imported_names & public_names
@@ -12758,9 +12758,9 @@ def test_batch_line_sequence_equality_owns_exact_comparison():
     )
     line_sequence_equality_module_names = {"git_stage_batch.batch.line_matching.sequence_equality"}
     line_sequence_equality_path = SRC_ROOT / "batch" / "line_matching/sequence_equality.py"
-    baseline_edits_path = SRC_ROOT / "batch" / "baseline_edits.py"
+    baseline_edits_path = _batch_module_path("merge/baseline_edits.py", "baseline_edits.py")
     presence_placement_choices_path = (
-        SRC_ROOT / "batch" / "presence_placement_choices.py"
+        _batch_module_path("merge/presence_placement_choices.py", "presence_placement_choices.py")
     )
     public_names = {
         "line_sequences_equal",
@@ -12815,7 +12815,7 @@ def test_batch_merge_validation_owns_structural_checks():
         "git_stage_batch.batch.merge",
         fromlist=["merge"],
     )
-    merge_validation_path = SRC_ROOT / "batch" / "merge_validation.py"
+    merge_validation_path = _batch_module_path("merge/validation.py", "merge_validation.py")
     public_names = {
         "check_structural_validity",
     }
@@ -12832,7 +12832,7 @@ def test_batch_merge_validation_owns_structural_checks():
         "_is_claimed_run_structurally_coherent",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "merge.py": public_names,
+        _batch_module_path("merge/merge.py", "merge.py"): public_names,
     }
     violations = []
 
@@ -12848,7 +12848,7 @@ def test_batch_merge_validation_owns_structural_checks():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.merge":
+            if imported_module in _batch_module_names("merge", "merge.merge"):
                 disallowed_names = imported_names & stale_merge_names
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -12856,7 +12856,7 @@ def test_batch_merge_validation_owns_structural_checks():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.merge_validation":
+            if imported_module not in _batch_module_names("merge_validation", "merge.validation"):
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -12884,9 +12884,9 @@ def test_batch_absence_constraints_own_suppression_helpers():
         "git_stage_batch.batch.merge",
         fromlist=["merge"],
     )
-    absence_constraints_path = SRC_ROOT / "batch" / "absence_constraints.py"
+    absence_constraints_path = _batch_module_path("merge/absence_constraints.py", "absence_constraints.py")
     merge_candidate_enumeration_path = (
-        SRC_ROOT / "batch" / "merge_candidate_enumeration.py"
+        _batch_module_path("merge/candidate_enumeration.py", "merge_candidate_enumeration.py")
     )
     public_names = {
         "AbsenceChoice",
@@ -12910,7 +12910,7 @@ def test_batch_absence_constraints_own_suppression_helpers():
         "iter_sequence_occurrences_nearby",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "presence_constraints.py": {
+        _batch_module_path("merge/presence_constraints.py", "presence_constraints.py"): {
             "apply_absence_constraints",
         },
         merge_candidate_enumeration_path: {
@@ -12933,7 +12933,7 @@ def test_batch_absence_constraints_own_suppression_helpers():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.merge":
+            if imported_module in _batch_module_names("merge", "merge.merge"):
                 disallowed_names = imported_names & stale_merge_names
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -12941,7 +12941,7 @@ def test_batch_absence_constraints_own_suppression_helpers():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.absence_constraints":
+            if imported_module not in _batch_module_names("absence_constraints", "merge.absence_constraints"):
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -15991,7 +15991,7 @@ def test_batch_merge_does_not_reexport_merge_exceptions():
                     )
                 continue
 
-            if imported_module != "git_stage_batch.batch.merge":
+            if imported_module not in _batch_module_names("merge", "merge.merge"):
                 continue
 
             moved_names = imported_names & exception_names
@@ -16043,14 +16043,14 @@ def test_batch_presence_constraints_own_presence_entry_helpers():
     assert moved_names.isdisjoint(vars(merge))
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == SRC_ROOT / "batch" / "presence_constraints.py":
+        if path == _batch_module_path("merge/presence_constraints.py", "presence_constraints.py"):
             continue
 
         imports = _import_from_nodes(path)
         imported_public_names = set()
 
         for imported_module, node in imports:
-            if imported_module == "git_stage_batch.batch.merge":
+            if imported_module in _batch_module_names("merge", "merge.merge"):
                 imported_names = {alias.name for alias in node.names}
                 disallowed_names = imported_names & public_names
                 if disallowed_names:
@@ -16059,7 +16059,7 @@ def test_batch_presence_constraints_own_presence_entry_helpers():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.presence_constraints":
+            if imported_module not in _batch_module_names("presence_constraints", "merge.presence_constraints"):
                 continue
 
             imported_names = {alias.name for alias in node.names}
@@ -16091,10 +16091,10 @@ def test_batch_presence_missing_claims_own_mapping_lookup():
         fromlist=["merge_validation"],
     )
     presence_missing_claims_path = (
-        SRC_ROOT / "batch" / "presence_missing_claims.py"
+        _batch_module_path("merge/presence_missing_claims.py", "presence_missing_claims.py")
     )
-    presence_constraints_path = SRC_ROOT / "batch" / "presence_constraints.py"
-    merge_validation_path = SRC_ROOT / "batch" / "merge_validation.py"
+    presence_constraints_path = _batch_module_path("merge/presence_constraints.py", "presence_constraints.py")
+    merge_validation_path = _batch_module_path("merge/validation.py", "merge_validation.py")
     public_names = {
         "mapped_missing_source_lines",
     }
@@ -16124,7 +16124,7 @@ def test_batch_presence_missing_claims_own_mapping_lookup():
         direct_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module != "git_stage_batch.batch.presence_missing_claims":
+            if imported_module not in _batch_module_names("presence_missing_claims", "merge.presence_missing_claims"):
                 continue
 
             direct_public_names |= imported_names & public_names
@@ -16155,11 +16155,11 @@ def test_batch_presence_placement_choices_own_review_options():
         fromlist=["merge_candidate_enumeration"],
     )
     presence_placement_choices_path = (
-        SRC_ROOT / "batch" / "presence_placement_choices.py"
+        _batch_module_path("merge/presence_placement_choices.py", "presence_placement_choices.py")
     )
-    presence_constraints_path = SRC_ROOT / "batch" / "presence_constraints.py"
+    presence_constraints_path = _batch_module_path("merge/presence_constraints.py", "presence_constraints.py")
     merge_candidate_enumeration_path = (
-        SRC_ROOT / "batch" / "merge_candidate_enumeration.py"
+        _batch_module_path("merge/candidate_enumeration.py", "merge_candidate_enumeration.py")
     )
     public_names = {
         "PresenceChoice",
@@ -16202,7 +16202,7 @@ def test_batch_presence_placement_choices_own_review_options():
             if imported_module == "git_stage_batch.batch":
                 child_module_names |= imported_names & {"presence_placement_choices"}
                 continue
-            if imported_module != "git_stage_batch.batch.presence_placement_choices":
+            if imported_module not in _batch_module_names("presence_placement_choices", "merge.presence_placement_choices"):
                 continue
 
             private_imports = imported_names & private_names

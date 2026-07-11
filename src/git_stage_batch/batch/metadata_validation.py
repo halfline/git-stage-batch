@@ -244,6 +244,7 @@ def load_and_validate_batch_metadata(batch_name: str) -> dict[str, Any]:
 
     # Normalize and return
     return {
+        "revision": metadata.get("revision"),
         "note": metadata.get("note", ""),
         "created_at": metadata.get("created_at", ""),
         "baseline": metadata.get("baseline", None),

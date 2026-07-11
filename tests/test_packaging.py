@@ -83,6 +83,7 @@ class TestWheelContents:
             'git-stage-batch-include.1',
             'git-stage-batch-discard.1',
             'git-stage-batch-install-assets.1',
+            'git-stage-batch-validate.1',
         }
 
         assert expected_pages <= packaged_pages

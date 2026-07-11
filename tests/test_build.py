@@ -54,6 +54,31 @@ def test_version_file_generated(tmp_path):
     assert expected_version in content
 
 
+def test_validate_man_page_generated(tmp_path):
+    """The metadata validation command should ship its dedicated manual."""
+    project_root = Path(__file__).parent.parent
+    build_dir = tmp_path / "build"
+
+    subprocess.run(
+        ["meson", "setup", str(build_dir)],
+        cwd=project_root,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["meson", "compile", "-C", str(build_dir)],
+        cwd=project_root,
+        check=True,
+        capture_output=True,
+    )
+
+    man_page = build_dir / "git-stage-batch-validate.1"
+    assert man_page.exists()
+    content = man_page.read_text(encoding="utf-8")
+    assert "validate persisted batch metadata" in content
+    assert "porcelain" in content
+
+
 def test_package_importable_from_build(tmp_path):
     """Test that the package can be imported from the build directory."""
     project_root = Path(__file__).parent.parent

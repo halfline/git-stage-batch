@@ -1,0 +1,43 @@
+.TH GIT-STAGE-BATCH-VALIDATE 1 "July 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-validate \- validate persisted batch metadata
+.SH SYNOPSIS
+.B git-stage-batch validate
+[\fB\-\-porcelain\fR]
+.SH DESCRIPTION
+.B validate
+checks every discoverable batch without modifying refs or metadata files.
+It validates the metadata schema, batch identity, repository paths, Git object
+IDs, ownership claims, and agreement between metadata and authoritative batch
+content refs.
+.PP
+Current metadata uses a versioned schema. Historical unversioned metadata is
+validated through the supported migration path and reported as eligible for
+migration, but this command does not perform the migration. Metadata from a
+newer unsupported schema is reported and left unchanged.
+.SH OPTIONS
+.TP
+.B \-\-porcelain
+Write a stable JSON report containing the supported schema version and one
+diagnostic record per batch. This form is intended for scripts and support
+tooling.
+.SH EXIT STATUS
+.TP
+.B 0
+Every discovered batch is valid, including legacy metadata that can be
+migrated by the installed version.
+.TP
+.B 1
+At least one batch has invalid, unsupported, or referentially inconsistent
+metadata.
+.SH EXAMPLES
+.RS
+.nf
+git-stage-batch validate
+git-stage-batch validate --porcelain
+.fi
+.RE
+.SH SEE ALSO
+.BR git-stage-batch (1),
+.BR git-stage-batch-list (1),
+.BR git-stage-batch-new (1)

@@ -7,6 +7,7 @@ from .batch_subcommands import (
     add_annotate_subcommand,
     add_apply_subcommand,
     add_drop_subcommand,
+    add_validate_subcommand,
     add_list_subcommand,
     add_new_subcommand,
     add_reset_subcommand,
@@ -57,6 +58,7 @@ def add_cli_subcommands(subparsers) -> None:
     add_suggest_fixup_subcommand(subparsers)
     add_new_subcommand(subparsers)
     add_list_subcommand(subparsers)
+    add_validate_subcommand(subparsers)
     add_drop_subcommand(subparsers)
     add_annotate_subcommand(subparsers)
     add_apply_subcommand(subparsers)

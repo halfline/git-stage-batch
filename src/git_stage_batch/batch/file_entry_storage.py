@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-import json
 from copy import deepcopy
 from typing import Optional
 
 from ..utils.repository_buffers import load_git_object_as_buffer
-from ..utils.file_io import write_text_file_contents
 from ..utils.git_command import run_git_command
 from ..utils.git_object_io import create_git_blob
-from ..utils.paths import get_batch_metadata_file_path
 from . import content_commits as _content_commits
 from .query import get_batch_commit_sha, read_batch_metadata
+from .metadata_io import write_file_backed_batch_metadata
 from .validation import validate_batch_name
 
 
@@ -20,8 +18,7 @@ def remove_file_from_batch(batch_name: str, file_path: str) -> None:
     """Remove a file from batch metadata and batch commit tree."""
     metadata = read_batch_metadata(batch_name)
     metadata.get("files", {}).pop(file_path, None)
-    metadata_path = get_batch_metadata_file_path(batch_name)
-    write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
+    write_file_backed_batch_metadata(batch_name, metadata)
     _content_commits.remove_file_from_batch_commit(batch_name, file_path)
 
 
@@ -41,8 +38,7 @@ def copy_file_from_batch_to_batch(
         dest_metadata["files"] = {}
     dest_metadata["files"][file_path] = deepcopy(file_meta)
 
-    metadata_path = get_batch_metadata_file_path(dest_batch)
-    write_text_file_contents(metadata_path, json.dumps(dest_metadata, indent=2))
+    write_file_backed_batch_metadata(dest_batch, dest_metadata)
 
     source_commit = get_batch_commit_sha(source_batch)
     if not source_commit:

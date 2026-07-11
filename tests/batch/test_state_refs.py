@@ -6,15 +6,19 @@ import subprocess
 import pytest
 
 from git_stage_batch.batch.lifecycle import create_batch, delete_batch, update_batch_note
+from git_stage_batch.batch.metadata_io import write_file_backed_batch_metadata
+from git_stage_batch.batch.query import read_batch_metadata
 from git_stage_batch.batch.ownership import BatchOwnership
 import git_stage_batch.batch.state_refs as state_refs_module
 from git_stage_batch.batch.state_refs import (
     get_batch_content_ref_name,
     get_batch_state_ref_name,
     read_batch_state_metadata_for_batches,
+    sync_batch_state_refs,
 )
 from git_stage_batch.batch.text_file_storage import add_file_to_batch
 from git_stage_batch.data.session import initialize_abort_state
+from git_stage_batch.exceptions import BatchMetadataError
 from git_stage_batch.utils.paths import ensure_state_directory_exists
 
 
@@ -65,6 +69,8 @@ def test_state_ref_contains_batch_json_and_source_snapshot(temp_git_repo):
     content_commit = _git_rev_parse(content_ref)
 
     batch_json = json.loads(_git_show(f"{state_ref}:batch.json"))
+    assert batch_json["schema_version"] == 1
+    assert batch_json["revision"]
     assert batch_json["batch"] == "test-batch"
     assert batch_json["note"] == "Test note"
     assert batch_json["content_ref"] == content_ref
@@ -73,6 +79,22 @@ def test_state_ref_contains_batch_json_and_source_snapshot(temp_git_repo):
 
     source_content = _git_show(f"{state_ref}:sources/file.txt")
     assert source_content == "line1\nline2\nline3\n"
+
+
+def test_stale_metadata_writer_cannot_replace_newer_state(temp_git_repo):
+    create_batch("test-batch", "Original")
+    stale_metadata = read_batch_metadata("test-batch")
+    update_batch_note("test-batch", "Current")
+    current_state = _git_rev_parse(get_batch_state_ref_name("test-batch"))
+
+    stale_metadata["note"] = "Stale"
+    write_file_backed_batch_metadata("test-batch", stale_metadata)
+
+    with pytest.raises(BatchMetadataError, match="changed after its metadata was read"):
+        sync_batch_state_refs("test-batch")
+
+    assert _git_rev_parse(get_batch_state_ref_name("test-batch")) == current_state
+    assert read_batch_metadata("test-batch")["note"] == "Current"
 
 
 def test_state_ref_updates_note_history(temp_git_repo):

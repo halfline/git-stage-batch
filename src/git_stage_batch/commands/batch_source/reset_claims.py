@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import shlex
 from collections.abc import Sequence
 from contextlib import AbstractContextManager
 
 from ...batch.lifecycle import create_batch
+from ...batch.metadata_io import write_file_backed_batch_metadata
 from ...batch.ownership import BatchOwnership
 from ...batch.ownership_detachment import acquire_detached_batch_ownership
 from ...batch.ownership_metadata_loading import acquire_ownership_for_metadata_dict
@@ -38,8 +38,6 @@ from ...data.batch_file_scope import resolve_batch_file_scope
 from ...utils.repository_buffers import load_git_object_as_buffer
 from ...exceptions import MergeError, exit_with_error
 from ...i18n import _
-from ...utils.file_io import write_text_file_contents
-from ...utils.paths import get_batch_metadata_file_path
 
 
 def move_claims_between_batches(
@@ -254,8 +252,7 @@ def reset_all_claims_from_batch(batch_name: str) -> None:
     """Remove all claims from a batch."""
     metadata = read_batch_metadata(batch_name)
     metadata["files"] = {}
-    metadata_path = get_batch_metadata_file_path(batch_name)
-    write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
+    write_file_backed_batch_metadata(batch_name, metadata)
     sync_batch_state_refs(batch_name)
 
 

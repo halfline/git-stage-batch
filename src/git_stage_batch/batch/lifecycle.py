@@ -2,19 +2,18 @@
 
 from __future__ import annotations
 
-import json
 import shutil
 from datetime import datetime, timezone
 
 from .query import read_batch_metadata
+from .metadata_io import write_file_backed_batch_metadata
 from .validation import batch_exists, validate_batch_name
 from ..exceptions import CommandError
 from ..i18n import _
-from ..utils.file_io import write_text_file_contents
 from ..utils.git_command import run_git_command
 from ..utils.git_index import git_commit_tree
 from ..utils.git_object_io import get_empty_git_tree_object_id, get_git_object_type
-from ..utils.paths import get_batch_directory_path, get_batch_metadata_file_path
+from ..utils.paths import get_batch_directory_path
 
 
 def create_batch(name: str, note: str = "", baseline_commit: str | None = None) -> None:
@@ -44,8 +43,7 @@ def create_batch(name: str, note: str = "", baseline_commit: str | None = None) 
         "baseline": baseline_commit,
         "files": {}
     }
-    metadata_path = get_batch_metadata_file_path(name)
-    write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
+    write_file_backed_batch_metadata(name, metadata)
 
     tree_result = run_git_command(["rev-parse", f"{baseline_commit}^{{tree}}"], requires_index_lock=False)
     tree_sha = tree_result.stdout.strip()
@@ -79,12 +77,11 @@ def update_batch_note(name: str, note: str) -> None:
     if not batch_exists(name):
         raise CommandError(_("Batch '{name}' does not exist").format(name=name))
 
-    metadata_path = get_batch_metadata_file_path(name)
     metadata = read_batch_metadata(name)
 
     # Update note
     metadata["note"] = note
-    write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
+    write_file_backed_batch_metadata(name, metadata)
 
     from .state_refs import sync_batch_state_refs
     sync_batch_state_refs(name)

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 
 from .git_command import run_git_command, stream_git_command
+from .git_repository import null_object_id
 
 
 def _git_ref_exists(ref_name: str) -> bool:
@@ -21,6 +22,7 @@ def update_git_refs(
     updates: Iterable[tuple[str, str]] = (),
     deletes: Iterable[str] = (),
     ignore_missing_deletes: bool = True,
+    expected_old_values: Mapping[str, str | None] | None = None,
 ) -> None:
     """Update one or more Git refs in a single update-ref transaction."""
     update_commands = list(updates)
@@ -33,11 +35,40 @@ def update_git_refs(
         return
 
     commands = ["start"]
+    expected = expected_old_values or {}
     commands.extend(
-        f"update {ref_name} {object_name}"
+        " ".join(
+            part
+            for part in (
+                "update",
+                ref_name,
+                object_name,
+                (
+                    expected[ref_name] or null_object_id()
+                    if ref_name in expected
+                    else ""
+                ),
+            )
+            if part
+        )
         for ref_name, object_name in update_commands
     )
-    commands.extend(f"delete {ref_name}" for ref_name in delete_commands)
+    commands.extend(
+        " ".join(
+            part
+            for part in (
+                "delete",
+                ref_name,
+                (
+                    expected[ref_name] or null_object_id()
+                    if ref_name in expected
+                    else ""
+                ),
+            )
+            if part
+        )
+        for ref_name in delete_commands
+    )
     commands.extend(["prepare", "commit"])
     payload = ("\n".join(commands) + "\n").encode("utf-8")
     for _chunk in stream_git_command(

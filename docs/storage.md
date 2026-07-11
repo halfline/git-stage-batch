@@ -52,3 +52,22 @@ the platform supports that operation. A failure before replacement leaves the
 old file complete. Symlink targets are never followed or silently replaced;
 the command stops with recovery guidance so callers can update the intended
 target explicitly.
+
+## Batch metadata schema
+
+Authoritative `batch.json` records use a versioned schema. Schema version 1
+stores an opaque revision identifier, batch identity, timestamps, baseline and
+content object IDs, and validated per-path metadata. Writers emit only the
+canonical current schema, while readers migrate the historical unversioned
+shape in memory before exposing it to batch operations.
+
+An unversioned file-backed record is copied to `metadata.v0.json` before its
+first durable rewrite. Successful publication stores the canonical metadata in
+the state ref, whose parent retains the previous state-ref version, and removes
+the compatibility directory. Failed publication leaves the recovery copy for
+inspection. Metadata from a newer unsupported schema is never rewritten.
+
+Run `git-stage-batch validate` to validate every batch without changing it. The
+command checks schema compatibility, object IDs, content-ref agreement, and
+reports whether a legacy record would be migrated. Use `--porcelain` for a
+stable JSON report suitable for support tooling.

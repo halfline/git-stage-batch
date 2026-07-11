@@ -60,6 +60,7 @@ manpage_specs = [
   ['git-stage-batch-suggest-fixup.1.in', 'git-stage-batch-suggest-fixup.1'],
   ['git-stage-batch-unblock-file.1.in', 'git-stage-batch-unblock-file.1'],
   ['git-stage-batch-undo.1.in', 'git-stage-batch-undo.1'],
+  ['git-stage-batch-validate.1.in', 'git-stage-batch-validate.1'],
 ]
 manpages = []
 foreach manpage_spec : manpage_specs

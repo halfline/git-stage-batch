@@ -105,6 +105,9 @@ Set a batch note.
 .TP
 .BR git-stage-batch-sift (1)
 Remove already-present changes from a batch.
+.TP
+.BR git-stage-batch-validate (1)
+Validate persisted batch metadata without modifying it.
 .SS Other Commands
 .TP
 .BR git-stage-batch-interactive (1)

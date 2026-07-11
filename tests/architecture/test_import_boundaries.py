@@ -12590,16 +12590,21 @@ def test_batch_baseline_edits_own_replacement_fallback():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
+            if imported_module in {
+                "git_stage_batch.batch",
+                "git_stage_batch.batch.merge",
+            }:
+                child_names = imported_names & {"baseline_edits"}
+                child_module_names |= child_names
+                if child_names:
+                    continue
+
             if imported_module in _batch_module_names("merge", "merge.merge"):
                 disallowed_names = imported_names & stale_merge_names
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
                     names = ", ".join(sorted(disallowed_names))
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
-                continue
-
-            if imported_module == "git_stage_batch.batch":
-                child_module_names |= imported_names & {"baseline_edits"}
                 continue
 
             if imported_module not in _batch_module_names("baseline_edits", "merge.baseline_edits"):
@@ -16199,7 +16204,10 @@ def test_batch_presence_placement_choices_own_review_options():
         child_module_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch":
+            if imported_module in {
+                "git_stage_batch.batch",
+                "git_stage_batch.batch.merge",
+            }:
                 child_module_names |= imported_names & {"presence_placement_choices"}
                 continue
             if imported_module not in _batch_module_names("presence_placement_choices", "merge.presence_placement_choices"):

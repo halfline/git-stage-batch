@@ -5,11 +5,11 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from typing import overload
 
-from git_stage_batch.batch.display import (
+from git_stage_batch.batch.ownership.display_lines import (
     build_display_lines_from_batch_source_lines,
 )
-from git_stage_batch.batch.ownership import BatchOwnership
-from git_stage_batch.batch.ownership_absence_claims import AbsenceClaim
+from git_stage_batch.batch.ownership.model import BatchOwnership
+from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 
 
 class _NoLenByteLines(Sequence[bytes]):

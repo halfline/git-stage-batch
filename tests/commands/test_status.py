@@ -1,7 +1,7 @@
 """Tests for status command."""
 
 from git_stage_batch.batch.lifecycle import create_batch
-from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.binary_file_storage import add_binary_file_to_batch
 from git_stage_batch.batch.text_file_storage import add_file_to_batch
 from git_stage_batch.commands.include import command_include_line, command_include_to_batch

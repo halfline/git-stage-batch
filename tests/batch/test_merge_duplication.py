@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 
-from git_stage_batch.batch.ownership_absence_claims import AbsenceClaim
+from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 
-from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.merge import merge_batch_from_line_sequences_as_buffer
 from git_stage_batch.core.buffer import LineBuffer
 

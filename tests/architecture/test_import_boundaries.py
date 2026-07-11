@@ -370,7 +370,7 @@ def test_batch_source_cache_owns_session_mapping():
 def test_batch_source_annotation_owns_line_annotation():
     """Batch-source line annotation should stay outside display rendering."""
     display = __import__(
-        "git_stage_batch.batch.display",
+        "git_stage_batch.batch.ownership.display_lines",
         fromlist=["display"],
     )
     source_annotation = __import__(
@@ -9245,11 +9245,11 @@ def test_batch_lineage_uses_public_data_types():
 def test_batch_ownership_remapping_owns_public_helpers():
     """Ownership remapping should live outside ownership metadata."""
     remapping = __import__(
-        "git_stage_batch.batch.ownership_remapping",
+        "git_stage_batch.batch.ownership.remapping",
         fromlist=["ownership_remapping"],
     )
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     public_names = {
@@ -9328,11 +9328,11 @@ def test_batch_ownership_remapping_owns_public_helpers():
 def test_batch_ownership_translation_owns_public_helpers():
     """Ownership translation should live outside ownership metadata."""
     translation = __import__(
-        "git_stage_batch.batch.ownership_translation",
+        "git_stage_batch.batch.ownership.translation",
         fromlist=["ownership_translation"],
     )
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     public_names = {
@@ -9401,11 +9401,11 @@ def test_batch_ownership_translation_owns_public_helpers():
 def test_batch_hunk_ownership_translation_owns_hunk_selection():
     """Live-hunk ownership translation should stay outside line translation."""
     hunk_translation = __import__(
-        "git_stage_batch.batch.hunk_ownership_translation",
+        "git_stage_batch.batch.ownership.hunk_translation",
         fromlist=["hunk_ownership_translation"],
     )
     line_translation = __import__(
-        "git_stage_batch.batch.ownership_translation",
+        "git_stage_batch.batch.ownership.translation",
         fromlist=["ownership_translation"],
     )
     hunk_path = _batch_module_path("ownership/hunk_translation.py", "hunk_ownership_translation.py")
@@ -9467,11 +9467,11 @@ def test_batch_hunk_ownership_translation_owns_hunk_selection():
 def test_batch_hunk_line_ranges_own_hunk_range_scanning():
     """Live-hunk range scanning should stay outside ownership translation."""
     hunk_translation = __import__(
-        "git_stage_batch.batch.hunk_ownership_translation",
+        "git_stage_batch.batch.ownership.hunk_translation",
         fromlist=["hunk_ownership_translation"],
     )
     hunk_line_ranges = __import__(
-        "git_stage_batch.batch.hunk_line_ranges",
+        "git_stage_batch.batch.ownership.hunk_line_ranges",
         fromlist=["hunk_line_ranges"],
     )
     hunk_path = _batch_module_path("ownership/hunk_translation.py", "hunk_ownership_translation.py")
@@ -9531,11 +9531,11 @@ def test_batch_hunk_line_ranges_own_hunk_range_scanning():
 def test_batch_hunk_replacement_translation_owns_replacement_runs():
     """File-derived replacement run translation should stay outside hunk walks."""
     hunk_translation = __import__(
-        "git_stage_batch.batch.hunk_ownership_translation",
+        "git_stage_batch.batch.ownership.hunk_translation",
         fromlist=["hunk_ownership_translation"],
     )
     replacement_translation = __import__(
-        "git_stage_batch.batch.hunk_replacement_translation",
+        "git_stage_batch.batch.ownership.hunk_replacement_translation",
         fromlist=["hunk_replacement_translation"],
     )
     hunk_path = _batch_module_path("ownership/hunk_translation.py", "hunk_ownership_translation.py")
@@ -9594,15 +9594,15 @@ def test_batch_hunk_replacement_translation_owns_replacement_runs():
 def test_batch_ownership_line_entries_own_entry_helpers():
     """LineEntry ownership primitives should stay outside translators."""
     line_entries = __import__(
-        "git_stage_batch.batch.ownership_line_entries",
+        "git_stage_batch.batch.ownership.line_entries",
         fromlist=["ownership_line_entries"],
     )
     hunk_translation = __import__(
-        "git_stage_batch.batch.hunk_ownership_translation",
+        "git_stage_batch.batch.ownership.hunk_translation",
         fromlist=["hunk_ownership_translation"],
     )
     line_translation = __import__(
-        "git_stage_batch.batch.ownership_translation",
+        "git_stage_batch.batch.ownership.translation",
         fromlist=["ownership_translation"],
     )
     line_entry_path = _batch_module_path("ownership/line_entries.py", "ownership_line_entries.py")
@@ -9678,11 +9678,11 @@ def test_batch_ownership_line_entries_own_entry_helpers():
 def test_batch_ownership_references_own_baseline_boundaries():
     """Baseline boundary metadata should have a dedicated ownership module."""
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     ownership_references = __import__(
-        "git_stage_batch.batch.ownership_references",
+        "git_stage_batch.batch.ownership.references",
         fromlist=["ownership_references"],
     )
     reference_path = _batch_module_path("ownership/references.py", "ownership_references.py")
@@ -9744,11 +9744,11 @@ def test_batch_ownership_references_own_baseline_boundaries():
 def test_batch_ownership_claims_own_presence_records():
     """Presence claim records should live with claim construction helpers."""
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     ownership_claims = __import__(
-        "git_stage_batch.batch.ownership_claims",
+        "git_stage_batch.batch.ownership.claims",
         fromlist=["ownership_claims"],
     )
     claims_path = _batch_module_path("ownership/claims.py", "ownership_claims.py")
@@ -9794,11 +9794,11 @@ def test_batch_ownership_claims_own_presence_records():
 def test_batch_ownership_claims_owns_line_range_helpers():
     """Ownership claim range helpers should live outside ownership metadata."""
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     ownership_claims = __import__(
-        "git_stage_batch.batch.ownership_claims",
+        "git_stage_batch.batch.ownership.claims",
         fromlist=["ownership_claims"],
     )
     claim_path = _batch_module_path("ownership/claims.py", "ownership_claims.py")
@@ -9889,11 +9889,11 @@ def test_batch_ownership_claims_owns_line_range_helpers():
 def test_batch_ownership_absence_claims_own_value_records():
     """Absence-claim records should live outside aggregate ownership."""
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     ownership_absence_claims = __import__(
-        "git_stage_batch.batch.ownership_absence_claims",
+        "git_stage_batch.batch.ownership.absence_claims",
         fromlist=["ownership_absence_claims"],
     )
     absence_claim_path = _batch_module_path("ownership/absence_claims.py", "ownership_absence_claims.py")
@@ -9956,11 +9956,11 @@ def test_batch_ownership_absence_claims_own_value_records():
 def test_batch_ownership_replacement_units_own_value_records():
     """Replacement-unit records should live with normalization helpers."""
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     replacement_units = __import__(
-        "git_stage_batch.batch.ownership_replacement_units",
+        "git_stage_batch.batch.ownership.replacement_units",
         fromlist=["ownership_replacement_units"],
     )
     replacement_unit_path = _batch_module_path("ownership/replacement_units.py", "ownership_replacement_units.py")
@@ -10033,11 +10033,11 @@ def test_batch_ownership_replacement_units_own_value_records():
 def test_batch_ownership_replacement_units_owns_normalization():
     """Replacement-unit normalization should live outside ownership metadata."""
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     replacement_units = __import__(
-        "git_stage_batch.batch.ownership_replacement_units",
+        "git_stage_batch.batch.ownership.replacement_units",
         fromlist=["ownership_replacement_units"],
     )
     replacement_unit_path = _batch_module_path("ownership/replacement_units.py", "ownership_replacement_units.py")
@@ -10105,15 +10105,15 @@ def test_batch_ownership_replacement_units_owns_normalization():
 def test_batch_ownership_acquisition_owns_scoped_context():
     """Scoped ownership context management should live outside ownership metadata."""
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     ownership_acquisition = __import__(
-        "git_stage_batch.batch.ownership_acquisition",
+        "git_stage_batch.batch.ownership.acquisition",
         fromlist=["ownership_acquisition"],
     )
     ownership_metadata_loading = __import__(
-        "git_stage_batch.batch.ownership_metadata_loading",
+        "git_stage_batch.batch.ownership.metadata_loading",
         fromlist=["ownership_metadata_loading"],
     )
     acquisition_path = _batch_module_path("ownership/acquisition.py", "ownership_acquisition.py")
@@ -10165,11 +10165,11 @@ def test_batch_ownership_acquisition_owns_scoped_context():
 def test_batch_ownership_detachment_owns_detached_copies():
     """Detached ownership copies should live outside ownership metadata."""
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     ownership_detachment = __import__(
-        "git_stage_batch.batch.ownership_detachment",
+        "git_stage_batch.batch.ownership.detachment",
         fromlist=["ownership_detachment"],
     )
     detachment_path = _batch_module_path("ownership/detachment.py", "ownership_detachment.py")
@@ -10215,11 +10215,11 @@ def test_batch_ownership_detachment_owns_detached_copies():
 def test_batch_ownership_merging_owns_merge_helpers():
     """Ownership merge behavior should live outside ownership metadata."""
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     ownership_merging = __import__(
-        "git_stage_batch.batch.ownership_merging",
+        "git_stage_batch.batch.ownership.merging",
         fromlist=["ownership_merging"],
     )
     merging_path = _batch_module_path("ownership/merging.py", "ownership_merging.py")
@@ -10348,11 +10348,11 @@ def test_batch_source_advancement_uses_public_entry_helpers():
 def test_batch_absence_content_owns_public_builders():
     """Absence content construction should live outside ownership metadata."""
     absence_content = __import__(
-        "git_stage_batch.batch.absence_content",
+        "git_stage_batch.batch.ownership.absence_content",
         fromlist=["absence_content"],
     )
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     public_names = {
@@ -10417,11 +10417,11 @@ def test_batch_absence_content_owns_public_builders():
 def test_batch_replacement_line_runs_own_public_derivation():
     """Replacement run derivation should live outside ownership metadata."""
     replacement_line_runs = __import__(
-        "git_stage_batch.batch.replacement_line_runs",
+        "git_stage_batch.batch.ownership.replacement_line_runs",
         fromlist=["replacement_line_runs"],
     )
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     public_names = {
@@ -11147,11 +11147,11 @@ def test_batch_transform_sift_persistence_owns_file_writes():
 def test_batch_ownership_units_owns_unit_operations():
     """Ownership unit operations should live outside ownership metadata."""
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     ownership_units = __import__(
-        "git_stage_batch.batch.ownership_units",
+        "git_stage_batch.batch.ownership.units",
         fromlist=["ownership_units"],
     )
     ownership_path = _batch_module_path("ownership/model.py", "ownership.py")
@@ -11239,11 +11239,11 @@ def test_batch_ownership_units_owns_unit_operations():
 def test_batch_ownership_unit_validation_owns_structural_checks():
     """Ownership unit validation should live outside unit construction."""
     ownership_units = __import__(
-        "git_stage_batch.batch.ownership_units",
+        "git_stage_batch.batch.ownership.units",
         fromlist=["ownership_units"],
     )
     ownership_unit_validation = __import__(
-        "git_stage_batch.batch.ownership_unit_validation",
+        "git_stage_batch.batch.ownership.unit_validation",
         fromlist=["ownership_unit_validation"],
     )
     validation_path = _batch_module_path("ownership/unit_validation.py", "ownership_unit_validation.py")
@@ -11289,11 +11289,11 @@ def test_batch_ownership_unit_validation_owns_structural_checks():
 def test_batch_ownership_unit_rebuild_owns_metadata_reconstruction():
     """Ownership metadata rebuild should live outside unit construction."""
     ownership_units = __import__(
-        "git_stage_batch.batch.ownership_units",
+        "git_stage_batch.batch.ownership.units",
         fromlist=["ownership_units"],
     )
     ownership_unit_rebuild = __import__(
-        "git_stage_batch.batch.ownership_unit_rebuild",
+        "git_stage_batch.batch.ownership.unit_rebuild",
         fromlist=["ownership_unit_rebuild"],
     )
     rebuild_path = _batch_module_path("ownership/unit_rebuild.py", "ownership_unit_rebuild.py")
@@ -11474,11 +11474,11 @@ def test_batch_file_display_model_owns_review_model_assembly():
 def test_batch_ownership_unit_selection_owns_display_id_filtering():
     """Display-ID unit selection should live outside unit construction."""
     ownership_units = __import__(
-        "git_stage_batch.batch.ownership_units",
+        "git_stage_batch.batch.ownership.units",
         fromlist=["ownership_units"],
     )
     ownership_unit_selection = __import__(
-        "git_stage_batch.batch.ownership_unit_selection",
+        "git_stage_batch.batch.ownership.unit_selection",
         fromlist=["ownership_unit_selection"],
     )
     selection_path = _batch_module_path("ownership/unit_selection.py", "ownership_unit_selection.py")
@@ -11529,11 +11529,11 @@ def test_batch_ownership_unit_selection_owns_display_id_filtering():
 def test_batch_ownership_unit_types_own_value_objects():
     """Ownership unit value objects should live outside unit operations."""
     ownership_units = __import__(
-        "git_stage_batch.batch.ownership_units",
+        "git_stage_batch.batch.ownership.units",
         fromlist=["ownership_units"],
     )
     ownership_unit_types = __import__(
-        "git_stage_batch.batch.ownership_unit_types",
+        "git_stage_batch.batch.ownership.unit_types",
         fromlist=["ownership_unit_types"],
     )
     unit_types_path = _batch_module_path("ownership/unit_types.py", "ownership_unit_types.py")
@@ -11589,19 +11589,19 @@ def test_batch_ownership_unit_types_own_value_objects():
 def test_batch_ownership_metadata_blobs_own_blob_discovery():
     """Ownership metadata blob discovery should live outside ownership models."""
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     ownership_references = __import__(
-        "git_stage_batch.batch.ownership_references",
+        "git_stage_batch.batch.ownership.references",
         fromlist=["ownership_references"],
     )
     ownership_metadata_blobs = __import__(
-        "git_stage_batch.batch.ownership_metadata_blobs",
+        "git_stage_batch.batch.ownership.metadata_blobs",
         fromlist=["ownership_metadata_blobs"],
     )
     ownership_metadata_loading = __import__(
-        "git_stage_batch.batch.ownership_metadata_loading",
+        "git_stage_batch.batch.ownership.metadata_loading",
         fromlist=["ownership_metadata_loading"],
     )
     ownership_reference_path = _batch_module_path("ownership/references.py", "ownership_references.py")

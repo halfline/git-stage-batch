@@ -31,12 +31,12 @@ from git_stage_batch.batch.realization.entry_storage import (
 )
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.exceptions import MergeError
-from git_stage_batch.batch.ownership_absence_claims import AbsenceClaim
-from git_stage_batch.batch.ownership import (
+from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
+from git_stage_batch.batch.ownership.model import (
     BatchOwnership,
 )
-from git_stage_batch.batch.ownership_references import BaselineReference
-from git_stage_batch.batch.ownership_replacement_units import (
+from git_stage_batch.batch.ownership.references import BaselineReference
+from git_stage_batch.batch.ownership.replacement_units import (
     ReplacementUnit,
     ReplacementUnitOrigin,
 )

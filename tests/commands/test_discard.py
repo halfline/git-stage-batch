@@ -3,7 +3,7 @@
 import os
 from unittest.mock import patch
 
-from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.utils.paths import get_abort_snapshots_directory_path
 from git_stage_batch.utils.paths import get_state_directory_path
 from git_stage_batch.batch.query import list_batch_files, read_batch_metadata
@@ -30,7 +30,7 @@ from git_stage_batch.commands.include import command_include
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.core.models import TextFileDeletionChange
 from git_stage_batch.exceptions import CommandError
-from tests.ownership_metadata_helpers import (
+from tests.batch.ownership.metadata_helpers import (
     reject_materialized_ownership_metadata as _reject_materialized_ownership_metadata,
 )
 

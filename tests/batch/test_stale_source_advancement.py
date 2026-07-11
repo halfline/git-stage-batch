@@ -4,21 +4,21 @@ from __future__ import annotations
 
 import pytest
 
-from git_stage_batch.batch.ownership_absence_claims import AbsenceClaim
-from git_stage_batch.batch.ownership import (
+from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
+from git_stage_batch.batch.ownership.model import (
     BatchOwnership,
 )
-from git_stage_batch.batch.ownership_merging import merge_batch_ownership
-from git_stage_batch.batch.ownership_remapping import (
+from git_stage_batch.batch.ownership.merging import merge_batch_ownership
+from git_stage_batch.batch.ownership.remapping import (
     remap_batch_ownership_to_new_source_lines,
     remap_batch_ownership_with_lineage,
 )
-from git_stage_batch.batch.ownership_translation import (
+from git_stage_batch.batch.ownership.translation import (
     detect_stale_batch_source_for_selection,
     translate_lines_to_batch_ownership,
 )
-from git_stage_batch.batch.ownership_references import BaselineReference
-from git_stage_batch.batch.ownership_replacement_units import ReplacementUnit
+from git_stage_batch.batch.ownership.references import BaselineReference
+from git_stage_batch.batch.ownership.replacement_units import ReplacementUnit
 from git_stage_batch.batch.source_advancement import (
     advance_source_lines_preserving_existing_presence,
 )

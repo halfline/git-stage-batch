@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 import git_stage_batch.batch.file_mergeability as file_mergeability_module
 from git_stage_batch.batch.file_mergeability import probe_batch_file_mergeability
-from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.core.line_selection import LineRanges
 
 

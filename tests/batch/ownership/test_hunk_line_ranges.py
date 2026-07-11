@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from git_stage_batch.batch.hunk_line_ranges import (
+from git_stage_batch.batch.ownership.hunk_line_ranges import (
     HunkLineRangeScan,
     hunk_line_index_ranges_in_range,
     hunk_line_indexes_in_range,

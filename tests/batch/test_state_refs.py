@@ -8,7 +8,7 @@ import pytest
 from git_stage_batch.batch.lifecycle import create_batch, delete_batch, update_batch_note
 from git_stage_batch.batch.metadata_io import write_file_backed_batch_metadata
 from git_stage_batch.batch.query import read_batch_metadata
-from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.batch.ownership.model import BatchOwnership
 import git_stage_batch.batch.state_refs as state_refs_module
 from git_stage_batch.batch.state_refs import (
     get_batch_content_ref_name,

@@ -5,7 +5,7 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.query import get_batch_commit_sha, read_batch_metadata
 from git_stage_batch.batch.validation import batch_exists
 from git_stage_batch.commands.include import (
@@ -32,7 +32,7 @@ from git_stage_batch.data.selected_change.clear_reasons import (
 from git_stage_batch.exceptions import CommandError, NoMoreHunks
 from git_stage_batch.utils.paths import get_state_directory_path
 from git_stage_batch.commands.again import command_again
-from tests.ownership_metadata_helpers import (
+from tests.batch.ownership.metadata_helpers import (
     reject_materialized_ownership_metadata as _reject_materialized_ownership_metadata,
 )
 

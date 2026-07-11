@@ -9,28 +9,28 @@ from __future__ import annotations
 
 import pytest
 
-from git_stage_batch.batch.display import (
+from git_stage_batch.batch.ownership.display_lines import (
     build_display_lines_from_batch_source_lines,
 )
-from git_stage_batch.batch.ownership_absence_claims import AbsenceClaim
-from git_stage_batch.batch.ownership import (
+from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
+from git_stage_batch.batch.ownership.model import (
     BatchOwnership,
 )
-from git_stage_batch.batch.ownership_references import BaselineReference
-from git_stage_batch.batch.ownership_replacement_units import (
+from git_stage_batch.batch.ownership.references import BaselineReference
+from git_stage_batch.batch.ownership.replacement_units import (
     ReplacementUnit,
     ReplacementUnitOrigin,
 )
-from git_stage_batch.batch.ownership_units import (
+from git_stage_batch.batch.ownership.units import (
     build_ownership_units_from_batch_source_lines,
 )
-from git_stage_batch.batch.ownership_unit_rebuild import (
+from git_stage_batch.batch.ownership.unit_rebuild import (
     rebuild_ownership_from_units,
 )
-from git_stage_batch.batch.ownership_unit_selection import (
+from git_stage_batch.batch.ownership.unit_selection import (
     select_ownership_units_by_display_ids,
 )
-from git_stage_batch.batch.ownership_unit_types import (
+from git_stage_batch.batch.ownership.unit_types import (
     OwnershipUnit,
     OwnershipUnitKind,
 )

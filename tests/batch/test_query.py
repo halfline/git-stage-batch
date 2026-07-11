@@ -15,7 +15,7 @@ from git_stage_batch.batch.query import (
 )
 from git_stage_batch.batch.lifecycle import create_batch
 from git_stage_batch.batch.text_file_storage import add_file_to_batch
-from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.utils.paths import get_batch_metadata_file_path, ensure_state_directory_exists
 

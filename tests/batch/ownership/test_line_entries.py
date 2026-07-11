@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from git_stage_batch.batch.ownership_line_entries import (
+from git_stage_batch.batch.ownership.line_entries import (
     baseline_reference_for_presence_line,
 )
 from git_stage_batch.core.models import LineEntry

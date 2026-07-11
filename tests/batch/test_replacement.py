@@ -1,7 +1,7 @@
 """Tests for replacement batch-source helpers."""
 
-from git_stage_batch.batch.ownership import BatchOwnership
-from git_stage_batch.batch.ownership_absence_claims import AbsenceClaim
+from git_stage_batch.batch.ownership.model import BatchOwnership
+from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.replacement import (
     ReplacementBatchView,
     build_replacement_batch_view_from_lines,

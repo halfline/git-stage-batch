@@ -220,7 +220,7 @@ def test_batch_package_stays_below_workflow_data():
     """Batch domain modules should not import workflow data storage."""
     old_source_path = SRC_ROOT / "data" / "batch_sources.py"
     source_snapshots = __import__(
-        "git_stage_batch.batch.source_snapshots",
+        "git_stage_batch.batch.source.snapshots",
         fromlist=["source_snapshots"],
     )
     public_snapshot_names = {
@@ -249,11 +249,11 @@ def test_batch_package_stays_below_workflow_data():
 def test_batch_source_buffers_own_session_start_loading():
     """Session-start buffer loading should live outside source snapshots."""
     source_buffers = __import__(
-        "git_stage_batch.batch.source_buffers",
+        "git_stage_batch.batch.source.buffers",
         fromlist=["source_buffers"],
     )
     source_snapshots = __import__(
-        "git_stage_batch.batch.source_snapshots",
+        "git_stage_batch.batch.source.snapshots",
         fromlist=["source_snapshots"],
     )
     source_buffers_path = _batch_module_path("source/buffers.py", "source_buffers.py")
@@ -307,11 +307,11 @@ def test_batch_source_buffers_own_session_start_loading():
 def test_batch_source_cache_owns_session_mapping():
     """Session source-cache mapping should live outside source snapshots."""
     source_cache = __import__(
-        "git_stage_batch.batch.source_cache",
+        "git_stage_batch.batch.source.cache",
         fromlist=["source_cache"],
     )
     source_snapshots = __import__(
-        "git_stage_batch.batch.source_snapshots",
+        "git_stage_batch.batch.source.snapshots",
         fromlist=["source_snapshots"],
     )
     source_cache_path = _batch_module_path("source/cache.py", "source_cache.py")
@@ -374,7 +374,7 @@ def test_batch_source_annotation_owns_line_annotation():
         fromlist=["display"],
     )
     source_annotation = __import__(
-        "git_stage_batch.batch.source_annotation",
+        "git_stage_batch.batch.source.annotation",
         fromlist=["source_annotation"],
     )
     source_annotation_path = _batch_module_path("source/annotation.py", "source_annotation.py")
@@ -9028,11 +9028,11 @@ def test_suggest_fixup_line_ranges_stay_in_fixup_support():
 def test_selected_line_source_refresh_uses_public_api():
     """Cross-module source refresh callers should import public helpers."""
     source_refresh = __import__(
-        "git_stage_batch.batch.source_refresh",
+        "git_stage_batch.batch.source.refresh",
         fromlist=["source_refresh"],
     )
     line_refresh = __import__(
-        "git_stage_batch.batch.selected_line_source_refresh",
+        "git_stage_batch.batch.source.selected_line_refresh",
         fromlist=["selected_line_source_refresh"],
     )
     source_refresh_path = _batch_module_path("source/refresh.py", "source_refresh.py")
@@ -9103,7 +9103,7 @@ def test_selected_line_source_refresh_uses_public_api():
 def test_batch_ownership_update_owns_prepared_update_api():
     """Prepared ownership updates should stay outside source refresh."""
     source_refresh = __import__(
-        "git_stage_batch.batch.source_refresh",
+        "git_stage_batch.batch.source.refresh",
         fromlist=["source_refresh"],
     )
     ownership_update = __import__(
@@ -10286,7 +10286,7 @@ def test_batch_ownership_merging_owns_merge_helpers():
 def test_batch_source_advancement_uses_public_entry_helpers():
     """Source advancement callers should import public advancement helpers."""
     source_advancement = __import__(
-        "git_stage_batch.batch.source_advancement",
+        "git_stage_batch.batch.source.advancement",
         fromlist=["source_advancement"],
     )
     public_names = {
@@ -14778,7 +14778,7 @@ def test_batch_source_action_context_owns_action_prologue():
         "git_stage_batch.batch.state.validation": {
             "read_validated_batch_metadata",
         },
-        "git_stage_batch.batch.source_selector": {
+        "git_stage_batch.batch.source.selector": {
             "require_plain_batch_name",
         },
         "git_stage_batch.batch.state.batch_names": {
@@ -15563,7 +15563,7 @@ def test_batch_source_reset_selection_owns_reset_scope():
             "resolve_batch_file_scope",
             "resolve_current_batch_atomic_file_scope",
         },
-        "git_stage_batch.batch.source_selector": {
+        "git_stage_batch.batch.source.selector": {
             "require_plain_batch_name",
         },
         "git_stage_batch.batch.state.batch_names": {

@@ -1,6 +1,6 @@
 import pytest
 
-from git_stage_batch.batch.source_selector import (
+from git_stage_batch.batch.source.selector import (
     BatchSourceSelector,
     parse_batch_source_selector,
 )

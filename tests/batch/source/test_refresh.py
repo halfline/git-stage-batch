@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from git_stage_batch.batch.source_refresh import (
+from git_stage_batch.batch.source.refresh import (
     RefreshedBatchSelection,
     ensure_batch_source_current_for_selection,
 )
-from git_stage_batch.batch.selected_line_source_refresh import (
+from git_stage_batch.batch.source.selected_line_refresh import (
     refresh_selected_lines_against_source_lines,
 )
 from git_stage_batch.batch.ownership.model import BatchOwnership
-from git_stage_batch.batch.source_advancement import (
+from git_stage_batch.batch.source.advancement import (
     advance_source_lines_preserving_existing_presence,
 )
 from git_stage_batch.core.models import LineEntry

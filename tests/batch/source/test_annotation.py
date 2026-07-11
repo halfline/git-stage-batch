@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from git_stage_batch.batch import source_annotation as source_annotation_module
-from git_stage_batch.batch.source_annotation import (
+from git_stage_batch.batch.source.annotation import (
     annotate_with_batch_source_lines,
     annotate_with_batch_source_working_lines,
 )

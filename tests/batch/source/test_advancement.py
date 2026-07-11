@@ -19,7 +19,7 @@ from git_stage_batch.batch.ownership.translation import (
 )
 from git_stage_batch.batch.ownership.references import BaselineReference
 from git_stage_batch.batch.ownership.replacement_units import ReplacementUnit
-from git_stage_batch.batch.source_advancement import (
+from git_stage_batch.batch.source.advancement import (
     advance_source_lines_preserving_existing_presence,
 )
 from git_stage_batch.batch.line_matching.lineage import BatchSourceLineage, LineageRun

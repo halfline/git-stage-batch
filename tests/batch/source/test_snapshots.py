@@ -6,19 +6,19 @@ from git_stage_batch.utils.paths import (
     get_abort_stash_file_path,
 )
 from git_stage_batch.utils.file_io import write_text_file_contents
-from git_stage_batch.batch.source_buffers import load_saved_session_file_as_buffer
+from git_stage_batch.batch.source.buffers import load_saved_session_file_as_buffer
 from git_stage_batch.utils.paths import (
     get_abort_snapshot_list_file_path,
     get_abort_snapshots_directory_path,
 )
 from git_stage_batch.utils.file_io import write_file_paths_file
 from git_stage_batch.exceptions import CommandError
-from git_stage_batch.batch.source_snapshots import (
+from git_stage_batch.batch.source.snapshots import (
     create_batch_source_commit,
     create_batch_source_commits,
 )
 from git_stage_batch.utils.file_io import read_text_file_contents
-from git_stage_batch.batch.source_cache import (
+from git_stage_batch.batch.source.cache import (
     get_batch_source_for_file,
     load_session_batch_sources,
     save_session_batch_sources,

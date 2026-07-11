@@ -39,6 +39,14 @@ Find and display the first unprocessed hunk; cache as "selected".
 
 Resets state if a session is already in progress.
 
+Untracked, non-ignored paths are discovered with a NUL-safe repository query
+and registered as intent-to-add entries in one bulk index update. Startup
+persists the complete auto-added path manifest once instead of rewriting it
+for every file, so work scales with the number and bytes of candidate paths.
+If a path disappears during discovery, startup refreshes the candidate set
+once. Git publishes the index through its lockfile transaction, and a failed
+bulk update rolls back the planned session manifest.
+
 Live session diffs render renames as atomic `old -> new` choices. A selected
 rename can be included, skipped, or discarded with the rest of the workflow.
 At session start, staged renames and regular text deletions are temporarily

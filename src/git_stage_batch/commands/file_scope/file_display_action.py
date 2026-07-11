@@ -9,6 +9,7 @@ from ...data.file_change_display import (
     render_binary_file_change,
     render_gitlink_change,
     render_rename_change,
+    render_mode_change,
     render_text_deletion_change,
 )
 from ...data.file_hunk_display import render_file_as_single_hunk
@@ -24,6 +25,7 @@ from ...data.selected_change.file_changes import (
     cache_binary_file_change,
     cache_gitlink_change,
     cache_rename_change,
+    cache_mode_change,
     cache_text_deletion_change,
 )
 from ...data.selected_change.paths import get_selected_change_file_path
@@ -41,6 +43,7 @@ from ...output.patch import (
     print_binary_file_change,
     print_gitlink_change,
     print_rename_change,
+    print_file_mode_change,
     print_text_file_deletion_change,
 )
 
@@ -98,6 +101,7 @@ def show_live_file_display(
         and gitlink_change is None
         else None
     )
+    mode_change = render_mode_change(target_file) if preview_lines is None else None
 
     if deletion_change is not None:
         if page is not None:
@@ -119,6 +123,17 @@ def show_live_file_display(
         if porcelain:
             return
         print_rename_change(rename_change)
+        return
+
+    if mode_change is not None:
+        if page is not None:
+            exit_with_error(_("File review pages are only available for text changes."))
+        if selectable:
+            clear_last_file_review_state()
+            cache_mode_change(mode_change)
+        if porcelain:
+            return
+        print_file_mode_change(mode_change)
         return
 
     if gitlink_change is not None:

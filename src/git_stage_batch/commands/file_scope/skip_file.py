@@ -7,6 +7,7 @@ import sys
 from ...core.diff_parser import acquire_unified_diff, build_line_changes_from_patch_lines
 from ...core.hashing import (
     compute_binary_file_hash,
+    compute_file_mode_change_hash,
     compute_gitlink_change_hash,
     compute_rename_change_hash,
     compute_stable_hunk_hash_from_lines,
@@ -14,6 +15,7 @@ from ...core.hashing import (
 )
 from ...core.models import (
     BinaryFileChange,
+    FileModeChange,
     GitlinkChange,
     RenameChange,
     TextFileDeletionChange,
@@ -24,6 +26,7 @@ from ...data.progress import (
     record_binary_hunk_skipped,
     record_gitlink_hunk_skipped,
     record_hunk_skipped,
+    record_mode_change_skipped,
     record_rename_hunk_skipped,
     record_text_deletion_hunk_skipped,
 )
@@ -73,6 +76,18 @@ def skip_file_changes(
             )
         ) as patches:
             for patch in patches:
+                if isinstance(patch, FileModeChange):
+                    if patch.path() != target_file:
+                        continue
+                    patch_hash = compute_file_mode_change_hash(patch)
+                    if patch_hash in blocked_hashes:
+                        continue
+                    append_lines_to_file(blocklist_path, [patch_hash])
+                    blocked_hashes.add(patch_hash)
+                    record_mode_change_skipped(patch, patch_hash)
+                    hunks_skipped += 1
+                    continue
+
                 if isinstance(patch, RenameChange):
                     if target_file not in (patch.old_path, patch.new_path):
                         continue

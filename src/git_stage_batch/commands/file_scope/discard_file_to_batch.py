@@ -15,7 +15,7 @@ from ...batch.validation import batch_exists
 from ...core.buffer import LineBuffer
 from ...core.diff_parser import acquire_unified_diff, build_line_changes_from_patch_lines
 from ...core.hashing import compute_stable_hunk_hash_from_lines
-from ...core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
+from ...core.models import BinaryFileChange, FileModeChange, GitlinkChange, RenameChange, TextFileDeletionChange
 from ...core.text_lifecycle import TextFileChangeType
 from ...data.file_change_display import (
     render_binary_file_change,
@@ -88,6 +88,7 @@ def discard_file_to_batch(
     with ExitStack() as patch_stack:
         all_lines_to_batch = []
         patches_to_discard = []
+        mode_change = None
 
         with acquire_unified_diff(
             stream_live_git_diff(
@@ -97,6 +98,9 @@ def discard_file_to_batch(
             )
         ) as patches:
             for patch in patches:
+                if isinstance(patch, FileModeChange):
+                    mode_change = patch
+                    continue
                 if isinstance(patch, RenameChange):
                     continue
 
@@ -124,6 +128,14 @@ def discard_file_to_batch(
                 ))
 
         if not all_lines_to_batch:
+            if mode_change is not None:
+                _whole_file_batch_discarding.discard_mode_to_batch(
+                    batch_name,
+                    mode_change,
+                    quiet=quiet,
+                    auto_advance=auto_advance,
+                )
+                return 1
             repo_root = get_git_repository_root_path()
             full_path = repo_root / file_path
             lifecycle_change_type = detect_empty_text_lifecycle_change(file_path)

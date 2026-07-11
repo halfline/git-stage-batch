@@ -7,6 +7,7 @@ import sys
 from ..exceptions import BypassRefresh, QuitInteractive
 from ..i18n import _
 from ..output.colors import Colors
+from ..utils.journal import flush_journal
 from . import current_change
 from .action_dispatch import dispatch_action
 from .flow import FlowLocation, LocationRole, FlowState
@@ -82,3 +83,5 @@ def start_interactive_mode() -> None:
             should_refresh = False
         except QuitInteractive:
             break
+        finally:
+            flush_journal()

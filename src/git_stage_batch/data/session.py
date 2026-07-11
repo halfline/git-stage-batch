@@ -25,9 +25,10 @@ from ..utils.file_io import (
 from ..utils.git_command import run_git_command
 from ..git_paths import decode_path, nul_records
 from ..utils.git_worktree import git_remove_paths
-from ..utils.git_index import git_add_paths
+from ..utils.git_index import git_add_paths_from_stdin
 from ..utils.git_repository import get_git_repository_root_path
-from ..utils.journal import log_journal
+from ..utils.journal import journal_enabled, log_journal
+from .index_entries import IndexEntry, read_index_entries
 from ..utils.paths import (
     get_abort_head_file_path,
     get_abort_snapshot_list_file_path,
@@ -54,6 +55,23 @@ SESSION_STATE_FILES = [
     "session",
     "journal.jsonl",
 ]
+
+
+def _journal_index_entries(
+    file_paths: list[str],
+    entries: dict[str, IndexEntry],
+) -> list[dict[str, str | None]]:
+    """Build structured index metadata while retaining input path order."""
+    return [
+        {
+            "path": file_path,
+            "mode": entries[file_path].mode if file_path in entries else None,
+            "object_id": (
+                entries[file_path].object_id if file_path in entries else None
+            ),
+        }
+        for file_path in file_paths
+    ]
 
 
 def active_session_marker_path(git_dir: Path | None = None) -> Path:
@@ -241,23 +259,28 @@ def _initialize_abort_state() -> None:
                 quiet=True,
                 check=False,
             )
-            for file_path in all_intent_to_add_files:
-                ls_before = run_git_command(
-                    ["ls-files", "--stage", "--", file_path],
-                    check=False,
-                    requires_index_lock=False,
-                ).stdout.strip()
-                git_add_paths([file_path], intent_to_add=True, check=False)
-                ls_after = run_git_command(
-                    ["ls-files", "--stage", "--", file_path],
-                    check=False,
-                    requires_index_lock=False,
-                ).stdout.strip()
+            index_before = (
+                read_index_entries(all_intent_to_add_files)
+                if journal_enabled()
+                else {}
+            )
+            git_add_paths_from_stdin(
+                all_intent_to_add_files,
+                intent_to_add=True,
+                check=False,
+            )
+            if journal_enabled():
                 log_journal(
-                    "session_re_add_intent_to_add",
-                    file_path=file_path,
-                    index_before=ls_before,
-                    index_after=ls_after,
+                    "session_re_add_intent_to_add_files",
+                    file_count=len(all_intent_to_add_files),
+                    index_entries_before=_journal_index_entries(
+                        all_intent_to_add_files,
+                        index_before,
+                    ),
+                    index_entries_after=_journal_index_entries(
+                        all_intent_to_add_files,
+                        read_index_entries(all_intent_to_add_files),
+                    ),
                 )
 
     if stash_returncode != 0:

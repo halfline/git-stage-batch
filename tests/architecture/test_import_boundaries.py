@@ -531,7 +531,6 @@ def test_staging_index_update_owns_git_index_mutation():
         fromlist=["index_update"],
     )
     mutation_modules = {
-        "git_stage_batch.utils.git_command",
         "git_stage_batch.utils.git_index",
         "git_stage_batch.utils.git_object_io",
         "git_stage_batch.utils.journal",
@@ -550,6 +549,8 @@ def test_staging_index_update_owns_git_index_mutation():
     assert "update_index_with_blob_buffer" in vars(index_update)
     assert content_buffer_imports.isdisjoint(mutation_modules)
     assert mutation_modules <= index_update_imports
+    assert "git_stage_batch.data.index_entries" in index_update_imports
+    assert "git_stage_batch.utils.git_command" not in index_update_imports
 
 
 def test_replacement_payload_imports_use_core_boundary():

@@ -13,7 +13,7 @@ from ...core.buffer import (
 )
 from ...utils.repository_buffers import load_git_object_as_buffer
 from ...utils.git_repository import get_git_repository_root_path
-from ...utils.journal import log_journal
+from ...utils.journal import JournalLevel, journal_enabled, log_journal
 from ...utils.paths import get_index_snapshot_file_path, get_working_tree_snapshot_file_path
 
 
@@ -47,19 +47,19 @@ def write_snapshots_for_selected_file_path(file_path: str) -> None:
         write_buffer_to_path(get_index_snapshot_file_path(), index_version)
         write_buffer_to_path(get_working_tree_snapshot_file_path(), working_tree_version)
 
-        log_journal(
-            "write_snapshots_for_selected_file",
-            file_path=file_path,
-            index_len=buffer_byte_count(index_version),
-            index_lines=_buffer_line_count(index_version),
-            index_preview=(
-                buffer_preview(index_version)
-                if buffer_byte_count(index_version) > 0 else
-                "(empty)"
-            ),
-            working_tree_len=buffer_byte_count(working_tree_version),
-            working_tree_lines=_buffer_line_count(working_tree_version),
-        )
+        if journal_enabled():
+            fields = {
+                "file_path": file_path,
+                "index_len": buffer_byte_count(index_version),
+                "working_tree_len": buffer_byte_count(working_tree_version),
+            }
+            if journal_enabled(JournalLevel.CONTENT_DEBUG):
+                fields.update({
+                    "index_lines": _buffer_line_count(index_version),
+                    "index_preview": buffer_preview(index_version),
+                    "working_tree_lines": _buffer_line_count(working_tree_version),
+                })
+            log_journal("write_snapshots_for_selected_file", **fields)
 
 
 def _buffer_line_count(buffer: LineBuffer) -> int:

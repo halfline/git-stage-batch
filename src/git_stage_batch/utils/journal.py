@@ -1,131 +1,536 @@
-"""Debug journal for tracking all operations."""
+"""Low-overhead, privacy-conscious diagnostic journal."""
 
 from __future__ import annotations
 
+import atexit
+import base64
+import fcntl
+import hashlib
 import json
 import os
+import sys
+import threading
 import traceback
-from datetime import datetime
+from collections import Counter
+from datetime import datetime, timezone
+from enum import IntEnum
 from pathlib import Path
 from typing import Any
 
-from .git_command import run_git_command
-from ..git_paths import decode_path, nul_records
-from .paths import get_state_directory_path
+from .git_repository import get_git_common_directory_path
 
 
+JOURNAL_LEVEL_ENV = "GIT_STAGE_BATCH_JOURNAL"
+JOURNAL_PATH_ENV = "GIT_STAGE_BATCH_JOURNAL_PATH"
+# Kept as a path-override alias for existing debugging setups.
 GLOBAL_JOURNAL_PATH_ENV = "GIT_STAGE_BATCH_GLOBAL_JOURNAL_PATH"
-DEFAULT_GLOBAL_JOURNAL_PATH = Path("/var/tmp/git-stage-batch-journal.jsonl")
+JOURNAL_MAX_BYTES_ENV = "GIT_STAGE_BATCH_JOURNAL_MAX_BYTES"
+JOURNAL_RETENTION_DAYS_ENV = "GIT_STAGE_BATCH_JOURNAL_RETENTION_DAYS"
+
+DEFAULT_MAX_BYTES = 5 * 1024 * 1024
+DEFAULT_RETENTION_DAYS = 30
+MAX_ROTATED_FILES = 3
+BUFFER_FLUSH_BYTES = 64 * 1024
+MAX_CONTENT_FIELD_BYTES = 4 * 1024
 
 
-def _get_journal_path() -> Path:
-    """Get path to journal file."""
-    return get_state_directory_path() / "journal.jsonl"
+class JournalLevel(IntEnum):
+    """Amount of diagnostic information retained by the journal."""
+
+    DISABLED = 0
+    METADATA_ONLY = 1
+    VERBOSE = 2
+    CONTENT_DEBUG = 3
 
 
-def _get_global_journal_path() -> Path:
-    """Get path to the cross-repository debug journal file."""
-    override = os.environ.get(GLOBAL_JOURNAL_PATH_ENV)
+_LEVEL_NAMES = {
+    JournalLevel.DISABLED: "disabled",
+    JournalLevel.METADATA_ONLY: "metadata-only",
+    JournalLevel.VERBOSE: "verbose",
+    JournalLevel.CONTENT_DEBUG: "content-debug",
+}
+_LEVEL_VALUES = {name: level for level, name in _LEVEL_NAMES.items()}
+_LEVEL_VALUES.update({
+    "off": JournalLevel.DISABLED,
+    "0": JournalLevel.DISABLED,
+    "metadata": JournalLevel.METADATA_ONLY,
+    "1": JournalLevel.METADATA_ONLY,
+    "2": JournalLevel.VERBOSE,
+    "content": JournalLevel.CONTENT_DEBUG,
+    "3": JournalLevel.CONTENT_DEBUG,
+})
+
+_CONTENT_FIELDS = frozenset({
+    "content",
+    "raw_content",
+    "stderr",
+    "stdout",
+    "detail",
+    "index_before",
+    "index_after",
+})
+_PATH_FIELDS = frozenset({
+    "file_path",
+    "filename",
+    "path",
+    "repo",
+    "files",
+    "renames",
+    "deletions",
+})
+_REPOSITORY_IDS: dict[Path, str] = {}
+
+
+def get_journal_level() -> JournalLevel:
+    """Return the configured journal level without doing filesystem work."""
+    configured = os.environ.get(JOURNAL_LEVEL_ENV)
+    if configured is None:
+        # Preserve the old debugging switch without making content capture implicit.
+        return (
+            JournalLevel.VERBOSE
+            if os.environ.get("GIT_STAGE_BATCH_DEBUG")
+            else JournalLevel.DISABLED
+        )
+    return _LEVEL_VALUES.get(configured.strip().lower(), JournalLevel.DISABLED)
+
+
+def journal_level_name(level: JournalLevel | None = None) -> str:
+    """Return the public name for a journal level."""
+    return _LEVEL_NAMES[level if level is not None else get_journal_level()]
+
+
+def journal_enabled(minimum: JournalLevel = JournalLevel.METADATA_ONLY) -> bool:
+    """Cheap guard for call sites that would otherwise construct diagnostics."""
+    return get_journal_level() >= minimum
+
+
+def _state_home() -> Path:
+    override = os.environ.get("XDG_STATE_HOME")
+    if override:
+        return Path(override).expanduser().absolute()
+    return Path.home() / ".local" / "state"
+
+
+def _repository_id() -> str:
+    """Return a stable repository identifier without exposing its path."""
+    cwd = Path.cwd()
+    cached = _REPOSITORY_IDS.get(cwd)
+    if cached is not None:
+        return cached
+    try:
+        identity = os.fsencode(get_git_common_directory_path().resolve())
+    except Exception:
+        identity = os.fsencode(cwd.resolve())
+    repository_id = hashlib.sha256(identity).hexdigest()[:24]
+    _REPOSITORY_IDS[cwd] = repository_id
+    return repository_id
+
+
+def get_journal_path() -> Path:
+    """Return the current repository's private diagnostic journal path."""
+    override = (
+        os.environ.get(JOURNAL_PATH_ENV)
+        or os.environ.get(GLOBAL_JOURNAL_PATH_ENV)
+    )
     if override:
         return Path(override)
-    return DEFAULT_GLOBAL_JOURNAL_PATH
+    return (
+        _state_home()
+        / "git-stage-batch"
+        / "journals"
+        / f"{_repository_id()}.jsonl"
+    )
 
 
-def _get_index_state(file_path: str | None = None) -> dict[str, Any]:
-    """Get selected index state for a file or all files."""
+def _positive_int_environment(name: str, default: int) -> int:
     try:
-        if file_path:
-            ls_result = run_git_command(
-                ["ls-files", "--stage", "-z", "--", file_path],
-                check=False,
-                text_output=False,
-                requires_index_lock=False,
-            )
-        else:
-            ls_result = run_git_command(
-                ["ls-files", "--stage", "-z"],
-                check=False,
-                text_output=False,
-                requires_index_lock=False,
-            )
-
-        if ls_result.stdout:
-            entries = []
-            for record in nul_records(ls_result.stdout):
-                metadata, separator, path = record.partition(b"\t")
-                parts = metadata.decode("ascii", errors="replace").split()
-                if separator and len(parts) >= 3:
-                    entries.append({
-                        "mode": parts[0],
-                        "hash": parts[1],
-                        "stage": parts[2],
-                        "path": decode_path(path),
-                    })
-            return entries[0] if file_path and entries else entries
-        return {"status": "not_in_index"} if file_path else []
-    except Exception as e:
-        return {"error": str(e)}
+        value = int(os.environ.get(name, str(default)))
+    except ValueError:
+        return default
+    return value if value > 0 else default
 
 
-def log_journal(operation: str, **kwargs: Any) -> None:
-    """Log an operation to the journal.
+def _byte_count(value: Any) -> int | None:
+    if isinstance(value, bytes):
+        return len(value)
+    if isinstance(value, str):
+        return len(value.encode("utf-8", errors="surrogateescape"))
+    return None
 
-    Always writes to session journal: .git/git-stage-batch/journal.jsonl
-    (cleared by abort, preserved by again)
 
-    If GIT_STAGE_BATCH_DEBUG environment variable is set, also writes to
-    global journal: /var/tmp/git-stage-batch-journal.jsonl by default
-    (persists across sessions and repositories, useful for debugging).
-    Tests and callers can override the global path with
-    GIT_STAGE_BATCH_GLOBAL_JOURNAL_PATH.
+def _redacted_content(value: Any) -> dict[str, Any]:
+    result: dict[str, Any] = {"redacted": True}
+    byte_count = _byte_count(value)
+    if byte_count is not None:
+        result["byte_count"] = byte_count
+    elif isinstance(value, (list, tuple, dict)):
+        result["item_count"] = len(value)
+    return result
 
-    Args:
-        operation: Name of the operation
-        **kwargs: Additional context to log
-    """
-    try:
-        # Add stack trace to show call chain
-        stack = traceback.extract_stack()
-        # Filter to only our code
-        filtered_stack = [
-            {"file": s.filename.split("/")[-1], "line": s.lineno, "func": s.name}
-            for s in stack
-            if "git_stage_batch" in s.filename
-        ][-5:]  # Last 5 frames
 
-        entry = {
-            "timestamp": datetime.now().isoformat(),
-            "pid": os.getpid(),
-            "operation": operation,
-            "stack": filtered_stack,
-            **kwargs
+def _path_identifier(value: str | bytes) -> dict[str, str]:
+    if isinstance(value, bytes):
+        raw = value
+    else:
+        raw = os.path.normpath(value).encode("utf-8", errors="surrogateescape")
+    return {"path_id": hashlib.sha256(raw).hexdigest()[:16]}
+
+
+def _redact_paths(value: Any) -> Any:
+    if isinstance(value, (str, bytes)):
+        return _path_identifier(value)
+    if isinstance(value, (list, tuple, set)):
+        return [_redact_paths(item) for item in value]
+    if isinstance(value, dict):
+        return [
+            {"from": _redact_paths(key), "to": _redact_paths(item)}
+            for key, item in value.items()
+        ]
+    return _json_safe(value, include_content=False)
+
+
+def _json_safe(value: Any, *, include_content: bool) -> Any:
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, bytes):
+        if not include_content:
+            return _redacted_content(value)
+        return _bounded_content(value)
+    if isinstance(value, dict):
+        return {
+            str(key): _json_safe(item, include_content=include_content)
+            for key, item in value.items()
         }
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(item, include_content=include_content) for item in value]
+    return {"type": type(value).__name__}
 
-        # Write to session journal
-        journal_path = _get_journal_path()
-        journal_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(journal_path, "a") as f:
-            f.write(json.dumps(entry) + "\n")
 
-        # Write to global persistent journal if debug mode enabled
-        if os.environ.get("GIT_STAGE_BATCH_DEBUG"):
-            # Get repository path for global journal (to distinguish different repos)
-            repo_path = None
+def _sanitize_fields(fields: dict[str, Any], level: JournalLevel) -> dict[str, Any]:
+    include_content = level >= JournalLevel.CONTENT_DEBUG
+    return {
+        key: _sanitize_value(key, value, include_content=include_content)
+        for key, value in fields.items()
+    }
+
+
+def _sanitize_value(key: str, value: Any, *, include_content: bool) -> Any:
+    is_preview = key.endswith("preview") or key.endswith("_preview")
+    is_content = key in _CONTENT_FIELDS or is_preview
+    is_path = (
+        key in _PATH_FIELDS
+        or key.endswith("_path")
+        or key.endswith("_paths")
+        or key.endswith("_files")
+    )
+    if is_content and not include_content:
+        return _redacted_content(value)
+    if is_content:
+        return _bounded_content(value)
+    if is_path and not include_content:
+        return _redact_paths(value)
+    if isinstance(value, dict):
+        return {
+            str(nested_key): _sanitize_value(
+                str(nested_key),
+                nested_value,
+                include_content=include_content,
+            )
+            for nested_key, nested_value in value.items()
+        }
+    if isinstance(value, (list, tuple, set)):
+        return [
+            _sanitize_value(key, item, include_content=include_content)
+            for item in value
+        ]
+    return _json_safe(value, include_content=include_content)
+
+
+def _bounded_content(value: Any) -> Any:
+    """Encode explicitly enabled content without allowing one huge entry."""
+    if isinstance(value, bytes):
+        content = value[:MAX_CONTENT_FIELD_BYTES]
+        result: dict[str, Any] = {
+            "encoding": "base64",
+            "data": base64.b64encode(content).decode("ascii"),
+        }
+        if len(value) > len(content):
+            result.update({
+                "truncated": True,
+                "original_byte_count": len(value),
+            })
+        return result
+    if isinstance(value, str):
+        encoded = value.encode("utf-8", errors="surrogateescape")
+        if len(encoded) <= MAX_CONTENT_FIELD_BYTES:
+            return value
+        prefix = encoded[:MAX_CONTENT_FIELD_BYTES]
+        return {
+            "text": prefix.decode("utf-8", errors="replace"),
+            "truncated": True,
+            "original_byte_count": len(encoded),
+        }
+    return _json_safe(value, include_content=True)
+
+
+def _source_identifier(frame) -> str:
+    module = frame.f_globals.get("__name__", "unknown")
+    return f"{module}:{frame.f_code.co_name}"
+
+
+def _bounded_stack() -> list[dict[str, Any]]:
+    frames = traceback.extract_stack(limit=10)[:-2]
+    return [
+        {
+            "source": Path(item.filename).name,
+            "line": item.lineno,
+            "function": item.name,
+        }
+        for item in frames
+    ][-6:]
+
+
+def _is_error_operation(operation: str) -> bool:
+    lowered = operation.lower()
+    return any(word in lowered for word in ("error", "fail", "exception"))
+
+
+class _JournalWriter:
+    """Buffer journal lines and serialize cross-process flushes."""
+
+    def __init__(self, path: Path):
+        self.path = path
+        self._buffer = bytearray()
+        self._lock = threading.RLock()
+
+    def append(self, line: bytes) -> None:
+        with self._lock:
+            self._buffer.extend(line)
+            if len(self._buffer) >= BUFFER_FLUSH_BYTES:
+                self._flush_locked()
+
+    def flush(self) -> None:
+        with self._lock:
+            self._flush_locked()
+
+    def discard_buffer(self) -> None:
+        with self._lock:
+            self._buffer.clear()
+
+    def _flush_locked(self) -> None:
+        if not self._buffer:
+            return
+        payload = bytes(self._buffer)
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            os.chmod(self.path.parent, 0o700)
+            lock_path = self.path.with_name(f"{self.path.name}.lock")
+            lock_fd = os.open(lock_path, os.O_WRONLY | os.O_CREAT, 0o600)
             try:
-                result = run_git_command(["rev-parse", "--show-toplevel"], check=False, requires_index_lock=False)
-                if result.returncode == 0:
-                    repo_path = result.stdout.strip()
-            except Exception:
+                os.fchmod(lock_fd, 0o600)
+                fcntl.flock(lock_fd, fcntl.LOCK_EX)
+                self._prune_and_rotate(len(payload))
+                journal_fd = os.open(
+                    self.path,
+                    os.O_WRONLY | os.O_CREAT | os.O_APPEND,
+                    0o600,
+                )
+                try:
+                    os.fchmod(journal_fd, 0o600)
+                    view = memoryview(payload)
+                    while view:
+                        view = view[os.write(journal_fd, view):]
+                finally:
+                    os.close(journal_fd)
+            finally:
+                os.close(lock_fd)
+        except Exception:
+            # Diagnostics must never change command behavior. Drop failed entries so
+            # an unwritable destination cannot grow the process heap indefinitely.
+            pass
+        finally:
+            self._buffer.clear()
+
+    def _prune_and_rotate(self, incoming_bytes: int) -> None:
+        retention_seconds = _positive_int_environment(
+            JOURNAL_RETENTION_DAYS_ENV,
+            DEFAULT_RETENTION_DAYS,
+        ) * 24 * 60 * 60
+        cutoff = datetime.now(tz=timezone.utc).timestamp() - retention_seconds
+        for candidate in _journal_files(self.path):
+            try:
+                if candidate.stat().st_mtime < cutoff:
+                    candidate.unlink()
+            except OSError:
                 pass
 
-            global_journal_path = _get_global_journal_path()
-            global_journal_path.parent.mkdir(parents=True, exist_ok=True)
-            global_entry = {
-                "repo": repo_path,
-                **entry
-            }
-            with open(global_journal_path, "a") as f:
-                f.write(json.dumps(global_entry) + "\n")
+        max_bytes = _positive_int_environment(
+            JOURNAL_MAX_BYTES_ENV,
+            DEFAULT_MAX_BYTES,
+        )
+        try:
+            current_size = self.path.stat().st_size
+        except OSError:
+            current_size = 0
+        if current_size and current_size + incoming_bytes > max_bytes:
+            oldest = _rotated_path(self.path, MAX_ROTATED_FILES)
+            try:
+                oldest.unlink()
+            except FileNotFoundError:
+                pass
+            for number in range(MAX_ROTATED_FILES - 1, 0, -1):
+                source = _rotated_path(self.path, number)
+                if source.exists():
+                    source.replace(_rotated_path(self.path, number + 1))
+            if self.path.exists():
+                self.path.replace(_rotated_path(self.path, 1))
+
+
+_WRITERS: dict[Path, _JournalWriter] = {}
+_WRITERS_LOCK = threading.Lock()
+
+
+def _writer(path: Path) -> _JournalWriter:
+    with _WRITERS_LOCK:
+        writer = _WRITERS.get(path)
+        if writer is None:
+            writer = _JournalWriter(path)
+            _WRITERS[path] = writer
+        return writer
+
+
+def log_journal(operation: str, **fields: Any) -> None:
+    """Queue a structured diagnostic event when journaling is enabled."""
+    level = get_journal_level()
+    if level == JournalLevel.DISABLED:
+        return
+    try:
+        caller = sys._getframe(1)
+        entry: dict[str, Any] = {
+            "timestamp": (
+                datetime.now(tz=timezone.utc)
+                .isoformat()
+                .replace("+00:00", "Z")
+            ),
+            "pid": os.getpid(),
+            "repository_id": _repository_id(),
+            "level": journal_level_name(level),
+            "operation": operation,
+            "source": _source_identifier(caller),
+            "fields": _sanitize_fields(fields, level),
+        }
+        if level >= JournalLevel.VERBOSE or _is_error_operation(operation):
+            entry["stack"] = _bounded_stack()
+        encoded = (
+            json.dumps(entry, separators=(",", ":"), sort_keys=True)
+            .encode("utf-8")
+            + b"\n"
+        )
+        _writer(get_journal_path()).append(encoded)
     except Exception:
-        # Never let journal logging break the actual operation
         pass
+
+
+def flush_journal() -> None:
+    """Flush queued events at a command or interactive-action boundary."""
+    with _WRITERS_LOCK:
+        writers = list(_WRITERS.values())
+    for writer in writers:
+        writer.flush()
+
+
+def _rotated_path(path: Path, number: int) -> Path:
+    return path.with_name(f"{path.name}.{number}")
+
+
+def _journal_files(path: Path) -> list[Path]:
+    return [
+        path,
+        *[
+            _rotated_path(path, number)
+            for number in range(1, MAX_ROTATED_FILES + 1)
+        ],
+    ]
+
+
+def summarize_journal() -> dict[str, Any]:
+    """Return content-free statistics for the current repository journal."""
+    flush_journal()
+    path = get_journal_path()
+    operations: Counter[str] = Counter()
+    entry_count = 0
+    total_bytes = 0
+    oldest: str | None = None
+    newest: str | None = None
+    file_count = 0
+    for journal_file in reversed(_journal_files(path)):
+        try:
+            total_bytes += journal_file.stat().st_size
+            file_count += 1
+            with journal_file.open("r", encoding="utf-8") as stream:
+                for line in stream:
+                    try:
+                        entry = json.loads(line)
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        continue
+                    entry_count += 1
+                    operation = entry.get("operation")
+                    if isinstance(operation, str):
+                        operations[operation] += 1
+                    timestamp = entry.get("timestamp")
+                    if isinstance(timestamp, str):
+                        oldest = timestamp if oldest is None else min(oldest, timestamp)
+                        newest = timestamp if newest is None else max(newest, timestamp)
+        except OSError:
+            continue
+    return {
+        "enabled": journal_enabled(),
+        "level": journal_level_name(),
+        "path": str(path),
+        "exists": file_count > 0,
+        "file_count": file_count,
+        "total_bytes": total_bytes,
+        "entry_count": entry_count,
+        "oldest_timestamp": oldest,
+        "newest_timestamp": newest,
+        "operations": dict(sorted(operations.items())),
+    }
+
+
+def purge_journal(*, all_repositories: bool = False) -> int:
+    """Delete diagnostic data and return the number of journal files removed."""
+    path = get_journal_path()
+    with _WRITERS_LOCK:
+        writers = list(_WRITERS.values())
+    for writer in writers:
+        writer.discard_buffer()
+
+    candidates: list[Path]
+    if all_repositories and not (
+        os.environ.get(JOURNAL_PATH_ENV) or os.environ.get(GLOBAL_JOURNAL_PATH_ENV)
+    ):
+        candidates = list(path.parent.glob("*.jsonl"))
+        for number in range(1, MAX_ROTATED_FILES + 1):
+            candidates.extend(path.parent.glob(f"*.jsonl.{number}"))
+    else:
+        candidates = _journal_files(path)
+
+    removed = 0
+    for candidate in candidates:
+        try:
+            candidate.unlink()
+            removed += 1
+        except FileNotFoundError:
+            pass
+    return removed
+
+
+def _reset_journal_state_for_tests() -> None:
+    """Discard process-global writers after environment changes in tests."""
+    global _WRITERS, _REPOSITORY_IDS
+    with _WRITERS_LOCK:
+        _WRITERS = {}
+        _REPOSITORY_IDS = {}
+
+
+atexit.register(flush_journal)

@@ -56,6 +56,7 @@ class _BatchMetadataSnapshot:
 
     def __init__(self) -> None:
         self._metadata_by_name: dict[str, dict] | None = None
+        self._metadata_by_path: dict[str, dict[str, dict]] | None = None
 
     def metadata_by_name(self) -> dict[str, dict]:
         if self._metadata_by_name is None:
@@ -63,6 +64,16 @@ class _BatchMetadataSnapshot:
                 list_batch_names()
             )
         return self._metadata_by_name
+
+    def metadata_for_path(self, file_path: str) -> dict[str, dict]:
+        """Return only batches with metadata for one canonical path."""
+        if self._metadata_by_path is None:
+            metadata_by_path: dict[str, dict[str, dict]] = {}
+            for batch_name, metadata in self.metadata_by_name().items():
+                for path in metadata.get("files", {}):
+                    metadata_by_path.setdefault(path, {})[batch_name] = metadata
+            self._metadata_by_path = metadata_by_path
+        return self._metadata_by_path.get(file_path, {})
 
 
 def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, FileModeChange, GitlinkChange, RenameChange, TextFileDeletionChange]:
@@ -122,7 +133,7 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, FileModeChan
                         or _change_freshness.text_deletion_change_is_batched(
                             item,
                             batch_metadata_by_name=(
-                                batch_metadata_snapshot.metadata_by_name()
+                                batch_metadata_snapshot.metadata_for_path(item.path())
                             ),
                         )
                     ):
@@ -191,7 +202,7 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, FileModeChan
                 if (
                     _selected_hunk_filtering.apply_line_level_batch_filter_to_cached_hunk(
                         batch_metadata_by_name=(
-                            batch_metadata_snapshot.metadata_by_name()
+                            batch_metadata_snapshot.metadata_for_path(line_changes.path)
                         ),
                     )
                 ):

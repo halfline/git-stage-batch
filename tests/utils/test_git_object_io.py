@@ -12,6 +12,8 @@ from git_stage_batch.utils.git_object_io import (
     create_git_blobs_from_paths,
     get_empty_git_tree_object_id,
     read_git_blobs_as_bytes,
+    resolve_git_objects,
+    stream_git_blobs,
 )
 
 
@@ -37,7 +39,9 @@ def temp_git_repo(tmp_path, monkeypatch):
     )
 
     (repo / "README.md").write_text("# Test\n")
-    subprocess.run(["git", "add", "README.md"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "add", "README.md"], check=True, cwd=repo, capture_output=True
+    )
     subprocess.run(
         ["git", "commit", "-m", "Initial commit"],
         check=True,
@@ -94,6 +98,76 @@ def test_read_git_blobs_as_bytes_accepts_revision_paths(temp_git_repo):
     blobs = read_git_blobs_as_bytes([f"HEAD:{file_path.name}"])
 
     assert blobs[f"HEAD:{file_path.name}"] == b"accented\n"
+
+
+def test_read_git_blobs_as_bytes_can_ignore_non_blob_objects(temp_git_repo):
+    """Tolerant batch readers should skip wrong object types without desync."""
+    blob = create_git_blob([b"content\n"])
+    tree = run_git_command(["write-tree"]).stdout.strip()
+    missing = "HEAD:path does not exist"
+
+    with pytest.raises(RuntimeError, match="Unexpected git cat-file"):
+        read_git_blobs_as_bytes([tree, blob])
+
+    blobs = read_git_blobs_as_bytes(
+        [tree, missing, blob],
+        ignore_non_blobs=True,
+    )
+
+    assert tree not in blobs
+    assert missing not in blobs
+    assert blobs[blob] == b"content\n"
+
+
+def test_resolve_git_objects_canonicalizes_revision_paths(temp_git_repo):
+    """Object checks should expose the shared canonical blob identity."""
+    blob = run_git_command(["rev-parse", "HEAD:README.md"]).stdout.strip()
+    tree = run_git_command(["write-tree"]).stdout.strip()
+    expressions = ["HEAD:README.md", blob, tree, "missing-object"]
+
+    resolved = resolve_git_objects(expressions)
+
+    assert resolved["HEAD:README.md"].object_id == blob
+    assert resolved[blob].object_id == blob
+    assert resolved[blob].object_type == "blob"
+    assert resolved[blob].size == len(b"# Test\n")
+    assert resolved[tree].object_type == "tree"
+    assert "missing-object" not in resolved
+
+
+def test_stream_git_blobs_preserves_binary_object_boundaries(
+    temp_git_repo,
+):
+    """Streaming batch reads should yield exact payloads one object at a time."""
+    first = create_git_blob([b"first\x00payload\n"])
+    second = create_git_blob([b"second\nline\n"])
+
+    blobs = [
+        (blob.requested_name, blob.object_id, b"".join(blob.content_chunks))
+        for blob in stream_git_blobs([first, second])
+    ]
+
+    assert blobs == [
+        (first, first, b"first\x00payload\n"),
+        (second, second, b"second\nline\n"),
+    ]
+
+
+def test_stream_git_blobs_does_not_materialize_large_payloads(temp_git_repo):
+    """Blob streams should expose bounded chunks instead of one payload value."""
+    payload_size = 256 * 1024
+    blob_id = create_git_blob([b"x" * payload_size])
+
+    streamed_size = 0
+    largest_chunk = 0
+    for blob in stream_git_blobs([blob_id]):
+        assert blob.size == payload_size
+        for chunk in blob.content_chunks:
+            streamed_size += len(chunk)
+            largest_chunk = max(largest_chunk, len(chunk))
+
+    assert streamed_size == payload_size
+    assert largest_chunk < payload_size
 
 
 def test_directory_snapshot_hashes_normal_files_in_one_batch(

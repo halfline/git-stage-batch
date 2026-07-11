@@ -2266,6 +2266,7 @@ def test_repository_buffer_helpers_stay_in_utils_layer():
         "load_git_object_as_buffer_or_empty",
         "load_git_tree_files_as_buffers",
         "load_working_tree_file_as_buffer",
+        "stream_git_blob_buffers",
     }
     violations = []
 
@@ -2689,11 +2690,15 @@ def test_git_object_io_stays_out_of_git_command_module():
         fromlist=["git_object_io"],
     )
     public_names = {
+        "GitBlobStream",
+        "GitObjectInfo",
         "GitTreeBlob",
         "create_git_blob",
         "create_git_blobs_from_paths",
+        "resolve_git_objects",
         "read_git_blob",
         "read_git_blobs_as_bytes",
+        "stream_git_blobs",
         "list_git_tree_blobs",
     }
     violations = []

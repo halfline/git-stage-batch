@@ -6,6 +6,7 @@ import subprocess
 
 import pytest
 
+import git_stage_batch.data.selected_change.hunk_filtering as hunk_filtering_module
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.hunk_tracking import fetch_next_change
 from git_stage_batch.data.line_id_files import write_line_ids_file
@@ -40,7 +41,9 @@ def temp_git_repo(tmp_path, monkeypatch):
     )
 
     (repo / "README.md").write_text("# Test\n")
-    subprocess.run(["git", "add", "README.md"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "add", "README.md"], check=True, cwd=repo, capture_output=True
+    )
     subprocess.run(
         ["git", "commit", "-m", "Initial commit"],
         check=True,
@@ -55,10 +58,13 @@ def temp_git_repo(tmp_path, monkeypatch):
 
 def test_apply_line_level_batch_filter_returns_false_without_batched_ids(
     temp_git_repo,
+    monkeypatch,
 ):
     test_file = temp_git_repo / "test.txt"
     test_file.write_text("line1\nline2\nline3\n")
-    subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+    subprocess.run(
+        ["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True
+    )
     subprocess.run(
         ["git", "commit", "-m", "Add file"],
         check=True,
@@ -71,8 +77,31 @@ def test_apply_line_level_batch_filter_returns_false_without_batched_ids(
     command_start()
     fetch_next_change()
     write_line_ids_file(get_processed_batch_ids_file_path(), set())
+    journal_entries = []
+    monkeypatch.setattr(
+        hunk_filtering_module,
+        "log_journal",
+        lambda operation, **fields: journal_entries.append((operation, fields)),
+    )
 
     assert apply_line_level_batch_filter_to_cached_hunk() is False
+    assert journal_entries == [
+        (
+            "file_attribution_complete",
+            {
+                "file_path": "test.txt",
+                "candidate_batches": 0,
+                "claimed_batches": 0,
+                "object_resolution_requests": 0,
+                "object_requests": 0,
+                "object_bytes": 0,
+                "unique_source_contents": 0,
+                "mapping_computations": 0,
+                "deletion_fingerprints": 0,
+                "attributed_units": 1,
+            },
+        )
+    ]
 
 
 def test_apply_line_level_batch_filter_returns_true_without_cached_hunk(

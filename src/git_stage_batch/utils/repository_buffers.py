@@ -4,17 +4,47 @@ from __future__ import annotations
 
 import os
 import subprocess
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
+from dataclasses import dataclass
 
 from ..core.buffer import LineBuffer
 from ..utils.git_command import stream_git_command
 from ..utils.git_repository import get_git_repository_root_path
-from ..utils.git_object_io import list_git_tree_blobs, read_git_blob
+from ..utils.git_object_io import (
+    list_git_tree_blobs,
+    read_git_blob,
+    stream_git_blobs,
+)
+
+
+@dataclass(frozen=True)
+class GitBlobBuffer:
+    """One streamed Git blob exposed as a bounded line buffer."""
+
+    requested_name: str
+    object_id: str
+    size: int
+    buffer: LineBuffer
 
 
 def load_git_blob_as_buffer(blob_sha: str) -> LineBuffer:
     """Load a Git blob as a line buffer."""
     return LineBuffer.from_chunks(read_git_blob(blob_sha))
+
+
+def stream_git_blob_buffers(blob_names: Iterable[str]) -> Iterator[GitBlobBuffer]:
+    """Yield one mmap-capable line buffer at a time from a Git batch reader."""
+    for blob in stream_git_blobs(blob_names):
+        buffer = LineBuffer.from_chunks(blob.content_chunks)
+        try:
+            yield GitBlobBuffer(
+                requested_name=blob.requested_name,
+                object_id=blob.object_id,
+                size=blob.size,
+                buffer=buffer,
+            )
+        finally:
+            buffer.close()
 
 
 def load_git_tree_files_as_buffers(

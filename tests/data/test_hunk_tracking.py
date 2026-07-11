@@ -78,6 +78,30 @@ def test_batch_metadata_snapshot_loads_once(monkeypatch):
     assert calls == [("batch-a",)]
 
 
+def test_batch_metadata_snapshot_indexes_claims_by_path(monkeypatch):
+    """Files without claims should skip traversal across unrelated batches."""
+    monkeypatch.setattr(
+        hunk_tracking,
+        "list_batch_names",
+        lambda: ["first", "second", "third"],
+    )
+    monkeypatch.setattr(
+        hunk_tracking,
+        "read_batch_metadata_for_batches",
+        lambda _names: {
+            "first": {"files": {"one.txt": {}}},
+            "second": {"files": {"two.txt": {}}},
+            "third": {"files": {"one.txt": {}, "three.txt": {}}},
+        },
+    )
+
+    snapshot = hunk_tracking._BatchMetadataSnapshot()
+
+    assert list(snapshot.metadata_for_path("one.txt")) == ["first", "third"]
+    assert list(snapshot.metadata_for_path("two.txt")) == ["second"]
+    assert snapshot.metadata_for_path("missing.txt") == {}
+
+
 class TestFindAndCacheNextUnblockedHunk:
     """Tests for fetch_next_change()."""
 

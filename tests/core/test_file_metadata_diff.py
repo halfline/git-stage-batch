@@ -26,3 +26,12 @@ def test_metadata_indicates_deleted_file_reads_deleted_mode_marker():
     assert not file_metadata_diff.metadata_indicates_deleted_file(
         [b"new file mode 100644"]
     )
+
+
+def test_rename_paths_decode_git_quoting():
+    assert file_metadata_diff.rename_paths(
+        [
+            b'rename from "old\\tname\\377"',
+            b'rename to "new\\nname\\377"',
+        ]
+    ) == ("old\tname\udcff", "new\nname\udcff")

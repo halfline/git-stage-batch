@@ -114,6 +114,8 @@ def git_stage_batch(*args, input_text=None, check=True):
         cmd,
         input=input_text,
         text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         capture_output=True,
         check=check
     )

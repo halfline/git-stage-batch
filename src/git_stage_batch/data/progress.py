@@ -18,6 +18,7 @@ from ..utils.file_io import (
     write_text_file_contents,
 )
 from ..utils.git_command import run_git_command
+from ..git_paths import decode_path, nul_records
 from ..utils.paths import (
     get_line_changes_json_file_path,
     get_discarded_hunks_file_path,
@@ -219,17 +220,21 @@ def get_file_progress() -> tuple[int, int]:
                 "-c",
                 "diff.ignoreSubmodules=none",
                 "diff",
+                "--no-ext-diff",
+                "--no-textconv",
                 "--ignore-submodules=none",
                 "--name-only",
+                "-z",
                 "HEAD",
             ],
             check=False,
+            text_output=False,
             requires_index_lock=False,
         )
         if result.returncode != 0:
             return (0, 0)
 
-        files = [f for f in result.stdout.strip().splitlines() if f.strip()]
+        files = [decode_path(path) for path in nul_records(result.stdout)]
         total = len(files)
 
         if selected_path in files:

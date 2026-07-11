@@ -25,6 +25,7 @@ from ..core.buffer import LineBuffer
 from ..utils.repository_buffers import load_git_object_as_buffer
 from ..i18n import ngettext
 from ..utils.git_command import stream_git_command
+from ..git_paths import encode_path, quote_path_token
 from ..utils.paths import get_context_lines
 from ..core.text_lines import bytes_to_lines
 from .file_tracking import auto_add_untracked_files
@@ -116,6 +117,8 @@ def _stream_no_index_diff_lines(
     arguments = [
         "diff",
         "--no-index",
+        "--no-ext-diff",
+        "--no-textconv",
         f"-U{get_context_lines()}",
         "--no-color",
         old_path,
@@ -135,10 +138,10 @@ def _stream_no_index_diff_lines(
             if stderr is not None:
                 stderr_chunks.append(stderr.encode("utf-8", errors="replace"))
 
-    old_header = f"a{old_path}".encode("utf-8")
-    new_header = f"b{new_path}".encode("utf-8")
-    rendered_old_header = f"a/{file_path}".encode("utf-8")
-    rendered_new_header = f"b/{file_path}".encode("utf-8")
+    old_header = b"a" + encode_path(old_path)
+    new_header = b"b" + encode_path(new_path)
+    rendered_old_header = quote_path_token(b"a/" + encode_path(file_path))
+    rendered_new_header = quote_path_token(b"b/" + encode_path(file_path))
 
     for line in bytes_to_lines(stdout_chunks()):
         yield line.replace(old_header, rendered_old_header).replace(

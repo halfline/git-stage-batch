@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..utils.git_command import run_git_command
+from ..git_paths import decode_path
 
 
 @dataclass(frozen=True)
@@ -33,7 +34,7 @@ def read_index_entry(file_path: str) -> IndexEntry | None:
             metadata, path_bytes = record.split(b"\t", 1)
         except ValueError:
             continue
-        if path_bytes.decode("utf-8", errors="surrogateescape") != file_path:
+        if decode_path(path_bytes) != file_path:
             continue
 
         parts = metadata.split()

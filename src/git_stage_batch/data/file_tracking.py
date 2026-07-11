@@ -6,6 +6,7 @@ from collections.abc import Iterable
 
 from ..utils.file_io import append_file_path_to_file, read_file_paths_file
 from ..utils.git_command import run_git_command
+from ..git_paths import decode_path, nul_records
 from ..utils.git_index import git_add_paths
 from ..utils.git_repository import get_git_repository_root_path
 from ..utils.journal import log_journal
@@ -25,18 +26,23 @@ def _embedded_git_repository_index_path(file_path: str) -> str | None:
 
 def list_untracked_files(paths: Iterable[str] | None = None) -> list[str]:
     """Return untracked, non-ignored files, optionally limited to paths."""
-    arguments = ["ls-files", "--others", "--exclude-standard"]
+    arguments = ["ls-files", "-z", "--others", "--exclude-standard"]
     if paths is not None:
         unique_paths = list(dict.fromkeys(paths))
         if not unique_paths:
             return []
         arguments.extend(["--", *unique_paths])
 
-    result = run_git_command(arguments, check=False, requires_index_lock=False)
+    result = run_git_command(
+        arguments,
+        check=False,
+        text_output=False,
+        requires_index_lock=False,
+    )
     if result.returncode != 0:
         return []
 
-    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    return [decode_path(path) for path in nul_records(result.stdout)]
 
 
 def auto_add_untracked_files(paths: Iterable[str] | None = None) -> None:

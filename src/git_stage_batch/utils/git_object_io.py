@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .git_command import run_git_command, stream_git_command
+from ..git_paths import decode_path, nul_records
 
 
 _EMPTY_TREE_OBJECT_CACHE: dict[Path, str] = {}
@@ -204,7 +205,7 @@ def list_git_tree_blobs(treeish: str, file_paths: Iterable[str]) -> dict[str, Gi
         return {}
 
     entries: dict[str, GitTreeBlob] = {}
-    for record in result.stdout.split(b"\0"):
+    for record in nul_records(result.stdout):
         if not record:
             continue
         try:
@@ -214,7 +215,7 @@ def list_git_tree_blobs(treeish: str, file_paths: Iterable[str]) -> dict[str, Gi
         metadata = metadata_bytes.decode("ascii", errors="replace").split()
         if len(metadata) < 3 or metadata[1] != "blob":
             continue
-        file_path = path_bytes.decode("utf-8")
+        file_path = decode_path(path_bytes)
         entries[file_path] = GitTreeBlob(
             file_path=file_path,
             mode=metadata[0],

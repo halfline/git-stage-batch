@@ -268,6 +268,24 @@ index 1111111..2222222 160000
         assert patches[0].new_oid == new_oid.decode("ascii")
         assert patches[0].change_type == "modified"
 
+    def test_gitlink_with_quoted_special_path(self):
+        """Gitlink paths use the same byte-safe quoted-path decoder."""
+        diff = b"""\
+diff --git "a/sub\\tmodule" "b/sub\\tmodule"
+index 1111111..2222222 160000
+--- "a/sub\\tmodule"
++++ "b/sub\\tmodule"
+@@ -1 +1 @@
+-Subproject commit 1111111111111111111111111111111111111111
++Subproject commit 2222222222222222222222222222222222222222
+"""
+
+        patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
+
+        assert len(patches) == 1
+        assert isinstance(patches[0], GitlinkChange)
+        assert patches[0].path() == "sub\tmodule"
+
     def test_gitlink_added_with_hunk(self):
         """Added gitlink yields /dev/null on the old side."""
         new_oid = b"3333333333333333333333333333333333333333"

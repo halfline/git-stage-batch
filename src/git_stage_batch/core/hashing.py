@@ -106,7 +106,9 @@ def compute_gitlink_change_hash(gitlink_change: GitlinkChange) -> str:
         gitlink_change.new_oid or "",
         gitlink_change.change_type,
     ]
-    return hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()
+    return hashlib.sha256(
+        "\0".join(parts).encode("utf-8", errors="surrogateescape")
+    ).hexdigest()
 
 
 def compute_rename_change_hash(rename_change: RenameChange) -> str:
@@ -116,7 +118,9 @@ def compute_rename_change_hash(rename_change: RenameChange) -> str:
         rename_change.old_path,
         rename_change.new_path,
     ]
-    return hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()
+    return hashlib.sha256(
+        "\0".join(parts).encode("utf-8", errors="surrogateescape")
+    ).hexdigest()
 
 
 def compute_text_file_deletion_hash(deletion_change: TextFileDeletionChange) -> str:
@@ -126,4 +130,6 @@ def compute_text_file_deletion_hash(deletion_change: TextFileDeletionChange) -> 
         deletion_change.old_path,
         deletion_change.new_path,
     ]
-    return hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()
+    return hashlib.sha256(
+        "\0".join(parts).encode("utf-8", errors="surrogateescape")
+    ).hexdigest()

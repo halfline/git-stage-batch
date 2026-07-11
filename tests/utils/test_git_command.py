@@ -384,3 +384,30 @@ class TestStreamGitDiff:
 
         assert lines
         assert not any(b"\x1b[" in line for line in lines)
+
+    def test_stream_git_diff_overrides_format_changing_configuration(
+        self,
+        temp_git_repo,
+    ):
+        """Repository configuration cannot alter consumed diff structure."""
+        subprocess.run(
+            ["git", "config", "diff.noprefix", "true"],
+            check=True,
+            cwd=temp_git_repo,
+        )
+        subprocess.run(
+            ["git", "config", "diff.external", "false"],
+            check=True,
+            cwd=temp_git_repo,
+        )
+        test_file = temp_git_repo / "configured.txt"
+        test_file.write_text("configured\n")
+        subprocess.run(
+            ["git", "add", test_file.name],
+            check=True,
+            cwd=temp_git_repo,
+        )
+
+        lines = list(stream_git_diff(cached=True))
+
+        assert b"diff --git a/configured.txt b/configured.txt\n" in lines

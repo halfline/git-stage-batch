@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import time
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator
 
 from . import command_events, git_index_lock
 from .command import run_command, stream_command
@@ -145,9 +145,15 @@ def stream_git_diff(
     cwd: str | None = None,
     env: dict[str, str] | None = None,
 ) -> Iterator[bytes]:
-    """Stream a Git diff using keyworded options."""
+    """Stream a normalized, raw-content Git diff using keyworded options."""
     config_arguments = []
-    arguments = []
+    arguments = [
+        "--no-ext-diff",
+        "--no-textconv",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
+        "--no-color",
+    ]
     if ignore_submodules is not None:
         config_arguments.extend(["-c", f"diff.ignoreSubmodules={ignore_submodules}"])
         arguments.append(f"--ignore-submodules={ignore_submodules}")
@@ -160,8 +166,6 @@ def stream_git_diff(
         arguments.append("--find-renames")
     if no_renames:
         arguments.append("--no-renames")
-    if no_color:
-        arguments.append("--no-color")
     if cached:
         arguments.append("--cached")
     if context_lines is not None:

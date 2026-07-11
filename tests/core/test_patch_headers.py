@@ -25,6 +25,16 @@ def test_patch_header_path_helpers_normalize_git_prefixes():
     assert patch_headers.new_file_path_from_header(b"+++ /dev/null") == "/dev/null"
 
 
+def test_patch_header_paths_decode_quotes_without_stripping_spaces():
+    """Patch paths preserve escaped bytes and significant spaces."""
+    assert patch_headers.old_file_path_from_header(
+        b'--- "a/tab\\tname\\377"'
+    ) == "tab\tname\udcff"
+    assert patch_headers.new_file_path_from_header(
+        b"+++ b/space at end \t"
+    ) == "space at end "
+
+
 def test_line_change_path_prefers_non_null_new_path():
     """Line change paths should prefer the new side unless it is /dev/null."""
     assert patch_headers.line_change_path("old.txt", "new.txt") == "new.txt"

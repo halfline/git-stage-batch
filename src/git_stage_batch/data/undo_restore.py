@@ -21,6 +21,7 @@ from ..utils.file_io import read_file_paths_file
 from ..utils.git_command import (
     run_git_command,
 )
+from ..git_paths import decode_path
 from ..utils.git_refs import (
     update_git_refs,
 )
@@ -72,7 +73,7 @@ def _tree_entries(commit: str, prefix: str) -> list[tuple[str, str, str]]:
             (
                 mode,
                 object_sha,
-                path_bytes.decode("utf-8", errors="surrogateescape"),
+                decode_path(path_bytes),
             )
         )
     return entries

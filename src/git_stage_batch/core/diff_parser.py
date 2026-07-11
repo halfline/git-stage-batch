@@ -25,6 +25,7 @@ from .models import (
 )
 from ..exceptions import CommandError
 from ..i18n import _
+from ..git_paths import encode_path, quote_path_token
 
 
 # Type for annotator hooks that enrich LineLevelChange with additional metadata
@@ -262,6 +263,12 @@ class _UnifiedDiffParserBuildContext:
                     is_rename = _file_metadata_diff.metadata_indicates_rename(
                         metadata_lines
                     )
+                    if is_rename:
+                        renamed_paths = _file_metadata_diff.rename_paths(
+                            metadata_lines
+                        )
+                        if renamed_paths is not None:
+                            old_path, new_path = renamed_paths
                     is_deleted_file = (
                         _file_metadata_diff.metadata_indicates_deleted_file(
                             metadata_lines
@@ -321,7 +328,8 @@ class _UnifiedDiffParserBuildContext:
                                 new_path=new_path,
                                 lines=_empty_file_diff.synthetic_empty_file_patch_lines(
                                     b"--- /dev/null",
-                                    f"+++ b/{new_path}".encode("utf-8"),
+                                    b"+++ "
+                                    + quote_path_token(b"b/" + encode_path(new_path)),
                                 ),
                             )
                         # Skip other files without hunks (mode-only, rename-only, etc.)
@@ -335,6 +343,17 @@ class _UnifiedDiffParserBuildContext:
                     if not plus_line_stripped.startswith(b"+++"):
                         continue
                     new_file_line = plus_line_stripped
+
+                    patch_old_path = _patch_headers.old_file_path_from_header(
+                        old_file_line
+                    )
+                    patch_new_path = _patch_headers.new_file_path_from_header(
+                        new_file_line
+                    )
+                    if _patch_headers.path_names_repository_file(patch_old_path):
+                        old_path = patch_old_path
+                    if _patch_headers.path_names_repository_file(patch_new_path):
+                        new_path = patch_new_path
 
                     if is_rename:
                         yield RenameChange(old_path=old_path, new_path=new_path)

@@ -19,6 +19,20 @@ def test_diff_git_paths_extracts_old_and_new_paths():
     ) == ("src/old.txt", "src/new.txt")
 
 
+def test_diff_git_paths_decodes_quoted_paths():
+    """C-quoted path tokens should round-trip special and non-UTF-8 bytes."""
+    assert diff_headers.diff_git_paths(
+        b'diff --git "a/tab\\told\\377" "b/tab\\tnew\\377"'
+    ) == ("tab\told\udcff", "tab\tnew\udcff")
+
+
+def test_diff_git_paths_uses_the_final_new_path_prefix():
+    """An old pathname containing the new-side marker is not truncated."""
+    assert diff_headers.diff_git_paths(
+        b"diff --git a/old b/component b/new name"
+    ) == ("old b/component", "new name")
+
+
 def test_diff_git_paths_returns_none_for_malformed_headers():
     """Malformed file diff headers should not yield paths."""
     assert diff_headers.diff_git_paths(b"--- a/src/old.txt") is None

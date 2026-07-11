@@ -9,6 +9,7 @@ from typing import Optional
 from ...core.hashing import compute_stable_hunk_hash_from_lines
 from ...core.models import LineLevelChange
 from ...utils.file_io import write_text_file_contents
+from ...git_paths import encode_path, quote_path_token
 from ...utils.paths import (
     get_line_changes_json_file_path,
     get_processed_include_ids_file_path,
@@ -70,8 +71,8 @@ def _cache_combined_file_line_changes(
         return None
 
     patch_lines = [
-        f"--- a/{file_path}\n".encode("utf-8"),
-        f"+++ b/{file_path}\n".encode("utf-8"),
+        b"--- " + quote_path_token(b"a/" + encode_path(file_path)) + b"\n",
+        b"+++ " + quote_path_token(b"b/" + encode_path(file_path)) + b"\n",
         (
             f"@@ -{combined_line_changes.header.old_start},{combined_line_changes.header.old_len} "
             f"+{combined_line_changes.header.new_start},{combined_line_changes.header.new_len} @@\n"

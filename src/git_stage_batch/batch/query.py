@@ -16,6 +16,7 @@ from .state_refs import (
 from .validation import validate_batch_name
 from ..utils.file_io import read_text_file_contents
 from ..utils.git_command import run_git_command
+from ..git_paths import decode_path, nul_records
 from ..utils.paths import get_batch_metadata_file_path
 
 
@@ -158,14 +159,15 @@ def list_batch_files(name: str) -> list[str]:
 
     # Use git ls-tree to list files recursively
     result = run_git_command(
-        ["ls-tree", "-r", "--name-only", tree_sha],
+        ["ls-tree", "-rz", "--name-only", tree_sha],
         check=False,
+        text_output=False,
         requires_index_lock=False,
     )
     if result.returncode != 0:
         return []
 
-    files = [line.strip() for line in result.stdout.strip().splitlines() if line.strip()]
+    files = [decode_path(path) for path in nul_records(result.stdout)]
     return sorted(files)
 
 

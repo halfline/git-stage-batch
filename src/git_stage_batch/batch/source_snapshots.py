@@ -30,7 +30,7 @@ from ..utils.git_index import (
 )
 from ..utils.git_repository import get_git_repository_root_path
 from ..utils.git_object_io import create_git_blob
-from ..utils.journal import log_journal
+from ..utils.journal import JournalLevel, journal_enabled, log_journal
 from ..utils.paths import get_abort_head_file_path
 from .source_buffers import (
     load_saved_session_file_as_buffer as _load_saved_session_file_as_buffer,
@@ -119,7 +119,7 @@ def create_batch_source_commits(file_paths: list[str]) -> dict[str, BatchSourceC
     try:
         repo_root = get_git_repository_root_path()
         file_modes: dict[str, str] = {}
-        content_stats: dict[str, tuple[int, int]] = {}
+        content_sizes: dict[str, int] = {}
         for file_path in unique_file_paths:
             full_path = repo_root / file_path
             if os.path.lexists(full_path):
@@ -134,17 +134,18 @@ def create_batch_source_commits(file_paths: list[str]) -> dict[str, BatchSourceC
 
             buffer = file_buffers[file_path]
             buffer_len = buffer.byte_count
-            buffer_lines = len(buffer) if buffer_len else 0
-            content_stats[file_path] = (buffer_len, buffer_lines)
-            log_journal(
-                "batch_source_creating",
-                file_path=file_path,
-                baseline_commit=baseline_commit,
-                file_existed_at_session_start=file_path in files_existing_at_session_start,
-                content_len=buffer_len,
-                content_lines=buffer_lines,
-                buffer_preview=_buffer_preview(buffer),
-            )
+            content_sizes[file_path] = buffer_len
+            if journal_enabled():
+                fields = {
+                    "file_path": file_path,
+                    "baseline_commit": baseline_commit,
+                    "file_existed_at_session_start": file_path in files_existing_at_session_start,
+                    "content_len": buffer_len,
+                }
+                if journal_enabled(JournalLevel.CONTENT_DEBUG):
+                    fields["content_lines"] = len(buffer) if buffer_len else 0
+                    fields["buffer_preview"] = _buffer_preview(buffer)
+                log_journal("batch_source_creating", **fields)
 
         import_id = uuid.uuid4().hex
         temp_refs = [
@@ -158,7 +159,7 @@ def create_batch_source_commits(file_paths: list[str]) -> dict[str, BatchSourceC
             for index, file_path in enumerate(unique_file_paths):
                 blob_mark = blob_mark_start + index
                 buffer = file_buffers[file_path]
-                buffer_len, _buffer_lines = content_stats[file_path]
+                buffer_len = content_sizes[file_path]
                 yield f"blob\nmark :{blob_mark}\ndata {buffer_len}\n".encode("ascii")
                 yield from buffer.byte_chunks()
                 yield b"\n"
@@ -213,7 +214,7 @@ def create_batch_source_commits(file_paths: list[str]) -> dict[str, BatchSourceC
         results: dict[str, BatchSourceCommit] = {}
         for index, file_path in enumerate(unique_file_paths):
             commit_sha = marks[commit_mark_start + index]
-            content_len, content_lines = content_stats[file_path]
+            content_len = content_sizes[file_path]
             results[file_path] = BatchSourceCommit(
                 commit_sha=commit_sha,
                 file_buffer=file_buffers[file_path],
@@ -226,7 +227,6 @@ def create_batch_source_commits(file_paths: list[str]) -> dict[str, BatchSourceC
                 mode=file_modes[file_path],
                 tree=None,
                 verified_content_len=content_len,
-                verified_lines=content_lines,
             )
         return_file_buffers = True
         return results
@@ -283,7 +283,6 @@ def create_batch_source_commit(
     file_buffer: LineBuffer | None = None
     close_file_buffer = True
     content_len = 0
-    content_lines = 0
     try:
         if file_buffer_override is not None:
             file_buffer = file_buffer_override
@@ -299,16 +298,17 @@ def create_batch_source_commit(
                 file_buffer = load_working_tree_file_as_buffer(file_path)
 
         content_len = file_buffer.byte_count
-        content_lines = len(file_buffer) if content_len else 0
-        log_journal(
-            "batch_source_creating",
-            file_path=file_path,
-            baseline_commit=baseline_commit,
-            file_existed_at_session_start=file_existed_at_session_start,
-            content_len=content_len,
-            content_lines=content_lines,
-            buffer_preview=_buffer_preview(file_buffer)
-        )
+        if journal_enabled():
+            fields = {
+                "file_path": file_path,
+                "baseline_commit": baseline_commit,
+                "file_existed_at_session_start": file_existed_at_session_start,
+                "content_len": content_len,
+            }
+            if journal_enabled(JournalLevel.CONTENT_DEBUG):
+                fields["content_lines"] = len(file_buffer) if content_len else 0
+                fields["buffer_preview"] = _buffer_preview(file_buffer)
+            log_journal("batch_source_creating", **fields)
 
         blob_sha = create_git_blob(file_buffer.byte_chunks())
     finally:
@@ -346,7 +346,6 @@ def create_batch_source_commit(
         mode=mode,
         tree=new_tree,
         verified_content_len=content_len,
-        verified_lines=content_lines,
     )
 
     return batch_source_commit

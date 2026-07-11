@@ -1,5 +1,7 @@
 """Tests for CLI completion helpers."""
 
+from pathlib import Path
+
 from git_stage_batch.cli.completion import list_file_completion_candidates
 
 
@@ -52,3 +54,13 @@ def test_list_file_completion_candidates_treats_wildmatch_as_directory_prefix(mo
 
     assert "src/auth.py" in candidates
     assert "src/core/" in candidates
+
+
+def test_bash_completion_covers_journal_command_and_options():
+    """Installed Bash completion should expose diagnostic journal controls."""
+    completion = (
+        Path(__file__).resolve().parents[2] / "completions" / "git-stage-batch"
+    ).read_text()
+
+    assert 'validate journal"' in completion
+    assert "--path --purge --all --porcelain" in completion

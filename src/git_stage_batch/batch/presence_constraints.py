@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from typing import TYPE_CHECKING
 
 from .absence_constraints import (
@@ -11,6 +11,10 @@ from .absence_constraints import (
 from .line_mapping import LineMapping
 from .match import match_lines
 from .merge_candidates import MergeResolution as _MergeResolution
+from .presence_context import (
+    PresenceRunPlacement as _PresenceRunPlacement,
+    contextual_presence_placements as _contextual_presence_placements,
+)
 from .presence_missing_claims import (
     mapped_missing_source_lines as _mapped_missing_source_lines,
 )
@@ -41,6 +45,7 @@ def apply_presence_constraints(
     *,
     source_to_working_mapping: LineMapping | None = None,
     resolution: _MergeResolution | None = None,
+    trusted_source_lines: Collection[int] = (),
 ) -> RealizedEntries:
     """Apply presence constraints: ensure all claimed lines exist in result.
 
@@ -69,6 +74,7 @@ def apply_presence_constraints(
             presence_line_set,
             mapping,
             resolution=resolution,
+            trusted_source_lines=trusted_source_lines,
         )
     finally:
         if owned_mapping is not None:
@@ -82,6 +88,7 @@ def _apply_presence_constraints_with_mapping(
     mapping: LineMapping,
     *,
     resolution: _MergeResolution | None = None,
+    trusted_source_lines: Collection[int] = (),
 ) -> RealizedEntries:
     """Apply presence constraints using an existing source-to-working mapping."""
 
@@ -156,6 +163,26 @@ def _apply_presence_constraints_with_mapping(
                     return result
             raise _MergeError(_("Selected merge resolution is no longer valid"))
 
+    if all(
+        mapping.is_source_line_present(source_line)
+        for source_line in trusted_source_lines
+    ):
+        missing_claimed, placements = _contextual_presence_placements(
+            source_lines,
+            working_lines,
+            presence_line_set,
+            mapping,
+            trusted_source_lines=trusted_source_lines,
+        )
+        if placements:
+            return _realize_contextual_placements(
+                source_lines,
+                working_lines,
+                presence_line_set,
+                mapping,
+                placements,
+            )
+
     result = RealizedEntries()
     working_idx = 0
 
@@ -215,6 +242,50 @@ def _apply_presence_constraints_with_mapping(
     return result
 
 
+def _realize_contextual_placements(
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    presence_line_set: LineSelection,
+    mapping: LineMapping,
+    placements: Sequence[_PresenceRunPlacement],
+) -> RealizedEntries:
+    """Insert missing runs at gaps chosen from distinctive context."""
+    result = RealizedEntries()
+    working_idx = 0
+
+    for placement in placements:
+        if working_idx < placement.gap_index:
+            _realized_mapping.append_working_range_with_mapping(
+                result,
+                working_lines,
+                mapping,
+                working_idx,
+                placement.gap_index,
+                presence_line_set,
+            )
+            working_idx = placement.gap_index
+
+        result.append_line_range_from(
+            source_lines,
+            placement.run_start - 1,
+            placement.run_end,
+            source_line_start=placement.run_start,
+            is_claimed=True,
+        )
+
+    if working_idx < len(working_lines):
+        _realized_mapping.append_working_range_with_mapping(
+            result,
+            working_lines,
+            mapping,
+            working_idx,
+            len(working_lines),
+            presence_line_set,
+        )
+
+    return result
+
+
 def _missing_claimed_lines(
     entries: Sequence[_RealizedEntry],
     presence_line_set: LineSelection
@@ -255,12 +326,18 @@ def satisfy_constraints(
     resolution: _MergeResolution | None = None,
 ) -> RealizedEntries:
     """Apply presence and absence constraints until claimed lines survive."""
+    trusted_source_lines = {
+        deletion.anchor_line
+        for deletion in deletion_claims
+        if deletion.anchor_line is not None
+    }
     realized_entries = apply_presence_constraints(
         source_lines,
         working_lines,
         presence_line_set,
         source_to_working_mapping=source_to_working_mapping,
         resolution=resolution,
+        trusted_source_lines=trusted_source_lines,
     )
 
     try:
@@ -285,6 +362,7 @@ def satisfy_constraints(
                 current_lines,
                 presence_line_set,
                 resolution=resolution,
+                trusted_source_lines=trusted_source_lines,
             )
         finally:
             previous_entries.close()

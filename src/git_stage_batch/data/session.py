@@ -23,6 +23,7 @@ from ..utils.file_io import (
     write_text_file_contents,
 )
 from ..utils.git_command import run_git_command
+from ..git_paths import decode_path, nul_records
 from ..utils.git_worktree import git_remove_paths
 from ..utils.git_index import git_add_paths
 from ..utils.git_repository import get_git_repository_root_path
@@ -85,14 +86,16 @@ def _diff_index_name_status(*, intent_to_add_visible: bool) -> dict[str, str]:
             "--",
         ],
         check=True,
+        text_output=False,
         requires_index_lock=False,
     )
-    fields = result.stdout.split("\0")
-    if fields[-1] == "":
-        fields.pop()
+    fields = nul_records(result.stdout)
     if len(fields) % 2 != 0:
         raise CommandError(_("Git returned malformed cached diff output."))
-    return dict(zip(fields[1::2], fields[0::2]))
+    return {
+        decode_path(path): status.decode("ascii", errors="replace")
+        for status, path in zip(fields[0::2], fields[1::2])
+    }
 
 
 def _intent_to_add_files(file_paths: list[str] | None = None) -> list[str]:

@@ -12,6 +12,7 @@ from ..utils.git_command import run_git_command
 from ..utils.git_index import GitIndexEntryUpdate
 from ..utils.git_repository import get_git_repository_root_path
 from ..utils.git_object_io import create_git_blob
+from ..git_paths import decode_path, nul_records
 
 
 def changed_worktree_paths() -> list[str]:
@@ -22,24 +23,35 @@ def changed_worktree_paths() -> list[str]:
             "-c",
             "diff.ignoreSubmodules=none",
             "diff",
+            "--no-ext-diff",
+            "--no-textconv",
             "--ignore-submodules=none",
             "--name-only",
+            "-z",
             "HEAD",
         ],
         [
             "-c",
             "diff.ignoreSubmodules=none",
             "diff",
+            "--no-ext-diff",
+            "--no-textconv",
             "--ignore-submodules=none",
             "--cached",
             "--name-only",
+            "-z",
         ],
-        ["ls-files", "--others", "--exclude-standard"],
+        ["ls-files", "-z", "--others", "--exclude-standard"],
     ]
     for args in commands:
-        result = run_git_command(args, check=False, requires_index_lock=False)
+        result = run_git_command(
+            args,
+            check=False,
+            text_output=False,
+            requires_index_lock=False,
+        )
         if result.returncode == 0:
-            paths.update(line for line in result.stdout.splitlines() if line)
+            paths.update(decode_path(path) for path in nul_records(result.stdout))
     return sorted(paths)
 
 

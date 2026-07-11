@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .git_command import run_git_command
+from ..git_paths import decode_path, nul_records
 from .paths import get_state_directory_path
 
 
@@ -35,23 +36,30 @@ def _get_index_state(file_path: str | None = None) -> dict[str, Any]:
     try:
         if file_path:
             ls_result = run_git_command(
-                ["ls-files", "--stage", "--", file_path],
+                ["ls-files", "--stage", "-z", "--", file_path],
                 check=False,
+                text_output=False,
                 requires_index_lock=False,
             )
         else:
-            ls_result = run_git_command(["ls-files", "--stage"], check=False, requires_index_lock=False)
+            ls_result = run_git_command(
+                ["ls-files", "--stage", "-z"],
+                check=False,
+                text_output=False,
+                requires_index_lock=False,
+            )
 
-        if ls_result.stdout.strip():
+        if ls_result.stdout:
             entries = []
-            for line in ls_result.stdout.strip().split('\n'):
-                parts = line.split()
-                if len(parts) >= 4:
+            for record in nul_records(ls_result.stdout):
+                metadata, separator, path = record.partition(b"\t")
+                parts = metadata.decode("ascii", errors="replace").split()
+                if separator and len(parts) >= 3:
                     entries.append({
                         "mode": parts[0],
                         "hash": parts[1],
                         "stage": parts[2],
-                        "path": parts[3]
+                        "path": decode_path(path),
                     })
             return entries[0] if file_path and entries else entries
         return {"status": "not_in_index"} if file_path else []

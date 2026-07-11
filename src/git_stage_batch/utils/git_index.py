@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 
 from .git_command import run_git_command, stream_git_command
+from ..git_paths import encode_path
 from .git_repository import null_object_id
 
 
@@ -121,7 +122,7 @@ def git_update_index_entries(
     payload_chunks: list[bytes] = []
     null_oid: bytes | None = None
     for entry in entries:
-        path_bytes = entry.file_path.encode("utf-8")
+        path_bytes = encode_path(entry.file_path)
         if entry.force_remove:
             if entry.mode is not None or entry.blob_sha is not None:
                 raise ValueError("mode and blob_sha cannot be used with force_remove=True")

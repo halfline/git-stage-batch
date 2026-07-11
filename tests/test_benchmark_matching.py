@@ -1,4 +1,4 @@
-"""Tests for the maintained structural matching benchmark."""
+"""Tests for the maintained matching and attribution benchmark."""
 
 from __future__ import annotations
 
@@ -70,7 +70,7 @@ def test_smallest_case_smokes_public_apis_and_stable_schema():
     )
 
     assert report["schema_version"] == 1
-    assert report["suite"] == "matching"
+    assert report["suite"] == "matching-and-attribution"
     assert report["metadata"]["seed"] == 42
     assert isinstance(report["metadata"]["working_tree_dirty"], bool)
     case = report["cases"][0]
@@ -115,6 +115,38 @@ def test_adversarial_matching_cases_run(case_name, expected_mapped_lines):
         expected_mapped_lines
     )
 
+
+def test_attribution_case_exercises_many_claims_and_deduplicates_work():
+    """The end-to-end case should cover Git IO, matching, and claim ownership."""
+    report = benchmark_matching.run_suite(
+        "quick",
+        case_names=["many-batches"],
+        warmups=0,
+        repeats=1,
+    )
+
+    case = report["cases"][0]
+    phases = case["phases"]
+    claim_result = phases["claim_attribution"]["result"]
+    metrics = claim_result["metrics"]
+    assert case["setup"]["measured"] is False
+    assert set(phases) == {
+        "git_object_resolution",
+        "blob_loading",
+        "mapping",
+        "unit_attribution",
+        "claim_attribution",
+    }
+    assert metrics["claimed_batches"] == 50
+    assert metrics["object_requests"] == 1
+    assert metrics["mapping_computations"] == 1
+    assert claim_result["owner_links"] == 100
+    assert phases["unit_attribution"]["result"]["units"] == 2
+    assert phases["git_object_resolution"]["result"] == {
+        "requests": 51,
+        "resolved": 51,
+        "unique_object_ids": 1,
+    }
 
 
 def test_binary_case_is_explicitly_excluded_from_text_matching():

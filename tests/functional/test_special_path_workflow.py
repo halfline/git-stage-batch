@@ -129,3 +129,19 @@ def test_special_path_rename_and_binary_include(functional_repo):
     ).stdout.split(b"\0")
     assert os.fsencode(new_name) in staged_names
     assert os.fsencode(binary_name) in staged_names
+
+
+def test_special_path_discard_and_abort(functional_repo):
+    """Discard and abort restore a pathname containing a newline."""
+    path = functional_repo / "discard\nname.txt"
+    path.write_text("old\n")
+    subprocess.run(["git", "add", "--", path.name], check=True, cwd=functional_repo)
+    subprocess.run(["git", "commit", "-m", "Add path"], check=True, cwd=functional_repo)
+    path.write_text("new\n")
+
+    git_stage_batch("start")
+    git_stage_batch("show", "--file", path.name)
+    git_stage_batch("discard", "--line", "1-2")
+    assert path.read_text() == "old\n"
+    git_stage_batch("abort")
+    assert path.read_text() == "new\n"

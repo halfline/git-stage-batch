@@ -4,17 +4,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ..core.line_selection import (
+from ...core.line_selection import (
     LineRanges,
 )
-from .ownership_absence_claims import AbsenceClaim as _AbsenceClaim
-from .ownership_claims import (
+from .absence_claims import AbsenceClaim as _AbsenceClaim
+from .claims import (
     PresenceClaim as _PresenceClaim,
     parse_ownership_line_ranges as _claim_parse_line_ranges,
     presence_claims_from_source_lines as _claim_presence_claims_from_source_lines,
 )
-from .ownership_references import BaselineReference as _BaselineReference
-from .ownership_replacement_units import (
+from .references import BaselineReference as _BaselineReference
+from .replacement_units import (
     ReplacementUnit as _ReplacementUnit,
     normalize_replacement_units as _replacement_normalize_units,
 )

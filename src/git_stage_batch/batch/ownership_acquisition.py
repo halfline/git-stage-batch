@@ -1,30 +1,8 @@
-"""Scoped ownership acquisition helpers."""
+"""Compatibility import for batch ownership acquisition."""
 
-from __future__ import annotations
+import sys as _sys
 
-from dataclasses import dataclass
-from typing import Generic, TypeVar
-
-from ..core.buffer import LineBuffer
+from .ownership import acquisition as _implementation
 
 
-_OwnershipT = TypeVar("_OwnershipT")
-
-
-@dataclass
-class AcquiredBatchOwnership(Generic[_OwnershipT]):
-    """Own buffers used by a scoped ownership value."""
-
-    ownership: _OwnershipT
-    buffers: list[LineBuffer]
-
-    def close(self) -> None:
-        """Close buffers held by the scoped ownership value."""
-        for buffer in self.buffers:
-            buffer.close()
-
-    def __enter__(self) -> _OwnershipT:
-        return self.ownership
-
-    def __exit__(self, exc_type, exc, traceback) -> None:
-        self.close()
+_sys.modules[__name__] = _implementation

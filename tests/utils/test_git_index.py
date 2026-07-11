@@ -7,6 +7,7 @@ import pytest
 
 from git_stage_batch.utils.git_command import run_git_command
 from git_stage_batch.utils.git_index import (
+    git_add_paths_from_stdin,
     git_commit_tree,
     git_read_tree,
     git_update_index,
@@ -121,6 +122,23 @@ class TestGitIndexPlumbing:
 
         assert result.returncode != 0
         assert run_git_command(["status", "--short"]).stdout == ""
+
+    def test_add_paths_from_stdin_preserves_nul_safe_names(self, temp_git_repo):
+        """Bulk intent-to-add should support Unicode and newline path names."""
+        paths = ["unicodé.txt", "line\nbreak.txt", ":(glob)*.txt"]
+        for path in paths:
+            (temp_git_repo / path).write_text(f"{path}\n")
+
+        git_add_paths_from_stdin(paths, intent_to_add=True)
+
+        result = run_git_command(
+            ["ls-files", "-z", "--", *paths],
+            text_output=False,
+        )
+        assert set(result.stdout.rstrip(b"\0").split(b"\0")) == {
+            path.encode("utf-8") for path in paths
+        }
+        assert run_git_command(["diff", "--cached", "--name-only"]).stdout == ""
 
     def test_batched_force_remove_uses_repository_object_width(
         self,

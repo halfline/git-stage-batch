@@ -84,7 +84,7 @@ def command_start(
 
         # Make untracked files visible to git diff so they can be staged,
         # blocked by .gitignore, or deleted.
-        auto_add_untracked_files()
+        auto_add_untracked_files(show_progress=not quiet)
 
         try:
             fetch_next_change()

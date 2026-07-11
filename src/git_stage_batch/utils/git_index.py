@@ -211,6 +211,35 @@ def git_add_paths(
     return run_git_command(arguments, check=check, requires_index_lock=True)
 
 
+def git_add_paths_from_stdin(
+    paths: Sequence[str],
+    *,
+    intent_to_add: bool = False,
+    check: bool = True,
+) -> subprocess.CompletedProcess:
+    """Add arbitrarily many NUL-delimited paths without an argv-sized list."""
+    unique_paths = list(dict.fromkeys(paths))
+    if not unique_paths:
+        return subprocess.CompletedProcess(["git", "add"], 0, "", "")
+    arguments = [
+        "--literal-pathspecs",
+        "add",
+        "--pathspec-from-file=-",
+        "--pathspec-file-nul",
+    ]
+    if intent_to_add:
+        arguments.append("--intent-to-add")
+    payload: list[bytes] = []
+    for file_path in unique_paths:
+        payload.extend((encode_path(file_path), b"\0"))
+    return run_git_command(
+        arguments,
+        stdin_chunks=payload,
+        check=check,
+        requires_index_lock=True,
+    )
+
+
 def git_reset_paths(
     paths: Sequence[str],
     *,

@@ -13,7 +13,7 @@ from ..selection.selected_change_display import show_selected_change
 def restart_iteration_pass(*, quiet: bool = False) -> None:
     """Clear iteration state and select the first available change."""
     clear_iteration_state()
-    auto_add_untracked_files()
+    auto_add_untracked_files(show_progress=not quiet)
 
     try:
         fetch_next_change()

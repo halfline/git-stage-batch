@@ -7,38 +7,38 @@ from typing import TYPE_CHECKING, Any
 
 from . import baseline_edits as _baseline_edits
 from . import presence_constraints as _presence_constraints
-from .merge_candidate_enumeration import (
+from .candidate_enumeration import (
     enumerate_merge_batch_candidates_for_lines as _enumerate_merge_candidates,
 )
-from .merge_candidates import (
+from .candidates import (
     MergeCandidateSet as _MergeCandidateSet,
     MergeResolution as _MergeResolution,
 )
-from .merge_validation import (
+from .validation import (
     check_structural_validity as _check_merge_structural_validity,
 )
-from .line_matching.line_mapping import LineMapping
-from .line_matching.match import match_lines
-from .realization.entry_storage import (
+from ..line_matching.line_mapping import LineMapping
+from ..line_matching.match import match_lines
+from ..realization.entry_storage import (
     realized_entry_content_chunks as _realized_entry_content_chunks,
 )
-from ..core.line_selection import LineSelection
-from ..core.buffer import LineBuffer
-from ..editor.line_endings import (
+from ...core.line_selection import LineSelection
+from ...core.buffer import LineBuffer
+from ...editor.line_endings import (
     choose_line_ending,
     restore_line_endings_in_chunks,
 )
-from ..exceptions import (
+from ...exceptions import (
     MergeError as _MergeError,
 )
-from ..i18n import _
-from ..core.text_lines import (
+from ...i18n import _
+from ...core.text_lines import (
     AcquirableLineSequence,
     normalize_line_sequence_endings,
 )
 
 if TYPE_CHECKING:
-    from .ownership.model import BatchOwnership
+    from ..ownership.model import BatchOwnership
 
 
 _MERGE_CANDIDATE_CAP = 50

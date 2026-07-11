@@ -12,6 +12,7 @@ from ..i18n import _
 from ..runtime import dispatch_cli_mode
 from ..data.session_ownership import require_no_foreign_session_owner
 from ..utils.session_lock import acquire_session_lock
+from ..utils.journal import flush_journal
 from .argument_parser import parse_command_line
 from .pager import pager_output, should_page_output
 
@@ -70,6 +71,8 @@ def main() -> None:
     except KeyboardInterrupt:
         print(_("Interrupted."), file=sys.stderr)
         sys.exit(130)
+    finally:
+        flush_journal()
 
 
 if __name__ == "__main__":

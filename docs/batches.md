@@ -35,6 +35,23 @@ This information is stored in:
 
 Legacy batches under `refs/batches/<name>` are read as migration inputs. Once a batch is written by the current version, the legacy ref and file-backed metadata for that batch are removed.
 
+Batch names must be non-empty single path components no longer than 250 UTF-8
+bytes. In addition to spaces, slashes, backslashes, and colons, Git reserves
+characters and sequences such as `~`, `^`, `?`, `*`, `[`, `..`, and `@{`, as
+well as trailing dots and `.lock` suffixes. The name is checked with Git's own
+ref-format rules before any batch or session state is written. Unicode names
+are supported when they satisfy those rules.
+
+If an older version left file-backed metadata with an invalid name, batch
+discovery reports the entry instead of ignoring it. The diagnostic identifies
+the invalid name and its metadata under Git's `git-stage-batch/batches`
+directory. If a matching legacy `refs/batches/<old-name>` ref exists, choose a
+valid unused name, rename that ref with `git update-ref`, and move the metadata
+directory to the same new name. If no matching ref exists, the directory is
+orphaned metadata from a failed creation and does not contain a recoverable
+batch commit; inspect it if needed, then move it outside the state directory or
+remove it. Run `git-stage-batch list` again to verify the repair.
+
 ### Application Model (include/apply --from)
 
 When applying a batch to your working tree or index, the tool uses **structural merge**:

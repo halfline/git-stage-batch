@@ -145,3 +145,25 @@ def test_special_path_discard_and_abort(functional_repo):
     assert path.read_text() == "old\n"
     git_stage_batch("abort")
     assert path.read_text() == "new\n"
+
+
+def test_block_and_unblock_special_path(functional_repo):
+    """Blocking resolves the same canonical tab-containing pathname."""
+    file_name = "blocked\tname.txt"
+    (functional_repo / file_name).write_text("generated\n")
+
+    git_stage_batch("block-file", file_name)
+    blocked = subprocess.run(
+        ["git", "check-ignore", "--", file_name],
+        cwd=functional_repo,
+        capture_output=True,
+    )
+    assert blocked.returncode == 0
+
+    git_stage_batch("unblock-file", file_name)
+    unblocked = subprocess.run(
+        ["git", "check-ignore", "--", file_name],
+        cwd=functional_repo,
+        capture_output=True,
+    )
+    assert unblocked.returncode == 1

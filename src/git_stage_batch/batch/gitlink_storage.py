@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import json
-
 from ..core.models import GitlinkChange
-from ..utils.file_io import write_text_file_contents
-from ..utils.paths import get_batch_metadata_file_path
 from . import content_commits as _content_commits
 from .lifecycle import create_batch
+from .metadata_io import write_file_backed_batch_metadata
 from .query import read_batch_metadata
 from .validation import batch_exists, validate_batch_name
 
@@ -36,8 +33,7 @@ def add_gitlink_to_batch(
         "new_oid": gitlink_change.new_oid,
     }
 
-    metadata_path = get_batch_metadata_file_path(batch_name)
-    write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
+    write_file_backed_batch_metadata(batch_name, metadata)
 
     if gitlink_change.is_deleted_file():
         _content_commits.remove_file_from_batch_commit(batch_name, file_path)

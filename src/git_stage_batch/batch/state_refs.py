@@ -2,17 +2,24 @@
 
 from __future__ import annotations
 
-import json
 import shutil
+import subprocess
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
 from .ref_names import BATCH_CONTENT_REF_PREFIX, BATCH_STATE_REF_PREFIX, LEGACY_BATCH_REF_PREFIX
+from .metadata_io import read_file_backed_batch_metadata_model
+from .metadata_schema import (
+    BatchMetadata,
+    decode_batch_metadata,
+    encode_batch_metadata,
+    metadata_from_application_dict,
+)
 from .validation import validate_batch_name
+from ..exceptions import BatchMetadataError
 from ..core.buffer import LineBuffer
 from ..utils.repository_buffers import load_git_object_as_buffer
-from ..utils.file_io import read_text_file_contents
 from ..utils.git_command import (
     run_git_command,
 )
@@ -93,35 +100,20 @@ def _legacy_batch_commit_sha(batch_name: str) -> str | None:
     return result.stdout.strip()
 
 
-def read_file_backed_batch_metadata(batch_name: str) -> dict[str, Any]:
-    metadata_path = get_batch_metadata_file_path(batch_name)
-    if not metadata_path.exists():
+def read_file_backed_batch_metadata(batch_name: str) -> dict:
+    model = read_file_backed_batch_metadata_model(batch_name)
+    if model is None:
         return {
             "note": "",
             "created_at": "",
             "baseline": None,
             "files": {},
         }
-
-    metadata = json.loads(read_text_file_contents(metadata_path))
-    return {
-        "note": metadata.get("note", ""),
-        "created_at": metadata.get("created_at", ""),
-        "baseline": metadata.get("baseline", None),
-        "files": metadata.get("files", {}),
-    }
+    return model.to_application_dict()
 
 
-def _normalize_state_metadata(state_metadata: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "note": state_metadata.get("note", ""),
-        "created_at": state_metadata.get("created_at", ""),
-        "baseline": state_metadata.get(
-            "baseline_commit",
-            state_metadata.get("baseline"),
-        ),
-        "files": state_metadata.get("files", {}),
-    }
+def _decode_state_metadata(payload: str | bytes, batch_name: str) -> BatchMetadata:
+    return decode_batch_metadata(payload, expected_batch=batch_name)
 
 
 def read_batch_state_metadata(batch_name: str) -> dict[str, Any] | None:
@@ -135,8 +127,7 @@ def read_batch_state_metadata(batch_name: str) -> dict[str, Any] | None:
     if result.returncode != 0:
         return None
 
-    state_metadata = json.loads(result.stdout)
-    return _normalize_state_metadata(state_metadata)
+    return _decode_state_metadata(result.stdout, batch_name).to_application_dict()
 
 
 def read_batch_state_metadata_for_batches(
@@ -160,7 +151,10 @@ def read_batch_state_metadata_for_batches(
         blob = blobs.get(refspec)
         if blob is None:
             continue
-        metadata_by_name[batch_name] = _normalize_state_metadata(json.loads(blob))
+        metadata_by_name[batch_name] = _decode_state_metadata(
+            blob,
+            batch_name,
+        ).to_application_dict()
     return metadata_by_name
 
 
@@ -186,21 +180,41 @@ def sync_batch_state_refs(
     """Publish batch metadata and source snapshots into authoritative Git refs."""
     validate_batch_name(batch_name)
 
-    content_commit = content_commit or get_authoritative_batch_commit_sha(batch_name) or _legacy_batch_commit_sha(batch_name)
+    existing_content_commit = get_authoritative_batch_commit_sha(batch_name)
+    content_commit = content_commit or existing_content_commit or _legacy_batch_commit_sha(batch_name)
     if not content_commit:
         delete_batch_state_refs(batch_name)
         return
 
-    metadata = read_file_backed_batch_metadata(batch_name)
-    state_metadata = {
-        "batch": batch_name,
-        "note": metadata.get("note", ""),
-        "created_at": metadata.get("created_at", ""),
-        "baseline_commit": metadata.get("baseline"),
-        "content_ref": get_batch_content_ref_name(batch_name),
-        "content_commit": content_commit,
-        "files": {},
-    }
+    file_backed_model = read_file_backed_batch_metadata_model(batch_name)
+    if file_backed_model is None:
+        raise ValueError(f"Batch '{batch_name}' has no file-backed metadata to publish")
+    metadata = file_backed_model.to_application_dict()
+
+    existing_state_ref = run_git_command(
+        ["rev-parse", "--verify", get_batch_state_ref_name(batch_name)],
+        check=False,
+        requires_index_lock=False,
+    )
+    existing_state_commit = (
+        existing_state_ref.stdout.strip()
+        if existing_state_ref.returncode == 0
+        else None
+    )
+    if existing_state_commit is not None:
+        existing_state = run_git_command(
+            ["show", f"{existing_state_commit}:batch.json"],
+            requires_index_lock=False,
+        )
+        existing_state_model = _decode_state_metadata(existing_state.stdout, batch_name)
+        if file_backed_model.revision != existing_state_model.revision:
+            remove_file_backed_batch_metadata(batch_name)
+            raise BatchMetadataError(
+                f"Batch '{batch_name}' changed after its metadata was read. "
+                "Retry the operation against the latest batch state."
+            )
+
+    state_files = {}
 
     source_buffers = source_buffers or {}
     buffer_updates: list[_StateBufferUpdate] = []
@@ -232,9 +246,16 @@ def sync_batch_state_refs(
                         )
                         state_file_meta["source_path"] = source_path
 
-                state_metadata["files"][file_path] = state_file_meta
+                state_files[file_path] = state_file_meta
 
-            state_json = json.dumps(state_metadata, indent=2).encode("utf-8")
+            state_model = metadata_from_application_dict(
+                batch_name,
+                {**metadata, "files": state_files},
+                content_ref=get_batch_content_ref_name(batch_name),
+                content_commit=content_commit,
+                new_revision=True,
+            )
+            state_json = encode_batch_metadata(state_model).encode("utf-8")
             buffer_updates.append(_StateBufferUpdate(path="batch.json", data=state_json))
             blob_shas = [
                 create_git_blob(_buffer_chunks(update.data))
@@ -257,14 +278,7 @@ def sync_batch_state_refs(
         for buffer in managed_buffers:
             buffer.close()
 
-    existing_state = run_git_command(
-        ["rev-parse", "--verify", get_batch_state_ref_name(batch_name)],
-        check=False,
-        requires_index_lock=False,
-    )
-    parents = []
-    if existing_state.returncode == 0 and existing_state.stdout.strip():
-        parents.append(existing_state.stdout.strip())
+    parents = [existing_state_commit] if existing_state_commit is not None else []
 
     state_commit = git_commit_tree(
         tree_sha,
@@ -272,11 +286,22 @@ def sync_batch_state_refs(
         message=f"Batch state: {batch_name}",
     )
 
-    update_git_refs(
-        updates=[
-            (get_batch_content_ref_name(batch_name), content_commit),
-            (get_batch_state_ref_name(batch_name), state_commit),
-        ],
-        deletes=[get_legacy_batch_ref_name(batch_name)],
-    )
+    try:
+        update_git_refs(
+            updates=[
+                (get_batch_content_ref_name(batch_name), content_commit),
+                (get_batch_state_ref_name(batch_name), state_commit),
+            ],
+            deletes=[get_legacy_batch_ref_name(batch_name)],
+            expected_old_values={
+                get_batch_content_ref_name(batch_name): existing_content_commit,
+                get_batch_state_ref_name(batch_name): existing_state_commit,
+            },
+        )
+    except subprocess.CalledProcessError as error:
+        remove_file_backed_batch_metadata(batch_name)
+        raise BatchMetadataError(
+            f"Batch '{batch_name}' changed while its metadata was being published. "
+            "Retry the operation against the latest batch state."
+        ) from error
     remove_file_backed_batch_metadata(batch_name)

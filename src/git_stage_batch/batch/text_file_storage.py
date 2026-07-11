@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from .metadata_validation import get_validated_baseline_commit
+from .metadata_io import write_file_backed_batch_metadata
 from .lifecycle import create_batch
 from .query import get_batch_commit_sha, read_batch_metadata
 from .validation import batch_exists, validate_batch_name
@@ -24,7 +24,6 @@ from ..core.buffer import LineBuffer
 from ..utils.repository_buffers import (
     load_git_tree_files_as_buffers,
 )
-from ..utils.file_io import write_text_file_contents
 from ..utils.git_index import (
     GitIndexEntryUpdate,
     git_commit_tree,
@@ -35,7 +34,6 @@ from ..utils.git_index import (
 )
 from ..utils.git_repository import get_git_repository_root_path
 from ..utils.git_object_io import create_git_blob
-from ..utils.paths import get_batch_metadata_file_path
 from . import content_commits as _content_commits
 from . import realized_file_content as _realized_file_content
 
@@ -247,8 +245,7 @@ def add_files_to_batch(batch_name: str, updates: list[BatchFileUpdate]) -> None:
                 )
             git_update_index_entries(index_updates, env=env)
 
-            metadata_path = get_batch_metadata_file_path(batch_name)
-            write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
+            write_file_backed_batch_metadata(batch_name, metadata)
             if batch_sources_changed:
                 save_session_batch_sources(batch_sources)
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Iterable
 from typing import Optional
 
@@ -13,13 +12,12 @@ from .state_refs import (
     read_batch_state_metadata_for_batches,
     read_batch_state_metadata,
 )
+from .metadata_io import read_file_backed_batch_metadata_model
 from .validation import invalid_file_backed_batch_names, validate_batch_name
 from ..exceptions import CommandError
 from ..i18n import _
-from ..utils.file_io import read_text_file_contents
 from ..utils.git_command import run_git_command
 from ..git_paths import decode_path, nul_records
-from ..utils.paths import get_batch_metadata_file_path
 
 
 def read_batch_metadata(name: str) -> dict:
@@ -82,20 +80,10 @@ def _empty_batch_metadata() -> dict:
 
 
 def _read_file_backed_batch_metadata_or_empty(name: str) -> dict:
-    metadata_path = get_batch_metadata_file_path(name)
-    if not metadata_path.exists():
+    model = read_file_backed_batch_metadata_model(name)
+    if model is None:
         return _empty_batch_metadata()
-
-    try:
-        metadata = json.loads(read_text_file_contents(metadata_path))
-        return {
-            "note": metadata.get("note", ""),
-            "created_at": metadata.get("created_at", ""),
-            "baseline": metadata.get("baseline", None),
-            "files": metadata.get("files", {})
-        }
-    except (json.JSONDecodeError, KeyError):
-        return _empty_batch_metadata()
+    return model.to_application_dict()
 
 
 def get_batch_commit_sha(name: str) -> Optional[str]:
@@ -117,9 +105,13 @@ def get_batch_commit_sha(name: str) -> Optional[str]:
     return result.stdout.strip()
 
 
-def list_batch_names() -> list[str]:
+def list_batch_names(*, validate_legacy_metadata: bool = True) -> list[str]:
     """List all batch names by querying authoritative refs and legacy imports."""
-    invalid_legacy_names = invalid_file_backed_batch_names()
+    invalid_legacy_names = (
+        invalid_file_backed_batch_names()
+        if validate_legacy_metadata
+        else []
+    )
     if invalid_legacy_names:
         formatted_names = ", ".join(repr(name) for name in invalid_legacy_names)
         raise CommandError(

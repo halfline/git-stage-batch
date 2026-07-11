@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import json
-
 from ...batch.lifecycle import create_batch, delete_batch
+from ...batch.metadata_io import write_file_backed_batch_metadata
 from ...batch.ownership import BatchOwnership
 from ...batch.query import get_batch_baseline_commit, read_batch_metadata
 from ...batch.state_refs import (
@@ -23,7 +22,6 @@ from ...core.buffer import LineBuffer
 from ...core.text_lifecycle import TextFileChangeType, normalized_text_change_type
 from ...exceptions import exit_with_error
 from ...i18n import _
-from ...utils.file_io import write_text_file_contents
 from ...utils.git_command import run_git_command
 from ...utils.git_index import (
     git_commit_tree,
@@ -33,7 +31,6 @@ from ...utils.git_index import (
     temp_git_index,
 )
 from ...utils.git_object_io import create_git_blob
-from ...utils.paths import get_batch_metadata_file_path
 from .sift_results import SiftedBinaryFileResult, SiftedFileResult, SiftedModeFileResult
 
 
@@ -124,8 +121,7 @@ def add_sifted_text_file_to_batch(
         file_metadata["change_type"] = text_change_type.value
     metadata["files"][file_path] = file_metadata
 
-    metadata_path = get_batch_metadata_file_path(batch_name)
-    write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
+    write_file_backed_batch_metadata(batch_name, metadata)
 
     source_buffers = {file_path: target_buffer}
     if text_change_type == TextFileChangeType.DELETED:
@@ -210,11 +206,8 @@ def replace_batch_with_sifted_files(
         if temp_commit.returncode == 0:
             commit_sha = temp_commit.stdout.strip()
             temp_metadata = read_batch_metadata(temp_batch_name)
-            metadata_path = get_batch_metadata_file_path(batch_name)
-            write_text_file_contents(
-                metadata_path,
-                json.dumps(temp_metadata, indent=2),
-            )
+            temp_metadata["revision"] = source_metadata.get("revision")
+            write_file_backed_batch_metadata(batch_name, temp_metadata)
             sync_batch_state_refs(
                 batch_name,
                 content_commit=commit_sha,

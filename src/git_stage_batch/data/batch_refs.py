@@ -8,6 +8,7 @@ from typing import Any
 
 from ..batch.ref_names import BATCH_CONTENT_REF_PREFIX, LEGACY_BATCH_REF_PREFIX
 from ..batch.query import read_batch_metadata
+from ..batch.metadata_io import write_file_backed_batch_metadata
 from ..batch.state_refs import (
     delete_batch_state_refs,
     get_batch_content_ref_name,
@@ -18,11 +19,7 @@ from ..batch.state_refs import (
 from ..utils.file_io import read_text_file_contents, write_text_file_contents
 from ..utils.git_command import run_git_command
 from ..utils.git_refs import update_git_refs
-from ..utils.paths import (
-    get_batch_directory_path,
-    get_batch_metadata_file_path,
-    get_batch_refs_snapshot_file_path,
-)
+from ..utils.paths import get_batch_directory_path, get_batch_refs_snapshot_file_path
 
 
 def _list_batch_content_refs() -> dict[str, str]:
@@ -117,10 +114,6 @@ def restore_batch_refs() -> None:
         state_commit_sha = batch_state.get("state_commit_sha")
         full_metadata = batch_state.get("metadata", {})
 
-        # Restore complete metadata
-        metadata_path = get_batch_metadata_file_path(batch_name)
-        write_text_file_contents(metadata_path, json.dumps(full_metadata, indent=2))
-
         if state_commit_sha:
             update_git_refs(
                 updates=[
@@ -131,4 +124,5 @@ def restore_batch_refs() -> None:
             )
             remove_file_backed_batch_metadata(batch_name)
         else:
+            write_file_backed_batch_metadata(batch_name, full_metadata)
             sync_batch_state_refs(batch_name, content_commit=commit_sha)

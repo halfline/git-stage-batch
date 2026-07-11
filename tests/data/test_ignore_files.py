@@ -1,12 +1,15 @@
 """Tests for repository ignore-file editing helpers."""
 
 import subprocess
+import stat
 
 import pytest
 
 from git_stage_batch.data.ignore_files import (
+    add_file_to_local_exclude,
     add_file_to_gitignore,
     get_gitignore_path,
+    get_local_exclude_path,
     read_gitignore_lines,
     remove_file_from_gitignore,
     write_gitignore_lines,
@@ -73,6 +76,28 @@ class TestGitignoreManipulation:
         gitignore = get_gitignore_path()
         content = gitignore.read_text()
         assert content == "*.pyc\n__pycache__/\n.env\n"
+
+    @pytest.mark.parametrize("mode", [0o600, 0o644, 0o660, 0o755])
+    def test_write_gitignore_lines_preserves_existing_mode(
+        self,
+        temp_git_repo,
+        mode,
+    ):
+        gitignore = get_gitignore_path()
+        gitignore.write_text("old\n")
+        gitignore.chmod(mode)
+
+        write_gitignore_lines(["new\n"])
+
+        assert stat.S_IMODE(gitignore.stat().st_mode) == mode
+
+    def test_write_gitignore_lines_creates_conventional_project_file(
+        self,
+        temp_git_repo,
+    ):
+        write_gitignore_lines(["entry\n"])
+
+        assert stat.S_IMODE(get_gitignore_path().stat().st_mode) == 0o644
 
     def test_add_file_to_gitignore_new(self, temp_git_repo):
         """Test adding a file to .gitignore when .gitignore doesn't exist."""
@@ -171,3 +196,18 @@ class TestGitignoreManipulation:
         assert removed is False
 
         assert gitignore.read_text() == "*.pyc\n"
+
+
+class TestLocalExcludeManipulation:
+    """Tests for repository-local exclude file permissions."""
+
+    def test_add_file_to_local_exclude_preserves_existing_mode(
+        self,
+        temp_git_repo,
+    ):
+        exclude = get_local_exclude_path()
+        exclude.chmod(0o660)
+
+        add_file_to_local_exclude("local.txt")
+
+        assert stat.S_IMODE(exclude.stat().st_mode) == 0o660

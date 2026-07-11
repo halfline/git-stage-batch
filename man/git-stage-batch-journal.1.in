@@ -1,0 +1,65 @@
+.TH GIT-STAGE-BATCH-JOURNAL 1 "July 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-journal \- inspect or purge diagnostic journal data
+.SH SYNOPSIS
+.B git-stage-batch journal
+[
+.B \-\-path
+|
+.B \-\-purge
+]
+[
+.B \-\-all
+]
+[
+.B \-\-porcelain
+]
+.SH DESCRIPTION
+Shows a content-free summary of the diagnostic journal for the current
+repository. Journaling is disabled unless
+.B GIT_STAGE_BATCH_JOURNAL
+is configured.
+.PP
+Journal files live in a private per-user state directory, are identified by a
+hash of the repository, and are rotated and expired automatically. Metadata
+and verbose levels redact paths, command output, and content previews.
+.SH OPTIONS
+.TP
+.B \-\-path
+Print only the current repository's journal path.
+.TP
+.B \-\-purge
+Delete the current repository's journal files.
+.TP
+.B \-\-all
+With
+.BR \-\-purge ,
+delete journal files for every repository.
+.TP
+.B \-\-porcelain
+Emit stable JSON output.
+.SH ENVIRONMENT
+.TP
+.B GIT_STAGE_BATCH_JOURNAL
+Select
+.BR disabled ,
+.BR metadata-only ,
+.BR verbose ,
+or
+.BR content-debug .
+The default is
+.BR disabled .
+.TP
+.B GIT_STAGE_BATCH_JOURNAL_PATH
+Override the journal file path.
+.TP
+.B XDG_STATE_HOME
+Set the base per-user state directory when the journal path is not overridden.
+.SH PRIVACY
+.B content-debug
+records raw paths, command output, and short content previews. Enable it only
+for a limited reproduction and purge it afterward. The other enabled levels
+record stable path hashes and content-free metadata.
+.SH SEE ALSO
+.BR git-stage-batch (1),
+.BR git-stage-batch-validate (1)

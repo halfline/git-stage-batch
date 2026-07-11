@@ -9513,9 +9513,12 @@ def test_batch_hunk_line_ranges_own_hunk_range_scanning():
         "git_stage_batch.batch",
         set(),
     )
-    assert "hunk_line_ranges" in replacement_imported_names.get(
-        "git_stage_batch.batch",
-        set(),
+    assert "hunk_line_ranges" in set().union(
+        replacement_imported_names.get("git_stage_batch.batch", set()),
+        replacement_imported_names.get(
+            "git_stage_batch.batch.ownership",
+            set(),
+        ),
     )
     for public_name in public_names:
         assert f"def {public_name}" not in hunk_text
@@ -9559,17 +9562,23 @@ def test_batch_hunk_replacement_translation_owns_replacement_runs():
             alias.name for alias in node.names
         )
 
-    assert "hunk_replacement_translation" in hunk_imported_names.get(
-        "git_stage_batch.batch",
-        set(),
+    assert "hunk_replacement_translation" in set().union(
+        hunk_imported_names.get("git_stage_batch.batch", set()),
+        hunk_imported_names.get(
+            "git_stage_batch.batch.ownership",
+            set(),
+        ),
     )
     assert "hunk_line_ranges" not in hunk_imported_names.get(
         "git_stage_batch.batch",
         set(),
     )
-    assert "hunk_line_ranges" in replacement_imported_names.get(
-        "git_stage_batch.batch",
-        set(),
+    assert "hunk_line_ranges" in set().union(
+        replacement_imported_names.get("git_stage_batch.batch", set()),
+        replacement_imported_names.get(
+            "git_stage_batch.batch.ownership",
+            set(),
+        ),
     )
     assert "AbsenceContentBuilder" not in hunk_text
     assert "ReplacementUnit(" not in hunk_text
@@ -10074,9 +10083,9 @@ def test_batch_ownership_replacement_units_owns_normalization():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if (
-                imported_module
-                != "git_stage_batch.batch.ownership_replacement_units"
+            if imported_module not in _batch_module_names(
+                "ownership_replacement_units",
+                "ownership.replacement_units",
             ):
                 continue
 
@@ -11191,8 +11200,14 @@ def test_batch_ownership_units_owns_unit_operations():
     }
 
     assert "git_stage_batch.batch.display" not in ownership_imports
-    assert "git_stage_batch.batch.display" in unit_imports
-    assert "git_stage_batch.batch.ownership" in unit_imports
+    assert unit_imports & _batch_module_names(
+        "display",
+        "ownership.display_lines",
+    )
+    assert unit_imports & _batch_module_names(
+        "ownership",
+        "ownership.model",
+    )
 
     for path in SRC_ROOT.rglob("*.py"):
         if path in {ownership_path, unit_path}:

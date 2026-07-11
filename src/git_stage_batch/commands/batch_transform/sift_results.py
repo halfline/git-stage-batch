@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from ...batch.comparison import (
+from ...batch.line_matching.comparison import (
     SemanticChangeKind,
     derive_semantic_change_runs,
 )

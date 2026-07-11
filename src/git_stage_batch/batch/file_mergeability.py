@@ -10,7 +10,7 @@ from ..core.text_lines import normalize_line_sequence_endings
 from ..exceptions import MergeError
 from ..utils.repository_buffers import load_working_tree_file_as_buffer
 from . import merge as batch_merge
-from .match import match_lines
+from .line_matching.match import match_lines
 from .ownership import BatchOwnership
 from .ownership_unit_rebuild import rebuild_ownership_from_units
 from .ownership_unit_types import OwnershipUnit

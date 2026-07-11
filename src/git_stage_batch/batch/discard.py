@@ -11,8 +11,8 @@ from .baseline_correspondence import (
 from .discard_reversal import (
     reverse_presence_constraints as _reverse_batch_presence_constraints,
 )
-from .line_mapping import LineMapping
-from .match import match_lines
+from .line_matching.line_mapping import LineMapping
+from .line_matching.match import match_lines
 from .realized_entries import RealizedEntry as _RealizedEntry
 from .realized_entry_storage import (
     RealizedEntries,

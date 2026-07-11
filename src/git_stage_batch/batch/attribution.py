@@ -16,8 +16,8 @@ from ..utils.git_object_io import (
     resolve_git_objects,
     stream_git_blobs,
 )
-from .line_mapping import LineMapping as _LineMapping
-from .match import match_lines
+from .line_matching.line_mapping import LineMapping as _LineMapping
+from .line_matching.match import match_lines
 from . import attribution_fingerprints as _attribution_fingerprints
 from .attribution_units import (
     AttributionUnit as _AttributionUnit,

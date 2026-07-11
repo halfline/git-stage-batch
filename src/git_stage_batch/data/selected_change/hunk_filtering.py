@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 
-from ...batch.attribution import build_file_attribution
+from ...batch.attribution import AttributionMetrics, build_file_attribution
 from ...batch.attribution_projection import filter_owned_diff_fragments
 from ...utils.file_io import write_text_file_contents
+from ...utils.journal import log_journal
 from ...utils.paths import get_line_changes_json_file_path
 from .. import change_freshness as _change_freshness
 from .. import consumed_replacement_masks as _consumed_replacement_masks
@@ -43,10 +45,17 @@ def apply_line_level_batch_filter_to_cached_hunk(
     ):
         return True
 
+    attribution_metrics = AttributionMetrics()
     attribution = build_file_attribution(
         file_path,
         batch_metadata_by_name=batch_metadata_by_name,
         supplemental_batch_metadata=_consumed_batch_metadata(file_path),
+        metrics=attribution_metrics,
+    )
+    log_journal(
+        "file_attribution_complete",
+        file_path=file_path,
+        **asdict(attribution_metrics),
     )
     should_skip, filtered_line_changes = filter_owned_diff_fragments(
         line_changes, attribution
@@ -55,8 +64,10 @@ def apply_line_level_batch_filter_to_cached_hunk(
     if should_skip:
         return True
 
-    filtered_line_changes = _consumed_replacement_masks.filter_consumed_replacement_masks(
-        filtered_line_changes
+    filtered_line_changes = (
+        _consumed_replacement_masks.filter_consumed_replacement_masks(
+            filtered_line_changes
+        )
     )
     if filtered_line_changes is None:
         return True

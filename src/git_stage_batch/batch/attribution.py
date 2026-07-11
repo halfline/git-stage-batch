@@ -9,11 +9,13 @@ content that may not currently be visible in the working tree.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from contextlib import ExitStack
 from dataclasses import dataclass
 
-from ..core.buffer import LineBuffer
-from ..utils.git_object_io import read_git_blobs_as_bytes
+from ..utils.git_object_io import (
+    GitObjectInfo,
+    resolve_git_objects,
+    stream_git_blobs,
+)
 from .line_mapping import LineMapping as _LineMapping
 from .match import match_lines
 from . import attribution_fingerprints as _attribution_fingerprints
@@ -30,6 +32,7 @@ from ..core.line_selection import parse_line_selection
 from ..utils.repository_buffers import (
     load_git_object_as_buffer_or_empty,
     load_working_tree_file_as_buffer,
+    stream_git_blob_buffers,
 )
 
 
@@ -50,6 +53,21 @@ class FileAttribution:
 
 
 @dataclass
+class AttributionMetrics:
+    """Phase counts for one bounded file attribution pass."""
+
+    candidate_batches: int = 0
+    claimed_batches: int = 0
+    object_resolution_requests: int = 0
+    object_requests: int = 0
+    object_bytes: int = 0
+    unique_source_contents: int = 0
+    mapping_computations: int = 0
+    deletion_fingerprints: int = 0
+    attributed_units: int = 0
+
+
+@dataclass
 class BatchAttributionContext:
     """Reusable source alignment for one batch/file attribution pass."""
 
@@ -57,6 +75,12 @@ class BatchAttributionContext:
     file_metadata: dict
     batch_source_lines: Sequence[bytes]
     alignment: _LineMapping
+    deletion_fingerprints: dict[
+        str,
+        _attribution_fingerprints.ContentFingerprint,
+    ]
+    presence_source_lines: tuple[int, ...]
+    presence_source_line_set: frozenset[int]
 
 
 @dataclass(frozen=True)
@@ -65,6 +89,16 @@ class _BatchSourceRequest:
     file_metadata: dict
     primary_refspec: str
     fallback_refspec: str
+
+
+@dataclass(frozen=True)
+class _ResolvedBatchSourceRequest:
+    """One batch claim grouped by its canonical source blob identity."""
+
+    batch_name: str
+    file_metadata: dict
+    source_object_id: str | None
+    presence_source_lines: tuple[int, ...]
 
 
 def _parse_presence_source_lines(file_metadata: dict) -> list[int]:
@@ -85,8 +119,7 @@ def _parse_presence_source_lines(file_metadata: dict) -> list[int]:
 
 def _has_presence_source_lines(file_metadata: dict) -> bool:
     return bool(
-        file_metadata.get("presence_claims")
-        or file_metadata.get("claimed_lines")
+        file_metadata.get("presence_claims") or file_metadata.get("claimed_lines")
     )
 
 
@@ -95,11 +128,14 @@ def build_file_attribution(
     *,
     batch_metadata_by_name: dict[str, dict] | None = None,
     supplemental_batch_metadata: dict[str, dict] | None = None,
+    metrics: AttributionMetrics | None = None,
 ) -> FileAttribution:
     """Build complete ownership attribution for a file."""
     all_batch_metadata = {}
     if batch_metadata_by_name is None:
         batch_metadata_by_name = read_batch_metadata_for_batches(list_batch_names())
+    if metrics is not None:
+        metrics.candidate_batches = len(batch_metadata_by_name)
 
     for batch_name, metadata in batch_metadata_by_name.items():
         if file_path in metadata.get("files", {}):
@@ -107,80 +143,227 @@ def build_file_attribution(
 
     if supplemental_batch_metadata:
         all_batch_metadata.update(supplemental_batch_metadata)
+    if metrics is not None:
+        metrics.claimed_batches = len(all_batch_metadata)
 
     baseline_buffer = load_git_object_as_buffer_or_empty(f"HEAD:{file_path}")
     working_tree_buffer = load_working_tree_file_as_buffer(file_path)
     with baseline_buffer as baseline_lines, working_tree_buffer as working_tree_lines:
-        with ExitStack() as batch_context_stack:
-            batch_contexts = _open_batch_attribution_contexts(
-                file_path,
-                all_batch_metadata,
-                working_tree_lines=working_tree_lines,
-                stack=batch_context_stack,
+        all_units_map: dict[str, _AttributionUnit] = {}
+        with _build_file_comparison_from_lines(
+            file_path,
+            baseline_lines=baseline_lines,
+            working_tree_lines=working_tree_lines,
+        ) as comparison:
+            _enumerate_units_from_file_comparison(comparison, all_units_map)
+
+        baseline_unit_ids = tuple(all_units_map)
+        owners_by_unit_id = {unit_id: set() for unit_id in baseline_unit_ids}
+        _attribute_batches(
+            file_path,
+            all_batch_metadata,
+            working_tree_lines=working_tree_lines,
+            all_units_map=all_units_map,
+            baseline_unit_ids=baseline_unit_ids,
+            owners_by_unit_id=owners_by_unit_id,
+            metrics=metrics,
+        )
+
+        attributed_units = [
+            AttributedUnit(
+                unit=unit,
+                owning_batches=owners_by_unit_id[unit_id],
             )
-
-            all_units_map: dict[str, _AttributionUnit] = {}
-            with _build_file_comparison_from_lines(
-                file_path,
-                baseline_lines=baseline_lines,
-                working_tree_lines=working_tree_lines,
-            ) as comparison:
-                _enumerate_units_from_file_comparison(comparison, all_units_map)
-
-            if batch_contexts:
-                _enumerate_units_from_batches(
-                    file_path,
-                    batch_contexts,
-                    all_units_map,
-                )
-
-            attributed_units = [
-                AttributedUnit(
-                    unit=unit,
-                    owning_batches=_find_owning_batches(unit, batch_contexts),
-                )
-                for unit in all_units_map.values()
-            ]
+            for unit_id, unit in all_units_map.items()
+        ]
+        if metrics is not None:
+            metrics.attributed_units = len(attributed_units)
 
     return FileAttribution(file_path=file_path, units=attributed_units)
 
 
-def _open_batch_attribution_contexts(
+def _attribute_batches(
     file_path: str,
     all_batch_metadata: dict,
     *,
     working_tree_lines: Sequence[bytes],
-    stack: ExitStack,
-) -> list[BatchAttributionContext]:
-    """Open reusable batch source buffers and alignments for one file."""
-    contexts: list[BatchAttributionContext] = []
+    all_units_map: dict[str, _AttributionUnit],
+    baseline_unit_ids: Sequence[str],
+    owners_by_unit_id: dict[str, set[str]],
+    metrics: AttributionMetrics | None = None,
+) -> None:
+    """Attribute claims while retaining one source alignment at a time."""
     source_requests = _batch_source_requests(file_path, all_batch_metadata)
-    source_blobs = read_git_blobs_as_bytes(_source_refspecs(source_requests))
+    deletion_blob_ids = _deletion_blob_ids(source_requests)
+    object_names = list(
+        dict.fromkeys(
+            [
+                *_source_refspecs(source_requests),
+                *deletion_blob_ids,
+            ]
+        )
+    )
+    object_infos = resolve_git_objects(object_names)
+    resolved_requests = _resolve_batch_source_requests(
+        source_requests,
+        object_infos,
+    )
+    deletion_fingerprints, deletion_object_ids, deletion_bytes = (
+        _read_deletion_fingerprints(deletion_blob_ids, object_infos)
+    )
+    source_groups: dict[str | None, list[_ResolvedBatchSourceRequest]] = {}
+    for request in resolved_requests:
+        source_groups.setdefault(request.source_object_id, []).append(request)
+    source_object_ids = [
+        object_id for object_id in source_groups if object_id is not None
+    ]
 
-    for request in source_requests:
-        file_metadata = request.file_metadata
-        source_blob = source_blobs.get(request.primary_refspec)
-        if source_blob is None:
-            source_blob = source_blobs.get(request.fallback_refspec, b"")
-        batch_source_lines = stack.enter_context(
-            LineBuffer.from_chunks([source_blob])
-        )
-        alignment = stack.enter_context(
-            match_lines(
-                source_lines=batch_source_lines,
-                target_lines=working_tree_lines,
+    if metrics is not None:
+        metrics.object_resolution_requests = len(object_names)
+        metrics.object_requests = len(deletion_object_ids) + len(source_object_ids)
+        metrics.object_bytes = deletion_bytes
+        metrics.deletion_fingerprints = len(deletion_fingerprints)
+        metrics.unique_source_contents = len(source_groups)
+        metrics.mapping_computations = len(source_groups)
+
+    if source_object_ids:
+        for source_blob in stream_git_blob_buffers(source_object_ids):
+            if metrics is not None:
+                metrics.object_bytes += source_blob.size
+            _attribute_source_group(
+                file_path,
+                source_groups[source_blob.object_id],
+                source_lines=source_blob.buffer,
+                working_tree_lines=working_tree_lines,
+                deletion_fingerprints=deletion_fingerprints,
+                all_units_map=all_units_map,
+                baseline_unit_ids=baseline_unit_ids,
+                owners_by_unit_id=owners_by_unit_id,
             )
+
+    empty_source_group = source_groups.get(None)
+    if empty_source_group:
+        _attribute_source_group(
+            file_path,
+            empty_source_group,
+            source_lines=(),
+            working_tree_lines=working_tree_lines,
+            deletion_fingerprints=deletion_fingerprints,
+            all_units_map=all_units_map,
+            baseline_unit_ids=baseline_unit_ids,
+            owners_by_unit_id=owners_by_unit_id,
         )
-        contexts.append(
-            BatchAttributionContext(
+
+
+def _resolve_batch_source_requests(
+    requests: Sequence[_BatchSourceRequest],
+    object_infos: dict[str, GitObjectInfo],
+) -> list[_ResolvedBatchSourceRequest]:
+    """Resolve primary/fallback expressions to canonical source blob IDs."""
+    resolved = []
+    for request in requests:
+        source_info = object_infos.get(request.primary_refspec)
+        if source_info is None or source_info.object_type != "blob":
+            source_info = object_infos.get(request.fallback_refspec)
+        source_object_id = (
+            source_info.object_id
+            if source_info is not None
+            and source_info.object_type == "blob"
+            and source_info.size > 0
+            else None
+        )
+        resolved.append(
+            _ResolvedBatchSourceRequest(
                 batch_name=request.batch_name,
-                file_metadata=file_metadata,
-                batch_source_lines=batch_source_lines,
-                alignment=alignment,
+                file_metadata=request.file_metadata,
+                source_object_id=source_object_id,
+                presence_source_lines=tuple(
+                    _parse_presence_source_lines(request.file_metadata)
+                ),
             )
         )
+    return resolved
 
-    return contexts
+
+def _read_deletion_fingerprints(
+    deletion_blob_ids: Sequence[str],
+    object_infos: dict[str, GitObjectInfo],
+) -> tuple[
+    dict[str, _attribution_fingerprints.ContentFingerprint],
+    list[str],
+    int,
+]:
+    """Stream deletion blobs and retain only canonical fingerprints."""
+    object_id_by_request = {
+        blob_id: info.object_id
+        for blob_id in deletion_blob_ids
+        if (info := object_infos.get(blob_id)) is not None
+        and info.object_type == "blob"
+    }
+    unique_object_ids = list(dict.fromkeys(object_id_by_request.values()))
+    fingerprints_by_object_id = {}
+    byte_count = 0
+    if unique_object_ids:
+        for blob in stream_git_blobs(unique_object_ids):
+            byte_count += blob.size
+            fingerprints_by_object_id[blob.object_id] = (
+                _attribution_fingerprints.fingerprint_chunks(blob.content_chunks)
+            )
+    return (
+        {
+            request: fingerprints_by_object_id[object_id]
+            for request, object_id in object_id_by_request.items()
+            if object_id in fingerprints_by_object_id
+        },
+        unique_object_ids,
+        byte_count,
+    )
+
+
+def _attribute_source_group(
+    file_path: str,
+    requests: Sequence[_ResolvedBatchSourceRequest],
+    *,
+    source_lines: Sequence[bytes],
+    working_tree_lines: Sequence[bytes],
+    deletion_fingerprints: dict[
+        str,
+        _attribution_fingerprints.ContentFingerprint,
+    ],
+    all_units_map: dict[str, _AttributionUnit],
+    baseline_unit_ids: Sequence[str],
+    owners_by_unit_id: dict[str, set[str]],
+) -> None:
+    """Attribute every batch sharing one source/target mapping."""
+    with match_lines(
+        source_lines=source_lines,
+        target_lines=working_tree_lines,
+    ) as alignment:
+        for request in requests:
+            context = BatchAttributionContext(
+                batch_name=request.batch_name,
+                file_metadata=request.file_metadata,
+                batch_source_lines=source_lines,
+                alignment=alignment,
+                deletion_fingerprints=deletion_fingerprints,
+                presence_source_lines=request.presence_source_lines,
+                presence_source_line_set=frozenset(request.presence_source_lines),
+            )
+            generated_unit_ids = _enumerate_units_from_batch(
+                file_path,
+                context,
+                all_units_map,
+            )
+            candidate_unit_ids = dict.fromkeys(
+                [
+                    *baseline_unit_ids,
+                    *generated_unit_ids,
+                ]
+            )
+            for unit_id in candidate_unit_ids:
+                owners_by_unit_id.setdefault(unit_id, set())
+                if _batch_owns_unit(all_units_map[unit_id], context):
+                    owners_by_unit_id[unit_id].add(request.batch_name)
 
 
 def _batch_source_requests(
@@ -188,7 +371,8 @@ def _batch_source_requests(
     all_batch_metadata: dict,
 ) -> list[_BatchSourceRequest]:
     requests: list[_BatchSourceRequest] = []
-    for batch_name, batch_metadata in all_batch_metadata.items():
+    for batch_name in sorted(all_batch_metadata):
+        batch_metadata = all_batch_metadata[batch_name]
         file_metadata = batch_metadata["files"][file_path]
         fallback_refspec = f"{file_metadata['batch_source_commit']}:{file_path}"
         source_path = file_metadata.get("source_path")
@@ -217,121 +401,112 @@ def _source_refspecs(source_requests: Sequence[_BatchSourceRequest]) -> list[str
     return refspecs
 
 
-def _enumerate_units_from_batches(
-    file_path: str,
-    batch_contexts: Sequence[BatchAttributionContext],
-    units_map: dict[str, _AttributionUnit],
-) -> None:
-    """Add batch-owned units that may not be visible in the working tree."""
-    for batch_context in batch_contexts:
-        file_metadata = batch_context.file_metadata
-        batch_source_lines = batch_context.batch_source_lines
-        alignment = batch_context.alignment
+def _deletion_blob_ids(
+    source_requests: Sequence[_BatchSourceRequest],
+) -> list[str]:
+    """Return unique deletion blobs required by one file attribution pass."""
+    blob_ids: list[str] = []
+    for request in source_requests:
+        for deletion in request.file_metadata.get("deletions", []):
+            blob_id = deletion.get("blob")
+            if isinstance(blob_id, str) and blob_id:
+                blob_ids.append(blob_id)
+    return list(dict.fromkeys(blob_ids))
 
-        if len(batch_source_lines) == 0 and _has_presence_source_lines(file_metadata):
+
+def _enumerate_units_from_batch(
+    file_path: str,
+    batch_context: BatchAttributionContext,
+    units_map: dict[str, _AttributionUnit],
+) -> list[str]:
+    """Add units claimed by one batch and return their semantic IDs."""
+    file_metadata = batch_context.file_metadata
+    batch_source_lines = batch_context.batch_source_lines
+    alignment = batch_context.alignment
+    generated_unit_ids: list[str] = []
+
+    if len(batch_source_lines) == 0 and _has_presence_source_lines(file_metadata):
+        return generated_unit_ids
+
+    for source_line in batch_context.presence_source_lines:
+        if source_line < 1 or source_line > len(batch_source_lines):
             continue
 
-        for source_line in _parse_presence_source_lines(file_metadata):
-            if source_line < 1 or source_line > len(batch_source_lines):
-                continue
-
-            claimed_content = batch_source_lines[source_line - 1]
-            working_tree_line = alignment.get_target_line_from_source_line(source_line)
-            unit = _AttributionUnit(
-                unit_id=_make_attribution_unit_id(
-                    _AttributionUnitKind.PRESENCE_ONLY,
-                    file_path,
-                    claimed_line=working_tree_line,
-                    claimed_content=claimed_content,
-                ),
-                kind=_AttributionUnitKind.PRESENCE_ONLY,
-                file_path=file_path,
-                claimed_line_in_working_tree=working_tree_line,
+        claimed_content = batch_source_lines[source_line - 1]
+        working_tree_line = alignment.get_target_line_from_source_line(source_line)
+        unit = _AttributionUnit(
+            unit_id=_make_attribution_unit_id(
+                _AttributionUnitKind.PRESENCE_ONLY,
+                file_path,
+                claimed_line=working_tree_line,
                 claimed_content=claimed_content,
-                deletion_anchor_in_working_tree=None,
-                deletion_content=None,
-            )
-            units_map.setdefault(unit.unit_id, unit)
+            ),
+            kind=_AttributionUnitKind.PRESENCE_ONLY,
+            file_path=file_path,
+            claimed_line_in_working_tree=working_tree_line,
+            claimed_content=claimed_content,
+            deletion_anchor_in_working_tree=None,
+            deletion_content=None,
+        )
+        units_map.setdefault(unit.unit_id, unit)
+        generated_unit_ids.append(unit.unit_id)
 
-        for deletion_entry in file_metadata.get("deletions", []):
-            blob_hash = deletion_entry.get("blob")
-            if not blob_hash:
-                continue
+    for deletion_entry in file_metadata.get("deletions", []):
+        blob_hash = deletion_entry.get("blob")
+        if not blob_hash:
+            continue
 
-            deletion_fingerprint = _attribution_fingerprints.fingerprint_git_blob(
-                blob_hash
-            )
-            if deletion_fingerprint is None:
-                continue
+        deletion_fingerprint = batch_context.deletion_fingerprints.get(blob_hash)
+        if deletion_fingerprint is None:
+            continue
 
-            after_source_line = deletion_entry.get("after_source_line")
-            deletion_anchor = (
-                None
-                if after_source_line is None
-                else alignment.get_target_line_from_source_line(after_source_line)
-            )
+        after_source_line = deletion_entry.get("after_source_line")
+        deletion_anchor = (
+            None
+            if after_source_line is None
+            else alignment.get_target_line_from_source_line(after_source_line)
+        )
 
-            unit = _AttributionUnit(
-                unit_id=_make_attribution_unit_id(
-                    _AttributionUnitKind.DELETION_ONLY,
-                    file_path,
-                    deletion_anchor=deletion_anchor,
-                    deletion_fingerprint=deletion_fingerprint,
-                ),
-                kind=_AttributionUnitKind.DELETION_ONLY,
-                file_path=file_path,
-                claimed_line_in_working_tree=None,
-                claimed_content=None,
-                deletion_anchor_in_working_tree=deletion_anchor,
-                deletion_content=None,
+        unit = _AttributionUnit(
+            unit_id=_make_attribution_unit_id(
+                _AttributionUnitKind.DELETION_ONLY,
+                file_path,
+                deletion_anchor=deletion_anchor,
                 deletion_fingerprint=deletion_fingerprint,
-            )
-            units_map.setdefault(unit.unit_id, unit)
+            ),
+            kind=_AttributionUnitKind.DELETION_ONLY,
+            file_path=file_path,
+            claimed_line_in_working_tree=None,
+            claimed_content=None,
+            deletion_anchor_in_working_tree=deletion_anchor,
+            deletion_content=None,
+            deletion_fingerprint=deletion_fingerprint,
+        )
+        units_map.setdefault(unit.unit_id, unit)
+        generated_unit_ids.append(unit.unit_id)
+
+    return generated_unit_ids
 
 
-def _find_owning_batches(
+def _batch_owns_unit(
     unit: _AttributionUnit,
-    batch_contexts: Sequence[BatchAttributionContext],
-) -> set[str]:
-    """Determine which batches own a given unit."""
-    owning_batches: set[str] = set()
-
-    for batch_context in batch_contexts:
-        file_metadata = batch_context.file_metadata
-        alignment = batch_context.alignment
-        batch_source_lines = batch_context.batch_source_lines
-
-        if unit.kind == _AttributionUnitKind.PRESENCE_ONLY:
-            if _batch_owns_presence_unit(
-                unit,
-                file_metadata,
-                alignment,
-                batch_source_lines,
-            ):
-                owning_batches.add(batch_context.batch_name)
-        elif unit.kind == _AttributionUnitKind.DELETION_ONLY:
-            if _batch_owns_deletion_unit(unit, file_metadata, alignment):
-                owning_batches.add(batch_context.batch_name)
-        elif unit.kind == _AttributionUnitKind.REPLACEMENT:
-            if (
-                _batch_owns_presence_unit(
-                    unit,
-                    file_metadata,
-                    alignment,
-                    batch_source_lines,
-                )
-                and _batch_owns_deletion_unit(unit, file_metadata, alignment)
-            ):
-                owning_batches.add(batch_context.batch_name)
-
-    return owning_batches
+    batch_context: BatchAttributionContext,
+) -> bool:
+    """Return whether one batch context owns one attribution unit."""
+    if unit.kind == _AttributionUnitKind.PRESENCE_ONLY:
+        return _batch_owns_presence_unit(unit, batch_context)
+    if unit.kind == _AttributionUnitKind.DELETION_ONLY:
+        return _batch_owns_deletion_unit(unit, batch_context)
+    if unit.kind == _AttributionUnitKind.REPLACEMENT:
+        return _batch_owns_presence_unit(
+            unit, batch_context
+        ) and _batch_owns_deletion_unit(unit, batch_context)
+    return False
 
 
 def _batch_owns_presence_unit(
     unit: _AttributionUnit,
-    file_metadata: dict,
-    alignment,
-    batch_source_lines: Sequence[bytes],
+    batch_context: BatchAttributionContext,
 ) -> bool:
     """Check whether a batch owns the presence side of a unit.
 
@@ -342,10 +517,12 @@ def _batch_owns_presence_unit(
     if unit.claimed_content is None and unit.claimed_fingerprint is None:
         return False
 
-    claimed_source_lines = _parse_presence_source_lines(file_metadata)
+    claimed_source_lines = batch_context.presence_source_lines
     if not claimed_source_lines:
         return False
-    claimed_source_line_set = set(claimed_source_lines)
+    claimed_source_line_set = batch_context.presence_source_line_set
+    alignment = batch_context.alignment
+    batch_source_lines = batch_context.batch_source_lines
 
     if unit.claimed_line_in_working_tree is not None:
         mapped_source_line = alignment.get_source_line_from_target_line(
@@ -421,13 +598,14 @@ def _batch_owns_presence_unit(
 
 def _batch_owns_deletion_unit(
     unit: _AttributionUnit,
-    file_metadata: dict,
-    alignment,
+    batch_context: BatchAttributionContext,
 ) -> bool:
     """Check whether a batch owns a deletion unit via explicit absence claims."""
     if unit.deletion_content is None and unit.deletion_fingerprint is None:
         return False
 
+    file_metadata = batch_context.file_metadata
+    alignment = batch_context.alignment
     for deletion_entry in file_metadata.get("deletions", []):
         blob_hash = deletion_entry.get("blob")
         if not blob_hash:
@@ -438,22 +616,15 @@ def _batch_owns_deletion_unit(
             if unit.deletion_anchor_in_working_tree is not None:
                 continue
         else:
-            mapped_anchor = alignment.get_target_line_from_source_line(after_source_line)
+            mapped_anchor = alignment.get_target_line_from_source_line(
+                after_source_line
+            )
             if mapped_anchor != unit.deletion_anchor_in_working_tree:
                 continue
 
         if (
-            unit.deletion_content is not None
-            and _attribution_fingerprints.blob_matches_content(
-                blob_hash,
-                unit.deletion_content,
-            )
-        ):
-            return True
-
-        if (
             unit.deletion_fingerprint is not None
-            and _attribution_fingerprints.fingerprint_git_blob(blob_hash)
+            and batch_context.deletion_fingerprints.get(blob_hash)
             == unit.deletion_fingerprint
         ):
             return True

@@ -58,6 +58,7 @@ def skip_line_selection(
     reuse_selected_file_view = False
     if file is None:
         require_selected_hunk()
+        target_file = get_selected_change_file_path()
     else:
         if file == "":
             target_file = get_selected_change_file_path()
@@ -83,7 +84,7 @@ def skip_line_selection(
     operation_parts = ["skip", "--line", line_id_specification]
     if file is not None:
         operation_parts.extend(["--file", file])
-    with undo_checkpoint(" ".join(operation_parts)):
+    with undo_checkpoint(" ".join(operation_parts), worktree_paths=[target_file]):
         if file is not None:
             if not reuse_selected_file_view:
                 if cache_unstaged_file_as_single_hunk(target_file) is None:

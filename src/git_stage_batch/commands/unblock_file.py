@@ -67,7 +67,11 @@ def command_unblock_file(file_path_arg: str) -> None:
         file_path = file_path.rstrip("/") + "/"
     session_active = session_is_active()
     checkpoint = (
-        undo_checkpoint(f"unblock-file {file_path}", worktree_paths=[".gitignore"])
+        undo_checkpoint(
+            f"unblock-file {file_path}",
+            worktree_paths=[".gitignore"],
+            index_paths=[file_path] if not file_path.endswith("/") else [],
+        )
         if session_active else nullcontext()
     )
 

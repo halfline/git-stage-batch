@@ -14,7 +14,10 @@ from ...batch.validation import validate_batch_name
 from ...exceptions import exit_with_error
 from ...i18n import _
 from ..file_scope import discard_file_to_batch as _file_scope_discard_file_to_batch
-from ..file_scope.target_path import require_file_scope_target_path
+from ..file_scope.target_path import (
+    checkpoint_paths_for_file_scope,
+    require_file_scope_target_path,
+)
 from . import discard_line_batching as _discard_line_batching
 from . import selected_change_batch_discarding as _selected_change_batch_discarding
 from . import whole_file_batch_discarding as _whole_file_batch_discarding
@@ -39,7 +42,9 @@ def execute_discard_to_batch_action(
     if file is not None:
         operation_parts.extend(["--file", file])
 
-    with undo_checkpoint(" ".join(operation_parts)):
+    selected_change = load_selected_change() if file is None else None
+    worktree_paths = checkpoint_paths_for_file_scope(file, selected_change)
+    with undo_checkpoint(" ".join(operation_parts), worktree_paths=worktree_paths):
         if (
             file is None
             and line_ids is None

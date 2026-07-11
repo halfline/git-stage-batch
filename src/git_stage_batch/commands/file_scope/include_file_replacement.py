@@ -42,7 +42,14 @@ def include_file_as_replacement(
     if file is not None:
         operation_parts.extend(["--file", file])
 
-    with undo_checkpoint(" ".join(operation_parts)), ExitStack() as selected_state_stack:
+    target_file = file if file not in (None, "") else get_selected_change_file_path()
+    with (
+        undo_checkpoint(
+            " ".join(operation_parts),
+            worktree_paths=[target_file] if target_file is not None else [],
+        ),
+        ExitStack() as selected_state_stack,
+    ):
         preserve_selected_state = False
         saved_selected_state = None
 

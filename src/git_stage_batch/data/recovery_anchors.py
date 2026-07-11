@@ -28,6 +28,9 @@ def state_recovery_objects(state: Mapping[str, Any]) -> set[str]:
     object_names = _existing_object_names(
         [state.get("head"), state.get("index_tree"), *state.get("refs", {}).values()]
     )
+    for entry in state.get("index_entries", {}).values():
+        if isinstance(entry, Mapping) and entry.get("mode") != "160000":
+            object_names.update(_existing_object_names([entry.get("object_id")]))
     for entry in state.get("worktree_paths", []):
         if not isinstance(entry, Mapping):
             continue

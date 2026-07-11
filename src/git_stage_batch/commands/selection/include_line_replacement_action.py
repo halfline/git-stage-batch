@@ -7,6 +7,7 @@ import sys
 
 from ...core.replacement import ReplacementPayload, coerce_replacement_payload
 from ...data.file_review.action_scope import finish_review_scoped_line_action
+from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.line_id_files import write_line_ids_file
 from ...data.selected_change.store import restore_selected_change_state
 from ...data.undo_checkpoints import undo_checkpoint
@@ -40,7 +41,14 @@ def include_live_line_replacement(
         operation_parts.extend(["--file", file])
 
     replacement_file_context = None
-    with undo_checkpoint(" ".join(operation_parts)), ExitStack() as selected_state_stack:
+    target_file = file if file not in (None, "") else get_selected_change_file_path()
+    with (
+        undo_checkpoint(
+            " ".join(operation_parts),
+            worktree_paths=[target_file] if target_file is not None else [],
+        ),
+        ExitStack() as selected_state_stack,
+    ):
         if file is None:
             replacement_context = (
                 _include_line_replacement.prepare_pathless_include_line_replacement(

@@ -9,6 +9,7 @@ from ...batch.selection import require_line_selection_in_view
 from ...core.buffer import LineBuffer, buffer_matches
 from ...core.line_selection import parse_line_selection
 from ...data.file_review.action_scope import finish_review_scoped_line_action
+from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.line_id_files import read_line_ids_file, write_line_ids_file
 from ...utils.repository_buffers import load_git_object_as_buffer
 from ...data.selected_change.store import (
@@ -43,7 +44,14 @@ def include_live_line_selection(
     if file is not None:
         operation_parts.extend(["--file", file])
 
-    with undo_checkpoint(" ".join(operation_parts)), ExitStack() as selected_state_stack:
+    target_file = file if file not in (None, "") else get_selected_change_file_path()
+    with (
+        undo_checkpoint(
+            " ".join(operation_parts),
+            worktree_paths=[target_file] if target_file is not None else [],
+        ),
+        ExitStack() as selected_state_stack,
+    ):
         selection_context = _include_line_selection.load_include_line_selection_context(
             file,
             selected_state_stack,

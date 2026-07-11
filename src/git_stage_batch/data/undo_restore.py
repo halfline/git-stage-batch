@@ -26,7 +26,7 @@ from ..utils.git_refs import (
     update_git_refs,
 )
 from ..utils.git_worktree import git_checkout_detached
-from ..utils.git_index import git_add_paths
+from ..utils.git_index import git_add_paths, git_update_index
 from ..utils.git_repository import get_git_repository_root_path
 from ..utils.paths import get_auto_added_files_file_path
 
@@ -114,13 +114,59 @@ def restore_tree_prefix(commit: str, *, prefix: str, target_dir: Path) -> None:
         _restore_file_mode(target_path, mode)
 
 
-def restore_refs(saved_refs: dict[str, str]) -> None:
+def restore_tree_paths(
+    commit: str,
+    *,
+    prefix: str,
+    target_dir: Path,
+    tracked_paths: list[str],
+) -> None:
+    """Restore only tracked relative paths from one checkpoint tree prefix."""
+    saved_entries = {
+        Path(tree_path).relative_to(prefix).as_posix(): (mode, blob_sha)
+        for mode, blob_sha, tree_path in _tree_entries(commit, prefix)
+    }
+    for relative_name in tracked_paths:
+        target_path = target_dir / relative_name
+        saved_entry = saved_entries.get(relative_name)
+        if saved_entry is None:
+            if target_path.is_dir() and not target_path.is_symlink():
+                shutil.rmtree(target_path)
+            elif os.path.lexists(target_path):
+                target_path.unlink()
+            continue
+        mode, blob_sha = saved_entry
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        _write_blob_to_path(blob_sha, target_path)
+        _restore_file_mode(target_path, mode)
+
+
+def tree_prefix_state(commit: str, prefix: str) -> dict[str, dict[str, str]]:
+    """Return relative path, mode, and blob identity for a tree prefix."""
+    return {
+        Path(tree_path).relative_to(prefix).as_posix(): {
+            "mode": mode,
+            "object_id": blob_sha,
+        }
+        for mode, blob_sha, tree_path in _tree_entries(commit, prefix)
+    }
+
+
+def restore_refs(
+    saved_refs: dict[str, str],
+    *,
+    tracked_refs: list[str] | None = None,
+) -> None:
     """Restore undo-managed refs to a saved mapping."""
     current_refs = list_restorable_refs()
+    if tracked_refs is None:
+        tracked_refs = sorted(set(current_refs) | set(saved_refs))
     update_git_refs(
         updates=sorted(saved_refs.items()),
         deletes=sorted(
-            ref_name for ref_name in current_refs if ref_name not in saved_refs
+            ref_name
+            for ref_name in tracked_refs
+            if ref_name in current_refs and ref_name not in saved_refs
         ),
     )
 
@@ -168,4 +214,5 @@ def restore_intent_to_add_entries() -> None:
     for file_path in read_file_paths_file(get_auto_added_files_file_path()):
         full_path = repo_root / file_path
         if os.path.lexists(full_path):
+            git_update_index(file_path=file_path, force_remove=True, check=False)
             git_add_paths([file_path], intent_to_add=True, check=False)

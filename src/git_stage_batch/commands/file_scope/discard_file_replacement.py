@@ -33,16 +33,18 @@ def discard_file_as_replacement(
     if file is not None:
         operation_parts.extend(["--file", file])
 
-    with undo_checkpoint(" ".join(operation_parts)), ExitStack() as selected_state_stack:
+    target_file = file if file not in (None, "") else get_selected_change_file_path()
+    if target_file is None:
+        exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
+
+    with (
+        undo_checkpoint(" ".join(operation_parts), worktree_paths=[target_file]),
+        ExitStack() as selected_state_stack,
+    ):
         preserve_selected_state = False
         saved_selected_state = None
 
-        if file is None or file == "":
-            target_file = get_selected_change_file_path()
-            if target_file is None:
-                exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
-        else:
-            target_file = file
+        if file not in (None, ""):
             preserve_selected_state = True
             saved_selected_state = selected_state_stack.enter_context(
                 snapshot_selected_change_state()

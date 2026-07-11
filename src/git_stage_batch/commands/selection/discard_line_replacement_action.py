@@ -5,6 +5,7 @@ from __future__ import annotations
 from ...core.replacement import ReplacementPayload, coerce_replacement_payload
 from ...data.file_review.action_scope import finish_review_scoped_line_action
 from ...data.selected_change.loading import require_selected_hunk
+from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.selected_change.store import (
     restore_selected_change_state,
     snapshot_selected_change_state,
@@ -42,9 +43,12 @@ def discard_live_line_replacement_to_batch(
     if file is not None:
         operation_parts.extend(["--file", file])
 
-    target_file = None
+    target_file = file if file not in (None, "") else get_selected_change_file_path()
     with (
-        undo_checkpoint(" ".join(operation_parts)),
+        undo_checkpoint(
+            " ".join(operation_parts),
+            worktree_paths=[target_file] if target_file is not None else [],
+        ),
         snapshot_selected_change_state() as saved_selected_state,
     ):
         preserve_selected_state = file not in (None, "")

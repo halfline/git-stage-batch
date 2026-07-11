@@ -26,7 +26,7 @@ def discard_selected_file(
             print(_("No selected hunk. Run 'show' first or specify file path."), file=sys.stderr)
         return
 
-    with undo_checkpoint("discard"):
+    with undo_checkpoint("discard", worktree_paths=[target_file]):
         snapshot_file_if_untracked(target_file)
 
         head_result = run_git_command(

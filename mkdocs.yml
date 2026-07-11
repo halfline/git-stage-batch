@@ -71,6 +71,7 @@ nav:
   - Advanced Features:
     - Batch Operations: batches.md
     - Storage and Recovery: storage.md
+    - Matching Benchmarks: benchmarking.md
 
 plugins:
   - search

@@ -7,6 +7,35 @@ on:
     branches: [main]
 
 jobs:
+  benchmark-smoke:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.13"]
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Smoke test matching benchmark
+        run: |
+          python scripts/benchmark_matching.py \
+            --mode quick \
+            --warmups 0 \
+            --repeats 1 \
+            --output matching-benchmark-smoke.json
+
+      - name: Upload matching benchmark report
+        uses: actions/upload-artifact@v4
+        with:
+          name: matching-benchmark-python-${{ matrix.python-version }}
+          path: matching-benchmark-smoke.json
+
   test:
     runs-on: ubuntu-latest
     strategy:

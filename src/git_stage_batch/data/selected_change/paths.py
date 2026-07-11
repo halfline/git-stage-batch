@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ...core.models import (
     BinaryFileChange,
+    FileModeChange,
     GitlinkChange,
     LineLevelChange,
     RenameChange,
@@ -16,6 +17,7 @@ from .store import load_line_changes_from_patch_path
 
 SelectedChange = (
     BinaryFileChange
+    | FileModeChange
     | GitlinkChange
     | LineLevelChange
     | RenameChange
@@ -42,6 +44,10 @@ def get_selected_change_file_path() -> str | None:
     rename_change = _selected_file_changes.load_selected_rename_change()
     if rename_change is not None:
         return rename_change.path()
+
+    mode_change = _selected_file_changes.load_selected_mode_change()
+    if mode_change is not None:
+        return mode_change.path()
 
     deletion_change = _selected_file_changes.load_selected_text_deletion_change()
     if deletion_change is not None:

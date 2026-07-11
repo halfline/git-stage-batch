@@ -225,6 +225,11 @@ def get_selected_gitlink_file_json_path() -> Path:
     return get_selected_state_directory_path() / "gitlink-file.json"
 
 
+def get_selected_mode_change_json_path() -> Path:
+    """Get the path to the selected executable-mode change JSON file."""
+    return get_selected_state_directory_path() / "mode-change.json"
+
+
 def get_selected_rename_file_json_path() -> Path:
     """Get the path to the selected rename JSON file."""
     return get_selected_state_directory_path() / "rename-file.json"

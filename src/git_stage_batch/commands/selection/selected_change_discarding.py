@@ -10,6 +10,7 @@ from ...core.buffer import LineBuffer
 from ...core.diff_parser import build_line_changes_from_patch_lines, patch_is_new_file
 from ...core.models import (
     BinaryFileChange,
+    FileModeChange,
     GitlinkChange,
     RenameChange,
     TextFileDeletionChange,
@@ -19,6 +20,7 @@ from ...data.progress import record_hunk_discarded
 from ...data.selected_change.loading import load_selected_change
 from ...data.selected_change.paths import worktree_paths_for_selected_change
 from ...data.session import snapshot_file_if_untracked, snapshot_files_if_untracked
+from ...data.file_modes import apply_git_file_mode
 from ...data.undo_checkpoints import undo_checkpoint
 from ...exceptions import CommandError, NoMoreHunks, exit_with_error
 from ...i18n import _
@@ -88,6 +90,14 @@ def _discard_loaded_selected_change(
     """Discard one loaded selected change from the working tree."""
     patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
 
+    if isinstance(item, FileModeChange):
+        discard_file_mode_change(item)
+        append_lines_to_file(get_block_list_file_path(), [patch_hash])
+        record_hunk_discarded(patch_hash)
+        if not quiet:
+            print(_("✓ File mode discarded: {file}").format(file=item.path()), file=sys.stderr)
+        finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
+        return
     if isinstance(item, RenameChange):
         discard_rename_change(item)
         append_lines_to_file(get_block_list_file_path(), [patch_hash])
@@ -219,6 +229,12 @@ def _discard_binary_change(
         quiet=quiet,
         auto_advance=auto_advance,
     )
+
+
+def discard_file_mode_change(item: FileModeChange) -> None:
+    """Restore the old executable mode in the working tree."""
+    path = get_git_repository_root_path() / item.path()
+    apply_git_file_mode(path, item.old_mode)
 
 
 def _discard_text_hunk(

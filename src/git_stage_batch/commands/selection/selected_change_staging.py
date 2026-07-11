@@ -9,6 +9,7 @@ from ...core.buffer import LineBuffer
 from ...core.diff_parser import patch_is_file_deletion
 from ...core.models import (
     BinaryFileChange,
+    FileModeChange,
     GitlinkChange,
     RenameChange,
     TextFileDeletionChange,
@@ -31,6 +32,7 @@ from ...utils.git_index import (
     git_update_index,
     git_update_index_entries,
 )
+from ...utils.git_command import run_git_command
 from ...utils.paths import (
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
@@ -73,6 +75,13 @@ def _include_loaded_selected_change(
     """Include one loaded selected change in the index."""
     patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
 
+    if isinstance(item, FileModeChange):
+        stage_file_mode_change(item)
+        record_hunk_included(patch_hash)
+        if not quiet:
+            print(_("✓ File mode staged: {file}").format(file=item.path()), file=sys.stderr)
+        finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
+        return
     if isinstance(item, RenameChange):
         stage_rename_change(item)
         record_hunk_included(patch_hash)
@@ -200,6 +209,17 @@ def _include_loaded_selected_change(
         quiet=quiet,
         auto_advance=auto_advance,
     )
+
+
+def stage_file_mode_change(item: FileModeChange) -> None:
+    """Stage one executable-mode transition in the index."""
+    chmod = "+x" if item.new_mode == "100755" else "-x"
+    result = run_git_command(
+        ["update-index", f"--chmod={chmod}", "--", item.path()],
+        check=False,
+    )
+    if result.returncode != 0:
+        exit_with_error(_("Failed to stage executable mode change."))
 
 
 def stage_gitlink_change(gitlink_change: GitlinkChange) -> subprocess.CompletedProcess:

@@ -5,6 +5,7 @@ from __future__ import annotations
 from ..core.diff_parser import acquire_unified_diff
 from ..core.hashing import (
     compute_binary_file_hash,
+    compute_file_mode_change_hash,
     compute_gitlink_change_hash,
     compute_rename_change_hash,
     compute_stable_hunk_hash_from_lines,
@@ -12,6 +13,7 @@ from ..core.hashing import (
 )
 from ..core.models import (
     BinaryFileChange,
+    FileModeChange,
     GitlinkChange,
     RenameChange,
     TextFileDeletionChange,
@@ -75,6 +77,9 @@ def _unprocessed_patch_count(
         if text_deletion_change_is_batched(patch):
             return 0
         hunk_hash = compute_text_file_deletion_hash(patch)
+        file_path = patch.path()
+    elif isinstance(patch, FileModeChange):
+        hunk_hash = compute_file_mode_change_hash(patch)
         file_path = patch.path()
     elif isinstance(patch, GitlinkChange):
         hunk_hash = compute_gitlink_change_hash(patch)

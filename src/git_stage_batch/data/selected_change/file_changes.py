@@ -6,12 +6,14 @@ import json
 
 from ...core.hashing import (
     compute_binary_file_hash,
+    compute_file_mode_change_hash,
     compute_gitlink_change_hash,
     compute_rename_change_hash,
     compute_text_file_deletion_hash,
 )
 from ...core.models import (
     BinaryFileChange,
+    FileModeChange,
     GitlinkChange,
     RenameChange,
     TextFileDeletionChange,
@@ -24,6 +26,7 @@ from ...utils.paths import (
     get_processed_skip_ids_file_path,
     get_selected_binary_file_json_path,
     get_selected_gitlink_file_json_path,
+    get_selected_mode_change_json_path,
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
     get_selected_rename_file_json_path,
@@ -106,6 +109,35 @@ def load_selected_gitlink_change() -> GitlinkChange | None:
         )
     except KeyError:
         return None
+
+
+def load_selected_mode_change() -> FileModeChange | None:
+    """Load the currently cached executable-mode change."""
+    if read_selected_change_kind() not in (
+        SelectedChangeKind.MODE,
+        SelectedChangeKind.BATCH_MODE,
+    ):
+        return None
+    data = read_selected_mode_data()
+    if data is None:
+        return None
+    try:
+        return FileModeChange(
+            file_path=data["file_path"],
+            old_mode=data["old_mode"],
+            new_mode=data["new_mode"],
+        )
+    except (KeyError, TypeError):
+        return None
+
+
+def read_selected_mode_data() -> dict | None:
+    """Read cached mode selection data, if structurally valid."""
+    try:
+        data = json.loads(read_text_file_contents(get_selected_mode_change_json_path()))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def read_selected_rename_data() -> dict | None:
@@ -236,6 +268,36 @@ def cache_gitlink_change(
         get_selected_hunk_hash_file_path(),
         compute_gitlink_change_hash(gitlink_change),
     )
+    write_selected_change_kind(kind)
+
+
+def cache_mode_change(
+    mode_change: FileModeChange,
+    *,
+    kind: SelectedChangeKind = SelectedChangeKind.MODE,
+    batch_name: str | None = None,
+) -> None:
+    """Cache an executable-mode change as the current selected change."""
+    _clear_selected_line_payload_files()
+    write_text_file_contents(
+        get_selected_mode_change_json_path(),
+        json.dumps(
+            {
+                "file_path": mode_change.file_path,
+                "old_mode": mode_change.old_mode,
+                "new_mode": mode_change.new_mode,
+                "batch_name": batch_name,
+            },
+            ensure_ascii=False,
+            indent=0,
+        ),
+    )
+    write_text_file_contents(
+        get_selected_hunk_hash_file_path(),
+        compute_file_mode_change_hash(mode_change),
+    )
+    if kind == SelectedChangeKind.MODE:
+        write_snapshots_for_selected_file_path(mode_change.file_path)
     write_selected_change_kind(kind)
 
 

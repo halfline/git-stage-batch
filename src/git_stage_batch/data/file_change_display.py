@@ -8,12 +8,27 @@ from typing import Optional
 from ..core.diff_parser import acquire_unified_diff
 from ..core.models import (
     BinaryFileChange,
+    FileModeChange,
     GitlinkChange,
     RenameChange,
     TextFileDeletionChange,
 )
 from .file_tracking import auto_add_untracked_files
 from .live_diff import stream_live_git_diff
+
+
+def render_mode_change(file_path: str) -> Optional[FileModeChange]:
+    """Render one executable-mode action without caching state."""
+    try:
+        with acquire_unified_diff(
+            stream_live_git_diff(full_index=True, paths=[file_path])
+        ) as patches:
+            return next(
+                (item for item in patches if isinstance(item, FileModeChange)),
+                None,
+            )
+    except subprocess.CalledProcessError:
+        return None
 
 
 def render_binary_file_change(file_path: str) -> Optional[BinaryFileChange]:

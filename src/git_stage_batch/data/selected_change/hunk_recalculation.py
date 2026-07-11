@@ -19,6 +19,7 @@ from ...core.hashing import (
 from ...core.line_identity import preserve_line_ids_from_previous_view
 from ...core.models import (
     BinaryFileChange,
+    FileModeChange,
     GitlinkChange,
     RenameChange,
     TextFileDeletionChange,
@@ -116,6 +117,8 @@ def recalculate_selected_hunk_for_file(
             )
         ) as patches:
             for single_hunk in patches:
+                if isinstance(single_hunk, FileModeChange):
+                    continue
                 if single_hunk.old_path != file_path and single_hunk.new_path != file_path:
                     continue
 

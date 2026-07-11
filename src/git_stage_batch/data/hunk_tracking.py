@@ -9,6 +9,7 @@ from ..batch.query import list_batch_names, read_batch_metadata_for_batches
 from ..batch.source_annotation import annotate_with_batch_source
 from ..core.hashing import (
     compute_binary_file_hash,
+    compute_file_mode_change_hash,
     compute_gitlink_change_hash,
     compute_rename_change_hash,
     compute_stable_hunk_hash_from_lines,
@@ -16,6 +17,7 @@ from ..core.hashing import (
 )
 from ..core.models import (
     BinaryFileChange,
+    FileModeChange,
     GitlinkChange,
     LineLevelChange,
     RenameChange,
@@ -63,7 +65,7 @@ class _BatchMetadataSnapshot:
         return self._metadata_by_name
 
 
-def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange]:
+def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, FileModeChange, GitlinkChange, RenameChange, TextFileDeletionChange]:
     """Find the next hunk or binary file that isn't blocked and cache it as selected.
 
     Returns:
@@ -90,6 +92,15 @@ def fetch_next_change() -> Union[LineLevelChange, BinaryFileChange, GitlinkChang
             )
         ) as patches:
             for item in patches:
+                if isinstance(item, FileModeChange):
+                    mode_hash = compute_file_mode_change_hash(item)
+                    if mode_hash in blocked_hashes:
+                        continue
+                    if is_path_blocked(item.path(), blocked_files):
+                        continue
+                    _selected_file_changes.cache_mode_change(item)
+                    return item
+
                 if isinstance(item, RenameChange):
                     rename_hash = compute_rename_change_hash(item)
                     if rename_hash in blocked_hashes:

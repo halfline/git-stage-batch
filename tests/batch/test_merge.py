@@ -1588,6 +1588,104 @@ class TestMergeBatch:
 
         assert result == b"line1\nline2\nline3\nline4\nline5\n"
 
+    def test_enumerates_contextual_presence_gaps(self):
+        """Distinctive outer anchors expose ambiguous insertion gaps."""
+        source = b"""header
+old one
+old two
+old three
+claimed
+old tail
+footer
+"""
+        working = b"""header
+target one
+target two
+footer
+"""
+        ownership = BatchOwnership.from_presence_lines(["5"], [])
+
+        with pytest.raises(MergeError, match="different version"):
+            merge_batch(source, ownership, working)
+
+        candidate_set = enumerate_merge_batch_candidates_from_line_sequences(
+            source.splitlines(keepends=True),
+            ownership,
+            working.splitlines(keepends=True),
+            max_candidates=10,
+        )
+
+        assert [candidate.summary for candidate in candidate_set.candidates] == [
+            "insert source lines 5-5 after target line 1, before target line 2",
+            "insert source lines 5-5 after target line 2, before target line 3",
+            "insert source lines 5-5 after target line 3, before target line 4",
+        ]
+        assert [
+            merge_batch(
+                source,
+                ownership,
+                working,
+                resolution=candidate.resolution,
+            )
+            for candidate in candidate_set.candidates
+        ] == [
+            b"header\nclaimed\ntarget one\ntarget two\nfooter\n",
+            b"header\ntarget one\nclaimed\ntarget two\nfooter\n",
+            b"header\ntarget one\ntarget two\nclaimed\nfooter\n",
+        ]
+
+    def test_contextual_presence_candidates_honor_preview_cap(self):
+        """Wide ambiguous intervals should stop at the candidate safety cap."""
+        source = b"header\nold one\nold two\nold three\nclaimed\nold tail\nfooter\n"
+        working = b"header\none\ntwo\nthree\nfour\nfooter\n"
+        ownership = BatchOwnership.from_presence_lines(["5"], [])
+
+        with pytest.raises(MergeError, match="Too many merge candidates"):
+            enumerate_merge_batch_candidates_from_line_sequences(
+                source.splitlines(keepends=True),
+                ownership,
+                working.splitlines(keepends=True),
+                max_candidates=3,
+            )
+
+    def test_multiple_contextual_ambiguities_remain_a_hard_refusal(self):
+        """Independent ambiguous runs should not form a candidate product."""
+        source = b"""header
+a old one
+a old two
+a old three
+claimed a
+a old tail
+middle
+b old one
+b old two
+b old three
+claimed b
+b old tail
+footer
+"""
+        working = b"""header
+a target one
+a target two
+middle
+b target one
+b target two
+footer
+"""
+        ownership = BatchOwnership.from_presence_lines(["5", "11"], [])
+
+        with pytest.raises(MergeError, match="different version"):
+            merge_batch(source, ownership, working)
+
+        candidate_set = enumerate_merge_batch_candidates_from_line_sequences(
+            source.splitlines(keepends=True),
+            ownership,
+            working.splitlines(keepends=True),
+            max_candidates=10,
+        )
+
+        assert candidate_set.candidates == ()
+
     def test_enumerates_displaced_absence_candidates(self):
         """Ambiguous nearby deletion content can be previewed as candidates."""
         source = [b"a\n", b"b\n"]

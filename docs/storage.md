@@ -32,6 +32,24 @@ an object has already been pruned, restoration stops before mutation and
 reports the missing recovery object rather than partially applying the
 checkpoint.
 
+## Scoped undo checkpoints
+
+Each mutating command declares the repository paths it reads or writes. Undo
+manifests record only those worktree paths and index entries. Once an operation
+finishes, its checkpoint is also reduced to the session files, batch metadata,
+and refs that actually changed. Unrelated dirty or staged files and unrelated
+application metadata are not copied into the finalized checkpoint. Regular
+files in one scope share bulk index, HEAD, and object writes, so checkpoint
+process count does not grow with unrelated worktree dirtiness.
+
+Undo and redo restore scoped index entries individually instead of replacing
+the complete index, and restore only changed application-state paths and batch
+refs. A later change outside the command scope remains in place. Changes to a
+scoped path or ref still cause the default safety refusal, and `--force`
+overwrites only state owned by that checkpoint. Legacy whole-index and
+whole-state checkpoints remain readable for sessions created by older
+versions.
+
 ## Atomic file permissions
 
 Git-stage-batch writes session metadata, recovery manifests, batch

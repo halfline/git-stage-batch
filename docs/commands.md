@@ -414,7 +414,9 @@ to its state before that operation.
 **Options:**
 - `--force`: Overwrite changes made after the undo checkpoint
 
-Refuses by default if the current state has changed since the checkpoint.
+Refuses by default if a path, index entry, or batch ref in the operation's
+checkpoint scope has changed. Unrelated dirty and staged files are not retained
+by the checkpoint, do not cause conflicts, and are left unchanged by undo.
 
 ---
 
@@ -429,7 +431,8 @@ Redo the most recently undone session operation.
 **Options:**
 - `--force`: Overwrite changes made after the undo
 
-Refuses by default if the current state has changed since the undo.
+Refuses by default if scoped state has changed since the undo. Unrelated
+worktree and index changes remain untouched.
 
 Multiple undo/redo works in editor order:
 

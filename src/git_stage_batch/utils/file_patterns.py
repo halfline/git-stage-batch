@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .file_io import write_text_file_contents
 from .git_command import run_git_command
+from ..git_paths import decode_path, encode_path, nul_records
 
 
 def _normalize_path(path: str) -> str:
@@ -53,7 +54,7 @@ def resolve_gitignore_style_patterns(
         )
         write_text_file_contents(temp_root / ".gitignore", "".join(f"{pattern}\n" for pattern in normalized_patterns))
 
-        payload = b"".join(candidate.encode("utf-8") + b"\0" for candidate in normalized_candidates)
+        payload = b"".join(encode_path(candidate) + b"\0" for candidate in normalized_candidates)
         result = run_git_command(
             ["check-ignore", "--no-index", "--stdin", "-z", "-v", "-n"],
             stdin_chunks=[payload],
@@ -70,21 +71,21 @@ def resolve_gitignore_style_patterns(
                 stderr=result.stderr,
             )
 
-    fields = result.stdout.split(b"\0")
+    fields = nul_records(result.stdout)
     resolved_status: dict[str, bool] = {}
     for index in range(0, len(fields) - 1, 4):
         _source, _line_number, pattern, candidate = fields[index:index + 4]
         if not candidate:
             continue
-        candidate_text = candidate.decode("utf-8")
-        pattern_text = pattern.decode("utf-8")
+        candidate_text = decode_path(candidate)
+        pattern_text = decode_path(pattern)
         resolved_status[candidate_text] = bool(pattern_text) and not pattern_text.startswith("!")
 
     return [candidate for candidate in normalized_candidates if resolved_status.get(candidate, False)]
 
 
 def _paths_from_name_status_z(output: bytes) -> list[str]:
-    fields = output.split(b"\0")
+    fields = nul_records(output)
     changed_paths: list[str] = []
     index = 0
     while index < len(fields):
@@ -101,7 +102,7 @@ def _paths_from_name_status_z(output: bytes) -> list[str]:
             path = fields[index]
             index += 1
             if path:
-                changed_paths.append(_normalize_path(path.decode("utf-8")))
+                changed_paths.append(_normalize_path(decode_path(path)))
 
     return list(dict.fromkeys(changed_paths))
 
@@ -113,6 +114,8 @@ def list_changed_files() -> list[str]:
             "-c",
             "diff.ignoreSubmodules=none",
             "diff",
+            "--no-ext-diff",
+            "--no-textconv",
             "--ignore-submodules=none",
             "--find-renames",
             "--name-status",
@@ -132,6 +135,8 @@ def list_staged_files() -> list[str]:
             "-c",
             "diff.ignoreSubmodules=none",
             "diff",
+            "--no-ext-diff",
+            "--no-textconv",
             "--cached",
             "--ignore-submodules=none",
             "--find-renames",

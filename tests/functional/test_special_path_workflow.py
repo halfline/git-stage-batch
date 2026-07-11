@@ -66,3 +66,29 @@ def test_special_path_include_ignores_diff_configuration(functional_repo, file_p
         capture_output=True,
     )
     assert staged.stdout == b"new\n"
+
+
+def test_special_added_and_deleted_paths(functional_repo):
+    """Added and deleted special paths retain their complete names."""
+    deleted_name = 'deleted"name.txt'
+    deleted_path = functional_repo / deleted_name
+    deleted_path.write_text("deleted\n")
+    subprocess.run(["git", "add", "--", deleted_name], check=True, cwd=functional_repo)
+    subprocess.run(["git", "commit", "-m", "Add deleted path"], check=True, cwd=functional_repo)
+    deleted_path.unlink()
+
+    added_name = "added\nname.txt"
+    (functional_repo / added_name).write_text("added\n")
+
+    git_stage_batch("start")
+    git_stage_batch("include", "--file", added_name)
+    git_stage_batch("include", "--file", deleted_name)
+
+    staged_names = subprocess.run(
+        ["git", "diff", "--cached", "--name-only", "-z"],
+        check=True,
+        cwd=functional_repo,
+        capture_output=True,
+    ).stdout.split(b"\0")
+    assert os.fsencode(added_name) in staged_names
+    assert os.fsencode(deleted_name) in staged_names

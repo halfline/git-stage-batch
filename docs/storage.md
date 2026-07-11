@@ -53,9 +53,9 @@ versions.
 ## Atomic file permissions
 
 Git-stage-batch writes session metadata, recovery manifests, batch
-compatibility metadata, and journals as private application state. Newly
-created state files use mode `0600`, including when the process has a
-permissive umask. Rewriting private state also restores that restrictive mode.
+compatibility metadata as private application state. Newly created state files
+use mode `0600`, including when the process has a permissive umask. Rewriting
+private state also restores that restrictive mode.
 
 Repository-owned files use a separate atomic-write policy. Updates to
 `.gitignore`, `.git/info/exclude`, and previously installed assistant assets
@@ -70,6 +70,49 @@ the platform supports that operation. A failure before replacement leaves the
 old file complete. Symlink targets are never followed or silently replaced;
 the command stops with recovery guidance so callers can update the intended
 target explicitly.
+
+## Diagnostic journals
+
+Diagnostic journaling is disabled by default, so ordinary commands do not
+inspect the Python stack, serialize journal entries, open journal files, or run
+extra Git queries for diagnostics. Set `GIT_STAGE_BATCH_JOURNAL` to one of the
+following levels when investigating a problem:
+
+- `metadata-only` records structured operation names, stable source IDs,
+  object IDs, modes, sizes, and hashed path identifiers.
+- `verbose` adds a bounded stack for each event. Error events also include a
+  bounded stack at the metadata level.
+- `content-debug` additionally records raw paths, Git command output, and
+  short content previews. This level can expose repository content and should
+  only be enabled for a limited reproduction.
+- `disabled` turns journaling off explicitly.
+
+The historical `GIT_STAGE_BATCH_DEBUG` switch selects `verbose` for
+compatibility; it does not enable raw content capture.
+
+Journal files are stored under
+`$XDG_STATE_HOME/git-stage-batch/journals/`, or
+`~/.local/state/git-stage-batch/journals/` when `XDG_STATE_HOME` is unset. The
+filename contains a stable hash of the repository identity rather than its
+path. The journal directory uses mode `0700` and files use mode `0600`.
+`GIT_STAGE_BATCH_JOURNAL_PATH` can override the destination for a controlled
+debugging environment.
+
+Entries are queued in a bounded process buffer. The buffer flushes when it
+reaches 64 KiB, at each interactive action boundary, and when a CLI command
+exits. A process terminated without normal cleanup can lose entries since the
+last boundary; journaling never changes the durability of repository state.
+Writers use a per-journal lock so concurrent processes append complete JSON
+lines.
+
+The active file rotates at 5 MiB, retains at most three rotated files, and
+expires journal files after 30 days. Use `GIT_STAGE_BATCH_JOURNAL_MAX_BYTES`
+and `GIT_STAGE_BATCH_JOURNAL_RETENTION_DAYS` to adjust those limits. Run
+`git-stage-batch journal` for a content-free summary,
+`git-stage-batch journal --path` to locate the file, or
+`git-stage-batch journal --purge` to remove it. Add `--all` to purge data for
+all repositories. The disabled/event-heavy paths can be compared with
+`scripts/benchmark_journal.py` from a source checkout.
 
 ## Batch metadata schema
 

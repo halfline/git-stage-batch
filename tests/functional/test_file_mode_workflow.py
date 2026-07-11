@@ -149,3 +149,21 @@ def test_mode_action_refuses_line_selection(functional_repo):
 
     assert result.returncode != 0
     assert "mode" in result.stderr.lower()
+
+
+def test_mode_batch_reset_and_sift(functional_repo):
+    path = _commit_script(functional_repo)
+    path.chmod(0o755)
+    git_stage_batch("start")
+    git_stage_batch("show")
+    git_stage_batch("include", "--to", "modes")
+
+    assert read_batch_metadata("modes")["files"][path.name]["presence_claims"] == []
+    git_stage_batch("reset", "--from", "modes", "--file", path.name)
+    assert path.name not in read_batch_metadata("modes")["files"]
+
+    git_stage_batch("again")
+    git_stage_batch("show")
+    git_stage_batch("include", "--to", "modes")
+    command_sift_batch("modes", "sifted")
+    assert read_batch_metadata("sifted")["files"] == {}

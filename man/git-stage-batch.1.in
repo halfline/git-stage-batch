@@ -11,7 +11,7 @@ provides a command-oriented workflow for reviewing and staging git changes.
 It presents hunks, files, and batches as numbered review targets so changes
 can be included, skipped, discarded, saved for later, or moved between batches.
 .PP
-State is maintained under
+Session and repository compatibility state is maintained under
 .BR .git/git-stage-batch/ .
 Sessions can be stopped, resumed, undone, or redone while preserving enough
 state to keep later commands tied to the selected review.
@@ -124,6 +124,9 @@ Suggest a commit to fix up with the selected hunk.
 .TP
 .BR git-stage-batch-install-assets (1)
 Install bundled assistant assets into the repository.
+.TP
+.BR git-stage-batch-journal (1)
+Locate, summarize, or purge private diagnostic journal data.
 .SH LINE IDS
 Line-oriented commands accept comma-separated IDs and ranges such as
 .BR 1 ,
@@ -176,4 +179,5 @@ License: MIT
 .BR git-stage-batch-include (1),
 .BR git-stage-batch-skip (1),
 .BR git-stage-batch-discard (1),
-.BR git-stage-batch-status (1)
+.BR git-stage-batch-status (1),
+.BR git-stage-batch-journal (1)

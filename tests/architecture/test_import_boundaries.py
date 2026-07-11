@@ -12115,11 +12115,11 @@ def test_batch_line_sequence_search_stays_out_of_match_module():
 def test_baseline_correspondence_stays_out_of_merge_module():
     """Baseline restoration mapping should live outside merge operations."""
     baseline_correspondence = __import__(
-        "git_stage_batch.batch.baseline_correspondence",
+        "git_stage_batch.batch.merge.baseline_correspondence",
         fromlist=["baseline_correspondence"],
     )
     merge = __import__(
-        "git_stage_batch.batch.merge",
+        "git_stage_batch.batch.merge.merge",
         fromlist=["merge"],
     )
     correspondence_path = _batch_module_path("merge/baseline_correspondence.py", "baseline_correspondence.py")
@@ -12180,7 +12180,7 @@ def test_discard_reversal_stays_out_of_merge_module():
         fromlist=["discard_reversal"],
     )
     merge = __import__(
-        "git_stage_batch.batch.merge",
+        "git_stage_batch.batch.merge.merge",
         fromlist=["merge"],
     )
     discard_reversal_path = SRC_ROOT / "batch" / "discard_reversal.py"
@@ -12245,7 +12245,7 @@ def test_realized_boundaries_stay_out_of_merge_module():
         fromlist=["realized_boundaries"],
     )
     merge = __import__(
-        "git_stage_batch.batch.merge",
+        "git_stage_batch.batch.merge.merge",
         fromlist=["merge"],
     )
     realized_boundaries_path = SRC_ROOT / "batch" / "realization/boundaries.py"
@@ -12328,7 +12328,7 @@ def test_batch_discard_owns_discard_application():
         fromlist=["discard"],
     )
     merge = __import__(
-        "git_stage_batch.batch.merge",
+        "git_stage_batch.batch.merge.merge",
         fromlist=["merge"],
     )
     discard_path = SRC_ROOT / "batch" / "discard.py"
@@ -12392,11 +12392,11 @@ def test_batch_discard_owns_discard_application():
 def test_batch_merge_candidates_uses_public_data_types():
     """Batch callers should import public merge-candidate data types."""
     merge_candidates = __import__(
-        "git_stage_batch.batch.merge_candidates",
+        "git_stage_batch.batch.merge.candidates",
         fromlist=["merge_candidates"],
     )
     merge = __import__(
-        "git_stage_batch.batch.merge",
+        "git_stage_batch.batch.merge.merge",
         fromlist=["merge"],
     )
     merge_candidate_enumeration_path = (
@@ -12471,11 +12471,11 @@ def test_batch_merge_candidates_uses_public_data_types():
 def test_batch_merge_candidate_enumeration_owns_preview_building():
     """Merge candidate construction should live outside merge orchestration."""
     merge_candidate_enumeration = __import__(
-        "git_stage_batch.batch.merge_candidate_enumeration",
+        "git_stage_batch.batch.merge.candidate_enumeration",
         fromlist=["merge_candidate_enumeration"],
     )
     merge = __import__(
-        "git_stage_batch.batch.merge",
+        "git_stage_batch.batch.merge.merge",
         fromlist=["merge"],
     )
     merge_path = _batch_module_path("merge/merge.py", "merge.py")
@@ -12541,11 +12541,11 @@ def test_batch_merge_candidate_enumeration_owns_preview_building():
 def test_batch_baseline_edits_own_replacement_fallback():
     """Baseline-coordinate merge fallback should live outside merge."""
     baseline_edits = __import__(
-        "git_stage_batch.batch.baseline_edits",
+        "git_stage_batch.batch.merge.baseline_edits",
         fromlist=["baseline_edits"],
     )
     merge = __import__(
-        "git_stage_batch.batch.merge",
+        "git_stage_batch.batch.merge.merge",
         fromlist=["merge"],
     )
     baseline_edits_path = _batch_module_path("merge/baseline_edits.py", "baseline_edits.py")
@@ -12628,11 +12628,11 @@ def test_batch_baseline_edits_own_replacement_fallback():
 def test_batch_baseline_replacement_choices_own_origin_placements():
     """Replacement-origin placement choices should live outside edit fallback."""
     baseline_replacement_choices = __import__(
-        "git_stage_batch.batch.baseline_replacement_choices",
+        "git_stage_batch.batch.merge.baseline_replacement_choices",
         fromlist=["baseline_replacement_choices"],
     )
     baseline_edits = __import__(
-        "git_stage_batch.batch.baseline_edits",
+        "git_stage_batch.batch.merge.baseline_edits",
         fromlist=["baseline_edits"],
     )
     baseline_replacement_choices_path = (
@@ -12696,11 +12696,11 @@ def test_batch_baseline_replacement_choices_own_origin_placements():
 def test_batch_baseline_reference_positions_own_position_lookup():
     """Baseline-reference coordinate lookup should live outside fallback edits."""
     baseline_reference_positions = __import__(
-        "git_stage_batch.batch.baseline_reference_positions",
+        "git_stage_batch.batch.merge.baseline_reference_positions",
         fromlist=["baseline_reference_positions"],
     )
     baseline_edits = __import__(
-        "git_stage_batch.batch.baseline_edits",
+        "git_stage_batch.batch.merge.baseline_edits",
         fromlist=["baseline_edits"],
     )
     baseline_reference_positions_path = (
@@ -12755,11 +12755,11 @@ def test_batch_line_sequence_equality_owns_exact_comparison():
         fromlist=["line_sequence_equality"],
     )
     baseline_edits = __import__(
-        "git_stage_batch.batch.baseline_edits",
+        "git_stage_batch.batch.merge.baseline_edits",
         fromlist=["baseline_edits"],
     )
     presence_constraints = __import__(
-        "git_stage_batch.batch.presence_constraints",
+        "git_stage_batch.batch.merge.presence_constraints",
         fromlist=["presence_constraints"],
     )
     line_sequence_equality_module_names = {"git_stage_batch.batch.line_matching.sequence_equality"}
@@ -12814,11 +12814,11 @@ def test_batch_line_sequence_equality_owns_exact_comparison():
 def test_batch_merge_validation_owns_structural_checks():
     """Structural merge validation should live outside merge."""
     merge_validation = __import__(
-        "git_stage_batch.batch.merge_validation",
+        "git_stage_batch.batch.merge.validation",
         fromlist=["merge_validation"],
     )
     merge = __import__(
-        "git_stage_batch.batch.merge",
+        "git_stage_batch.batch.merge.merge",
         fromlist=["merge"],
     )
     merge_validation_path = _batch_module_path("merge/validation.py", "merge_validation.py")
@@ -12883,11 +12883,11 @@ def test_batch_merge_validation_owns_structural_checks():
 def test_batch_absence_constraints_own_suppression_helpers():
     """Absence suppression should live outside merge."""
     absence_constraints = __import__(
-        "git_stage_batch.batch.absence_constraints",
+        "git_stage_batch.batch.merge.absence_constraints",
         fromlist=["absence_constraints"],
     )
     merge = __import__(
-        "git_stage_batch.batch.merge",
+        "git_stage_batch.batch.merge.merge",
         fromlist=["merge"],
     )
     absence_constraints_path = _batch_module_path("merge/absence_constraints.py", "absence_constraints.py")
@@ -15968,7 +15968,7 @@ def test_batch_source_binary_actions_own_worktree_mutation():
 def test_batch_merge_does_not_reexport_merge_exceptions():
     """Merge exceptions should stay on the shared exception boundary."""
     merge = __import__(
-        "git_stage_batch.batch.merge",
+        "git_stage_batch.batch.merge.merge",
         fromlist=["merge"],
     )
     exception_names = {
@@ -16013,11 +16013,11 @@ def test_batch_merge_does_not_reexport_merge_exceptions():
 def test_batch_presence_constraints_own_presence_entry_helpers():
     """Presence helpers should stay on the presence constraint boundary."""
     merge = __import__(
-        "git_stage_batch.batch.merge",
+        "git_stage_batch.batch.merge.merge",
         fromlist=["merge"],
     )
     presence_constraints = __import__(
-        "git_stage_batch.batch.presence_constraints",
+        "git_stage_batch.batch.merge.presence_constraints",
         fromlist=["presence_constraints"],
     )
     public_names = {
@@ -16085,15 +16085,15 @@ def test_batch_presence_constraints_own_presence_entry_helpers():
 def test_batch_presence_missing_claims_own_mapping_lookup():
     """Missing presence-claim lookup should live outside constraint policies."""
     presence_missing_claims = __import__(
-        "git_stage_batch.batch.presence_missing_claims",
+        "git_stage_batch.batch.merge.presence_missing_claims",
         fromlist=["presence_missing_claims"],
     )
     presence_constraints = __import__(
-        "git_stage_batch.batch.presence_constraints",
+        "git_stage_batch.batch.merge.presence_constraints",
         fromlist=["presence_constraints"],
     )
     merge_validation = __import__(
-        "git_stage_batch.batch.merge_validation",
+        "git_stage_batch.batch.merge.validation",
         fromlist=["merge_validation"],
     )
     presence_missing_claims_path = (
@@ -16149,15 +16149,15 @@ def test_batch_presence_missing_claims_own_mapping_lookup():
 def test_batch_presence_placement_choices_own_review_options():
     """Presence placement review options should live outside realization."""
     presence_placement_choices = __import__(
-        "git_stage_batch.batch.presence_placement_choices",
+        "git_stage_batch.batch.merge.presence_placement_choices",
         fromlist=["presence_placement_choices"],
     )
     presence_constraints = __import__(
-        "git_stage_batch.batch.presence_constraints",
+        "git_stage_batch.batch.merge.presence_constraints",
         fromlist=["presence_constraints"],
     )
     merge_candidate_enumeration = __import__(
-        "git_stage_batch.batch.merge_candidate_enumeration",
+        "git_stage_batch.batch.merge.candidate_enumeration",
         fromlist=["merge_candidate_enumeration"],
     )
     presence_placement_choices_path = (
@@ -16229,11 +16229,11 @@ def test_batch_presence_placement_choices_own_review_options():
 def test_realized_mapping_owns_working_range_builder():
     """Working-range realization should stay on the realized mapping boundary."""
     merge = __import__(
-        "git_stage_batch.batch.merge",
+        "git_stage_batch.batch.merge.merge",
         fromlist=["merge"],
     )
     presence_constraints = __import__(
-        "git_stage_batch.batch.presence_constraints",
+        "git_stage_batch.batch.merge.presence_constraints",
         fromlist=["presence_constraints"],
     )
     realized_mapping = __import__(

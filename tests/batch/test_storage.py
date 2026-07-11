@@ -8,7 +8,7 @@ import pytest
 
 from git_stage_batch.batch.lifecycle import create_batch
 from git_stage_batch.batch.query import read_batch_metadata
-from git_stage_batch.batch.merge import merge_batch_from_line_sequences_as_buffer
+from git_stage_batch.batch.merge.merge import merge_batch_from_line_sequences_as_buffer
 from git_stage_batch.batch.file_entry_storage import read_file_from_batch
 from git_stage_batch.batch.text_file_storage import add_file_to_batch
 from git_stage_batch.batch.ownership.absence_content import AbsenceContentBuilder

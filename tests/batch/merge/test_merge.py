@@ -2,11 +2,11 @@
 
 import pytest
 
-from git_stage_batch.batch.baseline_correspondence import (
+from git_stage_batch.batch.merge.baseline_correspondence import (
     RegionKind,
     build_baseline_correspondence,
 )
-from git_stage_batch.batch.baseline_edits import (
+from git_stage_batch.batch.merge.baseline_edits import (
     try_apply_baseline_replacement_units,
 )
 from git_stage_batch.batch.discard_reversal import reverse_presence_constraints
@@ -16,14 +16,14 @@ from git_stage_batch.batch.discard import (
     discard_batch_from_line_sequences_as_buffer,
 )
 from git_stage_batch.batch.line_matching.match import match_lines
-from git_stage_batch.batch.merge_validation import check_structural_validity
-from git_stage_batch.batch.merge import (
+from git_stage_batch.batch.merge.validation import check_structural_validity
+from git_stage_batch.batch.merge.merge import (
     _merge_batch_line_chunks,
     can_merge_batch_from_line_sequences,
     enumerate_merge_batch_candidates_from_line_sequences,
     merge_batch_from_line_sequences_as_buffer,
 )
-from git_stage_batch.batch.presence_constraints import satisfy_constraints
+from git_stage_batch.batch.merge.presence_constraints import satisfy_constraints
 from git_stage_batch.batch.realization.entries import RealizedEntry
 from git_stage_batch.batch.realization.entry_storage import (
     RealizedEntries,

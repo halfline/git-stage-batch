@@ -1,6 +1,6 @@
 """Tests for sift command."""
 
-from git_stage_batch.batch.merge import merge_batch_from_line_sequences_as_buffer
+from git_stage_batch.batch.merge.merge import merge_batch_from_line_sequences_as_buffer
 
 import subprocess
 import pytest

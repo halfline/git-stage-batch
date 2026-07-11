@@ -19,6 +19,7 @@ from .file_blocking_subcommands import (
     add_unblock_file_subcommand,
 )
 from .fixup_subcommands import add_suggest_fixup_subcommand
+from .journal_subcommands import add_journal_subcommand
 from .selection_subcommands import (
     add_discard_subcommand,
     add_include_subcommand,
@@ -59,6 +60,7 @@ def add_cli_subcommands(subparsers) -> None:
     add_new_subcommand(subparsers)
     add_list_subcommand(subparsers)
     add_validate_subcommand(subparsers)
+    add_journal_subcommand(subparsers)
     add_drop_subcommand(subparsers)
     add_annotate_subcommand(subparsers)
     add_apply_subcommand(subparsers)

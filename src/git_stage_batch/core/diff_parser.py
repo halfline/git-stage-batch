@@ -25,6 +25,7 @@ from .models import (
 )
 from ..exceptions import CommandError
 from ..i18n import _
+from ..git_paths import encode_path, quote_path_token
 
 
 # Type for annotator hooks that enrich LineLevelChange with additional metadata
@@ -321,7 +322,8 @@ class _UnifiedDiffParserBuildContext:
                                 new_path=new_path,
                                 lines=_empty_file_diff.synthetic_empty_file_patch_lines(
                                     b"--- /dev/null",
-                                    f"+++ b/{new_path}".encode("utf-8"),
+                                    b"+++ "
+                                    + quote_path_token(b"b/" + encode_path(new_path)),
                                 ),
                             )
                         # Skip other files without hunks (mode-only, rename-only, etc.)

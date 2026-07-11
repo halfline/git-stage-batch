@@ -869,6 +869,20 @@ Installing `codex-skills` also writes the shared internal drafter brief at
 
 ## Batch Operations
 
+### `validate`
+
+Validate persisted metadata for every batch without modifying refs or files.
+
+```bash
+git-stage-batch validate
+git-stage-batch validate --porcelain
+```
+
+The report identifies malformed or unsupported schemas, missing Git objects,
+content-ref mismatches, and unversioned metadata eligible for migration.
+
+---
+
 ### `sift`
 
 Reconcile a batch against the current tip by removing portions whose effect is already present.

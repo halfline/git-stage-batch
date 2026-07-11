@@ -11,6 +11,7 @@ import os
 import sys
 import threading
 import traceback
+from collections import Counter
 from datetime import datetime, timezone
 from enum import IntEnum
 from pathlib import Path
@@ -450,6 +451,78 @@ def _journal_files(path: Path) -> list[Path]:
             for number in range(1, MAX_ROTATED_FILES + 1)
         ],
     ]
+
+
+def summarize_journal() -> dict[str, Any]:
+    """Return content-free statistics for the current repository journal."""
+    flush_journal()
+    path = get_journal_path()
+    operations: Counter[str] = Counter()
+    entry_count = 0
+    total_bytes = 0
+    oldest: str | None = None
+    newest: str | None = None
+    file_count = 0
+    for journal_file in reversed(_journal_files(path)):
+        try:
+            total_bytes += journal_file.stat().st_size
+            file_count += 1
+            with journal_file.open("r", encoding="utf-8") as stream:
+                for line in stream:
+                    try:
+                        entry = json.loads(line)
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        continue
+                    entry_count += 1
+                    operation = entry.get("operation")
+                    if isinstance(operation, str):
+                        operations[operation] += 1
+                    timestamp = entry.get("timestamp")
+                    if isinstance(timestamp, str):
+                        oldest = timestamp if oldest is None else min(oldest, timestamp)
+                        newest = timestamp if newest is None else max(newest, timestamp)
+        except OSError:
+            continue
+    return {
+        "enabled": journal_enabled(),
+        "level": journal_level_name(),
+        "path": str(path),
+        "exists": file_count > 0,
+        "file_count": file_count,
+        "total_bytes": total_bytes,
+        "entry_count": entry_count,
+        "oldest_timestamp": oldest,
+        "newest_timestamp": newest,
+        "operations": dict(sorted(operations.items())),
+    }
+
+
+def purge_journal(*, all_repositories: bool = False) -> int:
+    """Delete diagnostic data and return the number of journal files removed."""
+    path = get_journal_path()
+    with _WRITERS_LOCK:
+        writers = list(_WRITERS.values())
+    for writer in writers:
+        writer.discard_buffer()
+
+    candidates: list[Path]
+    if all_repositories and not (
+        os.environ.get(JOURNAL_PATH_ENV) or os.environ.get(GLOBAL_JOURNAL_PATH_ENV)
+    ):
+        candidates = list(path.parent.glob("*.jsonl"))
+        for number in range(1, MAX_ROTATED_FILES + 1):
+            candidates.extend(path.parent.glob(f"*.jsonl.{number}"))
+    else:
+        candidates = _journal_files(path)
+
+    removed = 0
+    for candidate in candidates:
+        try:
+            candidate.unlink()
+            removed += 1
+        except FileNotFoundError:
+            pass
+    return removed
 
 
 def _reset_journal_state_for_tests() -> None:

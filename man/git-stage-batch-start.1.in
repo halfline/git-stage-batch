@@ -9,6 +9,9 @@ git-stage-batch-start \- start a hunk review session
 .B start
 finds the first unprocessed hunk, stores it as the selected change, and prints
 it for review. If a session is already active, the command starts a fresh pass.
+Untracked, non-ignored paths are registered in one NUL-safe bulk index update
+and one atomic session-manifest write. A path removed during discovery causes
+one refreshed retry; a failed index update rolls back the planned manifest.
 .SH OPTIONS
 .TP
 .BI "\-U, \-\-unified=" N

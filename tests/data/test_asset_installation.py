@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import stat
+
 import pytest
 
 from git_stage_batch.data.asset_installation import (
@@ -32,6 +34,32 @@ def test_copy_asset_tree_ignores_python_cache_artifacts(tmp_path):
     assert not (destination / "scripts" / "__pycache__").exists()
     assert not (destination / "scripts" / "helper.pyc").exists()
     assert not (destination / "scripts" / "helper.pyo").exists()
+
+
+def test_copy_asset_tree_preserves_existing_destination_mode(tmp_path):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "asset.txt").write_text("new\n", encoding="utf-8")
+    destination = tmp_path / "installed"
+    destination.mkdir()
+    installed_asset = destination / "asset.txt"
+    installed_asset.write_text("old\n", encoding="utf-8")
+    installed_asset.chmod(0o755)
+
+    copy_asset_tree(source, destination)
+
+    assert stat.S_IMODE(installed_asset.stat().st_mode) == 0o755
+
+
+def test_copy_asset_tree_uses_conventional_mode_for_new_files(tmp_path):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "asset.txt").write_text("new\n", encoding="utf-8")
+    destination = tmp_path / "installed"
+
+    copy_asset_tree(source, destination)
+
+    assert stat.S_IMODE((destination / "asset.txt").stat().st_mode) == 0o644
 
 
 def test_validate_asset_destination_path_allows_missing_destination(tmp_path):

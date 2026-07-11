@@ -2,11 +2,29 @@
 
 from __future__ import annotations
 
+import errno
 import os
+import stat
 import tempfile
 from collections.abc import Collection
+from enum import Enum
 from pathlib import Path
 from typing import Iterable
+
+from ..exceptions import CommandError
+from ..i18n import _
+
+
+class AtomicWriteModePolicy(Enum):
+    """Permission policy for an atomically replaced file."""
+
+    PRIVATE = "private"
+    PRESERVE_EXISTING = "preserve-existing"
+    CALLER_SUPPLIED = "caller-supplied"
+
+
+PRIVATE_FILE_MODE = 0o600
+PROJECT_FILE_MODE = 0o644
 
 
 def read_text_file_contents(path: Path) -> str:
@@ -21,7 +39,13 @@ def read_text_file_contents(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="surrogateescape") if path.exists() else ""
 
 
-def write_text_file_contents(path: Path, data: str) -> None:
+def write_text_file_contents(
+    path: Path,
+    data: str,
+    *,
+    mode_policy: AtomicWriteModePolicy = AtomicWriteModePolicy.PRIVATE,
+    mode: int | None = None,
+) -> None:
     """Atomically write text, creating parent directories as needed.
 
     Args:
@@ -31,6 +55,8 @@ def write_text_file_contents(path: Path, data: str) -> None:
     _write_file_contents_atomically(
         path,
         data.encode("utf-8", errors="surrogateescape"),
+        mode_policy=mode_policy,
+        mode=mode,
     )
 
 
@@ -60,14 +86,101 @@ def count_nonblank_text_file_lines(path: Path) -> int:
     return sum(1 for _line in stream_nonblank_text_file_lines(path))
 
 
-def write_file_bytes(path: Path, data: bytes) -> None:
+def write_file_bytes(
+    path: Path,
+    data: bytes,
+    *,
+    mode_policy: AtomicWriteModePolicy = AtomicWriteModePolicy.PRIVATE,
+    mode: int | None = None,
+) -> None:
     """Atomically write raw bytes, creating parent directories as needed."""
-    _write_file_contents_atomically(path, data)
+    _write_file_contents_atomically(
+        path,
+        data,
+        mode_policy=mode_policy,
+        mode=mode,
+    )
 
 
-def _write_file_contents_atomically(path: Path, data: bytes) -> None:
+def _existing_file_metadata(path: Path) -> os.stat_result | None:
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return None
+    if stat.S_ISLNK(metadata.st_mode):
+        raise CommandError(
+            _(
+                "Refusing to replace symlink '{path}' with a regular file. "
+                "Remove the symlink or update its target explicitly."
+            ).format(path=path)
+        )
+    return metadata
+
+
+def _replacement_mode(
+    metadata: os.stat_result | None,
+    mode_policy: AtomicWriteModePolicy,
+    mode: int | None,
+) -> int:
+    if mode_policy is AtomicWriteModePolicy.PRIVATE:
+        if mode is not None:
+            raise ValueError("private atomic writes do not accept a caller-supplied mode")
+        return PRIVATE_FILE_MODE
+    if mode_policy is AtomicWriteModePolicy.PRESERVE_EXISTING:
+        if metadata is not None:
+            return stat.S_IMODE(metadata.st_mode)
+        return PROJECT_FILE_MODE if mode is None else mode
+    if mode_policy is AtomicWriteModePolicy.CALLER_SUPPLIED:
+        if mode is None:
+            raise ValueError("caller-supplied atomic writes require a mode")
+        return mode
+    raise ValueError(f"unsupported atomic write mode policy: {mode_policy!r}")
+
+
+def _preserve_ownership(
+    file_descriptor: int,
+    metadata: os.stat_result | None,
+) -> bool:
+    if metadata is None or not hasattr(os, "fchown"):
+        return True
+    try:
+        os.fchown(file_descriptor, metadata.st_uid, metadata.st_gid)
+    except PermissionError:
+        # An unprivileged owner often cannot restore a non-default group. The
+        # caller will remove group/other access before publishing the file.
+        return False
+    return True
+
+
+def _fsync_directory(path: Path) -> None:
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    try:
+        directory_descriptor = os.open(path, flags)
+    except OSError as error:
+        if os.name == "nt" or error.errno in (errno.EINVAL, errno.ENOTSUP):
+            return
+        raise
+    try:
+        try:
+            os.fsync(directory_descriptor)
+        except OSError as error:
+            if error.errno not in (errno.EBADF, errno.EINVAL, errno.ENOTSUP):
+                raise
+    finally:
+        os.close(directory_descriptor)
+
+
+def _write_file_contents_atomically(
+    path: Path,
+    data: bytes,
+    *,
+    mode_policy: AtomicWriteModePolicy,
+    mode: int | None,
+) -> None:
     """Replace one state file without exposing partial contents."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    metadata = _existing_file_metadata(path)
+    replacement_mode = _replacement_mode(metadata, mode_policy, mode)
     file_descriptor, temporary_name = tempfile.mkstemp(
         dir=path.parent,
         prefix=f".{path.name}.",
@@ -78,8 +191,13 @@ def _write_file_contents_atomically(path: Path, data: bytes) -> None:
         with os.fdopen(file_descriptor, "wb") as file_handle:
             file_handle.write(data)
             file_handle.flush()
+            ownership_preserved = _preserve_ownership(file_handle.fileno(), metadata)
+            if not ownership_preserved:
+                replacement_mode &= 0o700
+            os.fchmod(file_handle.fileno(), replacement_mode)
             os.fsync(file_handle.fileno())
         os.replace(temporary_path, path)
+        _fsync_directory(path.parent)
     finally:
         temporary_path.unlink(missing_ok=True)
 
@@ -103,7 +221,18 @@ def append_lines_to_file(path: Path, lines: Iterable[str]) -> None:
         lines: Lines to append (newlines will be normalized)
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8", errors="surrogateescape") as file_handle:
+    file_descriptor = os.open(
+        path,
+        os.O_WRONLY | os.O_APPEND | os.O_CREAT,
+        PRIVATE_FILE_MODE,
+    )
+    os.fchmod(file_descriptor, PRIVATE_FILE_MODE)
+    with os.fdopen(
+        file_descriptor,
+        "a",
+        encoding="utf-8",
+        errors="surrogateescape",
+    ) as file_handle:
         for line in lines:
             file_handle.write(str(line).rstrip() + "\n")
 

@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..utils.file_io import read_text_file_contents, write_text_file_contents
+from ..utils.file_io import (
+    AtomicWriteModePolicy,
+    PROJECT_FILE_MODE,
+    read_text_file_contents,
+    write_text_file_contents,
+)
 from ..utils.git_repository import get_git_directory_path, get_git_repository_root_path
 
 
@@ -24,6 +29,15 @@ def get_local_exclude_path() -> Path:
         Path to .git/info/exclude
     """
     return get_git_directory_path() / "info" / "exclude"
+
+
+def _write_repository_ignore_file(path: Path, content: str) -> None:
+    write_text_file_contents(
+        path,
+        content,
+        mode_policy=AtomicWriteModePolicy.PRESERVE_EXISTING,
+        mode=PROJECT_FILE_MODE,
+    )
 
 
 def read_gitignore_lines() -> list[str]:
@@ -47,7 +61,7 @@ def write_gitignore_lines(lines: list[str]) -> None:
     """
     gitignore_path = get_gitignore_path()
     content = "".join(lines)
-    write_text_file_contents(gitignore_path, content)
+    _write_repository_ignore_file(gitignore_path, content)
 
 
 def add_file_to_gitignore(file_path: str) -> None:
@@ -121,7 +135,7 @@ def add_file_to_local_exclude(file_path: str) -> None:
         lines[-1] += "\n"
 
     lines.append(f"{file_path}\n")
-    write_text_file_contents(exclude_path, "".join(lines))
+    _write_repository_ignore_file(exclude_path, "".join(lines))
 
 
 def remove_file_from_local_exclude(file_path: str) -> bool:
@@ -151,7 +165,7 @@ def remove_file_from_local_exclude(file_path: str) -> bool:
         i += 1
 
     if removed:
-        write_text_file_contents(exclude_path, "".join(lines))
+        _write_repository_ignore_file(exclude_path, "".join(lines))
 
     return removed
 
@@ -205,5 +219,5 @@ def promote_directory_to_glob_in_local_exclude(dir_path: str) -> bool:
             found = True
 
     if found:
-        write_text_file_contents(exclude_path, "".join(lines))
+        _write_repository_ignore_file(exclude_path, "".join(lines))
     return found

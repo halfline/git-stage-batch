@@ -31,3 +31,24 @@ attempts to restore them while their serialized objects remain available. If
 an object has already been pruned, restoration stops before mutation and
 reports the missing recovery object rather than partially applying the
 checkpoint.
+
+## Atomic file permissions
+
+Git-stage-batch writes session metadata, recovery manifests, batch
+compatibility metadata, and journals as private application state. Newly
+created state files use mode `0600`, including when the process has a
+permissive umask. Rewriting private state also restores that restrictive mode.
+
+Repository-owned files use a separate atomic-write policy. Updates to
+`.gitignore`, `.git/info/exclude`, and previously installed assistant assets
+preserve the existing file's permission bits and ownership where the platform
+allows it. New repository files use the conventional mode `0644`. If ownership
+cannot be restored, replacement permissions are narrowed rather than granting
+access through a different group.
+
+Atomic replacement writes and syncs a temporary file in the destination
+directory before renaming it over the target, then syncs the directory where
+the platform supports that operation. A failure before replacement leaves the
+old file complete. Symlink targets are never followed or silently replaced;
+the command stops with recovery guidance so callers can update the intended
+target explicitly.

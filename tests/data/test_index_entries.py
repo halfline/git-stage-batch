@@ -4,7 +4,7 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.data.index_entries import read_index_entry
+from git_stage_batch.data.index_entries import read_index_entries, read_index_entry
 
 
 @pytest.fixture
@@ -67,3 +67,18 @@ def test_does_not_treat_directory_path_as_nested_file_entry(temp_git_repo):
     subprocess.run(["git", "add", "nested/file.txt"], check=True, cwd=temp_git_repo)
 
     assert read_index_entry("nested") is None
+
+
+def test_reads_several_scoped_index_entries_in_one_lookup(temp_git_repo):
+    for path in ("one.txt", "two.txt", "unrelated.txt"):
+        (temp_git_repo / path).write_text(f"{path}\n")
+    subprocess.run(
+        ["git", "add", "one.txt", "two.txt", "unrelated.txt"],
+        check=True,
+        cwd=temp_git_repo,
+    )
+
+    entries = read_index_entries(["one.txt", "missing.txt", "two.txt"])
+
+    assert set(entries) == {"one.txt", "two.txt"}
+    assert all(entry.mode == "100644" for entry in entries.values())

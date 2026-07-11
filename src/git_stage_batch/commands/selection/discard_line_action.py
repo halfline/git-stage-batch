@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 
 from ...data.file_review.action_scope import finish_review_scoped_line_action
+from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.undo_checkpoints import undo_checkpoint
 from ...i18n import _
 from . import discard_line_selection as _discard_line_selection
@@ -23,7 +24,11 @@ def discard_live_line_selection(
     if file is not None:
         operation_parts.extend(["--file", file])
 
-    with undo_checkpoint(" ".join(operation_parts)):
+    target_file = file if file not in (None, "") else get_selected_change_file_path()
+    with undo_checkpoint(
+        " ".join(operation_parts),
+        worktree_paths=[target_file] if target_file is not None else [],
+    ):
         file_path = _discard_line_selection.discard_worktree_line_selection(
             line_id_specification,
             file=file,

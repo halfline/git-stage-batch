@@ -135,7 +135,11 @@ def test_include_each_resolved_file_reports_aggregate_result(
 
     captured = capsys.readouterr()
     assert checkpoint_calls == [
-        ("enter", "include --files alpha.txt beta.txt", None),
+        (
+            "enter",
+            "include --files alpha.txt beta.txt",
+            ["alpha.txt", "beta.txt"],
+        ),
         ("exit",),
     ]
     assert include_calls == [
@@ -179,7 +183,11 @@ def test_skip_each_resolved_file_stops_after_empty_result(
 
     captured = capsys.readouterr()
     assert checkpoint_calls == [
-        ("enter", "skip --files alpha.txt beta.txt", None),
+        (
+            "enter",
+            "skip --files alpha.txt beta.txt",
+            ["alpha.txt", "beta.txt"],
+        ),
         ("exit",),
     ]
     assert skip_calls == [

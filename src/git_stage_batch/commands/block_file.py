@@ -62,7 +62,11 @@ def command_block_file(file_path_arg: str = "", local_only: bool = False) -> Non
     session_active = session_is_active()
     checkpoint_paths = [] if local_only else [".gitignore"]
     checkpoint = (
-        undo_checkpoint(f"block-file {file_path}", worktree_paths=checkpoint_paths)
+        undo_checkpoint(
+            f"block-file {file_path}",
+            worktree_paths=checkpoint_paths,
+            index_paths=[file_path] if not file_path.endswith("/") else [],
+        )
         if session_active else nullcontext()
     )
 

@@ -11,7 +11,7 @@ from ..core.buffer import LineBuffer
 from ..utils.git_command import run_git_command
 from ..utils.git_index import GitIndexEntryUpdate
 from ..utils.git_repository import get_git_repository_root_path
-from ..utils.git_object_io import create_git_blob
+from ..utils.git_object_io import create_git_blob, create_git_blobs_from_paths
 from ..git_paths import decode_path, nul_records
 
 
@@ -55,38 +55,50 @@ def changed_worktree_paths() -> list[str]:
     return sorted(paths)
 
 
-def _gitlink_oid_from_index(path: str) -> str | None:
+def _gitlink_oids_from_index(paths: list[str]) -> dict[str, str]:
+    """Return gitlink object IDs from the index with one Git query."""
+    if not paths:
+        return {}
     result = run_git_command(
-        ["ls-files", "--stage", "-z", "--", path],
+        ["ls-files", "--stage", "-z", "--", *paths],
         check=False,
         text_output=False,
         requires_index_lock=False,
     )
     if result.returncode != 0:
-        return None
+        return {}
+    object_ids: dict[str, str] = {}
     for record in nul_records(result.stdout):
-        metadata, _separator, _entry_path = record.partition(b"\t")
+        metadata, separator, entry_path = record.partition(b"\t")
+        if not separator:
+            continue
         parts = metadata.decode("ascii", errors="replace").split()
-        if len(parts) >= 2 and parts[0] == "160000":
-            return parts[1]
-    return None
+        if len(parts) >= 3 and parts[0] == "160000" and parts[2] == "0":
+            object_ids[decode_path(entry_path)] = parts[1]
+    return object_ids
 
 
-def _gitlink_oid_from_head(path: str) -> str | None:
+def _gitlink_oids_from_head(paths: list[str]) -> dict[str, str]:
+    """Return gitlink object IDs from HEAD with one Git query."""
+    if not paths:
+        return {}
     result = run_git_command(
-        ["ls-tree", "-z", "HEAD", "--", path],
+        ["ls-tree", "-z", "HEAD", "--", *paths],
         check=False,
         text_output=False,
         requires_index_lock=False,
     )
     if result.returncode != 0:
-        return None
+        return {}
+    object_ids: dict[str, str] = {}
     for record in nul_records(result.stdout):
-        metadata, _separator, _entry_path = record.partition(b"\t")
+        metadata, separator, entry_path = record.partition(b"\t")
+        if not separator:
+            continue
         parts = metadata.decode("ascii", errors="replace").split()
         if len(parts) >= 3 and parts[0] == "160000" and parts[1] == "commit":
-            return parts[2]
-    return None
+            object_ids[decode_path(entry_path)] = parts[2]
+    return object_ids
 
 
 def _worktree_commit_oid(path: str) -> str | None:
@@ -111,13 +123,12 @@ def _worktree_is_dirty(path: str) -> bool:
     return result.returncode != 0 or bool(result.stdout.strip())
 
 
-def _is_gitlink_path(path: str) -> bool:
-    return _gitlink_oid_from_index(path) is not None or _gitlink_oid_from_head(path) is not None
-
-
-def _snapshot_gitlink_path(path: str) -> dict[str, Any]:
-    index_oid = _gitlink_oid_from_index(path)
-    head_oid = _gitlink_oid_from_head(path)
+def _snapshot_gitlink_path(
+    path: str,
+    *,
+    index_oid: str | None,
+    head_oid: str | None,
+) -> dict[str, Any]:
     worktree_oid = _worktree_commit_oid(path)
     return {
         "path": path,
@@ -150,25 +161,52 @@ def _snapshot_embedded_repo_path(path: str) -> dict[str, Any]:
 def snapshot_worktree_paths(paths: list[str]) -> list[dict[str, Any]]:
     """Return before-image entries for repository-relative worktree paths."""
     repo_root = get_git_repository_root_path()
-    worktree_paths: list[dict[str, Any]] = []
-    for file_path in sorted(set(paths)):
+    unique_paths = sorted(set(paths))
+    index_gitlinks = _gitlink_oids_from_index(unique_paths)
+    head_gitlinks = _gitlink_oids_from_head(unique_paths)
+    normal_paths: list[Path] = []
+    modes_by_path: dict[str, str] = {}
+    for file_path in unique_paths:
         full_path = repo_root / file_path
-        if _is_gitlink_path(file_path):
-            worktree_paths.append(_snapshot_gitlink_path(file_path))
+        if file_path in index_gitlinks or file_path in head_gitlinks:
+            continue
+        if full_path.is_dir() and (full_path / ".git").exists():
+            continue
+        if os.path.lexists(full_path):
+            mode = file_mode_for_path(full_path)
+            modes_by_path[file_path] = mode
+            if mode != "120000":
+                normal_paths.append(full_path)
+    normal_blobs = create_git_blobs_from_paths(normal_paths)
+
+    worktree_paths: list[dict[str, Any]] = []
+    for file_path in unique_paths:
+        full_path = repo_root / file_path
+        index_oid = index_gitlinks.get(file_path)
+        head_oid = head_gitlinks.get(file_path)
+        if index_oid is not None or head_oid is not None:
+            worktree_paths.append(
+                _snapshot_gitlink_path(
+                    file_path,
+                    index_oid=index_oid,
+                    head_oid=head_oid,
+                )
+            )
             continue
         if full_path.is_dir() and (full_path / ".git").exists():
             worktree_paths.append(_snapshot_embedded_repo_path(file_path))
             continue
         if os.path.lexists(full_path):
-            mode = file_mode_for_path(full_path)
+            mode = modes_by_path[file_path]
             worktree_paths.append(
                 {
                     "path": file_path,
                     "exists": True,
                     "mode": mode,
-                    "blob": create_blob_from_worktree_path(
-                        full_path,
-                        mode=mode,
+                    "blob": (
+                        create_blob_from_worktree_path(full_path, mode=mode)
+                        if mode == "120000"
+                        else normal_blobs[full_path]
                     ),
                 }
             )

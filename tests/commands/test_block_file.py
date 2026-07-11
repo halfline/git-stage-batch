@@ -231,8 +231,13 @@ class TestCommandBlockFile:
             def __exit__(self, exc_type, exc, traceback):
                 return False
 
-        def fake_undo_checkpoint(operation, *, worktree_paths=None):
-            calls.append((operation, worktree_paths))
+        def fake_undo_checkpoint(
+            operation,
+            *,
+            worktree_paths=None,
+            index_paths=None,
+        ):
+            calls.append((operation, worktree_paths, index_paths))
             return Checkpoint()
 
         (temp_git_repo / "local.txt").write_text("local content\n")
@@ -246,7 +251,7 @@ class TestCommandBlockFile:
 
         command_block_file("local.txt", local_only=True)
 
-        assert calls == [("block-file local.txt", [])]
+        assert calls == [("block-file local.txt", [], ["local.txt"])]
 
     def test_block_file_local_only_no_duplicates_in_exclude(self, temp_git_repo):
         """Test that --local-only blocking the same file twice doesn't duplicate entries."""

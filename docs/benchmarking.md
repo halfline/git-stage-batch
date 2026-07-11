@@ -60,3 +60,32 @@ recorded revision.
 
 The `binary-exclusion` case records that NUL-containing input is intentionally
 excluded from text matching. It has no measured phases.
+
+## Comparing revisions
+
+Create reports from clean checkouts with the same Python, Git, mode, seed,
+warm-up count, and repeat count. Then compare their median phase times and
+peak Python allocations:
+
+```console
+python scripts/benchmark_matching.py \
+  --compare before.json after.json \
+  --regression-threshold-percent 20 \
+  --output comparison.json
+```
+
+Comparison is trend-based: matching case, phase, and measurement names are
+aligned, and a measurement is marked as a regression when its median exceeds
+the selected percentage. Comparison rejects reports with different modes,
+seeds, sample settings, measurement methods, or case dimensions. Environment
+differences such as Python, Git, or platform versions are retained as warnings
+in the comparison report.
+Add `--fail-on-regression` when a stable, dedicated runner should return a
+failure status. Pull-request CI deliberately runs only a functional smoke test,
+without hardware-dependent performance thresholds.
+
+Refresh a stored baseline only after investigating every flagged phase and
+confirming that the change is expected. Record the revision and benchmark
+settings with the baseline; the JSON already contains both. Prefer several
+full-suite runs on a quiet dedicated machine over treating one workstation run
+as authoritative.

@@ -15,7 +15,7 @@ This project uses [uv](https://docs.astral.sh/uv/) for development workflow and 
 # Install uv if you haven't already
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Install meson and ninja (example for Fedora/RHEL)
+# Install meson and ninja (example for Fedora or Red Hat Enterprise Linux)
 sudo dnf install meson ninja-build
 
 # Clone the repository
@@ -67,7 +67,7 @@ We follow strict commit message conventions to maintain a clear and understandab
 - **If the commit is a step toward a larger feature, say so explicitly.** Describe the end goal briefly, then explain how this commit moves toward it.
 - **Name the feature goal in early groundwork commits.** If a commit mainly exists to enable a later user-facing feature, say what that feature is and why it matters instead of presenting the commit as isolated infrastructure work.
 - **Prefer concrete limitations over vague judgments.** Avoid words like "cumbersome", "better", or "improved" without explaining why.
-- **Do not use `Co-Authored-By` for contributions produced from AI.** Only use it for human co-authors.
+- **Do not use `Co-Authored-By` for contributions produced by artificial intelligence.** Only use it for human co-authors.
 - **Only use the word `this` when referring to the commit itself.** Use `that` or similar for other contexts.
 - **Wrap body paragraphs at 75 characters.**
 - **Be humble and forward thinking.** Avoid words like "comprehensive" or "crucial", and avoid a tone that could sound like bragging or seem short-sighted.
@@ -139,7 +139,7 @@ project does not provide generic helpers for transformed selections."
 Describe how the commit addresses one part of that problem.
 
 Be precise about scope. If the commit only addresses one path (such as the man
-page, CLI help, or internal structure), say so clearly rather than implying
+page, command help, or internal structure), say so clearly rather than implying
 the entire problem is solved.
 
 If the commit introduces infrastructure or an early step toward a larger
@@ -200,8 +200,9 @@ Before finalizing a commit message, check:
 ```
 cli: Add --verbose flag for detailed output
 
-The CLI currently provides minimal feedback during operation, only showing
-the selected hunk without any indication of progress or internal state.
+The command-line interface currently provides minimal feedback during
+operation, only showing the selected hunk without any indication of progress
+or internal state.
 
 Users working with large changesets cannot easily determine how much work
 remains or what has already been processed, making it difficult to gauge
@@ -222,7 +223,7 @@ Notice how the first paragraph evolves to reflect the cumulative state, and how 
 i18n: Add Spanish translation (es)
 
 The program has gettext infrastructure in place but only contains
-English messages in the POT template.
+English messages in the translation template.
 
 Without translations, the program cannot serve non-English speaking
 users. Spanish is one of the most widely spoken languages globally.
@@ -294,12 +295,13 @@ The code currently provides minimal output...
 
 ❌ **Don't describe the change in the first paragraph:**
 ```
-This commit adds verbose output to the CLI...
+This commit adds verbose output to the command-line interface...
 ```
 
 ✅ **Do describe what exists today:**
 ```
-The CLI currently provides minimal feedback during operation...
+The command-line interface currently provides minimal feedback during
+operation...
 ```
 
 ❌ **Don't confuse a symptom with the real problem:**
@@ -325,18 +327,18 @@ Without an organized directory, the code may become harder to maintain.
 
 ✅ **Do describe the missing capability:**
 ```
-The project does not yet provide a TUI for interactive use.
+The project does not yet provide an interactive terminal interface.
 ```
 
 ❌ **Don't use vague value judgments:**
 ```
-The CLI is cumbersome to use.
+The command-line interface is cumbersome to use.
 ```
 
 ✅ **Do describe concrete limitations:**
 ```
-The CLI requires repeated command invocation and does not provide a
-continuous hunk-by-hunk workflow.
+The command-line interface requires repeated command invocation and does not
+provide a continuous hunk-by-hunk workflow.
 ```
 
 ❌ **Don't overstate the impact of the commit:**

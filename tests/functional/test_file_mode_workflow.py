@@ -79,3 +79,51 @@ def test_content_is_presented_before_independent_mode_action(functional_repo):
     assert "Executable bit added" in shown.stdout
     git_stage_batch("include")
     assert _index_mode(functional_repo, path.name) == "100755"
+def test_mode_actions_support_skip_undo_redo_and_abort(functional_repo):
+    path = _commit_script(functional_repo)
+    path.chmod(0o755)
+
+    git_stage_batch("start")
+    git_stage_batch("show", "--file", path.name)
+    git_stage_batch("include")
+    assert _index_mode(functional_repo, path.name) == "100755"
+
+    git_stage_batch("undo")
+    assert _index_mode(functional_repo, path.name) == "100644"
+    git_stage_batch("redo")
+    assert _index_mode(functional_repo, path.name) == "100755"
+    git_stage_batch("abort")
+    assert _index_mode(functional_repo, path.name) == "100644"
+    assert os.access(path, os.X_OK)
+
+    git_stage_batch("start")
+    git_stage_batch("show", "--file", path.name)
+    git_stage_batch("skip")
+    assert os.access(path, os.X_OK)
+
+
+def test_core_file_mode_false_hides_mode_actions(functional_repo):
+    path = _commit_script(functional_repo)
+    subprocess.run(
+        ["git", "config", "core.fileMode", "false"],
+        check=True,
+        cwd=functional_repo,
+    )
+    path.chmod(0o755)
+
+    result = git_stage_batch("start", check=False)
+
+    assert result.returncode != 0
+    assert "No changes" in result.stderr or "No hunks" in result.stderr
+
+
+def test_mode_action_refuses_line_selection(functional_repo):
+    path = _commit_script(functional_repo)
+    path.chmod(0o755)
+    git_stage_batch("start")
+    git_stage_batch("show")
+
+    result = git_stage_batch("include", "--line", "1", check=False)
+
+    assert result.returncode != 0
+    assert "mode" in result.stderr.lower()

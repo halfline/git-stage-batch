@@ -23,6 +23,12 @@ JOURNAL_LEVEL_ENV = "GIT_STAGE_BATCH_JOURNAL"
 JOURNAL_PATH_ENV = "GIT_STAGE_BATCH_JOURNAL_PATH"
 # Kept as a path-override alias for existing debugging setups.
 GLOBAL_JOURNAL_PATH_ENV = "GIT_STAGE_BATCH_GLOBAL_JOURNAL_PATH"
+JOURNAL_MAX_BYTES_ENV = "GIT_STAGE_BATCH_JOURNAL_MAX_BYTES"
+JOURNAL_RETENTION_DAYS_ENV = "GIT_STAGE_BATCH_JOURNAL_RETENTION_DAYS"
+
+DEFAULT_MAX_BYTES = 5 * 1024 * 1024
+DEFAULT_RETENTION_DAYS = 30
+MAX_ROTATED_FILES = 3
 BUFFER_FLUSH_BYTES = 64 * 1024
 MAX_CONTENT_FIELD_BYTES = 4 * 1024
 
@@ -133,6 +139,14 @@ def get_journal_path() -> Path:
         / "journals"
         / f"{_repository_id()}.jsonl"
     )
+
+
+def _positive_int_environment(name: str, default: int) -> int:
+    try:
+        value = int(os.environ.get(name, str(default)))
+    except ValueError:
+        return default
+    return value if value > 0 else default
 
 
 def _byte_count(value: Any) -> int | None:
@@ -314,6 +328,7 @@ class _JournalWriter:
             try:
                 os.fchmod(lock_fd, 0o600)
                 fcntl.flock(lock_fd, fcntl.LOCK_EX)
+                self._prune_and_rotate(len(payload))
                 journal_fd = os.open(
                     self.path,
                     os.O_WRONLY | os.O_CREAT | os.O_APPEND,
@@ -334,6 +349,41 @@ class _JournalWriter:
             pass
         finally:
             self._buffer.clear()
+
+    def _prune_and_rotate(self, incoming_bytes: int) -> None:
+        retention_seconds = _positive_int_environment(
+            JOURNAL_RETENTION_DAYS_ENV,
+            DEFAULT_RETENTION_DAYS,
+        ) * 24 * 60 * 60
+        cutoff = datetime.now(tz=timezone.utc).timestamp() - retention_seconds
+        for candidate in _journal_files(self.path):
+            try:
+                if candidate.stat().st_mtime < cutoff:
+                    candidate.unlink()
+            except OSError:
+                pass
+
+        max_bytes = _positive_int_environment(
+            JOURNAL_MAX_BYTES_ENV,
+            DEFAULT_MAX_BYTES,
+        )
+        try:
+            current_size = self.path.stat().st_size
+        except OSError:
+            current_size = 0
+        if current_size and current_size + incoming_bytes > max_bytes:
+            oldest = _rotated_path(self.path, MAX_ROTATED_FILES)
+            try:
+                oldest.unlink()
+            except FileNotFoundError:
+                pass
+            for number in range(MAX_ROTATED_FILES - 1, 0, -1):
+                source = _rotated_path(self.path, number)
+                if source.exists():
+                    source.replace(_rotated_path(self.path, number + 1))
+            if self.path.exists():
+                self.path.replace(_rotated_path(self.path, 1))
+
 
 _WRITERS: dict[Path, _JournalWriter] = {}
 _WRITERS_LOCK = threading.Lock()
@@ -386,6 +436,20 @@ def flush_journal() -> None:
         writers = list(_WRITERS.values())
     for writer in writers:
         writer.flush()
+
+
+def _rotated_path(path: Path, number: int) -> Path:
+    return path.with_name(f"{path.name}.{number}")
+
+
+def _journal_files(path: Path) -> list[Path]:
+    return [
+        path,
+        *[
+            _rotated_path(path, number)
+            for number in range(1, MAX_ROTATED_FILES + 1)
+        ],
+    ]
 
 
 def _reset_journal_state_for_tests() -> None:

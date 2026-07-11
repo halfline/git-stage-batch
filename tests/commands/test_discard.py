@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from git_stage_batch.batch.ownership import BatchOwnership
 from git_stage_batch.utils.paths import get_abort_snapshots_directory_path
+from git_stage_batch.utils.paths import get_state_directory_path
 from git_stage_batch.batch.query import list_batch_files, read_batch_metadata
 from git_stage_batch.batch.file_entry_storage import read_file_from_batch
 from git_stage_batch.commands.discard import command_discard_to_batch
@@ -66,6 +67,15 @@ def temp_git_repo(tmp_path, monkeypatch):
 
 class TestCommandDiscard:
     """Tests for discard command."""
+
+    def test_discard_to_invalid_batch_does_not_create_session_state(
+        self,
+        temp_git_repo,
+    ):
+        with pytest.raises(CommandError):
+            command_discard_to_batch("invalid^name")
+
+        assert not get_state_directory_path().exists()
 
     def test_discard_removes_hunk_from_working_tree(self, temp_git_repo, capsys):
         """Test that discard removes a hunk from the working tree."""

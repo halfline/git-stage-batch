@@ -8,7 +8,8 @@ git-stage-batch-redo \- redo the most recently undone operation
 .B redo
 restores the state that existed before the most recent undo. A new undoable
 operation after undo clears the redo stack. By default redo refuses if later
-changes make the checkpoint unsafe to apply.
+changes to scoped state make the checkpoint unsafe to apply. Unrelated
+worktree and index changes remain unchanged.
 .SH OPTIONS
 .TP
 .B \-\-force

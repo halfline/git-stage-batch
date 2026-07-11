@@ -9,7 +9,8 @@ git-stage-batch-undo \- undo the most recent undoable session operation
 restores the repository state to the point before the most recent undoable
 session operation. It restores the index, working tree, session files, and
 batch refs recorded in that checkpoint. By default it refuses if later changes
-make the checkpoint unsafe to apply.
+to scoped state make the checkpoint unsafe to apply. Unrelated dirty and staged
+files are not retained by the checkpoint and remain unchanged.
 .SH OPTIONS
 .TP
 .B \-\-force

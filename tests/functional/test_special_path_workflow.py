@@ -92,3 +92,40 @@ def test_special_added_and_deleted_paths(functional_repo):
     ).stdout.split(b"\0")
     assert os.fsencode(added_name) in staged_names
     assert os.fsencode(deleted_name) in staged_names
+
+
+def test_special_path_rename_and_binary_include(functional_repo):
+    """Quoted rename metadata and binary headers retain canonical paths."""
+    old_name = "old b/name.txt"
+    new_name = "new\nname.txt"
+    old_path = functional_repo / old_name
+    old_path.parent.mkdir(parents=True)
+    old_path.write_text("content\n")
+    binary_name = 'binary"name.bin'
+    binary_path = functional_repo / binary_name
+    binary_path.write_bytes(b"old\0bytes")
+    subprocess.run(
+        ["git", "add", "--", old_name, binary_name],
+        check=True,
+        cwd=functional_repo,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Add special changes"],
+        check=True,
+        cwd=functional_repo,
+    )
+    old_path.rename(functional_repo / new_name)
+    binary_path.write_bytes(b"new\0bytes")
+
+    git_stage_batch("start")
+    git_stage_batch("include", "--file", new_name)
+    git_stage_batch("include", "--file", binary_name)
+
+    staged_names = subprocess.run(
+        ["git", "diff", "--cached", "--name-only", "-z"],
+        check=True,
+        cwd=functional_repo,
+        capture_output=True,
+    ).stdout.split(b"\0")
+    assert os.fsencode(new_name) in staged_names
+    assert os.fsencode(binary_name) in staged_names

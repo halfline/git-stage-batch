@@ -17,6 +17,20 @@ def _imported_modules_for(path):
     return {imported_module for imported_module, _node in _import_from_nodes(path)}
 
 
+def _batch_module_names(*relative_names: str) -> set[str]:
+    """Return every supported import path for one moving batch module."""
+    return {
+        f"git_stage_batch.batch.{relative_name}"
+        for relative_name in relative_names
+    }
+
+
+def _batch_module_path(*relative_paths: str):
+    """Return the first selected path for a moving batch module."""
+    candidates = [SRC_ROOT / "batch" / relative_path for relative_path in relative_paths]
+    return next((path for path in candidates if path.exists()), candidates[-1])
+
+
 def _top_level_package_names() -> set[str]:
     return {
         path.name
@@ -97,7 +111,7 @@ def _batch_module_import_edges() -> set[tuple[str, str]]:
     batch_root = SRC_ROOT / "batch"
     module_names = {
         _module_name_for_path(path)
-        for path in batch_root.glob("*.py")
+        for path in batch_root.rglob("*.py")
         if path.name != "__init__.py"
     }
     edges = set()
@@ -106,13 +120,9 @@ def _batch_module_import_edges() -> set[tuple[str, str]]:
         if not imported_module.startswith("git_stage_batch.batch."):
             return None
 
-        module_parts = imported_module.split(".")[:3]
-        module_name = ".".join(module_parts)
-        if module_name in module_names:
-            return module_name
-        return None
+        return imported_module if imported_module in module_names else None
 
-    for path in batch_root.glob("*.py"):
+    for path in batch_root.rglob("*.py"):
         if path.name == "__init__.py":
             continue
 
@@ -121,19 +131,14 @@ def _batch_module_import_edges() -> set[tuple[str, str]]:
             if imported_module is None:
                 continue
 
-            if imported_module == "git_stage_batch.batch":
-                for alias in node.names:
-                    target_module = f"{imported_module}.{alias.name}"
-                    if (
-                        target_module in module_names
-                        and target_module != source_module
-                    ):
-                        edges.add((source_module, target_module))
-                continue
-
-            target_module = batch_module_for(imported_module)
-            if target_module is not None and target_module != source_module:
-                edges.add((source_module, target_module))
+            imported_candidates = [
+                imported_module,
+                *(f"{imported_module}.{alias.name}" for alias in node.names),
+            ]
+            for imported_candidate in imported_candidates:
+                target_module = batch_module_for(imported_candidate)
+                if target_module is not None and target_module != source_module:
+                    edges.add((source_module, target_module))
 
     return edges
 
@@ -9195,6 +9200,14 @@ def test_batch_lineage_uses_public_data_types():
         "_BatchSourceLineage",
         "_LineageRun",
     }
+    lineage_module_names = _batch_module_names(
+        "lineage",
+        "line_matching.lineage",
+    )
+    lineage_path = _batch_module_path(
+        "line_matching/lineage.py",
+        "lineage.py",
+    )
     expected_imports = {
         SRC_ROOT / "batch" / "ownership_remapping.py": {
             "BatchSourceLineage",
@@ -9211,14 +9224,14 @@ def test_batch_lineage_uses_public_data_types():
     assert private_names.isdisjoint(vars(lineage))
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == SRC_ROOT / "batch" / "lineage.py":
+        if path == lineage_path:
             continue
 
         imports = _import_from_nodes(path)
         imported_public_names = set()
 
         for imported_module, node in imports:
-            if imported_module != "git_stage_batch.batch.lineage":
+            if imported_module not in lineage_module_names:
                 continue
 
             imported_names = {alias.name for alias in node.names}
@@ -11334,19 +11347,21 @@ def test_batch_file_mergeability_owns_display_probe():
         "git_stage_batch.batch": {"file_mergeability"},
     }
     expected_dependency_imports = {
-        "git_stage_batch.batch.match": {"match_lines"},
-        "git_stage_batch.batch.ownership_unit_rebuild": {
+        tuple(_batch_module_names("match", "line_matching.match")): {
+            "match_lines",
+        },
+        ("git_stage_batch.batch.ownership_unit_rebuild",): {
             "rebuild_ownership_from_units",
         },
-        "git_stage_batch.batch.ownership_unit_validation": {
+        ("git_stage_batch.batch.ownership_unit_validation",): {
             "validate_ownership_units",
         },
-        "git_stage_batch.batch.ownership_units": {
+        ("git_stage_batch.batch.ownership_units",): {
             "build_ownership_units_from_display_lines",
         },
-        "git_stage_batch.core.text_lines": {"normalize_line_sequence_endings"},
-        "git_stage_batch.exceptions": {"MergeError"},
-        "git_stage_batch.utils.repository_buffers": {
+        ("git_stage_batch.core.text_lines",): {"normalize_line_sequence_endings"},
+        ("git_stage_batch.exceptions",): {"MergeError"},
+        ("git_stage_batch.utils.repository_buffers",): {
             "load_working_tree_file_as_buffer",
         },
     }
@@ -11371,14 +11386,17 @@ def test_batch_file_mergeability_owns_display_probe():
     for imported_module, imported_names in expected_probe_imports.items():
         assert imported_names <= display_imported_names.get(imported_module, set())
 
-    for imported_module, imported_names in expected_dependency_imports.items():
+    for imported_modules, imported_names in expected_dependency_imports.items():
+        display_dependency_names = set().union(
+            *(display_imported_names.get(module, set()) for module in imported_modules)
+        )
+        mergeability_dependency_names = set().union(
+            *(mergeability_imported_names.get(module, set()) for module in imported_modules)
+        )
         assert imported_names.isdisjoint(
-            display_imported_names.get(imported_module, set())
+            display_dependency_names
         )
-        assert imported_names <= mergeability_imported_names.get(
-            imported_module,
-            set(),
-        )
+        assert imported_names <= mergeability_dependency_names
 
     assert "merge" in mergeability_imported_names.get(
         "git_stage_batch.batch",
@@ -11838,7 +11856,14 @@ def test_batch_line_range_view_stays_out_of_realized_entries():
         "git_stage_batch.batch.realized_entries",
         fromlist=["realized_entries"],
     )
-    line_range_view_path = SRC_ROOT / "batch" / "line_range_view.py"
+    line_range_view_module_names = _batch_module_names(
+        "line_range_view",
+        "line_matching.line_range_view",
+    )
+    line_range_view_path = _batch_module_path(
+        "line_matching/line_range_view.py",
+        "line_range_view.py",
+    )
     public_names = {
         "LineRangeView",
     }
@@ -11872,7 +11897,7 @@ def test_batch_line_range_view_stays_out_of_realized_entries():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.line_range_view":
+            if imported_module not in line_range_view_module_names:
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -11971,7 +11996,18 @@ def test_batch_line_mapping_owns_public_mapping_type():
         "git_stage_batch.batch.match",
         fromlist=["match"],
     )
-    line_mapping_path = SRC_ROOT / "batch" / "line_mapping.py"
+    line_mapping_module_names = _batch_module_names(
+        "line_mapping",
+        "line_matching.line_mapping",
+    )
+    match_module_names = _batch_module_names(
+        "match",
+        "line_matching.match",
+    )
+    line_mapping_path = _batch_module_path(
+        "line_matching/line_mapping.py",
+        "line_mapping.py",
+    )
     public_names = {
         "LineMapping",
     }
@@ -12007,7 +12043,7 @@ def test_batch_line_mapping_owns_public_mapping_type():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.match":
+            if imported_module in match_module_names:
                 disallowed_names = imported_names & (public_names | moved_names)
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -12015,7 +12051,7 @@ def test_batch_line_mapping_owns_public_mapping_type():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.line_mapping":
+            if imported_module not in line_mapping_module_names:
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -12044,7 +12080,18 @@ def test_batch_line_sequence_search_stays_out_of_match_module():
         "git_stage_batch.batch.match",
         fromlist=["match"],
     )
-    line_sequence_search_path = SRC_ROOT / "batch" / "line_sequence_search.py"
+    line_sequence_search_module_names = _batch_module_names(
+        "line_sequence_search",
+        "line_matching.sequence_search",
+    )
+    match_module_names = _batch_module_names(
+        "match",
+        "line_matching.match",
+    )
+    line_sequence_search_path = _batch_module_path(
+        "line_matching/sequence_search.py",
+        "line_sequence_search.py",
+    )
     public_names = {
         "TargetGap",
         "iter_exact_context_gaps",
@@ -12069,7 +12116,7 @@ def test_batch_line_sequence_search_stays_out_of_match_module():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.match":
+            if imported_module in match_module_names:
                 moved_names = imported_names & public_names
                 if moved_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -12077,7 +12124,7 @@ def test_batch_line_sequence_search_stays_out_of_match_module():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.line_sequence_search":
+            if imported_module not in line_sequence_search_module_names:
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -12733,8 +12780,13 @@ def test_batch_line_sequence_equality_owns_exact_comparison():
         "git_stage_batch.batch.presence_constraints",
         fromlist=["presence_constraints"],
     )
-    line_sequence_equality_path = (
-        SRC_ROOT / "batch" / "line_sequence_equality.py"
+    line_sequence_equality_module_names = _batch_module_names(
+        "line_sequence_equality",
+        "line_matching.sequence_equality",
+    )
+    line_sequence_equality_path = _batch_module_path(
+        "line_matching/sequence_equality.py",
+        "line_sequence_equality.py",
     )
     baseline_edits_path = SRC_ROOT / "batch" / "baseline_edits.py"
     presence_placement_choices_path = (
@@ -12767,7 +12819,7 @@ def test_batch_line_sequence_equality_owns_exact_comparison():
         direct_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module != "git_stage_batch.batch.line_sequence_equality":
+            if imported_module not in line_sequence_equality_module_names:
                 continue
 
             direct_public_names |= imported_names & public_names

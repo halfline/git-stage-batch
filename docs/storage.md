@@ -89,3 +89,21 @@ Run `git-stage-batch validate` to validate every batch without changing it. The
 command checks schema compatibility, object IDs, content-ref agreement, and
 reports whether a legacy record would be migrated. Use `--porcelain` for a
 stable JSON report suitable for support tooling.
+
+## Attribution working set
+
+During hunk review, batch ownership is indexed by canonical file path for the
+current diff scan. Files without claims skip traversal across unrelated batch
+metadata. For a claimed file, source and deletion objects are requested once
+per role through bounded Git batch readers. Refspecs are resolved before
+content is loaded, so canonical state refs and legacy fallbacks that name the
+same blob share one source read and one line mapping. Deletion payloads are
+reduced to fingerprints as they stream, and normalized presence claims are
+computed once per batch/file key.
+
+Attribution processes one file and one unique source mapping at a time. It
+retains compact fingerprints and result units for the file, but releases each
+source payload and mapping before opening the next source. Traversal is sorted
+by batch name so optimization and metadata insertion order cannot alter
+ownership arbitration. Missing deletion objects and objects of the wrong Git
+type are ignored conservatively rather than hiding an unverified change.

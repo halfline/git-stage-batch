@@ -14,6 +14,7 @@ from ..core.diff_parser import (
 )
 from ..core.models import (
     BinaryFileChange,
+    FileModeChange,
     GitlinkChange,
     HunkHeader,
     LineEntry,
@@ -175,7 +176,7 @@ def _build_combined_file_line_changes(
     for single_hunk in patches:
         if isinstance(
             single_hunk,
-            (BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange),
+            (BinaryFileChange, FileModeChange, GitlinkChange, RenameChange, TextFileDeletionChange),
         ):
             continue
 

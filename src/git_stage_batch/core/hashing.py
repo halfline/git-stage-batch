@@ -7,7 +7,13 @@ from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
+    from .models import (
+        BinaryFileChange,
+        FileModeChange,
+        GitlinkChange,
+        RenameChange,
+        TextFileDeletionChange,
+    )
 
 
 def compute_stable_hunk_hash_from_lines(patch_lines: Iterable[bytes]) -> str:
@@ -105,6 +111,19 @@ def compute_gitlink_change_hash(gitlink_change: GitlinkChange) -> str:
         gitlink_change.old_oid or "",
         gitlink_change.new_oid or "",
         gitlink_change.change_type,
+    ]
+    return hashlib.sha256(
+        "\0".join(parts).encode("utf-8", errors="surrogateescape")
+    ).hexdigest()
+
+
+def compute_file_mode_change_hash(mode_change: FileModeChange) -> str:
+    """Compute a stable identity hash for an executable-mode change."""
+    parts = [
+        "file-mode",
+        mode_change.file_path,
+        mode_change.old_mode,
+        mode_change.new_mode,
     ]
     return hashlib.sha256(
         "\0".join(parts).encode("utf-8", errors="surrogateescape")

@@ -4,6 +4,7 @@ import pytest
 
 from git_stage_batch.core.models import (
     BinaryFileChange,
+    FileModeChange,
     HunkHeader,
     LineEntry,
     SingleHunkPatch,
@@ -111,6 +112,12 @@ class TestBinaryFileChange:
             ).path()
             == "asset.bin"
         )
+
+
+def test_file_mode_change_path():
+    change = FileModeChange("script.sh", "100644", "100755")
+
+    assert change.path() == "script.sh"
 
 
 class TestSingleHunkPatch:

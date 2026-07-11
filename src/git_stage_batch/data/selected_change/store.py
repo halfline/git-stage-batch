@@ -28,6 +28,7 @@ from ...utils.paths import (
     get_selected_change_clear_reason_file_path,
     get_selected_change_kind_file_path,
     get_selected_gitlink_file_json_path,
+    get_selected_mode_change_json_path,
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
     get_selected_rename_file_json_path,
@@ -47,6 +48,8 @@ class SelectedChangeKind(str, Enum):
     DELETION = "deletion"
     BINARY = "binary"
     GITLINK = "submodule"
+    MODE = "mode"
+    BATCH_MODE = "batch-mode"
     BATCH_FILE = "batch-file"
     BATCH_BINARY = "batch-binary"
     BATCH_GITLINK = "batch-submodule"
@@ -115,6 +118,7 @@ def _selected_change_state_paths():
         "text_deletion": get_selected_text_deletion_file_json_path(),
         "binary": get_selected_binary_file_json_path(),
         "gitlink": get_selected_gitlink_file_json_path(),
+        "mode": get_selected_mode_change_json_path(),
         "index_snapshot": get_index_snapshot_file_path(),
         "working_snapshot": get_working_tree_snapshot_file_path(),
         "processed_include_ids": get_processed_include_ids_file_path(),
@@ -172,6 +176,8 @@ def write_selected_change_kind(kind: SelectedChangeKind) -> None:
         get_selected_binary_file_json_path().unlink(missing_ok=True)
     if kind not in (SelectedChangeKind.GITLINK, SelectedChangeKind.BATCH_GITLINK):
         get_selected_gitlink_file_json_path().unlink(missing_ok=True)
+    if kind not in (SelectedChangeKind.MODE, SelectedChangeKind.BATCH_MODE):
+        get_selected_mode_change_json_path().unlink(missing_ok=True)
     write_text_file_contents(get_selected_change_kind_file_path(), kind)
 
 

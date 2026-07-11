@@ -24,7 +24,8 @@ from ...core.buffer import (
     buffer_matches,
 )
 from ...core.line_selection import LineRanges
-from ...core.models import BinaryFileChange
+from ...core.models import BinaryFileChange, FileModeChange
+from ...data.file_modes import detect_file_mode_from_root
 from ...core.text_lifecycle import (
     TextFileChangeType,
     normalized_text_change_type,
@@ -66,7 +67,32 @@ class SiftedTextFileResult:
         self.target_buffer.close()
 
 
-SiftedFileResult = SiftedBinaryFileResult | SiftedTextFileResult
+@dataclass
+class SiftedModeFileResult:
+    """Retained atomic executable-mode action."""
+
+    mode_change: FileModeChange
+
+    def target_source_buffer(self) -> LineBuffer | None:
+        return None
+
+    def close(self) -> None:
+        return None
+
+
+SiftedFileResult = SiftedBinaryFileResult | SiftedTextFileResult | SiftedModeFileResult
+
+
+def compute_sifted_mode_file(
+    file_path: str,
+    file_meta: dict,
+    repo_root: Path,
+) -> SiftedModeFileResult | None:
+    """Drop a mode action once its target mode is already present."""
+    change = FileModeChange(file_path, file_meta["old_mode"], file_meta["new_mode"])
+    if detect_file_mode_from_root(repo_root, file_path) == change.new_mode:
+        return None
+    return SiftedModeFileResult(change)
 
 
 def compute_sifted_binary_file(

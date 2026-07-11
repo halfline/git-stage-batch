@@ -16,6 +16,7 @@ from . import patch_headers as _patch_headers
 from .buffer import LineBuffer
 from .models import (
     BinaryFileChange,
+    FileModeChange,
     GitlinkChange,
     LineLevelChange,
     HunkHeader,
@@ -30,7 +31,7 @@ from ..git_paths import encode_path, quote_path_token
 
 # Type for annotator hooks that enrich LineLevelChange with additional metadata
 LineLevelChangeAnnotator = Callable[[str, LineLevelChange], LineLevelChange]
-UnifiedDiffItem = Union[SingleHunkPatch, BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange]
+UnifiedDiffItem = Union[SingleHunkPatch, BinaryFileChange, FileModeChange, GitlinkChange, RenameChange, TextFileDeletionChange]
 
 
 def patch_is_file_deletion(patch_lines: Iterable[bytes]) -> bool:
@@ -269,6 +270,28 @@ class _UnifiedDiffParserBuildContext:
                         )
                         if renamed_paths is not None:
                             old_path, new_path = renamed_paths
+                    mode_transition = _file_metadata_diff.executable_mode_change(
+                        metadata_lines
+                    )
+                    type_transition = _file_metadata_diff.file_type_change(
+                        metadata_lines
+                    )
+                    if type_transition is not None and not is_gitlink:
+                        raise CommandError(
+                            _(
+                                "File type changes are atomic and are not supported yet: "
+                                "{file} ({old} -> {new})"
+                            ).format(
+                                file=old_path,
+                                old=type_transition[0],
+                                new=type_transition[1],
+                            )
+                        )
+                    mode_change = (
+                        FileModeChange(old_path, *mode_transition)
+                        if mode_transition is not None
+                        else None
+                    )
                     is_deleted_file = (
                         _file_metadata_diff.metadata_indicates_deleted_file(
                             metadata_lines
@@ -311,6 +334,8 @@ class _UnifiedDiffParserBuildContext:
                                     metadata_lines
                                 ),
                             )
+                            if mode_change is not None:
+                                yield mode_change
                             continue
 
                         if is_rename:
@@ -332,6 +357,8 @@ class _UnifiedDiffParserBuildContext:
                                     + quote_path_token(b"b/" + encode_path(new_path)),
                                 ),
                             )
+                        if mode_change is not None:
+                            yield mode_change
                         # Skip other files without hunks (mode-only, rename-only, etc.)
                         continue
 
@@ -398,7 +425,7 @@ class _UnifiedDiffParserBuildContext:
                         # Check if next line is a hunk header
                         hunk_header_line = peek_line()
                         if hunk_header_line is None:
-                            return
+                            break
                         hunk_header_stripped = hunk_header_line.rstrip(b'\n')
                         if not _hunk_headers.line_is_hunk_header(
                             hunk_header_stripped
@@ -468,6 +495,8 @@ class _UnifiedDiffParserBuildContext:
                             )
                         elif is_deleted_file:
                             yield TextFileDeletionChange(old_path=old_path)
+                    if mode_change is not None:
+                        yield mode_change
         finally:
             close = getattr(line_iter, "close", None)
             if close is not None:

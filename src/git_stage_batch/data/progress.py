@@ -6,6 +6,7 @@ import json
 
 from ..core.models import (
     BinaryFileChange,
+    FileModeChange,
     GitlinkChange,
     LineLevelChange,
     RenameChange,
@@ -79,6 +80,21 @@ def record_binary_hunk_skipped(binary_change: BinaryFileChange, hunk_hash: str) 
         "change_type": binary_change.change_type,
     }
     _append_skipped_hunk_metadata(metadata)
+
+
+def record_mode_change_skipped(mode_change: FileModeChange, hunk_hash: str) -> None:
+    """Record a skipped executable-mode action."""
+    _append_skipped_hunk_metadata(
+        {
+            "hash": hunk_hash,
+            "file": mode_change.path(),
+            "line": None,
+            "ids": [],
+            "type": "mode",
+            "old_mode": mode_change.old_mode,
+            "new_mode": mode_change.new_mode,
+        }
+    )
 
 
 def record_gitlink_hunk_skipped(gitlink_change: GitlinkChange, hunk_hash: str) -> None:

@@ -8,13 +8,17 @@ Tests for handling:
 - Mixed scenarios
 """
 
+import pytest
+
 from git_stage_batch.core.models import (
     BinaryFileChange,
+    FileModeChange,
     GitlinkChange,
     RenameChange,
     SingleHunkPatch,
     TextFileDeletionChange,
 )
+from git_stage_batch.exceptions import CommandError
 
 from tests.diff_parser_helpers import collect_unified_diff
 
@@ -501,9 +505,9 @@ index abc1234..def5678 100644
 """
         patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
-        # Should parse other.txt (mode change has no hunks)
-        assert len(patches) == 1
-        assert patches[0].new_path == "other.txt"
+        assert len(patches) == 2
+        assert patches[0] == FileModeChange("script.sh", "100644", "100755")
+        assert patches[1].new_path == "other.txt"
 
     def test_mode_change_with_content_changes(self):
         """File with both mode and content changes."""
@@ -521,8 +525,20 @@ index abc1234..def5678
 """
         patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
-        assert len(patches) == 1
+        assert len(patches) == 2
         assert patches[0].new_path == "script.sh"
+        assert patches[1] == FileModeChange("script.sh", "100644", "100755")
+
+    def test_type_change_is_not_an_executable_mode_change(self):
+        """Regular-file and symlink transitions remain separate actions."""
+        diff = b"""\
+diff --git a/link b/link
+old mode 100644
+new mode 120000
+"""
+
+        with pytest.raises(CommandError, match="File type changes are atomic"):
+            collect_unified_diff(diff.splitlines(keepends=True))
 
 
 class TestMixedScenarios:
@@ -569,9 +585,9 @@ index ghi789..jkl012 100644
 
         patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
 
-        # Expected: deleted_empty.txt (deletion), new_empty.txt (empty),
-        # image.png (binary), old->new rename, normal1.txt, normal2.txt
-        assert len(patches) == 6
+        # Expected: deleted empty, new empty, binary, rename, two text hunks,
+        # and the executable-bit action between the text changes.
+        assert len(patches) == 7
         assert isinstance(patches[0], TextFileDeletionChange)
         assert patches[0].path() == "deleted_empty.txt"
         assert isinstance(patches[1], SingleHunkPatch)
@@ -584,8 +600,9 @@ index ghi789..jkl012 100644
         assert patches[3].new_path == "new.txt"
         assert isinstance(patches[4], SingleHunkPatch)
         assert patches[4].new_path == "normal1.txt"
-        assert isinstance(patches[5], SingleHunkPatch)
-        assert patches[5].new_path == "normal2.txt"
+        assert patches[5] == FileModeChange("script.sh", "100644", "100755")
+        assert isinstance(patches[6], SingleHunkPatch)
+        assert patches[6].new_path == "normal2.txt"
 
     def test_intent_to_add_files(self):
         """Files added with git add -N (intent-to-add)."""

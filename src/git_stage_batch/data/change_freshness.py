@@ -5,6 +5,7 @@ from __future__ import annotations
 from ..batch.query import list_batch_names, read_batch_metadata_for_batches
 from ..core.models import (
     BinaryFileChange,
+    FileModeChange,
     GitlinkChange,
     RenameChange,
     TextFileDeletionChange,
@@ -13,6 +14,7 @@ from .text_lifecycle_detection import detect_empty_text_lifecycle_change
 from .file_change_display import (
     render_binary_file_change,
     render_gitlink_change,
+    render_mode_change,
     render_rename_change,
     render_text_deletion_change,
 )
@@ -32,6 +34,11 @@ def binary_file_change_is_stale(binary_change: BinaryFileChange) -> bool:
         or current_change.new_path != binary_change.new_path
         or current_change.change_type != binary_change.change_type
     )
+
+
+def file_mode_change_is_stale(mode_change: FileModeChange) -> bool:
+    """Return whether a cached executable-mode action changed."""
+    return render_mode_change(mode_change.path()) != mode_change
 
 
 def gitlink_change_is_stale(gitlink_change: GitlinkChange) -> bool:

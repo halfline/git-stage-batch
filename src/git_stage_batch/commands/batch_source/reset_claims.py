@@ -76,7 +76,7 @@ def move_claims_between_batches(
         return
 
     for file_path, file_meta in files.items():
-        if file_meta.get("file_type") == "binary" or is_batch_submodule_pointer(
+        if file_meta.get("file_type") in {"binary", "mode"} or is_batch_submodule_pointer(
             file_meta
         ):
             dest_file_meta = (
@@ -164,6 +164,10 @@ def reset_line_claims_for_file(
     if file_meta.get("file_type") == "binary":
         exit_with_error(
             _("Cannot use --lines with binary files. Reset the whole file instead.")
+        )
+    if file_meta.get("file_type") == "mode":
+        exit_with_error(
+            _("Cannot use --lines with file modes. Reset the whole mode action instead.")
         )
     if is_batch_submodule_pointer(file_meta):
         refuse_batch_submodule_pointer_lines(_("Reset"))
@@ -307,7 +311,7 @@ def _add_ownership_to_destination(
         )
 
     if dest_file_meta is not None:
-        if dest_file_meta.get("file_type") == "binary":
+        if dest_file_meta.get("file_type") in {"binary", "mode"}:
             exit_with_error(
                 _(
                     "Destination batch already has a binary version of '{file}', "
@@ -344,6 +348,10 @@ def _acquire_line_ownership_for_file(
     if file_meta.get("file_type") == "binary":
         exit_with_error(
             _("Cannot use --lines with binary files. Reset the whole file instead.")
+        )
+    if file_meta.get("file_type") == "mode":
+        exit_with_error(
+            _("Cannot use --lines with file modes. Reset the whole mode action instead.")
         )
     if is_batch_submodule_pointer(file_meta):
         refuse_batch_submodule_pointer_lines(_("Reset"))

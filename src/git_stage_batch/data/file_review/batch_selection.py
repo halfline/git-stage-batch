@@ -156,6 +156,8 @@ def translate_reset_batch_file_gutter_ids_to_selection_ranges(
     file_path = list(files.keys())[0]
     if files[file_path].get("file_type") == "binary":
         raise CommandError(_("Cannot use --lines with binary files. Reset the whole file instead."))
+    if files[file_path].get("file_type") == "mode":
+        raise CommandError(_("Cannot use --lines with file mode actions."))
     if is_batch_submodule_pointer(files[file_path]):
         refuse_batch_submodule_pointer_lines(_("Reset"))
 

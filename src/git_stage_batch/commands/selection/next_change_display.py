@@ -8,6 +8,7 @@ from ...batch.source_annotation import annotate_with_batch_source
 from ...core.diff_parser import acquire_unified_diff, build_line_changes_from_patch_lines
 from ...core.hashing import (
     compute_binary_file_hash,
+    compute_file_mode_change_hash,
     compute_gitlink_change_hash,
     compute_rename_change_hash,
     compute_stable_hunk_hash_from_lines,
@@ -15,6 +16,7 @@ from ...core.hashing import (
 )
 from ...core.models import (
     BinaryFileChange,
+    FileModeChange,
     GitlinkChange,
     RenameChange,
     TextFileDeletionChange,
@@ -25,6 +27,7 @@ from ...data.line_state import load_line_changes_from_state
 from ...data.live_diff import stream_live_git_diff
 from ...data.selected_change.file_changes import (
     cache_binary_file_change,
+    cache_mode_change,
     cache_gitlink_change,
     cache_rename_change,
     cache_text_deletion_change,
@@ -41,6 +44,7 @@ from ...i18n import _
 from ...output.hunk import print_line_level_changes
 from ...output.patch import (
     print_binary_file_change,
+    print_file_mode_change,
     print_gitlink_change,
     print_rename_change,
     print_text_file_deletion_change,
@@ -69,6 +73,17 @@ def show_next_unprocessed_change(
             )
         ) as patches:
             for patch in patches:
+                if isinstance(patch, FileModeChange):
+                    mode_hash = compute_file_mode_change_hash(patch)
+                    if mode_hash not in blocked_hashes:
+                        cache_mode_change(patch)
+                        if selectable:
+                            clear_last_file_review_state()
+                        if not porcelain:
+                            print_file_mode_change(patch)
+                        return
+                    continue
+
                 if isinstance(patch, RenameChange):
                     rename_hash = compute_rename_change_hash(patch)
                     if rename_hash not in blocked_hashes:

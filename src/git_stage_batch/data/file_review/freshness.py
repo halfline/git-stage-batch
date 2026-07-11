@@ -28,6 +28,7 @@ def selected_change_kind_matches_review_source(
             SelectedChangeKind.BATCH_FILE,
             SelectedChangeKind.BATCH_BINARY,
             SelectedChangeKind.BATCH_GITLINK,
+            SelectedChangeKind.BATCH_MODE,
         )
     return False
 

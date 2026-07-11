@@ -7,6 +7,7 @@ from ...data.selected_change.store import load_line_changes_from_patch_path
 from ...data.selected_change.file_changes import (
     load_selected_binary_file,
     load_selected_gitlink_change,
+    load_selected_mode_change,
     load_selected_rename_change,
     load_selected_text_deletion_change,
 )
@@ -14,6 +15,7 @@ from ...output.hunk import print_line_level_changes
 from ...output.patch import (
     print_binary_file_change,
     print_gitlink_change,
+    print_file_mode_change,
     print_rename_change,
     print_text_file_deletion_change,
 )
@@ -25,6 +27,11 @@ def show_selected_change() -> None:
     rename_change = load_selected_rename_change()
     if rename_change is not None:
         print_rename_change(rename_change)
+        return
+
+    mode_change = load_selected_mode_change()
+    if mode_change is not None:
+        print_file_mode_change(mode_change)
         return
 
     deletion_change = load_selected_text_deletion_change()

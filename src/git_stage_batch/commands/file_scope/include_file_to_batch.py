@@ -12,7 +12,7 @@ from ...batch.query import read_batch_metadata
 from ...batch.text_file_storage import add_file_to_batch
 from ...batch.validation import batch_exists
 from ...core.diff_parser import acquire_unified_diff, build_line_changes_from_patch_lines
-from ...core.models import RenameChange, TextFileDeletionChange
+from ...core.models import FileModeChange, RenameChange, TextFileDeletionChange
 from ...data.file_change_display import (
     render_binary_file_change,
     render_gitlink_change,
@@ -74,6 +74,7 @@ def include_file_to_batch(
 
     file_mode = detect_file_mode(file_path)
     all_lines_to_batch = []
+    mode_change = None
 
     with acquire_unified_diff(
         stream_live_git_diff(
@@ -83,6 +84,9 @@ def include_file_to_batch(
         )
     ) as patches:
         for patch in patches:
+            if isinstance(patch, FileModeChange):
+                mode_change = patch
+                continue
             if isinstance(patch, (RenameChange, TextFileDeletionChange)):
                 continue
             hunk_lines = build_line_changes_from_patch_lines(
@@ -92,6 +96,14 @@ def include_file_to_batch(
             all_lines_to_batch.extend(hunk_lines.lines)
 
     if not all_lines_to_batch:
+        if mode_change is not None:
+            _whole_file_batch_staging.include_mode_to_batch(
+                batch_name,
+                mode_change,
+                quiet=quiet,
+                auto_advance=auto_advance,
+            )
+            return
         if (
             _whole_file_batch_staging.save_empty_text_lifecycle_to_batch(
                 batch_name,

@@ -8,12 +8,13 @@ from ...core.buffer import LineBuffer
 from ...core.diff_parser import acquire_unified_diff, patch_is_file_deletion
 from ...core.hashing import (
     compute_binary_file_hash,
+    compute_file_mode_change_hash,
     compute_gitlink_change_hash,
     compute_rename_change_hash,
     compute_stable_hunk_hash_from_lines,
     compute_text_file_deletion_hash,
 )
-from ...core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
+from ...core.models import BinaryFileChange, FileModeChange, GitlinkChange, RenameChange, TextFileDeletionChange
 from ...data.file_tracking import auto_add_untracked_files
 from ...data.live_diff import stream_live_git_diff
 from ...data.progress import record_hunk_included
@@ -77,6 +78,14 @@ def include_file_changes(
             )
         ) as patches:
             for patch in patches:
+                if isinstance(patch, FileModeChange):
+                    if patch.path() != target_file:
+                        continue
+                    _selected_change_staging.stage_file_mode_change(patch)
+                    record_hunk_included(compute_file_mode_change_hash(patch))
+                    hunks_staged += 1
+                    continue
+
                 if isinstance(patch, RenameChange):
                     if target_file not in (patch.old_path, patch.new_path):
                         continue

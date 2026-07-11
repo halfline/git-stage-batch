@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from .colors import Colors
 
 if TYPE_CHECKING:
-    from ..core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
+    from ..core.models import BinaryFileChange, FileModeChange, GitlinkChange, RenameChange, TextFileDeletionChange
 
 
 def print_colored_patch(patch_text: str) -> None:
@@ -56,6 +56,13 @@ def print_binary_file_change(binary_change: BinaryFileChange) -> None:
 
     # Print file header
     print(f"{bold}{path}{reset} :: {color}Binary file {change_desc}{reset}")
+
+
+def print_file_mode_change(mode_change: FileModeChange) -> None:
+    """Print an atomic executable-mode change."""
+    executable = mode_change.new_mode == "100755"
+    description = "Executable bit added" if executable else "Executable bit removed"
+    print(f"{mode_change.path()} :: {description}")
 
 
 def print_gitlink_change(gitlink_change: GitlinkChange) -> None:

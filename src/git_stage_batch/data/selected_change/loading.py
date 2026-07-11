@@ -7,6 +7,7 @@ from typing import Optional, Union
 
 from ...core.models import (
     BinaryFileChange,
+    FileModeChange,
     GitlinkChange,
     LineLevelChange,
     RenameChange,
@@ -34,6 +35,7 @@ from .snapshots import (
 SelectedChange = Union[
     LineLevelChange,
     BinaryFileChange,
+    FileModeChange,
     GitlinkChange,
     RenameChange,
     TextFileDeletionChange,
@@ -43,6 +45,19 @@ SelectedChange = Union[
 def load_selected_change() -> Optional[SelectedChange]:
     """Load the currently cached selected change, if any."""
     selected_kind = _selected_store.read_selected_change_kind()
+    mode_change = _selected_file_changes.load_selected_mode_change()
+    if mode_change is not None:
+        if (
+            selected_kind == _selected_store.SelectedChangeKind.MODE
+            and _change_freshness.file_mode_change_is_stale(mode_change)
+        ):
+            raise CommandError(
+                _(
+                    "Selected file mode no longer matches the working tree: {file}.\n"
+                    "Run 'show' again before using a pathless action."
+                ).format(file=mode_change.path())
+            )
+        return mode_change
     rename_change = _selected_file_changes.load_selected_rename_change()
     if rename_change is not None:
         if (

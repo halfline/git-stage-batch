@@ -21,6 +21,9 @@ from .state import (
     clear_last_file_review_state_if_file_matches,
     read_last_file_review_state,
 )
+from ..selected_change.store import SelectedChangeKind, read_selected_change_kind
+from ...exceptions import CommandError
+from ...i18n import _
 
 
 def line_action_came_from_partial_review(review_state: _records.FileReviewState | None) -> bool:
@@ -273,6 +276,14 @@ def resolve_live_line_action_scope(
 
     if file not in (None, ""):
         return _records.ActionScopeResolution(file=file)
+
+    if read_selected_change_kind() in (
+        SelectedChangeKind.MODE,
+        SelectedChangeKind.BATCH_MODE,
+    ):
+        raise CommandError(
+            _("File mode actions are atomic and cannot be selected by line.")
+        )
 
     review_action = _records.coerce_review_action(action)
     refuse_bare_action_after_file_list(action_command)

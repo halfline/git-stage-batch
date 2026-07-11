@@ -135,6 +135,16 @@ Re-preview after editing the target file or changing the index.
 Submodule pointer changes are shown as atomic entries. They support whole-entry
 actions, but not `--line`.
 
+Executable-bit changes (`100644` ↔ `100755`) are also shown as atomic entries.
+When content and mode both change, content hunks are presented first and the
+mode remains as a separate later action. Mode actions support whole-file
+include, discard, skip, undo, redo, abort, and batch operations, but not
+`--line` or paged line review. Repositories configured with
+`core.fileMode=false` intentionally do not report executable-bit changes.
+
+Regular-file, symlink, and submodule type transitions are never treated as
+executable-bit changes. Unsupported type transitions are refused explicitly.
+
 **Options:**
 - `--file [PATH]`: Display entire file instead of single hunk
   - Without PATH: uses selected hunk's file

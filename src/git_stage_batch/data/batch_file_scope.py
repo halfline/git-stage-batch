@@ -16,6 +16,7 @@ from .selected_change.store import (
     SelectedChangeKind,
     read_selected_change_kind,
 )
+from .selected_change.file_changes import load_selected_mode_change, read_selected_mode_data
 
 
 def resolve_batch_file_scope(
@@ -100,6 +101,16 @@ def resolve_current_batch_atomic_file_scope(
             all_files,
         )
         return selected_file if selected_file is not None else file
+    if selected_kind == SelectedChangeKind.BATCH_MODE:
+        mode_change = load_selected_mode_change()
+        mode_data = read_selected_mode_data()
+        if (
+            mode_change is not None
+            and mode_data is not None
+            and mode_data.get("batch_name") == batch_name
+            and mode_change.path() in all_files
+        ):
+            return mode_change.path()
 
     return file
 

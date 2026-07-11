@@ -6,6 +6,7 @@ import sys
 
 from ...core.models import (
     BinaryFileChange,
+    FileModeChange,
     GitlinkChange,
     RenameChange,
     TextFileDeletionChange,
@@ -15,6 +16,7 @@ from ...data.progress import (
     record_binary_hunk_skipped,
     record_gitlink_hunk_skipped,
     record_hunk_skipped,
+    record_mode_change_skipped,
     record_rename_hunk_skipped,
     record_text_deletion_hunk_skipped,
 )
@@ -66,6 +68,14 @@ def _skip_loaded_selected_change(
     """Skip one loaded selected change."""
     patch_hash = read_text_file_contents(get_selected_hunk_hash_file_path()).strip()
     blocklist_path = get_block_list_file_path()
+
+    if isinstance(item, FileModeChange):
+        append_lines_to_file(blocklist_path, [patch_hash])
+        record_mode_change_skipped(item, patch_hash)
+        if not quiet:
+            print(_("✓ File mode skipped: {file}").format(file=item.path()), file=sys.stderr)
+        finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
+        return
 
     if isinstance(item, RenameChange):
         append_lines_to_file(blocklist_path, [patch_hash])

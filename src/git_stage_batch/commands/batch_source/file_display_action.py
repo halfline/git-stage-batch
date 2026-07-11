@@ -9,7 +9,7 @@ from ...batch.atomic_file_changes import (
     gitlink_change_from_batch_file_metadata,
 )
 from ...batch.file_display import render_batch_file_display
-from ...core.models import LineLevelChange
+from ...core.models import FileModeChange, LineLevelChange
 from ...data.selected_change.batch_file_cache import cache_rendered_batch_file_display
 from ...data.batch_selected_changes import (
     compute_batch_binary_fingerprint,
@@ -24,6 +24,7 @@ from ...data.file_review.state import (
 from ...data.selected_change.file_changes import (
     cache_binary_file_change,
     cache_gitlink_change,
+    cache_mode_change,
 )
 from ...data.selected_change.lifecycle import clear_selected_change_state_files
 from ...data.selected_change.store import SelectedChangeKind
@@ -39,6 +40,7 @@ from ...output.hunk import print_line_level_changes
 from ...output.patch import (
     print_binary_file_change,
     print_gitlink_change,
+    print_file_mode_change,
 )
 
 
@@ -68,6 +70,25 @@ def show_batch_source_file_display(
 ) -> None:
     """Show one file from a batch source selection."""
     file_meta = files[file_path]
+    if file_meta.get("file_type") == "mode":
+        if selected_ids:
+            exit_with_error(_("Cannot use --lines with file mode actions."))
+        if page is not None:
+            exit_with_error(_("File review pages are only available for text changes."))
+        mode_change = FileModeChange(
+            file_path,
+            file_meta["old_mode"],
+            file_meta["new_mode"],
+        )
+        if selectable:
+            clear_selected_change_state_files()
+            cache_mode_change(
+                mode_change,
+                kind=SelectedChangeKind.BATCH_MODE,
+                batch_name=batch_name,
+            )
+        print_file_mode_change(mode_change)
+        return
     binary_change = binary_change_from_batch_file_metadata(
         file_path,
         file_meta,

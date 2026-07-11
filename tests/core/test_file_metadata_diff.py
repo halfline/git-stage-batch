@@ -35,3 +35,15 @@ def test_rename_paths_decode_git_quoting():
             b'rename to "new\\nname\\377"',
         ]
     ) == ("old\tname\udcff", "new\nname\udcff")
+
+
+def test_executable_mode_change_accepts_only_regular_file_transitions():
+    assert file_metadata_diff.executable_mode_change(
+        [b"old mode 100644", b"new mode 100755"]
+    ) == ("100644", "100755")
+    assert file_metadata_diff.executable_mode_change(
+        [b"old mode 100755", b"new mode 100644"]
+    ) == ("100755", "100644")
+    assert file_metadata_diff.executable_mode_change(
+        [b"old mode 100644", b"new mode 120000"]
+    ) is None

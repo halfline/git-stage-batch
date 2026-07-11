@@ -6,6 +6,7 @@ import sys
 
 from ...batch.binary_file_storage import add_binary_file_to_batch
 from ...batch.gitlink_storage import add_gitlink_to_batch
+from ...batch.file_mode_storage import add_file_mode_to_batch
 from ...batch.ownership import BatchOwnership
 from ...batch.text_file_storage import (
     add_file_to_batch,
@@ -13,14 +14,16 @@ from ...batch.text_file_storage import (
 from ...core.hashing import (
     compute_binary_file_hash,
     compute_gitlink_change_hash,
+    compute_file_mode_change_hash,
     compute_text_file_deletion_hash,
 )
-from ...core.models import BinaryFileChange, GitlinkChange, TextFileDeletionChange
+from ...core.models import BinaryFileChange, FileModeChange, GitlinkChange, TextFileDeletionChange
 from ...core.text_lifecycle import TextFileChangeType
 from ...data.file_modes import detect_file_mode
 from ...data.progress import (
     record_binary_hunk_skipped,
     record_gitlink_hunk_skipped,
+    record_mode_change_skipped,
     record_text_deletion_hunk_skipped,
 )
 from ...data.session import snapshot_file_if_untracked
@@ -113,6 +116,28 @@ def include_binary_to_batch(
             file=sys.stderr,
         )
 
+    finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
+
+
+def include_mode_to_batch(
+    batch_name: str,
+    mode_change: FileModeChange,
+    *,
+    quiet: bool = False,
+    auto_advance: bool | None = None,
+) -> None:
+    """Save one executable-mode action to a batch without content claims."""
+    patch_hash = compute_file_mode_change_hash(mode_change)
+    add_file_mode_to_batch(batch_name, mode_change)
+    append_lines_to_file(get_block_list_file_path(), [patch_hash])
+    record_mode_change_skipped(mode_change, patch_hash)
+    if not quiet:
+        print(
+            _("Included file mode '{file}' to batch '{batch}'").format(
+                file=mode_change.path(), batch=batch_name
+            ),
+            file=sys.stderr,
+        )
     finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
 
 

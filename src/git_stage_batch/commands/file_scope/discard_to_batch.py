@@ -15,7 +15,7 @@ from ...batch.validation import batch_exists
 from ...core.buffer import LineBuffer
 from ...core.diff_parser import acquire_unified_diff, build_line_changes_from_patch_lines
 from ...core.hashing import compute_stable_hunk_hash_from_lines
-from ...core.models import BinaryFileChange, GitlinkChange, RenameChange, TextFileDeletionChange
+from ...core.models import BinaryFileChange, FileModeChange, GitlinkChange, RenameChange, TextFileDeletionChange
 from ...data.file_modes import detect_file_mode_from_root
 from ...data.file_tracking import auto_add_untracked_files
 from ...data.live_diff import stream_live_git_diff
@@ -226,6 +226,8 @@ def _collect_text_file_discard_inputs(
         )
     ) as patches:
         for patch in patches:
+            if isinstance(patch, FileModeChange):
+                continue
             if isinstance(patch, RenameChange):
                 continue
 

@@ -31,6 +31,7 @@ def clear_selected_batch_state_after_batch_mutation(
         SelectedChangeKind.BATCH_FILE,
         SelectedChangeKind.BATCH_BINARY,
         SelectedChangeKind.BATCH_GITLINK,
+        SelectedChangeKind.BATCH_MODE,
     ):
         return
 
@@ -51,6 +52,9 @@ def clear_selected_batch_state_after_batch_mutation(
             dest_batch=dest_batch,
             selected_file=selected_file,
         )
+        return
+    if selected_kind == SelectedChangeKind.BATCH_MODE:
+        clear_selected_change_state_files()
         return
 
     review_state = read_last_file_review_state()

@@ -5,7 +5,7 @@ from __future__ import annotations
 import shlex
 from dataclasses import dataclass
 
-from ..core.models import BinaryFileChange, GitlinkChange, LineLevelChange, RenameChange, TextFileDeletionChange
+from ..core.models import BinaryFileChange, FileModeChange, GitlinkChange, LineLevelChange, RenameChange, TextFileDeletionChange
 from ..i18n import _
 from .file_review_model_builder import build_file_review_model
 
@@ -23,6 +23,7 @@ class FileReviewListEntry:
     binary_change_type: str | None = None
     gitlink_change_type: str | None = None
     text_deletion: bool = False
+    mode_change: bool = False
     rename_old_path: str | None = None
     rename_new_path: str | None = None
 
@@ -75,6 +76,19 @@ def make_gitlink_file_review_list_entry(gitlink_change: GitlinkChange) -> FileRe
         deletion_count=0,
         page_count=1,
         gitlink_change_type=gitlink_change.change_type,
+    )
+
+
+def make_mode_file_review_list_entry(mode_change: FileModeChange) -> FileReviewListEntry:
+    """Build a list entry from an executable-mode action."""
+    return FileReviewListEntry(
+        path=mode_change.path(),
+        change_count=1,
+        changed_line_count=0,
+        addition_count=0,
+        deletion_count=0,
+        page_count=1,
+        mode_change=True,
     )
 
 
@@ -140,6 +154,12 @@ def print_file_review_list(
                 f"{index}. {entry.path.ljust(path_width)}  "
                 f"{entry.change_count} {change_word} · "
                 f"text file deleted · "
+                f"{entry.page_count} {page_word}"
+            )
+        elif entry.mode_change:
+            print(
+                f"{index}. {entry.path.ljust(path_width)}  "
+                f"{entry.change_count} {change_word} · executable mode · "
                 f"{entry.page_count} {page_word}"
             )
         elif entry.rename_old_path is not None and entry.rename_new_path is not None:

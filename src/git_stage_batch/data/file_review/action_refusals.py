@@ -41,6 +41,7 @@ def refuse_live_action_for_batch_selection(action: _records.FileReviewAction | s
         SelectedChangeKind.BATCH_FILE,
         SelectedChangeKind.BATCH_BINARY,
         SelectedChangeKind.BATCH_GITLINK,
+        SelectedChangeKind.BATCH_MODE,
     ):
         return False
 
@@ -125,6 +126,7 @@ def refuse_ambiguous_bare_action_after_partial_file_review(
             SelectedChangeKind.BATCH_FILE,
             SelectedChangeKind.BATCH_BINARY,
             SelectedChangeKind.BATCH_GITLINK,
+            SelectedChangeKind.BATCH_MODE,
         ):
             _raise_stale_or_mismatched_file_review(review_state)
         clear_last_file_review_state()

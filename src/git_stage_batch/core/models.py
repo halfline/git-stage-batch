@@ -101,6 +101,19 @@ class RenameChange:
 
 
 @dataclass(frozen=True)
+class FileModeChange:
+    """Atomic executable-bit change for one regular repository file."""
+
+    file_path: str
+    old_mode: str
+    new_mode: str
+
+    def path(self) -> str:
+        """Return the repository path affected by this mode change."""
+        return self.file_path
+
+
+@dataclass(frozen=True)
 class TextFileDeletionChange:
     """Represents an atomic whole-text-file deletion."""
     old_path: str

@@ -7,6 +7,7 @@ import sys
 from . import action_selection as _action_selection
 from . import atomic_unit_refusals as _atomic_unit_refusals
 from . import binary_file_actions as _binary_file_actions
+from . import file_mode_actions as _file_mode_actions
 from . import text_file_actions as _text_file_actions
 from . import text_plan_builders as _text_plan_builders
 from ...batch.metadata_validation import get_validated_baseline_commit
@@ -69,6 +70,9 @@ def execute_discard_action(
 
         for file_path, file_meta in files.items():
             try:
+                if _file_mode_actions.is_file_mode_action(file_meta):
+                    _file_mode_actions.apply_old_file_mode(file_path, file_meta)
+                    continue
                 if file_meta.get("file_type") == "binary":
                     snapshot_file_if_untracked(file_path)
                     binary_action = (

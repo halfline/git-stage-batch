@@ -9,6 +9,7 @@ from ...data.change_freshness import text_deletion_change_is_batched
 from ...data.file_change_display import (
     render_binary_file_change,
     render_gitlink_change,
+    render_mode_change,
     render_rename_change,
     render_text_deletion_change,
 )
@@ -23,6 +24,7 @@ from ...output.file_review_list import (
     make_binary_file_review_list_entry,
     make_file_review_list_entry,
     make_gitlink_file_review_list_entry,
+    make_mode_file_review_list_entry,
     make_rename_file_review_list_entry,
     make_text_deletion_file_review_list_entry,
     print_file_review_list,
@@ -37,6 +39,10 @@ def show_live_file_list(files: list[str], *, selectable: bool = True) -> None:
         line_changes = render_file_as_single_hunk(file_path)
         if line_changes is not None:
             entries.append(make_file_review_list_entry(line_changes))
+            continue
+        mode_change = render_mode_change(file_path)
+        if mode_change is not None:
+            entries.append(make_mode_file_review_list_entry(mode_change))
             continue
         deletion_change = render_text_deletion_change(file_path)
         if deletion_change is not None and not text_deletion_change_is_batched(

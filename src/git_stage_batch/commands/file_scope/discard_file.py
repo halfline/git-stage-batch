@@ -7,6 +7,7 @@ import sys
 from ...core.diff_parser import acquire_unified_diff
 from ...core.hashing import (
     compute_binary_file_hash,
+    compute_file_mode_change_hash,
     compute_gitlink_change_hash,
     compute_rename_change_hash,
     compute_stable_hunk_hash_from_lines,
@@ -15,6 +16,7 @@ from ...core.hashing import (
 from ...core.models import BinaryFileChange, RenameChange, TextFileDeletionChange
 from ...data.file_change_display import (
     render_gitlink_change,
+    render_mode_change,
     render_rename_change,
     render_text_deletion_change,
 )
@@ -32,6 +34,7 @@ from ...utils.paths import get_block_list_file_path, get_context_lines
 from ..selection.action_completion import finish_selected_change_action
 from ..selection.selected_change_discarding import (
     discard_gitlink_change,
+    discard_file_mode_change,
     discard_rename_change,
     discard_text_deletion_change,
 )
@@ -115,6 +118,16 @@ def discard_file_changes(
                 ),
                 file=sys.stderr,
             )
+            finish_selected_change_action(quiet=False, auto_advance=auto_advance)
+            return
+
+        mode_change = render_mode_change(target_file)
+        if mode_change is not None:
+            patch_hash = compute_file_mode_change_hash(mode_change)
+            discard_file_mode_change(mode_change)
+            append_lines_to_file(blocklist_path, [patch_hash])
+            record_hunk_discarded(patch_hash)
+            print(_("✓ File mode discarded: {}").format(target_file), file=sys.stderr)
             finish_selected_change_action(quiet=False, auto_advance=auto_advance)
             return
 

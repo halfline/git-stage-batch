@@ -17,6 +17,7 @@ from ...batch.content_commits import (
     update_batch_commit,
 )
 from ...batch.binary_file_storage import add_binary_file_to_batch
+from ...batch.file_mode_storage import add_file_mode_to_batch
 from ...batch.validation import batch_exists, validate_batch_name
 from ...core.buffer import LineBuffer
 from ...core.text_lifecycle import TextFileChangeType, normalized_text_change_type
@@ -33,7 +34,7 @@ from ...utils.git_index import (
 )
 from ...utils.git_object_io import create_git_blob
 from ...utils.paths import get_batch_metadata_file_path
-from .sift_results import SiftedBinaryFileResult, SiftedFileResult
+from .sift_results import SiftedBinaryFileResult, SiftedFileResult, SiftedModeFileResult
 
 
 RetainedSiftedFile = tuple[str, dict, SiftedFileResult]
@@ -159,6 +160,10 @@ def add_sifted_file_to_batch(
             file_mode=file_mode,
             file_buffer_override=result.target_buffer,
         )
+        return
+
+    if isinstance(result, SiftedModeFileResult):
+        add_file_mode_to_batch(batch_name, result.mode_change)
         return
 
     add_sifted_text_file_to_batch(

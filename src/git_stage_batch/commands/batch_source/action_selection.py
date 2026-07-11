@@ -212,6 +212,10 @@ def _refuse_line_selection_for_atomic_files(
     file_meta = files[file_path]
     if file_meta.get("file_type") == "binary":
         exit_with_error(binary_message)
+    if file_meta.get("file_type") == "mode":
+        exit_with_error(
+            _("Cannot use --lines with file mode actions. Use the whole action instead.")
+        )
     if is_batch_submodule_pointer(file_meta):
         refuse_batch_submodule_pointer_lines(submodule_action)
 

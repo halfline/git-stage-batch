@@ -30,6 +30,7 @@ from git_stage_batch.data.selected_change.clear_reasons import (
     selected_change_was_cleared_by_auto_advance_disabled,
 )
 from git_stage_batch.exceptions import CommandError, NoMoreHunks
+from git_stage_batch.utils.paths import get_state_directory_path
 from git_stage_batch.commands.again import command_again
 from tests.ownership_metadata_helpers import (
     reject_materialized_ownership_metadata as _reject_materialized_ownership_metadata,
@@ -68,6 +69,15 @@ def temp_git_repo(tmp_path, monkeypatch):
 
 class TestCommandInclude:
     """Tests for include command."""
+
+    def test_include_to_invalid_batch_does_not_create_session_state(
+        self,
+        temp_git_repo,
+    ):
+        with pytest.raises(CommandError):
+            command_include_to_batch("invalid^name")
+
+        assert not get_state_directory_path().exists()
 
     def test_include_stages_hunk(self, temp_git_repo, capsys):
         """Test that include stages a hunk."""

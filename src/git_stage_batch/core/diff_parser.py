@@ -263,6 +263,12 @@ class _UnifiedDiffParserBuildContext:
                     is_rename = _file_metadata_diff.metadata_indicates_rename(
                         metadata_lines
                     )
+                    if is_rename:
+                        renamed_paths = _file_metadata_diff.rename_paths(
+                            metadata_lines
+                        )
+                        if renamed_paths is not None:
+                            old_path, new_path = renamed_paths
                     is_deleted_file = (
                         _file_metadata_diff.metadata_indicates_deleted_file(
                             metadata_lines

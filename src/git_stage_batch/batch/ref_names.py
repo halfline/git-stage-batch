@@ -1,6 +1,8 @@
-"""Git ref namespace constants for batch storage."""
+"""Compatibility import for saved batch state reference names."""
 
-GIT_STAGE_BATCH_REF_NAMESPACE = "refs/git-stage-batch"
-BATCH_CONTENT_REF_PREFIX = f"{GIT_STAGE_BATCH_REF_NAMESPACE}/batches/"
-BATCH_STATE_REF_PREFIX = f"{GIT_STAGE_BATCH_REF_NAMESPACE}/state/"
-LEGACY_BATCH_REF_PREFIX = "refs/batches/"
+import sys as _sys
+
+from .state import reference_names as _implementation
+
+
+_sys.modules[__name__] = _implementation

@@ -336,6 +336,17 @@ class _UnifiedDiffParserBuildContext:
                         continue
                     new_file_line = plus_line_stripped
 
+                    patch_old_path = _patch_headers.old_file_path_from_header(
+                        old_file_line
+                    )
+                    patch_new_path = _patch_headers.new_file_path_from_header(
+                        new_file_line
+                    )
+                    if _patch_headers.path_names_repository_file(patch_old_path):
+                        old_path = patch_old_path
+                    if _patch_headers.path_names_repository_file(patch_new_path):
+                        new_path = patch_new_path
+
                     if is_rename:
                         yield RenameChange(old_path=old_path, new_path=new_path)
 

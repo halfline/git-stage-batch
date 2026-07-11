@@ -241,3 +241,81 @@ def test_phase_preparation_and_cleanup_are_outside_the_timer(monkeypatch):
     assert phase["seconds"]["median"] == pytest.approx(0.25)
     assert phase["samples"]["seconds"] == [pytest.approx(0.25)]
     assert phase["samples"]["tracemalloc_peak_bytes"] == [123]
+
+
+def test_report_comparison_flags_time_and_memory_regressions():
+    """Comparison should align phase measurements rather than sample ordering."""
+    def report(seconds, memory, *, dimensions=None, python_version="3.10.0"):
+        return {
+            "schema_version": 1,
+            "suite": "matching-and-attribution",
+            "mode": "quick",
+            "metadata": {
+                "seed": 42,
+                "warmups": 1,
+                "repeats": 3,
+                "memory_repeats": 3,
+                "clock": "time.perf_counter",
+                "timing_metric": "perf_counter without tracemalloc",
+                "memory_metric": "tracemalloc peak Python allocations",
+                "python_version": python_version,
+                "python_implementation": "CPython",
+                "git_version": "git version 2.0",
+                "platform": "test-platform",
+                "working_tree_dirty": False,
+            },
+            "cases": [
+                {
+                    "name": "case",
+                    "dimensions": dimensions or {"source_lines": 10},
+                    "phases": {
+                        "mapping": {
+                            "seconds": {"median": seconds},
+                            "tracemalloc_peak_bytes": {"median": memory},
+                        }
+                    },
+                }
+            ],
+        }
+
+    comparison = benchmark_matching.compare_reports(
+        report(1.0, 1_000),
+        report(1.25, 1_250),
+        threshold_percent=20.0,
+    )
+
+    assert comparison["regressions"] == 2
+    assert {item["metric"] for item in comparison["measurements"]} == {
+        "seconds",
+        "tracemalloc_peak_bytes",
+    }
+    assert all(
+        item["change_percent"] == pytest.approx(25.0)
+        for item in comparison["measurements"]
+    )
+    assert comparison["environment_warnings"] == []
+
+    environment_mismatch = benchmark_matching.compare_reports(
+        report(1.0, 1_000),
+        report(1.0, 1_000, python_version="3.13.0"),
+    )
+    assert environment_mismatch["environment_warnings"] == [
+        {
+            "field": "python_version",
+            "before": "3.10.0",
+            "after": "3.13.0",
+        }
+    ]
+
+    with pytest.raises(ValueError, match="different input dimensions"):
+        benchmark_matching.compare_reports(
+            report(1.0, 1_000),
+            report(1.0, 1_000, dimensions={"source_lines": 20}),
+        )
+
+    with pytest.raises(ValueError, match="finite and non-negative"):
+        benchmark_matching.compare_reports(
+            report(1.0, 1_000),
+            report(1.0, 1_000),
+            threshold_percent=float("nan"),
+        )

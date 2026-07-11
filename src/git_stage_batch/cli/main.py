@@ -17,7 +17,14 @@ from .argument_parser import parse_command_line
 from .pager import pager_output, should_page_output
 
 
-_READ_ONLY_COMMANDS = frozenset({"check-unstaged", "list", "show", "status", "validate"})
+_READ_ONLY_COMMANDS = frozenset({
+    "check-unstaged",
+    "journal",
+    "list",
+    "show",
+    "status",
+    "validate",
+})
 
 
 def _command_may_mutate(args) -> bool:

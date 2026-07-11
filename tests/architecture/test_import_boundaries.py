@@ -256,8 +256,8 @@ def test_batch_source_buffers_own_session_start_loading():
         "git_stage_batch.batch.source_snapshots",
         fromlist=["source_snapshots"],
     )
-    source_buffers_path = SRC_ROOT / "batch" / "source_buffers.py"
-    source_snapshots_path = SRC_ROOT / "batch" / "source_snapshots.py"
+    source_buffers_path = _batch_module_path("source/buffers.py", "source_buffers.py")
+    source_snapshots_path = _batch_module_path("source/snapshots.py", "source_snapshots.py")
     public_names = {
         "load_saved_session_file_as_buffer",
         "read_session_file_buffers",
@@ -285,7 +285,7 @@ def test_batch_source_buffers_own_session_start_loading():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.source_snapshots":
+            if imported_module in _batch_module_names("source_snapshots", "source.snapshots"):
                 stale_imports = imported_names & public_names
                 if stale_imports:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -293,7 +293,7 @@ def test_batch_source_buffers_own_session_start_loading():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.source_buffers":
+            if imported_module not in _batch_module_names("source_buffers", "source.buffers"):
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -314,7 +314,7 @@ def test_batch_source_cache_owns_session_mapping():
         "git_stage_batch.batch.source_snapshots",
         fromlist=["source_snapshots"],
     )
-    source_cache_path = SRC_ROOT / "batch" / "source_cache.py"
+    source_cache_path = _batch_module_path("source/cache.py", "source_cache.py")
     public_names = {
         "get_batch_source_for_file",
         "load_session_batch_sources",
@@ -322,8 +322,8 @@ def test_batch_source_cache_owns_session_mapping():
     }
     expected_imports = {
         SRC_ROOT / "batch" / "binary_file_storage.py": public_names,
-        SRC_ROOT / "batch" / "source_annotation.py": {"get_batch_source_for_file"},
-        SRC_ROOT / "batch" / "source_refresh.py": {
+        _batch_module_path("source/annotation.py", "source_annotation.py"): {"get_batch_source_for_file"},
+        _batch_module_path("source/refresh.py", "source_refresh.py"): {
             "load_session_batch_sources",
             "save_session_batch_sources",
         },
@@ -348,7 +348,7 @@ def test_batch_source_cache_owns_session_mapping():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.source_snapshots":
+            if imported_module in _batch_module_names("source_snapshots", "source.snapshots"):
                 stale_imports = imported_names & public_names
                 if stale_imports:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -356,7 +356,7 @@ def test_batch_source_cache_owns_session_mapping():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.source_cache":
+            if imported_module not in _batch_module_names("source_cache", "source.cache"):
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -377,7 +377,7 @@ def test_batch_source_annotation_owns_line_annotation():
         "git_stage_batch.batch.source_annotation",
         fromlist=["source_annotation"],
     )
-    source_annotation_path = SRC_ROOT / "batch" / "source_annotation.py"
+    source_annotation_path = _batch_module_path("source/annotation.py", "source_annotation.py")
     public_names = {
         "annotate_with_batch_source",
         "annotate_with_batch_source_lines",
@@ -447,7 +447,7 @@ def test_batch_source_annotation_owns_line_annotation():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.source_annotation":
+            if imported_module not in _batch_module_names("source_annotation", "source.annotation"):
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -9035,8 +9035,8 @@ def test_selected_line_source_refresh_uses_public_api():
         "git_stage_batch.batch.selected_line_source_refresh",
         fromlist=["selected_line_source_refresh"],
     )
-    source_refresh_path = SRC_ROOT / "batch" / "source_refresh.py"
-    line_refresh_path = SRC_ROOT / "batch" / "selected_line_source_refresh.py"
+    source_refresh_path = _batch_module_path("source/refresh.py", "source_refresh.py")
+    line_refresh_path = _batch_module_path("source/selected_line_refresh.py", "selected_line_source_refresh.py")
     public_names = {
         "refresh_selected_lines_against_new_source",
         "refresh_selected_lines_against_source_lines",
@@ -9074,7 +9074,7 @@ def test_selected_line_source_refresh_uses_public_api():
         imported_public_names = set()
 
         for imported_module, node in imports:
-            if imported_module == "git_stage_batch.batch.source_refresh":
+            if imported_module in _batch_module_names("source_refresh", "source.refresh"):
                 imported_names = {alias.name for alias in node.names}
                 disallowed_names = imported_names & old_source_refresh_names
                 if disallowed_names:
@@ -9083,7 +9083,7 @@ def test_selected_line_source_refresh_uses_public_api():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.selected_line_source_refresh":
+            if imported_module not in _batch_module_names("selected_line_source_refresh", "source.selected_line_refresh"):
                 continue
 
             imported_names = {alias.name for alias in node.names}
@@ -9162,7 +9162,7 @@ def test_batch_ownership_update_owns_prepared_update_api():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.source_refresh":
+            if imported_module in _batch_module_names("source_refresh", "source.refresh"):
                 stale_imports = imported_names & old_source_refresh_names
                 if stale_imports:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -9206,8 +9206,8 @@ def test_batch_lineage_uses_public_data_types():
         SRC_ROOT / "batch" / "ownership/remapping.py": {
             "BatchSourceLineage",
         },
-        SRC_ROOT / "batch" / "source_advancement.py": public_names,
-        SRC_ROOT / "batch" / "selected_line_source_refresh.py": {
+        _batch_module_path("source/advancement.py", "source_advancement.py"): public_names,
+        _batch_module_path("source/selected_line_refresh.py", "selected_line_source_refresh.py"): {
             "BatchSourceLineage",
         },
     }
@@ -9274,7 +9274,7 @@ def test_batch_ownership_remapping_owns_public_helpers():
         / "commands"
         / "selection"
         / "discard_line_replacement.py": lineage_remap_names,
-        SRC_ROOT / "batch" / "source_advancement.py": lineage_remap_names,
+        _batch_module_path("source/advancement.py", "source_advancement.py"): lineage_remap_names,
     }
     violations = []
 
@@ -9344,7 +9344,7 @@ def test_batch_ownership_translation_owns_public_helpers():
         "_translate_lines_to_batch_ownership",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "source_refresh.py": {
+        _batch_module_path("source/refresh.py", "source_refresh.py"): {
             "detect_stale_batch_source_for_selection",
         },
         SRC_ROOT / "batch" / "ownership_update.py": {
@@ -10304,7 +10304,7 @@ def test_batch_source_advancement_uses_public_entry_helpers():
         / "discard_line_replacement.py": {
             "advance_source_lines_preserving_existing_presence",
         },
-        SRC_ROOT / "batch" / "source_refresh.py": {
+        _batch_module_path("source/refresh.py", "source_refresh.py"): {
             "advance_batch_source_for_file_with_provenance",
         },
         SRC_ROOT / "commands" / "selection" / "consumed_selection_recording.py": {
@@ -10318,14 +10318,14 @@ def test_batch_source_advancement_uses_public_entry_helpers():
     assert private_names.isdisjoint(vars(source_advancement))
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == SRC_ROOT / "batch" / "source_advancement.py":
+        if path == _batch_module_path("source/advancement.py", "source_advancement.py"):
             continue
 
         imports = _import_from_nodes(path)
         imported_public_names = set()
 
         for imported_module, node in imports:
-            if imported_module != "git_stage_batch.batch.source_advancement":
+            if imported_module not in _batch_module_names("source_advancement", "source.advancement"):
                 continue
 
             imported_names = {alias.name for alias in node.names}
@@ -11803,7 +11803,7 @@ def test_batch_realized_entry_storage_owns_compact_storage():
             "RealizedEntries",
             "backing_content_sequence",
         },
-        SRC_ROOT / "batch" / "source_advancement.py": {
+        _batch_module_path("source/advancement.py", "source_advancement.py"): {
             "realized_entry_content_chunks",
         },
     }
@@ -12011,7 +12011,7 @@ def test_batch_line_mapping_owns_public_mapping_type():
         SRC_ROOT / "batch" / "ownership/remapping.py": public_names,
         SRC_ROOT / "batch" / "merge/presence_constraints.py": public_names,
         SRC_ROOT / "batch" / "realization/mapping.py": public_names,
-        SRC_ROOT / "batch" / "source_annotation.py": public_names,
+        _batch_module_path("source/annotation.py", "source_annotation.py"): public_names,
     }
     violations = []
 
@@ -15664,7 +15664,7 @@ def test_batch_source_candidate_selectors_own_action_selector_validation():
                 and "candidate_selectors" in imported_names
             ):
                 command_selector_imports[path] = True
-            if imported_module == "git_stage_batch.batch.source_selector":
+            if imported_module in _batch_module_names("source_selector", "source.selector"):
                 direct_selector_imports[path] |= (
                     imported_names & old_source_selector_names
                 )
@@ -16033,7 +16033,7 @@ def test_batch_presence_constraints_own_presence_entry_helpers():
         "realized_entry_content_chunks",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "source_advancement.py": {
+        _batch_module_path("source/advancement.py", "source_advancement.py"): {
             "apply_presence_constraints",
         },
         SRC_ROOT / "batch" / "realized_file_content.py": {

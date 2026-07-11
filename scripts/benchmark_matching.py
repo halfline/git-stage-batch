@@ -1,198 +1,675 @@
 #!/usr/bin/env python3
-"""Benchmark structural matching storage and resource usage."""
+"""Benchmark public structural matching workflows."""
 
 from __future__ import annotations
 
 import argparse
-from collections.abc import Iterable
-from contextlib import contextmanager
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+import gc
+import hashlib
 import json
-import os
+import math
 from pathlib import Path
-import resource
+import platform
+import random
+import statistics
+import subprocess
 import sys
 import time
 import tracemalloc
-from typing import Any
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-
-from git_stage_batch.batch import match as match_module
-from git_stage_batch.batch.match import LineMapping
-from git_stage_batch.batch.match_storage import MatcherWorkspace
-from git_stage_batch.editor import EditorBuffer
+from typing import Any, TypeVar
 
 
-class _MeasuredWorkspace(MatcherWorkspace):
-    """Matcher workspace that reports allocation counters on close."""
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-    recorder: "_WorkspaceRecorder | None" = None
-
-    def close(self) -> None:
-        recorder = self.recorder
-        if recorder is not None:
-            recorder.observe_workspace(self)
-        super().close()
-
-
-class _WorkspaceRecorder:
-    """Collect matcher workspace metrics across recursive matching."""
-
-    def __init__(self) -> None:
-        self.high_water_bytes = 0
-        self.total_allocated_bytes = 0
-        self.workspace_count = 0
-        self.candidate_count = 0
-
-    def observe_workspace(self, workspace: MatcherWorkspace) -> None:
-        self.workspace_count += 1
-        self.high_water_bytes = max(
-            self.high_water_bytes,
-            workspace.high_water_bytes,
-        )
-        self.total_allocated_bytes += workspace.total_allocated_bytes
+from git_stage_batch import __version__
+from git_stage_batch.batch.attribution_units import (
+    AttributionUnit,
+    FileComparison,
+    build_file_comparison_from_lines,
+    enumerate_units_from_file_comparison,
+)
+from git_stage_batch.batch.line_mapping import LineMapping
+from git_stage_batch.batch.match import match_lines
+from git_stage_batch.core.buffer import LineBuffer
 
 
-def _open_fd_count() -> int | None:
-    fd_path = "/proc/self/fd"
-    if not os.path.isdir(fd_path):
-        return None
-    return len(os.listdir(fd_path))
+SCHEMA_VERSION = 1
+DEFAULT_SEED = 20260711
+FIXTURE_CHUNK_SIZE = 64 * 1024
+_StateT = TypeVar("_StateT")
 
 
-def _rss_bytes() -> int | None:
-    try:
-        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
-    except Exception:
-        return None
+@dataclass(frozen=True)
+class MatchingFixture:
+    """Prepared text inputs whose construction is outside measured phases."""
+
+    source_chunks: tuple[bytes, ...]
+    target_chunks: tuple[bytes, ...]
+    source_line_count: int
+    target_line_count: int
+    source_byte_count: int
+    target_byte_count: int
 
 
-def _line_span_bytes(buffer: EditorBuffer) -> int:
-    line_spans = getattr(buffer, "_line_spans", None)
-    records = getattr(line_spans, "_records", None)
-    byte_count = getattr(records, "byte_count", 0)
-    return byte_count if isinstance(byte_count, int) else 0
+@dataclass(frozen=True)
+class CaseDefinition:
+    """One deterministic benchmark case and its mode-specific dimensions."""
+
+    name: str
+    description: str
+    kind: str
+    quick_size: int
+    full_size: int | None
 
 
-def _line_payloads(pattern: str, line_count: int) -> tuple[Iterable[bytes], Iterable[bytes]]:
-    if pattern == "identical":
-        source = [f"line {index}\n".encode() for index in range(line_count)]
-        return source, list(source)
 
-    if pattern == "unique-inserted-prefix":
-        source = [f"line {index}\n".encode() for index in range(line_count)]
-        target = [f"extra {index}\n".encode() for index in range(line_count // 10)]
-        target.extend(source)
-        return source, target
+@dataclass
+class _BufferLoadingState:
+    """Resources created by one measured buffer-loading operation."""
 
-    if pattern == "repeated":
-        source = [b"same\n" for _ in range(line_count)]
-        target = list(source)
-        return source, target
-
-    if pattern == "reversed-unique":
-        source = [f"line {index}\n".encode() for index in range(line_count)]
-        return source, list(reversed(source))
-
-    raise ValueError(f"unknown pattern: {pattern}")
+    fixture: MatchingFixture
+    source: LineBuffer | None = None
+    target: LineBuffer | None = None
 
 
-@contextmanager
-def _instrument_matcher(recorder: _WorkspaceRecorder):
-    original_workspace = match_module.MatcherWorkspace
-    original_lis = match_module._longest_increasing_subsequence_records
+@dataclass
+class _MappingState:
+    """Prepared buffers and the mapping retained until measurement ends."""
 
-    def measured_lis(pairs, target_start, target_end, workspace):
-        recorder.candidate_count += len(pairs)
-        return original_lis(pairs, target_start, target_end, workspace)
-
-    _MeasuredWorkspace.recorder = recorder
-    match_module.MatcherWorkspace = _MeasuredWorkspace
-    match_module._longest_increasing_subsequence_records = measured_lis
-    try:
-        yield
-    finally:
-        match_module._longest_increasing_subsequence_records = original_lis
-        match_module.MatcherWorkspace = original_workspace
-        _MeasuredWorkspace.recorder = None
+    source: LineBuffer
+    target: LineBuffer
+    mapping: LineMapping | None = None
 
 
-def _mapping_source_to_target_bytes(mapping: LineMapping) -> int:
-    source_bytes = getattr(mapping.source_to_target, "byte_count", 0)
-    target_bytes = getattr(mapping.target_to_source, "byte_count", 0)
-    return (
-        (source_bytes if isinstance(source_bytes, int) else 0)
-        + (target_bytes if isinstance(target_bytes, int) else 0)
+@dataclass
+class _UnitEnumerationState:
+    """Prepared comparison and units retained until measurement ends."""
+
+    source: LineBuffer
+    target: LineBuffer
+    comparison: FileComparison
+    units: dict[str, AttributionUnit] | None = None
+
+
+
+CASES = (
+    CaseDefinition(
+        "small-interactive",
+        "A short file with nearby insertions, replacements, and deletions.",
+        "text",
+        80,
+        400,
+    ),
+    CaseDefinition(
+        "repeated-lines",
+        "Ambiguous repeated content separated by stable anchors.",
+        "text",
+        300,
+        5_000,
+    ),
+    CaseDefinition(
+        "unicode",
+        "UTF-8 text containing multibyte scripts and emoji.",
+        "text",
+        150,
+        5_000,
+    ),
+    CaseDefinition(
+        "low-similarity",
+        "Pathological source and target inputs with almost no shared lines.",
+        "text",
+        250,
+        4_000,
+    ),
+    CaseDefinition(
+        "reversed-unique",
+        "Unique lines in reverse order to stress candidate ordering.",
+        "text",
+        250,
+        4_000,
+    ),
+    CaseDefinition(
+        "binary-exclusion",
+        "NUL-containing input excluded from the text-matching pipeline.",
+        "binary",
+        32,
+        1_024,
+    ),
+    CaseDefinition(
+        "large-file",
+        "A large mostly stable file with sparse edits.",
+        "text",
+        0,
+        50_000,
+    ),
+)
+CASE_BY_NAME = {case.name: case for case in CASES}
+
+
+def _case_random(seed: int, case_name: str) -> random.Random:
+    digest = hashlib.sha256(f"{seed}:{case_name}".encode()).digest()
+    return random.Random(int.from_bytes(digest[:8], "big"))
+
+
+def _unique_lines(prefix: str, count: int) -> list[bytes]:
+    return [f"{prefix} {index:08d}\n".encode() for index in range(count)]
+
+
+def _bounded_chunks(
+    lines: Sequence[bytes],
+    chunk_size: int = FIXTURE_CHUNK_SIZE,
+) -> tuple[bytes, ...]:
+    payload = b"".join(lines)
+    return tuple(
+        payload[offset : offset + chunk_size]
+        for offset in range(0, len(payload), chunk_size)
     )
 
 
-def run_benchmark(pattern: str, line_count: int) -> dict[str, Any]:
-    source_payloads, target_payloads = _line_payloads(pattern, line_count)
-    recorder = _WorkspaceRecorder()
-    fd_before = _open_fd_count()
-    rss_before = _rss_bytes()
-    tracemalloc.start()
-    start_time = time.perf_counter()
+def _matching_fixture(
+    source_lines: Sequence[bytes],
+    target_lines: Sequence[bytes],
+) -> MatchingFixture:
+    return MatchingFixture(
+        source_chunks=_bounded_chunks(source_lines),
+        target_chunks=_bounded_chunks(target_lines),
+        source_line_count=len(source_lines),
+        target_line_count=len(target_lines),
+        source_byte_count=sum(map(len, source_lines)),
+        target_byte_count=sum(map(len, target_lines)),
+    )
 
-    with (
-        EditorBuffer.from_chunks(source_payloads) as source,
-        EditorBuffer.from_chunks(target_payloads) as target,
-    ):
-        with _instrument_matcher(recorder):
-            with match_module.match_lines(source, target) as mapping:
-                mapped_line_count = sum(1 for _ in mapping.mapped_line_pairs())
-                mapping_bytes = _mapping_source_to_target_bytes(mapping)
 
-        source_line_count = len(source)
-        target_line_count = len(target)
-        line_span_bytes = _line_span_bytes(source) + _line_span_bytes(target)
+def _chunks_sha256(chunks: Sequence[bytes]) -> str:
+    digest = hashlib.sha256()
+    for chunk in chunks:
+        digest.update(chunk)
+    return digest.hexdigest()
 
-    elapsed = time.perf_counter() - start_time
-    _, peak_heap = tracemalloc.get_traced_memory()
-    tracemalloc.stop()
-    rss_after = _rss_bytes()
-    fd_after = _open_fd_count()
 
+def build_matching_fixture(case_name: str, size: int, seed: int) -> MatchingFixture:
+    """Build one seeded matching fixture without running measured code."""
+    if size < 0:
+        raise ValueError("fixture size must be non-negative")
+    randomizer = _case_random(seed, case_name)
+
+    if case_name in {"small-interactive", "large-file"}:
+        source = _unique_lines("stable", size)
+        target = list(source)
+        edit_count = max(1, size // (20 if case_name == "small-interactive" else 1_000))
+        positions = sorted(randomizer.sample(range(size), min(edit_count, size)))
+        for number, position in enumerate(positions):
+            target[position] = f"replacement {number:08d}\n".encode()
+        insertion = min(size, size // 3)
+        target[insertion:insertion] = [b"inserted alpha\n", b"inserted beta\n"]
+        if size > 4:
+            del target[(size * 2) // 3]
+        return _matching_fixture(source, target)
+
+    if case_name == "repeated-lines":
+        source = []
+        for index in range(size):
+            source.append(
+                f"anchor {index:08d}\n".encode() if index % 23 == 0 else b"same\n"
+            )
+        target = list(source)
+        if target:
+            target.insert(len(target) // 2, b"same\n")
+            target.pop(min(len(target) - 1, len(target) // 3))
+        return _matching_fixture(source, target)
+
+    if case_name == "unicode":
+        samples = ("naive cafe", "café", "東京", "مرحبا", "🧪", "Straße")
+        source = [
+            f"{samples[index % len(samples)]} {index:08d}\n".encode("utf-8")
+            for index in range(size)
+        ]
+        target = list(source)
+        if target:
+            target[len(target) // 2] = "更新 🚀\n".encode("utf-8")
+        return _matching_fixture(source, target)
+
+    if case_name == "low-similarity":
+        source = _unique_lines("source", size)
+        target = _unique_lines("target", size)
+        if source and target:
+            target[len(target) // 2] = source[len(source) // 2]
+        return _matching_fixture(source, target)
+
+    if case_name == "reversed-unique":
+        source = _unique_lines("reversed", size)
+        return _matching_fixture(source, list(reversed(source)))
+
+    if case_name == "binary-exclusion":
+        payload = tuple(b"binary\0payload\n" for _ in range(size))
+        return _matching_fixture(payload, payload)
+
+    raise ValueError(f"{case_name!r} does not define a matching fixture")
+
+
+def _percentile(values: Sequence[float | int], percentile: float) -> float:
+    ordered = sorted(values)
+    if not ordered:
+        raise ValueError("cannot summarize an empty sample")
+    rank = max(0, math.ceil(percentile * len(ordered)) - 1)
+    return float(ordered[rank])
+
+
+def _summary(values: Sequence[float | int]) -> dict[str, float]:
     return {
-        "pattern": pattern,
-        "requested_source_lines": line_count,
-        "source_lines": source_line_count,
-        "target_lines": target_line_count,
-        "mapped_line_count": mapped_line_count,
-        "candidate_count": recorder.candidate_count,
-        "tracemalloc_peak_bytes": peak_heap,
-        "rss_before_bytes": rss_before,
-        "rss_after_bytes": rss_after,
-        "elapsed_seconds": elapsed,
-        "fd_before": fd_before,
-        "fd_after": fd_after,
-        "line_span_bytes": line_span_bytes,
-        "line_mapping_bytes": mapping_bytes,
-        "matcher_workspace_high_water_bytes": recorder.high_water_bytes,
-        "matcher_workspace_total_allocated_bytes": recorder.total_allocated_bytes,
-        "matcher_workspace_count": recorder.workspace_count,
+        "minimum": float(min(values)),
+        "median": float(statistics.median(values)),
+        "p95": _percentile(values, 0.95),
+        "maximum": float(max(values)),
     }
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--pattern",
-        choices=[
-            "identical",
-            "unique-inserted-prefix",
-            "repeated",
-            "reversed-unique",
-        ],
-        default="unique-inserted-prefix",
+def _measure_phase(
+    prepare: Callable[[], _StateT],
+    operation: Callable[[_StateT], dict[str, Any]],
+    cleanup: Callable[[_StateT], None],
+    *,
+    warmups: int,
+    repeats: int,
+) -> dict[str, Any]:
+    """Measure untraced time and traced Python allocations in separate runs."""
+    for _ in range(warmups):
+        state = prepare()
+        try:
+            operation(state)
+        finally:
+            cleanup(state)
+
+    expected_result: dict[str, Any] | None = None
+
+    def observe_result(result: dict[str, Any]) -> None:
+        nonlocal expected_result
+        if expected_result is None:
+            expected_result = result
+        elif result != expected_result:
+            raise RuntimeError("benchmark phase produced inconsistent results")
+
+    timing_samples = []
+    for _ in range(repeats):
+        state = prepare()
+        try:
+            gc.collect()
+            started = time.perf_counter()
+            result = operation(state)
+            elapsed = time.perf_counter() - started
+        finally:
+            cleanup(state)
+        observe_result(result)
+        timing_samples.append(elapsed)
+
+    memory_samples = []
+    for _ in range(min(repeats, 3)):
+        if tracemalloc.is_tracing():
+            raise RuntimeError("benchmark cannot reuse an active tracemalloc session")
+        state = prepare()
+        started_tracing = False
+        try:
+            gc.collect()
+            tracemalloc.start()
+            started_tracing = True
+            result = operation(state)
+            _, peak_memory = tracemalloc.get_traced_memory()
+        finally:
+            if started_tracing:
+                tracemalloc.stop()
+            cleanup(state)
+        observe_result(result)
+        memory_samples.append(peak_memory)
+
+    return {
+        "seconds": _summary(timing_samples),
+        "tracemalloc_peak_bytes": _summary(memory_samples),
+        "samples": {
+            "seconds": timing_samples,
+            "tracemalloc_peak_bytes": memory_samples,
+        },
+        "result": expected_result or {},
+    }
+
+
+def _open_matching_buffers(fixture: MatchingFixture) -> _MappingState:
+    source = LineBuffer.from_chunks(fixture.source_chunks)
+    target: LineBuffer | None = None
+    try:
+        target = LineBuffer.from_chunks(fixture.target_chunks)
+        # Force lazy line indexing during preparation, outside algorithm timings.
+        len(source)
+        len(target)
+    except Exception:
+        source.close()
+        if target is not None:
+            target.close()
+        raise
+    return _MappingState(source=source, target=target)
+
+
+def _close_mapping(state: _MappingState) -> None:
+    try:
+        if state.mapping is not None:
+            state.mapping.close()
+    finally:
+        try:
+            state.source.close()
+        finally:
+            state.target.close()
+
+
+def _measure_buffer_loading(state: _BufferLoadingState) -> dict[str, Any]:
+    state.source = LineBuffer.from_chunks(state.fixture.source_chunks)
+    state.target = LineBuffer.from_chunks(state.fixture.target_chunks)
+    return {
+        "source_bytes": state.source.byte_count,
+        "source_lines": len(state.source),
+        "target_bytes": state.target.byte_count,
+        "target_lines": len(state.target),
+        "uses_mapped_storage": state.source.uses_mapped_storage
+        or state.target.uses_mapped_storage,
+    }
+
+
+def _close_buffer_loading(state: _BufferLoadingState) -> None:
+    try:
+        if state.source is not None:
+            state.source.close()
+    finally:
+        if state.target is not None:
+            state.target.close()
+
+
+def _measure_mapping(state: _MappingState) -> dict[str, Any]:
+    state.mapping = match_lines(state.source, state.target)
+    return {
+        "mapped_lines": sum(1 for _ in state.mapping.mapped_line_pairs())
+    }
+
+
+def _prepare_unit_enumeration(
+    fixture: MatchingFixture,
+) -> _UnitEnumerationState:
+    mapping_state = _open_matching_buffers(fixture)
+    try:
+        comparison = build_file_comparison_from_lines(
+            "benchmark.txt",
+            baseline_lines=mapping_state.source,
+            working_tree_lines=mapping_state.target,
+        )
+    except Exception:
+        _close_mapping(mapping_state)
+        raise
+    return _UnitEnumerationState(
+        source=mapping_state.source,
+        target=mapping_state.target,
+        comparison=comparison,
     )
-    parser.add_argument("--lines", type=int, default=10000)
+
+
+def _measure_unit_enumeration(
+    state: _UnitEnumerationState,
+) -> dict[str, Any]:
+    state.units = {}
+    enumerate_units_from_file_comparison(state.comparison, state.units)
+    kinds: dict[str, int] = {}
+    for unit in state.units.values():
+        kinds[unit.kind.value] = kinds.get(unit.kind.value, 0) + 1
+    return {"units": len(state.units), "unit_kinds": kinds}
+
+
+def _close_unit_enumeration(state: _UnitEnumerationState) -> None:
+    state.units = None
+    try:
+        state.comparison.close()
+    finally:
+        try:
+            state.source.close()
+        finally:
+            state.target.close()
+
+
+def run_matching_case(
+    case: CaseDefinition,
+    size: int,
+    seed: int,
+    *,
+    warmups: int,
+    repeats: int,
+) -> dict[str, Any]:
+    """Run one text case with setup excluded from all measured phases."""
+    fixture = build_matching_fixture(case.name, size, seed)
+    dimensions = {
+        "requested_lines": size,
+        "source_lines": fixture.source_line_count,
+        "target_lines": fixture.target_line_count,
+        "source_bytes": fixture.source_byte_count,
+        "target_bytes": fixture.target_byte_count,
+        "source_chunks": len(fixture.source_chunks),
+        "target_chunks": len(fixture.target_chunks),
+        "chunk_size_bytes": FIXTURE_CHUNK_SIZE,
+        "source_sha256": _chunks_sha256(fixture.source_chunks),
+        "target_sha256": _chunks_sha256(fixture.target_chunks),
+    }
+    if case.kind == "binary":
+        contains_nul = any(b"\0" in chunk for chunk in fixture.source_chunks)
+        return {
+            "name": case.name,
+            "description": case.description,
+            "category": "exclusion",
+            "status": "excluded",
+            "exclusion_reason": "NUL-containing input is not text-matching work",
+            "dimensions": {**dimensions, "contains_nul": contains_nul},
+            "setup": {"measured": False, "seed": seed},
+            "phases": {},
+        }
+
+    phases = {
+        "buffer_loading": _measure_phase(
+            lambda: _BufferLoadingState(fixture),
+            _measure_buffer_loading,
+            _close_buffer_loading,
+            warmups=warmups,
+            repeats=repeats,
+        ),
+        "mapping": _measure_phase(
+            lambda: _open_matching_buffers(fixture),
+            _measure_mapping,
+            _close_mapping,
+            warmups=warmups,
+            repeats=repeats,
+        ),
+        "unit_attribution": _measure_phase(
+            lambda: _prepare_unit_enumeration(fixture),
+            _measure_unit_enumeration,
+            _close_unit_enumeration,
+            warmups=warmups,
+            repeats=repeats,
+        ),
+    }
+    return {
+        "name": case.name,
+        "description": case.description,
+        "category": "matching",
+        "status": "measured",
+        "dimensions": dimensions,
+        "setup": {
+            "measured": False,
+            "seed": seed,
+            "description": "Payload generation and phase prerequisites are excluded.",
+        },
+        "phases": phases,
+    }
+
+
+def _command_output(arguments: Sequence[str]) -> str:
+    try:
+        return subprocess.run(
+            arguments,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown"
+
+
+def _metadata(seed: int, warmups: int, repeats: int) -> dict[str, Any]:
+    project_version = __version__
+    if project_version == "unknown":
+        try:
+            project_version = (PROJECT_ROOT / "VERSION").read_text(
+                encoding="utf-8"
+            ).strip()
+        except OSError:
+            pass
+    working_tree_status = _command_output(
+        [
+            "git",
+            "-C",
+            str(PROJECT_ROOT),
+            "status",
+            "--porcelain",
+            "--untracked-files=no",
+        ]
+    )
+    return {
+        "project_version": project_version,
+        "python_version": platform.python_version(),
+        "python_implementation": platform.python_implementation(),
+        "git_version": _command_output(["git", "--version"]),
+        "platform": platform.platform(),
+        "revision": _command_output(
+            ["git", "-C", str(PROJECT_ROOT), "rev-parse", "HEAD"]
+        ),
+        "working_tree_dirty": (
+            None if working_tree_status == "unknown" else bool(working_tree_status)
+        ),
+        "seed": seed,
+        "warmups": warmups,
+        "repeats": repeats,
+        "memory_repeats": min(repeats, 3),
+        "clock": "time.perf_counter",
+        "timing_metric": "perf_counter without tracemalloc",
+        "memory_metric": "tracemalloc peak Python allocations",
+    }
+
+
+def selected_cases(
+    mode: str,
+    names: Sequence[str] | None = None,
+) -> list[CaseDefinition]:
+    """Select named cases, or every case available in the requested mode."""
+    if names:
+        cases = [CASE_BY_NAME[name] for name in dict.fromkeys(names)]
+    else:
+        cases = list(CASES)
+    if mode == "quick":
+        unavailable = [case.name for case in cases if case.quick_size <= 0]
+        if names and unavailable:
+            raise ValueError(
+                f"{', '.join(unavailable)} requires --mode full"
+            )
+        return [case for case in cases if case.quick_size > 0]
+    return [case for case in cases if case.full_size is not None]
+
+
+def run_suite(
+    mode: str = "quick",
+    *,
+    case_names: Sequence[str] | None = None,
+    seed: int = DEFAULT_SEED,
+    warmups: int = 1,
+    repeats: int = 3,
+) -> dict[str, Any]:
+    """Run selected deterministic cases and return the stable JSON schema."""
+    if mode not in {"quick", "full"}:
+        raise ValueError("mode must be 'quick' or 'full'")
+    if warmups < 0:
+        raise ValueError("warmups must be non-negative")
+    if repeats <= 0:
+        raise ValueError("repeats must be positive")
+
+    results = []
+    for case in selected_cases(mode, case_names):
+        size = case.quick_size if mode == "quick" else case.full_size
+        if size is None or size <= 0:
+            continue
+        result = run_matching_case(
+            case,
+            size,
+            seed,
+            warmups=warmups,
+            repeats=repeats,
+        )
+        results.append(result)
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "suite": "matching",
+        "mode": mode,
+        "metadata": _metadata(seed, warmups, repeats),
+        "cases": results,
+    }
+
+
+def _write_report(report: dict[str, Any], output: Path | None) -> None:
+    rendered = json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n"
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(rendered, encoding="utf-8")
+    sys.stdout.write(rendered)
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--mode", choices=("quick", "full"), default="quick")
+    parser.add_argument(
+        "--case",
+        action="append",
+        choices=tuple(CASE_BY_NAME),
+        dest="case_names",
+        help="run one case (repeat to select more than one)",
+    )
+    parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    parser.add_argument("--warmups", type=int)
+    parser.add_argument("--repeats", type=int)
+    parser.add_argument("--output", type=Path)
+    return parser
+
+
+def main() -> None:
+    parser = _parser()
     args = parser.parse_args()
 
-    if args.lines < 0:
-        raise SystemExit("--lines must be non-negative")
-
-    print(json.dumps(run_benchmark(args.pattern, args.lines), indent=2))
+    warmups = (
+        args.warmups
+        if args.warmups is not None
+        else (1 if args.mode == "quick" else 2)
+    )
+    repeats = (
+        args.repeats
+        if args.repeats is not None
+        else (3 if args.mode == "quick" else 7)
+    )
+    try:
+        report = run_suite(
+            args.mode,
+            case_names=args.case_names,
+            seed=args.seed,
+            warmups=warmups,
+            repeats=repeats,
+        )
+    except ValueError as error:
+        parser.error(str(error))
+    try:
+        _write_report(report, args.output)
+    except OSError as error:
+        parser.error(str(error))
 
 
 if __name__ == "__main__":

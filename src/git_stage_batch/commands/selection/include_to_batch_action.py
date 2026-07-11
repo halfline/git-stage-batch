@@ -16,6 +16,7 @@ from ...data.selected_change.store import (
     read_selected_change_kind,
 )
 from ...data.undo_checkpoints import undo_checkpoint
+from ...batch.validation import validate_batch_name
 from ...exceptions import exit_with_error
 from ...i18n import _
 from ..file_scope import include_file_to_batch as _file_scope_include_file_to_batch
@@ -36,6 +37,7 @@ def execute_include_to_batch_action(
     auto_advance: bool | None,
 ) -> None:
     """Route one resolved include-to-batch request to the selected action."""
+    validate_batch_name(batch_name)
     operation_parts = ["include", "--to", batch_name]
     if line_ids is not None:
         operation_parts.extend(["--line", line_ids])

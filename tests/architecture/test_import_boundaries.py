@@ -11657,7 +11657,7 @@ def test_batch_realized_entries_owns_entry_view_model():
         "git_stage_batch.batch.realized_entries",
         fromlist=["realized_entries"],
     )
-    realized_entries_path = SRC_ROOT / "batch" / "realized_entries.py"
+    realized_entries_path = _batch_module_path("realization/entries.py", "realized_entries.py")
     public_names = {
         "RealizedEntry",
     }
@@ -11688,8 +11688,8 @@ def test_batch_realized_entries_owns_entry_view_model():
         SRC_ROOT / "batch" / "discard.py": public_names,
         SRC_ROOT / "batch" / "discard_reversal.py": public_names,
         SRC_ROOT / "batch" / "presence_constraints.py": public_names,
-        SRC_ROOT / "batch" / "realized_boundaries.py": public_names,
-        SRC_ROOT / "batch" / "realized_entry_storage.py": public_names,
+        _batch_module_path("realization/boundaries.py", "realized_boundaries.py"): public_names,
+        _batch_module_path("realization/entry_storage.py", "realized_entry_storage.py"): public_names,
     }
     violations = []
 
@@ -11705,7 +11705,7 @@ def test_batch_realized_entries_owns_entry_view_model():
         imported_public_names = set()
 
         for imported_module, node in imports:
-            if imported_module != "git_stage_batch.batch.realized_entries":
+            if imported_module not in _batch_module_names("realized_entries", "realization.entries"):
                 continue
 
             imported_names = {alias.name for alias in node.names}
@@ -11732,7 +11732,7 @@ def test_batch_realized_entry_storage_owns_compact_storage():
         "git_stage_batch.batch.realized_entry_storage",
         fromlist=["realized_entry_storage"],
     )
-    storage_path = SRC_ROOT / "batch" / "realized_entry_storage.py"
+    storage_path = _batch_module_path("realization/entry_storage.py", "realized_entry_storage.py")
     public_names = {
         "RealizedEntries",
         "RealizedEntryContentSequence",
@@ -11786,13 +11786,13 @@ def test_batch_realized_entry_storage_owns_compact_storage():
             "realized_entry_is_claimed_at",
             "realized_entry_source_line_at",
         },
-        SRC_ROOT / "batch" / "realized_boundaries.py": {
+        _batch_module_path("realization/boundaries.py", "realized_boundaries.py"): {
             "RealizedEntries",
             "realized_entry_content_at",
             "realized_entry_is_claimed_at",
             "realized_entry_source_line_at",
         },
-        SRC_ROOT / "batch" / "realized_mapping.py": {
+        _batch_module_path("realization/mapping.py", "realized_mapping.py"): {
             "RealizedEntries",
             "backing_content_sequence",
         },
@@ -11816,7 +11816,7 @@ def test_batch_realized_entry_storage_owns_compact_storage():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.realized_entries":
+            if imported_module in _batch_module_names("realized_entries", "realization.entries"):
                 disallowed_names = imported_names & (public_names | private_names)
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -11824,7 +11824,7 @@ def test_batch_realized_entry_storage_owns_compact_storage():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.realized_entry_storage":
+            if imported_module not in _batch_module_names("realized_entry_storage", "realization.entry_storage"):
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -11860,7 +11860,7 @@ def test_batch_line_range_view_stays_out_of_realized_entries():
     }
     expected_imports = {
         SRC_ROOT / "batch" / "baseline_correspondence.py": public_names,
-        SRC_ROOT / "batch" / "realized_entry_storage.py": public_names,
+        _batch_module_path("realization/entry_storage.py", "realized_entry_storage.py"): public_names,
     }
     violations = []
 
@@ -11877,7 +11877,7 @@ def test_batch_line_range_view_stays_out_of_realized_entries():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.realized_entries":
+            if imported_module in _batch_module_names("realized_entries", "realization.entries"):
                 moved_names = imported_names & moved_private_names
                 if moved_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -11906,7 +11906,7 @@ def test_batch_realized_provenance_owns_run_storage():
         "git_stage_batch.batch.realized_provenance",
         fromlist=["realized_provenance"],
     )
-    provenance_path = SRC_ROOT / "batch" / "realized_provenance.py"
+    provenance_path = _batch_module_path("realization/provenance.py", "realized_provenance.py")
     public_names = {
         "PROVENANCE_RUN_CLAIMED",
         "ProvenanceRun",
@@ -11932,7 +11932,7 @@ def test_batch_realized_provenance_owns_run_storage():
         "_stored_line_number",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "realized_entry_storage.py": public_names,
+        _batch_module_path("realization/entry_storage.py", "realized_entry_storage.py"): public_names,
     }
     violations = []
 
@@ -11950,7 +11950,7 @@ def test_batch_realized_provenance_owns_run_storage():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.realized_entries":
+            if imported_module in _batch_module_names("realized_entries", "realization.entries"):
                 moved_names = imported_names & (public_names | moved_private_names)
                 if moved_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -11958,7 +11958,7 @@ def test_batch_realized_provenance_owns_run_storage():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.realized_provenance":
+            if imported_module not in _batch_module_names("realized_provenance", "realization.provenance"):
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -12003,7 +12003,7 @@ def test_batch_line_mapping_owns_public_mapping_type():
         SRC_ROOT / "batch" / "merge_validation.py": public_names,
         SRC_ROOT / "batch" / "ownership_remapping.py": public_names,
         SRC_ROOT / "batch" / "presence_constraints.py": public_names,
-        SRC_ROOT / "batch" / "realized_mapping.py": public_names,
+        _batch_module_path("realization/mapping.py", "realized_mapping.py"): public_names,
         SRC_ROOT / "batch" / "source_annotation.py": public_names,
     }
     violations = []
@@ -12241,7 +12241,7 @@ def test_realized_boundaries_stay_out_of_merge_module():
         "git_stage_batch.batch.merge",
         fromlist=["merge"],
     )
-    realized_boundaries_path = SRC_ROOT / "batch" / "realized_boundaries.py"
+    realized_boundaries_path = _batch_module_path("realization/boundaries.py", "realized_boundaries.py")
     absence_constraints_path = SRC_ROOT / "batch" / "absence_constraints.py"
     discard_path = SRC_ROOT / "batch" / "discard.py"
     merge_path = SRC_ROOT / "batch" / "merge.py"
@@ -12294,7 +12294,7 @@ def test_realized_boundaries_stay_out_of_merge_module():
                     names = ", ".join(sorted(disallowed_names))
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
 
-            if imported_module != "git_stage_batch.batch.realized_boundaries":
+            if imported_module not in _batch_module_names("realized_boundaries", "realization.boundaries"):
                 continue
 
             imported_public_names |= imported_names & public_names

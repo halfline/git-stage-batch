@@ -4,7 +4,7 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.batch.query import (
+from git_stage_batch.batch.state.query import (
     get_batch_baseline_commit,
     get_batch_commit_sha,
     get_batch_tree_sha,
@@ -13,7 +13,7 @@ from git_stage_batch.batch.query import (
     read_batch_metadata,
     read_batch_metadata_for_batches,
 )
-from git_stage_batch.batch.lifecycle import create_batch
+from git_stage_batch.batch.state.lifecycle import create_batch
 from git_stage_batch.batch.text_file_storage import add_file_to_batch
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.data.session import initialize_abort_state

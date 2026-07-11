@@ -4,7 +4,7 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.batch.state_refs import get_batch_content_ref_name
+from git_stage_batch.batch.state.references import get_batch_content_ref_name
 from git_stage_batch.commands.drop import command_drop_batch
 from git_stage_batch.commands.new import command_new_batch
 from git_stage_batch.exceptions import CommandError

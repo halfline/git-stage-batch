@@ -4,9 +4,9 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.batch.lifecycle import create_batch
-from git_stage_batch.batch.query import list_batch_names
-from git_stage_batch.batch.validation import (
+from git_stage_batch.batch.state.lifecycle import create_batch
+from git_stage_batch.batch.state.query import list_batch_names
+from git_stage_batch.batch.state.batch_names import (
     MAX_BATCH_NAME_BYTES,
     batch_exists,
     validate_batch_name,

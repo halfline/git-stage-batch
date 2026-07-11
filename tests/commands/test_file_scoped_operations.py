@@ -6,7 +6,7 @@ If tests fail, they expose gaps in the implementation.
 
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.utils.paths import ensure_state_directory_exists
-from git_stage_batch.batch.query import read_batch_metadata
+from git_stage_batch.batch.state.query import read_batch_metadata
 from git_stage_batch.commands.show_from import command_show_from_batch
 from git_stage_batch.data.line_state import load_line_changes_from_state
 from git_stage_batch.core.hashing import compute_stable_hunk_hash_from_lines

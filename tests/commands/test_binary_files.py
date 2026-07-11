@@ -12,7 +12,7 @@ import pytest
 import git_stage_batch.batch.binary_file_content as binary_file_content
 import git_stage_batch.commands.batch_source.binary_file_actions as binary_file_actions
 import git_stage_batch.commands.include_from as include_from_module
-from git_stage_batch.batch.query import read_batch_metadata
+from git_stage_batch.batch.state.query import read_batch_metadata
 from git_stage_batch.batch.binary_file_storage import add_binary_file_to_batch
 from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.commands.discard import command_discard, command_discard_file, command_discard_to_batch

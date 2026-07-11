@@ -2192,7 +2192,7 @@ def test_batch_lifecycle_module_owns_batch_lifecycle_api():
     """Batch lifecycle APIs should live in the lifecycle module."""
     old_operations_path = SRC_ROOT / "batch" / "operations.py"
     lifecycle = __import__(
-        "git_stage_batch.batch.lifecycle",
+        "git_stage_batch.batch.state.lifecycle",
         fromlist=["lifecycle"],
     )
     lifecycle_names = {
@@ -10775,7 +10775,7 @@ def test_file_entry_storage_owns_entry_operations():
 def test_batch_content_commits_own_tree_publication():
     """Batch commit tree publication should live outside storage."""
     content_commits = __import__(
-        "git_stage_batch.batch.content_commits",
+        "git_stage_batch.batch.state.content_commits",
         fromlist=["content_commits"],
     )
     storage = __import__(

@@ -7,13 +7,13 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from git_stage_batch.batch.metadata_schema import (
+from git_stage_batch.batch.state.metadata_schema import (
     CURRENT_BATCH_METADATA_SCHEMA_VERSION,
     decode_batch_metadata,
     encode_batch_metadata,
     metadata_from_application_dict,
 )
-from git_stage_batch.batch.metadata_io import write_file_backed_batch_metadata
+from git_stage_batch.batch.state.compatibility_metadata import write_file_backed_batch_metadata
 from git_stage_batch.exceptions import BatchMetadataError
 
 

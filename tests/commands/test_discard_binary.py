@@ -9,7 +9,7 @@ import pytest
 from git_stage_batch.batch.binary_file_storage import add_binary_file_to_batch
 from git_stage_batch.commands.discard_from import command_discard_from_batch
 from git_stage_batch.commands.start import command_start
-from git_stage_batch.batch.lifecycle import create_batch
+from git_stage_batch.batch.state.lifecycle import create_batch
 from git_stage_batch.core.models import BinaryFileChange
 from git_stage_batch.exceptions import CommandError
 

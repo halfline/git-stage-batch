@@ -2,7 +2,7 @@
 
 import subprocess
 
-from git_stage_batch.batch.query import read_batch_metadata
+from git_stage_batch.batch.state.query import read_batch_metadata
 
 from .conftest import git_stage_batch
 

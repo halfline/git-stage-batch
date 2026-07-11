@@ -6,8 +6,8 @@ import subprocess
 import pytest
 
 from git_stage_batch.batch.ownership.model import BatchOwnership
-from git_stage_batch.batch.query import get_batch_commit_sha, read_batch_metadata
-from git_stage_batch.batch.validation import batch_exists
+from git_stage_batch.batch.state.query import get_batch_commit_sha, read_batch_metadata
+from git_stage_batch.batch.state.batch_names import batch_exists
 from git_stage_batch.commands.include import (
     command_include,
     command_include_line,

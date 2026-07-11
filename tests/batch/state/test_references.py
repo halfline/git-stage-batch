@@ -5,12 +5,12 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.batch.lifecycle import create_batch, delete_batch, update_batch_note
-from git_stage_batch.batch.metadata_io import write_file_backed_batch_metadata
-from git_stage_batch.batch.query import read_batch_metadata
+from git_stage_batch.batch.state.lifecycle import create_batch, delete_batch, update_batch_note
+from git_stage_batch.batch.state.compatibility_metadata import write_file_backed_batch_metadata
+from git_stage_batch.batch.state.query import read_batch_metadata
 from git_stage_batch.batch.ownership.model import BatchOwnership
-import git_stage_batch.batch.state_refs as state_refs_module
-from git_stage_batch.batch.state_refs import (
+import git_stage_batch.batch.state.references as state_refs_module
+from git_stage_batch.batch.state.references import (
     get_batch_content_ref_name,
     get_batch_state_ref_name,
     read_batch_state_metadata_for_batches,

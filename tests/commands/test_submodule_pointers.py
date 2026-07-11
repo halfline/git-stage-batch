@@ -11,7 +11,7 @@ import pytest
 from git_stage_batch.commands.discard import command_discard, command_discard_file
 from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.commands.discard_from import command_discard_from_batch
-from git_stage_batch.batch.query import get_batch_commit_sha, read_batch_metadata
+from git_stage_batch.batch.state.query import get_batch_commit_sha, read_batch_metadata
 from git_stage_batch.commands.include import (
     command_include,
     command_include_file,

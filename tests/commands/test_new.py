@@ -1,7 +1,7 @@
 """Tests for new batch command."""
 
-from git_stage_batch.batch.query import read_batch_metadata
-from git_stage_batch.batch.state_refs import get_batch_content_ref_name
+from git_stage_batch.batch.state.query import read_batch_metadata
+from git_stage_batch.batch.state.references import get_batch_content_ref_name
 
 import subprocess
 

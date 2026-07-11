@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from git_stage_batch.batch.metadata_validation import (
+from git_stage_batch.batch.state.validation import (
     get_validated_baseline_commit,
     load_and_validate_batch_metadata,
     read_validated_batch_metadata,
@@ -16,8 +16,8 @@ from git_stage_batch.batch.metadata_validation import (
     validate_batch_metadata_structure,
     validate_state_directory_exists,
 )
-from git_stage_batch.batch.lifecycle import create_batch
-from git_stage_batch.batch.query import read_batch_metadata
+from git_stage_batch.batch.state.lifecycle import create_batch
+from git_stage_batch.batch.state.query import read_batch_metadata
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import BatchMetadataError
 from git_stage_batch.utils.file_io import write_text_file_contents

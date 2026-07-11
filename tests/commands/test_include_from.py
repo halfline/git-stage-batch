@@ -6,9 +6,9 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.batch.lifecycle import create_batch
+from git_stage_batch.batch.state.lifecycle import create_batch
 from git_stage_batch.batch.ownership.model import BatchOwnership
-from git_stage_batch.batch.query import read_batch_metadata
+from git_stage_batch.batch.state.query import read_batch_metadata
 from git_stage_batch.batch.text_file_storage import add_file_to_batch
 from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.commands.discard_from import command_discard_from_batch

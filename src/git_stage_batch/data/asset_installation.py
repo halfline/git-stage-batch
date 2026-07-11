@@ -7,7 +7,11 @@ from pathlib import Path
 from .asset_catalog import Traversable
 from ..exceptions import CommandError
 from ..i18n import _
-from ..utils.file_io import write_file_bytes
+from ..utils.file_io import (
+    AtomicWriteModePolicy,
+    PROJECT_FILE_MODE,
+    write_file_bytes,
+)
 
 
 def _should_skip_asset_entry(entry: Traversable) -> bool:
@@ -24,7 +28,12 @@ def copy_asset_tree(source: Traversable, destination: Path) -> None:
             copy_asset_tree(child, destination / child.name)
         return
     if source.is_file():
-        write_file_bytes(destination, source.read_bytes())
+        write_file_bytes(
+            destination,
+            source.read_bytes(),
+            mode_policy=AtomicWriteModePolicy.PRESERVE_EXISTING,
+            mode=PROJECT_FILE_MODE,
+        )
 
 
 def validate_asset_destination_path(

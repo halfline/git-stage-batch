@@ -3,46 +3,21 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ..core.line_selection import LineRanges, LineSelection
+from ..core.line_selection import LineSelection
 from ..exceptions import MergeError as _MergeError
 from ..i18n import _
 from .line_mapping import LineMapping
+from .presence_context import (
+    contextual_presence_placements as _contextual_presence_placements,
+)
 from .presence_missing_claims import (
     mapped_missing_source_lines as _mapped_missing_source_lines,
 )
 
 if TYPE_CHECKING:
     from .ownership_absence_claims import AbsenceClaim
-
-
-@dataclass
-class _ClaimedRunIntervalFacts:
-    """Structural facts about one contiguous run of missing claimed lines.
-
-    These facts make the merge-time safety decision explicit instead of hiding
-    the reasoning inside a single trailing-gap threshold.
-    """
-
-    run_start: int
-    run_end: int
-    run_length: int
-    before_source_line: int | None
-    after_source_line: int | None
-    before_target_line: int | None
-    after_target_line: int | None
-    leading_unmapped_source_gap: int
-    trailing_unmapped_source_gap: int
-    bracketed_on_both_sides: bool
-    bracketed_on_one_side_only: bool
-    source_interval_span: int | None
-    target_interval_span: int | None
-    surrounding_source_gap_outside_run: int | None
-    target_lines_after_before_anchor: int | None
-    has_deletion_at_before_anchor: bool
-    deletion_line_count_at_before_anchor: int
 
 
 def check_structural_validity(
@@ -122,6 +97,7 @@ def check_structural_validity(
                     )
                 )
 
+    has_unmapped_deletion_anchor = False
     for deletion in deletions:
         after_line = deletion.anchor_line
 
@@ -132,6 +108,7 @@ def check_structural_validity(
                 )
 
             if not line_mapping.is_source_line_present(after_line):
+                has_unmapped_deletion_anchor = True
                 has_context = False
                 for check_line in range(
                     max(1, after_line - 3),
@@ -151,7 +128,23 @@ def check_structural_validity(
                         )
                     )
 
-    _check_claimed_region_compatibility(
+    # Let absence realization report its more precise missing-anchor error once
+    # nearby mapped context has allowed an unmapped deletion anchor through.
+    if has_unmapped_deletion_anchor:
+        return
+
+    _contextual_presence_placements(
+        source_lines,
+        target_lines,
+        claimed_lines,
+        line_mapping,
+        trusted_source_lines={
+            deletion.anchor_line
+            for deletion in deletions
+            if deletion.anchor_line is not None
+        },
+    )
+    _check_unbounded_trailing_context(
         line_mapping,
         claimed_lines,
         deletions,
@@ -160,50 +153,90 @@ def check_structural_validity(
     )
 
 
-def _check_claimed_region_compatibility(
+def _check_unbounded_trailing_context(
     line_mapping: LineMapping,
     claimed_lines: LineSelection,
     deletions: list[AbsenceClaim],
     source_lines: Sequence[bytes],
     target_lines: Sequence[bytes],
 ) -> None:
-    """Check whether claimed lines have structurally coherent context."""
-    missing_claimed = _get_missing_claimed_lines(
-        line_mapping,
-        claimed_lines,
-        source_lines,
-    )
+    """Reject large unmatched tails not resolved by contextual anchors.
 
-    if not missing_claimed or len(target_lines) == 0:
-        return
-
-    for run_start, run_end in missing_claimed.ranges():
-        facts = _collect_claimed_run_interval_facts(
-            run_start,
-            run_end,
-            line_mapping,
-            source_lines,
-            target_lines,
-            deletions,
-        )
-
-        if not _is_claimed_run_structurally_coherent(facts):
-            raise _MergeError(
-                _("Batch was created from a different version of the file")
-            )
-
-
-def _get_missing_claimed_lines(
-    line_mapping: LineMapping,
-    claimed_lines: LineSelection,
-    source_lines: Sequence[bytes],
-) -> LineRanges:
-    """Return claimed source lines that are not present in the working tree."""
-    return _mapped_missing_source_lines(
+    Distinctive anchors choose insertion ordering.  They cannot establish that
+    a large, unselected source tail is compatible with unrelated target
+    content, so retain the existing conservative protection for that separate
+    version-skew shape.
+    """
+    missing = _mapped_missing_source_lines(
         claimed_lines,
         len(source_lines),
         line_mapping,
     )
+
+    for run_start, run_end in missing.ranges():
+        before_source_line = next(
+            (
+                line
+                for line in range(run_start - 1, 0, -1)
+                if line_mapping.is_source_line_present(line)
+            ),
+            None,
+        )
+        after_source_line = next(
+            (
+                line
+                for line in range(run_end + 1, len(source_lines) + 1)
+                if line_mapping.is_source_line_present(line)
+            ),
+            None,
+        )
+        trailing_gap = (
+            after_source_line - run_end - 1
+            if after_source_line is not None
+            else len(source_lines) - run_end
+        )
+        if trailing_gap < 3:
+            continue
+
+        before_target_line = (
+            line_mapping.get_target_line_from_source_line(before_source_line)
+            if before_source_line is not None
+            else None
+        )
+        after_target_line = (
+            line_mapping.get_target_line_from_source_line(after_source_line)
+            if after_source_line is not None
+            else None
+        )
+
+        if before_target_line is not None and after_target_line is not None:
+            target_span = after_target_line - before_target_line - 1
+            source_span_outside_run = (
+                after_source_line - before_source_line - 1
+                - (run_end - run_start + 1)
+            )
+            if (
+                target_span < source_span_outside_run
+                or target_span <= run_end - run_start + 1
+            ):
+                raise _MergeError(
+                    _("Batch was created from a different version of the file")
+                )
+            continue
+
+        if before_target_line is None or after_target_line is not None:
+            continue
+
+        target_tail = len(target_lines) - before_target_line
+        deleted_at_boundary = sum(
+            len(deletion.content_lines)
+            for deletion in deletions
+            if deletion.anchor_line == before_source_line
+        )
+        if target_tail != 0 and target_tail > deleted_at_boundary:
+            raise _MergeError(
+                _("Batch was created from a different version of the file")
+            )
 
 
 def _first_selected_line(lines: LineSelection) -> int | None:
@@ -211,205 +244,3 @@ def _first_selected_line(lines: LineSelection) -> int | None:
     if first is not None:
         return first()
     return min(lines) if lines else None
-
-
-def _find_nearest_mapped_source_line_before(
-    line_mapping: LineMapping,
-    source_line: int,
-) -> int | None:
-    """Find the nearest mapped source line strictly before the given line."""
-    for check_line in range(source_line - 1, 0, -1):
-        if line_mapping.get_target_line_from_source_line(check_line) is not None:
-            return check_line
-
-    return None
-
-
-def _find_nearest_mapped_source_line_after(
-    line_mapping: LineMapping,
-    source_line: int,
-    max_source_line: int,
-) -> int | None:
-    """Find the nearest mapped source line strictly after the given line."""
-    for check_line in range(source_line + 1, max_source_line + 1):
-        if line_mapping.get_target_line_from_source_line(check_line) is not None:
-            return check_line
-
-    return None
-
-
-def _collect_claimed_run_interval_facts(
-    run_start: int,
-    run_end: int,
-    line_mapping: LineMapping,
-    source_lines: Sequence[bytes],
-    target_lines: Sequence[bytes],
-    deletions: list[AbsenceClaim],
-) -> _ClaimedRunIntervalFacts:
-    """Collect explicit structural facts about one missing claimed run."""
-    before_source_line = _find_nearest_mapped_source_line_before(
-        line_mapping,
-        run_start,
-    )
-    after_source_line = _find_nearest_mapped_source_line_after(
-        line_mapping,
-        run_end,
-        len(source_lines),
-    )
-
-    before_target_line = None
-    after_target_line = None
-
-    if before_source_line is not None:
-        before_target_line = line_mapping.get_target_line_from_source_line(
-            before_source_line
-        )
-
-    if after_source_line is not None:
-        after_target_line = line_mapping.get_target_line_from_source_line(
-            after_source_line
-        )
-
-    leading_unmapped_source_gap = 0
-    if before_source_line is not None:
-        leading_unmapped_source_gap = run_start - before_source_line - 1
-
-    trailing_unmapped_source_gap = 0
-    if after_source_line is not None:
-        trailing_unmapped_source_gap = after_source_line - run_end - 1
-    else:
-        trailing_unmapped_source_gap = len(source_lines) - run_end
-
-    bracketed_on_both_sides = (
-        before_source_line is not None and
-        after_source_line is not None and
-        before_target_line is not None and
-        after_target_line is not None
-    )
-    bracketed_on_one_side_only = (
-        (before_source_line is None) != (after_source_line is None)
-    )
-
-    source_interval_span = None
-    target_interval_span = None
-    surrounding_source_gap_outside_run = None
-    target_lines_after_before_anchor = None
-    has_deletion_at_before_anchor = False
-    deletion_line_count_at_before_anchor = 0
-
-    if bracketed_on_both_sides:
-        source_interval_span = after_source_line - before_source_line - 1
-        target_interval_span = after_target_line - before_target_line - 1
-        surrounding_source_gap_outside_run = (
-            source_interval_span - (run_end - run_start + 1)
-        )
-    elif before_target_line is not None and after_target_line is None:
-        target_lines_after_before_anchor = len(target_lines) - before_target_line
-
-    if before_source_line is not None:
-        deletion_line_count_at_before_anchor = sum(
-            len(deletion.content_lines)
-            for deletion in deletions
-            if deletion.anchor_line == before_source_line
-        )
-        has_deletion_at_before_anchor = deletion_line_count_at_before_anchor > 0
-
-    return _ClaimedRunIntervalFacts(
-        run_start=run_start,
-        run_end=run_end,
-        run_length=run_end - run_start + 1,
-        before_source_line=before_source_line,
-        after_source_line=after_source_line,
-        before_target_line=before_target_line,
-        after_target_line=after_target_line,
-        leading_unmapped_source_gap=leading_unmapped_source_gap,
-        trailing_unmapped_source_gap=trailing_unmapped_source_gap,
-        bracketed_on_both_sides=bracketed_on_both_sides,
-        bracketed_on_one_side_only=bracketed_on_one_side_only,
-        source_interval_span=source_interval_span,
-        target_interval_span=target_interval_span,
-        surrounding_source_gap_outside_run=surrounding_source_gap_outside_run,
-        target_lines_after_before_anchor=target_lines_after_before_anchor,
-        has_deletion_at_before_anchor=has_deletion_at_before_anchor,
-        deletion_line_count_at_before_anchor=deletion_line_count_at_before_anchor,
-    )
-
-
-def _is_claimed_run_structurally_coherent(
-    facts: _ClaimedRunIntervalFacts,
-) -> bool:
-    """Check whether a missing claimed run fits its source/target interval."""
-    significant_trailing_gap = facts.trailing_unmapped_source_gap >= 3
-    significant_leading_gap = facts.leading_unmapped_source_gap >= 3
-
-    if not facts.bracketed_on_both_sides and not facts.bracketed_on_one_side_only:
-        return False
-
-    if facts.bracketed_on_both_sides:
-        if facts.before_target_line is None or facts.after_target_line is None:
-            return False
-
-        if facts.before_target_line >= facts.after_target_line:
-            return False
-
-        # A large source-only region before the claimed run means the preceding
-        # mapped line may belong to unrelated target content with common text.
-        # Automatic placement cannot distinguish that false anchor from an
-        # intentionally shared prefix.
-        if significant_leading_gap:
-            return False
-
-        if significant_trailing_gap:
-            if (
-                facts.target_interval_span is None
-                or facts.surrounding_source_gap_outside_run is None
-            ):
-                return False
-
-            # There is substantial source-side structure after the run before
-            # the next reliable source anchor, but almost no room for it in
-            # target-space. This is the characteristic shape of the corruption
-            # case: the selected run came from a neighborhood with extra
-            # source-only structure, so inserting it would preserve
-            # incompatible target content nearby.
-            if facts.target_interval_span < facts.surrounding_source_gap_outside_run:
-                return False
-
-            # Even if the overall interval is not smaller, a run followed by a
-            # large source-only tail with little or no target interval is still
-            # too weakly bracketed to trust.
-            if facts.target_interval_span <= facts.run_length:
-                return False
-
-        return True
-
-    if facts.before_source_line is not None and facts.after_source_line is None:
-        if significant_trailing_gap:
-            if facts.target_lines_after_before_anchor is None:
-                return False
-
-            # A source-only tail after the selected run is safe when applying
-            # into an empty target tail: this is the append/interleave case
-            # that lets independent batches compose in either order.
-            if facts.target_lines_after_before_anchor == 0:
-                return True
-
-            # A replacement can also be safe with target content after the
-            # anchor when an absence constraint at that same boundary removes
-            # the whole target tail before the new claimed lines are inserted.
-            if (
-                facts.has_deletion_at_before_anchor and
-                facts.target_lines_after_before_anchor
-                <= facts.deletion_line_count_at_before_anchor
-            ):
-                return True
-
-            return False
-        return True
-
-    if facts.before_source_line is None and facts.after_source_line is not None:
-        if significant_leading_gap:
-            return False
-        return True
-
-    return False

@@ -338,6 +338,33 @@ def test_claimed_run_rejects_large_unmapped_leading_context():
         merge_batch(batch_source, ownership, working)
 
 
+def test_claimed_run_uses_distinctive_trailing_context_after_large_gap():
+    """A unique trailing boundary can place a claim after target-only lines."""
+    batch_source = b"""distinctive shared header
+obsolete source one
+obsolete source two
+obsolete source three
+obsolete source four
+claimed addition
+distinctive shared footer
+"""
+    working = b"""distinctive shared header
+replacement target one
+replacement target two
+distinctive shared footer
+"""
+    ownership = BatchOwnership.from_presence_lines(["6"], [])
+
+    result = merge_batch(batch_source, ownership, working)
+
+    assert result == b"""distinctive shared header
+replacement target one
+replacement target two
+claimed addition
+distinctive shared footer
+"""
+
+
 def test_append_only_interleaved_batch_first_application_succeeds():
     """One-sided anchoring is safe when applying into an empty target tail."""
     batch_source = b"""Header

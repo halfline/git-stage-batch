@@ -192,6 +192,27 @@ def _create_split_replacement_origin_batch(repo):
     (repo / "file.txt").write_text("head\nold2\nmid\nold2\ntail\n")
 
 
+def _create_contextual_presence_batch(repo):
+    source = "header\nold one\nold two\nold three\nclaimed\nold tail\nfooter\n"
+    (repo / "file.txt").write_text(source)
+    subprocess.run(["git", "add", "file.txt"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Add contextual source file"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+    )
+    initialize_abort_state()
+    create_batch("contextual")
+    add_file_to_batch(
+        "contextual",
+        "file.txt",
+        BatchOwnership.from_presence_lines(["5"], []),
+        "100644",
+    )
+    (repo / "file.txt").write_text("header\ntarget one\ntarget two\nfooter\n")
+
+
 def _candidate_state_has_file(batch_name, file_path):
     state_path = get_batch_candidate_state_file_path()
     if not state_path.exists():
@@ -201,6 +222,28 @@ def _candidate_state_has_file(batch_name, file_path):
     return any(
         scope.get("batch_name") == batch_name and scope.get("file") == file_path
         for scope in data.get("scopes", {}).values()
+    )
+
+
+def test_contextual_presence_candidates_can_be_previewed_and_applied(
+    temp_git_repo,
+    capsys,
+):
+    """Contextual insertion gaps should use the reviewed candidate workflow."""
+    _create_contextual_presence_batch(temp_git_repo)
+
+    command_show_from_batch("contextual:apply", file="file.txt")
+
+    overview = capsys.readouterr()
+    assert "contextual  ·  apply candidates  ·  3 choices" in overview.out
+    assert 'Candidate 2/3   Add "claimed" near "target one"' in overview.out
+
+    command_apply_from_batch("contextual:apply:2", file="file.txt")
+
+    captured = capsys.readouterr()
+    assert "Applied candidate 2 of 3 from batch 'contextual'" in captured.err
+    assert (temp_git_repo / "file.txt").read_text() == (
+        "header\ntarget one\nclaimed\ntarget two\nfooter\n"
     )
 
 

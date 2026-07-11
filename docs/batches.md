@@ -88,6 +88,14 @@ with `include --to BATCH`, shown with `show --from BATCH`, staged with
 Because a submodule pointer has no line content in the superproject, `--line`
 is not supported for those entries.
 
+### Executable Modes
+
+Executable-bit changes are stored as atomic batch metadata with no line-content
+claims. They can be saved with `include --to` or `discard --to`, reviewed with
+`show --from`, staged or applied with `include --from` and `apply --from`,
+restored with `discard --from`, removed or moved with `reset --from`, and
+filtered with `sift`. Line selection is not supported for mode actions.
+
 ---
 
 ## `new`

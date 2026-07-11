@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ..batch.validation import validate_batch_name
 from ..core.replacement import (
     ReplacementPayload,
 )
@@ -188,6 +189,7 @@ def command_discard_to_batch(
         Number of hunks saved to the batch and discarded.
     """
     require_git_repository()
+    validate_batch_name(batch_name)
     ensure_state_directory_exists()
     original_file_scope = file
     scope_resolution = resolve_live_to_batch_action_scope(
@@ -225,6 +227,7 @@ def command_discard_line_as_to_batch(
 ) -> None:
     """Save replacement text to batch, then discard the original selection locally."""
     require_git_repository()
+    validate_batch_name(batch_name)
     require_session_started()
     ensure_state_directory_exists()
     scope_resolution = resolve_live_line_action_scope(

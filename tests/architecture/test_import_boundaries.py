@@ -11654,7 +11654,7 @@ def test_batch_ownership_metadata_blobs_own_blob_discovery():
 def test_batch_realized_entries_owns_entry_view_model():
     """Realized entry views should stay separate from storage."""
     realized_entries = __import__(
-        "git_stage_batch.batch.realized_entries",
+        "git_stage_batch.batch.realization.entries",
         fromlist=["realized_entries"],
     )
     realized_entries_path = _batch_module_path("realization/entries.py", "realized_entries.py")
@@ -11725,11 +11725,11 @@ def test_batch_realized_entries_owns_entry_view_model():
 def test_batch_realized_entry_storage_owns_compact_storage():
     """Compact realized-entry storage should live outside entry views."""
     realized_entries = __import__(
-        "git_stage_batch.batch.realized_entries",
+        "git_stage_batch.batch.realization.entries",
         fromlist=["realized_entries"],
     )
     realized_entry_storage = __import__(
-        "git_stage_batch.batch.realized_entry_storage",
+        "git_stage_batch.batch.realization.entry_storage",
         fromlist=["realized_entry_storage"],
     )
     storage_path = _batch_module_path("realization/entry_storage.py", "realized_entry_storage.py")
@@ -11847,7 +11847,7 @@ def test_batch_line_range_view_stays_out_of_realized_entries():
         fromlist=["line_range_view"],
     )
     realized_entries = __import__(
-        "git_stage_batch.batch.realized_entries",
+        "git_stage_batch.batch.realization.entries",
         fromlist=["realized_entries"],
     )
     line_range_view_module_names = {"git_stage_batch.batch.line_matching.line_range_view"}
@@ -11899,11 +11899,11 @@ def test_batch_line_range_view_stays_out_of_realized_entries():
 def test_batch_realized_provenance_owns_run_storage():
     """Realized provenance run storage should live outside entry editing."""
     realized_entries = __import__(
-        "git_stage_batch.batch.realized_entries",
+        "git_stage_batch.batch.realization.entries",
         fromlist=["realized_entries"],
     )
     realized_provenance = __import__(
-        "git_stage_batch.batch.realized_provenance",
+        "git_stage_batch.batch.realization.provenance",
         fromlist=["realized_provenance"],
     )
     provenance_path = _batch_module_path("realization/provenance.py", "realized_provenance.py")
@@ -12234,7 +12234,7 @@ def test_discard_reversal_stays_out_of_merge_module():
 def test_realized_boundaries_stay_out_of_merge_module():
     """Realized-entry boundary lookup should live outside merge operations."""
     realized_boundaries = __import__(
-        "git_stage_batch.batch.realized_boundaries",
+        "git_stage_batch.batch.realization.boundaries",
         fromlist=["realized_boundaries"],
     )
     merge = __import__(
@@ -16222,7 +16222,7 @@ def test_realized_mapping_owns_working_range_builder():
         fromlist=["presence_constraints"],
     )
     realized_mapping = __import__(
-        "git_stage_batch.batch.realized_mapping",
+        "git_stage_batch.batch.realization.mapping",
         fromlist=["realized_mapping"],
     )
     moved_names = {

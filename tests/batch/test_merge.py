@@ -24,8 +24,8 @@ from git_stage_batch.batch.merge import (
     merge_batch_from_line_sequences_as_buffer,
 )
 from git_stage_batch.batch.presence_constraints import satisfy_constraints
-from git_stage_batch.batch.realized_entries import RealizedEntry
-from git_stage_batch.batch.realized_entry_storage import (
+from git_stage_batch.batch.realization.entries import RealizedEntry
+from git_stage_batch.batch.realization.entry_storage import (
     RealizedEntries,
     realized_entry_content_chunks,
 )

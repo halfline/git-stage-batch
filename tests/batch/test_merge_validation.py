@@ -12,11 +12,11 @@ from git_stage_batch.batch.discard import discard_batch_from_line_sequences_as_b
 from git_stage_batch.batch.merge import (
     merge_batch_from_line_sequences_as_buffer,
 )
-from git_stage_batch.batch.realized_boundaries import (
+from git_stage_batch.batch.realization.boundaries import (
     find_boundary_after_source_line,
     sequence_present_at_boundary,
 )
-from git_stage_batch.batch.realized_entries import RealizedEntry
+from git_stage_batch.batch.realization.entries import RealizedEntry
 from git_stage_batch.batch.ownership import BatchOwnership
 from git_stage_batch.batch.ownership_absence_claims import AbsenceClaim
 from git_stage_batch.core.buffer import LineBuffer

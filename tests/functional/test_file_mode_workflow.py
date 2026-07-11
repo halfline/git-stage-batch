@@ -79,6 +79,28 @@ def test_content_is_presented_before_independent_mode_action(functional_repo):
     assert "Executable bit added" in shown.stdout
     git_stage_batch("include")
     assert _index_mode(functional_repo, path.name) == "100755"
+
+
+def test_mode_change_round_trips_through_batch(functional_repo):
+    path = _commit_script(functional_repo)
+    git_stage_batch("new", "modes")
+    path.chmod(0o755)
+
+    git_stage_batch("start")
+    git_stage_batch("show")
+    git_stage_batch("include", "--to", "modes")
+
+    path.chmod(0o644)
+    shown = git_stage_batch("show", "--from", "modes", "--file", path.name)
+    assert "Executable bit added" in shown.stdout
+    git_stage_batch("include", "--from", "modes")
+    assert os.access(path, os.X_OK)
+    assert _index_mode(functional_repo, path.name) == "100755"
+
+    git_stage_batch("discard", "--from", "modes", "--file", path.name)
+    assert not os.access(path, os.X_OK)
+
+
 def test_mode_actions_support_skip_undo_redo_and_abort(functional_repo):
     path = _commit_script(functional_repo)
     path.chmod(0o755)

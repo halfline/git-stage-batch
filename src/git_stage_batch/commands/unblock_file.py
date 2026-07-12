@@ -9,8 +9,6 @@ from pathlib import Path
 from ..data.session import session_is_active
 from ..data.undo_checkpoints import undo_checkpoint
 from ..data.ignore_files import (
-    add_file_to_gitignore,
-    add_file_to_local_exclude,
     add_pattern_to_gitignore,
     add_pattern_to_local_exclude,
     literal_ignore_pattern,

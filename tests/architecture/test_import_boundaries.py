@@ -4655,7 +4655,7 @@ def test_status_summary_uses_batch_selected_binary_validation():
     imported_batch_query_names = {
         alias.name
         for imported_module, node in _import_from_nodes(batch_selected_path)
-        if imported_module in _batch_module_names("query", "state.query")
+        if imported_module == "git_stage_batch.batch.state.query"
         for alias in node.names
     }
     status_imports = {
@@ -10819,7 +10819,7 @@ def test_batch_content_commits_own_tree_publication():
     )
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == _batch_module_path("state/content_commits.py", "content_commits.py"):
+        if path == SRC_ROOT / "batch" / "state/content_commits.py":
             continue
 
         imports = _import_from_nodes(path)
@@ -10838,7 +10838,7 @@ def test_batch_content_commits_own_tree_publication():
                     )
                 continue
 
-            if imported_module not in _batch_module_names("content_commits", "state.content_commits"):
+            if imported_module != "git_stage_batch.batch.state.content_commits":
                 continue
 
             imported_public_names |= imported_names & public_names

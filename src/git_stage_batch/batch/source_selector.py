@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-from .validation import validate_batch_name
+from .state.batch_names import validate_batch_name
 from ..exceptions import CommandError
 from ..i18n import _
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..batch.validation import validate_batch_name
+from ..batch.state.batch_names import validate_batch_name
 from ..core.replacement import (
     ReplacementPayload,
 )

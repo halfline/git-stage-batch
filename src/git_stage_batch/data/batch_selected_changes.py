@@ -6,7 +6,7 @@ import json
 from collections.abc import Mapping
 from hashlib import sha256
 
-from ..batch.query import get_batch_commit_sha, read_batch_metadata
+from ..batch.state.query import get_batch_commit_sha, read_batch_metadata
 from ..core.models import BinaryFileChange
 from ..exceptions import CommandError
 from ..i18n import _

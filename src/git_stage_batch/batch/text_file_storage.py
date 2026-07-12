@@ -5,11 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from .metadata_validation import get_validated_baseline_commit
-from .metadata_io import write_file_backed_batch_metadata
-from .lifecycle import create_batch
-from .query import get_batch_commit_sha, read_batch_metadata
-from .validation import batch_exists, validate_batch_name
+from .state.validation import get_validated_baseline_commit
+from .state.compatibility_metadata import write_file_backed_batch_metadata
+from .state.lifecycle import create_batch
+from .state.query import get_batch_commit_sha, read_batch_metadata
+from .state.batch_names import batch_exists, validate_batch_name
 from ..core.text_lifecycle import (
     TextFileChangeType,
     normalized_text_change_type,
@@ -34,7 +34,7 @@ from ..utils.git_index import (
 )
 from ..utils.git_repository import get_git_repository_root_path
 from ..utils.git_object_io import create_git_blob
-from . import content_commits as _content_commits
+from .state import content_commits as _content_commits
 from . import realized_file_content as _realized_file_content
 
 if TYPE_CHECKING:
@@ -257,7 +257,7 @@ def add_files_to_batch(batch_name: str, updates: list[BatchFileUpdate]) -> None:
             message=f"Batch: {batch_name}",
         )
 
-        from .state_refs import sync_batch_state_refs
+        from .state.references import sync_batch_state_refs
         sync_batch_state_refs(
             batch_name,
             content_commit=commit_sha,

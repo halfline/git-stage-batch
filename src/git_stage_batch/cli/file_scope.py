@@ -6,9 +6,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 
-from ..batch.query import read_batch_metadata
+from ..batch.state.query import read_batch_metadata
 from ..batch.source_selector import batch_name_for_source_lookup
-from ..batch.validation import batch_exists
+from ..batch.state.batch_names import batch_exists
 from ..data.file_tracking import list_untracked_files
 from ..exceptions import CommandError
 from ..i18n import _

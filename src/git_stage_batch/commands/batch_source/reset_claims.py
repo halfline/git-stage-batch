@@ -6,8 +6,8 @@ import shlex
 from collections.abc import Sequence
 from contextlib import AbstractContextManager
 
-from ...batch.lifecycle import create_batch
-from ...batch.metadata_io import write_file_backed_batch_metadata
+from ...batch.state.lifecycle import create_batch
+from ...batch.state.compatibility_metadata import write_file_backed_batch_metadata
 from ...batch.ownership.model import BatchOwnership
 from ...batch.ownership.detachment import acquire_detached_batch_ownership
 from ...batch.ownership.metadata_loading import acquire_ownership_for_metadata_dict
@@ -18,9 +18,9 @@ from ...batch.ownership.units import (
 from ...batch.ownership.unit_rebuild import rebuild_ownership_from_units
 from ...batch.ownership.unit_selection import filter_ownership_units_by_display_ids
 from ...batch.ownership.unit_validation import validate_ownership_units
-from ...batch.query import read_batch_metadata
+from ...batch.state.query import read_batch_metadata
 from ...batch.selection import require_display_ids_available
-from ...batch.state_refs import sync_batch_state_refs
+from ...batch.state.references import sync_batch_state_refs
 from ...batch.text_file_storage import (
     add_file_to_batch,
 )
@@ -32,7 +32,7 @@ from ...batch.submodule_pointer import (
     is_batch_submodule_pointer,
     refuse_batch_submodule_pointer_lines,
 )
-from ...batch.validation import batch_exists
+from ...batch.state.batch_names import batch_exists
 from ...core.line_selection import LineRanges
 from ...data.batch_file_scope import resolve_batch_file_scope
 from ...utils.repository_buffers import load_git_object_as_buffer

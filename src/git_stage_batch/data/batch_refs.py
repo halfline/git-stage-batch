@@ -6,10 +6,10 @@ import json
 import shutil
 from typing import Any
 
-from ..batch.ref_names import BATCH_CONTENT_REF_PREFIX, LEGACY_BATCH_REF_PREFIX
-from ..batch.query import read_batch_metadata
-from ..batch.metadata_io import write_file_backed_batch_metadata
-from ..batch.state_refs import (
+from ..batch.state.reference_names import BATCH_CONTENT_REF_PREFIX, LEGACY_BATCH_REF_PREFIX
+from ..batch.state.query import read_batch_metadata
+from ..batch.state.compatibility_metadata import write_file_backed_batch_metadata
+from ..batch.state.references import (
     delete_batch_state_refs,
     get_batch_content_ref_name,
     get_batch_state_ref_name,

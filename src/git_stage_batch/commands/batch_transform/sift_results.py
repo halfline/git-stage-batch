@@ -16,7 +16,7 @@ from ...batch.ownership.absence_content import AbsenceContentBuilder
 from ...batch.ownership.model import BatchOwnership
 from ...batch.ownership.absence_claims import AbsenceClaim
 from ...batch.ownership.metadata_loading import acquire_ownership_for_metadata_dict
-from ...batch.query import get_batch_baseline_commit
+from ...batch.state.query import get_batch_baseline_commit
 from ...batch.realized_file_content import build_realized_buffer_from_lines
 from ...core.buffer import (
     LineBuffer,

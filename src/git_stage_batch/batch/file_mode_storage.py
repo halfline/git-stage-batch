@@ -6,12 +6,12 @@ from ..core.buffer import LineBuffer
 from ..core.models import FileModeChange
 from ..utils.git_object_io import create_git_blob
 from ..utils.git_repository import get_git_repository_root_path
-from . import content_commits as _content_commits
-from .lifecycle import create_batch
-from .metadata_io import write_file_backed_batch_metadata
-from .query import read_batch_metadata
+from .state import content_commits as _content_commits
+from .state.lifecycle import create_batch
+from .state.compatibility_metadata import write_file_backed_batch_metadata
+from .state.query import read_batch_metadata
 from .source_snapshots import create_batch_source_commit
-from .validation import batch_exists, validate_batch_name
+from .state.batch_names import batch_exists, validate_batch_name
 
 
 def add_file_mode_to_batch(batch_name: str, change: FileModeChange) -> None:

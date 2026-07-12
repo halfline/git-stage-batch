@@ -9,7 +9,7 @@ from . import file_display_model as _file_display_model
 from . import file_mergeability as _file_mergeability
 from .ownership.model import BatchOwnership
 from .ownership.metadata_loading import acquire_ownership_for_metadata_dict
-from .query import read_batch_metadata
+from .state.query import read_batch_metadata
 from ..core.line_selection import LineRanges
 from ..core.models import (
     RenderedBatchDisplay,

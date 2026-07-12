@@ -10,7 +10,7 @@ from . import binary_file_actions as _binary_file_actions
 from . import file_mode_actions as _file_mode_actions
 from . import text_file_actions as _text_file_actions
 from . import text_plan_builders as _text_plan_builders
-from ...batch.metadata_validation import get_validated_baseline_commit
+from ...batch.state.validation import get_validated_baseline_commit
 from ...batch.submodule_pointer import (
     discard_submodule_pointer_from_batch,
     is_batch_submodule_pointer,

@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ...batch.metadata_validation import read_validated_batch_metadata
+from ...batch.state.validation import read_validated_batch_metadata
 from ...batch.source_selector import (
     BatchSourceSelector,
     CandidateOperation,
     require_plain_batch_name,
 )
-from ...batch.validation import batch_exists
+from ...batch.state.batch_names import batch_exists
 from ...data.file_review.records import ActionScopeResolution, FileReviewAction
 from ...data.file_review.action_scope import resolve_batch_source_action_scope
 from ...exceptions import BatchMetadataError, exit_with_error

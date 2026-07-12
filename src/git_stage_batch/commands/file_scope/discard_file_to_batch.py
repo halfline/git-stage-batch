@@ -6,12 +6,12 @@ from contextlib import ExitStack
 import sys
 
 from ...batch.source_annotation import annotate_with_batch_source
-from ...batch.lifecycle import create_batch
+from ...batch.state.lifecycle import create_batch
 from ...batch.ownership.model import BatchOwnership
 from ...batch.ownership_update import acquire_batch_ownership_update_for_selection
-from ...batch.query import read_batch_metadata
+from ...batch.state.query import read_batch_metadata
 from ...batch.text_file_storage import add_file_to_batch
-from ...batch.validation import batch_exists
+from ...batch.state.batch_names import batch_exists
 from ...core.buffer import LineBuffer
 from ...core.diff_parser import acquire_unified_diff, build_line_changes_from_patch_lines
 from ...core.hashing import compute_stable_hunk_hash_from_lines

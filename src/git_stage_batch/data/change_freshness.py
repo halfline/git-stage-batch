@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..batch.query import list_batch_names, read_batch_metadata_for_batches
+from ..batch.state.query import list_batch_names, read_batch_metadata_for_batches
 from ..core.models import (
     BinaryFileChange,
     FileModeChange,

@@ -11,12 +11,12 @@ from ...batch.ownership.hunk_translation import (
     translate_hunk_selection_to_batch_ownership,
 )
 from ...batch.merge.merge import merge_batch_from_line_sequences_as_buffer
-from ...batch.lifecycle import create_batch, delete_batch
+from ...batch.state.lifecycle import create_batch, delete_batch
 from ...batch.ownership.metadata_loading import acquire_ownership_for_metadata_dict
-from ...batch.query import read_batch_metadata
+from ...batch.state.query import read_batch_metadata
 from ...batch.selection import line_selection_not_valid_message
 from ...batch.text_file_storage import add_file_to_batch
-from ...batch.validation import batch_exists
+from ...batch.state.batch_names import batch_exists
 from ...core.buffer import LineBuffer, buffer_matches
 from ...batch.source_snapshots import create_batch_source_commit
 from ...data.selected_change.file_hunk_cache import cache_unstaged_file_as_single_hunk

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Optional
 
-from ...batch.query import read_batch_metadata
+from ...batch.state.query import read_batch_metadata
 from ...core.hashing import compute_stable_hunk_hash_from_lines
 from ...core.models import RenderedBatchDisplay
 from ...exceptions import CommandError

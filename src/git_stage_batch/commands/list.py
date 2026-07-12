@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 
-from ..batch.query import list_batch_names
+from ..batch.state.query import list_batch_names
 from ..i18n import _
 from ..utils.git_repository import require_git_repository
 

@@ -22,10 +22,10 @@ from __future__ import annotations
 import sys
 
 from ..exceptions import MergeError
-from ..batch.metadata_validation import read_validated_batch_metadata
-from ..batch.lifecycle import create_batch, delete_batch
-from ..batch.query import read_batch_metadata
-from ..batch.validation import batch_exists, validate_batch_name
+from ..batch.state.validation import read_validated_batch_metadata
+from ..batch.state.lifecycle import create_batch, delete_batch
+from ..batch.state.query import read_batch_metadata
+from ..batch.state.batch_names import batch_exists, validate_batch_name
 from ..batch.source_selector import require_plain_batch_name
 from .batch_transform import sift_persistence as _sift_persistence
 from .batch_transform import sift_results as _sift_results

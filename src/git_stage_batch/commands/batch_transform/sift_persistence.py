@@ -2,22 +2,22 @@
 
 from __future__ import annotations
 
-from ...batch.lifecycle import create_batch, delete_batch
-from ...batch.metadata_io import write_file_backed_batch_metadata
+from ...batch.state.lifecycle import create_batch, delete_batch
+from ...batch.state.compatibility_metadata import write_file_backed_batch_metadata
 from ...batch.ownership.model import BatchOwnership
-from ...batch.query import get_batch_baseline_commit, read_batch_metadata
-from ...batch.state_refs import (
+from ...batch.state.query import get_batch_baseline_commit, read_batch_metadata
+from ...batch.state.references import (
     delete_batch_state_refs,
     get_batch_content_ref_name,
     sync_batch_state_refs,
 )
-from ...batch.content_commits import (
+from ...batch.state.content_commits import (
     remove_file_from_batch_commit,
     update_batch_commit,
 )
 from ...batch.binary_file_storage import add_binary_file_to_batch
 from ...batch.file_mode_storage import add_file_mode_to_batch
-from ...batch.validation import batch_exists, validate_batch_name
+from ...batch.state.batch_names import batch_exists, validate_batch_name
 from ...core.buffer import LineBuffer
 from ...core.text_lifecycle import TextFileChangeType, normalized_text_change_type
 from ...exceptions import exit_with_error

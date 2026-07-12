@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 
-from ...batch.query import read_batch_metadata
+from ...batch.state.query import read_batch_metadata
 from ...data.file_tracking import list_untracked_files
 from ...exceptions import CommandError
 from ...i18n import _

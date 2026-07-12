@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from ..core.models import GitlinkChange
-from . import content_commits as _content_commits
-from .lifecycle import create_batch
-from .metadata_io import write_file_backed_batch_metadata
-from .query import read_batch_metadata
-from .validation import batch_exists, validate_batch_name
+from .state import content_commits as _content_commits
+from .state.lifecycle import create_batch
+from .state.compatibility_metadata import write_file_backed_batch_metadata
+from .state.query import read_batch_metadata
+from .state.batch_names import batch_exists, validate_batch_name
 
 
 def add_gitlink_to_batch(

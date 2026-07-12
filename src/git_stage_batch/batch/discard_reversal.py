@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from .baseline_correspondence import (
+from .merge.baseline_correspondence import (
     BaselineCorrespondence as _BaselineCorrespondence,
     RegionKind as _RegionKind,
 )

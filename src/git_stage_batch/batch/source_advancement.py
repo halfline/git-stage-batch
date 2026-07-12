@@ -13,7 +13,7 @@ from ..utils.repository_buffers import (
 )
 from ..utils.git_repository import get_git_repository_root_path
 from .line_matching.lineage import BatchSourceLineage, LineageRun
-from .presence_constraints import apply_presence_constraints
+from .merge.presence_constraints import apply_presence_constraints
 from .realization.entry_storage import realized_entry_content_chunks
 from .ownership.model import BatchOwnership
 from .ownership.remapping import remap_batch_ownership_with_lineage

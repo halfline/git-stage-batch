@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING, Any
 
-from .baseline_correspondence import (
+from .merge.baseline_correspondence import (
     build_baseline_correspondence as _build_discard_baseline_correspondence,
 )
 from .discard_reversal import (

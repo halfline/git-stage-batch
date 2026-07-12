@@ -11,7 +11,7 @@ from ...batch.line_matching.comparison import (
     SemanticChangeKind,
     derive_semantic_change_runs,
 )
-from ...batch.merge import merge_batch_from_line_sequences_as_buffer
+from ...batch.merge.merge import merge_batch_from_line_sequences_as_buffer
 from ...batch.ownership.absence_content import AbsenceContentBuilder
 from ...batch.ownership.model import BatchOwnership
 from ...batch.ownership.absence_claims import AbsenceClaim

@@ -10,7 +10,7 @@ import uuid
 from ...batch.ownership.hunk_translation import (
     translate_hunk_selection_to_batch_ownership,
 )
-from ...batch.merge import merge_batch_from_line_sequences_as_buffer
+from ...batch.merge.merge import merge_batch_from_line_sequences_as_buffer
 from ...batch.lifecycle import create_batch, delete_batch
 from ...batch.ownership.metadata_loading import acquire_ownership_for_metadata_dict
 from ...batch.query import read_batch_metadata

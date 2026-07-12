@@ -2696,8 +2696,11 @@ def test_ignore_file_helpers_stay_in_data_layer():
     public_names = {
         "add_file_to_gitignore",
         "add_file_to_local_exclude",
+        "add_pattern_to_gitignore",
+        "add_pattern_to_local_exclude",
         "get_gitignore_path",
         "get_local_exclude_path",
+        "literal_ignore_pattern",
         "promote_directory_to_glob_in_gitignore",
         "promote_directory_to_glob_in_local_exclude",
         "read_gitignore_lines",
@@ -2711,8 +2714,9 @@ def test_ignore_file_helpers_stay_in_data_layer():
             "add_file_to_local_exclude",
         },
         SRC_ROOT / "commands" / "unblock_file.py": {
-            "add_file_to_gitignore",
-            "add_file_to_local_exclude",
+            "add_pattern_to_gitignore",
+            "add_pattern_to_local_exclude",
+            "literal_ignore_pattern",
             "promote_directory_to_glob_in_gitignore",
             "promote_directory_to_glob_in_local_exclude",
             "remove_file_from_gitignore",

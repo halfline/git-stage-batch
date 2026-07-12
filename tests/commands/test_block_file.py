@@ -54,6 +54,29 @@ class TestCommandBlockFile:
         captured = capsys.readouterr()
         assert "Blocked file: unwanted.txt" in captured.err
 
+    @pytest.mark.parametrize(
+        "file_name",
+        [
+            "file[1].txt",
+            "literal*.txt",
+            "literal?.txt",
+            "#notes.txt",
+            "!important.txt",
+            "trailing-space.txt ",
+        ],
+    )
+    def test_block_file_ignores_literal_special_path(self, temp_git_repo, file_name):
+        """Blocking should quote pathname characters with pattern meaning."""
+        (temp_git_repo / file_name).write_text("generated\n")
+
+        command_block_file(file_name)
+
+        assert subprocess.run(
+            ["git", "check-ignore", "--quiet", "--", file_name],
+            cwd=temp_git_repo,
+            check=False,
+        ).returncode == 0
+
     def test_block_file_adds_to_blocked_list(self, temp_git_repo):
         """Test that block-file adds file to blocked-files state."""
         # Create untracked file

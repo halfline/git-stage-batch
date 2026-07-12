@@ -59,6 +59,72 @@ class TestCommandUnblockFile:
         captured = capsys.readouterr()
         assert "Unblocked file: temp.txt" in captured.err
 
+    def test_unblock_file_removes_literal_special_path(self, temp_git_repo):
+        """Unblocking should remove the escaped rule for a literal pathname."""
+        file_name = "file[1].txt"
+        (temp_git_repo / file_name).write_text("content\n")
+        command_block_file(file_name)
+        assert subprocess.run(
+            ["git", "check-ignore", "--quiet", "--", file_name],
+            cwd=temp_git_repo,
+            check=False,
+        ).returncode == 0
+
+        command_unblock_file(file_name)
+
+        assert subprocess.run(
+            ["git", "check-ignore", "--quiet", "--", file_name],
+            cwd=temp_git_repo,
+            check=False,
+        ).returncode == 1
+
+    @pytest.mark.parametrize("local_only", [False, True])
+    def test_unblock_file_removes_legacy_literal_special_path(
+        self,
+        temp_git_repo,
+        local_only,
+    ):
+        """Unblocking should remove raw special rules written by older versions."""
+        file_name = "literal*.txt"
+        (temp_git_repo / file_name).write_text("content\n")
+        ignore_path = (
+            get_local_exclude_path() if local_only else get_gitignore_path()
+        )
+        ignore_path.parent.mkdir(parents=True, exist_ok=True)
+        ignore_path.write_text(f"{file_name}\n")
+        append_file_path_to_file(get_blocked_files_file_path(), file_name)
+
+        command_unblock_file(file_name)
+
+        assert file_name not in ignore_path.read_text()
+        blocked = read_file_paths_file(get_blocked_files_file_path())
+        assert file_name not in blocked
+
+    @pytest.mark.parametrize("local_only", [False, True])
+    def test_unblock_file_promotes_legacy_literal_directory(
+        self,
+        temp_git_repo,
+        local_only,
+    ):
+        """Unblocking a child should migrate an older raw directory rule."""
+        directory = temp_git_repo / "generated*"
+        directory.mkdir()
+        child = directory / "keep.txt"
+        child.write_text("content\n")
+        ignore_path = (
+            get_local_exclude_path() if local_only else get_gitignore_path()
+        )
+        ignore_path.parent.mkdir(parents=True, exist_ok=True)
+        ignore_path.write_text("generated*/\n")
+        append_file_path_to_file(get_blocked_files_file_path(), "generated*/")
+
+        command_unblock_file("generated*/keep.txt")
+
+        content = ignore_path.read_text()
+        assert "generated\\*/**\n" in content
+        assert "!generated\\*/keep.txt\n" in content
+        assert "generated*/\n" not in content
+
     def test_unblock_file_removes_from_blocked_list(self, temp_git_repo):
         """Test that unblock-file removes from blocked list."""
         # Create and block a file

@@ -9,8 +9,9 @@ from pathlib import Path
 from ..data.session import session_is_active
 from ..data.undo_checkpoints import undo_checkpoint
 from ..data.ignore_files import (
-    add_file_to_gitignore,
-    add_file_to_local_exclude,
+    add_pattern_to_gitignore,
+    add_pattern_to_local_exclude,
+    literal_ignore_pattern,
     promote_directory_to_glob_in_gitignore,
     promote_directory_to_glob_in_local_exclude,
     remove_file_from_gitignore,
@@ -92,10 +93,12 @@ def command_unblock_file(file_path_arg: str) -> None:
             covering_dir = _find_covering_directory(file_path, blocked_files)
             if covering_dir is not None:
                 if promote_directory_to_glob_in_gitignore(covering_dir):
-                    add_file_to_gitignore(f"!{file_path}")
+                    add_pattern_to_gitignore(f"!{literal_ignore_pattern(file_path)}")
                     removed_from_gitignore = True
                 if promote_directory_to_glob_in_local_exclude(covering_dir):
-                    add_file_to_local_exclude(f"!{file_path}")
+                    add_pattern_to_local_exclude(
+                        f"!{literal_ignore_pattern(file_path)}"
+                    )
                     removed_from_local_exclude = True
                 append_file_path_to_file(get_blocked_files_file_path(), f"!{file_path}")
 

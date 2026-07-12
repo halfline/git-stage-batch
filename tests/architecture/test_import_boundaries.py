@@ -9200,14 +9200,8 @@ def test_batch_lineage_uses_public_data_types():
         "_BatchSourceLineage",
         "_LineageRun",
     }
-    lineage_module_names = _batch_module_names(
-        "lineage",
-        "line_matching.lineage",
-    )
-    lineage_path = _batch_module_path(
-        "line_matching/lineage.py",
-        "lineage.py",
-    )
+    lineage_module_names = {"git_stage_batch.batch.line_matching.lineage"}
+    lineage_path = SRC_ROOT / "batch" / "line_matching/lineage.py"
     expected_imports = {
         SRC_ROOT / "batch" / "ownership_remapping.py": {
             "BatchSourceLineage",
@@ -11347,7 +11341,7 @@ def test_batch_file_mergeability_owns_display_probe():
         "git_stage_batch.batch": {"file_mergeability"},
     }
     expected_dependency_imports = {
-        tuple(_batch_module_names("match", "line_matching.match")): {
+        ("git_stage_batch.batch.line_matching.match",): {
             "match_lines",
         },
         ("git_stage_batch.batch.ownership_unit_rebuild",): {
@@ -11856,14 +11850,8 @@ def test_batch_line_range_view_stays_out_of_realized_entries():
         "git_stage_batch.batch.realized_entries",
         fromlist=["realized_entries"],
     )
-    line_range_view_module_names = _batch_module_names(
-        "line_range_view",
-        "line_matching.line_range_view",
-    )
-    line_range_view_path = _batch_module_path(
-        "line_matching/line_range_view.py",
-        "line_range_view.py",
-    )
+    line_range_view_module_names = {"git_stage_batch.batch.line_matching.line_range_view"}
+    line_range_view_path = SRC_ROOT / "batch" / "line_matching/line_range_view.py"
     public_names = {
         "LineRangeView",
     }
@@ -11996,18 +11984,9 @@ def test_batch_line_mapping_owns_public_mapping_type():
         "git_stage_batch.batch.line_matching.match",
         fromlist=["match"],
     )
-    line_mapping_module_names = _batch_module_names(
-        "line_mapping",
-        "line_matching.line_mapping",
-    )
-    match_module_names = _batch_module_names(
-        "match",
-        "line_matching.match",
-    )
-    line_mapping_path = _batch_module_path(
-        "line_matching/line_mapping.py",
-        "line_mapping.py",
-    )
+    line_mapping_module_names = {"git_stage_batch.batch.line_matching.line_mapping"}
+    match_module_names = {"git_stage_batch.batch.line_matching.match"}
+    line_mapping_path = SRC_ROOT / "batch" / "line_matching/line_mapping.py"
     public_names = {
         "LineMapping",
     }
@@ -12080,18 +12059,9 @@ def test_batch_line_sequence_search_stays_out_of_match_module():
         "git_stage_batch.batch.line_matching.match",
         fromlist=["match"],
     )
-    line_sequence_search_module_names = _batch_module_names(
-        "line_sequence_search",
-        "line_matching.sequence_search",
-    )
-    match_module_names = _batch_module_names(
-        "match",
-        "line_matching.match",
-    )
-    line_sequence_search_path = _batch_module_path(
-        "line_matching/sequence_search.py",
-        "line_sequence_search.py",
-    )
+    line_sequence_search_module_names = {"git_stage_batch.batch.line_matching.sequence_search"}
+    match_module_names = {"git_stage_batch.batch.line_matching.match"}
+    line_sequence_search_path = SRC_ROOT / "batch" / "line_matching/sequence_search.py"
     public_names = {
         "TargetGap",
         "iter_exact_context_gaps",
@@ -12780,14 +12750,8 @@ def test_batch_line_sequence_equality_owns_exact_comparison():
         "git_stage_batch.batch.presence_constraints",
         fromlist=["presence_constraints"],
     )
-    line_sequence_equality_module_names = _batch_module_names(
-        "line_sequence_equality",
-        "line_matching.sequence_equality",
-    )
-    line_sequence_equality_path = _batch_module_path(
-        "line_matching/sequence_equality.py",
-        "line_sequence_equality.py",
-    )
+    line_sequence_equality_module_names = {"git_stage_batch.batch.line_matching.sequence_equality"}
+    line_sequence_equality_path = SRC_ROOT / "batch" / "line_matching/sequence_equality.py"
     baseline_edits_path = SRC_ROOT / "batch" / "baseline_edits.py"
     presence_placement_choices_path = (
         SRC_ROOT / "batch" / "presence_placement_choices.py"

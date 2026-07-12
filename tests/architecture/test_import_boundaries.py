@@ -439,7 +439,7 @@ def test_batch_source_annotation_owns_line_annotation():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module in _batch_module_names("display", "ownership.display_lines"):
+            if imported_module == "git_stage_batch.batch.ownership.display_lines":
                 stale_imports = imported_names & public_names
                 if stale_imports:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -9203,7 +9203,7 @@ def test_batch_lineage_uses_public_data_types():
     lineage_module_names = {"git_stage_batch.batch.line_matching.lineage"}
     lineage_path = SRC_ROOT / "batch" / "line_matching/lineage.py"
     expected_imports = {
-        _batch_module_path("ownership/remapping.py", "ownership_remapping.py"): {
+        SRC_ROOT / "batch" / "ownership/remapping.py": {
             "BatchSourceLineage",
         },
         SRC_ROOT / "batch" / "source_advancement.py": public_names,
@@ -9287,13 +9287,13 @@ def test_batch_ownership_remapping_owns_public_helpers():
     ownership_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(
-            _batch_module_path("ownership/model.py", "ownership.py")
+            SRC_ROOT / "batch" / "ownership/model.py"
         )
     }
     assert "git_stage_batch.batch.merge" not in ownership_imports
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == _batch_module_path("ownership/model.py", "ownership.py"):
+        if path == SRC_ROOT / "batch" / "ownership/model.py":
             continue
 
         imports = _import_from_nodes(path)
@@ -9301,7 +9301,7 @@ def test_batch_ownership_remapping_owns_public_helpers():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module in _batch_module_names("ownership", "ownership.model"):
+            if imported_module == "git_stage_batch.batch.ownership.model":
                 disallowed_names = imported_names & public_names
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -9309,7 +9309,7 @@ def test_batch_ownership_remapping_owns_public_helpers():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module not in _batch_module_names("ownership_remapping", "ownership.remapping"):
+            if imported_module != "git_stage_batch.batch.ownership.remapping":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -9366,7 +9366,7 @@ def test_batch_ownership_translation_owns_public_helpers():
     assert private_names.isdisjoint(vars(translation))
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == _batch_module_path("ownership/translation.py", "ownership_translation.py"):
+        if path == SRC_ROOT / "batch" / "ownership/translation.py":
             continue
 
         imports = _import_from_nodes(path)
@@ -9374,7 +9374,7 @@ def test_batch_ownership_translation_owns_public_helpers():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module in _batch_module_names("ownership", "ownership.model"):
+            if imported_module == "git_stage_batch.batch.ownership.model":
                 disallowed_names = imported_names & public_names
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -9382,7 +9382,7 @@ def test_batch_ownership_translation_owns_public_helpers():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module not in _batch_module_names("ownership_translation", "ownership.translation"):
+            if imported_module != "git_stage_batch.batch.ownership.translation":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -9408,7 +9408,7 @@ def test_batch_hunk_ownership_translation_owns_hunk_selection():
         "git_stage_batch.batch.ownership.translation",
         fromlist=["ownership_translation"],
     )
-    hunk_path = _batch_module_path("ownership/hunk_translation.py", "hunk_ownership_translation.py")
+    hunk_path = SRC_ROOT / "batch" / "ownership/hunk_translation.py"
     public_names = {
         "translate_hunk_selection_to_batch_ownership",
     }
@@ -9440,7 +9440,7 @@ def test_batch_hunk_ownership_translation_owns_hunk_selection():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module in _batch_module_names("ownership_translation", "ownership.translation"):
+            if imported_module == "git_stage_batch.batch.ownership.translation":
                 disallowed_names = imported_names & public_names
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -9448,7 +9448,7 @@ def test_batch_hunk_ownership_translation_owns_hunk_selection():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module not in _batch_module_names("hunk_ownership_translation", "ownership.hunk_translation"):
+            if imported_module != "git_stage_batch.batch.ownership.hunk_translation":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -9474,8 +9474,8 @@ def test_batch_hunk_line_ranges_own_hunk_range_scanning():
         "git_stage_batch.batch.ownership.hunk_line_ranges",
         fromlist=["hunk_line_ranges"],
     )
-    hunk_path = _batch_module_path("ownership/hunk_translation.py", "hunk_ownership_translation.py")
-    range_path = _batch_module_path("ownership/hunk_line_ranges.py", "hunk_line_ranges.py")
+    hunk_path = SRC_ROOT / "batch" / "ownership/hunk_translation.py"
+    range_path = SRC_ROOT / "batch" / "ownership/hunk_line_ranges.py"
     public_names = {
         "HunkLineRangeScan",
         "hunk_line_index_ranges_in_range",
@@ -9491,7 +9491,7 @@ def test_batch_hunk_line_ranges_own_hunk_range_scanning():
     hunk_imported_names: dict[str | None, set[str]] = {}
     replacement_imported_names: dict[str | None, set[str]] = {}
     hunk_text = hunk_path.read_text()
-    replacement_path = _batch_module_path("ownership/hunk_replacement_translation.py", "hunk_replacement_translation.py")
+    replacement_path = SRC_ROOT / "batch" / "ownership/hunk_replacement_translation.py"
     replacement_text = replacement_path.read_text()
     range_text = range_path.read_text()
 
@@ -9538,8 +9538,8 @@ def test_batch_hunk_replacement_translation_owns_replacement_runs():
         "git_stage_batch.batch.ownership.hunk_replacement_translation",
         fromlist=["hunk_replacement_translation"],
     )
-    hunk_path = _batch_module_path("ownership/hunk_translation.py", "hunk_ownership_translation.py")
-    replacement_path = _batch_module_path("ownership/hunk_replacement_translation.py", "hunk_replacement_translation.py")
+    hunk_path = SRC_ROOT / "batch" / "ownership/hunk_translation.py"
+    replacement_path = SRC_ROOT / "batch" / "ownership/hunk_replacement_translation.py"
     public_names = {
         "HunkReplacementTranslation",
         "translate_hunk_replacement_line_runs",
@@ -9605,7 +9605,7 @@ def test_batch_ownership_line_entries_own_entry_helpers():
         "git_stage_batch.batch.ownership.translation",
         fromlist=["ownership_translation"],
     )
-    line_entry_path = _batch_module_path("ownership/line_entries.py", "ownership_line_entries.py")
+    line_entry_path = SRC_ROOT / "batch" / "ownership/line_entries.py"
     public_names = {
         "LineEntryContentSequence",
         "ReplacementUnitBuilder",
@@ -9625,19 +9625,19 @@ def test_batch_ownership_line_entries_own_entry_helpers():
         "_replacement_unit_origin_for_line_run",
     }
     expected_imports = {
-        _batch_module_path("ownership/hunk_translation.py", "hunk_ownership_translation.py"): {
+        SRC_ROOT / "batch" / "ownership/hunk_translation.py": {
             "LineEntryContentSequence",
             "ReplacementUnitBuilder",
             "baseline_reference_for_old_line_range",
             "baseline_reference_for_presence_line",
             "old_line_content_by_number",
         },
-        _batch_module_path("ownership/hunk_replacement_translation.py", "hunk_replacement_translation.py"): {
+        SRC_ROOT / "batch" / "ownership/hunk_replacement_translation.py": {
             "baseline_reference_for_old_line_range",
             "baseline_reference_for_presence_line",
             "replacement_unit_origin_for_line_run",
         },
-        _batch_module_path("ownership/translation.py", "ownership_translation.py"): {
+        SRC_ROOT / "batch" / "ownership/translation.py": {
             "LineEntryContentSequence",
             "ReplacementUnitBuilder",
         },
@@ -9658,7 +9658,7 @@ def test_batch_ownership_line_entries_own_entry_helpers():
         imported_public_names = set()
 
         for imported_module, node in imports:
-            if imported_module not in _batch_module_names("ownership_line_entries", "ownership.line_entries"):
+            if imported_module != "git_stage_batch.batch.ownership.line_entries":
                 continue
 
             imported_names = {alias.name for alias in node.names}
@@ -9685,24 +9685,24 @@ def test_batch_ownership_references_own_baseline_boundaries():
         "git_stage_batch.batch.ownership.references",
         fromlist=["ownership_references"],
     )
-    reference_path = _batch_module_path("ownership/references.py", "ownership_references.py")
+    reference_path = SRC_ROOT / "batch" / "ownership/references.py"
     expected_imports = {
-        _batch_module_path("ownership/hunk_translation.py", "hunk_ownership_translation.py"): {
+        SRC_ROOT / "batch" / "ownership/hunk_translation.py": {
             "BaselineReference",
         },
-        _batch_module_path("ownership/model.py", "ownership.py"): {
+        SRC_ROOT / "batch" / "ownership/model.py": {
             "BaselineReference",
         },
-        _batch_module_path("ownership/claims.py", "ownership_claims.py"): {
+        SRC_ROOT / "batch" / "ownership/claims.py": {
             "BaselineReference",
         },
-        _batch_module_path("ownership/line_entries.py", "ownership_line_entries.py"): {
+        SRC_ROOT / "batch" / "ownership/line_entries.py": {
             "BaselineReference",
         },
-        _batch_module_path("ownership/merging.py", "ownership_merging.py"): {
+        SRC_ROOT / "batch" / "ownership/merging.py": {
             "BaselineReference",
         },
-        _batch_module_path("ownership/translation.py", "ownership_translation.py"): {
+        SRC_ROOT / "batch" / "ownership/translation.py": {
             "BaselineReference",
         },
     }
@@ -9712,7 +9712,7 @@ def test_batch_ownership_references_own_baseline_boundaries():
     assert public_names <= vars(ownership_references).keys()
     assert public_names.isdisjoint(vars(ownership))
     assert "class BaselineReference" not in (
-        _batch_module_path("ownership/model.py", "ownership.py")
+        SRC_ROOT / "batch" / "ownership/model.py"
     ).read_text()
 
     for path in SRC_ROOT.rglob("*.py"):
@@ -9722,7 +9722,7 @@ def test_batch_ownership_references_own_baseline_boundaries():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module in _batch_module_names("ownership", "ownership.model"):
+            if imported_module == "git_stage_batch.batch.ownership.model":
                 stale_imports = imported_names & public_names
                 if stale_imports:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -9730,7 +9730,7 @@ def test_batch_ownership_references_own_baseline_boundaries():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module not in _batch_module_names("ownership_references", "ownership.references"):
+            if imported_module != "git_stage_batch.batch.ownership.references":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -9751,18 +9751,18 @@ def test_batch_ownership_claims_own_presence_records():
         "git_stage_batch.batch.ownership.claims",
         fromlist=["ownership_claims"],
     )
-    claims_path = _batch_module_path("ownership/claims.py", "ownership_claims.py")
+    claims_path = SRC_ROOT / "batch" / "ownership/claims.py"
     public_names = {"PresenceClaim"}
     expected_imports = {
-        _batch_module_path("ownership/model.py", "ownership.py"): public_names,
-        _batch_module_path("ownership/detachment.py", "ownership_detachment.py"): public_names,
+        SRC_ROOT / "batch" / "ownership/model.py": public_names,
+        SRC_ROOT / "batch" / "ownership/detachment.py": public_names,
     }
     violations = []
 
     assert public_names <= vars(ownership_claims).keys()
     assert public_names.isdisjoint(vars(ownership))
     assert "class PresenceClaim" not in (
-        _batch_module_path("ownership/model.py", "ownership.py")
+        SRC_ROOT / "batch" / "ownership/model.py"
     ).read_text()
 
     for path in SRC_ROOT.rglob("*.py"):
@@ -9772,7 +9772,7 @@ def test_batch_ownership_claims_own_presence_records():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module in _batch_module_names("ownership", "ownership.model"):
+            if imported_module == "git_stage_batch.batch.ownership.model":
                 stale_imports = imported_names & public_names
                 if stale_imports:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -9780,7 +9780,7 @@ def test_batch_ownership_claims_own_presence_records():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module not in _batch_module_names("ownership_claims", "ownership.claims"):
+            if imported_module != "git_stage_batch.batch.ownership.claims":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -9801,7 +9801,7 @@ def test_batch_ownership_claims_owns_line_range_helpers():
         "git_stage_batch.batch.ownership.claims",
         fromlist=["ownership_claims"],
     )
-    claim_path = _batch_module_path("ownership/claims.py", "ownership_claims.py")
+    claim_path = SRC_ROOT / "batch" / "ownership/claims.py"
     public_names = {
         "LineRangeBuilder",
         "format_ownership_line_set",
@@ -9815,31 +9815,31 @@ def test_batch_ownership_claims_owns_line_range_helpers():
         "_presence_claims_from_source_lines",
     }
     expected_imports = {
-        _batch_module_path("ownership/hunk_translation.py", "hunk_ownership_translation.py"): {
+        SRC_ROOT / "batch" / "ownership/hunk_translation.py": {
             "LineRangeBuilder",
             "presence_claims_from_source_lines",
         },
-        _batch_module_path("ownership/model.py", "ownership.py"): {
+        SRC_ROOT / "batch" / "ownership/model.py": {
             "parse_ownership_line_ranges",
             "presence_claims_from_source_lines",
         },
-        _batch_module_path("ownership/line_entries.py", "ownership_line_entries.py"): {
+        SRC_ROOT / "batch" / "ownership/line_entries.py": {
             "LineRangeBuilder",
         },
-        _batch_module_path("ownership/remapping.py", "ownership_remapping.py"): {
+        SRC_ROOT / "batch" / "ownership/remapping.py": {
             "format_ownership_line_set",
             "parse_ownership_line_ranges",
             "presence_claims_from_source_lines",
         },
-        _batch_module_path("ownership/translation.py", "ownership_translation.py"): {
+        SRC_ROOT / "batch" / "ownership/translation.py": {
             "LineRangeBuilder",
             "presence_claims_from_source_lines",
         },
-        _batch_module_path("ownership/unit_rebuild.py", "ownership_unit_rebuild.py"): {
+        SRC_ROOT / "batch" / "ownership/unit_rebuild.py": {
             "format_ownership_line_set",
             "presence_claims_from_source_lines",
         },
-        _batch_module_path("ownership/units.py", "ownership_units.py"): {
+        SRC_ROOT / "batch" / "ownership/units.py": {
             "LineRangeBuilder",
             "parse_ownership_line_ranges",
         },
@@ -9860,7 +9860,7 @@ def test_batch_ownership_claims_owns_line_range_helpers():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module in _batch_module_names("ownership", "ownership.model"):
+            if imported_module == "git_stage_batch.batch.ownership.model":
                 disallowed_names = imported_names & (
                     public_names | old_private_names
                 )
@@ -9870,7 +9870,7 @@ def test_batch_ownership_claims_owns_line_range_helpers():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module not in _batch_module_names("ownership_claims", "ownership.claims"):
+            if imported_module != "git_stage_batch.batch.ownership.claims":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -9896,7 +9896,7 @@ def test_batch_ownership_absence_claims_own_value_records():
         "git_stage_batch.batch.ownership.absence_claims",
         fromlist=["ownership_absence_claims"],
     )
-    absence_claim_path = _batch_module_path("ownership/absence_claims.py", "ownership_absence_claims.py")
+    absence_claim_path = SRC_ROOT / "batch" / "ownership/absence_claims.py"
     public_names = {
         "AbsenceClaim",
     }
@@ -9905,17 +9905,17 @@ def test_batch_ownership_absence_claims_own_value_records():
         SRC_ROOT / "batch" / "baseline_edits.py": public_names,
         SRC_ROOT / "batch" / "baseline_replacement_choices.py": public_names,
         SRC_ROOT / "batch" / "discard.py": public_names,
-        _batch_module_path("ownership/display_lines.py", "display.py"): public_names,
-        _batch_module_path("ownership/hunk_translation.py", "hunk_ownership_translation.py"): public_names,
+        SRC_ROOT / "batch" / "ownership/display_lines.py": public_names,
+        SRC_ROOT / "batch" / "ownership/hunk_translation.py": public_names,
         SRC_ROOT / "batch" / "merge_candidate_enumeration.py": public_names,
         SRC_ROOT / "batch" / "merge_validation.py": public_names,
-        _batch_module_path("ownership/model.py", "ownership.py"): public_names,
-        _batch_module_path("ownership/detachment.py", "ownership_detachment.py"): public_names,
-        _batch_module_path("ownership/merging.py", "ownership_merging.py"): public_names,
-        _batch_module_path("ownership/metadata_loading.py", "ownership_metadata_loading.py"): public_names,
-        _batch_module_path("ownership/remapping.py", "ownership_remapping.py"): public_names,
-        _batch_module_path("ownership/translation.py", "ownership_translation.py"): public_names,
-        _batch_module_path("ownership/unit_types.py", "ownership_unit_types.py"): public_names,
+        SRC_ROOT / "batch" / "ownership/model.py": public_names,
+        SRC_ROOT / "batch" / "ownership/detachment.py": public_names,
+        SRC_ROOT / "batch" / "ownership/merging.py": public_names,
+        SRC_ROOT / "batch" / "ownership/metadata_loading.py": public_names,
+        SRC_ROOT / "batch" / "ownership/remapping.py": public_names,
+        SRC_ROOT / "batch" / "ownership/translation.py": public_names,
+        SRC_ROOT / "batch" / "ownership/unit_types.py": public_names,
         SRC_ROOT / "batch" / "presence_constraints.py": public_names,
         SRC_ROOT / "batch" / "replacement.py": public_names,
         SRC_ROOT / "commands" / "batch_transform" / "sift_results.py": public_names,
@@ -9924,7 +9924,7 @@ def test_batch_ownership_absence_claims_own_value_records():
 
     assert public_names <= vars(ownership_absence_claims).keys()
     assert public_names.isdisjoint(vars(ownership))
-    ownership_text = (_batch_module_path("ownership/model.py", "ownership.py")).read_text()
+    ownership_text = (SRC_ROOT / "batch" / "ownership/model.py").read_text()
     assert "class AbsenceClaim" not in ownership_text
 
     for path in SRC_ROOT.rglob("*.py"):
@@ -9934,7 +9934,7 @@ def test_batch_ownership_absence_claims_own_value_records():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module in _batch_module_names("ownership", "ownership.model"):
+            if imported_module == "git_stage_batch.batch.ownership.model":
                 stale_imports = imported_names & public_names
                 if stale_imports:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -9942,7 +9942,7 @@ def test_batch_ownership_absence_claims_own_value_records():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module not in _batch_module_names("ownership_absence_claims", "ownership.absence_claims"):
+            if imported_module != "git_stage_batch.batch.ownership.absence_claims":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -9963,33 +9963,33 @@ def test_batch_ownership_replacement_units_own_value_records():
         "git_stage_batch.batch.ownership.replacement_units",
         fromlist=["ownership_replacement_units"],
     )
-    replacement_unit_path = _batch_module_path("ownership/replacement_units.py", "ownership_replacement_units.py")
+    replacement_unit_path = SRC_ROOT / "batch" / "ownership/replacement_units.py"
     public_names = {
         "ReplacementUnit",
         "ReplacementUnitOrigin",
     }
     expected_imports = {
-        _batch_module_path("ownership/hunk_replacement_translation.py", "hunk_replacement_translation.py"): public_names,
-        _batch_module_path("ownership/model.py", "ownership.py"): {
+        SRC_ROOT / "batch" / "ownership/hunk_replacement_translation.py": public_names,
+        SRC_ROOT / "batch" / "ownership/model.py": {
             "ReplacementUnit",
         },
-        _batch_module_path("ownership/detachment.py", "ownership_detachment.py"): {
+        SRC_ROOT / "batch" / "ownership/detachment.py": {
             "ReplacementUnit",
         },
-        _batch_module_path("ownership/line_entries.py", "ownership_line_entries.py"): public_names,
-        _batch_module_path("ownership/merging.py", "ownership_merging.py"): {
+        SRC_ROOT / "batch" / "ownership/line_entries.py": public_names,
+        SRC_ROOT / "batch" / "ownership/merging.py": {
             "ReplacementUnit",
         },
-        _batch_module_path("ownership/remapping.py", "ownership_remapping.py"): {
+        SRC_ROOT / "batch" / "ownership/remapping.py": {
             "ReplacementUnit",
         },
-        _batch_module_path("ownership/translation.py", "ownership_translation.py"): {
+        SRC_ROOT / "batch" / "ownership/translation.py": {
             "ReplacementUnit",
         },
-        _batch_module_path("ownership/unit_rebuild.py", "ownership_unit_rebuild.py"): {
+        SRC_ROOT / "batch" / "ownership/unit_rebuild.py": {
             "ReplacementUnit",
         },
-        _batch_module_path("ownership/unit_types.py", "ownership_unit_types.py"): {
+        SRC_ROOT / "batch" / "ownership/unit_types.py": {
             "ReplacementUnitOrigin",
         },
         SRC_ROOT / "batch" / "replacement.py": {
@@ -10000,7 +10000,7 @@ def test_batch_ownership_replacement_units_own_value_records():
 
     assert public_names <= vars(replacement_units).keys()
     assert public_names.isdisjoint(vars(ownership))
-    ownership_text = (_batch_module_path("ownership/model.py", "ownership.py")).read_text()
+    ownership_text = (SRC_ROOT / "batch" / "ownership/model.py").read_text()
     assert "class ReplacementUnit" not in ownership_text
     assert "class ReplacementUnitOrigin" not in ownership_text
 
@@ -10011,7 +10011,7 @@ def test_batch_ownership_replacement_units_own_value_records():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module in _batch_module_names("ownership", "ownership.model"):
+            if imported_module == "git_stage_batch.batch.ownership.model":
                 stale_imports = imported_names & public_names
                 if stale_imports:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -10019,7 +10019,7 @@ def test_batch_ownership_replacement_units_own_value_records():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module not in _batch_module_names("ownership_replacement_units", "ownership.replacement_units"):
+            if imported_module != "git_stage_batch.batch.ownership.replacement_units":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -10040,7 +10040,7 @@ def test_batch_ownership_replacement_units_owns_normalization():
         "git_stage_batch.batch.ownership.replacement_units",
         fromlist=["ownership_replacement_units"],
     )
-    replacement_unit_path = _batch_module_path("ownership/replacement_units.py", "ownership_replacement_units.py")
+    replacement_unit_path = SRC_ROOT / "batch" / "ownership/replacement_units.py"
     public_names = {
         "normalize_replacement_units",
     }
@@ -10050,11 +10050,11 @@ def test_batch_ownership_replacement_units_owns_normalization():
         "_normalize_replacement_units",
     }
     expected_imports = {
-        _batch_module_path("ownership/hunk_translation.py", "hunk_ownership_translation.py"): public_names,
-        _batch_module_path("ownership/model.py", "ownership.py"): public_names,
-        _batch_module_path("ownership/remapping.py", "ownership_remapping.py"): public_names,
-        _batch_module_path("ownership/translation.py", "ownership_translation.py"): public_names,
-        _batch_module_path("ownership/units.py", "ownership_units.py"): public_names,
+        SRC_ROOT / "batch" / "ownership/hunk_translation.py": public_names,
+        SRC_ROOT / "batch" / "ownership/model.py": public_names,
+        SRC_ROOT / "batch" / "ownership/remapping.py": public_names,
+        SRC_ROOT / "batch" / "ownership/translation.py": public_names,
+        SRC_ROOT / "batch" / "ownership/units.py": public_names,
     }
     violations = []
 
@@ -10073,7 +10073,7 @@ def test_batch_ownership_replacement_units_owns_normalization():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module in _batch_module_names("ownership", "ownership.model"):
+            if imported_module == "git_stage_batch.batch.ownership.model":
                 disallowed_names = imported_names & (
                     public_names | old_private_names
                 )
@@ -10083,10 +10083,7 @@ def test_batch_ownership_replacement_units_owns_normalization():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module not in _batch_module_names(
-                "ownership_replacement_units",
-                "ownership.replacement_units",
-            ):
+            if imported_module != "git_stage_batch.batch.ownership.replacement_units":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -10116,8 +10113,8 @@ def test_batch_ownership_acquisition_owns_scoped_context():
         "git_stage_batch.batch.ownership.metadata_loading",
         fromlist=["ownership_metadata_loading"],
     )
-    acquisition_path = _batch_module_path("ownership/acquisition.py", "ownership_acquisition.py")
-    metadata_loading_path = _batch_module_path("ownership/metadata_loading.py", "ownership_metadata_loading.py")
+    acquisition_path = SRC_ROOT / "batch" / "ownership/acquisition.py"
+    metadata_loading_path = SRC_ROOT / "batch" / "ownership/metadata_loading.py"
     public_names = {
         "AcquiredBatchOwnership",
     }
@@ -10143,7 +10140,7 @@ def test_batch_ownership_acquisition_owns_scoped_context():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module in _batch_module_names("ownership", "ownership.model"):
+            if imported_module == "git_stage_batch.batch.ownership.model":
                 disallowed_names = imported_names & (public_names | private_names)
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -10151,7 +10148,7 @@ def test_batch_ownership_acquisition_owns_scoped_context():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module not in _batch_module_names("ownership_acquisition", "ownership.acquisition"):
+            if imported_module != "git_stage_batch.batch.ownership.acquisition":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -10172,7 +10169,7 @@ def test_batch_ownership_detachment_owns_detached_copies():
         "git_stage_batch.batch.ownership.detachment",
         fromlist=["ownership_detachment"],
     )
-    detachment_path = _batch_module_path("ownership/detachment.py", "ownership_detachment.py")
+    detachment_path = SRC_ROOT / "batch" / "ownership/detachment.py"
     public_names = {
         "acquire_detached_batch_ownership",
     }
@@ -10193,7 +10190,7 @@ def test_batch_ownership_detachment_owns_detached_copies():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module in _batch_module_names("ownership", "ownership.model"):
+            if imported_module == "git_stage_batch.batch.ownership.model":
                 disallowed_names = imported_names & public_names
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -10201,7 +10198,7 @@ def test_batch_ownership_detachment_owns_detached_copies():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module not in _batch_module_names("ownership_detachment", "ownership.detachment"):
+            if imported_module != "git_stage_batch.batch.ownership.detachment":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -10222,7 +10219,7 @@ def test_batch_ownership_merging_owns_merge_helpers():
         "git_stage_batch.batch.ownership.merging",
         fromlist=["ownership_merging"],
     )
-    merging_path = _batch_module_path("ownership/merging.py", "ownership_merging.py")
+    merging_path = SRC_ROOT / "batch" / "ownership/merging.py"
     public_names = {
         "merge_batch_ownership",
     }
@@ -10260,7 +10257,7 @@ def test_batch_ownership_merging_owns_merge_helpers():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module in _batch_module_names("ownership", "ownership.model"):
+            if imported_module == "git_stage_batch.batch.ownership.model":
                 disallowed_names = imported_names & (
                     public_names | moved_private_names
                 )
@@ -10270,7 +10267,7 @@ def test_batch_ownership_merging_owns_merge_helpers():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module not in _batch_module_names("ownership_merging", "ownership.merging"):
+            if imported_module != "git_stage_batch.batch.ownership.merging":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -10366,16 +10363,16 @@ def test_batch_absence_content_owns_public_builders():
         "_copy_absence_content",
     }
     expected_imports = {
-        _batch_module_path("ownership/hunk_translation.py", "hunk_ownership_translation.py"): {
+        SRC_ROOT / "batch" / "ownership/hunk_translation.py": {
             "build_absence_content_from_range",
         },
-        _batch_module_path("ownership/hunk_replacement_translation.py", "hunk_replacement_translation.py"): {
+        SRC_ROOT / "batch" / "ownership/hunk_replacement_translation.py": {
             "AbsenceContentBuilder",
         },
-        _batch_module_path("ownership/detachment.py", "ownership_detachment.py"): {
+        SRC_ROOT / "batch" / "ownership/detachment.py": {
             "copy_absence_content",
         },
-        _batch_module_path("ownership/translation.py", "ownership_translation.py"): {
+        SRC_ROOT / "batch" / "ownership/translation.py": {
             "build_absence_content_from_range",
         },
         SRC_ROOT / "commands" / "batch_transform" / "sift_results.py": {
@@ -10390,14 +10387,14 @@ def test_batch_absence_content_owns_public_builders():
     assert private_names.isdisjoint(vars(absence_content))
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == _batch_module_path("ownership/absence_content.py", "absence_content.py"):
+        if path == SRC_ROOT / "batch" / "ownership/absence_content.py":
             continue
 
         imports = _import_from_nodes(path)
         imported_public_names = set()
 
         for imported_module, node in imports:
-            if imported_module not in _batch_module_names("absence_content", "ownership.absence_content"):
+            if imported_module != "git_stage_batch.batch.ownership.absence_content":
                 continue
 
             imported_names = {alias.name for alias in node.names}
@@ -10433,10 +10430,10 @@ def test_batch_replacement_line_runs_own_public_derivation():
         "_derive_replacement_line_runs_from_lines",
     }
     expected_imports = {
-        _batch_module_path("ownership/hunk_translation.py", "hunk_ownership_translation.py"): {
+        SRC_ROOT / "batch" / "ownership/hunk_translation.py": {
             "ReplacementLineRun"
         },
-        _batch_module_path("ownership/line_entries.py", "ownership_line_entries.py"): {"ReplacementLineRun"},
+        SRC_ROOT / "batch" / "ownership/line_entries.py": {"ReplacementLineRun"},
         SRC_ROOT / "batch" / "ownership_update.py": {
             "ReplacementLineRun",
         },
@@ -10455,14 +10452,14 @@ def test_batch_replacement_line_runs_own_public_derivation():
     assert private_names.isdisjoint(vars(replacement_line_runs))
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == _batch_module_path("ownership/replacement_line_runs.py", "replacement_line_runs.py"):
+        if path == SRC_ROOT / "batch" / "ownership/replacement_line_runs.py":
             continue
 
         imports = _import_from_nodes(path)
         imported_public_names = set()
 
         for imported_module, node in imports:
-            if imported_module not in _batch_module_names("replacement_line_runs", "ownership.replacement_line_runs"):
+            if imported_module != "git_stage_batch.batch.ownership.replacement_line_runs":
                 continue
 
             imported_names = {alias.name for alias in node.names}
@@ -11154,8 +11151,8 @@ def test_batch_ownership_units_owns_unit_operations():
         "git_stage_batch.batch.ownership.units",
         fromlist=["ownership_units"],
     )
-    ownership_path = _batch_module_path("ownership/model.py", "ownership.py")
-    unit_path = _batch_module_path("ownership/units.py", "ownership_units.py")
+    ownership_path = SRC_ROOT / "batch" / "ownership/model.py"
+    unit_path = SRC_ROOT / "batch" / "ownership/units.py"
     public_names = {
         "build_ownership_units_from_batch_source_lines",
         "build_ownership_units_from_display_lines",
@@ -11200,14 +11197,8 @@ def test_batch_ownership_units_owns_unit_operations():
     }
 
     assert "git_stage_batch.batch.ownership.display_lines" not in ownership_imports
-    assert unit_imports & _batch_module_names(
-        "display",
-        "ownership.display_lines",
-    )
-    assert unit_imports & _batch_module_names(
-        "ownership",
-        "ownership.model",
-    )
+    assert unit_imports & {"git_stage_batch.batch.ownership.display_lines"}
+    assert unit_imports & {"git_stage_batch.batch.ownership.model"}
 
     for path in SRC_ROOT.rglob("*.py"):
         if path in {ownership_path, unit_path}:
@@ -11219,7 +11210,7 @@ def test_batch_ownership_units_owns_unit_operations():
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
             if (
-                imported_module in _batch_module_names("ownership", "ownership.model")
+                imported_module == "git_stage_batch.batch.ownership.model"
                 and imported_names & public_names
             ):
                 relative_path = path.relative_to(REPO_ROOT)
@@ -11227,7 +11218,7 @@ def test_batch_ownership_units_owns_unit_operations():
                 violations.append(
                     f"{relative_path}:{node.lineno} imports {names}"
                 )
-            if imported_module in _batch_module_names("ownership_units", "ownership.units"):
+            if imported_module == "git_stage_batch.batch.ownership.units":
                 imported_unit_names |= imported_names & public_names
 
         if path in expected_unit_imports:
@@ -11246,7 +11237,7 @@ def test_batch_ownership_unit_validation_owns_structural_checks():
         "git_stage_batch.batch.ownership.unit_validation",
         fromlist=["ownership_unit_validation"],
     )
-    validation_path = _batch_module_path("ownership/unit_validation.py", "ownership_unit_validation.py")
+    validation_path = SRC_ROOT / "batch" / "ownership/unit_validation.py"
     public_names = {
         "validate_ownership_units",
     }
@@ -11270,7 +11261,7 @@ def test_batch_ownership_unit_validation_owns_structural_checks():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module not in _batch_module_names("ownership_unit_validation", "ownership.unit_validation"):
+            if imported_module != "git_stage_batch.batch.ownership.unit_validation":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -11296,7 +11287,7 @@ def test_batch_ownership_unit_rebuild_owns_metadata_reconstruction():
         "git_stage_batch.batch.ownership.unit_rebuild",
         fromlist=["ownership_unit_rebuild"],
     )
-    rebuild_path = _batch_module_path("ownership/unit_rebuild.py", "ownership_unit_rebuild.py")
+    rebuild_path = SRC_ROOT / "batch" / "ownership/unit_rebuild.py"
     public_names = {
         "rebuild_ownership_from_units",
     }
@@ -11320,7 +11311,7 @@ def test_batch_ownership_unit_rebuild_owns_metadata_reconstruction():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module not in _batch_module_names("ownership_unit_rebuild", "ownership.unit_rebuild"):
+            if imported_module != "git_stage_batch.batch.ownership.unit_rebuild":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -11481,7 +11472,7 @@ def test_batch_ownership_unit_selection_owns_display_id_filtering():
         "git_stage_batch.batch.ownership.unit_selection",
         fromlist=["ownership_unit_selection"],
     )
-    selection_path = _batch_module_path("ownership/unit_selection.py", "ownership_unit_selection.py")
+    selection_path = SRC_ROOT / "batch" / "ownership/unit_selection.py"
     public_names = {
         "filter_ownership_units_by_display_ids",
         "select_ownership_units_by_display_ids",
@@ -11510,7 +11501,7 @@ def test_batch_ownership_unit_selection_owns_display_id_filtering():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module not in _batch_module_names("ownership_unit_selection", "ownership.unit_selection"):
+            if imported_module != "git_stage_batch.batch.ownership.unit_selection":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -11536,7 +11527,7 @@ def test_batch_ownership_unit_types_own_value_objects():
         "git_stage_batch.batch.ownership.unit_types",
         fromlist=["ownership_unit_types"],
     )
-    unit_types_path = _batch_module_path("ownership/unit_types.py", "ownership_unit_types.py")
+    unit_types_path = SRC_ROOT / "batch" / "ownership/unit_types.py"
     public_names = {
         "OwnershipUnit",
         "OwnershipUnitKind",
@@ -11546,7 +11537,7 @@ def test_batch_ownership_unit_types_own_value_objects():
         "_OwnershipUnitKind",
     }
     expected_imports = {
-        _batch_module_path("ownership/units.py", "ownership_units.py"): public_names,
+        SRC_ROOT / "batch" / "ownership/units.py": public_names,
     }
     violations = []
 
@@ -11560,7 +11551,7 @@ def test_batch_ownership_unit_types_own_value_objects():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module in _batch_module_names("ownership_units", "ownership.units"):
+            if imported_module == "git_stage_batch.batch.ownership.units":
                 moved_names = imported_names & stale_operation_names
                 if moved_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -11568,7 +11559,7 @@ def test_batch_ownership_unit_types_own_value_objects():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module not in _batch_module_names("ownership_unit_types", "ownership.unit_types"):
+            if imported_module != "git_stage_batch.batch.ownership.unit_types":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -11604,9 +11595,9 @@ def test_batch_ownership_metadata_blobs_own_blob_discovery():
         "git_stage_batch.batch.ownership.metadata_loading",
         fromlist=["ownership_metadata_loading"],
     )
-    ownership_reference_path = _batch_module_path("ownership/references.py", "ownership_references.py")
-    metadata_blob_path = _batch_module_path("ownership/metadata_blobs.py", "ownership_metadata_blobs.py")
-    metadata_loading_path = _batch_module_path("ownership/metadata_loading.py", "ownership_metadata_loading.py")
+    ownership_reference_path = SRC_ROOT / "batch" / "ownership/references.py"
+    metadata_blob_path = SRC_ROOT / "batch" / "ownership/metadata_blobs.py"
+    metadata_loading_path = SRC_ROOT / "batch" / "ownership/metadata_loading.py"
     public_names = {
         "baseline_reference_blob_ids",
         "baseline_references_blob_ids",
@@ -11650,7 +11641,7 @@ def test_batch_ownership_metadata_blobs_own_blob_discovery():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module not in _batch_module_names("ownership_metadata_blobs", "ownership.metadata_blobs"):
+            if imported_module != "git_stage_batch.batch.ownership.metadata_blobs":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -12016,7 +12007,7 @@ def test_batch_line_mapping_owns_public_mapping_type():
         SRC_ROOT / "batch" / "discard.py": public_names,
         SRC_ROOT / "batch" / "merge.py": public_names,
         SRC_ROOT / "batch" / "merge_validation.py": public_names,
-        _batch_module_path("ownership/remapping.py", "ownership_remapping.py"): public_names,
+        SRC_ROOT / "batch" / "ownership/remapping.py": public_names,
         SRC_ROOT / "batch" / "presence_constraints.py": public_names,
         SRC_ROOT / "batch" / "realization/mapping.py": public_names,
         SRC_ROOT / "batch" / "source_annotation.py": public_names,

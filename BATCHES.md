@@ -501,7 +501,8 @@ batch still missing from the current working tree.
 
 The command starts in
 [`commands/sift.py`](src/git_stage_batch/commands/sift.py). Comparison lives in
-[`batch/comparison.py`](src/git_stage_batch/batch/comparison.py). Persistence of
+[`batch/line_matching/comparison.py`](src/git_stage_batch/batch/line_matching/comparison.py).
+Persistence of
 the result is split between
 [`commands/batch_transform/sift_results.py`](src/git_stage_batch/commands/batch_transform/sift_results.py)
 and [`commands/batch_transform/sift_persistence.py`](src/git_stage_batch/commands/batch_transform/sift_persistence.py).
@@ -557,7 +558,7 @@ Line options cannot select part of these changes.
 | Hide already-saved live changes | `batch/attribution.py` and `batch/attribution_projection.py` |
 | Coordinate an action from a saved batch | `commands/batch_source/` |
 | Move or remove ownership | `commands/reset.py` plus ownership modules |
-| Rewrite only the still-missing saved result | `commands/sift.py`, `commands/batch_transform/`, and `batch/comparison.py` |
+| Rewrite only the still-missing saved result | `commands/sift.py`, `commands/batch_transform/`, and `batch/line_matching/comparison.py` |
 
 Do not put session storage in `batch/`. The architecture test
 `test_batch_package_stays_below_workflow_data` requires `batch/` not to import

@@ -367,7 +367,7 @@ Start with these files when following that reversal:
   maps batch-source regions back to baseline regions.
 - [`batch/discard_reversal.py`](src/git_stage_batch/batch/discard_reversal.py)
   reverses presence requirements.
-- [`batch/realized_boundaries.py`](src/git_stage_batch/batch/realized_boundaries.py)
+- [`batch/realization/boundaries.py`](src/git_stage_batch/batch/realization/boundaries.py)
   checks exact boundaries in the current realized sequence.
 
 The same refusal rule applies: when the current file no longer provides one

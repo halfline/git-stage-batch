@@ -13,14 +13,14 @@ from .discard_reversal import (
 )
 from .line_matching.line_mapping import LineMapping
 from .line_matching.match import match_lines
-from .realized_entries import RealizedEntry as _RealizedEntry
-from .realized_entry_storage import (
+from .realization.entries import RealizedEntry as _RealizedEntry
+from .realization.entry_storage import (
     RealizedEntries,
     as_realized_entries,
     realized_entry_content_chunks as _realized_entry_content_chunks,
 )
-from . import realized_mapping as _realized_mapping
-from .realized_boundaries import (
+from .realization import mapping as _realized_mapping
+from .realization.boundaries import (
     find_boundary_after_source_line as _locate_boundary_after_source_line,
     sequence_present_at_boundary as _boundary_sequence_present,
 )

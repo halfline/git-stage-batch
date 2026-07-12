@@ -19,14 +19,14 @@ from .presence_missing_claims import (
     mapped_missing_source_lines as _mapped_missing_source_lines,
 )
 from . import presence_placement_choices as _presence_placement_choices
-from .realized_entries import RealizedEntry as _RealizedEntry
-from .realized_entry_storage import (
+from .realization.entries import RealizedEntry as _RealizedEntry
+from .realization.entry_storage import (
     RealizedEntries,
     RealizedEntryContentSequence,
     realized_entry_is_claimed_at,
     realized_entry_source_line_at,
 )
-from . import realized_mapping as _realized_mapping
+from .realization import mapping as _realized_mapping
 from ..core.line_selection import LineRanges, LineSelection, coerce_line_ranges
 from ..exceptions import MergeError as _MergeError
 from ..i18n import _

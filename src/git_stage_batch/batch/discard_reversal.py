@@ -8,8 +8,8 @@ from .baseline_correspondence import (
     BaselineCorrespondence as _BaselineCorrespondence,
     RegionKind as _RegionKind,
 )
-from .realized_entries import RealizedEntry as _RealizedEntry
-from .realized_entry_storage import (
+from .realization.entries import RealizedEntry as _RealizedEntry
+from .realization.entry_storage import (
     RealizedEntries,
     realized_entry_source_line_at,
 )

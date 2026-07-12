@@ -14,13 +14,13 @@ from ..exceptions import (
 from ..i18n import _
 from ..core.text_lines import normalize_line_endings
 from .merge_candidates import MergeResolution as _MergeResolution
-from .realized_boundaries import (
+from .realization.boundaries import (
     boundary_choices_after_source_line as _boundary_choices_for_source_line,
     find_boundary_after_source_line as _locate_boundary_after_source_line,
     find_realization_fallback_boundary as _realization_fallback_boundary,
 )
-from .realized_entries import RealizedEntry as _RealizedEntry
-from .realized_entry_storage import (
+from .realization.entries import RealizedEntry as _RealizedEntry
+from .realization.entry_storage import (
     RealizedEntries,
     as_realized_entries,
     realized_entry_content_at,

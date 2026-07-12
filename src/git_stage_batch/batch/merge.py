@@ -19,7 +19,7 @@ from .merge_validation import (
 )
 from .line_matching.line_mapping import LineMapping
 from .line_matching.match import match_lines
-from .realized_entry_storage import (
+from .realization.entry_storage import (
     realized_entry_content_chunks as _realized_entry_content_chunks,
 )
 from ..core.line_selection import LineSelection

@@ -11398,10 +11398,11 @@ def test_batch_file_mergeability_owns_display_probe():
         )
         assert imported_names <= mergeability_dependency_names
 
-    assert "merge" in mergeability_imported_names.get(
-        "git_stage_batch.batch",
-        set(),
+    merge_module_names = set().union(
+        mergeability_imported_names.get("git_stage_batch.batch", set()),
+        mergeability_imported_names.get("git_stage_batch.batch.merge", set()),
     )
+    assert "merge" in merge_module_names
     assert "can_merge_batch_from_line_sequences" not in display_text
     assert "_file_mergeability.probe_batch_file_mergeability" in display_text
     assert "batch_merge.can_merge_batch_from_line_sequences" in mergeability_text

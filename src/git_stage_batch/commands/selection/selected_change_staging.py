@@ -120,13 +120,11 @@ def _include_loaded_selected_change(
     if isinstance(item, GitlinkChange):
         result = stage_gitlink_change(item)
         if result.returncode != 0:
-            print(
+            exit_with_error(
                 _("Failed to stage submodule pointer: {error}").format(
                     error=result.stderr,
-                ),
-                file=sys.stderr,
+                )
             )
-            return
 
         record_hunk_included(patch_hash)
 
@@ -149,13 +147,11 @@ def _include_loaded_selected_change(
         file_path = item.path()
         result = git_add_paths([file_path], check=False)
         if result.returncode != 0:
-            print(
+            exit_with_error(
                 _("Failed to stage binary file: {error}").format(
                     error=result.stderr,
-                ),
-                file=sys.stderr,
+                )
             )
-            return
 
         record_hunk_included(patch_hash)
 
@@ -194,11 +190,9 @@ def _include_loaded_selected_change(
             )
 
     if apply_result is not None and apply_result.returncode != 0:
-        print(
-            _("Failed to apply hunk: {error}").format(error=apply_result.stderr),
-            file=sys.stderr,
+        exit_with_error(
+            _("Failed to apply hunk: {error}").format(error=apply_result.stderr)
         )
-        return
 
     record_hunk_included(patch_hash)
 

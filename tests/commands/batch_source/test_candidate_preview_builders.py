@@ -6,7 +6,7 @@ from contextlib import AbstractContextManager
 
 import pytest
 
-from git_stage_batch.batch.source_selector import BatchSourceSelector
+from git_stage_batch.batch.source.selector import BatchSourceSelector
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.data.file_review.records import FileReviewAction
 import git_stage_batch.commands.batch_source.candidate_preview_builders as builders

@@ -5051,7 +5051,7 @@ def test_argument_parser_delegates_show_dispatch():
     }
     show_runtime_imports = {
         "git_stage_batch.batch.state.query",
-        "git_stage_batch.batch.source_selector",
+        "git_stage_batch.batch.source.selector",
         "git_stage_batch.batch.state.batch_names",
         "git_stage_batch.commands.show",
         "git_stage_batch.commands.show_from",
@@ -16828,14 +16828,14 @@ def test_consumed_selection_recording_stays_out_of_data_store():
             "detect_stale_batch_source_for_selection",
             "translate_lines_to_batch_ownership",
         },
-        "git_stage_batch.batch.selected_line_source_refresh": {
+        "git_stage_batch.batch.source.selected_line_refresh": {
             "refresh_selected_lines_against_new_source",
             "refresh_selected_lines_against_source_lines",
         },
-        "git_stage_batch.batch.source_advancement": {
+        "git_stage_batch.batch.source.advancement": {
             "advance_batch_source_for_file_with_provenance",
         },
-        "git_stage_batch.batch.source_snapshots": {"create_batch_source_commit"},
+        "git_stage_batch.batch.source.snapshots": {"create_batch_source_commit"},
         "git_stage_batch.data.consumed_selections": {
             "read_consumed_file_metadata",
             "write_consumed_file_metadata",

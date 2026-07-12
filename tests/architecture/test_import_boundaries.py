@@ -10952,10 +10952,10 @@ def test_batch_transform_sift_results_own_result_planning():
         "git_stage_batch.batch.merge": {
             "merge_batch_from_line_sequences_as_buffer",
         },
-        "git_stage_batch.batch.ownership": {
+        "git_stage_batch.batch.ownership.model": {
             "AbsenceContentBuilder",
         },
-        "git_stage_batch.batch.ownership_absence_claims": {
+        "git_stage_batch.batch.ownership.absence_claims": {
             "AbsenceClaim",
         },
         "git_stage_batch.batch.text_file_storage": {
@@ -11058,7 +11058,7 @@ def test_batch_transform_sift_persistence_owns_file_writes():
         "replace_batch_with_sifted_files",
     }
     disallowed_imports = {
-        "git_stage_batch.batch.ownership": {
+        "git_stage_batch.batch.ownership.model": {
             "BatchOwnership",
         },
         "git_stage_batch.batch.query": {
@@ -11199,7 +11199,7 @@ def test_batch_ownership_units_owns_unit_operations():
         for imported_module, _node in _import_from_nodes(unit_path)
     }
 
-    assert "git_stage_batch.batch.display" not in ownership_imports
+    assert "git_stage_batch.batch.ownership.display_lines" not in ownership_imports
     assert unit_imports & _batch_module_names(
         "display",
         "ownership.display_lines",
@@ -11359,13 +11359,13 @@ def test_batch_file_mergeability_owns_display_probe():
         ("git_stage_batch.batch.line_matching.match",): {
             "match_lines",
         },
-        ("git_stage_batch.batch.ownership_unit_rebuild",): {
+        ("git_stage_batch.batch.ownership.unit_rebuild",): {
             "rebuild_ownership_from_units",
         },
-        ("git_stage_batch.batch.ownership_unit_validation",): {
+        ("git_stage_batch.batch.ownership.unit_validation",): {
             "validate_ownership_units",
         },
-        ("git_stage_batch.batch.ownership_units",): {
+        ("git_stage_batch.batch.ownership.units",): {
             "build_ownership_units_from_display_lines",
         },
         ("git_stage_batch.core.text_lines",): {"normalize_line_sequence_endings"},
@@ -15472,21 +15472,21 @@ def test_batch_source_reset_claims_own_reset_mutations():
         "git_stage_batch.batch.lifecycle": {
             "create_batch",
         },
-        "git_stage_batch.batch.ownership": {
+        "git_stage_batch.batch.ownership.model": {
             "BatchOwnership",
             "acquire_detached_batch_ownership",
             "merge_batch_ownership",
         },
-        "git_stage_batch.batch.ownership_units": {
+        "git_stage_batch.batch.ownership.units": {
             "build_ownership_units_from_batch_source_lines",
         },
-        "git_stage_batch.batch.ownership_unit_rebuild": {
+        "git_stage_batch.batch.ownership.unit_rebuild": {
             "rebuild_ownership_from_units",
         },
-        "git_stage_batch.batch.ownership_unit_selection": {
+        "git_stage_batch.batch.ownership.unit_selection": {
             "filter_ownership_units_by_display_ids",
         },
-        "git_stage_batch.batch.ownership_unit_validation": {
+        "git_stage_batch.batch.ownership.unit_validation": {
             "validate_ownership_units",
         },
         "git_stage_batch.batch.selection": {
@@ -16822,9 +16822,9 @@ def test_consumed_selection_recording_stays_out_of_data_store():
         "write_consumed_file_metadata",
     }
     recording_imports = {
-        "git_stage_batch.batch.ownership": {"BatchOwnership"},
-        "git_stage_batch.batch.ownership_merging": {"merge_batch_ownership"},
-        "git_stage_batch.batch.ownership_translation": {
+        "git_stage_batch.batch.ownership.model": {"BatchOwnership"},
+        "git_stage_batch.batch.ownership.merging": {"merge_batch_ownership"},
+        "git_stage_batch.batch.ownership.translation": {
             "detect_stale_batch_source_for_selection",
             "translate_lines_to_batch_ownership",
         },

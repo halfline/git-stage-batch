@@ -26,6 +26,7 @@ from ...data.progress import record_hunk_discarded
 from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.session import snapshot_file_if_untracked
 from ...data.undo_checkpoints import undo_checkpoint
+from ...exceptions import exit_with_error
 from ...i18n import _
 from ...utils.file_io import append_lines_to_file, read_text_file_line_set
 from ...utils.git_command import run_git_command
@@ -176,8 +177,7 @@ def discard_file_changes(
 
         result = git_remove_paths([target_file], force=True, check=False)
         if result.returncode != 0:
-            print(_("Failed to discard file: {}").format(result.stderr), file=sys.stderr)
-            return
+            exit_with_error(_("Failed to discard file: {}").format(result.stderr))
 
         for patch_hash in hashes_to_block:
             append_lines_to_file(blocklist_path, [patch_hash])

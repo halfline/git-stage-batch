@@ -4549,7 +4549,7 @@ def test_status_summary_reader_owns_status_payload_assembly():
         "_selected_change_is_stale",
     }
     disallowed_imports = {
-        "git_stage_batch.batch.query": {
+        "git_stage_batch.batch.state.query": {
             "read_batch_metadata",
         },
         "git_stage_batch.data.batch_selected_changes": {
@@ -4671,7 +4671,7 @@ def test_status_summary_uses_batch_selected_binary_validation():
     assert "load_current_selected_batch_binary_file" in vars(batch_selected)
     assert "load_current_selected_batch_binary_file" in imported_batch_selected_names
     assert "read_batch_metadata" in imported_batch_query_names
-    assert "git_stage_batch.batch.query" not in status_imports
+    assert "git_stage_batch.batch.state.query" not in status_imports
     assert "read_batch_metadata" not in status_summary_text
     assert "selected_batch_binary_batch_name" not in status_summary_text
     assert "selected_batch_binary_file_for_batch" not in status_summary_text
@@ -5050,9 +5050,9 @@ def test_argument_parser_delegates_show_dispatch():
         "_validate_show_page_request",
     }
     show_runtime_imports = {
-        "git_stage_batch.batch.query",
+        "git_stage_batch.batch.state.query",
         "git_stage_batch.batch.source_selector",
-        "git_stage_batch.batch.validation",
+        "git_stage_batch.batch.state.batch_names",
         "git_stage_batch.commands.show",
         "git_stage_batch.commands.show_from",
     }
@@ -7344,11 +7344,11 @@ def test_tui_flow_menu_owns_batch_selection_menus():
     assert "git_stage_batch.tui.action_dispatch" in interactive_imports
     assert "git_stage_batch.tui.flow_actions" in action_dispatch_imports
     assert "git_stage_batch.tui.flow_menu" in flow_actions_imports
-    assert "git_stage_batch.batch.query" not in interactive_imports
-    assert "git_stage_batch.batch.query" not in action_dispatch_imports
+    assert "git_stage_batch.batch.state.query" not in interactive_imports
+    assert "git_stage_batch.batch.state.query" not in action_dispatch_imports
     assert "git_stage_batch.commands.new" not in interactive_imports
     assert "git_stage_batch.commands.new" not in action_dispatch_imports
-    assert "git_stage_batch.batch.query" in flow_menu_imports
+    assert "git_stage_batch.batch.state.query" in flow_menu_imports
     assert "git_stage_batch.commands.new" in flow_menu_imports
 
 
@@ -8068,10 +8068,10 @@ def test_tui_file_review_file_browser_owns_file_selection():
     assert moved_names.isdisjoint(vars(browser))
     assert all(snippet not in browser_text for snippet in old_browser_snippets)
     assert "git_stage_batch.tui.file_review.file_browser" in browser_imports
-    assert "git_stage_batch.batch.query" not in browser_imports
+    assert "git_stage_batch.batch.state.query" not in browser_imports
     assert "git_stage_batch.data.file_tracking" not in browser_imports
     assert "git_stage_batch.utils.file_patterns" not in browser_imports
-    assert "git_stage_batch.batch.query" in file_browser_imports
+    assert "git_stage_batch.batch.state.query" in file_browser_imports
     assert "git_stage_batch.data.file_tracking" in file_browser_imports
     assert "git_stage_batch.utils.file_patterns" in file_browser_imports
 
@@ -10809,7 +10809,7 @@ def test_batch_content_commits_own_tree_publication():
     assert private_names.isdisjoint(vars(content_commits))
     assert private_names.isdisjoint(vars(storage))
     assert any(
-        imported_module == "git_stage_batch.batch"
+        imported_module == "git_stage_batch.batch.state"
         and any(
             alias.name == "content_commits"
             and alias.asname == "_content_commits"
@@ -11058,15 +11058,15 @@ def test_batch_transform_sift_persistence_owns_file_writes():
         "git_stage_batch.batch.ownership.model": {
             "BatchOwnership",
         },
-        "git_stage_batch.batch.query": {
+        "git_stage_batch.batch.state.query": {
             "get_batch_baseline_commit",
         },
-        "git_stage_batch.batch.state_refs": {
+        "git_stage_batch.batch.state.references": {
             "delete_batch_state_refs",
             "get_batch_content_ref_name",
             "sync_batch_state_refs",
         },
-        "git_stage_batch.batch.content_commits": {
+        "git_stage_batch.batch.state.content_commits": {
             "remove_file_from_batch_commit",
             "update_batch_commit",
         },
@@ -14775,13 +14775,13 @@ def test_batch_source_action_context_owns_action_prologue():
         "resolve_plain_batch_source_action_context",
     }
     disallowed_imports = {
-        "git_stage_batch.batch.metadata_validation": {
+        "git_stage_batch.batch.state.validation": {
             "read_validated_batch_metadata",
         },
         "git_stage_batch.batch.source_selector": {
             "require_plain_batch_name",
         },
-        "git_stage_batch.batch.validation": {
+        "git_stage_batch.batch.state.batch_names": {
             "batch_exists",
         },
         "git_stage_batch.data.file_review.action_scope": {
@@ -15303,7 +15303,7 @@ def test_batch_source_discard_action_owns_discard_execution():
         ("git_stage_batch.commands.batch_source", "binary_file_actions"),
         ("git_stage_batch.commands.batch_source", "text_file_actions"),
         ("git_stage_batch.commands.batch_source", "text_plan_builders"),
-        ("git_stage_batch.batch.metadata_validation", "get_validated_baseline_commit"),
+        ("git_stage_batch.batch.state.validation", "get_validated_baseline_commit"),
         ("git_stage_batch.batch.submodule_pointer", "discard_submodule_pointer_from_batch"),
         ("git_stage_batch.data.session", "snapshot_file_if_untracked"),
         ("git_stage_batch.data.undo_checkpoints", "undo_checkpoint"),
@@ -15333,7 +15333,7 @@ def test_discard_from_delegates_discard_action_execution():
             "text_file_actions",
             "text_plan_builders",
         },
-        "git_stage_batch.batch.metadata_validation": {
+        "git_stage_batch.batch.state.validation": {
             "get_validated_baseline_commit",
         },
         "git_stage_batch.batch.selection": {
@@ -15466,7 +15466,7 @@ def test_batch_source_reset_claims_own_reset_mutations():
         "_reset_pattern_claims_from_batch",
     }
     disallowed_imports = {
-        "git_stage_batch.batch.lifecycle": {
+        "git_stage_batch.batch.state.lifecycle": {
             "create_batch",
         },
         "git_stage_batch.batch.ownership.model": {
@@ -15489,7 +15489,7 @@ def test_batch_source_reset_claims_own_reset_mutations():
         "git_stage_batch.batch.selection": {
             "require_display_ids_available",
         },
-        "git_stage_batch.batch.state_refs": {
+        "git_stage_batch.batch.state.references": {
             "sync_batch_state_refs",
         },
         "git_stage_batch.batch.text_file_storage": {
@@ -15552,7 +15552,7 @@ def test_batch_source_reset_selection_owns_reset_scope():
         "resolve_reset_claim_selection",
     }
     disallowed_imports = {
-        "git_stage_batch.batch.query": {
+        "git_stage_batch.batch.state.query": {
             "read_batch_metadata",
         },
         "git_stage_batch.batch.selection": {
@@ -15566,7 +15566,7 @@ def test_batch_source_reset_selection_owns_reset_scope():
         "git_stage_batch.batch.source_selector": {
             "require_plain_batch_name",
         },
-        "git_stage_batch.batch.validation": {
+        "git_stage_batch.batch.state.batch_names": {
             "batch_exists",
             "validate_batch_name",
         },

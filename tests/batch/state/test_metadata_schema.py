@@ -24,7 +24,7 @@ def _oid(character: str = "a") -> str:
 @pytest.fixture(autouse=True)
 def sha1_object_format(monkeypatch):
     monkeypatch.setattr(
-        "git_stage_batch.batch.metadata_schema.object_id_hex_length",
+        "git_stage_batch.batch.state.metadata_schema.object_id_hex_length",
         lambda: 40,
     )
 
@@ -113,7 +113,7 @@ def test_file_backed_v0_migration_keeps_recovery_copy(tmp_path, monkeypatch):
     original = json.dumps(legacy)
     metadata_path.write_text(original, encoding="utf-8")
     monkeypatch.setattr(
-        "git_stage_batch.batch.metadata_io.get_batch_metadata_file_path",
+        "git_stage_batch.batch.state.compatibility_metadata.get_batch_metadata_file_path",
         lambda _batch_name: metadata_path,
     )
 
@@ -133,7 +133,7 @@ def test_file_backed_writer_refuses_to_replace_future_schema(tmp_path, monkeypat
     original = json.dumps(future)
     metadata_path.write_text(original, encoding="utf-8")
     monkeypatch.setattr(
-        "git_stage_batch.batch.metadata_io.get_batch_metadata_file_path",
+        "git_stage_batch.batch.state.compatibility_metadata.get_batch_metadata_file_path",
         lambda _batch_name: metadata_path,
     )
 

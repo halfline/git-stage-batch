@@ -17,6 +17,123 @@ def _imported_modules_for(path):
     return {imported_module for imported_module, _node in _import_from_nodes(path)}
 
 
+def test_batch_package_has_no_compatibility_imports():
+    """Moved batch modules should have one import location."""
+    batch_root = SRC_ROOT / "batch"
+    removed_flat_module_names = {
+        "absence_constraints.py",
+        "absence_content.py",
+        "baseline_correspondence.py",
+        "baseline_edits.py",
+        "baseline_reference_positions.py",
+        "baseline_replacement_choices.py",
+        "comparison.py",
+        "content_commits.py",
+        "display.py",
+        "hunk_line_ranges.py",
+        "hunk_ownership_translation.py",
+        "hunk_replacement_translation.py",
+        "lifecycle.py",
+        "line_mapping.py",
+        "line_range_view.py",
+        "line_sequence_equality.py",
+        "line_sequence_search.py",
+        "lineage.py",
+        "match.py",
+        "match_storage.py",
+        "merge.py",
+        "merge_candidate_enumeration.py",
+        "merge_candidates.py",
+        "merge_validation.py",
+        "metadata_io.py",
+        "metadata_schema.py",
+        "metadata_validation.py",
+        "ownership.py",
+        "ownership_absence_claims.py",
+        "ownership_acquisition.py",
+        "ownership_claims.py",
+        "ownership_detachment.py",
+        "ownership_line_entries.py",
+        "ownership_merging.py",
+        "ownership_metadata_blobs.py",
+        "ownership_metadata_loading.py",
+        "ownership_references.py",
+        "ownership_remapping.py",
+        "ownership_replacement_units.py",
+        "ownership_translation.py",
+        "ownership_unit_rebuild.py",
+        "ownership_unit_selection.py",
+        "ownership_unit_types.py",
+        "ownership_unit_validation.py",
+        "ownership_units.py",
+        "presence_constraints.py",
+        "presence_context.py",
+        "presence_missing_claims.py",
+        "presence_placement_choices.py",
+        "query.py",
+        "realized_boundaries.py",
+        "realized_entries.py",
+        "realized_entry_storage.py",
+        "realized_mapping.py",
+        "realized_provenance.py",
+        "ref_names.py",
+        "replacement_line_runs.py",
+        "selected_line_source_refresh.py",
+        "source_advancement.py",
+        "source_annotation.py",
+        "source_buffers.py",
+        "source_cache.py",
+        "source_refresh.py",
+        "source_selector.py",
+        "source_snapshots.py",
+        "state_refs.py",
+        "validation.py",
+    }
+    compatibility_markers = (
+        "Compatibility import",
+        "Temporary compatibility import",
+    )
+    violations = [
+        str((batch_root / module_name).relative_to(REPO_ROOT))
+        for module_name in sorted(removed_flat_module_names)
+        if (batch_root / module_name).exists()
+    ]
+
+    for path in batch_root.rglob("*.py"):
+        source_text = path.read_text()
+        if not any(marker in source_text for marker in compatibility_markers):
+            continue
+        violations.append(str(path.relative_to(REPO_ROOT)))
+
+    initializer_violations = []
+    for package_name in (
+        "line_matching",
+        "merge",
+        "ownership",
+        "realization",
+        "source",
+        "state",
+    ):
+        initializer_path = batch_root / package_name / "__init__.py"
+        initializer_tree = ast.parse(initializer_path.read_text())
+        non_docstring_statements = [
+            statement
+            for statement in initializer_tree.body
+            if not (
+                isinstance(statement, ast.Expr)
+                and isinstance(statement.value, ast.Constant)
+                and isinstance(statement.value.value, str)
+            )
+        ]
+        if non_docstring_statements:
+            initializer_violations.append(
+                str(initializer_path.relative_to(REPO_ROOT))
+            )
+
+    assert violations == []
+    assert initializer_violations == []
+
+
 def _top_level_package_names() -> set[str]:
     return {
         path.name

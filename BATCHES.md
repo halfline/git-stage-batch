@@ -217,7 +217,7 @@ discard modules under `commands/selection/` and `commands/file_scope/`.
 
 ## How text ownership is stored
 
-[`batch/ownership.py`](src/git_stage_batch/batch/ownership.py) defines
+[`batch/ownership/model.py`](src/git_stage_batch/batch/ownership/model.py) defines
 `BatchOwnership` with three fields:
 
 - `presence_claims`: source line ranges and optional baseline references
@@ -235,8 +235,8 @@ The metadata key remains `deletions` for compatibility. Code that loads it
 constructs `AbsenceClaim` values because the stored requirement is “these exact
 baseline bytes must be absent at this boundary.”
 
-[`batch/hunk_ownership_translation.py`](src/git_stage_batch/batch/hunk_ownership_translation.py)
-and [`batch/ownership_translation.py`](src/git_stage_batch/batch/ownership_translation.py)
+[`batch/ownership/hunk_translation.py`](src/git_stage_batch/batch/ownership/hunk_translation.py)
+and [`batch/ownership/translation.py`](src/git_stage_batch/batch/ownership/translation.py)
 translate selected displayed lines into this stored form. The hunk translator
 can use the complete old and new replacement run so it does not decide
 replacement membership from display adjacency alone.
@@ -270,7 +270,7 @@ The main path is:
 
 1. [`commands/show_from.py`](src/git_stage_batch/commands/show_from.py) resolves
    batch and file scope.
-2. [`batch/display.py`](src/git_stage_batch/batch/display.py) builds changed
+2. [`batch/ownership/display_lines.py`](src/git_stage_batch/batch/ownership/display_lines.py) builds changed
    lines from source content and ownership.
 3. [`batch/file_display_model.py`](src/git_stage_batch/batch/file_display_model.py)
    prepares the complete review model for one file.
@@ -413,9 +413,9 @@ initial source so every newly claimed line exists in that source.
 ## Why some displayed lines must be selected together
 
 Line-level batch actions do not remove arbitrary individual metadata rows.
-[`batch/ownership_units.py`](src/git_stage_batch/batch/ownership_units.py)
+[`batch/ownership/units.py`](src/git_stage_batch/batch/ownership/units.py)
 builds `OwnershipUnit` values from the reconstructed display. The code records three
-kinds in [`batch/ownership_unit_types.py`](src/git_stage_batch/batch/ownership_unit_types.py):
+kinds in [`batch/ownership/unit_types.py`](src/git_stage_batch/batch/ownership/unit_types.py):
 
 - `PRESENCE_ONLY`: claimed source lines with no coupled absence claim
 - `REPLACEMENT`: claimed source lines coupled to one or more absence claims
@@ -548,13 +548,13 @@ Line options cannot select part of these changes.
 | Persist text content and ownership | `batch/text_file_storage.py` |
 | Persist binary, submodule pointer, or mode content | The matching `*_storage.py` module |
 | Build the stored text file | `batch/realized_file_content.py` |
-| Translate a live selection into ownership | `batch/hunk_ownership_translation.py` or `batch/ownership_translation.py` |
-| Combine a new selection with stored ownership | `batch/ownership_update.py` and `batch/ownership_merging.py` |
+| Translate a live selection into ownership | `batch/ownership/hunk_translation.py` or `batch/ownership/translation.py` |
+| Combine a new selection with stored ownership | `batch/ownership_update.py` and `batch/ownership/merging.py` |
 | Refresh an old source | `batch/source_refresh.py` and `batch/source_advancement.py` |
-| Display a saved file | `batch/display.py` and `batch/file_display_model.py` |
+| Display a saved file | `batch/ownership/display_lines.py` and `batch/file_display_model.py` |
 | Apply saved text to a current target | `batch/merge.py` and the validation and constraint helpers it calls |
 | Remove saved text from a current working file | The correspondence, reversal, and boundary modules named in the discard section |
-| Decide which lines must be selected together | `batch/ownership_units.py` and the ownership-unit support modules |
+| Decide which lines must be selected together | `batch/ownership/units.py` and the ownership-unit support modules |
 | Hide already-saved live changes | `batch/attribution.py` and `batch/attribution_projection.py` |
 | Coordinate an action from a saved batch | `commands/batch_source/` |
 | Move or remove ownership | `commands/reset.py` plus ownership modules |

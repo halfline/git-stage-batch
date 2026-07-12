@@ -5,6 +5,7 @@ import subprocess
 
 import pytest
 
+import git_stage_batch.commands.selection.selected_change_staging as selected_change_staging
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.state.query import get_batch_commit_sha, read_batch_metadata
 from git_stage_batch.batch.state.batch_names import batch_exists
@@ -100,6 +101,29 @@ class TestCommandInclude:
 
         captured = capsys.readouterr()
         assert "Hunk staged" in captured.err
+
+    def test_include_raises_when_git_rejects_hunk(self, temp_git_repo, monkeypatch):
+        """A failed index update should fail the include command."""
+        _prepare_single_line_change(temp_git_repo)
+        monkeypatch.setattr(
+            selected_change_staging,
+            "git_apply_to_index",
+            lambda *_args, **_kwargs: subprocess.CompletedProcess(
+                ["git", "apply"],
+                1,
+                "",
+                "index update failed",
+            ),
+        )
+
+        with pytest.raises(CommandError, match="index update failed"):
+            command_include(quiet=True)
+
+        assert subprocess.run(
+            ["git", "diff", "--cached", "--quiet"],
+            cwd=temp_git_repo,
+            check=False,
+        ).returncode == 0
 
     def test_include_no_changes(self, temp_git_repo, capsys):
         """Test include when no more hunks remain."""

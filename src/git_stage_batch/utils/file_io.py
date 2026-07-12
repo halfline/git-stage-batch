@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Iterable
 
 from ..exceptions import CommandError
+from ..git_paths import decode_path, encode_path, nul_records
 from ..i18n import _
 
 
@@ -25,6 +26,7 @@ class AtomicWriteModePolicy(Enum):
 
 PRIVATE_FILE_MODE = 0o600
 PROJECT_FILE_MODE = 0o644
+_PATH_LIST_MAGIC = b"\0git-stage-batch-path-list-v1\0"
 
 
 def read_text_file_contents(path: Path) -> str:
@@ -246,7 +248,19 @@ def read_file_paths_file(path: Path) -> list[str]:
     Returns:
         Sorted list of unique paths
     """
+    if not path.exists():
+        return []
+
+    contents = path.read_bytes()
+    if contents.startswith(_PATH_LIST_MAGIC):
+        encoded_paths = nul_records(contents[len(_PATH_LIST_MAGIC):])
+        return sorted({decode_path(encoded_path) for encoded_path in encoded_paths})
+
     return sorted(read_text_file_line_set(path))
+
+
+def _path_requires_lossless_list_encoding(path: str) -> bool:
+    return "\n" in path or "\r" in path or path != path.strip()
 
 
 def write_file_paths_file(path: Path, file_paths: Iterable[str]) -> None:
@@ -257,6 +271,14 @@ def write_file_paths_file(path: Path, file_paths: Iterable[str]) -> None:
         file_paths: Paths to write
     """
     unique_paths = sorted(set(file_paths))
+    if any(_path_requires_lossless_list_encoding(path) for path in unique_paths):
+        contents = _PATH_LIST_MAGIC + b"".join(
+            encode_path(path) + b"\0"
+            for path in unique_paths
+        )
+        write_file_bytes(path, contents)
+        return
+
     content = "\n".join(unique_paths)
     if unique_paths:
         content += "\n"

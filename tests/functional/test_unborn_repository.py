@@ -102,6 +102,25 @@ def test_abort_preserves_unborn_file_kinds_and_ignored_paths(unborn_repo):
     assert (unborn_repo / "link").is_symlink()
 
 
+def test_abort_restores_staged_unborn_symlink_to_directory(unborn_repo):
+    """Abort should restore an indexed link without following its directory."""
+    target = unborn_repo / "target"
+    target.mkdir()
+    link = unborn_repo / "link"
+    link.symlink_to("target", target_is_directory=True)
+    _git("add", "link")
+    (unborn_repo / "review.txt").write_text("review\n")
+
+    git_stage_batch("start")
+    _git("rm", "-f", "link")
+    assert not link.exists()
+
+    git_stage_batch("abort")
+
+    assert link.is_symlink()
+    assert str(link.readlink()) == "target"
+
+
 def test_unborn_intent_to_add_is_restored_on_abort(unborn_repo):
     """An existing intent-to-add entry should remain intent-to-add."""
     intent = unborn_repo / "intent.txt"

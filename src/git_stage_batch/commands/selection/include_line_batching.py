@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 
-from ...batch.source_annotation import annotate_with_batch_source
+from ...batch.source.annotation import annotate_with_batch_source
 from ...data.line_state import load_line_changes_from_state
 from ...data.selected_change.loading import require_selected_hunk
 from ...exceptions import exit_with_error

@@ -5,22 +5,22 @@ from __future__ import annotations
 from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING, Any
 
-from .baseline_correspondence import (
+from .merge.baseline_correspondence import (
     build_baseline_correspondence as _build_discard_baseline_correspondence,
 )
 from .discard_reversal import (
     reverse_presence_constraints as _reverse_batch_presence_constraints,
 )
-from .line_mapping import LineMapping
-from .match import match_lines
-from .realized_entries import RealizedEntry as _RealizedEntry
-from .realized_entry_storage import (
+from .line_matching.line_mapping import LineMapping
+from .line_matching.match import match_lines
+from .realization.entries import RealizedEntry as _RealizedEntry
+from .realization.entry_storage import (
     RealizedEntries,
     as_realized_entries,
     realized_entry_content_chunks as _realized_entry_content_chunks,
 )
-from . import realized_mapping as _realized_mapping
-from .realized_boundaries import (
+from .realization import mapping as _realized_mapping
+from .realization.boundaries import (
     find_boundary_after_source_line as _locate_boundary_after_source_line,
     sequence_present_at_boundary as _boundary_sequence_present,
 )
@@ -42,8 +42,8 @@ from ..core.text_lines import (
 )
 
 if TYPE_CHECKING:
-    from .ownership import BatchOwnership
-    from .ownership_absence_claims import AbsenceClaim
+    from .ownership.model import BatchOwnership
+    from .ownership.absence_claims import AbsenceClaim
 
 
 def _discard_result_line_ending_from_lines(

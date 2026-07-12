@@ -6,7 +6,7 @@ import argparse
 import subprocess
 from pathlib import PurePosixPath
 
-from ..batch.query import list_batch_files
+from ..batch.state.query import list_batch_files
 from ..exceptions import CommandError
 from ..utils.file_patterns import list_changed_files
 

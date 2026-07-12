@@ -5,7 +5,7 @@ from __future__ import annotations
 import inspect
 
 import git_stage_batch.batch.ownership_update as ownership_update_module
-from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership_update import (
     PreparedBatchUpdate,
     acquire_batch_ownership_update_for_selection,

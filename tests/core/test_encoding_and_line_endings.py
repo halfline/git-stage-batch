@@ -4,8 +4,8 @@ from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.include import command_include_line
 from git_stage_batch.commands.discard import command_discard_line
 from git_stage_batch.commands.discard import command_discard_to_batch
-from git_stage_batch.batch.lifecycle import create_batch
-from git_stage_batch.batch.query import get_batch_baseline_commit, get_batch_commit_sha
+from git_stage_batch.batch.state.lifecycle import create_batch
+from git_stage_batch.batch.state.query import get_batch_baseline_commit, get_batch_commit_sha
 from git_stage_batch.utils.paths import get_selected_hunk_patch_file_path
 import binascii
 

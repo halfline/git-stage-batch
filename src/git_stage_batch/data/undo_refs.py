@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..batch.ref_names import (
+from ..batch.state.reference_names import (
     BATCH_CONTENT_REF_PREFIX,
     BATCH_STATE_REF_PREFIX,
     LEGACY_BATCH_REF_PREFIX,

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from ..core.buffer import LineBuffer
-from .merge_candidates import MergeResolution
+from .merge.candidates import MergeResolution
 
 
 CandidateOperation = Literal["apply", "include"]

@@ -8,36 +8,36 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 
-from ...batch.source_annotation import annotate_with_batch_source_working_lines
-from ...batch.lifecycle import create_batch
-from ...batch.ownership import (
+from ...batch.source.annotation import annotate_with_batch_source_working_lines
+from ...batch.state.lifecycle import create_batch
+from ...batch.ownership.model import (
     BatchOwnership,
 )
-from ...batch.ownership_metadata_loading import acquire_ownership_for_metadata_dict
-from ...batch.ownership_merging import merge_batch_ownership
-from ...batch.ownership_remapping import remap_batch_ownership_with_lineage
-from ...batch.ownership_translation import translate_lines_to_batch_ownership
+from ...batch.ownership.metadata_loading import acquire_ownership_for_metadata_dict
+from ...batch.ownership.merging import merge_batch_ownership
+from ...batch.ownership.remapping import remap_batch_ownership_with_lineage
+from ...batch.ownership.translation import translate_lines_to_batch_ownership
 from ...batch.ownership_update import acquire_batch_ownership_update_for_selection
-from ...batch.query import read_batch_metadata
-from ...batch.replacement_line_runs import (
+from ...batch.state.query import read_batch_metadata
+from ...batch.ownership.replacement_line_runs import (
     ReplacementLineRun,
     derive_replacement_line_runs_from_lines,
 )
 from ...batch.selection import require_line_selection_in_view
-from ...batch.source_advancement import advance_source_lines_preserving_existing_presence
-from ...batch.selected_line_source_refresh import (
+from ...batch.source.advancement import advance_source_lines_preserving_existing_presence
+from ...batch.source.selected_line_refresh import (
     refresh_selected_lines_against_source_lines,
 )
 from ...batch.text_file_storage import add_file_to_batch
-from ...batch.validation import batch_exists
+from ...batch.state.batch_names import batch_exists
 from ...core.buffer import LineBuffer, buffer_ends_with_lf
 from ...core.line_selection import parse_line_selection
 from ...core.replacement import ReplacementPayload, coerce_replacement_payload
-from ...batch.source_cache import (
+from ...batch.source.cache import (
     load_session_batch_sources,
     save_session_batch_sources,
 )
-from ...batch.source_snapshots import create_batch_source_commit
+from ...batch.source.snapshots import create_batch_source_commit
 from ...data.file_modes import detect_file_mode
 from ...data.file_hunk_display import build_file_hunk_from_buffer
 from ...data.line_state import load_line_changes_from_state

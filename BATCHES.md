@@ -34,6 +34,24 @@ prescribe how many helper modules the package must contain. Adding or combining
 a helper does not change the described design when storage, ownership, command,
 and session responsibilities remain in the same packages.
 
+## How the batch package is divided
+
+Start with the package whose responsibility matches the change:
+
+| Path | Responsibility |
+| --- | --- |
+| `batch/state/` | Batch names, stored metadata, references, lifecycle changes, validation, and read-only queries |
+| `batch/source/` | Stable file snapshots, the session source cache, line annotation, source advancement, and stale-source refresh |
+| `batch/ownership/` | Saved presence and absence requirements, replacement relationships, line translation, display lines, and selectable ownership units |
+| `batch/line_matching/` | Exact line comparison, line mappings, sequence search, range views, and source lineage |
+| `batch/realization/` | Intermediate entries used while constructing stored or merged file content, including their provenance and boundaries |
+| `batch/merge/` | Structural placement, validation, candidate construction, and presence and absence constraints |
+
+Modules directly under `batch/` coordinate these packages or own complete-file
+storage, attribution, display preparation, discard, replacement, and selection.
+They import the specific nested module they need. The package initializers do
+not provide shorter aliases for implementation values.
+
 ## Terms used by the code
 
 These names refer to different file contents. They are not interchangeable.
@@ -105,8 +123,8 @@ references:
 - `refs/git-stage-batch/state/<name>` points to a commit containing validated
   metadata and embedded batch-source files.
 
-[`batch/ref_names.py`](src/git_stage_batch/batch/ref_names.py) defines those
-names. [`batch/state_refs.py`](src/git_stage_batch/batch/state_refs.py) reads,
+[`batch/state/reference_names.py`](src/git_stage_batch/batch/state/reference_names.py)
+defines those names. [`batch/state/references.py`](src/git_stage_batch/batch/state/references.py) reads,
 writes, and deletes them.
 
 The state commit contains:
@@ -128,7 +146,7 @@ references and removes the historical storage for that batch.
 
 ### Per-file metadata
 
-[`batch/metadata_schema.py`](src/git_stage_batch/batch/metadata_schema.py)
+[`batch/state/metadata_schema.py`](src/git_stage_batch/batch/state/metadata_schema.py)
 validates stored fields before the rest of the program uses them.
 
 A text-file entry normally contains:
@@ -151,7 +169,7 @@ text line ownership.
 ## How a new batch is created
 
 `git-stage-batch new <name>` reaches
-[`batch/lifecycle.py`](src/git_stage_batch/batch/lifecycle.py):
+[`batch/state/lifecycle.py`](src/git_stage_batch/batch/state/lifecycle.py):
 
 1. `create_batch()` validates the name and refuses an existing batch.
 2. It resolves the current commit. A repository without a commit uses Git's
@@ -162,7 +180,7 @@ text line ownership.
 
 The same module owns deletion and note updates through `delete_batch()` and
 `update_batch_note()`. Read-only listing and metadata lookup live in
-[`batch/query.py`](src/git_stage_batch/batch/query.py).
+[`batch/state/query.py`](src/git_stage_batch/batch/state/query.py).
 
 ## How session recovery includes batch changes
 
@@ -217,7 +235,7 @@ discard modules under `commands/selection/` and `commands/file_scope/`.
 
 ## How text ownership is stored
 
-[`batch/ownership.py`](src/git_stage_batch/batch/ownership.py) defines
+[`batch/ownership/model.py`](src/git_stage_batch/batch/ownership/model.py) defines
 `BatchOwnership` with three fields:
 
 - `presence_claims`: source line ranges and optional baseline references
@@ -235,8 +253,8 @@ The metadata key remains `deletions` for compatibility. Code that loads it
 constructs `AbsenceClaim` values because the stored requirement is “these exact
 baseline bytes must be absent at this boundary.”
 
-[`batch/hunk_ownership_translation.py`](src/git_stage_batch/batch/hunk_ownership_translation.py)
-and [`batch/ownership_translation.py`](src/git_stage_batch/batch/ownership_translation.py)
+[`batch/ownership/hunk_translation.py`](src/git_stage_batch/batch/ownership/hunk_translation.py)
+and [`batch/ownership/translation.py`](src/git_stage_batch/batch/ownership/translation.py)
 translate selected displayed lines into this stored form. The hunk translator
 can use the complete old and new replacement run so it does not decide
 replacement membership from display adjacency alone.
@@ -270,7 +288,7 @@ The main path is:
 
 1. [`commands/show_from.py`](src/git_stage_batch/commands/show_from.py) resolves
    batch and file scope.
-2. [`batch/display.py`](src/git_stage_batch/batch/display.py) builds changed
+2. [`batch/ownership/display_lines.py`](src/git_stage_batch/batch/ownership/display_lines.py) builds changed
    lines from source content and ownership.
 3. [`batch/file_display_model.py`](src/git_stage_batch/batch/file_display_model.py)
    prepares the complete review model for one file.
@@ -309,7 +327,7 @@ Both commands use modules under `commands/batch_source/` to:
 6. write accepted targets
 7. refresh review and selected-change state
 
-For text files, [`batch/merge.py`](src/git_stage_batch/batch/merge.py) receives
+For text files, [`batch/merge/merge.py`](src/git_stage_batch/batch/merge/merge.py) receives
 the batch source, ownership, and current target bytes. It tries to satisfy the
 presence and absence requirements against that target.
 
@@ -325,15 +343,15 @@ line and every absence claim:
 - a replacement fallback requires the recorded baseline bytes at the recorded
   baseline position
 
-[`batch/merge_validation.py`](src/git_stage_batch/batch/merge_validation.py)
+[`batch/merge/validation.py`](src/git_stage_batch/batch/merge/validation.py)
 owns structural validation. Helpers called by `merge.py` separate three kinds
 of exact fallback work:
 
-- [`batch/baseline_edits.py`](src/git_stage_batch/batch/baseline_edits.py)
+- [`batch/merge/baseline_edits.py`](src/git_stage_batch/batch/merge/baseline_edits.py)
   applies replacement edits only at matching baseline positions.
-- [`batch/absence_constraints.py`](src/git_stage_batch/batch/absence_constraints.py)
+- [`batch/merge/absence_constraints.py`](src/git_stage_batch/batch/merge/absence_constraints.py)
   resolves which matching baseline bytes an absence claim may suppress.
-- [`batch/presence_constraints.py`](src/git_stage_batch/batch/presence_constraints.py)
+- [`batch/merge/presence_constraints.py`](src/git_stage_batch/batch/merge/presence_constraints.py)
   places missing claimed content.
 
 If the required boundary is missing or several placements are possible, the
@@ -363,11 +381,11 @@ the enumeration values `EQUAL`, `INSERT`, `REPLACE_LINE_BY_LINE`, and
 
 Start with these files when following that reversal:
 
-- [`batch/baseline_correspondence.py`](src/git_stage_batch/batch/baseline_correspondence.py)
+- [`batch/merge/baseline_correspondence.py`](src/git_stage_batch/batch/merge/baseline_correspondence.py)
   maps batch-source regions back to baseline regions.
 - [`batch/discard_reversal.py`](src/git_stage_batch/batch/discard_reversal.py)
   reverses presence requirements.
-- [`batch/realized_boundaries.py`](src/git_stage_batch/batch/realized_boundaries.py)
+- [`batch/realization/boundaries.py`](src/git_stage_batch/batch/realization/boundaries.py)
   checks exact boundaries in the current realized sequence.
 
 The same refusal rule applies: when the current file no longer provides one
@@ -380,11 +398,11 @@ working-tree line that has no corresponding line in that older source. In the
 selected `LineEntry`, that condition appears as `source_line is None`.
 
 `ensure_batch_source_current_for_selection()` in
-[`batch/source_refresh.py`](src/git_stage_batch/batch/source_refresh.py) handles
+[`batch/source/refresh.py`](src/git_stage_batch/batch/source/refresh.py) handles
 that condition:
 
 1. It reads the old batch source and current working file.
-2. [`batch/source_advancement.py`](src/git_stage_batch/batch/source_advancement.py)
+2. [`batch/source/advancement.py`](src/git_stage_batch/batch/source/advancement.py)
    constructs a new source. It preserves previously claimed lines even when an
    earlier `discard --to` removed them from the working file.
 3. While constructing that source, it records two exact line maps: old source
@@ -400,11 +418,11 @@ is used only when the construction path did not provide one of those maps.
 
 Initial source loading, storage, and caching are split across:
 
-- [`batch/source_buffers.py`](src/git_stage_batch/batch/source_buffers.py) for
+- [`batch/source/buffers.py`](src/git_stage_batch/batch/source/buffers.py) for
   session-start file buffers
-- [`batch/source_snapshots.py`](src/git_stage_batch/batch/source_snapshots.py)
+- [`batch/source/snapshots.py`](src/git_stage_batch/batch/source/snapshots.py)
   for source commits
-- [`batch/source_cache.py`](src/git_stage_batch/batch/source_cache.py) for the
+- [`batch/source/cache.py`](src/git_stage_batch/batch/source/cache.py) for the
   active session's per-file source commit mapping
 
 A file absent at session start uses its current working-tree content for the
@@ -413,9 +431,9 @@ initial source so every newly claimed line exists in that source.
 ## Why some displayed lines must be selected together
 
 Line-level batch actions do not remove arbitrary individual metadata rows.
-[`batch/ownership_units.py`](src/git_stage_batch/batch/ownership_units.py)
+[`batch/ownership/units.py`](src/git_stage_batch/batch/ownership/units.py)
 builds `OwnershipUnit` values from the reconstructed display. The code records three
-kinds in [`batch/ownership_unit_types.py`](src/git_stage_batch/batch/ownership_unit_types.py):
+kinds in [`batch/ownership/unit_types.py`](src/git_stage_batch/batch/ownership/unit_types.py):
 
 - `PRESENCE_ONLY`: claimed source lines with no coupled absence claim
 - `REPLACEMENT`: claimed source lines coupled to one or more absence claims
@@ -466,7 +484,7 @@ leaving a named batch behind.
 1. creates a uniquely named temporary batch
 2. translates the complete live hunk and selected displayed line identifiers
    into ownership
-3. asks `batch/merge.py` to apply that ownership to the current index content
+3. asks `batch/merge/merge.py` to apply that ownership to the current index content
 4. asks the same merge code to apply it to the current working-tree content
 5. accepts the index result only when the working-tree result is byte-for-byte
    unchanged
@@ -501,7 +519,8 @@ batch still missing from the current working tree.
 
 The command starts in
 [`commands/sift.py`](src/git_stage_batch/commands/sift.py). Comparison lives in
-[`batch/comparison.py`](src/git_stage_batch/batch/comparison.py). Persistence of
+[`batch/line_matching/comparison.py`](src/git_stage_batch/batch/line_matching/comparison.py).
+Persistence of
 the result is split between
 [`commands/batch_transform/sift_results.py`](src/git_stage_batch/commands/batch_transform/sift_results.py)
 and [`commands/batch_transform/sift_persistence.py`](src/git_stage_batch/commands/batch_transform/sift_persistence.py).
@@ -539,25 +558,25 @@ Line options cannot select part of these changes.
 
 | Change | Owning code |
 | --- | --- |
-| Create or delete a batch, or update its note | `batch/lifecycle.py` |
-| Validate a batch name | `batch/validation.py` |
-| List batches or read metadata | `batch/query.py` |
-| Validate or encode stored metadata | `batch/metadata_schema.py` |
-| Publish or delete Git references | `batch/state_refs.py` |
+| Create or delete a batch, or update its note | `batch/state/lifecycle.py` |
+| Validate a batch name | `batch/state/batch_names.py` |
+| List batches or read metadata | `batch/state/query.py` |
+| Validate or encode stored metadata | `batch/state/metadata_schema.py` |
+| Publish or delete Git references | `batch/state/references.py` |
 | Persist text content and ownership | `batch/text_file_storage.py` |
 | Persist binary, submodule pointer, or mode content | The matching `*_storage.py` module |
 | Build the stored text file | `batch/realized_file_content.py` |
-| Translate a live selection into ownership | `batch/hunk_ownership_translation.py` or `batch/ownership_translation.py` |
-| Combine a new selection with stored ownership | `batch/ownership_update.py` and `batch/ownership_merging.py` |
-| Refresh an old source | `batch/source_refresh.py` and `batch/source_advancement.py` |
-| Display a saved file | `batch/display.py` and `batch/file_display_model.py` |
-| Apply saved text to a current target | `batch/merge.py` and the validation and constraint helpers it calls |
+| Translate a live selection into ownership | `batch/ownership/hunk_translation.py` or `batch/ownership/translation.py` |
+| Combine a new selection with stored ownership | `batch/ownership_update.py` and `batch/ownership/merging.py` |
+| Refresh an old source | `batch/source/refresh.py` and `batch/source/advancement.py` |
+| Display a saved file | `batch/ownership/display_lines.py` and `batch/file_display_model.py` |
+| Apply saved text to a current target | `batch/merge/merge.py` and the validation and constraint helpers it calls |
 | Remove saved text from a current working file | The correspondence, reversal, and boundary modules named in the discard section |
-| Decide which lines must be selected together | `batch/ownership_units.py` and the ownership-unit support modules |
+| Decide which lines must be selected together | `batch/ownership/units.py` and the ownership-unit support modules |
 | Hide already-saved live changes | `batch/attribution.py` and `batch/attribution_projection.py` |
 | Coordinate an action from a saved batch | `commands/batch_source/` |
 | Move or remove ownership | `commands/reset.py` plus ownership modules |
-| Rewrite only the still-missing saved result | `commands/sift.py`, `commands/batch_transform/`, and `batch/comparison.py` |
+| Rewrite only the still-missing saved result | `commands/sift.py`, `commands/batch_transform/`, and `batch/line_matching/comparison.py` |
 
 Do not put session storage in `batch/`. The architecture test
 `test_batch_package_stays_below_workflow_data` requires `batch/` not to import

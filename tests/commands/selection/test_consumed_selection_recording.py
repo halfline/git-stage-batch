@@ -6,7 +6,7 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.commands.selection.consumed_selection_recording import (
     record_consumed_selection,
 )
@@ -16,7 +16,7 @@ from git_stage_batch.data.consumed_selections import (
     read_consumed_file_metadata,
 )
 from git_stage_batch.core.buffer import LineBuffer
-from tests.ownership_metadata_helpers import acquire_ownership_for_metadata
+from tests.batch.ownership.metadata_helpers import acquire_ownership_for_metadata
 
 
 @pytest.fixture

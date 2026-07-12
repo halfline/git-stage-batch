@@ -13,7 +13,7 @@ from ..core.models import (
     RenderedBatchDisplay,
     ReviewActionGroup,
 )
-from .ownership_unit_types import OwnershipUnit
+from .ownership.unit_types import OwnershipUnit
 
 
 _BATCH_MERGE_REVIEW_ACTIONS = (

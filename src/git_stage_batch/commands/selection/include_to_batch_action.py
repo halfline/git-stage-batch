@@ -16,7 +16,7 @@ from ...data.selected_change.store import (
     read_selected_change_kind,
 )
 from ...data.undo_checkpoints import undo_checkpoint
-from ...batch.validation import validate_batch_name
+from ...batch.state.batch_names import validate_batch_name
 from ...exceptions import exit_with_error
 from ...i18n import _
 from ..file_scope import include_file_to_batch as _file_scope_include_file_to_batch

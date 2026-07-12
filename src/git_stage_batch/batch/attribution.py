@@ -16,8 +16,8 @@ from ..utils.git_object_io import (
     resolve_git_objects,
     stream_git_blobs,
 )
-from .line_mapping import LineMapping as _LineMapping
-from .match import match_lines
+from .line_matching.line_mapping import LineMapping as _LineMapping
+from .line_matching.match import match_lines
 from . import attribution_fingerprints as _attribution_fingerprints
 from .attribution_units import (
     AttributionUnit as _AttributionUnit,
@@ -26,8 +26,8 @@ from .attribution_units import (
     enumerate_units_from_file_comparison as _enumerate_units_from_file_comparison,
     make_attribution_unit_id as _make_attribution_unit_id,
 )
-from .query import list_batch_names, read_batch_metadata_for_batches
-from .state_refs import get_batch_state_ref_name
+from .state.query import list_batch_names, read_batch_metadata_for_batches
+from .state.references import get_batch_state_ref_name
 from ..core.line_selection import parse_line_selection
 from ..utils.repository_buffers import (
     load_git_object_as_buffer_or_empty,

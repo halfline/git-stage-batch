@@ -5,9 +5,9 @@ from __future__ import annotations
 import shlex
 from dataclasses import dataclass
 
-from ...batch.query import read_batch_metadata
-from ...batch.source_selector import require_plain_batch_name
-from ...batch.validation import batch_exists, validate_batch_name
+from ...batch.state.query import read_batch_metadata
+from ...batch.source.selector import require_plain_batch_name
+from ...batch.state.batch_names import batch_exists, validate_batch_name
 from ...core.line_selection import LineRanges
 from ...data.batch_file_scope import (
     resolve_batch_file_scope,

@@ -8,10 +8,10 @@ from typing import Optional
 from ..utils.repository_buffers import load_git_object_as_buffer
 from ..utils.git_command import run_git_command
 from ..utils.git_object_io import create_git_blob
-from . import content_commits as _content_commits
-from .query import get_batch_commit_sha, read_batch_metadata
-from .metadata_io import write_file_backed_batch_metadata
-from .validation import validate_batch_name
+from .state import content_commits as _content_commits
+from .state.query import get_batch_commit_sha, read_batch_metadata
+from .state.compatibility_metadata import write_file_backed_batch_metadata
+from .state.batch_names import validate_batch_name
 
 
 def remove_file_from_batch(batch_name: str, file_path: str) -> None:

@@ -4,7 +4,7 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.batch.query import read_batch_metadata
+from git_stage_batch.batch.state.query import read_batch_metadata
 from git_stage_batch.commands.annotate import command_annotate_batch
 from git_stage_batch.commands.new import command_new_batch
 from git_stage_batch.exceptions import CommandError

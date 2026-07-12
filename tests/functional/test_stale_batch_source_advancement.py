@@ -5,8 +5,8 @@ from __future__ import annotations
 import subprocess
 
 
-from git_stage_batch.batch.query import read_batch_metadata
-from git_stage_batch.batch.query import get_batch_commit_sha
+from git_stage_batch.batch.state.query import read_batch_metadata
+from git_stage_batch.batch.state.query import get_batch_commit_sha
 from git_stage_batch.commands.again import command_again
 from git_stage_batch.commands.discard import command_discard_to_batch
 from git_stage_batch.commands.include import command_include_to_batch

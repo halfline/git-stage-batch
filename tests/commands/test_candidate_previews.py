@@ -16,13 +16,13 @@ import git_stage_batch.commands.batch_source.candidate_preview_counts as candida
 import git_stage_batch.commands.show_from as show_from_module
 import git_stage_batch.output.candidate_preview as candidate_preview_module
 import git_stage_batch.output.candidate_preview_summary as candidate_preview_summary
-from git_stage_batch.batch.lifecycle import create_batch
-from git_stage_batch.batch.ownership_absence_claims import AbsenceClaim
-from git_stage_batch.batch.ownership import (
+from git_stage_batch.batch.state.lifecycle import create_batch
+from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
+from git_stage_batch.batch.ownership.model import (
     BatchOwnership,
 )
-from git_stage_batch.batch.ownership_references import BaselineReference
-from git_stage_batch.batch.ownership_replacement_units import (
+from git_stage_batch.batch.ownership.references import BaselineReference
+from git_stage_batch.batch.ownership.replacement_units import (
     ReplacementUnit,
     ReplacementUnitOrigin,
 )

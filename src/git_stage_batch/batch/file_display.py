@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from typing import Optional
 
-from . import display as batch_display
+from .ownership import display_lines as batch_display
 from . import file_display_model as _file_display_model
 from . import file_mergeability as _file_mergeability
-from .ownership import BatchOwnership
-from .ownership_metadata_loading import acquire_ownership_for_metadata_dict
-from .query import read_batch_metadata
+from .ownership.model import BatchOwnership
+from .ownership.metadata_loading import acquire_ownership_for_metadata_dict
+from .state.query import read_batch_metadata
 from ..core.line_selection import LineRanges
 from ..core.models import (
     RenderedBatchDisplay,

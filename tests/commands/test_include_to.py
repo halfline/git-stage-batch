@@ -2,10 +2,10 @@
 
 from git_stage_batch.commands.include import command_include_to_batch
 from git_stage_batch.commands.again import command_again
-from git_stage_batch.batch.query import list_batch_files
+from git_stage_batch.batch.state.query import list_batch_files
 from git_stage_batch.batch.file_entry_storage import read_file_from_batch
-from git_stage_batch.batch.query import read_batch_metadata
-from git_stage_batch.batch.validation import batch_exists
+from git_stage_batch.batch.state.query import read_batch_metadata
+from git_stage_batch.batch.state.batch_names import batch_exists
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import NoMoreHunks
 from git_stage_batch.utils.paths import ensure_state_directory_exists

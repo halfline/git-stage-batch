@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import sys
 
-from ...batch.source_annotation import annotate_with_batch_source
+from ...batch.source.annotation import annotate_with_batch_source
 from ...core.buffer import LineBuffer, buffer_ends_with_lf, write_buffer_to_path
 from ...core.replacement import ReplacementPayload
 from ...data.line_state import load_line_changes_from_state

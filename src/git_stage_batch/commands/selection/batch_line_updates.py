@@ -5,11 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from contextlib import ExitStack
 
-from ...batch.lifecycle import create_batch
+from ...batch.state.lifecycle import create_batch
 from ...batch.ownership_update import acquire_batch_ownership_update_for_selection
-from ...batch.query import read_batch_metadata
+from ...batch.state.query import read_batch_metadata
 from ...batch.text_file_storage import add_file_to_batch
-from ...batch.validation import batch_exists
+from ...batch.state.batch_names import batch_exists
 from ...data.file_modes import detect_file_mode
 from ...data.session import snapshot_file_if_untracked
 from ...exceptions import exit_with_error

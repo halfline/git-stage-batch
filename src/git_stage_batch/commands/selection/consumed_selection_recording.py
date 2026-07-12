@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
-from ...batch.ownership import BatchOwnership
-from ...batch.ownership_metadata_loading import acquire_ownership_for_metadata_dict
-from ...batch.ownership_merging import merge_batch_ownership
-from ...batch.ownership_translation import (
+from ...batch.ownership.model import BatchOwnership
+from ...batch.ownership.metadata_loading import acquire_ownership_for_metadata_dict
+from ...batch.ownership.merging import merge_batch_ownership
+from ...batch.ownership.translation import (
     detect_stale_batch_source_for_selection,
     translate_lines_to_batch_ownership,
 )
-from ...batch.source_advancement import advance_batch_source_for_file_with_provenance
-from ...batch.selected_line_source_refresh import (
+from ...batch.source.advancement import advance_batch_source_for_file_with_provenance
+from ...batch.source.selected_line_refresh import (
     refresh_selected_lines_against_new_source,
     refresh_selected_lines_against_source_lines,
 )
 from ...core.buffer import LineBuffer
-from ...batch.source_snapshots import create_batch_source_commit
+from ...batch.source.snapshots import create_batch_source_commit
 from ...data.consumed_selections import (
     read_consumed_file_metadata,
     write_consumed_file_metadata,

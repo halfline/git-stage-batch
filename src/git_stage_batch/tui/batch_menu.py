@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 
-from ..batch.query import list_batch_names, read_batch_metadata
+from ..batch.state.query import list_batch_names, read_batch_metadata
 from ..commands.annotate import command_annotate_batch
 from ..commands.apply_from import command_apply_from_batch
 from ..commands.drop import command_drop_batch

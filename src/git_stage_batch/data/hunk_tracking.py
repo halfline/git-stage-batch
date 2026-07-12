@@ -5,8 +5,8 @@ from __future__ import annotations
 import subprocess
 from typing import Union
 
-from ..batch.query import list_batch_names, read_batch_metadata_for_batches
-from ..batch.source_annotation import annotate_with_batch_source
+from ..batch.state.query import list_batch_names, read_batch_metadata_for_batches
+from ..batch.source.annotation import annotate_with_batch_source
 from ..core.hashing import (
     compute_binary_file_hash,
     compute_file_mode_change_hash,

@@ -4,19 +4,19 @@ from __future__ import annotations
 
 from ..core.buffer import LineBuffer
 from ..core.models import BinaryFileChange
-from .source_cache import (
+from .source.cache import (
     get_batch_source_for_file,
     load_session_batch_sources,
     save_session_batch_sources,
 )
-from .source_snapshots import create_batch_source_commit
+from .source.snapshots import create_batch_source_commit
 from ..utils.git_object_io import create_git_blob
 from ..utils.git_repository import get_git_repository_root_path
-from . import content_commits as _content_commits
-from .lifecycle import create_batch
-from .metadata_io import write_file_backed_batch_metadata
-from .query import read_batch_metadata
-from .validation import batch_exists, validate_batch_name
+from .state import content_commits as _content_commits
+from .state.lifecycle import create_batch
+from .state.compatibility_metadata import write_file_backed_batch_metadata
+from .state.query import read_batch_metadata
+from .state.batch_names import batch_exists, validate_batch_name
 
 
 def add_binary_file_to_batch(

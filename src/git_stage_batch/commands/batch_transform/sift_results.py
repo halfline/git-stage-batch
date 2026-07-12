@@ -7,16 +7,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from ...batch.comparison import (
+from ...batch.line_matching.comparison import (
     SemanticChangeKind,
     derive_semantic_change_runs,
 )
-from ...batch.merge import merge_batch_from_line_sequences_as_buffer
-from ...batch.absence_content import AbsenceContentBuilder
-from ...batch.ownership import BatchOwnership
-from ...batch.ownership_absence_claims import AbsenceClaim
-from ...batch.ownership_metadata_loading import acquire_ownership_for_metadata_dict
-from ...batch.query import get_batch_baseline_commit
+from ...batch.merge.merge import merge_batch_from_line_sequences_as_buffer
+from ...batch.ownership.absence_content import AbsenceContentBuilder
+from ...batch.ownership.model import BatchOwnership
+from ...batch.ownership.absence_claims import AbsenceClaim
+from ...batch.ownership.metadata_loading import acquire_ownership_for_metadata_dict
+from ...batch.state.query import get_batch_baseline_commit
 from ...batch.realized_file_content import build_realized_buffer_from_lines
 from ...core.buffer import (
     LineBuffer,

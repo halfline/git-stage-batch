@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from enum import Enum
 
 from . import attribution_fingerprints as _attribution_fingerprints
-from .line_mapping import LineMapping
-from .match import match_lines
+from .line_matching.line_mapping import LineMapping
+from .line_matching.match import match_lines
 
 
 class AttributionUnitKind(Enum):

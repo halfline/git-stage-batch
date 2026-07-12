@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import argparse
 
-from ..batch.query import read_batch_metadata
-from ..batch.source_selector import batch_name_for_source_lookup
-from ..batch.validation import batch_exists
+from ..batch.state.query import read_batch_metadata
+from ..batch.source.selector import batch_name_for_source_lookup
+from ..batch.state.batch_names import batch_exists
 from ..commands.show import command_show, command_show_file_list
 from ..commands.show_from import command_show_from_batch
 from ..exceptions import CommandError

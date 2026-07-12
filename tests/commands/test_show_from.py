@@ -3,12 +3,12 @@
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.include import command_include_to_batch
 from git_stage_batch.commands.show import command_show
-from git_stage_batch.batch.ownership import BatchOwnership
+from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.text_file_storage import add_file_to_batch
-from git_stage_batch.batch.ownership_absence_claims import AbsenceClaim
+from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.file_display import render_batch_file_display
-import git_stage_batch.batch.merge as merge_module
-import git_stage_batch.batch.display as display_module
+import git_stage_batch.batch.merge.merge as merge_module
+import git_stage_batch.batch.ownership.display_lines as display_module
 import git_stage_batch.batch.file_display as file_display
 import git_stage_batch.batch.file_mergeability as file_mergeability
 import git_stage_batch.data.selected_change.paths as selected_change_paths
@@ -19,13 +19,13 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.batch.lifecycle import create_batch
+from git_stage_batch.batch.state.lifecycle import create_batch
 from git_stage_batch.commands.show_from import command_show_from_batch
 from git_stage_batch.core.line_selection import LineRanges
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import ensure_state_directory_exists
-from tests.ownership_metadata_helpers import reject_materialized_ownership_metadata
+from tests.batch.ownership.metadata_helpers import reject_materialized_ownership_metadata
 
 
 @pytest.fixture

@@ -7,7 +7,7 @@ import sys
 from ...batch.binary_file_storage import add_binary_file_to_batch
 from ...batch.gitlink_storage import add_gitlink_to_batch
 from ...batch.file_mode_storage import add_file_mode_to_batch
-from ...batch.ownership import BatchOwnership
+from ...batch.ownership.model import BatchOwnership
 from ...batch.text_file_storage import (
     add_file_to_batch,
 )

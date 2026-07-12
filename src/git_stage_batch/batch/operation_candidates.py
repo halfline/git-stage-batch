@@ -8,11 +8,11 @@ from ..core.buffer import LineBuffer
 from ..core.replacement import ReplacementPayload
 from ..core.text_lifecycle import selected_text_target_change_type
 from ..exceptions import AtomicUnitError, MergeError
-from .merge import (
+from .merge.merge import (
     enumerate_merge_batch_candidates_from_line_sequences,
     merge_batch_from_line_sequences_as_buffer,
 )
-from .merge_candidates import (
+from .merge.candidates import (
     MergeCandidate,
 )
 from .operation_candidate_types import (

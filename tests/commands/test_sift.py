@@ -1,15 +1,15 @@
 """Tests for sift command."""
 
-from git_stage_batch.batch.merge import merge_batch_from_line_sequences_as_buffer
+from git_stage_batch.batch.merge.merge import merge_batch_from_line_sequences_as_buffer
 
 import subprocess
 import pytest
 
-from git_stage_batch.batch.validation import batch_exists
-from git_stage_batch.batch.ownership import BatchOwnership
-from git_stage_batch.batch.ownership_absence_claims import AbsenceClaim
+from git_stage_batch.batch.state.batch_names import batch_exists
+from git_stage_batch.batch.ownership.model import BatchOwnership
+from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.core.buffer import LineBuffer
-from git_stage_batch.batch.state_refs import get_batch_content_ref_name
+from git_stage_batch.batch.state.references import get_batch_content_ref_name
 from git_stage_batch.commands.new import command_new_batch
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.apply_from import command_apply_from_batch
@@ -21,14 +21,14 @@ from git_stage_batch.commands.batch_transform.sift_persistence import (
 from git_stage_batch.commands.sift import (
     command_sift_batch,
 )
-from git_stage_batch.batch.query import read_batch_metadata
+from git_stage_batch.batch.state.query import read_batch_metadata
 from git_stage_batch.batch.binary_file_storage import add_binary_file_to_batch
 from git_stage_batch.batch.file_entry_storage import read_file_from_batch
 from git_stage_batch.core.models import BinaryFileChange
 from git_stage_batch.data.hunk_tracking import fetch_next_change
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.exceptions import CommandError, MergeError
-from tests.ownership_metadata_helpers import (
+from tests.batch.ownership.metadata_helpers import (
     acquire_ownership_for_metadata,
     reject_materialized_ownership_metadata as _reject_materialized_ownership_metadata,
 )

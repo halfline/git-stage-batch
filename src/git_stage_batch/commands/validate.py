@@ -7,14 +7,14 @@ import sys
 from collections.abc import Mapping
 from typing import Any
 
-from ..batch.metadata_schema import (
+from ..batch.state.metadata_schema import (
     CURRENT_BATCH_METADATA_SCHEMA_VERSION,
     BatchMetadata,
     decode_batch_metadata,
 )
-from ..batch.query import list_batch_names
-from ..batch.validation import invalid_file_backed_batch_names, validate_batch_name
-from ..batch.state_refs import (
+from ..batch.state.query import list_batch_names
+from ..batch.state.batch_names import invalid_file_backed_batch_names, validate_batch_name
+from ..batch.state.references import (
     get_authoritative_batch_commit_sha,
     get_batch_content_ref_name,
     get_batch_state_ref_name,

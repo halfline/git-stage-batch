@@ -17,6 +17,123 @@ def _imported_modules_for(path):
     return {imported_module for imported_module, _node in _import_from_nodes(path)}
 
 
+def test_batch_package_has_no_compatibility_imports():
+    """Moved batch modules should have one import location."""
+    batch_root = SRC_ROOT / "batch"
+    removed_flat_module_names = {
+        "absence_constraints.py",
+        "absence_content.py",
+        "baseline_correspondence.py",
+        "baseline_edits.py",
+        "baseline_reference_positions.py",
+        "baseline_replacement_choices.py",
+        "comparison.py",
+        "content_commits.py",
+        "display.py",
+        "hunk_line_ranges.py",
+        "hunk_ownership_translation.py",
+        "hunk_replacement_translation.py",
+        "lifecycle.py",
+        "line_mapping.py",
+        "line_range_view.py",
+        "line_sequence_equality.py",
+        "line_sequence_search.py",
+        "lineage.py",
+        "match.py",
+        "match_storage.py",
+        "merge.py",
+        "merge_candidate_enumeration.py",
+        "merge_candidates.py",
+        "merge_validation.py",
+        "metadata_io.py",
+        "metadata_schema.py",
+        "metadata_validation.py",
+        "ownership.py",
+        "ownership_absence_claims.py",
+        "ownership_acquisition.py",
+        "ownership_claims.py",
+        "ownership_detachment.py",
+        "ownership_line_entries.py",
+        "ownership_merging.py",
+        "ownership_metadata_blobs.py",
+        "ownership_metadata_loading.py",
+        "ownership_references.py",
+        "ownership_remapping.py",
+        "ownership_replacement_units.py",
+        "ownership_translation.py",
+        "ownership_unit_rebuild.py",
+        "ownership_unit_selection.py",
+        "ownership_unit_types.py",
+        "ownership_unit_validation.py",
+        "ownership_units.py",
+        "presence_constraints.py",
+        "presence_context.py",
+        "presence_missing_claims.py",
+        "presence_placement_choices.py",
+        "query.py",
+        "realized_boundaries.py",
+        "realized_entries.py",
+        "realized_entry_storage.py",
+        "realized_mapping.py",
+        "realized_provenance.py",
+        "ref_names.py",
+        "replacement_line_runs.py",
+        "selected_line_source_refresh.py",
+        "source_advancement.py",
+        "source_annotation.py",
+        "source_buffers.py",
+        "source_cache.py",
+        "source_refresh.py",
+        "source_selector.py",
+        "source_snapshots.py",
+        "state_refs.py",
+        "validation.py",
+    }
+    compatibility_markers = (
+        "Compatibility import",
+        "Temporary compatibility import",
+    )
+    violations = [
+        str((batch_root / module_name).relative_to(REPO_ROOT))
+        for module_name in sorted(removed_flat_module_names)
+        if (batch_root / module_name).exists()
+    ]
+
+    for path in batch_root.rglob("*.py"):
+        source_text = path.read_text()
+        if not any(marker in source_text for marker in compatibility_markers):
+            continue
+        violations.append(str(path.relative_to(REPO_ROOT)))
+
+    initializer_violations = []
+    for package_name in (
+        "line_matching",
+        "merge",
+        "ownership",
+        "realization",
+        "source",
+        "state",
+    ):
+        initializer_path = batch_root / package_name / "__init__.py"
+        initializer_tree = ast.parse(initializer_path.read_text())
+        non_docstring_statements = [
+            statement
+            for statement in initializer_tree.body
+            if not (
+                isinstance(statement, ast.Expr)
+                and isinstance(statement.value, ast.Constant)
+                and isinstance(statement.value.value, str)
+            )
+        ]
+        if non_docstring_statements:
+            initializer_violations.append(
+                str(initializer_path.relative_to(REPO_ROOT))
+            )
+
+    assert violations == []
+    assert initializer_violations == []
+
+
 def _top_level_package_names() -> set[str]:
     return {
         path.name
@@ -97,7 +214,7 @@ def _batch_module_import_edges() -> set[tuple[str, str]]:
     batch_root = SRC_ROOT / "batch"
     module_names = {
         _module_name_for_path(path)
-        for path in batch_root.glob("*.py")
+        for path in batch_root.rglob("*.py")
         if path.name != "__init__.py"
     }
     edges = set()
@@ -106,13 +223,9 @@ def _batch_module_import_edges() -> set[tuple[str, str]]:
         if not imported_module.startswith("git_stage_batch.batch."):
             return None
 
-        module_parts = imported_module.split(".")[:3]
-        module_name = ".".join(module_parts)
-        if module_name in module_names:
-            return module_name
-        return None
+        return imported_module if imported_module in module_names else None
 
-    for path in batch_root.glob("*.py"):
+    for path in batch_root.rglob("*.py"):
         if path.name == "__init__.py":
             continue
 
@@ -121,19 +234,14 @@ def _batch_module_import_edges() -> set[tuple[str, str]]:
             if imported_module is None:
                 continue
 
-            if imported_module == "git_stage_batch.batch":
-                for alias in node.names:
-                    target_module = f"{imported_module}.{alias.name}"
-                    if (
-                        target_module in module_names
-                        and target_module != source_module
-                    ):
-                        edges.add((source_module, target_module))
-                continue
-
-            target_module = batch_module_for(imported_module)
-            if target_module is not None and target_module != source_module:
-                edges.add((source_module, target_module))
+            imported_candidates = [
+                imported_module,
+                *(f"{imported_module}.{alias.name}" for alias in node.names),
+            ]
+            for imported_candidate in imported_candidates:
+                target_module = batch_module_for(imported_candidate)
+                if target_module is not None and target_module != source_module:
+                    edges.add((source_module, target_module))
 
     return edges
 
@@ -215,7 +323,7 @@ def test_batch_package_stays_below_workflow_data():
     """Batch domain modules should not import workflow data storage."""
     old_source_path = SRC_ROOT / "data" / "batch_sources.py"
     source_snapshots = __import__(
-        "git_stage_batch.batch.source_snapshots",
+        "git_stage_batch.batch.source.snapshots",
         fromlist=["source_snapshots"],
     )
     public_snapshot_names = {
@@ -244,15 +352,15 @@ def test_batch_package_stays_below_workflow_data():
 def test_batch_source_buffers_own_session_start_loading():
     """Session-start buffer loading should live outside source snapshots."""
     source_buffers = __import__(
-        "git_stage_batch.batch.source_buffers",
+        "git_stage_batch.batch.source.buffers",
         fromlist=["source_buffers"],
     )
     source_snapshots = __import__(
-        "git_stage_batch.batch.source_snapshots",
+        "git_stage_batch.batch.source.snapshots",
         fromlist=["source_snapshots"],
     )
-    source_buffers_path = SRC_ROOT / "batch" / "source_buffers.py"
-    source_snapshots_path = SRC_ROOT / "batch" / "source_snapshots.py"
+    source_buffers_path = SRC_ROOT / "batch" / "source/buffers.py"
+    source_snapshots_path = SRC_ROOT / "batch" / "source/snapshots.py"
     public_names = {
         "load_saved_session_file_as_buffer",
         "read_session_file_buffers",
@@ -280,7 +388,7 @@ def test_batch_source_buffers_own_session_start_loading():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.source_snapshots":
+            if imported_module == "git_stage_batch.batch.source.snapshots":
                 stale_imports = imported_names & public_names
                 if stale_imports:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -288,7 +396,7 @@ def test_batch_source_buffers_own_session_start_loading():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.source_buffers":
+            if imported_module != "git_stage_batch.batch.source.buffers":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -302,14 +410,14 @@ def test_batch_source_buffers_own_session_start_loading():
 def test_batch_source_cache_owns_session_mapping():
     """Session source-cache mapping should live outside source snapshots."""
     source_cache = __import__(
-        "git_stage_batch.batch.source_cache",
+        "git_stage_batch.batch.source.cache",
         fromlist=["source_cache"],
     )
     source_snapshots = __import__(
-        "git_stage_batch.batch.source_snapshots",
+        "git_stage_batch.batch.source.snapshots",
         fromlist=["source_snapshots"],
     )
-    source_cache_path = SRC_ROOT / "batch" / "source_cache.py"
+    source_cache_path = SRC_ROOT / "batch" / "source/cache.py"
     public_names = {
         "get_batch_source_for_file",
         "load_session_batch_sources",
@@ -317,8 +425,8 @@ def test_batch_source_cache_owns_session_mapping():
     }
     expected_imports = {
         SRC_ROOT / "batch" / "binary_file_storage.py": public_names,
-        SRC_ROOT / "batch" / "source_annotation.py": {"get_batch_source_for_file"},
-        SRC_ROOT / "batch" / "source_refresh.py": {
+        SRC_ROOT / "batch" / "source/annotation.py": {"get_batch_source_for_file"},
+        SRC_ROOT / "batch" / "source/refresh.py": {
             "load_session_batch_sources",
             "save_session_batch_sources",
         },
@@ -343,7 +451,7 @@ def test_batch_source_cache_owns_session_mapping():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.source_snapshots":
+            if imported_module == "git_stage_batch.batch.source.snapshots":
                 stale_imports = imported_names & public_names
                 if stale_imports:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -351,7 +459,7 @@ def test_batch_source_cache_owns_session_mapping():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.source_cache":
+            if imported_module != "git_stage_batch.batch.source.cache":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -365,14 +473,14 @@ def test_batch_source_cache_owns_session_mapping():
 def test_batch_source_annotation_owns_line_annotation():
     """Batch-source line annotation should stay outside display rendering."""
     display = __import__(
-        "git_stage_batch.batch.display",
+        "git_stage_batch.batch.ownership.display_lines",
         fromlist=["display"],
     )
     source_annotation = __import__(
-        "git_stage_batch.batch.source_annotation",
+        "git_stage_batch.batch.source.annotation",
         fromlist=["source_annotation"],
     )
-    source_annotation_path = SRC_ROOT / "batch" / "source_annotation.py"
+    source_annotation_path = SRC_ROOT / "batch" / "source/annotation.py"
     public_names = {
         "annotate_with_batch_source",
         "annotate_with_batch_source_lines",
@@ -434,7 +542,7 @@ def test_batch_source_annotation_owns_line_annotation():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.display":
+            if imported_module == "git_stage_batch.batch.ownership.display_lines":
                 stale_imports = imported_names & public_names
                 if stale_imports:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -442,7 +550,7 @@ def test_batch_source_annotation_owns_line_annotation():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.source_annotation":
+            if imported_module != "git_stage_batch.batch.source.annotation":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -2187,7 +2295,7 @@ def test_batch_lifecycle_module_owns_batch_lifecycle_api():
     """Batch lifecycle APIs should live in the lifecycle module."""
     old_operations_path = SRC_ROOT / "batch" / "operations.py"
     lifecycle = __import__(
-        "git_stage_batch.batch.lifecycle",
+        "git_stage_batch.batch.state.lifecycle",
         fromlist=["lifecycle"],
     )
     lifecycle_names = {
@@ -4544,7 +4652,7 @@ def test_status_summary_reader_owns_status_payload_assembly():
         "_selected_change_is_stale",
     }
     disallowed_imports = {
-        "git_stage_batch.batch.query": {
+        "git_stage_batch.batch.state.query": {
             "read_batch_metadata",
         },
         "git_stage_batch.data.batch_selected_changes": {
@@ -4650,7 +4758,7 @@ def test_status_summary_uses_batch_selected_binary_validation():
     imported_batch_query_names = {
         alias.name
         for imported_module, node in _import_from_nodes(batch_selected_path)
-        if imported_module == "git_stage_batch.batch.query"
+        if imported_module == "git_stage_batch.batch.state.query"
         for alias in node.names
     }
     status_imports = {
@@ -4666,7 +4774,7 @@ def test_status_summary_uses_batch_selected_binary_validation():
     assert "load_current_selected_batch_binary_file" in vars(batch_selected)
     assert "load_current_selected_batch_binary_file" in imported_batch_selected_names
     assert "read_batch_metadata" in imported_batch_query_names
-    assert "git_stage_batch.batch.query" not in status_imports
+    assert "git_stage_batch.batch.state.query" not in status_imports
     assert "read_batch_metadata" not in status_summary_text
     assert "selected_batch_binary_batch_name" not in status_summary_text
     assert "selected_batch_binary_file_for_batch" not in status_summary_text
@@ -5045,9 +5153,9 @@ def test_argument_parser_delegates_show_dispatch():
         "_validate_show_page_request",
     }
     show_runtime_imports = {
-        "git_stage_batch.batch.query",
-        "git_stage_batch.batch.source_selector",
-        "git_stage_batch.batch.validation",
+        "git_stage_batch.batch.state.query",
+        "git_stage_batch.batch.source.selector",
+        "git_stage_batch.batch.state.batch_names",
         "git_stage_batch.commands.show",
         "git_stage_batch.commands.show_from",
     }
@@ -7339,11 +7447,11 @@ def test_tui_flow_menu_owns_batch_selection_menus():
     assert "git_stage_batch.tui.action_dispatch" in interactive_imports
     assert "git_stage_batch.tui.flow_actions" in action_dispatch_imports
     assert "git_stage_batch.tui.flow_menu" in flow_actions_imports
-    assert "git_stage_batch.batch.query" not in interactive_imports
-    assert "git_stage_batch.batch.query" not in action_dispatch_imports
+    assert "git_stage_batch.batch.state.query" not in interactive_imports
+    assert "git_stage_batch.batch.state.query" not in action_dispatch_imports
     assert "git_stage_batch.commands.new" not in interactive_imports
     assert "git_stage_batch.commands.new" not in action_dispatch_imports
-    assert "git_stage_batch.batch.query" in flow_menu_imports
+    assert "git_stage_batch.batch.state.query" in flow_menu_imports
     assert "git_stage_batch.commands.new" in flow_menu_imports
 
 
@@ -8063,10 +8171,10 @@ def test_tui_file_review_file_browser_owns_file_selection():
     assert moved_names.isdisjoint(vars(browser))
     assert all(snippet not in browser_text for snippet in old_browser_snippets)
     assert "git_stage_batch.tui.file_review.file_browser" in browser_imports
-    assert "git_stage_batch.batch.query" not in browser_imports
+    assert "git_stage_batch.batch.state.query" not in browser_imports
     assert "git_stage_batch.data.file_tracking" not in browser_imports
     assert "git_stage_batch.utils.file_patterns" not in browser_imports
-    assert "git_stage_batch.batch.query" in file_browser_imports
+    assert "git_stage_batch.batch.state.query" in file_browser_imports
     assert "git_stage_batch.data.file_tracking" in file_browser_imports
     assert "git_stage_batch.utils.file_patterns" in file_browser_imports
 
@@ -9023,15 +9131,15 @@ def test_suggest_fixup_line_ranges_stay_in_fixup_support():
 def test_selected_line_source_refresh_uses_public_api():
     """Cross-module source refresh callers should import public helpers."""
     source_refresh = __import__(
-        "git_stage_batch.batch.source_refresh",
+        "git_stage_batch.batch.source.refresh",
         fromlist=["source_refresh"],
     )
     line_refresh = __import__(
-        "git_stage_batch.batch.selected_line_source_refresh",
+        "git_stage_batch.batch.source.selected_line_refresh",
         fromlist=["selected_line_source_refresh"],
     )
-    source_refresh_path = SRC_ROOT / "batch" / "source_refresh.py"
-    line_refresh_path = SRC_ROOT / "batch" / "selected_line_source_refresh.py"
+    source_refresh_path = SRC_ROOT / "batch" / "source/refresh.py"
+    line_refresh_path = SRC_ROOT / "batch" / "source/selected_line_refresh.py"
     public_names = {
         "refresh_selected_lines_against_new_source",
         "refresh_selected_lines_against_source_lines",
@@ -9069,7 +9177,7 @@ def test_selected_line_source_refresh_uses_public_api():
         imported_public_names = set()
 
         for imported_module, node in imports:
-            if imported_module == "git_stage_batch.batch.source_refresh":
+            if imported_module == "git_stage_batch.batch.source.refresh":
                 imported_names = {alias.name for alias in node.names}
                 disallowed_names = imported_names & old_source_refresh_names
                 if disallowed_names:
@@ -9078,7 +9186,7 @@ def test_selected_line_source_refresh_uses_public_api():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.selected_line_source_refresh":
+            if imported_module != "git_stage_batch.batch.source.selected_line_refresh":
                 continue
 
             imported_names = {alias.name for alias in node.names}
@@ -9098,7 +9206,7 @@ def test_selected_line_source_refresh_uses_public_api():
 def test_batch_ownership_update_owns_prepared_update_api():
     """Prepared ownership updates should stay outside source refresh."""
     source_refresh = __import__(
-        "git_stage_batch.batch.source_refresh",
+        "git_stage_batch.batch.source.refresh",
         fromlist=["source_refresh"],
     )
     ownership_update = __import__(
@@ -9157,7 +9265,7 @@ def test_batch_ownership_update_owns_prepared_update_api():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.source_refresh":
+            if imported_module == "git_stage_batch.batch.source.refresh":
                 stale_imports = imported_names & old_source_refresh_names
                 if stale_imports:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -9184,7 +9292,7 @@ def test_batch_ownership_update_owns_prepared_update_api():
 def test_batch_lineage_uses_public_data_types():
     """Batch modules should import public lineage data types."""
     lineage = __import__(
-        "git_stage_batch.batch.lineage",
+        "git_stage_batch.batch.line_matching.lineage",
         fromlist=["lineage"],
     )
     public_names = {
@@ -9195,12 +9303,14 @@ def test_batch_lineage_uses_public_data_types():
         "_BatchSourceLineage",
         "_LineageRun",
     }
+    lineage_module_names = {"git_stage_batch.batch.line_matching.lineage"}
+    lineage_path = SRC_ROOT / "batch" / "line_matching/lineage.py"
     expected_imports = {
-        SRC_ROOT / "batch" / "ownership_remapping.py": {
+        SRC_ROOT / "batch" / "ownership/remapping.py": {
             "BatchSourceLineage",
         },
-        SRC_ROOT / "batch" / "source_advancement.py": public_names,
-        SRC_ROOT / "batch" / "selected_line_source_refresh.py": {
+        SRC_ROOT / "batch" / "source/advancement.py": public_names,
+        SRC_ROOT / "batch" / "source/selected_line_refresh.py": {
             "BatchSourceLineage",
         },
     }
@@ -9211,14 +9321,14 @@ def test_batch_lineage_uses_public_data_types():
     assert private_names.isdisjoint(vars(lineage))
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == SRC_ROOT / "batch" / "lineage.py":
+        if path == lineage_path:
             continue
 
         imports = _import_from_nodes(path)
         imported_public_names = set()
 
         for imported_module, node in imports:
-            if imported_module != "git_stage_batch.batch.lineage":
+            if imported_module not in lineage_module_names:
                 continue
 
             imported_names = {alias.name for alias in node.names}
@@ -9238,11 +9348,11 @@ def test_batch_lineage_uses_public_data_types():
 def test_batch_ownership_remapping_owns_public_helpers():
     """Ownership remapping should live outside ownership metadata."""
     remapping = __import__(
-        "git_stage_batch.batch.ownership_remapping",
+        "git_stage_batch.batch.ownership.remapping",
         fromlist=["ownership_remapping"],
     )
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     public_names = {
@@ -9267,7 +9377,7 @@ def test_batch_ownership_remapping_owns_public_helpers():
         / "commands"
         / "selection"
         / "discard_line_replacement.py": lineage_remap_names,
-        SRC_ROOT / "batch" / "source_advancement.py": lineage_remap_names,
+        SRC_ROOT / "batch" / "source/advancement.py": lineage_remap_names,
     }
     violations = []
 
@@ -9280,13 +9390,13 @@ def test_batch_ownership_remapping_owns_public_helpers():
     ownership_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(
-            SRC_ROOT / "batch" / "ownership.py"
+            SRC_ROOT / "batch" / "ownership/model.py"
         )
     }
     assert "git_stage_batch.batch.merge" not in ownership_imports
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == SRC_ROOT / "batch" / "ownership.py":
+        if path == SRC_ROOT / "batch" / "ownership/model.py":
             continue
 
         imports = _import_from_nodes(path)
@@ -9294,7 +9404,7 @@ def test_batch_ownership_remapping_owns_public_helpers():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.ownership":
+            if imported_module == "git_stage_batch.batch.ownership.model":
                 disallowed_names = imported_names & public_names
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -9302,7 +9412,7 @@ def test_batch_ownership_remapping_owns_public_helpers():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.ownership_remapping":
+            if imported_module != "git_stage_batch.batch.ownership.remapping":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -9321,11 +9431,11 @@ def test_batch_ownership_remapping_owns_public_helpers():
 def test_batch_ownership_translation_owns_public_helpers():
     """Ownership translation should live outside ownership metadata."""
     translation = __import__(
-        "git_stage_batch.batch.ownership_translation",
+        "git_stage_batch.batch.ownership.translation",
         fromlist=["ownership_translation"],
     )
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     public_names = {
@@ -9337,7 +9447,7 @@ def test_batch_ownership_translation_owns_public_helpers():
         "_translate_lines_to_batch_ownership",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "source_refresh.py": {
+        SRC_ROOT / "batch" / "source/refresh.py": {
             "detect_stale_batch_source_for_selection",
         },
         SRC_ROOT / "batch" / "ownership_update.py": {
@@ -9359,7 +9469,7 @@ def test_batch_ownership_translation_owns_public_helpers():
     assert private_names.isdisjoint(vars(translation))
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == SRC_ROOT / "batch" / "ownership_translation.py":
+        if path == SRC_ROOT / "batch" / "ownership/translation.py":
             continue
 
         imports = _import_from_nodes(path)
@@ -9367,7 +9477,7 @@ def test_batch_ownership_translation_owns_public_helpers():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.ownership":
+            if imported_module == "git_stage_batch.batch.ownership.model":
                 disallowed_names = imported_names & public_names
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -9375,7 +9485,7 @@ def test_batch_ownership_translation_owns_public_helpers():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.ownership_translation":
+            if imported_module != "git_stage_batch.batch.ownership.translation":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -9394,14 +9504,14 @@ def test_batch_ownership_translation_owns_public_helpers():
 def test_batch_hunk_ownership_translation_owns_hunk_selection():
     """Live-hunk ownership translation should stay outside line translation."""
     hunk_translation = __import__(
-        "git_stage_batch.batch.hunk_ownership_translation",
+        "git_stage_batch.batch.ownership.hunk_translation",
         fromlist=["hunk_ownership_translation"],
     )
     line_translation = __import__(
-        "git_stage_batch.batch.ownership_translation",
+        "git_stage_batch.batch.ownership.translation",
         fromlist=["ownership_translation"],
     )
-    hunk_path = SRC_ROOT / "batch" / "hunk_ownership_translation.py"
+    hunk_path = SRC_ROOT / "batch" / "ownership/hunk_translation.py"
     public_names = {
         "translate_hunk_selection_to_batch_ownership",
     }
@@ -9433,7 +9543,7 @@ def test_batch_hunk_ownership_translation_owns_hunk_selection():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.ownership_translation":
+            if imported_module == "git_stage_batch.batch.ownership.translation":
                 disallowed_names = imported_names & public_names
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -9441,7 +9551,7 @@ def test_batch_hunk_ownership_translation_owns_hunk_selection():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.hunk_ownership_translation":
+            if imported_module != "git_stage_batch.batch.ownership.hunk_translation":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -9460,15 +9570,15 @@ def test_batch_hunk_ownership_translation_owns_hunk_selection():
 def test_batch_hunk_line_ranges_own_hunk_range_scanning():
     """Live-hunk range scanning should stay outside ownership translation."""
     hunk_translation = __import__(
-        "git_stage_batch.batch.hunk_ownership_translation",
+        "git_stage_batch.batch.ownership.hunk_translation",
         fromlist=["hunk_ownership_translation"],
     )
     hunk_line_ranges = __import__(
-        "git_stage_batch.batch.hunk_line_ranges",
+        "git_stage_batch.batch.ownership.hunk_line_ranges",
         fromlist=["hunk_line_ranges"],
     )
-    hunk_path = SRC_ROOT / "batch" / "hunk_ownership_translation.py"
-    range_path = SRC_ROOT / "batch" / "hunk_line_ranges.py"
+    hunk_path = SRC_ROOT / "batch" / "ownership/hunk_translation.py"
+    range_path = SRC_ROOT / "batch" / "ownership/hunk_line_ranges.py"
     public_names = {
         "HunkLineRangeScan",
         "hunk_line_index_ranges_in_range",
@@ -9484,7 +9594,7 @@ def test_batch_hunk_line_ranges_own_hunk_range_scanning():
     hunk_imported_names: dict[str | None, set[str]] = {}
     replacement_imported_names: dict[str | None, set[str]] = {}
     hunk_text = hunk_path.read_text()
-    replacement_path = SRC_ROOT / "batch" / "hunk_replacement_translation.py"
+    replacement_path = SRC_ROOT / "batch" / "ownership/hunk_replacement_translation.py"
     replacement_text = replacement_path.read_text()
     range_text = range_path.read_text()
 
@@ -9506,9 +9616,12 @@ def test_batch_hunk_line_ranges_own_hunk_range_scanning():
         "git_stage_batch.batch",
         set(),
     )
-    assert "hunk_line_ranges" in replacement_imported_names.get(
-        "git_stage_batch.batch",
-        set(),
+    assert "hunk_line_ranges" in set().union(
+        replacement_imported_names.get("git_stage_batch.batch", set()),
+        replacement_imported_names.get(
+            "git_stage_batch.batch.ownership",
+            set(),
+        ),
     )
     for public_name in public_names:
         assert f"def {public_name}" not in hunk_text
@@ -9521,15 +9634,15 @@ def test_batch_hunk_line_ranges_own_hunk_range_scanning():
 def test_batch_hunk_replacement_translation_owns_replacement_runs():
     """File-derived replacement run translation should stay outside hunk walks."""
     hunk_translation = __import__(
-        "git_stage_batch.batch.hunk_ownership_translation",
+        "git_stage_batch.batch.ownership.hunk_translation",
         fromlist=["hunk_ownership_translation"],
     )
     replacement_translation = __import__(
-        "git_stage_batch.batch.hunk_replacement_translation",
+        "git_stage_batch.batch.ownership.hunk_replacement_translation",
         fromlist=["hunk_replacement_translation"],
     )
-    hunk_path = SRC_ROOT / "batch" / "hunk_ownership_translation.py"
-    replacement_path = SRC_ROOT / "batch" / "hunk_replacement_translation.py"
+    hunk_path = SRC_ROOT / "batch" / "ownership/hunk_translation.py"
+    replacement_path = SRC_ROOT / "batch" / "ownership/hunk_replacement_translation.py"
     public_names = {
         "HunkReplacementTranslation",
         "translate_hunk_replacement_line_runs",
@@ -9552,17 +9665,23 @@ def test_batch_hunk_replacement_translation_owns_replacement_runs():
             alias.name for alias in node.names
         )
 
-    assert "hunk_replacement_translation" in hunk_imported_names.get(
-        "git_stage_batch.batch",
-        set(),
+    assert "hunk_replacement_translation" in set().union(
+        hunk_imported_names.get("git_stage_batch.batch", set()),
+        hunk_imported_names.get(
+            "git_stage_batch.batch.ownership",
+            set(),
+        ),
     )
     assert "hunk_line_ranges" not in hunk_imported_names.get(
         "git_stage_batch.batch",
         set(),
     )
-    assert "hunk_line_ranges" in replacement_imported_names.get(
-        "git_stage_batch.batch",
-        set(),
+    assert "hunk_line_ranges" in set().union(
+        replacement_imported_names.get("git_stage_batch.batch", set()),
+        replacement_imported_names.get(
+            "git_stage_batch.batch.ownership",
+            set(),
+        ),
     )
     assert "AbsenceContentBuilder" not in hunk_text
     assert "ReplacementUnit(" not in hunk_text
@@ -9578,18 +9697,18 @@ def test_batch_hunk_replacement_translation_owns_replacement_runs():
 def test_batch_ownership_line_entries_own_entry_helpers():
     """LineEntry ownership primitives should stay outside translators."""
     line_entries = __import__(
-        "git_stage_batch.batch.ownership_line_entries",
+        "git_stage_batch.batch.ownership.line_entries",
         fromlist=["ownership_line_entries"],
     )
     hunk_translation = __import__(
-        "git_stage_batch.batch.hunk_ownership_translation",
+        "git_stage_batch.batch.ownership.hunk_translation",
         fromlist=["hunk_ownership_translation"],
     )
     line_translation = __import__(
-        "git_stage_batch.batch.ownership_translation",
+        "git_stage_batch.batch.ownership.translation",
         fromlist=["ownership_translation"],
     )
-    line_entry_path = SRC_ROOT / "batch" / "ownership_line_entries.py"
+    line_entry_path = SRC_ROOT / "batch" / "ownership/line_entries.py"
     public_names = {
         "LineEntryContentSequence",
         "ReplacementUnitBuilder",
@@ -9609,19 +9728,19 @@ def test_batch_ownership_line_entries_own_entry_helpers():
         "_replacement_unit_origin_for_line_run",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "hunk_ownership_translation.py": {
+        SRC_ROOT / "batch" / "ownership/hunk_translation.py": {
             "LineEntryContentSequence",
             "ReplacementUnitBuilder",
             "baseline_reference_for_old_line_range",
             "baseline_reference_for_presence_line",
             "old_line_content_by_number",
         },
-        SRC_ROOT / "batch" / "hunk_replacement_translation.py": {
+        SRC_ROOT / "batch" / "ownership/hunk_replacement_translation.py": {
             "baseline_reference_for_old_line_range",
             "baseline_reference_for_presence_line",
             "replacement_unit_origin_for_line_run",
         },
-        SRC_ROOT / "batch" / "ownership_translation.py": {
+        SRC_ROOT / "batch" / "ownership/translation.py": {
             "LineEntryContentSequence",
             "ReplacementUnitBuilder",
         },
@@ -9642,7 +9761,7 @@ def test_batch_ownership_line_entries_own_entry_helpers():
         imported_public_names = set()
 
         for imported_module, node in imports:
-            if imported_module != "git_stage_batch.batch.ownership_line_entries":
+            if imported_module != "git_stage_batch.batch.ownership.line_entries":
                 continue
 
             imported_names = {alias.name for alias in node.names}
@@ -9662,31 +9781,31 @@ def test_batch_ownership_line_entries_own_entry_helpers():
 def test_batch_ownership_references_own_baseline_boundaries():
     """Baseline boundary metadata should have a dedicated ownership module."""
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     ownership_references = __import__(
-        "git_stage_batch.batch.ownership_references",
+        "git_stage_batch.batch.ownership.references",
         fromlist=["ownership_references"],
     )
-    reference_path = SRC_ROOT / "batch" / "ownership_references.py"
+    reference_path = SRC_ROOT / "batch" / "ownership/references.py"
     expected_imports = {
-        SRC_ROOT / "batch" / "hunk_ownership_translation.py": {
+        SRC_ROOT / "batch" / "ownership/hunk_translation.py": {
             "BaselineReference",
         },
-        SRC_ROOT / "batch" / "ownership.py": {
+        SRC_ROOT / "batch" / "ownership/model.py": {
             "BaselineReference",
         },
-        SRC_ROOT / "batch" / "ownership_claims.py": {
+        SRC_ROOT / "batch" / "ownership/claims.py": {
             "BaselineReference",
         },
-        SRC_ROOT / "batch" / "ownership_line_entries.py": {
+        SRC_ROOT / "batch" / "ownership/line_entries.py": {
             "BaselineReference",
         },
-        SRC_ROOT / "batch" / "ownership_merging.py": {
+        SRC_ROOT / "batch" / "ownership/merging.py": {
             "BaselineReference",
         },
-        SRC_ROOT / "batch" / "ownership_translation.py": {
+        SRC_ROOT / "batch" / "ownership/translation.py": {
             "BaselineReference",
         },
     }
@@ -9696,7 +9815,7 @@ def test_batch_ownership_references_own_baseline_boundaries():
     assert public_names <= vars(ownership_references).keys()
     assert public_names.isdisjoint(vars(ownership))
     assert "class BaselineReference" not in (
-        SRC_ROOT / "batch" / "ownership.py"
+        SRC_ROOT / "batch" / "ownership/model.py"
     ).read_text()
 
     for path in SRC_ROOT.rglob("*.py"):
@@ -9706,7 +9825,7 @@ def test_batch_ownership_references_own_baseline_boundaries():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.ownership":
+            if imported_module == "git_stage_batch.batch.ownership.model":
                 stale_imports = imported_names & public_names
                 if stale_imports:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -9714,7 +9833,7 @@ def test_batch_ownership_references_own_baseline_boundaries():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.ownership_references":
+            if imported_module != "git_stage_batch.batch.ownership.references":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -9728,25 +9847,25 @@ def test_batch_ownership_references_own_baseline_boundaries():
 def test_batch_ownership_claims_own_presence_records():
     """Presence claim records should live with claim construction helpers."""
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     ownership_claims = __import__(
-        "git_stage_batch.batch.ownership_claims",
+        "git_stage_batch.batch.ownership.claims",
         fromlist=["ownership_claims"],
     )
-    claims_path = SRC_ROOT / "batch" / "ownership_claims.py"
+    claims_path = SRC_ROOT / "batch" / "ownership/claims.py"
     public_names = {"PresenceClaim"}
     expected_imports = {
-        SRC_ROOT / "batch" / "ownership.py": public_names,
-        SRC_ROOT / "batch" / "ownership_detachment.py": public_names,
+        SRC_ROOT / "batch" / "ownership/model.py": public_names,
+        SRC_ROOT / "batch" / "ownership/detachment.py": public_names,
     }
     violations = []
 
     assert public_names <= vars(ownership_claims).keys()
     assert public_names.isdisjoint(vars(ownership))
     assert "class PresenceClaim" not in (
-        SRC_ROOT / "batch" / "ownership.py"
+        SRC_ROOT / "batch" / "ownership/model.py"
     ).read_text()
 
     for path in SRC_ROOT.rglob("*.py"):
@@ -9756,7 +9875,7 @@ def test_batch_ownership_claims_own_presence_records():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.ownership":
+            if imported_module == "git_stage_batch.batch.ownership.model":
                 stale_imports = imported_names & public_names
                 if stale_imports:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -9764,7 +9883,7 @@ def test_batch_ownership_claims_own_presence_records():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.ownership_claims":
+            if imported_module != "git_stage_batch.batch.ownership.claims":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -9778,14 +9897,14 @@ def test_batch_ownership_claims_own_presence_records():
 def test_batch_ownership_claims_owns_line_range_helpers():
     """Ownership claim range helpers should live outside ownership metadata."""
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     ownership_claims = __import__(
-        "git_stage_batch.batch.ownership_claims",
+        "git_stage_batch.batch.ownership.claims",
         fromlist=["ownership_claims"],
     )
-    claim_path = SRC_ROOT / "batch" / "ownership_claims.py"
+    claim_path = SRC_ROOT / "batch" / "ownership/claims.py"
     public_names = {
         "LineRangeBuilder",
         "format_ownership_line_set",
@@ -9799,31 +9918,31 @@ def test_batch_ownership_claims_owns_line_range_helpers():
         "_presence_claims_from_source_lines",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "hunk_ownership_translation.py": {
+        SRC_ROOT / "batch" / "ownership/hunk_translation.py": {
             "LineRangeBuilder",
             "presence_claims_from_source_lines",
         },
-        SRC_ROOT / "batch" / "ownership.py": {
+        SRC_ROOT / "batch" / "ownership/model.py": {
             "parse_ownership_line_ranges",
             "presence_claims_from_source_lines",
         },
-        SRC_ROOT / "batch" / "ownership_line_entries.py": {
+        SRC_ROOT / "batch" / "ownership/line_entries.py": {
             "LineRangeBuilder",
         },
-        SRC_ROOT / "batch" / "ownership_remapping.py": {
+        SRC_ROOT / "batch" / "ownership/remapping.py": {
             "format_ownership_line_set",
             "parse_ownership_line_ranges",
             "presence_claims_from_source_lines",
         },
-        SRC_ROOT / "batch" / "ownership_translation.py": {
+        SRC_ROOT / "batch" / "ownership/translation.py": {
             "LineRangeBuilder",
             "presence_claims_from_source_lines",
         },
-        SRC_ROOT / "batch" / "ownership_unit_rebuild.py": {
+        SRC_ROOT / "batch" / "ownership/unit_rebuild.py": {
             "format_ownership_line_set",
             "presence_claims_from_source_lines",
         },
-        SRC_ROOT / "batch" / "ownership_units.py": {
+        SRC_ROOT / "batch" / "ownership/units.py": {
             "LineRangeBuilder",
             "parse_ownership_line_ranges",
         },
@@ -9844,7 +9963,7 @@ def test_batch_ownership_claims_owns_line_range_helpers():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.ownership":
+            if imported_module == "git_stage_batch.batch.ownership.model":
                 disallowed_names = imported_names & (
                     public_names | old_private_names
                 )
@@ -9854,7 +9973,7 @@ def test_batch_ownership_claims_owns_line_range_helpers():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.ownership_claims":
+            if imported_module != "git_stage_batch.batch.ownership.claims":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -9873,34 +9992,34 @@ def test_batch_ownership_claims_owns_line_range_helpers():
 def test_batch_ownership_absence_claims_own_value_records():
     """Absence-claim records should live outside aggregate ownership."""
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     ownership_absence_claims = __import__(
-        "git_stage_batch.batch.ownership_absence_claims",
+        "git_stage_batch.batch.ownership.absence_claims",
         fromlist=["ownership_absence_claims"],
     )
-    absence_claim_path = SRC_ROOT / "batch" / "ownership_absence_claims.py"
+    absence_claim_path = SRC_ROOT / "batch" / "ownership/absence_claims.py"
     public_names = {
         "AbsenceClaim",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "absence_constraints.py": public_names,
-        SRC_ROOT / "batch" / "baseline_edits.py": public_names,
-        SRC_ROOT / "batch" / "baseline_replacement_choices.py": public_names,
+        SRC_ROOT / "batch" / "merge/absence_constraints.py": public_names,
+        SRC_ROOT / "batch" / "merge/baseline_edits.py": public_names,
+        SRC_ROOT / "batch" / "merge/baseline_replacement_choices.py": public_names,
         SRC_ROOT / "batch" / "discard.py": public_names,
-        SRC_ROOT / "batch" / "display.py": public_names,
-        SRC_ROOT / "batch" / "hunk_ownership_translation.py": public_names,
-        SRC_ROOT / "batch" / "merge_candidate_enumeration.py": public_names,
-        SRC_ROOT / "batch" / "merge_validation.py": public_names,
-        SRC_ROOT / "batch" / "ownership.py": public_names,
-        SRC_ROOT / "batch" / "ownership_detachment.py": public_names,
-        SRC_ROOT / "batch" / "ownership_merging.py": public_names,
-        SRC_ROOT / "batch" / "ownership_metadata_loading.py": public_names,
-        SRC_ROOT / "batch" / "ownership_remapping.py": public_names,
-        SRC_ROOT / "batch" / "ownership_translation.py": public_names,
-        SRC_ROOT / "batch" / "ownership_unit_types.py": public_names,
-        SRC_ROOT / "batch" / "presence_constraints.py": public_names,
+        SRC_ROOT / "batch" / "ownership/display_lines.py": public_names,
+        SRC_ROOT / "batch" / "ownership/hunk_translation.py": public_names,
+        SRC_ROOT / "batch" / "merge/candidate_enumeration.py": public_names,
+        SRC_ROOT / "batch" / "merge/validation.py": public_names,
+        SRC_ROOT / "batch" / "ownership/model.py": public_names,
+        SRC_ROOT / "batch" / "ownership/detachment.py": public_names,
+        SRC_ROOT / "batch" / "ownership/merging.py": public_names,
+        SRC_ROOT / "batch" / "ownership/metadata_loading.py": public_names,
+        SRC_ROOT / "batch" / "ownership/remapping.py": public_names,
+        SRC_ROOT / "batch" / "ownership/translation.py": public_names,
+        SRC_ROOT / "batch" / "ownership/unit_types.py": public_names,
+        SRC_ROOT / "batch" / "merge/presence_constraints.py": public_names,
         SRC_ROOT / "batch" / "replacement.py": public_names,
         SRC_ROOT / "commands" / "batch_transform" / "sift_results.py": public_names,
     }
@@ -9908,7 +10027,7 @@ def test_batch_ownership_absence_claims_own_value_records():
 
     assert public_names <= vars(ownership_absence_claims).keys()
     assert public_names.isdisjoint(vars(ownership))
-    ownership_text = (SRC_ROOT / "batch" / "ownership.py").read_text()
+    ownership_text = (SRC_ROOT / "batch" / "ownership/model.py").read_text()
     assert "class AbsenceClaim" not in ownership_text
 
     for path in SRC_ROOT.rglob("*.py"):
@@ -9918,7 +10037,7 @@ def test_batch_ownership_absence_claims_own_value_records():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.ownership":
+            if imported_module == "git_stage_batch.batch.ownership.model":
                 stale_imports = imported_names & public_names
                 if stale_imports:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -9926,7 +10045,7 @@ def test_batch_ownership_absence_claims_own_value_records():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.ownership_absence_claims":
+            if imported_module != "git_stage_batch.batch.ownership.absence_claims":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -9940,40 +10059,40 @@ def test_batch_ownership_absence_claims_own_value_records():
 def test_batch_ownership_replacement_units_own_value_records():
     """Replacement-unit records should live with normalization helpers."""
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     replacement_units = __import__(
-        "git_stage_batch.batch.ownership_replacement_units",
+        "git_stage_batch.batch.ownership.replacement_units",
         fromlist=["ownership_replacement_units"],
     )
-    replacement_unit_path = SRC_ROOT / "batch" / "ownership_replacement_units.py"
+    replacement_unit_path = SRC_ROOT / "batch" / "ownership/replacement_units.py"
     public_names = {
         "ReplacementUnit",
         "ReplacementUnitOrigin",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "hunk_replacement_translation.py": public_names,
-        SRC_ROOT / "batch" / "ownership.py": {
+        SRC_ROOT / "batch" / "ownership/hunk_replacement_translation.py": public_names,
+        SRC_ROOT / "batch" / "ownership/model.py": {
             "ReplacementUnit",
         },
-        SRC_ROOT / "batch" / "ownership_detachment.py": {
+        SRC_ROOT / "batch" / "ownership/detachment.py": {
             "ReplacementUnit",
         },
-        SRC_ROOT / "batch" / "ownership_line_entries.py": public_names,
-        SRC_ROOT / "batch" / "ownership_merging.py": {
+        SRC_ROOT / "batch" / "ownership/line_entries.py": public_names,
+        SRC_ROOT / "batch" / "ownership/merging.py": {
             "ReplacementUnit",
         },
-        SRC_ROOT / "batch" / "ownership_remapping.py": {
+        SRC_ROOT / "batch" / "ownership/remapping.py": {
             "ReplacementUnit",
         },
-        SRC_ROOT / "batch" / "ownership_translation.py": {
+        SRC_ROOT / "batch" / "ownership/translation.py": {
             "ReplacementUnit",
         },
-        SRC_ROOT / "batch" / "ownership_unit_rebuild.py": {
+        SRC_ROOT / "batch" / "ownership/unit_rebuild.py": {
             "ReplacementUnit",
         },
-        SRC_ROOT / "batch" / "ownership_unit_types.py": {
+        SRC_ROOT / "batch" / "ownership/unit_types.py": {
             "ReplacementUnitOrigin",
         },
         SRC_ROOT / "batch" / "replacement.py": {
@@ -9984,7 +10103,7 @@ def test_batch_ownership_replacement_units_own_value_records():
 
     assert public_names <= vars(replacement_units).keys()
     assert public_names.isdisjoint(vars(ownership))
-    ownership_text = (SRC_ROOT / "batch" / "ownership.py").read_text()
+    ownership_text = (SRC_ROOT / "batch" / "ownership/model.py").read_text()
     assert "class ReplacementUnit" not in ownership_text
     assert "class ReplacementUnitOrigin" not in ownership_text
 
@@ -9995,7 +10114,7 @@ def test_batch_ownership_replacement_units_own_value_records():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.ownership":
+            if imported_module == "git_stage_batch.batch.ownership.model":
                 stale_imports = imported_names & public_names
                 if stale_imports:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -10003,7 +10122,7 @@ def test_batch_ownership_replacement_units_own_value_records():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.ownership_replacement_units":
+            if imported_module != "git_stage_batch.batch.ownership.replacement_units":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -10017,14 +10136,14 @@ def test_batch_ownership_replacement_units_own_value_records():
 def test_batch_ownership_replacement_units_owns_normalization():
     """Replacement-unit normalization should live outside ownership metadata."""
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     replacement_units = __import__(
-        "git_stage_batch.batch.ownership_replacement_units",
+        "git_stage_batch.batch.ownership.replacement_units",
         fromlist=["ownership_replacement_units"],
     )
-    replacement_unit_path = SRC_ROOT / "batch" / "ownership_replacement_units.py"
+    replacement_unit_path = SRC_ROOT / "batch" / "ownership/replacement_units.py"
     public_names = {
         "normalize_replacement_units",
     }
@@ -10034,11 +10153,11 @@ def test_batch_ownership_replacement_units_owns_normalization():
         "_normalize_replacement_units",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "hunk_ownership_translation.py": public_names,
-        SRC_ROOT / "batch" / "ownership.py": public_names,
-        SRC_ROOT / "batch" / "ownership_remapping.py": public_names,
-        SRC_ROOT / "batch" / "ownership_translation.py": public_names,
-        SRC_ROOT / "batch" / "ownership_units.py": public_names,
+        SRC_ROOT / "batch" / "ownership/hunk_translation.py": public_names,
+        SRC_ROOT / "batch" / "ownership/model.py": public_names,
+        SRC_ROOT / "batch" / "ownership/remapping.py": public_names,
+        SRC_ROOT / "batch" / "ownership/translation.py": public_names,
+        SRC_ROOT / "batch" / "ownership/units.py": public_names,
     }
     violations = []
 
@@ -10057,7 +10176,7 @@ def test_batch_ownership_replacement_units_owns_normalization():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.ownership":
+            if imported_module == "git_stage_batch.batch.ownership.model":
                 disallowed_names = imported_names & (
                     public_names | old_private_names
                 )
@@ -10067,10 +10186,7 @@ def test_batch_ownership_replacement_units_owns_normalization():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if (
-                imported_module
-                != "git_stage_batch.batch.ownership_replacement_units"
-            ):
+            if imported_module != "git_stage_batch.batch.ownership.replacement_units":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -10089,19 +10205,19 @@ def test_batch_ownership_replacement_units_owns_normalization():
 def test_batch_ownership_acquisition_owns_scoped_context():
     """Scoped ownership context management should live outside ownership metadata."""
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     ownership_acquisition = __import__(
-        "git_stage_batch.batch.ownership_acquisition",
+        "git_stage_batch.batch.ownership.acquisition",
         fromlist=["ownership_acquisition"],
     )
     ownership_metadata_loading = __import__(
-        "git_stage_batch.batch.ownership_metadata_loading",
+        "git_stage_batch.batch.ownership.metadata_loading",
         fromlist=["ownership_metadata_loading"],
     )
-    acquisition_path = SRC_ROOT / "batch" / "ownership_acquisition.py"
-    metadata_loading_path = SRC_ROOT / "batch" / "ownership_metadata_loading.py"
+    acquisition_path = SRC_ROOT / "batch" / "ownership/acquisition.py"
+    metadata_loading_path = SRC_ROOT / "batch" / "ownership/metadata_loading.py"
     public_names = {
         "AcquiredBatchOwnership",
     }
@@ -10127,7 +10243,7 @@ def test_batch_ownership_acquisition_owns_scoped_context():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.ownership":
+            if imported_module == "git_stage_batch.batch.ownership.model":
                 disallowed_names = imported_names & (public_names | private_names)
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -10135,7 +10251,7 @@ def test_batch_ownership_acquisition_owns_scoped_context():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.ownership_acquisition":
+            if imported_module != "git_stage_batch.batch.ownership.acquisition":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -10149,14 +10265,14 @@ def test_batch_ownership_acquisition_owns_scoped_context():
 def test_batch_ownership_detachment_owns_detached_copies():
     """Detached ownership copies should live outside ownership metadata."""
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     ownership_detachment = __import__(
-        "git_stage_batch.batch.ownership_detachment",
+        "git_stage_batch.batch.ownership.detachment",
         fromlist=["ownership_detachment"],
     )
-    detachment_path = SRC_ROOT / "batch" / "ownership_detachment.py"
+    detachment_path = SRC_ROOT / "batch" / "ownership/detachment.py"
     public_names = {
         "acquire_detached_batch_ownership",
     }
@@ -10177,7 +10293,7 @@ def test_batch_ownership_detachment_owns_detached_copies():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.ownership":
+            if imported_module == "git_stage_batch.batch.ownership.model":
                 disallowed_names = imported_names & public_names
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -10185,7 +10301,7 @@ def test_batch_ownership_detachment_owns_detached_copies():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.ownership_detachment":
+            if imported_module != "git_stage_batch.batch.ownership.detachment":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -10199,14 +10315,14 @@ def test_batch_ownership_detachment_owns_detached_copies():
 def test_batch_ownership_merging_owns_merge_helpers():
     """Ownership merge behavior should live outside ownership metadata."""
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     ownership_merging = __import__(
-        "git_stage_batch.batch.ownership_merging",
+        "git_stage_batch.batch.ownership.merging",
         fromlist=["ownership_merging"],
     )
-    merging_path = SRC_ROOT / "batch" / "ownership_merging.py"
+    merging_path = SRC_ROOT / "batch" / "ownership/merging.py"
     public_names = {
         "merge_batch_ownership",
     }
@@ -10244,7 +10360,7 @@ def test_batch_ownership_merging_owns_merge_helpers():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.ownership":
+            if imported_module == "git_stage_batch.batch.ownership.model":
                 disallowed_names = imported_names & (
                     public_names | moved_private_names
                 )
@@ -10254,7 +10370,7 @@ def test_batch_ownership_merging_owns_merge_helpers():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.ownership_merging":
+            if imported_module != "git_stage_batch.batch.ownership.merging":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -10273,7 +10389,7 @@ def test_batch_ownership_merging_owns_merge_helpers():
 def test_batch_source_advancement_uses_public_entry_helpers():
     """Source advancement callers should import public advancement helpers."""
     source_advancement = __import__(
-        "git_stage_batch.batch.source_advancement",
+        "git_stage_batch.batch.source.advancement",
         fromlist=["source_advancement"],
     )
     public_names = {
@@ -10291,7 +10407,7 @@ def test_batch_source_advancement_uses_public_entry_helpers():
         / "discard_line_replacement.py": {
             "advance_source_lines_preserving_existing_presence",
         },
-        SRC_ROOT / "batch" / "source_refresh.py": {
+        SRC_ROOT / "batch" / "source/refresh.py": {
             "advance_batch_source_for_file_with_provenance",
         },
         SRC_ROOT / "commands" / "selection" / "consumed_selection_recording.py": {
@@ -10305,14 +10421,14 @@ def test_batch_source_advancement_uses_public_entry_helpers():
     assert private_names.isdisjoint(vars(source_advancement))
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == SRC_ROOT / "batch" / "source_advancement.py":
+        if path == SRC_ROOT / "batch" / "source/advancement.py":
             continue
 
         imports = _import_from_nodes(path)
         imported_public_names = set()
 
         for imported_module, node in imports:
-            if imported_module != "git_stage_batch.batch.source_advancement":
+            if imported_module != "git_stage_batch.batch.source.advancement":
                 continue
 
             imported_names = {alias.name for alias in node.names}
@@ -10332,11 +10448,11 @@ def test_batch_source_advancement_uses_public_entry_helpers():
 def test_batch_absence_content_owns_public_builders():
     """Absence content construction should live outside ownership metadata."""
     absence_content = __import__(
-        "git_stage_batch.batch.absence_content",
+        "git_stage_batch.batch.ownership.absence_content",
         fromlist=["absence_content"],
     )
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     public_names = {
@@ -10350,16 +10466,16 @@ def test_batch_absence_content_owns_public_builders():
         "_copy_absence_content",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "hunk_ownership_translation.py": {
+        SRC_ROOT / "batch" / "ownership/hunk_translation.py": {
             "build_absence_content_from_range",
         },
-        SRC_ROOT / "batch" / "hunk_replacement_translation.py": {
+        SRC_ROOT / "batch" / "ownership/hunk_replacement_translation.py": {
             "AbsenceContentBuilder",
         },
-        SRC_ROOT / "batch" / "ownership_detachment.py": {
+        SRC_ROOT / "batch" / "ownership/detachment.py": {
             "copy_absence_content",
         },
-        SRC_ROOT / "batch" / "ownership_translation.py": {
+        SRC_ROOT / "batch" / "ownership/translation.py": {
             "build_absence_content_from_range",
         },
         SRC_ROOT / "commands" / "batch_transform" / "sift_results.py": {
@@ -10374,14 +10490,14 @@ def test_batch_absence_content_owns_public_builders():
     assert private_names.isdisjoint(vars(absence_content))
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == SRC_ROOT / "batch" / "absence_content.py":
+        if path == SRC_ROOT / "batch" / "ownership/absence_content.py":
             continue
 
         imports = _import_from_nodes(path)
         imported_public_names = set()
 
         for imported_module, node in imports:
-            if imported_module != "git_stage_batch.batch.absence_content":
+            if imported_module != "git_stage_batch.batch.ownership.absence_content":
                 continue
 
             imported_names = {alias.name for alias in node.names}
@@ -10401,11 +10517,11 @@ def test_batch_absence_content_owns_public_builders():
 def test_batch_replacement_line_runs_own_public_derivation():
     """Replacement run derivation should live outside ownership metadata."""
     replacement_line_runs = __import__(
-        "git_stage_batch.batch.replacement_line_runs",
+        "git_stage_batch.batch.ownership.replacement_line_runs",
         fromlist=["replacement_line_runs"],
     )
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     public_names = {
@@ -10417,10 +10533,10 @@ def test_batch_replacement_line_runs_own_public_derivation():
         "_derive_replacement_line_runs_from_lines",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "hunk_ownership_translation.py": {
+        SRC_ROOT / "batch" / "ownership/hunk_translation.py": {
             "ReplacementLineRun"
         },
-        SRC_ROOT / "batch" / "ownership_line_entries.py": {"ReplacementLineRun"},
+        SRC_ROOT / "batch" / "ownership/line_entries.py": {"ReplacementLineRun"},
         SRC_ROOT / "batch" / "ownership_update.py": {
             "ReplacementLineRun",
         },
@@ -10439,14 +10555,14 @@ def test_batch_replacement_line_runs_own_public_derivation():
     assert private_names.isdisjoint(vars(replacement_line_runs))
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == SRC_ROOT / "batch" / "replacement_line_runs.py":
+        if path == SRC_ROOT / "batch" / "ownership/replacement_line_runs.py":
             continue
 
         imports = _import_from_nodes(path)
         imported_public_names = set()
 
         for imported_module, node in imports:
-            if imported_module != "git_stage_batch.batch.replacement_line_runs":
+            if imported_module != "git_stage_batch.batch.ownership.replacement_line_runs":
                 continue
 
             imported_names = {alias.name for alias in node.names}
@@ -10762,7 +10878,7 @@ def test_file_entry_storage_owns_entry_operations():
 def test_batch_content_commits_own_tree_publication():
     """Batch commit tree publication should live outside storage."""
     content_commits = __import__(
-        "git_stage_batch.batch.content_commits",
+        "git_stage_batch.batch.state.content_commits",
         fromlist=["content_commits"],
     )
     storage = __import__(
@@ -10796,7 +10912,7 @@ def test_batch_content_commits_own_tree_publication():
     assert private_names.isdisjoint(vars(content_commits))
     assert private_names.isdisjoint(vars(storage))
     assert any(
-        imported_module == "git_stage_batch.batch"
+        imported_module == "git_stage_batch.batch.state"
         and any(
             alias.name == "content_commits"
             and alias.asname == "_content_commits"
@@ -10806,7 +10922,7 @@ def test_batch_content_commits_own_tree_publication():
     )
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == SRC_ROOT / "batch" / "content_commits.py":
+        if path == SRC_ROOT / "batch" / "state/content_commits.py":
             continue
 
         imports = _import_from_nodes(path)
@@ -10825,7 +10941,7 @@ def test_batch_content_commits_own_tree_publication():
                     )
                 continue
 
-            if imported_module != "git_stage_batch.batch.content_commits":
+            if imported_module != "git_stage_batch.batch.state.content_commits":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -10929,17 +11045,17 @@ def test_batch_transform_sift_results_own_result_planning():
         "validate_sifted_text_file_result_from_lines",
     }
     disallowed_imports = {
-        "git_stage_batch.batch.comparison": {
+        "git_stage_batch.batch.line_matching.comparison": {
             "SemanticChangeKind",
             "derive_semantic_change_runs",
         },
         "git_stage_batch.batch.merge": {
             "merge_batch_from_line_sequences_as_buffer",
         },
-        "git_stage_batch.batch.ownership": {
+        "git_stage_batch.batch.ownership.model": {
             "AbsenceContentBuilder",
         },
-        "git_stage_batch.batch.ownership_absence_claims": {
+        "git_stage_batch.batch.ownership.absence_claims": {
             "AbsenceClaim",
         },
         "git_stage_batch.batch.text_file_storage": {
@@ -11042,18 +11158,18 @@ def test_batch_transform_sift_persistence_owns_file_writes():
         "replace_batch_with_sifted_files",
     }
     disallowed_imports = {
-        "git_stage_batch.batch.ownership": {
+        "git_stage_batch.batch.ownership.model": {
             "BatchOwnership",
         },
-        "git_stage_batch.batch.query": {
+        "git_stage_batch.batch.state.query": {
             "get_batch_baseline_commit",
         },
-        "git_stage_batch.batch.state_refs": {
+        "git_stage_batch.batch.state.references": {
             "delete_batch_state_refs",
             "get_batch_content_ref_name",
             "sync_batch_state_refs",
         },
-        "git_stage_batch.batch.content_commits": {
+        "git_stage_batch.batch.state.content_commits": {
             "remove_file_from_batch_commit",
             "update_batch_commit",
         },
@@ -11131,15 +11247,15 @@ def test_batch_transform_sift_persistence_owns_file_writes():
 def test_batch_ownership_units_owns_unit_operations():
     """Ownership unit operations should live outside ownership metadata."""
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     ownership_units = __import__(
-        "git_stage_batch.batch.ownership_units",
+        "git_stage_batch.batch.ownership.units",
         fromlist=["ownership_units"],
     )
-    ownership_path = SRC_ROOT / "batch" / "ownership.py"
-    unit_path = SRC_ROOT / "batch" / "ownership_units.py"
+    ownership_path = SRC_ROOT / "batch" / "ownership/model.py"
+    unit_path = SRC_ROOT / "batch" / "ownership/units.py"
     public_names = {
         "build_ownership_units_from_batch_source_lines",
         "build_ownership_units_from_display_lines",
@@ -11183,9 +11299,9 @@ def test_batch_ownership_units_owns_unit_operations():
         for imported_module, _node in _import_from_nodes(unit_path)
     }
 
-    assert "git_stage_batch.batch.display" not in ownership_imports
-    assert "git_stage_batch.batch.display" in unit_imports
-    assert "git_stage_batch.batch.ownership" in unit_imports
+    assert "git_stage_batch.batch.ownership.display_lines" not in ownership_imports
+    assert unit_imports & {"git_stage_batch.batch.ownership.display_lines"}
+    assert unit_imports & {"git_stage_batch.batch.ownership.model"}
 
     for path in SRC_ROOT.rglob("*.py"):
         if path in {ownership_path, unit_path}:
@@ -11197,7 +11313,7 @@ def test_batch_ownership_units_owns_unit_operations():
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
             if (
-                imported_module == "git_stage_batch.batch.ownership"
+                imported_module == "git_stage_batch.batch.ownership.model"
                 and imported_names & public_names
             ):
                 relative_path = path.relative_to(REPO_ROOT)
@@ -11205,7 +11321,7 @@ def test_batch_ownership_units_owns_unit_operations():
                 violations.append(
                     f"{relative_path}:{node.lineno} imports {names}"
                 )
-            if imported_module == "git_stage_batch.batch.ownership_units":
+            if imported_module == "git_stage_batch.batch.ownership.units":
                 imported_unit_names |= imported_names & public_names
 
         if path in expected_unit_imports:
@@ -11217,14 +11333,14 @@ def test_batch_ownership_units_owns_unit_operations():
 def test_batch_ownership_unit_validation_owns_structural_checks():
     """Ownership unit validation should live outside unit construction."""
     ownership_units = __import__(
-        "git_stage_batch.batch.ownership_units",
+        "git_stage_batch.batch.ownership.units",
         fromlist=["ownership_units"],
     )
     ownership_unit_validation = __import__(
-        "git_stage_batch.batch.ownership_unit_validation",
+        "git_stage_batch.batch.ownership.unit_validation",
         fromlist=["ownership_unit_validation"],
     )
-    validation_path = SRC_ROOT / "batch" / "ownership_unit_validation.py"
+    validation_path = SRC_ROOT / "batch" / "ownership/unit_validation.py"
     public_names = {
         "validate_ownership_units",
     }
@@ -11248,7 +11364,7 @@ def test_batch_ownership_unit_validation_owns_structural_checks():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module != "git_stage_batch.batch.ownership_unit_validation":
+            if imported_module != "git_stage_batch.batch.ownership.unit_validation":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -11267,14 +11383,14 @@ def test_batch_ownership_unit_validation_owns_structural_checks():
 def test_batch_ownership_unit_rebuild_owns_metadata_reconstruction():
     """Ownership metadata rebuild should live outside unit construction."""
     ownership_units = __import__(
-        "git_stage_batch.batch.ownership_units",
+        "git_stage_batch.batch.ownership.units",
         fromlist=["ownership_units"],
     )
     ownership_unit_rebuild = __import__(
-        "git_stage_batch.batch.ownership_unit_rebuild",
+        "git_stage_batch.batch.ownership.unit_rebuild",
         fromlist=["ownership_unit_rebuild"],
     )
-    rebuild_path = SRC_ROOT / "batch" / "ownership_unit_rebuild.py"
+    rebuild_path = SRC_ROOT / "batch" / "ownership/unit_rebuild.py"
     public_names = {
         "rebuild_ownership_from_units",
     }
@@ -11298,7 +11414,7 @@ def test_batch_ownership_unit_rebuild_owns_metadata_reconstruction():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module != "git_stage_batch.batch.ownership_unit_rebuild":
+            if imported_module != "git_stage_batch.batch.ownership.unit_rebuild":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -11334,19 +11450,21 @@ def test_batch_file_mergeability_owns_display_probe():
         "git_stage_batch.batch": {"file_mergeability"},
     }
     expected_dependency_imports = {
-        "git_stage_batch.batch.match": {"match_lines"},
-        "git_stage_batch.batch.ownership_unit_rebuild": {
+        ("git_stage_batch.batch.line_matching.match",): {
+            "match_lines",
+        },
+        ("git_stage_batch.batch.ownership.unit_rebuild",): {
             "rebuild_ownership_from_units",
         },
-        "git_stage_batch.batch.ownership_unit_validation": {
+        ("git_stage_batch.batch.ownership.unit_validation",): {
             "validate_ownership_units",
         },
-        "git_stage_batch.batch.ownership_units": {
+        ("git_stage_batch.batch.ownership.units",): {
             "build_ownership_units_from_display_lines",
         },
-        "git_stage_batch.core.text_lines": {"normalize_line_sequence_endings"},
-        "git_stage_batch.exceptions": {"MergeError"},
-        "git_stage_batch.utils.repository_buffers": {
+        ("git_stage_batch.core.text_lines",): {"normalize_line_sequence_endings"},
+        ("git_stage_batch.exceptions",): {"MergeError"},
+        ("git_stage_batch.utils.repository_buffers",): {
             "load_working_tree_file_as_buffer",
         },
     }
@@ -11371,19 +11489,23 @@ def test_batch_file_mergeability_owns_display_probe():
     for imported_module, imported_names in expected_probe_imports.items():
         assert imported_names <= display_imported_names.get(imported_module, set())
 
-    for imported_module, imported_names in expected_dependency_imports.items():
+    for imported_modules, imported_names in expected_dependency_imports.items():
+        display_dependency_names = set().union(
+            *(display_imported_names.get(module, set()) for module in imported_modules)
+        )
+        mergeability_dependency_names = set().union(
+            *(mergeability_imported_names.get(module, set()) for module in imported_modules)
+        )
         assert imported_names.isdisjoint(
-            display_imported_names.get(imported_module, set())
+            display_dependency_names
         )
-        assert imported_names <= mergeability_imported_names.get(
-            imported_module,
-            set(),
-        )
+        assert imported_names <= mergeability_dependency_names
 
-    assert "merge" in mergeability_imported_names.get(
-        "git_stage_batch.batch",
-        set(),
+    merge_module_names = set().union(
+        mergeability_imported_names.get("git_stage_batch.batch", set()),
+        mergeability_imported_names.get("git_stage_batch.batch.merge", set()),
     )
+    assert "merge" in merge_module_names
     assert "can_merge_batch_from_line_sequences" not in display_text
     assert "_file_mergeability.probe_batch_file_mergeability" in display_text
     assert "batch_merge.can_merge_batch_from_line_sequences" in mergeability_text
@@ -11447,14 +11569,14 @@ def test_batch_file_display_model_owns_review_model_assembly():
 def test_batch_ownership_unit_selection_owns_display_id_filtering():
     """Display-ID unit selection should live outside unit construction."""
     ownership_units = __import__(
-        "git_stage_batch.batch.ownership_units",
+        "git_stage_batch.batch.ownership.units",
         fromlist=["ownership_units"],
     )
     ownership_unit_selection = __import__(
-        "git_stage_batch.batch.ownership_unit_selection",
+        "git_stage_batch.batch.ownership.unit_selection",
         fromlist=["ownership_unit_selection"],
     )
-    selection_path = SRC_ROOT / "batch" / "ownership_unit_selection.py"
+    selection_path = SRC_ROOT / "batch" / "ownership/unit_selection.py"
     public_names = {
         "filter_ownership_units_by_display_ids",
         "select_ownership_units_by_display_ids",
@@ -11483,7 +11605,7 @@ def test_batch_ownership_unit_selection_owns_display_id_filtering():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module != "git_stage_batch.batch.ownership_unit_selection":
+            if imported_module != "git_stage_batch.batch.ownership.unit_selection":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -11502,14 +11624,14 @@ def test_batch_ownership_unit_selection_owns_display_id_filtering():
 def test_batch_ownership_unit_types_own_value_objects():
     """Ownership unit value objects should live outside unit operations."""
     ownership_units = __import__(
-        "git_stage_batch.batch.ownership_units",
+        "git_stage_batch.batch.ownership.units",
         fromlist=["ownership_units"],
     )
     ownership_unit_types = __import__(
-        "git_stage_batch.batch.ownership_unit_types",
+        "git_stage_batch.batch.ownership.unit_types",
         fromlist=["ownership_unit_types"],
     )
-    unit_types_path = SRC_ROOT / "batch" / "ownership_unit_types.py"
+    unit_types_path = SRC_ROOT / "batch" / "ownership/unit_types.py"
     public_names = {
         "OwnershipUnit",
         "OwnershipUnitKind",
@@ -11519,7 +11641,7 @@ def test_batch_ownership_unit_types_own_value_objects():
         "_OwnershipUnitKind",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "ownership_units.py": public_names,
+        SRC_ROOT / "batch" / "ownership/units.py": public_names,
     }
     violations = []
 
@@ -11533,7 +11655,7 @@ def test_batch_ownership_unit_types_own_value_objects():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.ownership_units":
+            if imported_module == "git_stage_batch.batch.ownership.units":
                 moved_names = imported_names & stale_operation_names
                 if moved_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -11541,7 +11663,7 @@ def test_batch_ownership_unit_types_own_value_objects():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.ownership_unit_types":
+            if imported_module != "git_stage_batch.batch.ownership.unit_types":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -11562,24 +11684,24 @@ def test_batch_ownership_unit_types_own_value_objects():
 def test_batch_ownership_metadata_blobs_own_blob_discovery():
     """Ownership metadata blob discovery should live outside ownership models."""
     ownership = __import__(
-        "git_stage_batch.batch.ownership",
+        "git_stage_batch.batch.ownership.model",
         fromlist=["ownership"],
     )
     ownership_references = __import__(
-        "git_stage_batch.batch.ownership_references",
+        "git_stage_batch.batch.ownership.references",
         fromlist=["ownership_references"],
     )
     ownership_metadata_blobs = __import__(
-        "git_stage_batch.batch.ownership_metadata_blobs",
+        "git_stage_batch.batch.ownership.metadata_blobs",
         fromlist=["ownership_metadata_blobs"],
     )
     ownership_metadata_loading = __import__(
-        "git_stage_batch.batch.ownership_metadata_loading",
+        "git_stage_batch.batch.ownership.metadata_loading",
         fromlist=["ownership_metadata_loading"],
     )
-    ownership_reference_path = SRC_ROOT / "batch" / "ownership_references.py"
-    metadata_blob_path = SRC_ROOT / "batch" / "ownership_metadata_blobs.py"
-    metadata_loading_path = SRC_ROOT / "batch" / "ownership_metadata_loading.py"
+    ownership_reference_path = SRC_ROOT / "batch" / "ownership/references.py"
+    metadata_blob_path = SRC_ROOT / "batch" / "ownership/metadata_blobs.py"
+    metadata_loading_path = SRC_ROOT / "batch" / "ownership/metadata_loading.py"
     public_names = {
         "baseline_reference_blob_ids",
         "baseline_references_blob_ids",
@@ -11623,7 +11745,7 @@ def test_batch_ownership_metadata_blobs_own_blob_discovery():
         imported_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module != "git_stage_batch.batch.ownership_metadata_blobs":
+            if imported_module != "git_stage_batch.batch.ownership.metadata_blobs":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -11642,10 +11764,10 @@ def test_batch_ownership_metadata_blobs_own_blob_discovery():
 def test_batch_realized_entries_owns_entry_view_model():
     """Realized entry views should stay separate from storage."""
     realized_entries = __import__(
-        "git_stage_batch.batch.realized_entries",
+        "git_stage_batch.batch.realization.entries",
         fromlist=["realized_entries"],
     )
-    realized_entries_path = SRC_ROOT / "batch" / "realized_entries.py"
+    realized_entries_path = SRC_ROOT / "batch" / "realization/entries.py"
     public_names = {
         "RealizedEntry",
     }
@@ -11672,12 +11794,12 @@ def test_batch_realized_entries_owns_entry_view_model():
         "_realized_entry_content_chunks",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "absence_constraints.py": public_names,
+        SRC_ROOT / "batch" / "merge/absence_constraints.py": public_names,
         SRC_ROOT / "batch" / "discard.py": public_names,
         SRC_ROOT / "batch" / "discard_reversal.py": public_names,
-        SRC_ROOT / "batch" / "presence_constraints.py": public_names,
-        SRC_ROOT / "batch" / "realized_boundaries.py": public_names,
-        SRC_ROOT / "batch" / "realized_entry_storage.py": public_names,
+        SRC_ROOT / "batch" / "merge/presence_constraints.py": public_names,
+        SRC_ROOT / "batch" / "realization/boundaries.py": public_names,
+        SRC_ROOT / "batch" / "realization/entry_storage.py": public_names,
     }
     violations = []
 
@@ -11693,7 +11815,7 @@ def test_batch_realized_entries_owns_entry_view_model():
         imported_public_names = set()
 
         for imported_module, node in imports:
-            if imported_module != "git_stage_batch.batch.realized_entries":
+            if imported_module != "git_stage_batch.batch.realization.entries":
                 continue
 
             imported_names = {alias.name for alias in node.names}
@@ -11713,14 +11835,14 @@ def test_batch_realized_entries_owns_entry_view_model():
 def test_batch_realized_entry_storage_owns_compact_storage():
     """Compact realized-entry storage should live outside entry views."""
     realized_entries = __import__(
-        "git_stage_batch.batch.realized_entries",
+        "git_stage_batch.batch.realization.entries",
         fromlist=["realized_entries"],
     )
     realized_entry_storage = __import__(
-        "git_stage_batch.batch.realized_entry_storage",
+        "git_stage_batch.batch.realization.entry_storage",
         fromlist=["realized_entry_storage"],
     )
-    storage_path = SRC_ROOT / "batch" / "realized_entry_storage.py"
+    storage_path = SRC_ROOT / "batch" / "realization/entry_storage.py"
     public_names = {
         "RealizedEntries",
         "RealizedEntryContentSequence",
@@ -11747,7 +11869,7 @@ def test_batch_realized_entry_storage_owns_compact_storage():
         "RealizedEntry",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "absence_constraints.py": {
+        SRC_ROOT / "batch" / "merge/absence_constraints.py": {
             "RealizedEntries",
             "as_realized_entries",
             "realized_entry_content_at",
@@ -11762,29 +11884,29 @@ def test_batch_realized_entry_storage_owns_compact_storage():
             "RealizedEntries",
             "realized_entry_source_line_at",
         },
-        SRC_ROOT / "batch" / "merge.py": {
+        SRC_ROOT / "batch" / "merge/merge.py": {
             "realized_entry_content_chunks",
         },
         SRC_ROOT / "batch" / "realized_file_content.py": {
             "realized_entry_content_chunks",
         },
-        SRC_ROOT / "batch" / "presence_constraints.py": {
+        SRC_ROOT / "batch" / "merge/presence_constraints.py": {
             "RealizedEntries",
             "RealizedEntryContentSequence",
             "realized_entry_is_claimed_at",
             "realized_entry_source_line_at",
         },
-        SRC_ROOT / "batch" / "realized_boundaries.py": {
+        SRC_ROOT / "batch" / "realization/boundaries.py": {
             "RealizedEntries",
             "realized_entry_content_at",
             "realized_entry_is_claimed_at",
             "realized_entry_source_line_at",
         },
-        SRC_ROOT / "batch" / "realized_mapping.py": {
+        SRC_ROOT / "batch" / "realization/mapping.py": {
             "RealizedEntries",
             "backing_content_sequence",
         },
-        SRC_ROOT / "batch" / "source_advancement.py": {
+        SRC_ROOT / "batch" / "source/advancement.py": {
             "realized_entry_content_chunks",
         },
     }
@@ -11804,7 +11926,7 @@ def test_batch_realized_entry_storage_owns_compact_storage():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.realized_entries":
+            if imported_module == "git_stage_batch.batch.realization.entries":
                 disallowed_names = imported_names & (public_names | private_names)
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -11812,7 +11934,7 @@ def test_batch_realized_entry_storage_owns_compact_storage():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.realized_entry_storage":
+            if imported_module != "git_stage_batch.batch.realization.entry_storage":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -11831,14 +11953,15 @@ def test_batch_realized_entry_storage_owns_compact_storage():
 def test_batch_line_range_view_stays_out_of_realized_entries():
     """Generic line range views should live outside realized-entry storage."""
     line_range_view = __import__(
-        "git_stage_batch.batch.line_range_view",
+        "git_stage_batch.batch.line_matching.line_range_view",
         fromlist=["line_range_view"],
     )
     realized_entries = __import__(
-        "git_stage_batch.batch.realized_entries",
+        "git_stage_batch.batch.realization.entries",
         fromlist=["realized_entries"],
     )
-    line_range_view_path = SRC_ROOT / "batch" / "line_range_view.py"
+    line_range_view_module_names = {"git_stage_batch.batch.line_matching.line_range_view"}
+    line_range_view_path = SRC_ROOT / "batch" / "line_matching/line_range_view.py"
     public_names = {
         "LineRangeView",
     }
@@ -11846,8 +11969,8 @@ def test_batch_line_range_view_stays_out_of_realized_entries():
         "_LineRange",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "baseline_correspondence.py": public_names,
-        SRC_ROOT / "batch" / "realized_entry_storage.py": public_names,
+        SRC_ROOT / "batch" / "merge/baseline_correspondence.py": public_names,
+        SRC_ROOT / "batch" / "realization/entry_storage.py": public_names,
     }
     violations = []
 
@@ -11864,7 +11987,7 @@ def test_batch_line_range_view_stays_out_of_realized_entries():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.realized_entries":
+            if imported_module == "git_stage_batch.batch.realization.entries":
                 moved_names = imported_names & moved_private_names
                 if moved_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -11872,7 +11995,7 @@ def test_batch_line_range_view_stays_out_of_realized_entries():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.line_range_view":
+            if imported_module not in line_range_view_module_names:
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -11886,14 +12009,14 @@ def test_batch_line_range_view_stays_out_of_realized_entries():
 def test_batch_realized_provenance_owns_run_storage():
     """Realized provenance run storage should live outside entry editing."""
     realized_entries = __import__(
-        "git_stage_batch.batch.realized_entries",
+        "git_stage_batch.batch.realization.entries",
         fromlist=["realized_entries"],
     )
     realized_provenance = __import__(
-        "git_stage_batch.batch.realized_provenance",
+        "git_stage_batch.batch.realization.provenance",
         fromlist=["realized_provenance"],
     )
-    provenance_path = SRC_ROOT / "batch" / "realized_provenance.py"
+    provenance_path = SRC_ROOT / "batch" / "realization/provenance.py"
     public_names = {
         "PROVENANCE_RUN_CLAIMED",
         "ProvenanceRun",
@@ -11919,7 +12042,7 @@ def test_batch_realized_provenance_owns_run_storage():
         "_stored_line_number",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "realized_entry_storage.py": public_names,
+        SRC_ROOT / "batch" / "realization/entry_storage.py": public_names,
     }
     violations = []
 
@@ -11937,7 +12060,7 @@ def test_batch_realized_provenance_owns_run_storage():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.realized_entries":
+            if imported_module == "git_stage_batch.batch.realization.entries":
                 moved_names = imported_names & (public_names | moved_private_names)
                 if moved_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -11945,7 +12068,7 @@ def test_batch_realized_provenance_owns_run_storage():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.realized_provenance":
+            if imported_module != "git_stage_batch.batch.realization.provenance":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -11964,14 +12087,16 @@ def test_batch_realized_provenance_owns_run_storage():
 def test_batch_line_mapping_owns_public_mapping_type():
     """Line mapping data types should live outside the match algorithm."""
     line_mapping = __import__(
-        "git_stage_batch.batch.line_mapping",
+        "git_stage_batch.batch.line_matching.line_mapping",
         fromlist=["line_mapping"],
     )
     match = __import__(
-        "git_stage_batch.batch.match",
+        "git_stage_batch.batch.line_matching.match",
         fromlist=["match"],
     )
-    line_mapping_path = SRC_ROOT / "batch" / "line_mapping.py"
+    line_mapping_module_names = {"git_stage_batch.batch.line_matching.line_mapping"}
+    match_module_names = {"git_stage_batch.batch.line_matching.match"}
+    line_mapping_path = SRC_ROOT / "batch" / "line_matching/line_mapping.py"
     public_names = {
         "LineMapping",
     }
@@ -11982,14 +12107,14 @@ def test_batch_line_mapping_owns_public_mapping_type():
     }
     expected_imports = {
         SRC_ROOT / "batch" / "attribution.py": public_names,
-        SRC_ROOT / "batch" / "baseline_edits.py": public_names,
+        SRC_ROOT / "batch" / "merge/baseline_edits.py": public_names,
         SRC_ROOT / "batch" / "discard.py": public_names,
-        SRC_ROOT / "batch" / "merge.py": public_names,
-        SRC_ROOT / "batch" / "merge_validation.py": public_names,
-        SRC_ROOT / "batch" / "ownership_remapping.py": public_names,
-        SRC_ROOT / "batch" / "presence_constraints.py": public_names,
-        SRC_ROOT / "batch" / "realized_mapping.py": public_names,
-        SRC_ROOT / "batch" / "source_annotation.py": public_names,
+        SRC_ROOT / "batch" / "merge/merge.py": public_names,
+        SRC_ROOT / "batch" / "merge/validation.py": public_names,
+        SRC_ROOT / "batch" / "ownership/remapping.py": public_names,
+        SRC_ROOT / "batch" / "merge/presence_constraints.py": public_names,
+        SRC_ROOT / "batch" / "realization/mapping.py": public_names,
+        SRC_ROOT / "batch" / "source/annotation.py": public_names,
     }
     violations = []
 
@@ -12007,7 +12132,7 @@ def test_batch_line_mapping_owns_public_mapping_type():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.match":
+            if imported_module in match_module_names:
                 disallowed_names = imported_names & (public_names | moved_names)
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -12015,7 +12140,7 @@ def test_batch_line_mapping_owns_public_mapping_type():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.line_mapping":
+            if imported_module not in line_mapping_module_names:
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -12037,21 +12162,23 @@ def test_batch_line_mapping_owns_public_mapping_type():
 def test_batch_line_sequence_search_stays_out_of_match_module():
     """Exact sequence search should live outside the match algorithm."""
     line_sequence_search = __import__(
-        "git_stage_batch.batch.line_sequence_search",
+        "git_stage_batch.batch.line_matching.sequence_search",
         fromlist=["line_sequence_search"],
     )
     match = __import__(
-        "git_stage_batch.batch.match",
+        "git_stage_batch.batch.line_matching.match",
         fromlist=["match"],
     )
-    line_sequence_search_path = SRC_ROOT / "batch" / "line_sequence_search.py"
+    line_sequence_search_module_names = {"git_stage_batch.batch.line_matching.sequence_search"}
+    match_module_names = {"git_stage_batch.batch.line_matching.match"}
+    line_sequence_search_path = SRC_ROOT / "batch" / "line_matching/sequence_search.py"
     public_names = {
         "TargetGap",
         "iter_exact_context_gaps",
         "iter_exact_sequence_occurrences",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "presence_placement_choices.py": {
+        SRC_ROOT / "batch" / "merge/presence_placement_choices.py": {
             "iter_exact_context_gaps",
         },
     }
@@ -12069,7 +12196,7 @@ def test_batch_line_sequence_search_stays_out_of_match_module():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.match":
+            if imported_module in match_module_names:
                 moved_names = imported_names & public_names
                 if moved_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -12077,7 +12204,7 @@ def test_batch_line_sequence_search_stays_out_of_match_module():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.line_sequence_search":
+            if imported_module not in line_sequence_search_module_names:
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -12091,16 +12218,16 @@ def test_batch_line_sequence_search_stays_out_of_match_module():
 def test_baseline_correspondence_stays_out_of_merge_module():
     """Baseline restoration mapping should live outside merge operations."""
     baseline_correspondence = __import__(
-        "git_stage_batch.batch.baseline_correspondence",
+        "git_stage_batch.batch.merge.baseline_correspondence",
         fromlist=["baseline_correspondence"],
     )
     merge = __import__(
-        "git_stage_batch.batch.merge",
+        "git_stage_batch.batch.merge.merge",
         fromlist=["merge"],
     )
-    correspondence_path = SRC_ROOT / "batch" / "baseline_correspondence.py"
+    correspondence_path = SRC_ROOT / "batch" / "merge/baseline_correspondence.py"
     discard_path = SRC_ROOT / "batch" / "discard.py"
-    merge_path = SRC_ROOT / "batch" / "merge.py"
+    merge_path = SRC_ROOT / "batch" / "merge/merge.py"
     public_names = {
         "BaselineCorrespondence",
         "BaselineRegion",
@@ -12124,14 +12251,14 @@ def test_baseline_correspondence_stays_out_of_merge_module():
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
 
-            if imported_module == "git_stage_batch.batch.merge":
+            if imported_module == "git_stage_batch.batch.merge.merge":
                 disallowed_names = imported_names & stale_merge_names
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
                     names = ", ".join(sorted(disallowed_names))
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
 
-            if imported_module != "git_stage_batch.batch.baseline_correspondence":
+            if imported_module != "git_stage_batch.batch.merge.baseline_correspondence":
                 continue
 
             if path == discard_path:
@@ -12156,12 +12283,12 @@ def test_discard_reversal_stays_out_of_merge_module():
         fromlist=["discard_reversal"],
     )
     merge = __import__(
-        "git_stage_batch.batch.merge",
+        "git_stage_batch.batch.merge.merge",
         fromlist=["merge"],
     )
     discard_reversal_path = SRC_ROOT / "batch" / "discard_reversal.py"
     discard_path = SRC_ROOT / "batch" / "discard.py"
-    merge_path = SRC_ROOT / "batch" / "merge.py"
+    merge_path = SRC_ROOT / "batch" / "merge/merge.py"
     public_names = {
         "reverse_presence_constraints",
     }
@@ -12189,7 +12316,7 @@ def test_discard_reversal_stays_out_of_merge_module():
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
 
-            if imported_module == "git_stage_batch.batch.merge":
+            if imported_module == "git_stage_batch.batch.merge.merge":
                 disallowed_names = imported_names & stale_merge_names
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -12217,17 +12344,17 @@ def test_discard_reversal_stays_out_of_merge_module():
 def test_realized_boundaries_stay_out_of_merge_module():
     """Realized-entry boundary lookup should live outside merge operations."""
     realized_boundaries = __import__(
-        "git_stage_batch.batch.realized_boundaries",
+        "git_stage_batch.batch.realization.boundaries",
         fromlist=["realized_boundaries"],
     )
     merge = __import__(
-        "git_stage_batch.batch.merge",
+        "git_stage_batch.batch.merge.merge",
         fromlist=["merge"],
     )
-    realized_boundaries_path = SRC_ROOT / "batch" / "realized_boundaries.py"
-    absence_constraints_path = SRC_ROOT / "batch" / "absence_constraints.py"
+    realized_boundaries_path = SRC_ROOT / "batch" / "realization/boundaries.py"
+    absence_constraints_path = SRC_ROOT / "batch" / "merge/absence_constraints.py"
     discard_path = SRC_ROOT / "batch" / "discard.py"
-    merge_path = SRC_ROOT / "batch" / "merge.py"
+    merge_path = SRC_ROOT / "batch" / "merge/merge.py"
     public_names = {
         "boundary_choices_after_source_line",
         "find_boundary_after_source_line",
@@ -12270,14 +12397,14 @@ def test_realized_boundaries_stay_out_of_merge_module():
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
 
-            if imported_module == "git_stage_batch.batch.merge":
+            if imported_module == "git_stage_batch.batch.merge.merge":
                 disallowed_names = imported_names & stale_merge_names
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
                     names = ", ".join(sorted(disallowed_names))
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
 
-            if imported_module != "git_stage_batch.batch.realized_boundaries":
+            if imported_module != "git_stage_batch.batch.realization.boundaries":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -12304,7 +12431,7 @@ def test_batch_discard_owns_discard_application():
         fromlist=["discard"],
     )
     merge = __import__(
-        "git_stage_batch.batch.merge",
+        "git_stage_batch.batch.merge.merge",
         fromlist=["merge"],
     )
     discard_path = SRC_ROOT / "batch" / "discard.py"
@@ -12339,7 +12466,7 @@ def test_batch_discard_owns_discard_application():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.merge":
+            if imported_module == "git_stage_batch.batch.merge.merge":
                 disallowed_names = imported_names & (
                     public_names | moved_private_names
                 )
@@ -12368,15 +12495,15 @@ def test_batch_discard_owns_discard_application():
 def test_batch_merge_candidates_uses_public_data_types():
     """Batch callers should import public merge-candidate data types."""
     merge_candidates = __import__(
-        "git_stage_batch.batch.merge_candidates",
+        "git_stage_batch.batch.merge.candidates",
         fromlist=["merge_candidates"],
     )
     merge = __import__(
-        "git_stage_batch.batch.merge",
+        "git_stage_batch.batch.merge.merge",
         fromlist=["merge"],
     )
     merge_candidate_enumeration_path = (
-        SRC_ROOT / "batch" / "merge_candidate_enumeration.py"
+        SRC_ROOT / "batch" / "merge/candidate_enumeration.py"
     )
     operation_candidate_types_path = (
         SRC_ROOT / "batch" / "operation_candidate_types.py"
@@ -12394,7 +12521,7 @@ def test_batch_merge_candidates_uses_public_data_types():
         "_MergeResolutionDecision",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "merge.py": {
+        SRC_ROOT / "batch" / "merge/merge.py": {
             "MergeCandidateSet",
             "MergeResolution",
         },
@@ -12412,7 +12539,7 @@ def test_batch_merge_candidates_uses_public_data_types():
     assert public_names.isdisjoint(vars(merge))
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == SRC_ROOT / "batch" / "merge_candidates.py":
+        if path == SRC_ROOT / "batch" / "merge/candidates.py":
             continue
 
         imports = _import_from_nodes(path)
@@ -12420,7 +12547,7 @@ def test_batch_merge_candidates_uses_public_data_types():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.merge_candidates":
+            if imported_module == "git_stage_batch.batch.merge.candidates":
                 imported_public_names |= imported_names & public_names
                 disallowed_names = imported_names & private_names
                 if disallowed_names:
@@ -12429,7 +12556,7 @@ def test_batch_merge_candidates_uses_public_data_types():
                     violations.append(
                         f"{relative_path}:{node.lineno} imports {names}"
                     )
-            if imported_module == "git_stage_batch.batch.merge":
+            if imported_module == "git_stage_batch.batch.merge.merge":
                 moved_names = imported_names & public_names
                 if moved_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -12447,16 +12574,16 @@ def test_batch_merge_candidates_uses_public_data_types():
 def test_batch_merge_candidate_enumeration_owns_preview_building():
     """Merge candidate construction should live outside merge orchestration."""
     merge_candidate_enumeration = __import__(
-        "git_stage_batch.batch.merge_candidate_enumeration",
+        "git_stage_batch.batch.merge.candidate_enumeration",
         fromlist=["merge_candidate_enumeration"],
     )
     merge = __import__(
-        "git_stage_batch.batch.merge",
+        "git_stage_batch.batch.merge.merge",
         fromlist=["merge"],
     )
-    merge_path = SRC_ROOT / "batch" / "merge.py"
+    merge_path = SRC_ROOT / "batch" / "merge/merge.py"
     merge_candidate_enumeration_path = (
-        SRC_ROOT / "batch" / "merge_candidate_enumeration.py"
+        SRC_ROOT / "batch" / "merge/candidate_enumeration.py"
     )
     public_names = {
         "enumerate_merge_batch_candidates_for_lines",
@@ -12488,7 +12615,7 @@ def test_batch_merge_candidate_enumeration_owns_preview_building():
         direct_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.merge":
+            if imported_module == "git_stage_batch.batch.merge.merge":
                 moved_names = imported_names & stale_merge_names
                 if moved_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -12496,7 +12623,7 @@ def test_batch_merge_candidate_enumeration_owns_preview_building():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.merge_candidate_enumeration":
+            if imported_module != "git_stage_batch.batch.merge.candidate_enumeration":
                 continue
 
             direct_public_names |= imported_names & public_names
@@ -12517,15 +12644,15 @@ def test_batch_merge_candidate_enumeration_owns_preview_building():
 def test_batch_baseline_edits_own_replacement_fallback():
     """Baseline-coordinate merge fallback should live outside merge."""
     baseline_edits = __import__(
-        "git_stage_batch.batch.baseline_edits",
+        "git_stage_batch.batch.merge.baseline_edits",
         fromlist=["baseline_edits"],
     )
     merge = __import__(
-        "git_stage_batch.batch.merge",
+        "git_stage_batch.batch.merge.merge",
         fromlist=["merge"],
     )
-    baseline_edits_path = SRC_ROOT / "batch" / "baseline_edits.py"
-    merge_path = SRC_ROOT / "batch" / "merge.py"
+    baseline_edits_path = SRC_ROOT / "batch" / "merge/baseline_edits.py"
+    merge_path = SRC_ROOT / "batch" / "merge/merge.py"
     public_names = {
         "has_missing_origin_replacement_claims",
         "try_apply_baseline_replacement_units",
@@ -12567,7 +12694,16 @@ def test_batch_baseline_edits_own_replacement_fallback():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.merge":
+            if imported_module in {
+                "git_stage_batch.batch",
+                "git_stage_batch.batch.merge",
+            }:
+                child_names = imported_names & {"baseline_edits"}
+                child_module_names |= child_names
+                if child_names:
+                    continue
+
+            if imported_module == "git_stage_batch.batch.merge.merge":
                 disallowed_names = imported_names & stale_merge_names
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -12575,11 +12711,7 @@ def test_batch_baseline_edits_own_replacement_fallback():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module == "git_stage_batch.batch":
-                child_module_names |= imported_names & {"baseline_edits"}
-                continue
-
-            if imported_module != "git_stage_batch.batch.baseline_edits":
+            if imported_module != "git_stage_batch.batch.merge.baseline_edits":
                 continue
 
             private_old_names = imported_names & {
@@ -12599,19 +12731,19 @@ def test_batch_baseline_edits_own_replacement_fallback():
 def test_batch_baseline_replacement_choices_own_origin_placements():
     """Replacement-origin placement choices should live outside edit fallback."""
     baseline_replacement_choices = __import__(
-        "git_stage_batch.batch.baseline_replacement_choices",
+        "git_stage_batch.batch.merge.baseline_replacement_choices",
         fromlist=["baseline_replacement_choices"],
     )
     baseline_edits = __import__(
-        "git_stage_batch.batch.baseline_edits",
+        "git_stage_batch.batch.merge.baseline_edits",
         fromlist=["baseline_edits"],
     )
     baseline_replacement_choices_path = (
-        SRC_ROOT / "batch" / "baseline_replacement_choices.py"
+        SRC_ROOT / "batch" / "merge/baseline_replacement_choices.py"
     )
-    baseline_edits_path = SRC_ROOT / "batch" / "baseline_edits.py"
+    baseline_edits_path = SRC_ROOT / "batch" / "merge/baseline_edits.py"
     merge_candidate_enumeration_path = (
-        SRC_ROOT / "batch" / "merge_candidate_enumeration.py"
+        SRC_ROOT / "batch" / "merge/candidate_enumeration.py"
     )
     public_names = {
         "ReplacementOriginChoice",
@@ -12648,7 +12780,7 @@ def test_batch_baseline_replacement_choices_own_origin_placements():
         direct_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module != "git_stage_batch.batch.baseline_replacement_choices":
+            if imported_module != "git_stage_batch.batch.merge.baseline_replacement_choices":
                 continue
 
             direct_public_names |= imported_names & public_names
@@ -12667,17 +12799,17 @@ def test_batch_baseline_replacement_choices_own_origin_placements():
 def test_batch_baseline_reference_positions_own_position_lookup():
     """Baseline-reference coordinate lookup should live outside fallback edits."""
     baseline_reference_positions = __import__(
-        "git_stage_batch.batch.baseline_reference_positions",
+        "git_stage_batch.batch.merge.baseline_reference_positions",
         fromlist=["baseline_reference_positions"],
     )
     baseline_edits = __import__(
-        "git_stage_batch.batch.baseline_edits",
+        "git_stage_batch.batch.merge.baseline_edits",
         fromlist=["baseline_edits"],
     )
     baseline_reference_positions_path = (
-        SRC_ROOT / "batch" / "baseline_reference_positions.py"
+        SRC_ROOT / "batch" / "merge/baseline_reference_positions.py"
     )
-    baseline_edits_path = SRC_ROOT / "batch" / "baseline_edits.py"
+    baseline_edits_path = SRC_ROOT / "batch" / "merge/baseline_edits.py"
     public_names = {
         "baseline_reference_absence_position",
         "baseline_reference_insertion_position",
@@ -12703,7 +12835,7 @@ def test_batch_baseline_reference_positions_own_position_lookup():
         direct_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module != "git_stage_batch.batch.baseline_reference_positions":
+            if imported_module != "git_stage_batch.batch.merge.baseline_reference_positions":
                 continue
 
             direct_public_names |= imported_names & public_names
@@ -12722,23 +12854,22 @@ def test_batch_baseline_reference_positions_own_position_lookup():
 def test_batch_line_sequence_equality_owns_exact_comparison():
     """Exact byte-line comparisons should live outside batch merge policies."""
     line_sequence_equality = __import__(
-        "git_stage_batch.batch.line_sequence_equality",
+        "git_stage_batch.batch.line_matching.sequence_equality",
         fromlist=["line_sequence_equality"],
     )
     baseline_edits = __import__(
-        "git_stage_batch.batch.baseline_edits",
+        "git_stage_batch.batch.merge.baseline_edits",
         fromlist=["baseline_edits"],
     )
     presence_constraints = __import__(
-        "git_stage_batch.batch.presence_constraints",
+        "git_stage_batch.batch.merge.presence_constraints",
         fromlist=["presence_constraints"],
     )
-    line_sequence_equality_path = (
-        SRC_ROOT / "batch" / "line_sequence_equality.py"
-    )
-    baseline_edits_path = SRC_ROOT / "batch" / "baseline_edits.py"
+    line_sequence_equality_module_names = {"git_stage_batch.batch.line_matching.sequence_equality"}
+    line_sequence_equality_path = SRC_ROOT / "batch" / "line_matching/sequence_equality.py"
+    baseline_edits_path = SRC_ROOT / "batch" / "merge/baseline_edits.py"
     presence_placement_choices_path = (
-        SRC_ROOT / "batch" / "presence_placement_choices.py"
+        SRC_ROOT / "batch" / "merge/presence_placement_choices.py"
     )
     public_names = {
         "line_sequences_equal",
@@ -12767,7 +12898,7 @@ def test_batch_line_sequence_equality_owns_exact_comparison():
         direct_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module != "git_stage_batch.batch.line_sequence_equality":
+            if imported_module not in line_sequence_equality_module_names:
                 continue
 
             direct_public_names |= imported_names & public_names
@@ -12786,14 +12917,14 @@ def test_batch_line_sequence_equality_owns_exact_comparison():
 def test_batch_merge_validation_owns_structural_checks():
     """Structural merge validation should live outside merge."""
     merge_validation = __import__(
-        "git_stage_batch.batch.merge_validation",
+        "git_stage_batch.batch.merge.validation",
         fromlist=["merge_validation"],
     )
     merge = __import__(
-        "git_stage_batch.batch.merge",
+        "git_stage_batch.batch.merge.merge",
         fromlist=["merge"],
     )
-    merge_validation_path = SRC_ROOT / "batch" / "merge_validation.py"
+    merge_validation_path = SRC_ROOT / "batch" / "merge/validation.py"
     public_names = {
         "check_structural_validity",
     }
@@ -12810,7 +12941,7 @@ def test_batch_merge_validation_owns_structural_checks():
         "_is_claimed_run_structurally_coherent",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "merge.py": public_names,
+        SRC_ROOT / "batch" / "merge/merge.py": public_names,
     }
     violations = []
 
@@ -12826,7 +12957,7 @@ def test_batch_merge_validation_owns_structural_checks():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.merge":
+            if imported_module == "git_stage_batch.batch.merge.merge":
                 disallowed_names = imported_names & stale_merge_names
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -12834,7 +12965,7 @@ def test_batch_merge_validation_owns_structural_checks():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.merge_validation":
+            if imported_module != "git_stage_batch.batch.merge.validation":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -12855,16 +12986,16 @@ def test_batch_merge_validation_owns_structural_checks():
 def test_batch_absence_constraints_own_suppression_helpers():
     """Absence suppression should live outside merge."""
     absence_constraints = __import__(
-        "git_stage_batch.batch.absence_constraints",
+        "git_stage_batch.batch.merge.absence_constraints",
         fromlist=["absence_constraints"],
     )
     merge = __import__(
-        "git_stage_batch.batch.merge",
+        "git_stage_batch.batch.merge.merge",
         fromlist=["merge"],
     )
-    absence_constraints_path = SRC_ROOT / "batch" / "absence_constraints.py"
+    absence_constraints_path = SRC_ROOT / "batch" / "merge/absence_constraints.py"
     merge_candidate_enumeration_path = (
-        SRC_ROOT / "batch" / "merge_candidate_enumeration.py"
+        SRC_ROOT / "batch" / "merge/candidate_enumeration.py"
     )
     public_names = {
         "AbsenceChoice",
@@ -12888,7 +13019,7 @@ def test_batch_absence_constraints_own_suppression_helpers():
         "iter_sequence_occurrences_nearby",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "presence_constraints.py": {
+        SRC_ROOT / "batch" / "merge/presence_constraints.py": {
             "apply_absence_constraints",
         },
         merge_candidate_enumeration_path: {
@@ -12911,7 +13042,7 @@ def test_batch_absence_constraints_own_suppression_helpers():
 
         for imported_module, node in imports:
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.merge":
+            if imported_module == "git_stage_batch.batch.merge.merge":
                 disallowed_names = imported_names & stale_merge_names
                 if disallowed_names:
                     relative_path = path.relative_to(REPO_ROOT)
@@ -12919,7 +13050,7 @@ def test_batch_absence_constraints_own_suppression_helpers():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.absence_constraints":
+            if imported_module != "git_stage_batch.batch.merge.absence_constraints":
                 continue
 
             imported_public_names |= imported_names & public_names
@@ -14747,13 +14878,13 @@ def test_batch_source_action_context_owns_action_prologue():
         "resolve_plain_batch_source_action_context",
     }
     disallowed_imports = {
-        "git_stage_batch.batch.metadata_validation": {
+        "git_stage_batch.batch.state.validation": {
             "read_validated_batch_metadata",
         },
-        "git_stage_batch.batch.source_selector": {
+        "git_stage_batch.batch.source.selector": {
             "require_plain_batch_name",
         },
-        "git_stage_batch.batch.validation": {
+        "git_stage_batch.batch.state.batch_names": {
             "batch_exists",
         },
         "git_stage_batch.data.file_review.action_scope": {
@@ -15275,7 +15406,7 @@ def test_batch_source_discard_action_owns_discard_execution():
         ("git_stage_batch.commands.batch_source", "binary_file_actions"),
         ("git_stage_batch.commands.batch_source", "text_file_actions"),
         ("git_stage_batch.commands.batch_source", "text_plan_builders"),
-        ("git_stage_batch.batch.metadata_validation", "get_validated_baseline_commit"),
+        ("git_stage_batch.batch.state.validation", "get_validated_baseline_commit"),
         ("git_stage_batch.batch.submodule_pointer", "discard_submodule_pointer_from_batch"),
         ("git_stage_batch.data.session", "snapshot_file_if_untracked"),
         ("git_stage_batch.data.undo_checkpoints", "undo_checkpoint"),
@@ -15305,7 +15436,7 @@ def test_discard_from_delegates_discard_action_execution():
             "text_file_actions",
             "text_plan_builders",
         },
-        "git_stage_batch.batch.metadata_validation": {
+        "git_stage_batch.batch.state.validation": {
             "get_validated_baseline_commit",
         },
         "git_stage_batch.batch.selection": {
@@ -15438,30 +15569,30 @@ def test_batch_source_reset_claims_own_reset_mutations():
         "_reset_pattern_claims_from_batch",
     }
     disallowed_imports = {
-        "git_stage_batch.batch.lifecycle": {
+        "git_stage_batch.batch.state.lifecycle": {
             "create_batch",
         },
-        "git_stage_batch.batch.ownership": {
+        "git_stage_batch.batch.ownership.model": {
             "BatchOwnership",
             "acquire_detached_batch_ownership",
             "merge_batch_ownership",
         },
-        "git_stage_batch.batch.ownership_units": {
+        "git_stage_batch.batch.ownership.units": {
             "build_ownership_units_from_batch_source_lines",
         },
-        "git_stage_batch.batch.ownership_unit_rebuild": {
+        "git_stage_batch.batch.ownership.unit_rebuild": {
             "rebuild_ownership_from_units",
         },
-        "git_stage_batch.batch.ownership_unit_selection": {
+        "git_stage_batch.batch.ownership.unit_selection": {
             "filter_ownership_units_by_display_ids",
         },
-        "git_stage_batch.batch.ownership_unit_validation": {
+        "git_stage_batch.batch.ownership.unit_validation": {
             "validate_ownership_units",
         },
         "git_stage_batch.batch.selection": {
             "require_display_ids_available",
         },
-        "git_stage_batch.batch.state_refs": {
+        "git_stage_batch.batch.state.references": {
             "sync_batch_state_refs",
         },
         "git_stage_batch.batch.text_file_storage": {
@@ -15524,7 +15655,7 @@ def test_batch_source_reset_selection_owns_reset_scope():
         "resolve_reset_claim_selection",
     }
     disallowed_imports = {
-        "git_stage_batch.batch.query": {
+        "git_stage_batch.batch.state.query": {
             "read_batch_metadata",
         },
         "git_stage_batch.batch.selection": {
@@ -15535,10 +15666,10 @@ def test_batch_source_reset_selection_owns_reset_scope():
             "resolve_batch_file_scope",
             "resolve_current_batch_atomic_file_scope",
         },
-        "git_stage_batch.batch.source_selector": {
+        "git_stage_batch.batch.source.selector": {
             "require_plain_batch_name",
         },
-        "git_stage_batch.batch.validation": {
+        "git_stage_batch.batch.state.batch_names": {
             "batch_exists",
             "validate_batch_name",
         },
@@ -15636,7 +15767,7 @@ def test_batch_source_candidate_selectors_own_action_selector_validation():
                 and "candidate_selectors" in imported_names
             ):
                 command_selector_imports[path] = True
-            if imported_module == "git_stage_batch.batch.source_selector":
+            if imported_module == "git_stage_batch.batch.source.selector":
                 direct_selector_imports[path] |= (
                     imported_names & old_source_selector_names
                 )
@@ -15940,7 +16071,7 @@ def test_batch_source_binary_actions_own_worktree_mutation():
 def test_batch_merge_does_not_reexport_merge_exceptions():
     """Merge exceptions should stay on the shared exception boundary."""
     merge = __import__(
-        "git_stage_batch.batch.merge",
+        "git_stage_batch.batch.merge.merge",
         fromlist=["merge"],
     )
     exception_names = {
@@ -15969,7 +16100,7 @@ def test_batch_merge_does_not_reexport_merge_exceptions():
                     )
                 continue
 
-            if imported_module != "git_stage_batch.batch.merge":
+            if imported_module != "git_stage_batch.batch.merge.merge":
                 continue
 
             moved_names = imported_names & exception_names
@@ -15985,11 +16116,11 @@ def test_batch_merge_does_not_reexport_merge_exceptions():
 def test_batch_presence_constraints_own_presence_entry_helpers():
     """Presence helpers should stay on the presence constraint boundary."""
     merge = __import__(
-        "git_stage_batch.batch.merge",
+        "git_stage_batch.batch.merge.merge",
         fromlist=["merge"],
     )
     presence_constraints = __import__(
-        "git_stage_batch.batch.presence_constraints",
+        "git_stage_batch.batch.merge.presence_constraints",
         fromlist=["presence_constraints"],
     )
     public_names = {
@@ -16005,7 +16136,7 @@ def test_batch_presence_constraints_own_presence_entry_helpers():
         "realized_entry_content_chunks",
     }
     expected_imports = {
-        SRC_ROOT / "batch" / "source_advancement.py": {
+        SRC_ROOT / "batch" / "source/advancement.py": {
             "apply_presence_constraints",
         },
         SRC_ROOT / "batch" / "realized_file_content.py": {
@@ -16021,14 +16152,14 @@ def test_batch_presence_constraints_own_presence_entry_helpers():
     assert moved_names.isdisjoint(vars(merge))
 
     for path in SRC_ROOT.rglob("*.py"):
-        if path == SRC_ROOT / "batch" / "presence_constraints.py":
+        if path == SRC_ROOT / "batch" / "merge/presence_constraints.py":
             continue
 
         imports = _import_from_nodes(path)
         imported_public_names = set()
 
         for imported_module, node in imports:
-            if imported_module == "git_stage_batch.batch.merge":
+            if imported_module == "git_stage_batch.batch.merge.merge":
                 imported_names = {alias.name for alias in node.names}
                 disallowed_names = imported_names & public_names
                 if disallowed_names:
@@ -16037,7 +16168,7 @@ def test_batch_presence_constraints_own_presence_entry_helpers():
                     violations.append(f"{relative_path}:{node.lineno} imports {names}")
                 continue
 
-            if imported_module != "git_stage_batch.batch.presence_constraints":
+            if imported_module != "git_stage_batch.batch.merge.presence_constraints":
                 continue
 
             imported_names = {alias.name for alias in node.names}
@@ -16057,22 +16188,22 @@ def test_batch_presence_constraints_own_presence_entry_helpers():
 def test_batch_presence_missing_claims_own_mapping_lookup():
     """Missing presence-claim lookup should live outside constraint policies."""
     presence_missing_claims = __import__(
-        "git_stage_batch.batch.presence_missing_claims",
+        "git_stage_batch.batch.merge.presence_missing_claims",
         fromlist=["presence_missing_claims"],
     )
     presence_constraints = __import__(
-        "git_stage_batch.batch.presence_constraints",
+        "git_stage_batch.batch.merge.presence_constraints",
         fromlist=["presence_constraints"],
     )
     merge_validation = __import__(
-        "git_stage_batch.batch.merge_validation",
+        "git_stage_batch.batch.merge.validation",
         fromlist=["merge_validation"],
     )
     presence_missing_claims_path = (
-        SRC_ROOT / "batch" / "presence_missing_claims.py"
+        SRC_ROOT / "batch" / "merge/presence_missing_claims.py"
     )
-    presence_constraints_path = SRC_ROOT / "batch" / "presence_constraints.py"
-    merge_validation_path = SRC_ROOT / "batch" / "merge_validation.py"
+    presence_constraints_path = SRC_ROOT / "batch" / "merge/presence_constraints.py"
+    merge_validation_path = SRC_ROOT / "batch" / "merge/validation.py"
     public_names = {
         "mapped_missing_source_lines",
     }
@@ -16102,7 +16233,7 @@ def test_batch_presence_missing_claims_own_mapping_lookup():
         direct_public_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module != "git_stage_batch.batch.presence_missing_claims":
+            if imported_module != "git_stage_batch.batch.merge.presence_missing_claims":
                 continue
 
             direct_public_names |= imported_names & public_names
@@ -16121,23 +16252,23 @@ def test_batch_presence_missing_claims_own_mapping_lookup():
 def test_batch_presence_placement_choices_own_review_options():
     """Presence placement review options should live outside realization."""
     presence_placement_choices = __import__(
-        "git_stage_batch.batch.presence_placement_choices",
+        "git_stage_batch.batch.merge.presence_placement_choices",
         fromlist=["presence_placement_choices"],
     )
     presence_constraints = __import__(
-        "git_stage_batch.batch.presence_constraints",
+        "git_stage_batch.batch.merge.presence_constraints",
         fromlist=["presence_constraints"],
     )
     merge_candidate_enumeration = __import__(
-        "git_stage_batch.batch.merge_candidate_enumeration",
+        "git_stage_batch.batch.merge.candidate_enumeration",
         fromlist=["merge_candidate_enumeration"],
     )
     presence_placement_choices_path = (
-        SRC_ROOT / "batch" / "presence_placement_choices.py"
+        SRC_ROOT / "batch" / "merge/presence_placement_choices.py"
     )
-    presence_constraints_path = SRC_ROOT / "batch" / "presence_constraints.py"
+    presence_constraints_path = SRC_ROOT / "batch" / "merge/presence_constraints.py"
     merge_candidate_enumeration_path = (
-        SRC_ROOT / "batch" / "merge_candidate_enumeration.py"
+        SRC_ROOT / "batch" / "merge/candidate_enumeration.py"
     )
     public_names = {
         "PresenceChoice",
@@ -16177,10 +16308,13 @@ def test_batch_presence_placement_choices_own_review_options():
         child_module_names = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch":
+            if imported_module in {
+                "git_stage_batch.batch",
+                "git_stage_batch.batch.merge",
+            }:
                 child_module_names |= imported_names & {"presence_placement_choices"}
                 continue
-            if imported_module != "git_stage_batch.batch.presence_placement_choices":
+            if imported_module != "git_stage_batch.batch.merge.presence_placement_choices":
                 continue
 
             private_imports = imported_names & private_names
@@ -16198,15 +16332,15 @@ def test_batch_presence_placement_choices_own_review_options():
 def test_realized_mapping_owns_working_range_builder():
     """Working-range realization should stay on the realized mapping boundary."""
     merge = __import__(
-        "git_stage_batch.batch.merge",
+        "git_stage_batch.batch.merge.merge",
         fromlist=["merge"],
     )
     presence_constraints = __import__(
-        "git_stage_batch.batch.presence_constraints",
+        "git_stage_batch.batch.merge.presence_constraints",
         fromlist=["presence_constraints"],
     )
     realized_mapping = __import__(
-        "git_stage_batch.batch.realized_mapping",
+        "git_stage_batch.batch.realization.mapping",
         fromlist=["realized_mapping"],
     )
     moved_names = {
@@ -16791,20 +16925,20 @@ def test_consumed_selection_recording_stays_out_of_data_store():
         "write_consumed_file_metadata",
     }
     recording_imports = {
-        "git_stage_batch.batch.ownership": {"BatchOwnership"},
-        "git_stage_batch.batch.ownership_merging": {"merge_batch_ownership"},
-        "git_stage_batch.batch.ownership_translation": {
+        "git_stage_batch.batch.ownership.model": {"BatchOwnership"},
+        "git_stage_batch.batch.ownership.merging": {"merge_batch_ownership"},
+        "git_stage_batch.batch.ownership.translation": {
             "detect_stale_batch_source_for_selection",
             "translate_lines_to_batch_ownership",
         },
-        "git_stage_batch.batch.selected_line_source_refresh": {
+        "git_stage_batch.batch.source.selected_line_refresh": {
             "refresh_selected_lines_against_new_source",
             "refresh_selected_lines_against_source_lines",
         },
-        "git_stage_batch.batch.source_advancement": {
+        "git_stage_batch.batch.source.advancement": {
             "advance_batch_source_for_file_with_provenance",
         },
-        "git_stage_batch.batch.source_snapshots": {"create_batch_source_commit"},
+        "git_stage_batch.batch.source.snapshots": {"create_batch_source_commit"},
         "git_stage_batch.data.consumed_selections": {
             "read_consumed_file_metadata",
             "write_consumed_file_metadata",

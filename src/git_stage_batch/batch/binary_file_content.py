@@ -6,7 +6,7 @@ from collections.abc import Mapping
 
 from ..core.buffer import LineBuffer
 from ..utils.repository_buffers import load_git_object_as_buffer
-from .query import get_batch_commit_sha
+from .state.query import get_batch_commit_sha
 
 
 def read_binary_file_from_batch(

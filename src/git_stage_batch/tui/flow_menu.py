@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..batch.query import list_batch_names, read_batch_metadata
+from ..batch.state.query import list_batch_names, read_batch_metadata
 from ..commands.new import command_new_batch
 from ..i18n import _
 from ..output.colors import Colors

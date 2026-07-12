@@ -105,8 +105,8 @@ references:
 - `refs/git-stage-batch/state/<name>` points to a commit containing validated
   metadata and embedded batch-source files.
 
-[`batch/ref_names.py`](src/git_stage_batch/batch/ref_names.py) defines those
-names. [`batch/state_refs.py`](src/git_stage_batch/batch/state_refs.py) reads,
+[`batch/state/reference_names.py`](src/git_stage_batch/batch/state/reference_names.py)
+defines those names. [`batch/state/references.py`](src/git_stage_batch/batch/state/references.py) reads,
 writes, and deletes them.
 
 The state commit contains:
@@ -128,7 +128,7 @@ references and removes the historical storage for that batch.
 
 ### Per-file metadata
 
-[`batch/metadata_schema.py`](src/git_stage_batch/batch/metadata_schema.py)
+[`batch/state/metadata_schema.py`](src/git_stage_batch/batch/state/metadata_schema.py)
 validates stored fields before the rest of the program uses them.
 
 A text-file entry normally contains:
@@ -151,7 +151,7 @@ text line ownership.
 ## How a new batch is created
 
 `git-stage-batch new <name>` reaches
-[`batch/lifecycle.py`](src/git_stage_batch/batch/lifecycle.py):
+[`batch/state/lifecycle.py`](src/git_stage_batch/batch/state/lifecycle.py):
 
 1. `create_batch()` validates the name and refuses an existing batch.
 2. It resolves the current commit. A repository without a commit uses Git's
@@ -162,7 +162,7 @@ text line ownership.
 
 The same module owns deletion and note updates through `delete_batch()` and
 `update_batch_note()`. Read-only listing and metadata lookup live in
-[`batch/query.py`](src/git_stage_batch/batch/query.py).
+[`batch/state/query.py`](src/git_stage_batch/batch/state/query.py).
 
 ## How session recovery includes batch changes
 
@@ -540,11 +540,11 @@ Line options cannot select part of these changes.
 
 | Change | Owning code |
 | --- | --- |
-| Create or delete a batch, or update its note | `batch/lifecycle.py` |
-| Validate a batch name | `batch/validation.py` |
-| List batches or read metadata | `batch/query.py` |
-| Validate or encode stored metadata | `batch/metadata_schema.py` |
-| Publish or delete Git references | `batch/state_refs.py` |
+| Create or delete a batch, or update its note | `batch/state/lifecycle.py` |
+| Validate a batch name | `batch/state/batch_names.py` |
+| List batches or read metadata | `batch/state/query.py` |
+| Validate or encode stored metadata | `batch/state/metadata_schema.py` |
+| Publish or delete Git references | `batch/state/references.py` |
 | Persist text content and ownership | `batch/text_file_storage.py` |
 | Persist binary, submodule pointer, or mode content | The matching `*_storage.py` module |
 | Build the stored text file | `batch/realized_file_content.py` |

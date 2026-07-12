@@ -15,7 +15,8 @@ from git_stage_batch.batch.state.query import read_batch_metadata
 from git_stage_batch.batch.text_file_storage import add_file_to_batch
 from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.commands.discard_from import command_discard_from_batch
-from git_stage_batch.commands.discard import command_discard_file, command_discard_file_as, command_discard_line, command_discard_line_as_to_batch, command_discard_to_batch
+from git_stage_batch.commands.discard import command_discard, command_discard_file, command_discard_file_as, command_discard_line, command_discard_line_as_to_batch, command_discard_to_batch
+import git_stage_batch.commands.selection.selected_file_discarding as selected_file_discarding
 from git_stage_batch.commands.include import command_include, command_include_file, command_include_file_as, command_include_line, command_include_line_as
 from git_stage_batch.commands.include_from import command_include_from_batch
 from git_stage_batch.commands.reset import command_reset_from_batch
@@ -95,6 +96,30 @@ def _force_one_change_per_page(monkeypatch):
     import git_stage_batch.output.file_review_layout as file_review_layout
 
     monkeypatch.setattr(file_review_layout, "body_budget", lambda: 1)
+
+
+def test_reviewed_file_discard_raises_when_checkout_fails(
+    paged_file_repo,
+    monkeypatch,
+):
+    """A failed reviewed-file checkout should fail the discard command."""
+    command_start(quiet=True)
+    command_show(file="file.txt", porcelain=True)
+    monkeypatch.setattr(
+        selected_file_discarding,
+        "git_checkout_paths",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            ["git", "checkout"],
+            1,
+            "",
+            "file checkout failed",
+        ),
+    )
+
+    with pytest.raises(CommandError, match="file checkout failed"):
+        command_discard(quiet=True)
+
+    assert "line 2 changed" in (paged_file_repo / "file.txt").read_text()
 
 
 def _add_second_changed_file(repo):

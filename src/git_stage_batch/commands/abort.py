@@ -143,12 +143,30 @@ def command_abort(*, quiet: bool = False) -> None:
         repo_root = get_git_repository_root_path()
         snapshots_dir = get_abort_snapshots_directory_path()
 
+        # Refuse every obstructed directory before restoring any snapshot so a
+        # later conflict cannot make an earlier directory block the retry.
+        for file_path in snapshotted_files:
+            snapshot_path = snapshots_dir / file_path
+            if not snapshot_path.is_dir() or snapshot_path.is_symlink():
+                continue
+            target_path = repo_root / file_path
+            if os.path.lexists(target_path):
+                raise CommandError(
+                    _(
+                        "Could not restore untracked directory {file}: "
+                        "the path already exists. The session remains active."
+                    ).format(file=file_path)
+                )
+
         for file_path in snapshotted_files:
             snapshot_path = snapshots_dir / file_path
             if snapshot_path.exists():
                 target_path = repo_root / file_path
                 target_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(snapshot_path, target_path)
+                if snapshot_path.is_dir() and not snapshot_path.is_symlink():
+                    shutil.copytree(snapshot_path, target_path, symlinks=True)
+                else:
+                    shutil.copy2(snapshot_path, target_path)
                 if not quiet:
                     print(_("Restored: {}").format(file_path), file=sys.stderr)
 

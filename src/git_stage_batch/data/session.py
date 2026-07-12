@@ -384,15 +384,14 @@ def snapshot_file_if_untracked(
     full_path = repo_root / file_path
     if not full_path.exists():
         return  # File doesn't exist
-    if full_path.is_dir():
-        log_journal("skip_untracked_directory_snapshot", file_path=file_path)
-        return
-
-    # Save snapshot (use binary copy to handle all file types)
+    # Save a complete before-image for files and standalone repositories.
     snapshot_dir = get_abort_snapshots_directory_path()
     snapshot_path = snapshot_dir / file_path
     snapshot_path.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(full_path, snapshot_path)
+    if full_path.is_dir() and not full_path.is_symlink():
+        shutil.copytree(full_path, snapshot_path, symlinks=True)
+    else:
+        shutil.copy2(full_path, snapshot_path)
 
     # Record snapshot in list
     append_file_path_to_file(get_abort_snapshot_list_file_path(), file_path)
@@ -440,13 +439,12 @@ def snapshot_files_if_untracked(file_paths: list[str]) -> None:
         full_path = repo_root / file_path
         if not full_path.exists():
             continue
-        if full_path.is_dir():
-            log_journal("skip_untracked_directory_snapshot", file_path=file_path)
-            continue
-
         snapshot_path = snapshot_dir / file_path
         snapshot_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(full_path, snapshot_path)
+        if full_path.is_dir() and not full_path.is_symlink():
+            shutil.copytree(full_path, snapshot_path, symlinks=True)
+        else:
+            shutil.copy2(full_path, snapshot_path)
         newly_snapshotted.append(file_path)
 
     if newly_snapshotted:

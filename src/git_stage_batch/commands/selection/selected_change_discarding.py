@@ -304,6 +304,8 @@ def _discard_text_hunk(
 def discard_gitlink_change(gitlink_change: GitlinkChange) -> None:
     """Restore one submodule pointer change to its baseline state."""
     file_path = gitlink_change.path()
+    if gitlink_change.is_new_file():
+        snapshot_file_if_untracked(file_path, intent_to_add=True)
     file_meta = {
         "file_type": "gitlink",
         "change_type": gitlink_change.change_type,

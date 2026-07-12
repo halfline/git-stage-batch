@@ -197,14 +197,16 @@ def _discard_binary_change(
     elif item.is_deleted_file():
         result = git_checkout_paths("HEAD", [file_path], check=False)
         if result.returncode != 0:
-            print(_("Failed to restore binary file: {}").format(result.stderr), file=sys.stderr)
-            return
+            exit_with_error(
+                _("Failed to restore binary file: {}").format(result.stderr)
+            )
         log_journal("command_discard_binary_restored", file_path=file_path)
     else:
         result = git_checkout_paths("HEAD", [file_path], check=False)
         if result.returncode != 0:
-            print(_("Failed to restore binary file: {}").format(result.stderr), file=sys.stderr)
-            return
+            exit_with_error(
+                _("Failed to restore binary file: {}").format(result.stderr)
+            )
         log_journal("command_discard_binary_restored", file_path=file_path)
 
     append_lines_to_file(get_block_list_file_path(), [patch_hash])
@@ -279,8 +281,7 @@ def _discard_text_hunk(
             stderr=stderr_text,
             filename=file_path,
         )
-        print(_("Failed to discard hunk: {}").format(stderr_text), file=sys.stderr)
-        return
+        exit_with_error(_("Failed to discard hunk: {}").format(stderr_text))
 
     if is_new_file:
         absolute_path = get_git_repository_root_path() / file_path

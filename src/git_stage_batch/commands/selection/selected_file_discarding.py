@@ -7,6 +7,7 @@ import sys
 from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.session import snapshot_file_if_untracked
 from ...data.undo_checkpoints import undo_checkpoint
+from ...exceptions import exit_with_error
 from ...i18n import _
 from ...utils.git_command import run_git_command
 from ...utils.git_worktree import git_checkout_paths
@@ -38,9 +39,9 @@ def discard_selected_file(
         if head_result.returncode == 0:
             result = git_checkout_paths("HEAD", [target_file], check=False)
             if result.returncode != 0:
-                if not quiet:
-                    print(_("Failed to discard file: {}").format(result.stderr), file=sys.stderr)
-                return
+                exit_with_error(
+                    _("Failed to discard file: {}").format(result.stderr)
+                )
         else:
             absolute_path = get_git_repository_root_path() / target_file
             if absolute_path.exists():

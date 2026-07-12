@@ -4,10 +4,12 @@ import subprocess
 
 import pytest
 
+import git_stage_batch.commands.file_scope.discard_file as discard_file_scope
 from git_stage_batch.commands.abort import command_abort
 from git_stage_batch.commands.discard import command_discard_file
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.core.hashing import compute_stable_hunk_hash_from_lines
+from git_stage_batch.exceptions import CommandError
 from tests.diff_parser_helpers import collect_unified_diff
 from git_stage_batch.utils.file_io import read_text_file_contents
 from git_stage_batch.utils.paths import (
@@ -65,6 +67,31 @@ class TestCommandDiscardFile:
 
         captured = capsys.readouterr()
         assert "File discarded: unwanted.txt" in captured.err
+
+    def test_discard_file_raises_when_git_rejects_removal(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """A failed named file removal should fail the discard command."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Changed\n")
+        command_start()
+        monkeypatch.setattr(
+            discard_file_scope,
+            "git_remove_paths",
+            lambda *_args, **_kwargs: subprocess.CompletedProcess(
+                ["git", "rm"],
+                1,
+                "",
+                "file removal failed",
+            ),
+        )
+
+        with pytest.raises(CommandError, match="file removal failed"):
+            command_discard_file(file="README.md")
+
+        assert readme.read_text() == "# Changed\n"
 
     def test_discard_file_with_multiple_hunks(self, temp_git_repo, capsys):
         """Test that discard-file removes file even with multiple hunks."""

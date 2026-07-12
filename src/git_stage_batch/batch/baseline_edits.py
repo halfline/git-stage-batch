@@ -16,11 +16,11 @@ from .baseline_reference_positions import (
 from .baseline_replacement_choices import (
     replacement_origin_choices_for_unit as _replacement_origin_choices_for_unit,
 )
-from .line_sequence_equality import (
+from .line_matching.sequence_equality import (
     line_sequences_equal as _line_sequences_match,
     line_slice_equals as _line_slice_matches,
 )
-from .line_mapping import LineMapping
+from .line_matching.line_mapping import LineMapping
 from .merge_candidates import MergeResolution as _MergeResolution
 
 if TYPE_CHECKING:

@@ -6,7 +6,7 @@ from collections import Counter
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 
-from .line_mapping import LineMapping
+from .line_matching.line_mapping import LineMapping
 from .presence_missing_claims import mapped_missing_source_lines
 from ..core.line_selection import LineRanges, LineSelection
 from ..exceptions import MergeError

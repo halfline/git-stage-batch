@@ -7,9 +7,9 @@ from dataclasses import dataclass
 import hashlib
 
 from ..core.line_selection import LineSelection
-from .line_mapping import LineMapping
-from .line_sequence_equality import line_slice_equals as _line_slice_matches
-from .line_sequence_search import iter_exact_context_gaps
+from .line_matching.line_mapping import LineMapping
+from .line_matching.sequence_equality import line_slice_equals as _line_slice_matches
+from .line_matching.sequence_search import iter_exact_context_gaps
 from .presence_context import (
     contextual_presence_ambiguities as _contextual_presence_ambiguities,
 )

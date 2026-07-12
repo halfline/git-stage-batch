@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ..core.line_selection import LineRanges, LineSelection, coerce_line_ranges
-from .line_mapping import LineMapping
+from .line_matching.line_mapping import LineMapping
 
 
 def mapped_missing_source_lines(

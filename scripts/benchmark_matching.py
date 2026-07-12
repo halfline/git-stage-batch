@@ -39,8 +39,8 @@ from git_stage_batch.batch.attribution_units import (
     build_file_comparison_from_lines,
     enumerate_units_from_file_comparison,
 )
-from git_stage_batch.batch.line_mapping import LineMapping
-from git_stage_batch.batch.match import match_lines
+from git_stage_batch.batch.line_matching.line_mapping import LineMapping
+from git_stage_batch.batch.line_matching.match import match_lines
 from git_stage_batch.batch.state_refs import get_batch_state_ref_name
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.utils.git_object_io import resolve_git_objects

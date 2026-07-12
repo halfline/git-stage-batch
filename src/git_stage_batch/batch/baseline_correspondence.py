@@ -8,8 +8,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum, auto
 
-from .match import match_lines
-from .line_range_view import LineRangeView
+from .line_matching.match import match_lines
+from .line_matching.line_range_view import LineRangeView
 
 
 class RegionKind(Enum):

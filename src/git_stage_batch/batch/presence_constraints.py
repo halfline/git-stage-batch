@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING
 from .absence_constraints import (
     apply_absence_constraints as _apply_merge_absence_constraints,
 )
-from .line_mapping import LineMapping
-from .match import match_lines
+from .line_matching.line_mapping import LineMapping
+from .line_matching.match import match_lines
 from .merge_candidates import MergeResolution as _MergeResolution
 from .presence_context import (
     PresenceRunPlacement as _PresenceRunPlacement,

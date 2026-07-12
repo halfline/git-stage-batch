@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from .comparison import SemanticChangeKind, derive_semantic_change_runs
+from .line_matching.comparison import SemanticChangeKind, derive_semantic_change_runs
 
 
 @dataclass(frozen=True, slots=True)

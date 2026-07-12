@@ -15,7 +15,7 @@ from .baseline_replacement_choices import (
     ReplacementOriginChoice as _BaselineReplacementOriginChoice,
     replacement_origin_choices_for_unit as _replacement_origin_choices_for_unit,
 )
-from .match import match_lines
+from .line_matching.match import match_lines
 from .merge_candidates import (
     MergeCandidate as _MergeCandidate,
     MergeCandidateSet as _MergeCandidateSet,

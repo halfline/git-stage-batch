@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from ..core.models import LineEntry
-from .lineage import BatchSourceLineage
-from .match import match_lines
+from .line_matching.lineage import BatchSourceLineage
+from .line_matching.match import match_lines
 from .ownership_translation import detect_stale_batch_source_for_selection
 
 

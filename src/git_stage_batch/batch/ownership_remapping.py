@@ -5,9 +5,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from ..core.line_selection import LineSelection
-from .lineage import BatchSourceLineage
-from .line_mapping import LineMapping
-from .match import match_lines
+from .line_matching.lineage import BatchSourceLineage
+from .line_matching.line_mapping import LineMapping
+from .line_matching.match import match_lines
 from .ownership import BatchOwnership
 from .ownership_absence_claims import AbsenceClaim
 from .ownership_claims import (

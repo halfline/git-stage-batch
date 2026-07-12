@@ -12,7 +12,7 @@ from ..utils.repository_buffers import (
     load_working_tree_file_as_buffer,
 )
 from ..utils.git_repository import get_git_repository_root_path
-from .lineage import BatchSourceLineage, LineageRun
+from .line_matching.lineage import BatchSourceLineage, LineageRun
 from .presence_constraints import apply_presence_constraints
 from .realized_entry_storage import realized_entry_content_chunks
 from .ownership import BatchOwnership

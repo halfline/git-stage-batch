@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from ..core.line_selection import LineSelection
 from ..exceptions import MergeError as _MergeError
 from ..i18n import _
-from .line_mapping import LineMapping
+from .line_matching.line_mapping import LineMapping
 from .presence_context import (
     contextual_presence_placements as _contextual_presence_placements,
 )

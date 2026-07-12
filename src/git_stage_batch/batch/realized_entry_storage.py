@@ -6,7 +6,7 @@ from collections.abc import Iterable, Iterator, Sequence
 from typing import Any
 
 from ..editor.line_editor import LineEditor
-from .line_range_view import LineRangeView as _LineRangeView
+from .line_matching.line_range_view import LineRangeView as _LineRangeView
 from .realized_entries import RealizedEntry as _RealizedEntry
 from .realized_provenance import (
     PROVENANCE_RUN_CLAIMED as _PROVENANCE_CLAIMED_FLAG,

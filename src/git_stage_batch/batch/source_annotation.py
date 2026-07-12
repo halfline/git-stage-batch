@@ -10,8 +10,8 @@ from ..utils.repository_buffers import (
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
 )
-from .line_mapping import LineMapping
-from .match import match_lines
+from .line_matching.line_mapping import LineMapping
+from .line_matching.match import match_lines
 from .source_cache import get_batch_source_for_file
 
 

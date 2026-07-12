@@ -34,6 +34,24 @@ prescribe how many helper modules the package must contain. Adding or combining
 a helper does not change the described design when storage, ownership, command,
 and session responsibilities remain in the same packages.
 
+## How the batch package is divided
+
+Start with the package whose responsibility matches the change:
+
+| Path | Responsibility |
+| --- | --- |
+| `batch/state/` | Batch names, stored metadata, references, lifecycle changes, validation, and read-only queries |
+| `batch/source/` | Stable file snapshots, the session source cache, line annotation, source advancement, and stale-source refresh |
+| `batch/ownership/` | Saved presence and absence requirements, replacement relationships, line translation, display lines, and selectable ownership units |
+| `batch/line_matching/` | Exact line comparison, line mappings, sequence search, range views, and source lineage |
+| `batch/realization/` | Intermediate entries used while constructing stored or merged file content, including their provenance and boundaries |
+| `batch/merge/` | Structural placement, validation, candidate construction, and presence and absence constraints |
+
+Modules directly under `batch/` coordinate these packages or own complete-file
+storage, attribution, display preparation, discard, replacement, and selection.
+They import the specific nested module they need. The package initializers do
+not provide shorter aliases for implementation values.
+
 ## Terms used by the code
 
 These names refer to different file contents. They are not interchangeable.

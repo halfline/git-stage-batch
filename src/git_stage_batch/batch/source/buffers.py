@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from ...core.buffer import LineBuffer
 from ...exceptions import CommandError
@@ -21,6 +22,12 @@ from ...utils.paths import (
     get_abort_snapshots_directory_path,
     get_abort_stash_file_path,
 )
+
+
+def _load_snapshot_as_buffer(snapshot_path: Path) -> LineBuffer:
+    if snapshot_path.is_symlink():
+        return LineBuffer.from_bytes(os.readlink(os.fsencode(snapshot_path)))
+    return LineBuffer.from_path(snapshot_path)
 
 
 def load_saved_session_file_as_buffer(file_path: str) -> LineBuffer:
@@ -46,8 +53,8 @@ def load_saved_session_file_as_buffer(file_path: str) -> LineBuffer:
         if file_path in snapshotted_files:
             # Read from snapshot directory
             snapshot_path = get_abort_snapshots_directory_path() / file_path
-            if snapshot_path.exists():
-                return LineBuffer.from_path(snapshot_path)
+            if os.path.lexists(snapshot_path):
+                return _load_snapshot_as_buffer(snapshot_path)
             else:
                 raise CommandError(
                     _("Snapshot for untracked file not found: {file}").format(file=file_path)
@@ -103,8 +110,8 @@ def read_session_file_buffers(
         for file_path in unique_file_paths:
             if file_path in snapshotted_files:
                 snapshot_path = snapshot_directory / file_path
-                if snapshot_path.exists():
-                    buffers[file_path] = LineBuffer.from_path(snapshot_path)
+                if os.path.lexists(snapshot_path):
+                    buffers[file_path] = _load_snapshot_as_buffer(snapshot_path)
                     continue
                 raise CommandError(
                     _("Snapshot for untracked file not found: {file}").format(file=file_path)

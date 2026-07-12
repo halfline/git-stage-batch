@@ -309,7 +309,7 @@ Both commands use modules under `commands/batch_source/` to:
 6. write accepted targets
 7. refresh review and selected-change state
 
-For text files, [`batch/merge.py`](src/git_stage_batch/batch/merge.py) receives
+For text files, [`batch/merge/merge.py`](src/git_stage_batch/batch/merge/merge.py) receives
 the batch source, ownership, and current target bytes. It tries to satisfy the
 presence and absence requirements against that target.
 
@@ -325,15 +325,15 @@ line and every absence claim:
 - a replacement fallback requires the recorded baseline bytes at the recorded
   baseline position
 
-[`batch/merge_validation.py`](src/git_stage_batch/batch/merge_validation.py)
+[`batch/merge/validation.py`](src/git_stage_batch/batch/merge/validation.py)
 owns structural validation. Helpers called by `merge.py` separate three kinds
 of exact fallback work:
 
-- [`batch/baseline_edits.py`](src/git_stage_batch/batch/baseline_edits.py)
+- [`batch/merge/baseline_edits.py`](src/git_stage_batch/batch/merge/baseline_edits.py)
   applies replacement edits only at matching baseline positions.
-- [`batch/absence_constraints.py`](src/git_stage_batch/batch/absence_constraints.py)
+- [`batch/merge/absence_constraints.py`](src/git_stage_batch/batch/merge/absence_constraints.py)
   resolves which matching baseline bytes an absence claim may suppress.
-- [`batch/presence_constraints.py`](src/git_stage_batch/batch/presence_constraints.py)
+- [`batch/merge/presence_constraints.py`](src/git_stage_batch/batch/merge/presence_constraints.py)
   places missing claimed content.
 
 If the required boundary is missing or several placements are possible, the
@@ -363,7 +363,7 @@ the enumeration values `EQUAL`, `INSERT`, `REPLACE_LINE_BY_LINE`, and
 
 Start with these files when following that reversal:
 
-- [`batch/baseline_correspondence.py`](src/git_stage_batch/batch/baseline_correspondence.py)
+- [`batch/merge/baseline_correspondence.py`](src/git_stage_batch/batch/merge/baseline_correspondence.py)
   maps batch-source regions back to baseline regions.
 - [`batch/discard_reversal.py`](src/git_stage_batch/batch/discard_reversal.py)
   reverses presence requirements.
@@ -466,7 +466,7 @@ leaving a named batch behind.
 1. creates a uniquely named temporary batch
 2. translates the complete live hunk and selected displayed line identifiers
    into ownership
-3. asks `batch/merge.py` to apply that ownership to the current index content
+3. asks `batch/merge/merge.py` to apply that ownership to the current index content
 4. asks the same merge code to apply it to the current working-tree content
 5. accepts the index result only when the working-tree result is byte-for-byte
    unchanged
@@ -552,7 +552,7 @@ Line options cannot select part of these changes.
 | Combine a new selection with stored ownership | `batch/ownership_update.py` and `batch/ownership/merging.py` |
 | Refresh an old source | `batch/source_refresh.py` and `batch/source_advancement.py` |
 | Display a saved file | `batch/ownership/display_lines.py` and `batch/file_display_model.py` |
-| Apply saved text to a current target | `batch/merge.py` and the validation and constraint helpers it calls |
+| Apply saved text to a current target | `batch/merge/merge.py` and the validation and constraint helpers it calls |
 | Remove saved text from a current working file | The correspondence, reversal, and boundary modules named in the discard section |
 | Decide which lines must be selected together | `batch/ownership/units.py` and the ownership-unit support modules |
 | Hide already-saved live changes | `batch/attribution.py` and `batch/attribution_projection.py` |

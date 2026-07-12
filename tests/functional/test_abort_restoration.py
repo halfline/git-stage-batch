@@ -250,3 +250,45 @@ def test_abort_multiple_files_discarded_all_restored(repo_with_staged_files):
     assert "file_b.py" in files_after, "file_b.py should be restored"
     assert "file_c.py" in files_after, "file_c.py should be restored"
     assert len(files_after) == 3, f"Expected 3 files after abort, got {len(files_after)}: {files_after}"
+
+
+def test_abort_stash_conflict_keeps_session_for_retry(functional_repo):
+    """A failed stash restoration should retain the recovery session."""
+    readme_path = functional_repo / "README.md"
+    original_readme = "# Test Project\n\nChanged before the session.\n"
+    readme_path.write_text(original_readme)
+
+    staged_path = functional_repo / "new.txt"
+    staged_path.write_text("original staged content\n")
+    subprocess.run(["git", "add", "new.txt"], check=True, capture_output=True)
+
+    git_stage_batch("start")
+
+    subprocess.run(
+        ["git", "rm", "--cached", "new.txt"],
+        check=True,
+        capture_output=True,
+    )
+    staged_path.write_text("colliding untracked content\n")
+
+    failed_abort = git_stage_batch("abort", check=False)
+
+    assert failed_abort.returncode != 0
+    assert "The session remains active" in failed_abort.stderr
+    assert staged_path.read_text() == "colliding untracked content\n"
+
+    collision_path = functional_repo / "collision.txt"
+    staged_path.rename(collision_path)
+
+    git_stage_batch("abort")
+
+    assert readme_path.read_text() == original_readme
+    assert staged_path.read_text() == "original staged content\n"
+    assert collision_path.read_text() == "colliding untracked content\n"
+    status = subprocess.run(
+        ["git", "status", "--porcelain=v1", "-z"],
+        check=True,
+        capture_output=True,
+    ).stdout.split(b"\0")
+    assert b" M README.md" in status
+    assert b"A  new.txt" in status

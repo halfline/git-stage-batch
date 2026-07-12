@@ -9,7 +9,7 @@ from ..core.line_selection import LineRanges
 from ..core.text_lines import normalize_line_sequence_endings
 from ..exceptions import MergeError
 from ..utils.repository_buffers import load_working_tree_file_as_buffer
-from . import merge as batch_merge
+from .merge import merge as batch_merge
 from .line_matching.match import match_lines
 from .ownership.model import BatchOwnership
 from .ownership.unit_rebuild import rebuild_ownership_from_units

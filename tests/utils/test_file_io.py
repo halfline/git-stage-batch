@@ -385,6 +385,23 @@ class TestFilePathListManagement:
         result = read_file_paths_file(path)
         assert result == ["file1.txt", "file2.txt", "file3.txt"]
 
+    @pytest.mark.parametrize(
+        "file_path",
+        [
+            "line\nname.txt",
+            "line\rname.txt",
+            " leading-space.txt",
+            "trailing-space.txt ",
+        ],
+    )
+    def test_write_file_paths_file_preserves_special_paths(self, tmp_path, file_path):
+        """Path manifests should round-trip names unsafe for line storage."""
+        path = tmp_path / "paths.txt"
+
+        write_file_paths_file(path, ["ordinary.txt", file_path])
+
+        assert read_file_paths_file(path) == sorted(["ordinary.txt", file_path])
+
     def test_append_file_path_to_file(self, tmp_path):
         """Test appending a file path to a list."""
 

@@ -147,6 +147,20 @@ def test_special_path_discard_and_abort(functional_repo):
     assert path.read_text() == "new\n"
 
 
+def test_untracked_newline_path_discard_and_abort(functional_repo):
+    """Abort should restore a discarded untracked newline pathname."""
+    path = functional_repo / "untracked\nname.txt"
+    path.write_text("valuable\n")
+
+    git_stage_batch("start")
+    git_stage_batch("discard", "--file", path.name)
+    assert not path.exists()
+
+    git_stage_batch("abort")
+
+    assert path.read_text() == "valuable\n"
+
+
 def test_block_and_unblock_special_path(functional_repo):
     """Blocking resolves the same canonical tab-containing pathname."""
     file_name = "blocked\tname.txt"

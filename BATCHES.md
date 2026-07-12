@@ -380,11 +380,11 @@ working-tree line that has no corresponding line in that older source. In the
 selected `LineEntry`, that condition appears as `source_line is None`.
 
 `ensure_batch_source_current_for_selection()` in
-[`batch/source_refresh.py`](src/git_stage_batch/batch/source_refresh.py) handles
+[`batch/source/refresh.py`](src/git_stage_batch/batch/source/refresh.py) handles
 that condition:
 
 1. It reads the old batch source and current working file.
-2. [`batch/source_advancement.py`](src/git_stage_batch/batch/source_advancement.py)
+2. [`batch/source/advancement.py`](src/git_stage_batch/batch/source/advancement.py)
    constructs a new source. It preserves previously claimed lines even when an
    earlier `discard --to` removed them from the working file.
 3. While constructing that source, it records two exact line maps: old source
@@ -400,11 +400,11 @@ is used only when the construction path did not provide one of those maps.
 
 Initial source loading, storage, and caching are split across:
 
-- [`batch/source_buffers.py`](src/git_stage_batch/batch/source_buffers.py) for
+- [`batch/source/buffers.py`](src/git_stage_batch/batch/source/buffers.py) for
   session-start file buffers
-- [`batch/source_snapshots.py`](src/git_stage_batch/batch/source_snapshots.py)
+- [`batch/source/snapshots.py`](src/git_stage_batch/batch/source/snapshots.py)
   for source commits
-- [`batch/source_cache.py`](src/git_stage_batch/batch/source_cache.py) for the
+- [`batch/source/cache.py`](src/git_stage_batch/batch/source/cache.py) for the
   active session's per-file source commit mapping
 
 A file absent at session start uses its current working-tree content for the
@@ -550,7 +550,7 @@ Line options cannot select part of these changes.
 | Build the stored text file | `batch/realized_file_content.py` |
 | Translate a live selection into ownership | `batch/ownership/hunk_translation.py` or `batch/ownership/translation.py` |
 | Combine a new selection with stored ownership | `batch/ownership_update.py` and `batch/ownership/merging.py` |
-| Refresh an old source | `batch/source_refresh.py` and `batch/source_advancement.py` |
+| Refresh an old source | `batch/source/refresh.py` and `batch/source/advancement.py` |
 | Display a saved file | `batch/ownership/display_lines.py` and `batch/file_display_model.py` |
 | Apply saved text to a current target | `batch/merge/merge.py` and the validation and constraint helpers it calls |
 | Remove saved text from a current working file | The correspondence, reversal, and boundary modules named in the discard section |

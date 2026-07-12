@@ -38,7 +38,7 @@ from ..core.text_lines import (
 )
 
 if TYPE_CHECKING:
-    from .ownership import BatchOwnership
+    from .ownership.model import BatchOwnership
 
 
 _MERGE_CANDIDATE_CAP = 50

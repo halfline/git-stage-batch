@@ -11,11 +11,11 @@ from ..exceptions import MergeError
 from ..utils.repository_buffers import load_working_tree_file_as_buffer
 from . import merge as batch_merge
 from .line_matching.match import match_lines
-from .ownership import BatchOwnership
-from .ownership_unit_rebuild import rebuild_ownership_from_units
-from .ownership_unit_types import OwnershipUnit
-from .ownership_unit_validation import validate_ownership_units
-from .ownership_units import build_ownership_units_from_display_lines
+from .ownership.model import BatchOwnership
+from .ownership.unit_rebuild import rebuild_ownership_from_units
+from .ownership.unit_types import OwnershipUnit
+from .ownership.unit_validation import validate_ownership_units
+from .ownership.units import build_ownership_units_from_display_lines
 
 
 @dataclass

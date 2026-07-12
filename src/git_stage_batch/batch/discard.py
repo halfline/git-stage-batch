@@ -42,8 +42,8 @@ from ..core.text_lines import (
 )
 
 if TYPE_CHECKING:
-    from .ownership import BatchOwnership
-    from .ownership_absence_claims import AbsenceClaim
+    from .ownership.model import BatchOwnership
+    from .ownership.absence_claims import AbsenceClaim
 
 
 def _discard_result_line_ending_from_lines(

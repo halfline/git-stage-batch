@@ -17,7 +17,7 @@ from .presence_missing_claims import (
 )
 
 if TYPE_CHECKING:
-    from .ownership_absence_claims import AbsenceClaim
+    from .ownership.absence_claims import AbsenceClaim
 
 
 def check_structural_validity(

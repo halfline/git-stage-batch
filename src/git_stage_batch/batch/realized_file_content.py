@@ -15,7 +15,7 @@ from .presence_constraints import satisfy_constraints
 from .realization.entry_storage import realized_entry_content_chunks
 
 if TYPE_CHECKING:
-    from .ownership import BatchOwnership
+    from .ownership.model import BatchOwnership
 
 
 def build_realized_buffer_from_lines(

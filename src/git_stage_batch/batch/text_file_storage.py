@@ -38,7 +38,7 @@ from . import content_commits as _content_commits
 from . import realized_file_content as _realized_file_content
 
 if TYPE_CHECKING:
-    from .ownership import BatchOwnership
+    from .ownership.model import BatchOwnership
 
 
 @dataclass(frozen=True)

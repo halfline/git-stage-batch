@@ -8,16 +8,16 @@ from contextlib import AbstractContextManager
 
 from ...batch.lifecycle import create_batch
 from ...batch.metadata_io import write_file_backed_batch_metadata
-from ...batch.ownership import BatchOwnership
-from ...batch.ownership_detachment import acquire_detached_batch_ownership
-from ...batch.ownership_metadata_loading import acquire_ownership_for_metadata_dict
-from ...batch.ownership_merging import merge_batch_ownership
-from ...batch.ownership_units import (
+from ...batch.ownership.model import BatchOwnership
+from ...batch.ownership.detachment import acquire_detached_batch_ownership
+from ...batch.ownership.metadata_loading import acquire_ownership_for_metadata_dict
+from ...batch.ownership.merging import merge_batch_ownership
+from ...batch.ownership.units import (
     build_ownership_units_from_batch_source_lines,
 )
-from ...batch.ownership_unit_rebuild import rebuild_ownership_from_units
-from ...batch.ownership_unit_selection import filter_ownership_units_by_display_ids
-from ...batch.ownership_unit_validation import validate_ownership_units
+from ...batch.ownership.unit_rebuild import rebuild_ownership_from_units
+from ...batch.ownership.unit_selection import filter_ownership_units_by_display_ids
+from ...batch.ownership.unit_validation import validate_ownership_units
 from ...batch.query import read_batch_metadata
 from ...batch.selection import require_display_ids_available
 from ...batch.state_refs import sync_batch_state_refs

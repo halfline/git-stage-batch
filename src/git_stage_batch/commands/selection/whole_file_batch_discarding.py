@@ -6,7 +6,7 @@ import sys
 
 from ...batch.binary_file_storage import add_binary_file_to_batch
 from ...batch.file_mode_storage import add_file_mode_to_batch
-from ...batch.ownership import BatchOwnership
+from ...batch.ownership.model import BatchOwnership
 from ...batch.text_file_storage import add_file_to_batch
 from ...core.hashing import compute_binary_file_hash, compute_file_mode_change_hash, compute_text_file_deletion_hash
 from ...core.models import BinaryFileChange, FileModeChange, TextFileDeletionChange

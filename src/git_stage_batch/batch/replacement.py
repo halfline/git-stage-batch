@@ -12,9 +12,9 @@ from ..core.replacement import (
     replacement_line_chunks,
 )
 from ..core.buffer import LineBuffer
-from .ownership import BatchOwnership
-from .ownership_absence_claims import AbsenceClaim
-from .ownership_replacement_units import ReplacementUnit
+from .ownership.model import BatchOwnership
+from .ownership.absence_claims import AbsenceClaim
+from .ownership.replacement_units import ReplacementUnit
 
 
 __all__ = [

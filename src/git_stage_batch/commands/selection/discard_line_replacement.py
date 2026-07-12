@@ -10,16 +10,16 @@ from pathlib import Path
 
 from ...batch.source_annotation import annotate_with_batch_source_working_lines
 from ...batch.lifecycle import create_batch
-from ...batch.ownership import (
+from ...batch.ownership.model import (
     BatchOwnership,
 )
-from ...batch.ownership_metadata_loading import acquire_ownership_for_metadata_dict
-from ...batch.ownership_merging import merge_batch_ownership
-from ...batch.ownership_remapping import remap_batch_ownership_with_lineage
-from ...batch.ownership_translation import translate_lines_to_batch_ownership
+from ...batch.ownership.metadata_loading import acquire_ownership_for_metadata_dict
+from ...batch.ownership.merging import merge_batch_ownership
+from ...batch.ownership.remapping import remap_batch_ownership_with_lineage
+from ...batch.ownership.translation import translate_lines_to_batch_ownership
 from ...batch.ownership_update import acquire_batch_ownership_update_for_selection
 from ...batch.query import read_batch_metadata
-from ...batch.replacement_line_runs import (
+from ...batch.ownership.replacement_line_runs import (
     ReplacementLineRun,
     derive_replacement_line_runs_from_lines,
 )

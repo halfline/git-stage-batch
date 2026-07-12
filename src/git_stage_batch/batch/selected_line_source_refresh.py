@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from ..core.models import LineEntry
 from .line_matching.lineage import BatchSourceLineage
 from .line_matching.match import match_lines
-from .ownership_translation import detect_stale_batch_source_for_selection
+from .ownership.translation import detect_stale_batch_source_for_selection
 
 
 def _line_entry_content(line: LineEntry) -> bytes:

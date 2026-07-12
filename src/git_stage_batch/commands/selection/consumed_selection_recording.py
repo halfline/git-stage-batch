@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from ...batch.ownership import BatchOwnership
-from ...batch.ownership_metadata_loading import acquire_ownership_for_metadata_dict
-from ...batch.ownership_merging import merge_batch_ownership
-from ...batch.ownership_translation import (
+from ...batch.ownership.model import BatchOwnership
+from ...batch.ownership.metadata_loading import acquire_ownership_for_metadata_dict
+from ...batch.ownership.merging import merge_batch_ownership
+from ...batch.ownership.translation import (
     detect_stale_batch_source_for_selection,
     translate_lines_to_batch_ownership,
 )

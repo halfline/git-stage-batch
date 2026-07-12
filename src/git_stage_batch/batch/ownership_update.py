@@ -7,12 +7,12 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 
 from ..core.models import LineEntry
-from .hunk_ownership_translation import translate_hunk_selection_to_batch_ownership
-from .ownership import BatchOwnership
-from .ownership_metadata_loading import acquire_ownership_for_metadata_dict
-from .ownership_merging import merge_batch_ownership
-from .ownership_translation import translate_lines_to_batch_ownership
-from .replacement_line_runs import ReplacementLineRun
+from .ownership.hunk_translation import translate_hunk_selection_to_batch_ownership
+from .ownership.model import BatchOwnership
+from .ownership.metadata_loading import acquire_ownership_for_metadata_dict
+from .ownership.merging import merge_batch_ownership
+from .ownership.translation import translate_lines_to_batch_ownership
+from .ownership.replacement_line_runs import ReplacementLineRun
 from .source_refresh import ensure_batch_source_current_for_selection
 
 

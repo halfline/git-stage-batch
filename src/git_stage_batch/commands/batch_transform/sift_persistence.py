@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ...batch.lifecycle import create_batch, delete_batch
 from ...batch.metadata_io import write_file_backed_batch_metadata
-from ...batch.ownership import BatchOwnership
+from ...batch.ownership.model import BatchOwnership
 from ...batch.query import get_batch_baseline_commit, read_batch_metadata
 from ...batch.state_refs import (
     delete_batch_state_refs,

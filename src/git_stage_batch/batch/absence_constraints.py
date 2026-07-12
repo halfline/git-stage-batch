@@ -28,7 +28,7 @@ from .realization.entry_storage import (
 )
 
 if TYPE_CHECKING:
-    from .ownership_absence_claims import AbsenceClaim
+    from .ownership.absence_claims import AbsenceClaim
 
 
 _DEFAULT_CHOICE_SCAN_CAP = 50

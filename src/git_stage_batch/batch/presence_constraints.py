@@ -32,7 +32,7 @@ from ..exceptions import MergeError as _MergeError
 from ..i18n import _
 
 if TYPE_CHECKING:
-    from .ownership_absence_claims import AbsenceClaim
+    from .ownership.absence_claims import AbsenceClaim
 
 
 _PRESENCE_CANDIDATE_CAP = 50

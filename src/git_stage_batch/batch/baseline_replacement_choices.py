@@ -11,7 +11,7 @@ from ..core.text_lines import normalize_line_endings
 from .line_matching.sequence_equality import line_slice_equals as _line_slice_matches
 
 if TYPE_CHECKING:
-    from .ownership_absence_claims import AbsenceClaim
+    from .ownership.absence_claims import AbsenceClaim
 
 
 @dataclass(frozen=True)

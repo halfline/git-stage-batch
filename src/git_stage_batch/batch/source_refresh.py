@@ -18,10 +18,10 @@ from ..utils.repository_buffers import (
     load_git_object_as_buffer,
     load_working_tree_file_as_buffer,
 )
-from .ownership import (
+from .ownership.model import (
     BatchOwnership,
 )
-from .ownership_translation import (
+from .ownership.translation import (
     detect_stale_batch_source_for_selection,
 )
 from .selected_line_source_refresh import (

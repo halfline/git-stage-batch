@@ -7,12 +7,12 @@ from dataclasses import dataclass, replace
 from enum import Enum
 import uuid
 
-from ...batch.hunk_ownership_translation import (
+from ...batch.ownership.hunk_translation import (
     translate_hunk_selection_to_batch_ownership,
 )
 from ...batch.merge import merge_batch_from_line_sequences_as_buffer
 from ...batch.lifecycle import create_batch, delete_batch
-from ...batch.ownership_metadata_loading import acquire_ownership_for_metadata_dict
+from ...batch.ownership.metadata_loading import acquire_ownership_for_metadata_dict
 from ...batch.query import read_batch_metadata
 from ...batch.selection import line_selection_not_valid_message
 from ...batch.text_file_storage import add_file_to_batch

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import shutil
 
@@ -323,7 +324,9 @@ def _snapshot_worktree_paths_for_unborn_abort(file_paths: list[str]) -> None:
     captured: list[str] = []
     for file_path in file_paths:
         source = repo_root / file_path
-        if not source.exists() or source.is_dir():
+        if not os.path.lexists(source) or (
+            source.is_dir() and not source.is_symlink()
+        ):
             continue
         target = snapshot_dir / file_path
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -382,7 +385,7 @@ def snapshot_file_if_untracked(
     # Read selected file content
     repo_root = get_git_repository_root_path()
     full_path = repo_root / file_path
-    if not full_path.exists():
+    if not os.path.lexists(full_path):
         return  # File doesn't exist
     # Save a complete before-image for files and standalone repositories.
     snapshot_dir = get_abort_snapshots_directory_path()
@@ -391,7 +394,7 @@ def snapshot_file_if_untracked(
     if full_path.is_dir() and not full_path.is_symlink():
         shutil.copytree(full_path, snapshot_path, symlinks=True)
     else:
-        shutil.copy2(full_path, snapshot_path)
+        shutil.copy2(full_path, snapshot_path, follow_symlinks=False)
 
     # Record snapshot in list
     append_file_path_to_file(get_abort_snapshot_list_file_path(), file_path)
@@ -437,14 +440,14 @@ def snapshot_files_if_untracked(file_paths: list[str]) -> None:
             continue
 
         full_path = repo_root / file_path
-        if not full_path.exists():
+        if not os.path.lexists(full_path):
             continue
         snapshot_path = snapshot_dir / file_path
         snapshot_path.parent.mkdir(parents=True, exist_ok=True)
         if full_path.is_dir() and not full_path.is_symlink():
             shutil.copytree(full_path, snapshot_path, symlinks=True)
         else:
-            shutil.copy2(full_path, snapshot_path)
+            shutil.copy2(full_path, snapshot_path, follow_symlinks=False)
         newly_snapshotted.append(file_path)
 
     if newly_snapshotted:

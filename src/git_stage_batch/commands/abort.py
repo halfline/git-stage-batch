@@ -160,12 +160,26 @@ def command_abort(*, quiet: bool = False) -> None:
 
         for file_path in snapshotted_files:
             snapshot_path = snapshots_dir / file_path
-            if snapshot_path.exists():
+            if os.path.lexists(snapshot_path):
                 target_path = repo_root / file_path
                 target_path.parent.mkdir(parents=True, exist_ok=True)
                 if snapshot_path.is_dir() and not snapshot_path.is_symlink():
                     shutil.copytree(snapshot_path, target_path, symlinks=True)
+                elif snapshot_path.is_symlink():
+                    if target_path.is_dir() and not target_path.is_symlink():
+                        raise CommandError(
+                            _(
+                                "Could not restore untracked symlink {file}: "
+                                "the path is now a directory. The session remains active."
+                            ).format(file=file_path)
+                        )
+                    if os.path.lexists(target_path):
+                        target_path.unlink()
+                    link_target = os.readlink(os.fsencode(snapshot_path))
+                    os.symlink(link_target, os.fsencode(target_path))
                 else:
+                    if target_path.is_symlink():
+                        target_path.unlink()
                     shutil.copy2(snapshot_path, target_path)
                 if not quiet:
                     print(_("Restored: {}").format(file_path), file=sys.stderr)

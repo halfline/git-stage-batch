@@ -17,7 +17,7 @@ from ..data.session_ownership import (
 from ..data.recovery_anchors import validate_recovery_objects
 from ..utils.session_start_point import load_session_start_point
 from ..data.start_time_changes import read_staged_renames
-from ..exceptions import exit_with_error
+from ..exceptions import CommandError, exit_with_error
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file, read_text_file_contents
 from ..utils.git_command import run_git_command
@@ -128,8 +128,13 @@ def command_abort(*, quiet: bool = False) -> None:
             print(_("Applying original changes..."), file=sys.stderr)
         result = git_apply_stash(abort_stash, restore_index=True, env=env, check=False)
         if result.returncode != 0:
-            if not quiet:
-                print(_("⚠ Warning: Could not apply stash cleanly: {}").format(result.stderr), file=sys.stderr)
+            raise CommandError(
+                _(
+                    "Could not restore the session's original changes: {error}\n"
+                    "The session remains active. Resolve the obstruction and run "
+                    "'git-stage-batch abort' again."
+                ).format(error=result.stderr.strip())
+            )
 
     # Restore snapshotted untracked files
     snapshot_list_path = get_abort_snapshot_list_file_path()

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ...batch.source_selector import (
+from ...batch.source.selector import (
     BatchSourceSelector,
     CandidateOperation,
     parse_batch_source_selector,

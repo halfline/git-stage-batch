@@ -12,7 +12,7 @@ from .batch_source import replacement_previews as _replacement_previews
 from ..batch.state.validation import read_validated_batch_metadata
 from ..core.replacement import ReplacementPayload
 from ..batch.selection import require_single_file_context_for_line_selection
-from ..batch.source_selector import parse_batch_source_selector
+from ..batch.source.selector import parse_batch_source_selector
 from ..batch.state.batch_names import batch_exists
 from ..data.batch_file_scope import resolve_batch_file_scope
 from ..data.file_review.batch_selection import translate_batch_file_gutter_ids_to_selection_ids

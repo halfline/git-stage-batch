@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass
 
-from ...batch.source_annotation import annotate_with_batch_source
+from ...batch.source.annotation import annotate_with_batch_source
 from ...batch.state.lifecycle import create_batch
 from ...batch.ownership_update import acquire_batch_ownership_update_for_selection
 from ...batch.state.query import read_batch_metadata

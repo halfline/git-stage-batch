@@ -18,7 +18,7 @@ from ...batch.selection import line_selection_not_valid_message
 from ...batch.text_file_storage import add_file_to_batch
 from ...batch.state.batch_names import batch_exists
 from ...core.buffer import LineBuffer, buffer_matches
-from ...batch.source_snapshots import create_batch_source_commit
+from ...batch.source.snapshots import create_batch_source_commit
 from ...data.selected_change.file_hunk_cache import cache_unstaged_file_as_single_hunk
 from ...data.file_modes import detect_file_mode
 from ...data.file_tracking import auto_add_untracked_files

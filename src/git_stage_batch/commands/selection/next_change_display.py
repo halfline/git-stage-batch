@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 
-from ...batch.source_annotation import annotate_with_batch_source
+from ...batch.source.annotation import annotate_with_batch_source
 from ...core.diff_parser import acquire_unified_diff, build_line_changes_from_patch_lines
 from ...core.hashing import (
     compute_binary_file_hash,

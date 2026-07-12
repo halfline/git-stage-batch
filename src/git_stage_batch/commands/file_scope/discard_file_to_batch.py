@@ -5,7 +5,7 @@ from __future__ import annotations
 from contextlib import ExitStack
 import sys
 
-from ...batch.source_annotation import annotate_with_batch_source
+from ...batch.source.annotation import annotate_with_batch_source
 from ...batch.state.lifecycle import create_batch
 from ...batch.ownership.model import BatchOwnership
 from ...batch.ownership_update import acquire_batch_ownership_update_for_selection

@@ -13,7 +13,7 @@ from .ownership.metadata_loading import acquire_ownership_for_metadata_dict
 from .ownership.merging import merge_batch_ownership
 from .ownership.translation import translate_lines_to_batch_ownership
 from .ownership.replacement_line_runs import ReplacementLineRun
-from .source_refresh import ensure_batch_source_current_for_selection
+from .source.refresh import ensure_batch_source_current_for_selection
 
 
 @dataclass

@@ -10,7 +10,7 @@ from .state import content_commits as _content_commits
 from .state.lifecycle import create_batch
 from .state.compatibility_metadata import write_file_backed_batch_metadata
 from .state.query import read_batch_metadata
-from .source_snapshots import create_batch_source_commit
+from .source.snapshots import create_batch_source_commit
 from .state.batch_names import batch_exists, validate_batch_name
 
 

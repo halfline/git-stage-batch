@@ -15,7 +15,7 @@ from ...batch.operation_candidates import (
 )
 from ...batch.replacement import build_replacement_batch_view_from_lines
 from ...batch.selection import acquire_batch_ownership_for_display_ids_from_lines
-from ...batch.source_selector import BatchSourceSelector
+from ...batch.source.selector import BatchSourceSelector
 from ...core.buffer import LineBuffer
 from ...core.replacement import ReplacementPayload, coerce_replacement_payload
 from ...data.file_review.batch_selection import (

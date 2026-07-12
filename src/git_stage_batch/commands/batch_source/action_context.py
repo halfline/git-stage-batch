@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ...batch.state.validation import read_validated_batch_metadata
-from ...batch.source_selector import (
+from ...batch.source.selector import (
     BatchSourceSelector,
     CandidateOperation,
     require_plain_batch_name,

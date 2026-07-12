@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from ..batch.state.query import read_batch_metadata
-from ..batch.source_selector import batch_name_for_source_lookup
+from ..batch.source.selector import batch_name_for_source_lookup
 from ..batch.state.batch_names import batch_exists
 from ..data.file_tracking import list_untracked_files
 from ..exceptions import CommandError

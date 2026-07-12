@@ -1,5 +1,6 @@
 """Tests for abort restoration behavior."""
 
+import os
 import subprocess
 
 import pytest
@@ -292,3 +293,19 @@ def test_abort_stash_conflict_keeps_session_for_retry(functional_repo):
     ).stdout.split(b"\0")
     assert b" M README.md" in status
     assert b"A  new.txt" in status
+
+
+@pytest.mark.parametrize("link_target", ["README.md", "missing-target"])
+def test_abort_restores_discarded_untracked_symlink(functional_repo, link_target):
+    """Abort should restore symlink identity without following its target."""
+    link_path = functional_repo / "link"
+    os.symlink(link_target, link_path)
+
+    git_stage_batch("start")
+    git_stage_batch("discard")
+    assert not os.path.lexists(link_path)
+
+    git_stage_batch("abort")
+
+    assert link_path.is_symlink()
+    assert os.readlink(link_path) == link_target

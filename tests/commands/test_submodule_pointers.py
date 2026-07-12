@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from git_stage_batch.commands.discard import command_discard, command_discard_file
+from git_stage_batch.commands.abort import command_abort
 from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.commands.discard_from import command_discard_from_batch
 from git_stage_batch.batch.state.query import get_batch_commit_sha, read_batch_metadata
@@ -463,6 +464,61 @@ def test_discard_removes_added_submodule_pointer(
     assert not (repo / "sub").exists()
     assert _cached_raw_diff(repo) == ""
     assert _git_stdout(["diff", "--ignore-submodules=none", "--", "sub"], cwd=repo) == ""
+
+
+def test_abort_restores_discarded_untracked_submodule_pointer(
+    untracked_submodule_pointer_repo: tuple[Path, str],
+) -> None:
+    """Abort should restore a discarded standalone nested repository."""
+    repo, nested_oid = untracked_submodule_pointer_repo
+
+    command_start(quiet=True)
+    command_discard(quiet=True)
+    assert not (repo / "sub").exists()
+
+    command_abort(quiet=True)
+
+    assert (repo / "sub" / ".git").is_dir()
+    assert _git_stdout(["rev-parse", "HEAD"], cwd=repo / "sub") == nested_oid
+    assert (repo / "sub" / "file.txt").read_text() == "sub\n"
+
+
+def test_abort_preflights_nested_repository_restore_for_retry(
+    untracked_submodule_pointer_repo: tuple[Path, str],
+) -> None:
+    """Abort should leave every snapshot untouched before a retryable conflict."""
+    repo, first_oid = untracked_submodule_pointer_repo
+    second = repo / "sub-b"
+    second.mkdir()
+    _run(["git", "init"], cwd=second)
+    _configure_identity(second)
+    (second / "file.txt").write_text("second\n")
+    _run(["git", "add", "file.txt"], cwd=second)
+    _run(["git", "commit", "-m", "Add second file"], cwd=second)
+    second_oid = _git_stdout(["rev-parse", "HEAD"], cwd=second)
+
+    command_start(quiet=True)
+    command_discard_file("sub")
+    command_discard_file("sub-b")
+    assert not (repo / "sub").exists()
+    assert not second.exists()
+
+    second.mkdir()
+    obstruction = second / "obstruction.txt"
+    obstruction.write_text("new\n")
+
+    with pytest.raises(CommandError, match="sub-b"):
+        command_abort(quiet=True)
+
+    assert not (repo / "sub").exists()
+    assert obstruction.read_text() == "new\n"
+
+    obstruction.unlink()
+    second.rmdir()
+    command_abort(quiet=True)
+
+    assert _git_stdout(["rev-parse", "HEAD"], cwd=repo / "sub") == first_oid
+    assert _git_stdout(["rev-parse", "HEAD"], cwd=second) == second_oid
 
 
 def test_discard_file_restores_submodule_pointer(

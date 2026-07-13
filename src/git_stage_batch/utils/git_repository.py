@@ -61,6 +61,36 @@ def get_git_repository_root_path() -> Path:
     return path
 
 
+def is_git_repository_root_path(path: Path) -> bool:
+    """Return whether ``path`` is the root of its own Git worktree.
+
+    Git searches parent directories when a command's working directory is not
+    itself a repository.  Nested-worktree callers must distinguish that
+    fallback from a repository rooted at the requested path before running
+    mutations there.
+    """
+    try:
+        result = run_git_command(
+            ["rev-parse", "--show-toplevel"],
+            cwd=str(path),
+            check=False,
+            requires_index_lock=False,
+        )
+    except OSError:
+        return False
+    if result.returncode != 0:
+        return False
+    try:
+        requested_absolute = path.absolute()
+        requested_root = path.resolve()
+        reported_root = Path(result.stdout.strip()).resolve()
+    except OSError:
+        return False
+    if requested_absolute != requested_root:
+        return False
+    return reported_root == requested_root
+
+
 def get_git_directory_path() -> Path:
     """Get the absolute path to the repository's git directory."""
     cwd = Path.cwd()

@@ -15,7 +15,10 @@ from ..utils.git_index import (
     git_add_paths,
     git_update_gitlink,
 )
-from ..utils.git_repository import get_git_repository_root_path
+from ..utils.git_repository import (
+    get_git_repository_root_path,
+    is_git_repository_root_path,
+)
 
 
 def is_batch_submodule_pointer(file_meta: dict) -> bool:
@@ -66,11 +69,25 @@ def _submodule_worktree_path(file_path: str):
     return get_git_repository_root_path() / file_path
 
 
+def _require_submodule_worktree(file_path: str, action: str):
+    """Return an independently rooted submodule worktree or fail closed."""
+    full_path = _submodule_worktree_path(file_path)
+    if not is_git_repository_root_path(full_path):
+        raise CommandError(
+            _(
+                "Cannot {action} submodule pointer for {file}: "
+                "the path is not a standalone Git repository."
+            ).format(action=action.lower(), file=file_path)
+        )
+    return full_path
+
+
 def _checkout_submodule_pointer(file_path: str, oid: str, action: str) -> None:
     """Move a clean submodule worktree to one commit."""
+    full_path = _require_submodule_worktree(file_path, action)
     status_result = run_git_command(
         ["status", "--porcelain"],
-        cwd=file_path,
+        cwd=str(full_path),
         check=False,
         requires_index_lock=False,
     )
@@ -87,7 +104,11 @@ def _checkout_submodule_pointer(file_path: str, oid: str, action: str) -> None:
             ).format(action=action, file=file_path)
         )
 
-    checkout_result = git_checkout_detached(oid, cwd=file_path, check=False)
+    checkout_result = git_checkout_detached(
+        oid,
+        cwd=str(full_path),
+        check=False,
+    )
     if checkout_result.returncode != 0:
         raise CommandError(
             _(
@@ -100,7 +121,11 @@ def _ensure_submodule_worktree(file_path: str, oid: str, action: str) -> None:
     """Ensure a submodule worktree exists, then check out one commit."""
     full_path = _submodule_worktree_path(file_path)
     if not full_path.exists():
-        update_result = git_submodule_update_checkout([file_path], check=False)
+        update_result = git_submodule_update_checkout(
+            [file_path],
+            cwd=str(get_git_repository_root_path()),
+            check=False,
+        )
         if update_result.returncode != 0:
             raise CommandError(
                 _(
@@ -116,9 +141,11 @@ def _remove_submodule_worktree(file_path: str, action: str) -> None:
     if not full_path.exists():
         return
 
+    full_path = _require_submodule_worktree(file_path, action)
+
     status_result = run_git_command(
         ["status", "--porcelain"],
-        cwd=file_path,
+        cwd=str(full_path),
         check=False,
         requires_index_lock=False,
     )

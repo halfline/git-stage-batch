@@ -201,6 +201,22 @@ diff --git a/file2.txt b/file2.txt
         with pytest.raises(CommandError, match=message):
             collect_unified_diff(diff.splitlines(keepends=True))
 
+    @pytest.mark.parametrize(
+        "following_line",
+        [b"@@ -1 +1 @@\n", b"diff --git a/next.txt b/next.txt\n", None],
+    )
+    def test_malformed_file_headers_are_rejected(self, following_line):
+        """An old-file header must be immediately followed by a new-file header."""
+        lines = [
+            b"diff --git a/file.txt b/file.txt\n",
+            b"--- a/file.txt\n",
+        ]
+        if following_line is not None:
+            lines.append(following_line)
+
+        with pytest.raises(CommandError, match=r"missing \+\+\+|expected \+\+\+"):
+            collect_unified_diff(lines)
+
     def test_new_file(self):
         """Test parsing a diff for a newly created file."""
         diff = """\

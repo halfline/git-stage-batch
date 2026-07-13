@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from enum import Enum
 import uuid
+import sys
 
 from ...batch.ownership.hunk_translation import (
     translate_hunk_selection_to_batch_ownership,
@@ -35,7 +36,7 @@ from ...data.selected_change.store import (
     snapshot_selected_change_state,
 )
 from ...data.selected_change.snapshots import snapshots_are_stale
-from ...exceptions import exit_with_error
+from ...exceptions import MergeError, exit_with_error
 from ...i18n import _
 from ...staging.index_update import update_index_with_blob_buffer
 from ...utils.paths import get_session_batch_sources_file_path
@@ -101,13 +102,19 @@ def record_baseline_references_for_additions(line_changes) -> None:
             scan_index = index + 1
             while scan_index < len(line_changes.lines):
                 next_line = line_changes.lines[scan_index]
-                if next_line.kind in {" ", "-"} and next_line.old_line_number is not None:
+                if (
+                    next_line.kind in {" ", "-"}
+                    and next_line.old_line_number is not None
+                ):
                     next_old_line = next_line.old_line_number
                     next_old_text_bytes = next_line.text_bytes
                     break
                 scan_index += 1
 
-            while index < len(line_changes.lines) and line_changes.lines[index].kind == "+":
+            while (
+                index < len(line_changes.lines)
+                and line_changes.lines[index].kind == "+"
+            ):
                 addition_line = line_changes.lines[index]
                 addition_line.baseline_reference_after_line = last_old_line
                 addition_line.baseline_reference_after_text_bytes = last_old_text_bytes
@@ -154,9 +161,8 @@ def selected_file_view_targets(target_file: str) -> bool:
 
 def selected_file_view_is_fresh_for(target_file: str) -> bool:
     """Return whether the selected file view can be reused for a path."""
-    return (
-        selected_file_view_targets(target_file)
-        and not snapshots_are_stale(target_file)
+    return selected_file_view_targets(target_file) and not snapshots_are_stale(
+        target_file
     )
 
 
@@ -176,7 +182,9 @@ def load_include_line_selection_context(
     if file == "":
         target_file = get_selected_change_file_path()
         if target_file is None:
-            exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
+            exit_with_error(
+                _("No selected hunk. Run 'show' first or specify file path.")
+            )
     else:
         target_file = file
 
@@ -250,19 +258,14 @@ def try_build_index_content_via_transient_batch(
 ) -> TransientIncludeResult:
     """Try staging live lines through transient batch ownership."""
     selected_lines = [
-        line
-        for line in line_changes.lines
-        if line.id in selected_display_ids
+        line for line in line_changes.lines if line.id in selected_display_ids
     ]
     if not selected_lines:
         return TransientIncludeResult.failure(
             TransientIncludeFailureReason.NO_SELECTED_LINES
         )
 
-    if (
-        not current_index_lines
-        and all(line.kind == "+" for line in line_changes.lines)
-    ):
+    if not current_index_lines and all(line.kind == "+" for line in line_changes.lines):
         return TransientIncludeResult.success(
             LineBuffer.from_chunks(
                 hunk_source_lines[line.source_line - 1]
@@ -272,7 +275,9 @@ def try_build_index_content_via_transient_batch(
         )
 
     batch_name = f"include-line-{uuid.uuid4().hex}"
-    session_sources_existed, session_sources_content = _snapshot_session_batch_sources_file()
+    session_sources_existed, session_sources_content = (
+        _snapshot_session_batch_sources_file()
+    )
     created_batch = False
     target_index_buffer: LineBuffer | None = None
 
@@ -338,7 +343,7 @@ def try_build_index_content_via_transient_batch(
                         ownership,
                         current_index_lines,
                     )
-                except Exception as error:
+                except MergeError as error:
                     return TransientIncludeResult.failure(
                         TransientIncludeFailureReason.INDEX_MERGE_FAILED,
                         detail=error.__class__.__name__,
@@ -350,7 +355,7 @@ def try_build_index_content_via_transient_batch(
                         ownership,
                         working_lines,
                     )
-                except Exception as error:
+                except MergeError as error:
                     target_index_buffer.close()
                     target_index_buffer = None
                     return TransientIncludeResult.failure(
@@ -368,14 +373,9 @@ def try_build_index_content_via_transient_batch(
 
         assert target_index_buffer is not None
         return TransientIncludeResult.success(target_index_buffer)
-    except Exception as error:
-        if target_index_buffer is not None:
-            target_index_buffer.close()
-        return TransientIncludeResult.failure(
-            TransientIncludeFailureReason.PREPARATION_FAILED,
-            detail=error.__class__.__name__,
-        )
     finally:
+        if sys.exc_info()[0] is not None and target_index_buffer is not None:
+            target_index_buffer.close()
         if created_batch and batch_exists(batch_name):
             delete_batch(batch_name)
         _restore_session_batch_sources_file(

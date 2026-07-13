@@ -8,6 +8,7 @@ import sys
 from ..commands.install_assets import command_install_assets
 from ..data.asset_catalog import ASSET_GROUPS
 from ..i18n import _
+from .prompts import unlocked_input
 
 
 def handle_asset_menu() -> None:
@@ -21,7 +22,7 @@ def handle_asset_menu() -> None:
         print(f"  [{idx}] {group_name}")
 
     try:
-        choice = input(_("Group (empty to cancel): ")).strip()
+        choice = unlocked_input(_("Group (empty to cancel): ")).strip()
     except (KeyboardInterrupt, EOFError):
         return
 
@@ -45,7 +46,7 @@ def handle_asset_menu() -> None:
         return
 
     try:
-        filters_text = input(_("Filters (empty for all): ")).strip()
+        filters_text = unlocked_input(_("Filters (empty for all): ")).strip()
     except (KeyboardInterrupt, EOFError):
         return
 
@@ -62,7 +63,7 @@ def handle_asset_menu() -> None:
         filters = None
 
     try:
-        force_text = input(_("Overwrite existing assets? [y/N]: ")).strip().lower()
+        force_text = unlocked_input(_("Overwrite existing assets? [y/N]: ")).strip().lower()
     except (KeyboardInterrupt, EOFError):
         return
 

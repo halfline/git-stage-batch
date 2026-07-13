@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import stat
+import tarfile
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -130,7 +132,7 @@ def _snapshot_gitlink_path(
     head_oid: str | None,
 ) -> dict[str, Any]:
     worktree_oid = _worktree_commit_oid(path)
-    return {
+    entry = {
         "path": path,
         "kind": "gitlink",
         "exists": index_oid is not None or head_oid is not None or worktree_oid is not None,
@@ -141,6 +143,13 @@ def _snapshot_gitlink_path(
         "dirty": _worktree_is_dirty(path) if worktree_oid is not None else False,
         "blob": None,
     }
+    if head_oid is None and worktree_oid is not None:
+        entry["archive"] = True
+        entry["storage_mode"] = "100644"
+        entry["blob"] = _create_directory_archive_blob(
+            get_git_repository_root_path() / path
+        )
+    return entry
 
 
 def _snapshot_embedded_repo_path(path: str) -> dict[str, Any]:
@@ -154,8 +163,22 @@ def _snapshot_embedded_repo_path(path: str) -> dict[str, Any]:
         "head_oid": None,
         "worktree_oid": worktree_oid,
         "dirty": _worktree_is_dirty(path) if worktree_oid is not None else False,
-        "blob": None,
+        "archive": True,
+        "storage_mode": "100644",
+        "blob": _create_directory_archive_blob(
+            get_git_repository_root_path() / path
+        ),
     }
+
+
+def _create_directory_archive_blob(path: Path) -> str:
+    """Store a complete nested-repository directory as one recovery blob."""
+    with tempfile.NamedTemporaryFile() as archive_file:
+        with tarfile.open(fileobj=archive_file, mode="w") as archive:
+            archive.add(path, arcname=".", recursive=True)
+        archive_file.flush()
+        with LineBuffer.from_path(Path(archive_file.name)) as archive_buffer:
+            return create_git_blob(archive_buffer.byte_chunks())
 
 
 def snapshot_worktree_paths(paths: list[str]) -> list[dict[str, Any]]:

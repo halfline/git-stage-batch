@@ -5946,10 +5946,8 @@ def test_file_scope_include_file_owns_file_pipeline():
         "record_hunk_included",
         "run_git_command",
         "stream_live_git_diff",
-        "update_index_with_blob_buffer",
     }
     helper_imports = moved_names | {
-        "LineBuffer",
         "finish_selected_change_action",
         "get_selected_change_file_path",
         "selected_change_staging",
@@ -16783,7 +16781,6 @@ def test_selected_change_staging_owns_include_pipeline():
         "patch_is_file_deletion",
         "read_text_file_contents",
         "record_hunk_included",
-        "update_index_with_blob_buffer",
     }
     helper_imports = moved_names | {
         "BinaryFileChange",
@@ -17215,7 +17212,6 @@ def test_selected_change_discarding_owns_discard_pipeline():
         "_discard_text_deletion_change",
     }
     moved_names = {
-        "CommandError",
         "NoMoreHunks",
         "append_lines_to_file",
         "build_line_changes_from_patch_lines",

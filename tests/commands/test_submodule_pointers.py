@@ -466,6 +466,31 @@ def test_discard_removes_added_submodule_pointer(
     assert _git_stdout(["diff", "--ignore-submodules=none", "--", "sub"], cwd=repo) == ""
 
 
+def test_discard_added_submodule_pointer_undo_redo(
+    added_submodule_pointer_repo: tuple[Path, str],
+) -> None:
+    """Undo should restore a removed added submodule directory and its ITA."""
+    repo, new_oid = added_submodule_pointer_repo
+
+    command_start(quiet=True)
+    command_discard(quiet=True, auto_advance=False)
+    assert not (repo / "sub").exists()
+
+    command_undo(force=True)
+
+    assert (repo / "sub" / ".git").is_dir()
+    assert _git_stdout(["rev-parse", "HEAD"], cwd=repo / "sub") == new_oid
+    assert EMPTY_BLOB_HASH in _git_stdout(
+        ["ls-files", "--stage", "--", "sub"],
+        cwd=repo,
+    )
+
+    command_redo(force=True)
+
+    assert not (repo / "sub").exists()
+    assert _git_stdout(["ls-files", "--stage", "--", "sub"], cwd=repo) == ""
+
+
 def test_abort_restores_discarded_untracked_submodule_pointer(
     untracked_submodule_pointer_repo: tuple[Path, str],
 ) -> None:

@@ -10,6 +10,8 @@ from git_stage_batch.data.selected_change.store import (
     SelectedChangeKind,
     cache_hunk_change,
     read_selected_change_kind,
+    restore_selected_change_state,
+    snapshot_selected_change_state,
 )
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,
@@ -17,6 +19,7 @@ from git_stage_batch.utils.paths import (
     get_line_changes_json_file_path,
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
+    get_snapshot_metadata_file_path,
     get_working_tree_snapshot_file_path,
 )
 
@@ -100,3 +103,28 @@ def test_cache_hunk_change_writes_selected_hunk_state(temp_git_repo):
     assert cached_line_changes is not None
     assert cached_line_changes.path == "test.py"
     assert cached_line_changes.changed_line_ids() == [1, 2]
+
+
+def test_selected_state_snapshot_restores_snapshot_metadata(temp_git_repo):
+    """Preview rollback should restore the manifest used for stale checks."""
+    patch_lines = [
+        b"--- a/test.py\n",
+        b"+++ b/test.py\n",
+        b"@@ -1 +1 @@\n",
+        b"-old\n",
+        b"+new\n",
+    ]
+    line_changes = LineLevelChange(
+        path="test.py",
+        header=HunkHeader(old_start=1, old_len=1, new_start=1, new_len=1),
+        lines=[],
+    )
+    cache_hunk_change(patch_lines, "stable-hash", line_changes)
+    metadata_path = get_snapshot_metadata_file_path()
+    original_metadata = metadata_path.read_bytes()
+
+    with snapshot_selected_change_state() as snapshot:
+        metadata_path.write_text('{"path": "other.py"}\n')
+        restore_selected_change_state(snapshot)
+
+    assert metadata_path.read_bytes() == original_metadata

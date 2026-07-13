@@ -6,6 +6,8 @@ import json
 import os
 import shutil
 import stat
+import tarfile
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +19,6 @@ from ..utils.repository_buffers import load_git_blob_as_buffer
 from .undo_refs import list_restorable_refs
 from ..exceptions import CommandError
 from ..i18n import _
-from ..utils.file_io import read_file_paths_file
 from ..utils.git_command import (
     run_git_command,
 )
@@ -28,7 +29,6 @@ from ..utils.git_refs import (
 from ..utils.git_worktree import git_checkout_detached
 from ..utils.git_index import git_add_paths, git_update_index
 from ..utils.git_repository import get_git_repository_root_path
-from ..utils.paths import get_auto_added_files_file_path
 
 
 def _read_json_blob(blob_sha: str) -> dict[str, Any]:
@@ -185,6 +185,11 @@ def restore_worktree(commit: str, manifest: dict[str, Any]) -> None:
         if entry.get("kind") == "gitlink":
             worktree_oid = entry.get("worktree_oid")
             if entry.get("exists", False) and worktree_oid:
+                if not target_path.is_dir():
+                    _restore_directory_archive(
+                        target_path,
+                        worktree_blobs.get(file_path),
+                    )
                 result = git_checkout_detached(worktree_oid, cwd=file_path, check=False)
                 if result.returncode != 0:
                     raise CommandError(
@@ -193,25 +198,67 @@ def restore_worktree(commit: str, manifest: dict[str, Any]) -> None:
                             error=result.stderr,
                         )
                     )
+            elif not entry.get("exists", False):
+                _remove_worktree_path(target_path)
             continue
         if entry.get("kind") == "embedded-repo":
+            if entry.get("exists", False):
+                _restore_directory_archive(
+                    target_path,
+                    worktree_blobs.get(file_path),
+                )
+            else:
+                _remove_worktree_path(target_path)
             continue
         if not entry.get("exists", False):
-            if os.path.lexists(target_path):
-                target_path.unlink()
+            _remove_worktree_path(target_path)
             continue
 
         blob_info = worktree_blobs.get(file_path)
         if blob_info is None:
-            continue
+            raise CommandError(
+                _("Undo checkpoint is missing worktree content for {file}").format(
+                    file=file_path,
+                )
+            )
         mode, blob_sha = blob_info
         _write_blob_to_worktree_path(blob_sha, target_path, mode=mode)
 
 
-def restore_intent_to_add_entries() -> None:
-    """Restore intent-to-add markers tracked by the session."""
+def _remove_worktree_path(target_path: Path) -> None:
+    if target_path.is_dir() and not target_path.is_symlink():
+        shutil.rmtree(target_path)
+    elif os.path.lexists(target_path):
+        target_path.unlink()
+
+
+def _restore_directory_archive(
+    target_path: Path,
+    blob_info: tuple[str, str] | None,
+) -> None:
+    """Restore one nested repository from its checkpoint archive."""
+    if blob_info is None:
+        raise CommandError(
+            _("Undo checkpoint is missing nested repository content for {file}").format(
+                file=target_path.name,
+            )
+        )
+    _mode, blob_sha = blob_info
+    _remove_worktree_path(target_path)
+    target_path.mkdir(parents=True)
+    with load_git_blob_as_buffer(blob_sha) as archive_buffer:
+        with tempfile.NamedTemporaryFile() as archive_file:
+            for chunk in archive_buffer.byte_chunks():
+                archive_file.write(chunk)
+            archive_file.flush()
+            with tarfile.open(archive_file.name, mode="r") as archive:
+                archive.extractall(target_path)
+
+
+def restore_intent_to_add_entries(file_paths: list[str]) -> None:
+    """Restore the exact intent-to-add markers saved by one checkpoint."""
     repo_root = get_git_repository_root_path()
-    for file_path in read_file_paths_file(get_auto_added_files_file_path()):
+    for file_path in file_paths:
         full_path = repo_root / file_path
         if os.path.lexists(full_path):
             git_update_index(file_path=file_path, force_remove=True, check=False)

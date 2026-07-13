@@ -28,7 +28,7 @@ from ...utils.file_io import append_lines_to_file, path_is_empty, read_text_file
 from ...utils.git_command import run_git_command
 from ...utils.git_worktree import (
     git_apply_to_worktree,
-    git_checkout_paths,
+    git_checkout_index_paths,
     git_remove_paths,
 )
 from ...utils.git_index import (
@@ -195,14 +195,14 @@ def _discard_binary_change(
             absolute_path.unlink()
             log_journal("command_discard_binary_deleted", file_path=file_path)
     elif item.is_deleted_file():
-        result = git_checkout_paths("HEAD", [file_path], check=False)
+        result = git_checkout_index_paths([file_path], check=False)
         if result.returncode != 0:
             exit_with_error(
                 _("Failed to restore binary file: {}").format(result.stderr)
             )
         log_journal("command_discard_binary_restored", file_path=file_path)
     else:
-        result = git_checkout_paths("HEAD", [file_path], check=False)
+        result = git_checkout_index_paths([file_path], check=False)
         if result.returncode != 0:
             exit_with_error(
                 _("Failed to restore binary file: {}").format(result.stderr)

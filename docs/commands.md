@@ -524,7 +524,7 @@ All hunks from the file are marked as skipped and can be revisited with `again`.
 
 ### `discard --file [PATH]`
 
-Discard entire file from the working tree.
+Discard all unstaged changes in one file.
 
 **Discard selected hunk's file:**
 ```
@@ -536,7 +536,7 @@ Discard entire file from the working tree.
 ❯ git-stage-batch discard --file src/debug.py
 ```
 
-Removes all changes from the specified file. When a path is provided, you can discard any file in your working tree regardless of which file the selected hunk is from.
+Restores the working-tree file from the index, preserving any staged content. A new untracked file is removed because it has no indexed version to restore. When a path is provided, you can discard changes from any file regardless of which file the selected hunk is from.
 
 **Use cases:**
 - `--file` (no path): Discard the entire file of the selected hunk
@@ -544,7 +544,7 @@ Removes all changes from the specified file. When a path is provided, you can di
 - `--files PATTERN...`: Discard all matched files as complete units
 
 !!! warning "Destructive Operation"
-    This permanently removes the entire file from your working tree.
+    This permanently removes the file's unstaged changes. To intentionally remove a tracked file, use `git rm -- PATH` instead.
 
 ---
 

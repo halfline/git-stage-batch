@@ -547,7 +547,9 @@ Save and discard only specific lines, preserving other changes in your working t
 ❯ git-stage-batch discard --to batch-name --file
 ```
 
-Save the entire selected file to the batch, then discard the entire file from the working tree. Useful when you want to completely remove a file while preserving it for potential recovery.
+Save all changes in the selected file to the batch, then remove those changes
+from the working tree. A tracked file returns to its indexed baseline; a newly
+added file is removed because it has no indexed version to restore.
 
 **Example workflow:**
 ```bash

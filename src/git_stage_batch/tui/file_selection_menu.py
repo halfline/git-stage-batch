@@ -9,7 +9,6 @@ from ..commands.discard_from import command_discard_from_batch
 from ..commands.include import command_include_file, command_include_to_batch
 from ..commands.include_from import command_include_from_batch
 from ..commands.skip import command_skip_file
-from ..data.hunk_tracking import fetch_next_change
 from ..data.line_state import load_line_changes_from_state
 from ..i18n import _
 from ..output.colors import Colors, format_hotkey
@@ -97,24 +96,18 @@ def _handle_file_include(flow_state: FlowState) -> None:
         command_include_from_batch(flow_state.source.batch_name, file="")
     else:
         raise ValueError(f"Unknown source role: {flow_state.source.role}")
-    fetch_next_change()
 
 
 def _handle_file_skip(flow_state: FlowState) -> None:
     if flow_state.source.role is LocationRole.BATCH:
         print(_("Skip is not available when pulling from a batch."), file=sys.stderr)
         return
-    if flow_state.target.role is LocationRole.STAGING_AREA:
-        command_skip_file(auto_advance=True)
-    elif flow_state.target.role is LocationRole.BATCH:
-        command_include_to_batch(
-            flow_state.target.batch_name,
-            file="",
-            auto_advance=True,
-        )
-    else:
+    if flow_state.target.role not in (
+        LocationRole.STAGING_AREA,
+        LocationRole.BATCH,
+    ):
         raise ValueError(f"Unknown target role: {flow_state.target.role}")
-    fetch_next_change()
+    command_skip_file(auto_advance=True)
 
 
 def _handle_file_discard(flow_state: FlowState, filename: str) -> None:
@@ -141,4 +134,3 @@ def _handle_file_discard(flow_state: FlowState, filename: str) -> None:
         command_discard_from_batch(flow_state.source.batch_name, file="")
     else:
         raise ValueError(f"Unknown source role: {flow_state.source.role}")
-    fetch_next_change()

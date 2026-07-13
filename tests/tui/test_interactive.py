@@ -21,6 +21,7 @@ from git_stage_batch.tui.flow import FlowLocation, FlowState
 from git_stage_batch.tui.interactive import (
     start_interactive_mode,
 )
+from git_stage_batch.tui.current_change import CurrentChange
 from git_stage_batch.tui.asset_menu import handle_asset_menu
 from git_stage_batch.tui.file_selection_menu import handle_file_selection_menu
 from git_stage_batch.tui.help_display import print_help
@@ -185,6 +186,27 @@ class TestActionHandlers:
             )
 
         mock_skip.assert_called_once_with(quiet=True, auto_advance=True)
+
+    def test_skip_action_with_batch_target_does_not_include(self):
+        """A target batch must not change skip into include-to-batch."""
+        flow_state = FlowState(
+            source=FlowLocation.WORKING_TREE,
+            target=FlowLocation.for_batch("scratch"),
+        )
+
+        with patch("git_stage_batch.tui.hunk_actions.command_skip") as mock_skip:
+            with patch(
+                "git_stage_batch.tui.hunk_actions.command_include_to_batch"
+            ) as mock_include:
+                dispatch_action(
+                    "s",
+                    has_hunk=True,
+                    use_color=False,
+                    flow_state=flow_state,
+                )
+
+        mock_skip.assert_called_once_with(quiet=True, auto_advance=True)
+        mock_include.assert_not_called()
 
     def test_discard_action_dispatches_hunk_action(self):
         """Test discard action routes through the hunk action adapter."""
@@ -419,13 +441,12 @@ class TestHandleFileSelection:
 
         with patch("git_stage_batch.tui.file_selection_menu.load_line_changes_from_state", return_value=line_changes):
             with patch("git_stage_batch.tui.file_selection_menu.command_include_file") as mock_include:
-                with patch("git_stage_batch.tui.file_selection_menu.fetch_next_change", return_value=None):
-                    with patch("builtins.input", return_value="i"):
-                        handle_file_selection_menu(FlowState(
-                            source=FlowLocation.WORKING_TREE,
-                            target=FlowLocation.STAGING_AREA
-                        ))
-                        mock_include.assert_called_once()
+                with patch("builtins.input", return_value="i"):
+                    handle_file_selection_menu(FlowState(
+                        source=FlowLocation.WORKING_TREE,
+                        target=FlowLocation.STAGING_AREA
+                    ))
+                    mock_include.assert_called_once()
 
     def test_handle_file_selection_skip(self):
         """Test file selection with skip action."""
@@ -439,13 +460,12 @@ class TestHandleFileSelection:
 
         with patch("git_stage_batch.tui.file_selection_menu.load_line_changes_from_state", return_value=line_changes):
             with patch("git_stage_batch.tui.file_selection_menu.command_skip_file") as mock_skip:
-                with patch("git_stage_batch.tui.file_selection_menu.fetch_next_change", return_value=None):
-                    with patch("builtins.input", return_value="s"):
-                        handle_file_selection_menu(FlowState(
-                            source=FlowLocation.WORKING_TREE,
-                            target=FlowLocation.STAGING_AREA
-                        ))
-                        mock_skip.assert_called_once()
+                with patch("builtins.input", return_value="s"):
+                    handle_file_selection_menu(FlowState(
+                        source=FlowLocation.WORKING_TREE,
+                        target=FlowLocation.STAGING_AREA
+                    ))
+                    mock_skip.assert_called_once()
 
     def test_handle_file_selection_discard(self):
         """Test file selection with discard action."""
@@ -459,14 +479,13 @@ class TestHandleFileSelection:
 
         with patch("git_stage_batch.tui.file_selection_menu.load_line_changes_from_state", return_value=line_changes):
             with patch("git_stage_batch.tui.file_selection_menu.command_discard_file") as mock_discard:
-                with patch("git_stage_batch.tui.file_selection_menu.fetch_next_change", return_value=None):
-                    with patch("git_stage_batch.tui.file_selection_menu.confirm_destructive_operation", return_value=True):
-                        with patch("builtins.input", return_value="d"):
-                            handle_file_selection_menu(FlowState(
-                                source=FlowLocation.WORKING_TREE,
-                                target=FlowLocation.STAGING_AREA
-                            ))
-                            mock_discard.assert_called_once()
+                with patch("git_stage_batch.tui.file_selection_menu.confirm_destructive_operation", return_value=True):
+                    with patch("builtins.input", return_value="d"):
+                        handle_file_selection_menu(FlowState(
+                            source=FlowLocation.WORKING_TREE,
+                            target=FlowLocation.STAGING_AREA
+                        ))
+                        mock_discard.assert_called_once()
 
     def test_handle_file_selection_discard_to_batch(self):
         """Test file selection with discard action when target is batch."""
@@ -480,18 +499,54 @@ class TestHandleFileSelection:
 
         with patch("git_stage_batch.tui.file_selection_menu.load_line_changes_from_state", return_value=line_changes):
             with patch("git_stage_batch.tui.file_selection_menu.command_discard_to_batch") as mock_discard:
-                with patch("git_stage_batch.tui.file_selection_menu.fetch_next_change", return_value=None):
-                    with patch("builtins.input", return_value="d"):
-                        handle_file_selection_menu(FlowState(
-                            source=FlowLocation.WORKING_TREE,
-                            target=FlowLocation.for_batch("mybatch")
-                        ))
-                        mock_discard.assert_called_once_with(
-                            "mybatch",
-                            file="",
-                            quiet=True,
-                            auto_advance=True,
+                with patch("builtins.input", return_value="d"):
+                    handle_file_selection_menu(FlowState(
+                        source=FlowLocation.WORKING_TREE,
+                        target=FlowLocation.for_batch("mybatch")
+                    ))
+                    mock_discard.assert_called_once_with(
+                        "mybatch",
+                        file="",
+                        quiet=True,
+                        auto_advance=True,
+                    )
+
+    def test_handle_file_selection_skip_with_batch_target_still_skips(self):
+        """Skip should never save the file into the target batch."""
+        line_changes = LineLevelChange(
+            path="test.txt",
+            header=HunkHeader(old_start=1, old_len=1, new_start=1, new_len=1),
+            lines=[
+                LineEntry(
+                    id=1,
+                    kind="+",
+                    old_line_number=None,
+                    new_line_number=1,
+                    text_bytes=b"test\n",
+                )
+            ],
+        )
+
+        with patch(
+            "git_stage_batch.tui.file_selection_menu.load_line_changes_from_state",
+            return_value=line_changes,
+        ):
+            with patch(
+                "git_stage_batch.tui.file_selection_menu.command_skip_file"
+            ) as mock_skip:
+                with patch(
+                    "git_stage_batch.tui.file_selection_menu.command_include_to_batch"
+                ) as mock_include:
+                    with patch("builtins.input", return_value="s"):
+                        handle_file_selection_menu(
+                            FlowState(
+                                source=FlowLocation.WORKING_TREE,
+                                target=FlowLocation.for_batch("scratch"),
+                            )
                         )
+
+        mock_skip.assert_called_once_with(auto_advance=True)
+        mock_include.assert_not_called()
 
     def test_handle_file_selection_cancel(self):
         """Test file selection with Ctrl-C."""
@@ -573,6 +628,47 @@ class TestHandleLineSelection:
                             target=FlowLocation.STAGING_AREA
                         ))
 
+    def test_handle_line_skip_with_batch_target_still_skips(self):
+        """Line skip should leave the selected lines for a later pass."""
+        line_changes = LineLevelChange(
+            path="test.txt",
+            header=HunkHeader(old_start=1, old_len=1, new_start=1, new_len=1),
+            lines=[
+                LineEntry(
+                    id=1,
+                    kind="+",
+                    old_line_number=None,
+                    new_line_number=1,
+                    text_bytes=b"test\n",
+                )
+            ],
+        )
+
+        with patch(
+            "git_stage_batch.tui.line_selection_menu.load_line_changes_from_state",
+            return_value=line_changes,
+        ):
+            with patch(
+                "git_stage_batch.tui.line_selection_menu.command_skip_line"
+            ) as mock_skip:
+                with patch(
+                    "git_stage_batch.tui.line_selection_menu.command_include_to_batch"
+                ) as mock_include:
+                    with patch(
+                        "git_stage_batch.tui.line_selection_menu.prompt_line_ids",
+                        return_value="1",
+                    ):
+                        with patch("builtins.input", return_value="s"):
+                            handle_line_selection_menu(
+                                FlowState(
+                                    source=FlowLocation.WORKING_TREE,
+                                    target=FlowLocation.for_batch("scratch"),
+                                )
+                            )
+
+        mock_skip.assert_called_once_with("1", auto_advance=True)
+        mock_include.assert_not_called()
+
 
 class TestDegradedMode:
     """Tests for degraded mode (no changes available)."""
@@ -616,6 +712,75 @@ class TestDegradedMode:
                     start_interactive_mode()
 
         assert lock_depth == 0
+
+    def test_selection_advance_during_prompt_cancels_hunk_action(
+        self,
+        temp_git_repo,
+        capsys,
+    ):
+        """A keypress must not act on a different change than was displayed."""
+        first = LineLevelChange(
+            path="first.txt",
+            header=HunkHeader(old_start=1, old_len=0, new_start=1, new_len=1),
+            lines=[
+                LineEntry(
+                    id=1,
+                    kind="+",
+                    old_line_number=None,
+                    new_line_number=1,
+                    text_bytes=b"first\n",
+                )
+            ],
+        )
+        second = LineLevelChange(
+            path="second.txt",
+            header=HunkHeader(old_start=1, old_len=0, new_start=1, new_len=1),
+            lines=[
+                LineEntry(
+                    id=1,
+                    kind="+",
+                    old_line_number=None,
+                    new_line_number=1,
+                    text_bytes=b"second\n",
+                )
+            ],
+        )
+        loaded = [CurrentChange(first), CurrentChange(second), CurrentChange(second)]
+        dispatched = []
+
+        def dispatch(action, **_kwargs):
+            dispatched.append(action)
+            if action == "q":
+                raise QuitInteractive()
+
+        startup = type(
+            "Startup",
+            (),
+            {"degraded_mode": False, "session_was_active": True},
+        )()
+        with patch(
+            "git_stage_batch.tui.interactive.prepare_interactive_session",
+            return_value=startup,
+        ):
+            with patch(
+                "git_stage_batch.tui.interactive.current_change.load_current_change",
+                side_effect=loaded,
+            ):
+                with patch(
+                    "git_stage_batch.tui.interactive.current_change.display_current_change"
+                ):
+                    with patch(
+                        "git_stage_batch.tui.interactive.prompt_action",
+                        side_effect=["i", "q"],
+                    ):
+                        with patch(
+                            "git_stage_batch.tui.interactive.dispatch_action",
+                            side_effect=dispatch,
+                        ):
+                            start_interactive_mode()
+
+        assert dispatched == ["q"]
+        assert "advanced while the prompt was open" in capsys.readouterr().err
 
     def test_start_interactive_mode_quit_preserves_existing_session(self, temp_git_repo):
         """Test quitting does not stop a session that already existed."""

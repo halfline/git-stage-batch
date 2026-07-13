@@ -11,6 +11,11 @@ from git_stage_batch.tui.file_review.file_browser import ReviewFileEntry
 from git_stage_batch.tui.file_review.browser import handle_file_browser
 from git_stage_batch.tui.file_review.browser import handle_current_file_review
 from git_stage_batch.tui.file_review.file_browser import list_review_file_entries
+from git_stage_batch.tui.file_review.live_actions import (
+    apply_live_file_action,
+    apply_live_line_action,
+)
+from git_stage_batch.tui.file_review.session import FileReviewSessionState
 from git_stage_batch.tui.flow import FlowLocation, FlowState
 
 
@@ -331,6 +336,57 @@ class TestHandleCurrentFileReview:
             advance=False,
             auto_advance=False,
         )
+
+    def test_target_batch_line_skip_uses_skip_command(self):
+        """File-review line skip must not include lines in the target batch."""
+        state = FileReviewSessionState(
+            flow_state=FlowState(
+                source=FlowLocation.WORKING_TREE,
+                target=FlowLocation.for_batch("scratch"),
+            ),
+            file_path="test.txt",
+        )
+
+        with patch(
+            "git_stage_batch.commands.skip.command_skip_line"
+        ) as mock_skip:
+            with patch(
+                "git_stage_batch.commands.include.command_include_to_batch"
+            ) as mock_include:
+                apply_live_line_action(state, "s", "1")
+
+        mock_skip.assert_called_once_with(
+            "1",
+            file="test.txt",
+            auto_advance=False,
+        )
+        mock_include.assert_not_called()
+
+    def test_target_batch_file_skip_uses_skip_command(self):
+        """File-review whole-file skip must not include into the target batch."""
+        state = FileReviewSessionState(
+            flow_state=FlowState(
+                source=FlowLocation.WORKING_TREE,
+                target=FlowLocation.for_batch("scratch"),
+            ),
+            file_path="test.txt",
+        )
+
+        with patch(
+            "git_stage_batch.commands.skip.command_skip_file"
+        ) as mock_skip:
+            with patch(
+                "git_stage_batch.commands.include.command_include_to_batch"
+            ) as mock_include:
+                apply_live_file_action(state, "S")
+
+        mock_skip.assert_called_once_with(
+            "test.txt",
+            quiet=True,
+            advance=False,
+            auto_advance=False,
+        )
+        mock_include.assert_not_called()
 
     def test_current_file_review_blocks_file_in_gitignore(self):
         """Test block action routes to block-file using gitignore."""

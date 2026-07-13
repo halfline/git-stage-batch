@@ -29,7 +29,6 @@ from ...data.undo_checkpoints import undo_checkpoint
 from ...exceptions import NoMoreHunks, exit_with_error
 from ...i18n import _
 from ...utils.file_io import append_lines_to_file, path_is_empty, read_text_file_contents
-from ...utils.git_command import run_git_command
 from ...utils.git_worktree import (
     git_apply_to_worktree,
     git_checkout_index_paths,
@@ -346,11 +345,7 @@ def discard_text_deletion_change(deletion_change: TextFileDeletionChange) -> Non
     file_path = deletion_change.path()
     snapshot_file_if_untracked(file_path)
 
-    restore_result = run_git_command(
-        ["checkout", "--", file_path],
-        check=False,
-        requires_index_lock=True,
-    )
+    restore_result = git_checkout_index_paths([file_path], check=False)
     if restore_result.returncode != 0:
         exit_with_error(
             _("Failed to restore deleted file {file}: {error}").format(

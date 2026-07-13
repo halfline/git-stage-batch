@@ -11,7 +11,10 @@ from ...core.line_selection import parse_line_selection
 from ...data.file_review.action_scope import finish_review_scoped_line_action
 from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.line_id_files import read_line_ids_file, write_line_ids_file
-from ...utils.repository_buffers import read_git_object_buffer_or_none
+from ...utils.repository_buffers import (
+    load_working_tree_file_as_buffer,
+    read_git_object_buffer_or_none,
+)
 from ...data.selected_change.store import (
     SelectedChangeKind,
     read_selected_change_kind,
@@ -30,6 +33,19 @@ from ...utils.paths import (
 from . import include_line_selection as _include_line_selection
 from . import replacement_selection
 from .selected_hunk_refresh import refresh_selected_hunk_after_line_action
+
+
+def _selection_uses_only_bare_cr_line_breaks(*line_sequences) -> bool:
+    """Return whether nonempty line breaks use bare CR and never LF."""
+    saw_bare_carriage_return = False
+    for lines in line_sequences:
+        for line in lines:
+            content = bytes(line)
+            if b"\n" in content:
+                return False
+            if b"\r" in content:
+                saw_bare_carriage_return = True
+    return saw_bare_carriage_return
 
 
 def include_live_line_selection(
@@ -121,19 +137,43 @@ def include_live_line_selection(
                 and transient_result.failure_reason
                 == _include_line_selection.TransientIncludeFailureReason.INDEX_MERGE_FAILED
                 and buffer_matches(current_index_lines, hunk_base_lines)
+                and _selection_uses_only_bare_cr_line_breaks(
+                    hunk_base_lines,
+                    hunk_source_lines,
+                )
             ):
-                transient_result = _include_line_selection.TransientIncludeResult.success(
+                with (
+                    load_working_tree_file_as_buffer(line_changes.path) as working_lines,
                     build_target_index_buffer_from_lines(
                         line_changes,
                         set(combined_include_ids),
-                        hunk_base_lines,
+                        hunk_source_lines,
                         base_has_trailing_newline=(
                             _include_line_selection.line_sequence_ends_with_lf(
-                                hunk_base_lines
+                                hunk_source_lines
                             )
                         ),
+                    ) as target_working_lines,
+                ):
+                    working_tree_is_unchanged = buffer_matches(
+                        working_lines,
+                        hunk_source_lines,
+                    ) and buffer_matches(working_lines, target_working_lines)
+                if working_tree_is_unchanged:
+                    transient_result = (
+                        _include_line_selection.TransientIncludeResult.success(
+                            build_target_index_buffer_from_lines(
+                                line_changes,
+                                set(combined_include_ids),
+                                hunk_base_lines,
+                                base_has_trailing_newline=(
+                                    _include_line_selection.line_sequence_ends_with_lf(
+                                        hunk_base_lines
+                                    )
+                                ),
+                            )
+                        )
                     )
-                )
         if transient_result.buffer is not None:
             log_journal(
                 "include_line_transient_batch_staging_used",

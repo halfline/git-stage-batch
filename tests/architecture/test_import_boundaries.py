@@ -16935,6 +16935,7 @@ def test_include_line_action_stays_in_command_helper():
         "exit_with_error",
         "get_index_snapshot_file_path",
         "get_working_tree_snapshot_file_path",
+        "load_working_tree_file_as_buffer",
         "read_git_object_buffer_or_none",
         "parse_line_selection",
         "read_line_ids_file",

@@ -292,6 +292,32 @@ def test_binary_file_modified_discard(binary_file_repo: Path, monkeypatch: pytes
     assert (binary_file_repo / "image.png").read_bytes() == original_content
 
 
+def test_binary_file_modified_discard_preserves_staged_content(
+    binary_file_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Binary discard restores the index version without resetting it to HEAD."""
+    monkeypatch.chdir(binary_file_repo)
+    image_path = binary_file_repo / "image.png"
+    staged_content = b"\x00STAGED"
+    image_path.write_bytes(staged_content)
+    subprocess.run(["git", "add", "image.png"], check=True, capture_output=True)
+    image_path.write_bytes(b"\x00UNSTAGED")
+
+    initialize_abort_state()
+    selected_change = fetch_next_change()
+    assert isinstance(selected_change, BinaryFileChange)
+
+    command_discard(quiet=True)
+
+    assert image_path.read_bytes() == staged_content
+    assert run_git_command(["show", ":image.png"], text_output=False).stdout == staged_content
+    assert run_git_command(
+        ["diff", "--cached", "--quiet", "--", "image.png"],
+        check=False,
+    ).returncode == 1
+
+
 def test_binary_file_deleted_discard(binary_file_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Test discarding deletion of a binary file (restore it)."""
     monkeypatch.chdir(binary_file_repo)

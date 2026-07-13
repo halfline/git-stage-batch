@@ -13,11 +13,15 @@ from ..batch.state.metadata_schema import (
     decode_batch_metadata,
 )
 from ..batch.state.query import list_batch_names
-from ..batch.state.batch_names import invalid_file_backed_batch_names, validate_batch_name
+from ..batch.state.batch_names import (
+    invalid_file_backed_batch_names,
+    validate_batch_name,
+)
 from ..batch.state.references import (
     get_authoritative_batch_commit_sha,
     get_batch_content_ref_name,
     get_batch_state_ref_name,
+    get_legacy_batch_ref_name,
 )
 from ..exceptions import BatchMetadataError, CommandError
 from ..i18n import _
@@ -31,7 +35,9 @@ def inspect_batch_metadata() -> list[dict[str, Any]]:
     """Return diagnostics for every discoverable batch without writing state."""
     reports = []
     invalid_file_names = invalid_file_backed_batch_names()
-    batch_names = sorted(set(list_batch_names(validate_legacy_metadata=False)) | set(invalid_file_names))
+    batch_names = sorted(
+        set(list_batch_names(validate_legacy_metadata=False)) | set(invalid_file_names)
+    )
     for batch_name in batch_names:
         report: dict[str, Any] = {
             "batch": batch_name,
@@ -58,13 +64,24 @@ def inspect_batch_metadata() -> list[dict[str, Any]]:
             source = "state-ref"
         else:
             metadata_path = get_batch_metadata_file_path(batch_name)
-            payload = read_text_file_contents(metadata_path) if metadata_path.exists() else ""
+            payload = (
+                read_text_file_contents(metadata_path) if metadata_path.exists() else ""
+            )
             source = "legacy-file"
         report["source"] = source
+        _classify_compatibility_residue(
+            batch_name,
+            report,
+            authoritative_payload=(
+                state_result.stdout if state_result.returncode == 0 else None
+            ),
+        )
 
         try:
             raw = json.loads(payload)
-            report["schema_version"] = raw.get("schema_version", 0) if isinstance(raw, dict) else None
+            report["schema_version"] = (
+                raw.get("schema_version", 0) if isinstance(raw, dict) else None
+            )
             report["migration_required"] = report["schema_version"] == 0
             model = decode_batch_metadata(payload, expected_batch=batch_name)
             report["revision"] = model.revision
@@ -76,6 +93,84 @@ def inspect_batch_metadata() -> list[dict[str, Any]]:
             report["status"] = "error"
         reports.append(report)
     return reports
+
+
+def _ref_exists(ref_name: str) -> bool:
+    return (
+        run_git_command(
+            ["show-ref", "--verify", "--quiet", ref_name],
+            check=False,
+            requires_index_lock=False,
+        ).returncode
+        == 0
+    )
+
+
+def _classify_compatibility_residue(
+    batch_name: str,
+    report: dict[str, Any],
+    *,
+    authoritative_payload: str | None,
+) -> None:
+    """Classify crash-residual file metadata without making it authoritative."""
+    metadata_path = get_batch_metadata_file_path(batch_name)
+    if not metadata_path.exists():
+        report["residue"] = None
+        return
+    try:
+        file_model = decode_batch_metadata(
+            read_text_file_contents(metadata_path),
+            expected_batch=batch_name,
+        )
+    except (BatchMetadataError, json.JSONDecodeError) as error:
+        report["residue"] = {
+            "class": "invalid_residue",
+            "path": str(metadata_path),
+            "safe_automatic_repair": False,
+        }
+        report["errors"].append(f"invalid compatibility metadata residue: {error}")
+        return
+
+    if authoritative_payload is not None:
+        state_model = decode_batch_metadata(
+            authoritative_payload,
+            expected_batch=batch_name,
+        )
+        if file_model.to_application_dict() == state_model.to_application_dict():
+            residue_class = "redundant_residue"
+            safe_repair = True
+        elif file_model.revision == state_model.revision:
+            residue_class = "stale_attempted_update"
+            safe_repair = False
+        else:
+            residue_class = "concurrent_conflicting_residue"
+            safe_repair = False
+        report["residue"] = {
+            "class": residue_class,
+            "path": str(metadata_path),
+            "authoritative_revision": state_model.revision,
+            "file_revision": file_model.revision,
+            "safe_automatic_repair": safe_repair,
+        }
+        if not safe_repair:
+            report["errors"].append(
+                f"batch compatibility metadata has {residue_class.replace('_', ' ')}"
+            )
+        return
+
+    legacy_or_content = _ref_exists(
+        get_legacy_batch_ref_name(batch_name)
+    ) or _ref_exists(get_batch_content_ref_name(batch_name))
+    report["residue"] = {
+        "class": "legacy_compatibility_state"
+        if legacy_or_content
+        else "orphaned_create",
+        "path": str(metadata_path),
+        "file_revision": file_model.revision,
+        "safe_automatic_repair": False,
+    }
+    if not legacy_or_content:
+        report["errors"].append("orphaned batch metadata has no related refs")
 
 
 def _referential_errors(model: BatchMetadata) -> list[str]:
@@ -96,11 +191,15 @@ def _referential_errors(model: BatchMetadata) -> list[str]:
     for entry in model.files:
         source_commit = entry.values.get("batch_source_commit")
         if isinstance(source_commit, str):
-            object_fields.append((f"files[{entry.path!r}].batch_source_commit", source_commit))
+            object_fields.append(
+                (f"files[{entry.path!r}].batch_source_commit", source_commit)
+            )
         for index, deletion in enumerate(entry.values.get("deletions", ())):
             blob = deletion.get("blob") if isinstance(deletion, Mapping) else None
             if isinstance(blob, str):
-                object_fields.append((f"files[{entry.path!r}].deletions[{index}].blob", blob))
+                object_fields.append(
+                    (f"files[{entry.path!r}].deletions[{index}].blob", blob)
+                )
     for field, object_id in object_fields:
         result = run_git_command(
             ["cat-file", "-e", object_id],
@@ -117,13 +216,15 @@ def command_validate_batches(*, porcelain: bool = False) -> None:
     require_git_repository()
     reports = inspect_batch_metadata()
     if porcelain:
-        print(json.dumps(
-            {
-                "metadata_schema": CURRENT_BATCH_METADATA_SCHEMA_VERSION,
-                "batches": reports,
-            },
-            indent=2,
-        ))
+        print(
+            json.dumps(
+                {
+                    "metadata_schema": CURRENT_BATCH_METADATA_SCHEMA_VERSION,
+                    "batches": reports,
+                },
+                indent=2,
+            )
+        )
     elif not reports:
         print(_("No batches found"), file=sys.stderr)
     else:

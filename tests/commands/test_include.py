@@ -10,6 +10,7 @@ from git_stage_batch.batch.state.query import get_batch_commit_sha, read_batch_m
 from git_stage_batch.batch.state.batch_names import batch_exists
 from git_stage_batch.commands.include import (
     command_include,
+    command_include_file,
     command_include_line,
     command_include_line_as,
     command_include_to_batch,
@@ -19,6 +20,7 @@ from git_stage_batch.commands.selection.replacement_selection import (
     derive_replacement_line_runs,
 )
 from git_stage_batch.commands.start import command_start
+from git_stage_batch.commands.skip import command_skip_line
 from git_stage_batch.commands.show import command_show
 from git_stage_batch.core.models import TextFileDeletionChange
 from git_stage_batch.data.hunk_tracking import (
@@ -46,6 +48,16 @@ def _prepare_single_line_change(repo, file_name="test.txt"):
     command_start()
     fetch_next_change()
     return test_file
+
+
+def _show_index_file(repo, file_name: str) -> str:
+    return subprocess.run(
+        ["git", "show", f":{file_name}"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+        text=True,
+    ).stdout
 
 
 @pytest.fixture
@@ -100,6 +112,83 @@ class TestCommandInclude:
 
         captured = capsys.readouterr()
         assert "Hunk staged" in captured.err
+
+    def test_bare_include_respects_partially_skipped_lines(self, temp_git_repo):
+        """Bare include should stage only the lines left visible after a skip."""
+        new_file = temp_git_repo / "new.txt"
+        new_file.write_text("skip me\ninclude me\n")
+
+        command_start(quiet=True)
+        command_skip_line("1", auto_advance=False)
+        command_include(quiet=True, auto_advance=False)
+
+        assert _show_index_file(temp_git_repo, "new.txt") == "include me\n"
+        assert new_file.read_text() == "skip me\ninclude me\n"
+
+    def test_include_stages_contentful_file_deletion(self, temp_git_repo):
+        """Bare include should stage a deletion rather than an empty blob."""
+        deleted = temp_git_repo / "deleted.txt"
+        deleted.write_text("content\n")
+        subprocess.run(
+            ["git", "add", "deleted.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add deleted file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        deleted.unlink()
+
+        command_start(quiet=True)
+        command_include(quiet=True, auto_advance=False)
+
+        assert subprocess.run(
+            ["git", "status", "--short", "--", "deleted.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        ).stdout == "D  deleted.txt\n"
+        assert subprocess.run(
+            ["git", "ls-files", "--stage", "--", "deleted.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        ).stdout == ""
+
+    def test_include_file_stages_contentful_file_deletion(self, temp_git_repo):
+        """Whole-file include should stage a deletion in one operation."""
+        deleted = temp_git_repo / "deleted.txt"
+        deleted.write_text("content\n")
+        subprocess.run(
+            ["git", "add", "deleted.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add deleted file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        deleted.unlink()
+
+        command_start(quiet=True)
+        command_include_file("deleted.txt", quiet=True, advance=False)
+
+        assert subprocess.run(
+            ["git", "status", "--short", "--", "deleted.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        ).stdout == "D  deleted.txt\n"
 
     def test_include_raises_when_git_rejects_hunk(self, temp_git_repo, monkeypatch):
         """A failed index update should fail the include command."""

@@ -215,6 +215,46 @@ class TestUpdateIndexWithBlobContent:
         )
         assert result.stdout == "generated\ncontent\n"
 
+    def test_missing_index_entry_uses_executable_worktree_mode(self, temp_git_repo):
+        """Generated content retains an executable worktree path's mode."""
+        path = temp_git_repo / "tool"
+        path.write_text("old\n")
+        path.chmod(0o755)
+
+        with LineBuffer.from_bytes(b"new\n") as buffer:
+            update_index_with_blob_buffer("tool", buffer)
+
+        result = subprocess.run(
+            ["git", "ls-files", "--stage", "--", "tool"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert result.stdout.split()[0] == "100755"
+
+    def test_missing_index_entry_uses_symlink_worktree_mode(self, temp_git_repo):
+        """Generated symlink target bytes are installed as a symlink entry."""
+        (temp_git_repo / "link").symlink_to("target")
+
+        with LineBuffer.from_bytes(b"target") as buffer:
+            update_index_with_blob_buffer("link", buffer)
+
+        result = subprocess.run(
+            ["git", "ls-files", "--stage", "--", "link"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert result.stdout.split()[0] == "120000"
+
+    def test_rejects_non_blob_explicit_mode(self, temp_git_repo):
+        """Gitlinks cannot be written through the blob content helper."""
+        with LineBuffer.from_bytes(b"object id") as buffer:
+            with pytest.raises(ValueError, match="160000"):
+                update_index_with_blob_buffer("submodule", buffer, mode="160000")
+
     def test_disabled_journal_does_not_add_index_observations_or_previews(
         self,
         temp_git_repo,

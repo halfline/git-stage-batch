@@ -24,6 +24,7 @@ def read_index_entry(file_path: str) -> IndexEntry | None:
         check=False,
         text_output=False,
         requires_index_lock=False,
+        literal_pathspecs=True,
     )
     if result.returncode != 0:
         return None
@@ -59,6 +60,7 @@ def read_index_entries(file_paths: Iterable[str]) -> dict[str, IndexEntry]:
         check=False,
         text_output=False,
         requires_index_lock=False,
+        literal_pathspecs=True,
     )
     if result.returncode != 0:
         return {}

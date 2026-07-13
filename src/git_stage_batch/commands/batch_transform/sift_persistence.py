@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+
 from ...batch.state.lifecycle import create_batch, delete_batch
 from ...batch.state.compatibility_metadata import write_file_backed_batch_metadata
 from ...batch.ownership.model import BatchOwnership
@@ -9,6 +11,7 @@ from ...batch.state.query import get_batch_baseline_commit, read_batch_metadata
 from ...batch.state.references import (
     delete_batch_state_refs,
     get_batch_content_ref_name,
+    remove_file_backed_batch_metadata,
     sync_batch_state_refs,
 )
 from ...batch.state.content_commits import (
@@ -220,6 +223,87 @@ def replace_batch_with_sifted_files(
         if batch_exists(temp_batch_name):
             delete_batch(temp_batch_name)
         raise
+
+
+def publish_sifted_files(
+    *,
+    destination_batch: str,
+    retained_files: list[RetainedSiftedFile],
+    source_metadata: dict,
+    destination_note: str,
+    replace_existing: bool,
+) -> None:
+    """Build sift output privately and publish both destination refs together."""
+    temp_batch_name = _new_sift_temp_batch_name()
+    temp_batch_created = False
+    published = False
+    destination_metadata_written = False
+
+    try:
+        try:
+            create_batch(
+                temp_batch_name,
+                note=f"Temporary sift for {destination_batch}",
+                baseline_commit=source_metadata.get("baseline"),
+            )
+        except BaseException:
+            if not batch_exists(temp_batch_name):
+                remove_file_backed_batch_metadata(temp_batch_name)
+            raise
+        temp_batch_created = True
+
+        for file_path, file_meta, result in retained_files:
+            add_sifted_file_to_batch(
+                temp_batch_name,
+                file_path,
+                file_meta,
+                result,
+            )
+
+        temp_commit = run_git_command(
+            ["rev-parse", "--verify", get_batch_content_ref_name(temp_batch_name)],
+            requires_index_lock=False,
+        )
+        commit_sha = temp_commit.stdout.strip()
+        if not commit_sha:
+            raise RuntimeError("Temporary sift batch has no content commit")
+
+        if not replace_existing and batch_exists(destination_batch):
+            exit_with_error(
+                _("Destination batch '{name}' was created while sift was running").format(
+                    name=destination_batch,
+                )
+            )
+
+        temp_metadata = read_batch_metadata(temp_batch_name)
+        temp_metadata["note"] = destination_note
+        temp_metadata["revision"] = (
+            source_metadata.get("revision") if replace_existing else None
+        )
+        if replace_existing and source_metadata.get("created_at"):
+            temp_metadata["created_at"] = source_metadata["created_at"]
+        write_file_backed_batch_metadata(destination_batch, temp_metadata)
+        destination_metadata_written = True
+        sync_batch_state_refs(
+            destination_batch,
+            content_commit=commit_sha,
+            source_buffers=_source_buffers_from_sift_results(retained_files),
+        )
+        published = True
+    finally:
+        if destination_metadata_written and not published:
+            remove_file_backed_batch_metadata(destination_batch)
+        if temp_batch_created:
+            delete_batch_state_refs(temp_batch_name)
+            remove_file_backed_batch_metadata(temp_batch_name)
+
+
+def _new_sift_temp_batch_name() -> str:
+    """Return an unused invocation-owned batch name without deleting collisions."""
+    while True:
+        candidate = f"sift-tmp-{uuid.uuid4().hex}"
+        if not batch_exists(candidate):
+            return candidate
 
 
 def _source_buffers_from_sift_results(

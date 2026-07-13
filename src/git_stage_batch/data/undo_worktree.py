@@ -12,7 +12,10 @@ from typing import Any
 from ..core.buffer import LineBuffer
 from ..utils.git_command import run_git_command
 from ..utils.git_index import GitIndexEntryUpdate
-from ..utils.git_repository import get_git_repository_root_path
+from ..utils.git_repository import (
+    get_git_repository_root_path,
+    is_git_repository_root_path,
+)
 from ..utils.git_object_io import create_git_blob, create_git_blobs_from_paths
 from ..git_paths import decode_path, nul_records
 
@@ -63,6 +66,7 @@ def _gitlink_oids_from_index(paths: list[str]) -> dict[str, str]:
         return {}
     result = run_git_command(
         ["ls-files", "--stage", "-z", "--", *paths],
+        cwd=str(get_git_repository_root_path()),
         check=False,
         text_output=False,
         requires_index_lock=False,
@@ -86,6 +90,7 @@ def _gitlink_oids_from_head(paths: list[str]) -> dict[str, str]:
         return {}
     result = run_git_command(
         ["ls-tree", "-z", "HEAD", "--", *paths],
+        cwd=str(get_git_repository_root_path()),
         check=False,
         text_output=False,
         requires_index_lock=False,
@@ -104,9 +109,12 @@ def _gitlink_oids_from_head(paths: list[str]) -> dict[str, str]:
 
 
 def _worktree_commit_oid(path: str) -> str | None:
+    worktree_path = get_git_repository_root_path() / path
+    if not is_git_repository_root_path(worktree_path):
+        return None
     result = run_git_command(
         ["rev-parse", "--verify", "HEAD^{commit}"],
-        cwd=path,
+        cwd=str(worktree_path),
         check=False,
         requires_index_lock=False,
     )
@@ -118,7 +126,7 @@ def _worktree_commit_oid(path: str) -> str | None:
 def _worktree_is_dirty(path: str) -> bool:
     result = run_git_command(
         ["status", "--porcelain"],
-        cwd=path,
+        cwd=str(get_git_repository_root_path() / path),
         check=False,
         requires_index_lock=False,
     )

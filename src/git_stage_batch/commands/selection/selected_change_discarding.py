@@ -19,7 +19,11 @@ from ...data.hunk_tracking import fetch_next_change
 from ...data.progress import record_hunk_discarded
 from ...data.selected_change.loading import load_selected_change
 from ...data.selected_change.paths import worktree_paths_for_selected_change
-from ...data.session import snapshot_file_if_untracked, snapshot_files_if_untracked
+from ...data.session import (
+    path_is_intent_to_add,
+    snapshot_file_if_untracked,
+    snapshot_files_if_untracked,
+)
 from ...data.file_modes import apply_git_file_mode
 from ...data.undo_checkpoints import undo_checkpoint
 from ...exceptions import CommandError, NoMoreHunks, exit_with_error
@@ -28,7 +32,7 @@ from ...utils.file_io import append_lines_to_file, path_is_empty, read_text_file
 from ...utils.git_command import run_git_command
 from ...utils.git_worktree import (
     git_apply_to_worktree,
-    git_checkout_paths,
+    git_checkout_index_paths,
     git_remove_paths,
 )
 from ...utils.git_index import (
@@ -193,16 +197,17 @@ def _discard_binary_change(
         absolute_path = get_git_repository_root_path() / file_path
         if absolute_path.exists():
             absolute_path.unlink()
-            log_journal("command_discard_binary_deleted", file_path=file_path)
+        _drop_intent_to_add_entry(file_path)
+        log_journal("command_discard_binary_deleted", file_path=file_path)
     elif item.is_deleted_file():
-        result = git_checkout_paths("HEAD", [file_path], check=False)
+        result = git_checkout_index_paths([file_path], check=False)
         if result.returncode != 0:
             exit_with_error(
                 _("Failed to restore binary file: {}").format(result.stderr)
             )
         log_journal("command_discard_binary_restored", file_path=file_path)
     else:
-        result = git_checkout_paths("HEAD", [file_path], check=False)
+        result = git_checkout_index_paths([file_path], check=False)
         if result.returncode != 0:
             exit_with_error(
                 _("Failed to restore binary file: {}").format(result.stderr)
@@ -287,6 +292,7 @@ def _discard_text_hunk(
         absolute_path = get_git_repository_root_path() / file_path
         if absolute_path.exists() and path_is_empty(absolute_path):
             absolute_path.unlink()
+            _drop_intent_to_add_entry(file_path)
 
     append_lines_to_file(get_block_list_file_path(), [patch_hash])
     record_hunk_discarded(patch_hash)
@@ -407,3 +413,21 @@ def _remove_worktree_path(file_path: str) -> None:
         absolute_path.rmdir()
         return
     absolute_path.unlink()
+
+
+def _drop_intent_to_add_entry(file_path: str) -> None:
+    """Remove a session-only intent-to-add marker after deleting its path."""
+    if not path_is_intent_to_add(file_path):
+        return
+    result = git_update_index(
+        file_path=file_path,
+        force_remove=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        exit_with_error(
+            _("Failed to remove intent-to-add entry for {file}: {error}").format(
+                file=file_path,
+                error=result.stderr,
+            )
+        )

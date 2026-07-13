@@ -46,6 +46,19 @@ def git_checkout_paths(
     )
 
 
+def git_checkout_index_paths(
+    paths: Sequence[str],
+    *,
+    check: bool = True,
+) -> subprocess.CompletedProcess:
+    """Restore working-tree paths from the index without changing the index."""
+    return run_git_command(
+        ["checkout", "--", *paths],
+        check=check,
+        requires_index_lock=True,
+    )
+
+
 def git_checkout_detached(
     oid: str,
     *,

@@ -2878,6 +2878,7 @@ def test_git_worktree_helpers_stay_out_of_git_command_module():
     )
     public_names = {
         "git_apply_to_worktree",
+        "git_checkout_index_paths",
         "git_checkout_paths",
         "git_checkout_detached",
         "git_remove_paths",
@@ -17226,7 +17227,7 @@ def test_selected_change_discarding_owns_discard_pipeline():
         "get_selected_hunk_hash_file_path",
         "get_selected_hunk_patch_file_path",
         "git_apply_to_worktree",
-        "git_checkout_paths",
+        "git_checkout_index_paths",
         "path_is_empty",
         "patch_is_new_file",
         "read_text_file_contents",

@@ -44,7 +44,7 @@ from ..utils.git_index import (
     temp_git_index,
 )
 from .index_entries import read_index_entries
-from .session import auto_added_files, intent_to_add_files
+from .session import intent_to_add_files
 from ..utils.git_repository import get_git_repository_root_path
 from ..utils.git_object_io import create_git_blob, create_git_blobs_from_paths
 from ..utils.paths import (
@@ -95,15 +95,16 @@ def _snapshot_current_state(
 
 
 def _restore_intent_to_add_state(state: dict[str, Any]) -> None:
-    """Restore scoped ITA flags, with a narrow legacy-checkpoint fallback."""
+    """Restore exact scoped ITA flags and fail closed for legacy checkpoints."""
     saved_paths = state.get("intent_to_add_paths")
     if isinstance(saved_paths, list):
         paths = [path for path in saved_paths if isinstance(path, str)]
     else:
-        scoped_paths = set(
-            state.get("tracked_index_paths", state.get("tracked_worktree_paths", []))
-        )
-        paths = auto_added_files(list(scoped_paths))
+        # Legacy checkpoints did not save the ITA bit. An empty index blob is
+        # ambiguous: it can be either ITA or a fully staged empty file. Failing
+        # closed avoids demoting staged content based on append-only session
+        # history.
+        paths = []
     _undo_restore.restore_intent_to_add_entries(paths)
 
 

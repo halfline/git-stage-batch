@@ -37,7 +37,10 @@ def test_git_c_quoted_path_round_trips_raw_bytes():
     assert unquote_path_token(quote_path_token(raw_path)) == raw_path
 
 
-@pytest.mark.parametrize("token", [b'"unfinished', b'"bad\\x"', b'"bad\\"'])
+@pytest.mark.parametrize(
+    "token",
+    [b'"unfinished', b'"bad\\x"', b'"bad\\"', b'"bad\\400path"'],
+)
 def test_invalid_git_c_quoted_paths_are_rejected(token):
     with pytest.raises(CommandError):
         unquote_path_token(token)

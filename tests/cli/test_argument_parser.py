@@ -7,7 +7,6 @@ import pytest
 
 from git_stage_batch.cli import (
     apply_dispatch,
-    argument_parser,
     discard_dispatch,
     file_blocking_subcommands,
     file_scope,

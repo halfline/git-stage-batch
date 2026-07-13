@@ -15,7 +15,6 @@ import subprocess
 
 import pytest
 
-import git_stage_batch.commands.selection.next_change_display as next_change_display
 from git_stage_batch.commands.show import command_show
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.selected_change.paths import get_selected_change_file_path
@@ -80,10 +79,12 @@ class TestCommandShow:
         command_show(file="a.txt", porcelain=True)
         assert get_selected_change_file_path() == "a.txt"
 
+        from git_stage_batch.data import live_change_candidates
+
         monkeypatch.setattr(
-            next_change_display,
-            "apply_line_level_batch_filter_to_cached_hunk",
-            lambda: True,
+            live_change_candidates,
+            "filter_line_level_change_for_batches",
+            lambda *_args, **_kwargs: None,
         )
 
         command_show()

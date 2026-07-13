@@ -3,7 +3,6 @@
 import os
 from unittest.mock import patch
 
-from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.utils.paths import get_abort_snapshots_directory_path
 from git_stage_batch.utils.paths import get_state_directory_path
 from git_stage_batch.batch.state.query import list_batch_files, read_batch_metadata

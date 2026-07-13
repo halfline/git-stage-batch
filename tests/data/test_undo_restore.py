@@ -369,6 +369,51 @@ def test_restore_gitlink_refuses_superproject_walk_up(tmp_path, monkeypatch):
     ).stdout.strip() == symbolic_head
 
 
+def test_restore_directory_archive_allows_self_created_symlinks(tmp_path, monkeypatch):
+    """The explicit tar filter remains compatible with archived symlinks."""
+    monkeypatch.chdir(tmp_path)
+    subprocess.run(["git", "init"], check=True, capture_output=True)
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "link").symlink_to("/outside")
+    archive_blob = undo_worktree._create_directory_archive_blob(source)
+    target = tmp_path / "nested"
+
+    undo_restore._restore_directory_archive(
+        target,
+        ("100644", archive_blob),
+        file_path="path/to/nested",
+    )
+
+    assert (target / "link").is_symlink()
+    assert os.readlink(target / "link") == "/outside"
+
+
+def test_extract_directory_archive_supports_early_python_310(monkeypatch, tmp_path):
+    """Runtimes predating extraction filters use the trusted-archive fallback."""
+    calls = []
+
+    class LegacyArchive:
+        def extractall(self, path):
+            calls.append(path)
+
+    monkeypatch.delattr(undo_restore.tarfile, "tar_filter")
+
+    undo_restore._extract_directory_archive(LegacyArchive(), tmp_path)
+
+    assert calls == [tmp_path]
+
+
+def test_restore_directory_archive_error_keeps_repository_path(tmp_path):
+    """Missing archive diagnostics identify the scoped repository path."""
+    with pytest.raises(CommandError, match="nested/path"):
+        undo_restore._restore_directory_archive(
+            tmp_path / "path",
+            None,
+            file_path="nested/path",
+        )
+
+
 def test_restore_intent_to_add_entries_checks_git_failures(tmp_path, monkeypatch):
     """intent-to-add restoration does not silently accept failed index commands."""
     monkeypatch.chdir(tmp_path)

@@ -135,11 +135,13 @@ def git_apply_stash(
 def git_submodule_update_checkout(
     paths: Sequence[str],
     *,
+    cwd: str | None = None,
     check: bool = True,
 ) -> subprocess.CompletedProcess:
     """Ensure submodule worktrees exist using checkout update mode."""
     return run_git_command(
         ["submodule", "update", "--init", "--checkout", "--", *paths],
+        cwd=cwd,
         check=check,
         requires_index_lock=True,
     )

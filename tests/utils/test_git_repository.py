@@ -8,6 +8,7 @@ import pytest
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.git_repository import (
     get_git_repository_root_path,
+    is_git_repository_root_path,
     require_git_repository,
 )
 from git_stage_batch.utils.repository_path import normalize_repository_path
@@ -83,6 +84,28 @@ class TestGetGitRepositoryRootPath:
         root = get_git_repository_root_path()
 
         assert root == temp_git_repo
+
+
+class TestIsGitRepositoryRootPath:
+    """Tests for exact repository-root identification."""
+
+    def test_accepts_repository_root(self, temp_git_repo):
+        """The worktree root identifies its own repository."""
+        assert is_git_repository_root_path(temp_git_repo)
+
+    def test_rejects_plain_descendant(self, temp_git_repo):
+        """Git parent discovery does not make a plain directory a repository."""
+        descendant = temp_git_repo / "plain"
+        descendant.mkdir()
+
+        assert not is_git_repository_root_path(descendant)
+
+    def test_rejects_symlink_to_repository_root(self, temp_git_repo):
+        """A nested path cannot alias the outer repository root."""
+        alias = temp_git_repo / "alias"
+        alias.symlink_to(temp_git_repo, target_is_directory=True)
+
+        assert not is_git_repository_root_path(alias)
 
 
 class TestNormalizeRepositoryPath:

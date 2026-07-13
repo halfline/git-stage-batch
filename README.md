@@ -29,7 +29,7 @@ During development we experiment, refactor, backtrack, and fix mistakes. If ever
 - **State persistence** - Resume staging across multiple invocations
 - **Batch operations** - Save hunks for later, organize complex changes
 - **Machine-readable output** - `--porcelain` flag for scripting
-- **No dependencies** - Pure Python standard library
+- **No runtime Python packages** - Uses the standard library and the external Git executable
 
 ## Quick Start
 
@@ -171,8 +171,9 @@ pip install git-stage-batch
 
 ## Requirements
 
-- Python 3.10+
-- No other dependencies (pure stdlib!)
+- Python 3.10 through 3.13
+- Git 2.29 or newer
+- A POSIX operating system; Linux is the currently tested platform. Native Windows is not supported.
 
 ## Documentation
 

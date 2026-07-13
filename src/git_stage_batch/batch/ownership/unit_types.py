@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 from ...core.line_selection import LineRanges
 from .absence_claims import AbsenceClaim
+from .references import BaselineReference
 from .replacement_units import ReplacementUnitOrigin
 
 
@@ -44,6 +45,7 @@ class OwnershipUnit:
     claimed_source_lines: LineRanges
     deletion_claims: list[AbsenceClaim]
     display_line_ids: LineRanges
+    baseline_references: dict[int, BaselineReference] = field(default_factory=dict)
     is_atomic: bool = False
     atomic_reason: str | None = None
     preserves_replacement_unit: bool = False

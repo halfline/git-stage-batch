@@ -98,7 +98,10 @@ def unquote_path_token(token: bytes) -> bytes:
                 and ord("0") <= token[octal_end] <= ord("7")
             ):
                 octal_end += 1
-            result.append(int(token[index:octal_end], 8))
+            octal_value = int(token[index:octal_end], 8)
+            if octal_value > 0xFF:
+                raise CommandError("Octal escape is outside byte range in Git pathname")
+            result.append(octal_value)
             index = octal_end
             continue
         raise CommandError("Invalid escape in Git pathname")

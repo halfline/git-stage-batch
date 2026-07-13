@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import sys
+from typing import Iterator
 
 from ...core.buffer import LineBuffer
 from ...core.diff_parser import acquire_unified_diff, patch_is_file_deletion
@@ -20,12 +22,29 @@ from ...data.live_diff import stream_live_git_diff
 from ...data.progress import record_hunk_included
 from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.undo_checkpoints import undo_checkpoint
+from ...exceptions import exit_with_error
 from ...i18n import _, ngettext
 from ...staging.index_update import update_index_with_blob_buffer
 from ...utils.git_command import run_git_command
-from ...utils.git_index import git_add_paths, git_apply_to_index
+from ...utils.git_index import (
+    git_add_paths,
+    git_apply_to_index,
+    git_read_tree,
+    git_write_tree,
+)
 from ..selection import selected_change_staging as _selected_change_staging
 from ..selection.action_completion import finish_selected_change_action
+
+
+@contextmanager
+def _rollback_index_on_error() -> Iterator[None]:
+    """Restore the pre-operation index if whole-file staging fails."""
+    index_tree = git_write_tree()
+    try:
+        yield
+    except BaseException:
+        git_read_tree(index_tree)
+        raise
 
 
 def include_file_changes(
@@ -69,8 +88,9 @@ def include_file_changes(
         hunks_staged = 0
         submodule_pointers_staged = 0
         renames_staged = 0
+        included_hashes: list[str] = []
         staged_rename_pairs: set[tuple[str, str]] = set()
-        with acquire_unified_diff(
+        with _rollback_index_on_error(), acquire_unified_diff(
             stream_live_git_diff(
                 full_index=True,
                 ignore_submodules="none",
@@ -82,7 +102,7 @@ def include_file_changes(
                     if patch.path() != target_file:
                         continue
                     _selected_change_staging.stage_file_mode_change(patch)
-                    record_hunk_included(compute_file_mode_change_hash(patch))
+                    included_hashes.append(compute_file_mode_change_hash(patch))
                     hunks_staged += 1
                     continue
 
@@ -93,14 +113,12 @@ def include_file_changes(
                     _selected_change_staging.stage_rename_change(patch)
                     result = git_add_paths([patch.new_path], check=False)
                     if result.returncode != 0:
-                        print(
+                        exit_with_error(
                             _("Failed to stage renamed file: {error}").format(
                                 error=result.stderr,
-                            ),
-                            file=sys.stderr,
+                            )
                         )
-                        break
-                    record_hunk_included(compute_rename_change_hash(patch))
+                    included_hashes.append(compute_rename_change_hash(patch))
                     hunks_staged += 1
                     renames_staged += 1
                     staged_rename_pairs.add((patch.old_path, patch.new_path))
@@ -111,7 +129,7 @@ def include_file_changes(
                         continue
 
                     _selected_change_staging.stage_text_deletion_change(patch)
-                    record_hunk_included(compute_text_file_deletion_hash(patch))
+                    included_hashes.append(compute_text_file_deletion_hash(patch))
                     hunks_staged += 1
                     continue
 
@@ -119,14 +137,12 @@ def include_file_changes(
                     if patch.path() == target_file:
                         result = _selected_change_staging.stage_gitlink_change(patch)
                         if result.returncode != 0:
-                            print(
+                            exit_with_error(
                                 _("Failed to stage submodule pointer: {error}").format(
                                     error=result.stderr,
-                                ),
-                                file=sys.stderr,
+                                )
                             )
-                            break
-                        record_hunk_included(compute_gitlink_change_hash(patch))
+                        included_hashes.append(compute_gitlink_change_hash(patch))
                         hunks_staged += 1
                         submodule_pointers_staged += 1
                     continue
@@ -138,15 +154,13 @@ def include_file_changes(
 
                     result = git_add_paths([file_path], check=False)
                     if result.returncode != 0:
-                        print(
+                        exit_with_error(
                             _("Failed to stage binary file: {error}").format(
                                 error=result.stderr,
-                            ),
-                            file=sys.stderr,
+                            )
                         )
-                        break
 
-                    record_hunk_included(compute_binary_file_hash(patch))
+                    included_hashes.append(compute_binary_file_hash(patch))
                     hunks_staged += 1
                     continue
 
@@ -166,15 +180,13 @@ def include_file_changes(
                 if patch.old_path != patch.new_path:
                     result = git_add_paths(sorted(patch_paths), check=False)
                     if result.returncode != 0:
-                        print(
+                        exit_with_error(
                             _("Failed to stage file: {error}").format(
                                 error=result.stderr,
-                            ),
-                            file=sys.stderr,
+                            )
                         )
-                        break
 
-                    record_hunk_included(patch_hash)
+                    included_hashes.append(patch_hash)
                     hunks_staged += 1
                     continue
 
@@ -185,16 +197,17 @@ def include_file_changes(
                 else:
                     apply_result = git_apply_to_index(patch.lines, check=False)
                 if apply_result is None or apply_result.returncode == 0:
-                    record_hunk_included(patch_hash)
+                    included_hashes.append(patch_hash)
                     hunks_staged += 1
                 else:
-                    print(
+                    exit_with_error(
                         _("Failed to apply hunk: {error}").format(
                             error=apply_result.stderr,
-                        ),
-                        file=sys.stderr,
+                        )
                     )
-                    break
+
+        for patch_hash in included_hashes:
+            record_hunk_included(patch_hash)
 
     if hunks_staged == 0:
         if not quiet:

@@ -23,6 +23,7 @@ from git_stage_batch.cli.argument_parser import parse_command_line
 import subprocess
 
 import pytest
+import git_stage_batch.commands.file_scope.include_file as include_file_module
 
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.show import command_show
@@ -1200,6 +1201,47 @@ class TestDirectFileOperations:
         # Verify working tree is clean (all changes staged)
         result = run_git_command(["diff", "test.txt"])
         assert result.stdout.strip() == ""
+
+    def test_include_file_rolls_back_index_after_staging_failure(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """A failed staging step must not leave a partially updated index."""
+        repo = tmp_path / "test_repo"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+        subprocess.run(["git", "init"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], check=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], check=True)
+        lines = [f"line {number}\n" for number in range(1, 61)]
+        (repo / "test.txt").write_text("".join(lines))
+        subprocess.run(["git", "add", "test.txt"], check=True)
+        subprocess.run(["git", "commit", "-m", "Initial"], check=True, capture_output=True)
+        lines[1] = "first changed\n"
+        lines[50] = "second changed\n"
+        (repo / "test.txt").write_text("".join(lines))
+        command_start()
+        original_index_tree = run_git_command(["write-tree"]).stdout.strip()
+        original_apply = include_file_module.git_apply_to_index
+
+        def mutate_then_fail(*args, **kwargs):
+            original_apply(*args, **kwargs)
+            return subprocess.CompletedProcess(
+                ["git", "apply"],
+                1,
+                stdout="",
+                stderr="simulated apply failure",
+            )
+
+        monkeypatch.setattr(include_file_module, "git_apply_to_index", mutate_then_fail)
+
+        with pytest.raises(CommandError, match="simulated apply failure"):
+            command_include_file(file="test.txt")
+
+        assert run_git_command(["write-tree"]).stdout.strip() == original_index_tree
+        assert "first changed" in run_git_command(["diff", "--", "test.txt"]).stdout
+        assert "second changed" in run_git_command(["diff", "--", "test.txt"]).stdout
 
 
 class TestFileAndLineIDCombinations:

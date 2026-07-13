@@ -82,7 +82,11 @@ def command_abort(*, quiet: bool = False) -> None:
     abort_head = read_text_file_contents(get_abort_head_file_path()).strip()
     start_point = load_session_start_point()
     abort_stash_path = get_abort_stash_file_path()
-    abort_stash = read_text_file_contents(abort_stash_path).strip() if abort_stash_path.exists() else None
+    abort_stash = (
+        read_text_file_contents(abort_stash_path).strip()
+        if abort_stash_path.exists()
+        else None
+    )
     recovery_objects = [start_point.head_commit, start_point.index_tree, abort_stash]
     batch_snapshot_path = get_abort_state_directory_path() / "batch-refs.json"
     try:
@@ -104,8 +108,8 @@ def command_abort(*, quiet: bool = False) -> None:
     # Reset auto-added files first
     if not start_point.is_unborn and get_auto_added_files_file_path().exists():
         auto_added = read_file_paths_file(get_auto_added_files_file_path())
-        for file_path in auto_added:
-            git_reset_paths([file_path], check=False)
+        if auto_added:
+            git_reset_paths(auto_added)
 
     # Reset to start HEAD (undoes commits, resets index and tracked files)
     # Set GIT_REFLOG_ACTION for clear reflog entries
@@ -190,7 +194,7 @@ def command_abort(*, quiet: bool = False) -> None:
         intent_to_add_files = read_file_paths_file(intent_to_add_path)
         for file_path in intent_to_add_files:
             # Re-add with intent-to-add flag
-            git_add_paths([file_path], intent_to_add=True, check=False)
+            git_add_paths([file_path], intent_to_add=True)
 
     # Restore batch refs to their original state
     # This recreates both git refs and metadata files from the snapshot

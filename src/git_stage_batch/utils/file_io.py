@@ -38,7 +38,11 @@ def read_text_file_contents(path: Path) -> str:
     Returns:
         File contents as string, or empty string if file doesn't exist
     """
-    return path.read_text(encoding="utf-8", errors="surrogateescape") if path.exists() else ""
+    return (
+        path.read_text(encoding="utf-8", errors="surrogateescape")
+        if path.exists()
+        else ""
+    )
 
 
 def write_text_file_contents(
@@ -126,7 +130,9 @@ def _replacement_mode(
 ) -> int:
     if mode_policy is AtomicWriteModePolicy.PRIVATE:
         if mode is not None:
-            raise ValueError("private atomic writes do not accept a caller-supplied mode")
+            raise ValueError(
+                "private atomic writes do not accept a caller-supplied mode"
+            )
         return PRIVATE_FILE_MODE
     if mode_policy is AtomicWriteModePolicy.PRESERVE_EXISTING:
         if metadata is not None:
@@ -253,7 +259,7 @@ def read_file_paths_file(path: Path) -> list[str]:
 
     contents = path.read_bytes()
     if contents.startswith(_PATH_LIST_MAGIC):
-        encoded_paths = nul_records(contents[len(_PATH_LIST_MAGIC):])
+        encoded_paths = nul_records(contents[len(_PATH_LIST_MAGIC) :])
         return sorted({decode_path(encoded_path) for encoded_path in encoded_paths})
 
     return sorted(read_text_file_line_set(path))
@@ -273,8 +279,7 @@ def write_file_paths_file(path: Path, file_paths: Iterable[str]) -> None:
     unique_paths = sorted(set(file_paths))
     if any(_path_requires_lossless_list_encoding(path) for path in unique_paths):
         contents = _PATH_LIST_MAGIC + b"".join(
-            encode_path(path) + b"\0"
-            for path in unique_paths
+            encode_path(path) + b"\0" for path in unique_paths
         )
         write_file_bytes(path, contents)
         return
@@ -305,11 +310,20 @@ def is_path_blocked(path: str, blocked_files: Collection[str]) -> bool:
     An entry covers path if it equals path exactly, or if the entry ends
     with '/' and path starts with that prefix (directory match).
     """
-    if f"!{path}" in blocked_files:
-        return False
-    if path in blocked_files:
-        return True
-    return any(path.startswith(entry) for entry in blocked_files if entry.endswith("/"))
+    # Exact and directory negations are authoritative in the compatibility
+    # state format, even when callers have loaded it into a set.
+    for entry in blocked_files:
+        if not entry.startswith("!"):
+            continue
+        included = entry[1:]
+        if path == included or (included.endswith("/") and path.startswith(included)):
+            return False
+    for entry in reversed(list(blocked_files)):
+        if entry.startswith("!"):
+            continue
+        elif path == entry or (entry.endswith("/") and path.startswith(entry)):
+            return True
+    return False
 
 
 def remove_file_path_from_file(state_file_path: Path, file_path: str) -> None:

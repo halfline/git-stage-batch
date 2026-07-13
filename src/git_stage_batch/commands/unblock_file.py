@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import sys
 from contextlib import nullcontext
-from pathlib import Path
 
 from ..data.session import session_is_active
 from ..data.undo_checkpoints import undo_checkpoint
@@ -19,13 +18,17 @@ from ..data.ignore_files import (
 )
 from ..exceptions import NoMoreHunks, exit_with_error
 from ..i18n import _
-from ..utils.file_io import append_file_path_to_file, read_file_paths_file, remove_file_path_from_file
+from ..utils.file_io import (
+    append_file_path_to_file,
+    read_file_paths_file,
+    remove_file_path_from_file,
+)
 from ..utils.git_command import run_git_command
 from ..utils.git_index import git_add_paths
 from ..utils.git_repository import (
     require_git_repository,
-    resolve_file_path_to_repo_relative,
 )
+from ..utils.repository_path import normalize_repository_path
 from ..utils.paths import (
     ensure_state_directory_exists,
     get_auto_added_files_file_path,
@@ -44,13 +47,17 @@ def _find_covering_directory(path: str, blocked_files: list[str]) -> str | None:
 
 def _is_absent_from_head(file_path: str) -> bool:
     """Return True when file_path has no entry in HEAD."""
-    head_check = run_git_command(["cat-file", "-e", f"HEAD:{file_path}"], check=False, requires_index_lock=False)
+    head_check = run_git_command(
+        ["cat-file", "-e", f"HEAD:{file_path}"], check=False, requires_index_lock=False
+    )
     return head_check.returncode != 0
 
 
 def _is_absent_from_index(file_path: str) -> bool:
     """Return True when file_path has no index entry."""
-    stage_result = run_git_command(["ls-files", "--stage", "--", file_path], check=False, requires_index_lock=False)
+    stage_result = run_git_command(
+        ["ls-files", "--stage", "--", file_path], check=False, requires_index_lock=False
+    )
     return not stage_result.stdout.strip()
 
 
@@ -63,9 +70,7 @@ def command_unblock_file(file_path_arg: str) -> None:
         exit_with_error(_("File path required for unblock-file command."))
 
     # Resolve to repo-relative path, normalizing directories to a trailing slash
-    file_path = resolve_file_path_to_repo_relative(file_path_arg)
-    if file_path_arg.endswith("/") or Path(file_path_arg).is_dir():
-        file_path = file_path.rstrip("/") + "/"
+    file_path = normalize_repository_path(file_path_arg).value
     session_active = session_is_active()
     checkpoint = (
         undo_checkpoint(
@@ -73,7 +78,8 @@ def command_unblock_file(file_path_arg: str) -> None:
             worktree_paths=[".gitignore"],
             index_paths=[file_path] if not file_path.endswith("/") else [],
         )
-        if session_active else nullcontext()
+        if session_active
+        else nullcontext()
     )
 
     with checkpoint:
@@ -89,29 +95,48 @@ def command_unblock_file(file_path_arg: str) -> None:
         # If not found directly, check whether a directory entry covers this path.
         # If so, promote dir/ to dir/** in the ignore file(s) and append a negation
         # so git re-includes this specific file while still ignoring the rest.
-        if not removed_from_gitignore and not removed_from_local_exclude and not directly_blocked:
+        if (
+            not removed_from_gitignore
+            and not removed_from_local_exclude
+            and not directly_blocked
+        ):
             covering_dir = _find_covering_directory(file_path, blocked_files)
             if covering_dir is not None:
                 if promote_directory_to_glob_in_gitignore(covering_dir):
                     add_pattern_to_gitignore(f"!{literal_ignore_pattern(file_path)}")
+                    if file_path.endswith("/"):
+                        add_pattern_to_gitignore(
+                            f"!{literal_ignore_pattern(file_path)}**"
+                        )
                     removed_from_gitignore = True
                 if promote_directory_to_glob_in_local_exclude(covering_dir):
                     add_pattern_to_local_exclude(
                         f"!{literal_ignore_pattern(file_path)}"
                     )
+                    if file_path.endswith("/"):
+                        add_pattern_to_local_exclude(
+                            f"!{literal_ignore_pattern(file_path)}**"
+                        )
                     removed_from_local_exclude = True
                 append_file_path_to_file(get_blocked_files_file_path(), f"!{file_path}")
 
         # Re-add new untracked files as intent-to-add if session is active
-        if session_active and not file_path.endswith("/") and _is_absent_from_head(file_path) and _is_absent_from_index(file_path):
-            result = git_add_paths([file_path], intent_to_add=True, check=False)
-            if result.returncode == 0:
-                append_file_path_to_file(get_auto_added_files_file_path(), file_path)
+        if (
+            session_active
+            and not file_path.endswith("/")
+            and _is_absent_from_head(file_path)
+            and _is_absent_from_index(file_path)
+        ):
+            git_add_paths([file_path], intent_to_add=True)
+            append_file_path_to_file(get_auto_added_files_file_path(), file_path)
 
     if removed_from_gitignore or removed_from_local_exclude:
         print(f"Unblocked file: {file_path}", file=sys.stderr)
     else:
-        print(f"Removed from blocked list: {file_path} (was not in .gitignore)", file=sys.stderr)
+        print(
+            f"Removed from blocked list: {file_path} (was not in .gitignore)",
+            file=sys.stderr,
+        )
 
     if session_active:
         try:

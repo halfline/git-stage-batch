@@ -79,3 +79,25 @@ def test_restore_tree_paths_uses_saved_git_mode(
         assert not target.is_symlink()
         assert target.read_bytes() == saved_content
         assert referent.read_text() == "untouched\n"
+def test_restore_intent_to_add_entries_checks_git_failures(tmp_path, monkeypatch):
+    """ITA restoration does not silently accept failed index commands."""
+    monkeypatch.chdir(tmp_path)
+    subprocess.run(["git", "init"], check=True, capture_output=True)
+    (tmp_path / "new.txt").write_text("content\n")
+    update_calls = []
+    add_calls = []
+    monkeypatch.setattr(
+        undo_restore,
+        "git_update_index",
+        lambda **kwargs: update_calls.append(kwargs),
+    )
+    monkeypatch.setattr(
+        undo_restore,
+        "git_add_paths",
+        lambda paths, **kwargs: add_calls.append((paths, kwargs)),
+    )
+
+    undo_restore.restore_intent_to_add_entries(["new.txt"])
+
+    assert update_calls == [{"file_path": "new.txt", "force_remove": True}]
+    assert add_calls == [(["new.txt"], {"intent_to_add": True})]

@@ -37,6 +37,7 @@ from ...utils.git_repository import get_git_repository_root_path
 from ...utils.git_worktree import git_checkout_index_paths
 from ...utils.paths import get_block_list_file_path, get_context_lines
 from ..selection.action_completion import finish_selected_change_action
+from .target_path import checkpoint_paths_for_live_file
 from ..selection.selected_change_discarding import (
     discard_gitlink_change,
     discard_rename_change,
@@ -111,9 +112,10 @@ def discard_file_changes(
         target_file = file
 
     auto_add_untracked_files([target_file])
+    checkpoint_paths = checkpoint_paths_for_live_file(target_file)
     with undo_checkpoint(
         f"discard --file {file}".rstrip(),
-        worktree_paths=[target_file],
+        worktree_paths=checkpoint_paths,
     ):
         blocklist_path = get_block_list_file_path()
         blocked_hashes = read_text_file_line_set(blocklist_path)

@@ -32,6 +32,7 @@ from ...utils.git_index import (
 )
 from ..selection import selected_change_staging as _selected_change_staging
 from ..selection.action_completion import finish_selected_change_action
+from .target_path import checkpoint_paths_for_live_file
 
 
 @contextmanager
@@ -79,9 +80,10 @@ def include_file_changes(
         target_file = file
 
     auto_add_untracked_files([target_file])
+    checkpoint_paths = checkpoint_paths_for_live_file(target_file)
     with undo_checkpoint(
         f"include --file {file}".rstrip(),
-        worktree_paths=[target_file],
+        worktree_paths=checkpoint_paths,
     ):
         hunks_staged = 0
         submodule_pointers_staged = 0

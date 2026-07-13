@@ -277,9 +277,9 @@ def _discard_text_hunk(
 
     if is_new_file:
         absolute_path = get_git_repository_root_path() / file_path
-        if absolute_path.exists() and path_is_empty(absolute_path):
+        if os.path.lexists(absolute_path) and path_is_empty(absolute_path):
             absolute_path.unlink()
-            _drop_intent_to_add_entry(file_path)
+        _drop_intent_to_add_entry(file_path)
 
     append_lines_to_file(get_block_list_file_path(), [patch_hash])
     record_hunk_discarded(patch_hash)

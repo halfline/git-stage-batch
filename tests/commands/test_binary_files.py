@@ -374,6 +374,44 @@ def test_binary_file_skip(binary_file_repo: Path, monkeypatch: pytest.MonkeyPatc
     assert "A  new_image.png" not in status_result.stdout  # Not fully staged
 
 
+def test_unstaged_binary_selection_freshness_uses_index_base(
+    binary_file_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A staged addition with further edits should not be stale immediately."""
+    monkeypatch.chdir(binary_file_repo)
+    binary_path = binary_file_repo / "staged-new.bin"
+    binary_path.write_bytes(b"\x00STAGED")
+    subprocess.run(["git", "add", "staged-new.bin"], check=True, capture_output=True)
+    binary_path.write_bytes(b"\x00WORKTREE")
+
+    initialize_abort_state()
+    selected = fetch_next_change()
+
+    assert isinstance(selected, BinaryFileChange)
+    assert selected.change_type == "modified"
+    command_skip(quiet=True)
+    assert binary_path.read_bytes() == b"\x00WORKTREE"
+
+
+def test_head_based_binary_file_review_keeps_its_comparison_base(
+    binary_file_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An explicit file review should validate against the same HEAD view."""
+    monkeypatch.chdir(binary_file_repo)
+    binary_path = binary_file_repo / "staged-new.bin"
+    binary_path.write_bytes(b"\x00STAGED")
+    subprocess.run(["git", "add", "staged-new.bin"], check=True, capture_output=True)
+    binary_path.write_bytes(b"\x00WORKTREE")
+
+    initialize_abort_state()
+    command_show(file="staged-new.bin", porcelain=True)
+
+    command_skip(quiet=True)
+    assert binary_path.read_bytes() == b"\x00WORKTREE"
+
+
 def test_selected_binary_include_to_batch(binary_file_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Selected binary include --to should not treat the binary as a text patch."""
     monkeypatch.chdir(binary_file_repo)
@@ -774,7 +812,7 @@ def test_show_from_batch_displays_binary_entries(
 
 
 def test_binary_file_modified_discard_file(binary_file_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """File-scoped discard should remove binary files atomically like text files."""
+    """File-scoped discard should restore a binary from the index."""
     monkeypatch.chdir(binary_file_repo)
 
     image_path = binary_file_repo / "image.png"
@@ -784,9 +822,10 @@ def test_binary_file_modified_discard_file(binary_file_repo: Path, monkeypatch: 
 
     command_discard_file("image.png")
 
-    assert not image_path.exists()
+    assert image_path.exists()
+    assert image_path.read_bytes() != b"\x89PNG\r\n\x1a\nMODIFIED"
     status_result = run_git_command(["status", "--porcelain"])
-    assert "D  image.png" in status_result.stdout
+    assert "image.png" not in status_result.stdout
 
 def test_binary_file_modified_include_file(binary_file_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """File-scoped include should stage binary files atomically."""

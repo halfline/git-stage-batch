@@ -6404,10 +6404,9 @@ def test_file_scope_discard_owns_file_pipeline():
     }
     moved_names = {
         "auto_add_untracked_files",
-        "git_remove_paths",
-        "render_gitlink_change",
-        "render_rename_change",
-        "render_text_deletion_change",
+        "git_checkout_index_paths",
+        "git_update_index",
+        "read_index_entry",
         "stream_live_git_diff",
     }
 

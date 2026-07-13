@@ -1142,12 +1142,12 @@ class TestDirectFileOperations:
         # Discard entire file
         command_discard_file(file="")
 
-        # File should be removed from working tree (git rm -f)
-        assert not (repo / "test.txt").exists(), "File should be removed from working tree"
+        # The working tree should be restored from the index.
+        assert (repo / "test.txt").read_text() == "".join(lines)
 
-        # Verify it's staged for deletion
+        # Verify no deletion was staged.
         result = run_git_command(["diff", "--cached", "--name-status"])
-        assert "D\ttest.txt" in result.stdout, "File should be staged for deletion"
+        assert result.stdout == ""
 
     def test_include_file_with_multiple_hunks(self, tmp_path, monkeypatch):
         """Include --file should stage all hunks from a multi-hunk file."""
@@ -1895,12 +1895,12 @@ class TestExplicitFilePath:
         assert line_changes_after.path == "alpha.txt", "Current hunk should still be from alpha.txt"
         assert line_changes_after.lines == line_changes_before.lines, "Current hunk should be unchanged"
 
-        # Verify gamma.txt is removed
-        assert not (multi_file_repo / "gamma.txt").exists()
-
-        # Verify it's staged for deletion
+        # Verify gamma.txt is restored from the index without staging a deletion.
+        assert (multi_file_repo / "gamma.txt").read_text() == (
+            "gamma1\ngamma2\ngamma3\n"
+        )
         result = run_git_command(["diff", "--cached", "--name-status"])
-        assert "D\tgamma.txt" in result.stdout
+        assert "gamma.txt" not in result.stdout
 
         # Verify alpha.txt is still untouched
         alpha_content = (multi_file_repo / "alpha.txt").read_text()
@@ -2040,12 +2040,12 @@ class TestExplicitFilePath:
         # Explicitly discard remove.txt (not the selected file)
         command_discard_file(file="remove.txt")
 
-        # Verify remove.txt is removed
-        assert not (repo / "remove.txt").exists()
-
-        # Verify it's staged for deletion
+        # Verify remove.txt is restored from the index without staging a deletion.
+        assert (repo / "remove.txt").read_text() == "".join(
+            f"r{i}\n" for i in range(1, 101)
+        )
         result = run_git_command(["diff", "--cached", "--name-status"])
-        assert "D\tremove.txt" in result.stdout
+        assert "remove.txt" not in result.stdout
 
         # Verify keep.txt is untouched
         content = (repo / "keep.txt").read_text()
@@ -2097,8 +2097,10 @@ class TestExplicitFilePath:
         # Explicitly discard gamma.txt (not the selected file)
         command_discard_file(file="gamma.txt")
 
-        # Gamma.txt should be removed
-        assert not (multi_file_repo / "gamma.txt").exists(), "gamma.txt should be removed"
+        # Gamma.txt should be restored from the index.
+        assert (multi_file_repo / "gamma.txt").read_text() == (
+            "gamma1\ngamma2\ngamma3\n"
+        )
 
         # Now iterate through remaining hunks - gamma.txt should be masked
         # We should only see alpha.txt and beta.txt hunks

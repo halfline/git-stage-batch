@@ -40,8 +40,8 @@ def temp_git_repo(tmp_path, monkeypatch):
 class TestCommandDiscardFile:
     """Tests for discard-file command."""
 
-    def test_discard_file_removes_file_from_working_tree(self, temp_git_repo, capsys):
-        """Test that discard-file removes the entire file from working tree."""
+    def test_discard_file_restores_file_from_index(self, temp_git_repo, capsys):
+        """Discard-file should restore a tracked file without changing the index."""
         # Create and commit a file
         test_file = temp_git_repo / "unwanted.txt"
         test_file.write_text("line 1\nline 2\nline 3\n")
@@ -54,47 +54,48 @@ class TestCommandDiscardFile:
         command_start()
         command_discard_file(file="")
 
-        # File should be completely removed from working tree
-        assert not test_file.exists()
+        # The working tree should be restored to its indexed contents.
+        assert test_file.read_text() == "line 1\nline 2\nline 3\n"
 
-        # File should be staged for deletion
+        # The operation should not stage a deletion.
         result = subprocess.run(
             ["git", "diff", "--cached", "--name-status"],
             check=True,
             cwd=temp_git_repo,
             capture_output=True,)
-        assert b"D\tunwanted.txt" in result.stdout
+        assert result.stdout == b""
 
         captured = capsys.readouterr()
-        assert "File discarded: unwanted.txt" in captured.err
+        assert "Unstaged changes discarded from unwanted.txt" in captured.err
+        assert "git rm -- unwanted.txt" in captured.err
 
     def test_discard_file_raises_when_git_rejects_removal(
         self,
         temp_git_repo,
         monkeypatch,
     ):
-        """A failed named file removal should fail the discard command."""
+        """A failed index restore should fail the discard command."""
         readme = temp_git_repo / "README.md"
         readme.write_text("# Changed\n")
         command_start()
         monkeypatch.setattr(
             discard_file_scope,
-            "git_remove_paths",
+            "git_checkout_index_paths",
             lambda *_args, **_kwargs: subprocess.CompletedProcess(
-                ["git", "rm"],
+                ["git", "checkout"],
                 1,
                 "",
-                "file removal failed",
+                "file restore failed",
             ),
         )
 
-        with pytest.raises(CommandError, match="file removal failed"):
+        with pytest.raises(CommandError, match="file restore failed"):
             command_discard_file(file="README.md")
 
         assert readme.read_text() == "# Changed\n"
 
     def test_discard_file_with_multiple_hunks(self, temp_git_repo, capsys):
-        """Test that discard-file removes file even with multiple hunks."""
+        """Test that discard-file restores a file with multiple hunks."""
         # Create and commit a file with content that will create multiple hunks
         test_file = temp_git_repo / "multi.txt"
         test_file.write_text("line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\n")
@@ -107,19 +108,21 @@ class TestCommandDiscardFile:
         command_start()
         command_discard_file(file="")
 
-        # File should be completely removed
-        assert not test_file.exists()
+        # File should be restored to the indexed version.
+        assert test_file.read_text() == (
+            "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\n"
+        )
 
-        # Verify it's staged for deletion
+        # Verify no deletion was staged.
         result = subprocess.run(
             ["git", "status", "--short"],
             check=True,
             cwd=temp_git_repo,
             capture_output=True,)
-        assert b"D  multi.txt" in result.stdout
+        assert result.stdout == b""
 
         captured = capsys.readouterr()
-        assert "File discarded: multi.txt" in captured.err
+        assert "Unstaged changes discarded from multi.txt" in captured.err
 
     def test_discard_file_only_affects_selected_file(self, temp_git_repo, capsys):
         """Test that discard-file only removes the selected file, not others."""
@@ -138,23 +141,84 @@ class TestCommandDiscardFile:
         command_start()
         command_discard_file(file="")
 
-        # Only the first file should be removed
-        assert not file1.exists()
+        # Only the first file should be restored.
+        assert file1.read_text() == "original 1\n"
         assert file2.exists()
 
         # Verify file2 still has its changes
         assert file2.read_text() == "modified 2\n"
 
-        # Verify file1 is staged for deletion
+        # Verify file1 was not staged for deletion.
         result = subprocess.run(
             ["git", "diff", "--cached", "--name-status"],
             check=True,
             cwd=temp_git_repo,
             capture_output=True,)
-        assert b"D\tfile1.txt" in result.stdout
+        assert result.stdout == b""
 
         captured = capsys.readouterr()
-        assert "File discarded: file1.txt" in captured.err
+        assert "Unstaged changes discarded from file1.txt" in captured.err
+
+    def test_discard_file_preserves_staged_content(self, temp_git_repo):
+        """Whole-file discard should restore from the index, not HEAD."""
+        test_file = temp_git_repo / "staged.txt"
+        test_file.write_text("base\n")
+        subprocess.run(
+            ["git", "add", "staged.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add staged file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        test_file.write_text("staged\n")
+        subprocess.run(
+            ["git", "add", "staged.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        test_file.write_text("unstaged\n")
+
+        command_start()
+        command_discard_file(file="staged.txt")
+
+        assert test_file.read_text() == "staged\n"
+        staged = subprocess.run(
+            ["git", "show", ":staged.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert staged.stdout == "staged\n"
+
+    def test_discard_file_restores_an_unstaged_deletion(self, temp_git_repo):
+        """Discarding a tracked deletion should restore the indexed file."""
+        test_file = temp_git_repo / "deleted.txt"
+        test_file.write_text("indexed\n")
+        subprocess.run(
+            ["git", "add", "deleted.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add deleted file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        test_file.unlink()
+
+        command_start()
+        command_discard_file(file="deleted.txt")
+
+        assert test_file.read_text() == "indexed\n"
 
     def test_discard_file_no_changes(self, temp_git_repo, capsys):
         """Test discard-file when no more hunks remain."""
@@ -202,7 +266,7 @@ class TestCommandDiscardFile:
         assert untracked_file.read_text() == original_content
 
     def test_discard_file_marks_all_hunks_as_processed(self, temp_git_repo):
-        """Test that discard-file marks all hunks as processed even after git rm stages deletion."""
+        """Test that discard-file marks every restored hunk as processed."""
         ensure_state_directory_exists()
 
         # Create and commit a file with content that will create multiple hunks
@@ -241,14 +305,14 @@ class TestCommandDiscardFile:
         # Discard the file
         command_discard_file(file="")
 
-        # File should be removed and staged for deletion
-        assert not test_file.exists()
+        # File should be restored without staging a deletion.
+        assert test_file.read_text() == "".join(f"line {i}\n" for i in range(1, 21))
         result = subprocess.run(
             ["git", "diff", "--cached", "--name-status"],
             check=True,
             cwd=temp_git_repo,
             capture_output=True,)
-        assert b"D\tmulti.txt" in result.stdout
+        assert result.stdout == b""
 
         # All hunks should be marked as processed in blocklist
         blocklist_path = get_block_list_file_path()

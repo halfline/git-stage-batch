@@ -92,7 +92,11 @@ def session_is_active(git_dir: Path | None = None) -> bool:
 
 def _diff_index_name_status(*, intent_to_add_visible: bool) -> dict[str, str]:
     """Return cached path statuses under one intent-to-add interpretation."""
-    visibility_option = "--ita-visible-in-index" if intent_to_add_visible else "--ita-invisible-in-index"
+    visibility_option = (
+        "--ita-visible-in-index"
+        if intent_to_add_visible
+        else "--ita-invisible-in-index"
+    )
     result = run_git_command(
         [
             "diff-index",
@@ -167,7 +171,9 @@ def _snapshot_intent_to_add_files() -> tuple[list[str], list[str]]:
 
     # Save list of intent-to-add files for abort restoration
     if all_intent_to_add_files:
-        intent_to_add_file = get_state_directory_path() / "session" / "abort" / "intent-to-add-files.txt"
+        intent_to_add_file = (
+            get_state_directory_path() / "session" / "abort" / "intent-to-add-files.txt"
+        )
         write_file_paths_file(intent_to_add_file, all_intent_to_add_files)
 
     return (all_intent_to_add_files, new_intent_to_add_files)
@@ -195,8 +201,7 @@ def _initialize_abort_state() -> None:
             requires_index_lock=False,
         )
         indexed_paths = [
-            decode_path(path)
-            for path in nul_records(indexed_paths_result.stdout)
+            decode_path(path) for path in nul_records(indexed_paths_result.stdout)
         ]
         _snapshot_worktree_paths_for_unborn_abort(indexed_paths)
 
@@ -219,7 +224,7 @@ def _initialize_abort_state() -> None:
                 new_intent_to_add_files,
                 cached=True,
                 quiet=True,
-                check=False,
+                ignore_unmatch=True,
             )
         if tracked_intent_to_add_files:
             log_journal(
@@ -258,17 +263,14 @@ def _initialize_abort_state() -> None:
                 all_intent_to_add_files,
                 cached=True,
                 quiet=True,
-                check=False,
+                ignore_unmatch=True,
             )
             index_before = (
-                read_index_entries(all_intent_to_add_files)
-                if journal_enabled()
-                else {}
+                read_index_entries(all_intent_to_add_files) if journal_enabled() else {}
             )
             git_add_paths_from_stdin(
                 all_intent_to_add_files,
                 intent_to_add=True,
-                check=False,
             )
             if journal_enabled():
                 log_journal(
@@ -291,9 +293,9 @@ def _initialize_abort_state() -> None:
             stderr=stash_stderr,
         )
         raise CommandError(
-            _("Could not create the recovery snapshot required to start a session: {error}").format(
-                error=stash_stderr.strip() or _("git stash create failed")
-            )
+            _(
+                "Could not create the recovery snapshot required to start a session: {error}"
+            ).format(error=stash_stderr.strip() or _("git stash create failed"))
         )
 
     write_text_file_contents(get_abort_stash_file_path(), stash_hash)
@@ -324,9 +326,7 @@ def _snapshot_worktree_paths_for_unborn_abort(file_paths: list[str]) -> None:
     captured: list[str] = []
     for file_path in file_paths:
         source = repo_root / file_path
-        if not os.path.lexists(source) or (
-            source.is_dir() and not source.is_symlink()
-        ):
+        if not os.path.lexists(source) or (source.is_dir() and not source.is_symlink()):
             continue
         target = snapshot_dir / file_path
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -370,9 +370,7 @@ def snapshot_file_if_untracked(
         pass  # Continue to snapshot
     else:
         is_intent_to_add = (
-            path_is_intent_to_add(file_path)
-            if intent_to_add is None
-            else intent_to_add
+            path_is_intent_to_add(file_path) if intent_to_add is None else intent_to_add
         )
         if not is_intent_to_add:
             return  # File has real content in index, don't snapshot
@@ -511,6 +509,7 @@ def clear_session_state() -> None:
     state_dir = get_state_directory_path()
 
     from .undo_refs import clear_undo_history
+
     clear_undo_history()
 
     # Clear session state files

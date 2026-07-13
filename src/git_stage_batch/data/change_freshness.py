@@ -21,12 +21,19 @@ from .file_change_display import (
 from .selected_change.snapshots import snapshots_are_stale
 
 
-def binary_file_change_is_stale(binary_change: BinaryFileChange) -> bool:
+def binary_file_change_is_stale(
+    binary_change: BinaryFileChange,
+    *,
+    comparison_base: str | None = None,
+) -> bool:
     """Return whether a cached binary selection no longer matches repository state."""
     file_path = binary_change.path()
     if snapshots_are_stale(file_path):
         return True
-    current_change = render_binary_file_change(file_path)
+    current_change = render_binary_file_change(
+        file_path,
+        base=comparison_base,
+    )
     if current_change is None:
         return True
     return (
@@ -41,9 +48,16 @@ def file_mode_change_is_stale(mode_change: FileModeChange) -> bool:
     return render_mode_change(mode_change.path()) != mode_change
 
 
-def gitlink_change_is_stale(gitlink_change: GitlinkChange) -> bool:
+def gitlink_change_is_stale(
+    gitlink_change: GitlinkChange,
+    *,
+    comparison_base: str | None = None,
+) -> bool:
     """Return whether a cached gitlink selection no longer matches Git state."""
-    current_change = render_gitlink_change(gitlink_change.path())
+    current_change = render_gitlink_change(
+        gitlink_change.path(),
+        base=comparison_base,
+    )
     if current_change is None:
         return True
     return (

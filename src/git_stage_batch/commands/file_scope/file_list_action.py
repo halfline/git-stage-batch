@@ -29,11 +29,13 @@ from ...output.file_review_list import (
     make_text_deletion_file_review_list_entry,
     print_file_review_list,
 )
+from ...utils.session_start_point import session_comparison_base
 
 
 def show_live_file_list(files: list[str], *, selectable: bool = True) -> None:
     """Show a navigational file list for multiple live file reviews."""
     entries = []
+    comparison_base = session_comparison_base()
     seen_rename_hashes: set[str] = set()
     for file_path in files:
         line_changes = render_file_as_single_hunk(file_path)
@@ -50,11 +52,17 @@ def show_live_file_list(files: list[str], *, selectable: bool = True) -> None:
         ):
             entries.append(make_text_deletion_file_review_list_entry(deletion_change))
             continue
-        binary_change = render_binary_file_change(file_path)
+        binary_change = render_binary_file_change(
+            file_path,
+            base=comparison_base,
+        )
         if binary_change is not None:
             entries.append(make_binary_file_review_list_entry(binary_change))
             continue
-        gitlink_change = render_gitlink_change(file_path)
+        gitlink_change = render_gitlink_change(
+            file_path,
+            base=comparison_base,
+        )
         if gitlink_change is not None:
             entries.append(make_gitlink_file_review_list_entry(gitlink_change))
             continue

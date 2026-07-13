@@ -53,7 +53,11 @@ def include_file_to_batch(
         )
         return
 
-    binary_change = render_binary_file_change(file_path)
+    comparison_base = session_comparison_base()
+    binary_change = render_binary_file_change(
+        file_path,
+        base=comparison_base,
+    )
     if binary_change is not None:
         _whole_file_batch_staging.include_binary_to_batch(
             batch_name,
@@ -62,7 +66,10 @@ def include_file_to_batch(
             auto_advance=auto_advance,
         )
         return
-    gitlink_change = render_gitlink_change(file_path)
+    gitlink_change = render_gitlink_change(
+        file_path,
+        base=comparison_base,
+    )
     if gitlink_change is not None:
         _whole_file_batch_staging.include_gitlink_to_batch(
             batch_name,
@@ -78,7 +85,7 @@ def include_file_to_batch(
 
     with acquire_unified_diff(
         stream_live_git_diff(
-            base=session_comparison_base(),
+            base=comparison_base,
             context_lines=get_context_lines(),
             paths=[file_path],
         )

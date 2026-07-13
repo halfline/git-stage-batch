@@ -199,3 +199,85 @@ def test_gitlink_capture_uses_repository_relative_paths_from_subdirectory(
     assert entry["kind"] == "gitlink"
     assert entry["index_oid"] == nested_oid
     assert entry["head_oid"] == nested_oid
+
+
+def test_dirty_gitlink_capture_archives_exact_worktree_bytes(tmp_path, monkeypatch):
+    """Dirty gitlinks retain content identity as well as commit identity."""
+    repository = _initialize_repository(tmp_path, monkeypatch)
+    nested = repository / "nested"
+    nested.mkdir()
+    subprocess.run(["git", "init"], cwd=nested, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=nested,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=nested,
+        check=True,
+    )
+    nested_file = nested / "file.txt"
+    nested_file.write_text("base\n")
+    subprocess.run(["git", "add", "file.txt"], cwd=nested, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Add nested file"],
+        cwd=nested,
+        check=True,
+        capture_output=True,
+    )
+    nested_oid = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=nested,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(
+        [
+            "git",
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            "160000",
+            nested_oid,
+            "nested",
+        ],
+        cwd=repository,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Add gitlink"],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+    )
+    nested_file.write_text("first dirty state\n")
+
+    first = undo_worktree.snapshot_worktree_paths(["nested"])[0]
+    nested_file.write_text("second dirty state\n")
+    second = undo_worktree.snapshot_worktree_paths(["nested"])[0]
+    unchanged = undo_worktree.snapshot_worktree_paths(["nested"])[0]
+
+    assert first["dirty"] is True
+    assert first["archive"] is True
+    assert first["blob"]
+    assert second["blob"] != first["blob"]
+    assert unchanged["blob"] == second["blob"]
+
+
+def test_broken_embedded_repository_is_snapshotted_as_present(tmp_path, monkeypatch):
+    """A present nested directory remains restorable even without a valid HEAD."""
+    repository = _initialize_repository(tmp_path, monkeypatch)
+    nested = repository / "broken"
+    nested.mkdir()
+    (nested / ".git").write_text("not a gitdir\n")
+    (nested / "private.txt").write_text("keep me\n")
+
+    entry = undo_worktree.snapshot_worktree_paths(["broken"])[0]
+
+    assert entry["kind"] == "embedded-repo"
+    assert entry["exists"] is True
+    assert entry["worktree_oid"] is None
+    assert entry["archive"] is True
+    assert entry["blob"]

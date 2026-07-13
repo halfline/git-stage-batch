@@ -80,7 +80,7 @@ def test_restore_tree_paths_uses_saved_git_mode(
         assert target.read_bytes() == saved_content
         assert referent.read_text() == "untouched\n"
 def test_restore_intent_to_add_entries_checks_git_failures(tmp_path, monkeypatch):
-    """ITA restoration does not silently accept failed index commands."""
+    """intent-to-add restoration does not silently accept failed index commands."""
     monkeypatch.chdir(tmp_path)
     subprocess.run(["git", "init"], check=True, capture_output=True)
     (tmp_path / "new.txt").write_text("content\n")

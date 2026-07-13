@@ -4,7 +4,7 @@ from git_stage_batch.data import undo_checkpoints
 
 
 def test_legacy_ita_fallback_does_not_guess_from_empty_index_blobs(monkeypatch):
-    """An empty blob cannot distinguish ITA from a fully staged empty file."""
+    """An empty blob cannot distinguish intent-to-add from a fully staged empty file."""
     restored = []
     monkeypatch.setattr(
         undo_checkpoints._undo_restore,
@@ -26,7 +26,7 @@ def test_legacy_ita_fallback_does_not_guess_from_empty_index_blobs(monkeypatch):
 
 
 def test_legacy_ita_fallback_without_index_identity_fails_closed(monkeypatch):
-    """Very old checkpoints do not guess ITA state from append-only history."""
+    """Very old checkpoints do not guess intent-to-add state from append-only history."""
     restored = []
     monkeypatch.setattr(
         undo_checkpoints._undo_restore,

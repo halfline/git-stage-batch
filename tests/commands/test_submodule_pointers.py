@@ -552,7 +552,7 @@ def test_discard_removes_added_submodule_pointer(
 def test_discard_added_submodule_pointer_undo_redo(
     added_submodule_pointer_repo: tuple[Path, str],
 ) -> None:
-    """Undo should restore a removed added submodule directory and its ITA."""
+    """Undo should restore a removed added submodule directory and its intent-to-add."""
     repo, new_oid = added_submodule_pointer_repo
 
     command_start(quiet=True)

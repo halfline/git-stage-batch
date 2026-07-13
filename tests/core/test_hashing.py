@@ -2,10 +2,11 @@
 
 
 from git_stage_batch.core.hashing import (
+    compute_binary_file_hash,
     compute_gitlink_change_hash,
     compute_stable_hunk_hash_from_lines,
 )
-from git_stage_batch.core.models import GitlinkChange
+from git_stage_batch.core.models import BinaryFileChange, GitlinkChange
 
 
 class TestComputeStableHunkHash:
@@ -99,6 +100,44 @@ class TestComputeStableHunkHash:
         )
 
         assert hash_from_lines == hash_from_list
+
+    def test_quoted_and_raw_git_paths_have_the_same_hash(self):
+        """Git's core.quotepath setting does not change hunk identity."""
+        raw_path_patch = (
+            b"--- a/caf\xc3\xa9.txt\n"
+            b"+++ b/caf\xc3\xa9.txt\n"
+            b"@@ -1 +1 @@\n"
+            b"-old\n"
+            b"+new\n"
+        )
+        quoted_path_patch = (
+            b'--- "a/caf\\303\\251.txt"\n'
+            b'+++ "b/caf\\303\\251.txt"\n'
+            b"@@ -1 +1 @@\n"
+            b"-old\n"
+            b"+new\n"
+        )
+
+        assert self._hash_patch(raw_path_patch) == self._hash_patch(
+            quoted_path_patch
+        )
+
+
+class TestComputeBinaryFileHash:
+    """Tests for compute_binary_file_hash."""
+
+    def test_non_utf8_path_is_hashed_with_surrogateescape(self):
+        """Undecodable filesystem bytes remain valid binary identities."""
+        change = BinaryFileChange(
+            old_path="asset\udcff.bin",
+            new_path="asset\udcff.bin",
+            change_type="modified",
+        )
+
+        hash_value = compute_binary_file_hash(change)
+
+        assert len(hash_value) == 40
+        assert hash_value == compute_binary_file_hash(change)
 
 
 class TestComputeGitlinkChangeHash:

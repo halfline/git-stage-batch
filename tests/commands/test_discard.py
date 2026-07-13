@@ -25,6 +25,7 @@ import subprocess
 import pytest
 
 import git_stage_batch.commands.selection.selected_change_discarding as selected_change_discarding
+import git_stage_batch.commands.selection.selected_change_batch_discarding as selected_change_batch_discarding
 from git_stage_batch.commands.discard import command_discard, command_discard_line, command_discard_line_as_to_batch
 from git_stage_batch.commands.include import command_include
 from git_stage_batch.commands.start import command_start
@@ -121,6 +122,30 @@ class TestCommandDiscard:
             command_discard(quiet=True)
 
         assert test_file.read_text() == "base\nselected\n"
+
+    def test_failed_discard_to_batch_rolls_back_batch_and_progress(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """A reverse-apply failure must not publish ownership to the batch."""
+        test_file = _prepare_single_line_change(temp_git_repo)
+        monkeypatch.setattr(
+            selected_change_batch_discarding,
+            "git_apply_to_worktree",
+            lambda *_args, **_kwargs: subprocess.CompletedProcess(
+                ["git", "apply"],
+                1,
+                "",
+                "reverse apply failed",
+            ),
+        )
+
+        with pytest.raises(CommandError, match="reverse apply failed"):
+            command_discard_to_batch("failed-batch", quiet=True)
+
+        assert test_file.read_text() == "base\nselected\n"
+        assert not batch_exists("failed-batch")
 
     def test_discard_only_line_from_intent_to_add_file_leaves_empty_file(
         self,

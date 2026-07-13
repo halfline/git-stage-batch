@@ -37,6 +37,7 @@ from ..utils.paths import (
     get_context_lines,
 )
 from .change_freshness import text_deletion_change_is_batched
+from .binary_identity import attach_live_binary_fingerprint
 from .live_diff import stream_live_git_diff
 from .selected_change.hunk_filtering import filter_line_level_change_for_batches
 
@@ -119,8 +120,8 @@ def prepare_live_change(
         stable_hash = compute_gitlink_change_hash(item)
         change = item
     elif isinstance(item, BinaryFileChange):
-        stable_hash = compute_binary_file_hash(item)
-        change = item
+        change = attach_live_binary_fingerprint(item)
+        stable_hash = compute_binary_file_hash(change)
     elif isinstance(item, SingleHunkPatch):
         if item.old_path != item.new_path:
             rename_hash = compute_rename_change_hash(

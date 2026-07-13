@@ -374,6 +374,27 @@ def test_binary_file_skip(binary_file_repo: Path, monkeypatch: pytest.MonkeyPatc
     assert "A  new_image.png" not in status_result.stdout  # Not fully staged
 
 
+def test_changed_binary_bytes_receive_a_new_live_identity(
+    binary_file_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A skipped binary should reappear when its worktree bytes change again."""
+    monkeypatch.chdir(binary_file_repo)
+    binary_path = binary_file_repo / "image.png"
+    binary_path.write_bytes(b"\x00FIRST")
+
+    initialize_abort_state()
+    first_change = fetch_next_change()
+    assert isinstance(first_change, BinaryFileChange)
+    command_skip(quiet=True, auto_advance=False)
+
+    binary_path.write_bytes(b"\x00SECOND")
+    second_change = fetch_next_change()
+
+    assert isinstance(second_change, BinaryFileChange)
+    assert second_change.path() == "image.png"
+
+
 def test_unstaged_binary_selection_freshness_uses_index_base(
     binary_file_repo: Path,
     monkeypatch: pytest.MonkeyPatch,

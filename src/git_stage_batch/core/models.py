@@ -71,6 +71,7 @@ class BinaryFileChange:
     old_path: str
     new_path: str
     change_type: Literal["added", "modified", "deleted"]
+    content_fingerprint: str | None = None
 
     def is_new_file(self) -> bool:
         """Check if this is a newly added binary file."""

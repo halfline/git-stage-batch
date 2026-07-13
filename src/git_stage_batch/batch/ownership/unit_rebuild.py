@@ -18,11 +18,19 @@ from .unit_types import (
 def rebuild_ownership_from_units(units: list[_UnitRecord]) -> BatchOwnership:
     """Rebuild BatchOwnership from semantic ownership units."""
     all_presence_lines = LineRanges.empty()
+    all_presence_references = {}
     all_deletions = []
     replacement_units: list[ReplacementUnit] = []
 
     for unit in units:
         all_presence_lines = all_presence_lines.union(unit.claimed_source_lines)
+        all_presence_references.update(
+            {
+                line: reference
+                for line, reference in unit.baseline_references.items()
+                if line in unit.claimed_source_lines
+            }
+        )
         deletion_indices = []
         for deletion in unit.deletion_claims:
             all_deletions.append(deletion)
@@ -38,7 +46,10 @@ def rebuild_ownership_from_units(units: list[_UnitRecord]) -> BatchOwnership:
             ))
 
     return BatchOwnership(
-        presence_claims=presence_claims_from_source_lines(all_presence_lines),
+        presence_claims=presence_claims_from_source_lines(
+            all_presence_lines,
+            all_presence_references,
+        ),
         deletions=all_deletions,
         replacement_units=normalize_replacement_units(
             replacement_units,

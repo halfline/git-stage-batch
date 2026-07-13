@@ -539,15 +539,15 @@ def build_line_changes_from_patch_lines(
         # Strip only \n for comparison (preserve \r in content)
         line = line_with_ending.rstrip(b'\n')
 
-        if _patch_headers.line_is_old_file_header(line):
+        if hunk_header is not None:
+            body_builder.append_patch_line(line)
+        elif _patch_headers.line_is_old_file_header(line):
             old_path_value = _patch_headers.old_file_path_from_header(line)
         elif _patch_headers.line_is_new_file_header(line):
             new_path_value = _patch_headers.new_file_path_from_header(line)
         elif _hunk_headers.line_is_hunk_header(line):
             hunk_header = _hunk_headers.parse_hunk_header_line(line)
             body_builder.reset_for_hunk_header(hunk_header)
-        elif hunk_header is not None:
-            body_builder.append_patch_line(line)
 
     path_value = _patch_headers.line_change_path(old_path_value, new_path_value)
 

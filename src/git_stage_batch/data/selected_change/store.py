@@ -99,11 +99,12 @@ def cache_hunk_change(
     line_changes: LineLevelChange,
 ) -> None:
     """Cache a text hunk as the current selected change."""
+    invalidate_selected_change_cache()
     write_selected_hunk_patch_lines(patch_lines)
     write_text_file_contents(get_selected_hunk_hash_file_path(), hunk_hash)
-    write_selected_change_kind(SelectedChangeKind.HUNK)
     write_line_changes_state(line_changes)
     write_snapshots_for_selected_file_path(line_changes.path)
+    write_selected_change_kind(SelectedChangeKind.HUNK)
 
 
 def load_line_changes_from_patch_path(patch_path: Path) -> LineLevelChange:

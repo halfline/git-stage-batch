@@ -443,7 +443,20 @@ def finalize_pending_checkpoint() -> None:
 
 
 def _worktree_state_by_path(entries: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    return {entry["path"]: entry for entry in entries}
+    normalized = {}
+    for entry in entries:
+        normalized_entry = entry
+        if (
+            entry.get("kind") == "gitlink"
+            and entry.get("exists", False)
+            and not entry.get("worktree_oid")
+            and not entry.get("archive", False)
+        ):
+            # Before filesystem presence was recorded independently, an
+            # index/HEAD-only gitlink used exists=True for an absent worktree.
+            normalized_entry = {**entry, "exists": False}
+        normalized[entry["path"]] = normalized_entry
+    return normalized
 
 
 def _detect_conflicts_against_state(expected_state: dict[str, Any]) -> list[str]:

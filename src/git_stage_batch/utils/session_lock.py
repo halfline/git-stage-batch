@@ -47,3 +47,25 @@ def acquire_session_lock():
             fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
         finally:
             lock_handle.close()
+
+
+@contextmanager
+def temporarily_release_session_lock():
+    """Release an acquired session lock while waiting for user input."""
+    global _LOCK_DEPTH, _LOCK_HANDLE
+
+    if _LOCK_DEPTH == 0 or _LOCK_HANDLE is None:
+        yield
+        return
+
+    lock_handle = _LOCK_HANDLE
+    lock_depth = _LOCK_DEPTH
+    fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+    _LOCK_DEPTH = 0
+    _LOCK_HANDLE = None
+    try:
+        yield
+    finally:
+        fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
+        _LOCK_HANDLE = lock_handle
+        _LOCK_DEPTH = lock_depth

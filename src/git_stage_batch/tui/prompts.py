@@ -31,9 +31,16 @@ from . import action_prompt_choices
 from . import action_prompt_menu
 from ..output.colors import Colors, format_hotkey
 from ..i18n import _, pgettext
+from ..utils.session_lock import temporarily_release_session_lock
 
 # Module-level storage for shell command history
 _shell_command_history: list[str] = []
+
+
+def unlocked_input(prompt: str) -> str:
+    """Read input without holding the repository session lock."""
+    with temporarily_release_session_lock():
+        return input(prompt)
 
 
 def wrap_prompt_for_readline(prompt: str) -> str:

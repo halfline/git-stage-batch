@@ -25,6 +25,7 @@ from ..line_state import convert_line_changes_to_serializable_dict
 from .snapshots import write_snapshots_for_selected_file_path
 from .store import (
     SelectedChangeKind,
+    invalidate_selected_change_cache,
     write_selected_change_kind,
     write_selected_hunk_patch_lines,
 )
@@ -85,9 +86,9 @@ def _cache_combined_file_line_changes(
 
     patch_hash = compute_stable_hunk_hash_from_lines(patch_lines)
 
+    invalidate_selected_change_cache()
     write_selected_hunk_patch_lines(patch_lines)
     write_text_file_contents(get_selected_hunk_hash_file_path(), patch_hash)
-    write_selected_change_kind(SelectedChangeKind.FILE)
     write_line_ids_file(get_processed_include_ids_file_path(), set())
     write_line_ids_file(get_processed_skip_ids_file_path(), set())
     write_text_file_contents(
@@ -100,5 +101,6 @@ def _cache_combined_file_line_changes(
     )
 
     write_snapshots_for_selected_file_path(file_path)
+    write_selected_change_kind(SelectedChangeKind.FILE)
 
     return combined_line_changes

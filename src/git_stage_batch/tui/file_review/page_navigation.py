@@ -6,13 +6,13 @@ import sys
 
 from ...data.file_review.state import read_last_file_review_state
 from ...i18n import _
-from ..prompts import wrap_prompt_for_readline
+from ..prompts import unlocked_input, wrap_prompt_for_readline
 
 
 def prompt_page_spec() -> str | None:
     """Prompt for an explicit file-review page specification."""
     try:
-        value = input(
+        value = unlocked_input(
             wrap_prompt_for_readline(_("Page(s), for example 1, 2-4, all: "))
         ).strip()
     except (KeyboardInterrupt, EOFError):

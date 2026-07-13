@@ -56,7 +56,10 @@ def _is_absent_from_head(file_path: str) -> bool:
 def _is_absent_from_index(file_path: str) -> bool:
     """Return True when file_path has no index entry."""
     stage_result = run_git_command(
-        ["ls-files", "--stage", "--", file_path], check=False, requires_index_lock=False
+        ["ls-files", "--stage", "--", file_path],
+        check=False,
+        requires_index_lock=False,
+        literal_pathspecs=True,
     )
     return not stage_result.stdout.strip()
 

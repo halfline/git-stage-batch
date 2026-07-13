@@ -6,7 +6,6 @@ from contextlib import contextmanager
 import sys
 from typing import Iterator
 
-from ...core.buffer import LineBuffer
 from ...core.diff_parser import acquire_unified_diff, patch_is_file_deletion
 from ...core.hashing import (
     compute_binary_file_hash,
@@ -24,7 +23,6 @@ from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.undo_checkpoints import undo_checkpoint
 from ...exceptions import exit_with_error
 from ...i18n import _, ngettext
-from ...staging.index_update import update_index_with_blob_buffer
 from ...utils.git_command import run_git_command
 from ...utils.git_index import (
     git_add_paths,
@@ -34,6 +32,7 @@ from ...utils.git_index import (
 )
 from ..selection import selected_change_staging as _selected_change_staging
 from ..selection.action_completion import finish_selected_change_action
+from .target_path import checkpoint_paths_for_live_file
 
 
 @contextmanager
@@ -81,9 +80,10 @@ def include_file_changes(
         target_file = file
 
     auto_add_untracked_files([target_file])
+    checkpoint_paths = checkpoint_paths_for_live_file(target_file)
     with undo_checkpoint(
         f"include --file {file}".rstrip(),
-        worktree_paths=[target_file],
+        worktree_paths=checkpoint_paths,
     ):
         hunks_staged = 0
         submodule_pointers_staged = 0
@@ -191,8 +191,7 @@ def include_file_changes(
                     continue
 
                 if patch_is_file_deletion(patch.lines):
-                    with LineBuffer.from_bytes(b"") as empty_buffer:
-                        update_index_with_blob_buffer(target_file, empty_buffer)
+                    _selected_change_staging.stage_text_file_deletion(target_file)
                     apply_result = None
                 else:
                     apply_result = git_apply_to_index(patch.lines, check=False)

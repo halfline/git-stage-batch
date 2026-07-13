@@ -11,7 +11,7 @@ from git_stage_batch.commands.discard import command_discard
 from git_stage_batch.commands.selection.selected_change_display import show_selected_change
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.stop import command_stop
-from git_stage_batch.core.models import LineLevelChange, RenameChange, TextFileDeletionChange
+from git_stage_batch.core.models import LineLevelChange, RenameChange
 from git_stage_batch.data.selected_change.loading import load_selected_change
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import get_staged_deletions_file_path, get_staged_renames_file_path
@@ -134,22 +134,14 @@ def test_start_exposes_staged_deletion_as_deleted_line_selection(rename_repo):
     assert {line.kind for line in selected_change.lines if line.id is not None} == {"-"}
 
 
-def test_include_staged_deletion_lines_then_path_removal(rename_repo):
+def test_include_staged_deletion_removes_path_in_one_action(rename_repo):
     _stage_deletion(rename_repo)
 
     command_start(quiet=True)
     command_include(quiet=True)
 
-    assert _cached_name_status(rename_repo).strip() == "M\told.txt"
-    assert _index_content(rename_repo, "old.txt") == ""
-    assert _uncached_name_status(rename_repo).strip() == "D\told.txt"
-    selected_change = load_selected_change()
-    assert isinstance(selected_change, TextFileDeletionChange)
-    assert selected_change.path() == "old.txt"
-
-    command_include(quiet=True)
-
     assert _cached_name_status(rename_repo).strip() == "D\told.txt"
+    assert _uncached_name_status(rename_repo) == ""
 
 
 def test_include_selected_rename_stages_rename_only_and_leaves_edits_unstaged(rename_repo):

@@ -22,7 +22,6 @@ from ...data.selected_change.paths import worktree_paths_for_selected_change
 from ...data.undo_checkpoints import undo_checkpoint
 from ...exceptions import NoMoreHunks, exit_with_error
 from ...i18n import _
-from ...staging.index_update import update_index_with_blob_buffer
 from ...utils.file_io import read_text_file_contents
 from ...utils.git_index import (
     GitIndexEntryUpdate,
@@ -180,8 +179,7 @@ def _include_loaded_selected_change(
 
     with LineBuffer.from_path(get_selected_hunk_patch_file_path()) as patch_buffer:
         if patch_is_file_deletion(patch_buffer):
-            with LineBuffer.from_bytes(b"") as empty_buffer:
-                update_index_with_blob_buffer(file_path, empty_buffer)
+            stage_text_file_deletion(file_path)
             apply_result = None
         else:
             apply_result = git_apply_to_index(
@@ -264,15 +262,20 @@ def stage_rename_change(rename_change: RenameChange) -> None:
 
 def stage_text_deletion_change(deletion_change: TextFileDeletionChange) -> None:
     """Stage a whole-text-file deletion in the index."""
+    stage_text_file_deletion(deletion_change.path())
+
+
+def stage_text_file_deletion(file_path: str) -> None:
+    """Stage deletion of one text path regardless of its previous contents."""
     result = git_update_index(
-        file_path=deletion_change.path(),
+        file_path=file_path,
         force_remove=True,
         check=False,
     )
     if result.returncode != 0:
         exit_with_error(
             _("Failed to stage deletion for {file}: {error}").format(
-                file=deletion_change.path(),
+                file=file_path,
                 error=result.stderr,
             )
         )

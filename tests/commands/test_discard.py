@@ -27,7 +27,7 @@ import pytest
 import git_stage_batch.commands.selection.selected_change_discarding as selected_change_discarding
 import git_stage_batch.commands.selection.selected_change_batch_discarding as selected_change_batch_discarding
 from git_stage_batch.commands.discard import command_discard, command_discard_line, command_discard_line_as_to_batch
-from git_stage_batch.commands.include import command_include
+from git_stage_batch.commands.include import command_include, command_include_line
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.core.models import TextFileDeletionChange
 from git_stage_batch.exceptions import CommandError
@@ -122,6 +122,61 @@ class TestCommandDiscard:
             command_discard(quiet=True)
 
         assert test_file.read_text() == "base\nselected\n"
+
+    def test_discard_refuses_a_stale_selected_hunk(self, temp_git_repo):
+        """Pathless discard must not replace a stale selection and act on it."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("first displayed change\n")
+        command_start(quiet=True)
+        readme.write_text("later unseen change\n")
+
+        with pytest.raises(CommandError, match="Cached hunk is stale"):
+            command_discard(quiet=True, auto_advance=False)
+
+        assert readme.read_text() == "later unseen change\n"
+
+    def test_discard_full_new_file_hunk_removes_intent_to_add(
+        self,
+        temp_git_repo,
+    ):
+        """Discarding a complete new file should not leave a ghost ITA entry."""
+        new_file = temp_git_repo / "new.txt"
+        new_file.write_text("new content\n")
+
+        command_start(quiet=True)
+        command_discard(quiet=True, auto_advance=False)
+
+        assert not new_file.exists()
+        assert subprocess.run(
+            ["git", "ls-files", "--stage", "--", "new.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        ).stdout == ""
+
+    def test_discard_line_preserves_unselected_crlf_endings(self, temp_git_repo):
+        """Line discard should not normalize untouched CRLF lines to LF."""
+        target = temp_git_repo / "crlf.txt"
+        target.write_bytes(b"old\r\nkeep\r\n")
+        subprocess.run(
+            ["git", "add", "crlf.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add CRLF file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        target.write_bytes(b"new\r\nkeep\r\n")
+
+        command_start(quiet=True)
+        command_discard_line("1-2", auto_advance=False)
+
+        assert target.read_bytes() == b"old\r\nkeep\r\n"
 
     def test_failed_discard_to_batch_rolls_back_batch_and_progress(
         self,
@@ -584,7 +639,7 @@ class TestCommandDiscardLine:
         test_file.unlink()
 
         command_start(quiet=True)
-        command_include(quiet=True)
+        command_include_line("1")
 
         selected_change = load_selected_change()
         assert isinstance(selected_change, TextFileDeletionChange)

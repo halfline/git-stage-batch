@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from ...core.diff_parser import acquire_unified_diff
+from ...core.models import RenameChange
+from ...data.live_diff import stream_live_git_diff
 from ...data.selected_change.paths import (
     SelectedChange,
     get_selected_change_file_path,
@@ -33,3 +36,21 @@ def checkpoint_paths_for_file_scope(
         return worktree_paths_for_selected_change(selected_change)
     target_file = get_selected_change_file_path()
     return [target_file] if target_file is not None else []
+
+
+def checkpoint_paths_for_live_file(target_file: str) -> list[str]:
+    """Return every path a live whole-file action may mutate."""
+    with acquire_unified_diff(
+        stream_live_git_diff(
+            full_index=True,
+            ignore_submodules="none",
+            submodule_format="short",
+        )
+    ) as patches:
+        for patch in patches:
+            if isinstance(patch, RenameChange) and target_file in (
+                patch.old_path,
+                patch.new_path,
+            ):
+                return [patch.old_path, patch.new_path]
+    return [target_file]

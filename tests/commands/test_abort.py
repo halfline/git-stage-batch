@@ -5,6 +5,7 @@ import subprocess
 import pytest
 
 from git_stage_batch.commands.abort import command_abort
+from git_stage_batch.commands.again import command_again
 from git_stage_batch.commands.discard import command_discard
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.exceptions import CommandError
@@ -53,6 +54,7 @@ class TestCommandAbort:
 
         # Make more changes and discard them
         readme.write_text("# Test\nAnother change\n")
+        command_again()
         command_discard()
 
         # File should be back to original committed state

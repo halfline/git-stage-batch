@@ -38,6 +38,8 @@ def include_live_line_selection(
     *,
     review_state,
     auto_advance: bool | None = None,
+    quiet: bool = False,
+    operation: str | None = None,
 ) -> None:
     """Stage selected lines from the live working-tree view."""
     operation_parts = ["include", "--line", line_id_specification]
@@ -47,7 +49,7 @@ def include_live_line_selection(
     target_file = file if file not in (None, "") else get_selected_change_file_path()
     with (
         undo_checkpoint(
-            " ".join(operation_parts),
+            operation or " ".join(operation_parts),
             worktree_paths=[target_file] if target_file is not None else [],
         ),
         ExitStack() as selected_state_stack,
@@ -173,19 +175,20 @@ def include_live_line_selection(
                 get_processed_include_ids_file_path(),
                 combined_include_ids,
             )
-            print(
-                _("✓ Included line(s): {lines} from {file}").format(
-                    lines=line_id_specification,
-                    file=line_changes.path,
-                ),
-                file=sys.stderr,
-            )
+            if not quiet:
+                print(
+                    _("✓ Included line(s): {lines} from {file}").format(
+                        lines=line_id_specification,
+                        file=line_changes.path,
+                    ),
+                    file=sys.stderr,
+                )
             refresh_selected_hunk_after_line_action(
                 line_changes.path,
                 auto_advance=auto_advance,
             )
         finish_review_scoped_line_action(review_state, file_path=line_changes.path)
-    if selection_context.preserve_selected_state:
+    if selection_context.preserve_selected_state and not quiet:
         print(
             _("✓ Included line(s): {lines} from {file}").format(
                 lines=line_id_specification,

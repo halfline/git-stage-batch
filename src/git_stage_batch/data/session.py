@@ -375,6 +375,7 @@ def snapshot_file_if_untracked(
         ["ls-files", "--stage", "--", file_path],
         check=False,
         requires_index_lock=False,
+        literal_pathspecs=True,
     )
     if not stage_result.stdout.strip():
         # File not in index at all - it's untracked
@@ -421,6 +422,7 @@ def snapshot_files_if_untracked(file_paths: list[str]) -> None:
         check=False,
         text_output=False,
         requires_index_lock=False,
+        literal_pathspecs=True,
     )
 
     tracked_real_content: set[str] = set()

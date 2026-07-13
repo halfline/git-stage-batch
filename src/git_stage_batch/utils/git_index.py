@@ -9,7 +9,7 @@ from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 
-from .git_command import run_git_command, stream_git_command
+from .git_command import run_git_command
 from ..git_paths import encode_path
 from .git_repository import null_object_id
 
@@ -150,13 +150,12 @@ def git_update_index_entries(
     if not payload_chunks:
         return
 
-    for _chunk in stream_git_command(
+    run_git_command(
         ["update-index", "-z", "--index-info"],
-        payload_chunks,
+        stdin_chunks=payload_chunks,
         env=env,
         requires_index_lock=True,
-    ):
-        pass
+    )
 
 
 def git_write_tree(*, env: dict[str, str] | None = None) -> str:

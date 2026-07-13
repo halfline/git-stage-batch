@@ -20,6 +20,18 @@ from .unit_types import (
 from .replacement_units import normalize_replacement_units
 
 
+def _presence_references_for_lines(
+    ownership: BatchOwnership,
+    source_lines: LineSelection,
+) -> dict:
+    """Return baseline references owned by one semantic unit."""
+    return {
+        line: reference
+        for line, reference in ownership.presence_baseline_references().items()
+        if line in source_lines
+    }
+
+
 def build_ownership_units_from_display_lines(
     ownership: BatchOwnership,
     display_lines: list[dict],
@@ -136,6 +148,10 @@ def build_ownership_units_from_display_lines(
                     claimed_source_lines=LineRanges.from_lines([claimed_source_line]),
                     deletion_claims=[],
                     display_line_ids=LineRanges.from_lines([claimed_display_id]),
+                    baseline_references=_presence_references_for_lines(
+                        ownership,
+                        LineRanges.from_lines([claimed_source_line]),
+                    ),
                     is_atomic=False,
                     atomic_reason=None
                 ))
@@ -205,6 +221,10 @@ def _build_explicit_replacement_units_from_display_lines(
             claimed_source_lines=claimed_source_lines,
             deletion_claims=deletion_claims,
             display_line_ids=claimed_display_ids.union(deletion_display_ids),
+            baseline_references=_presence_references_for_lines(
+                ownership,
+                claimed_source_lines,
+            ),
             is_atomic=True,
             atomic_reason="explicit_replacement",
             preserves_replacement_unit=True,
@@ -301,12 +321,17 @@ def _build_replacement_unit(
         for idx in set(deletion_run["deletion_indices"])
     ]
 
+    claimed_source_lines = LineRanges.from_lines(claimed_run["source_lines"])
     return _UnitRecord(
         kind=_UnitKind.REPLACEMENT,
-        claimed_source_lines=LineRanges.from_lines(claimed_run["source_lines"]),
+        claimed_source_lines=claimed_source_lines,
         deletion_claims=deletion_claims,
         display_line_ids=LineRanges.from_lines(
             [*deletion_run["display_ids"], *claimed_run["display_ids"]]
+        ),
+        baseline_references=_presence_references_for_lines(
+            ownership,
+            claimed_source_lines,
         ),
         is_atomic=True,
         atomic_reason="display_adjacency"

@@ -1037,7 +1037,6 @@ def test_gitlink_diff_owns_gitlink_parser_helpers():
     }
     old_parser_names = {
         "INDEX_LINE_PATTERN",
-        "NULL_OBJECT_PREFIX",
         "SUBPROJECT_COMMIT_PATTERN",
         "_consume_gitlink_hunks",
         "_gitlink_change_type",

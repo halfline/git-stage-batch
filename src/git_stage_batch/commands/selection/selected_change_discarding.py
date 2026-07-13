@@ -191,7 +191,7 @@ def _discard_binary_change(
 
     if item.is_new_file():
         absolute_path = get_git_repository_root_path() / file_path
-        if absolute_path.exists():
+        if os.path.lexists(absolute_path):
             absolute_path.unlink()
         _drop_intent_to_add_entry(file_path)
         log_journal("command_discard_binary_deleted", file_path=file_path)

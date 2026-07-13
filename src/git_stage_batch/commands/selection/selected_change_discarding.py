@@ -197,7 +197,8 @@ def _discard_binary_change(
         absolute_path = get_git_repository_root_path() / file_path
         if absolute_path.exists():
             absolute_path.unlink()
-            log_journal("command_discard_binary_deleted", file_path=file_path)
+        _drop_intent_to_add_entry(file_path)
+        log_journal("command_discard_binary_deleted", file_path=file_path)
     elif item.is_deleted_file():
         result = git_checkout_index_paths([file_path], check=False)
         if result.returncode != 0:

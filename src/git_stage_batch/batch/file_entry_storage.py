@@ -5,7 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Optional
 
-from ..utils.repository_buffers import load_git_object_as_buffer
+from ..utils.repository_buffers import read_git_object_buffer_or_none
 from ..utils.git_command import run_git_command
 from ..utils.git_object_io import create_git_blob
 from .state import content_commits as _content_commits
@@ -56,7 +56,7 @@ def copy_file_from_batch_to_batch(
         _content_commits.update_batch_gitlink_commit(dest_batch, file_path, oid)
         return
 
-    source_buffer = load_git_object_as_buffer(f"{source_commit}:{file_path}")
+    source_buffer = read_git_object_buffer_or_none(f"{source_commit}:{file_path}")
     if source_buffer is not None:
         with source_buffer:
             blob_sha = create_git_blob(source_buffer.byte_chunks())

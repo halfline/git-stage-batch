@@ -15,7 +15,7 @@ from .cache import (
 )
 from .snapshots import create_batch_source_commit
 from ...utils.repository_buffers import (
-    load_git_object_as_buffer,
+    read_git_object_buffer_or_none,
     load_working_tree_file_as_buffer,
 )
 from ..ownership.model import (
@@ -200,7 +200,7 @@ def _prepare_initial_cached_source_for_selection(
     if not batch_source_commit:
         return None
 
-    source_buffer = load_git_object_as_buffer(f"{batch_source_commit}:{file_path}")
+    source_buffer = read_git_object_buffer_or_none(f"{batch_source_commit}:{file_path}")
     if source_buffer is None:
         raise ValueError(
             f"Cannot read cached batch source for {file_path} at "

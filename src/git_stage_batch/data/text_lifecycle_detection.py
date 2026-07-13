@@ -6,7 +6,7 @@ from contextlib import ExitStack
 
 from ..core.buffer import LineBuffer, buffer_byte_count
 from ..core.text_lifecycle import TextFileChangeType
-from ..utils.repository_buffers import load_git_object_as_buffer
+from ..utils.repository_buffers import read_git_object_buffer_or_none
 from ..utils.git_repository import get_git_repository_root_path
 
 
@@ -24,13 +24,13 @@ def detect_empty_text_lifecycle_change(
             if buffer_byte_count(working_buffer) != 0:
                 return None
 
-            baseline_buffer = load_git_object_as_buffer(f"{baseline_ref}:{file_path}")
+            baseline_buffer = read_git_object_buffer_or_none(f"{baseline_ref}:{file_path}")
             if baseline_buffer is None:
                 return TextFileChangeType.ADDED
             baseline_buffer.close()
             return None
 
-        baseline_buffer = load_git_object_as_buffer(f"{baseline_ref}:{file_path}")
+        baseline_buffer = read_git_object_buffer_or_none(f"{baseline_ref}:{file_path}")
         if baseline_buffer is not None:
             stack.enter_context(baseline_buffer)
             if buffer_byte_count(baseline_buffer) == 0:

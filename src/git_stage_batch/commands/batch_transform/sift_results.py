@@ -31,7 +31,7 @@ from ...core.text_lifecycle import (
     normalized_text_change_type,
     sifted_empty_text_path_change_type,
 )
-from ...utils.repository_buffers import load_git_object_as_buffer_or_empty
+from ...utils.repository_buffers import read_git_object_buffer_or_empty
 from ...utils.repository_buffers import load_working_tree_file_as_buffer
 from ...exceptions import MergeError
 from ...core.text_lines import normalize_line_sequence_endings
@@ -104,7 +104,7 @@ def compute_sifted_binary_file(
     batch_source_commit = file_meta["batch_source_commit"]
     change_type = file_meta["change_type"]
 
-    batch_source_buffer = load_git_object_as_buffer_or_empty(
+    batch_source_buffer = read_git_object_buffer_or_empty(
         f"{batch_source_commit}:{file_path}"
     )
 
@@ -161,11 +161,11 @@ def compute_sifted_text_file(
     full_path = repo_root / file_path
     working_exists = full_path.exists()
 
-    batch_source_buffer = load_git_object_as_buffer_or_empty(
+    batch_source_buffer = read_git_object_buffer_or_empty(
         f"{batch_source_commit}:{file_path}"
     )
     baseline_buffer = (
-        load_git_object_as_buffer_or_empty(f"{baseline_commit}:{file_path}")
+        read_git_object_buffer_or_empty(f"{baseline_commit}:{file_path}")
         if baseline_commit is not None else
         LineBuffer.from_bytes(b"")
     )

@@ -23,7 +23,7 @@ from ..core.models import (
     TextFileDeletionChange,
 )
 from ..core.buffer import LineBuffer
-from ..utils.repository_buffers import load_git_object_as_buffer
+from ..utils.repository_buffers import read_git_object_buffer_or_none
 from ..i18n import ngettext
 from ..utils.git_command import stream_git_command
 from ..git_paths import encode_path, quote_path_token
@@ -76,7 +76,7 @@ def build_file_hunk_from_buffer(
     file_buffer: LineBuffer,
 ) -> Optional[LineLevelChange]:
     """Build a file-scoped line view for a hypothetical file buffer without writing it."""
-    head_buffer = load_git_object_as_buffer(f"HEAD:{file_path}")
+    head_buffer = read_git_object_buffer_or_none(f"HEAD:{file_path}")
 
     with tempfile.NamedTemporaryFile(delete=False) as old_tmp:
         if head_buffer is not None:

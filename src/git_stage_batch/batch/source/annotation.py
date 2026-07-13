@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from ...core.models import LineEntry, LineLevelChange
 from ...utils.git_repository import get_git_repository_root_path
 from ...utils.repository_buffers import (
-    load_git_object_as_buffer,
+    read_git_object_buffer_or_none,
     load_working_tree_file_as_buffer,
 )
 from ..line_matching.line_mapping import LineMapping
@@ -168,7 +168,7 @@ def annotate_with_batch_source_working_lines(
     if not batch_source_commit:
         return _fill_source_from_working_tree(line_changes)
 
-    batch_source_buffer = load_git_object_as_buffer(
+    batch_source_buffer = read_git_object_buffer_or_none(
         f"{batch_source_commit}:{path_value}"
     )
     if batch_source_buffer is None:

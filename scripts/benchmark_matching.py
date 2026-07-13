@@ -45,7 +45,7 @@ from git_stage_batch.batch.state.references import get_batch_state_ref_name
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.utils.git_object_io import resolve_git_objects
 from git_stage_batch.utils.repository_buffers import (
-    load_git_object_as_buffer_or_empty,
+    read_git_object_buffer_or_empty,
     load_working_tree_file_as_buffer,
     stream_git_blob_buffers,
 )
@@ -699,7 +699,7 @@ def _measure_blob_loading(fixture: AttributionFixture) -> dict[str, Any]:
 def _open_repository_buffers(
     fixture: AttributionFixture,
 ) -> _MappingState:
-    source = load_git_object_as_buffer_or_empty(
+    source = read_git_object_buffer_or_empty(
         next(iter(fixture.metadata.values()))["files"][fixture.file_path][
             "batch_source_commit"
         ]
@@ -823,7 +823,7 @@ def run_attribution_case(
 def _prepare_repository_unit_enumeration(
     fixture: AttributionFixture,
 ) -> _UnitEnumerationState:
-    source = load_git_object_as_buffer_or_empty(f"HEAD:{fixture.file_path}")
+    source = read_git_object_buffer_or_empty(f"HEAD:{fixture.file_path}")
     try:
         working = load_working_tree_file_as_buffer(fixture.file_path)
     except Exception:

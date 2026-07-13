@@ -11,7 +11,7 @@ from ...core.buffer import (
     write_buffer_to_working_tree_path,
 )
 from ...data.file_modes import apply_git_file_mode, detect_file_mode_in_commit
-from ...utils.repository_buffers import load_git_object_as_buffer
+from ...utils.repository_buffers import read_git_object_buffer_or_none
 from ...utils.git_index import git_update_index
 from ...utils.git_repository import get_git_repository_root_path
 from ...utils.git_object_io import create_git_blob
@@ -33,7 +33,7 @@ def discard_binary_file_to_worktree(
     repo_root = get_git_repository_root_path()
     full_path = repo_root / file_path
 
-    baseline_buffer = load_git_object_as_buffer(f"{baseline_commit}:{file_path}")
+    baseline_buffer = read_git_object_buffer_or_none(f"{baseline_commit}:{file_path}")
     if baseline_buffer is not None:
         with baseline_buffer:
             write_buffer_to_path(full_path, baseline_buffer)

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from ..core.buffer import LineBuffer
-from ..utils.repository_buffers import load_git_object_as_buffer
+from ..utils.repository_buffers import read_git_object_buffer_or_none
 from .state.query import get_batch_commit_sha
 
 
@@ -25,7 +25,7 @@ def read_binary_file_from_batch(
     if change_type == "deleted":
         return None
 
-    batch_buffer = load_git_object_as_buffer(f"{batch_commit}:{file_path}")
+    batch_buffer = read_git_object_buffer_or_none(f"{batch_commit}:{file_path}")
     if batch_buffer is None:
         if missing_content_message is None:
             missing_content_message = (

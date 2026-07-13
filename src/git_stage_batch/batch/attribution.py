@@ -30,7 +30,7 @@ from .state.query import list_batch_names, read_batch_metadata_for_batches
 from .state.references import get_batch_state_ref_name
 from ..core.line_selection import parse_line_selection
 from ..utils.repository_buffers import (
-    load_git_object_as_buffer_or_empty,
+    read_git_object_buffer_or_empty,
     load_working_tree_file_as_buffer,
     stream_git_blob_buffers,
 )
@@ -146,7 +146,7 @@ def build_file_attribution(
     if metrics is not None:
         metrics.claimed_batches = len(all_batch_metadata)
 
-    baseline_buffer = load_git_object_as_buffer_or_empty(f"HEAD:{file_path}")
+    baseline_buffer = read_git_object_buffer_or_empty(f"HEAD:{file_path}")
     working_tree_buffer = load_working_tree_file_as_buffer(file_path)
     with baseline_buffer as baseline_lines, working_tree_buffer as working_tree_lines:
         all_units_map: dict[str, _AttributionUnit] = {}

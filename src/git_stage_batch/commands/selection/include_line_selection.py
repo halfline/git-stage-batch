@@ -24,7 +24,7 @@ from ...data.file_modes import detect_file_mode
 from ...data.file_tracking import auto_add_untracked_files
 from ...data.line_state import load_line_changes_from_state
 from ...utils.repository_buffers import (
-    load_git_object_as_buffer,
+    read_git_object_buffer_or_none,
     load_working_tree_file_as_buffer,
 )
 from ...data.selected_change.loading import require_selected_hunk
@@ -320,7 +320,7 @@ def try_build_index_content_via_transient_batch(
                     TransientIncludeFailureReason.MISSING_BATCH_METADATA
                 )
 
-            source_buffer = load_git_object_as_buffer(
+            source_buffer = read_git_object_buffer_or_none(
                 f"{batch_source_commit}:{line_changes.path}"
             )
             if source_buffer is None:

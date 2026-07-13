@@ -35,7 +35,7 @@ from ...batch.submodule_pointer import (
 from ...batch.state.batch_names import batch_exists
 from ...core.line_selection import LineRanges
 from ...data.batch_file_scope import resolve_batch_file_scope
-from ...utils.repository_buffers import load_git_object_as_buffer
+from ...utils.repository_buffers import read_git_object_buffer_or_none
 from ...exceptions import MergeError, exit_with_error
 from ...i18n import _
 
@@ -171,7 +171,7 @@ def reset_line_claims_for_file(
         refuse_batch_submodule_pointer_lines(_("Reset"))
 
     batch_source_commit = file_meta["batch_source_commit"]
-    batch_source_buffer = load_git_object_as_buffer(
+    batch_source_buffer = read_git_object_buffer_or_none(
         f"{batch_source_commit}:{file_path}"
     )
     if batch_source_buffer is None:
@@ -354,7 +354,7 @@ def _acquire_line_ownership_for_file(
         refuse_batch_submodule_pointer_lines(_("Reset"))
 
     batch_source_commit = file_meta["batch_source_commit"]
-    batch_source_buffer = load_git_object_as_buffer(
+    batch_source_buffer = read_git_object_buffer_or_none(
         f"{batch_source_commit}:{file_path}"
     )
     if batch_source_buffer is None:

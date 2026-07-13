@@ -19,7 +19,7 @@ from ...batch.selection import acquire_batch_ownership_for_display_ids_from_line
 from ...core.buffer import LineBuffer
 from ...core.replacement import ReplacementPayload
 from ...utils.repository_buffers import (
-    load_git_object_as_buffer,
+    read_git_object_buffer_or_none,
     load_working_tree_file_as_buffer,
 )
 from ...exceptions import MergeError
@@ -38,7 +38,7 @@ def count_apply_candidate_previews_for_file(
     batch_source_ref = _candidate_inputs.candidate_batch_source_ref(file_path, file_meta)
     if batch_source_ref is None:
         return CandidatePreviewCount()
-    batch_source_buffer = load_git_object_as_buffer(batch_source_ref.object_spec)
+    batch_source_buffer = read_git_object_buffer_or_none(batch_source_ref.object_spec)
     if batch_source_buffer is None:
         return CandidatePreviewCount()
 
@@ -97,11 +97,11 @@ def count_include_candidate_previews_for_file(
     batch_source_ref = _candidate_inputs.candidate_batch_source_ref(file_path, file_meta)
     if batch_source_ref is None:
         return CandidatePreviewCount()
-    batch_source_buffer = load_git_object_as_buffer(batch_source_ref.object_spec)
+    batch_source_buffer = read_git_object_buffer_or_none(batch_source_ref.object_spec)
     if batch_source_buffer is None:
         return CandidatePreviewCount()
 
-    index_buffer = load_git_object_as_buffer(f":{file_path}")
+    index_buffer = read_git_object_buffer_or_none(f":{file_path}")
     index_exists = index_buffer is not None
     if index_buffer is None:
         index_buffer = LineBuffer.from_bytes(b"")

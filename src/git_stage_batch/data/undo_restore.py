@@ -5,16 +5,12 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import stat
 import tarfile
 import tempfile
 from pathlib import Path
 from typing import Any
 
-from ..core.buffer import (
-    write_buffer_to_path,
-    write_buffer_to_working_tree_path,
-)
+from ..core.buffer import write_buffer_to_working_tree_path
 from ..utils.repository_buffers import load_git_blob_as_buffer
 from .undo_refs import list_restorable_refs
 from ..exceptions import CommandError
@@ -34,11 +30,6 @@ from ..utils.git_repository import get_git_repository_root_path
 def _read_json_blob(blob_sha: str) -> dict[str, Any]:
     with load_git_blob_as_buffer(blob_sha) as buffer:
         return json.loads(buffer.to_bytes().decode("utf-8"))
-
-
-def _write_blob_to_path(blob_sha: str, target_path: Path) -> None:
-    with load_git_blob_as_buffer(blob_sha) as buffer:
-        write_buffer_to_path(target_path, buffer)
 
 
 def _write_blob_to_worktree_path(
@@ -88,16 +79,6 @@ def read_json_from_commit(commit: str, path: str) -> dict[str, Any]:
     return _read_json_blob(blob_sha)
 
 
-def _restore_file_mode(path: Path, mode: str) -> None:
-    if mode == "120000":
-        return
-    current_mode = path.stat().st_mode
-    if mode == "100755":
-        path.chmod(current_mode | stat.S_IXUSR)
-    else:
-        path.chmod(current_mode & ~stat.S_IXUSR & ~stat.S_IXGRP & ~stat.S_IXOTH)
-
-
 def restore_tree_prefix(commit: str, *, prefix: str, target_dir: Path) -> None:
     """Restore one tree prefix from an undo snapshot commit."""
     if target_dir.exists():
@@ -110,8 +91,7 @@ def restore_tree_prefix(commit: str, *, prefix: str, target_dir: Path) -> None:
         relative_path = Path(tree_path).relative_to(prefix)
         target_path = target_dir / relative_path
         target_path.parent.mkdir(parents=True, exist_ok=True)
-        _write_blob_to_path(blob_sha, target_path)
-        _restore_file_mode(target_path, mode)
+        _write_blob_to_worktree_path(blob_sha, target_path, mode=mode)
 
 
 def restore_tree_paths(
@@ -137,8 +117,7 @@ def restore_tree_paths(
             continue
         mode, blob_sha = saved_entry
         target_path.parent.mkdir(parents=True, exist_ok=True)
-        _write_blob_to_path(blob_sha, target_path)
-        _restore_file_mode(target_path, mode)
+        _write_blob_to_worktree_path(blob_sha, target_path, mode=mode)
 
 
 def tree_prefix_state(commit: str, prefix: str) -> dict[str, dict[str, str]]:

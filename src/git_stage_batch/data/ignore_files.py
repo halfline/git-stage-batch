@@ -83,12 +83,17 @@ def literal_ignore_pattern(file_path: str) -> str:
         ):
             escaped.append("\\")
         escaped.append(character)
-    return "".join(escaped)
+    return "/" + "".join(escaped)
 
 
 def _literal_ignore_pattern_variants(file_path: str) -> set[str]:
     """Return current and legacy encodings for one literal path."""
-    return {literal_ignore_pattern(file_path), file_path.rstrip("\n")}
+    anchored = literal_ignore_pattern(file_path)
+    return {
+        anchored,
+        anchored.removeprefix("/"),
+        file_path.rstrip("\n"),
+    }
 
 
 def _append_ignore_entry(lines: list[str], entry: str) -> bool:

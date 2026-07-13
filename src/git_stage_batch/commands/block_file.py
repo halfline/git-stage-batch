@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import sys
 from contextlib import nullcontext
-from pathlib import Path
 
 from ..data.session import path_is_intent_to_add, session_is_active
 from ..data.undo_checkpoints import undo_checkpoint
@@ -19,8 +18,8 @@ from ..utils.git_command import run_git_command
 from ..utils.git_worktree import git_remove_paths
 from ..utils.git_repository import (
     require_git_repository,
-    resolve_file_path_to_repo_relative,
 )
+from ..utils.repository_path import normalize_repository_path
 from ..utils.paths import (
     ensure_state_directory_exists,
     get_auto_added_files_file_path,
@@ -31,7 +30,9 @@ from .selection.action_completion import advance_to_and_show_next_change
 
 def _is_new_intent_to_add_file(file_path: str) -> bool:
     """Return True when file_path is an intent-to-add entry absent from HEAD."""
-    stage_result = run_git_command(["ls-files", "--stage", "--", file_path], check=False, requires_index_lock=False)
+    stage_result = run_git_command(
+        ["ls-files", "--stage", "--", file_path], check=False, requires_index_lock=False
+    )
     stage_output = stage_result.stdout.strip()
     if not stage_output:
         return False
@@ -39,7 +40,9 @@ def _is_new_intent_to_add_file(file_path: str) -> bool:
     if not path_is_intent_to_add(file_path):
         return False
 
-    head_check = run_git_command(["cat-file", "-e", f"HEAD:{file_path}"], check=False, requires_index_lock=False)
+    head_check = run_git_command(
+        ["cat-file", "-e", f"HEAD:{file_path}"], check=False, requires_index_lock=False
+    )
     return head_check.returncode != 0
 
 
@@ -50,15 +53,16 @@ def command_block_file(file_path_arg: str = "", local_only: bool = False) -> Non
 
     if not file_path_arg:
         from ..data.line_state import load_line_changes_from_state
+
         line_changes = load_line_changes_from_state()
         if line_changes is None:
-            exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
+            exit_with_error(
+                _("No selected hunk. Run 'show' first or specify file path.")
+            )
         file_path_arg = line_changes.path
 
     # Resolve to repo-relative path, normalizing directories to a trailing slash
-    file_path = resolve_file_path_to_repo_relative(file_path_arg)
-    if file_path_arg.endswith("/") or Path(file_path_arg).is_dir():
-        file_path = file_path.rstrip("/") + "/"
+    file_path = normalize_repository_path(file_path_arg).value
     session_active = session_is_active()
     checkpoint_paths = [] if local_only else [".gitignore"]
     checkpoint = (
@@ -67,7 +71,8 @@ def command_block_file(file_path_arg: str = "", local_only: bool = False) -> Non
             worktree_paths=checkpoint_paths,
             index_paths=[file_path] if not file_path.endswith("/") else [],
         )
-        if session_active else nullcontext()
+        if session_active
+        else nullcontext()
     )
 
     with checkpoint:
@@ -78,8 +83,17 @@ def command_block_file(file_path_arg: str = "", local_only: bool = False) -> Non
             add_file_to_gitignore(file_path)
 
         # Remove from index if session is active and the file is a new intent-to-add entry
-        if session_active and not file_path.endswith("/") and _is_new_intent_to_add_file(file_path):
-            git_remove_paths([file_path], cached=True, quiet=True, ignore_unmatch=True, check=False)
+        if (
+            session_active
+            and not file_path.endswith("/")
+            and _is_new_intent_to_add_file(file_path)
+        ):
+            git_remove_paths(
+                [file_path],
+                cached=True,
+                quiet=True,
+                ignore_unmatch=True,
+            )
             remove_file_path_from_file(get_auto_added_files_file_path(), file_path)
 
         # Add to blocked-files state

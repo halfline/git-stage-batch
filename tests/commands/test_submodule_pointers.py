@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from git_stage_batch.batch import submodule_pointer as submodule_pointer_actions
 from git_stage_batch.commands.discard import command_discard, command_discard_file
 from git_stage_batch.commands.abort import command_abort
 from git_stage_batch.commands.apply_from import command_apply_from_batch
@@ -36,6 +37,83 @@ from git_stage_batch.data.selected_change.lifecycle import clear_selected_change
 from git_stage_batch.exceptions import CommandError
 
 EMPTY_BLOB_HASH = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+
+
+def test_missing_submodule_update_runs_from_superproject_root(tmp_path, monkeypatch):
+    """Submodule initialization does not interpret paths relative to the caller."""
+    calls = []
+    monkeypatch.setattr(
+        submodule_pointer_actions,
+        "get_git_repository_root_path",
+        lambda: tmp_path,
+    )
+    monkeypatch.setattr(
+        submodule_pointer_actions,
+        "git_submodule_update_checkout",
+        lambda paths, **kwargs: calls.append((paths, kwargs))
+        or subprocess.CompletedProcess([], 0, "", ""),
+    )
+    monkeypatch.setattr(
+        submodule_pointer_actions,
+        "_checkout_submodule_pointer",
+        lambda *_args: None,
+    )
+
+    submodule_pointer_actions._ensure_submodule_worktree(
+        "sub",
+        "1" * 40,
+        "Apply",
+    )
+
+    assert calls == [(["sub"], {"cwd": str(tmp_path), "check": False})]
+
+
+@pytest.fixture
+def superproject_with_plain_subdirectory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[Path, str]:
+    """Create a clean superproject containing an empty non-repository path."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _run(["git", "init"], cwd=repo)
+    _configure_identity(repo)
+    (repo / "tracked.txt").write_text("tracked\n")
+    _run(["git", "add", "tracked.txt"], cwd=repo)
+    _run(["git", "commit", "-m", "Initial commit"], cwd=repo)
+    (repo / "sub").mkdir()
+    monkeypatch.chdir(repo)
+    return repo, _git_stdout(["rev-parse", "HEAD"], cwd=repo)
+
+
+def test_submodule_checkout_refuses_superproject_walk_up(
+    superproject_with_plain_subdirectory: tuple[Path, str],
+) -> None:
+    """A plain subdirectory must never redirect checkout to the superproject."""
+    repo, head_oid = superproject_with_plain_subdirectory
+    symbolic_head = _git_stdout(["symbolic-ref", "HEAD"], cwd=repo)
+
+    with pytest.raises(CommandError, match="not a standalone Git repository"):
+        submodule_pointer_actions._checkout_submodule_pointer(
+            "sub",
+            head_oid,
+            "Apply",
+        )
+
+    assert _git_stdout(["rev-parse", "HEAD"], cwd=repo) == head_oid
+    assert _git_stdout(["symbolic-ref", "HEAD"], cwd=repo) == symbolic_head
+
+
+def test_submodule_removal_refuses_superproject_walk_up(
+    superproject_with_plain_subdirectory: tuple[Path, str],
+) -> None:
+    """Superproject status must not authorize deleting a plain directory."""
+    repo, _head_oid = superproject_with_plain_subdirectory
+
+    with pytest.raises(CommandError, match="not a standalone Git repository"):
+        submodule_pointer_actions._remove_submodule_worktree("sub", "Discard")
+
+    assert (repo / "sub").is_dir()
 
 
 @pytest.fixture
@@ -680,6 +758,24 @@ def test_include_from_batch_stages_submodule_pointer(
     assert old_oid in raw_diff
     assert new_oid in raw_diff
     assert _worktree_pointer_diff(repo) == ""
+
+
+def test_include_from_batch_updates_submodule_from_superproject_subdirectory(
+    submodule_pointer_repo: tuple[Path, str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nested Git commands resolve submodule paths from the repository root."""
+    repo, old_oid, new_oid = submodule_pointer_repo
+    command_start(quiet=True)
+    command_include_to_batch("pointers", quiet=True)
+    _run(["git", "checkout", "--detach", old_oid], cwd=repo / "sub")
+    subdirectory = repo / "nested-cwd"
+    subdirectory.mkdir()
+    monkeypatch.chdir(subdirectory)
+
+    command_include_from_batch("pointers", file="sub")
+
+    assert _git_stdout(["rev-parse", "HEAD"], cwd=repo / "sub") == new_oid
 
 
 def test_include_from_batch_stages_added_submodule_pointer(

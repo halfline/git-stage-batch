@@ -43,16 +43,12 @@ def handle_hunk_include(flow_state: FlowState) -> None:
 def handle_hunk_skip(flow_state: FlowState) -> None:
     """Handle skip action based on source and target."""
     if flow_state.source.role is LocationRole.WORKING_TREE:
-        if flow_state.target.role is LocationRole.STAGING_AREA:
-            command_skip(quiet=True, auto_advance=True)
-        elif flow_state.target.role is LocationRole.BATCH:
-            command_include_to_batch(
-                flow_state.target.batch_name,
-                quiet=True,
-                auto_advance=True,
-            )
-        else:
+        if flow_state.target.role not in (
+            LocationRole.STAGING_AREA,
+            LocationRole.BATCH,
+        ):
             raise ValueError(f"Unknown target role: {flow_state.target.role}")
+        command_skip(quiet=True, auto_advance=True)
     elif flow_state.source.role is LocationRole.BATCH:
         print(_("Skip is not available when pulling from a batch."), file=sys.stderr)
         raise BypassRefresh()

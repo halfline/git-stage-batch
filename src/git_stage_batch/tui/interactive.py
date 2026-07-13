@@ -77,6 +77,19 @@ def start_interactive_mode() -> None:
         try:
             if action in ACTION_HANDLERS:
                 with acquire_session_lock():
+                    handler = ACTION_HANDLERS[action]
+                    if handler.needs_hunk:
+                        current = current_change.load_current_change(flow_state)
+                        if current != loaded_change:
+                            print(
+                                _(
+                                    "The selected change advanced while the prompt "
+                                    "was open; no action was taken."
+                                ),
+                                file=sys.stderr,
+                            )
+                            should_refresh = True
+                            continue
                     dispatch_action(
                         action,
                         has_hunk=has_hunk,

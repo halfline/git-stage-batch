@@ -31,18 +31,6 @@ def apply_live_line_action(
         return
 
     if action == "s":
-        if state.flow_state.target.role is LocationRole.BATCH:
-            from ...commands.include import command_include_to_batch
-
-            command_include_to_batch(
-                state.flow_state.target.batch_name,
-                line_ids=line_ids,
-                file=state.file_path,
-                quiet=True,
-                auto_advance=False,
-            )
-            return
-
         from ...commands.skip import command_skip_line
 
         command_skip_line(line_ids, file=state.file_path, auto_advance=False)
@@ -122,17 +110,6 @@ def apply_live_file_action(
         return
 
     if action == "S":
-        if state.flow_state.target.role is LocationRole.BATCH:
-            from ...commands.include import command_include_to_batch
-
-            command_include_to_batch(
-                state.flow_state.target.batch_name,
-                file=state.file_path,
-                quiet=True,
-                auto_advance=False,
-            )
-            return
-
         from ...commands.skip import command_skip_file
 
         command_skip_file(

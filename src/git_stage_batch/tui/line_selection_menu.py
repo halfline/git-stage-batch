@@ -125,16 +125,12 @@ def _handle_line_skip(flow_state: FlowState, line_ids: str) -> None:
     if flow_state.source.role is LocationRole.BATCH:
         print(_("Skip is not available when pulling from a batch."), file=sys.stderr)
         return
-    if flow_state.target.role is LocationRole.STAGING_AREA:
-        command_skip_line(line_ids, auto_advance=True)
-    elif flow_state.target.role is LocationRole.BATCH:
-        command_include_to_batch(
-            flow_state.target.batch_name,
-            line_ids=line_ids,
-            auto_advance=True,
-        )
-    else:
+    if flow_state.target.role not in (
+        LocationRole.STAGING_AREA,
+        LocationRole.BATCH,
+    ):
         raise ValueError(f"Unknown target role: {flow_state.target.role}")
+    command_skip_line(line_ids, auto_advance=True)
 
 
 def _handle_line_discard(flow_state: FlowState, line_ids: str) -> None:

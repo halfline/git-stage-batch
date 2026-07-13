@@ -535,6 +535,24 @@ def test_discard_file_restores_submodule_pointer(
     assert _git_stdout(["diff", "--ignore-submodules=none", "--", "sub"], cwd=repo) == ""
 
 
+def test_unstaged_gitlink_selection_freshness_uses_index_base(
+    submodule_pointer_repo: tuple[Path, str, str],
+) -> None:
+    """A staged pointer plus a newer worktree pointer should remain actionable."""
+    repo, _old_oid, new_oid = submodule_pointer_repo
+    _run(["git", "add", "sub"], cwd=repo)
+    submodule = repo / "sub"
+    (submodule / "file.txt").write_text("three\n")
+    _run(["git", "commit", "-am", "Third pointer"], cwd=submodule)
+    third_oid = _git_stdout(["rev-parse", "HEAD"], cwd=submodule)
+
+    command_start(quiet=True)
+    command_skip(quiet=True)
+
+    assert _git_stdout(["rev-parse", "HEAD"], cwd=submodule) == third_oid
+    assert _git_stdout(["rev-parse", ":sub"], cwd=repo) == new_oid
+
+
 def test_discard_refuses_dirty_submodule_pointer(
     submodule_pointer_repo: tuple[Path, str, str],
 ) -> None:

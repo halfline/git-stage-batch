@@ -88,9 +88,13 @@ def load_selected_change() -> Optional[SelectedChange]:
 
     gitlink_change = _selected_file_changes.load_selected_gitlink_change()
     if gitlink_change is not None:
+        gitlink_data = _selected_file_changes.read_selected_gitlink_data() or {}
         if (
             selected_kind == _selected_store.SelectedChangeKind.GITLINK
-            and _change_freshness.gitlink_change_is_stale(gitlink_change)
+            and _change_freshness.gitlink_change_is_stale(
+                gitlink_change,
+                comparison_base=gitlink_data.get("comparison_base"),
+            )
         ):
             raise CommandError(
                 _(
@@ -102,9 +106,13 @@ def load_selected_change() -> Optional[SelectedChange]:
 
     binary_file = _selected_file_changes.load_selected_binary_file()
     if binary_file is not None:
+        binary_data = _selected_file_changes.read_selected_binary_data() or {}
         if (
             selected_kind == _selected_store.SelectedChangeKind.BINARY
-            and _change_freshness.binary_file_change_is_stale(binary_file)
+            and _change_freshness.binary_file_change_is_stale(
+                binary_file,
+                comparison_base=binary_data.get("comparison_base"),
+            )
         ):
             file_path = binary_file.path()
             raise CommandError(

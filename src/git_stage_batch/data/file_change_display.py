@@ -31,13 +31,17 @@ def render_mode_change(file_path: str) -> Optional[FileModeChange]:
         return None
 
 
-def render_binary_file_change(file_path: str) -> Optional[BinaryFileChange]:
-    """Render a binary file change for file-scoped display without caching state."""
+def render_binary_file_change(
+    file_path: str,
+    *,
+    base: str | None = None,
+) -> Optional[BinaryFileChange]:
+    """Render a binary change against the requested comparison base."""
     auto_add_untracked_files([file_path])
     try:
         with acquire_unified_diff(
             stream_live_git_diff(
-                base="HEAD",
+                base=base,
                 full_index=True,
                 ignore_submodules="none",
                 submodule_format="short",
@@ -52,13 +56,17 @@ def render_binary_file_change(file_path: str) -> Optional[BinaryFileChange]:
     return None
 
 
-def render_gitlink_change(file_path: str) -> Optional[GitlinkChange]:
-    """Render a gitlink change for file-scoped display without caching state."""
+def render_gitlink_change(
+    file_path: str,
+    *,
+    base: str | None = None,
+) -> Optional[GitlinkChange]:
+    """Render a gitlink change against the requested comparison base."""
     auto_add_untracked_files([file_path])
     try:
         with acquire_unified_diff(
             stream_live_git_diff(
-                base="HEAD",
+                base=base,
                 full_index=True,
                 ignore_submodules="none",
                 submodule_format="short",

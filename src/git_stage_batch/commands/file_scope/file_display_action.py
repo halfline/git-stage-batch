@@ -46,6 +46,7 @@ from ...output.patch import (
     print_file_mode_change,
     print_text_file_deletion_change,
 )
+from ...utils.session_start_point import session_comparison_base
 
 
 def _load_previous_selection_for_review():
@@ -74,6 +75,7 @@ def show_live_file_display(
         target_file = file_arg
 
     preview_lines = render_file_as_single_hunk(target_file)
+    comparison_base = session_comparison_base()
     deletion_change = (
         render_text_deletion_change(target_file) if preview_lines is None else None
     )
@@ -82,12 +84,12 @@ def show_live_file_display(
     ):
         deletion_change = None
     binary_change = (
-        render_binary_file_change(target_file)
+        render_binary_file_change(target_file, base=comparison_base)
         if preview_lines is None and deletion_change is None
         else None
     )
     gitlink_change = (
-        render_gitlink_change(target_file)
+        render_gitlink_change(target_file, base=comparison_base)
         if preview_lines is None
         and deletion_change is None
         and binary_change is None
@@ -141,7 +143,10 @@ def show_live_file_display(
             exit_with_error(_("File review pages are only available for text changes."))
         if selectable:
             clear_last_file_review_state()
-            cache_gitlink_change(gitlink_change)
+            cache_gitlink_change(
+                gitlink_change,
+                comparison_base=comparison_base,
+            )
         if porcelain:
             return
         print_gitlink_change(gitlink_change)
@@ -152,7 +157,10 @@ def show_live_file_display(
             exit_with_error(_("File review pages are only available for text changes."))
         if selectable:
             clear_last_file_review_state()
-            cache_binary_file_change(binary_change)
+            cache_binary_file_change(
+                binary_change,
+                comparison_base=comparison_base,
+            )
         if porcelain:
             return
         print_binary_file_change(binary_change)

@@ -206,6 +206,7 @@ def cache_binary_file_change(
     kind: SelectedChangeKind = SelectedChangeKind.BINARY,
     batch_name: str | None = None,
     batch_binary_fingerprint: str | None = None,
+    comparison_base: str | None = None,
 ) -> None:
     """Cache a binary file change as the current selected change."""
     if kind not in (SelectedChangeKind.BINARY, SelectedChangeKind.BATCH_BINARY):
@@ -221,6 +222,7 @@ def cache_binary_file_change(
             if kind == SelectedChangeKind.BATCH_BINARY else
             None
         ),
+        "comparison_base": comparison_base,
     }
     _clear_selected_line_payload_files()
     write_text_file_contents(
@@ -242,6 +244,7 @@ def cache_gitlink_change(
     kind: SelectedChangeKind = SelectedChangeKind.GITLINK,
     batch_name: str | None = None,
     batch_gitlink_fingerprint: str | None = None,
+    comparison_base: str | None = None,
 ) -> None:
     """Cache a gitlink change as the current selected change."""
     if kind not in (SelectedChangeKind.GITLINK, SelectedChangeKind.BATCH_GITLINK):
@@ -258,6 +261,7 @@ def cache_gitlink_change(
             if kind == SelectedChangeKind.BATCH_GITLINK else
             None
         ),
+        "comparison_base": comparison_base,
     }
     _clear_selected_line_payload_files()
     write_text_file_contents(

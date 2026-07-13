@@ -107,6 +107,15 @@ class TestIsGitRepositoryRootPath:
 
         assert not is_git_repository_root_path(alias)
 
+    def test_accepts_repository_beneath_symlinked_parent(self, temp_git_repo):
+        """Only a symlink leaf is ambiguous; parent aliases may resolve normally."""
+        parent_alias = temp_git_repo.parent / "parent-alias"
+        parent_alias.symlink_to(temp_git_repo.parent, target_is_directory=True)
+        aliased_repository = parent_alias / temp_git_repo.name
+
+        assert not aliased_repository.is_symlink()
+        assert is_git_repository_root_path(aliased_repository)
+
 
 class TestNormalizeRepositoryPath:
     """Tests for normalized repository paths."""

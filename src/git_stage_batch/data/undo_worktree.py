@@ -156,7 +156,10 @@ def _snapshot_gitlink_path(
         "dirty": dirty,
         "blob": None,
     }
-    if worktree_exists and (head_oid is None or worktree_oid is None or dirty):
+    # A clean nested worktree can disappear after the checkpoint just as a
+    # dirty one can. Preserve a complete before-image so undo does not depend
+    # on a remote, .gitmodules entry, or still-present nested Git directory.
+    if worktree_exists:
         entry["archive"] = True
         entry["storage_mode"] = "100644"
         entry["blob"] = _create_directory_archive_blob(

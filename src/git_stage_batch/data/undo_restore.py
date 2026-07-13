@@ -22,7 +22,7 @@ from ..git_paths import decode_path
 from ..utils.git_refs import (
     update_git_refs,
 )
-from ..utils.git_worktree import git_checkout_detached
+from ..utils.git_worktree import git_checkout_detached, git_submodule_update_checkout
 from ..utils.git_index import git_add_paths, git_update_index
 from ..utils.git_repository import (
     get_git_repository_root_path,
@@ -228,6 +228,12 @@ def _checkout_gitlink_worktree(
     force: bool = False,
 ) -> None:
     """Check out a gitlink commit only inside its exact nested repository."""
+    if not os.path.lexists(target_path):
+        git_submodule_update_checkout(
+            [file_path],
+            cwd=str(get_git_repository_root_path()),
+            check=False,
+        )
     if not is_git_repository_root_path(target_path):
         raise CommandError(
             _(

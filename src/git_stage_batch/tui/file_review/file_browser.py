@@ -15,7 +15,7 @@ from .block_actions import block_review_file
 from .live_actions import apply_live_file_action
 from .session import FileReviewSessionState
 from ..flow import FlowState, LocationRole
-from ..prompts import confirm_destructive_operation, wrap_prompt_for_readline
+from ..prompts import confirm_destructive_operation, unlocked_input, wrap_prompt_for_readline
 
 
 @dataclass(frozen=True)
@@ -81,7 +81,7 @@ def choose_review_file(
 
         print()
         try:
-            choice = input(
+            choice = unlocked_input(
                 wrap_prompt_for_readline(
                     _("File number, /pattern, m N, u N, i/s/d/B marked, or q: ")
                 )
@@ -115,7 +115,7 @@ def choose_review_file(
 def prompt_block_local_only() -> bool | None:
     """Prompt for the block-file destination."""
     try:
-        choice = input(
+        choice = unlocked_input(
             wrap_prompt_for_readline(
                 _("Block target [g]itignore, [l]ocal exclude, or q: ")
             )

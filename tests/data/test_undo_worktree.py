@@ -87,3 +87,115 @@ def test_scoped_capture_does_not_inspect_unrelated_dirty_paths(tmp_path, monkeyp
     entries = undo_worktree.snapshot_worktree_paths(["target.txt"])
 
     assert [entry["path"] for entry in entries] == ["target.txt"]
+
+
+def test_nested_repository_capture_uses_repository_relative_paths_from_subdirectory(
+    tmp_path,
+    monkeypatch,
+):
+    """Nested Git commands resolve paths from the outer repository root."""
+    repository = _initialize_repository(tmp_path, monkeypatch)
+    nested = repository / "nested"
+    nested.mkdir()
+    subprocess.run(["git", "init"], cwd=nested, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=nested,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=nested,
+        check=True,
+        capture_output=True,
+    )
+    (nested / "file.txt").write_text("nested\n")
+    subprocess.run(["git", "add", "file.txt"], cwd=nested, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Add nested file"],
+        cwd=nested,
+        check=True,
+        capture_output=True,
+    )
+    nested_oid = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=nested,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subdirectory = repository / "elsewhere"
+    subdirectory.mkdir()
+    monkeypatch.chdir(subdirectory)
+
+    entry = undo_worktree.snapshot_worktree_paths(["nested"])[0]
+
+    assert entry["exists"] is True
+    assert entry["worktree_oid"] == nested_oid
+
+
+def test_gitlink_capture_uses_repository_relative_paths_from_subdirectory(
+    tmp_path,
+    monkeypatch,
+):
+    """Index and HEAD gitlink lookups run from the superproject root."""
+    repository = _initialize_repository(tmp_path, monkeypatch)
+    nested = repository / "nested"
+    nested.mkdir()
+    subprocess.run(["git", "init"], cwd=nested, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=nested,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=nested,
+        check=True,
+        capture_output=True,
+    )
+    (nested / "file.txt").write_text("nested\n")
+    subprocess.run(["git", "add", "file.txt"], cwd=nested, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Add nested file"],
+        cwd=nested,
+        check=True,
+        capture_output=True,
+    )
+    nested_oid = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=nested,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(
+        [
+            "git",
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            "160000",
+            nested_oid,
+            "nested",
+        ],
+        cwd=repository,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Add gitlink"],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+    )
+    subdirectory = repository / "elsewhere"
+    subdirectory.mkdir()
+    monkeypatch.chdir(subdirectory)
+
+    entry = undo_worktree.snapshot_worktree_paths(["nested"])[0]
+
+    assert entry["kind"] == "gitlink"
+    assert entry["index_oid"] == nested_oid
+    assert entry["head_oid"] == nested_oid

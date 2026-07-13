@@ -34,10 +34,7 @@ from ...utils.git_worktree import (
     git_apply_to_worktree,
     git_checkout_index_paths,
 )
-from ...utils.git_index import (
-    git_update_gitlink,
-    git_update_index,
-)
+from ...utils.git_index import git_update_index
 from ...utils.git_repository import get_git_repository_root_path
 from ...utils.journal import log_journal
 from ...utils.paths import (
@@ -320,26 +317,8 @@ def discard_gitlink_change(gitlink_change: GitlinkChange) -> None:
     }
     discard_submodule_pointer_from_batch(file_path, file_meta)
 
-    if gitlink_change.is_new_file():
-        return
-    if gitlink_change.old_oid is None:
-        exit_with_error(
-            _("Cannot discard submodule pointer for {file}: missing baseline commit.").format(
-                file=file_path,
-            )
-        )
-    index_result = git_update_gitlink(
-        file_path=file_path,
-        oid=gitlink_change.old_oid,
-        check=False,
-    )
-    if index_result.returncode != 0:
-        exit_with_error(
-            _("Failed to update submodule pointer in the index for {file}: {error}").format(
-                file=file_path,
-                error=index_result.stderr,
-            )
-        )
+    # The live diff baseline is the index. Restoring the submodule worktree is
+    # sufficient; changing the gitlink entry here would discard staged work.
 
 
 def discard_rename_change(rename_change: RenameChange) -> None:

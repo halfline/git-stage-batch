@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import pytest
+
 from git_stage_batch.core.line_change_body import LineChangeBodyBuilder
 from git_stage_batch.core.models import HunkHeader
+from git_stage_batch.exceptions import CommandError
 
 
 def test_body_builder_appends_context_deletion_and_addition_lines():
@@ -43,17 +46,24 @@ def test_body_builder_marks_previous_line_without_trailing_newline():
     assert builder.line_entries[0].has_trailing_newline is False
 
 
-def test_body_builder_treats_empty_and_unknown_lines_as_context():
-    """Empty and unknown body lines should be represented as context."""
+def test_body_builder_treats_empty_lines_as_context():
+    """Empty body lines retain the parser's compatibility representation."""
     builder = LineChangeBodyBuilder()
 
     builder.reset_for_hunk_header(HunkHeader(3, 2, 4, 2))
     builder.append_patch_line(b"")
-    builder.append_patch_line(b"!body")
 
     assert [(entry.kind, entry.text_bytes) for entry in builder.line_entries] == [
         (" ", b""),
-        (" ", b"body"),
     ]
-    assert builder.old_line_number == 5
-    assert builder.new_line_number == 6
+    assert builder.old_line_number == 4
+    assert builder.new_line_number == 5
+
+
+def test_body_builder_rejects_unknown_line_prefix():
+    """Unknown prefixes cannot silently skew parsed line numbers."""
+    builder = LineChangeBodyBuilder()
+    builder.reset_for_hunk_header(HunkHeader(3, 1, 4, 1))
+
+    with pytest.raises(CommandError, match="Invalid line prefix"):
+        builder.append_patch_line(b"!body")

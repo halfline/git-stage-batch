@@ -190,6 +190,7 @@ def command_discard_to_batch(
     """
     require_git_repository()
     validate_batch_name(batch_name)
+    require_session_started()
     ensure_state_directory_exists()
     original_file_scope = file
     scope_resolution = resolve_live_to_batch_action_scope(

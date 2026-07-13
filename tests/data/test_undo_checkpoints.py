@@ -54,3 +54,8 @@ def test_legacy_gitlink_absence_is_normalized_for_conflict_checks():
     assert undo_checkpoints._worktree_state_by_path([legacy]) == (
         undo_checkpoints._worktree_state_by_path([current])
     )
+
+
+def test_redo_conflicts_fail_closed_without_after_undo_state():
+    """A partial redo node must require an explicit force override."""
+    assert undo_checkpoints._detect_redo_conflicts({}) == ["incomplete checkpoint"]

@@ -12,6 +12,7 @@ import subprocess
 
 import pytest
 
+import git_stage_batch.commands.batch_source.apply_action as apply_action
 from git_stage_batch.batch.state.lifecycle import create_batch
 from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.data.session import initialize_abort_state
@@ -107,6 +108,57 @@ class TestCommandApplyFromBatch:
         assert "line 1" in content
         assert "line 2" in content
         assert "line 3" in content
+
+    def test_multi_file_write_failure_rolls_back_earlier_applies(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """A failed later file should roll back every worktree write."""
+        for name in ("a.txt", "b.txt"):
+            (temp_git_repo / name).write_text(f"{name} base\n")
+        subprocess.run(
+            ["git", "add", "a.txt", "b.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add files"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        for name in ("a.txt", "b.txt"):
+            (temp_git_repo / name).write_text(f"{name} batch\n")
+
+        command_start(quiet=True)
+        command_include_to_batch("test-batch", file="a.txt", quiet=True)
+        command_include_to_batch("test-batch", file="b.txt", quiet=True)
+        for name in ("a.txt", "b.txt"):
+            (temp_git_repo / name).write_text(f"{name} base\n")
+
+        original_write = apply_action._text_file_actions.write_text_file_to_worktree
+        calls = 0
+
+        def fail_second_write(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise OSError("injected write failure")
+            return original_write(*args, **kwargs)
+
+        monkeypatch.setattr(
+            apply_action._text_file_actions,
+            "write_text_file_to_worktree",
+            fail_second_write,
+        )
+
+        with pytest.raises(CommandError, match="injected write failure"):
+            command_apply_from_batch("test-batch")
+
+        assert (temp_git_repo / "a.txt").read_text() == "a.txt base\n"
+        assert (temp_git_repo / "b.txt").read_text() == "b.txt base\n"
 
     def test_apply_from_batch_does_not_stage(self, temp_git_repo):
         """Test that apply does not stage changes to index."""

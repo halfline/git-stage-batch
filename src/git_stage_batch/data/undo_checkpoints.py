@@ -241,8 +241,14 @@ def undo_checkpoint(
     *,
     worktree_paths: list[str],
     index_paths: list[str] | None = None,
+    rollback_on_error: bool = False,
 ) -> Iterator[None]:
-    """Bracket an undoable operation with before and after snapshots."""
+    """Bracket an undoable operation with before and after snapshots.
+
+    When rollback_on_error is true, restore the before-image and discard the
+    checkpoint before propagating an exception. This turns the checkpoint into
+    a transaction boundary for commands that span several files or stores.
+    """
     global _PENDING_CHECKPOINT
     if _PENDING_CHECKPOINT is not None:
         if current_undo_commit() == _PENDING_CHECKPOINT:
@@ -250,6 +256,7 @@ def undo_checkpoint(
             return
         _PENDING_CHECKPOINT = None
 
+    previous_redo = current_redo_commit()
     checkpoint = _create_undo_checkpoint(
         operation,
         worktree_paths=worktree_paths,
@@ -257,9 +264,67 @@ def undo_checkpoint(
     )
     try:
         yield
-    finally:
+    except BaseException as operation_error:
+        if checkpoint is not None and rollback_on_error:
+            try:
+                _rollback_failed_checkpoint(
+                    checkpoint,
+                    previous_redo=previous_redo,
+                )
+            except Exception as rollback_error:
+                raise CommandError(
+                    _(
+                        "Operation failed and its automatic rollback also failed. "
+                        "The before-image remains available through `undo --force`.\n"
+                        "Operation error: {operation_error}\n"
+                        "Rollback error: {rollback_error}"
+                    ).format(
+                        operation_error=operation_error,
+                        rollback_error=rollback_error,
+                    )
+                ) from operation_error
+        elif checkpoint is not None:
+            finalize_pending_checkpoint()
+        raise
+    else:
         if checkpoint is not None:
             finalize_pending_checkpoint()
+
+
+def _rollback_failed_checkpoint(
+    checkpoint: str,
+    *,
+    previous_redo: str | None,
+) -> None:
+    """Restore an incomplete checkpoint after its operation raises."""
+    global _PENDING_CHECKPOINT
+    _PENDING_CHECKPOINT = None
+
+    if current_undo_commit() != checkpoint:
+        raise CommandError(
+            _("Cannot roll back a failed operation because its checkpoint moved.")
+        )
+
+    manifest = _undo_restore.read_json_from_commit(checkpoint, "manifest.json")
+    validate_recovery_state(manifest)
+    _restore_metadata_state(checkpoint, manifest)
+    _undo_restore.restore_refs(manifest.get("refs", {}))
+    _restore_index_state(manifest)
+    _undo_restore.restore_worktree(checkpoint, manifest)
+    _undo_restore.restore_intent_to_add_entries()
+
+    parent = checkpoint_parent(checkpoint)
+    updates: list[tuple[str, str]] = []
+    deletes: list[str] = []
+    if parent is None:
+        deletes.append(SESSION_UNDO_STACK_REF)
+    else:
+        updates.append((SESSION_UNDO_STACK_REF, parent))
+    if previous_redo is None:
+        deletes.append(SESSION_REDO_STACK_REF)
+    else:
+        updates.append((SESSION_REDO_STACK_REF, previous_redo))
+    update_git_refs(updates=updates, deletes=deletes)
 
 
 def finalize_pending_checkpoint() -> None:

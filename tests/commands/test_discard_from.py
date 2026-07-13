@@ -7,6 +7,7 @@ import subprocess
 
 import pytest
 
+import git_stage_batch.commands.batch_source.discard_action as discard_action
 from git_stage_batch.batch.state.lifecycle import create_batch
 from git_stage_batch.batch.file_display import render_batch_file_display
 from git_stage_batch.commands.discard_from import command_discard_from_batch
@@ -63,6 +64,57 @@ class TestCommandDiscardFromBatch:
 
         captured = capsys.readouterr()
         assert "Discarded changes from batch" in captured.err
+
+    def test_multi_file_failure_rolls_back_earlier_discards(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """A later write failure must not leave earlier files discarded."""
+        for name in ("a.txt", "b.txt"):
+            (temp_git_repo / name).write_text(f"{name} base\n")
+        subprocess.run(
+            ["git", "add", "a.txt", "b.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add files"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        for name in ("a.txt", "b.txt"):
+            (temp_git_repo / name).write_text(f"{name} batch\n")
+
+        command_start(quiet=True)
+        command_include_to_batch("test-batch", file="a.txt", quiet=True)
+        command_include_to_batch("test-batch", file="b.txt", quiet=True)
+
+        original_write = (
+            discard_action._text_file_actions.write_discarded_text_file_to_worktree
+        )
+        calls = 0
+
+        def fail_second_write(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise OSError("injected write failure")
+            return original_write(*args, **kwargs)
+
+        monkeypatch.setattr(
+            discard_action._text_file_actions,
+            "write_discarded_text_file_to_worktree",
+            fail_second_write,
+        )
+
+        with pytest.raises(CommandError, match="a.txt|b.txt"):
+            command_discard_from_batch("test-batch")
+
+        assert (temp_git_repo / "a.txt").read_text() == "a.txt batch\n"
+        assert (temp_git_repo / "b.txt").read_text() == "b.txt batch\n"
 
     def test_discard_from_batch_partial_atomic_unit_shows_required_lines(self, temp_git_repo):
         """Partial replacement selections should keep the atomic-selection guidance."""

@@ -44,7 +44,11 @@ def execute_discard_to_batch_action(
 
     selected_change = load_selected_change() if file is None else None
     worktree_paths = checkpoint_paths_for_file_scope(file, selected_change)
-    with undo_checkpoint(" ".join(operation_parts), worktree_paths=worktree_paths):
+    with undo_checkpoint(
+        " ".join(operation_parts),
+        worktree_paths=worktree_paths,
+        rollback_on_error=True,
+    ):
         if (
             file is None
             and line_ids is None

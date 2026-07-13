@@ -169,7 +169,11 @@ def execute_apply_action(
 
     try:
         try:
-            with undo_checkpoint(" ".join(operation_parts), worktree_paths=list(files)):
+            with undo_checkpoint(
+                " ".join(operation_parts),
+                worktree_paths=list(files),
+                rollback_on_error=True,
+            ):
                 for plan in apply_plans:
                     snapshot_file_if_untracked(plan.file_path)
                     if isinstance(plan, _action_plans.ApplyTextFileActionPlan):
@@ -200,10 +204,11 @@ def execute_apply_action(
                     _file_mode_actions.apply_new_file_mode(file_path, file_meta)
         except CommandError:
             raise
-        except Exception:
+        except Exception as error:
             _worktree_refusals.refuse_incompatible_worktree_action(
                 batch_name=batch_name,
                 file_paths=files,
+                error=error,
             )
     finally:
         _action_plans.close_action_plans(apply_plans)

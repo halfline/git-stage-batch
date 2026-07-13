@@ -65,7 +65,11 @@ def execute_discard_action(
     rendered = selection.rendered
     operation_parts = list(selection.operation_parts)
 
-    with undo_checkpoint(" ".join(operation_parts), worktree_paths=list(files)):
+    with undo_checkpoint(
+        " ".join(operation_parts),
+        worktree_paths=list(files),
+        rollback_on_error=True,
+    ):
         failed_files = []
 
         for file_path, file_meta in files.items():
@@ -152,9 +156,9 @@ def execute_discard_action(
                 )
                 failed_files.append(file_path)
 
-    if failed_files:
-        exit_with_error(
-            _("Failed to discard changes for some files: {files}").format(
-                files=", ".join(failed_files),
+        if failed_files:
+            exit_with_error(
+                _("Failed to discard changes for some files: {files}").format(
+                    files=", ".join(failed_files),
+                )
             )
-        )

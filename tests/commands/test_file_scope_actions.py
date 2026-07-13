@@ -34,7 +34,13 @@ class _Checkpoint:
 def _capture_undo_checkpoints(monkeypatch):
     calls = []
 
-    def fake_undo_checkpoint(operation, *, worktree_paths=None):
+    def fake_undo_checkpoint(
+        operation,
+        *,
+        worktree_paths=None,
+        rollback_on_error=False,
+    ):
+        assert rollback_on_error is True
         return _Checkpoint(calls, operation, worktree_paths)
 
     monkeypatch.setattr(multi_file_actions, "undo_checkpoint", fake_undo_checkpoint)

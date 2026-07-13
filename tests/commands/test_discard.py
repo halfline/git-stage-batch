@@ -73,7 +73,7 @@ class TestCommandDiscard:
         self,
         temp_git_repo,
     ):
-        with pytest.raises(CommandError):
+        with pytest.raises(CommandError, match="not compatible"):
             command_discard_to_batch("invalid^name")
 
         assert not get_state_directory_path().exists()

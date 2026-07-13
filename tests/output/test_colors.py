@@ -9,6 +9,7 @@ def test_colors_class_has_codes():
     assert hasattr(Colors, 'BOLD')
     assert hasattr(Colors, 'RED')
     assert hasattr(Colors, 'GREEN')
+    assert hasattr(Colors, 'YELLOW')
     assert hasattr(Colors, 'CYAN')
 
 

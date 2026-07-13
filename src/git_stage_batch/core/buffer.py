@@ -7,6 +7,8 @@ from contextlib import nullcontext
 import mmap
 import os
 from pathlib import Path
+import stat
+import tempfile
 from typing import Any, BinaryIO, Generic, Iterator, TypeVar, overload
 
 from .mapped_storage import (
@@ -701,9 +703,7 @@ def write_buffer_to_path(path: str | Path, buffer: BufferInput) -> None:
         os.symlink(target, os.fsencode(file_path))
         return
 
-    with file_path.open("wb") as file_handle:
-        for chunk in buffer_byte_chunks(buffer):
-            file_handle.write(chunk)
+    _write_regular_file_atomically(file_path, buffer)
 
 
 def write_buffer_to_working_tree_path(
@@ -726,13 +726,56 @@ def write_buffer_to_working_tree_path(
     if file_path.is_symlink():
         file_path.unlink()
 
-    with file_path.open("wb") as file_handle:
-        for chunk in buffer_byte_chunks(buffer):
-            file_handle.write(chunk)
-
+    requested_mode = None
     if mode == "100755":
-        current_mode = file_path.stat().st_mode
-        file_path.chmod(current_mode | 0o111)
+        requested_mode = 0o755
     elif mode == "100644":
-        current_mode = file_path.stat().st_mode
-        file_path.chmod(current_mode & ~0o111)
+        requested_mode = 0o644
+    _write_regular_file_atomically(file_path, buffer, mode=requested_mode)
+
+
+def _write_regular_file_atomically(
+    file_path: Path,
+    buffer: BufferInput,
+    *,
+    mode: int | None = None,
+) -> None:
+    """Stream a regular file through a same-directory atomic replacement."""
+    try:
+        metadata = file_path.stat()
+    except FileNotFoundError:
+        metadata = None
+    replacement_mode = (
+        mode
+        if mode is not None
+        else stat.S_IMODE(metadata.st_mode) if metadata is not None else 0o644
+    )
+    file_descriptor, temporary_name = tempfile.mkstemp(
+        dir=file_path.parent,
+        prefix=f".{file_path.name}.",
+        suffix=".tmp",
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(file_descriptor, "wb") as file_handle:
+            for chunk in buffer_byte_chunks(buffer):
+                file_handle.write(chunk)
+            file_handle.flush()
+            if metadata is not None and hasattr(os, "fchown"):
+                try:
+                    os.fchown(file_handle.fileno(), metadata.st_uid, metadata.st_gid)
+                except PermissionError:
+                    pass
+            os.fchmod(file_handle.fileno(), replacement_mode)
+            os.fsync(file_handle.fileno())
+        os.replace(temporary_path, file_path)
+        directory_descriptor = os.open(
+            file_path.parent,
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+        )
+        try:
+            os.fsync(directory_descriptor)
+        finally:
+            os.close(directory_descriptor)
+    finally:
+        temporary_path.unlink(missing_ok=True)

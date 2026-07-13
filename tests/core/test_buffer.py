@@ -221,6 +221,22 @@ def test_buffer_helpers_accept_buffers(tmp_path):
     assert output_path.read_bytes() == b"alpha\nbeta\n"
 
 
+def test_write_buffer_failure_preserves_existing_file(tmp_path):
+    """A failed streaming write must not publish partial contents."""
+    output_path = tmp_path / "out.txt"
+    output_path.write_bytes(b"original\n")
+
+    def failing_chunks():
+        yield b"replacement prefix\n"
+        raise RuntimeError("simulated stream failure")
+
+    with pytest.raises(RuntimeError, match="simulated stream failure"):
+        write_buffer_to_path(output_path, failing_chunks())
+
+    assert output_path.read_bytes() == b"original\n"
+    assert list(tmp_path.glob(".out.txt.*.tmp")) == []
+
+
 def test_buffer_matches_across_chunk_boundaries(line_sequence):
     """Buffer comparison ignores how inputs are chunked."""
     left = line_sequence([b"alpha\n", b"beta\n"])

@@ -95,15 +95,15 @@ def _snapshot_current_state(
 
 
 def _restore_intent_to_add_state(state: dict[str, Any]) -> None:
-    """Restore exact scoped ITA flags and fail closed for legacy checkpoints."""
+    """Restore exact intent-to-add flags and fail closed for legacy checkpoints."""
     saved_paths = state.get("intent_to_add_paths")
     if isinstance(saved_paths, list):
         paths = [path for path in saved_paths if isinstance(path, str)]
     else:
-        # Legacy checkpoints did not save the ITA bit. An empty index blob is
-        # ambiguous: it can be either ITA or a fully staged empty file. Failing
-        # closed avoids demoting staged content based on append-only session
-        # history.
+        # Legacy checkpoints did not save the intent-to-add bit. An empty
+        # index blob is ambiguous: it can be either intent-to-add or a fully
+        # staged empty file. Failing closed avoids demoting staged content
+        # based on append-only session history.
         paths = []
     _undo_restore.restore_intent_to_add_entries(paths)
 

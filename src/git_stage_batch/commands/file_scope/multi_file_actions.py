@@ -17,6 +17,7 @@ from ...utils.git_repository import require_git_repository
 from ...utils.paths import ensure_state_directory_exists
 from .discard_to_batch import discard_files_to_batch
 from . import include_file as _include_file
+from .target_path import checkpoint_paths_for_live_files
 from ..selection.selected_change_display import show_selected_change
 from . import skip_file as _skip_file
 
@@ -112,7 +113,12 @@ def include_each_resolved_file(
     total_hunks = 0
     staged_files: list[str] = []
 
-    with _multi_file_undo_checkpoint("include", files):
+    checkpoint_paths = checkpoint_paths_for_live_files(list(files))
+    with _multi_file_undo_checkpoint(
+        "include",
+        files,
+        worktree_paths=checkpoint_paths,
+    ):
         for file_path in files:
             staged_hunks = _include_file.include_file_changes(
                 file_path,

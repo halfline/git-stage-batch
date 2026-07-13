@@ -12,7 +12,10 @@ from typing import Any
 from ..core.buffer import LineBuffer
 from ..utils.git_command import run_git_command
 from ..utils.git_index import GitIndexEntryUpdate
-from ..utils.git_repository import get_git_repository_root_path
+from ..utils.git_repository import (
+    get_git_repository_root_path,
+    is_git_repository_root_path,
+)
 from ..utils.git_object_io import create_git_blob, create_git_blobs_from_paths
 from ..git_paths import decode_path, nul_records
 
@@ -63,6 +66,7 @@ def _gitlink_oids_from_index(paths: list[str]) -> dict[str, str]:
         return {}
     result = run_git_command(
         ["ls-files", "--stage", "-z", "--", *paths],
+        cwd=str(get_git_repository_root_path()),
         check=False,
         text_output=False,
         requires_index_lock=False,
@@ -86,6 +90,7 @@ def _gitlink_oids_from_head(paths: list[str]) -> dict[str, str]:
         return {}
     result = run_git_command(
         ["ls-tree", "-z", "HEAD", "--", *paths],
+        cwd=str(get_git_repository_root_path()),
         check=False,
         text_output=False,
         requires_index_lock=False,
@@ -104,9 +109,12 @@ def _gitlink_oids_from_head(paths: list[str]) -> dict[str, str]:
 
 
 def _worktree_commit_oid(path: str) -> str | None:
+    worktree_path = get_git_repository_root_path() / path
+    if not is_git_repository_root_path(worktree_path):
+        return None
     result = run_git_command(
         ["rev-parse", "--verify", "HEAD^{commit}"],
-        cwd=path,
+        cwd=str(worktree_path),
         check=False,
         requires_index_lock=False,
     )
@@ -118,7 +126,7 @@ def _worktree_commit_oid(path: str) -> str | None:
 def _worktree_is_dirty(path: str) -> bool:
     result = run_git_command(
         ["status", "--porcelain"],
-        cwd=path,
+        cwd=str(get_git_repository_root_path() / path),
         check=False,
         requires_index_lock=False,
     )
@@ -131,33 +139,37 @@ def _snapshot_gitlink_path(
     index_oid: str | None,
     head_oid: str | None,
 ) -> dict[str, Any]:
+    full_path = get_git_repository_root_path() / path
+    worktree_exists = os.path.lexists(full_path)
     worktree_oid = _worktree_commit_oid(path)
+    dirty = _worktree_is_dirty(path) if worktree_oid is not None else False
     entry = {
         "path": path,
         "kind": "gitlink",
-        "exists": index_oid is not None or head_oid is not None or worktree_oid is not None,
+        "exists": worktree_exists,
         "mode": "160000",
         "index_oid": index_oid,
         "head_oid": head_oid,
         "worktree_oid": worktree_oid,
-        "dirty": _worktree_is_dirty(path) if worktree_oid is not None else False,
+        "dirty": dirty,
         "blob": None,
     }
-    if head_oid is None and worktree_oid is not None:
+    if worktree_exists and (head_oid is None or worktree_oid is None or dirty):
         entry["archive"] = True
         entry["storage_mode"] = "100644"
         entry["blob"] = _create_directory_archive_blob(
-            get_git_repository_root_path() / path
+            full_path
         )
     return entry
 
 
 def _snapshot_embedded_repo_path(path: str) -> dict[str, Any]:
+    full_path = get_git_repository_root_path() / path
     worktree_oid = _worktree_commit_oid(path)
     return {
         "path": path,
         "kind": "embedded-repo",
-        "exists": worktree_oid is not None,
+        "exists": os.path.lexists(full_path),
         "mode": "160000",
         "index_oid": None,
         "head_oid": None,
@@ -166,7 +178,7 @@ def _snapshot_embedded_repo_path(path: str) -> dict[str, Any]:
         "archive": True,
         "storage_mode": "100644",
         "blob": _create_directory_archive_blob(
-            get_git_repository_root_path() / path
+            full_path
         ),
     }
 

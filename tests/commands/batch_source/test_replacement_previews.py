@@ -82,7 +82,7 @@ def test_print_batch_source_replacement_preview_prints_diff(
         )
         return "diff\n"
 
-    monkeypatch.setattr(previews, "load_git_object_as_buffer", load_git_object)
+    monkeypatch.setattr(previews, "read_git_object_buffer_or_none", load_git_object)
     monkeypatch.setattr(
         previews,
         "acquire_batch_ownership_for_display_ids_from_lines",
@@ -158,7 +158,7 @@ def test_print_batch_source_replacement_preview_reports_missing_source(
     monkeypatch,
 ):
     """Replacement previews should report missing batch source content."""
-    monkeypatch.setattr(previews, "load_git_object_as_buffer", lambda spec: None)
+    monkeypatch.setattr(previews, "read_git_object_buffer_or_none", lambda spec: None)
 
     with pytest.raises(CommandError) as exc_info:
         previews.print_batch_source_replacement_preview(

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
 
 import pytest
 
@@ -10,13 +9,17 @@ from git_stage_batch.core.buffer import LineBuffer
 import git_stage_batch.utils.repository_buffers as repository_buffers
 from git_stage_batch.utils.repository_buffers import (
     load_git_blob_as_buffer,
-    load_git_object_as_buffer,
-    load_git_object_as_buffer_or_empty,
+    read_git_object_buffer_or_none,
+    read_git_object_buffer_or_empty,
     load_git_tree_files_as_buffers,
     load_working_tree_file_as_buffer,
     stream_git_blob_buffers,
 )
-from git_stage_batch.utils.git_object_io import GitBlobStream, GitTreeBlob
+from git_stage_batch.utils.git_object_io import (
+    GitBlobStream,
+    GitObjectInfo,
+    GitTreeBlob,
+)
 
 
 def test_load_git_blob_as_buffer_loads_streamed_blob(monkeypatch):
@@ -104,50 +107,46 @@ def test_load_git_tree_files_as_buffers_loads_tree_blobs(monkeypatch):
             buffer.close()
 
 
-def test_load_git_object_as_buffer_loads_streamed_output(monkeypatch):
-    """Git object buffers are loaded from streamed command output."""
+def test_read_git_object_buffer_or_none_loads_streamed_output(monkeypatch):
+    """Git object buffers are loaded from precisely resolved blobs."""
     calls = []
 
-    def fake_stream_git_object(revision_path):
-        calls.append(revision_path)
-        return iter([b"alpha\nbe", b"ta\n"])
+    monkeypatch.setattr(
+        repository_buffers,
+        "resolve_git_objects",
+        lambda names: {
+            names[0]: GitObjectInfo("abc123", "blob", 11),
+        },
+    )
 
-    monkeypatch.setattr(repository_buffers, "_stream_git_object", fake_stream_git_object)
+    def fake_load(blob_sha):
+        calls.append(blob_sha)
+        return LineBuffer.from_chunks([b"alpha\nbe", b"ta\n"])
 
-    with load_git_object_as_buffer("HEAD:file.txt") as buffer:
-        assert calls == ["HEAD:file.txt"]
+    monkeypatch.setattr(repository_buffers, "load_git_blob_as_buffer", fake_load)
+
+    with read_git_object_buffer_or_none("HEAD:file.txt") as buffer:
+        assert calls == ["abc123"]
         assert buffer.uses_mapped_storage is False
         assert buffer[1] == b"beta\n"
 
 
-def test_load_git_object_as_buffer_returns_none_for_missing_object(monkeypatch):
+def test_read_git_object_buffer_or_none_returns_none_for_missing_object(monkeypatch):
     """Missing Git objects return None instead of a buffer."""
 
-    def fake_stream_git_object(revision_path):
-        raise subprocess.CalledProcessError(
-            128,
-            ["git", "show", revision_path],
-        )
+    monkeypatch.setattr(repository_buffers, "resolve_git_objects", lambda _names: {})
 
-    monkeypatch.setattr(repository_buffers, "_stream_git_object", fake_stream_git_object)
-
-    assert load_git_object_as_buffer("HEAD:missing.txt") is None
+    assert read_git_object_buffer_or_none("HEAD:missing.txt") is None
 
 
-def test_load_git_object_as_buffer_or_empty_returns_empty_for_missing_object(
+def test_read_git_object_buffer_or_empty_returns_empty_for_missing_object(
     monkeypatch,
 ):
     """Missing Git objects can be loaded as empty file buffers."""
 
-    def fake_stream_git_object(revision_path):
-        raise subprocess.CalledProcessError(
-            128,
-            ["git", "show", revision_path],
-        )
+    monkeypatch.setattr(repository_buffers, "resolve_git_objects", lambda _names: {})
 
-    monkeypatch.setattr(repository_buffers, "_stream_git_object", fake_stream_git_object)
-
-    with load_git_object_as_buffer_or_empty("HEAD:missing.txt") as buffer:
+    with read_git_object_buffer_or_empty("HEAD:missing.txt") as buffer:
         assert len(buffer) == 0
 
 

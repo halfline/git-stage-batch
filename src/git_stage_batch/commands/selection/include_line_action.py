@@ -11,7 +11,7 @@ from ...core.line_selection import parse_line_selection
 from ...data.file_review.action_scope import finish_review_scoped_line_action
 from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.line_id_files import read_line_ids_file, write_line_ids_file
-from ...utils.repository_buffers import load_git_object_as_buffer
+from ...utils.repository_buffers import read_git_object_buffer_or_none
 from ...data.selected_change.store import (
     SelectedChangeKind,
     read_selected_change_kind,
@@ -72,7 +72,7 @@ def include_live_line_selection(
             )
         combined_include_ids = already_included_ids | set(requested_ids)
 
-        current_index_buffer = load_git_object_as_buffer(f":{line_changes.path}")
+        current_index_buffer = read_git_object_buffer_or_none(f":{line_changes.path}")
         if current_index_buffer is None:
             current_index_buffer = LineBuffer.from_bytes(b"")
 

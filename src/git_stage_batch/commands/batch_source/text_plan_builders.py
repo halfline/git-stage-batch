@@ -22,7 +22,7 @@ from ...core.text_lifecycle import (
 )
 from ...data.file_modes import detect_file_mode_in_commit
 from ...utils.repository_buffers import (
-    load_git_object_as_buffer,
+    read_git_object_buffer_or_none,
     load_working_tree_file_as_buffer,
 )
 from ...utils.git_repository import get_git_repository_root_path
@@ -91,7 +91,7 @@ def build_apply_text_file_action_plan(
         )
 
     batch_source_commit = file_meta["batch_source_commit"]
-    batch_source_buffer = load_git_object_as_buffer(
+    batch_source_buffer = read_git_object_buffer_or_none(
         f"{batch_source_commit}:{file_path}"
     )
     if batch_source_buffer is None:
@@ -144,7 +144,7 @@ def build_include_text_file_action_plan(
     """Build one deferred include-from text action plan."""
     text_change_type = normalized_text_change_type(file_meta.get("change_type"))
 
-    index_buffer = load_git_object_as_buffer(f":{file_path}")
+    index_buffer = read_git_object_buffer_or_none(f":{file_path}")
     index_exists = index_buffer is not None
     if index_buffer is None:
         index_buffer = LineBuffer.from_bytes(b"")
@@ -178,7 +178,7 @@ def build_include_text_file_action_plan(
         )
 
     batch_source_commit = file_meta["batch_source_commit"]
-    batch_source_buffer = load_git_object_as_buffer(
+    batch_source_buffer = read_git_object_buffer_or_none(
         f"{batch_source_commit}:{file_path}"
     )
     if batch_source_buffer is None:
@@ -283,13 +283,13 @@ def build_discard_text_file_action_plan(
         )
 
     batch_source_commit = file_meta["batch_source_commit"]
-    batch_source_buffer = load_git_object_as_buffer(
+    batch_source_buffer = read_git_object_buffer_or_none(
         f"{batch_source_commit}:{file_path}"
     )
     if batch_source_buffer is None:
         return DiscardTextPlanBuildResult(missing_source=True)
 
-    baseline_buffer = load_git_object_as_buffer(f"{baseline_commit}:{file_path}")
+    baseline_buffer = read_git_object_buffer_or_none(f"{baseline_commit}:{file_path}")
     baseline_exists = baseline_buffer is not None
     if baseline_buffer is None:
         baseline_buffer = LineBuffer.from_bytes(b"")
@@ -353,7 +353,7 @@ def _build_baseline_restore_text_plan(
     file_path: str,
     baseline_commit: str,
 ) -> _action_plans.DiscardTextFileActionPlan:
-    baseline_buffer = load_git_object_as_buffer(f"{baseline_commit}:{file_path}")
+    baseline_buffer = read_git_object_buffer_or_none(f"{baseline_commit}:{file_path}")
     if baseline_buffer is None:
         return _action_plans.DiscardTextFileActionPlan(
             file_path,

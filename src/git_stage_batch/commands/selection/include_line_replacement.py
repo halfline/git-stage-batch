@@ -14,7 +14,7 @@ from ...data.file_hunk_display import render_unstaged_file_as_single_hunk
 from ...data.selected_change.file_hunk_cache import cache_unstaged_file_as_single_hunk
 from ...data.line_state import load_line_changes_from_state
 from ...utils.repository_buffers import (
-    load_git_object_as_buffer_or_empty,
+    read_git_object_buffer_or_empty,
     load_working_tree_file_as_buffer,
 )
 from ...data.selected_change.loading import require_selected_hunk
@@ -148,7 +148,7 @@ def prepare_pathless_include_line_replacement(
         if translated_replacement is not None:
             replacement_line_changes, replacement_ids = translated_replacement
             replacement_line_id_specification = format_line_ids(sorted(replacement_ids))
-            replacement_base_buffer = load_git_object_as_buffer_or_empty(
+            replacement_base_buffer = read_git_object_buffer_or_empty(
                 f":{line_changes.path}"
             )
             replacement_source_buffer = load_working_tree_file_as_buffer(
@@ -209,7 +209,7 @@ def prepare_file_include_line_replacement(
     return IncludeLineReplacementFileSelection(
         target_file=target_file,
         line_changes=annotate_with_batch_source(target_file, cached_lines),
-        base_buffer=load_git_object_as_buffer_or_empty(f":{target_file}"),
+        base_buffer=read_git_object_buffer_or_empty(f":{target_file}"),
         source_buffer=load_working_tree_file_as_buffer(target_file),
         preserve_selected_state=preserve_selected_state,
         saved_selected_state=saved_selected_state,

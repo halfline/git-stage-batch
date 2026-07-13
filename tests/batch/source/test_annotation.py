@@ -102,7 +102,7 @@ def test_annotate_with_batch_source_working_lines_accepts_sequences(
     )
     monkeypatch.setattr(
         source_annotation_module,
-        "load_git_object_as_buffer",
+        "read_git_object_buffer_or_none",
         lambda revision_path: LineBuffer.from_chunks(
             iter([b"line 1\n", b"line 2\n"])
         ),
@@ -169,14 +169,14 @@ def test_annotate_with_batch_source_loads_indexed_buffers(monkeypatch, tmp_path)
         lambda path: "source-commit",
     )
 
-    def fake_load_git_object_as_buffer(revision_path):
+    def fake_read_git_object_buffer_or_none(revision_path):
         loaded_revisions.append(revision_path)
         return LineBuffer.from_chunks(iter([b"line 1\n", b"line 2\n"]))
 
     monkeypatch.setattr(
         source_annotation_module,
-        "load_git_object_as_buffer",
-        fake_load_git_object_as_buffer,
+        "read_git_object_buffer_or_none",
+        fake_read_git_object_buffer_or_none,
     )
 
     def fake_load_working_tree_file_as_buffer(path):

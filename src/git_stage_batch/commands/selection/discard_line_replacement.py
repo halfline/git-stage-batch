@@ -10,9 +10,6 @@ from pathlib import Path
 
 from ...batch.source.annotation import annotate_with_batch_source_working_lines
 from ...batch.state.lifecycle import create_batch
-from ...batch.ownership.model import (
-    BatchOwnership,
-)
 from ...batch.ownership.metadata_loading import acquire_ownership_for_metadata_dict
 from ...batch.ownership.merging import merge_batch_ownership
 from ...batch.ownership.remapping import remap_batch_ownership_with_lineage
@@ -24,7 +21,9 @@ from ...batch.ownership.replacement_line_runs import (
     derive_replacement_line_runs_from_lines,
 )
 from ...batch.selection import require_line_selection_in_view
-from ...batch.source.advancement import advance_source_lines_preserving_existing_presence
+from ...batch.source.advancement import (
+    advance_source_lines_preserving_existing_presence,
+)
 from ...batch.source.selected_line_refresh import (
     refresh_selected_lines_against_source_lines,
 )
@@ -42,8 +41,8 @@ from ...data.file_modes import detect_file_mode
 from ...data.file_hunk_display import build_file_hunk_from_buffer
 from ...data.line_state import load_line_changes_from_state
 from ...utils.repository_buffers import (
-    load_git_object_as_buffer,
-    load_git_object_as_buffer_or_empty,
+    read_git_object_buffer_or_none,
+    read_git_object_buffer_or_empty,
     load_working_tree_file_as_buffer,
 )
 from ...data.session import snapshot_file_if_untracked
@@ -73,7 +72,7 @@ class DiscardLineReplacementSelection:
 def derive_live_replacement_line_runs(file_path: str) -> list[ReplacementLineRun]:
     """Derive file-level replacement runs for the current live file state."""
     with (
-        load_git_object_as_buffer_or_empty(f"HEAD:{file_path}") as baseline_lines,
+        read_git_object_buffer_or_empty(f"HEAD:{file_path}") as baseline_lines,
         load_working_tree_file_as_buffer(file_path) as working_lines,
     ):
         return derive_replacement_line_runs_from_lines(
@@ -102,9 +101,7 @@ def prepare_discard_line_replacement_selection(
         requested_ids,
     )
 
-    selected_lines = [
-        line for line in line_changes.lines if line.id in effective_ids
-    ]
+    selected_lines = [line for line in line_changes.lines if line.id in effective_ids]
     if not selected_lines:
         exit_with_error(
             _("No matching lines found for selection: {ids}").format(
@@ -115,9 +112,7 @@ def prepare_discard_line_replacement_selection(
     working_file_path = get_git_repository_root_path() / line_changes.path
     if not os.path.lexists(working_file_path):
         exit_with_error(
-            _("File not found in working tree: {file}").format(
-                file=line_changes.path
-            )
+            _("File not found in working tree: {file}").format(file=line_changes.path)
         )
 
     replacement_payload = coerce_replacement_payload(replacement_text)
@@ -129,9 +124,7 @@ def prepare_discard_line_replacement_selection(
                     effective_ids,
                     replacement_payload,
                     working_lines,
-                    working_has_trailing_newline=buffer_ends_with_lf(
-                        working_lines
-                    ),
+                    working_has_trailing_newline=buffer_ends_with_lf(working_lines),
                     trim_unchanged_edge_anchors=not no_edge_overlap,
                 )
             )
@@ -252,7 +245,7 @@ def _merge_replacement_with_batch(
     existing_ownership = ownership_stack.enter_context(
         acquire_ownership_for_metadata_dict(file_metadata)
     )
-    old_source_buffer = load_git_object_as_buffer(
+    old_source_buffer = read_git_object_buffer_or_none(
         f"{current_batch_source}:{selection.file_path}"
     )
     if old_source_buffer is None:
@@ -280,9 +273,7 @@ def _merge_replacement_with_batch(
             working_lines=(),
             lineage=source_with_provenance.lineage,
         )
-        new_ownership = translate_lines_to_batch_ownership(
-            refreshed_selected_lines
-        )
+        new_ownership = translate_lines_to_batch_ownership(refreshed_selected_lines)
         batch_source_commit = create_batch_source_commit(
             selection.file_path,
             file_buffer_override=source_with_provenance.source_buffer,
@@ -319,7 +310,8 @@ def _select_rewritten_replacement_lines(
     matching_indices = [
         index
         for index, line in enumerate(rewritten_line_changes.lines)
-        if line.kind != " " and (
+        if line.kind != " "
+        and (
             line.old_line_number in original_old_lines
             or line.new_line_number in original_new_lines
         )
@@ -329,7 +321,7 @@ def _select_rewritten_replacement_lines(
         end_index = max(matching_indices)
         return [
             line
-            for line in rewritten_line_changes.lines[start_index:end_index + 1]
+            for line in rewritten_line_changes.lines[start_index : end_index + 1]
             if line.kind != " "
         ]
 

@@ -16,6 +16,30 @@ class CommandError(Exception):
         super().__init__(message)
 
 
+class RepositoryReadError(Exception):
+    """Base class for failures while reading repository state."""
+
+
+class RepositoryObjectMissing(RepositoryReadError):
+    """Raised when a requested Git object or path is absent."""
+
+
+class RepositoryPathMissing(RepositoryReadError):
+    """Raised when a requested working-tree path is absent."""
+
+
+class RepositoryPathInaccessible(RepositoryReadError):
+    """Raised when repository data exists but cannot be read."""
+
+
+class RepositoryDataInvalid(RepositoryReadError):
+    """Raised when repository data has an unsupported or invalid shape."""
+
+
+class GitOperationFailed(RepositoryReadError):
+    """Raised when Git fails while reading repository state."""
+
+
 def exit_with_error(message: str, exit_code: int = 1) -> None:
     """Raise a CommandError instead of exiting directly."""
     raise CommandError(message, exit_code)
@@ -23,16 +47,19 @@ def exit_with_error(message: str, exit_code: int = 1) -> None:
 
 class QuitInteractive(Exception):
     """Raised to exit the interactive mode main loop."""
+
     pass
 
 
 class BypassRefresh(Exception):
     """Raised when an action should not refresh the display."""
+
     pass
 
 
 class MergeError(Exception):
     """Raised when batch merge fails due to structural ambiguity."""
+
     pass
 
 
@@ -84,6 +111,7 @@ class MissingAnchorError(MergeError):
     This is a recoverable condition during discard: the absence claim
     is simply not applicable to the current state.
     """
+
     pass
 
 
@@ -93,6 +121,7 @@ class AmbiguousAnchorError(MergeError):
     This is not recoverable: structural ambiguity means we cannot determine
     the correct boundary for the deletion.
     """
+
     pass
 
 
@@ -106,6 +135,7 @@ class AtomicUnitError(MergeError):
         required_selection_ids: Selection IDs that must be selected together
         unit_kind: Kind of unit (for error messages)
     """
+
     def __init__(
         self,
         message: str,
@@ -119,6 +149,7 @@ class AtomicUnitError(MergeError):
 
 class NoMoreHunks(Exception):
     """Raised when there are no more hunks or binary files to process."""
+
     pass
 
 
@@ -128,4 +159,5 @@ class BatchMetadataError(Exception):
     This represents infrastructure/state corruption distinct from semantic
     merge conflicts or batch content issues.
     """
+
     pass

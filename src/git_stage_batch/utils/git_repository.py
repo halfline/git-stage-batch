@@ -126,27 +126,3 @@ def object_id_hex_length() -> int:
 def null_object_id() -> str:
     """Return Git's all-zero object ID at the repository's native width."""
     return "0" * object_id_hex_length()
-
-
-def resolve_file_path_to_repo_relative(file_path: str) -> str:
-    """Convert a file path to repository-relative format.
-
-    Args:
-        file_path: File path to convert
-
-    Returns:
-        Repository-relative path, or original path if outside repo
-    """
-    repo_root = get_git_repository_root_path()
-    path = Path(file_path)
-
-    # If it's already relative, use it as-is
-    if not path.is_absolute():
-        return file_path
-
-    # If it's absolute, make it relative to repo root
-    try:
-        return str(path.relative_to(repo_root))
-    except ValueError:
-        # Path is outside repo, return as-is
-        return file_path

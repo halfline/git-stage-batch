@@ -9,13 +9,12 @@ from ..selection import replacement_selection
 from ...batch.replacement import build_replacement_batch_view_from_lines
 from ...batch.selection import acquire_batch_ownership_for_display_ids_from_lines
 from ...batch.submodule_pointer import is_batch_submodule_pointer
-from ...core.buffer import LineBuffer
 from ...core.replacement import ReplacementPayload, coerce_replacement_payload
 from ...data.file_review.batch_selection import (
     translate_batch_file_gutter_ids_to_selection_ids,
 )
 from ...data.file_review.records import FileReviewAction
-from ...utils.repository_buffers import load_git_object_as_buffer
+from ...utils.repository_buffers import read_git_object_buffer_or_none
 from ...exceptions import exit_with_error
 from ...i18n import _
 from ...output.candidate_preview_diff import render_candidate_buffer_diff
@@ -48,7 +47,9 @@ def print_batch_source_replacement_preview(
 
     replacement_selection.require_contiguous_display_selection(selected_ids)
     batch_source_commit = file_meta["batch_source_commit"]
-    batch_source_buffer = load_git_object_as_buffer(f"{batch_source_commit}:{file_path}")
+    batch_source_buffer = read_git_object_buffer_or_none(
+        f"{batch_source_commit}:{file_path}"
+    )
     if batch_source_buffer is None:
         exit_with_error(
             _("Batch source content is missing for {file}.").format(file=file_path)

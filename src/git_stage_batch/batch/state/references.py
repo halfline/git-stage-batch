@@ -19,7 +19,7 @@ from .metadata_schema import (
 from .batch_names import validate_batch_name
 from ...exceptions import BatchMetadataError
 from ...core.buffer import LineBuffer
-from ...utils.repository_buffers import load_git_object_as_buffer
+from ...utils.repository_buffers import read_git_object_buffer_or_none
 from ...utils.git_command import (
     run_git_command,
 )
@@ -229,7 +229,7 @@ def sync_batch_state_refs(
                 if source_commit:
                     source_buffer = source_buffers.get(file_path)
                     if source_buffer is None:
-                        source_buffer = load_git_object_as_buffer(
+                        source_buffer = read_git_object_buffer_or_none(
                             f"{source_commit}:{file_path}"
                         )
                         if source_buffer is not None:

@@ -11,7 +11,7 @@ from ...core.buffer import (
     buffer_preview,
     write_buffer_to_path,
 )
-from ...utils.repository_buffers import load_git_object_as_buffer
+from ...utils.repository_buffers import read_git_object_buffer_or_none
 from ...utils.git_repository import get_git_repository_root_path
 from ...utils.journal import JournalLevel, journal_enabled, log_journal
 from ...utils.paths import get_index_snapshot_file_path, get_working_tree_snapshot_file_path
@@ -20,7 +20,7 @@ from ...utils.paths import get_index_snapshot_file_path, get_working_tree_snapsh
 def write_snapshots_for_selected_file_path(file_path: str) -> None:
     """Write snapshots of the file from both the index and working tree."""
     with ExitStack() as stack:
-        index_version = load_git_object_as_buffer(f":{file_path}")
+        index_version = read_git_object_buffer_or_none(f":{file_path}")
         if index_version is None:
             index_version = LineBuffer.from_bytes(b"")
         stack.enter_context(index_version)
@@ -37,7 +37,7 @@ def write_snapshots_for_selected_file_path(file_path: str) -> None:
         # For new files (not in HEAD), use empty index snapshot.
         # For existing files with intent-to-add applied, use HEAD content.
         if buffer_byte_count(index_version) == 0 and buffer_byte_count(working_tree_version) > 0:
-            head_version = load_git_object_as_buffer(f"HEAD:{file_path}")
+            head_version = read_git_object_buffer_or_none(f"HEAD:{file_path}")
             if head_version is not None:
                 if buffer_byte_count(head_version) > 0:
                     index_version = stack.enter_context(head_version)
@@ -115,7 +115,7 @@ def snapshots_are_stale(file_path: str) -> bool:
                 LineBuffer.from_path(snapshot_new_path)
             )
 
-            selected_index_content = load_git_object_as_buffer(f":{file_path}")
+            selected_index_content = read_git_object_buffer_or_none(f":{file_path}")
             if selected_index_content is None:
                 selected_index_content = LineBuffer.from_bytes(b"")
             stack.enter_context(selected_index_content)

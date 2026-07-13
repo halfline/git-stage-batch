@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from ...core.buffer import LineBuffer
 from .snapshots import create_batch_source_commit
 from ...utils.repository_buffers import (
-    load_git_object_as_buffer,
+    read_git_object_buffer_or_none,
     load_working_tree_file_as_buffer,
 )
 from ...utils.git_repository import get_git_repository_root_path
@@ -123,7 +123,7 @@ def advance_batch_source_for_file_with_provenance(
             f"file does not exist in working tree"
         )
 
-    old_source_buffer = load_git_object_as_buffer(
+    old_source_buffer = read_git_object_buffer_or_none(
         f"{old_batch_source_commit}:{file_path}"
     )
     if old_source_buffer is None:

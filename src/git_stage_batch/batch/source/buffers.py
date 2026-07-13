@@ -13,7 +13,7 @@ from ...utils.git_object_io import list_git_tree_blobs
 from ...utils.git_repository import get_git_repository_root_path
 from ...utils.repository_buffers import (
     load_git_blob_as_buffer,
-    load_git_object_as_buffer,
+    read_git_object_buffer_or_none,
     load_working_tree_file_as_buffer,
 )
 from ...utils.paths import (
@@ -67,7 +67,7 @@ def load_saved_session_file_as_buffer(file_path: str) -> LineBuffer:
         if stash_commit:
             # Extract file from stash commit
             # The stash commit contains the working tree state
-            buffer = load_git_object_as_buffer(f"{stash_commit}:{file_path}")
+            buffer = read_git_object_buffer_or_none(f"{stash_commit}:{file_path}")
             if buffer is not None:
                 return buffer
 
@@ -78,7 +78,7 @@ def load_saved_session_file_as_buffer(file_path: str) -> LineBuffer:
         raise CommandError(_("No session found"))
 
     baseline_commit = read_text_file_contents(abort_head_path).strip()
-    buffer = load_git_object_as_buffer(f"{baseline_commit}:{file_path}")
+    buffer = read_git_object_buffer_or_none(f"{baseline_commit}:{file_path}")
     if buffer is None:
         # File might not exist in baseline (new file)
         return LineBuffer.from_bytes(b"")

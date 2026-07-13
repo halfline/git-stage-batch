@@ -15,7 +15,7 @@ from ..core.models import (
     RenderedBatchDisplay,
 )
 from ..utils.repository_buffers import (
-    load_git_object_as_buffer,
+    read_git_object_buffer_or_none,
 )
 from ..utils.paths import get_context_lines
 
@@ -84,7 +84,7 @@ def _render_batch_file_display_from_ownership(
 ) -> Optional['RenderedBatchDisplay']:
     """Render batch file display from already-acquired ownership metadata."""
 
-    batch_source_buffer = load_git_object_as_buffer(
+    batch_source_buffer = read_git_object_buffer_or_none(
         f"{batch_source_commit}:{file_path}"
     )
     if batch_source_buffer is None:

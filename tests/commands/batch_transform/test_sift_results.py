@@ -17,7 +17,7 @@ def test_compute_sifted_binary_file_removes_matching_content(
     (tmp_path / "data.bin").write_bytes(b"target")
     monkeypatch.setattr(
         sift_results,
-        "load_git_object_as_buffer_or_empty",
+        "read_git_object_buffer_or_empty",
         lambda spec: batch_source_buffer,
     )
 
@@ -44,7 +44,7 @@ def test_compute_sifted_binary_file_retains_changed_content(
     (tmp_path / "data.bin").write_bytes(b"working")
     monkeypatch.setattr(
         sift_results,
-        "load_git_object_as_buffer_or_empty",
+        "read_git_object_buffer_or_empty",
         lambda spec: batch_source_buffer,
     )
 
@@ -76,7 +76,7 @@ def test_compute_sifted_binary_file_removes_absent_deletion(
     batch_source_buffer = LineBuffer.from_bytes(b"")
     monkeypatch.setattr(
         sift_results,
-        "load_git_object_as_buffer_or_empty",
+        "read_git_object_buffer_or_empty",
         lambda spec: batch_source_buffer,
     )
 
@@ -103,7 +103,7 @@ def test_compute_sifted_binary_file_retains_existing_deletion(
     (tmp_path / "data.bin").write_bytes(b"working")
     monkeypatch.setattr(
         sift_results,
-        "load_git_object_as_buffer_or_empty",
+        "read_git_object_buffer_or_empty",
         lambda spec: batch_source_buffer,
     )
 

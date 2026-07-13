@@ -20,7 +20,7 @@ from ...batch.selection import acquire_batch_ownership_for_display_ids_from_line
 from ...core.buffer import LineBuffer
 from ...core.replacement import ReplacementPayload
 from ...utils.repository_buffers import (
-    load_git_object_as_buffer,
+    read_git_object_buffer_or_none,
     load_working_tree_file_as_buffer,
 )
 from ...exceptions import MergeError, exit_with_error
@@ -88,7 +88,7 @@ def materialize_apply_candidate(
         file_path,
         file_meta,
     )
-    batch_source_buffer = load_git_object_as_buffer(batch_source_ref.object_spec)
+    batch_source_buffer = read_git_object_buffer_or_none(batch_source_ref.object_spec)
     if batch_source_buffer is None:
         exit_with_error(
             _("Batch source content is missing for {file}.").format(file=file_path)
@@ -176,13 +176,13 @@ def materialize_include_candidate(
         file_path,
         file_meta,
     )
-    batch_source_buffer = load_git_object_as_buffer(batch_source_ref.object_spec)
+    batch_source_buffer = read_git_object_buffer_or_none(batch_source_ref.object_spec)
     if batch_source_buffer is None:
         exit_with_error(
             _("Batch source content is missing for {file}.").format(file=file_path)
         )
 
-    index_buffer = load_git_object_as_buffer(f":{file_path}")
+    index_buffer = read_git_object_buffer_or_none(f":{file_path}")
     index_exists = index_buffer is not None
     if index_buffer is None:
         index_buffer = LineBuffer.from_bytes(b"")

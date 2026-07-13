@@ -58,7 +58,7 @@ def _patch_apply_candidate_count_io(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         counts,
-        "load_git_object_as_buffer",
+        "read_git_object_buffer_or_none",
         lambda spec: batch_buffer if spec == "commit:notes.txt" else None,
     )
     monkeypatch.setattr(
@@ -93,7 +93,7 @@ def _patch_include_candidate_count_io(monkeypatch, tmp_path):
         "get_git_repository_root_path",
         lambda: tmp_path,
     )
-    monkeypatch.setattr(counts, "load_git_object_as_buffer", load_git_object)
+    monkeypatch.setattr(counts, "read_git_object_buffer_or_none", load_git_object)
     monkeypatch.setattr(
         counts,
         "load_working_tree_file_as_buffer",
@@ -151,7 +151,7 @@ def test_count_apply_candidate_previews_for_file_skips_binary_entries(monkeypatc
     """Apply candidate counting should ignore binary batch entries."""
     monkeypatch.setattr(
         counts,
-        "load_git_object_as_buffer",
+        "read_git_object_buffer_or_none",
         lambda spec: (_ for _ in ()).throw(AssertionError("unexpected load")),
     )
 

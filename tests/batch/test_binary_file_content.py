@@ -17,7 +17,7 @@ def test_read_binary_file_from_batch_returns_none_for_deletion(monkeypatch):
     def fail_load(_spec):
         raise AssertionError("deleted binary entries should not load content")
 
-    monkeypatch.setattr(binary_file_content, "load_git_object_as_buffer", fail_load)
+    monkeypatch.setattr(binary_file_content, "read_git_object_buffer_or_none", fail_load)
 
     assert binary_file_content.read_binary_file_from_batch(
         "feature",
@@ -53,7 +53,7 @@ def test_read_binary_file_from_batch_reports_missing_content(monkeypatch):
     )
     monkeypatch.setattr(
         binary_file_content,
-        "load_git_object_as_buffer",
+        "read_git_object_buffer_or_none",
         lambda spec: None,
     )
 
@@ -79,7 +79,7 @@ def test_read_binary_file_from_batch_accepts_missing_content_message(monkeypatch
     )
     monkeypatch.setattr(
         binary_file_content,
-        "load_git_object_as_buffer",
+        "read_git_object_buffer_or_none",
         lambda spec: None,
     )
 
@@ -109,7 +109,7 @@ def test_read_binary_file_from_batch_loads_batch_blob(monkeypatch):
         loaded_specs.append(spec)
         return buffer
 
-    monkeypatch.setattr(binary_file_content, "load_git_object_as_buffer", load)
+    monkeypatch.setattr(binary_file_content, "read_git_object_buffer_or_none", load)
 
     try:
         assert binary_file_content.read_binary_file_from_batch(

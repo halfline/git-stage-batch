@@ -800,6 +800,43 @@ class TestCommandIncludeLine:
         assert "round" not in exc_info.value.message.lower()
         assert "transient" not in exc_info.value.message.lower()
 
+    def test_include_line_does_not_bypass_index_merge_refusal(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """Ordinary content must fail closed when its ownership merge is refused."""
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("base\n")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo)
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=temp_git_repo,
+        )
+        test_file.write_text("base\nselected\n")
+        command_start()
+        fetch_next_change()
+
+        monkeypatch.setattr(
+            include_line_selection,
+            "try_build_index_content_via_transient_batch",
+            lambda **_kwargs: include_line_selection.TransientIncludeResult.failure(
+                include_line_selection.TransientIncludeFailureReason.INDEX_MERGE_FAILED
+            ),
+        )
+
+        with pytest.raises(CommandError, match="no longer fits the current staged content"):
+            command_include_line("1")
+
+        assert subprocess.run(
+            ["git", "diff", "--cached", "--name-only"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        ).stdout == ""
+
     def test_include_line_handles_deletions(self, temp_git_repo):
         """Test that include --line handles deletions correctly."""
         # Create a file with multiple lines

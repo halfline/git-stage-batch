@@ -24,6 +24,7 @@ from ...utils.paths import (
     get_line_changes_json_file_path,
     get_processed_include_ids_file_path,
     get_processed_skip_ids_file_path,
+    get_snapshot_metadata_file_path,
     get_selected_binary_file_json_path,
     get_selected_change_clear_reason_file_path,
     get_selected_change_kind_file_path,
@@ -121,6 +122,7 @@ def _selected_change_state_paths():
         "mode": get_selected_mode_change_json_path(),
         "index_snapshot": get_index_snapshot_file_path(),
         "working_snapshot": get_working_tree_snapshot_file_path(),
+        "snapshot_metadata": get_snapshot_metadata_file_path(),
         "processed_include_ids": get_processed_include_ids_file_path(),
         "processed_skip_ids": get_processed_skip_ids_file_path(),
     }

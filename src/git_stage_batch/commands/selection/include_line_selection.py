@@ -287,11 +287,21 @@ def try_build_index_content_via_transient_batch(
         )
 
     if not current_index_lines and all(line.kind == "+" for line in line_changes.lines):
+        if any(line.source_line is None for line in selected_lines):
+            return TransientIncludeResult.failure(
+                TransientIncludeFailureReason.PREPARATION_FAILED,
+                detail="missing source line for new-file selection",
+            )
+        with load_working_tree_file_as_buffer(line_changes.path) as working_lines:
+            if not buffer_matches(working_lines, hunk_source_lines):
+                return TransientIncludeResult.failure(
+                    TransientIncludeFailureReason.WORKING_TREE_WOULD_CHANGE,
+                    detail="working tree changed after new-file snapshot",
+                )
         return TransientIncludeResult.success(
             LineBuffer.from_chunks(
                 hunk_source_lines[line.source_line - 1]
                 for line in selected_lines
-                if line.source_line is not None
             )
         )
 

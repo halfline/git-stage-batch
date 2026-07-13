@@ -21,6 +21,7 @@ from ...core.buffer import (
 from ...utils.file_io import (
     fsync_directory,
     read_text_file_contents,
+    write_file_bytes,
     write_text_file_contents,
 )
 from ...utils.paths import (
@@ -155,14 +156,21 @@ def snapshot_selected_change_state() -> SelectedChangeStateSnapshot:
 
 
 def restore_selected_change_state(snapshot: SelectedChangeStateSnapshot) -> None:
-    """Restore a previously captured selected change cache."""
-    for name, path in _selected_change_state_paths().items():
+    """Restore a cache privately and publish its kind marker last."""
+    state_paths = _selected_change_state_paths()
+    invalidate_selected_change_cache()
+    for name, path in state_paths.items():
+        if name == "kind":
+            continue
         snapshot_path = snapshot.paths.get(name)
         if snapshot_path is None:
             path.unlink(missing_ok=True)
         else:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(snapshot_path, path)
+            write_file_bytes(path, snapshot_path.read_bytes())
+
+    kind_snapshot_path = snapshot.paths.get("kind")
+    if kind_snapshot_path is not None:
+        write_file_bytes(state_paths["kind"], kind_snapshot_path.read_bytes())
 
 
 def clear_selected_change_persistence_files() -> None:

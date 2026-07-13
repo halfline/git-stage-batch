@@ -22,7 +22,7 @@ def test_discard_binary_file_to_worktree_restores_baseline(
     baseline_buffer = LineBuffer.from_bytes(b"baseline")
     monkeypatch.setattr(
         binary_file_actions,
-        "load_git_object_as_buffer",
+        "read_git_object_buffer_or_none",
         lambda spec: baseline_buffer if spec == "base:image.png" else None,
     )
     monkeypatch.setattr(
@@ -62,7 +62,7 @@ def test_discard_binary_file_to_worktree_deletes_without_baseline(
     )
     monkeypatch.setattr(
         binary_file_actions,
-        "load_git_object_as_buffer",
+        "read_git_object_buffer_or_none",
         lambda spec: None,
     )
     target = tmp_path / "image.png"
@@ -89,7 +89,7 @@ def test_discard_binary_file_to_worktree_ignores_missing_path_without_baseline(
     )
     monkeypatch.setattr(
         binary_file_actions,
-        "load_git_object_as_buffer",
+        "read_git_object_buffer_or_none",
         lambda spec: None,
     )
 

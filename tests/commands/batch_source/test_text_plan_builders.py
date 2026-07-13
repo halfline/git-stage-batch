@@ -61,7 +61,7 @@ def _patch_apply_text_plan_io(monkeypatch, tmp_path, ownership: _Ownership):
     )
     monkeypatch.setattr(
         builders,
-        "load_git_object_as_buffer",
+        "read_git_object_buffer_or_none",
         lambda spec: batch_buffer if spec == "commit:notes.txt" else None,
     )
     monkeypatch.setattr(
@@ -89,7 +89,7 @@ def _patch_include_text_plan_io(monkeypatch, tmp_path, ownership: _Ownership):
         lambda: tmp_path,
     )
 
-    def load_git_object_as_buffer(spec):
+    def read_git_object_buffer_or_none(spec):
         if spec == ":notes.txt":
             return index_buffer
         if spec == "commit:notes.txt":
@@ -98,8 +98,8 @@ def _patch_include_text_plan_io(monkeypatch, tmp_path, ownership: _Ownership):
 
     monkeypatch.setattr(
         builders,
-        "load_git_object_as_buffer",
-        load_git_object_as_buffer,
+        "read_git_object_buffer_or_none",
+        read_git_object_buffer_or_none,
     )
     monkeypatch.setattr(
         builders,
@@ -136,7 +136,7 @@ def _patch_discard_text_plan_io(
         lambda: tmp_path,
     )
 
-    def load_git_object_as_buffer(spec):
+    def read_git_object_buffer_or_none(spec):
         if spec == "commit:notes.txt":
             return batch_buffer
         if spec == "baseline:notes.txt":
@@ -145,8 +145,8 @@ def _patch_discard_text_plan_io(
 
     monkeypatch.setattr(
         builders,
-        "load_git_object_as_buffer",
-        load_git_object_as_buffer,
+        "read_git_object_buffer_or_none",
+        read_git_object_buffer_or_none,
     )
     monkeypatch.setattr(
         builders,
@@ -224,7 +224,7 @@ def test_build_apply_text_file_action_plan_returns_deleted_plan(
     )
     monkeypatch.setattr(
         builders,
-        "load_git_object_as_buffer",
+        "read_git_object_buffer_or_none",
         lambda spec: (_ for _ in ()).throw(AssertionError("unexpected load")),
     )
 
@@ -259,7 +259,7 @@ def test_build_apply_text_file_action_plan_reports_missing_source(
     )
     monkeypatch.setattr(
         builders,
-        "load_git_object_as_buffer",
+        "read_git_object_buffer_or_none",
         lambda spec: None,
     )
 
@@ -368,15 +368,15 @@ def test_build_discard_text_file_action_plan_restores_lifecycle_baseline(
     """Whole-path discard planning should restore baseline content."""
     baseline_buffer = LineBuffer.from_bytes(b"baseline\n")
 
-    def load_git_object_as_buffer(spec):
+    def read_git_object_buffer_or_none(spec):
         if spec == "baseline:notes.txt":
             return baseline_buffer
         raise AssertionError("unexpected load")
 
     monkeypatch.setattr(
         builders,
-        "load_git_object_as_buffer",
-        load_git_object_as_buffer,
+        "read_git_object_buffer_or_none",
+        read_git_object_buffer_or_none,
     )
     monkeypatch.setattr(
         builders,
@@ -411,7 +411,7 @@ def test_build_discard_text_file_action_plan_deletes_lifecycle_without_baseline(
     """Whole-path discard planning should delete paths absent from baseline."""
     monkeypatch.setattr(
         builders,
-        "load_git_object_as_buffer",
+        "read_git_object_buffer_or_none",
         lambda spec: None,
     )
     monkeypatch.setattr(
@@ -445,7 +445,7 @@ def test_build_discard_text_file_action_plan_reports_missing_source(
     """Missing batch source content should stay visible to the command."""
     monkeypatch.setattr(
         builders,
-        "load_git_object_as_buffer",
+        "read_git_object_buffer_or_none",
         lambda spec: None,
     )
 
@@ -708,15 +708,15 @@ def test_build_include_text_file_action_plan_returns_deleted_plan(
         lambda: tmp_path,
     )
 
-    def load_git_object_as_buffer(spec):
+    def read_git_object_buffer_or_none(spec):
         if spec == ":notes.txt":
             return index_buffer
         raise AssertionError("unexpected load")
 
     monkeypatch.setattr(
         builders,
-        "load_git_object_as_buffer",
-        load_git_object_as_buffer,
+        "read_git_object_buffer_or_none",
+        read_git_object_buffer_or_none,
     )
 
     result = builders.build_include_text_file_action_plan(
@@ -754,15 +754,15 @@ def test_build_include_text_file_action_plan_reports_missing_source(
         lambda: tmp_path,
     )
 
-    def load_git_object_as_buffer(spec):
+    def read_git_object_buffer_or_none(spec):
         if spec == ":notes.txt":
             return index_buffer
         return None
 
     monkeypatch.setattr(
         builders,
-        "load_git_object_as_buffer",
-        load_git_object_as_buffer,
+        "read_git_object_buffer_or_none",
+        read_git_object_buffer_or_none,
     )
 
     result = builders.build_include_text_file_action_plan(

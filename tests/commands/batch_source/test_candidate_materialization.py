@@ -73,7 +73,7 @@ def _patch_apply_materialization_io(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         materialization,
-        "load_git_object_as_buffer",
+        "read_git_object_buffer_or_none",
         lambda spec: batch_buffer if spec == "commit:notes.txt" else None,
     )
     monkeypatch.setattr(
@@ -247,7 +247,7 @@ def _patch_include_materialization_io(monkeypatch, tmp_path):
     worktree_buffer = LineBuffer.from_bytes(b"worktree\n")
     (tmp_path / "notes.txt").write_bytes(b"worktree\n")
 
-    def load_git_object_as_buffer(spec):
+    def read_git_object_buffer_or_none(spec):
         if spec == "commit:notes.txt":
             return batch_buffer
         if spec == ":notes.txt":
@@ -261,8 +261,8 @@ def _patch_include_materialization_io(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         materialization,
-        "load_git_object_as_buffer",
-        load_git_object_as_buffer,
+        "read_git_object_buffer_or_none",
+        read_git_object_buffer_or_none,
     )
     monkeypatch.setattr(
         materialization,

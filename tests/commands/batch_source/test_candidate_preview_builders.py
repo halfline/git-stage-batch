@@ -53,7 +53,7 @@ def _patch_common_candidate_builder_io(monkeypatch, tmp_path):
         "get_git_repository_root_path",
         lambda: tmp_path,
     )
-    monkeypatch.setattr(builders, "load_git_object_as_buffer", load_git_object)
+    monkeypatch.setattr(builders, "read_git_object_buffer_or_none", load_git_object)
     monkeypatch.setattr(
         builders,
         "load_working_tree_file_as_buffer",

@@ -9,8 +9,8 @@ from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.git_repository import (
     get_git_repository_root_path,
     require_git_repository,
-    resolve_file_path_to_repo_relative,
 )
+from git_stage_batch.utils.repository_path import normalize_repository_path
 
 
 @pytest.fixture
@@ -35,7 +35,9 @@ def temp_git_repo(tmp_path, monkeypatch):
     )
 
     (repo / "README.md").write_text("# Test\n")
-    subprocess.run(["git", "add", "README.md"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "add", "README.md"], check=True, cwd=repo, capture_output=True
+    )
     subprocess.run(
         ["git", "commit", "-m", "Initial commit"],
         check=True,
@@ -83,25 +85,24 @@ class TestGetGitRepositoryRootPath:
         assert root == temp_git_repo
 
 
-class TestResolveFilePathToRepoRelative:
-    """Tests for resolve_file_path_to_repo_relative function."""
+class TestNormalizeRepositoryPath:
+    """Tests for normalized repository paths."""
 
-    def test_resolve_file_path_to_repo_relative_relative(self, temp_git_repo):
+    def test_normalizes_relative_path(self, temp_git_repo):
         """Test that relative paths are returned as-is."""
-        result = resolve_file_path_to_repo_relative("src/file.py")
+        result = normalize_repository_path("src/file.py").value
 
         assert result == "src/file.py"
 
-    def test_resolve_file_path_to_repo_relative_absolute(self, temp_git_repo):
+    def test_normalizes_absolute_path(self, temp_git_repo):
         """Test that absolute paths inside repo are made relative."""
         absolute_path = str(temp_git_repo / "src" / "file.py")
-        result = resolve_file_path_to_repo_relative(absolute_path)
+        result = normalize_repository_path(absolute_path).value
 
         assert result == "src/file.py"
 
-    def test_resolve_file_path_to_repo_relative_outside_repo(self, temp_git_repo, tmp_path):
-        """Test that paths outside repo are returned as-is."""
+    def test_rejects_path_outside_repository(self, temp_git_repo, tmp_path):
+        """Test that paths outside the repository are rejected."""
         outside_path = str(tmp_path / "outside.txt")
-        result = resolve_file_path_to_repo_relative(outside_path)
-
-        assert result == outside_path
+        with pytest.raises(CommandError, match="outside the repository"):
+            normalize_repository_path(outside_path)

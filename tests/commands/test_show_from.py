@@ -340,14 +340,14 @@ class TestCommandShowFromBatch:
         command_start()
         command_include_to_batch("preview-batch", quiet=True)
 
-        original_load_git_object_as_buffer = file_display.load_git_object_as_buffer
+        original_read_git_object_buffer_or_none = file_display.read_git_object_buffer_or_none
         loaded_revisions = []
 
-        def tracking_load_git_object_as_buffer(revision_path):
+        def tracking_read_git_object_buffer_or_none(revision_path):
             loaded_revisions.append(revision_path)
-            return original_load_git_object_as_buffer(revision_path)
+            return original_read_git_object_buffer_or_none(revision_path)
 
-        monkeypatch.setattr(file_display, "load_git_object_as_buffer", tracking_load_git_object_as_buffer)
+        monkeypatch.setattr(file_display, "read_git_object_buffer_or_none", tracking_read_git_object_buffer_or_none)
 
         rendered = render_batch_file_display(
             "preview-batch",

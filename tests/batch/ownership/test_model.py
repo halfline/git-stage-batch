@@ -25,7 +25,7 @@ from git_stage_batch.core.diff_parser import (
     build_line_changes_from_patch_lines,
 )
 from git_stage_batch.utils.repository_buffers import (
-    load_git_object_as_buffer_or_empty,
+    read_git_object_buffer_or_empty,
     load_working_tree_file_as_buffer,
 )
 from git_stage_batch.utils.git_command import stream_git_command
@@ -92,7 +92,7 @@ def _point_batch_state_refs(batch_names, state_commit: str) -> None:
 
 
 def _enumerate_units_from_head_and_working_tree(file_path: str):
-    baseline_buffer = load_git_object_as_buffer_or_empty(f"HEAD:{file_path}")
+    baseline_buffer = read_git_object_buffer_or_empty(f"HEAD:{file_path}")
     working_tree_buffer = load_working_tree_file_as_buffer(file_path)
 
     with baseline_buffer as baseline_lines, working_tree_buffer as working_tree_lines:

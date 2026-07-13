@@ -34,6 +34,11 @@ Discard or save only specific displayed line IDs.
 Operate on one complete file. If
 .I PATH
 is omitted, use the selected hunk's file.
+For a live discard, restore the path from the index and preserve staged
+content. New untracked files are removed because they have no indexed version.
+Use
+.B git rm -- PATH
+to intentionally remove a tracked file.
 .TP
 .BI "\-\-files " PATTERN "..."
 Operate on all changed files matched by gitignore-style patterns.

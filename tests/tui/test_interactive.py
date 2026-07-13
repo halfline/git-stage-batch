@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 import pytest
 
-from git_stage_batch.exceptions import BypassRefresh
+from git_stage_batch.exceptions import BypassRefresh, QuitInteractive
 from git_stage_batch.tui.action_dispatch import ACTION_HANDLERS, dispatch_action
 from git_stage_batch.tui.flow import FlowLocation, FlowState
 from git_stage_batch.tui.interactive import (
@@ -586,6 +586,36 @@ class TestDegradedMode:
 
         captured = capsys.readouterr()
         assert "No changes to stage" in captured.err
+
+    def test_registered_actions_run_under_session_lock(self, temp_git_repo):
+        """Interactive handlers must not race concurrent CLI mutations."""
+        lock_depth = 0
+
+        class RecordingLock:
+            def __enter__(self):
+                nonlocal lock_depth
+                lock_depth += 1
+
+            def __exit__(self, *_args):
+                nonlocal lock_depth
+                lock_depth -= 1
+
+        def dispatch_and_quit(*_args, **_kwargs):
+            assert lock_depth == 1
+            raise QuitInteractive()
+
+        with patch(
+            "git_stage_batch.tui.interactive.acquire_session_lock",
+            side_effect=lambda: RecordingLock(),
+        ):
+            with patch("git_stage_batch.tui.interactive.prompt_action", return_value="q"):
+                with patch(
+                    "git_stage_batch.tui.interactive.dispatch_action",
+                    side_effect=dispatch_and_quit,
+                ):
+                    start_interactive_mode()
+
+        assert lock_depth == 0
 
     def test_start_interactive_mode_quit_preserves_existing_session(self, temp_git_repo):
         """Test quitting does not stop a session that already existed."""

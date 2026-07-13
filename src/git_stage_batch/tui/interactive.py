@@ -10,7 +10,7 @@ from ..output.colors import Colors
 from ..utils.journal import flush_journal
 from ..utils.session_lock import acquire_session_lock
 from . import current_change
-from .action_dispatch import dispatch_action
+from .action_dispatch import ACTION_HANDLERS, dispatch_action
 from .flow import FlowLocation, FlowState
 from .prompts import (
     prompt_action,
@@ -75,12 +75,23 @@ def start_interactive_mode() -> None:
         )
 
         try:
-            dispatch_action(
-                action,
-                has_hunk=has_hunk,
-                use_color=use_color,
-                flow_state=flow_state,
-            )
+            if action in ACTION_HANDLERS:
+                with acquire_session_lock():
+                    dispatch_action(
+                        action,
+                        has_hunk=has_hunk,
+                        use_color=use_color,
+                        flow_state=flow_state,
+                    )
+            else:
+                # Shell commands, flow changes, and CLI escapes either do not
+                # mutate session state or acquire the lock in their adapters.
+                dispatch_action(
+                    action,
+                    has_hunk=has_hunk,
+                    use_color=use_color,
+                    flow_state=flow_state,
+                )
             should_refresh = True
         except BypassRefresh:
             should_refresh = False

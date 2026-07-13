@@ -6,6 +6,7 @@ import subprocess
 
 import pytest
 
+import git_stage_batch.commands.batch_source.include_action as include_action
 from git_stage_batch.batch.state.lifecycle import create_batch
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.state.query import read_batch_metadata
@@ -91,6 +92,59 @@ class TestCommandIncludeFromBatch:
 
         captured = capsys.readouterr()
         assert "Staged changes from batch" in captured.err
+
+    def test_multi_file_write_failure_rolls_back_index_and_worktree(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """A later worktree failure must roll back prior staging and writes."""
+        for name in ("a.txt", "b.txt"):
+            (temp_git_repo / name).write_text(f"{name} base\n")
+        subprocess.run(
+            ["git", "add", "a.txt", "b.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add files"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        for name in ("a.txt", "b.txt"):
+            (temp_git_repo / name).write_text(f"{name} batch\n")
+
+        command_start(quiet=True)
+        command_include_to_batch("test-batch", file="a.txt", quiet=True)
+        command_include_to_batch("test-batch", file="b.txt", quiet=True)
+        for name in ("a.txt", "b.txt"):
+            (temp_git_repo / name).write_text(f"{name} base\n")
+
+        original_write = include_action._text_file_actions.write_text_file_to_worktree
+        calls = 0
+
+        def fail_second_write(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise OSError("injected write failure")
+            return original_write(*args, **kwargs)
+
+        monkeypatch.setattr(
+            include_action._text_file_actions,
+            "write_text_file_to_worktree",
+            fail_second_write,
+        )
+
+        with pytest.raises(CommandError, match="injected write failure"):
+            command_include_from_batch("test-batch")
+
+        assert (temp_git_repo / "a.txt").read_text() == "a.txt base\n"
+        assert (temp_git_repo / "b.txt").read_text() == "b.txt base\n"
+        staged = run_git_command(["diff", "--cached", "--name-only"])
+        assert staged.stdout == ""
 
     def test_include_from_empty_batch_fails(self, temp_git_repo):
         """Test including from an empty batch fails."""

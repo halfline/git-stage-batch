@@ -33,12 +33,8 @@ from ...utils.git_command import run_git_command
 from ...utils.git_worktree import (
     git_apply_to_worktree,
     git_checkout_index_paths,
-    git_remove_paths,
 )
-from ...utils.git_index import (
-    git_update_gitlink,
-    git_update_index,
-)
+from ...utils.git_index import git_update_index
 from ...utils.git_repository import get_git_repository_root_path
 from ...utils.journal import log_journal
 from ...utils.paths import (
@@ -321,54 +317,30 @@ def discard_gitlink_change(gitlink_change: GitlinkChange) -> None:
     }
     discard_submodule_pointer_from_batch(file_path, file_meta)
 
-    if gitlink_change.is_new_file():
-        return
-    if gitlink_change.old_oid is None:
-        exit_with_error(
-            _("Cannot discard submodule pointer for {file}: missing baseline commit.").format(
-                file=file_path,
-            )
-        )
-    index_result = git_update_gitlink(
-        file_path=file_path,
-        oid=gitlink_change.old_oid,
-        check=False,
-    )
-    if index_result.returncode != 0:
-        exit_with_error(
-            _("Failed to update submodule pointer in the index for {file}: {error}").format(
-                file=file_path,
-                error=index_result.stderr,
-            )
-        )
+    # The live diff baseline is the index. Restoring the submodule worktree is
+    # sufficient; changing the gitlink entry here would discard staged work.
 
 
 def discard_rename_change(rename_change: RenameChange) -> None:
-    """Restore the old path and remove the renamed destination."""
+    """Restore an unstaged rename in the worktree without changing the index."""
     snapshot_files_if_untracked([rename_change.new_path])
-
-    remove_result = git_remove_paths(
-        [rename_change.new_path],
-        force=True,
-        ignore_unmatch=True,
-        check=False,
-    )
-    if remove_result.returncode != 0:
-        index_result = git_update_index(
+    destination_is_intent_to_add = path_is_intent_to_add(rename_change.new_path)
+    _remove_worktree_path(rename_change.new_path)
+    if destination_is_intent_to_add:
+        remove_result = git_update_index(
             file_path=rename_change.new_path,
             force_remove=True,
             check=False,
         )
-        if index_result.returncode != 0:
+        if remove_result.returncode != 0:
             exit_with_error(
-                _("Failed to remove renamed path {file}: {error}").format(
+                _("Failed to remove rename marker {file}: {error}").format(
                     file=rename_change.new_path,
-                    error=index_result.stderr,
+                    error=remove_result.stderr,
                 )
             )
-        _remove_worktree_path(rename_change.new_path)
 
-    restore_result = git_checkout_paths("HEAD", [rename_change.old_path], check=False)
+    restore_result = git_checkout_index_paths([rename_change.old_path], check=False)
     if restore_result.returncode != 0:
         exit_with_error(
             _("Failed to restore renamed source {file}: {error}").format(

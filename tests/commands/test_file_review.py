@@ -106,7 +106,7 @@ def test_reviewed_file_discard_raises_when_checkout_fails(
     command_show(file="file.txt", porcelain=True)
     monkeypatch.setattr(
         selected_file_discarding,
-        "git_checkout_paths",
+        "git_checkout_index_paths",
         lambda *_args, **_kwargs: subprocess.CompletedProcess(
             ["git", "checkout"],
             1,
@@ -119,6 +119,32 @@ def test_reviewed_file_discard_raises_when_checkout_fails(
         command_discard(quiet=True)
 
     assert "line 2 changed" in (paged_file_repo / "file.txt").read_text()
+
+
+def test_reviewed_file_discard_preserves_staged_content(
+    paged_file_repo,
+):
+    """Discarding a file review restores the worktree from the index."""
+    file_path = paged_file_repo / "file.txt"
+    staged_content = file_path.read_text()
+    subprocess.run(["git", "add", "file.txt"], check=True, capture_output=True)
+    file_path.write_text(staged_content + "unstaged tail\n")
+
+    command_start(quiet=True)
+    command_show(file="file.txt", porcelain=True)
+    command_discard(quiet=True)
+
+    assert file_path.read_text() == staged_content
+    assert subprocess.run(
+        ["git", "show", ":file.txt"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout == staged_content
+    assert subprocess.run(
+        ["git", "diff", "--cached", "--quiet", "--", "file.txt"],
+        check=False,
+    ).returncode == 1
 
 
 def _add_second_changed_file(repo):

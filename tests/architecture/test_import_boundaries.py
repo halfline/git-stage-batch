@@ -17239,7 +17239,6 @@ def test_selected_change_discarding_owns_discard_pipeline():
         "LineBuffer",
         "discard_submodule_pointer_from_batch",
         "finish_selected_change_action",
-        "git_update_gitlink",
         "git_update_index",
         "load_selected_change",
         "undo_checkpoint",

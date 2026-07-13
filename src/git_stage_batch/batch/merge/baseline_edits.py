@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING, Any
 
 from ...core.line_selection import LineRanges, LineSelection, coerce_line_ranges
@@ -46,10 +46,7 @@ def _baseline_removal_edit(
     if not claim.content_lines:
         return None
 
-    forbidden_sequence = [
-        normalize_line_endings(line)
-        for line in claim.content_lines
-    ]
+    forbidden_sequence = [normalize_line_endings(line) for line in claim.content_lines]
     position = _find_baseline_absence_position(
         claim.baseline_reference,
         working_lines,
@@ -134,8 +131,7 @@ def _replacement_edit_from_parent_offset(
         return None
 
     relative_offsets = [
-        claimed_line - new_start
-        for claimed_line in sorted(claimed_lines)
+        claimed_line - new_start for claimed_line in sorted(claimed_lines)
     ]
     if (
         not relative_offsets
@@ -148,10 +144,7 @@ def _replacement_edit_from_parent_offset(
     ):
         return None
 
-    forbidden_sequence = [
-        normalize_line_endings(line)
-        for line in claim.content_lines
-    ]
+    forbidden_sequence = [normalize_line_endings(line) for line in claim.content_lines]
     if len(forbidden_sequence) != len(relative_offsets):
         return None
 
@@ -195,10 +188,7 @@ def _replacement_edit_from_origin_resolution(
         return None
 
     choice_index = resolution.decisions[key]
-    forbidden_sequence = [
-        normalize_line_endings(line)
-        for line in claim.content_lines
-    ]
+    forbidden_sequence = [normalize_line_endings(line) for line in claim.content_lines]
     for choice in choices:
         if choice.choice_index == choice_index:
             return (
@@ -316,13 +306,12 @@ def try_apply_baseline_replacement_units(
     if _selection_outside_bounds(presence_line_set, len(source_lines)):
         return None
 
-    if (
-        _line_sequences_match(source_lines, working_lines)
-        and _has_complete_baseline_references(
-            ownership,
-            presence_line_set,
-            deletion_claims,
-        )
+    if _line_sequences_match(
+        source_lines, working_lines
+    ) and _has_complete_baseline_references(
+        ownership,
+        presence_line_set,
+        deletion_claims,
     ):
         return iter(working_lines)
 
@@ -389,16 +378,17 @@ def try_apply_baseline_replacement_units(
 
         for position, claimed_lines in grouped_insertions.items():
             insertion_lines = [
-                source_lines[claimed_line - 1]
-                for claimed_line in claimed_lines
+                source_lines[claimed_line - 1] for claimed_line in claimed_lines
             ]
             if _line_slice_matches(working_lines, position, insertion_lines):
                 continue
-            edits.append((
-                position,
-                position,
-                insertion_lines,
-            ))
+            edits.append(
+                (
+                    position,
+                    position,
+                    insertion_lines,
+                )
+            )
 
     if unit_claimed_lines.union(remaining_claimed_lines) != presence_lines:
         return None

@@ -24,7 +24,6 @@ from git_stage_batch.commands.show_from import command_show_from_batch
 import git_stage_batch.commands.show_from as show_from_module
 import git_stage_batch.commands.batch_source.file_display_action as batch_file_display_action
 from git_stage_batch.commands.show import command_show, command_show_file_list
-import git_stage_batch.commands.selection.next_change_display as next_change_display
 from git_stage_batch.commands.skip import command_skip, command_skip_file, command_skip_line
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.stop import command_stop
@@ -527,10 +526,12 @@ def test_plain_show_with_only_batch_filtered_hunks_preserves_partial_file_review
     state = read_last_file_review_state()
     assert state is not None
 
+    from git_stage_batch.data import live_change_candidates
+
     monkeypatch.setattr(
-        next_change_display,
-        "apply_line_level_batch_filter_to_cached_hunk",
-        lambda: True,
+        live_change_candidates,
+        "filter_line_level_change_for_batches",
+        lambda *_args, **_kwargs: None,
     )
 
     command_show()

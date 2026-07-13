@@ -6,7 +6,6 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.commands.selection.consumed_selection_recording import (
     record_consumed_selection,
 )

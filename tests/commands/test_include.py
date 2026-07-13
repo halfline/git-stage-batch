@@ -6,7 +6,6 @@ import subprocess
 import pytest
 
 import git_stage_batch.commands.selection.selected_change_staging as selected_change_staging
-from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.state.query import get_batch_commit_sha, read_batch_metadata
 from git_stage_batch.batch.state.batch_names import batch_exists
 from git_stage_batch.commands.include import (

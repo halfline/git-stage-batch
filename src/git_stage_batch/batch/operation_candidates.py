@@ -17,7 +17,6 @@ from .merge.candidates import (
 )
 from .operation_candidate_types import (
     CandidateEnumerationLimitError as _CandidateEnumerationLimitError,
-    CandidateOperation as _CandidateOperation,
     CandidateTarget as _CandidateTarget,
     MAX_OPERATION_CANDIDATES as _MAX_OPERATION_CANDIDATES,
     OperationCandidatePreview as _OperationCandidatePreview,
@@ -215,14 +214,20 @@ def build_include_candidate_previews(
     replacement_payload: ReplacementPayload | None = None,
 ) -> tuple[_OperationCandidatePreview, ...]:
     """Return include candidates for a single file, or an empty tuple."""
-    index_candidates = _merge_candidates_or_unambiguous(source_lines, ownership, index_lines)
-    worktree_candidates = _merge_candidates_or_unambiguous(source_lines, ownership, worktree_lines)
+    index_candidates = _merge_candidates_or_unambiguous(
+        source_lines, ownership, index_lines
+    )
+    worktree_candidates = _merge_candidates_or_unambiguous(
+        source_lines, ownership, worktree_lines
+    )
     if index_candidates == (None,) and worktree_candidates == (None,):
         return ()
 
     products = list(product(index_candidates, worktree_candidates))
     if len(products) > _MAX_OPERATION_CANDIDATES:
-        raise _CandidateEnumerationLimitError("too many include candidates to preview safely")
+        raise _CandidateEnumerationLimitError(
+            "too many include candidates to preview safely"
+        )
 
     batch_fingerprint = _fingerprint_batch(
         batch_name=batch_name,

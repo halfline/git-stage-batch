@@ -26,7 +26,6 @@ from git_stage_batch.batch.binary_file_storage import add_binary_file_to_batch
 from git_stage_batch.batch.file_entry_storage import read_file_from_batch
 from git_stage_batch.core.models import BinaryFileChange
 from git_stage_batch.data.hunk_tracking import fetch_next_change
-from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.exceptions import CommandError, MergeError
 from tests.batch.ownership.metadata_helpers import (
     acquire_ownership_for_metadata,

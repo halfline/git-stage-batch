@@ -6,7 +6,6 @@ import pytest
 
 import git_stage_batch.commands.batch_source.reset_claims as reset_claims
 import git_stage_batch.commands.batch_source.file_display_action as batch_file_display_action
-import git_stage_batch.commands.reset as reset_module
 import git_stage_batch.commands.show_from as show_from_module
 import git_stage_batch.batch.file_display as file_display_module
 import git_stage_batch.data.file_review.batch_selection as batch_review_selection_module

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.metadata_loading import (
-    acquire_ownership_for_metadata_dict as acquire_ownership_for_metadata,
+    acquire_ownership_for_metadata_dict as acquire_ownership_for_metadata,  # noqa: F401
 )
 
 

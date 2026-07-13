@@ -1,5 +1,6 @@
 """Tests for batch-source binary file actions."""
 
+import os
 import stat
 from types import SimpleNamespace
 
@@ -30,13 +31,6 @@ def test_discard_binary_file_to_worktree_restores_baseline(
         "detect_file_mode_in_commit",
         lambda commit, file_path: "100755",
     )
-    mode_calls = []
-    monkeypatch.setattr(
-        binary_file_actions,
-        "apply_git_file_mode",
-        lambda path, file_mode: mode_calls.append((path, file_mode)),
-    )
-
     action = binary_file_actions.discard_binary_file_to_worktree(
         "image.png",
         "base",
@@ -45,7 +39,7 @@ def test_discard_binary_file_to_worktree_restores_baseline(
     target = tmp_path / "image.png"
     assert action is binary_file_actions.BinaryWorktreeAction.REPLACED
     assert target.read_bytes() == b"baseline"
-    assert mode_calls == [(target, "100755")]
+    assert stat.S_IMODE(target.stat().st_mode) & stat.S_IXUSR
     with pytest.raises(ValueError, match="buffer is closed"):
         baseline_buffer.to_bytes()
 
@@ -75,6 +69,67 @@ def test_discard_binary_file_to_worktree_deletes_without_baseline(
 
     assert action is binary_file_actions.BinaryWorktreeAction.DELETED
     assert not target.exists()
+
+
+def test_discard_binary_replaces_dangling_symlink_with_regular_file(
+    tmp_path,
+    monkeypatch,
+):
+    """Restoring a regular binary should unlink a current dangling symlink."""
+    monkeypatch.setattr(
+        binary_file_actions,
+        "get_git_repository_root_path",
+        lambda: tmp_path,
+    )
+    baseline_buffer = LineBuffer.from_bytes(b"baseline")
+    monkeypatch.setattr(
+        binary_file_actions,
+        "read_git_object_buffer_or_none",
+        lambda _spec: baseline_buffer,
+    )
+    monkeypatch.setattr(
+        binary_file_actions,
+        "detect_file_mode_in_commit",
+        lambda _commit, _file_path: "100644",
+    )
+    target = tmp_path / "image.png"
+    os.symlink("missing", target)
+
+    action = binary_file_actions.discard_binary_file_to_worktree(
+        "image.png",
+        "base",
+    )
+
+    assert action is binary_file_actions.BinaryWorktreeAction.REPLACED
+    assert not target.is_symlink()
+    assert target.read_bytes() == b"baseline"
+
+
+def test_discard_binary_deletes_dangling_symlink_without_baseline(
+    tmp_path,
+    monkeypatch,
+):
+    """Absent binary baselines should remove broken symlink paths."""
+    monkeypatch.setattr(
+        binary_file_actions,
+        "get_git_repository_root_path",
+        lambda: tmp_path,
+    )
+    monkeypatch.setattr(
+        binary_file_actions,
+        "read_git_object_buffer_or_none",
+        lambda _spec: None,
+    )
+    target = tmp_path / "image.png"
+    os.symlink("missing", target)
+
+    action = binary_file_actions.discard_binary_file_to_worktree(
+        "image.png",
+        "base",
+    )
+
+    assert action is binary_file_actions.BinaryWorktreeAction.DELETED
+    assert not os.path.lexists(target)
 
 
 def test_discard_binary_file_to_worktree_ignores_missing_path_without_baseline(

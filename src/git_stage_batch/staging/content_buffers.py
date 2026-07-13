@@ -40,6 +40,14 @@ def _line_content_at(lines: Sequence[bytes], index: int) -> bytes:
     )
 
 
+def _working_tree_line_content_at(
+    lines: Sequence[bytes],
+    index: int,
+) -> bytes:
+    """Return exact worktree bytes so untouched lines retain their endings."""
+    return lines[index]
+
+
 def _line_payloads(
     lines: Sequence[bytes],
     start: int,
@@ -372,7 +380,7 @@ def _target_working_tree_line_contents(
     def copy_unchanged_lines_until_index(target_index: int) -> Iterator[bytes]:
         nonlocal working_pointer
         while working_pointer < min(target_index, working_line_count):
-            yield _line_content_at(working_lines, working_pointer)
+            yield _working_tree_line_content_at(working_lines, working_pointer)
             working_pointer += 1
 
     def copy_remaining_lines_before_deletion(index: int) -> Iterator[bytes]:
@@ -394,7 +402,7 @@ def _target_working_tree_line_contents(
                 return
 
     for index in range(0, min(working_pointer, working_line_count)):
-        yield _line_content_at(working_lines, index)
+        yield _working_tree_line_content_at(working_lines, index)
 
     for index, line_entry in enumerate(line_changes.lines):
         if _is_synthetic_gap_line(line_entry):
@@ -403,7 +411,7 @@ def _target_working_tree_line_contents(
         if line_entry.kind == " ":
             yield from copy_unchanged_lines_before(line_entry.new_line_number)
             if working_pointer < working_line_count:
-                yield _line_content_at(working_lines, working_pointer)
+                yield _working_tree_line_content_at(working_lines, working_pointer)
                 working_pointer += 1
         elif line_entry.kind == "-":
             if line_entry.id in discard_ids:
@@ -415,11 +423,11 @@ def _target_working_tree_line_contents(
                 if line_entry.id in discard_ids:
                     working_pointer += 1
                 else:
-                    yield _line_content_at(working_lines, working_pointer)
+                    yield _working_tree_line_content_at(working_lines, working_pointer)
                     working_pointer += 1
 
     while 0 <= working_pointer < working_line_count:
-        yield _line_content_at(working_lines, working_pointer)
+        yield _working_tree_line_content_at(working_lines, working_pointer)
         working_pointer += 1
 
 

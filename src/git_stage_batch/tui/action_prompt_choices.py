@@ -79,6 +79,9 @@ def action_prompt_option_groups(
 
 def normalize_action_prompt_choice(choice: str) -> str:
     """Return the single-character action code for a prompt choice."""
+    if choice in {"U", "S", "A"}:
+        return choice
+
     choice_lower = choice.lower()
     word_to_letter = {
         "include": "i",

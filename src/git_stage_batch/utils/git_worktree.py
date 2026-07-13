@@ -101,7 +101,12 @@ def git_remove_paths(
     if ignore_unmatch:
         arguments.append("--ignore-unmatch")
     arguments.extend(["--", *paths])
-    return run_git_command(arguments, check=check, requires_index_lock=True)
+    return run_git_command(
+        arguments,
+        check=check,
+        requires_index_lock=True,
+        literal_pathspecs=True,
+    )
 
 
 def git_reset_hard(

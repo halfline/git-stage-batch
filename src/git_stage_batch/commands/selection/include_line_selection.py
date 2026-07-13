@@ -227,21 +227,42 @@ def annotate_line_changes_with_working_tree_source(line_changes):
         return None
 
     last_source_line: int | None = None
+    coordinate_delta = 0
+    in_deletion_run = False
+    deletion_run_anchor: int | None = None
     new_lines = []
     for line in line_changes.lines:
         source_line = None
-        if line.kind in {" ", "+"}:
+        if line.kind == " ":
             source_line = line.new_line_number
             if source_line is not None:
                 last_source_line = source_line
+                if line.old_line_number is not None:
+                    coordinate_delta = line.new_line_number - line.old_line_number
+            else:
+                # Synthetic gaps separate hunk coordinate spaces. Do not carry
+                # an anchor across omitted working-tree lines.
+                last_source_line = None
+            in_deletion_run = False
+            deletion_run_anchor = None
+        elif line.kind == "+":
+            source_line = line.new_line_number
+            if source_line is not None:
+                last_source_line = source_line
+            coordinate_delta += 1
+            in_deletion_run = False
+            deletion_run_anchor = None
         elif line.kind == "-":
-            source_line = last_source_line
-            if (
-                source_line is None
-                and line.old_line_number is not None
-                and line.old_line_number > 1
-            ):
-                source_line = line.old_line_number - 1
+            if not in_deletion_run:
+                deletion_run_anchor = last_source_line
+                if deletion_run_anchor is None and line.old_line_number is not None:
+                    translated_anchor = (
+                        line.old_line_number - 1 + coordinate_delta
+                    )
+                    deletion_run_anchor = max(translated_anchor, 0) or None
+            source_line = deletion_run_anchor
+            coordinate_delta -= 1
+            in_deletion_run = True
 
         new_lines.append(replace(line, source_line=source_line))
 

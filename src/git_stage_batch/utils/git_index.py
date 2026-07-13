@@ -255,4 +255,5 @@ def git_reset_paths(
         ["reset", "--", *paths],
         check=check,
         requires_index_lock=True,
+        literal_pathspecs=True,
     )

@@ -139,7 +139,7 @@ class TestCommandDiscard:
         self,
         temp_git_repo,
     ):
-        """Discarding a complete new file should not leave a ghost ITA entry."""
+        """Discarding a complete new file should not leave a ghost intent-to-add entry."""
         new_file = temp_git_repo / "new.txt"
         new_file.write_text("new content\n")
 

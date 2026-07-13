@@ -215,7 +215,7 @@ def test_scoped_undo_preserves_unrelated_index_changes(temp_git_repo):
 
 
 def test_undo_preserves_unrelated_fully_staged_auto_added_file(temp_git_repo):
-    """Undo should not demote an unrelated staged new file back to ITA."""
+    """Undo should not demote an unrelated staged new file back to intent-to-add."""
     other = _commit_text_file(temp_git_repo, "other.txt", "other base\n")
     new_file = temp_git_repo / "new.txt"
     new_file.write_text("staged new content\n")
@@ -246,7 +246,7 @@ def test_undo_preserves_unrelated_fully_staged_auto_added_file(temp_git_repo):
 
 
 def test_undo_restores_fully_staged_state_for_scoped_auto_added_file(temp_git_repo):
-    """The exact before-image should distinguish staged content from ITA."""
+    """The exact before-image should distinguish staged content from intent-to-add."""
     new_file = temp_git_repo / "new.txt"
     new_file.write_text("staged new content\n")
     command_start(quiet=True)

@@ -240,5 +240,5 @@ def restore_intent_to_add_entries(file_paths: list[str]) -> None:
     for file_path in file_paths:
         full_path = repo_root / file_path
         if os.path.lexists(full_path):
-            git_update_index(file_path=file_path, force_remove=True, check=False)
-            git_add_paths([file_path], intent_to_add=True, check=False)
+            git_update_index(file_path=file_path, force_remove=True)
+            git_add_paths([file_path], intent_to_add=True)

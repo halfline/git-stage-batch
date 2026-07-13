@@ -70,8 +70,16 @@ This runs the tool without permanently installing it.
 
 ## Requirements
 
-- **Python 3.10+**
-- No other dependencies (pure stdlib!)
+- **Python 3.10 through 3.13**
+- **Git 2.29 or newer** available on `PATH`
+- **POSIX operating system.** Linux is tested in CI; native Windows is not
+  supported because repository locking, signals, symlinks, and terminal process
+  control currently use POSIX facilities.
+
+There are no runtime Python package dependencies. Building from source also
+requires Meson, meson-python, Ninja, and gettext. Repository paths are handled
+with Git's byte-preserving surrogate-escape conventions; symlink workflows need
+a filesystem and account that permit creating symlinks.
 
 ## Verify Installation
 

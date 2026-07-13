@@ -63,6 +63,7 @@ def discard_selected_change(
     with undo_checkpoint(
         "discard",
         worktree_paths=worktree_paths_for_selected_change(item),
+        rollback_on_error=True,
     ):
         _discard_loaded_selected_change(
             item,

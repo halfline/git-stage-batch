@@ -7,10 +7,9 @@ import os
 
 from ...core.buffer import (
     LineBuffer,
-    write_buffer_to_path,
     write_buffer_to_working_tree_path,
 )
-from ...data.file_modes import apply_git_file_mode, detect_file_mode_in_commit
+from ...data.file_modes import detect_file_mode_in_commit
 from ...utils.repository_buffers import read_git_object_buffer_or_none
 from ...utils.git_index import git_update_index
 from ...utils.git_repository import get_git_repository_root_path
@@ -35,15 +34,16 @@ def discard_binary_file_to_worktree(
 
     baseline_buffer = read_git_object_buffer_or_none(f"{baseline_commit}:{file_path}")
     if baseline_buffer is not None:
+        file_mode = detect_file_mode_in_commit(baseline_commit, file_path)
         with baseline_buffer:
-            write_buffer_to_path(full_path, baseline_buffer)
-        apply_git_file_mode(
-            full_path,
-            detect_file_mode_in_commit(baseline_commit, file_path),
-        )
+            write_buffer_to_working_tree_path(
+                full_path,
+                baseline_buffer,
+                mode=file_mode,
+            )
         return BinaryWorktreeAction.REPLACED
 
-    if full_path.exists():
+    if os.path.lexists(full_path):
         full_path.unlink()
         return BinaryWorktreeAction.DELETED
     return None

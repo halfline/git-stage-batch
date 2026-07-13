@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass
+import os
 
 from ...batch.source.annotation import annotate_with_batch_source
 from ...batch.state.lifecycle import create_batch
@@ -38,6 +39,7 @@ from ...utils.paths import (
     get_block_list_file_path,
     get_context_lines,
 )
+from ...utils.session_start_point import session_comparison_base
 from ..selection.action_completion import finish_selected_change_action
 from .discard_file_to_batch import discard_file_to_batch
 
@@ -220,7 +222,7 @@ def _collect_text_file_discard_inputs(
 
     with acquire_unified_diff(
         stream_live_git_diff(
-            base="HEAD",
+            base=session_comparison_base(),
             context_lines=get_context_lines(),
             paths=files,
         )
@@ -333,7 +335,7 @@ def _discard_prepared_text_files_to_batch(
     repo_root = get_git_repository_root_path()
     for prepared in prepared_discards:
         full_path = repo_root / prepared.file_path
-        if not full_path.exists():
+        if not os.path.lexists(full_path):
             git_remove_paths([prepared.file_path], cached=True, quiet=True, check=False)
 
     hunk_hashes = [

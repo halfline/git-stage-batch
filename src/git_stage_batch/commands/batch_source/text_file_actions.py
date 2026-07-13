@@ -6,11 +6,9 @@ import os
 
 from ...core.buffer import (
     LineBuffer,
-    write_buffer_to_path,
     write_buffer_to_working_tree_path,
 )
 from ...core.text_lifecycle import TextFileChangeType, normalized_text_change_type
-from ...data.file_modes import apply_git_file_mode
 from ...staging.index_update import update_index_with_blob_buffer
 from ...utils.git_index import git_update_index
 from ...utils.git_repository import get_git_repository_root_path
@@ -75,12 +73,11 @@ def write_discarded_text_file_to_worktree(
     full_path = repo_root / file_path
 
     if normalized_text_change_type(change_type) == TextFileChangeType.DELETED:
-        if full_path.exists():
+        if os.path.lexists(full_path):
             full_path.unlink()
         return
 
     if buffer is None:
         raise RuntimeError(f"Text file not found in discarded content: {file_path}")
 
-    write_buffer_to_path(full_path, buffer)
-    apply_git_file_mode(full_path, file_mode)
+    write_buffer_to_working_tree_path(full_path, buffer, mode=file_mode)

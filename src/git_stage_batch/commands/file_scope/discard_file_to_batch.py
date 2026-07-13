@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import ExitStack
+import os
 import sys
 
 from ...batch.source.annotation import annotate_with_batch_source
@@ -33,12 +34,13 @@ from ...i18n import _
 from ...utils.file_io import read_text_file_line_set
 from ...utils.git_worktree import (
     git_apply_to_worktree,
-    git_checkout_paths,
+    git_checkout_index_paths,
     git_remove_paths,
 )
 from ...utils.git_repository import get_git_repository_root_path
 from ...utils.journal import log_journal
 from ...utils.paths import get_block_list_file_path, get_context_lines
+from ...utils.session_start_point import session_comparison_base
 from ..selection.action_completion import finish_selected_change_action
 from ..selection import whole_file_batch_discarding as _whole_file_batch_discarding
 
@@ -69,7 +71,11 @@ def discard_file_to_batch(
             auto_advance=auto_advance,
         )
 
-    binary_change = render_binary_file_change(file_path)
+    comparison_base = session_comparison_base()
+    binary_change = render_binary_file_change(
+        file_path,
+        base=comparison_base,
+    )
     if binary_change is not None:
         return _whole_file_batch_discarding.discard_binary_to_batch(
             batch_name,
@@ -78,7 +84,7 @@ def discard_file_to_batch(
             advance=advance,
             auto_advance=auto_advance,
         )
-    if render_gitlink_change(file_path) is not None:
+    if render_gitlink_change(file_path, base=comparison_base) is not None:
         exit_with_error(_("Discarding submodule pointer changes to a batch is not supported yet."))
 
     blocklist_path = get_block_list_file_path()
@@ -92,7 +98,7 @@ def discard_file_to_batch(
 
         with acquire_unified_diff(
             stream_live_git_diff(
-                base="HEAD",
+                base=comparison_base,
                 context_lines=get_context_lines(),
                 paths=[file_path],
             )
@@ -153,7 +159,13 @@ def discard_file_to_batch(
                     full_path.unlink()
                     git_remove_paths([file_path], cached=True, quiet=True, check=False)
                 else:
-                    git_checkout_paths("HEAD", [file_path], check=False)
+                    result = git_checkout_index_paths([file_path], check=False)
+                    if result.returncode != 0:
+                        exit_with_error(
+                            _("Failed to restore file: {error}").format(
+                                error=result.stderr,
+                            )
+                        )
 
                 if not quiet:
                     print(
@@ -233,7 +245,7 @@ def discard_file_to_batch(
 
         repo_root = get_git_repository_root_path()
         full_path = repo_root / file_path
-        if not full_path.exists():
+        if not os.path.lexists(full_path):
             git_remove_paths([file_path], cached=True, quiet=True, check=False)
 
         if not quiet:

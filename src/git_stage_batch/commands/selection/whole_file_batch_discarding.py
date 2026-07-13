@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 
 from ...batch.binary_file_storage import add_binary_file_to_batch
@@ -19,7 +20,7 @@ from ...exceptions import exit_with_error
 from ...i18n import _
 from ...utils.file_io import append_lines_to_file
 from ...utils.git_worktree import (
-    git_checkout_paths,
+    git_checkout_index_paths,
     git_remove_paths,
 )
 from ...utils.git_repository import get_git_repository_root_path
@@ -34,12 +35,12 @@ def _discard_binary_change_from_working_tree(binary_change: BinaryFileChange) ->
     absolute_path = get_git_repository_root_path() / file_path
 
     if binary_change.is_new_file():
-        if absolute_path.exists():
+        if os.path.lexists(absolute_path):
             absolute_path.unlink()
         git_remove_paths([file_path], cached=True, quiet=True, check=False)
         return
 
-    result = git_checkout_paths("HEAD", [file_path], check=False)
+    result = git_checkout_index_paths([file_path], check=False)
     if result.returncode != 0:
         exit_with_error(_("Failed to restore binary file: {error}").format(error=result.stderr))
 

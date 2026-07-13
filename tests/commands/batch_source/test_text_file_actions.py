@@ -1,5 +1,6 @@
 """Tests for batch-source text file actions."""
 
+import os
 import stat
 from types import SimpleNamespace
 
@@ -243,12 +244,6 @@ def test_write_discarded_text_file_to_worktree_writes_buffer_and_mode(
         "get_git_repository_root_path",
         lambda: tmp_path,
     )
-    mode_calls = []
-    monkeypatch.setattr(
-        text_file_actions,
-        "apply_git_file_mode",
-        lambda path, file_mode: mode_calls.append((path, file_mode)),
-    )
     buffer = LineBuffer.from_bytes(b"restored\n")
 
     try:
@@ -262,7 +257,35 @@ def test_write_discarded_text_file_to_worktree_writes_buffer_and_mode(
 
     target = tmp_path / "notes.txt"
     assert target.read_bytes() == b"restored\n"
-    assert mode_calls == [(target, "100755")]
+    assert stat.S_IMODE(target.stat().st_mode) & stat.S_IXUSR
+
+
+def test_write_discarded_text_replaces_dangling_symlink_with_regular_file(
+    tmp_path,
+    monkeypatch,
+):
+    """A regular baseline must replace a current symlink, not its target."""
+    monkeypatch.setattr(
+        text_file_actions,
+        "get_git_repository_root_path",
+        lambda: tmp_path,
+    )
+    target = tmp_path / "notes.txt"
+    os.symlink("missing-target", target)
+    buffer = LineBuffer.from_bytes(b"restored\n")
+
+    try:
+        text_file_actions.write_discarded_text_file_to_worktree(
+            "notes.txt",
+            buffer,
+            "100644",
+        )
+    finally:
+        buffer.close()
+
+    assert not target.is_symlink()
+    assert target.read_bytes() == b"restored\n"
+    assert not (tmp_path / "missing-target").exists()
 
 
 def test_write_discarded_text_file_to_worktree_deletes_existing_file(
@@ -286,6 +309,26 @@ def test_write_discarded_text_file_to_worktree_deletes_existing_file(
     )
 
     assert not target.exists()
+
+
+def test_write_discarded_text_deletes_dangling_symlink(tmp_path, monkeypatch):
+    """Deleted baselines should remove broken symlink paths too."""
+    monkeypatch.setattr(
+        text_file_actions,
+        "get_git_repository_root_path",
+        lambda: tmp_path,
+    )
+    target = tmp_path / "old.txt"
+    os.symlink("missing", target)
+
+    text_file_actions.write_discarded_text_file_to_worktree(
+        "old.txt",
+        None,
+        None,
+        change_type="deleted",
+    )
+
+    assert not os.path.lexists(target)
 
 
 def test_write_discarded_text_file_to_worktree_requires_buffer(

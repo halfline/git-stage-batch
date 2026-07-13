@@ -171,10 +171,10 @@ def test_undo_discard_files_restores_entire_multi_file_operation(functional_repo
     git_stage_batch("start")
     git_stage_batch("discard", "--files", "*.txt")
 
-    assert set(_git("diff", "--cached", "--name-only").stdout.splitlines()) == {
-        "alpha.txt",
-        "beta.txt",
-    }
+    assert _git("diff", "--cached", "--name-only").stdout == ""
+    assert _git("diff", "--name-only").stdout == ""
+    assert alpha.read_text() == "alpha\n"
+    assert beta.read_text() == "beta\n"
 
     git_stage_batch("undo")
 

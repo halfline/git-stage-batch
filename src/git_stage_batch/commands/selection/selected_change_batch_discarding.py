@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from contextlib import ExitStack
+import os
 import sys
 
 from ...batch.source.annotation import annotate_with_batch_source
@@ -273,7 +274,7 @@ def _discard_text_hunk_to_batch(
         if is_new_file or file_only:
             absolute_path = get_git_repository_root_path() / file_path
 
-            if not absolute_path.exists():
+            if not os.path.lexists(absolute_path):
                 git_remove_paths([file_path], cached=True, quiet=True, check=False)
             elif is_new_file:
                 if path_is_empty(absolute_path):

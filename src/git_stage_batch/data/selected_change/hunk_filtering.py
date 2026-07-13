@@ -34,6 +34,33 @@ def apply_line_level_batch_filter_to_cached_hunk(
     if line_changes is None:
         return True
 
+    filtered_line_changes = filter_line_level_change_for_batches(
+        line_changes,
+        batch_metadata_by_name=batch_metadata_by_name,
+    )
+    if filtered_line_changes is None:
+        return True
+
+    write_text_file_contents(
+        get_line_changes_json_file_path(),
+        json.dumps(
+            _line_state.convert_line_changes_to_serializable_dict(
+                filtered_line_changes
+            ),
+            ensure_ascii=False,
+            indent=0,
+        ),
+    )
+
+    return False
+
+
+def filter_line_level_change_for_batches(
+    line_changes,
+    *,
+    batch_metadata_by_name: dict[str, dict] | None = None,
+):
+    """Return the unowned portion of a live line change, or ``None``."""
     file_path = line_changes.path
 
     if (
@@ -43,7 +70,7 @@ def apply_line_level_batch_filter_to_cached_hunk(
             batch_metadata_by_name=batch_metadata_by_name,
         )
     ):
-        return True
+        return None
 
     attribution_metrics = AttributionMetrics()
     attribution = build_file_attribution(
@@ -62,28 +89,14 @@ def apply_line_level_batch_filter_to_cached_hunk(
     )
 
     if should_skip:
-        return True
+        return None
 
     filtered_line_changes = (
         _consumed_replacement_masks.filter_consumed_replacement_masks(
             filtered_line_changes
         )
     )
-    if filtered_line_changes is None:
-        return True
-
-    write_text_file_contents(
-        get_line_changes_json_file_path(),
-        json.dumps(
-            _line_state.convert_line_changes_to_serializable_dict(
-                filtered_line_changes
-            ),
-            ensure_ascii=False,
-            indent=0,
-        ),
-    )
-
-    return False
+    return filtered_line_changes
 
 
 def _consumed_batch_metadata(file_path: str) -> dict[str, dict] | None:

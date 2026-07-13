@@ -80,6 +80,7 @@ def command_unblock_file(file_path_arg: str) -> None:
             f"unblock-file {file_path}",
             worktree_paths=[".gitignore"],
             index_paths=[file_path] if not file_path.endswith("/") else [],
+            repository_paths=["info/exclude"],
         )
         if session_active
         else nullcontext()

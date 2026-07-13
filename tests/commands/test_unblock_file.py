@@ -5,11 +5,13 @@ import subprocess
 import pytest
 
 from git_stage_batch.commands.block_file import command_block_file
+from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.unblock_file import command_unblock_file
 from git_stage_batch.data.ignore_files import get_gitignore_path, get_local_exclude_path
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.file_io import append_file_path_to_file, read_file_paths_file
 from git_stage_batch.utils.paths import get_blocked_files_file_path
+from git_stage_batch.data.undo_checkpoints import undo_last_checkpoint
 
 
 @pytest.fixture
@@ -75,6 +77,25 @@ class TestCommandUnblockFile:
 
         captured = capsys.readouterr()
         assert "Unblocked file: temp.txt" in captured.err
+
+    def test_undo_unblock_restores_local_exclude_rule(self, temp_git_repo):
+        """Undoing unblock restores local-only rules and blocked-list state."""
+        local_file = temp_git_repo / "local.txt"
+        another_file = temp_git_repo / "another.txt"
+        local_file.write_text("local\n")
+        another_file.write_text("another\n")
+        command_start(quiet=True)
+        command_block_file("local.txt", local_only=True)
+        exclude_path = get_local_exclude_path()
+        blocked_content = exclude_path.read_bytes()
+
+        command_unblock_file("local.txt")
+        assert exclude_path.read_bytes() != blocked_content
+
+        undo_last_checkpoint(force=True)
+
+        assert exclude_path.read_bytes() == blocked_content
+        assert "local.txt" in read_file_paths_file(get_blocked_files_file_path())
 
     def test_unblock_file_removes_literal_special_path(self, temp_git_repo):
         """Unblocking should remove the escaped rule for a literal pathname."""

@@ -5,7 +5,9 @@ import subprocess
 import pytest
 
 from git_stage_batch.commands.block_file import command_block_file
+from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.ignore_files import get_gitignore_path, get_local_exclude_path
+from git_stage_batch.data.undo_checkpoints import redo_last_checkpoint, undo_last_checkpoint
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.file_io import read_file_paths_file
 from git_stage_batch.utils.paths import get_blocked_files_file_path
@@ -228,6 +230,26 @@ class TestCommandBlockFile:
         captured = capsys.readouterr()
         assert "Blocked file: local.txt" in captured.err
 
+    def test_undo_local_only_block_restores_exact_exclude_file(self, temp_git_repo):
+        """Undo should restore repository-local ignore state as well as session state."""
+        local_file = temp_git_repo / "local.txt"
+        local_file.write_text("local content\n")
+        command_start(quiet=True)
+        exclude_path = get_local_exclude_path()
+        before = exclude_path.read_bytes()
+
+        command_block_file("local.txt", local_only=True)
+        blocked = exclude_path.read_bytes()
+        assert blocked != before
+
+        undo_last_checkpoint(force=True)
+
+        assert exclude_path.read_bytes() == before
+
+        redo_last_checkpoint()
+
+        assert exclude_path.read_bytes() == blocked
+
     def test_block_file_local_only_adds_to_blocked_list(self, temp_git_repo):
         """Test that --local-only still adds file to the blocked list."""
         (temp_git_repo / "local.txt").write_text("local content\n")
@@ -259,8 +281,9 @@ class TestCommandBlockFile:
             *,
             worktree_paths=None,
             index_paths=None,
+            repository_paths=None,
         ):
-            calls.append((operation, worktree_paths, index_paths))
+            calls.append((operation, worktree_paths, index_paths, repository_paths))
             return Checkpoint()
 
         (temp_git_repo / "local.txt").write_text("local content\n")
@@ -274,7 +297,9 @@ class TestCommandBlockFile:
 
         command_block_file("local.txt", local_only=True)
 
-        assert calls == [("block-file local.txt", [], ["local.txt"])]
+        assert calls == [
+            ("block-file local.txt", [], ["local.txt"], ["info/exclude"])
+        ]
 
     def test_block_file_local_only_no_duplicates_in_exclude(self, temp_git_repo):
         """Test that --local-only blocking the same file twice doesn't duplicate entries."""

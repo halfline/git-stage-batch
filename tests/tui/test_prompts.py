@@ -3,6 +3,7 @@
 from git_stage_batch.tui.prompts import _shell_command_history
 
 from io import StringIO
+from contextlib import contextmanager
 from os import terminal_size
 from unittest.mock import patch
 
@@ -14,7 +15,33 @@ from git_stage_batch.tui.prompts import (
     prompt_line_ids,
     prompt_quit_session,
     prompt_shell_command,
+    unlocked_input,
 )
+
+
+def test_unlocked_input_releases_lock_while_waiting():
+    events = []
+
+    @contextmanager
+    def released_lock():
+        events.append("released")
+        yield
+        events.append("reacquired")
+
+    def read_input(prompt):
+        events.append(("input", prompt))
+        return "answer"
+
+    with (
+        patch(
+            "git_stage_batch.tui.prompts.temporarily_release_session_lock",
+            released_lock,
+        ),
+        patch("builtins.input", side_effect=read_input),
+    ):
+        assert unlocked_input("Prompt: ") == "answer"
+
+    assert events == ["released", ("input", "Prompt: "), "reacquired"]
 
 
 class TestPromptAction:

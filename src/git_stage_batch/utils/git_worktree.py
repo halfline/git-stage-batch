@@ -57,6 +57,7 @@ def git_checkout_index_paths(
         ["checkout", "--", *paths],
         check=check,
         requires_index_lock=True,
+        literal_pathspecs=True,
     )
 
 

@@ -18,7 +18,11 @@ from ...core.buffer import (
     LineBuffer,
     write_buffer_to_path,
 )
-from ...utils.file_io import read_text_file_contents, write_text_file_contents
+from ...utils.file_io import (
+    fsync_directory,
+    read_text_file_contents,
+    write_text_file_contents,
+)
 from ...utils.paths import (
     get_index_snapshot_file_path,
     get_line_changes_json_file_path,
@@ -181,6 +185,13 @@ def write_selected_change_kind(kind: SelectedChangeKind) -> None:
     if kind not in (SelectedChangeKind.MODE, SelectedChangeKind.BATCH_MODE):
         get_selected_mode_change_json_path().unlink(missing_ok=True)
     write_text_file_contents(get_selected_change_kind_file_path(), kind)
+
+
+def invalidate_selected_change_cache() -> None:
+    """Durably hide the old cache before replacing its component files."""
+    kind_path = get_selected_change_kind_file_path()
+    kind_path.unlink(missing_ok=True)
+    fsync_directory(kind_path.parent)
 
 
 def read_selected_change_kind() -> SelectedChangeKind | None:

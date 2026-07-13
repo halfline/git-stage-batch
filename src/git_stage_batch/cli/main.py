@@ -11,20 +11,28 @@ from ..exceptions import CommandError
 from ..i18n import _
 from ..runtime import dispatch_cli_mode
 from ..data.session_ownership import require_no_foreign_session_owner
-from ..utils.session_lock import acquire_session_lock
 from ..utils.journal import flush_journal
 from .argument_parser import parse_command_line
 from .pager import pager_output, should_page_output
 
 
-_READ_ONLY_COMMANDS = frozenset({
-    "check-unstaged",
-    "journal",
-    "list",
-    "show",
-    "status",
-    "validate",
-})
+_READ_ONLY_COMMANDS = frozenset(
+    {
+        "check-unstaged",
+        "journal",
+        "list",
+        "show",
+        "status",
+        "validate",
+    }
+)
+
+
+def acquire_session_lock():
+    """Load the POSIX lock backend only after the platform check."""
+    from ..utils.session_lock import acquire_session_lock as acquire_lock
+
+    return acquire_lock()
 
 
 def _command_may_mutate(args) -> bool:
@@ -39,6 +47,10 @@ def _command_may_mutate(args) -> bool:
 def main() -> None:
     """Main entry point for git-stage-batch."""
     try:
+        if os.name != "posix":
+            raise CommandError(
+                _("git-stage-batch currently supports POSIX operating systems only.")
+            )
         args = parse_command_line(sys.argv[1:], quiet=False)
         if args is not None:
             if args.working_directory is not None:

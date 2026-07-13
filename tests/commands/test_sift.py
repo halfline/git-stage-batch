@@ -18,6 +18,7 @@ import git_stage_batch.commands.batch_transform.sift_results as sift_results
 from git_stage_batch.commands.batch_transform.sift_persistence import (
     add_sifted_text_file_to_batch,
 )
+import git_stage_batch.commands.batch_transform.sift_persistence as sift_persistence
 from git_stage_batch.commands.sift import (
     command_sift_batch,
 )
@@ -1039,6 +1040,32 @@ class TestSiftCopyVsInPlace:
         metadata_after = read_batch_metadata("my-batch")
         # Batch should have changed (different content, different batch_source)
         assert metadata_after != metadata_before
+
+    def test_temp_name_race_never_deletes_an_unowned_batch(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """Cleanup is limited to a temporary batch this invocation created."""
+        command_new_batch("sift-tmp-race")
+        collision_metadata = read_batch_metadata("sift-tmp-race")
+        monkeypatch.setattr(
+            sift_persistence,
+            "_new_sift_temp_batch_name",
+            lambda: "sift-tmp-race",
+        )
+
+        with pytest.raises(CommandError, match="already exists"):
+            sift_persistence.publish_sifted_files(
+                destination_batch="destination",
+                retained_files=[],
+                source_metadata={"baseline": "HEAD"},
+                destination_note="test",
+                replace_existing=False,
+            )
+
+        assert batch_exists("sift-tmp-race")
+        assert read_batch_metadata("sift-tmp-race") == collision_metadata
 
     def test_in_place_mode_is_atomic(self, temp_git_repo):
         """Test that in-place mode uses atomic update (all-or-nothing).

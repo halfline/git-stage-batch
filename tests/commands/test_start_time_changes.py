@@ -7,6 +7,7 @@ import pytest
 from git_stage_batch.commands.abort import command_abort
 from git_stage_batch.commands.check_unstaged import command_check_unstaged
 from git_stage_batch.commands.include import command_include
+from git_stage_batch.commands.discard import command_discard
 from git_stage_batch.commands.selection.selected_change_display import show_selected_change
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.stop import command_stop
@@ -104,6 +105,19 @@ def test_start_exposes_unstaged_rename_as_rename_selection(rename_repo):
     assert isinstance(selected_change, RenameChange)
     assert selected_change.old_path == "old.txt"
     assert selected_change.new_path == "new.txt"
+
+
+def test_discard_unstaged_rename_preserves_index(rename_repo):
+    """Rename discard restores paths from the index without rewriting it."""
+    _rename_without_staging(rename_repo)
+    command_start(quiet=True)
+
+    command_discard(quiet=True)
+
+    assert (rename_repo / "old.txt").read_text() == "line 1\nline 2\n"
+    assert not (rename_repo / "new.txt").exists()
+    assert _cached_name_status(rename_repo) == ""
+    assert _uncached_name_status(rename_repo) == ""
 
 
 def test_start_exposes_staged_deletion_as_deleted_line_selection(rename_repo):

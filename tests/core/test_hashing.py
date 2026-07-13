@@ -53,6 +53,13 @@ class TestComputeStableHunkHash:
 
         assert hash1 != hash2
 
+    def test_file_header_prefixes_in_hunk_body_are_hashed_as_content(self):
+        """Changed content resembling file headers remains part of identity."""
+        patch1 = b"--- a/file\n+++ b/file\n@@ -1 +1 @@\n--- old\n+++ new\n"
+        patch2 = b"--- a/file\n+++ b/file\n@@ -1 +1 @@\n--- old\n+++ other\n"
+
+        assert self._hash_patch(patch1) != self._hash_patch(patch2)
+
     def test_hash_is_hexadecimal_string(self):
         """Test that hash is a valid hexadecimal string."""
         patch = b"--- a/file\n+++ b/file\n@@ -1 +1 @@\n-old\n+new\n"

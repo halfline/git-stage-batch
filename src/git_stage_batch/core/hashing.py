@@ -55,6 +55,17 @@ def compute_stable_hunk_hash_from_lines(patch_lines: Iterable[bytes]) -> str:
         # Strip \n for comparison
         line = line_with_ending.rstrip(b'\n')
 
+        if saw_header:
+            # Only include actual changes (+ or -), not context lines (space).
+            # Once the hunk body starts, content that happens to begin with a
+            # file-header prefix must remain content.
+            if line and line[0:1] in (b'+', b'-'):
+                write_hash_prefix()
+                if wrote_changed_line:
+                    digest.update(b"\n")
+                digest.update(line)
+                wrote_changed_line = True
+            continue
         if line.startswith(b"+++ "):
             path_value = unquote_path_token(line.split(b" ", 1)[1].strip())
             if path_value != b"/dev/null":
@@ -69,15 +80,6 @@ def compute_stable_hunk_hash_from_lines(patch_lines: Iterable[bytes]) -> str:
             header_bytes = line
             saw_header = True
             continue
-        if saw_header:
-            # Only include actual changes (+ or -), not context lines (space)
-            if line and line[0:1] in (b'+', b'-'):
-                write_hash_prefix()
-                if wrote_changed_line:
-                    digest.update(b"\n")
-                digest.update(line)
-                wrote_changed_line = True
-
     write_hash_prefix()
     return digest.hexdigest()
 

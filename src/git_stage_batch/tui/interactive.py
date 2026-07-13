@@ -8,7 +8,10 @@ from ..exceptions import BypassRefresh, QuitInteractive
 from ..i18n import _
 from ..output.colors import Colors
 from ..utils.journal import flush_journal
-from ..utils.session_lock import acquire_session_lock
+from ..utils.session_lock import (
+    SessionLockChangedDuringPrompt,
+    acquire_session_lock,
+)
 from . import current_change
 from .action_dispatch import ACTION_HANDLERS, dispatch_action
 from .flow import FlowLocation, FlowState
@@ -108,6 +111,15 @@ def start_interactive_mode() -> None:
             should_refresh = True
         except BypassRefresh:
             should_refresh = False
+        except SessionLockChangedDuringPrompt:
+            print(
+                _(
+                    "Repository state changed while the prompt was open; "
+                    "no action was taken."
+                ),
+                file=sys.stderr,
+            )
+            should_refresh = True
         except QuitInteractive:
             break
         finally:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ...i18n import _
 from ..flow import FlowState, LocationRole
-from ..prompts import wrap_prompt_for_readline
+from ..prompts import unlocked_input, wrap_prompt_for_readline
 
 
 def prompt_review_action(flow_state: FlowState) -> str:
@@ -30,7 +30,7 @@ def prompt_review_action(flow_state: FlowState) -> str:
         )
 
     try:
-        return input(wrap_prompt_for_readline(_("Action: "))).strip()
+        return unlocked_input(wrap_prompt_for_readline(_("Action: "))).strip()
     except (KeyboardInterrupt, EOFError):
         return "q"
 

@@ -6,7 +6,7 @@ import subprocess
 
 from ..i18n import _
 from ..utils.git_repository import get_git_repository_root_path
-from .prompts import prompt_shell_command
+from .prompts import prompt_shell_command, unlocked_input
 
 
 def handle_shell_command(action: str) -> None:
@@ -26,7 +26,7 @@ def handle_shell_command(action: str) -> None:
             print(_("Command exited with status {}").format(result.returncode))
 
         try:
-            input(_("\nPress Enter to continue..."))
+            unlocked_input(_("\nPress Enter to continue..."))
         except (KeyboardInterrupt, EOFError):
             pass
     else:

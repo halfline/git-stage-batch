@@ -13,7 +13,7 @@ from ..data.line_state import load_line_changes_from_state
 from ..i18n import _
 from ..output.colors import Colors, format_hotkey
 from .flow import FlowState, LocationRole
-from .prompts import confirm_destructive_operation, wrap_prompt_for_readline
+from .prompts import confirm_destructive_operation, unlocked_input, wrap_prompt_for_readline
 
 
 def handle_file_selection_menu(flow_state: FlowState) -> None:
@@ -58,10 +58,10 @@ def handle_file_selection_menu(flow_state: FlowState) -> None:
                     include=format_hotkey("include", "i", Colors.GREEN),
                     discard=format_hotkey("discard", "d", Colors.RED),
             )
-            action_input = input(wrap_prompt_for_readline(prompt_text)).strip().lower()
+            action_input = unlocked_input(wrap_prompt_for_readline(prompt_text)).strip().lower()
         else:
             action_input = (
-                input(action_prompt.format(filename=filename)).strip().lower()
+                unlocked_input(action_prompt.format(filename=filename)).strip().lower()
             )
     except (KeyboardInterrupt, EOFError):
         return

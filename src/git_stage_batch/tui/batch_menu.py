@@ -12,6 +12,7 @@ from ..commands.new import command_new_batch
 from ..commands.sift import command_sift_batch
 from ..i18n import _
 from ..output.colors import Colors, format_hotkey
+from .prompts import unlocked_input
 
 
 def handle_batch_menu() -> None:
@@ -64,7 +65,7 @@ def handle_batch_menu() -> None:
         print()
 
         try:
-            action = input(_("Select: ")).strip().lower()
+            action = unlocked_input(_("Select: ")).strip().lower()
         except (KeyboardInterrupt, EOFError):
             return
 
@@ -88,11 +89,11 @@ def handle_batch_menu() -> None:
 def _batch_create() -> bool:
     """Prompt for batch ID and note, then create a new batch."""
     try:
-        batch_id = input(_("Batch ID: ")).strip()
+        batch_id = unlocked_input(_("Batch ID: ")).strip()
         if not batch_id:
             return False
 
-        note = input(_("Note (optional): ")).strip()
+        note = unlocked_input(_("Note (optional): ")).strip()
     except (KeyboardInterrupt, EOFError):
         return False
 
@@ -108,7 +109,7 @@ def _batch_edit() -> None:
         return
 
     try:
-        note = input(_("New note: ")).strip()
+        note = unlocked_input(_("New note: ")).strip()
     except (KeyboardInterrupt, EOFError):
         return
 
@@ -143,7 +144,7 @@ def _batch_sift() -> None:
         return
 
     try:
-        dest_batch = input(_("Destination batch (empty for in-place): ")).strip()
+        dest_batch = unlocked_input(_("Destination batch (empty for in-place): ")).strip()
     except (KeyboardInterrupt, EOFError):
         return
 
@@ -180,7 +181,7 @@ def _prompt_select_batch(purpose: str, skip_if_single: bool = False) -> str:
 
     print()
     try:
-        choice = input(_("Select: ")).strip()
+        choice = unlocked_input(_("Select: ")).strip()
     except (KeyboardInterrupt, EOFError):
         return ""
 

@@ -21,6 +21,7 @@ from ..flow import LocationRole
 from ..prompts import (
     confirm_destructive_operation,
     prompt_line_ids,
+    unlocked_input,
     wrap_prompt_for_readline,
 )
 
@@ -94,7 +95,7 @@ def apply_file_action(state: FileReviewSessionState, action: str) -> None:
 
 def _prompt_replacement_text() -> str | None:
     try:
-        value = input(
+        value = unlocked_input(
             wrap_prompt_for_readline(_("Replacement text (empty cancels): "))
         )
     except (KeyboardInterrupt, EOFError):

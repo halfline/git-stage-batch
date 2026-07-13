@@ -17,6 +17,7 @@ from .flow import FlowState, LocationRole
 from .prompts import (
     confirm_destructive_operation,
     prompt_line_ids,
+    unlocked_input,
     wrap_prompt_for_readline,
 )
 
@@ -59,10 +60,10 @@ def handle_line_selection_menu(flow_state: FlowState) -> None:
                 discard=format_hotkey("discard", "d", Colors.RED),
             )
             action_input = (
-                input(wrap_prompt_for_readline(prompt_text)).strip().lower()
+                unlocked_input(wrap_prompt_for_readline(prompt_text)).strip().lower()
             )
         else:
-            action_input = input(action_prompt).strip().lower()
+            action_input = unlocked_input(action_prompt).strip().lower()
     except (KeyboardInterrupt, EOFError):
         return
 

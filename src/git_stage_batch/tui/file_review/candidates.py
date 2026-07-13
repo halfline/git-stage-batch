@@ -8,7 +8,7 @@ from ...exceptions import CommandError
 from ...i18n import _
 from .session import FileReviewSessionState
 from ..flow import LocationRole
-from ..prompts import wrap_prompt_for_readline
+from ..prompts import unlocked_input, wrap_prompt_for_readline
 
 
 def browse_candidates(state: FileReviewSessionState) -> None:
@@ -56,7 +56,7 @@ def browse_candidates(state: FileReviewSessionState) -> None:
 
 def _prompt_candidate_operation() -> str | None:
     try:
-        choice = input(
+        choice = unlocked_input(
             wrap_prompt_for_readline(
                 _("Candidate operation [i]nclude, [a]pply, or q: ")
             )
@@ -77,7 +77,7 @@ def _prompt_candidate_operation() -> str | None:
 
 def _prompt_candidate_action() -> str | None:
     try:
-        choice = input(
+        choice = unlocked_input(
             wrap_prompt_for_readline(
                 _("Candidate number to preview, e N to execute, or q: ")
             )

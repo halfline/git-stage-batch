@@ -7,6 +7,7 @@ from ..commands.new import command_new_batch
 from ..i18n import _
 from ..output.colors import Colors
 from .flow import FlowLocation, FlowState, LocationRole
+from .prompts import unlocked_input
 
 
 def handle_from_menu(flow_state: FlowState) -> None:
@@ -52,7 +53,7 @@ def handle_from_menu(flow_state: FlowState) -> None:
 
     print()
     try:
-        choice = input(_("Select: ")).strip()
+        choice = unlocked_input(_("Select: ")).strip()
     except (KeyboardInterrupt, EOFError):
         return
 
@@ -115,7 +116,7 @@ def handle_to_menu(flow_state: FlowState) -> None:
 
     print()
     try:
-        choice = input(_("Select: ")).strip()
+        choice = unlocked_input(_("Select: ")).strip()
     except (KeyboardInterrupt, EOFError):
         return
 
@@ -123,10 +124,10 @@ def handle_to_menu(flow_state: FlowState) -> None:
         idx = int(choice) - 1
         if idx == len(options) - 1:
             try:
-                batch_id = input(_("Batch ID: ")).strip()
+                batch_id = unlocked_input(_("Batch ID: ")).strip()
                 if not batch_id:
                     return
-                note = input(_("Note (optional): ")).strip()
+                note = unlocked_input(_("Note (optional): ")).strip()
             except (KeyboardInterrupt, EOFError):
                 return
 

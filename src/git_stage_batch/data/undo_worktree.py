@@ -70,6 +70,7 @@ def _gitlink_oids_from_index(paths: list[str]) -> dict[str, str]:
         check=False,
         text_output=False,
         requires_index_lock=False,
+        literal_pathspecs=True,
     )
     if result.returncode != 0:
         return {}
@@ -94,6 +95,7 @@ def _gitlink_oids_from_head(paths: list[str]) -> dict[str, str]:
         check=False,
         text_output=False,
         requires_index_lock=False,
+        literal_pathspecs=True,
     )
     if result.returncode != 0:
         return {}

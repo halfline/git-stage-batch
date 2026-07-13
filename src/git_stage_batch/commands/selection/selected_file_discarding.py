@@ -5,12 +5,12 @@ from __future__ import annotations
 import sys
 
 from ...data.selected_change.paths import get_selected_change_file_path
+from ...data.index_entries import read_index_entry
 from ...data.session import snapshot_file_if_untracked
 from ...data.undo_checkpoints import undo_checkpoint
 from ...exceptions import exit_with_error
 from ...i18n import _
-from ...utils.git_command import run_git_command
-from ...utils.git_worktree import git_checkout_paths
+from ...utils.git_worktree import git_checkout_index_paths
 from ...utils.git_repository import get_git_repository_root_path
 from .action_completion import finish_selected_change_action
 
@@ -30,22 +30,17 @@ def discard_selected_file(
     with undo_checkpoint("discard", worktree_paths=[target_file]):
         snapshot_file_if_untracked(target_file)
 
-        head_result = run_git_command(
-            ["show", f"HEAD:{target_file}"],
-            check=False,
-            text_output=False,
-            requires_index_lock=False,
-        )
-        if head_result.returncode == 0:
-            result = git_checkout_paths("HEAD", [target_file], check=False)
+        index_entry = read_index_entry(target_file)
+        if index_entry is None:
+            absolute_path = get_git_repository_root_path() / target_file
+            if absolute_path.exists() or absolute_path.is_symlink():
+                absolute_path.unlink()
+        else:
+            result = git_checkout_index_paths([target_file], check=False)
             if result.returncode != 0:
                 exit_with_error(
                     _("Failed to discard file: {}").format(result.stderr)
                 )
-        else:
-            absolute_path = get_git_repository_root_path() / target_file
-            if absolute_path.exists():
-                absolute_path.unlink()
 
         if quiet:
             finish_selected_change_action(quiet=True, auto_advance=auto_advance)

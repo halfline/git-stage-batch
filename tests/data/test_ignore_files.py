@@ -38,7 +38,9 @@ def temp_git_repo(tmp_path, monkeypatch):
     )
 
     (repo / "README.md").write_text("# Test\n")
-    subprocess.run(["git", "add", "README.md"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "add", "README.md"], check=True, cwd=repo, capture_output=True
+    )
     subprocess.run(
         ["git", "commit", "-m", "Initial commit"],
         check=True,
@@ -105,7 +107,7 @@ class TestGitignoreManipulation:
         add_file_to_gitignore("test.txt")
 
         lines = read_gitignore_lines()
-        assert "test.txt\n" in lines
+        assert "/test.txt\n" in lines
 
     def test_add_file_to_gitignore_existing(self, temp_git_repo):
         """Test adding a file to existing .gitignore."""
@@ -118,7 +120,7 @@ class TestGitignoreManipulation:
         lines = read_gitignore_lines()
         assert "*.pyc\n" in lines
         assert "__pycache__/\n" in lines
-        assert "test.txt\n" in lines
+        assert "/test.txt\n" in lines
 
     def test_add_file_to_gitignore_no_duplicates(self, temp_git_repo):
         """Test adding a file twice doesn't create duplicates."""
@@ -141,7 +143,7 @@ class TestGitignoreManipulation:
         add_file_to_gitignore("test.txt")
 
         content = gitignore.read_text()
-        assert content == "*.pyc\ntest.txt\n"
+        assert content == "*.pyc\n/test.txt\n"
 
     def test_remove_file_from_gitignore_with_marker(self, temp_git_repo):
         """Test removing a file from .gitignore."""
@@ -184,7 +186,7 @@ class TestGitignoreManipulation:
         lines = read_gitignore_lines()
         assert "*.pyc\n" in lines
         assert "test1.txt\n" not in lines
-        assert "test2.txt\n" in lines
+        assert "/test2.txt\n" in lines
 
     def test_remove_file_from_gitignore_nonexistent(self, temp_git_repo):
         """Test removing a file that doesn't exist in .gitignore."""

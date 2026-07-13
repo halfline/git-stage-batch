@@ -20,13 +20,30 @@ def temp_git_repo(tmp_path, monkeypatch):
     monkeypatch.chdir(repo)
 
     subprocess.run(["git", "init"], check=True, cwd=repo, capture_output=True)
-    subprocess.run(["git", "config", "user.name", "Test User"], check=True, cwd=repo, capture_output=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+    )
 
     # Create initial commit
     (repo / "README.md").write_text("# Test\n")
-    subprocess.run(["git", "add", "README.md"], check=True, cwd=repo, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "Initial commit"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "add", "README.md"], check=True, cwd=repo, capture_output=True
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Initial commit"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+    )
 
     return repo
 
@@ -64,19 +81,25 @@ class TestCommandUnblockFile:
         file_name = "file[1].txt"
         (temp_git_repo / file_name).write_text("content\n")
         command_block_file(file_name)
-        assert subprocess.run(
-            ["git", "check-ignore", "--quiet", "--", file_name],
-            cwd=temp_git_repo,
-            check=False,
-        ).returncode == 0
+        assert (
+            subprocess.run(
+                ["git", "check-ignore", "--quiet", "--", file_name],
+                cwd=temp_git_repo,
+                check=False,
+            ).returncode
+            == 0
+        )
 
         command_unblock_file(file_name)
 
-        assert subprocess.run(
-            ["git", "check-ignore", "--quiet", "--", file_name],
-            cwd=temp_git_repo,
-            check=False,
-        ).returncode == 1
+        assert (
+            subprocess.run(
+                ["git", "check-ignore", "--quiet", "--", file_name],
+                cwd=temp_git_repo,
+                check=False,
+            ).returncode
+            == 1
+        )
 
     @pytest.mark.parametrize("local_only", [False, True])
     def test_unblock_file_removes_legacy_literal_special_path(
@@ -87,9 +110,7 @@ class TestCommandUnblockFile:
         """Unblocking should remove raw special rules written by older versions."""
         file_name = "literal*.txt"
         (temp_git_repo / file_name).write_text("content\n")
-        ignore_path = (
-            get_local_exclude_path() if local_only else get_gitignore_path()
-        )
+        ignore_path = get_local_exclude_path() if local_only else get_gitignore_path()
         ignore_path.parent.mkdir(parents=True, exist_ok=True)
         ignore_path.write_text(f"{file_name}\n")
         append_file_path_to_file(get_blocked_files_file_path(), file_name)
@@ -111,9 +132,7 @@ class TestCommandUnblockFile:
         directory.mkdir()
         child = directory / "keep.txt"
         child.write_text("content\n")
-        ignore_path = (
-            get_local_exclude_path() if local_only else get_gitignore_path()
-        )
+        ignore_path = get_local_exclude_path() if local_only else get_gitignore_path()
         ignore_path.parent.mkdir(parents=True, exist_ok=True)
         ignore_path.write_text("generated*/\n")
         append_file_path_to_file(get_blocked_files_file_path(), "generated*/")
@@ -122,7 +141,7 @@ class TestCommandUnblockFile:
 
         content = ignore_path.read_text()
         assert "generated\\*/**\n" in content
-        assert "!generated\\*/keep.txt\n" in content
+        assert "!/generated\\*/keep.txt\n" in content
         assert "generated*/\n" not in content
 
     def test_unblock_file_removes_from_blocked_list(self, temp_git_repo):
@@ -175,7 +194,10 @@ class TestCommandUnblockFile:
 
         # Should show appropriate message
         captured = capsys.readouterr()
-        assert "Removed from blocked list: manual.txt (was not in .gitignore)" in captured.err
+        assert (
+            "Removed from blocked list: manual.txt (was not in .gitignore)"
+            in captured.err
+        )
 
     def test_unblock_file_restores_intent_to_add_in_index(self, temp_git_repo):
         """Test that unblock-file re-adds the file to the index as intent-to-add during a session."""
@@ -189,14 +211,24 @@ class TestCommandUnblockFile:
         command_block_file("temp.txt")
 
         # Verify it's not in the index
-        result = subprocess.run(["git", "ls-files", "--", "temp.txt"], capture_output=True, text=True, cwd=temp_git_repo)
+        result = subprocess.run(
+            ["git", "ls-files", "--", "temp.txt"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo,
+        )
         assert "temp.txt" not in result.stdout
 
         # Unblock it
         command_unblock_file("temp.txt")
 
         # Should be back in the index as intent-to-add
-        result = subprocess.run(["git", "ls-files", "--", "temp.txt"], capture_output=True, text=True, cwd=temp_git_repo)
+        result = subprocess.run(
+            ["git", "ls-files", "--", "temp.txt"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo,
+        )
         assert "temp.txt" in result.stdout
 
     def test_unblock_file_preserves_staged_tracked_file_on_stop(self, temp_git_repo):
@@ -206,7 +238,12 @@ class TestCommandUnblockFile:
 
         # Stage a tracked file before the session starts.
         (temp_git_repo / "README.md").write_text("# Test\n\nStaged\n")
-        subprocess.run(["git", "add", "README.md"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "README.md"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         # Put the tracked file in blocked state so unblock-file can remove it.
         get_gitignore_path().write_text("README.md\n")
@@ -216,7 +253,12 @@ class TestCommandUnblockFile:
         command_unblock_file("README.md")
         command_stop()
 
-        result = subprocess.run(["git", "status", "--porcelain", "--", "README.md"], capture_output=True, text=True, cwd=temp_git_repo)
+        result = subprocess.run(
+            ["git", "status", "--porcelain", "--", "README.md"],
+            capture_output=True,
+            text=True,
+            cwd=temp_git_repo,
+        )
         assert result.stdout.startswith("M  ")
 
     def test_unblock_file_shows_next_hunk_during_session(self, temp_git_repo, capsys):
@@ -297,7 +339,9 @@ class TestCommandUnblockFile:
         captured = capsys.readouterr()
         assert "Unblocked file: local.txt" in captured.err
 
-    def test_unblock_file_removes_from_both_exclude_and_gitignore(self, temp_git_repo, capsys):
+    def test_unblock_file_removes_from_both_exclude_and_gitignore(
+        self, temp_git_repo, capsys
+    ):
         """Test that unblock-file removes file from both ignore sources at once."""
         (temp_git_repo / "both.txt").write_text("content\n")
 
@@ -351,7 +395,9 @@ class TestCommandUnblockFile:
         blocked = read_file_paths_file(get_blocked_files_file_path())
         assert "dist/" not in blocked
 
-    def test_unblock_file_via_negation_when_directory_covers_path(self, temp_git_repo, capsys):
+    def test_unblock_file_via_negation_when_directory_covers_path(
+        self, temp_git_repo, capsys
+    ):
         """Test that unblocking a file under a blocked directory uses negation."""
         subdir = temp_git_repo / "build"
         subdir.mkdir()
@@ -370,7 +416,7 @@ class TestCommandUnblockFile:
         # .gitignore should have build/** (promoted) and !build/keep.c (negation)
         content = gitignore.read_text()
         assert "build/**\n" in content
-        assert "!build/keep.c\n" in content
+        assert "!/build/keep.c\n" in content
         assert "build/\n" not in content
 
         # Blocked list should have !build/keep.c negation
@@ -413,11 +459,12 @@ class TestCommandUnblockFile:
         content = gitignore.read_text()
         assert "gen/**\n" in content
         assert content.count("gen/**") == 1  # not promoted twice
-        assert "!gen/a.c\n" in content
-        assert "!gen/b.c\n" in content
+        assert "!/gen/a.c\n" in content
+        assert "!/gen/b.c\n" in content
 
         blocked = set(read_file_paths_file(get_blocked_files_file_path()))
         from git_stage_batch.utils.file_io import is_path_blocked
+
         assert not is_path_blocked("gen/a.c", blocked)
         assert not is_path_blocked("gen/b.c", blocked)
         assert is_path_blocked("gen/c.o", blocked)

@@ -43,6 +43,37 @@ from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.git_command import run_git_command
 
 
+def test_discard_file_as_replaces_symlink_without_writing_referent(
+    tmp_path,
+    monkeypatch,
+):
+    """Explicit replacement must replace a Git path, never follow its symlink."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.chdir(repo)
+    subprocess.run(["git", "init"], check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Test"], check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
+    old_referent = tmp_path / "old-referent"
+    new_referent = tmp_path / "new-referent"
+    old_referent.write_text("old outside\n")
+    new_referent.write_text("new outside\n")
+    link = repo / "link"
+    link.symlink_to(old_referent)
+    subprocess.run(["git", "add", "link"], check=True)
+    subprocess.run(["git", "commit", "-m", "Add link"], check=True, capture_output=True)
+    link.unlink()
+    link.symlink_to(new_referent)
+
+    command_start(quiet=True)
+    command_discard_file_as("replacement\n", file="link")
+
+    assert not link.is_symlink()
+    assert link.read_text() == "replacement\n"
+    assert old_referent.read_text() == "old outside\n"
+    assert new_referent.read_text() == "new outside\n"
+
+
 @pytest.fixture
 def multi_file_repo(tmp_path, monkeypatch):
     """Create a repo with multiple modified files."""

@@ -57,6 +57,7 @@ def _remove_normalized_rename_destinations_before_stash_apply() -> None:
             ["ls-files", "--error-unmatch", "--", rename.new_path],
             check=False,
             requires_index_lock=False,
+            literal_pathspecs=True,
         )
         if tracked_result.returncode == 0:
             continue

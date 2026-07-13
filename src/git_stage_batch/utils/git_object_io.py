@@ -343,6 +343,7 @@ def list_git_tree_blobs(
         check=False,
         text_output=False,
         requires_index_lock=False,
+        literal_pathspecs=True,
     )
     if result.returncode != 0:
         return {}

@@ -23,7 +23,7 @@ import sys
 
 from ..exceptions import MergeError
 from ..batch.state.validation import read_validated_batch_metadata
-from ..batch.state.lifecycle import create_batch, delete_batch
+from ..batch.state.lifecycle import create_batch
 from ..batch.state.query import read_batch_metadata
 from ..batch.state.batch_names import batch_exists, validate_batch_name
 from ..batch.source.selector import require_plain_batch_name
@@ -59,7 +59,6 @@ def command_sift_batch(source_batch: str, dest_batch: str) -> None:
         return
 
     in_place = source_batch == dest_batch
-    dest_created = False
     retained_files: list[_sift_persistence.RetainedSiftedFile] = []
 
     if not in_place:
@@ -73,13 +72,6 @@ def command_sift_batch(source_batch: str, dest_batch: str) -> None:
                     source=source_batch,
                 )
             )
-
-        create_batch(
-            dest_batch,
-            note=f"Sifted from {source_batch}",
-            baseline_commit=source_metadata.get("baseline"),
-        )
-        dest_created = True
 
     try:
         repo_root = get_git_repository_root_path()
@@ -124,16 +116,14 @@ def command_sift_batch(source_batch: str, dest_batch: str) -> None:
                 source_metadata=source_metadata,
             )
         else:
-            for file_path, file_meta, result in retained_files:
-                _sift_persistence.add_sifted_file_to_batch(
-                    dest_batch,
-                    file_path,
-                    file_meta,
-                    result,
-                )
+            _sift_persistence.publish_sifted_files(
+                destination_batch=dest_batch,
+                retained_files=retained_files,
+                source_metadata=source_metadata,
+                destination_note=f"Sifted from {source_batch}",
+                replace_existing=False,
+            )
     except MergeError as e:
-        if dest_created and batch_exists(dest_batch):
-            delete_batch(dest_batch)
         exit_with_error(
             _("Could not sift batch '{source}': {error}").format(
                 source=source_batch,

@@ -11064,6 +11064,7 @@ def test_batch_transform_sift_persistence_owns_file_writes():
         "add_sifted_file_to_batch",
         "add_sifted_text_file_to_batch",
         "create_synthetic_batch_source_commit",
+        "publish_sifted_files",
         "replace_batch_with_sifted_files",
     }
     disallowed_imports = {
@@ -11148,7 +11149,7 @@ def test_batch_transform_sift_persistence_owns_file_writes():
     assert imports_sift_persistence
     assert direct_persistence_imports == set()
     assert old_helper_names.isdisjoint(sift_helpers)
-    assert "add_sifted_file_to_batch" in persistence_calls
+    assert "publish_sifted_files" in persistence_calls
     assert "replace_batch_with_sifted_files" in persistence_calls
     assert "add_sifted_text_file_to_batch" not in persistence_calls
 

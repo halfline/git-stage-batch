@@ -18,10 +18,11 @@ import git_stage_batch.commands.batch_transform.sift_results as sift_results
 from git_stage_batch.commands.batch_transform.sift_persistence import (
     add_sifted_text_file_to_batch,
 )
+import git_stage_batch.commands.batch_transform.sift_persistence as sift_persistence
 from git_stage_batch.commands.sift import (
     command_sift_batch,
 )
-from git_stage_batch.batch.state.query import read_batch_metadata
+from git_stage_batch.batch.state.query import list_batch_names, read_batch_metadata
 from git_stage_batch.batch.binary_file_storage import add_binary_file_to_batch
 from git_stage_batch.batch.file_entry_storage import read_file_from_batch
 from git_stage_batch.core.models import BinaryFileChange
@@ -1039,6 +1040,82 @@ class TestSiftCopyVsInPlace:
         metadata_after = read_batch_metadata("my-batch")
         # Batch should have changed (different content, different batch_source)
         assert metadata_after != metadata_before
+
+    def test_in_place_mode_preserves_old_derived_temp_name(self, temp_git_repo):
+        """Sift must not delete a user batch matching the former temp convention."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nbase\n")
+        subprocess.run(["git", "add", "README.md"], check=True, cwd=temp_git_repo)
+        subprocess.run(["git", "commit", "-m", "Base"], check=True, cwd=temp_git_repo)
+
+        readme.write_text("# Test\nchanged\n")
+        command_start()
+        fetch_next_change()
+        command_include_to_batch("feature")
+        command_new_batch("feature-sift-temp")
+        collision_metadata = read_batch_metadata("feature-sift-temp")
+
+        command_sift_batch("feature", "feature")
+
+        assert batch_exists("feature-sift-temp")
+        assert read_batch_metadata("feature-sift-temp") == collision_metadata
+
+    def test_temp_name_race_never_deletes_an_unowned_batch(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """Cleanup is limited to a temporary batch this invocation created."""
+        command_new_batch("sift-tmp-race")
+        collision_metadata = read_batch_metadata("sift-tmp-race")
+        monkeypatch.setattr(
+            sift_persistence,
+            "_new_sift_temp_batch_name",
+            lambda: "sift-tmp-race",
+        )
+
+        with pytest.raises(CommandError, match="already exists"):
+            sift_persistence.publish_sifted_files(
+                destination_batch="destination",
+                retained_files=[],
+                source_metadata={"baseline": "HEAD"},
+                destination_note="test",
+                replace_existing=False,
+            )
+
+        assert batch_exists("sift-tmp-race")
+        assert read_batch_metadata("sift-tmp-race") == collision_metadata
+
+    def test_copy_mode_cleans_private_destination_after_unexpected_failure(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """Any build failure should leave neither a destination nor temp batch."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nbase\n")
+        subprocess.run(["git", "add", "README.md"], check=True, cwd=temp_git_repo)
+        subprocess.run(["git", "commit", "-m", "Base"], check=True, cwd=temp_git_repo)
+
+        readme.write_text("# Test\nchanged\n")
+        command_start()
+        fetch_next_change()
+        command_include_to_batch("source-batch")
+        readme.write_text("# Test\nbase\n")
+
+        def fail_persistence(*_args, **_kwargs):
+            raise OSError("synthetic persistence failure")
+
+        monkeypatch.setattr(
+            "git_stage_batch.commands.batch_transform.sift_persistence.add_sifted_file_to_batch",
+            fail_persistence,
+        )
+
+        with pytest.raises(OSError, match="synthetic persistence failure"):
+            command_sift_batch("source-batch", "dest-batch")
+
+        assert not batch_exists("dest-batch")
+        assert not any(name.startswith("sift-tmp-") for name in list_batch_names())
 
     def test_in_place_mode_is_atomic(self, temp_git_repo):
         """Test that in-place mode uses atomic update (all-or-nothing).

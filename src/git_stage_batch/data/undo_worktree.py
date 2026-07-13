@@ -139,33 +139,37 @@ def _snapshot_gitlink_path(
     index_oid: str | None,
     head_oid: str | None,
 ) -> dict[str, Any]:
+    full_path = get_git_repository_root_path() / path
+    worktree_exists = os.path.lexists(full_path)
     worktree_oid = _worktree_commit_oid(path)
+    dirty = _worktree_is_dirty(path) if worktree_oid is not None else False
     entry = {
         "path": path,
         "kind": "gitlink",
-        "exists": index_oid is not None or head_oid is not None or worktree_oid is not None,
+        "exists": worktree_exists,
         "mode": "160000",
         "index_oid": index_oid,
         "head_oid": head_oid,
         "worktree_oid": worktree_oid,
-        "dirty": _worktree_is_dirty(path) if worktree_oid is not None else False,
+        "dirty": dirty,
         "blob": None,
     }
-    if head_oid is None and worktree_oid is not None:
+    if worktree_exists and (head_oid is None or worktree_oid is None or dirty):
         entry["archive"] = True
         entry["storage_mode"] = "100644"
         entry["blob"] = _create_directory_archive_blob(
-            get_git_repository_root_path() / path
+            full_path
         )
     return entry
 
 
 def _snapshot_embedded_repo_path(path: str) -> dict[str, Any]:
+    full_path = get_git_repository_root_path() / path
     worktree_oid = _worktree_commit_oid(path)
     return {
         "path": path,
         "kind": "embedded-repo",
-        "exists": worktree_oid is not None,
+        "exists": os.path.lexists(full_path),
         "mode": "160000",
         "index_oid": None,
         "head_oid": None,
@@ -174,7 +178,7 @@ def _snapshot_embedded_repo_path(path: str) -> dict[str, Any]:
         "archive": True,
         "storage_mode": "100644",
         "blob": _create_directory_archive_blob(
-            get_git_repository_root_path() / path
+            full_path
         ),
     }
 

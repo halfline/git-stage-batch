@@ -45,7 +45,7 @@ from ..utils.git_index import (
 )
 from .index_entries import read_index_entries
 from .session import intent_to_add_files
-from ..utils.git_repository import get_git_repository_root_path
+from ..utils.git_repository import get_git_directory_path, get_git_repository_root_path
 from ..utils.git_object_io import create_git_blob, create_git_blobs_from_paths
 from ..utils.paths import (
     get_batches_directory_path,
@@ -182,6 +182,7 @@ def _create_undo_checkpoint(
     *,
     worktree_paths: list[str],
     index_paths: list[str] | None = None,
+    repository_paths: list[str] | None = None,
 ) -> str | None:
     """Create a before-image checkpoint for an undoable operation."""
     session_dir = get_state_directory_path() / "session"
@@ -196,6 +197,7 @@ def _create_undo_checkpoint(
     tracked_index_paths = sorted(
         set(worktree_paths if index_paths is None else index_paths)
     )
+    tracked_repository_paths = sorted(set(repository_paths or []))
     before = _snapshot_current_state(
         tracked_worktree_paths,
         index_paths=tracked_index_paths,
@@ -214,6 +216,7 @@ def _create_undo_checkpoint(
         ],
         "tracked_worktree_paths": tracked_worktree_paths,
         "tracked_index_paths": tracked_index_paths,
+        "tracked_repository_paths": tracked_repository_paths,
         "worktree_path_scope": worktree_path_scope,
         "recovery_anchors": recovery_anchors,
     }
@@ -222,6 +225,13 @@ def _create_undo_checkpoint(
         _add_blob_to_index(env, "manifest.json", json.dumps(manifest, indent=2, sort_keys=True).encode("utf-8"))
         _add_directory_to_index(env, source_dir=session_dir, tree_prefix="session")
         _add_directory_to_index(env, source_dir=get_batches_directory_path(), tree_prefix="batches")
+        if tracked_repository_paths:
+            _add_directory_to_index(
+                env,
+                source_dir=get_git_directory_path(),
+                tree_prefix="repository",
+                relative_paths=tracked_repository_paths,
+            )
 
         git_update_index_entries(
             [
@@ -258,6 +268,7 @@ def undo_checkpoint(
     *,
     worktree_paths: list[str],
     index_paths: list[str] | None = None,
+    repository_paths: list[str] | None = None,
     rollback_on_error: bool = False,
 ) -> Iterator[None]:
     """Bracket an undoable operation with before and after snapshots.
@@ -278,6 +289,7 @@ def undo_checkpoint(
         operation,
         worktree_paths=worktree_paths,
         index_paths=index_paths,
+        repository_paths=repository_paths,
     )
     try:
         yield
@@ -370,6 +382,12 @@ def finalize_pending_checkpoint() -> None:
     )
     manifest["after"] = _snapshot_current_state(paths, index_paths=index_paths)
     manifest["after"]["tracked_index_paths"] = index_paths
+    repository_paths = list(manifest.get("tracked_repository_paths", []))
+    manifest["after"]["tracked_repository_paths"] = repository_paths
+    manifest["after"]["repository_files"] = _filesystem_directory_state(
+        get_git_directory_path(),
+        relative_paths=repository_paths,
+    )
     before_refs = manifest.get("refs", {})
     after_refs = manifest["after"].get("refs", {})
     tracked_refs = sorted(
@@ -496,6 +514,7 @@ def _detect_conflicts_against_state(expected_state: dict[str, Any]) -> list[str]
     for prefix, source_dir, label in (
         ("session", get_session_directory_path(), _("session state")),
         ("batches", get_batches_directory_path(), _("batch metadata")),
+        ("repository", get_git_directory_path(), _("repository metadata")),
     ):
         tracked_paths = expected_state.get(f"tracked_{prefix}_paths")
         expected_files = expected_state.get(f"{prefix}_files")
@@ -629,6 +648,14 @@ def _restore_metadata_state(commit: str, manifest: dict[str, Any]) -> None:
                 prefix=prefix,
                 target_dir=target_dir,
             )
+    repository_paths = manifest.get("tracked_repository_paths")
+    if isinstance(repository_paths, list):
+        _undo_restore.restore_tree_paths(
+            commit,
+            prefix="repository",
+            target_dir=get_git_directory_path(),
+            tracked_paths=repository_paths,
+        )
 
 
 def _write_snapshot_commit(
@@ -638,10 +665,12 @@ def _write_snapshot_commit(
     manifest: dict[str, Any],
     session_dir: Path,
     batches_dir: Path,
+    repository_dir: Path,
     worktree_entries: list[dict[str, Any]],
     parent: str | None,
     session_paths: list[str] | None = None,
     batch_paths: list[str] | None = None,
+    repository_paths: list[str] | None = None,
 ) -> str:
     with temp_git_index() as env:
         _add_blob_to_index(env, "manifest.json", json.dumps(manifest, indent=2, sort_keys=True).encode("utf-8"))
@@ -656,6 +685,12 @@ def _write_snapshot_commit(
             source_dir=batches_dir,
             tree_prefix="batches",
             relative_paths=batch_paths,
+        )
+        _add_directory_to_index(
+            env,
+            source_dir=repository_dir,
+            tree_prefix="repository",
+            relative_paths=repository_paths,
         )
 
         repo_root = get_git_repository_root_path()
@@ -711,10 +746,12 @@ def _push_redo_node(
     target: dict[str, Any],
     target_session_dir: Path,
     target_batches_dir: Path,
+    target_repository_dir: Path,
     after_undo: dict[str, Any],
     worktree_entries: list[dict[str, Any]],
     session_paths: list[str],
     batch_paths: list[str],
+    repository_paths: list[str],
 ) -> str:
     recovery_objects = state_recovery_objects(target)
     recovery_objects.update(state_recovery_objects(after_undo))
@@ -733,6 +770,7 @@ def _push_redo_node(
         "tracked_refs": target.get("tracked_refs", []),
         "tracked_session_paths": session_paths,
         "tracked_batches_paths": batch_paths,
+        "tracked_repository_paths": repository_paths,
         "worktree_paths": [
             {key: value for key, value in entry.items() if key != "blob"}
             for entry in worktree_entries
@@ -748,11 +786,28 @@ def _push_redo_node(
         manifest=manifest,
         session_dir=target_session_dir,
         batches_dir=target_batches_dir,
+        repository_dir=target_repository_dir,
         worktree_entries=worktree_entries,
         parent=parent,
         session_paths=session_paths,
         batch_paths=batch_paths,
+        repository_paths=repository_paths,
     )
+
+
+def _copy_tracked_repository_files(
+    source_dir: Path,
+    target_dir: Path,
+    relative_paths: list[str],
+) -> None:
+    """Copy scoped Git-admin files for a redo before-image."""
+    for relative_path in relative_paths:
+        source_path = source_dir / relative_path
+        if not os.path.lexists(source_path):
+            continue
+        target_path = target_dir / relative_path
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_path, target_path, follow_symlinks=False)
 
 
 def undo_last_checkpoint(*, force: bool = False) -> str:
@@ -792,6 +847,7 @@ def undo_last_checkpoint(*, force: bool = False) -> str:
 
     redo_session_dir = tempfile.mkdtemp(prefix="gsb-redo-session-")
     redo_batches_dir = tempfile.mkdtemp(prefix="gsb-redo-batches-")
+    redo_repository_dir = tempfile.mkdtemp(prefix="gsb-redo-repository-")
     try:
         live_session_dir = get_session_directory_path()
         live_batches_dir = get_batches_directory_path()
@@ -799,6 +855,12 @@ def undo_last_checkpoint(*, force: bool = False) -> str:
             shutil.copytree(live_session_dir, redo_session_dir, dirs_exist_ok=True)
         if live_batches_dir.exists():
             shutil.copytree(live_batches_dir, redo_batches_dir, dirs_exist_ok=True)
+        repository_paths = list(manifest.get("tracked_repository_paths", []))
+        _copy_tracked_repository_files(
+            get_git_directory_path(),
+            Path(redo_repository_dir),
+            repository_paths,
+        )
 
         _restore_metadata_state(checkpoint, manifest)
         _undo_restore.restore_refs(
@@ -822,6 +884,7 @@ def undo_last_checkpoint(*, force: bool = False) -> str:
         batch_paths = list(manifest.get("tracked_batches_paths", []))
         after_undo["tracked_session_paths"] = session_paths
         after_undo["tracked_batches_paths"] = batch_paths
+        after_undo["tracked_repository_paths"] = repository_paths
         after_undo["session_files"] = _filesystem_directory_state(
             get_session_directory_path(),
             relative_paths=session_paths,
@@ -830,6 +893,10 @@ def undo_last_checkpoint(*, force: bool = False) -> str:
             get_batches_directory_path(),
             relative_paths=batch_paths,
         )
+        after_undo["repository_files"] = _filesystem_directory_state(
+            get_git_directory_path(),
+            relative_paths=repository_paths,
+        )
 
         _push_redo_node(
             operation=operation,
@@ -837,14 +904,17 @@ def undo_last_checkpoint(*, force: bool = False) -> str:
             target=redo_target,
             target_session_dir=Path(redo_session_dir),
             target_batches_dir=Path(redo_batches_dir),
+            target_repository_dir=Path(redo_repository_dir),
             after_undo=after_undo,
             worktree_entries=redo_worktree_entries,
             session_paths=session_paths,
             batch_paths=batch_paths,
+            repository_paths=repository_paths,
         )
     finally:
         shutil.rmtree(redo_session_dir, ignore_errors=True)
         shutil.rmtree(redo_batches_dir, ignore_errors=True)
+        shutil.rmtree(redo_repository_dir, ignore_errors=True)
 
     parent = checkpoint_parent(checkpoint)
     if parent:

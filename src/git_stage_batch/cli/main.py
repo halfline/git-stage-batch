@@ -44,10 +44,16 @@ def main() -> None:
             if args.working_directory is not None:
                 os.chdir(args.working_directory)
             skip_session_lock = getattr(args, "prompt_format", None) is not None
-            pager_context = pager_output() if should_page_output(args) else nullcontext()
+            interactive = bool(
+                getattr(args, "interactive_flag", False)
+                or getattr(args, "interactive_command", False)
+            )
+            pager_context = (
+                pager_output() if should_page_output(args) else nullcontext()
+            )
             lock_context = (
                 nullcontext()
-                if skip_session_lock
+                if skip_session_lock or interactive
                 else acquire_session_lock()
             )
             with pager_context:

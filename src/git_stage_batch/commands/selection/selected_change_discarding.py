@@ -19,7 +19,11 @@ from ...data.hunk_tracking import fetch_next_change
 from ...data.progress import record_hunk_discarded
 from ...data.selected_change.loading import load_selected_change
 from ...data.selected_change.paths import worktree_paths_for_selected_change
-from ...data.session import snapshot_file_if_untracked, snapshot_files_if_untracked
+from ...data.session import (
+    path_is_intent_to_add,
+    snapshot_file_if_untracked,
+    snapshot_files_if_untracked,
+)
 from ...data.file_modes import apply_git_file_mode
 from ...data.undo_checkpoints import undo_checkpoint
 from ...exceptions import CommandError, NoMoreHunks, exit_with_error
@@ -407,3 +411,21 @@ def _remove_worktree_path(file_path: str) -> None:
         absolute_path.rmdir()
         return
     absolute_path.unlink()
+
+
+def _drop_intent_to_add_entry(file_path: str) -> None:
+    """Remove a session-only intent-to-add marker after deleting its path."""
+    if not path_is_intent_to_add(file_path):
+        return
+    result = git_update_index(
+        file_path=file_path,
+        force_remove=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        exit_with_error(
+            _("Failed to remove intent-to-add entry for {file}: {error}").format(
+                file=file_path,
+                error=result.stderr,
+            )
+        )

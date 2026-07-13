@@ -2878,6 +2878,7 @@ def test_git_worktree_helpers_stay_out_of_git_command_module():
     )
     public_names = {
         "git_apply_to_worktree",
+        "git_checkout_index_paths",
         "git_checkout_paths",
         "git_checkout_detached",
         "git_remove_paths",

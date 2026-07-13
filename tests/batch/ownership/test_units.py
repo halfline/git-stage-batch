@@ -632,6 +632,30 @@ def test_rebuild_preserves_explicit_replacement_units():
     assert rebuilt.replacement_units[0].origin == origin
 
 
+def test_rebuild_preserves_presence_baseline_references():
+    """Unit filtering must retain placement identity for surviving claims."""
+    first_reference = BaselineReference(
+        after_line=1,
+        after_content=b"anchor one\n",
+    )
+    second_reference = BaselineReference(
+        after_line=2,
+        after_content=b"anchor two\n",
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-2"],
+        baseline_references={1: first_reference, 2: second_reference},
+    )
+    units = _ownership_units_for_source(ownership, b"first\nsecond\n")
+
+    rebuilt = rebuild_ownership_from_units([units[1]])
+
+    assert rebuilt.presence_claims[0].source_lines == ["2"]
+    assert rebuilt.presence_claims[0].baseline_references == {
+        2: second_reference,
+    }
+
+
 def test_rebuild_preserves_mixed_same_anchor_deletion_order():
     """Same-anchor explicit and inferred deletions should keep stable indexes."""
     batch_source = b"new explicit\nnew inferred\nkeep\n"

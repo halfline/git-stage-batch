@@ -289,6 +289,7 @@ def try_build_index_content_via_transient_batch(
         ownership = translate_hunk_selection_to_batch_ownership(
             line_changes.lines,
             selected_display_ids,
+            baseline_lines=hunk_base_lines,
             replacement_line_runs=replacement_selection.derive_replacement_line_runs(
                 hunk_base_lines=hunk_base_lines,
                 hunk_source_lines=hunk_source_lines,

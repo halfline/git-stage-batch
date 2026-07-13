@@ -88,7 +88,9 @@ def baseline_reference_absence_position(
         return None
 
     after_content = getattr(reference, "after_content", None)
-    if after_line is not None and after_content is not None:
+    if after_line is not None:
+        if after_content is None:
+            return None
         if after_line < 1 or after_line > len(working_lines):
             return None
         if not _reference_line_matches(

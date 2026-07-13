@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from ...core.line_selection import LineRanges
 from ...core.models import LineEntry
 from . import hunk_replacement_translation as _hunk_replacement_translation
@@ -28,6 +30,7 @@ def translate_hunk_selection_to_batch_ownership(
     selected_display_ids: set[int],
     *,
     replacement_line_runs: list[_ReplacementLineRun] | None = None,
+    baseline_lines: Sequence[bytes] | None = None,
 ) -> BatchOwnership:
     """Translate selected live-hunk IDs while retaining full-hunk boundaries.
 
@@ -41,7 +44,15 @@ def translate_hunk_selection_to_batch_ownership(
     runs derived from the full files represented by the hunk. This function does
     not infer semantic replacement units from the pregenerated diff layout.
     """
-    old_line_content = _old_line_content_by_number(hunk_lines)
+    old_line_content = (
+        {
+            line_number: content
+            for line_number, content in enumerate(baseline_lines, start=1)
+        }
+        if baseline_lines is not None
+        else {}
+    )
+    old_line_content.update(_old_line_content_by_number(hunk_lines))
     hunk_content_view = _LineEntryContentSequence(hunk_lines)
     replacement_translation = (
         _hunk_replacement_translation.translate_hunk_replacement_line_runs(

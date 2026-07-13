@@ -244,6 +244,9 @@ def append_lines_to_file(path: Path, lines: Iterable[str]) -> None:
     ) as file_handle:
         for line in lines:
             file_handle.write(str(line).rstrip() + "\n")
+        file_handle.flush()
+        os.fsync(file_handle.fileno())
+    fsync_directory(path.parent)
 
 
 def read_file_paths_file(path: Path) -> list[str]:

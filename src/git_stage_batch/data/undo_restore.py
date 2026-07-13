@@ -317,7 +317,20 @@ def _restore_directory_archive(
                 archive_file.write(chunk)
             archive_file.flush()
             with tarfile.open(archive_file.name, mode="r") as archive:
-                archive.extractall(target_path)
+                _extract_directory_archive(archive, target_path)
+
+
+def _extract_directory_archive(
+    archive: tarfile.TarFile,
+    target_path: Path,
+) -> None:
+    """Extract a trusted checkpoint archive across supported Python versions."""
+    if hasattr(tarfile, "tar_filter"):
+        archive.extractall(target_path, filter="tar")
+    else:
+        # Extraction filters were backported to maintained Python 3.10
+        # releases, but the project also supports earlier 3.10 runtimes.
+        archive.extractall(target_path)
 
 
 def restore_intent_to_add_entries(file_paths: list[str]) -> None:

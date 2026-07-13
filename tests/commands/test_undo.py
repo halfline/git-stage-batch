@@ -199,6 +199,32 @@ def test_failed_operation_keeps_partial_mutation_undoable(temp_git_repo):
     assert target.read_text() == "before\n"
 
 
+def test_atomic_failed_operation_rolls_back_before_propagating(temp_git_repo):
+    """An atomic checkpoint should restore its state and retain no undo node."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    get_session_directory_path().mkdir(parents=True, exist_ok=True)
+    previous_checkpoint = current_undo_commit()
+
+    with pytest.raises(RuntimeError, match="operation failed"):
+        with undo_checkpoint(
+            "change target",
+            worktree_paths=["target.txt"],
+            rollback_on_error=True,
+        ):
+            target.write_text("partial mutation\n")
+            subprocess.run(
+                ["git", "add", "target.txt"],
+                check=True,
+                cwd=temp_git_repo,
+                capture_output=True,
+            )
+            raise RuntimeError("operation failed")
+
+    assert target.read_text() == "before\n"
+    assert _show_index_path(temp_git_repo, "target.txt") == b"before\n"
+    assert current_undo_commit() == previous_checkpoint
+
+
 def test_failed_checkpoint_finalization_requires_force(temp_git_repo, monkeypatch):
     """A manifest persistence failure should leave a guarded before-image."""
     from git_stage_batch.data import undo_checkpoints as checkpoints

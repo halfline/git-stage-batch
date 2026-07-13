@@ -6,7 +6,7 @@ import os
 import pytest
 import subprocess
 
-from git_stage_batch.data import undo_restore
+from git_stage_batch.data import undo_restore, undo_worktree
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.git_object_io import create_git_blob
 
@@ -79,6 +79,296 @@ def test_restore_tree_paths_uses_saved_git_mode(
         assert not target.is_symlink()
         assert target.read_bytes() == saved_content
         assert referent.read_text() == "untouched\n"
+
+
+def test_restore_gitlink_recorded_absent_removes_post_operation_directory(
+    tmp_path,
+    monkeypatch,
+):
+    """Undo removes a gitlink worktree that was absent in the before-image."""
+    monkeypatch.chdir(tmp_path)
+    subprocess.run(["git", "init"], check=True, capture_output=True)
+    target = tmp_path / "sub"
+    target.mkdir()
+    (target / "leftover").write_text("post-operation\n")
+    monkeypatch.setattr(undo_restore, "_tree_entries", lambda *_args: [])
+
+    undo_restore.restore_worktree(
+        "checkpoint",
+        {
+            "worktree_paths": [
+                {
+                    "path": "sub",
+                    "kind": "gitlink",
+                    "exists": False,
+                    "worktree_oid": None,
+                }
+            ]
+        },
+    )
+
+    assert not target.exists()
+
+
+def test_restore_legacy_gitlink_without_worktree_removes_directory(
+    tmp_path,
+    monkeypatch,
+):
+    """Legacy index-based existence does not preserve a later worktree."""
+    monkeypatch.chdir(tmp_path)
+    subprocess.run(["git", "init"], check=True, capture_output=True)
+    target = tmp_path / "sub"
+    target.mkdir()
+    (target / "leftover").write_text("post-operation\n")
+    monkeypatch.setattr(undo_restore, "_tree_entries", lambda *_args: [])
+
+    undo_restore.restore_worktree(
+        "checkpoint",
+        {
+            "worktree_paths": [
+                {
+                    "path": "sub",
+                    "kind": "gitlink",
+                    "exists": True,
+                    "worktree_oid": None,
+                    "archive": False,
+                }
+            ]
+        },
+    )
+
+    assert not target.exists()
+
+
+def test_restore_gitlink_without_head_uses_saved_archive(tmp_path, monkeypatch):
+    """A present gitlink directory without a commit is restored from its archive."""
+    monkeypatch.chdir(tmp_path)
+    subprocess.run(["git", "init"], check=True, capture_output=True)
+    before = tmp_path / "before"
+    before.mkdir()
+    (before / "private.txt").write_text("before\n")
+    archive_blob = undo_worktree._create_directory_archive_blob(before)
+    target = tmp_path / "sub"
+    target.mkdir()
+    (target / "private.txt").write_text("after\n")
+    monkeypatch.setattr(
+        undo_restore,
+        "_tree_entries",
+        lambda *_args: [("100644", archive_blob, "worktree/sub")],
+    )
+
+    undo_restore.restore_worktree(
+        "checkpoint",
+        {
+            "worktree_paths": [
+                {
+                    "path": "sub",
+                    "kind": "gitlink",
+                    "exists": True,
+                    "worktree_oid": None,
+                    "archive": True,
+                }
+            ]
+        },
+    )
+
+    assert (target / "private.txt").read_text() == "before\n"
+
+
+def test_restore_archived_gitlink_reapplies_dirty_worktree(tmp_path, monkeypatch):
+    """An archive restores dirty bytes when a submodule's Git dir is external."""
+    source = tmp_path / "source"
+    source.mkdir()
+    subprocess.run(["git", "init"], cwd=source, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=source,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=source,
+        check=True,
+    )
+    source_file = source / "file.txt"
+    source_file.write_text("base\n")
+    subprocess.run(["git", "add", "file.txt"], cwd=source, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Initial nested commit"],
+        cwd=source,
+        check=True,
+        capture_output=True,
+    )
+    worktree_oid = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=source,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    subprocess.run(["git", "init"], cwd=repository, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=repository,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=repository,
+        check=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            str(source),
+            "sub",
+        ],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-am", "Add submodule"],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+    )
+    monkeypatch.chdir(repository)
+    target = repository / "sub"
+    nested_file = target / "file.txt"
+    nested_file.write_text("saved dirty bytes\n")
+    archive_blob = undo_worktree._create_directory_archive_blob(target)
+
+    source_file.write_text("second commit\n")
+    subprocess.run(
+        ["git", "commit", "-am", "Update nested file"],
+        cwd=source,
+        check=True,
+        capture_output=True,
+    )
+    post_operation_oid = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=source,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(
+        ["git", "fetch", str(source), post_operation_oid],
+        cwd=target,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "checkout", "--detach", "--force", post_operation_oid],
+        cwd=target,
+        check=True,
+        capture_output=True,
+    )
+    nested_file.write_text("post-operation bytes\n")
+    monkeypatch.setattr(
+        undo_restore,
+        "_tree_entries",
+        lambda *_args: [("100644", archive_blob, "worktree/sub")],
+    )
+
+    undo_restore.restore_worktree(
+        "checkpoint",
+        {
+            "worktree_paths": [
+                {
+                    "path": "sub",
+                    "kind": "gitlink",
+                    "exists": True,
+                    "worktree_oid": worktree_oid,
+                    "archive": True,
+                }
+            ]
+        },
+    )
+
+    assert nested_file.read_text() == "saved dirty bytes\n"
+    assert (target / ".git").is_file()
+    assert subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=target,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == worktree_oid
+
+
+def test_restore_gitlink_refuses_superproject_walk_up(tmp_path, monkeypatch):
+    """Legacy worktree IDs cannot redirect undo checkout to the superproject."""
+    monkeypatch.chdir(tmp_path)
+    subprocess.run(["git", "init"], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        check=True,
+    )
+    (tmp_path / "tracked.txt").write_text("tracked\n")
+    subprocess.run(["git", "add", "tracked.txt"], check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Initial commit"],
+        check=True,
+        capture_output=True,
+    )
+    head_oid = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    symbolic_head = subprocess.run(
+        ["git", "symbolic-ref", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    (tmp_path / "sub").mkdir()
+    monkeypatch.setattr(undo_restore, "_tree_entries", lambda *_args: [])
+
+    with pytest.raises(CommandError, match="not a standalone Git repository"):
+        undo_restore.restore_worktree(
+            "checkpoint",
+            {
+                "worktree_paths": [
+                    {
+                        "path": "sub",
+                        "kind": "gitlink",
+                        "exists": True,
+                        "worktree_oid": head_oid,
+                        "archive": False,
+                    }
+                ]
+            },
+        )
+
+    assert subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == head_oid
+    assert subprocess.run(
+        ["git", "symbolic-ref", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == symbolic_head
+
+
 def test_restore_intent_to_add_entries_checks_git_failures(tmp_path, monkeypatch):
     """intent-to-add restoration does not silently accept failed index commands."""
     monkeypatch.chdir(tmp_path)

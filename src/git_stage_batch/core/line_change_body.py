@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from ..exceptions import CommandError
+from ..i18n import _
 from .models import HunkHeader, LineEntry
 
 
@@ -44,7 +46,11 @@ class LineChangeBodyBuilder:
         elif sign == "+":
             self._append_addition_line(text_bytes)
         else:
-            self._append_context_line(text_bytes)
+            raise CommandError(
+                _("Invalid line prefix in hunk body: {prefix!r}").format(
+                    prefix=sign,
+                )
+            )
 
     def _append_context_line(self, text_bytes: bytes) -> None:
         self.line_entries.append(

@@ -43,6 +43,7 @@ def git_checkout_paths(
         ["checkout", treeish, "--", *paths],
         check=check,
         requires_index_lock=True,
+        literal_pathspecs=True,
     )
 
 

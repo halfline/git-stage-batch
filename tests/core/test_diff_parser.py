@@ -406,6 +406,23 @@ class TestBuildLineLevelChangeFromPatchText:
         changed_ids = line_changes.changed_line_ids()
         assert changed_ids == [1]
 
+    def test_file_header_prefixes_in_hunk_body_remain_content(self):
+        """Changed content resembling file headers must not replace the path."""
+        patch_text = """--- a/file.py
++++ b/file.py
+@@ -1 +1 @@
+--- comment
++++ replacement
+"""
+
+        line_changes = self._build_line_changes_from_patch_text(patch_text)
+
+        assert line_changes.path == "file.py"
+        assert [line.text_bytes for line in line_changes.lines] == [
+            b"-- comment",
+            b"++ replacement",
+        ]
+
     def test_build_line_changes_multiple_changes(self):
         """Test building LineLevelChange from patch with multiple changes."""
         patch_text = """--- a/code.js

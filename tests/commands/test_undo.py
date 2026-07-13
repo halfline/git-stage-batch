@@ -5,7 +5,8 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.commands.include import command_include_line
+from git_stage_batch.commands.include import command_include_file, command_include_line
+from git_stage_batch.commands.discard import command_discard_file
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.undo import command_undo
 from git_stage_batch.data.undo_checkpoints import (
@@ -14,6 +15,7 @@ from git_stage_batch.data.undo_checkpoints import (
     undo_last_checkpoint,
 )
 from git_stage_batch.data.undo_refs import current_undo_commit
+from git_stage_batch.data.session import path_is_intent_to_add
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import (
     get_batches_directory_path,
@@ -182,6 +184,38 @@ def test_scoped_undo_preserves_unrelated_index_changes(temp_git_repo):
     ).stdout.splitlines()
     assert staged_paths == ["unrelated.txt"]
     assert target.read_text() == "target staged\n"
+
+
+def test_undo_file_include_restores_both_rename_paths(temp_git_repo):
+    """Undoing file-scoped rename staging should restore both index entries."""
+    old_path = _commit_text_file(temp_git_repo, "old.txt", "rename content\n")
+    new_path = temp_git_repo / "new.txt"
+    old_path.rename(new_path)
+
+    command_start(quiet=True)
+    command_include_file("new.txt", quiet=True, advance=False)
+    command_undo(force=True)
+
+    assert not old_path.exists()
+    assert new_path.read_text() == "rename content\n"
+    assert _show_index_path(temp_git_repo, "old.txt") == b"rename content\n"
+    assert path_is_intent_to_add("new.txt")
+
+
+def test_undo_file_discard_restores_both_rename_paths(temp_git_repo):
+    """Undoing file-scoped rename discard should restore both worktree paths."""
+    old_path = _commit_text_file(temp_git_repo, "old.txt", "rename content\n")
+    new_path = temp_git_repo / "new.txt"
+    old_path.rename(new_path)
+
+    command_start(quiet=True)
+    command_discard_file("new.txt", auto_advance=False)
+    command_undo(force=True)
+
+    assert not old_path.exists()
+    assert new_path.read_text() == "rename content\n"
+    assert _show_index_path(temp_git_repo, "old.txt") == b"rename content\n"
+    assert path_is_intent_to_add("new.txt")
 
 
 def test_failed_operation_keeps_partial_mutation_undoable(temp_git_repo):

@@ -73,6 +73,7 @@ def command_block_file(file_path_arg: str = "", local_only: bool = False) -> Non
             f"block-file {file_path}",
             worktree_paths=checkpoint_paths,
             index_paths=[file_path] if not file_path.endswith("/") else [],
+            repository_paths=["info/exclude"] if local_only else [],
         )
         if session_active
         else nullcontext()

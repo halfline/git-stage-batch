@@ -530,7 +530,7 @@ def _detect_conflicts(manifest: dict[str, Any]) -> list[str]:
 def _detect_redo_conflicts(manifest: dict[str, Any]) -> list[str]:
     after_undo = manifest.get("after_undo")
     if not isinstance(after_undo, dict):
-        return []
+        return [_('incomplete checkpoint')]
     return _detect_conflicts_against_state(after_undo)
 
 

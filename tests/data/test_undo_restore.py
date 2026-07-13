@@ -369,6 +369,54 @@ def test_restore_gitlink_refuses_superproject_walk_up(tmp_path, monkeypatch):
     ).stdout.strip() == symbolic_head
 
 
+def test_restore_legacy_clean_gitlink_initializes_missing_submodule(
+    tmp_path,
+    monkeypatch,
+):
+    """A missing legacy clean worktree gets one registered-submodule fallback."""
+    monkeypatch.chdir(tmp_path)
+    subprocess.run(["git", "init"], check=True, capture_output=True)
+    target = tmp_path / "sub"
+    update_calls = []
+
+    def initialize_submodule(paths, **kwargs):
+        update_calls.append((paths, kwargs))
+        subprocess.run(["git", "init", str(target)], check=True, capture_output=True)
+        return subprocess.CompletedProcess(["git", "submodule", "update"], 0, "", "")
+
+    checkout_calls = []
+    monkeypatch.setattr(undo_restore, "git_submodule_update_checkout", initialize_submodule)
+    monkeypatch.setattr(
+        undo_restore,
+        "git_checkout_detached",
+        lambda oid, **kwargs: (
+            checkout_calls.append((oid, kwargs))
+            or subprocess.CompletedProcess(["git", "checkout"], 0, "", "")
+        ),
+    )
+    monkeypatch.setattr(undo_restore, "_tree_entries", lambda *_args: [])
+
+    undo_restore.restore_worktree(
+        "checkpoint",
+        {
+            "worktree_paths": [
+                {
+                    "path": "sub",
+                    "kind": "gitlink",
+                    "exists": True,
+                    "worktree_oid": "1" * 40,
+                    "archive": False,
+                }
+            ]
+        },
+    )
+
+    assert update_calls == [
+        (["sub"], {"cwd": str(tmp_path), "check": False})
+    ]
+    assert checkout_calls[0][0] == "1" * 40
+
+
 def test_restore_directory_archive_allows_self_created_symlinks(tmp_path, monkeypatch):
     """The explicit tar filter remains compatible with archived symlinks."""
     monkeypatch.chdir(tmp_path)

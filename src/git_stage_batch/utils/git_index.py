@@ -208,7 +208,12 @@ def git_add_paths(
     if intent_to_add:
         arguments.append("-N")
     arguments.extend(["--", *paths])
-    return run_git_command(arguments, check=check, requires_index_lock=True)
+    return run_git_command(
+        arguments,
+        check=check,
+        requires_index_lock=True,
+        literal_pathspecs=True,
+    )
 
 
 def git_add_paths_from_stdin(
@@ -250,4 +255,5 @@ def git_reset_paths(
         ["reset", "--", *paths],
         check=check,
         requires_index_lock=True,
+        literal_pathspecs=True,
     )

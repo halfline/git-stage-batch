@@ -28,6 +28,7 @@ def _path_has_staged_content(file_path: str) -> bool:
         ["diff", "--cached", "--quiet", "--no-renames", "--", file_path],
         check=False,
         requires_index_lock=False,
+        literal_pathspecs=True,
     )
     if result.returncode not in (0, 1):
         raise subprocess.CalledProcessError(

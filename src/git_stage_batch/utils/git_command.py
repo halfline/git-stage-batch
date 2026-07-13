@@ -68,6 +68,7 @@ def stream_git_command(
     cwd: str | None = None,
     env: dict[str, str] | None = None,
     requires_index_lock: bool = True,
+    literal_pathspecs: bool = False,
 ) -> Iterator[bytes]:
     """Stream git command output as bytes lines.
 
@@ -98,6 +99,7 @@ def stream_git_command(
             cwd=cwd,
             env=env,
             requires_index_lock=requires_index_lock,
+            literal_pathspecs=literal_pathspecs,
         )
     )
 
@@ -109,12 +111,18 @@ def stream_git_command_bytes(
     cwd: str | None = None,
     env: dict[str, str] | None = None,
     requires_index_lock: bool = True,
+    literal_pathspecs: bool = False,
 ) -> Iterator[bytes]:
     """Stream raw Git stdout chunks without line-oriented buffering."""
+    command_arguments = (
+        ["--literal-pathspecs", *arguments]
+        if literal_pathspecs
+        else arguments
+    )
     exit_code = 0
     stderr_chunks = []
     for event in stream_command(
-        ["git", *arguments],
+        ["git", *command_arguments],
         stdin_chunks,
         cwd=cwd,
         env=_prepare_git_command_environment(
@@ -135,7 +143,7 @@ def stream_git_command_bytes(
         stderr_text = b"".join(stderr_chunks).decode("utf-8", errors="replace")
         raise subprocess.CalledProcessError(
             exit_code,
-            ["git", *arguments],
+            ["git", *command_arguments],
             stderr=stderr_text,
         )
 
@@ -201,6 +209,7 @@ def stream_git_diff(
         cwd=cwd,
         env=env,
         requires_index_lock=False,
+        literal_pathspecs=bool(path_list),
     )
 
 
@@ -215,6 +224,7 @@ def run_git_command(
     capture_stdout: bool = True,
     capture_stderr: bool = True,
     requires_index_lock: bool = True,
+    literal_pathspecs: bool = False,
 ) -> subprocess.CompletedProcess:
     """Execute a git command with error handling.
 
@@ -235,7 +245,12 @@ def run_git_command(
     Raises:
         subprocess.CalledProcessError: If check=True and command fails
     """
-    command = ["git", *arguments]
+    command_arguments = (
+        ["--literal-pathspecs", *arguments]
+        if literal_pathspecs
+        else arguments
+    )
+    command = ["git", *command_arguments]
     reusable_stdin_chunks = (
         list(stdin_chunks)
         if requires_index_lock and stdin_chunks is not None

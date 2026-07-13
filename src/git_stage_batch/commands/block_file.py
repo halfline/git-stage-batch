@@ -31,7 +31,10 @@ from .selection.action_completion import advance_to_and_show_next_change
 def _is_new_intent_to_add_file(file_path: str) -> bool:
     """Return True when file_path is an intent-to-add entry absent from HEAD."""
     stage_result = run_git_command(
-        ["ls-files", "--stage", "--", file_path], check=False, requires_index_lock=False
+        ["ls-files", "--stage", "--", file_path],
+        check=False,
+        requires_index_lock=False,
+        literal_pathspecs=True,
     )
     stage_output = stage_result.stdout.strip()
     if not stage_output:

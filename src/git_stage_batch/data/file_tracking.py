@@ -43,6 +43,7 @@ def list_untracked_files(paths: Iterable[str] | None = None) -> list[str]:
         check=False,
         text_output=False,
         requires_index_lock=False,
+        literal_pathspecs=paths is not None,
     )
     if result.returncode != 0:
         return []

@@ -43,6 +43,7 @@ def git_checkout_paths(
         ["checkout", treeish, "--", *paths],
         check=check,
         requires_index_lock=True,
+        literal_pathspecs=True,
     )
 
 
@@ -56,6 +57,7 @@ def git_checkout_index_paths(
         ["checkout", "--", *paths],
         check=check,
         requires_index_lock=True,
+        literal_pathspecs=True,
     )
 
 
@@ -99,7 +101,12 @@ def git_remove_paths(
     if ignore_unmatch:
         arguments.append("--ignore-unmatch")
     arguments.extend(["--", *paths])
-    return run_git_command(arguments, check=check, requires_index_lock=True)
+    return run_git_command(
+        arguments,
+        check=check,
+        requires_index_lock=True,
+        literal_pathspecs=True,
+    )
 
 
 def git_reset_hard(
@@ -149,4 +156,5 @@ def git_submodule_update_checkout(
         cwd=cwd,
         check=check,
         requires_index_lock=True,
+        literal_pathspecs=True,
     )

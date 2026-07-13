@@ -91,6 +91,7 @@ def list_staged_change_records() -> list[StagedChangeRecord]:
         check=False,
         text_output=False,
         requires_index_lock=False,
+        literal_pathspecs=True,
     )
     if result.returncode != 0 or not result.stdout:
         return []
@@ -385,6 +386,7 @@ def _paths_have_cached_diff(paths: list[str]) -> bool:
         ["diff", "--cached", "--quiet", "--no-renames", "--", *paths],
         check=False,
         requires_index_lock=False,
+        literal_pathspecs=True,
     )
     return result.returncode == 1
 
@@ -402,6 +404,7 @@ def _head_changed_since_session_start(paths: list[str]) -> bool:
         ["diff", "--quiet", abort_head, "HEAD", "--", *paths],
         check=False,
         requires_index_lock=False,
+        literal_pathspecs=True,
     )
     return result.returncode == 1
 

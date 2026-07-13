@@ -52,6 +52,7 @@ def _multi_file_undo_checkpoint(
     return undo_checkpoint(
         _format_multi_file_operation(command, files),
         worktree_paths=paths,
+        rollback_on_error=True,
     )
 
 

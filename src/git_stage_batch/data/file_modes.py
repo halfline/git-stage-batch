@@ -21,6 +21,7 @@ def detect_file_mode_in_commit(commit: str, file_path: str) -> str | None:
         ["ls-tree", commit, "--", file_path],
         check=False,
         requires_index_lock=False,
+        literal_pathspecs=True,
     )
     if result.returncode != 0 or not result.stdout.strip():
         return None
@@ -40,6 +41,7 @@ def detect_file_mode_from_root(repo_root: Path, file_path: str) -> str:
         ["ls-files", "-s", "--", file_path],
         check=False,
         requires_index_lock=False,
+        literal_pathspecs=True,
     )
     if ls_result.returncode == 0 and ls_result.stdout.strip():
         parts = ls_result.stdout.strip().split()

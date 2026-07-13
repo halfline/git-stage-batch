@@ -7,6 +7,7 @@ import pytest
 
 from git_stage_batch.utils.git_command import run_git_command
 from git_stage_batch.utils.git_index import (
+    git_add_paths,
     git_add_paths_from_stdin,
     git_commit_tree,
     git_read_tree,
@@ -139,6 +140,20 @@ class TestGitIndexPlumbing:
             path.encode("utf-8") for path in paths
         }
         assert run_git_command(["diff", "--cached", "--name-only"]).stdout == ""
+
+    def test_add_paths_treats_pathspec_metacharacters_literally(self, temp_git_repo):
+        """An exact filename must not expand into other worktree paths."""
+        (temp_git_repo / "*").write_text("literal star\n")
+        (temp_git_repo / "other.txt").write_text("other\n")
+
+        git_add_paths(["*"])
+
+        result = run_git_command(
+            ["diff", "--cached", "--name-only", "-z"],
+            text_output=False,
+            requires_index_lock=False,
+        )
+        assert result.stdout.split(b"\0") == [b"*", b""]
 
     def test_batched_force_remove_uses_repository_object_width(
         self,

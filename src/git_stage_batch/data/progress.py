@@ -13,6 +13,7 @@ from ..core.models import (
     TextFileDeletionChange,
 )
 from ..utils.file_io import (
+    append_lines_to_file,
     count_nonblank_text_file_lines,
     read_text_file_contents,
     read_text_file_line_set,
@@ -144,8 +145,7 @@ def record_text_deletion_hunk_skipped(
 
 def _append_skipped_hunk_metadata(metadata: dict) -> None:
     jsonl_path = get_skipped_hunks_jsonl_file_path()
-    with jsonl_path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(metadata) + "\n")
+    append_lines_to_file(jsonl_path, [json.dumps(metadata)])
 
 
 def format_id_range(ids: list[int]) -> str:

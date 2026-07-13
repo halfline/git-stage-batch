@@ -39,6 +39,7 @@ from ...data.selected_change.snapshots import snapshots_are_stale
 from ...exceptions import MergeError, exit_with_error
 from ...i18n import _
 from ...staging.index_update import update_index_with_blob_buffer
+from ...utils.file_io import write_file_bytes
 from ...utils.paths import get_session_batch_sources_file_path
 from . import replacement_selection
 
@@ -142,8 +143,7 @@ def _restore_session_batch_sources_file(existed: bool, content: bytes | None) ->
     path = get_session_batch_sources_file_path()
     if existed:
         assert content is not None
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(content)
+        write_file_bytes(path, content)
         return
     try:
         path.unlink()

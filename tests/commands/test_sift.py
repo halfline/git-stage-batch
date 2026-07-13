@@ -22,7 +22,7 @@ import git_stage_batch.commands.batch_transform.sift_persistence as sift_persist
 from git_stage_batch.commands.sift import (
     command_sift_batch,
 )
-from git_stage_batch.batch.state.query import read_batch_metadata
+from git_stage_batch.batch.state.query import list_batch_names, read_batch_metadata
 from git_stage_batch.batch.binary_file_storage import add_binary_file_to_batch
 from git_stage_batch.batch.file_entry_storage import read_file_from_batch
 from git_stage_batch.core.models import BinaryFileChange
@@ -1085,6 +1085,37 @@ class TestSiftCopyVsInPlace:
 
         assert batch_exists("sift-tmp-race")
         assert read_batch_metadata("sift-tmp-race") == collision_metadata
+
+    def test_copy_mode_cleans_private_destination_after_unexpected_failure(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """Any build failure should leave neither a destination nor temp batch."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nbase\n")
+        subprocess.run(["git", "add", "README.md"], check=True, cwd=temp_git_repo)
+        subprocess.run(["git", "commit", "-m", "Base"], check=True, cwd=temp_git_repo)
+
+        readme.write_text("# Test\nchanged\n")
+        command_start()
+        fetch_next_change()
+        command_include_to_batch("source-batch")
+        readme.write_text("# Test\nbase\n")
+
+        def fail_persistence(*_args, **_kwargs):
+            raise OSError("synthetic persistence failure")
+
+        monkeypatch.setattr(
+            "git_stage_batch.commands.batch_transform.sift_persistence.add_sifted_file_to_batch",
+            fail_persistence,
+        )
+
+        with pytest.raises(OSError, match="synthetic persistence failure"):
+            command_sift_batch("source-batch", "dest-batch")
+
+        assert not batch_exists("dest-batch")
+        assert not any(name.startswith("sift-tmp-") for name in list_batch_names())
 
     def test_in_place_mode_is_atomic(self, temp_git_repo):
         """Test that in-place mode uses atomic update (all-or-nothing).

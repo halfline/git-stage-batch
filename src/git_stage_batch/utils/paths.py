@@ -166,6 +166,11 @@ def get_working_tree_snapshot_file_path() -> Path:
     return get_selected_state_directory_path() / "working-tree.snapshot"
 
 
+def get_snapshot_metadata_file_path() -> Path:
+    """Get the selected-file snapshot metadata manifest path."""
+    return get_selected_state_directory_path() / "snapshots.json"
+
+
 def get_block_list_file_path() -> Path:
     """Get the path to the blocklist file for tracking processed hunks.
 

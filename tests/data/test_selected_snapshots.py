@@ -24,13 +24,21 @@ class TestWriteSnapshotsForCurrentFilePath:
         """Create a temporary git repository."""
         monkeypatch.chdir(tmp_path)
         subprocess.run(["git", "init"], check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.name", "Test User"], check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "test@example.com"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.name", "Test User"], check=True, capture_output=True
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "test@example.com"],
+            check=True,
+            capture_output=True,
+        )
 
         # Create initial commit
         (tmp_path / "README.md").write_text("# Test\n")
         subprocess.run(["git", "add", "README.md"], check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Initial commit"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Initial commit"], check=True, capture_output=True
+        )
 
         # Ensure state directory exists
         ensure_state_directory_exists()
@@ -48,8 +56,18 @@ def original_function():
     return "original"
 '''
         test_file.write_text(original_content)
-        subprocess.run(["git", "add", "tracked.py"], cwd=temp_git_repo, check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add tracked file"], cwd=temp_git_repo, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "add", "tracked.py"],
+            cwd=temp_git_repo,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add tracked file"],
+            cwd=temp_git_repo,
+            check=True,
+            capture_output=True,
+        )
 
         # Modify the file in working tree
         modified_content = '''"""Module docstring."""
@@ -66,8 +84,18 @@ def new_function():
 
         # Simulate intent-to-add by removing from cache and re-adding with -N.
         # This creates an empty blob (e69de29...) in the index.
-        subprocess.run(["git", "rm", "--cached", "tracked.py"], cwd=temp_git_repo, check=True, capture_output=True)
-        subprocess.run(["git", "add", "-N", "tracked.py"], cwd=temp_git_repo, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "rm", "--cached", "tracked.py"],
+            cwd=temp_git_repo,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "add", "-N", "tracked.py"],
+            cwd=temp_git_repo,
+            check=True,
+            capture_output=True,
+        )
 
         # Verify we have an empty blob in index.
         ls_result = subprocess.run(
@@ -77,7 +105,9 @@ def new_function():
             capture_output=True,
             text=True,
         )
-        assert "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391" in ls_result.stdout, "Should have empty blob in index"
+        assert "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391" in ls_result.stdout, (
+            "Should have empty blob in index"
+        )
 
         # Verify git show :file returns empty content.
         show_result = subprocess.run(
@@ -87,7 +117,9 @@ def new_function():
             capture_output=True,
             text=True,
         )
-        assert show_result.stdout == "", "Index should return empty content for intent-to-add"
+        assert show_result.stdout == "", (
+            "Index should return empty content for intent-to-add"
+        )
 
         write_snapshots_for_selected_file_path("tracked.py")
 
@@ -100,7 +132,9 @@ def new_function():
         )
 
         working_tree_snapshot_path = get_working_tree_snapshot_file_path()
-        working_tree_snapshot_content = read_text_file_contents(working_tree_snapshot_path)
+        working_tree_snapshot_content = read_text_file_contents(
+            working_tree_snapshot_path
+        )
         assert working_tree_snapshot_content == modified_content
 
     def test_intent_to_add_new_file_keeps_empty_index(self, temp_git_repo):
@@ -113,7 +147,12 @@ def new_function():
 '''
         test_file.write_text(new_content)
 
-        subprocess.run(["git", "add", "-N", "newfile.py"], cwd=temp_git_repo, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "add", "-N", "newfile.py"],
+            cwd=temp_git_repo,
+            check=True,
+            capture_output=True,
+        )
 
         head_check = subprocess.run(
             ["git", "cat-file", "-e", "HEAD:newfile.py"],
@@ -130,7 +169,9 @@ def new_function():
         assert index_snapshot_content == "", "New file should have empty index snapshot"
 
         working_tree_snapshot_path = get_working_tree_snapshot_file_path()
-        working_tree_snapshot_content = read_text_file_contents(working_tree_snapshot_path)
+        working_tree_snapshot_content = read_text_file_contents(
+            working_tree_snapshot_path
+        )
         assert working_tree_snapshot_content == new_content
 
     def test_normal_tracked_file_uses_index_content(self, temp_git_repo):
@@ -138,12 +179,27 @@ def new_function():
         test_file = temp_git_repo / "normal.py"
         original_content = "original content\n"
         test_file.write_text(original_content)
-        subprocess.run(["git", "add", "normal.py"], cwd=temp_git_repo, check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add normal file"], cwd=temp_git_repo, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "add", "normal.py"],
+            cwd=temp_git_repo,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add normal file"],
+            cwd=temp_git_repo,
+            check=True,
+            capture_output=True,
+        )
 
         staged_content = "staged content\n"
         test_file.write_text(staged_content)
-        subprocess.run(["git", "add", "normal.py"], cwd=temp_git_repo, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "add", "normal.py"],
+            cwd=temp_git_repo,
+            check=True,
+            capture_output=True,
+        )
 
         working_content = "working tree content\n"
         test_file.write_text(working_content)
@@ -155,7 +211,9 @@ def new_function():
         assert index_snapshot_content == staged_content
 
         working_tree_snapshot_path = get_working_tree_snapshot_file_path()
-        working_tree_snapshot_content = read_text_file_contents(working_tree_snapshot_path)
+        working_tree_snapshot_content = read_text_file_contents(
+            working_tree_snapshot_path
+        )
         assert working_tree_snapshot_content == working_content
 
 
@@ -167,12 +225,20 @@ class TestSnapshotsAreStale:
         """Create a temporary git repository."""
         monkeypatch.chdir(tmp_path)
         subprocess.run(["git", "init"], check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.name", "Test User"], check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "test@example.com"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.name", "Test User"], check=True, capture_output=True
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "test@example.com"],
+            check=True,
+            capture_output=True,
+        )
 
         (tmp_path / "README.md").write_text("# Test\n")
         subprocess.run(["git", "add", "README.md"], check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Initial commit"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Initial commit"], check=True, capture_output=True
+        )
 
         ensure_state_directory_exists()
 
@@ -186,8 +252,18 @@ class TestSnapshotsAreStale:
         """Current index and working tree snapshots should not be stale."""
         test_file = temp_git_repo / "test.txt"
         test_file.write_text("content\n")
-        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         test_file.write_text("modified\n")
 
@@ -199,14 +275,29 @@ class TestSnapshotsAreStale:
         """Index changes should make selected-file snapshots stale."""
         test_file = temp_git_repo / "test.txt"
         test_file.write_text("content\n")
-        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         test_file.write_text("modified\n")
         write_snapshots_for_selected_file_path("test.txt")
 
         test_file.write_text("changed again\n")
-        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         assert snapshots_are_stale("test.txt") is True
 
@@ -214,8 +305,18 @@ class TestSnapshotsAreStale:
         """Working tree changes should make selected-file snapshots stale."""
         test_file = temp_git_repo / "test.txt"
         test_file.write_text("content\n")
-        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         test_file.write_text("modified\n")
         write_snapshots_for_selected_file_path("test.txt")
@@ -223,3 +324,49 @@ class TestSnapshotsAreStale:
         test_file.write_text("different content\n")
 
         assert snapshots_are_stale("test.txt") is True
+
+    def test_symlink_freshness_uses_link_target_not_referent(self, temp_git_repo):
+        """Changing a referent does not change Git-visible symlink content."""
+        (temp_git_repo / "target").write_text("one\n")
+        (temp_git_repo / "link").symlink_to("target")
+        subprocess.run(["git", "add", "link"], check=True, cwd=temp_git_repo)
+
+        write_snapshots_for_selected_file_path("link")
+        (temp_git_repo / "target").write_text("two\n")
+
+        assert snapshots_are_stale("link") is False
+
+    def test_symlink_retarget_is_stale_even_for_equal_referents(self, temp_git_repo):
+        """Freshness compares link-target bytes, not referent bytes."""
+        (temp_git_repo / "first").write_text("same\n")
+        (temp_git_repo / "second").write_text("same\n")
+        link = temp_git_repo / "link"
+        link.symlink_to("first")
+        subprocess.run(["git", "add", "link"], check=True, cwd=temp_git_repo)
+
+        write_snapshots_for_selected_file_path("link")
+        link.unlink()
+        link.symlink_to("second")
+
+        assert snapshots_are_stale("link") is True
+
+    def test_dangling_symlink_can_be_fresh(self, temp_git_repo):
+        """A dangling link remains a present Git path."""
+        (temp_git_repo / "link").symlink_to("missing")
+        subprocess.run(["git", "add", "link"], check=True, cwd=temp_git_repo)
+
+        write_snapshots_for_selected_file_path("link")
+
+        assert snapshots_are_stale("link") is False
+
+    def test_regular_file_replacing_symlink_is_stale(self, temp_git_repo):
+        """Path kind participates in freshness even when bytes match."""
+        link = temp_git_repo / "link"
+        link.symlink_to("target")
+        subprocess.run(["git", "add", "link"], check=True, cwd=temp_git_repo)
+        write_snapshots_for_selected_file_path("link")
+
+        link.unlink()
+        link.write_bytes(b"target")
+
+        assert snapshots_are_stale("link") is True

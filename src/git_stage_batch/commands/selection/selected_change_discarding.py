@@ -26,7 +26,7 @@ from ...data.session import (
 )
 from ...data.file_modes import apply_git_file_mode
 from ...data.undo_checkpoints import undo_checkpoint
-from ...exceptions import CommandError, NoMoreHunks, exit_with_error
+from ...exceptions import NoMoreHunks, exit_with_error
 from ...i18n import _
 from ...utils.file_io import append_lines_to_file, path_is_empty, read_text_file_contents
 from ...utils.git_command import run_git_command
@@ -51,16 +51,7 @@ def discard_selected_change(
     auto_advance: bool | None = None,
 ) -> None:
     """Discard the currently selected change from the working tree."""
-    try:
-        item = load_selected_change()
-    except CommandError as error:
-        stale_message = _(
-            "Cached hunk is stale (file was changed). Run 'start' or 'again' to continue."
-        )
-        if error.message == stale_message:
-            item = None
-        else:
-            raise
+    item = load_selected_change()
 
     if item is None:
         try:

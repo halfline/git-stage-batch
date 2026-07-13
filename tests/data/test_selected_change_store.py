@@ -128,3 +128,26 @@ def test_selected_state_snapshot_restores_snapshot_metadata(temp_git_repo):
         restore_selected_change_state(snapshot)
 
     assert metadata_path.read_bytes() == original_metadata
+
+def test_interrupted_hunk_cache_is_not_visible(temp_git_repo, monkeypatch):
+    """The kind marker publishes a cache only after every component is durable."""
+    from git_stage_batch.data.selected_change import store
+
+    line_changes = LineLevelChange(
+        path="test.py",
+        header=HunkHeader(old_start=1, old_len=1, new_start=1, new_len=1),
+        lines=[],
+    )
+    cache_hunk_change([b"old patch\n"], "old-hash", line_changes)
+    assert read_selected_change_kind() is SelectedChangeKind.HUNK
+
+    monkeypatch.setattr(
+        store,
+        "write_snapshots_for_selected_file_path",
+        lambda _path: (_ for _ in ()).throw(OSError("synthetic crash")),
+    )
+
+    with pytest.raises(OSError, match="synthetic crash"):
+        cache_hunk_change([b"new patch\n"], "new-hash", line_changes)
+
+    assert read_selected_change_kind() is None

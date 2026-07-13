@@ -365,10 +365,14 @@ class _UnifiedDiffParserBuildContext:
                     # Get +++ line
                     plus_line = next_line()
                     if plus_line is None:
-                        return
+                        raise CommandError(
+                            _("Malformed unified diff: missing +++ file header.")
+                        )
                     plus_line_stripped = plus_line.rstrip(b'\n')
-                    if not plus_line_stripped.startswith(b"+++"):
-                        continue
+                    if not _patch_headers.line_is_new_file_header(plus_line_stripped):
+                        raise CommandError(
+                            _("Malformed unified diff: expected +++ file header.")
+                        )
                     new_file_line = plus_line_stripped
 
                     patch_old_path = _patch_headers.old_file_path_from_header(

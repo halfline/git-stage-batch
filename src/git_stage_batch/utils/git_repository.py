@@ -81,12 +81,11 @@ def is_git_repository_root_path(path: Path) -> bool:
     if result.returncode != 0:
         return False
     try:
-        requested_absolute = path.absolute()
+        if path.is_symlink():
+            return False
         requested_root = path.resolve()
         reported_root = Path(result.stdout.strip()).resolve()
     except OSError:
-        return False
-    if requested_absolute != requested_root:
         return False
     return reported_root == requested_root
 

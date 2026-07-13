@@ -1022,7 +1022,7 @@ class TestBuildTargetWorkingTreeContent:
             working_lines,
         )
 
-        assert result == b"line1\nline2\n"
+        assert result == b"line1\r\nline2\r\n"
 
     def test_working_tree_discard_can_return_buffer(self, line_sequence):
         """Working-tree discard can return a buffer for streaming callers."""
@@ -1042,7 +1042,7 @@ class TestBuildTargetWorkingTreeContent:
             working_has_trailing_newline=True,
         ) as result:
             assert isinstance(result, LineBuffer)
-            assert result.to_bytes() == b"line1\nline2\n"
+            assert result.to_bytes() == b"line1\r\nline2\r\n"
 
     def test_file_scoped_deletion_uses_prior_change_delta(self):
         """File-scoped deletions should keep anchors after prior hunks."""

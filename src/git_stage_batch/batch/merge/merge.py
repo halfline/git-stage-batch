@@ -22,7 +22,6 @@ from ..line_matching.match import match_lines
 from ..realization.entry_storage import (
     realized_entry_content_chunks as _realized_entry_content_chunks,
 )
-from ...core.line_selection import LineSelection
 from ...core.buffer import LineBuffer
 from ...editor.line_endings import (
     choose_line_ending,
@@ -59,7 +58,7 @@ def _merge_result_line_ending_from_lines(
 
 def merge_batch_from_line_sequences_as_buffer(
     source_lines: Sequence[bytes],
-    ownership: 'BatchOwnership',
+    ownership: "BatchOwnership",
     working_lines: Sequence[bytes],
     *,
     source_to_working_mapping: LineMapping | None = None,
@@ -88,7 +87,7 @@ def merge_batch_from_line_sequences_as_buffer(
 
 def can_merge_batch_from_line_sequences(
     source_lines: Sequence[bytes],
-    ownership: 'BatchOwnership',
+    ownership: "BatchOwnership",
     working_lines: Sequence[bytes],
     *,
     source_to_working_mapping: LineMapping | None = None,
@@ -113,7 +112,7 @@ def can_merge_batch_from_line_sequences(
 
 def _merge_batch_line_chunks(
     source_lines: AcquirableLineSequence[Any],
-    ownership: 'BatchOwnership',
+    ownership: "BatchOwnership",
     working_lines: AcquirableLineSequence[Any],
     *,
     source_to_working_mapping: LineMapping | None = None,
@@ -135,7 +134,7 @@ def _merge_batch_line_chunks(
 
 def _merge_batch_acquired_line_chunks(
     source_lines: Sequence[bytes],
-    ownership: 'BatchOwnership',
+    ownership: "BatchOwnership",
     working_lines: Sequence[bytes],
     *,
     source_to_working_mapping: LineMapping | None = None,
@@ -180,11 +179,7 @@ def _merge_batch_acquired_line_chunks(
 
         try:
             _check_merge_structural_validity(
-                mapping,
-                presence_line_set,
-                deletion_claims,
-                source_lines,
-                working_lines
+                mapping, presence_line_set, deletion_claims, source_lines, working_lines
             )
         except _MergeError:
             if resolution is None:
@@ -224,7 +219,7 @@ def _merge_batch_acquired_line_chunks(
 
 def enumerate_merge_batch_candidates_from_line_sequences(
     source_lines: Sequence[bytes],
-    ownership: 'BatchOwnership',
+    ownership: "BatchOwnership",
     working_lines: Sequence[bytes],
     *,
     max_candidates: int = _MERGE_CANDIDATE_CAP,

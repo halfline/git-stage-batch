@@ -3,9 +3,12 @@
 from git_stage_batch.tui.prompts import _shell_command_history
 
 from io import StringIO
-from contextlib import contextmanager
 from os import terminal_size
+from contextlib import contextmanager
+import subprocess
 from unittest.mock import patch
+
+import pytest
 
 from git_stage_batch.output.colors import Colors
 from git_stage_batch.tui.prompts import (
@@ -17,6 +20,20 @@ from git_stage_batch.tui.prompts import (
     prompt_shell_command,
     unlocked_input,
 )
+from git_stage_batch.tui.flow import FlowLocation, FlowState
+from git_stage_batch.tui.hunk_actions import handle_hunk_discard
+from git_stage_batch.utils.session_lock import (
+    SessionLockChangedDuringPrompt,
+    acquire_session_lock,
+)
+
+
+@pytest.fixture
+def prompt_git_repo(tmp_path, monkeypatch):
+    """Create a repository whose common state owns the test lock."""
+    subprocess.run(["git", "init", str(tmp_path)], check=True, capture_output=True)
+    monkeypatch.chdir(tmp_path)
+    return tmp_path
 
 
 def test_unlocked_input_releases_lock_while_waiting():
@@ -42,6 +59,31 @@ def test_unlocked_input_releases_lock_while_waiting():
         assert unlocked_input("Prompt: ") == "answer"
 
     assert events == ["released", ("input", "Prompt: "), "reacquired"]
+
+
+def test_discard_confirmation_cancels_after_intervening_lock_holder(
+    prompt_git_repo,
+):
+    """A confirmation must not apply after another process gets the lock."""
+    flow_state = FlowState(
+        source=FlowLocation.WORKING_TREE,
+        target=FlowLocation.STAGING_AREA,
+    )
+
+    def intervening_action(_prompt):
+        with acquire_session_lock():
+            pass
+        return "yes"
+
+    with (
+        acquire_session_lock(),
+        patch("builtins.input", side_effect=intervening_action),
+        patch("git_stage_batch.tui.hunk_actions.command_discard") as discard,
+        pytest.raises(SessionLockChangedDuringPrompt),
+    ):
+        handle_hunk_discard(flow_state)
+
+    discard.assert_not_called()
 
 
 class TestPromptAction:

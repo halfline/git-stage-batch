@@ -209,6 +209,7 @@ def stream_git_diff(
         cwd=cwd,
         env=env,
         requires_index_lock=False,
+        literal_pathspecs=bool(path_list),
     )
 
 

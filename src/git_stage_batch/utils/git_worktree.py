@@ -63,11 +63,16 @@ def git_checkout_detached(
     oid: str,
     *,
     cwd: str,
+    force: bool = False,
     check: bool = True,
 ) -> subprocess.CompletedProcess:
     """Check out one commit in detached mode inside another Git worktree."""
+    arguments = ["checkout", "--detach"]
+    if force:
+        arguments.append("--force")
+    arguments.append(oid)
     return run_git_command(
-        ["checkout", "--detach", oid],
+        arguments,
         cwd=cwd,
         check=check,
         requires_index_lock=True,

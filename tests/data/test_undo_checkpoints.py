@@ -39,3 +39,18 @@ def test_legacy_ita_fallback_without_index_identity_fails_closed(monkeypatch):
     )
 
     assert restored == []
+
+
+def test_legacy_gitlink_absence_is_normalized_for_conflict_checks():
+    """Old index-based existence matches a currently absent worktree."""
+    legacy = {
+        "path": "sub",
+        "kind": "gitlink",
+        "exists": True,
+        "worktree_oid": None,
+    }
+    current = {**legacy, "exists": False}
+
+    assert undo_checkpoints._worktree_state_by_path([legacy]) == (
+        undo_checkpoints._worktree_state_by_path([current])
+    )

@@ -24,7 +24,10 @@ from ..utils.git_refs import (
 )
 from ..utils.git_worktree import git_checkout_detached
 from ..utils.git_index import git_add_paths, git_update_index
-from ..utils.git_repository import get_git_repository_root_path
+from ..utils.git_repository import (
+    get_git_repository_root_path,
+    is_git_repository_root_path,
+)
 
 
 def _read_json_blob(blob_sha: str) -> dict[str, Any]:
@@ -163,20 +166,25 @@ def restore_worktree(commit: str, manifest: dict[str, Any]) -> None:
         target_path = repo_root / file_path
         if entry.get("kind") == "gitlink":
             worktree_oid = entry.get("worktree_oid")
-            if entry.get("exists", False) and worktree_oid:
-                if not target_path.is_dir():
-                    _restore_directory_archive(
+            if entry.get("exists", False):
+                if entry.get("archive", False):
+                    _restore_gitlink_archive(
                         target_path,
                         worktree_blobs.get(file_path),
+                        file_path=file_path,
+                        worktree_oid=worktree_oid,
                     )
-                result = git_checkout_detached(worktree_oid, cwd=file_path, check=False)
-                if result.returncode != 0:
-                    raise CommandError(
-                        _("Failed to restore submodule pointer for {file}: {error}").format(
-                            file=file_path,
-                            error=result.stderr,
-                        )
-                    )
+                    continue
+                if not worktree_oid:
+                    # Older checkpoints used index/HEAD gitlink presence for
+                    # "exists" even when no worktree directory was present.
+                    _remove_worktree_path(target_path)
+                    continue
+                _checkout_gitlink_worktree(
+                    target_path,
+                    worktree_oid,
+                    file_path=file_path,
+                )
             elif not entry.get("exists", False):
                 _remove_worktree_path(target_path)
             continue
@@ -185,6 +193,7 @@ def restore_worktree(commit: str, manifest: dict[str, Any]) -> None:
                 _restore_directory_archive(
                     target_path,
                     worktree_blobs.get(file_path),
+                    file_path=file_path,
                 )
             else:
                 _remove_worktree_path(target_path)
@@ -211,18 +220,95 @@ def _remove_worktree_path(target_path: Path) -> None:
         target_path.unlink()
 
 
-def _restore_directory_archive(
+def _checkout_gitlink_worktree(
+    target_path: Path,
+    worktree_oid: str,
+    *,
+    file_path: str,
+    force: bool = False,
+) -> None:
+    """Check out a gitlink commit only inside its exact nested repository."""
+    if not is_git_repository_root_path(target_path):
+        raise CommandError(
+            _(
+                "Cannot restore submodule pointer for {file}: "
+                "the path is not a standalone Git repository."
+            ).format(file=file_path)
+        )
+    result = git_checkout_detached(
+        worktree_oid,
+        cwd=str(target_path),
+        force=force,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise CommandError(
+            _("Failed to restore submodule pointer for {file}: {error}").format(
+                file=file_path,
+                error=result.stderr,
+            )
+        )
+
+
+def _restore_gitlink_archive(
     target_path: Path,
     blob_info: tuple[str, str] | None,
+    *,
+    file_path: str,
+    worktree_oid: str | None,
 ) -> None:
-    """Restore one nested repository from its checkpoint archive."""
+    """Restore an exact archived gitlink worktree and its nested HEAD."""
+    blob_info = _require_directory_archive(blob_info, file_path=file_path)
+    if worktree_oid and not is_git_repository_root_path(target_path):
+        # Recreate a missing worktree, including its .git file or directory,
+        # before asking Git to operate inside it.
+        _restore_directory_archive(
+            target_path,
+            blob_info,
+            file_path=file_path,
+        )
+
+    if worktree_oid:
+        # The archive is a complete before-image, so it is safe to force the
+        # nested HEAD/index back to the recorded commit before restoring the
+        # saved dirty worktree bytes below.
+        _checkout_gitlink_worktree(
+            target_path,
+            worktree_oid,
+            file_path=file_path,
+            force=True,
+        )
+
+    _restore_directory_archive(
+        target_path,
+        blob_info,
+        file_path=file_path,
+    )
+
+
+def _require_directory_archive(
+    blob_info: tuple[str, str] | None,
+    *,
+    file_path: str,
+) -> tuple[str, str]:
+    """Return stored archive information or report an incomplete checkpoint."""
     if blob_info is None:
         raise CommandError(
             _("Undo checkpoint is missing nested repository content for {file}").format(
-                file=target_path.name,
+                file=file_path,
             )
         )
-    _mode, blob_sha = blob_info
+    return blob_info
+
+
+def _restore_directory_archive(
+    target_path: Path,
+    blob_info: tuple[str, str] | None,
+    *,
+    file_path: str,
+) -> None:
+    """Restore one nested repository from its checkpoint archive."""
+    _mode, blob_sha = _require_directory_archive(blob_info, file_path=file_path)
     _remove_worktree_path(target_path)
     target_path.mkdir(parents=True)
     with load_git_blob_as_buffer(blob_sha) as archive_buffer:
@@ -231,7 +317,20 @@ def _restore_directory_archive(
                 archive_file.write(chunk)
             archive_file.flush()
             with tarfile.open(archive_file.name, mode="r") as archive:
-                archive.extractall(target_path)
+                _extract_directory_archive(archive, target_path)
+
+
+def _extract_directory_archive(
+    archive: tarfile.TarFile,
+    target_path: Path,
+) -> None:
+    """Extract a trusted checkpoint archive across supported Python versions."""
+    if hasattr(tarfile, "tar_filter"):
+        archive.extractall(target_path, filter="tar")
+    else:
+        # Extraction filters were backported to maintained Python 3.10
+        # releases, but the project also supports earlier 3.10 runtimes.
+        archive.extractall(target_path)
 
 
 def restore_intent_to_add_entries(file_paths: list[str]) -> None:

@@ -146,6 +146,34 @@ def test_scoped_checkpoint_does_not_retain_unrelated_content(temp_git_repo):
     assert "worktree/unrelated-secret.txt" not in tree_paths
 
 
+@pytest.mark.parametrize(
+    ("directory_getter", "expected_label"),
+    [
+        (get_session_directory_path, "session state"),
+        (get_batches_directory_path, "batch metadata"),
+    ],
+)
+def test_undo_refuses_tracked_metadata_drift(
+    temp_git_repo,
+    directory_getter,
+    expected_label,
+):
+    """Undo should not overwrite metadata changed after checkpoint finalization."""
+    get_session_directory_path().mkdir(parents=True, exist_ok=True)
+    metadata_directory = directory_getter()
+    metadata_directory.mkdir(parents=True, exist_ok=True)
+    metadata_path = metadata_directory / "tracked.txt"
+    metadata_path.write_text("before\n")
+
+    with undo_checkpoint("change metadata", worktree_paths=[]):
+        metadata_path.write_text("after\n")
+
+    metadata_path.write_text("external drift\n")
+
+    with pytest.raises(CommandError, match=expected_label):
+        undo_last_checkpoint()
+
+
 def test_scoped_undo_preserves_unrelated_index_changes(temp_git_repo):
     """Undo should restore scoped index entries without replacing the whole index."""
     target = _commit_text_file(temp_git_repo, "target.txt", "target base\n")
@@ -184,6 +212,58 @@ def test_scoped_undo_preserves_unrelated_index_changes(temp_git_repo):
     ).stdout.splitlines()
     assert staged_paths == ["unrelated.txt"]
     assert target.read_text() == "target staged\n"
+
+
+def test_undo_preserves_unrelated_fully_staged_auto_added_file(temp_git_repo):
+    """Undo should not demote an unrelated staged new file back to ITA."""
+    other = _commit_text_file(temp_git_repo, "other.txt", "other base\n")
+    new_file = temp_git_repo / "new.txt"
+    new_file.write_text("staged new content\n")
+    other.write_text("other changed\n")
+
+    command_start(quiet=True)
+    command_include_file("new.txt", quiet=True, advance=False)
+    staged_object = subprocess.run(
+        ["git", "rev-parse", ":new.txt"],
+        check=True,
+        cwd=temp_git_repo,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    command_include_file("other.txt", quiet=True, advance=False)
+
+    command_undo(force=True)
+
+    restored_object = subprocess.run(
+        ["git", "rev-parse", ":new.txt"],
+        check=True,
+        cwd=temp_git_repo,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert restored_object == staged_object
+    assert _show_index_path(temp_git_repo, "new.txt") == b"staged new content\n"
+
+
+def test_undo_restores_fully_staged_state_for_scoped_auto_added_file(temp_git_repo):
+    """The exact before-image should distinguish staged content from ITA."""
+    new_file = temp_git_repo / "new.txt"
+    new_file.write_text("staged new content\n")
+    command_start(quiet=True)
+    command_include_file("new.txt", quiet=True, advance=False)
+
+    with undo_checkpoint("remove staged file", worktree_paths=["new.txt"]):
+        subprocess.run(
+            ["git", "rm", "--cached", "-f", "--", "new.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+
+    undo_last_checkpoint(force=True)
+
+    assert _show_index_path(temp_git_repo, "new.txt") == b"staged new content\n"
+    assert not path_is_intent_to_add("new.txt")
 
 
 def test_undo_file_include_restores_both_rename_paths(temp_git_repo):

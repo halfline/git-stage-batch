@@ -10,6 +10,8 @@ from ..data.selected_change.store import (
     SelectedChangeKind,
     read_selected_change_kind,
 )
+from ..data.line_id_files import read_line_ids_file
+from ..data.line_state import load_line_changes_from_state
 from ..data.selected_change.clear_reasons import (
     refuse_bare_action_after_auto_advance_disabled,
     refuse_bare_action_after_file_list,
@@ -28,6 +30,7 @@ from ..utils.git_repository import require_git_repository
 from ..utils.journal import log_journal
 from ..utils.paths import (
     ensure_state_directory_exists,
+    get_processed_skip_ids_file_path,
 )
 from .selection import include_to_batch_action as _include_to_batch_action
 from .selection import include_line_action as _include_line_action
@@ -62,6 +65,21 @@ def command_include(
     if read_selected_change_kind() == SelectedChangeKind.FILE:
         command_include_file("", auto_advance=auto_advance)
         return 0
+
+    if read_selected_change_kind() == SelectedChangeKind.HUNK:
+        skipped_ids = read_line_ids_file(get_processed_skip_ids_file_path())
+        line_changes = load_line_changes_from_state()
+        if skipped_ids and line_changes is not None:
+            remaining_ids = line_changes.changed_line_ids()
+            if remaining_ids:
+                _include_line_action.include_live_line_selection(
+                    ",".join(str(line_id) for line_id in remaining_ids),
+                    review_state=None,
+                    auto_advance=auto_advance,
+                    quiet=quiet,
+                    operation="include",
+                )
+                return 0
 
     return _selected_change_staging.include_selected_change(
         quiet=quiet,

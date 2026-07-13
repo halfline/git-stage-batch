@@ -148,6 +148,26 @@ def test_undo_include_files_restores_entire_multi_file_operation(functional_repo
     assert beta.read_text() == "beta\nbeta change\n"
 
 
+def test_undo_include_files_restores_unmatched_rename_source(functional_repo):
+    """The multi-file checkpoint must include both sides of a staged rename."""
+    old_path = functional_repo / "old.txt"
+    other_path = functional_repo / "other.txt"
+    _commit_file(old_path, "renamed content\n")
+    _commit_file(other_path, "other\n")
+    new_path = functional_repo / "new.txt"
+    old_path.rename(new_path)
+    other_path.write_text("other\nchanged\n")
+
+    git_stage_batch("start")
+    git_stage_batch("include", "--files", "new.txt", "other.txt")
+    git_stage_batch("undo", "--force")
+
+    assert _git("diff", "--cached", "--name-status").stdout == ""
+    assert not old_path.exists()
+    assert new_path.read_text() == "renamed content\n"
+    assert other_path.read_text() == "other\nchanged\n"
+
+
 def test_undo_skip_files_restores_entire_multi_file_operation(functional_repo):
     """Undoing skip --files should clear every skipped hunk."""
     _create_two_changed_text_files(functional_repo)

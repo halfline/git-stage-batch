@@ -40,6 +40,13 @@ def checkpoint_paths_for_file_scope(
 
 def checkpoint_paths_for_live_file(target_file: str) -> list[str]:
     """Return every path a live whole-file action may mutate."""
+    return checkpoint_paths_for_live_files([target_file])
+
+
+def checkpoint_paths_for_live_files(target_files: list[str]) -> list[str]:
+    """Expand rename partners for several live paths with one diff scan."""
+    requested_paths = set(target_files)
+    checkpoint_paths = set(target_files)
     with acquire_unified_diff(
         stream_live_git_diff(
             full_index=True,
@@ -48,9 +55,8 @@ def checkpoint_paths_for_live_file(target_file: str) -> list[str]:
         )
     ) as patches:
         for patch in patches:
-            if isinstance(patch, RenameChange) and target_file in (
-                patch.old_path,
-                patch.new_path,
+            if isinstance(patch, RenameChange) and requested_paths.intersection(
+                (patch.old_path, patch.new_path)
             ):
-                return [patch.old_path, patch.new_path]
-    return [target_file]
+                checkpoint_paths.update((patch.old_path, patch.new_path))
+    return list(dict.fromkeys([*target_files, *sorted(checkpoint_paths - requested_paths)]))

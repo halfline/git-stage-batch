@@ -1025,7 +1025,10 @@ class TestMergeBatch:
                 AbsenceClaim(
                     anchor_line=2,
                     content_lines=[b"old value\n"],
-                    baseline_reference=BaselineReference(after_line=1),
+                    baseline_reference=BaselineReference(
+                        after_line=1,
+                        after_content=b"line1\n",
+                    ),
                 )
             ],
         )
@@ -1033,6 +1036,24 @@ class TestMergeBatch:
         result = merge_batch(source, ownership, working)
 
         assert result == b"line1\nline3\n"
+
+    def test_baseline_referenced_absence_rejects_unidentified_numeric_anchor(self):
+        """A line number alone cannot prove which duplicate occurrence is owned."""
+        source = b"line1\nnew context\nline3\n"
+        working = b"line1\nold value\nline3\n"
+        ownership = BatchOwnership.from_presence_lines(
+            [],
+            [
+                AbsenceClaim(
+                    anchor_line=2,
+                    content_lines=[b"old value\n"],
+                    baseline_reference=BaselineReference(after_line=1),
+                )
+            ],
+        )
+
+        with pytest.raises(MergeError):
+            merge_batch(source, ownership, working)
 
     def test_baseline_referenced_absence_is_noop_when_already_absent(self):
         """Already-satisfied absence constraints should not block a round trip."""

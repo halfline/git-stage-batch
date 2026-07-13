@@ -217,6 +217,20 @@ diff --git a/file2.txt b/file2.txt
         with pytest.raises(CommandError, match=r"missing \+\+\+|expected \+\+\+"):
             collect_unified_diff(lines)
 
+    def test_malformed_diff_git_header_is_rejected(self):
+        """A recognized but unparseable file header must not drop the file."""
+        lines = [
+            b"diff --git a/file.txt\n",
+            b"--- a/file.txt\n",
+            b"+++ b/file.txt\n",
+            b"@@ -1 +1 @@\n",
+            b"-old\n",
+            b"+new\n",
+        ]
+
+        with pytest.raises(CommandError, match="Malformed diff --git header"):
+            collect_unified_diff(lines)
+
     def test_new_file(self):
         """Test parsing a diff for a newly created file."""
         diff = """\

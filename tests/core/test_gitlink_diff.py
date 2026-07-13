@@ -31,6 +31,16 @@ def test_gitlink_paths_and_change_type_use_null_oid_sides():
     assert gitlink_diff.gitlink_change_type([], "1234567", "89abcde") == "modified"
 
 
+def test_gitlink_oid_with_seven_leading_zeroes_is_not_null():
+    """A real full object id is not null merely because its prefix is zero."""
+    oid = "0000000" + "1" * 33
+
+    assert gitlink_diff.non_null_git_oid(oid) == oid
+    assert gitlink_diff.gitlink_old_path("sub", oid) == "sub"
+    assert gitlink_diff.gitlink_new_path("sub", oid) == "sub"
+    assert gitlink_diff.gitlink_change_type([], oid, "2" * 40) == "modified"
+
+
 def test_gitlink_subproject_commit_patch_oids():
     """Subproject commit patch lines should yield old and new oids."""
     assert gitlink_diff.gitlink_oids_from_subproject_commit_patch(

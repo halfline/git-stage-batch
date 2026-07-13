@@ -8,7 +8,6 @@ from collections.abc import Callable, Iterable
 
 INDEX_LINE_PATTERN = re.compile(br"^index ([0-9a-f]+)\.\.([0-9a-f]+)(?: ([0-7]+))?$")
 SUBPROJECT_COMMIT_PATTERN = re.compile(br"^([+-])Subproject commit ([0-9a-f]+)(?:-[^\s]+)?$")
-NULL_OBJECT_PREFIX = "0" * 7
 
 
 def metadata_indicates_gitlink(metadata_lines: list[bytes]) -> bool:
@@ -45,7 +44,7 @@ def non_null_git_oid(oid: str | None) -> str | None:
     """Return an object id unless it represents the null side of a diff."""
     if oid is None:
         return None
-    if oid.startswith(NULL_OBJECT_PREFIX):
+    if oid and all(character == "0" for character in oid):
         return None
     return oid
 

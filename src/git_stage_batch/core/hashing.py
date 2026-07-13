@@ -6,6 +6,8 @@ import hashlib
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
+from ..git_paths import unquote_path_token
+
 if TYPE_CHECKING:
     from .models import (
         BinaryFileChange,
@@ -54,12 +56,12 @@ def compute_stable_hunk_hash_from_lines(patch_lines: Iterable[bytes]) -> str:
         line = line_with_ending.rstrip(b'\n')
 
         if line.startswith(b"+++ "):
-            path_value = line.split(b" ", 1)[1].strip()
+            path_value = unquote_path_token(line.split(b" ", 1)[1].strip())
             if path_value != b"/dev/null":
                 selected_path_bytes = path_value[2:] if path_value.startswith(b"b/") else path_value
             continue
         if line.startswith(b"--- ") and not selected_path_bytes:
-            path_value = line.split(b" ", 1)[1].strip()
+            path_value = unquote_path_token(line.split(b" ", 1)[1].strip())
             if path_value != b"/dev/null":
                 selected_path_bytes = path_value[2:] if path_value.startswith(b"a/") else path_value
             continue
@@ -98,7 +100,10 @@ def compute_binary_file_hash(binary_change: BinaryFileChange) -> str:
     path = binary_change.path()
 
     # Hash: "BINARY:" + path + ":" + change_type
-    key = f"BINARY:{path}:{binary_change.change_type}".encode('utf-8')
+    key = f"BINARY:{path}:{binary_change.change_type}".encode(
+        "utf-8",
+        errors="surrogateescape",
+    )
     return hashlib.sha1(key).hexdigest()
 
 

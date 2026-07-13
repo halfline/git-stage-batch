@@ -32,6 +32,7 @@ from git_stage_batch.data.selected_change.store import (
     read_selected_change_kind,
 )
 from git_stage_batch.data.selected_change.paths import get_selected_change_file_path
+from git_stage_batch.data.selected_change.lifecycle import clear_selected_change_state_files
 from git_stage_batch.exceptions import CommandError
 
 EMPTY_BLOB_HASH = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
@@ -388,6 +389,8 @@ def test_include_to_batch_finds_submodule_pointer_without_selection_when_config_
     """include --to should find submodule pointers hidden by user config."""
     repo, old_oid, new_oid = submodule_pointer_repo
 
+    command_start(quiet=True)
+    clear_selected_change_state_files()
     command_include_to_batch("pointers", quiet=True)
 
     file_meta = read_batch_metadata("pointers")["files"]["sub"]
@@ -406,6 +409,7 @@ def test_include_to_batch_stores_added_submodule_pointer(
     """include --to should store added submodule pointers atomically."""
     repo, new_oid = added_submodule_pointer_repo
 
+    command_start(quiet=True)
     command_include_to_batch("pointers", quiet=True)
 
     file_meta = read_batch_metadata("pointers")["files"]["sub"]
@@ -426,6 +430,7 @@ def test_include_to_batch_stores_deleted_submodule_pointer(
     """include --to should store deleted submodule pointers atomically."""
     repo, old_oid = deleted_submodule_pointer_repo
 
+    command_start(quiet=True)
     command_include_to_batch("pointers", quiet=True)
 
     file_meta = read_batch_metadata("pointers")["files"]["sub"]
@@ -683,6 +688,7 @@ def test_include_from_batch_stages_added_submodule_pointer(
     """include --from should stage a stored added submodule pointer."""
     repo, new_oid = added_submodule_pointer_repo
 
+    command_start(quiet=True)
     command_include_to_batch("pointers", quiet=True)
 
     command_include_from_batch("pointers", file="sub")
@@ -699,6 +705,7 @@ def test_apply_from_batch_applies_added_submodule_pointer_as_live_diff(
     """apply --from should make an added pointer visible without staging it."""
     repo, new_oid = added_submodule_pointer_repo
 
+    command_start(quiet=True)
     command_include_to_batch("pointers", quiet=True)
     _run(["git", "update-index", "--force-remove", "--", "sub"], cwd=repo)
 
@@ -714,6 +721,7 @@ def test_include_from_batch_stages_deleted_submodule_pointer(
     """include --from should stage a stored deleted submodule pointer."""
     repo, old_oid = deleted_submodule_pointer_repo
 
+    command_start(quiet=True)
     command_include_to_batch("pointers", quiet=True)
 
     command_include_from_batch("pointers", file="sub")

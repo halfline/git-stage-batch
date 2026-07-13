@@ -50,6 +50,46 @@ class TestOperationWithoutSession:
         result = git_stage_batch("skip", check=False)
         assert result.returncode != 0
 
+    def test_include_to_batch_without_session_does_not_create_batch(self, repo_with_changes):
+        """A rejected include-to operation must not publish a batch ref."""
+        result = git_stage_batch("include", "--to", "saved", "--file", "file.txt", check=False)
+
+        assert result.returncode != 0
+        refs = subprocess.run(
+            [
+                "git",
+                "for-each-ref",
+                "--format=%(refname)",
+                "refs/git-stage-batch/batches/saved",
+                "refs/git-stage-batch/state/saved",
+                "refs/batches/saved",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert refs.stdout == ""
+
+    def test_discard_to_batch_without_session_does_not_create_batch(self, repo_with_changes):
+        """A rejected discard-to operation must not publish a batch ref."""
+        result = git_stage_batch("discard", "--to", "saved", "--file", "file.txt", check=False)
+
+        assert result.returncode != 0
+        refs = subprocess.run(
+            [
+                "git",
+                "for-each-ref",
+                "--format=%(refname)",
+                "refs/git-stage-batch/batches/saved",
+                "refs/git-stage-batch/state/saved",
+                "refs/batches/saved",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert refs.stdout == ""
+
 
 class TestNonexistentBatch:
     """Test operations on nonexistent batches."""

@@ -9,6 +9,7 @@ import pytest
 from git_stage_batch.commands.discard import command_discard_to_batch
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.batch.state.lifecycle import create_batch
+from git_stage_batch.batch.state.batch_names import batch_exists
 from git_stage_batch.utils.git_repository import get_git_repository_root_path
 
 
@@ -193,3 +194,60 @@ class TestDiscardFileToBatchRemovesFromWorkingTree:
         assert status_result.stdout.strip() == "", (
             f"Expected clean status, file should not be recreated, got: {status_result.stdout}"
         )
+
+    def test_discard_modified_binary_to_batch_preserves_staged_index(
+        self,
+        temp_git_repo,
+    ):
+        """Binary discard-to should restore from the index rather than HEAD."""
+        binary_file = temp_git_repo / "data.bin"
+        binary_file.write_bytes(b"\x00BASE")
+        subprocess.run(["git", "add", "data.bin"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add binary"],
+            check=True,
+            capture_output=True,
+        )
+        binary_file.write_bytes(b"\x00STAGED")
+        subprocess.run(["git", "add", "data.bin"], check=True, capture_output=True)
+        binary_file.write_bytes(b"\x00WORKTREE")
+
+        command_start(quiet=True)
+        command_discard_to_batch("test-batch", file="data.bin", quiet=True)
+
+        assert binary_file.read_bytes() == b"\x00STAGED"
+        index_bytes = subprocess.run(
+            ["git", "show", ":data.bin"],
+            check=True,
+            capture_output=True,
+        ).stdout
+        assert index_bytes == b"\x00STAGED"
+
+    def test_discard_file_to_batch_supports_unborn_head(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """Discard-to should compare against the empty tree on an unborn branch."""
+        repo = tmp_path / "unborn"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+        subprocess.run(["git", "init"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.name", "Test User"],
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "test@example.com"],
+            check=True,
+            capture_output=True,
+        )
+        new_file = repo / "new.txt"
+        new_file.write_text("new content\n")
+
+        command_start(quiet=True)
+        command_discard_to_batch("test-batch", file="new.txt", quiet=True)
+
+        assert not new_file.exists()
+        assert batch_exists("test-batch")

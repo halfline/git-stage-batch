@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import ExitStack
 import sys
 
+from ...core.buffer import LineBuffer, write_buffer_to_working_tree_path
 from ...core.replacement import ReplacementPayload, coerce_replacement_payload
 from ...data.file_review.state import clear_last_file_review_state_if_file_matches
 from ...data.selected_change.paths import get_selected_change_file_path
@@ -55,7 +56,8 @@ def discard_file_as_replacement(
 
         absolute_path = get_git_repository_root_path() / target_file
         absolute_path.parent.mkdir(parents=True, exist_ok=True)
-        absolute_path.write_bytes(replacement_payload.data)
+        with LineBuffer.from_bytes(replacement_payload.data) as replacement_buffer:
+            write_buffer_to_working_tree_path(absolute_path, replacement_buffer)
 
         if preserve_selected_state:
             assert saved_selected_state is not None

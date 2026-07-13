@@ -3,6 +3,17 @@
 Git-stage-batch stores durable batch state under `refs/git-stage-batch/` and
 worktree-local session scratch files below the worktree's Git directory.
 
+## Batch metadata authority and crash residue
+
+Batch content and state refs are authoritative. A file-backed
+`batches/<name>/metadata.json` is only a compatibility/publication staging file;
+when a state ref exists, normal reads deliberately ignore that file. If a process
+stops between writing metadata and publishing or cleaning refs, run
+`git-stage-batch validate --porcelain` to classify the residue as redundant,
+stale, conflicting, orphaned, legacy-compatible, or invalid. Stale, conflicting,
+or unknown-schema files should be preserved for inspection rather than published
+as live batch state.
+
 ## Object identifiers are not reachability roots
 
 Session manifests and abort snapshots serialize Git object IDs so state can be

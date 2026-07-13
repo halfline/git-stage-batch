@@ -3,11 +3,103 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = REPO_ROOT / "src" / "git_stage_batch"
+
+
+@dataclass(frozen=True)
+class ImportEdge:
+    """One internal module import with its source location."""
+
+    source: str
+    target: str
+    line: int
+    names: frozenset[str]
+
+
+@dataclass(frozen=True)
+class ForbiddenImportRule:
+    """A declarative prohibition on one architectural dependency edge."""
+
+    source_prefix: str
+    target_prefix: str
+    reason: str
+    allowed_sources: frozenset[str] = frozenset()
+
+
+def internal_import_edges() -> tuple[ImportEdge, ...]:
+    """Return the observed internal import graph with actionable locations."""
+    edges = []
+    for path in SRC_ROOT.rglob("*.py"):
+        source = module_name_for_path(path)
+        tree = ast.parse(path.read_text(), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                target = resolve_import_from_module(
+                    current_module=source,
+                    level=node.level,
+                    module=node.module,
+                )
+                if target is None or not target.startswith("git_stage_batch"):
+                    continue
+                edges.append(
+                    ImportEdge(
+                        source,
+                        target,
+                        node.lineno,
+                        frozenset(alias.name for alias in node.names),
+                    )
+                )
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name.startswith("git_stage_batch"):
+                        edges.append(
+                            ImportEdge(
+                                source,
+                                alias.name,
+                                node.lineno,
+                                frozenset(),
+                            )
+                        )
+    return tuple(edges)
+
+
+def forbidden_import_violations(
+    rules: tuple[ForbiddenImportRule, ...],
+) -> list[str]:
+    """Describe every observed edge that violates a declarative rule."""
+    violations = []
+    for edge in internal_import_edges():
+        for rule in rules:
+            if (
+                edge.source.startswith(rule.source_prefix)
+                and edge.target.startswith(rule.target_prefix)
+                and edge.source not in rule.allowed_sources
+            ):
+                violations.append(
+                    f"{edge.source}:{edge.line} -> {edge.target}: {rule.reason}"
+                )
+    return sorted(violations)
+
+
+def modules_defining(names: set[str]) -> dict[str, set[str]]:
+    """Return internal modules that define any named top-level symbol."""
+    definitions: dict[str, set[str]] = {}
+    for path in SRC_ROOT.rglob("*.py"):
+        tree = ast.parse(path.read_text(), filename=str(path))
+        found = {
+            node.name
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            and node.name in names
+        }
+        if found:
+            definitions[module_name_for_path(path)] = found
+    return definitions
 
 
 def module_name_for_path(path: Path) -> str:

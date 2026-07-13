@@ -470,97 +470,6 @@ def test_batch_source_cache_owns_session_mapping():
     assert violations == []
 
 
-def test_batch_source_annotation_owns_line_annotation():
-    """Batch-source line annotation should stay outside display rendering."""
-    display = __import__(
-        "git_stage_batch.batch.ownership.display_lines",
-        fromlist=["display"],
-    )
-    source_annotation = __import__(
-        "git_stage_batch.batch.source.annotation",
-        fromlist=["source_annotation"],
-    )
-    source_annotation_path = SRC_ROOT / "batch" / "source/annotation.py"
-    public_names = {
-        "annotate_with_batch_source",
-        "annotate_with_batch_source_lines",
-        "annotate_with_batch_source_working_lines",
-    }
-    expected_imports = {
-        SRC_ROOT / "commands" / "file_scope" / "discard_file_to_batch.py": {
-            "annotate_with_batch_source",
-        },
-        SRC_ROOT / "commands" / "file_scope" / "discard_to_batch.py": {
-            "annotate_with_batch_source",
-        },
-        SRC_ROOT / "commands" / "file_scope" / "include_file_to_batch.py": {
-            "annotate_with_batch_source",
-        },
-        SRC_ROOT / "commands" / "selection" / "discard_line_batching.py": {
-            "annotate_with_batch_source",
-        },
-        SRC_ROOT / "commands" / "selection" / "discard_line_replacement.py": {
-            "annotate_with_batch_source_working_lines",
-        },
-        SRC_ROOT / "commands" / "selection" / "include_line_batching.py": {
-            "annotate_with_batch_source",
-        },
-        SRC_ROOT / "commands" / "selection" / "include_line_replacement.py": {
-            "annotate_with_batch_source",
-        },
-        SRC_ROOT / "commands" / "selection" / "next_change_display.py": {
-            "annotate_with_batch_source",
-        },
-        (
-            SRC_ROOT
-            / "commands"
-            / "selection"
-            / "selected_change_batch_discarding.py"
-        ): {"annotate_with_batch_source"},
-        (
-            SRC_ROOT
-            / "commands"
-            / "selection"
-            / "selected_change_batch_staging.py"
-        ): {"annotate_with_batch_source"},
-        SRC_ROOT / "data" / "hunk_tracking.py": {
-            "annotate_with_batch_source",
-        },
-        SRC_ROOT / "data" / "selected_change" / "hunk_recalculation.py": {
-            "annotate_with_batch_source",
-        },
-    }
-    violations = []
-
-    assert public_names <= vars(source_annotation).keys()
-    assert public_names.isdisjoint(vars(display))
-
-    for path in SRC_ROOT.rglob("*.py"):
-        if path == source_annotation_path:
-            continue
-
-        imported_public_names = set()
-        for imported_module, node in _import_from_nodes(path):
-            imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.batch.ownership.display_lines":
-                stale_imports = imported_names & public_names
-                if stale_imports:
-                    relative_path = path.relative_to(REPO_ROOT)
-                    names = ", ".join(sorted(stale_imports))
-                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
-                continue
-
-            if imported_module != "git_stage_batch.batch.source.annotation":
-                continue
-
-            imported_public_names |= imported_names & public_names
-
-        if path in expected_imports:
-            assert expected_imports[path] <= imported_public_names
-
-    assert violations == []
-
-
 def test_mapped_storage_lives_in_core_boundary():
     """Mapped storage primitives should live below batch and utils adapters."""
     old_storage_path = SRC_ROOT / "utils" / "mapped_storage.py"
@@ -2371,8 +2280,8 @@ def test_repository_buffer_helpers_stay_in_utils_layer():
     )
     repository_buffer_names = {
         "load_git_blob_as_buffer",
-        "load_git_object_as_buffer",
-        "load_git_object_as_buffer_or_empty",
+        "read_git_object_buffer_or_none",
+        "read_git_object_buffer_or_empty",
         "load_git_tree_files_as_buffers",
         "load_working_tree_file_as_buffer",
         "stream_git_blob_buffers",
@@ -2863,7 +2772,6 @@ def test_git_repository_helpers_stay_out_of_git_command_module():
         "require_git_repository",
         "get_git_repository_root_path",
         "get_git_directory_path",
-        "resolve_file_path_to_repo_relative",
     }
     violations = []
 
@@ -3829,12 +3737,12 @@ def test_file_review_footer_owns_command_rendering():
     review_output_path = SRC_ROOT / "output" / "file_review.py"
     review_output_text = review_output_path.read_text()
     footer_output_path = SRC_ROOT / "output" / "file_review_footer.py"
-    footer_output_text = footer_output_path.read_text()
+    footer_output_path.read_text()
     review_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(review_output_path)
     }
-    footer_imports = {
+    {
         imported_module
         for imported_module, _node in _import_from_nodes(footer_output_path)
     }
@@ -7791,7 +7699,7 @@ def test_tui_session_quit_owns_smart_quit_actions():
     interactive_path = SRC_ROOT / "tui" / "interactive.py"
     action_dispatch_path = SRC_ROOT / "tui" / "action_dispatch.py"
     session_quit_path = SRC_ROOT / "tui" / "session_quit.py"
-    interactive = __import__(
+    __import__(
         "git_stage_batch.tui.interactive",
         fromlist=["interactive"],
     )
@@ -11079,7 +10987,7 @@ def test_batch_transform_sift_results_own_result_planning():
             "sifted_empty_text_path_change_type",
         },
         "git_stage_batch.utils.repository_buffers": {
-            "load_git_object_as_buffer_or_empty",
+            "read_git_object_buffer_or_empty",
             "load_working_tree_file_as_buffer",
         },
         "git_stage_batch.core.text_lines": {
@@ -12231,7 +12139,7 @@ def test_baseline_correspondence_stays_out_of_merge_module():
     )
     correspondence_path = SRC_ROOT / "batch" / "merge/baseline_correspondence.py"
     discard_path = SRC_ROOT / "batch" / "discard.py"
-    merge_path = SRC_ROOT / "batch" / "merge/merge.py"
+    SRC_ROOT / "batch" / "merge/merge.py"
     public_names = {
         "BaselineCorrespondence",
         "BaselineRegion",
@@ -12292,7 +12200,7 @@ def test_discard_reversal_stays_out_of_merge_module():
     )
     discard_reversal_path = SRC_ROOT / "batch" / "discard_reversal.py"
     discard_path = SRC_ROOT / "batch" / "discard.py"
-    merge_path = SRC_ROOT / "batch" / "merge/merge.py"
+    SRC_ROOT / "batch" / "merge/merge.py"
     public_names = {
         "reverse_presence_constraints",
     }
@@ -12358,7 +12266,7 @@ def test_realized_boundaries_stay_out_of_merge_module():
     realized_boundaries_path = SRC_ROOT / "batch" / "realization/boundaries.py"
     absence_constraints_path = SRC_ROOT / "batch" / "merge/absence_constraints.py"
     discard_path = SRC_ROOT / "batch" / "discard.py"
-    merge_path = SRC_ROOT / "batch" / "merge/merge.py"
+    SRC_ROOT / "batch" / "merge/merge.py"
     public_names = {
         "boundary_choices_after_source_line",
         "find_boundary_after_source_line",
@@ -13109,7 +13017,6 @@ def test_operation_candidate_types_own_preview_records():
         },
         SRC_ROOT / "batch" / "operation_candidates.py": {
             "CandidateEnumerationLimitError",
-            "CandidateOperation",
             "CandidateTarget",
             "MAX_OPERATION_CANDIDATES",
             "OperationCandidatePreview",
@@ -13462,7 +13369,7 @@ def test_candidate_preview_commands_own_command_text():
         imported_module
         for imported_module, _node in _import_from_nodes(candidate_preview_path)
     }
-    candidate_commands_imports = {
+    {
         imported_module
         for imported_module, _node in _import_from_nodes(candidate_commands_path)
     }
@@ -13720,9 +13627,9 @@ def test_batch_owns_binary_file_content_loading():
         "git_stage_batch.batch.binary_file_content",
         fromlist=["binary_file_content"],
     )
-    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    SRC_ROOT / "commands" / "apply_from.py"
     apply_action_path = SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
-    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    SRC_ROOT / "commands" / "include_from.py"
     include_action_path = (
         SRC_ROOT / "commands" / "batch_source" / "include_action.py"
     )
@@ -13774,9 +13681,9 @@ def test_batch_source_action_plans_own_resource_plans():
         "git_stage_batch.commands.batch_source.action_plans",
         fromlist=["action_plans"],
     )
-    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    SRC_ROOT / "commands" / "apply_from.py"
     apply_action_path = SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
-    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    SRC_ROOT / "commands" / "include_from.py"
     include_action_path = (
         SRC_ROOT / "commands" / "batch_source" / "include_action.py"
     )
@@ -13867,7 +13774,7 @@ def test_batch_source_text_plan_builders_own_apply_text_planning():
             "selected_text_target_change_type",
         },
         "git_stage_batch.utils.repository_buffers": {
-            "load_git_object_as_buffer",
+            "read_git_object_buffer_or_none",
             "load_working_tree_file_as_buffer",
         },
         "git_stage_batch.utils.git_repository": {
@@ -13932,7 +13839,7 @@ def test_batch_source_text_plan_builders_own_include_text_planning():
             "selected_text_target_change_type",
         },
         "git_stage_batch.utils.repository_buffers": {
-            "load_git_object_as_buffer",
+            "read_git_object_buffer_or_none",
             "load_working_tree_file_as_buffer",
         },
         "git_stage_batch.utils.git_repository": {
@@ -14377,9 +14284,9 @@ def test_batch_source_candidate_preview_counts_own_failure_enumeration():
         "git_stage_batch.commands.batch_source.candidate_preview_counts",
         fromlist=["candidate_preview_counts"],
     )
-    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    SRC_ROOT / "commands" / "apply_from.py"
     apply_action_path = SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
-    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    SRC_ROOT / "commands" / "include_from.py"
     include_action_path = (
         SRC_ROOT / "commands" / "batch_source" / "include_action.py"
     )
@@ -14777,7 +14684,7 @@ def test_batch_source_replacement_previews_own_show_replacement_preview():
             "coerce_replacement_payload",
         },
         "git_stage_batch.utils.repository_buffers": {
-            "load_git_object_as_buffer",
+            "read_git_object_buffer_or_none",
         },
     }
     show_from_tree = ast.parse(
@@ -14816,9 +14723,9 @@ def test_batch_source_candidate_refusals_own_candidate_count_refusals():
         "git_stage_batch.commands.batch_source.candidate_refusals",
         fromlist=["candidate_refusals"],
     )
-    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    SRC_ROOT / "commands" / "apply_from.py"
     apply_action_path = SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
-    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    SRC_ROOT / "commands" / "include_from.py"
     include_action_path = (
         SRC_ROOT / "commands" / "batch_source" / "include_action.py"
     )
@@ -14870,9 +14777,9 @@ def test_batch_source_action_context_owns_action_prologue():
         fromlist=["action_context"],
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
-    apply_action_path = SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
+    SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
-    include_action_path = (
+    (
         SRC_ROOT / "commands" / "batch_source" / "include_action.py"
     )
     discard_from_path = SRC_ROOT / "commands" / "discard_from.py"
@@ -14960,7 +14867,7 @@ def test_batch_source_action_selection_owns_file_line_selection():
         fromlist=["action_selection"],
     )
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
-    apply_action_path = SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
+    SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
     discard_from_path = SRC_ROOT / "commands" / "discard_from.py"
     public_names = {
@@ -15119,9 +15026,9 @@ def test_batch_source_action_completion_owns_review_finalization():
         "git_stage_batch.commands.batch_source.action_completion",
         fromlist=["action_completion"],
     )
-    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    SRC_ROOT / "commands" / "apply_from.py"
     apply_action_path = SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
-    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    SRC_ROOT / "commands" / "include_from.py"
     include_action_path = (
         SRC_ROOT / "commands" / "batch_source" / "include_action.py"
     )
@@ -15611,7 +15518,7 @@ def test_batch_source_reset_claims_own_reset_mutations():
             "refuse_batch_submodule_pointer_lines",
         },
         "git_stage_batch.utils.repository_buffers": {
-            "load_git_object_as_buffer",
+            "read_git_object_buffer_or_none",
         },
         "git_stage_batch.utils.file_io": {
             "write_text_file_contents",
@@ -15799,9 +15706,9 @@ def test_batch_source_merge_refusals_own_merge_failure_refusals():
         "git_stage_batch.commands.batch_source.merge_refusals",
         fromlist=["merge_refusals"],
     )
-    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    SRC_ROOT / "commands" / "apply_from.py"
     apply_action_path = SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
-    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    SRC_ROOT / "commands" / "include_from.py"
     include_action_path = (
         SRC_ROOT / "commands" / "batch_source" / "include_action.py"
     )
@@ -15862,9 +15769,9 @@ def test_batch_source_worktree_refusals_own_execution_refusals():
         "git_stage_batch.commands.batch_source.worktree_refusals",
         fromlist=["worktree_refusals"],
     )
-    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    SRC_ROOT / "commands" / "apply_from.py"
     apply_action_path = SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
-    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    SRC_ROOT / "commands" / "include_from.py"
     include_action_path = (
         SRC_ROOT / "commands" / "batch_source" / "include_action.py"
     )
@@ -15913,7 +15820,7 @@ def test_batch_source_text_actions_own_text_file_mutations():
         "git_stage_batch.commands.batch_source.text_file_actions",
         fromlist=["text_file_actions"],
     )
-    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    SRC_ROOT / "commands" / "apply_from.py"
     apply_action_path = SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
     include_action_path = (
@@ -15976,7 +15883,7 @@ def test_batch_source_binary_actions_own_index_mutation():
         "git_stage_batch.commands.batch_source.binary_file_actions",
         fromlist=["binary_file_actions"],
     )
-    include_from_path = SRC_ROOT / "commands" / "include_from.py"
+    SRC_ROOT / "commands" / "include_from.py"
     include_action_path = (
         SRC_ROOT / "commands" / "batch_source" / "include_action.py"
     )
@@ -16016,7 +15923,7 @@ def test_batch_source_binary_actions_own_worktree_mutation():
         "git_stage_batch.commands.batch_source.binary_file_actions",
         fromlist=["binary_file_actions"],
     )
-    apply_from_path = SRC_ROOT / "commands" / "apply_from.py"
+    SRC_ROOT / "commands" / "apply_from.py"
     apply_action_path = SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
     discard_from_path = SRC_ROOT / "commands" / "discard_from.py"
     include_from_path = SRC_ROOT / "commands" / "include_from.py"
@@ -16357,308 +16264,6 @@ def test_realized_mapping_owns_working_range_builder():
     assert moved_names.isdisjoint(vars(presence_constraints))
 
 
-def test_hunk_tracking_does_not_reexport_live_change_helpers():
-    """Moved live-change helpers should not stay available from hunk tracking."""
-    hunk_tracking = __import__(
-        "git_stage_batch.data.hunk_tracking",
-        fromlist=["hunk_tracking"],
-    )
-    moved_names = {
-        "binary_file_change_is_stale",
-        "gitlink_change_is_stale",
-        "rename_change_is_stale",
-        "render_binary_file_change",
-        "render_gitlink_change",
-        "render_rename_change",
-        "render_text_deletion_change",
-        "stream_live_git_diff",
-        "text_deletion_change_is_batched",
-        "text_deletion_change_is_stale",
-    }
-
-    assert moved_names.isdisjoint(vars(hunk_tracking))
-
-
-def test_hunk_tracking_does_not_reexport_file_hunk_helpers():
-    """Moved file-scoped hunk helpers should not stay on hunk tracking."""
-    hunk_tracking = __import__(
-        "git_stage_batch.data.hunk_tracking",
-        fromlist=["hunk_tracking"],
-    )
-    moved_names = {
-        "build_file_hunk_from_buffer",
-        "cache_file_as_single_hunk",
-        "cache_unstaged_file_as_single_hunk",
-        "render_file_as_single_hunk",
-        "render_unstaged_file_as_single_hunk",
-    }
-
-    assert moved_names.isdisjoint(vars(hunk_tracking))
-
-
-def test_hunk_tracking_does_not_reexport_batch_hunk_helpers():
-    """Batch display helpers should not stay on hunk tracking."""
-    hunk_tracking = __import__(
-        "git_stage_batch.data.hunk_tracking",
-        fromlist=["hunk_tracking"],
-    )
-    moved_or_removed_names = {
-        "cache_batch_as_single_hunk",
-        "cache_batch_files_generator",
-        "cache_rendered_batch_file_display",
-        "get_batch_file_for_line_operation",
-        "render_batch_file_display",
-    }
-
-    assert moved_or_removed_names.isdisjoint(vars(hunk_tracking))
-
-
-def test_hunk_tracking_does_not_reexport_progress_helpers():
-    """Progress helpers should not stay on hunk tracking."""
-    hunk_tracking = __import__(
-        "git_stage_batch.data.hunk_tracking",
-        fromlist=["hunk_tracking"],
-    )
-    progress_names = {
-        "format_id_range",
-        "record_binary_hunk_skipped",
-        "record_gitlink_hunk_skipped",
-        "record_hunk_discarded",
-        "record_hunk_included",
-        "record_hunk_skipped",
-        "record_hunks_discarded",
-        "record_rename_hunk_skipped",
-        "record_text_deletion_hunk_skipped",
-    }
-
-    assert progress_names.isdisjoint(vars(hunk_tracking))
-
-
-def test_hunk_tracking_does_not_reexport_selected_state_helpers():
-    """Selected-state helpers should not stay on hunk tracking."""
-    hunk_tracking = __import__(
-        "git_stage_batch.data.hunk_tracking",
-        fromlist=["hunk_tracking"],
-    )
-    selected_state_names = {
-        "clear_selected_change_state_files",
-        "snapshots_are_stale",
-        "write_snapshots_for_selected_file_path",
-    }
-
-    assert selected_state_names.isdisjoint(vars(hunk_tracking))
-
-
-def test_hunk_tracking_does_not_reexport_batch_selection_helpers():
-    """Batch selection helpers should not stay on hunk tracking."""
-    hunk_tracking = __import__(
-        "git_stage_batch.data.hunk_tracking",
-        fromlist=["hunk_tracking"],
-    )
-    batch_selection_names = {
-        "compute_batch_binary_fingerprint",
-        "compute_batch_gitlink_fingerprint",
-        "require_current_selected_batch_binary_file_for_batch",
-        "require_current_selected_batch_gitlink_file_for_batch",
-        "selected_batch_binary_batch_name",
-        "selected_batch_binary_file_for_batch",
-        "selected_batch_binary_matches_batch",
-        "selected_batch_gitlink_file_for_batch",
-        "selected_batch_gitlink_matches_batch",
-    }
-
-    assert batch_selection_names.isdisjoint(vars(hunk_tracking))
-
-
-def test_hunk_tracking_does_not_reexport_selected_change_store_helpers():
-    """Selected-change store helpers should not stay on hunk tracking."""
-    hunk_tracking = __import__(
-        "git_stage_batch.data.hunk_tracking",
-        fromlist=["hunk_tracking"],
-    )
-    selected_store_names = {
-        "SelectedChangeClearReason",
-        "SelectedChangeKind",
-        "SelectedChangeStateSnapshot",
-        "cache_binary_file_change",
-        "cache_gitlink_change",
-        "cache_rename_change",
-        "cache_text_deletion_change",
-        "get_selected_change_file_path",
-        "load_line_changes_from_patch_path",
-        "load_selected_binary_file",
-        "load_selected_gitlink_change",
-        "load_selected_rename_change",
-        "load_selected_text_deletion_change",
-        "mark_selected_change_cleared_by_auto_advance_disabled",
-        "mark_selected_change_cleared_by_file_list",
-        "read_selected_change_kind",
-        "refuse_bare_action_after_auto_advance_disabled",
-        "refuse_bare_action_after_file_list",
-        "refuse_bare_action_after_stale_batch_selection",
-        "restore_selected_change_state",
-        "selected_change_was_cleared_by_auto_advance_disabled",
-        "selected_change_was_cleared_by_file_list",
-        "selected_change_was_cleared_by_stale_batch_selection",
-        "snapshot_selected_change_state",
-        "write_line_changes_state",
-        "write_selected_change_kind",
-        "write_selected_hunk_patch_lines",
-    }
-
-    assert selected_store_names.isdisjoint(vars(hunk_tracking))
-
-
-def test_hunk_tracking_does_not_reexport_line_state_helpers():
-    """Line-state helpers should not stay on hunk tracking."""
-    hunk_tracking = __import__(
-        "git_stage_batch.data.hunk_tracking",
-        fromlist=["hunk_tracking"],
-    )
-    line_state_names = {
-        "convert_line_changes_to_serializable_dict",
-        "load_line_changes_from_state",
-    }
-
-    assert line_state_names.isdisjoint(vars(hunk_tracking))
-
-
-def test_selected_change_loading_stays_out_of_hunk_tracking():
-    """Selected-change readers should live outside hunk navigation."""
-    hunk_tracking_path = SRC_ROOT / "data" / "hunk_tracking.py"
-    moved_names = {
-        "load_selected_change",
-        "require_selected_hunk",
-    }
-    expected_imports = {
-        SRC_ROOT
-        / "commands"
-        / "selection"
-        / "include_to_batch_action.py": {"load_selected_change"},
-        SRC_ROOT
-        / "commands"
-        / "selection"
-        / "include_line_batching.py": {"require_selected_hunk"},
-        SRC_ROOT
-        / "commands"
-        / "selection"
-        / "discard_to_batch_action.py": {"load_selected_change"},
-        SRC_ROOT
-        / "commands"
-        / "selection"
-        / "discard_line_replacement_action.py": {"require_selected_hunk"},
-        SRC_ROOT
-        / "commands"
-        / "selection"
-        / "selected_change_skipping.py": {"load_selected_change"},
-        SRC_ROOT
-        / "commands"
-        / "selection"
-        / "skip_line_selection.py": {"require_selected_hunk"},
-        SRC_ROOT
-        / "commands"
-        / "fixup"
-        / "search_targets.py": {"require_selected_hunk"},
-    }
-    violations = []
-
-    hunk_tracking = __import__(
-        "git_stage_batch.data.hunk_tracking",
-        fromlist=["hunk_tracking"],
-    )
-    selected_loading = __import__(
-        "git_stage_batch.data.selected_change.loading",
-        fromlist=["loading"],
-    )
-    hunk_tracking_imports = {
-        imported_module
-        for imported_module, _node in _import_from_nodes(hunk_tracking_path)
-    }
-
-    assert moved_names <= vars(selected_loading).keys()
-    assert moved_names.isdisjoint(vars(hunk_tracking))
-    assert "git_stage_batch.data.selected_change.loading" not in hunk_tracking_imports
-
-    for path in SRC_ROOT.rglob("*.py"):
-        if path == SRC_ROOT / "data" / "selected_change" / "loading.py":
-            continue
-
-        imports = _import_from_nodes(path)
-        imported_loading_names = set()
-
-        for imported_module, node in imports:
-            imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.data.selected_change.loading":
-                imported_loading_names |= imported_names & moved_names
-            if imported_module == "git_stage_batch.data.hunk_tracking":
-                moved_imports = imported_names & moved_names
-                if moved_imports:
-                    relative_path = path.relative_to(REPO_ROOT)
-                    names = ", ".join(sorted(moved_imports))
-                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
-
-        if path in expected_imports:
-            assert expected_imports[path] <= imported_loading_names
-
-    assert violations == []
-
-
-def test_selected_hunk_filtering_stays_out_of_hunk_tracking():
-    """Cached hunk filtering should live outside hunk navigation."""
-    hunk_tracking_path = SRC_ROOT / "data" / "hunk_tracking.py"
-    moved_names = {
-        "apply_line_level_batch_filter_to_cached_hunk",
-    }
-    expected_imports = {
-        SRC_ROOT / "commands" / "selection" / "next_change_display.py": moved_names,
-    }
-    violations = []
-
-    hunk_tracking = __import__(
-        "git_stage_batch.data.hunk_tracking",
-        fromlist=["hunk_tracking"],
-    )
-    selected_filtering = __import__(
-        "git_stage_batch.data.selected_change.hunk_filtering",
-        fromlist=["hunk_filtering"],
-    )
-    hunk_tracking_imports = {
-        imported_module
-        for imported_module, _node in _import_from_nodes(hunk_tracking_path)
-    }
-
-    assert moved_names <= vars(selected_filtering).keys()
-    assert moved_names.isdisjoint(vars(hunk_tracking))
-    assert "git_stage_batch.batch.attribution" not in hunk_tracking_imports
-    assert (
-        "git_stage_batch.data.consumed_replacement_masks"
-        not in hunk_tracking_imports
-    )
-
-    for path in SRC_ROOT.rglob("*.py"):
-        if path == SRC_ROOT / "data" / "selected_change" / "hunk_filtering.py":
-            continue
-
-        imports = _import_from_nodes(path)
-        imported_filtering_names = set()
-
-        for imported_module, node in imports:
-            imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.data.selected_change.hunk_filtering":
-                imported_filtering_names |= imported_names & moved_names
-            if imported_module == "git_stage_batch.data.hunk_tracking":
-                moved_imports = imported_names & moved_names
-                if moved_imports:
-                    relative_path = path.relative_to(REPO_ROOT)
-                    names = ", ".join(sorted(moved_imports))
-                    violations.append(f"{relative_path}:{node.lineno} imports {names}")
-
-        if path in expected_imports:
-            assert expected_imports[path] <= imported_filtering_names
-
-    assert violations == []
-
-
 def test_attribution_projection_stays_out_of_attribution_builder():
     """Displayed-diff projection should live outside attribution building."""
     attribution = __import__(
@@ -16843,66 +16448,6 @@ def test_attribution_fingerprints_stay_out_of_attribution_builder():
     assert violations == []
 
 
-def test_consumed_replacement_masks_stay_out_of_hunk_tracking():
-    """Consumed replacement metadata should stay outside hunk navigation."""
-    attribution_path = SRC_ROOT / "batch" / "attribution.py"
-    filtering_path = SRC_ROOT / "data" / "selected_change" / "hunk_filtering.py"
-    hunk_tracking_path = SRC_ROOT / "data" / "hunk_tracking.py"
-    filtering_imports = _import_from_nodes(filtering_path)
-    filtering_imported_modules = {
-        imported_module for imported_module, _node in filtering_imports
-    }
-    attribution_imported_modules = {
-        imported_module
-        for imported_module, _node in _import_from_nodes(attribution_path)
-    }
-    hunk_tracking_imported_modules = {
-        imported_module
-        for imported_module, _node in _import_from_nodes(hunk_tracking_path)
-    }
-    imports_mask_module_alias = any(
-        imported_module == "git_stage_batch.data"
-        and any(alias.name == "consumed_replacement_masks" for alias in node.names)
-        for imported_module, node in filtering_imports
-    )
-    hunk_tracking = __import__(
-        "git_stage_batch.data.hunk_tracking",
-        fromlist=["hunk_tracking"],
-    )
-    attribution = __import__(
-        "git_stage_batch.batch.attribution",
-        fromlist=["attribution"],
-    )
-    consumed_masks = __import__(
-        "git_stage_batch.data.consumed_replacement_masks",
-        fromlist=["consumed_replacement_masks"],
-    )
-
-    assert imports_mask_module_alias
-    assert (
-        "git_stage_batch.data.consumed_replacement_masks"
-        not in filtering_imported_modules
-    )
-    assert "git_stage_batch.data.consumed_selections" in filtering_imported_modules
-    assert (
-        "git_stage_batch.data.consumed_selections"
-        not in attribution_imported_modules
-    )
-    assert (
-        "git_stage_batch.data.consumed_selections"
-        not in hunk_tracking_imported_modules
-    )
-    assert (
-        "git_stage_batch.data.consumed_replacement_masks"
-        not in hunk_tracking_imported_modules
-    )
-    assert "filter_consumed_replacement_masks" in vars(consumed_masks)
-    assert "filter_consumed_replacement_masks" not in vars(hunk_tracking)
-    assert "_filter_consumed_replacement_masks" not in vars(hunk_tracking)
-    assert "read_consumed_file_metadata" not in vars(attribution)
-    assert "read_consumed_file_metadata" not in vars(hunk_tracking)
-
-
 def test_consumed_selection_recording_stays_out_of_data_store():
     """Consumed-selection recording should live outside metadata storage."""
     consumed_selections = __import__(
@@ -17001,59 +16546,6 @@ def test_consumed_selection_recording_stays_out_of_data_store():
     assert recording_imported_names == set().union(*recording_imports.values())
     assert include_recording_imports == recording_names
     assert stale_data_imports == []
-
-
-def test_selected_hunk_recalculation_stays_out_of_hunk_tracking():
-    """Selected-hunk recalculation should stay outside hunk navigation."""
-    hunk_tracking_path = SRC_ROOT / "data" / "hunk_tracking.py"
-    refresh_path = SRC_ROOT / "commands" / "selection" / "selected_hunk_refresh.py"
-    moved_names = {
-        "RecalculateSelectedHunkResult",
-        "recalculate_selected_hunk_for_file",
-    }
-    refresh_imported_names = set()
-    stale_import_violations = []
-    hunk_tracking_imports = {
-        imported_module
-        for imported_module, _node in _import_from_nodes(hunk_tracking_path)
-    }
-    hunk_tracking = __import__(
-        "git_stage_batch.data.hunk_tracking",
-        fromlist=["hunk_tracking"],
-    )
-    recalculation = __import__(
-        "git_stage_batch.data.selected_change.hunk_recalculation",
-        fromlist=["hunk_recalculation"],
-    )
-
-    for path in SRC_ROOT.rglob("*.py"):
-        for imported_module, node in _import_from_nodes(path):
-            imported_names = {alias.name for alias in node.names}
-            if (
-                path == refresh_path
-                and imported_module == "git_stage_batch.data.selected_change.hunk_recalculation"
-            ):
-                refresh_imported_names |= imported_names & moved_names
-
-            if imported_module != "git_stage_batch.data.hunk_tracking":
-                continue
-
-            moved_imports = imported_names & moved_names
-            if moved_imports:
-                relative_path = path.relative_to(REPO_ROOT)
-                names = ", ".join(sorted(moved_imports))
-                stale_import_violations.append(
-                    f"{relative_path}:{node.lineno} imports {names}"
-                )
-
-    assert moved_names <= vars(recalculation).keys()
-    assert moved_names.isdisjoint(vars(hunk_tracking))
-    assert (
-        "git_stage_batch.data.selected_change.hunk_recalculation"
-        not in hunk_tracking_imports
-    )
-    assert refresh_imported_names == moved_names
-    assert stale_import_violations == []
 
 
 def test_selected_hunk_cache_writes_stay_in_selected_change_store():
@@ -17447,7 +16939,7 @@ def test_include_line_action_stays_in_command_helper():
         "exit_with_error",
         "get_index_snapshot_file_path",
         "get_working_tree_snapshot_file_path",
-        "load_git_object_as_buffer",
+        "read_git_object_buffer_or_none",
         "parse_line_selection",
         "read_line_ids_file",
         "require_line_selection_in_view",
@@ -17538,7 +17030,7 @@ def test_include_line_replacement_stays_in_command_helper():
         "get_index_snapshot_file_path",
         "get_selected_change_file_path",
         "get_working_tree_snapshot_file_path",
-        "load_git_object_as_buffer_or_empty",
+        "read_git_object_buffer_or_empty",
         "load_line_changes_from_state",
         "load_working_tree_file_as_buffer",
         "parse_line_selection",
@@ -17557,7 +17049,7 @@ def test_include_line_replacement_stays_in_command_helper():
         "get_index_snapshot_file_path",
         "get_selected_change_file_path",
         "get_working_tree_snapshot_file_path",
-        "load_git_object_as_buffer",
+        "read_git_object_buffer_or_none",
         "load_line_changes_from_state",
         "load_working_tree_file_as_buffer",
         "require_selected_hunk",
@@ -18254,7 +17746,6 @@ def test_discard_line_replacement_stays_in_command_helper():
         "_select_rewritten_replacement_lines",
     }
     helper_imports = {
-        "BatchOwnership",
         "acquire_batch_ownership_update_for_selection",
         "add_file_to_batch",
         "advance_source_lines_preserving_existing_presence",
@@ -18268,8 +17759,8 @@ def test_discard_line_replacement_stays_in_command_helper():
         "create_batch_source_commit",
         "detect_file_mode",
         "derive_replacement_line_runs_from_lines",
-        "load_git_object_as_buffer",
-        "load_git_object_as_buffer_or_empty",
+        "read_git_object_buffer_or_none",
+        "read_git_object_buffer_or_empty",
         "load_line_changes_from_state",
         "load_session_batch_sources",
         "load_working_tree_file_as_buffer",
@@ -18287,7 +17778,7 @@ def test_discard_line_replacement_stays_in_command_helper():
     moved_batch_update_names = {
         "advance_source_lines_preserving_existing_presence",
         "create_batch_source_commit",
-        "load_git_object_as_buffer",
+        "read_git_object_buffer_or_none",
         "load_session_batch_sources",
         "merge_batch_ownership",
         "refresh_selected_lines_against_source_lines",
@@ -18569,7 +18060,7 @@ def test_batch_line_updates_stays_in_command_helper():
 
 def test_discard_uses_file_io_path_empty_helper():
     """Discard should use file I/O utilities for generic path byte checks."""
-    discard_path = SRC_ROOT / "commands" / "discard.py"
+    SRC_ROOT / "commands" / "discard.py"
     helper_path = (
         SRC_ROOT / "commands" / "selection" / "selected_change_discarding.py"
     )

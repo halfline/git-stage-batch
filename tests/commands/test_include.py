@@ -98,7 +98,9 @@ class TestCommandInclude:
         readme.write_text("# Test\nNew content\n")
 
         command_start()
-        command_include()
+        result = command_include()
+
+        assert result is None
 
         # Check that changes are staged
         result = subprocess.run(

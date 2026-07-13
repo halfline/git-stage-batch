@@ -56,15 +56,15 @@ def command_include(
     ensure_state_directory_exists()
 
     if refuse_live_action_for_batch_selection(FileReviewAction.INCLUDE):
-        return 0
+        return
     if refuse_ambiguous_bare_action_after_partial_file_review(FileReviewAction.INCLUDE):
-        return 0
+        return
     refuse_bare_action_after_file_list("include")
     refuse_bare_action_after_auto_advance_disabled("include")
 
     if read_selected_change_kind() == SelectedChangeKind.FILE:
         command_include_file("", auto_advance=auto_advance)
-        return 0
+        return
 
     if read_selected_change_kind() == SelectedChangeKind.HUNK:
         skipped_ids = read_line_ids_file(get_processed_skip_ids_file_path())
@@ -79,9 +79,9 @@ def command_include(
                     quiet=quiet,
                     operation="include",
                 )
-                return 0
+                return
 
-    return _selected_change_staging.include_selected_change(
+    _selected_change_staging.include_selected_change(
         quiet=quiet,
         auto_advance=auto_advance,
     )

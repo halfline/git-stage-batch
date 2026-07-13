@@ -5,6 +5,7 @@ import subprocess
 import pytest
 
 from git_stage_batch.utils.session_lock import (
+    SessionLockChangedDuringPrompt,
     acquire_session_lock,
     temporarily_release_session_lock,
 )
@@ -23,3 +24,12 @@ def test_prompt_handoff_without_intervening_lock_holder(lock_git_repo):
     with acquire_session_lock():
         with temporarily_release_session_lock():
             pass
+
+
+def test_prompt_handoff_detects_intervening_lock_holder(lock_git_repo):
+    """A prompt response is stale after another lock holder runs."""
+    with acquire_session_lock():
+        with pytest.raises(SessionLockChangedDuringPrompt):
+            with temporarily_release_session_lock():
+                with acquire_session_lock():
+                    pass

@@ -140,7 +140,7 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
         if use_color and Colors.enabled():
             # Remove trailing space, add color, add space after reset
             prompt_text = f"{Colors.BOLD}{prompt_text.rstrip()}{Colors.RESET} "
-        choice = input(wrap_prompt_for_readline(prompt_text)).strip()
+        choice = unlocked_input(wrap_prompt_for_readline(prompt_text)).strip()
     except (KeyboardInterrupt, EOFError):
         return "q"  # Ctrl-C or Ctrl-D exits
 
@@ -182,7 +182,7 @@ def confirm_destructive_operation(_operation: str, message: str) -> bool:
             yes=yes_label,
             no=no_label,
         )
-        response = input(wrap_prompt_for_readline(prompt_text)).strip().lower()
+        response = unlocked_input(wrap_prompt_for_readline(prompt_text)).strip().lower()
     except (KeyboardInterrupt, EOFError):
         return False
 
@@ -197,7 +197,7 @@ def prompt_line_ids() -> str:
         User input string (e.g., "1,3,5-7")
     """
     try:
-        return input(_("Enter line IDs (e.g., 1,3,5-7): ")).strip()
+        return unlocked_input(_("Enter line IDs (e.g., 1,3,5-7): ")).strip()
     except (KeyboardInterrupt, EOFError):
         return ""
 
@@ -229,7 +229,7 @@ def prompt_quit_session() -> str:
             y=y_label,
             n=n_label,
         )
-        response = input(wrap_prompt_for_readline(prompt_text)).strip().lower()
+        response = unlocked_input(wrap_prompt_for_readline(prompt_text)).strip().lower()
     except (KeyboardInterrupt, EOFError):
         return "cancel"
 
@@ -265,7 +265,7 @@ def prompt_shell_command() -> str:
                 pass
 
     try:
-        command = input("❯ ").strip()
+        command = unlocked_input("❯ ").strip()
         if command:
             # Save to module-level history
             _shell_command_history.append(command)
@@ -313,7 +313,7 @@ def prompt_fixup_action(use_color: bool = True) -> str:
             n=n_label,
             r=r_label,
         )
-        choice = input(wrap_prompt_for_readline(prompt_text)).strip().lower()
+        choice = unlocked_input(wrap_prompt_for_readline(prompt_text)).strip().lower()
     except (KeyboardInterrupt, EOFError):
         return "q"  # Ctrl-C or Ctrl-D cancels
 

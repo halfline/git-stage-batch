@@ -156,4 +156,5 @@ def git_submodule_update_checkout(
         cwd=cwd,
         check=check,
         requires_index_lock=True,
+        literal_pathspecs=True,
     )

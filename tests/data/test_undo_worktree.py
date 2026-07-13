@@ -199,6 +199,8 @@ def test_gitlink_capture_uses_repository_relative_paths_from_subdirectory(
     assert entry["kind"] == "gitlink"
     assert entry["index_oid"] == nested_oid
     assert entry["head_oid"] == nested_oid
+    assert entry["archive"] is True
+    assert entry["blob"]
 
 
 def test_dirty_gitlink_capture_archives_exact_worktree_bytes(tmp_path, monkeypatch):

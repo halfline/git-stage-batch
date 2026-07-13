@@ -44,6 +44,7 @@ from ..utils.git_index import (
     temp_git_index,
 )
 from .index_entries import read_index_entries
+from .session import auto_added_files, intent_to_add_files
 from ..utils.git_repository import get_git_repository_root_path
 from ..utils.git_object_io import create_git_blob, create_git_blobs_from_paths
 from ..utils.paths import (
@@ -88,8 +89,22 @@ def _snapshot_current_state(
             for path, entry in sorted(index_entries.items())
         },
         "refs": refs,
+        "intent_to_add_paths": intent_to_add_files(index_paths),
         "worktree_paths": _undo_worktree.snapshot_worktree_paths(worktree_paths),
     }
+
+
+def _restore_intent_to_add_state(state: dict[str, Any]) -> None:
+    """Restore scoped ITA flags, with a narrow legacy-checkpoint fallback."""
+    saved_paths = state.get("intent_to_add_paths")
+    if isinstance(saved_paths, list):
+        paths = [path for path in saved_paths if isinstance(path, str)]
+    else:
+        scoped_paths = set(
+            state.get("tracked_index_paths", state.get("tracked_worktree_paths", []))
+        )
+        paths = auto_added_files(list(scoped_paths))
+    _undo_restore.restore_intent_to_add_entries(paths)
 
 
 def _add_blob_to_index(env: dict[str, str], path: str, data: bytes, mode: str = "100644") -> None:
@@ -190,6 +205,7 @@ def _create_undo_checkpoint(
         "operation": operation,
         "head": current_head_commit(),
         "index_entries": before["index_entries"],
+        "intent_to_add_paths": before["intent_to_add_paths"],
         "refs": before["refs"],
         "worktree_paths": [
             {key: value for key, value in entry.items() if key != "blob"}
@@ -210,7 +226,7 @@ def _create_undo_checkpoint(
             [
                 GitIndexEntryUpdate(
                     file_path=f"worktree/{entry['path']}",
-                    mode=entry["mode"],
+                    mode=entry.get("storage_mode", entry["mode"]),
                     blob_sha=entry["blob"],
                 )
                 for entry in before["worktree_paths"]
@@ -311,7 +327,7 @@ def _rollback_failed_checkpoint(
     _undo_restore.restore_refs(manifest.get("refs", {}))
     _restore_index_state(manifest)
     _undo_restore.restore_worktree(checkpoint, manifest)
-    _undo_restore.restore_intent_to_add_entries()
+    _restore_intent_to_add_state(manifest)
 
     parent = checkpoint_parent(checkpoint)
     updates: list[tuple[str, str]] = []
@@ -463,6 +479,30 @@ def _detect_conflicts_against_state(expected_state: dict[str, Any]) -> list[str]
         if actual != expected:
             conflicts.append(path)
 
+    for prefix, source_dir, label in (
+        ("session", get_session_directory_path(), _("session state")),
+        ("batches", get_batches_directory_path(), _("batch metadata")),
+    ):
+        tracked_paths = expected_state.get(f"tracked_{prefix}_paths")
+        expected_files = expected_state.get(f"{prefix}_files")
+        if isinstance(tracked_paths, list) and isinstance(expected_files, dict):
+            conflict_paths = [
+                path
+                for path in tracked_paths
+                if not (prefix == "session" and path.startswith("selected/"))
+            ]
+            current_files = _filesystem_directory_state(
+                source_dir,
+                relative_paths=conflict_paths,
+            )
+            expected_conflict_files = {
+                path: expected_files[path]
+                for path in conflict_paths
+                if path in expected_files
+            }
+            if current_files != expected_conflict_files:
+                conflicts.append(label)
+
     return conflicts
 
 
@@ -607,7 +647,10 @@ def _write_snapshot_commit(
         repo_root = get_git_repository_root_path()
         index_updates: list[GitIndexEntryUpdate] = []
         for entry in worktree_entries:
-            if entry.get("kind") in {"gitlink", "embedded-repo"}:
+            if (
+                entry.get("kind") in {"gitlink", "embedded-repo"}
+                and not entry.get("archive")
+            ):
                 continue
             if not entry.get("exists", False):
                 continue
@@ -616,7 +659,7 @@ def _write_snapshot_commit(
                 index_updates.append(
                     GitIndexEntryUpdate(
                         file_path=f"worktree/{entry['path']}",
-                        mode=entry.get("mode", "100644"),
+                        mode=entry.get("storage_mode", entry.get("mode", "100644")),
                         blob_sha=blob_sha,
                     )
                 )
@@ -670,6 +713,7 @@ def _push_redo_node(
             current_head_commit(),
         ),
         "index_entries": target.get("index_entries", {}),
+        "intent_to_add_paths": target.get("intent_to_add_paths", []),
         "tracked_index_paths": target.get("tracked_index_paths", []),
         "refs": target.get("refs", {}),
         "tracked_refs": target.get("tracked_refs", []),
@@ -751,7 +795,7 @@ def undo_last_checkpoint(*, force: bool = False) -> str:
         _restore_index_state(manifest)
 
         _undo_restore.restore_worktree(checkpoint, manifest)
-        _undo_restore.restore_intent_to_add_entries()
+        _restore_intent_to_add_state(manifest)
 
         after_undo = _snapshot_current_state(
             redo_paths,
@@ -828,7 +872,7 @@ def redo_last_checkpoint(*, force: bool = False) -> str:
     _restore_index_state(manifest)
 
     _undo_restore.restore_worktree(redo_node, manifest)
-    _undo_restore.restore_intent_to_add_entries()
+    _restore_intent_to_add_state(manifest)
 
     undo_checkpoint = manifest.get("undo_checkpoint")
     if undo_checkpoint:

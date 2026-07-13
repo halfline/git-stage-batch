@@ -36,6 +36,7 @@ from ..utils.paths import (
     get_abort_snapshots_directory_path,
     get_abort_stash_file_path,
     get_abort_recovery_anchors_file_path,
+    get_auto_added_files_file_path,
     get_iteration_count_file_path,
     get_state_directory_path,
 )
@@ -121,7 +122,7 @@ def _diff_index_name_status(*, intent_to_add_visible: bool) -> dict[str, str]:
     }
 
 
-def _intent_to_add_files(file_paths: list[str] | None = None) -> list[str]:
+def intent_to_add_files(file_paths: list[str] | None = None) -> list[str]:
     """Return paths whose cached status changes with Git's intent visibility."""
     visible_statuses = _diff_index_name_status(intent_to_add_visible=True)
     invisible_statuses = _diff_index_name_status(intent_to_add_visible=False)
@@ -137,9 +138,18 @@ def _intent_to_add_files(file_paths: list[str] | None = None) -> list[str]:
     return [file_path for file_path in intent_paths if file_path in selected]
 
 
+def auto_added_files(file_paths: list[str] | None = None) -> list[str]:
+    """Return session-tracked auto-added paths, optionally within a scope."""
+    paths = read_file_paths_file(get_auto_added_files_file_path())
+    if file_paths is None:
+        return paths
+    selected = set(file_paths)
+    return [file_path for file_path in paths if file_path in selected]
+
+
 def path_is_intent_to_add(file_path: str) -> bool:
     """Return whether one path is represented by an intent-to-add entry."""
-    return bool(_intent_to_add_files([file_path]))
+    return bool(intent_to_add_files([file_path]))
 
 
 def _snapshot_intent_to_add_files() -> tuple[list[str], list[str]]:
@@ -154,7 +164,7 @@ def _snapshot_intent_to_add_files() -> tuple[list[str], list[str]]:
         - all_intent_to_add_files: All files with intent-to-add
         - new_intent_to_add_files: Only files absent from HEAD
     """
-    all_intent_to_add_files = _intent_to_add_files()
+    all_intent_to_add_files = intent_to_add_files()
     new_intent_to_add_files = []
 
     for file_path in all_intent_to_add_files:
@@ -404,7 +414,7 @@ def snapshot_files_if_untracked(file_paths: list[str]) -> None:
     if not unique_file_paths:
         return
 
-    intent_to_add_paths = set(_intent_to_add_files(unique_file_paths))
+    intent_to_add_paths = set(intent_to_add_files(unique_file_paths))
     stage_result = run_git_command(
         ["ls-files", "--stage", "-z", "--", *unique_file_paths],
         check=False,

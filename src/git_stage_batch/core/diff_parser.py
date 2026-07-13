@@ -234,7 +234,7 @@ class _UnifiedDiffParserBuildContext:
                 if _diff_headers.line_is_diff_git_header(line):
                     file_paths = _diff_headers.diff_git_paths(line)
                     if file_paths is None:
-                        continue
+                        raise CommandError(_("Malformed diff --git header"))
                     old_path, new_path = file_paths
 
                     # Collect metadata lines until we hit the --- line (start of unified diff)

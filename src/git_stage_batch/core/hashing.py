@@ -99,8 +99,12 @@ def compute_binary_file_hash(binary_change: BinaryFileChange) -> str:
     # Use new_path for added files, old_path for deleted files, either for modified
     path = binary_change.path()
 
-    # Hash: "BINARY:" + path + ":" + change_type
-    key = f"BINARY:{path}:{binary_change.change_type}".encode(
+    # Live changes include their baseline/worktree fingerprint so changed bytes
+    # become a new actionable identity during the same review pass.
+    key = (
+        f"BINARY:{path}:{binary_change.change_type}:"
+        f"{binary_change.content_fingerprint or ''}"
+    ).encode(
         "utf-8",
         errors="surrogateescape",
     )

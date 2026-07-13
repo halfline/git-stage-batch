@@ -14,6 +14,7 @@ from ..core.models import (
     TextFileDeletionChange,
 )
 from .file_tracking import auto_add_untracked_files
+from .binary_identity import attach_live_binary_fingerprint
 from .live_diff import stream_live_git_diff
 
 
@@ -50,7 +51,10 @@ def render_binary_file_change(
         ) as patches:
             for item in patches:
                 if isinstance(item, BinaryFileChange):
-                    return item
+                    return attach_live_binary_fingerprint(
+                        item,
+                        comparison_base=base,
+                    )
     except subprocess.CalledProcessError:
         return None
     return None

@@ -40,6 +40,7 @@ def binary_file_change_is_stale(
         current_change.old_path != binary_change.old_path
         or current_change.new_path != binary_change.new_path
         or current_change.change_type != binary_change.change_type
+        or current_change.content_fingerprint != binary_change.content_fingerprint
     )
 
 

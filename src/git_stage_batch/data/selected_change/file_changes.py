@@ -70,6 +70,7 @@ def load_selected_binary_file() -> BinaryFileChange | None:
             old_path=binary_data["old_path"],
             new_path=binary_data["new_path"],
             change_type=binary_data["change_type"],
+            content_fingerprint=binary_data.get("content_fingerprint"),
         )
     except KeyError:
         return None
@@ -216,6 +217,7 @@ def cache_binary_file_change(
         "old_path": binary_change.old_path,
         "new_path": binary_change.new_path,
         "change_type": binary_change.change_type,
+        "content_fingerprint": binary_change.content_fingerprint,
         "batch_name": batch_name if kind == SelectedChangeKind.BATCH_BINARY else None,
         "batch_binary_fingerprint": (
             batch_binary_fingerprint

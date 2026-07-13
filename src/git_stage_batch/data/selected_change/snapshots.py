@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import ExitStack
+import json
 
 from ...core.buffer import (
     LineBuffer,
@@ -11,41 +12,82 @@ from ...core.buffer import (
     buffer_preview,
     write_buffer_to_path,
 )
-from ...utils.repository_buffers import read_git_object_buffer_or_none
-from ...utils.git_repository import get_git_repository_root_path
+from ...utils.repository_buffers import (
+    read_git_object_buffer_or_none,
+    read_working_tree_object,
+)
+from ...exceptions import RepositoryPathMissing
+from ...data.index_entries import IndexEntry, read_index_entry
+from ...data.file_modes import detect_file_mode_in_commit
+from ...utils.file_io import write_text_file_contents
 from ...utils.journal import JournalLevel, journal_enabled, log_journal
-from ...utils.paths import get_index_snapshot_file_path, get_working_tree_snapshot_file_path
+from ...utils.paths import (
+    get_index_snapshot_file_path,
+    get_snapshot_metadata_file_path,
+    get_working_tree_snapshot_file_path,
+)
+
+
+_SNAPSHOT_SCHEMA_VERSION = 1
 
 
 def write_snapshots_for_selected_file_path(file_path: str) -> None:
     """Write snapshots of the file from both the index and working tree."""
     with ExitStack() as stack:
+        index_entry = read_index_entry(file_path)
         index_version = read_git_object_buffer_or_none(f":{file_path}")
         if index_version is None:
             index_version = LineBuffer.from_bytes(b"")
         stack.enter_context(index_version)
 
-        repo_root = get_git_repository_root_path()
-        file_full_path = repo_root / file_path
-        if file_full_path.exists():
-            working_tree_version = LineBuffer.from_path(file_full_path)
-        else:
+        try:
+            worktree_object = read_working_tree_object(file_path)
+            working_tree_version = worktree_object.buffer
+            worktree_metadata = {
+                "exists": True,
+                "kind": worktree_object.kind,
+                "mode": worktree_object.git_mode,
+            }
+        except RepositoryPathMissing:
             working_tree_version = LineBuffer.from_bytes(b"")
+            worktree_metadata = {"exists": False, "kind": None, "mode": None}
         stack.enter_context(working_tree_version)
 
         # When index is empty but working tree has content, check if file exists in HEAD.
         # For new files (not in HEAD), use empty index snapshot.
         # For existing files with intent-to-add applied, use HEAD content.
-        if buffer_byte_count(index_version) == 0 and buffer_byte_count(working_tree_version) > 0:
+        if (
+            buffer_byte_count(index_version) == 0
+            and buffer_byte_count(working_tree_version) > 0
+        ):
             head_version = read_git_object_buffer_or_none(f"HEAD:{file_path}")
             if head_version is not None:
                 if buffer_byte_count(head_version) > 0:
                     index_version = stack.enter_context(head_version)
+                    # Intent-to-add represents the pre-session HEAD state here.
+                    head_mode = detect_file_mode_in_commit("HEAD", file_path)
+                    if head_mode is not None:
+                        index_entry = IndexEntry(head_mode, "") if index_entry else None
                 else:
                     head_version.close()
 
         write_buffer_to_path(get_index_snapshot_file_path(), index_version)
-        write_buffer_to_path(get_working_tree_snapshot_file_path(), working_tree_version)
+        write_buffer_to_path(
+            get_working_tree_snapshot_file_path(), working_tree_version
+        )
+        manifest = {
+            "schema_version": _SNAPSHOT_SCHEMA_VERSION,
+            "path": file_path,
+            "index": {
+                "exists": index_entry is not None,
+                "mode": index_entry.mode if index_entry is not None else None,
+            },
+            "worktree": worktree_metadata,
+        }
+        write_text_file_contents(
+            get_snapshot_metadata_file_path(),
+            json.dumps(manifest, sort_keys=True) + "\n",
+        )
 
         if journal_enabled():
             fields = {
@@ -54,11 +96,13 @@ def write_snapshots_for_selected_file_path(file_path: str) -> None:
                 "working_tree_len": buffer_byte_count(working_tree_version),
             }
             if journal_enabled(JournalLevel.CONTENT_DEBUG):
-                fields.update({
-                    "index_lines": _buffer_line_count(index_version),
-                    "index_preview": buffer_preview(index_version),
-                    "working_tree_lines": _buffer_line_count(working_tree_version),
-                })
+                fields.update(
+                    {
+                        "index_lines": _buffer_line_count(index_version),
+                        "index_preview": buffer_preview(index_version),
+                        "working_tree_lines": _buffer_line_count(working_tree_version),
+                    }
+                )
             log_journal("write_snapshots_for_selected_file", **fields)
 
 
@@ -101,9 +145,14 @@ def snapshots_are_stale(file_path: str) -> bool:
     """
     snapshot_base_path = get_index_snapshot_file_path()
     snapshot_new_path = get_working_tree_snapshot_file_path()
+    metadata_path = get_snapshot_metadata_file_path()
 
     # Missing snapshots means state is incomplete/stale
-    if not snapshot_base_path.exists() or not snapshot_new_path.exists():
+    if (
+        not snapshot_base_path.exists()
+        or not snapshot_new_path.exists()
+        or not metadata_path.exists()
+    ):
         return True
 
     try:
@@ -114,23 +163,42 @@ def snapshots_are_stale(file_path: str) -> bool:
             cached_worktree_content = stack.enter_context(
                 LineBuffer.from_path(snapshot_new_path)
             )
+            manifest = json.loads(metadata_path.read_text(encoding="utf-8"))
+            if (
+                manifest.get("schema_version") != _SNAPSHOT_SCHEMA_VERSION
+                or manifest.get("path") != file_path
+            ):
+                return True
 
+            index_entry = read_index_entry(file_path)
+            index_metadata = {
+                "exists": index_entry is not None,
+                "mode": index_entry.mode if index_entry is not None else None,
+            }
+            if manifest.get("index") != index_metadata:
+                return True
             selected_index_content = read_git_object_buffer_or_none(f":{file_path}")
             if selected_index_content is None:
                 selected_index_content = LineBuffer.from_bytes(b"")
             stack.enter_context(selected_index_content)
 
-            repo_root = get_git_repository_root_path()
-            file_full_path = repo_root / file_path
-            if file_full_path.exists():
-                selected_worktree_content = LineBuffer.from_path(file_full_path)
-            else:
+            try:
+                worktree_object = read_working_tree_object(file_path)
+                selected_worktree_content = worktree_object.buffer
+                worktree_metadata = {
+                    "exists": True,
+                    "kind": worktree_object.kind,
+                    "mode": worktree_object.git_mode,
+                }
+            except RepositoryPathMissing:
                 selected_worktree_content = LineBuffer.from_bytes(b"")
+                worktree_metadata = {"exists": False, "kind": None, "mode": None}
             stack.enter_context(selected_worktree_content)
+            if manifest.get("worktree") != worktree_metadata:
+                return True
 
-            return (
-                not buffer_matches(cached_index_content, selected_index_content)
-                or not buffer_matches(cached_worktree_content, selected_worktree_content)
-            )
+            return not buffer_matches(
+                cached_index_content, selected_index_content
+            ) or not buffer_matches(cached_worktree_content, selected_worktree_content)
     except Exception:
         return True  # Error reading means state is stale

@@ -30,11 +30,13 @@ from ...utils.paths import (
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
     get_selected_rename_file_json_path,
+    get_snapshot_metadata_file_path,
     get_selected_text_deletion_file_json_path,
     get_working_tree_snapshot_file_path,
 )
 from .store import (
     SelectedChangeKind,
+    invalidate_selected_change_cache,
     read_selected_change_kind,
     write_selected_change_kind,
 )
@@ -346,9 +348,11 @@ def cache_text_deletion_change(deletion_change: TextFileDeletionChange) -> None:
 
 def _clear_selected_line_payload_files() -> None:
     """Clear selected line/hunk state before storing an atomic file selection."""
+    invalidate_selected_change_cache()
     get_selected_hunk_patch_file_path().unlink(missing_ok=True)
     get_line_changes_json_file_path().unlink(missing_ok=True)
     get_index_snapshot_file_path().unlink(missing_ok=True)
     get_working_tree_snapshot_file_path().unlink(missing_ok=True)
+    get_snapshot_metadata_file_path().unlink(missing_ok=True)
     get_processed_include_ids_file_path().unlink(missing_ok=True)
     get_processed_skip_ids_file_path().unlink(missing_ok=True)

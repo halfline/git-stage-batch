@@ -15,12 +15,14 @@ from ...utils.paths import (
     get_index_snapshot_file_path,
     get_line_changes_json_file_path,
     get_selected_hunk_hash_file_path,
+    get_snapshot_metadata_file_path,
     get_working_tree_snapshot_file_path,
 )
 from ...batch.file_display import render_batch_file_display
 from ..line_state import convert_line_changes_to_serializable_dict
 from .store import (
     SelectedChangeKind,
+    invalidate_selected_change_cache,
     write_selected_change_kind,
     write_selected_hunk_patch_lines,
 )
@@ -96,9 +98,9 @@ def cache_rendered_batch_file_display(
 
     patch_hash = compute_stable_hunk_hash_from_lines(patch_lines)
 
+    invalidate_selected_change_cache()
     write_selected_hunk_patch_lines(patch_lines)
     write_text_file_contents(get_selected_hunk_hash_file_path(), patch_hash)
-    write_selected_change_kind(SelectedChangeKind.BATCH_FILE)
 
     write_text_file_contents(
         get_line_changes_json_file_path(),
@@ -111,3 +113,5 @@ def cache_rendered_batch_file_display(
 
     get_index_snapshot_file_path().unlink(missing_ok=True)
     get_working_tree_snapshot_file_path().unlink(missing_ok=True)
+    get_snapshot_metadata_file_path().unlink(missing_ok=True)
+    write_selected_change_kind(SelectedChangeKind.BATCH_FILE)

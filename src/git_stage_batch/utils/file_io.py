@@ -160,7 +160,8 @@ def _preserve_ownership(
     return True
 
 
-def _fsync_directory(path: Path) -> None:
+def fsync_directory(path: Path) -> None:
+    """Durably publish directory-entry changes where the platform permits."""
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
     try:
         directory_descriptor = os.open(path, flags)
@@ -205,7 +206,7 @@ def _write_file_contents_atomically(
             os.fchmod(file_handle.fileno(), replacement_mode)
             os.fsync(file_handle.fileno())
         os.replace(temporary_path, path)
-        _fsync_directory(path.parent)
+        fsync_directory(path.parent)
     finally:
         temporary_path.unlink(missing_ok=True)
 

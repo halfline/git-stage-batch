@@ -17,8 +17,8 @@ from ...utils.repository_buffers import (
     read_working_tree_object,
 )
 from ...exceptions import RepositoryPathMissing
-from ...data.index_entries import IndexEntry, read_index_entry
-from ...data.file_modes import detect_file_mode_in_commit
+from ...data.index_entries import read_index_entry
+from ...data.session import path_is_intent_to_add
 from ...utils.file_io import write_text_file_contents
 from ...utils.journal import JournalLevel, journal_enabled, log_journal
 from ...utils.paths import (
@@ -28,7 +28,7 @@ from ...utils.paths import (
 )
 
 
-_SNAPSHOT_SCHEMA_VERSION = 1
+_SNAPSHOT_SCHEMA_VERSION = 2
 
 
 def write_snapshots_for_selected_file_path(file_path: str) -> None:
@@ -52,6 +52,10 @@ def write_snapshots_for_selected_file_path(file_path: str) -> None:
             working_tree_version = LineBuffer.from_bytes(b"")
             worktree_metadata = {"exists": False, "kind": None, "mode": None}
         stack.enter_context(working_tree_version)
+        index_snapshot_source = "index"
+        index_is_intent_to_add = (
+            index_entry is not None and path_is_intent_to_add(file_path)
+        )
 
         # When index is empty but working tree has content, check if file exists in HEAD.
         # For new files (not in HEAD), use empty index snapshot.
@@ -59,15 +63,13 @@ def write_snapshots_for_selected_file_path(file_path: str) -> None:
         if (
             buffer_byte_count(index_version) == 0
             and buffer_byte_count(working_tree_version) > 0
+            and index_is_intent_to_add
         ):
             head_version = read_git_object_buffer_or_none(f"HEAD:{file_path}")
             if head_version is not None:
                 if buffer_byte_count(head_version) > 0:
                     index_version = stack.enter_context(head_version)
-                    # Intent-to-add represents the pre-session HEAD state here.
-                    head_mode = detect_file_mode_in_commit("HEAD", file_path)
-                    if head_mode is not None:
-                        index_entry = IndexEntry(head_mode, "") if index_entry else None
+                    index_snapshot_source = "head"
                 else:
                     head_version.close()
 
@@ -81,6 +83,11 @@ def write_snapshots_for_selected_file_path(file_path: str) -> None:
             "index": {
                 "exists": index_entry is not None,
                 "mode": index_entry.mode if index_entry is not None else None,
+                "object_id": (
+                    index_entry.object_id if index_entry is not None else None
+                ),
+                "intent_to_add": index_is_intent_to_add,
+                "snapshot_source": index_snapshot_source,
             },
             "worktree": worktree_metadata,
         }
@@ -174,6 +181,15 @@ def snapshots_are_stale(file_path: str) -> bool:
             index_metadata = {
                 "exists": index_entry is not None,
                 "mode": index_entry.mode if index_entry is not None else None,
+                "object_id": (
+                    index_entry.object_id if index_entry is not None else None
+                ),
+                "intent_to_add": (
+                    index_entry is not None and path_is_intent_to_add(file_path)
+                ),
+                "snapshot_source": manifest.get("index", {}).get(
+                    "snapshot_source"
+                ),
             }
             if manifest.get("index") != index_metadata:
                 return True
@@ -181,6 +197,18 @@ def snapshots_are_stale(file_path: str) -> bool:
             if selected_index_content is None:
                 selected_index_content = LineBuffer.from_bytes(b"")
             stack.enter_context(selected_index_content)
+            index_snapshot_source = manifest["index"]["snapshot_source"]
+            if index_snapshot_source == "head":
+                selected_snapshot_base = read_git_object_buffer_or_none(
+                    f"HEAD:{file_path}"
+                )
+                if selected_snapshot_base is None:
+                    return True
+                stack.enter_context(selected_snapshot_base)
+            elif index_snapshot_source == "index":
+                selected_snapshot_base = selected_index_content
+            else:
+                return True
 
             try:
                 worktree_object = read_working_tree_object(file_path)
@@ -198,7 +226,7 @@ def snapshots_are_stale(file_path: str) -> bool:
                 return True
 
             return not buffer_matches(
-                cached_index_content, selected_index_content
+                cached_index_content, selected_snapshot_base
             ) or not buffer_matches(cached_worktree_content, selected_worktree_content)
     except Exception:
         return True  # Error reading means state is stale

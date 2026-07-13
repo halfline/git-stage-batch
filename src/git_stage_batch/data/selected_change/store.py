@@ -18,7 +18,12 @@ from ...core.buffer import (
     LineBuffer,
     write_buffer_to_path,
 )
-from ...utils.file_io import read_text_file_contents, write_text_file_contents
+from ...utils.file_io import (
+    fsync_directory,
+    read_text_file_contents,
+    write_file_bytes,
+    write_text_file_contents,
+)
 from ...utils.paths import (
     get_index_snapshot_file_path,
     get_line_changes_json_file_path,
@@ -95,11 +100,12 @@ def cache_hunk_change(
     line_changes: LineLevelChange,
 ) -> None:
     """Cache a text hunk as the current selected change."""
+    invalidate_selected_change_cache()
     write_selected_hunk_patch_lines(patch_lines)
     write_text_file_contents(get_selected_hunk_hash_file_path(), hunk_hash)
-    write_selected_change_kind(SelectedChangeKind.HUNK)
     write_line_changes_state(line_changes)
     write_snapshots_for_selected_file_path(line_changes.path)
+    write_selected_change_kind(SelectedChangeKind.HUNK)
 
 
 def load_line_changes_from_patch_path(patch_path: Path) -> LineLevelChange:
@@ -150,14 +156,21 @@ def snapshot_selected_change_state() -> SelectedChangeStateSnapshot:
 
 
 def restore_selected_change_state(snapshot: SelectedChangeStateSnapshot) -> None:
-    """Restore a previously captured selected change cache."""
-    for name, path in _selected_change_state_paths().items():
+    """Restore a cache privately and publish its kind marker last."""
+    state_paths = _selected_change_state_paths()
+    invalidate_selected_change_cache()
+    for name, path in state_paths.items():
+        if name == "kind":
+            continue
         snapshot_path = snapshot.paths.get(name)
         if snapshot_path is None:
             path.unlink(missing_ok=True)
         else:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(snapshot_path, path)
+            write_file_bytes(path, snapshot_path.read_bytes())
+
+    kind_snapshot_path = snapshot.paths.get("kind")
+    if kind_snapshot_path is not None:
+        write_file_bytes(state_paths["kind"], kind_snapshot_path.read_bytes())
 
 
 def clear_selected_change_persistence_files() -> None:
@@ -181,6 +194,13 @@ def write_selected_change_kind(kind: SelectedChangeKind) -> None:
     if kind not in (SelectedChangeKind.MODE, SelectedChangeKind.BATCH_MODE):
         get_selected_mode_change_json_path().unlink(missing_ok=True)
     write_text_file_contents(get_selected_change_kind_file_path(), kind)
+
+
+def invalidate_selected_change_cache() -> None:
+    """Durably hide the old cache before replacing its component files."""
+    kind_path = get_selected_change_kind_file_path()
+    kind_path.unlink(missing_ok=True)
+    fsync_directory(kind_path.parent)
 
 
 def read_selected_change_kind() -> SelectedChangeKind | None:

@@ -136,6 +136,72 @@ def new_function():
             working_tree_snapshot_path
         )
         assert working_tree_snapshot_content == modified_content
+        assert snapshots_are_stale("tracked.py") is False
+
+    def test_staged_empty_tracked_file_does_not_use_head_as_snapshot(self, temp_git_repo):
+        """Only a real ITA entry may use HEAD as the logical diff base."""
+        test_file = temp_git_repo / "empty-staged.txt"
+        test_file.write_text("head content\n")
+        subprocess.run(["git", "add", "empty-staged.txt"], cwd=temp_git_repo, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add tracked file"],
+            cwd=temp_git_repo,
+            check=True,
+        )
+        test_file.write_bytes(b"")
+        subprocess.run(["git", "add", "empty-staged.txt"], cwd=temp_git_repo, check=True)
+        test_file.write_text("working content\n")
+
+        write_snapshots_for_selected_file_path("empty-staged.txt")
+
+        assert get_index_snapshot_file_path().read_bytes() == b""
+        assert snapshots_are_stale("empty-staged.txt") is False
+
+    def test_clearing_ita_flag_with_same_empty_blob_is_stale(self, temp_git_repo):
+        """Freshness includes the extended ITA identity, not only mode and OID."""
+        test_file = temp_git_repo / "tracked-ita.txt"
+        test_file.write_text("head content\n")
+        subprocess.run(["git", "add", test_file.name], cwd=temp_git_repo, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add ITA test file"],
+            cwd=temp_git_repo,
+            check=True,
+        )
+        test_file.write_text("working content\n")
+        subprocess.run(
+            ["git", "rm", "--cached", "-q", test_file.name],
+            cwd=temp_git_repo,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "add", "-N", test_file.name],
+            cwd=temp_git_repo,
+            check=True,
+        )
+        write_snapshots_for_selected_file_path(test_file.name)
+        assert snapshots_are_stale(test_file.name) is False
+
+        empty_blob = subprocess.run(
+            ["git", "hash-object", "-t", "blob", "/dev/null"],
+            cwd=temp_git_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        subprocess.run(
+            [
+                "git",
+                "update-index",
+                "--cacheinfo",
+                "100644",
+                empty_blob,
+                test_file.name,
+            ],
+            cwd=temp_git_repo,
+            check=True,
+        )
+
+        assert snapshots_are_stale(test_file.name) is True
 
     def test_intent_to_add_new_file_keeps_empty_index(self, temp_git_repo):
         """New files with intent-to-add should keep empty index snapshot."""

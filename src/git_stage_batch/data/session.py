@@ -244,6 +244,7 @@ def _initialize_abort_state() -> None:
             run_git_command(
                 ["reset", "-q", "HEAD", "--", *tracked_intent_to_add_files],
                 requires_index_lock=True,
+                literal_pathspecs=True,
             )
 
         # The stash covers tracked worktree and index changes. Untracked files

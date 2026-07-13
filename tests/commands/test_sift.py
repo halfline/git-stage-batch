@@ -1041,6 +1041,25 @@ class TestSiftCopyVsInPlace:
         # Batch should have changed (different content, different batch_source)
         assert metadata_after != metadata_before
 
+    def test_in_place_mode_preserves_old_derived_temp_name(self, temp_git_repo):
+        """Sift must not delete a user batch matching the former temp convention."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nbase\n")
+        subprocess.run(["git", "add", "README.md"], check=True, cwd=temp_git_repo)
+        subprocess.run(["git", "commit", "-m", "Base"], check=True, cwd=temp_git_repo)
+
+        readme.write_text("# Test\nchanged\n")
+        command_start()
+        fetch_next_change()
+        command_include_to_batch("feature")
+        command_new_batch("feature-sift-temp")
+        collision_metadata = read_batch_metadata("feature-sift-temp")
+
+        command_sift_batch("feature", "feature")
+
+        assert batch_exists("feature-sift-temp")
+        assert read_batch_metadata("feature-sift-temp") == collision_metadata
+
     def test_temp_name_race_never_deletes_an_unowned_batch(
         self,
         temp_git_repo,

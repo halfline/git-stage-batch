@@ -10,7 +10,7 @@ from .prompts import prompt_shell_command
 
 
 def handle_shell_command(action: str) -> None:
-    """Handle shell command execution."""
+    """Handle a trusted user shell command while no repository lock is held."""
     if len(action) > 1:
         command = action[1:].strip()
     else:

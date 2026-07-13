@@ -8,9 +8,10 @@ from ..exceptions import BypassRefresh, QuitInteractive
 from ..i18n import _
 from ..output.colors import Colors
 from ..utils.journal import flush_journal
+from ..utils.session_lock import acquire_session_lock
 from . import current_change
 from .action_dispatch import dispatch_action
-from .flow import FlowLocation, LocationRole, FlowState
+from .flow import FlowLocation, FlowState
 from .prompts import (
     prompt_action,
 )
@@ -27,7 +28,8 @@ def start_interactive_mode() -> None:
     If no changes exist, enters degraded mode where hunk-based actions
     are disabled but help, shell commands, and abort remain available.
     """
-    startup = prepare_interactive_session()
+    with acquire_session_lock():
+        startup = prepare_interactive_session()
     degraded_mode = startup.degraded_mode
 
     use_color = Colors.enabled()
@@ -43,7 +45,8 @@ def start_interactive_mode() -> None:
 
     # Main interactive loop
     while True:
-        loaded_change = current_change.load_current_change(flow_state)
+        with acquire_session_lock():
+            loaded_change = current_change.load_current_change(flow_state)
         has_hunk = loaded_change is not None
 
         if loaded_change is None:

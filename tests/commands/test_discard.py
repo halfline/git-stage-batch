@@ -26,6 +26,7 @@ import pytest
 
 import git_stage_batch.commands.selection.selected_change_discarding as selected_change_discarding
 import git_stage_batch.commands.selection.selected_change_batch_discarding as selected_change_batch_discarding
+import git_stage_batch.commands.selection.discard_line_action as discard_line_action
 import git_stage_batch.commands.selection.selected_file_discarding as selected_file_discarding
 from git_stage_batch.commands.discard import command_discard, command_discard_line, command_discard_line_as_to_batch
 from git_stage_batch.commands.include import command_include, command_include_line
@@ -136,6 +137,26 @@ class TestCommandDiscard:
             command_discard(quiet=True, auto_advance=False)
 
         assert readme.read_text() == "later unseen change\n"
+
+    def test_line_discard_rolls_back_when_completion_fails(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """A post-write failure should restore discarded working-tree lines."""
+        test_file = _prepare_single_line_change(temp_git_repo)
+        monkeypatch.setattr(
+            discard_line_action,
+            "refresh_selected_hunk_after_line_action",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                RuntimeError("refresh failed")
+            ),
+        )
+
+        with pytest.raises(RuntimeError, match="refresh failed"):
+            command_discard_line("1")
+
+        assert test_file.read_text() == "base\nselected\n"
 
     def test_selected_file_discard_rolls_back_when_completion_fails(
         self,

@@ -93,8 +93,11 @@ def command_start(
 
         if not quiet:
             show_selected_change()
-    except BaseException:
+    except BaseException as start_error:
         from .abort import command_abort
 
-        command_abort(quiet=True)
+        try:
+            command_abort(quiet=True)
+        except BaseException as abort_error:
+            raise start_error from abort_error
         raise

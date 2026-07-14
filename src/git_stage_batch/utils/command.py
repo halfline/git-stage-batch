@@ -365,8 +365,16 @@ def run_command(
 
     if text_output:
         encoding = locale.getpreferredencoding(False)
-        stdout = stdout.decode(encoding) if stdout is not None else None
-        stderr = stderr.decode(encoding) if stderr is not None else None
+        stdout = (
+            stdout.decode(encoding, errors="surrogateescape")
+            if stdout is not None
+            else None
+        )
+        stderr = (
+            stderr.decode(encoding, errors="surrogateescape")
+            if stderr is not None
+            else None
+        )
 
     result = subprocess.CompletedProcess(
         arguments,

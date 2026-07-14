@@ -44,6 +44,7 @@ from ...utils.paths import (
 )
 from ..file_scope import skip_file as _file_scope_skip_file
 from .action_completion import finish_selected_change_action
+from .include_line_selection import selected_file_view_is_fresh_for
 
 
 def skip_line_selection(
@@ -70,10 +71,7 @@ def skip_line_selection(
             target_file = file
         auto_add_untracked_files([target_file])
 
-        reuse_selected_file_view = (
-            read_selected_change_kind() == SelectedChangeKind.FILE
-            and get_selected_change_file_path() == target_file
-        )
+        reuse_selected_file_view = selected_file_view_is_fresh_for(target_file)
         if (
             not reuse_selected_file_view
             and render_unstaged_file_as_single_hunk(target_file) is None

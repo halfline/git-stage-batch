@@ -35,7 +35,6 @@ from ...data.selected_change.store import (
     read_selected_change_kind,
     snapshot_selected_change_state,
 )
-from ...data.selected_change.snapshots import snapshots_are_stale
 from ...exceptions import MergeError, exit_with_error
 from ...i18n import _
 from ...staging.index_update import update_index_with_blob_buffer
@@ -160,10 +159,16 @@ def selected_file_view_targets(target_file: str) -> bool:
 
 
 def selected_file_view_is_fresh_for(target_file: str) -> bool:
-    """Return whether the selected file view can be reused for a path."""
-    return selected_file_view_targets(target_file) and not snapshots_are_stale(
-        target_file
-    )
+    """Return whether the selected file view can be reused for a path.
+
+    A matching view represents the line IDs the user actually saw.  If its
+    snapshots are stale, fail closed instead of rebuilding a different view
+    and applying those old IDs to it.
+    """
+    if not selected_file_view_targets(target_file):
+        return False
+    require_selected_hunk()
+    return True
 
 
 def load_include_line_selection_context(

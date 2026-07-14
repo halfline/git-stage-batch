@@ -7,7 +7,10 @@ from ...data.selected_change.file_hunk_cache import cache_unstaged_file_as_singl
 from ...data.line_state import load_line_changes_from_state
 from ...exceptions import exit_with_error
 from ...i18n import _
-from .include_line_selection import selected_file_view_targets
+from .include_line_selection import (
+    selected_file_view_is_fresh_for,
+    selected_file_view_targets,
+)
 
 
 def load_explicit_file_selection(file_path: str):
@@ -18,6 +21,7 @@ def load_explicit_file_selection(file_path: str):
         )
 
     if selected_file_view_targets(file_path):
+        selected_file_view_is_fresh_for(file_path)
         line_changes = load_line_changes_from_state()
     else:
         line_changes = cache_unstaged_file_as_single_hunk(file_path)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 
 from ...data.selected_change.paths import get_selected_change_file_path
+from ...data.selected_change.loading import require_selected_hunk
 from ...data.index_entries import read_index_entry
 from ...data.session import path_is_intent_to_add, snapshot_file_if_untracked
 from ...data.undo_checkpoints import undo_checkpoint
@@ -27,7 +28,7 @@ def discard_selected_file(
         if not quiet:
             print(_("No selected hunk. Run 'show' first or specify file path."), file=sys.stderr)
         return
-
+    require_selected_hunk()
     with undo_checkpoint("discard", worktree_paths=[target_file]):
         snapshot_file_if_untracked(target_file)
 

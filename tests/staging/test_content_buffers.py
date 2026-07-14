@@ -397,6 +397,25 @@ class TestBuildTargetIndexContent:
                     base_has_trailing_newline=True,
                 )
 
+    def test_index_selected_insertion_is_not_deduplicated_against_base(self):
+        """A selected addition equal to its anchor remains a real addition."""
+        header = HunkHeader(0, 0, 1, 1)
+        lines = [
+            LineEntry(1, "+", None, 1, text_bytes=b"same", text="same"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        base_content = b"same\n"
+
+        with LineBuffer.from_bytes(base_content) as base_lines:
+            result = _build_target_index_content_bytes(
+                line_changes,
+                {1},
+                base_lines,
+                base_has_trailing_newline=True,
+            )
+
+        assert result == b"same\nsame\n"
+
     def test_preserves_trailing_newline(self):
         """Test that trailing newline is preserved from base."""
         header = HunkHeader(1, 1, 1, 2)

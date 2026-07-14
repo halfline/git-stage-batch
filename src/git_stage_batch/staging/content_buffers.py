@@ -13,7 +13,7 @@ from ..core.replacement import (
 from ..core.buffer import (
     LineBuffer,
 )
-from ..editor.line_editor import edit_lines_as_buffer
+from ..editor.line_endings import detect_line_ending
 
 
 def _line_payload(line: bytes) -> bytes:
@@ -28,16 +28,119 @@ def _line_payload_at(lines: Sequence[bytes], index: int) -> bytes:
     return _line_payload(lines[index])
 
 
-def _line_entry_content(line_entry: LineEntry) -> bytes:
-    return line_entry.text_bytes + (
-        b"\n" if line_entry.has_trailing_newline else b""
+def _line_entry_content(
+    line_entry: LineEntry,
+) -> bytes:
+    payload = _line_entry_payload(line_entry)
+    if not line_entry.has_trailing_newline:
+        return payload
+    line_ending = b"\r\n" if line_entry.text_bytes.endswith(b"\r") else b"\n"
+    return payload + line_ending
+
+
+def _line_entry_payload(
+    line_entry: LineEntry,
+) -> bytes:
+    """Return patch-row content without its CRLF carriage return."""
+    if line_entry.has_trailing_newline and line_entry.text_bytes.endswith(b"\r"):
+        return line_entry.text_bytes[:-1]
+    return line_entry.text_bytes
+
+
+def _line_ending_from_line(line: bytes) -> bytes | None:
+    """Return an LF-based ending carried by one indexed source line."""
+    if line.endswith(b"\r\n"):
+        return b"\r\n"
+    if line.endswith(b"\n"):
+        return b"\n"
+    return None
+
+
+def _replacement_line_ending(
+    source_lines: Sequence[bytes],
+    selection_start: int,
+    selection_end: int,
+) -> bytes:
+    """Choose an ending near the replaced source span."""
+    source_line_count = len(source_lines)
+    for index in range(selection_start, min(selection_end, source_line_count)):
+        line_ending = _line_ending_from_line(source_lines[index])
+        if line_ending is not None:
+            return line_ending
+    for index in range(min(selection_start, source_line_count) - 1, -1, -1):
+        line_ending = _line_ending_from_line(source_lines[index])
+        if line_ending is not None:
+            return line_ending
+    for index in range(selection_end, source_line_count):
+        line_ending = _line_ending_from_line(source_lines[index])
+        if line_ending is not None:
+            return line_ending
+    return detect_line_ending(source_lines) or b"\n"
+
+
+def _edit_lines_preserving_source_endings_as_buffer(
+    source_lines: Sequence[bytes],
+    edited_lines: Sequence[bytes],
+    *,
+    selection_start: int,
+    selection_end: int,
+    has_trailing_newline: bool,
+    add_trailing_newline_when_nonempty: bool = False,
+) -> LineBuffer:
+    """Replace full lines while retaining each unchanged source line exactly."""
+    source_line_count = len(source_lines)
+    if (
+        selection_start < 0
+        or selection_end < selection_start
+        or selection_end > source_line_count
+    ):
+        raise ValueError("invalid line selection")
+
+    edited_line_count = len(edited_lines)
+    output_line_count = (
+        selection_start
+        + edited_line_count
+        + source_line_count
+        - selection_end
     )
+    generated_line_ending = _replacement_line_ending(
+        source_lines,
+        selection_start,
+        selection_end,
+    )
+
+    def output_lines() -> Iterator[tuple[bytes, bool]]:
+        for index in range(selection_start):
+            yield source_lines[index], True
+        for line in edited_lines:
+            yield line, False
+        for index in range(selection_end, source_line_count):
+            yield source_lines[index], True
+
+    def output_chunks() -> Iterator[bytes]:
+        for output_index, (line, is_source_line) in enumerate(output_lines()):
+            is_last = output_index == output_line_count - 1
+            needs_line_ending = (
+                not is_last
+                or has_trailing_newline
+                or add_trailing_newline_when_nonempty
+            )
+            payload = _line_payload(line)
+            if not needs_line_ending:
+                yield payload
+                continue
+
+            source_line_ending = (
+                _line_ending_from_line(line) if is_source_line else None
+            )
+            yield payload + (source_line_ending or generated_line_ending)
+
+    return LineBuffer.from_chunks(output_chunks())
 
 
 def _line_content_at(lines: Sequence[bytes], index: int) -> bytes:
-    return _line_payload(lines[index]) + (
-        b"\n" if lines[index].endswith(b"\n") else b""
-    )
+    """Return exact index bytes so untouched lines retain their endings."""
+    return lines[index]
 
 
 def _working_tree_line_content_at(
@@ -240,7 +343,7 @@ def _build_target_index_buffer_with_replaced_lines(
         return 0
 
     if not replace_ids:
-        return edit_lines_as_buffer(
+        return _edit_lines_preserving_source_endings_as_buffer(
             base_lines,
             [],
             selection_start=0,
@@ -352,7 +455,7 @@ def _build_target_index_buffer_with_replaced_lines(
         )
     else:
         trailing_newline = replacement_payload.has_trailing_lf or base_has_trailing_newline
-    return edit_lines_as_buffer(
+    return _edit_lines_preserving_source_endings_as_buffer(
         base_lines,
         replacement_lines,
         selection_start=replace_start,
@@ -505,7 +608,7 @@ def _build_target_working_tree_buffer_with_replaced_lines(
         return 0
 
     if not replace_ids:
-        return edit_lines_as_buffer(
+        return _edit_lines_preserving_source_endings_as_buffer(
             working_lines,
             [],
             selection_start=0,
@@ -617,7 +720,7 @@ def _build_target_working_tree_buffer_with_replaced_lines(
         )
     else:
         trailing_newline = replacement_payload.has_trailing_lf or working_has_trailing_newline
-    return edit_lines_as_buffer(
+    return _edit_lines_preserving_source_endings_as_buffer(
         working_lines,
         replacement_lines,
         selection_start=replace_start,

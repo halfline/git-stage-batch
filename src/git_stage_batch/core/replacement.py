@@ -97,7 +97,9 @@ class _ReplacementLineBodies(Sequence[bytes]):
         except IndexError as exc:
             raise IndexError(index) from exc
         line = self._lines[line_index]
-        if line.endswith(b"\n"):
+        if line.endswith(b"\r\n"):
+            line = line[:-2]
+        elif line.endswith(b"\n"):
             line = line[:-1]
         return line
 

@@ -259,11 +259,7 @@ def _target_index_line_contents(
                 yield _line_content_at(base_lines, base_pointer)
                 base_pointer += 1
         elif line_entry.kind == "+":
-            if base_line_matches(line_entry):
-                yield from flush_pending_additions()
-                yield _line_content_at(base_lines, base_pointer)
-                base_pointer += 1
-            elif line_entry.id in include_ids:
+            if line_entry.id in include_ids:
                 pending_additions.append(_line_entry_content(line_entry))
 
     yield from flush_pending_additions()

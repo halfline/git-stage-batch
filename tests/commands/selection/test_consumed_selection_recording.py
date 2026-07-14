@@ -12,8 +12,11 @@ from git_stage_batch.commands.selection.consumed_selection_recording import (
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.core.models import LineEntry
 from git_stage_batch.data.consumed_selections import (
+    load_consumed_selections_metadata,
     read_consumed_file_metadata,
 )
+from git_stage_batch.exceptions import CommandError
+from git_stage_batch.utils.paths import get_session_consumed_selections_file_path
 from git_stage_batch.core.buffer import LineBuffer
 from tests.batch.ownership.metadata_helpers import acquire_ownership_for_metadata
 
@@ -72,6 +75,32 @@ def test_record_consumed_selection_refreshes_stale_first_selection(temp_git_repo
             "added_lines": ["line1"],
         }
     ]
+
+
+def test_corrupt_consumed_selection_state_fails_closed(temp_git_repo):
+    """Corrupt masking state must not make consumed lines visible again."""
+    get_session_consumed_selections_file_path().parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+    get_session_consumed_selections_file_path().write_text("{not-json")
+
+    with pytest.raises(CommandError, match="Consumed-selection state is corrupt"):
+        load_consumed_selections_metadata()
+
+
+def test_corrupt_consumed_file_entry_fails_closed(temp_git_repo):
+    """A malformed file entry must not make consumed lines visible again."""
+    get_session_consumed_selections_file_path().parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+    get_session_consumed_selections_file_path().write_text(
+        '{"files": {"tracked.txt": "corrupt"}}'
+    )
+
+    with pytest.raises(CommandError, match="invalid entry for tracked.txt"):
+        load_consumed_selections_metadata()
 
 
 def test_record_consumed_selection_accepts_buffer(temp_git_repo):

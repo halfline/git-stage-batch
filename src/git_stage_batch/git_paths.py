@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 
 from .exceptions import CommandError
@@ -28,6 +29,19 @@ def encode_path(path: str) -> bytes:
 def decode_path(path: bytes) -> str:
     """Decode a filesystem path without losing undecodable bytes."""
     return os.fsdecode(path)
+
+
+def display_path(path: str) -> str:
+    """Return a terminal-safe, reversible representation of a path."""
+    raw_path = encode_path(path)
+    try:
+        decoded_path = raw_path.decode("utf-8")
+    except UnicodeDecodeError:
+        return quote_path_token(raw_path).decode("ascii")
+
+    if decoded_path and all(character.isprintable() for character in decoded_path):
+        return decoded_path
+    return json.dumps(decoded_path, ensure_ascii=False)
 
 
 def nul_records(output: bytes) -> list[bytes]:

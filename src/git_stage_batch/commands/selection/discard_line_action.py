@@ -28,6 +28,7 @@ def discard_live_line_selection(
     with undo_checkpoint(
         " ".join(operation_parts),
         worktree_paths=[target_file] if target_file is not None else [],
+        rollback_on_error=True,
     ):
         file_path = _discard_line_selection.discard_worktree_line_selection(
             line_id_specification,

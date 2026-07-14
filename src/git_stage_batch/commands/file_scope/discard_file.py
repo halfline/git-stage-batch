@@ -116,6 +116,7 @@ def discard_file_changes(
     with undo_checkpoint(
         f"discard --file {file}".rstrip(),
         worktree_paths=checkpoint_paths,
+        rollback_on_error=True,
     ):
         blocklist_path = get_block_list_file_path()
         blocked_hashes = read_text_file_line_set(blocklist_path)

@@ -39,7 +39,11 @@ def discard_file_as_replacement(
         exit_with_error(_("No selected hunk. Run 'show' first or specify file path."))
 
     with (
-        undo_checkpoint(" ".join(operation_parts), worktree_paths=[target_file]),
+        undo_checkpoint(
+            " ".join(operation_parts),
+            worktree_paths=[target_file],
+            rollback_on_error=True,
+        ),
         ExitStack() as selected_state_stack,
     ):
         preserve_selected_state = False

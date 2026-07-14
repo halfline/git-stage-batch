@@ -48,6 +48,7 @@ def discard_live_line_replacement_to_batch(
         undo_checkpoint(
             " ".join(operation_parts),
             worktree_paths=[target_file] if target_file is not None else [],
+            rollback_on_error=True,
         ),
         snapshot_selected_change_state() as saved_selected_state,
     ):

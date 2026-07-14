@@ -28,8 +28,13 @@ def discard_selected_file(
         if not quiet:
             print(_("No selected hunk. Run 'show' first or specify file path."), file=sys.stderr)
         return
+
     require_selected_hunk()
-    with undo_checkpoint("discard", worktree_paths=[target_file]):
+    with undo_checkpoint(
+        "discard",
+        worktree_paths=[target_file],
+        rollback_on_error=True,
+    ):
         snapshot_file_if_untracked(target_file)
 
         index_entry = read_index_entry(target_file)

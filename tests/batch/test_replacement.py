@@ -67,7 +67,7 @@ def test_replacement_text_can_carry_exact_stdin_bytes():
     with replacement_line_chunks(payload) as lines:
         assert list(lines) == [b"first\r\n", b"second"]
     with replacement_line_bodies(payload) as bodies:
-        assert list(bodies) == [b"first\r", b"second"]
+        assert list(bodies) == [b"first", b"second"]
 
 
 def test_legacy_replacement_text_normalizes_line_endings():

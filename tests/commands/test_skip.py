@@ -6,6 +6,7 @@ import pytest
 
 from git_stage_batch.commands.skip import command_skip, command_skip_line
 from git_stage_batch.commands.start import command_start
+from git_stage_batch.commands.show import command_show
 from git_stage_batch.data.hunk_tracking import (
     fetch_next_change,
 )
@@ -176,6 +177,17 @@ class TestCommandSkipLine:
         assert "Line selection 1,99 is not valid for test.txt." in exc_info.value.message
         skip_ids_content = read_text_file_contents(get_processed_skip_ids_file_path()).strip()
         assert skip_ids_content == ""
+
+    def test_skip_file_line_refuses_stale_same_file_view(self, temp_git_repo):
+        """Explicit file IDs must not be recorded after an external edit."""
+        test_file = _prepare_single_line_change(temp_git_repo)
+        command_show(file="test.txt")
+        test_file.write_text("external\nbase\nselected\n")
+
+        with pytest.raises(CommandError, match="Cached hunk is stale"):
+            command_skip_line("1", file="test.txt")
+
+        assert test_file.read_text() == "external\nbase\nselected\n"
 
     def test_skip_line_marks_single_addition(self, temp_git_repo):
         """Test skipping a single added line advances past that selection."""

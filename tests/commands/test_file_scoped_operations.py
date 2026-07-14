@@ -189,8 +189,8 @@ class TestShowFileFlag:
         result = run_git_command(["show", ":beta.txt"])
         assert result.stdout == "beta1\nbeta2\nbeta3\nbeta4-new\n"
 
-    def test_explicit_file_include_line_rebuilds_stale_same_file_view(self, tmp_path, monkeypatch):
-        """Explicit --file line IDs apply to the current file view, not stale state."""
+    def test_explicit_file_include_line_refuses_stale_same_file_view(self, tmp_path, monkeypatch):
+        """Explicit --file line IDs must not be remapped onto a changed file view."""
         repo = tmp_path / "test_repo"
         repo.mkdir()
         monkeypatch.chdir(repo)
@@ -209,10 +209,12 @@ class TestShowFileFlag:
         command_show(file="file.txt")
 
         file_path.write_text("base\nother\n")
-        command_include_line("1", file="file.txt")
+        with pytest.raises(CommandError, match="Cached hunk is stale"):
+            command_include_line("1", file="file.txt")
 
         result = run_git_command(["show", ":file.txt"])
-        assert result.stdout == "base\nother\n"
+        assert result.stdout == "base\n"
+        assert file_path.read_text() == "base\nother\n"
 
     def test_show_file_selection_can_feed_discard_line(self, multi_file_repo):
         """Show --file should cache a usable selection for later discard --line."""

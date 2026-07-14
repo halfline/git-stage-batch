@@ -1,7 +1,7 @@
 """Tests for handling different encodings and line endings."""
 
 from git_stage_batch.commands.start import command_start
-from git_stage_batch.commands.include import command_include_line
+from git_stage_batch.commands.include import command_include_line, command_include_line_as
 from git_stage_batch.commands.discard import command_discard_line
 from git_stage_batch.commands.discard import command_discard_to_batch
 from git_stage_batch.batch.state.lifecycle import create_batch
@@ -148,6 +148,40 @@ class TestMixedLineEndings:
         assert changed_line is not None
         # The \r should be preserved in the content (not stripped)
         assert b"\r" in changed_line.text_bytes or changed_line.text_bytes == b"changed line\r"
+
+    def test_include_line_replacement_preserves_mixed_endings(self, temp_git_repo):
+        """Replacement staging should preserve untouched mixed line endings."""
+        test_file = temp_git_repo / "mixed-replacement.txt"
+        original = b"keep\nold\r\nuntouched-crlf\r\ntail\n"
+        working = b"keep\nworking\r\nuntouched-crlf\r\ntail\n"
+        expected_index = b"keep\nstaged\r\nuntouched-crlf\r\ntail\n"
+
+        test_file.write_bytes(original)
+        subprocess.run(
+            ["git", "add", "mixed-replacement.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add mixed replacement file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        test_file.write_bytes(working)
+
+        command_start(quiet=True)
+        command_include_line_as("1-2", "staged")
+
+        result = subprocess.run(
+            ["git", "show", ":mixed-replacement.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        assert result.stdout == expected_index
+        assert test_file.read_bytes() == working
 
 
 class TestBareCRContent:

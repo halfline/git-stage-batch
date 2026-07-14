@@ -1,6 +1,6 @@
 """Tests for hunk display with line IDs."""
 
-from io import StringIO
+from io import BytesIO, StringIO, TextIOWrapper
 from unittest.mock import patch
 
 from git_stage_batch.core.models import LineLevelChange, HunkHeader, LineEntry
@@ -30,6 +30,26 @@ class TestPrintAnnotatedHunkWithAlignedGutter:
         assert "[#1] - old line" in output
         assert "[#2] + new line" in output
         assert "       context" in output
+
+    def test_display_quotes_non_utf8_path_on_strict_stream(self):
+        """Undecodable pathname bytes should remain printable and identifiable."""
+        header = HunkHeader(old_start=0, old_len=0, new_start=1, new_len=1)
+        lines = [
+            LineEntry(1, "+", None, 1, text_bytes=b"content", text="content"),
+        ]
+        line_changes = LineLevelChange(
+            path="non-utf8-\udcff.txt",
+            header=header,
+            lines=lines,
+        )
+        raw_output = BytesIO()
+        strict_output = TextIOWrapper(raw_output, encoding="utf-8", errors="strict")
+
+        with patch("sys.stdout", new=strict_output):
+            print_line_level_changes(line_changes)
+            strict_output.flush()
+
+        assert b'"non-utf8-\\377.txt"' in raw_output.getvalue()
 
     def test_display_hunk_with_two_digit_ids(self):
         """Test displaying a hunk with two-digit line IDs."""

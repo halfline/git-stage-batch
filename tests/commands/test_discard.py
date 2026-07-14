@@ -26,6 +26,7 @@ import pytest
 
 import git_stage_batch.commands.selection.selected_change_discarding as selected_change_discarding
 import git_stage_batch.commands.selection.selected_change_batch_discarding as selected_change_batch_discarding
+import git_stage_batch.commands.selection.selected_file_discarding as selected_file_discarding
 from git_stage_batch.commands.discard import command_discard, command_discard_line, command_discard_line_as_to_batch
 from git_stage_batch.commands.include import command_include, command_include_line
 from git_stage_batch.commands.show import command_show
@@ -135,6 +136,27 @@ class TestCommandDiscard:
             command_discard(quiet=True, auto_advance=False)
 
         assert readme.read_text() == "later unseen change\n"
+
+    def test_selected_file_discard_rolls_back_when_completion_fails(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """A post-write failure should restore a discarded file-scoped view."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nModified\n")
+        command_start(quiet=True)
+        command_show(file="README.md")
+        monkeypatch.setattr(
+            selected_file_discarding,
+            "finish_selected_change_action",
+            lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("finish failed")),
+        )
+
+        with pytest.raises(RuntimeError, match="finish failed"):
+            command_discard(quiet=True)
+
+        assert readme.read_text() == "# Test\nModified\n"
 
     def test_discard_full_new_file_hunk_removes_intent_to_add(
         self,

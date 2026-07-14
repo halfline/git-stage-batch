@@ -28,6 +28,7 @@ import git_stage_batch.commands.selection.selected_change_discarding as selected
 import git_stage_batch.commands.selection.selected_change_batch_discarding as selected_change_batch_discarding
 from git_stage_batch.commands.discard import command_discard, command_discard_line, command_discard_line_as_to_batch
 from git_stage_batch.commands.include import command_include, command_include_line
+from git_stage_batch.commands.show import command_show
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.core.models import TextFileDeletionChange
 from git_stage_batch.exceptions import CommandError
@@ -666,6 +667,17 @@ class TestCommandDiscardLine:
 
         assert "Line selection 1,99 is not valid for test.txt." in exc_info.value.message
         assert test_file.read_text() == "base\nselected\n"
+
+    def test_discard_file_line_refuses_stale_same_file_view(self, temp_git_repo):
+        """Explicit file IDs must not be applied after an external edit."""
+        test_file = _prepare_single_line_change(temp_git_repo)
+        command_show(file="test.txt")
+        test_file.write_text("external\nbase\nselected\n")
+
+        with pytest.raises(CommandError, match="Cached hunk is stale"):
+            command_discard_line("1", file="test.txt")
+
+        assert test_file.read_text() == "external\nbase\nselected\n"
 
 
 class TestCommandDiscardToBatch:

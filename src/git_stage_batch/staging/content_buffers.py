@@ -217,10 +217,11 @@ def _target_index_line_contents(
             yield from pending_additions
             pending_additions.clear()
 
-    def base_line_matches(text: bytes) -> bool:
+    def base_line_matches(line_entry: LineEntry) -> bool:
         return (
             base_pointer < base_line_count
-            and _line_payload_at(base_lines, base_pointer) == text
+            and _line_payload_at(base_lines, base_pointer)
+            == _line_entry_payload(line_entry)
         )
 
     def copy_unchanged_lines_before(old_line_number: int | None) -> Iterator[bytes]:
@@ -243,24 +244,22 @@ def _target_index_line_contents(
         if line_entry.kind == " ":
             yield from copy_unchanged_lines_before(line_entry.old_line_number)
             yield from flush_pending_additions()
-            if base_pointer < base_line_count:
-                yield _line_content_at(base_lines, base_pointer)
-                base_pointer += 1
+            if not base_line_matches(line_entry):
+                raise ValueError("Index content no longer matches the selected line view")
+            yield _line_content_at(base_lines, base_pointer)
+            base_pointer += 1
         elif line_entry.kind == "-":
             yield from copy_unchanged_lines_before(line_entry.old_line_number)
             yield from flush_pending_additions()
+            if not base_line_matches(line_entry):
+                raise ValueError("Index content no longer matches the selected line view")
             if line_entry.id in include_ids:
-                if base_line_matches(line_entry.text_bytes):
-                    base_pointer += 1
-            elif base_line_matches(line_entry.text_bytes):
+                base_pointer += 1
+            else:
                 yield _line_content_at(base_lines, base_pointer)
                 base_pointer += 1
         elif line_entry.kind == "+":
-            if base_line_matches(line_entry.text_bytes):
-                yield from flush_pending_additions()
-                yield _line_content_at(base_lines, base_pointer)
-                base_pointer += 1
-            elif line_entry.id in include_ids:
+            if line_entry.id in include_ids:
                 pending_additions.append(_line_entry_content(line_entry))
 
     yield from flush_pending_additions()

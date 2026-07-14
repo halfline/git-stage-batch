@@ -147,10 +147,10 @@ def include_live_line_selection(
                     build_target_index_buffer_from_lines(
                         line_changes,
                         set(combined_include_ids),
-                        hunk_source_lines,
+                        hunk_base_lines,
                         base_has_trailing_newline=(
                             _include_line_selection.line_sequence_ends_with_lf(
-                                hunk_source_lines
+                                hunk_base_lines
                             )
                         ),
                     ) as target_working_lines,

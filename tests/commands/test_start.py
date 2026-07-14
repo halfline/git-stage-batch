@@ -124,3 +124,26 @@ class TestCommandStart:
 
         assert not session_is_active()
         assert readme.read_text() == "# Test\nModified\n"
+
+    def test_start_preserves_original_error_when_abort_also_fails(
+        self,
+        temp_git_repo,
+    ):
+        """A recovery failure must not replace the startup failure."""
+        (temp_git_repo / "README.md").write_text("# Test\nModified\n")
+
+        with (
+            patch(
+                "git_stage_batch.commands.start.show_selected_change",
+                side_effect=RuntimeError("display failed"),
+            ),
+            patch(
+                "git_stage_batch.commands.abort.command_abort",
+                side_effect=RuntimeError("abort failed"),
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="display failed") as exc_info:
+                command_start()
+
+        assert isinstance(exc_info.value.__cause__, RuntimeError)
+        assert str(exc_info.value.__cause__) == "abort failed"

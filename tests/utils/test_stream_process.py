@@ -102,6 +102,14 @@ class TestRunCommand:
         assert result.stdout == b"\xff"
         assert result.stderr == b""
 
+    def test_text_output_preserves_undecodable_bytes(self):
+        """Git path bytes survive text capture through surrogateescape."""
+        result = run_command(
+            [sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'\\xff')"],
+        )
+
+        assert result.stdout.encode(sys.getfilesystemencoding(), "surrogateescape") == b"\xff"
+
     def test_failed_command_with_check_raises_with_output(self):
         """Test check=True raises CalledProcessError with captured output."""
         with pytest.raises(subprocess.CalledProcessError) as exc_info:

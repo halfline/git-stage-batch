@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ..core.models import LineLevelChange
+from ..git_paths import display_path
 from ..i18n import _
 from .colors import Colors
 
@@ -10,7 +11,11 @@ from .colors import Colors
 def print_remaining_line_changes_header(file_path: str) -> None:
     """Print a boundary before refreshed remaining line changes."""
     print()
-    print(_("── remaining unstaged changes in {file} ──").format(file=file_path))
+    print(
+        _("── remaining unstaged changes in {file} ──").format(
+            file=display_path(file_path)
+        )
+    )
 
 
 def print_line_level_changes(line_changes: LineLevelChange, *, gutter_to_selection_id: dict[int, int] | None = None) -> None:
@@ -33,11 +38,12 @@ def print_line_level_changes(line_changes: LineLevelChange, *, gutter_to_selecti
     use_color = Colors.enabled()
 
     header = line_changes.header
-    header_line = f"{line_changes.path} :: @@ -{header.old_start},{header.old_len} +{header.new_start},{header.new_len} @@"
+    rendered_path = display_path(line_changes.path)
+    header_line = f"{rendered_path} :: @@ -{header.old_start},{header.old_len} +{header.new_start},{header.new_len} @@"
 
     if use_color:
         # Color the file path in bold and the @@ header in cyan
-        path_part = line_changes.path
+        path_part = rendered_path
         header_part = f"@@ -{header.old_start},{header.old_len} +{header.new_start},{header.new_len} @@"
         print(f"{Colors.BOLD}{path_part}{Colors.RESET} :: {Colors.CYAN}{header_part}{Colors.RESET}")
     else:

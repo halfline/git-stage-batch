@@ -44,8 +44,22 @@ def _command_may_mutate(args) -> bool:
     return getattr(args, "command", None) not in _READ_ONLY_COMMANDS
 
 
+def _configure_terminal_streams() -> None:
+    """Preserve arbitrary filesystem bytes when writing terminal output."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(errors="surrogateescape")
+        except (OSError, ValueError):
+            # Captured or already-detached streams may not be reconfigurable.
+            pass
+
+
 def main() -> None:
     """Main entry point for git-stage-batch."""
+    _configure_terminal_streams()
     try:
         if os.name != "posix":
             raise CommandError(

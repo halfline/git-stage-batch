@@ -5,6 +5,7 @@ import pytest
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.git_paths import (
     decode_path,
+    display_path,
     encode_path,
     nul_records,
     quote_path_token,
@@ -16,6 +17,14 @@ def test_path_conversion_round_trips_non_utf8_bytes():
     raw_path = b"name-\xff"
 
     assert encode_path(decode_path(raw_path)) == raw_path
+
+
+def test_display_path_keeps_printable_unicode_readable():
+    assert display_path("café.txt") == "café.txt"
+
+
+def test_display_path_quotes_control_characters_without_escaping_unicode():
+    assert display_path("café\n.txt") == '"café\\n.txt"'
 
 
 def test_nul_records_preserve_newlines_and_empty_path_components():

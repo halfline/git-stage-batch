@@ -1,5 +1,7 @@
 """Tests for line-level staging content buffers."""
 
+import pytest
+
 from git_stage_batch.core.models import LineLevelChange, HunkHeader, LineEntry
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.core.replacement import ReplacementPayload
@@ -374,6 +376,26 @@ class TestBuildTargetIndexContent:
 
         assert result == b"keep\nnew\r\ntail\n"
 
+    def test_index_selected_lines_refuse_drifted_base_content(self):
+        """Classic index staging must fail instead of skipping a mismatch."""
+        header = HunkHeader(1, 3, 1, 3)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"keep", text="keep"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old", text="old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"new", text="new"),
+            LineEntry(None, " ", 3, 3, text_bytes=b"tail", text="tail"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        base_content = b"keep\ndrifted\ntail\n"
+
+        with LineBuffer.from_bytes(base_content) as base_lines:
+            with pytest.raises(ValueError, match="no longer matches"):
+                _build_target_index_content_bytes(
+                    line_changes,
+                    {1, 2},
+                    base_lines,
+                    base_has_trailing_newline=True,
+                )
 
     def test_preserves_trailing_newline(self):
         """Test that trailing newline is preserved from base."""

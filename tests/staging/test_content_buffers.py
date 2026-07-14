@@ -2,6 +2,7 @@
 
 from git_stage_batch.core.models import LineLevelChange, HunkHeader, LineEntry
 from git_stage_batch.core.buffer import LineBuffer
+from git_stage_batch.core.replacement import ReplacementPayload
 from git_stage_batch.staging.content_buffers import (
     build_target_index_buffer_from_lines,
     build_target_index_buffer_with_replaced_lines,
@@ -313,10 +314,10 @@ class TestBuildTargetIndexContent:
         """Index staging can read from an indexed line sequence."""
         header = HunkHeader(1, 3, 1, 3)
         lines = [
-            LineEntry(None, " ", 1, 1, text_bytes=b"line1", text="line1"),
-            LineEntry(1, "-", 2, None, text_bytes=b"old", text="old"),
-            LineEntry(2, "+", None, 2, text_bytes=b"new", text="new"),
-            LineEntry(None, " ", 3, 3, text_bytes=b"line2", text="line2"),
+            LineEntry(None, " ", 1, 1, text_bytes=b"line1\r", text="line1"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old\r", text="old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"new\r", text="new"),
+            LineEntry(None, " ", 3, 3, text_bytes=b"line2\r", text="line2"),
         ]
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_lines = line_sequence([b"line1\r\n", b"old\r\n", b"line2\r\n"])
@@ -328,16 +329,16 @@ class TestBuildTargetIndexContent:
             base_has_trailing_newline=True,
         )
 
-        assert result == b"line1\nold\nline2\n"
+        assert result == b"line1\r\nold\r\nline2\r\n"
 
     def test_index_selected_lines_can_return_buffer(self, line_sequence):
         """Index staging can return a buffer for streaming callers."""
         header = HunkHeader(1, 3, 1, 3)
         lines = [
-            LineEntry(None, " ", 1, 1, text_bytes=b"line1", text="line1"),
-            LineEntry(1, "-", 2, None, text_bytes=b"old", text="old"),
-            LineEntry(2, "+", None, 2, text_bytes=b"new", text="new"),
-            LineEntry(None, " ", 3, 3, text_bytes=b"line2", text="line2"),
+            LineEntry(None, " ", 1, 1, text_bytes=b"line1\r", text="line1"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old\r", text="old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"new\r", text="new"),
+            LineEntry(None, " ", 3, 3, text_bytes=b"line2\r", text="line2"),
         ]
         line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
         base_lines = line_sequence([b"line1\r\n", b"old\r\n", b"line2\r\n"])
@@ -349,7 +350,30 @@ class TestBuildTargetIndexContent:
             base_has_trailing_newline=True,
         ) as result:
             assert isinstance(result, LineBuffer)
-            assert result.to_bytes() == b"line1\nnew\nline2\n"
+            assert result.to_bytes() == b"line1\r\nnew\r\nline2\r\n"
+
+    def test_index_selected_lines_preserve_mixed_line_endings(self):
+        """Patch rows should carry their own endings in a mixed-ending file."""
+        header = HunkHeader(1, 3, 1, 3)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"keep", text="keep"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old\r", text="old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"new\r", text="new"),
+            LineEntry(None, " ", 3, 3, text_bytes=b"tail", text="tail"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        base_content = b"keep\nold\r\ntail\n"
+
+        with LineBuffer.from_bytes(base_content) as base_lines:
+            result = _build_target_index_content_bytes(
+                line_changes,
+                {1, 2},
+                base_lines,
+                base_has_trailing_newline=True,
+            )
+
+        assert result == b"keep\nnew\r\ntail\n"
+
 
     def test_preserves_trailing_newline(self):
         """Test that trailing newline is preserved from base."""
@@ -772,7 +796,7 @@ class TestBuildTargetIndexContent:
             base_has_trailing_newline=True,
         )
 
-        assert result == b"keep\nstaged\ntail\n"
+        assert result == b"keep\r\nstaged\r\ntail\r\n"
 
     def test_index_replacement_can_return_buffer(self, line_sequence):
         """Index replacement can return a buffer for streaming callers."""
@@ -794,7 +818,63 @@ class TestBuildTargetIndexContent:
             base_has_trailing_newline=True,
         ) as result:
             assert isinstance(result, LineBuffer)
-            assert result.to_bytes() == b"keep\nstaged\ntail\n"
+            assert result.to_bytes() == b"keep\r\nstaged\r\ntail\r\n"
+
+    def test_index_replacement_preserves_unselected_mixed_line_endings(self):
+        """Replacement staging should alter only the selected lines' endings."""
+        header = HunkHeader(1, 4, 1, 4)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"keep", text="keep"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old\r", text="old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"working\r", text="working"),
+            LineEntry(
+                None,
+                " ",
+                3,
+                3,
+                text_bytes=b"untouched-crlf\r",
+                text="untouched-crlf",
+            ),
+            LineEntry(None, " ", 4, 4, text_bytes=b"tail", text="tail"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        base_content = b"keep\nold\r\nuntouched-crlf\r\ntail\n"
+
+        with LineBuffer.from_bytes(base_content) as base_lines:
+            result = _build_target_index_replacement_bytes(
+                line_changes,
+                {1, 2},
+                "staged",
+                base_lines,
+                base_has_trailing_newline=True,
+            )
+
+        assert result == b"keep\nstaged\r\nuntouched-crlf\r\ntail\n"
+
+    def test_index_replacement_does_not_duplicate_exact_crlf(self):
+        """Exact CRLF replacement input should not become CRCRLF."""
+        header = HunkHeader(1, 3, 1, 3)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"keep\r", text="keep"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old\r", text="old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"working\r", text="working"),
+            LineEntry(None, " ", 3, 3, text_bytes=b"tail\r", text="tail"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        base_content = b"keep\r\nold\r\ntail\r\n"
+        replacement = ReplacementPayload(b"first\r\nsecond")
+
+        with (
+            LineBuffer.from_bytes(base_content) as base_lines,
+            build_target_index_buffer_with_replaced_lines(
+                line_changes,
+                {1, 2},
+                replacement,
+                base_lines,
+                base_has_trailing_newline=True,
+            ) as result,
+        ):
+            assert result.to_bytes() == b"keep\r\nfirst\r\nsecond\r\ntail\r\n"
 
     def test_replace_selection_keeps_matching_edge_anchors_with_no_edge_overlap(self):
         """Replacement staging should preserve duplicated anchors when requested."""
@@ -910,7 +990,7 @@ class TestBuildTargetIndexContent:
             working_has_trailing_newline=True,
         )
 
-        assert result == b"keep\nreplacement\ntail\n"
+        assert result == b"keep\r\nreplacement\r\ntail\r\n"
 
     def test_working_tree_replacement_can_return_buffer(self, line_sequence):
         """Working-tree replacement can return a buffer for streaming callers."""
@@ -932,7 +1012,38 @@ class TestBuildTargetIndexContent:
             working_has_trailing_newline=True,
         ) as result:
             assert isinstance(result, LineBuffer)
-            assert result.to_bytes() == b"keep\nreplacement\ntail\n"
+            assert result.to_bytes() == b"keep\r\nreplacement\r\ntail\r\n"
+
+    def test_working_tree_replacement_preserves_mixed_line_endings(self):
+        """Replacement discard should retain every untouched source ending."""
+        header = HunkHeader(1, 4, 1, 4)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"keep", text="keep"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old\r", text="old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"working\r", text="working"),
+            LineEntry(
+                None,
+                " ",
+                3,
+                3,
+                text_bytes=b"untouched-crlf\r",
+                text="untouched-crlf",
+            ),
+            LineEntry(None, " ", 4, 4, text_bytes=b"tail", text="tail"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        working_content = b"keep\nworking\r\nuntouched-crlf\r\ntail\n"
+
+        with LineBuffer.from_bytes(working_content) as working_lines:
+            result = _build_target_working_tree_replacement_bytes(
+                line_changes,
+                {1, 2},
+                "replacement",
+                working_lines,
+                working_has_trailing_newline=True,
+            )
+
+        assert result == b"keep\nreplacement\r\nuntouched-crlf\r\ntail\n"
 
 
 class TestBuildTargetWorkingTreeContent:

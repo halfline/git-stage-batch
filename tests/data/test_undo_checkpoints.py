@@ -66,6 +66,28 @@ def test_redo_conflicts_fail_closed_without_after_undo_state():
     assert undo_checkpoints._detect_redo_conflicts({}) == ["incomplete checkpoint"]
 
 
+def test_nested_checkpoint_fails_when_pending_reference_moved(monkeypatch):
+    """A nested operation must not silently discard a mismatched pending node."""
+    monkeypatch.setattr(undo_checkpoints, "_PENDING_CHECKPOINT", "pending")
+    monkeypatch.setattr(
+        undo_checkpoints,
+        "_PENDING_CHECKPOINT_REPOSITORY",
+        Path("/repo/.git"),
+    )
+    monkeypatch.setattr(
+        undo_checkpoints,
+        "get_git_directory_path",
+        lambda: Path("/repo/.git"),
+    )
+    monkeypatch.setattr(undo_checkpoints, "current_undo_commit", lambda: "moved")
+
+    with pytest.raises(CommandError, match="pending checkpoint reference moved"):
+        with undo_checkpoints.undo_checkpoint("nested", worktree_paths=[]):
+            pass
+
+    assert undo_checkpoints._PENDING_CHECKPOINT is None
+
+
 def test_pending_checkpoint_from_another_repository_is_cleared(monkeypatch):
     """Process-local checkpoint state must not leak between repositories."""
     monkeypatch.setattr(undo_checkpoints, "_PENDING_CHECKPOINT", "old-pending")

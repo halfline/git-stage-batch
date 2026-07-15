@@ -42,7 +42,6 @@ from ...utils.file_io import (
 )
 from ...utils.git_worktree import (
     git_apply_to_worktree,
-    git_remove_paths,
 )
 from ...utils.git_repository import get_git_repository_root_path
 from ...utils.journal import log_journal
@@ -54,6 +53,7 @@ from ...utils.paths import (
 )
 from .action_completion import finish_selected_change_action
 from . import whole_file_batch_discarding as _whole_file_batch_discarding
+from ..index_cleanup import remove_path_from_index
 
 
 def discard_selected_change_to_batch(
@@ -275,11 +275,11 @@ def _discard_text_hunk_to_batch(
             absolute_path = get_git_repository_root_path() / file_path
 
             if not os.path.lexists(absolute_path):
-                git_remove_paths([file_path], cached=True, quiet=True, check=False)
+                remove_path_from_index(file_path)
             elif is_new_file:
                 if path_is_empty(absolute_path):
                     absolute_path.unlink()
-                    git_remove_paths([file_path], cached=True, quiet=True, check=False)
+                    remove_path_from_index(file_path)
 
         log_journal(
             "discard_hunk_to_batch_success",

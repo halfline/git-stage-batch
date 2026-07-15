@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import mmap
 import os
+import stat
 from collections.abc import Sequence
 
 import pytest
@@ -324,6 +325,29 @@ def test_worktree_regular_file_replaces_symlink_atomically(tmp_path):
     assert not output_path.is_symlink()
     assert output_path.read_bytes() == b"regular"
     assert referent.read_bytes() == b"referent contents"
+
+
+def test_atomic_regular_write_tightens_mode_when_ownership_cannot_be_preserved(
+    tmp_path,
+    monkeypatch,
+):
+    """A differently owned replacement must not retain group or other access."""
+    if not hasattr(buffer_module.os, "fchown"):
+        pytest.skip("fchown is not available")
+
+    output_path = tmp_path / "path"
+    output_path.write_bytes(b"old")
+    output_path.chmod(0o666)
+
+    def fail_fchown(*_args):
+        raise PermissionError("ownership cannot be preserved")
+
+    monkeypatch.setattr(buffer_module.os, "fchown", fail_fchown)
+
+    write_buffer_to_path(output_path, b"new")
+
+    assert output_path.read_bytes() == b"new"
+    assert stat.S_IMODE(output_path.stat().st_mode) == 0o600
 
 
 def test_buffer_matches_across_chunk_boundaries(line_sequence):

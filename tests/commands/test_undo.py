@@ -377,6 +377,42 @@ def test_nested_checkpoint_rejects_paths_outside_outer_scope(
                 raise AssertionError("nested operation should not run")
 
 
+def test_nested_transaction_requires_transactional_outer_checkpoint(temp_git_repo):
+    """A nested rollback promise must not disappear inside a weaker checkpoint."""
+    get_session_directory_path().mkdir(parents=True, exist_ok=True)
+
+    with undo_checkpoint("outer", worktree_paths=["target.txt"]):
+        with pytest.raises(CommandError, match="does not roll back on error"):
+            with undo_checkpoint(
+                "inner",
+                worktree_paths=["target.txt"],
+                rollback_on_error=True,
+            ):
+                raise AssertionError("nested operation should not run")
+
+
+def test_nested_transaction_uses_compatible_outer_checkpoint(temp_git_repo):
+    """A covered nested transaction should share the outer checkpoint."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    get_session_directory_path().mkdir(parents=True, exist_ok=True)
+
+    with undo_checkpoint(
+        "outer",
+        worktree_paths=["target.txt"],
+        rollback_on_error=True,
+    ):
+        with undo_checkpoint(
+            "inner",
+            worktree_paths=["target.txt"],
+            rollback_on_error=True,
+        ):
+            target.write_text("after\n")
+
+    undo_last_checkpoint()
+
+    assert target.read_text() == "before\n"
+
+
 def test_failed_checkpoint_finalization_requires_force(temp_git_repo, monkeypatch):
     """A manifest persistence failure should leave a guarded before-image."""
     from git_stage_batch.data import undo_checkpoints as checkpoints

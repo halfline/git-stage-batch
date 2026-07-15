@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 from ...batch.selection import require_line_selection_in_view
-from ...core.buffer import buffer_ends_with_lf, write_buffer_to_path
+from ...core.buffer import write_buffer_to_path
 from ...core.line_selection import parse_line_selection
 from ...data.line_state import load_line_changes_from_state
 from ...utils.repository_buffers import load_working_tree_file_as_buffer
@@ -61,7 +61,6 @@ def discard_worktree_line_selection(
             line_changes,
             set(requested_ids),
             working_lines,
-            working_has_trailing_newline=buffer_ends_with_lf(working_lines),
         )
 
     with target_working_buffer:

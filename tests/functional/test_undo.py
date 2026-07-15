@@ -207,6 +207,55 @@ def test_undo_discard_files_restores_entire_multi_file_operation(functional_repo
     assert beta.read_text() == "beta\nbeta change\n"
 
 
+def test_undo_discard_files_restores_unmatched_rename_destination(functional_repo):
+    """The multi-file checkpoint must include both sides of a discarded rename."""
+    old_path = functional_repo / "old.txt"
+    other_path = functional_repo / "other.txt"
+    _commit_file(old_path, "renamed content\n")
+    _commit_file(other_path, "other\n")
+    new_path = functional_repo / "new.txt"
+    old_path.rename(new_path)
+    other_path.write_text("other\nchanged\n")
+
+    git_stage_batch("start")
+    git_stage_batch("discard", "--files", "new.txt", "other.txt")
+    git_stage_batch("undo")
+
+    assert _git("diff", "--cached", "--name-status").stdout == ""
+    assert not old_path.exists()
+    assert new_path.read_text() == "renamed content\n"
+    assert other_path.read_text() == "other\nchanged\n"
+
+
+def test_undo_discard_to_batch_files_restores_unmatched_rename_destination(
+    functional_repo,
+):
+    """Discard-to-batch must also checkpoint both sides of a live rename."""
+    old_path = functional_repo / "old.txt"
+    other_path = functional_repo / "other.txt"
+    _commit_file(old_path, "renamed content\n")
+    _commit_file(other_path, "other\n")
+    new_path = functional_repo / "new.txt"
+    old_path.rename(new_path)
+    other_path.write_text("other\nchanged\n")
+
+    git_stage_batch("start")
+    git_stage_batch(
+        "discard",
+        "--to",
+        "saved",
+        "--files",
+        "new.txt",
+        "other.txt",
+    )
+    git_stage_batch("undo")
+
+    assert _git("diff", "--cached", "--name-status").stdout == ""
+    assert not old_path.exists()
+    assert new_path.read_text() == "renamed content\n"
+    assert other_path.read_text() == "other\nchanged\n"
+
+
 def test_undo_discard_to_batch_files_restores_entire_multi_file_operation(functional_repo):
     """Undoing discard --to --files should restore every discarded file."""
     alpha, beta = _create_two_changed_text_files(functional_repo)

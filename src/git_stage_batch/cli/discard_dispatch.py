@@ -15,6 +15,7 @@ from ..commands.discard import (
 )
 from ..commands.discard_from import command_discard_from_batch
 from ..commands.file_scope.multi_file_actions import (
+    discard_each_resolved_file,
     discard_to_batch_each_resolved_file,
     run_for_each_resolved_file,
 )
@@ -134,14 +135,15 @@ def dispatch_discard_command(args: argparse.Namespace) -> None:
     else:
         resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
         if not resolved_live_scope.is_implicit:
-            run_for_each_resolved_file(
-                resolved_live_scope,
-                lambda file: command_discard_file(
-                    file,
+            if resolved_live_scope.is_multiple:
+                discard_each_resolved_file(
+                    list(resolved_live_scope.files),
                     auto_advance=args.auto_advance,
-                ),
-                undo_operation="discard",
-                worktree_paths=resolved_live_scope.files,
-            )
+                )
+            else:
+                command_discard_file(
+                    resolved_live_scope.optional_file(),
+                    auto_advance=args.auto_advance,
+                )
         else:
             command_discard(auto_advance=args.auto_advance)

@@ -1034,36 +1034,46 @@ def test_parse_command_line_skip_combines_file_and_files_patterns(monkeypatch):
     )
 
 
-def test_parse_command_line_discard_with_files_dispatches_per_file(monkeypatch):
-    """Discard should dispatch once per file resolved from --files."""
+def test_parse_command_line_discard_with_files_dispatches_resolved_scope(monkeypatch):
+    """Discard should delegate the resolved --files scope to its command helper."""
     mock_command = Mock()
-    monkeypatch.setattr(discard_dispatch, "command_discard_file", mock_command)
+    monkeypatch.setattr(
+        discard_dispatch,
+        "discard_each_resolved_file",
+        mock_command,
+    )
     _mock_live_file_candidates(monkeypatch, ["foo.py", "bar.py", "notes.txt"])
 
     args = parse_command_line(["discard", "--files", "*.py"], quiet=True)
 
     assert args is not None
     args.func(args)
-    assert mock_command.call_args_list == [
-        call("foo.py", auto_advance=None),
-        call("bar.py", auto_advance=None),
-    ]
+    mock_command.assert_called_once_with(
+        ["foo.py", "bar.py"],
+        auto_advance=None,
+    )
 
 
-def test_parse_command_line_discard_with_file_pattern_dispatches_per_file(monkeypatch):
-    """Discard --file with a pattern should dispatch like --files."""
+def test_parse_command_line_discard_with_file_pattern_dispatches_resolved_scope(
+    monkeypatch,
+):
+    """Discard --file patterns should delegate like --files patterns."""
     mock_command = Mock()
-    monkeypatch.setattr(discard_dispatch, "command_discard_file", mock_command)
+    monkeypatch.setattr(
+        discard_dispatch,
+        "discard_each_resolved_file",
+        mock_command,
+    )
     _mock_live_file_candidates(monkeypatch, ["foo.py", "bar.py", "notes.txt"])
 
     args = parse_command_line(["discard", "--file", "*.py"], quiet=True)
 
     assert args is not None
     args.func(args)
-    assert mock_command.call_args_list == [
-        call("foo.py", auto_advance=None),
-        call("bar.py", auto_advance=None),
-    ]
+    mock_command.assert_called_once_with(
+        ["foo.py", "bar.py"],
+        auto_advance=None,
+    )
 
 
 def test_parse_command_line_discard_from_with_files_resolves_batch_scope_only(monkeypatch):

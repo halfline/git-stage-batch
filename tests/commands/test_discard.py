@@ -1,6 +1,7 @@
 """Tests for discard command."""
 
 import os
+import stat
 from unittest.mock import patch
 
 from git_stage_batch.utils.paths import get_abort_snapshots_directory_path
@@ -510,6 +511,157 @@ class TestCommandDiscardLine:
 
         assert os.readlink(link_path) == "oldtarget"
         assert target_path.read_bytes() == b"contents of target\n"
+
+    def test_discard_line_replaces_worktree_symlink_for_regular_index(
+        self,
+        temp_git_repo,
+    ):
+        """Restoring regular lines must replace a worktree symlink path."""
+        file_path = temp_git_repo / "f.txt"
+        referent_path = temp_git_repo / "target"
+        file_path.write_bytes(b"old\nsecond\n")
+        subprocess.run(
+            ["git", "add", "f.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add regular file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        file_path.unlink()
+        os.symlink("target", file_path)
+        referent_path.write_bytes(b"referent\n")
+
+        command_start(quiet=True)
+        command_discard_line("1,2", file="f.txt")
+
+        assert not file_path.is_symlink()
+        assert file_path.read_bytes() == b"old\nsecond\ntarget"
+        assert referent_path.read_bytes() == b"referent\n"
+
+    def test_partial_discard_keeps_regular_worktree_kind_for_symlink_index(
+        self,
+        temp_git_repo,
+    ):
+        """A partial regular-file edit must not publish a symlink target."""
+        file_path = temp_git_repo / "f"
+        os.symlink("oldtarget", file_path)
+        subprocess.run(
+            ["git", "add", "f"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add symlink"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        file_path.unlink()
+        file_path.write_bytes(b"line1\nline2\n")
+
+        command_start(quiet=True)
+        command_discard_line("2", file="f")
+
+        assert not file_path.is_symlink()
+        assert file_path.read_bytes() == b"line2\n"
+
+    def test_complete_discard_restores_symlink_index_kind(
+        self,
+        temp_git_repo,
+    ):
+        """An exact index target should restore the symlink path kind."""
+        file_path = temp_git_repo / "f"
+        os.symlink("oldtarget", file_path)
+        subprocess.run(
+            ["git", "add", "f"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add symlink"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        file_path.unlink()
+        file_path.write_bytes(b"line1\nline2\n")
+
+        command_start(quiet=True)
+        command_discard_line("1,2,3", file="f")
+
+        assert file_path.is_symlink()
+        assert os.readlink(file_path) == "oldtarget"
+
+    def test_discard_line_preserves_exact_regular_file_permissions(
+        self,
+        temp_git_repo,
+    ):
+        """Content discard must preserve permission bits outside Git's mode."""
+        file_path = temp_git_repo / "f.txt"
+        file_path.write_bytes(b"base\n")
+        subprocess.run(
+            ["git", "add", "f.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add regular file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        file_path.write_bytes(b"base\nadded\n")
+        file_path.chmod(0o600)
+
+        command_start(quiet=True)
+        command_discard_line("1", file="f.txt")
+
+        assert file_path.read_bytes() == b"base\n"
+        assert stat.S_IMODE(file_path.stat().st_mode) == 0o600
+
+    def test_discard_line_as_replaces_symlink_with_regular_output(
+        self,
+        temp_git_repo,
+    ):
+        """Multiline replacement output must not become a symlink target."""
+        link_path = temp_git_repo / "link"
+        referent_path = temp_git_repo / "newtarget"
+        os.symlink("oldtarget", link_path)
+        subprocess.run(
+            ["git", "add", "link"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add link"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        link_path.unlink()
+        os.symlink("newtarget", link_path)
+        referent_path.write_bytes(b"referent\n")
+
+        command_start(quiet=True)
+        command_discard_line_as_to_batch(
+            "replacement-batch",
+            "1,2",
+            "first\nsecond\n",
+            quiet=True,
+        )
+
+        assert not link_path.is_symlink()
+        assert link_path.read_bytes() == b"oldtarget\nsecond\n"
+        assert referent_path.read_bytes() == b"referent\n"
 
     def test_discard_line_requires_selected_hunk(self, temp_git_repo):
         """Test that discard --line requires an active hunk."""

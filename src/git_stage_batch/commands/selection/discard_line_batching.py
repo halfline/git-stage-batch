@@ -6,7 +6,7 @@ import os
 import sys
 
 from ...batch.source.annotation import annotate_with_batch_source
-from ...core.buffer import LineBuffer, write_buffer_to_path
+from ...core.buffer import LineBuffer
 from ...core.replacement import ReplacementPayload
 from ...data.line_state import load_line_changes_from_state
 from ...utils.repository_buffers import load_working_tree_file_as_buffer
@@ -19,6 +19,7 @@ from ...utils.journal import log_journal
 from . import batch_line_selection as _batch_line_selection
 from . import batch_line_updates as _batch_line_updates
 from . import discard_file_selection as _discard_file_selection
+from . import discard_line_publication as _discard_line_publication
 from . import discard_line_replacement as _discard_line_replacement
 from .action_completion import finish_selected_change_action
 from .selected_hunk_refresh import recalculate_selected_hunk_for_command
@@ -61,7 +62,12 @@ def discard_lines_as_to_batch(
     assert target_working_buffer is not None
     assert replacement is not None
     with target_working_buffer:
-        write_buffer_to_path(replacement.working_file_path, target_working_buffer)
+        _discard_line_publication.publish_worktree_line_discard(
+            replacement.file_path,
+            replacement.working_file_path,
+            target_working_buffer,
+            force_regular=True,
+        )
 
     if not quiet:
         print(
@@ -131,7 +137,11 @@ def discard_file_lines_to_batch(
         )
 
     with target_working_buffer:
-        write_buffer_to_path(working_file_path, target_working_buffer)
+        _discard_line_publication.publish_worktree_line_discard(
+            file_path,
+            working_file_path,
+            target_working_buffer,
+        )
 
     if not quiet:
         print(
@@ -221,7 +231,11 @@ def discard_selected_lines_to_batch(
 
     log_journal("discard_lines_to_batch_before_write", file_path=str(working_file_path))
     with target_working_buffer:
-        write_buffer_to_path(working_file_path, target_working_buffer)
+        _discard_line_publication.publish_worktree_line_discard(
+            line_changes.path,
+            working_file_path,
+            target_working_buffer,
+        )
     log_journal("discard_lines_to_batch_after_write", file_path=str(working_file_path))
 
     if not quiet:

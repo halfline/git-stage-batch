@@ -17523,10 +17523,10 @@ def test_discard_line_selection_stays_in_command_helper():
     public_names = {"discard_worktree_line_selection"}
     command_level_names = {
         "build_target_working_tree_buffer_from_lines",
+        "discard_line_publication",
         "load_working_tree_file_as_buffer",
         "parse_line_selection",
         "require_line_selection_in_view",
-        "write_buffer_to_path",
     }
     helper_imports = command_level_names | {
         "get_git_repository_root_path",

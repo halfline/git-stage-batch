@@ -499,6 +499,20 @@ class TestProcessControl:
         exit_code = proc.wait()
         assert exit_code == 17
 
+    def test_poll_rejects_unknown_reaped_child_status(self, monkeypatch):
+        """A missing child status must not be reported as successful."""
+        process = command_streaming.SpawnedProcess(1234)
+
+        def raise_child_process_error(*args):
+            raise ChildProcessError("already reaped")
+
+        monkeypatch.setattr(os, "waitpid", raise_child_process_error)
+
+        with pytest.raises(ChildProcessError, match="Cannot determine exit status"):
+            process.poll()
+
+        assert process.returncode is None
+
     def test_wait_closes_captured_fds(self):
         """Test wait() closes captured pipe fds when stream() is unused."""
         proc = start_command([

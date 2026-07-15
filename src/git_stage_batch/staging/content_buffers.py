@@ -14,6 +14,7 @@ from ..core.buffer import (
     LineBuffer,
 )
 from ..editor.line_endings import detect_line_ending
+from ..editor.line_export import ensure_line_chunk_boundaries
 
 
 def _line_payload(line: bytes) -> bytes:
@@ -277,12 +278,21 @@ def build_target_index_buffer_from_lines(
 ) -> LineBuffer:
     """Build target index content from indexed base content lines."""
     base_line_count = len(base_lines)
+    detected_line_ending = detect_line_ending(base_lines)
+    default_line_ending = (
+        detected_line_ending
+        if detected_line_ending in (b"\n", b"\r\n")
+        else b"\n"
+    )
     return LineBuffer.from_chunks(
-        _target_index_line_contents(
-            line_changes,
-            include_ids,
-            base_lines,
-            base_line_count,
+        ensure_line_chunk_boundaries(
+            _target_index_line_contents(
+                line_changes,
+                include_ids,
+                base_lines,
+                base_line_count,
+            ),
+            default_line_ending=default_line_ending,
         )
     )
 

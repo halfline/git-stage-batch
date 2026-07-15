@@ -416,6 +416,26 @@ class TestBuildTargetIndexContent:
 
         assert result == b"same\nsame\n"
 
+    def test_index_selected_insertion_terminates_unterminated_base_line(self):
+        """An insertion after an unterminated EOF line remains a new line."""
+        header = HunkHeader(1, 2, 1, 3)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"line1", text="line1"),
+            LineEntry(None, " ", 2, 2, text_bytes=b"line2", text="line2"),
+            LineEntry(1, "+", None, 3, text_bytes=b"line3", text="line3"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+
+        with LineBuffer.from_bytes(b"line1\nline2") as base_lines:
+            result = _build_target_index_content_bytes(
+                line_changes,
+                {1},
+                base_lines,
+                base_has_trailing_newline=False,
+            )
+
+        assert result == b"line1\nline2\nline3\n"
+
     def test_preserves_trailing_newline(self):
         """Test that trailing newline is preserved from base."""
         header = HunkHeader(1, 1, 1, 2)

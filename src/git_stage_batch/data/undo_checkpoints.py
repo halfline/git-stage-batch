@@ -296,7 +296,14 @@ def undo_checkpoint(
         elif current_undo_commit() == _PENDING_CHECKPOINT:
             yield
             return
-        _clear_pending_checkpoint()
+        else:
+            _clear_pending_checkpoint()
+            raise CommandError(
+                _(
+                    "Cannot start an undoable operation because the pending "
+                    "checkpoint reference moved."
+                )
+            )
 
     previous_redo = current_redo_commit()
     checkpoint = _create_undo_checkpoint(

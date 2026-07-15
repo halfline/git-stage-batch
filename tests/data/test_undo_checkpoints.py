@@ -109,3 +109,20 @@ def test_pending_checkpoint_from_another_repository_is_cleared(monkeypatch):
 
     assert undo_checkpoints._PENDING_CHECKPOINT is None
     assert undo_checkpoints._PENDING_CHECKPOINT_REPOSITORY is None
+
+
+def test_checkpoint_finalization_fails_when_stack_reference_moved(monkeypatch):
+    """Finalization must not silently abandon a displaced checkpoint."""
+    monkeypatch.setattr(undo_checkpoints, "_PENDING_CHECKPOINT", "pending")
+    monkeypatch.setattr(
+        undo_checkpoints,
+        "_PENDING_CHECKPOINT_REPOSITORY",
+        Path("/repo/.git"),
+    )
+    monkeypatch.setattr(undo_checkpoints, "current_undo_commit", lambda: "moved")
+
+    with pytest.raises(CommandError, match="stack reference moved"):
+        undo_checkpoints.finalize_pending_checkpoint()
+
+    assert undo_checkpoints._PENDING_CHECKPOINT is None
+    assert undo_checkpoints._PENDING_CHECKPOINT_REPOSITORY is None

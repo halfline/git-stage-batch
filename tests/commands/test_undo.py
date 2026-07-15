@@ -378,6 +378,37 @@ def test_failed_checkpoint_finalization_requires_force(temp_git_repo, monkeypatc
     assert target.read_text() == "before\n"
 
 
+def test_unreadable_checkpoint_manifest_fails_finalization(temp_git_repo, monkeypatch):
+    """Finalization must report an unreadable before-image manifest."""
+    from git_stage_batch.data import undo_checkpoints as checkpoints
+
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    get_session_directory_path().mkdir(parents=True, exist_ok=True)
+    original_read_json = checkpoints._undo_restore.read_json_from_commit
+
+    def unreadable_manifest(*args, **kwargs):
+        raise CommandError("manifest unavailable")
+
+    monkeypatch.setattr(
+        checkpoints._undo_restore,
+        "read_json_from_commit",
+        unreadable_manifest,
+    )
+
+    with pytest.raises(CommandError, match="before-image manifest is unavailable"):
+        with undo_checkpoint("change target", worktree_paths=["target.txt"]):
+            target.write_text("changed\n")
+
+    monkeypatch.setattr(
+        checkpoints._undo_restore,
+        "read_json_from_commit",
+        original_read_json,
+    )
+    undo_last_checkpoint(force=True)
+
+    assert target.read_text() == "before\n"
+
+
 def test_scoped_undo_preserves_unrelated_batch_ref_changes(temp_git_repo):
     """Undo should restore changed batch refs without replacing unrelated refs."""
     target_ref = "refs/git-stage-batch/batches/target"

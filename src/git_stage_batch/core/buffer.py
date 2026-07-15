@@ -762,7 +762,7 @@ def _write_regular_file_atomically(
                 try:
                     os.fchown(file_handle.fileno(), metadata.st_uid, metadata.st_gid)
                 except PermissionError:
-                    pass
+                    replacement_mode &= 0o700
             os.fchmod(file_handle.fileno(), replacement_mode)
             os.fsync(file_handle.fileno())
         os.replace(temporary_path, file_path)

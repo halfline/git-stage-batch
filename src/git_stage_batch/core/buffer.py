@@ -10,6 +10,7 @@ from pathlib import Path
 import stat
 import tempfile
 from typing import Any, BinaryIO, Generic, Iterator, TypeVar, overload
+import uuid
 
 from .mapped_storage import (
     ChunkedMappedRecordVector,
@@ -699,8 +700,7 @@ def write_buffer_to_path(path: str | Path, buffer: BufferInput) -> None:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     if file_path.is_symlink():
         target = b"".join(buffer_byte_chunks(buffer))
-        file_path.unlink()
-        os.symlink(target, os.fsencode(file_path))
+        _replace_with_symlink_atomically(file_path, target)
         return
 
     _write_regular_file_atomically(file_path, buffer)
@@ -769,13 +769,39 @@ def _write_regular_file_atomically(
             os.fchmod(file_handle.fileno(), replacement_mode)
             os.fsync(file_handle.fileno())
         os.replace(temporary_path, file_path)
-        directory_descriptor = os.open(
-            file_path.parent,
-            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
-        )
-        try:
-            os.fsync(directory_descriptor)
-        finally:
-            os.close(directory_descriptor)
+        _fsync_directory(file_path.parent)
     finally:
         temporary_path.unlink(missing_ok=True)
+
+
+def _replace_with_symlink_atomically(file_path: Path, target: bytes) -> None:
+    """Publish a symlink through a same-directory atomic replacement."""
+    temporary_path = None
+    for _attempt in range(100):
+        candidate = file_path.parent / f".git-stage-batch-{uuid.uuid4().hex}.tmp"
+        try:
+            os.symlink(target, os.fsencode(candidate))
+        except FileExistsError:
+            continue
+        temporary_path = candidate
+        break
+
+    if temporary_path is None:
+        raise FileExistsError(f"Unable to create temporary symlink for {file_path}")
+
+    try:
+        os.replace(temporary_path, file_path)
+        _fsync_directory(file_path.parent)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
+def _fsync_directory(directory: Path) -> None:
+    directory_descriptor = os.open(
+        directory,
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+    )
+    try:
+        os.fsync(directory_descriptor)
+    finally:
+        os.close(directory_descriptor)

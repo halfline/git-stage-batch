@@ -8,6 +8,7 @@ from collections.abc import Sequence
 
 import pytest
 
+from git_stage_batch.core import buffer as buffer_module
 from git_stage_batch.core.buffer import (
     LineBuffer,
     buffer_byte_chunks,
@@ -247,6 +248,56 @@ def test_regular_write_supports_maximum_length_filename(tmp_path):
     write_buffer_to_path(output_path, b"new contents")
 
     assert output_path.read_bytes() == b"new contents"
+
+
+def test_symlink_write_keeps_old_entry_until_atomic_replace(tmp_path, monkeypatch):
+    """Publishing a new symlink target must not expose a missing path."""
+    output_path = tmp_path / "link"
+    os.symlink(b"old-target", os.fsencode(output_path))
+    original_replace = os.replace
+
+    def inspect_replace(source, destination):
+        assert destination == output_path
+        assert output_path.is_symlink()
+        assert os.readlink(output_path) == "old-target"
+        original_replace(source, destination)
+
+    monkeypatch.setattr(buffer_module.os, "replace", inspect_replace)
+
+    write_buffer_to_path(output_path, b"new-target")
+
+    assert output_path.is_symlink()
+    assert os.readlink(output_path) == "new-target"
+
+
+def test_failed_symlink_publication_preserves_old_entry(tmp_path, monkeypatch):
+    """A failed atomic publish must leave the existing symlink intact."""
+    output_path = tmp_path / "link"
+    os.symlink(b"old-target", os.fsencode(output_path))
+
+    def fail_replace(*args):
+        raise OSError("simulated publication failure")
+
+    monkeypatch.setattr(buffer_module.os, "replace", fail_replace)
+
+    with pytest.raises(OSError, match="simulated publication failure"):
+        write_buffer_to_path(output_path, b"new-target")
+
+    assert output_path.is_symlink()
+    assert os.readlink(output_path) == "old-target"
+    assert list(tmp_path.glob(".git-stage-batch-*.tmp")) == []
+
+
+def test_symlink_write_supports_maximum_length_filename(tmp_path):
+    """The private publication name must not depend on user filename length."""
+    maximum_name_length = os.pathconf(tmp_path, "PC_NAME_MAX")
+    output_path = tmp_path / ("x" * maximum_name_length)
+    os.symlink(b"old-target", os.fsencode(output_path))
+
+    write_buffer_to_path(output_path, b"new-target")
+
+    assert output_path.is_symlink()
+    assert os.readlink(output_path) == "new-target"
 
 
 def test_buffer_matches_across_chunk_boundaries(line_sequence):

@@ -288,6 +288,18 @@ def test_failed_symlink_publication_preserves_old_entry(tmp_path, monkeypatch):
     assert list(tmp_path.glob(".git-stage-batch-*.tmp")) == []
 
 
+def test_symlink_write_supports_maximum_length_filename(tmp_path):
+    """The private publication name must not depend on user filename length."""
+    maximum_name_length = os.pathconf(tmp_path, "PC_NAME_MAX")
+    output_path = tmp_path / ("x" * maximum_name_length)
+    os.symlink(b"old-target", os.fsencode(output_path))
+
+    write_buffer_to_path(output_path, b"new-target")
+
+    assert output_path.is_symlink()
+    assert os.readlink(output_path) == "new-target"
+
+
 def test_buffer_matches_across_chunk_boundaries(line_sequence):
     """Buffer comparison ignores how inputs are chunked."""
     left = line_sequence([b"alpha\n", b"beta\n"])

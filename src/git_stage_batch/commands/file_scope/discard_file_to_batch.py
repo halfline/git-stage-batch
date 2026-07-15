@@ -35,7 +35,6 @@ from ...utils.file_io import read_text_file_line_set
 from ...utils.git_worktree import (
     git_apply_to_worktree,
     git_checkout_index_paths,
-    git_remove_paths,
 )
 from ...utils.git_repository import get_git_repository_root_path
 from ...utils.journal import log_journal
@@ -43,6 +42,7 @@ from ...utils.paths import get_block_list_file_path, get_context_lines
 from ...utils.session_start_point import session_comparison_base
 from ..selection.action_completion import finish_selected_change_action
 from ..selection import whole_file_batch_discarding as _whole_file_batch_discarding
+from ..index_cleanup import remove_path_from_index
 
 
 def discard_file_to_batch(
@@ -157,7 +157,7 @@ def discard_file_to_batch(
 
                 if lifecycle_change_type == TextFileChangeType.ADDED:
                     full_path.unlink()
-                    git_remove_paths([file_path], cached=True, quiet=True, check=False)
+                    remove_path_from_index(file_path)
                 else:
                     result = git_checkout_index_paths([file_path], check=False)
                     if result.returncode != 0:
@@ -246,7 +246,7 @@ def discard_file_to_batch(
         repo_root = get_git_repository_root_path()
         full_path = repo_root / file_path
         if not os.path.lexists(full_path):
-            git_remove_paths([file_path], cached=True, quiet=True, check=False)
+            remove_path_from_index(file_path)
 
         if not quiet:
             print(

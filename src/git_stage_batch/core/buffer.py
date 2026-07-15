@@ -752,7 +752,7 @@ def _write_regular_file_atomically(
     )
     file_descriptor, temporary_name = tempfile.mkstemp(
         dir=file_path.parent,
-        prefix=f".{file_path.name}.",
+        prefix=".git-stage-batch-",
         suffix=".tmp",
     )
     temporary_path = Path(temporary_name)

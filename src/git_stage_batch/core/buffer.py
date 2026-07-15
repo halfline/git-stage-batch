@@ -769,13 +769,17 @@ def _write_regular_file_atomically(
             os.fchmod(file_handle.fileno(), replacement_mode)
             os.fsync(file_handle.fileno())
         os.replace(temporary_path, file_path)
-        directory_descriptor = os.open(
-            file_path.parent,
-            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
-        )
-        try:
-            os.fsync(directory_descriptor)
-        finally:
-            os.close(directory_descriptor)
+        _fsync_directory(file_path.parent)
     finally:
         temporary_path.unlink(missing_ok=True)
+
+
+def _fsync_directory(directory: Path) -> None:
+    directory_descriptor = os.open(
+        directory,
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+    )
+    try:
+        os.fsync(directory_descriptor)
+    finally:
+        os.close(directory_descriptor)

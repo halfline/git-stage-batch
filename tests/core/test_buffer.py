@@ -312,6 +312,20 @@ def test_worktree_symlink_replaces_regular_file_atomically(tmp_path):
     assert os.readlink(output_path) == "target"
 
 
+def test_worktree_regular_file_replaces_symlink_atomically(tmp_path):
+    """Git regular-file mode replaces the symlink, not its referent."""
+    output_path = tmp_path / "path"
+    referent = tmp_path / "referent"
+    referent.write_bytes(b"referent contents")
+    os.symlink(referent.name, output_path)
+
+    write_buffer_to_working_tree_path(output_path, b"regular", mode="100644")
+
+    assert not output_path.is_symlink()
+    assert output_path.read_bytes() == b"regular"
+    assert referent.read_bytes() == b"referent contents"
+
+
 def test_buffer_matches_across_chunk_boundaries(line_sequence):
     """Buffer comparison ignores how inputs are chunked."""
     left = line_sequence([b"alpha\n", b"beta\n"])

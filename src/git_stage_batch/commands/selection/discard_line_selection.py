@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 
 from ...batch.selection import require_line_selection_in_view
-from ...core.buffer import write_buffer_to_path
 from ...core.line_selection import parse_line_selection
 from ...data.line_state import load_line_changes_from_state
 from ...utils.repository_buffers import load_working_tree_file_as_buffer
@@ -16,6 +15,7 @@ from ...i18n import _
 from ...staging.content_buffers import build_target_working_tree_buffer_from_lines
 from ...utils.git_repository import get_git_repository_root_path
 from . import discard_file_selection as _discard_file_selection
+from . import discard_line_publication as _discard_line_publication
 
 
 def discard_worktree_line_selection(
@@ -64,6 +64,10 @@ def discard_worktree_line_selection(
         )
 
     with target_working_buffer:
-        write_buffer_to_path(working_file_path, target_working_buffer)
+        _discard_line_publication.publish_worktree_line_discard(
+            line_changes.path,
+            working_file_path,
+            target_working_buffer,
+        )
 
     return line_changes.path

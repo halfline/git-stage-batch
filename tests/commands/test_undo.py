@@ -339,6 +339,44 @@ def test_atomic_failed_operation_rolls_back_before_propagating(temp_git_repo):
     assert current_undo_commit() == previous_checkpoint
 
 
+@pytest.mark.parametrize(
+    ("outer_scope", "inner_scope", "scope_name"),
+    [
+        (
+            {"worktree_paths": ["outer.txt"]},
+            {"worktree_paths": ["inner.txt"]},
+            "worktree",
+        ),
+        (
+            {"worktree_paths": [], "index_paths": ["outer.txt"]},
+            {"worktree_paths": [], "index_paths": ["inner.txt"]},
+            "index",
+        ),
+        (
+            {"worktree_paths": [], "repository_paths": ["outer"]},
+            {"worktree_paths": [], "repository_paths": ["inner"]},
+            "repository",
+        ),
+    ],
+)
+def test_nested_checkpoint_rejects_paths_outside_outer_scope(
+    temp_git_repo,
+    outer_scope,
+    inner_scope,
+    scope_name,
+):
+    """Nested operations must not mutate paths absent from the before-image."""
+    get_session_directory_path().mkdir(parents=True, exist_ok=True)
+
+    with undo_checkpoint("outer", **outer_scope):
+        with pytest.raises(
+            CommandError,
+            match=rf"does not cover {scope_name} path.*inner",
+        ):
+            with undo_checkpoint("inner", **inner_scope):
+                raise AssertionError("nested operation should not run")
+
+
 def test_failed_checkpoint_finalization_requires_force(temp_git_repo, monkeypatch):
     """A manifest persistence failure should leave a guarded before-image."""
     from git_stage_batch.data import undo_checkpoints as checkpoints

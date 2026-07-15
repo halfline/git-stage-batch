@@ -55,8 +55,16 @@ from ..utils.paths import (
 
 
 _PENDING_CHECKPOINT: str | None = None
+_PENDING_CHECKPOINT_REPOSITORY: Path | None = None
 EXPLICIT_WORKTREE_SCOPE = "explicit"
 CHANGED_WORKTREE_SCOPE = "changed"
+
+
+def _clear_pending_checkpoint() -> None:
+    """Forget process-local state for the pending checkpoint."""
+    global _PENDING_CHECKPOINT, _PENDING_CHECKPOINT_REPOSITORY
+    _PENDING_CHECKPOINT = None
+    _PENDING_CHECKPOINT_REPOSITORY = None
 
 
 def _checkpoint_worktree_scope(
@@ -189,7 +197,7 @@ def _create_undo_checkpoint(
     if not session_dir.exists():
         return None
 
-    global _PENDING_CHECKPOINT
+    global _PENDING_CHECKPOINT, _PENDING_CHECKPOINT_REPOSITORY
 
     worktree_path_scope, tracked_worktree_paths = _checkpoint_worktree_scope(
         worktree_paths
@@ -259,6 +267,7 @@ def _create_undo_checkpoint(
         deletes=[SESSION_REDO_STACK_REF],
     )
     _PENDING_CHECKPOINT = checkpoint_commit
+    _PENDING_CHECKPOINT_REPOSITORY = get_git_directory_path()
     return checkpoint_commit
 
 
@@ -277,12 +286,24 @@ def undo_checkpoint(
     checkpoint before propagating an exception. This turns the checkpoint into
     a transaction boundary for commands that span several files or stores.
     """
-    global _PENDING_CHECKPOINT
     if _PENDING_CHECKPOINT is not None:
-        if current_undo_commit() == _PENDING_CHECKPOINT:
+        current_repository = get_git_directory_path()
+        if (
+            _PENDING_CHECKPOINT_REPOSITORY is not None
+            and current_repository != _PENDING_CHECKPOINT_REPOSITORY
+        ):
+            _clear_pending_checkpoint()
+        elif current_undo_commit() == _PENDING_CHECKPOINT:
             yield
             return
-        _PENDING_CHECKPOINT = None
+        else:
+            _clear_pending_checkpoint()
+            raise CommandError(
+                _(
+                    "Cannot start an undoable operation because the pending "
+                    "checkpoint reference moved."
+                )
+            )
 
     previous_redo = current_redo_commit()
     checkpoint = _create_undo_checkpoint(
@@ -326,8 +347,7 @@ def _rollback_failed_checkpoint(
     previous_redo: str | None,
 ) -> None:
     """Restore an incomplete checkpoint after its operation raises."""
-    global _PENDING_CHECKPOINT
-    _PENDING_CHECKPOINT = None
+    _clear_pending_checkpoint()
 
     if current_undo_commit() != checkpoint:
         raise CommandError(
@@ -358,11 +378,10 @@ def _rollback_failed_checkpoint(
 
 def finalize_pending_checkpoint() -> None:
     """Record the post-operation state for conflict detection."""
-    global _PENDING_CHECKPOINT
     checkpoint = _PENDING_CHECKPOINT
     if checkpoint is None:
         return
-    _PENDING_CHECKPOINT = None
+    _clear_pending_checkpoint()
 
     current = current_undo_commit()
     if current != checkpoint:

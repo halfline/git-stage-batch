@@ -50,6 +50,7 @@ def _tree_entries(commit: str, prefix: str) -> list[tuple[str, str, str]]:
         ["ls-tree", "-r", "-z", commit, prefix],
         check=False,
         text_output=False,
+        cwd=str(get_git_repository_root_path()),
         requires_index_lock=False,
     )
     if result.returncode != 0 or not result.stdout:

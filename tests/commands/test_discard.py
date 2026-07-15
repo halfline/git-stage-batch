@@ -29,6 +29,7 @@ import git_stage_batch.commands.selection.selected_change_discarding as selected
 import git_stage_batch.commands.selection.selected_change_batch_discarding as selected_change_batch_discarding
 import git_stage_batch.commands.selection.discard_line_action as discard_line_action
 import git_stage_batch.commands.selection.selected_file_discarding as selected_file_discarding
+import git_stage_batch.commands.index_cleanup as index_cleanup
 from git_stage_batch.commands.discard import command_discard, command_discard_line, command_discard_line_as_to_batch
 from git_stage_batch.commands.include import command_include, command_include_line
 from git_stage_batch.commands.show import command_show
@@ -246,6 +247,40 @@ class TestCommandDiscard:
 
         assert test_file.read_text() == "base\nselected\n"
         assert not batch_exists("failed-batch")
+
+    def test_failed_index_cleanup_rolls_back_new_file_discard_to_batch(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """An index-removal failure must restore the file and batch state."""
+        new_file = temp_git_repo / "new.txt"
+        new_file.write_text("new content\n")
+        command_start(quiet=True)
+
+        monkeypatch.setattr(
+            index_cleanup,
+            "git_update_index",
+            lambda **_kwargs: subprocess.CompletedProcess(
+                ["git", "update-index"],
+                1,
+                "",
+                "index cleanup failed",
+            ),
+        )
+
+        with pytest.raises(CommandError, match="index cleanup failed"):
+            command_discard_to_batch("failed-batch", quiet=True)
+
+        assert new_file.read_text() == "new content\n"
+        assert not batch_exists("failed-batch")
+        assert subprocess.run(
+            ["git", "ls-files", "--stage", "--", "new.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        ).stdout
 
     def test_discard_only_line_from_intent_to_add_file_leaves_empty_file(
         self,

@@ -15,6 +15,7 @@ from ...exceptions import CommandError
 from ...i18n import _, ngettext
 from ...utils.git_repository import require_git_repository
 from ...utils.paths import ensure_state_directory_exists
+from . import discard_file as _discard_file
 from .discard_to_batch import discard_files_to_batch
 from . import include_file as _include_file
 from .target_path import checkpoint_paths_for_live_files
@@ -85,6 +86,26 @@ def run_for_each_resolved_file(
     callback(file_scope.optional_file())
 
 
+def discard_each_resolved_file(
+    files: Sequence[str],
+    *,
+    auto_advance: bool | None = None,
+) -> None:
+    """Discard a multi-file live scope under one rename-complete checkpoint."""
+    _prepare_live_multi_file_action()
+    checkpoint_paths = checkpoint_paths_for_live_files(list(files))
+    with _multi_file_undo_checkpoint(
+        "discard",
+        files,
+        worktree_paths=checkpoint_paths,
+    ):
+        for file_path in files:
+            _discard_file.discard_file_changes(
+                file_path,
+                auto_advance=auto_advance,
+            )
+
+
 def _format_file_summary(files: Sequence[str]) -> str:
     """Return a single path or plural file count for command output."""
     if len(files) == 1:
@@ -97,7 +118,7 @@ def _format_file_summary(files: Sequence[str]) -> str:
 
 
 def _prepare_live_multi_file_action() -> None:
-    """Run command setup shared by live multi-file include and skip actions."""
+    """Run command setup shared by live multi-file actions."""
     require_git_repository()
     require_session_started()
     ensure_state_directory_exists()

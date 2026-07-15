@@ -339,6 +339,108 @@ def test_atomic_failed_operation_rolls_back_before_propagating(temp_git_repo):
     assert current_undo_commit() == previous_checkpoint
 
 
+@pytest.mark.parametrize(
+    ("outer_scope", "inner_scope", "scope_name"),
+    [
+        (
+            {"worktree_paths": ["outer.txt"]},
+            {"worktree_paths": ["inner.txt"]},
+            "worktree",
+        ),
+        (
+            {"worktree_paths": [], "index_paths": ["outer.txt"]},
+            {"worktree_paths": [], "index_paths": ["inner.txt"]},
+            "index",
+        ),
+        (
+            {"worktree_paths": [], "repository_paths": ["outer"]},
+            {"worktree_paths": [], "repository_paths": ["inner"]},
+            "repository",
+        ),
+    ],
+)
+def test_nested_checkpoint_rejects_paths_outside_outer_scope(
+    temp_git_repo,
+    outer_scope,
+    inner_scope,
+    scope_name,
+):
+    """Nested operations must not mutate paths absent from the before-image."""
+    get_session_directory_path().mkdir(parents=True, exist_ok=True)
+
+    with undo_checkpoint("outer", **outer_scope):
+        with pytest.raises(
+            CommandError,
+            match=rf"does not cover {scope_name} path.*inner",
+        ):
+            with undo_checkpoint("inner", **inner_scope):
+                raise AssertionError("nested operation should not run")
+
+
+def test_nested_transaction_requires_transactional_outer_checkpoint(temp_git_repo):
+    """A nested rollback promise must not disappear inside a weaker checkpoint."""
+    get_session_directory_path().mkdir(parents=True, exist_ok=True)
+
+    with undo_checkpoint("outer", worktree_paths=["target.txt"]):
+        with pytest.raises(CommandError, match="does not roll back on error"):
+            with undo_checkpoint(
+                "inner",
+                worktree_paths=["target.txt"],
+                rollback_on_error=True,
+            ):
+                raise AssertionError("nested operation should not run")
+
+
+def test_nested_transaction_uses_compatible_outer_checkpoint(temp_git_repo):
+    """A covered nested transaction should share the outer checkpoint."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    get_session_directory_path().mkdir(parents=True, exist_ok=True)
+
+    with undo_checkpoint(
+        "outer",
+        worktree_paths=["target.txt"],
+        rollback_on_error=True,
+    ):
+        with undo_checkpoint(
+            "inner",
+            worktree_paths=["target.txt"],
+            rollback_on_error=True,
+        ):
+            target.write_text("after\n")
+
+    undo_last_checkpoint()
+
+    assert target.read_text() == "before\n"
+
+
+def test_caught_nested_transaction_error_rolls_back_outer_checkpoint(temp_git_repo):
+    """Catching an inner failure must not let its transaction commit."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    get_session_directory_path().mkdir(parents=True, exist_ok=True)
+    previous_checkpoint = current_undo_commit()
+
+    with pytest.raises(CommandError, match="enclosing operation was rolled back"):
+        with undo_checkpoint(
+            "outer",
+            worktree_paths=["target.txt"],
+            rollback_on_error=True,
+        ):
+            target.write_text("outer mutation\n")
+            try:
+                with undo_checkpoint(
+                    "inner",
+                    worktree_paths=["target.txt"],
+                    rollback_on_error=True,
+                ):
+                    target.write_text("inner mutation\n")
+                    raise RuntimeError("inner failed")
+            except RuntimeError:
+                target.write_text("continued after inner failure\n")
+
+    assert target.read_text() == "before\n"
+    assert current_undo_commit() == previous_checkpoint
+
+
 def test_failed_checkpoint_finalization_requires_force(temp_git_repo, monkeypatch):
     """A manifest persistence failure should leave a guarded before-image."""
     from git_stage_batch.data import undo_checkpoints as checkpoints

@@ -5331,6 +5331,7 @@ def test_argument_parser_delegates_discard_dispatch():
         "command_discard_line",
         "command_discard_line_as_to_batch",
         "command_discard_to_batch",
+        "discard_each_resolved_file",
         "discard_to_batch_each_resolved_file",
     }
 
@@ -5346,6 +5347,7 @@ def test_argument_parser_delegates_discard_dispatch():
     assert "_dispatch_discard_replacement" in vars(discard_dispatch)
     assert discard_command_names.isdisjoint(vars(parser))
     assert "def dispatch_discard(" not in parser_text
+    assert "discard_each_resolved_file(" not in parser_text
     assert "discard_to_batch_each_resolved_file(" not in parser_text
     assert "command_discard_from_batch(" not in parser_text
     assert "command_discard_to_batch(" not in parser_text

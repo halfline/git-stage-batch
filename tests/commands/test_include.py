@@ -413,6 +413,42 @@ class TestCommandIncludeLine:
         assert blob_result.stdout == b"newtarget"
         assert mode_result.stdout.split()[0] == "120000"
 
+    @pytest.mark.parametrize("line_ending", [b"\n", b"\r\n"])
+    def test_include_line_after_unterminated_eof_does_not_glue_lines(
+        self,
+        temp_git_repo,
+        line_ending,
+    ):
+        """A selected line after an unterminated EOF remains a separate line."""
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_bytes(line_ending.join([b"line1", b"line2"]))
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo)
+        subprocess.run(
+            ["git", "commit", "-m", "Add test file"],
+            check=True,
+            cwd=temp_git_repo,
+        )
+        expected = line_ending.join([b"line1", b"line2", b"line3", b""])
+        test_file.write_bytes(expected)
+
+        command_start(quiet=True)
+        line_changes = load_line_changes_from_state()
+        line_id = next(
+            line.id
+            for line in line_changes.lines
+            if line.kind == "+" and line.text_bytes.removesuffix(b"\r") == b"line3"
+        )
+        assert line_id is not None
+        command_include_line(str(line_id))
+
+        result = subprocess.run(
+            ["git", "show", ":test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        assert result.stdout == expected
+
     def test_include_to_batch_symlink_preserves_mode(self, temp_git_repo):
         """Line include to a batch should keep symlink mode and target bytes."""
         link_path = temp_git_repo / "link"

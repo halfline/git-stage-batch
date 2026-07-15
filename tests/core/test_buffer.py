@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import mmap
+import os
 from collections.abc import Sequence
 
 import pytest
@@ -234,7 +235,18 @@ def test_write_buffer_failure_preserves_existing_file(tmp_path):
         write_buffer_to_path(output_path, failing_chunks())
 
     assert output_path.read_bytes() == b"original\n"
-    assert list(tmp_path.glob(".out.txt.*.tmp")) == []
+    assert list(tmp_path.glob(".git-stage-batch-*.tmp")) == []
+
+
+def test_regular_write_supports_maximum_length_filename(tmp_path):
+    """Atomic regular-file publication must use a short private filename."""
+    maximum_name_length = os.pathconf(tmp_path, "PC_NAME_MAX")
+    output_path = tmp_path / ("x" * maximum_name_length)
+    output_path.write_bytes(b"old contents")
+
+    write_buffer_to_path(output_path, b"new contents")
+
+    assert output_path.read_bytes() == b"new contents"
 
 
 def test_buffer_matches_across_chunk_boundaries(line_sequence):

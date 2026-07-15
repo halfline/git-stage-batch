@@ -718,13 +718,8 @@ def write_buffer_to_working_tree_path(
 
     if mode == "120000":
         target = b"".join(buffer_byte_chunks(buffer))
-        if os.path.lexists(file_path):
-            file_path.unlink()
-        os.symlink(target, os.fsencode(file_path))
+        _replace_with_symlink_atomically(file_path, target)
         return
-
-    if file_path.is_symlink():
-        file_path.unlink()
 
     requested_mode = None
     if mode == "100755":
@@ -742,8 +737,10 @@ def _write_regular_file_atomically(
 ) -> None:
     """Stream a regular file through a same-directory atomic replacement."""
     try:
-        metadata = file_path.stat()
+        metadata = file_path.lstat()
     except FileNotFoundError:
+        metadata = None
+    if metadata is not None and not stat.S_ISREG(metadata.st_mode):
         metadata = None
     replacement_mode = (
         mode

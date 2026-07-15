@@ -413,6 +413,34 @@ def test_nested_transaction_uses_compatible_outer_checkpoint(temp_git_repo):
     assert target.read_text() == "before\n"
 
 
+def test_caught_nested_transaction_error_rolls_back_outer_checkpoint(temp_git_repo):
+    """Catching an inner failure must not let its transaction commit."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    get_session_directory_path().mkdir(parents=True, exist_ok=True)
+    previous_checkpoint = current_undo_commit()
+
+    with pytest.raises(CommandError, match="enclosing operation was rolled back"):
+        with undo_checkpoint(
+            "outer",
+            worktree_paths=["target.txt"],
+            rollback_on_error=True,
+        ):
+            target.write_text("outer mutation\n")
+            try:
+                with undo_checkpoint(
+                    "inner",
+                    worktree_paths=["target.txt"],
+                    rollback_on_error=True,
+                ):
+                    target.write_text("inner mutation\n")
+                    raise RuntimeError("inner failed")
+            except RuntimeError:
+                target.write_text("continued after inner failure\n")
+
+    assert target.read_text() == "before\n"
+    assert current_undo_commit() == previous_checkpoint
+
+
 def test_failed_checkpoint_finalization_requires_force(temp_git_repo, monkeypatch):
     """A manifest persistence failure should leave a guarded before-image."""
     from git_stage_batch.data import undo_checkpoints as checkpoints

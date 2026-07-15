@@ -8,6 +8,7 @@ from collections.abc import Sequence
 
 import pytest
 
+from git_stage_batch.core import buffer as buffer_module
 from git_stage_batch.core.buffer import (
     LineBuffer,
     buffer_byte_chunks,
@@ -247,6 +248,26 @@ def test_regular_write_supports_maximum_length_filename(tmp_path):
     write_buffer_to_path(output_path, b"new contents")
 
     assert output_path.read_bytes() == b"new contents"
+
+
+def test_symlink_write_keeps_old_entry_until_atomic_replace(tmp_path, monkeypatch):
+    """Publishing a new symlink target must not expose a missing path."""
+    output_path = tmp_path / "link"
+    os.symlink(b"old-target", os.fsencode(output_path))
+    original_replace = os.replace
+
+    def inspect_replace(source, destination):
+        assert destination == output_path
+        assert output_path.is_symlink()
+        assert os.readlink(output_path) == "old-target"
+        original_replace(source, destination)
+
+    monkeypatch.setattr(buffer_module.os, "replace", inspect_replace)
+
+    write_buffer_to_path(output_path, b"new-target")
+
+    assert output_path.is_symlink()
+    assert os.readlink(output_path) == "new-target"
 
 
 def test_buffer_matches_across_chunk_boundaries(line_sequence):

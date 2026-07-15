@@ -67,6 +67,53 @@ def _clear_pending_checkpoint() -> None:
     _PENDING_CHECKPOINT_REPOSITORY = None
 
 
+def _validate_nested_checkpoint(
+    checkpoint: str,
+    *,
+    worktree_paths: list[str],
+    index_paths: list[str] | None,
+    repository_paths: list[str] | None,
+    rollback_on_error: bool,
+) -> None:
+    """Require a nested operation to fit inside the active transaction."""
+    manifest = _undo_restore.read_json_from_commit(checkpoint, "manifest.json")
+    requested_index_paths = worktree_paths if index_paths is None else index_paths
+    scope_pairs = (
+        (
+            _("worktree"),
+            set(worktree_paths),
+            set(manifest.get("tracked_worktree_paths", [])),
+        ),
+        (
+            _("index"),
+            set(requested_index_paths),
+            set(
+                manifest.get(
+                    "tracked_index_paths",
+                    manifest.get("tracked_worktree_paths", []),
+                )
+            ),
+        ),
+        (
+            _("repository"),
+            set(repository_paths or []),
+            set(manifest.get("tracked_repository_paths", [])),
+        ),
+    )
+    for scope_name, requested_paths, tracked_paths in scope_pairs:
+        missing_paths = sorted(requested_paths - tracked_paths)
+        if missing_paths:
+            raise CommandError(
+                _(
+                    "Cannot start nested undoable operation because the outer "
+                    "checkpoint does not cover {scope} path(s): {paths}"
+                ).format(
+                    scope=scope_name,
+                    paths=", ".join(missing_paths),
+                )
+            )
+
+
 def _checkpoint_worktree_scope(
     worktree_paths: list[str],
 ) -> tuple[str, list[str]]:
@@ -294,6 +341,13 @@ def undo_checkpoint(
         ):
             _clear_pending_checkpoint()
         elif current_undo_commit() == _PENDING_CHECKPOINT:
+            _validate_nested_checkpoint(
+                _PENDING_CHECKPOINT,
+                worktree_paths=worktree_paths,
+                index_paths=index_paths,
+                repository_paths=repository_paths,
+                rollback_on_error=rollback_on_error,
+            )
             yield
             return
         else:

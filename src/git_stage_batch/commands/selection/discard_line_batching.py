@@ -6,7 +6,7 @@ import os
 import sys
 
 from ...batch.source.annotation import annotate_with_batch_source
-from ...core.buffer import LineBuffer, write_buffer_to_path
+from ...core.buffer import LineBuffer
 from ...core.replacement import ReplacementPayload
 from ...data.line_state import load_line_changes_from_state
 from ...utils.repository_buffers import load_working_tree_file_as_buffer
@@ -62,7 +62,12 @@ def discard_lines_as_to_batch(
     assert target_working_buffer is not None
     assert replacement is not None
     with target_working_buffer:
-        write_buffer_to_path(replacement.working_file_path, target_working_buffer)
+        _discard_line_publication.publish_worktree_line_discard(
+            replacement.file_path,
+            replacement.working_file_path,
+            target_working_buffer,
+            force_regular=True,
+        )
 
     if not quiet:
         print(

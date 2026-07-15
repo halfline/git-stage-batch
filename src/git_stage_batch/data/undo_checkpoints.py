@@ -394,8 +394,14 @@ def finalize_pending_checkpoint() -> None:
 
     try:
         manifest = _undo_restore.read_json_from_commit(checkpoint, "manifest.json")
-    except CommandError:
-        return
+    except CommandError as error:
+        raise CommandError(
+            _(
+                "Cannot finalize the undo checkpoint because its before-image "
+                "manifest is unavailable. The operation completed, but its "
+                "checkpoint is incomplete."
+            )
+        ) from error
 
     paths = set(manifest.get("tracked_worktree_paths", []))
     if not _uses_explicit_worktree_scope(manifest):

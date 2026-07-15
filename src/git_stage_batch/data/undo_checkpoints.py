@@ -56,6 +56,7 @@ from ..utils.paths import (
 
 _PENDING_CHECKPOINT: str | None = None
 _PENDING_CHECKPOINT_REPOSITORY: Path | None = None
+_PENDING_CHECKPOINT_ROLLBACK_ON_ERROR: bool | None = None
 EXPLICIT_WORKTREE_SCOPE = "explicit"
 CHANGED_WORKTREE_SCOPE = "changed"
 
@@ -63,8 +64,10 @@ CHANGED_WORKTREE_SCOPE = "changed"
 def _clear_pending_checkpoint() -> None:
     """Forget process-local state for the pending checkpoint."""
     global _PENDING_CHECKPOINT, _PENDING_CHECKPOINT_REPOSITORY
+    global _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR
     _PENDING_CHECKPOINT = None
     _PENDING_CHECKPOINT_REPOSITORY = None
+    _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR = None
 
 
 def _validate_nested_checkpoint(
@@ -112,6 +115,14 @@ def _validate_nested_checkpoint(
                     paths=", ".join(missing_paths),
                 )
             )
+
+    if rollback_on_error and not _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR:
+        raise CommandError(
+            _(
+                "Cannot start nested transactional operation because the outer "
+                "checkpoint does not roll back on error."
+            )
+        )
 
 
 def _checkpoint_worktree_scope(
@@ -333,6 +344,7 @@ def undo_checkpoint(
     checkpoint before propagating an exception. This turns the checkpoint into
     a transaction boundary for commands that span several files or stores.
     """
+    global _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR
     if _PENDING_CHECKPOINT is not None:
         current_repository = get_git_directory_path()
         if (
@@ -366,6 +378,8 @@ def undo_checkpoint(
         index_paths=index_paths,
         repository_paths=repository_paths,
     )
+    if checkpoint is not None:
+        _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR = rollback_on_error
     try:
         yield
     except BaseException as operation_error:

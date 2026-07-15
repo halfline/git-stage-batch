@@ -17529,7 +17529,6 @@ def test_discard_line_selection_stays_in_command_helper():
         "write_buffer_to_path",
     }
     helper_imports = command_level_names | {
-        "buffer_ends_with_lf",
         "get_git_repository_root_path",
         "get_selected_change_file_path",
         "load_line_changes_from_state",
@@ -18084,8 +18083,8 @@ def test_discard_uses_file_io_path_empty_helper():
 
 def test_discard_uses_core_buffer_newline_helper():
     """Discard should use core buffer helpers for trailing newline checks."""
-    line_batching_path = (
-        SRC_ROOT / "commands" / "selection" / "discard_line_batching.py"
+    replacement_path = (
+        SRC_ROOT / "commands" / "selection" / "discard_line_replacement.py"
     )
     core_buffer = __import__(
         "git_stage_batch.core.buffer",
@@ -18096,14 +18095,14 @@ def test_discard_uses_core_buffer_newline_helper():
     assert "buffer_ends_with_lf" in vars(core_buffer)
 
     tree = ast.parse(
-        line_batching_path.read_text(),
-        filename=str(line_batching_path),
+        replacement_path.read_text(),
+        filename=str(replacement_path),
     )
     discard_helpers = {
         node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
     }
 
-    for imported_module, node in _import_from_nodes(line_batching_path):
+    for imported_module, node in _import_from_nodes(replacement_path):
         if imported_module != "git_stage_batch.core.buffer":
             continue
         imported_buffer_names |= {alias.name for alias in node.names}

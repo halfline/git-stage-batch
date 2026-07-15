@@ -40,7 +40,6 @@ def _build_target_working_tree_content_text(
             line_changes,
             discard_ids,
             working_lines,
-            working_has_trailing_newline=working_text.endswith("\n"),
         )
     return result.decode("utf-8", errors="surrogateescape")
 
@@ -85,14 +84,11 @@ def _build_target_working_tree_content_bytes(
     line_changes: LineLevelChange,
     discard_ids: set[int],
     working_lines,
-    *,
-    working_has_trailing_newline: bool = True,
 ) -> bytes:
     with build_target_working_tree_buffer_from_lines(
         line_changes,
         discard_ids,
         working_lines,
-        working_has_trailing_newline=working_has_trailing_newline,
     ) as result:
         return result.to_bytes()
 
@@ -1232,10 +1228,42 @@ class TestBuildTargetWorkingTreeContent:
             line_changes,
             {1},
             working_lines,
-            working_has_trailing_newline=True,
         ) as result:
             assert isinstance(result, LineBuffer)
             assert result.to_bytes() == b"line1\r\nline2\r\n"
+
+    @pytest.mark.parametrize("line_ending", [b"\n", b"\r\n"])
+    def test_reinserted_unterminated_line_stays_separate_from_kept_lines(
+        self,
+        line_ending,
+    ):
+        """A restored EOF deletion must not join a later worktree line."""
+        line_changes = LineLevelChange(
+            path="test.txt",
+            header=HunkHeader(1, 1, 1, 2),
+            lines=[
+                LineEntry(
+                    1,
+                    "-",
+                    1,
+                    None,
+                    text_bytes=b"last",
+                    has_trailing_newline=False,
+                ),
+                LineEntry(2, "+", None, 1, text_bytes=b"last"),
+                LineEntry(3, "+", None, 2, text_bytes=b"more"),
+            ],
+        )
+        working_content = line_ending.join([b"last", b"more", b""])
+
+        with LineBuffer.from_bytes(working_content) as working_lines:
+            result = _build_target_working_tree_content_bytes(
+                line_changes,
+                {1},
+                working_lines,
+            )
+
+        assert result == line_ending.join([b"last", b"last", b"more", b""])
 
     def test_file_scoped_deletion_uses_prior_change_delta(self):
         """File-scoped deletions should keep anchors after prior hunks."""

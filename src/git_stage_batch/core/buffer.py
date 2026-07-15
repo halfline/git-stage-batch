@@ -700,8 +700,7 @@ def write_buffer_to_path(path: str | Path, buffer: BufferInput) -> None:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     if file_path.is_symlink():
         target = b"".join(buffer_byte_chunks(buffer))
-        file_path.unlink()
-        os.symlink(target, os.fsencode(file_path))
+        _replace_with_symlink_atomically(file_path, target)
         return
 
     _write_regular_file_atomically(file_path, buffer)

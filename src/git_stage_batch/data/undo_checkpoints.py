@@ -385,7 +385,12 @@ def finalize_pending_checkpoint() -> None:
 
     current = current_undo_commit()
     if current != checkpoint:
-        return
+        raise CommandError(
+            _(
+                "Cannot finalize the undo checkpoint because its stack "
+                "reference moved."
+            )
+        )
 
     try:
         manifest = _undo_restore.read_json_from_commit(checkpoint, "manifest.json")

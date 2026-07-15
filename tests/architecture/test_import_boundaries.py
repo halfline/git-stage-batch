@@ -16640,7 +16640,21 @@ def test_batch_file_mode_detection_stays_in_data_module():
         "_detect_file_mode_from_root",
     }
 
-    assert {"detect_file_mode", "detect_file_mode_from_root"} <= vars(file_modes).keys()
+    assert {
+        "apply_git_file_mode",
+        "detect_file_mode",
+        "detect_file_mode_from_root",
+    } <= vars(file_modes).keys()
+
+    file_modes_path = SRC_ROOT / "data" / "file_modes.py"
+    file_modes_imports = {
+        imported_module: {alias.name for alias in node.names}
+        for imported_module, node in _import_from_nodes(file_modes_path)
+    }
+    assert "open_repository_path" in file_modes_imports[
+        "git_stage_batch.utils.repository_path"
+    ]
+    assert "O_NOFOLLOW" not in file_modes_path.read_text()
 
     for path, expected_names in expected_imports.items():
         tree = ast.parse(path.read_text(), filename=str(path))

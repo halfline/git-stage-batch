@@ -6,8 +6,11 @@ import os
 from pathlib import Path
 import stat
 
+from ..exceptions import CommandError
+from ..i18n import _
 from ..utils.git_command import run_git_command
 from ..utils.git_repository import get_git_repository_root_path
+from ..utils.repository_path import open_repository_path
 
 
 def detect_file_mode(file_path: str) -> str:
@@ -54,8 +57,34 @@ def apply_git_file_mode(path: Path, file_mode: str | None) -> None:
     """Apply Git executable-bit semantics to an existing worktree path."""
     if file_mode is None or file_mode == "120000":
         return
-    current_mode = path.stat().st_mode
-    if file_mode == "100755":
-        path.chmod(current_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    else:
-        path.chmod(current_mode & ~(stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH))
+
+    try:
+        with open_repository_path(
+            path,
+            access_modes=(os.O_RDONLY, os.O_WRONLY),
+        ) as file_descriptor:
+            current_mode = os.fstat(file_descriptor).st_mode
+            if not stat.S_ISREG(current_mode):
+                raise CommandError(
+                    _("Cannot apply Git file mode to non-regular path {path}").format(
+                        path=path
+                    )
+                )
+            if file_mode == "100755":
+                replacement_mode = (
+                    current_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+                )
+            else:
+                replacement_mode = current_mode & ~(
+                    stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+                )
+            os.fchmod(file_descriptor, replacement_mode)
+    except CommandError:
+        raise
+    except OSError as error:
+        raise CommandError(
+            _("Cannot safely apply Git file mode to {path}: {error}").format(
+                path=path,
+                error=error,
+            )
+        ) from error

@@ -718,9 +718,7 @@ def write_buffer_to_working_tree_path(
 
     if mode == "120000":
         target = b"".join(buffer_byte_chunks(buffer))
-        if os.path.lexists(file_path):
-            file_path.unlink()
-        os.symlink(target, os.fsencode(file_path))
+        _replace_with_symlink_atomically(file_path, target)
         return
 
     if file_path.is_symlink():

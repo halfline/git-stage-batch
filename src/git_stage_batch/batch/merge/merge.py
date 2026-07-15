@@ -27,6 +27,7 @@ from ...editor.line_endings import (
     choose_line_ending,
     restore_line_endings_in_chunks,
 )
+from ...editor.line_export import ensure_line_chunk_boundaries
 from ...exceptions import (
     MergeError as _MergeError,
 )
@@ -73,12 +74,14 @@ def merge_batch_from_line_sequences_as_buffer(
     normalized_working_lines = normalize_line_sequence_endings(working_lines)
     return LineBuffer.from_chunks(
         restore_line_endings_in_chunks(
-            _merge_batch_line_chunks(
-                normalized_source_lines,
-                ownership,
-                normalized_working_lines,
-                source_to_working_mapping=source_to_working_mapping,
-                resolution=resolution,
+            ensure_line_chunk_boundaries(
+                _merge_batch_line_chunks(
+                    normalized_source_lines,
+                    ownership,
+                    normalized_working_lines,
+                    source_to_working_mapping=source_to_working_mapping,
+                    resolution=resolution,
+                )
             ),
             result_line_ending,
         )

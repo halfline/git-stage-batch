@@ -217,7 +217,12 @@ def discard_to_batch_each_resolved_file(
 ) -> None:
     """Save a multi-file live scope to a batch and report one aggregate summary."""
     operation = f"discard --to {shlex.quote(batch_name)}"
-    with _multi_file_undo_checkpoint(operation, files, worktree_paths=files):
+    checkpoint_paths = checkpoint_paths_for_live_files(list(files))
+    with _multi_file_undo_checkpoint(
+        operation,
+        files,
+        worktree_paths=checkpoint_paths,
+    ):
         result = discard_files_to_batch(
             batch_name,
             list(files),

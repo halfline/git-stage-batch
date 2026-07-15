@@ -2,6 +2,7 @@
 
 import os
 import re
+import stat
 import subprocess
 
 from git_stage_batch.batch.state.query import read_batch_metadata
@@ -99,6 +100,52 @@ def test_mode_change_round_trips_through_batch(functional_repo):
 
     git_stage_batch("discard", "--from", "modes", "--file", path.name)
     assert not os.access(path, os.X_OK)
+
+
+def test_mode_batch_refuses_symlinked_worktree_parent(functional_repo):
+    """Applying a mode batch must not chmod through a worktree parent symlink."""
+    directory = functional_repo / "dir"
+    directory.mkdir()
+    path = directory / "tool.sh"
+    path.write_text("#!/bin/sh\necho old\n")
+    path.chmod(0o644)
+    subprocess.run(
+        ["git", "add", "dir/tool.sh"],
+        check=True,
+        cwd=functional_repo,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Add nested tool"],
+        check=True,
+        cwd=functional_repo,
+    )
+
+    path.chmod(0o755)
+    git_stage_batch("start")
+    git_stage_batch("show", "--file", "dir/tool.sh")
+    git_stage_batch("discard", "--to", "modes")
+    assert not os.access(path, os.X_OK)
+
+    outside_directory = functional_repo.parent / "outside"
+    outside_directory.mkdir()
+    outside_path = outside_directory / path.name
+    outside_path.write_bytes(path.read_bytes())
+    outside_path.chmod(0o644)
+    directory.rename(functional_repo / "original-dir")
+    os.symlink(outside_directory, directory, target_is_directory=True)
+
+    result = git_stage_batch(
+        "apply",
+        "--from",
+        "modes",
+        "--file",
+        "dir/tool.sh",
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "Cannot safely apply Git file mode" in result.stderr
+    assert stat.S_IMODE(outside_path.stat().st_mode) == 0o644
 
 
 def test_mode_actions_support_skip_undo_redo_and_abort(functional_repo):

@@ -1053,6 +1053,27 @@ class TestBuildTargetIndexContent:
 
         assert result == b"keep\r\nreplacement\r\ntail\r\n"
 
+    def test_working_tree_replacement_preserves_missing_final_newline(self):
+        """Replacing a final line must not invent a trailing newline."""
+        header = HunkHeader(1, 2, 1, 2)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"keep", text="keep"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old", text="old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"changed", text="changed"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+
+        with LineBuffer.from_bytes(b"keep\nchanged") as working_lines:
+            result = _build_target_working_tree_replacement_bytes(
+                line_changes,
+                {1, 2},
+                "new",
+                working_lines,
+                working_has_trailing_newline=False,
+            )
+
+        assert result == b"keep\nnew"
+
     def test_working_tree_replacement_can_return_buffer(self, line_sequence):
         """Working-tree replacement can return a buffer for streaming callers."""
         header = HunkHeader(1, 3, 1, 3)

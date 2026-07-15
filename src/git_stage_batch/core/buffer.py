@@ -10,6 +10,7 @@ from pathlib import Path
 import stat
 import tempfile
 from typing import Any, BinaryIO, Generic, Iterator, TypeVar, overload
+import uuid
 
 from .mapped_storage import (
     ChunkedMappedRecordVector,
@@ -768,6 +769,28 @@ def _write_regular_file_atomically(
                     pass
             os.fchmod(file_handle.fileno(), replacement_mode)
             os.fsync(file_handle.fileno())
+        os.replace(temporary_path, file_path)
+        _fsync_directory(file_path.parent)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
+def _replace_with_symlink_atomically(file_path: Path, target: bytes) -> None:
+    """Publish a symlink through a same-directory atomic replacement."""
+    temporary_path = None
+    for _attempt in range(100):
+        candidate = file_path.parent / f".git-stage-batch-{uuid.uuid4().hex}.tmp"
+        try:
+            os.symlink(target, os.fsencode(candidate))
+        except FileExistsError:
+            continue
+        temporary_path = candidate
+        break
+
+    if temporary_path is None:
+        raise FileExistsError(f"Unable to create temporary symlink for {file_path}")
+
+    try:
         os.replace(temporary_path, file_path)
         _fsync_directory(file_path.parent)
     finally:

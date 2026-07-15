@@ -790,6 +790,32 @@ class TestCommandDiscardToBatch:
         file_txt = temp_git_repo_with_session / "file.txt"
         assert not file_txt.exists()  # File removed after discard
 
+    def test_discard_line_as_to_batch_preserves_missing_final_newline(
+        self,
+        temp_git_repo,
+    ):
+        """Replacement discard must preserve an absent final newline."""
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_bytes(b"keep\nold")
+        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo)
+        subprocess.run(
+            ["git", "commit", "-m", "Add test file"],
+            check=True,
+            cwd=temp_git_repo,
+        )
+        test_file.write_bytes(b"keep\nchanged")
+        command_start(quiet=True)
+
+        command_discard_line_as_to_batch(
+            "replacement-batch",
+            "1,2",
+            "new",
+            quiet=True,
+        )
+        command_apply_from_batch("replacement-batch")
+
+        assert test_file.read_bytes() == b"keep\nnew"
+
     def test_discard_to_batch_auto_creates_batch(self, temp_git_repo_with_session):
         """Test that discard to batch auto-creates batch if it doesn't exist."""
 

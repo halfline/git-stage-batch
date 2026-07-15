@@ -735,5 +735,5 @@ def _build_target_working_tree_buffer_with_replaced_lines(
         selection_start=replace_start,
         selection_end=replace_end,
         has_trailing_newline=trailing_newline,
-        add_trailing_newline_when_nonempty=True,
+        add_trailing_newline_when_nonempty=working_line_count == 0,
     )

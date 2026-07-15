@@ -627,6 +627,42 @@ class TestCommandDiscardLine:
         assert file_path.read_bytes() == b"base\n"
         assert stat.S_IMODE(file_path.stat().st_mode) == 0o600
 
+    def test_discard_line_as_replaces_symlink_with_regular_output(
+        self,
+        temp_git_repo,
+    ):
+        """Multiline replacement output must not become a symlink target."""
+        link_path = temp_git_repo / "link"
+        referent_path = temp_git_repo / "newtarget"
+        os.symlink("oldtarget", link_path)
+        subprocess.run(
+            ["git", "add", "link"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add link"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        link_path.unlink()
+        os.symlink("newtarget", link_path)
+        referent_path.write_bytes(b"referent\n")
+
+        command_start(quiet=True)
+        command_discard_line_as_to_batch(
+            "replacement-batch",
+            "1,2",
+            "first\nsecond\n",
+            quiet=True,
+        )
+
+        assert not link_path.is_symlink()
+        assert link_path.read_bytes() == b"oldtarget\nsecond\n"
+        assert referent_path.read_bytes() == b"referent\n"
+
     def test_discard_line_requires_selected_hunk(self, temp_git_repo):
         """Test that discard --line requires an active hunk."""
         with pytest.raises(CommandError):

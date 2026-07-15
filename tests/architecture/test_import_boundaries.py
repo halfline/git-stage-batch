@@ -4949,7 +4949,9 @@ def test_argument_parser_delegates_multi_file_action_flow():
     assert "git_stage_batch.data.undo_checkpoints" in helper_imports
     assert "git_stage_batch.commands.include" not in helper_imports
     assert "git_stage_batch.commands.skip" not in helper_imports
-    assert {"include_file", "skip_file"} <= helper_file_scope_imported_names
+    assert {"discard_file", "include_file", "skip_file"} <= (
+        helper_file_scope_imported_names
+    )
     assert not hasattr(
         __import__(
             "git_stage_batch.cli.argument_parser",

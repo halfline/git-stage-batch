@@ -281,6 +281,11 @@ def test_discard_to_batch_each_resolved_file_reports_batch_result(
     )
     monkeypatch.setattr(
         multi_file_actions,
+        "checkpoint_paths_for_live_files",
+        lambda files: [*files, "rename-source.txt"],
+    )
+    monkeypatch.setattr(
+        multi_file_actions,
         "select_next_change_after_action",
         lambda *, auto_advance=None: selection_calls.append(auto_advance) or False,
     )
@@ -301,7 +306,7 @@ def test_discard_to_batch_each_resolved_file_reports_batch_result(
         (
             "enter",
             "discard --to scratch --files alpha.txt beta.txt",
-            ["alpha.txt", "beta.txt"],
+            ["alpha.txt", "beta.txt", "rename-source.txt"],
         ),
         ("exit",),
     ]

@@ -21,12 +21,12 @@ from ...i18n import _
 from ...utils.file_io import append_lines_to_file
 from ...utils.git_worktree import (
     git_checkout_index_paths,
-    git_remove_paths,
 )
 from ...utils.git_repository import get_git_repository_root_path
 from ...utils.paths import get_block_list_file_path
 from .action_completion import finish_selected_change_action
 from .selected_change_discarding import discard_text_deletion_change
+from ..index_cleanup import remove_path_from_index
 
 
 def _discard_binary_change_from_working_tree(binary_change: BinaryFileChange) -> None:
@@ -37,7 +37,7 @@ def _discard_binary_change_from_working_tree(binary_change: BinaryFileChange) ->
     if binary_change.is_new_file():
         if os.path.lexists(absolute_path):
             absolute_path.unlink()
-        git_remove_paths([file_path], cached=True, quiet=True, check=False)
+        remove_path_from_index(file_path)
         return
 
     result = git_checkout_index_paths([file_path], check=False)

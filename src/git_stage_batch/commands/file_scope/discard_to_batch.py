@@ -27,7 +27,6 @@ from ...i18n import _
 from ...utils.file_io import read_text_file_line_set
 from ...utils.git_worktree import (
     git_apply_to_worktree,
-    git_remove_paths,
 )
 from ...utils.git_repository import (
     get_git_repository_root_path,
@@ -41,6 +40,7 @@ from ...utils.paths import (
 )
 from ...utils.session_start_point import session_comparison_base
 from ..selection.action_completion import finish_selected_change_action
+from ..index_cleanup import remove_path_from_index
 from .discard_file_to_batch import discard_file_to_batch
 
 
@@ -336,7 +336,7 @@ def _discard_prepared_text_files_to_batch(
     for prepared in prepared_discards:
         full_path = repo_root / prepared.file_path
         if not os.path.lexists(full_path):
-            git_remove_paths([prepared.file_path], cached=True, quiet=True, check=False)
+            remove_path_from_index(prepared.file_path)
 
     hunk_hashes = [
         patch.patch_hash

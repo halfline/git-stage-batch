@@ -33,8 +33,10 @@ class SpawnedProcess:
 
         try:
             pid, status = os.waitpid(self.pid, os.WNOHANG)
-        except ChildProcessError:
-            return 0
+        except ChildProcessError as error:
+            raise ChildProcessError(
+                f"Cannot determine exit status for child process {self.pid}"
+            ) from error
 
         if pid == 0:
             return None
@@ -44,7 +46,9 @@ class SpawnedProcess:
         elif os.WIFSIGNALED(status):
             self.returncode = -os.WTERMSIG(status)
         else:
-            self.returncode = 0
+            raise ChildProcessError(
+                f"Child process {self.pid} returned an unsupported wait status"
+            )
 
         return self.returncode
 
@@ -70,7 +74,9 @@ class SpawnedProcess:
         elif os.WIFSIGNALED(status):
             self.returncode = -os.WTERMSIG(status)
         else:
-            self.returncode = 0
+            raise ChildProcessError(
+                f"Child process {self.pid} returned an unsupported wait status"
+            )
 
         return self.returncode
 

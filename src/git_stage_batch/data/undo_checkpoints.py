@@ -57,6 +57,7 @@ from ..utils.paths import (
 _PENDING_CHECKPOINT: str | None = None
 _PENDING_CHECKPOINT_REPOSITORY: Path | None = None
 _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR: bool | None = None
+_PENDING_CHECKPOINT_ROLLBACK_CAUSE: BaseException | None = None
 EXPLICIT_WORKTREE_SCOPE = "explicit"
 CHANGED_WORKTREE_SCOPE = "changed"
 
@@ -64,10 +65,11 @@ CHANGED_WORKTREE_SCOPE = "changed"
 def _clear_pending_checkpoint() -> None:
     """Forget process-local state for the pending checkpoint."""
     global _PENDING_CHECKPOINT, _PENDING_CHECKPOINT_REPOSITORY
-    global _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR
+    global _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR, _PENDING_CHECKPOINT_ROLLBACK_CAUSE
     _PENDING_CHECKPOINT = None
     _PENDING_CHECKPOINT_REPOSITORY = None
     _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR = None
+    _PENDING_CHECKPOINT_ROLLBACK_CAUSE = None
 
 
 def _validate_nested_checkpoint(
@@ -345,6 +347,8 @@ def undo_checkpoint(
     a transaction boundary for commands that span several files or stores.
     """
     global _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR
+    global _PENDING_CHECKPOINT_ROLLBACK_CAUSE
+
     if _PENDING_CHECKPOINT is not None:
         current_repository = get_git_directory_path()
         if (
@@ -360,7 +364,12 @@ def undo_checkpoint(
                 repository_paths=repository_paths,
                 rollback_on_error=rollback_on_error,
             )
-            yield
+            try:
+                yield
+            except BaseException as nested_error:
+                if rollback_on_error:
+                    _PENDING_CHECKPOINT_ROLLBACK_CAUSE = nested_error
+                raise
             return
         else:
             _clear_pending_checkpoint()
@@ -406,6 +415,31 @@ def undo_checkpoint(
         raise
     else:
         if checkpoint is not None:
+            nested_error = _PENDING_CHECKPOINT_ROLLBACK_CAUSE
+            if nested_error is not None:
+                try:
+                    _rollback_failed_checkpoint(
+                        checkpoint,
+                        previous_redo=previous_redo,
+                    )
+                except Exception as rollback_error:
+                    raise CommandError(
+                        _(
+                            "Operation failed and its automatic rollback also failed. "
+                            "The before-image remains available through `undo --force`.\n"
+                            "Operation error: {operation_error}\n"
+                            "Rollback error: {rollback_error}"
+                        ).format(
+                            operation_error=nested_error,
+                            rollback_error=rollback_error,
+                        )
+                    ) from nested_error
+                raise CommandError(
+                    _(
+                        "A nested transactional operation failed, so the "
+                        "enclosing operation was rolled back: {error}"
+                    ).format(error=nested_error)
+                ) from nested_error
             finalize_pending_checkpoint()
 
 

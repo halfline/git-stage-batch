@@ -18,6 +18,7 @@ from git_stage_batch.core.buffer import (
     buffer_matches,
     buffer_preview,
     write_buffer_to_path,
+    write_buffer_to_working_tree_path,
 )
 
 
@@ -298,6 +299,17 @@ def test_symlink_write_supports_maximum_length_filename(tmp_path):
 
     assert output_path.is_symlink()
     assert os.readlink(output_path) == "new-target"
+
+
+def test_worktree_symlink_replaces_regular_file_atomically(tmp_path):
+    """Git symlink mode atomically replaces a current regular file."""
+    output_path = tmp_path / "path"
+    output_path.write_bytes(b"regular contents")
+
+    write_buffer_to_working_tree_path(output_path, b"target", mode="120000")
+
+    assert output_path.is_symlink()
+    assert os.readlink(output_path) == "target"
 
 
 def test_buffer_matches_across_chunk_boundaries(line_sequence):

@@ -270,6 +270,24 @@ def test_symlink_write_keeps_old_entry_until_atomic_replace(tmp_path, monkeypatc
     assert os.readlink(output_path) == "new-target"
 
 
+def test_failed_symlink_publication_preserves_old_entry(tmp_path, monkeypatch):
+    """A failed atomic publish must leave the existing symlink intact."""
+    output_path = tmp_path / "link"
+    os.symlink(b"old-target", os.fsencode(output_path))
+
+    def fail_replace(*args):
+        raise OSError("simulated publication failure")
+
+    monkeypatch.setattr(buffer_module.os, "replace", fail_replace)
+
+    with pytest.raises(OSError, match="simulated publication failure"):
+        write_buffer_to_path(output_path, b"new-target")
+
+    assert output_path.is_symlink()
+    assert os.readlink(output_path) == "old-target"
+    assert list(tmp_path.glob(".git-stage-batch-*.tmp")) == []
+
+
 def test_buffer_matches_across_chunk_boundaries(line_sequence):
     """Buffer comparison ignores how inputs are chunked."""
     left = line_sequence([b"alpha\n", b"beta\n"])

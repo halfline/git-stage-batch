@@ -58,7 +58,12 @@ class SpawnedProcess:
             return self.returncode
 
         if timeout is None:
-            _pid, status = os.waitpid(self.pid, 0)
+            try:
+                _pid, status = os.waitpid(self.pid, 0)
+            except ChildProcessError as error:
+                raise ChildProcessError(
+                    f"Cannot determine exit status for child process {self.pid}"
+                ) from error
         else:
             deadline = time.time() + timeout
             while True:

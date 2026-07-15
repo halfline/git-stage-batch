@@ -69,6 +69,53 @@ def test_run_for_each_resolved_file_wraps_multiple_files(monkeypatch):
     assert callback_calls == ["alpha.txt", "beta.txt"]
 
 
+def test_discard_each_resolved_file_expands_live_checkpoint_paths(monkeypatch):
+    checkpoint_calls = _capture_undo_checkpoints(monkeypatch)
+    discard_calls = []
+    expansion_calls = []
+
+    def expand_paths(paths):
+        expansion_calls.append(paths)
+        return [*paths, "rename-source.txt"]
+
+    monkeypatch.setattr(
+        multi_file_actions,
+        "checkpoint_paths_for_live_files",
+        expand_paths,
+    )
+    monkeypatch.setattr(
+        multi_file_actions,
+        "_prepare_live_multi_file_action",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        multi_file_actions._discard_file,
+        "discard_file_changes",
+        lambda file_path, *, auto_advance=None: discard_calls.append(
+            (file_path, auto_advance)
+        ),
+    )
+
+    multi_file_actions.discard_each_resolved_file(
+        ["rename-target.txt", "other.txt"],
+        auto_advance=False,
+    )
+
+    assert expansion_calls == [["rename-target.txt", "other.txt"]]
+    assert checkpoint_calls == [
+        (
+            "enter",
+            "discard --files rename-target.txt other.txt",
+            ["rename-target.txt", "other.txt", "rename-source.txt"],
+        ),
+        ("exit",),
+    ]
+    assert discard_calls == [
+        ("rename-target.txt", False),
+        ("other.txt", False),
+    ]
+
+
 def test_run_for_each_resolved_file_dispatches_optional_file(monkeypatch):
     checkpoint_calls = _capture_undo_checkpoints(monkeypatch)
     callback_calls = []

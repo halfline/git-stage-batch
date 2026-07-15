@@ -6,7 +6,7 @@ import os
 import sys
 
 from ...batch.source.annotation import annotate_with_batch_source
-from ...core.buffer import LineBuffer, buffer_ends_with_lf, write_buffer_to_path
+from ...core.buffer import LineBuffer, write_buffer_to_path
 from ...core.replacement import ReplacementPayload
 from ...data.line_state import load_line_changes_from_state
 from ...utils.repository_buffers import load_working_tree_file_as_buffer
@@ -128,7 +128,6 @@ def discard_file_lines_to_batch(
             line_changes,
             selection.requested_ids,
             working_lines,
-            working_has_trailing_newline=buffer_ends_with_lf(working_lines),
         )
 
     with target_working_buffer:
@@ -218,7 +217,6 @@ def discard_selected_lines_to_batch(
             line_changes,
             selection.requested_ids,
             working_lines,
-            working_has_trailing_newline=buffer_ends_with_lf(working_lines),
         )
 
     log_journal("discard_lines_to_batch_before_write", file_path=str(working_file_path))

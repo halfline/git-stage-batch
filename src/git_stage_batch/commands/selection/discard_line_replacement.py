@@ -171,9 +171,6 @@ def build_discard_line_replacement_target_buffer(
         selection.rewritten_line_changes,
         rewritten_selected_ids,
         selection.rewritten_working_lines,
-        working_has_trailing_newline=buffer_ends_with_lf(
-            selection.rewritten_working_lines
-        ),
     )
 
 

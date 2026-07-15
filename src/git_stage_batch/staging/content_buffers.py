@@ -547,17 +547,24 @@ def build_target_working_tree_buffer_from_lines(
     line_changes: LineLevelChange,
     discard_ids: set[int],
     working_lines: Sequence[bytes],
-    *,
-    working_has_trailing_newline: bool,
 ) -> LineBuffer:
     """Build target working tree content from indexed working tree lines."""
     working_line_count = len(working_lines)
+    detected_line_ending = detect_line_ending(working_lines)
+    default_line_ending = (
+        detected_line_ending
+        if detected_line_ending in (b"\n", b"\r\n")
+        else b"\n"
+    )
     return LineBuffer.from_chunks(
-        _target_working_tree_line_contents(
-            line_changes,
-            discard_ids,
-            working_lines,
-            working_line_count,
+        ensure_line_chunk_boundaries(
+            _target_working_tree_line_contents(
+                line_changes,
+                discard_ids,
+                working_lines,
+                working_line_count,
+            ),
+            default_line_ending=default_line_ending,
         )
     )
 

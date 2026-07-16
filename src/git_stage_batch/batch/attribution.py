@@ -161,6 +161,10 @@ def build_file_attribution_from_lines(
     if metrics is not None:
         metrics.candidate_batches = len(batch_metadata_by_name)
 
+    # Capture names before merging supplemental metadata. Only entries from the
+    # primary metadata map may resolve source_path through state-backed storage.
+    # Supplemental entries, including __consumed__, use batch_source_commit.
+    state_backed_batch_names = frozenset(batch_metadata_by_name)
     for batch_name, metadata in batch_metadata_by_name.items():
         if file_path in metadata.get("files", {}):
             all_batch_metadata[batch_name] = metadata
@@ -183,6 +187,7 @@ def build_file_attribution_from_lines(
     _attribute_batches(
         file_path,
         all_batch_metadata,
+        state_backed_batch_names=state_backed_batch_names,
         working_tree_lines=working_tree_lines,
         all_units_map=all_units_map,
         baseline_unit_ids=baseline_unit_ids,
@@ -207,6 +212,7 @@ def _attribute_batches(
     file_path: str,
     all_batch_metadata: dict,
     *,
+    state_backed_batch_names: frozenset[str],
     working_tree_lines: Sequence[bytes],
     all_units_map: dict[str, _AttributionUnit],
     baseline_unit_ids: Sequence[str],
@@ -214,7 +220,11 @@ def _attribute_batches(
     metrics: AttributionMetrics | None = None,
 ) -> None:
     """Attribute claims while retaining one source alignment at a time."""
-    source_requests = _batch_source_requests(file_path, all_batch_metadata)
+    source_requests = _batch_source_requests(
+        file_path,
+        all_batch_metadata,
+        state_backed_batch_names=state_backed_batch_names,
+    )
     deletion_blob_ids = _deletion_blob_ids(source_requests)
     object_names = list(
         dict.fromkeys(
@@ -390,6 +400,8 @@ def _attribute_source_group(
 def _batch_source_requests(
     file_path: str,
     all_batch_metadata: dict,
+    *,
+    state_backed_batch_names: frozenset[str],
 ) -> list[_BatchSourceRequest]:
     requests: list[_BatchSourceRequest] = []
     for batch_name in sorted(all_batch_metadata):
@@ -397,11 +409,11 @@ def _batch_source_requests(
         file_metadata = batch_metadata["files"][file_path]
         fallback_refspec = f"{file_metadata['batch_source_commit']}:{file_path}"
         source_path = file_metadata.get("source_path")
-        primary_refspec = (
-            f"{format_batch_state_ref_name(batch_name)}:{source_path}"
-            if source_path
-            else fallback_refspec
-        )
+        primary_refspec = fallback_refspec
+        if source_path and batch_name in state_backed_batch_names:
+            primary_refspec = (
+                f"{format_batch_state_ref_name(batch_name)}:{source_path}"
+            )
         requests.append(
             _BatchSourceRequest(
                 batch_name=batch_name,

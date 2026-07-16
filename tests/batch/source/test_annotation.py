@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from git_stage_batch.batch.source import annotation as source_annotation_module
 from git_stage_batch.batch.source.annotation import (
+    acquire_batch_source_mapping,
+    annotate_with_batch_source_mapping,
     annotate_with_batch_source_lines,
     annotate_with_batch_source_working_lines,
 )
@@ -199,3 +201,58 @@ def test_annotate_with_batch_source_loads_indexed_buffers(monkeypatch, tmp_path)
     assert loaded_revisions == ["source-commit:file.txt"]
     assert loaded_working_paths == ["file.txt"]
     assert [line.source_line for line in annotated.lines] == [1, None, 2]
+
+
+def test_acquired_mapping_annotates_multiple_hunks_with_one_match(monkeypatch):
+    """One file-scoped mapping should be reusable across several hunks."""
+    line_changes = LineLevelChange(
+        path="file.txt",
+        header=HunkHeader(old_start=1, old_len=1, new_start=1, new_len=2),
+        lines=[
+            LineEntry(
+                id=None,
+                kind=" ",
+                old_line_number=1,
+                new_line_number=1,
+                text_bytes=b"line 1\n",
+            ),
+            LineEntry(
+                id=1,
+                kind="+",
+                old_line_number=None,
+                new_line_number=2,
+                text_bytes=b"inserted\n",
+            ),
+        ],
+    )
+    calls = []
+    original_match_lines = source_annotation_module.match_lines
+
+    monkeypatch.setattr(
+        source_annotation_module,
+        "read_git_object_buffer_or_none",
+        lambda _refspec: LineBuffer.from_chunks([b"line 1\n"]),
+    )
+
+    def counting_match_lines(source_lines, working_lines):
+        calls.append((source_lines, working_lines))
+        return original_match_lines(source_lines, working_lines)
+
+    monkeypatch.setattr(
+        source_annotation_module,
+        "match_lines",
+        counting_match_lines,
+    )
+
+    with LineBuffer.from_chunks([b"line 1\n", b"inserted\n"]) as working_lines:
+        with acquire_batch_source_mapping(
+            "file.txt",
+            batch_source_commit="source-commit",
+            working_lines=working_lines,
+        ) as mapping:
+            first = annotate_with_batch_source_mapping(line_changes, mapping)
+            second = annotate_with_batch_source_mapping(line_changes, mapping)
+
+    assert len(calls) == 1
+    assert [line.source_line for line in first.lines] == [1, None]
+    assert [line.source_line for line in second.lines] == [1, None]

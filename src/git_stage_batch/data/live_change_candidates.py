@@ -181,7 +181,7 @@ def prepare_live_change(
     return EligibleLiveChange(change, stable_hash, raw_patch), None
 
 
-def iter_eligible_live_changes() -> Iterator[EligibleLiveChange]:
+def stream_eligible_live_changes() -> Iterator[EligibleLiveChange]:
     """Stream all actionable live changes using one shared policy snapshot."""
     context = LiveChangeScanContext()
     with acquire_unified_diff(
@@ -200,7 +200,7 @@ def iter_eligible_live_changes() -> Iterator[EligibleLiveChange]:
 
 def next_eligible_live_change() -> EligibleLiveChange | None:
     """Return one owned candidate and explicitly close its lazy diff scan."""
-    candidates = iter_eligible_live_changes()
+    candidates = stream_eligible_live_changes()
     try:
         return next(candidates, None)
     finally:

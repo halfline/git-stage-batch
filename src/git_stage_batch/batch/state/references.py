@@ -145,7 +145,7 @@ def read_batch_state_metadata_for_batches(
         return {}
 
     refspec_by_name = {
-        batch_name: f"{get_batch_state_ref_name(batch_name)}:batch.json"
+        batch_name: f"{format_batch_state_ref_name(batch_name)}:batch.json"
         for batch_name in unique_batch_names
     }
     blobs = read_git_blobs_as_bytes(refspec_by_name.values())

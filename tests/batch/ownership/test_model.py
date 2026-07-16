@@ -12,6 +12,7 @@ from git_stage_batch.batch.attribution import (
     AttributedUnit,
     FileAttribution,
     build_file_attribution,
+    build_file_attribution_from_lines,
 )
 from git_stage_batch.batch.attribution_units import (
     AttributionUnitKind,
@@ -535,6 +536,41 @@ def test_build_file_attribution_deduplicates_sources_deletions_and_mappings(
     assert metrics.unique_source_contents == 1
     assert metrics.mapping_computations == 1
     assert metrics.deletion_fingerprints == 1
+
+
+def test_file_attribution_from_lines_matches_repository_wrapper(temp_repo):
+    """Caller-owned buffers should drive the same attribution computation."""
+    test_file = temp_repo / "test.txt"
+    test_file.write_text("first\nsecond\n")
+    subprocess.run(["git", "add", "test.txt"], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "baseline"],
+        check=True,
+        capture_output=True,
+    )
+    test_file.write_text("first\nchanged\n")
+    wrapper_metrics = AttributionMetrics()
+    explicit_metrics = AttributionMetrics()
+
+    wrapped = build_file_attribution(
+        "test.txt",
+        batch_metadata_by_name={},
+        metrics=wrapper_metrics,
+    )
+    with (
+        read_git_object_buffer_or_empty("HEAD:test.txt") as baseline_lines,
+        load_working_tree_file_as_buffer("test.txt") as working_lines,
+    ):
+        explicit = build_file_attribution_from_lines(
+            "test.txt",
+            baseline_lines=baseline_lines,
+            working_tree_lines=working_lines,
+            batch_metadata_by_name={},
+            metrics=explicit_metrics,
+        )
+
+    assert explicit == wrapped
+    assert explicit_metrics == wrapper_metrics
 
 
 def test_build_file_attribution_is_independent_of_batch_traversal_order(temp_repo):

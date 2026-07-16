@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+import git_stage_batch.commands.selection.next_change_display as display_module
 import git_stage_batch.data.hunk_tracking as hunk_tracking_module
 import git_stage_batch.data.live_change_candidates as candidates_module
 from git_stage_batch.core.buffer import LineBuffer
@@ -112,6 +113,30 @@ def test_fetch_next_change_closes_candidate_after_cache(monkeypatch, fail_cache)
             hunk_tracking_module.fetch_next_change()
     else:
         assert hunk_tracking_module.fetch_next_change() is candidate.change
+
+    with pytest.raises(ValueError, match="closed"):
+        candidate.raw_patch.lines.byte_chunks().__next__()
+
+
+@pytest.mark.parametrize("fail_print", [False, True])
+def test_show_next_change_closes_candidate_after_display(monkeypatch, fail_print):
+    candidate = _candidate_with_owned_patch()
+    monkeypatch.setattr(display_module, "next_eligible_live_change", lambda: candidate)
+    monkeypatch.setattr(display_module, "_cache_candidate", lambda _candidate: None)
+    monkeypatch.setattr(display_module, "clear_last_file_review_state", lambda: None)
+
+    def display(_candidate, *, selectable):
+        assert selectable is True
+        if fail_print:
+            raise RuntimeError("display failed")
+
+    monkeypatch.setattr(display_module, "_print_candidate", display)
+
+    if fail_print:
+        with pytest.raises(RuntimeError, match="display failed"):
+            display_module.show_next_unprocessed_change()
+    else:
+        display_module.show_next_unprocessed_change()
 
     with pytest.raises(ValueError, match="closed"):
         candidate.raw_patch.lines.byte_chunks().__next__()

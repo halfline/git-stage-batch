@@ -11,6 +11,18 @@ def filter_consumed_replacement_masks(
 ) -> LineLevelChange | None:
     """Hide synthetic replacement runs created by `include --line --as`."""
     file_metadata = read_consumed_file_metadata(line_changes.path)
+    return filter_consumed_replacement_masks_with_metadata(
+        line_changes,
+        file_metadata=file_metadata,
+    )
+
+
+def filter_consumed_replacement_masks_with_metadata(
+    line_changes: LineLevelChange,
+    *,
+    file_metadata: dict | None,
+) -> LineLevelChange | None:
+    """Hide replacement runs using caller-supplied consumed metadata."""
     replacement_masks = (
         file_metadata.get("replacement_masks", []) if file_metadata else []
     )

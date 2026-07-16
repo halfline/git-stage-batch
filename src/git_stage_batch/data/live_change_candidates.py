@@ -87,24 +87,35 @@ class EligibleLiveChange:
 class LiveChangeScanContext:
     """Repository policy state loaded at most once for one diff scan."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        batch_metadata_by_name: dict[str, dict] | None = None,
+    ) -> None:
         self.blocked_paths = read_file_paths_file(get_blocked_files_file_path())
         self.blocked_hashes = read_text_file_line_set(get_block_list_file_path())
-        self._metadata_by_name: dict[str, dict] | None = None
+        self._metadata_by_name = batch_metadata_by_name
         self._metadata_by_path: dict[str, dict[str, dict]] | None = None
 
-    def metadata_for_path(self, file_path: str) -> dict[str, dict]:
+    def metadata_by_name(self) -> dict[str, dict]:
+        """Return the complete batch metadata snapshot for this scan."""
         if self._metadata_by_name is None:
-            self._metadata_by_name = read_batch_metadata_for_batches(list_batch_names())
+            self._metadata_by_name = read_batch_metadata_for_batches(
+                list_batch_names()
+            )
+        return self._metadata_by_name
+
+    def metadata_for_path(self, file_path: str) -> dict[str, dict]:
         if self._metadata_by_path is None:
             self._metadata_by_path = {}
-            for batch_name, metadata in self._metadata_by_name.items():
+            for batch_name, metadata in self.metadata_by_name().items():
                 for path in metadata.get("files", {}):
                     self._metadata_by_path.setdefault(path, {})[batch_name] = metadata
         return self._metadata_by_path.get(file_path, {})
 
 
-def _paths_for_item(item: object) -> tuple[str, ...]:
+def live_change_paths(item: object) -> tuple[str, ...]:
+    """Return every repository path covered by one parsed live change."""
     if isinstance(item, RenameChange):
         return item.old_path, item.new_path
     if isinstance(item, SingleHunkPatch) and item.old_path != item.new_path:
@@ -112,11 +123,42 @@ def _paths_for_item(item: object) -> tuple[str, ...]:
     return (item.path(),)  # type: ignore[attr-defined]
 
 
-def prepare_live_change(
+def blocked_live_change_reason(
+    item: object,
+    stable_hash: str,
+    context: LiveChangeScanContext,
+) -> SkipReason | None:
+    """Return the shared blocked hash/path decision for one live change."""
+    if stable_hash in context.blocked_hashes:
+        return SkipReason.BLOCKED_HASH
+    if any(
+        is_path_blocked(path, context.blocked_paths)
+        for path in live_change_paths(item)
+    ):
+        return SkipReason.BLOCKED_PATH
+    return None
+
+
+def text_hunk_block_reason(
+    item: SingleHunkPatch,
+    stable_hash: str,
+    context: LiveChangeScanContext,
+) -> SkipReason | None:
+    """Return the blocked decision for a text hunk and any covering rename."""
+    if item.old_path != item.new_path:
+        rename_hash = compute_rename_change_hash(
+            RenameChange(item.old_path, item.new_path)
+        )
+        if rename_hash in context.blocked_hashes:
+            return SkipReason.BLOCKED_HASH
+    return blocked_live_change_reason(item, stable_hash, context)
+
+
+def prepare_atomic_live_change(
     item: object,
     context: LiveChangeScanContext,
 ) -> tuple[EligibleLiveChange | None, SkipReason | None]:
-    """Apply the common blocked/batched policy to one parsed diff item."""
+    """Apply shared eligibility policy to one non-text live diff item."""
     if isinstance(item, FileModeChange):
         stable_hash = compute_file_mode_change_hash(item)
         change: LiveChange = item
@@ -137,48 +179,54 @@ def prepare_live_change(
     elif isinstance(item, BinaryFileChange):
         change = attach_live_binary_fingerprint(item)
         stable_hash = compute_binary_file_hash(change)
-    elif isinstance(item, SingleHunkPatch):
-        if item.old_path != item.new_path:
-            rename_hash = compute_rename_change_hash(
-                RenameChange(item.old_path, item.new_path)
-            )
-            if rename_hash in context.blocked_hashes:
-                return None, SkipReason.BLOCKED_HASH
-        stable_hash = compute_stable_hunk_hash_from_lines(item.lines)
-        line_change = build_line_changes_from_patch_lines(
-            item.lines,
-            annotator=annotate_with_batch_source,
-        )
-        filtered = filter_line_level_change_for_batches(
-            line_change,
-            batch_metadata_by_name=context.metadata_for_path(line_change.path),
-        )
-        if filtered is None:
-            return None, SkipReason.ALREADY_BATCHED
-        change = filtered
     else:
-        raise TypeError(f"Unsupported live diff item: {type(item).__name__}")
+        raise TypeError(f"Unsupported atomic live diff item: {type(item).__name__}")
 
-    if stable_hash in context.blocked_hashes:
-        return None, SkipReason.BLOCKED_HASH
-    if any(
-        is_path_blocked(path, context.blocked_paths) for path in _paths_for_item(item)
-    ):
-        return None, SkipReason.BLOCKED_PATH
-    if isinstance(item, SingleHunkPatch):
-        owned_patch_lines = (
-            item.lines.clone()
-            if isinstance(item.lines, LineBuffer)
-            else LineBuffer.from_chunks(item.lines)
-        )
-        raw_patch = SingleHunkPatch(
-            item.old_path,
-            item.new_path,
-            owned_patch_lines,
-        )
-    else:
-        raw_patch = item
-    return EligibleLiveChange(change, stable_hash, raw_patch), None
+    blocked_reason = blocked_live_change_reason(item, stable_hash, context)
+    if blocked_reason is not None:
+        return None, blocked_reason
+    return EligibleLiveChange(change, stable_hash, item), None
+
+
+def prepare_live_change(
+    item: object,
+    context: LiveChangeScanContext,
+) -> tuple[EligibleLiveChange | None, SkipReason | None]:
+    """Apply the common blocked/batched policy to one parsed diff item."""
+    if not isinstance(item, SingleHunkPatch):
+        return prepare_atomic_live_change(item, context)
+
+    stable_hash = compute_stable_hunk_hash_from_lines(item.lines)
+    blocked_reason = text_hunk_block_reason(item, stable_hash, context)
+    if blocked_reason is not None:
+        return None, blocked_reason
+
+    line_change = build_line_changes_from_patch_lines(
+        item.lines,
+        annotator=annotate_with_batch_source,
+    )
+    filtered = filter_line_level_change_for_batches(
+        line_change,
+        batch_metadata_by_name=context.metadata_for_path(line_change.path),
+    )
+    if filtered is None:
+        return None, SkipReason.ALREADY_BATCHED
+
+    owned_patch_lines = (
+        item.lines.clone()
+        if isinstance(item.lines, LineBuffer)
+        else LineBuffer.from_chunks(item.lines)
+    )
+    raw_patch = SingleHunkPatch(
+        item.old_path,
+        item.new_path,
+        owned_patch_lines,
+    )
+    return EligibleLiveChange(
+        filtered,
+        stable_hash,
+        raw_patch,
+    ), None
 
 
 def stream_eligible_live_changes() -> Iterator[EligibleLiveChange]:

@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import pytest
 
+import git_stage_batch.data.hunk_tracking as hunk_tracking_module
 import git_stage_batch.data.live_change_candidates as candidates_module
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.core.diff_parser import build_line_changes_from_patch_lines
 from git_stage_batch.core.models import SingleHunkPatch
-from git_stage_batch.data.live_change_candidates import prepare_live_change
+from git_stage_batch.data.live_change_candidates import (
+    EligibleLiveChange,
+    prepare_live_change,
+)
 
 
 PATCH_LINES = (
@@ -76,3 +80,38 @@ def test_prepare_does_not_call_tuple_or_list_on_patch_lines(monkeypatch):
     )
 
     candidate.close()
+
+
+def _candidate_with_owned_patch() -> EligibleLiveChange:
+    patch_buffer = LineBuffer.from_chunks(PATCH_LINES)
+    change = build_line_changes_from_patch_lines(PATCH_LINES, annotator=None)
+    return EligibleLiveChange(
+        change=change,
+        stable_hash="hash",
+        raw_patch=SingleHunkPatch("file.txt", "file.txt", patch_buffer),
+    )
+
+
+@pytest.mark.parametrize("fail_cache", [False, True])
+def test_fetch_next_change_closes_candidate_after_cache(monkeypatch, fail_cache):
+    candidate = _candidate_with_owned_patch()
+    monkeypatch.setattr(
+        hunk_tracking_module,
+        "next_eligible_live_change",
+        lambda: candidate,
+    )
+
+    def cache(*_args):
+        if fail_cache:
+            raise RuntimeError("cache failed")
+
+    monkeypatch.setattr(hunk_tracking_module._selected_store, "cache_hunk_change", cache)
+
+    if fail_cache:
+        with pytest.raises(RuntimeError, match="cache failed"):
+            hunk_tracking_module.fetch_next_change()
+    else:
+        assert hunk_tracking_module.fetch_next_change() is candidate.change
+
+    with pytest.raises(ValueError, match="closed"):
+        candidate.raw_patch.lines.byte_chunks().__next__()

@@ -52,8 +52,6 @@ def read_batch_metadata(name: str) -> dict:
 def read_batch_metadata_for_batches(batch_names: Iterable[str]) -> dict[str, dict]:
     """Read metadata for many batches with one state-ref lookup pass."""
     unique_batch_names = list(dict.fromkeys(batch_names))
-    for batch_name in unique_batch_names:
-        validate_batch_name(batch_name)
     if not unique_batch_names:
         return {}
 

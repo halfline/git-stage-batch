@@ -196,3 +196,14 @@ def iter_eligible_live_changes() -> Iterator[EligibleLiveChange]:
             candidate, _reason = prepare_live_change(item, context)
             if candidate is not None:
                 yield candidate
+
+
+def next_eligible_live_change() -> EligibleLiveChange | None:
+    """Return one owned candidate and explicitly close its lazy diff scan."""
+    candidates = iter_eligible_live_changes()
+    try:
+        return next(candidates, None)
+    finally:
+        close = getattr(candidates, "close", None)
+        if close is not None:
+            close()

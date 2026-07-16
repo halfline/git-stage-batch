@@ -79,17 +79,25 @@ def test_smallest_case_smokes_public_apis_and_stable_schema():
     assert set(case["phases"]) == {
         "buffer_loading",
         "mapping",
+        "per_hunk_mapping",
+        "reused_file_mapping",
         "unit_attribution",
     }
     for phase in case["phases"].values():
         assert set(phase) == {
             "seconds",
             "tracemalloc_peak_bytes",
+            "git_subprocesses",
+            "parent_peak_rss_bytes",
+            "child_peak_rss_bytes",
             "samples",
             "result",
         }
         assert len(phase["samples"]["seconds"]) == 1
         assert len(phase["samples"]["tracemalloc_peak_bytes"]) == 1
+        assert len(phase["samples"]["git_subprocesses"]) == 1
+        assert len(phase["samples"]["parent_peak_rss_bytes"]) == 1
+        assert phase["samples"]["child_peak_rss_bytes"] == [0]
 
 
 @pytest.mark.parametrize(
@@ -147,6 +155,44 @@ def test_attribution_case_exercises_many_claims_and_deduplicates_work():
         "resolved": 51,
         "unique_object_ids": 1,
     }
+
+
+def test_file_workload_covers_supported_file_and_hunk_dimensions():
+    report = benchmark_matching.run_suite(
+        "quick",
+        case_names=["small-interactive"],
+        warmups=0,
+        repeats=1,
+        file_count=2,
+        hunks_per_file=8,
+        matching_size=20,
+    )
+
+    phases = report["cases"][0]["phases"]
+    assert phases["per_hunk_mapping"]["result"]["mapping_computations"] == 16
+    assert phases["reused_file_mapping"]["result"]["mapping_computations"] == 2
+    assert report["cases"][0]["dimensions"]["files"] == 2
+    assert report["cases"][0]["dimensions"]["hunks_per_file"] == 8
+
+
+def test_attribution_workload_accepts_zero_batches():
+    report = benchmark_matching.run_suite(
+        "quick",
+        case_names=["many-batches"],
+        warmups=0,
+        repeats=1,
+        batch_count=0,
+    )
+
+    case = report["cases"][0]
+    assert case["dimensions"]["batches"] == 0
+    assert case["phases"]["claim_attribution"]["result"]["owner_links"] == 0
+    assert (
+        case["phases"]["claim_attribution"]["result"]["metrics"][
+            "candidate_batches"
+        ]
+        == 0
+    )
 
 
 def test_binary_case_is_explicitly_excluded_from_text_matching():

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 from ..utils.git_object_io import (
     GitObjectInfo,
@@ -128,12 +129,19 @@ def build_file_attribution(
     *,
     batch_metadata_by_name: dict[str, dict] | None = None,
     supplemental_batch_metadata: dict[str, dict] | None = None,
+    spool_dir: str | Path | None = None,
     metrics: AttributionMetrics | None = None,
 ) -> FileAttribution:
     """Open repository buffers and build complete ownership attribution."""
     with (
-        read_git_object_buffer_or_empty(f"HEAD:{file_path}") as baseline_lines,
-        load_working_tree_file_as_buffer(file_path) as working_tree_lines,
+        read_git_object_buffer_or_empty(
+            f"HEAD:{file_path}",
+            spool_dir=spool_dir,
+        ) as baseline_lines,
+        load_working_tree_file_as_buffer(
+            file_path,
+            spool_dir=spool_dir,
+        ) as working_tree_lines,
     ):
         return build_file_attribution_from_lines(
             file_path,
@@ -141,6 +149,7 @@ def build_file_attribution(
             working_tree_lines=working_tree_lines,
             batch_metadata_by_name=batch_metadata_by_name,
             supplemental_batch_metadata=supplemental_batch_metadata,
+            spool_dir=spool_dir,
             metrics=metrics,
         )
 
@@ -153,6 +162,7 @@ def build_file_attribution_from_lines(
     batch_metadata_by_name: dict[str, dict] | None = None,
     supplemental_batch_metadata: dict[str, dict] | None = None,
     batch_state_commit_by_name: Mapping[str, str] | None = None,
+    spool_dir: str | Path | None = None,
     metrics: AttributionMetrics | None = None,
 ) -> FileAttribution:
     """Build file attribution from caller-owned indexed line sequences."""
@@ -180,6 +190,7 @@ def build_file_attribution_from_lines(
         file_path,
         baseline_lines=baseline_lines,
         working_tree_lines=working_tree_lines,
+        spool_dir=spool_dir,
     ) as comparison:
         _enumerate_units_from_file_comparison(comparison, all_units_map)
 
@@ -190,6 +201,7 @@ def build_file_attribution_from_lines(
         all_batch_metadata,
         state_backed_batch_names=state_backed_batch_names,
         batch_state_commit_by_name=batch_state_commit_by_name,
+        spool_dir=spool_dir,
         working_tree_lines=working_tree_lines,
         all_units_map=all_units_map,
         baseline_unit_ids=baseline_unit_ids,
@@ -216,6 +228,7 @@ def _attribute_batches(
     *,
     state_backed_batch_names: frozenset[str],
     batch_state_commit_by_name: Mapping[str, str] | None,
+    spool_dir: str | Path | None,
     working_tree_lines: Sequence[bytes],
     all_units_map: dict[str, _AttributionUnit],
     baseline_unit_ids: Sequence[str],
@@ -262,7 +275,10 @@ def _attribute_batches(
         metrics.mapping_computations = len(source_groups)
 
     if source_object_ids:
-        for source_blob in stream_git_blob_buffers(source_object_ids):
+        for source_blob in stream_git_blob_buffers(
+            source_object_ids,
+            spool_dir=spool_dir,
+        ):
             if metrics is not None:
                 metrics.object_bytes += source_blob.size
             _attribute_source_group(
@@ -270,6 +286,7 @@ def _attribute_batches(
                 source_groups[source_blob.object_id],
                 source_lines=source_blob.buffer,
                 working_tree_lines=working_tree_lines,
+                spool_dir=spool_dir,
                 deletion_fingerprints=deletion_fingerprints,
                 all_units_map=all_units_map,
                 baseline_unit_ids=baseline_unit_ids,
@@ -283,6 +300,7 @@ def _attribute_batches(
             empty_source_group,
             source_lines=(),
             working_tree_lines=working_tree_lines,
+            spool_dir=spool_dir,
             deletion_fingerprints=deletion_fingerprints,
             all_units_map=all_units_map,
             baseline_unit_ids=baseline_unit_ids,
@@ -361,6 +379,7 @@ def _attribute_source_group(
     *,
     source_lines: Sequence[bytes],
     working_tree_lines: Sequence[bytes],
+    spool_dir: str | Path | None,
     deletion_fingerprints: dict[
         str,
         _attribution_fingerprints.ContentFingerprint,
@@ -373,6 +392,7 @@ def _attribute_source_group(
     with match_lines(
         source_lines=source_lines,
         target_lines=working_tree_lines,
+        spool_dir=spool_dir,
     ) as alignment:
         for request in requests:
             context = BatchAttributionContext(

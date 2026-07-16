@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 
 from . import attribution_fingerprints as _attribution_fingerprints
 from .line_matching.line_mapping import LineMapping
@@ -124,8 +125,13 @@ def build_file_comparison_from_lines(
     *,
     baseline_lines: Sequence[bytes],
     working_tree_lines: Sequence[bytes],
+    spool_dir: str | Path | None = None,
 ) -> FileComparison:
-    alignment = match_lines(source_lines=baseline_lines, target_lines=working_tree_lines)
+    alignment = match_lines(
+        source_lines=baseline_lines,
+        target_lines=working_tree_lines,
+        spool_dir=spool_dir,
+    )
     return FileComparison(
         file_path=file_path,
         baseline_lines=baseline_lines,

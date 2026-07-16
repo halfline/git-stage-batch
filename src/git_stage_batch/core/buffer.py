@@ -63,10 +63,11 @@ class _BufferBacking:
 class _LineSpanVector:
     """Compact append-only storage for byte line spans."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, spool_dir: str | Path | None = None) -> None:
         self._records = ChunkedMappedRecordVector(
             record_format="QQ",
             chunk_capacity=_LINE_SPAN_CHUNK_CAPACITY,
+            spool_dir=spool_dir,
         )
 
     def __len__(self) -> int:
@@ -91,21 +92,39 @@ class LineBuffer(Sequence[bytes]):
         data: bytes | mmap.mmap,
         *,
         file_handle: BinaryIO | None = None,
+        spool_dir: str | Path | None = None,
     ) -> None:
         self._backing = _BufferBacking(data, file_handle)
-        self._initialize_line_index()
+        self._spool_dir = spool_dir
+        try:
+            self._initialize_line_index()
+        except BaseException:
+            self._backing.release()
+            raise
 
     def _initialize_line_index(self) -> None:
-        self._line_spans = _LineSpanVector()
+        scan_complete = len(self._data) == 0
+        line_spans = _LineSpanVector(spool_dir=self._spool_dir)
+        self._line_spans = line_spans
         self._scan_position = 0
-        self._scan_complete = len(self._data) == 0
+        self._scan_complete = scan_complete
         self._closed = False
 
     @classmethod
-    def _from_backing(cls, backing: _BufferBacking) -> LineBuffer:
+    def _from_backing(
+        cls,
+        backing: _BufferBacking,
+        *,
+        spool_dir: str | Path | None = None,
+    ) -> LineBuffer:
         buffer = cls.__new__(cls)
         buffer._backing = backing.retain()
-        buffer._initialize_line_index()
+        buffer._spool_dir = spool_dir
+        try:
+            buffer._initialize_line_index()
+        except BaseException:
+            buffer._backing.release()
+            raise
         return buffer
 
     @property
@@ -113,15 +132,29 @@ class LineBuffer(Sequence[bytes]):
         return self._backing.data
 
     @classmethod
-    def from_bytes(cls, data: _BytesLike) -> LineBuffer:
+    def from_bytes(
+        cls,
+        data: _BytesLike,
+        *,
+        spool_dir: str | Path | None = None,
+    ) -> LineBuffer:
         """Create a buffer from in-memory bytes."""
-        return cls(bytes(data))
+        return cls(bytes(data), spool_dir=spool_dir)
 
     @classmethod
-    def from_path(cls, path: str | Path) -> LineBuffer:
+    def from_path(
+        cls,
+        path: str | Path,
+        *,
+        spool_dir: str | Path | None = None,
+    ) -> LineBuffer:
         """Create a buffer from a file using mmap when possible."""
         data, file_handle = byte_storage_from_path(path)
-        return cls(data, file_handle=file_handle)
+        return cls(
+            data,
+            file_handle=file_handle,
+            spool_dir=spool_dir,
+        )
 
     @classmethod
     def from_chunks(
@@ -135,12 +168,23 @@ class LineBuffer(Sequence[bytes]):
             chunks,
             spool_dir=spool_dir,
         )
-        return cls(data, file_handle=file_handle)
+        return cls(
+            data,
+            file_handle=file_handle,
+            spool_dir=spool_dir,
+        )
 
-    def clone(self) -> LineBuffer:
+    def clone(
+        self,
+        *,
+        spool_dir: str | Path | None = None,
+    ) -> LineBuffer:
         """Return an independently closable buffer sharing immutable storage."""
         self._require_open()
-        return LineBuffer._from_backing(self._backing)
+        return LineBuffer._from_backing(
+            self._backing,
+            spool_dir=self._spool_dir if spool_dir is None else spool_dir,
+        )
 
     @property
     def uses_mapped_storage(self) -> bool:

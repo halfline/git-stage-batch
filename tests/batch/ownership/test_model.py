@@ -573,6 +573,20 @@ def test_supplemental_attribution_does_not_construct_a_state_ref():
     assert by_name["__consumed__"].primary_refspec == "consumed-source:test.txt"
     assert by_name["__consumed__"].fallback_refspec == "consumed-source:test.txt"
 
+    canonical_requests = attribution_module._batch_source_requests(
+        "test.txt",
+        metadata,
+        state_backed_batch_names=frozenset({"real"}),
+        batch_state_commit_by_name={"real": "canonical-state"},
+    )
+    canonical_by_name = {
+        request.batch_name: request for request in canonical_requests
+    }
+    assert canonical_by_name["real"].primary_refspec == (
+        "canonical-state:sources/test.txt"
+    )
+
+
 def test_trusted_many_batch_source_requests_do_not_revalidate_names(monkeypatch):
     """Attribution's trusted boundary must not spawn validation per batch."""
     metadata = {

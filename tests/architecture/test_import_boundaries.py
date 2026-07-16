@@ -13790,6 +13790,9 @@ def test_batch_source_text_plan_builders_own_apply_text_planning():
         fromlist=["text_plan_builders"],
     )
     apply_action_path = SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
+    text_plan_jobs_path = (
+        SRC_ROOT / "commands" / "batch_source" / "text_plan_jobs.py"
+    )
     public_names = {
         "ApplyTextPlanBuildResult",
         "build_apply_text_file_action_plan",
@@ -13821,7 +13824,7 @@ def test_batch_source_text_plan_builders_own_apply_text_planning():
     imports_text_plan_builders = False
     direct_plan_imports = set()
 
-    for imported_module, node in _import_from_nodes(apply_action_path):
+    for imported_module, node in _import_from_nodes(text_plan_jobs_path):
         imported_names = {alias.name for alias in node.names}
         if (
             imported_module == "git_stage_batch.commands.batch_source"
@@ -13834,11 +13837,13 @@ def test_batch_source_text_plan_builders_own_apply_text_planning():
         )
 
     action_text = apply_action_path.read_text()
+    job_text = text_plan_jobs_path.read_text()
 
     assert public_names <= vars(text_plan_builders).keys()
     assert imports_text_plan_builders
     assert direct_plan_imports == set()
-    assert "build_apply_text_file_action_plan(" in action_text
+    assert "build_apply_text_file_action_plan(" in job_text
+    assert "build_apply_text_file_action_plan(" not in action_text
     assert "merge_batch_from_line_sequences_as_buffer(" not in action_text
     assert "selected_text_target_change_type(" not in action_text
 
@@ -14323,6 +14328,9 @@ def test_batch_source_candidate_preview_counts_own_failure_enumeration():
     )
     SRC_ROOT / "commands" / "apply_from.py"
     apply_action_path = SRC_ROOT / "commands" / "batch_source" / "apply_action.py"
+    text_plan_jobs_path = (
+        SRC_ROOT / "commands" / "batch_source" / "text_plan_jobs.py"
+    )
     SRC_ROOT / "commands" / "include_from.py"
     include_action_path = (
         SRC_ROOT / "commands" / "batch_source" / "include_action.py"
@@ -14343,7 +14351,10 @@ def test_batch_source_candidate_preview_counts_own_failure_enumeration():
         "CandidateEnumerationLimitError",
         "CandidatePreviewCount",
     }
-    command_paths = set(old_function_names)
+    command_paths = {
+        text_plan_jobs_path,
+        include_action_path,
+    }
     imports_candidate_preview_counts = {
         path: False
         for path in command_paths
@@ -14352,15 +14363,18 @@ def test_batch_source_candidate_preview_counts_own_failure_enumeration():
         path: set()
         for path in command_paths
     }
-    helper_names = {}
-
-    for path in command_paths:
-        tree = ast.parse(path.read_text(), filename=str(path))
-        helper_names[path] = {
+    helper_names = {
+        path: {
             node.name
-            for node in ast.walk(tree)
+            for node in ast.walk(
+                ast.parse(path.read_text(), filename=str(path))
+            )
             if isinstance(node, ast.FunctionDef)
         }
+        for path in old_function_names
+    }
+
+    for path in command_paths:
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
             if (
@@ -14373,11 +14387,11 @@ def test_batch_source_candidate_preview_counts_own_failure_enumeration():
 
     assert public_names <= vars(candidate_preview_counts).keys()
     assert imports_candidate_preview_counts == {
-        apply_action_path: True,
+        text_plan_jobs_path: True,
         include_action_path: True,
     }
     assert direct_count_imports == {
-        apply_action_path: set(),
+        text_plan_jobs_path: set(),
         include_action_path: set(),
     }
     for path, old_names in old_function_names.items():
@@ -15154,16 +15168,18 @@ def test_batch_source_apply_action_owns_apply_execution():
         ("git_stage_batch.commands.batch_source", "action_plans"),
         ("git_stage_batch.commands.batch_source", "atomic_unit_refusals"),
         ("git_stage_batch.commands.batch_source", "binary_file_actions"),
-        ("git_stage_batch.commands.batch_source", "candidate_preview_counts"),
         ("git_stage_batch.commands.batch_source", "candidate_refusals"),
         ("git_stage_batch.commands.batch_source", "merge_refusals"),
         ("git_stage_batch.commands.batch_source", "text_file_actions"),
-        ("git_stage_batch.commands.batch_source", "text_plan_builders"),
+        ("git_stage_batch.commands.batch_source", "text_plan_jobs"),
         ("git_stage_batch.commands.batch_source", "worktree_refusals"),
         ("git_stage_batch.batch.binary_file_content", "read_binary_file_from_batch"),
         ("git_stage_batch.batch.submodule_pointer", "apply_submodule_pointer_from_batch"),
+        ("git_stage_batch.data.file_target_identity", "capture_worktree_identity"),
         ("git_stage_batch.data.session", "snapshot_file_if_untracked"),
         ("git_stage_batch.data.undo_checkpoints", "undo_checkpoint"),
+        ("git_stage_batch.utils.file_jobs", "run_file_jobs"),
+        ("git_stage_batch.utils.file_job_workspace", "FileJobWorkspace"),
     }
     action_imports = set()
 
@@ -15175,10 +15191,48 @@ def test_batch_source_apply_action_owns_apply_execution():
 
     assert public_names <= vars(apply_action).keys()
     assert required_imports <= action_imports
-    assert "build_apply_text_file_action_plan(" in action_text
+    assert "compute_apply_text_plan_job" in action_text
+    assert "build_apply_text_file_action_plan(" not in action_text
     assert "write_text_file_to_worktree(" in action_text
     assert "write_binary_file_to_worktree(" in action_text
     assert "finish_batch_source_action_review(" in action_text
+
+
+def test_apply_text_jobs_do_not_bypass_command_or_git_boundaries():
+    """Apply workers should use shared execution helpers and never spawn directly."""
+    paths = (
+        SRC_ROOT / "commands" / "batch_source" / "text_plan_jobs.py",
+        SRC_ROOT / "data" / "file_target_identity.py",
+    )
+    prohibited_calls = {
+        "Popen",
+        "run",
+        "call",
+        "check_call",
+        "check_output",
+    }
+    violations = []
+
+    for path in paths:
+        tree = ast.parse(path.read_text(), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            function = node.func
+            if (
+                isinstance(function, ast.Attribute)
+                and isinstance(function.value, ast.Name)
+                and function.value.id == "subprocess"
+                and function.attr in prohibited_calls
+            ):
+                violations.append(f"{path.relative_to(REPO_ROOT)}:{node.lineno}")
+            elif (
+                isinstance(function, ast.Name)
+                and function.id == "Popen"
+            ):
+                violations.append(f"{path.relative_to(REPO_ROOT)}:{node.lineno}")
+
+    assert violations == []
 
 
 def test_apply_from_delegates_apply_action_execution():

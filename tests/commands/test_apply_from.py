@@ -1,6 +1,7 @@
 """Tests for apply from batch command."""
 
 import os
+import sys
 
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.include import command_include_to_batch
@@ -15,9 +16,18 @@ import pytest
 import git_stage_batch.commands.batch_source.apply_action as apply_action
 from git_stage_batch.batch.state.lifecycle import create_batch
 from git_stage_batch.commands.apply_from import command_apply_from_batch
+from git_stage_batch.commands.redo import command_redo
+from git_stage_batch.commands.undo import command_undo
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import ensure_state_directory_exists
+
+
+_RUNNING_UNDER_XDIST = "PYTEST_XDIST_WORKER" in os.environ
+_PROCESS_TEST = pytest.mark.skipif(
+    sys.platform != "linux" or _RUNNING_UNDER_XDIST,
+    reason="forced forkserver coverage runs on Linux with pytest -n 0",
+)
 
 
 @pytest.fixture
@@ -369,3 +379,157 @@ class TestCommandApplyFromBatch:
         # This should fail because it's a partial selection of a replacement
         with pytest.raises(CommandError, match="must be selected together"):
             command_apply_from_batch("atomic-batch", line_ids="1", file="file.txt")
+
+    def test_apply_aborts_before_checkpoint_when_target_changes_after_planning(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """A stale planned target should prevent undo and worktree mutation."""
+        file_path = temp_git_repo / "file.txt"
+        file_path.write_text("base\n")
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        file_path.write_text("batch\n")
+        command_start(quiet=True)
+        command_include_to_batch("stale-batch", quiet=True)
+        file_path.write_text("base\n")
+        monkeypatch.setenv("GIT_STAGE_BATCH_JOBS", "1")
+
+        real_run_file_jobs = apply_action.run_file_jobs
+        real_workspace = apply_action.FileJobWorkspace
+        workspace_roots = []
+
+        def mutate_after_planning(*args, **kwargs):
+            results = real_run_file_jobs(*args, **kwargs)
+            file_path.write_text("concurrent\n")
+            return results
+
+        def record_workspace():
+            workspace = real_workspace()
+            workspace_roots.append(workspace.root)
+            return workspace
+
+        def checkpoint_must_not_start(*_args, **_kwargs):
+            raise AssertionError("undo checkpoint started for a stale target")
+
+        monkeypatch.setattr(
+            apply_action,
+            "run_file_jobs",
+            mutate_after_planning,
+        )
+        monkeypatch.setattr(
+            apply_action,
+            "FileJobWorkspace",
+            record_workspace,
+        )
+        monkeypatch.setattr(
+            apply_action,
+            "undo_checkpoint",
+            checkpoint_must_not_start,
+        )
+
+        with pytest.raises(CommandError, match="Retry the apply command"):
+            command_apply_from_batch("stale-batch")
+
+        assert file_path.read_text() == "concurrent\n"
+        assert workspace_roots
+        assert all(not root.exists() for root in workspace_roots)
+
+    @_PROCESS_TEST
+    def test_forced_process_apply_matches_inline_order_and_output(
+        self,
+        temp_git_repo,
+        monkeypatch,
+        capsys,
+    ):
+        """Forced transports should publish the same ordered apply result."""
+        baseline = {}
+        expected = {}
+        for index in range(4):
+            file_name = f"{index}.txt"
+            baseline[file_name] = f"base-{index}-" + "x" * 5000 + "\n"
+            expected[file_name] = f"batch-{index}-" + "y" * 5000 + "\n"
+            (temp_git_repo / file_name).write_text(baseline[file_name])
+        subprocess.run(
+            ["git", "add", "."],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add files"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        for file_name, content in expected.items():
+            (temp_git_repo / file_name).write_text(content)
+        command_start(quiet=True)
+        for file_name in expected:
+            command_include_to_batch(
+                "parallel-batch",
+                file=file_name,
+                quiet=True,
+            )
+        capsys.readouterr()
+        mapped_outputs = []
+        original_write = apply_action._text_file_actions.write_text_file_to_worktree
+
+        def record_mapped_output(file_path, buffer, file_mode, change_type):
+            mapped_outputs.append(buffer.uses_mapped_storage)
+            return original_write(
+                file_path,
+                buffer,
+                file_mode,
+                change_type,
+            )
+
+        monkeypatch.setattr(
+            apply_action._text_file_actions,
+            "write_text_file_to_worktree",
+            record_mapped_output,
+        )
+
+        observations = []
+        for requested_jobs in ("1", "2"):
+            for file_name, content in baseline.items():
+                (temp_git_repo / file_name).write_text(content)
+            monkeypatch.setenv("GIT_STAGE_BATCH_JOBS", requested_jobs)
+
+            command_apply_from_batch("parallel-batch")
+
+            observations.append(
+                (
+                    {
+                        file_name: (temp_git_repo / file_name).read_text()
+                        for file_name in expected
+                    },
+                    capsys.readouterr(),
+                )
+            )
+            command_undo(force=True)
+            assert {
+                file_name: (temp_git_repo / file_name).read_text()
+                for file_name in baseline
+            } == baseline
+            command_redo(force=True)
+            assert {
+                file_name: (temp_git_repo / file_name).read_text()
+                for file_name in expected
+            } == expected
+            capsys.readouterr()
+
+        assert observations[0] == observations[1]
+        assert observations[0][0] == expected
+        assert mapped_outputs == [True] * 8

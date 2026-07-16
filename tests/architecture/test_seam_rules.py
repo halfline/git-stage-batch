@@ -14,7 +14,7 @@ def test_live_change_policy_has_one_owner():
     """Hashing, blocking, and batch ownership policy belongs to candidates."""
     policy_symbols = {
         "prepare_live_change",
-        "iter_eligible_live_changes",
+        "stream_eligible_live_changes",
     }
     assert modules_defining(policy_symbols) == {
         "git_stage_batch.data.live_change_candidates": policy_symbols,

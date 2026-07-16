@@ -8,7 +8,7 @@ content that may not currently be visible in the working tree.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from ..utils.git_object_io import (
@@ -152,6 +152,7 @@ def build_file_attribution_from_lines(
     working_tree_lines: Sequence[bytes],
     batch_metadata_by_name: dict[str, dict] | None = None,
     supplemental_batch_metadata: dict[str, dict] | None = None,
+    batch_state_commit_by_name: Mapping[str, str] | None = None,
     metrics: AttributionMetrics | None = None,
 ) -> FileAttribution:
     """Build file attribution from caller-owned indexed line sequences."""
@@ -188,6 +189,7 @@ def build_file_attribution_from_lines(
         file_path,
         all_batch_metadata,
         state_backed_batch_names=state_backed_batch_names,
+        batch_state_commit_by_name=batch_state_commit_by_name,
         working_tree_lines=working_tree_lines,
         all_units_map=all_units_map,
         baseline_unit_ids=baseline_unit_ids,
@@ -213,6 +215,7 @@ def _attribute_batches(
     all_batch_metadata: dict,
     *,
     state_backed_batch_names: frozenset[str],
+    batch_state_commit_by_name: Mapping[str, str] | None,
     working_tree_lines: Sequence[bytes],
     all_units_map: dict[str, _AttributionUnit],
     baseline_unit_ids: Sequence[str],
@@ -224,6 +227,7 @@ def _attribute_batches(
         file_path,
         all_batch_metadata,
         state_backed_batch_names=state_backed_batch_names,
+        batch_state_commit_by_name=batch_state_commit_by_name,
     )
     deletion_blob_ids = _deletion_blob_ids(source_requests)
     object_names = list(
@@ -402,6 +406,7 @@ def _batch_source_requests(
     all_batch_metadata: dict,
     *,
     state_backed_batch_names: frozenset[str],
+    batch_state_commit_by_name: Mapping[str, str] | None = None,
 ) -> list[_BatchSourceRequest]:
     requests: list[_BatchSourceRequest] = []
     for batch_name in sorted(all_batch_metadata):
@@ -411,9 +416,14 @@ def _batch_source_requests(
         source_path = file_metadata.get("source_path")
         primary_refspec = fallback_refspec
         if source_path and batch_name in state_backed_batch_names:
-            primary_refspec = (
-                f"{format_batch_state_ref_name(batch_name)}:{source_path}"
-            )
+            if batch_state_commit_by_name is None:
+                primary_refspec = (
+                    f"{format_batch_state_ref_name(batch_name)}:{source_path}"
+                )
+            elif batch_name in batch_state_commit_by_name:
+                primary_refspec = (
+                    f"{batch_state_commit_by_name[batch_name]}:{source_path}"
+                )
         requests.append(
             _BatchSourceRequest(
                 batch_name=batch_name,

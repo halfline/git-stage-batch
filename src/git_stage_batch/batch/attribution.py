@@ -172,16 +172,21 @@ def build_file_attribution_from_lines(
     if metrics is not None:
         metrics.candidate_batches = len(batch_metadata_by_name)
 
-    # Capture names before merging supplemental metadata. Only entries from the
-    # primary metadata map may resolve source_path through state-backed storage.
-    # Supplemental entries, including __consumed__, use batch_source_commit.
-    state_backed_batch_names = frozenset(batch_metadata_by_name)
+    # Only entries retained from the primary metadata map may resolve
+    # source_path through state-backed storage. Supplemental entries, including
+    # __consumed__ and any same-name override, use batch_source_commit.
+    state_backed_batch_names = set()
     for batch_name, metadata in batch_metadata_by_name.items():
         if file_path in metadata.get("files", {}):
             all_batch_metadata[batch_name] = metadata
+            state_backed_batch_names.add(batch_name)
 
     if supplemental_batch_metadata:
-        all_batch_metadata.update(supplemental_batch_metadata)
+        for batch_name, metadata in supplemental_batch_metadata.items():
+            if file_path not in metadata.get("files", {}):
+                continue
+            all_batch_metadata[batch_name] = metadata
+            state_backed_batch_names.discard(batch_name)
     if metrics is not None:
         metrics.claimed_batches = len(all_batch_metadata)
 
@@ -199,7 +204,7 @@ def build_file_attribution_from_lines(
     _attribute_batches(
         file_path,
         all_batch_metadata,
-        state_backed_batch_names=state_backed_batch_names,
+        state_backed_batch_names=frozenset(state_backed_batch_names),
         batch_state_commit_by_name=batch_state_commit_by_name,
         spool_dir=spool_dir,
         working_tree_lines=working_tree_lines,

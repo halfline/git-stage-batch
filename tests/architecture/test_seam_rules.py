@@ -29,7 +29,12 @@ def test_live_change_policy_has_one_owner():
         ForbiddenImportRule(
             "git_stage_batch.data.remaining_hunks",
             "git_stage_batch.core.hashing",
-            "status must count prepared live-change candidates",
+            "status must count canonical file-job results",
+        ),
+        ForbiddenImportRule(
+            "git_stage_batch.data.remaining_hunks",
+            "git_stage_batch.data.live_change_candidates",
+            "status must not fall back to the lazy candidate stream",
         ),
         ForbiddenImportRule(
             "git_stage_batch.commands.selection.next_change_display",
@@ -51,9 +56,10 @@ def test_live_change_policy_has_one_owner():
     }
     assert {
         "git_stage_batch.data.hunk_tracking",
-        "git_stage_batch.data.remaining_hunks",
+        "git_stage_batch.data.live_change_jobs",
         "git_stage_batch.commands.selection.next_change_display",
     } <= consumers
+    assert "git_stage_batch.data.remaining_hunks" not in consumers
 
 
 def test_repository_readers_stay_below_policy_layers():

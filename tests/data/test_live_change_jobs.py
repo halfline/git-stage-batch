@@ -494,6 +494,33 @@ def test_consumed_replacement_masks_are_loaded_once_and_applied(
         assert result.already_batched_count == 1
 
 
+def test_worktree_change_returns_stale_and_status_requests_retry(
+    temp_git_repo,
+    monkeypatch,
+):
+    file_path = temp_git_repo / "file.txt"
+    file_path.write_text("old\n")
+    _commit_all(temp_git_repo)
+    file_path.write_text("new\n")
+
+    with acquire_live_change_count_plan() as plan:
+        assert len(plan.jobs) == 1
+        file_path.write_text("changed after planning\n")
+        direct_result = count_eligible_live_text_file(plan.jobs[0].payload)
+        assert direct_result.stale is True
+
+        @contextmanager
+        def acquire_existing_plan():
+            yield plan
+
+        monkeypatch.setattr(
+            remaining_hunks_module,
+            "acquire_live_change_count_plan",
+            acquire_existing_plan,
+        )
+        with pytest.raises(CommandError, match="Retry the status command"):
+            estimate_remaining_hunks()
+
 def test_parser_buffers_can_close_immediately_after_spooling(
     temp_git_repo,
     monkeypatch,

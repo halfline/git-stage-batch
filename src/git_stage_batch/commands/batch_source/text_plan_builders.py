@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import ExitStack
 from dataclasses import dataclass
 import os
+from pathlib import Path
 
 from . import action_plans as _action_plans
 from ...batch.discard import discard_batch_from_line_sequences_as_buffer
@@ -22,6 +23,7 @@ from ...core.text_lifecycle import (
 )
 from ...data.file_modes import detect_file_mode_in_commit
 from ...utils.repository_buffers import (
+    load_git_blob_as_buffer,
     read_git_object_buffer_or_none,
     load_working_tree_file_as_buffer,
 )
@@ -62,25 +64,44 @@ def _close_include_merge_buffers(
         working_buffer.close()
 
 
+def apply_text_plan_requires_source(
+    file_meta: dict,
+    selected_ids: set[int] | None,
+) -> bool:
+    """Return whether one apply text plan needs batch source content."""
+    return not (
+        selected_ids is None
+        and normalized_text_change_type(file_meta.get("change_type"))
+        == TextFileChangeType.DELETED
+    )
+
+
 def build_apply_text_file_action_plan(
     *,
     file_path: str,
     file_meta: dict,
     selected_ids: set[int] | None,
     selection_ids_to_apply: set[int] | None,
+    batch_source_object_id: str | None = None,
+    working_tree_artifact_path: str | Path | None = None,
+    captured_working_tree_exists: bool | None = None,
+    spool_dir: str | Path | None = None,
 ) -> ApplyTextPlanBuildResult:
     """Build one deferred apply-from text action plan."""
     text_change_type = normalized_text_change_type(file_meta.get("change_type"))
 
-    repo_root = get_git_repository_root_path()
-    working_exists = os.path.lexists(repo_root / file_path)
+    if captured_working_tree_exists is None:
+        repo_root = get_git_repository_root_path()
+        working_exists = os.path.lexists(repo_root / file_path)
+    else:
+        working_exists = captured_working_tree_exists
 
     file_mode = mode_for_text_materialization(
         str(file_meta.get("mode", "100644")),
         selected_ids,
         destination_exists=working_exists,
     )
-    if selected_ids is None and text_change_type == TextFileChangeType.DELETED:
+    if not apply_text_plan_requires_source(file_meta, selected_ids):
         return ApplyTextPlanBuildResult(
             plan=_action_plans.ApplyTextFileActionPlan(
                 file_path,
@@ -91,46 +112,86 @@ def build_apply_text_file_action_plan(
         )
 
     batch_source_commit = file_meta["batch_source_commit"]
-    batch_source_buffer = read_git_object_buffer_or_none(
-        f"{batch_source_commit}:{file_path}"
-    )
+    if batch_source_object_id is None:
+        batch_source_spec = f"{batch_source_commit}:{file_path}"
+        batch_source_buffer = (
+            read_git_object_buffer_or_none(batch_source_spec)
+            if spool_dir is None
+            else read_git_object_buffer_or_none(
+                batch_source_spec,
+                spool_dir=spool_dir,
+            )
+        )
+    else:
+        batch_source_buffer = load_git_blob_as_buffer(
+            batch_source_object_id,
+            spool_dir=spool_dir,
+        )
     if batch_source_buffer is None:
         return ApplyTextPlanBuildResult(missing_source=True)
 
-    with (
-        batch_source_buffer as batch_source_lines,
-        load_working_tree_file_as_buffer(file_path) as working_lines,
-    ):
+    with ExitStack() as stack:
+        batch_source_lines = stack.enter_context(batch_source_buffer)
+        if working_tree_artifact_path is None:
+            working_tree_buffer = (
+                load_working_tree_file_as_buffer(file_path)
+                if spool_dir is None
+                else load_working_tree_file_as_buffer(
+                    file_path,
+                    spool_dir=spool_dir,
+                )
+            )
+        else:
+            working_tree_buffer = LineBuffer.from_path(
+                working_tree_artifact_path,
+                spool_dir=spool_dir,
+            )
+        working_lines = stack.enter_context(working_tree_buffer)
+        ownership_arguments = {}
+        if spool_dir is not None:
+            ownership_arguments["spool_dir"] = spool_dir
         with acquire_batch_ownership_for_display_ids_from_lines(
             file_meta,
             batch_source_lines,
             selection_ids_to_apply,
+            **ownership_arguments,
         ) as ownership:
             if ownership.is_empty():
                 if selected_ids is None and text_change_type == TextFileChangeType.ADDED:
-                    merged_buffer = LineBuffer.from_bytes(b"")
+                    merged_buffer = LineBuffer.from_bytes(
+                        b"",
+                        spool_dir=spool_dir,
+                    )
                 else:
                     return ApplyTextPlanBuildResult()
             else:
+                merge_arguments = {}
+                if spool_dir is not None:
+                    merge_arguments["spool_dir"] = spool_dir
                 merged_buffer = merge_batch_from_line_sequences_as_buffer(
                     batch_source_lines,
                     ownership,
                     working_lines,
+                    **merge_arguments,
                 )
 
-    effective_change_type = selected_text_target_change_type(
-        text_change_type,
-        selected_ids,
-        merged_buffer,
-    )
-    return ApplyTextPlanBuildResult(
-        plan=_action_plans.ApplyTextFileActionPlan(
-            file_path,
+    try:
+        effective_change_type = selected_text_target_change_type(
+            text_change_type,
+            selected_ids,
             merged_buffer,
-            file_mode,
-            effective_change_type,
         )
-    )
+        return ApplyTextPlanBuildResult(
+            plan=_action_plans.ApplyTextFileActionPlan(
+                file_path,
+                merged_buffer,
+                file_mode,
+                effective_change_type,
+            )
+        )
+    except BaseException:
+        merged_buffer.close()
+        raise
 
 
 def build_include_text_file_action_plan(

@@ -76,10 +76,14 @@ def candidate_worktree_text_target(
     file_path: str,
     file_meta: dict,
     selected_ids: Iterable[int] | None,
+    captured_working_tree_exists: bool | None = None,
 ) -> CandidateWorktreeTarget:
     """Return worktree existence, materialization mode, and text lifecycle."""
-    repo_root = get_git_repository_root_path()
-    working_exists = os.path.lexists(repo_root / file_path)
+    if captured_working_tree_exists is None:
+        repo_root = get_git_repository_root_path()
+        working_exists = os.path.lexists(repo_root / file_path)
+    else:
+        working_exists = captured_working_tree_exists
     return CandidateWorktreeTarget(
         exists=working_exists,
         file_mode=mode_for_text_materialization(

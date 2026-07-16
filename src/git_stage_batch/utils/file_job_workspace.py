@@ -20,7 +20,7 @@ import stat
 import tempfile
 from typing import Any
 
-from ..core.buffer import BufferInput, write_buffer_to_path
+from ..core.buffer import BufferInput, LineBuffer, write_buffer_to_path
 
 
 _STANDARD_PATH_TYPES = frozenset({
@@ -96,6 +96,19 @@ class FileJobWorkspace(AbstractContextManager["FileJobWorkspace"]):
         path = self.artifact_path(ordinal, name)
         write_buffer_to_path(path, buffer)
         return path
+
+    def read_buffer(
+        self,
+        path: str | Path,
+        *,
+        spool_dir: str | Path | None = None,
+    ) -> LineBuffer:
+        """Open a regular workspace artifact as a path-backed line buffer."""
+        artifact_path = self._require_regular_workspace_file(path)
+        return LineBuffer.from_path(
+            artifact_path,
+            spool_dir=spool_dir,
+        )
 
     def write_json(
         self,

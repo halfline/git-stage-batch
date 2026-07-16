@@ -130,7 +130,31 @@ def build_file_attribution(
     supplemental_batch_metadata: dict[str, dict] | None = None,
     metrics: AttributionMetrics | None = None,
 ) -> FileAttribution:
-    """Build complete ownership attribution for a file."""
+    """Open repository buffers and build complete ownership attribution."""
+    with (
+        read_git_object_buffer_or_empty(f"HEAD:{file_path}") as baseline_lines,
+        load_working_tree_file_as_buffer(file_path) as working_tree_lines,
+    ):
+        return build_file_attribution_from_lines(
+            file_path,
+            baseline_lines=baseline_lines,
+            working_tree_lines=working_tree_lines,
+            batch_metadata_by_name=batch_metadata_by_name,
+            supplemental_batch_metadata=supplemental_batch_metadata,
+            metrics=metrics,
+        )
+
+
+def build_file_attribution_from_lines(
+    file_path: str,
+    *,
+    baseline_lines: Sequence[bytes],
+    working_tree_lines: Sequence[bytes],
+    batch_metadata_by_name: dict[str, dict] | None = None,
+    supplemental_batch_metadata: dict[str, dict] | None = None,
+    metrics: AttributionMetrics | None = None,
+) -> FileAttribution:
+    """Build file attribution from caller-owned indexed line sequences."""
     all_batch_metadata = {}
     if batch_metadata_by_name is None:
         batch_metadata_by_name = read_batch_metadata_for_batches(list_batch_names())
@@ -146,38 +170,35 @@ def build_file_attribution(
     if metrics is not None:
         metrics.claimed_batches = len(all_batch_metadata)
 
-    baseline_buffer = read_git_object_buffer_or_empty(f"HEAD:{file_path}")
-    working_tree_buffer = load_working_tree_file_as_buffer(file_path)
-    with baseline_buffer as baseline_lines, working_tree_buffer as working_tree_lines:
-        all_units_map: dict[str, _AttributionUnit] = {}
-        with _build_file_comparison_from_lines(
-            file_path,
-            baseline_lines=baseline_lines,
-            working_tree_lines=working_tree_lines,
-        ) as comparison:
-            _enumerate_units_from_file_comparison(comparison, all_units_map)
+    all_units_map: dict[str, _AttributionUnit] = {}
+    with _build_file_comparison_from_lines(
+        file_path,
+        baseline_lines=baseline_lines,
+        working_tree_lines=working_tree_lines,
+    ) as comparison:
+        _enumerate_units_from_file_comparison(comparison, all_units_map)
 
-        baseline_unit_ids = tuple(all_units_map)
-        owners_by_unit_id = {unit_id: set() for unit_id in baseline_unit_ids}
-        _attribute_batches(
-            file_path,
-            all_batch_metadata,
-            working_tree_lines=working_tree_lines,
-            all_units_map=all_units_map,
-            baseline_unit_ids=baseline_unit_ids,
-            owners_by_unit_id=owners_by_unit_id,
-            metrics=metrics,
+    baseline_unit_ids = tuple(all_units_map)
+    owners_by_unit_id = {unit_id: set() for unit_id in baseline_unit_ids}
+    _attribute_batches(
+        file_path,
+        all_batch_metadata,
+        working_tree_lines=working_tree_lines,
+        all_units_map=all_units_map,
+        baseline_unit_ids=baseline_unit_ids,
+        owners_by_unit_id=owners_by_unit_id,
+        metrics=metrics,
+    )
+
+    attributed_units = [
+        AttributedUnit(
+            unit=unit,
+            owning_batches=owners_by_unit_id[unit_id],
         )
-
-        attributed_units = [
-            AttributedUnit(
-                unit=unit,
-                owning_batches=owners_by_unit_id[unit_id],
-            )
-            for unit_id, unit in all_units_map.items()
-        ]
-        if metrics is not None:
-            metrics.attributed_units = len(attributed_units)
+        for unit_id, unit in all_units_map.items()
+    ]
+    if metrics is not None:
+        metrics.attributed_units = len(attributed_units)
 
     return FileAttribution(file_path=file_path, units=attributed_units)
 

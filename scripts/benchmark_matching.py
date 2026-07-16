@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Benchmark public matching and ownership-attribution workflows."""
 
+# The script makes the repository source tree importable before project imports.
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import argparse
@@ -41,7 +44,7 @@ from git_stage_batch.batch.attribution_units import (
 )
 from git_stage_batch.batch.line_matching.line_mapping import LineMapping
 from git_stage_batch.batch.line_matching.match import match_lines
-from git_stage_batch.batch.state.references import get_batch_state_ref_name
+from git_stage_batch.batch.state.reference_names import format_batch_state_ref_name
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.utils.git_object_io import resolve_git_objects
 from git_stage_batch.utils.repository_buffers import (
@@ -129,6 +132,21 @@ class _ClaimAttributionState:
 
     fixture: AttributionFixture
     attribution: FileAttribution | None = None
+
+
+@dataclass(frozen=True)
+class _FileWorkloadState:
+    """One repeated file/hunk matching workload."""
+
+    fixture: MatchingFixture
+    file_count: int
+    hunks_per_file: int
+    reuse_mapping: bool
+
+
+@dataclass
+class _GitProcessCounter:
+    count: int = 0
 
 
 CASES = (
@@ -310,6 +328,54 @@ def _summary(values: Sequence[float | int]) -> dict[str, float]:
     }
 
 
+def _command_is_git(arguments: object) -> bool:
+    if not isinstance(arguments, (list, tuple)) or not arguments:
+        return False
+    executable = arguments[0]
+    return isinstance(executable, (str, bytes, os.PathLike)) and (
+        os.path.basename(os.fsdecode(executable)) == "git"
+    )
+
+
+@contextmanager
+def _count_git_processes():
+    """Count Git children launched through subprocess or the POSIX runner."""
+    counter = _GitProcessCounter()
+    original_popen = subprocess.Popen
+    original_posix_spawn = os.posix_spawn
+
+    def counting_popen(*args, **kwargs):
+        arguments = args[0] if args else kwargs.get("args")
+        if _command_is_git(arguments):
+            counter.count += 1
+        return original_popen(*args, **kwargs)
+
+    def counting_posix_spawn(path, argv, env, **kwargs):
+        if _command_is_git(argv):
+            counter.count += 1
+        return original_posix_spawn(path, argv, env, **kwargs)
+
+    subprocess.Popen = counting_popen
+    os.posix_spawn = counting_posix_spawn
+    try:
+        yield counter
+    finally:
+        subprocess.Popen = original_popen
+        os.posix_spawn = original_posix_spawn
+
+
+def _peak_parent_rss_bytes() -> int:
+    """Return the Linux process high-water RSS, or zero when unavailable."""
+    try:
+        with open("/proc/self/status", encoding="ascii") as status_file:
+            for line in status_file:
+                if line.startswith("VmHWM:"):
+                    return int(line.split()[1]) * 1024
+    except (OSError, ValueError):
+        pass
+    return 0
+
+
 def _measure_phase(
     prepare: Callable[[], _StateT],
     operation: Callable[[_StateT], dict[str, Any]],
@@ -336,17 +402,23 @@ def _measure_phase(
             raise RuntimeError("benchmark phase produced inconsistent results")
 
     timing_samples = []
+    git_process_samples = []
+    parent_rss_samples = []
     for _ in range(repeats):
         state = prepare()
         try:
             gc.collect()
-            started = time.perf_counter()
-            result = operation(state)
-            elapsed = time.perf_counter() - started
+            with _count_git_processes() as process_counter:
+                started = time.perf_counter()
+                result = operation(state)
+                elapsed = time.perf_counter() - started
+            parent_rss = _peak_parent_rss_bytes()
         finally:
             cleanup(state)
         observe_result(result)
         timing_samples.append(elapsed)
+        git_process_samples.append(process_counter.count)
+        parent_rss_samples.append(parent_rss)
 
     memory_samples = []
     for _ in range(min(repeats, 3)):
@@ -370,9 +442,15 @@ def _measure_phase(
     return {
         "seconds": _summary(timing_samples),
         "tracemalloc_peak_bytes": _summary(memory_samples),
+        "git_subprocesses": _summary(git_process_samples),
+        "parent_peak_rss_bytes": _summary(parent_rss_samples),
+        "child_peak_rss_bytes": _summary([0 for _ in timing_samples]),
         "samples": {
             "seconds": timing_samples,
             "tracemalloc_peak_bytes": memory_samples,
+            "git_subprocesses": git_process_samples,
+            "parent_peak_rss_bytes": parent_rss_samples,
+            "child_peak_rss_bytes": [0 for _ in timing_samples],
         },
         "result": expected_result or {},
     }
@@ -434,6 +512,30 @@ def _measure_mapping(state: _MappingState) -> dict[str, Any]:
     }
 
 
+def _measure_file_workload(state: _FileWorkloadState) -> dict[str, Any]:
+    mapping_computations = 0
+    mapped_lines = 0
+    for _file_index in range(state.file_count):
+        mapping_state = _open_matching_buffers(state.fixture)
+        try:
+            computation_count = 1 if state.reuse_mapping else state.hunks_per_file
+            for _hunk_index in range(computation_count):
+                with match_lines(
+                    mapping_state.source,
+                    mapping_state.target,
+                ) as mapping:
+                    mapped_lines += sum(1 for _ in mapping.mapped_line_pairs())
+                mapping_computations += 1
+        finally:
+            _close_mapping(mapping_state)
+    return {
+        "files": state.file_count,
+        "logical_hunks": state.file_count * state.hunks_per_file,
+        "mapping_computations": mapping_computations,
+        "mapped_lines": mapped_lines,
+    }
+
+
 def _prepare_unit_enumeration(
     fixture: MatchingFixture,
 ) -> _UnitEnumerationState:
@@ -483,6 +585,8 @@ def run_matching_case(
     *,
     warmups: int,
     repeats: int,
+    file_count: int = 1,
+    hunks_per_file: int = 1,
 ) -> dict[str, Any]:
     """Run one text case with setup excluded from all measured phases."""
     fixture = build_matching_fixture(case.name, size, seed)
@@ -497,6 +601,8 @@ def run_matching_case(
         "chunk_size_bytes": FIXTURE_CHUNK_SIZE,
         "source_sha256": _chunks_sha256(fixture.source_chunks),
         "target_sha256": _chunks_sha256(fixture.target_chunks),
+        "files": file_count,
+        "hunks_per_file": hunks_per_file,
     }
     if case.kind == "binary":
         contains_nul = any(b"\0" in chunk for chunk in fixture.source_chunks)
@@ -533,6 +639,30 @@ def run_matching_case(
             warmups=warmups,
             repeats=repeats,
         ),
+        "per_hunk_mapping": _measure_phase(
+            lambda: _FileWorkloadState(
+                fixture,
+                file_count,
+                hunks_per_file,
+                False,
+            ),
+            _measure_file_workload,
+            lambda _state: None,
+            warmups=warmups,
+            repeats=repeats,
+        ),
+        "reused_file_mapping": _measure_phase(
+            lambda: _FileWorkloadState(
+                fixture,
+                file_count,
+                hunks_per_file,
+                True,
+            ),
+            _measure_file_workload,
+            lambda _state: None,
+            warmups=warmups,
+            repeats=repeats,
+        ),
     }
     return {
         "name": case.name,
@@ -561,8 +691,8 @@ def _git(repo: Path, *arguments: str, input_text: str | None = None) -> str:
 
 
 def _build_attribution_fixture(repo: Path, batch_count: int) -> AttributionFixture:
-    if batch_count <= 0:
-        raise ValueError("batch count must be positive")
+    if batch_count < 0:
+        raise ValueError("batch count must be non-negative")
     file_path = "benchmark.txt"
     line_count = 300
     baseline = _unique_lines("baseline", line_count)
@@ -635,19 +765,20 @@ def _build_attribution_fixture(repo: Path, batch_count: int) -> AttributionFixtu
         )
         for name in batch_names
     }
-    _git(
-        repo,
-        "update-ref",
-        "--stdin",
-        input_text="".join(
-            f"update {get_batch_state_ref_name(name)} {state_commits[name]}\n"
-            for name in batch_names
-        ),
-    )
+    if batch_names:
+        _git(
+            repo,
+            "update-ref",
+            "--stdin",
+            input_text="".join(
+                f"update {format_batch_state_ref_name(name)} {state_commits[name]}\n"
+                for name in batch_names
+            ),
+        )
     object_names = tuple(
         [
             *(
-                f"{get_batch_state_ref_name(name)}:sources/{file_path}"
+                f"{format_batch_state_ref_name(name)}:sources/{file_path}"
                 for name in batch_names
             ),
             fallback,
@@ -699,12 +830,7 @@ def _measure_blob_loading(fixture: AttributionFixture) -> dict[str, Any]:
 def _open_repository_buffers(
     fixture: AttributionFixture,
 ) -> _MappingState:
-    source = read_git_object_buffer_or_empty(
-        next(iter(fixture.metadata.values()))["files"][fixture.file_path][
-            "batch_source_commit"
-        ]
-        + f":{fixture.file_path}"
-    )
+    source = read_git_object_buffer_or_empty(fixture.source_object_ids[0])
     working: LineBuffer | None = None
     try:
         working = load_working_tree_file_as_buffer(fixture.file_path)
@@ -927,6 +1053,10 @@ def run_suite(
     seed: int = DEFAULT_SEED,
     warmups: int = 1,
     repeats: int = 3,
+    file_count: int = 1,
+    hunks_per_file: int = 1,
+    matching_size: int | None = None,
+    batch_count: int | None = None,
 ) -> dict[str, Any]:
     """Run selected deterministic cases and return the stable JSON schema."""
     if mode not in {"quick", "full"}:
@@ -935,12 +1065,28 @@ def run_suite(
         raise ValueError("warmups must be non-negative")
     if repeats <= 0:
         raise ValueError("repeats must be positive")
+    if file_count not in {1, 2, 4, 8, 16}:
+        raise ValueError("file_count must be one of 1, 2, 4, 8, or 16")
+    if hunks_per_file not in {1, 8}:
+        raise ValueError("hunks_per_file must be 1 or 8")
+    if matching_size is not None and matching_size <= 0:
+        raise ValueError("matching_size must be positive")
+    if batch_count is not None and batch_count not in {0, 1, 50, 1_000}:
+        raise ValueError("batch_count must be one of 0, 1, 50, or 1000")
 
     results = []
     for case in selected_cases(mode, case_names):
-        size = case.quick_size if mode == "quick" else case.full_size
+        default_size = case.quick_size if mode == "quick" else case.full_size
+        size = (
+            batch_count
+            if case.kind == "attribution" and batch_count is not None
+            else matching_size
+            if case.kind != "attribution" and matching_size is not None
+            else default_size
+        )
         if size is None or size <= 0:
-            continue
+            if case.kind != "attribution" or size != 0:
+                continue
         if case.kind == "attribution":
             result = run_attribution_case(
                 case,
@@ -956,6 +1102,8 @@ def run_suite(
                 seed,
                 warmups=warmups,
                 repeats=repeats,
+                file_count=file_count,
+                hunks_per_file=hunks_per_file,
             )
         results.append(result)
 
@@ -1137,6 +1285,30 @@ def _write_report(report: dict[str, Any], output: Path | None) -> None:
     sys.stdout.write(rendered)
 
 
+def _write_short_table(report: dict[str, Any]) -> None:
+    """Write a concise human-readable phase table beside JSON output."""
+    rows = []
+    for case in report.get("cases", []):
+        for phase_name, phase in case.get("phases", {}).items():
+            rows.append(
+                (
+                    case["name"],
+                    phase_name,
+                    phase["seconds"]["median"],
+                    phase["git_subprocesses"]["median"],
+                    phase["parent_peak_rss_bytes"]["median"] / (1024 * 1024),
+                )
+            )
+    if not rows:
+        return
+    sys.stderr.write("case phase seconds git parent-rss-mib\n")
+    for case_name, phase_name, seconds, git_count, rss_mib in rows:
+        sys.stderr.write(
+            f"{case_name} {phase_name} {seconds:.6f} "
+            f"{git_count:.0f} {rss_mib:.1f}\n"
+        )
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=("quick", "full"), default="quick")
@@ -1150,6 +1322,20 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("--warmups", type=int)
     parser.add_argument("--repeats", type=int)
+    parser.add_argument("--files", type=int, choices=(1, 2, 4, 8, 16), default=1)
+    parser.add_argument("--hunks-per-file", type=int, choices=(1, 8), default=1)
+    parser.add_argument(
+        "--matching-size",
+        type=int,
+        help="override text-case lines (use 300, 10000, or 50000 for the matrix)",
+    )
+    parser.add_argument(
+        "--batches",
+        type=int,
+        choices=(0, 1, 50, 1_000),
+        help="override attribution batch count",
+    )
+    parser.add_argument("--no-table", action="store_true")
     parser.add_argument("--output", type=Path)
     parser.add_argument(
         "--compare",
@@ -1212,11 +1398,17 @@ def main() -> None:
             seed=args.seed,
             warmups=warmups,
             repeats=repeats,
+            file_count=args.files,
+            hunks_per_file=args.hunks_per_file,
+            matching_size=args.matching_size,
+            batch_count=args.batches,
         )
     except ValueError as error:
         parser.error(str(error))
     try:
         _write_report(report, args.output)
+        if not args.no_table:
+            _write_short_table(report)
     except OSError as error:
         parser.error(str(error))
 

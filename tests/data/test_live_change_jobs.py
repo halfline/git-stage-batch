@@ -37,6 +37,7 @@ from git_stage_batch.utils.file_io import (
     append_lines_to_file,
 )
 from git_stage_batch.utils.file_jobs import (
+    FileJobExecution,
     assert_file_job_transport_value,
 )
 from git_stage_batch.utils.paths import (
@@ -180,6 +181,35 @@ def test_no_changes_builds_an_empty_plan(temp_git_repo):
         assert plan.atomic_count == 0
         assert plan.jobs == ()
 
+
+def test_remaining_hunk_estimate_selects_one_execution_policy(
+    temp_git_repo,
+    monkeypatch,
+):
+    file_path = temp_git_repo / "file.txt"
+    file_path.write_text("old\n")
+    _commit_all(temp_git_repo)
+    file_path.write_text("new\n")
+    selected = []
+
+    def select_execution(jobs, **selection):
+        selected.append((jobs, selection))
+        return FileJobExecution("inline", 1, "test selection")
+
+    monkeypatch.setenv("GIT_STAGE_BATCH_JOBS", "4")
+    monkeypatch.setattr(
+        remaining_hunks_module,
+        "select_file_job_execution",
+        select_execution,
+    )
+
+    assert estimate_remaining_hunks() == 1
+    assert len(selected) == 1
+    jobs, selection = selected[0]
+    assert [job.file_path for job in jobs] == ["file.txt"]
+    assert selection["requested_jobs"] == "4"
+    assert selection["platform"] == sys.platform
+    assert selection["cpu_count"] is None
 
 def test_blocked_hashes_and_paths_match_lazy_count(temp_git_repo):
     for file_name in ("a.txt", "b.txt"):

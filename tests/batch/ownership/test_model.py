@@ -371,10 +371,10 @@ def test_build_file_attribution_bulk_loads_batch_source_buffers(
         resolution_calls.append(refspecs)
         return original_resolve(refspecs)
 
-    def counting_buffer_stream(object_ids):
+    def counting_buffer_stream(object_ids, **kwargs):
         object_ids = tuple(object_ids)
         buffer_stream_calls.append(object_ids)
-        yield from original_buffer_stream(object_ids)
+        yield from original_buffer_stream(object_ids, **kwargs)
 
     monkeypatch.setattr(
         attribution_module,
@@ -461,10 +461,10 @@ def test_build_file_attribution_deduplicates_sources_deletions_and_mappings(
         deletion_stream_calls.append(object_ids)
         yield from original_deletion_stream(object_ids, **kwargs)
 
-    def recording_buffer_stream(object_ids):
+    def recording_buffer_stream(object_ids, **kwargs):
         object_ids = tuple(object_ids)
         buffer_stream_calls.append(object_ids)
-        yield from original_buffer_stream(object_ids)
+        yield from original_buffer_stream(object_ids, **kwargs)
 
     match_calls = 0
     original_match = attribution_module.match_lines
@@ -653,6 +653,38 @@ def test_file_attribution_from_lines_matches_repository_wrapper(temp_repo):
 
     assert explicit == wrapped
     assert explicit_metrics == wrapper_metrics
+
+
+def test_file_attribution_from_lines_propagates_invocation_spool(
+    tmp_path,
+    monkeypatch,
+):
+    """Baseline matching should use the supplied job scratch storage."""
+    spool_directories = []
+    original_match_lines = attribution_units_module.match_lines
+
+    def record_match(*args, **kwargs):
+        spool_directories.append(kwargs.get("spool_dir"))
+        return original_match_lines(*args, **kwargs)
+
+    monkeypatch.setattr(
+        attribution_units_module,
+        "match_lines",
+        record_match,
+    )
+    spool_dir = tmp_path / "scratch"
+    spool_dir.mkdir()
+
+    attribution = build_file_attribution_from_lines(
+        "file.txt",
+        baseline_lines=[b"old\n"],
+        working_tree_lines=[b"new\n"],
+        batch_metadata_by_name={},
+        spool_dir=spool_dir,
+    )
+
+    assert attribution.file_path == "file.txt"
+    assert spool_directories == [spool_dir]
 
 
 def test_build_file_attribution_is_independent_of_batch_traversal_order(temp_repo):

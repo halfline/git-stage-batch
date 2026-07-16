@@ -105,7 +105,7 @@ def test_annotate_with_batch_source_working_lines_accepts_sequences(
     monkeypatch.setattr(
         source_annotation_module,
         "read_git_object_buffer_or_none",
-        lambda revision_path: LineBuffer.from_chunks(
+        lambda revision_path, **_kwargs: LineBuffer.from_chunks(
             iter([b"line 1\n", b"line 2\n"])
         ),
     )
@@ -171,7 +171,7 @@ def test_annotate_with_batch_source_loads_indexed_buffers(monkeypatch, tmp_path)
         lambda path: "source-commit",
     )
 
-    def fake_read_git_object_buffer_or_none(revision_path):
+    def fake_read_git_object_buffer_or_none(revision_path, **_kwargs):
         loaded_revisions.append(revision_path)
         return LineBuffer.from_chunks(iter([b"line 1\n", b"line 2\n"]))
 
@@ -231,12 +231,12 @@ def test_acquired_mapping_annotates_multiple_hunks_with_one_match(monkeypatch):
     monkeypatch.setattr(
         source_annotation_module,
         "read_git_object_buffer_or_none",
-        lambda _refspec: LineBuffer.from_chunks([b"line 1\n"]),
+        lambda _refspec, **_kwargs: LineBuffer.from_chunks([b"line 1\n"]),
     )
 
-    def counting_match_lines(source_lines, working_lines):
+    def counting_match_lines(source_lines, working_lines, **kwargs):
         calls.append((source_lines, working_lines))
-        return original_match_lines(source_lines, working_lines)
+        return original_match_lines(source_lines, working_lines, **kwargs)
 
     monkeypatch.setattr(
         source_annotation_module,
@@ -256,3 +256,53 @@ def test_acquired_mapping_annotates_multiple_hunks_with_one_match(monkeypatch):
     assert len(calls) == 1
     assert [line.source_line for line in first.lines] == [1, None]
     assert [line.source_line for line in second.lines] == [1, None]
+
+
+def test_acquired_mapping_propagates_invocation_spool(tmp_path, monkeypatch):
+    """Source loading and matching should share the job scratch directory."""
+    loaded_spool_directories = []
+    matching_spool_directories = []
+    original_match_lines = source_annotation_module.match_lines
+
+    def load_source(_refspec, *, spool_dir=None):
+        loaded_spool_directories.append(spool_dir)
+        return LineBuffer.from_chunks(
+            [b"line 1\n"],
+            spool_dir=spool_dir,
+        )
+
+    def record_match(source_lines, working_lines, *, spool_dir=None):
+        matching_spool_directories.append(spool_dir)
+        return original_match_lines(
+            source_lines,
+            working_lines,
+            spool_dir=spool_dir,
+        )
+
+    monkeypatch.setattr(
+        source_annotation_module,
+        "read_git_object_buffer_or_none",
+        load_source,
+    )
+    monkeypatch.setattr(
+        source_annotation_module,
+        "match_lines",
+        record_match,
+    )
+    spool_dir = tmp_path / "scratch"
+    spool_dir.mkdir()
+
+    with LineBuffer.from_chunks(
+        [b"line 1\n"],
+        spool_dir=spool_dir,
+    ) as working_lines:
+        with acquire_batch_source_mapping(
+            "file.txt",
+            batch_source_commit="source-commit",
+            working_lines=working_lines,
+            spool_dir=spool_dir,
+        ):
+            pass
+
+    assert loaded_spool_directories == [spool_dir]
+    assert matching_spool_directories == [spool_dir]

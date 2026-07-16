@@ -396,6 +396,41 @@ def test_line_buffer_uses_mapped_storage_for_page_sized_files(tmp_path):
         assert buffer[1] == b"x" * (mmap.PAGESIZE - len(b"alpha\n"))
 
 
+def test_line_buffer_releases_mapped_backing_when_index_setup_fails(
+    tmp_path,
+    monkeypatch,
+):
+    """Failed line-index setup should close newly acquired mapped storage."""
+    file_path = tmp_path / "buffer.txt"
+    file_path.write_bytes(b"x" * mmap.PAGESIZE)
+    released_backings = []
+    real_release = buffer_module._BufferBacking.release
+
+    def recording_release(backing):
+        real_release(backing)
+        released_backings.append(backing)
+
+    def fail_line_index(*, spool_dir=None):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(
+        buffer_module._BufferBacking,
+        "release",
+        recording_release,
+    )
+    monkeypatch.setattr(buffer_module, "_LineSpanVector", fail_line_index)
+
+    with pytest.raises(KeyboardInterrupt):
+        LineBuffer.from_path(file_path)
+
+    assert len(released_backings) == 1
+    backing = released_backings[0]
+    assert isinstance(backing.data, mmap.mmap)
+    assert backing.data.closed is True
+    assert backing.file_handle is not None
+    assert backing.file_handle.closed is True
+
+
 def test_line_buffer_clone_survives_original_close():
     """A clone retains shared heap storage after its original closes."""
     original = LineBuffer.from_bytes(b"alpha\nbeta\n")
@@ -436,6 +471,24 @@ def test_line_buffer_clones_have_independent_line_indexes():
 
     original.close()
     clone.close()
+
+
+def test_line_buffer_failed_clone_releases_retained_backing(monkeypatch):
+    """Failed clone setup should undo its backing retain."""
+    original = LineBuffer.from_bytes(b"alpha\nbeta\n")
+    backing = original._backing
+
+    def fail_line_index(*, spool_dir=None):
+        raise OSError("line-index setup failed")
+
+    monkeypatch.setattr(buffer_module, "_LineSpanVector", fail_line_index)
+
+    with pytest.raises(OSError, match="line-index setup failed"):
+        original.clone()
+
+    assert backing._reference_count == 1
+    original.close()
+    assert backing._closed is True
 
 
 def test_line_buffer_mapped_backing_closes_after_final_clone(tmp_path):

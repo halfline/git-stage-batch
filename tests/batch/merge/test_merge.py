@@ -2,6 +2,8 @@
 
 import pytest
 
+import git_stage_batch.batch.merge.merge as merge_module
+import git_stage_batch.batch.realization.provenance as provenance_module
 from git_stage_batch.batch.merge.baseline_correspondence import (
     RegionKind,
     build_baseline_correspondence,
@@ -87,6 +89,52 @@ class _GuardedLine:
 
     def endswith(self, suffix):
         raise AssertionError("line endings should not be materialized")
+
+
+def test_merge_routes_mapping_and_output_storage_to_invocation_spool(
+    tmp_path,
+    monkeypatch,
+):
+    """Worker merge storage should remain beneath its job scratch directory."""
+    spool_dir = tmp_path / "scratch"
+    spool_dir.mkdir()
+    observed_spools = []
+    provenance_spools = []
+    original_match_lines = merge_module.match_lines
+    original_provenance_storage = (
+        provenance_module.ChunkedMappedRecordVector
+    )
+
+    def record_match(*args, **kwargs):
+        observed_spools.append(kwargs.get("spool_dir"))
+        return original_match_lines(*args, **kwargs)
+
+    def record_provenance_storage(*args, **kwargs):
+        provenance_spools.append(kwargs.get("spool_dir"))
+        return original_provenance_storage(*args, **kwargs)
+
+    monkeypatch.setattr(merge_module, "match_lines", record_match)
+    monkeypatch.setattr(
+        provenance_module,
+        "ChunkedMappedRecordVector",
+        record_provenance_storage,
+    )
+    ownership = BatchOwnership.from_presence_lines(["2"], [])
+    with (
+        LineBuffer.from_bytes(b"one\ninserted\n") as source,
+        LineBuffer.from_bytes(b"one\n") as target,
+        merge_batch_from_line_sequences_as_buffer(
+            source,
+            ownership,
+            target,
+            spool_dir=spool_dir,
+        ) as merged,
+    ):
+        assert merged.to_bytes() == b"one\ninserted\n"
+
+    assert observed_spools == [spool_dir]
+    assert provenance_spools
+    assert set(provenance_spools) == {spool_dir}
 
 
 def merge_batch(

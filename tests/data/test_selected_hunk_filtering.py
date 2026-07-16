@@ -151,6 +151,37 @@ def test_explicit_attribution_filter_is_io_free(monkeypatch):
         attribution=FileAttribution(file_path="file.txt", units=[]),
         batch_metadata_by_name={},
         consumed_file_metadata=None,
+        captured_empty_lifecycle_is_batched=False,
     )
 
     assert filtered is line_changes
+
+
+def test_explicit_filter_preserves_existing_empty_lifecycle_default(monkeypatch):
+    """Callers that omit a snapshot should retain repository-backed behavior."""
+    line_changes = LineLevelChange(
+        path="empty.txt",
+        header=HunkHeader(old_start=0, old_len=0, new_start=0, new_len=0),
+        lines=[],
+    )
+    monkeypatch.setattr(
+        hunk_filtering_module,
+        "_empty_lifecycle_change_is_batched",
+        lambda _changes, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        hunk_filtering_module,
+        "filter_owned_diff_fragments",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("owned projection should not run")
+        ),
+    )
+
+    filtered = filter_line_level_change_with_attribution(
+        line_changes,
+        attribution=FileAttribution(file_path="empty.txt", units=[]),
+        batch_metadata_by_name={},
+        consumed_file_metadata=None,
+    )
+
+    assert filtered is None

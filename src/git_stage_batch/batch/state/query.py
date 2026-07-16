@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Optional
 
 from .reference_names import BATCH_CONTENT_REF_PREFIX, LEGACY_BATCH_REF_PREFIX
@@ -49,13 +49,20 @@ def read_batch_metadata(name: str) -> dict:
     return _read_file_backed_batch_metadata_or_empty(name)
 
 
-def read_batch_metadata_for_batches(batch_names: Iterable[str]) -> dict[str, dict]:
-    """Read metadata for many batches with one state-ref lookup pass."""
+def read_batch_metadata_for_batches(
+    batch_names: Iterable[str],
+    *,
+    batch_state_commit_by_name: Mapping[str, str] | None = None,
+) -> dict[str, dict]:
+    """Read metadata for many batches with one bulk state lookup pass."""
     unique_batch_names = list(dict.fromkeys(batch_names))
     if not unique_batch_names:
         return {}
 
-    metadata_by_name = read_batch_state_metadata_for_batches(unique_batch_names)
+    metadata_by_name = read_batch_state_metadata_for_batches(
+        unique_batch_names,
+        state_commit_by_name=batch_state_commit_by_name,
+    )
     missing_batch_names = [
         batch_name
         for batch_name in unique_batch_names

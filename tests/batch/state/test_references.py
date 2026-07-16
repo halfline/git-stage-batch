@@ -12,13 +12,19 @@ from git_stage_batch.batch.ownership.model import BatchOwnership
 import git_stage_batch.batch.state.references as state_refs_module
 from git_stage_batch.batch.state.references import (
     get_batch_content_ref_name,
+    get_legacy_batch_ref_name,
     get_batch_state_ref_name,
     read_batch_state_metadata_for_batches,
     sync_batch_state_refs,
 )
+from git_stage_batch.batch.state.reference_names import (
+    format_batch_content_ref_name,
+    format_batch_state_ref_name,
+    format_legacy_batch_ref_name,
+)
 from git_stage_batch.batch.text_file_storage import add_file_to_batch
 from git_stage_batch.data.session import initialize_abort_state
-from git_stage_batch.exceptions import BatchMetadataError
+from git_stage_batch.exceptions import BatchMetadataError, CommandError
 from git_stage_batch.utils.paths import ensure_state_directory_exists
 
 
@@ -57,6 +63,33 @@ def _git_rev_parse(refname: str) -> str:
         capture_output=True,
         text=True,
     ).stdout.strip()
+
+
+@pytest.mark.parametrize("batch_name", ["ordinary", "café", "release-2026.07"])
+def test_validated_ref_wrappers_match_pure_formatters(temp_git_repo, batch_name):
+    """Trusted formatters must preserve every established ref namespace."""
+    assert get_batch_content_ref_name(batch_name) == format_batch_content_ref_name(
+        batch_name
+    )
+    assert get_batch_state_ref_name(batch_name) == format_batch_state_ref_name(
+        batch_name
+    )
+    assert get_legacy_batch_ref_name(batch_name) == format_legacy_batch_ref_name(
+        batch_name
+    )
+
+
+@pytest.mark.parametrize(
+    "formatter",
+    (
+        get_batch_content_ref_name,
+        get_batch_state_ref_name,
+        get_legacy_batch_ref_name,
+    ),
+)
+def test_validated_ref_wrappers_still_reject_invalid_names(temp_git_repo, formatter):
+    with pytest.raises(CommandError, match="Git ref naming rules"):
+        formatter("invalid^name")
 
 
 def test_state_ref_contains_batch_json_and_source_snapshot(temp_git_repo):

@@ -27,7 +27,7 @@ from .attribution_units import (
     make_attribution_unit_id as _make_attribution_unit_id,
 )
 from .state.query import list_batch_names, read_batch_metadata_for_batches
-from .state.references import get_batch_state_ref_name
+from .state.reference_names import format_batch_state_ref_name
 from ..core.line_selection import parse_line_selection
 from ..utils.repository_buffers import (
     read_git_object_buffer_or_empty,
@@ -377,7 +377,7 @@ def _batch_source_requests(
         fallback_refspec = f"{file_metadata['batch_source_commit']}:{file_path}"
         source_path = file_metadata.get("source_path")
         primary_refspec = (
-            f"{get_batch_state_ref_name(batch_name)}:{source_path}"
+            f"{format_batch_state_ref_name(batch_name)}:{source_path}"
             if source_path
             else fallback_refspec
         )

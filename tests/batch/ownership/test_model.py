@@ -587,6 +587,72 @@ def test_supplemental_attribution_does_not_construct_a_state_ref():
     )
 
 
+def test_supplemental_override_is_not_treated_as_state_backed(monkeypatch):
+    """A same-name supplemental entry must retain supplemental source rules."""
+    captured = {}
+
+    def capture_batches(
+        _file_path,
+        all_batch_metadata,
+        *,
+        state_backed_batch_names,
+        **_kwargs,
+    ):
+        captured["metadata"] = all_batch_metadata
+        captured["state_backed_names"] = state_backed_batch_names
+
+    monkeypatch.setattr(
+        attribution_module,
+        "_attribute_batches",
+        capture_batches,
+    )
+    primary_metadata = {
+        "real": {
+            "files": {
+                "test.txt": {
+                    "batch_source_commit": "primary-source",
+                    "source_path": "primary/test.txt",
+                }
+            }
+        }
+    }
+    supplemental_metadata = {
+        "real": {
+            "files": {
+                "test.txt": {
+                    "batch_source_commit": "supplemental-source",
+                    "source_path": "supplemental/test.txt",
+                }
+            }
+        },
+        "unrelated": {
+            "files": {
+                "other.txt": {
+                    "batch_source_commit": "other-source",
+                }
+            }
+        },
+    }
+
+    build_file_attribution_from_lines(
+        "test.txt",
+        baseline_lines=(),
+        working_tree_lines=(),
+        batch_metadata_by_name=primary_metadata,
+        supplemental_batch_metadata=supplemental_metadata,
+    )
+
+    assert set(captured["metadata"]) == {"real"}
+    assert captured["state_backed_names"] == frozenset()
+    request = attribution_module._batch_source_requests(
+        "test.txt",
+        captured["metadata"],
+        state_backed_batch_names=captured["state_backed_names"],
+    )[0]
+    assert request.primary_refspec == "supplemental-source:test.txt"
+    assert request.fallback_refspec == "supplemental-source:test.txt"
+
+
 def test_trusted_many_batch_source_requests_do_not_revalidate_names(monkeypatch):
     """Attribution's trusted boundary must not spawn validation per batch."""
     metadata = {

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Sequence
+from pathlib import Path
 from typing import Any
 
 from ...editor.line_editor import LineEditor
@@ -25,9 +26,17 @@ class RealizedEntries(Sequence[_RealizedEntry]):
     Python object per output line.
     """
 
-    def __init__(self, entries: Iterable[_RealizedEntry] = ()) -> None:
+    def __init__(
+        self,
+        entries: Iterable[_RealizedEntry] = (),
+        *,
+        spool_dir: str | Path | None = None,
+    ) -> None:
         self._editor = LineEditor(())
-        self._provenance = _RealizedProvenanceTable()
+        self._provenance = _RealizedProvenanceTable(
+            spool_dir=spool_dir,
+        )
+        self._spool_dir = spool_dir
         self._line_count = 0
         self._closed = False
 
@@ -49,7 +58,7 @@ class RealizedEntries(Sequence[_RealizedEntry]):
             if step == 1:
                 return self.slice(start, stop)
 
-            result = RealizedEntries()
+            result = RealizedEntries(spool_dir=self._spool_dir)
             for child_index in range(start, stop, step):
                 result.append_from(self, child_index)
             return result
@@ -225,14 +234,14 @@ class RealizedEntries(Sequence[_RealizedEntry]):
 
     def slice(self, start: int, stop: int) -> RealizedEntries:
         self._require_open()
-        result = RealizedEntries()
+        result = RealizedEntries(spool_dir=self._spool_dir)
         result.copy_slice_from(self, *self._validated_range(start, stop))
         return result
 
     def without_range(self, start: int, stop: int) -> RealizedEntries:
         self._require_open()
         start, stop = self._validated_range(start, stop)
-        result = RealizedEntries()
+        result = RealizedEntries(spool_dir=self._spool_dir)
         result.copy_slice_from(self, 0, start)
         result.copy_slice_from(self, stop, len(self))
         return result
@@ -244,7 +253,7 @@ class RealizedEntries(Sequence[_RealizedEntry]):
     ) -> RealizedEntries:
         self._require_open()
         position = self._validated_position(position)
-        result = RealizedEntries()
+        result = RealizedEntries(spool_dir=self._spool_dir)
         result.copy_slice_from(self, 0, position)
         result.copy_slice_from(entries, 0, len(entries))
         result.copy_slice_from(self, position, len(self))
@@ -314,10 +323,14 @@ class RealizedEntries(Sequence[_RealizedEntry]):
             raise ValueError("realized entries are closed")
 
 
-def as_realized_entries(entries: Sequence[_RealizedEntry]) -> RealizedEntries:
+def as_realized_entries(
+    entries: Sequence[_RealizedEntry],
+    *,
+    spool_dir: str | Path | None = None,
+) -> RealizedEntries:
     if isinstance(entries, RealizedEntries):
         return entries
-    return RealizedEntries(entries)
+    return RealizedEntries(entries, spool_dir=spool_dir)
 
 
 def realized_entry_content_at(entries: Sequence[_RealizedEntry], index: int) -> Any:

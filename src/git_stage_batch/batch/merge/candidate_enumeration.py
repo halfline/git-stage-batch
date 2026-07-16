@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .absence_constraints import (
@@ -48,9 +49,14 @@ def _replacement_origin_candidate_set(
     *,
     resolution_is_valid: _MergeResolutionValidator,
     max_candidates: int,
+    spool_dir: str | Path | None,
 ) -> _MergeCandidateSet:
     """Enumerate reviewed placements for one unresolved split replacement."""
-    owned_mapping = match_lines(source_lines, working_lines)
+    owned_mapping = match_lines(
+        source_lines,
+        working_lines,
+        spool_dir=spool_dir,
+    )
     try:
         selected_presence = coerce_line_ranges(presence_line_set)
         unresolved: list[
@@ -172,8 +178,13 @@ def _presence_candidate_set(
     *,
     resolution_is_valid: _MergeResolutionValidator,
     max_candidates: int,
+    spool_dir: str | Path | None,
 ) -> _MergeCandidateSet:
-    presence_mapping = match_lines(source_lines, working_lines)
+    presence_mapping = match_lines(
+        source_lines,
+        working_lines,
+        spool_dir=spool_dir,
+    )
     try:
         presence_key, presence_choices = (
             _presence_placement_choices.presence_choices_for_missing_claimed_run(
@@ -257,6 +268,7 @@ def _absence_candidate_set(
     *,
     resolution_is_valid: _MergeResolutionValidator,
     max_candidates: int,
+    spool_dir: str | Path | None,
 ) -> _MergeCandidateSet:
     if not deletion_claims:
         return _MergeCandidateSet(())
@@ -264,7 +276,11 @@ def _absence_candidate_set(
     if len([claim for claim in deletion_claims if claim.content_lines]) != 1:
         raise _MergeError(_("Batch was created from a different version of the file"))
 
-    owned_mapping = match_lines(source_lines, working_lines)
+    owned_mapping = match_lines(
+        source_lines,
+        working_lines,
+        spool_dir=spool_dir,
+    )
     try:
         _check_merge_structural_validity(
             owned_mapping,
@@ -273,11 +289,16 @@ def _absence_candidate_set(
             source_lines,
             working_lines,
         )
+        presence_arguments = {
+            "source_to_working_mapping": owned_mapping,
+        }
+        if spool_dir is not None:
+            presence_arguments["spool_dir"] = spool_dir
         realized_entries = _presence_constraints.apply_presence_constraints(
             source_lines,
             working_lines,
             presence_line_set,
-            source_to_working_mapping=owned_mapping,
+            **presence_arguments,
         )
     finally:
         owned_mapping.close()
@@ -372,6 +393,7 @@ def enumerate_merge_batch_candidates_for_lines(
     *,
     resolution_is_valid: _MergeResolutionValidator,
     max_candidates: int,
+    spool_dir: str | Path | None = None,
 ) -> _MergeCandidateSet:
     """Enumerate merge candidates for acquired normalized line sequences."""
     resolved = ownership.resolve()
@@ -386,6 +408,7 @@ def enumerate_merge_batch_candidates_for_lines(
         deletion_claims,
         resolution_is_valid=resolution_is_valid,
         max_candidates=max_candidates,
+        spool_dir=spool_dir,
     )
     if replacement_candidates.candidates:
         return replacement_candidates
@@ -397,6 +420,7 @@ def enumerate_merge_batch_candidates_for_lines(
         deletion_claims,
         resolution_is_valid=resolution_is_valid,
         max_candidates=max_candidates,
+        spool_dir=spool_dir,
     )
     if presence_candidates.candidates:
         return presence_candidates
@@ -409,4 +433,5 @@ def enumerate_merge_batch_candidates_for_lines(
         deletion_claims,
         resolution_is_valid=resolution_is_valid,
         max_candidates=max_candidates,
+        spool_dir=spool_dir,
     )

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
+from pathlib import Path
 
 from ...core.mapped_storage import ChunkedMappedRecordVector
 
@@ -109,10 +110,15 @@ def line_number_or_none(line_number: int) -> int | None:
 class ProvenanceRunTable:
     """Append-only mapped provenance runs with one pending Python run."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        spool_dir: str | Path | None = None,
+    ) -> None:
         self._runs = ChunkedMappedRecordVector(
             record_format="QQQQQ",
             chunk_capacity=_PROVENANCE_CHUNK_CAPACITY,
+            spool_dir=spool_dir,
         )
         self._pending_run: ProvenanceRun | None = None
         self._closed = False

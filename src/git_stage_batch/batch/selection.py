@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from .ownership.model import BatchOwnership
@@ -188,9 +189,14 @@ def acquire_batch_ownership_for_display_ids_from_lines(
     file_meta: dict,
     batch_source_lines: Sequence[bytes],
     selected_ids: Optional[set[int]],
+    *,
+    spool_dir: str | Path | None = None,
 ) -> Iterator[BatchOwnership]:
     """Acquire selected ownership for indexed batch-source lines."""
-    with acquire_ownership_for_metadata_dict(file_meta) as ownership:
+    with acquire_ownership_for_metadata_dict(
+        file_meta,
+        spool_dir=spool_dir,
+    ) as ownership:
         if selected_ids is None:
             yield ownership
             return

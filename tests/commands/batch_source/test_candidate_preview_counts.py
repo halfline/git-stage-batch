@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from contextlib import AbstractContextManager
 
+import pytest
+
 from git_stage_batch.batch.operation_candidate_types import (
     CandidateEnumerationLimitError,
     CandidatePreviewCount,
@@ -198,6 +200,65 @@ def test_count_apply_candidate_previews_for_file_reports_limit(
     )
 
     assert result == CandidatePreviewCount(too_many=True, error="too many")
+
+
+def test_count_apply_candidate_previews_closes_source_when_target_load_fails(
+    monkeypatch,
+    tmp_path,
+):
+    """Candidate failure details should not leave the exact source open."""
+    batch_buffer = LineBuffer.from_bytes(b"batch\n")
+    monkeypatch.setattr(
+        counts,
+        "load_git_blob_as_buffer",
+        lambda object_id, spool_dir=None: batch_buffer,
+    )
+
+    result = counts.count_apply_candidate_previews_for_file(
+        batch_name="cleanup",
+        file_path="notes.txt",
+        file_meta={
+            "batch_source_commit": "commit",
+            "change_type": "modified",
+            "mode": "100644",
+        },
+        selection_ids_to_apply=None,
+        batch_source_object_id="a" * 40,
+        working_tree_artifact_path=tmp_path / "missing",
+        captured_working_tree_exists=True,
+    )
+
+    assert result.error
+    with pytest.raises(ValueError, match="buffer is closed"):
+        _ = batch_buffer.byte_count
+
+
+def test_count_apply_candidate_previews_reports_exact_source_read_failure(
+    monkeypatch,
+):
+    """A candidate diagnostic read failure should remain a scalar result."""
+    monkeypatch.setattr(
+        counts,
+        "load_git_blob_as_buffer",
+        lambda object_id, spool_dir=None: (_ for _ in ()).throw(
+            RuntimeError("object read failed")
+        ),
+    )
+
+    result = counts.count_apply_candidate_previews_for_file(
+        batch_name="cleanup",
+        file_path="notes.txt",
+        file_meta={
+            "batch_source_commit": "commit",
+            "change_type": "modified",
+            "mode": "100644",
+        },
+        selection_ids_to_apply=None,
+        batch_source_object_id="a" * 40,
+        captured_working_tree_exists=True,
+    )
+
+    assert result == CandidatePreviewCount(error="object read failed")
 
 
 def test_count_include_candidate_previews_for_file_counts_replacements(

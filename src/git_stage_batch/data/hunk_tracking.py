@@ -21,7 +21,7 @@ from .selected_change import store as _selected_store
 from .selected_change.lifecycle import (
     clear_selected_change_state_files as _clear_selected_change_state_files,
 )
-from .live_change_candidates import iter_eligible_live_changes
+from .live_change_candidates import next_eligible_live_change
 
 
 class _BatchMetadataSnapshot:
@@ -63,26 +63,27 @@ def fetch_next_change() -> Union[
     Raises:
         NoMoreHunks: When there are no more items to process.
     """
-    candidate = next(iter_eligible_live_changes(), None)
+    candidate = next_eligible_live_change()
     if candidate is not None:
-        item = candidate.change
-        if isinstance(item, FileModeChange):
-            _selected_file_changes.cache_mode_change(item)
-        elif isinstance(item, RenameChange):
-            _selected_file_changes.cache_rename_change(item)
-        elif isinstance(item, TextFileDeletionChange):
-            _selected_file_changes.cache_text_deletion_change(item)
-        elif isinstance(item, GitlinkChange):
-            _selected_file_changes.cache_gitlink_change(item)
-        elif isinstance(item, BinaryFileChange):
-            _selected_file_changes.cache_binary_file_change(item)
-        else:
-            _selected_store.cache_hunk_change(
-                candidate.raw_patch.lines,
-                candidate.stable_hash,
-                item,
-            )
-        return item
+        with candidate:
+            item = candidate.change
+            if isinstance(item, FileModeChange):
+                _selected_file_changes.cache_mode_change(item)
+            elif isinstance(item, RenameChange):
+                _selected_file_changes.cache_rename_change(item)
+            elif isinstance(item, TextFileDeletionChange):
+                _selected_file_changes.cache_text_deletion_change(item)
+            elif isinstance(item, GitlinkChange):
+                _selected_file_changes.cache_gitlink_change(item)
+            elif isinstance(item, BinaryFileChange):
+                _selected_file_changes.cache_binary_file_change(item)
+            else:
+                _selected_store.cache_hunk_change(
+                    candidate.raw_patch.lines,
+                    candidate.stable_hash,
+                    item,
+                )
+            return item
 
     # No more items to process
     raise NoMoreHunks()

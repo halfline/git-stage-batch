@@ -15,7 +15,8 @@ from git_stage_batch.batch.state.query import (
     read_batch_metadata,
     read_batch_metadata_for_batches,
 )
-from git_stage_batch.batch.state.lifecycle import create_batch
+from git_stage_batch.batch.state.lifecycle import create_batch, update_batch_note
+from git_stage_batch.batch.state.references import get_batch_state_ref_name
 from git_stage_batch.batch.text_file_storage import add_file_to_batch
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.data.session import initialize_abort_state
@@ -89,6 +90,28 @@ def test_read_batch_metadata_for_batches_reads_existing_batches(temp_git_repo):
     assert metadata_by_name["batch-b"]["note"] == "B"
     assert metadata_by_name["batch-a"]["created_at"]
     assert metadata_by_name["batch-b"]["created_at"]
+
+
+def test_bulk_metadata_can_read_a_captured_state_commit(temp_git_repo):
+    """Canonical state commits should keep metadata stable across ref movement."""
+    create_batch("test-batch", "Before")
+    captured_state_commit = subprocess.run(
+        ["git", "rev-parse", get_batch_state_ref_name("test-batch")],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    update_batch_note("test-batch", "After")
+
+    metadata_by_name = read_batch_metadata_for_batches(
+        ["test-batch"],
+        batch_state_commit_by_name={
+            "test-batch": captured_state_commit,
+        },
+    )
+
+    assert metadata_by_name["test-batch"]["note"] == "Before"
+    assert read_batch_metadata("test-batch")["note"] == "After"
 
 
 def test_read_batch_metadata_for_batches_returns_empty_for_missing_batch(temp_git_repo):

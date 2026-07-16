@@ -176,6 +176,61 @@ def test_read_batch_state_metadata_for_batches_uses_one_batch_object_read(
     )
 
 
+@pytest.mark.parametrize(
+    "state_commit",
+    (
+        "not-an-object-id",
+        "a" * 39,
+        "g" * 40,
+        "a" * 64 + "\n",
+        None,
+        b"a" * 40,
+    ),
+)
+def test_canonical_state_metadata_rejects_malformed_object_ids(
+    monkeypatch,
+    state_commit,
+):
+    """Canonical mappings must not inject expressions into Git batch input."""
+    monkeypatch.setattr(
+        state_refs_module,
+        "read_git_blobs_as_bytes",
+        lambda _refspecs: (_ for _ in ()).throw(
+            AssertionError("unexpected Git object read")
+        ),
+    )
+
+    with pytest.raises(ValueError, match="full hexadecimal object ID"):
+        read_batch_state_metadata_for_batches(
+            ["batch-a"],
+            state_commit_by_name={"batch-a": state_commit},
+        )
+
+
+def test_canonical_state_metadata_skips_names_without_captured_commits(
+    monkeypatch,
+):
+    """A partial snapshot must not fall back to mutable state refs."""
+    captured_refspecs = []
+    monkeypatch.setattr(
+        state_refs_module,
+        "validate_batch_name",
+        lambda _name: None,
+    )
+    monkeypatch.setattr(
+        state_refs_module,
+        "read_git_blobs_as_bytes",
+        lambda refspecs: captured_refspecs.extend(refspecs) or {},
+    )
+    state_commit = "a" * 40
+
+    assert read_batch_state_metadata_for_batches(
+        ["captured", "missing"],
+        state_commit_by_name={"captured": state_commit},
+    ) == {}
+    assert captured_refspecs == [f"{state_commit}:batch.json"]
+
+
 def test_delete_batch_removes_experimental_refs(temp_git_repo):
     """Deleting a batch removes its mirrored content and state refs."""
     create_batch("test-batch", "Test")

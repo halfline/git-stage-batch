@@ -132,7 +132,7 @@ def test_workspace_streams_buffer_without_materializing_it(tmp_path, monkeypatch
         with FileJobWorkspace(parent_directory=tmp_path) as workspace:
             artifact = workspace.write_buffer(0, "input.patch", source)
 
-            with LineBuffer.from_path(
+            with workspace.read_buffer(
                 artifact,
                 spool_dir=workspace.scratch_directory(0),
             ) as written:

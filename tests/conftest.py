@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from collections.abc import Iterable, Sequence
@@ -14,6 +15,8 @@ import pytest
 def pytest_configure(config: pytest.Config) -> None:
     """Refresh the editable Meson build before xdist workers collect tests."""
     if getattr(config, "workerinput", None) is not None:
+        if os.environ.get("GIT_STAGE_BATCH_JOBS") in {None, "auto"}:
+            os.environ["GIT_STAGE_BATCH_JOBS"] = "1"
         return
 
     numprocesses = getattr(config.option, "numprocesses", None)

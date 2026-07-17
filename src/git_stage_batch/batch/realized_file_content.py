@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..core.buffer import LineBuffer
@@ -22,6 +23,8 @@ def build_realized_buffer_from_lines(
     base_lines: Sequence[bytes],
     batch_source_lines: Sequence[bytes],
     ownership: "BatchOwnership",
+    *,
+    spool_dir: str | Path | None = None,
 ) -> LineBuffer:
     """Build realized batch content as a line buffer."""
     return LineBuffer.from_chunks(
@@ -32,7 +35,8 @@ def build_realized_buffer_from_lines(
                 ownership,
             ),
             detect_line_ending(batch_source_lines),
-        )
+        ),
+        spool_dir=spool_dir,
     )
 
 

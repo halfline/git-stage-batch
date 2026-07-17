@@ -15259,6 +15259,34 @@ def test_text_plan_jobs_do_not_bypass_command_or_git_boundaries():
     assert violations == []
 
 
+def test_sift_owns_artifact_backed_text_job_pipeline():
+    """Sift should reduce text jobs while retaining parent-side publication."""
+    sift = __import__(
+        "git_stage_batch.commands.sift",
+        fromlist=["sift"],
+    )
+    sift_path = SRC_ROOT / "commands" / "sift.py"
+    required_imports = {
+        ("git_stage_batch.commands.batch_transform", "sift_jobs"),
+        ("git_stage_batch.commands.batch_transform", "sift_persistence"),
+        ("git_stage_batch.utils.file_jobs", "run_file_jobs"),
+        ("git_stage_batch.utils.file_job_workspace", "FileJobWorkspace"),
+    }
+    sift_imports = set()
+    for imported_module, node in _import_from_nodes(sift_path):
+        for alias in node.names:
+            sift_imports.add((imported_module, alias.name))
+
+    sift_text = sift_path.read_text()
+
+    assert "command_sift_batch" in vars(sift)
+    assert required_imports <= sift_imports
+    assert "compute_sifted_text_file_job" in sift_text
+    assert "_sift_results.compute_sifted_text_file(" not in sift_text
+    assert "publish_sifted_files(" in sift_text
+    assert "replace_batch_with_sifted_files(" in sift_text
+
+
 def test_sift_jobs_do_not_bypass_parent_mutation_boundaries():
     """Sift workers may read immutable inputs but must not publish or spawn."""
     sift_jobs_path = (

@@ -1103,7 +1103,11 @@ class TestSiftCopyVsInPlace:
         command_include_to_batch("source-batch")
         readme.write_text("# Test\nbase\n")
 
+        failed_result = None
+
         def fail_persistence(*_args, **_kwargs):
+            nonlocal failed_result
+            failed_result = _args[3]
             raise OSError("synthetic persistence failure")
 
         monkeypatch.setattr(
@@ -1116,6 +1120,13 @@ class TestSiftCopyVsInPlace:
 
         assert not batch_exists("dest-batch")
         assert not any(name.startswith("sift-tmp-") for name in list_batch_names())
+        assert isinstance(failed_result, sift_results.SiftedTextFileResult)
+        with pytest.raises(ValueError, match="buffer is closed"):
+            failed_result.target_buffer.to_bytes()
+        for deletion in failed_result.ownership.deletions:
+            if isinstance(deletion.content_lines, LineBuffer):
+                with pytest.raises(ValueError, match="buffer is closed"):
+                    deletion.content_lines.to_bytes()
 
     def test_in_place_mode_is_atomic(self, temp_git_repo):
         """Test that in-place mode uses atomic update (all-or-nothing).

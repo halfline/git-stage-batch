@@ -121,7 +121,10 @@ def record_baseline_references_for_additions(line_changes) -> None:
                 addition_line.has_baseline_reference_after = True
                 addition_line.baseline_reference_before_line = next_old_line
                 addition_line.baseline_reference_before_text_bytes = next_old_text_bytes
-                addition_line.has_baseline_reference_before = next_old_line is not None
+                # A missing next old line is an explicit EOF boundary, not an
+                # unknown second side.  Preserve that distinction so a later
+                # merge does not insert before content appended to the target.
+                addition_line.has_baseline_reference_before = True
                 index += 1
             continue
 

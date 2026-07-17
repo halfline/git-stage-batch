@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import stat
 import sys
 
 from ..exceptions import MergeError
@@ -41,6 +42,7 @@ from ..data.file_target_identity import (
     capture_worktree_identities,
     capture_worktree_identity,
 )
+from ..data.file_modes import detect_file_mode_from_root
 from ..exceptions import BatchMetadataError, exit_with_error
 from ..i18n import _
 from ..utils.git_repository import (
@@ -76,6 +78,7 @@ class _TextSiftInput:
 class _SiftInputCapture:
     text_inputs: tuple[_TextSiftInput, ...]
     worktree_identities: dict[str, WorktreeIdentity]
+    worktree_modes: dict[str, str]
     content_artifacts: dict[str, Path]
 
 
@@ -103,11 +106,14 @@ def command_sift_batch(source_batch: str, dest_batch: str) -> None:
     source_metadata = source_snapshot.metadata
 
     source_files = source_metadata.get("files", {})
+    repo_root = get_git_repository_root_path()
     if not source_files:
         _require_unchanged_sift_inputs(
             source_batch=source_batch,
             source_snapshot=source_snapshot,
             expected_worktree_identities={},
+            expected_worktree_modes={},
+            repository_root=repo_root,
         )
         _handle_empty_source_batch(
             source_batch,
@@ -129,13 +135,13 @@ def command_sift_batch(source_batch: str, dest_batch: str) -> None:
                 )
             )
 
-    repo_root = get_git_repository_root_path()
     with FileJobWorkspace() as workspace:
         retained_files: list[_sift_persistence.RetainedSiftedFile] = []
         try:
             (
                 retained_files,
                 expected_worktree_identities,
+                expected_worktree_modes,
             ) = _build_sifted_files(
                 source_metadata=source_metadata,
                 repository_root=repo_root,
@@ -145,6 +151,8 @@ def command_sift_batch(source_batch: str, dest_batch: str) -> None:
                 source_batch=source_batch,
                 source_snapshot=source_snapshot,
                 expected_worktree_identities=expected_worktree_identities,
+                expected_worktree_modes=expected_worktree_modes,
+                repository_root=repo_root,
             )
             if in_place:
                 _sift_persistence.replace_batch_with_sifted_files(
@@ -239,10 +247,12 @@ def _build_sifted_files(
 ) -> tuple[
     list[_sift_persistence.RetainedSiftedFile],
     dict[str, WorktreeIdentity],
+    dict[str, str],
 ]:
     source_files = source_metadata.get("files", {})
     capture = _capture_sift_inputs(
         source_files=source_files,
+        repository_root=repository_root,
         workspace=workspace,
     )
     jobs = _build_sift_text_jobs(
@@ -261,17 +271,23 @@ def _build_sifted_files(
         repository_root=repository_root,
         workspace=workspace,
     )
-    return retained_files, capture.worktree_identities
+    return (
+        retained_files,
+        capture.worktree_identities,
+        capture.worktree_modes,
+    )
 
 
 def _capture_sift_inputs(
     *,
     source_files: dict[str, dict],
+    repository_root: Path,
     workspace: FileJobWorkspace,
 ) -> _SiftInputCapture:
     """Capture immutable worktree inputs for every sifted file."""
     text_inputs: list[_TextSiftInput] = []
     worktree_identities: dict[str, WorktreeIdentity] = {}
+    worktree_modes: dict[str, str] = {}
     content_artifacts: dict[str, Path] = {}
     for ordinal, (file_path, file_meta) in enumerate(source_files.items()):
         is_text = file_meta.get("file_type") not in {"binary", "mode"}
@@ -288,6 +304,11 @@ def _capture_sift_inputs(
             content_artifacts[file_path] = worktree_artifact
         else:
             identity = capture_worktree_identity(file_path)
+            worktree_modes[file_path] = _git_mode_for_worktree_identity(
+                repository_root,
+                file_path,
+                identity,
+            )
         if is_text:
             text_inputs.append(
                 _TextSiftInput(
@@ -303,6 +324,7 @@ def _capture_sift_inputs(
     return _SiftInputCapture(
         text_inputs=tuple(text_inputs),
         worktree_identities=worktree_identities,
+        worktree_modes=worktree_modes,
         content_artifacts=content_artifacts,
     )
 
@@ -420,6 +442,7 @@ def _reduce_sift_results(
                     file_path,
                     file_meta,
                     repository_root,
+                    captured_worktree_mode=capture.worktree_modes[file_path],
                 )
             elif file_meta.get("file_type") == "binary":
                 sifted_result = _sift_results.compute_sifted_binary_file(
@@ -535,6 +558,8 @@ def _require_unchanged_sift_inputs(
     source_batch: str,
     source_snapshot: _SourceBatchSnapshot,
     expected_worktree_identities: dict[str, WorktreeIdentity],
+    expected_worktree_modes: dict[str, str],
+    repository_root: Path,
 ) -> None:
     current_ref_identities = _capture_source_batch_ref_identities(source_batch)
     try:
@@ -562,6 +587,21 @@ def _require_unchanged_sift_inputs(
                 ).format(source=source_batch, file=file_path)
             )
 
+    for file_path, expected_mode in expected_worktree_modes.items():
+        current_mode = _git_mode_for_worktree_identity(
+            repository_root,
+            file_path,
+            current_worktree_identities[file_path],
+        )
+        if current_mode != expected_mode:
+            exit_with_error(
+                _(
+                    "Cannot sift batch '{source}' because the file mode for "
+                    "'{file}' changed while sift was running. Retry against "
+                    "the current working tree."
+                ).format(source=source_batch, file=file_path)
+            )
+
     publication_ref_identities = _capture_source_batch_ref_identities(
         source_batch
     )
@@ -576,6 +616,18 @@ def _exit_sift_batch_changed(source_batch: str) -> None:
             "was running. Retry against the latest batch state."
         ).format(source=source_batch)
     )
+
+
+def _git_mode_for_worktree_identity(
+    repository_root: Path,
+    file_path: str,
+    identity: WorktreeIdentity,
+) -> str:
+    if identity.exists and identity.kind == "symlink":
+        return "120000"
+    if identity.exists and identity.mode is not None:
+        return "100755" if identity.mode & stat.S_IXUSR else "100644"
+    return detect_file_mode_from_root(repository_root, file_path)
 
 
 def _close_sifted_results(

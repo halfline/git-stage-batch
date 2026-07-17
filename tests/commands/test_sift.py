@@ -1206,6 +1206,27 @@ def _comparable_sift_metadata(batch_name: str) -> dict:
 class TestSiftFileJobs:
     """Contract tests for inline and process text sift execution."""
 
+    def test_empty_source_change_before_copy_aborts(self, temp_git_repo, monkeypatch):
+        command_new_batch("empty-source")
+        original_snapshot = sift_command._read_source_batch_snapshot
+
+        def snapshot_then_annotate(batch_name):
+            snapshot = original_snapshot(batch_name)
+            command_annotate_batch(batch_name, "changed after snapshot")
+            return snapshot
+
+        monkeypatch.setattr(
+            sift_command,
+            "_read_source_batch_snapshot",
+            snapshot_then_annotate,
+        )
+
+        with pytest.raises(CommandError, match="changed while sift was running"):
+            command_sift_batch("empty-source", "empty-destination")
+
+        assert not batch_exists("empty-destination")
+        assert read_batch_metadata("empty-source")["note"] == "changed after snapshot"
+
     def test_forced_process_matches_inline_publication(
         self,
         temp_git_repo,

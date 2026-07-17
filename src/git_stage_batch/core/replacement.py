@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import overload
 
 from .buffer import LineBuffer
@@ -136,12 +137,17 @@ def _legacy_replacement_line_chunks(data: bytes) -> Iterator[bytes]:
 @contextmanager
 def replacement_line_chunks(
     payload: ReplacementPayload,
+    *,
+    spool_dir: str | Path | None = None,
 ) -> Iterator[Sequence[bytes]]:
     """Expose replacement bytes as a scoped indexed line sequence."""
     buffer = (
-        LineBuffer.from_bytes(payload.data)
+        LineBuffer.from_bytes(payload.data, spool_dir=spool_dir)
         if payload.exact
-        else LineBuffer.from_chunks(_legacy_replacement_line_chunks(payload.data))
+        else LineBuffer.from_chunks(
+            _legacy_replacement_line_chunks(payload.data),
+            spool_dir=spool_dir,
+        )
     )
     with buffer:
         yield buffer
@@ -150,7 +156,9 @@ def replacement_line_chunks(
 @contextmanager
 def replacement_line_bodies(
     payload: ReplacementPayload,
+    *,
+    spool_dir: str | Path | None = None,
 ) -> Iterator[Sequence[bytes]]:
     """Expose scoped editor line bodies without retaining per-line objects."""
-    with replacement_line_chunks(payload) as lines:
+    with replacement_line_chunks(payload, spool_dir=spool_dir) as lines:
         yield _ReplacementLineBodies(lines)

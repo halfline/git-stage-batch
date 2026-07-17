@@ -15259,6 +15259,51 @@ def test_text_plan_jobs_do_not_bypass_command_or_git_boundaries():
     assert violations == []
 
 
+def test_sift_jobs_do_not_bypass_parent_mutation_boundaries():
+    """Sift workers may read immutable inputs but must not publish or spawn."""
+    sift_jobs_path = (
+        SRC_ROOT / "commands" / "batch_transform" / "sift_jobs.py"
+    )
+    imported_modules = {
+        imported_module
+        for imported_module, _node in _import_from_nodes(sift_jobs_path)
+    }
+    prohibited_imports = {
+        "git_stage_batch.batch.state.lifecycle",
+        "git_stage_batch.batch.state.references",
+        "git_stage_batch.commands.batch_transform.sift_persistence",
+        "git_stage_batch.data.undo_checkpoints",
+        "git_stage_batch.staging.index_update",
+        "git_stage_batch.utils.git_command",
+        "git_stage_batch.utils.journal",
+    }
+    prohibited_calls = {
+        "Popen",
+        "run",
+        "call",
+        "check_call",
+        "check_output",
+    }
+    tree = ast.parse(sift_jobs_path.read_text(), filename=str(sift_jobs_path))
+    subprocess_calls = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        function = node.func
+        if (
+            isinstance(function, ast.Attribute)
+            and isinstance(function.value, ast.Name)
+            and function.value.id == "subprocess"
+            and function.attr in prohibited_calls
+        ):
+            subprocess_calls.append(node.lineno)
+        elif isinstance(function, ast.Name) and function.id == "Popen":
+            subprocess_calls.append(node.lineno)
+
+    assert imported_modules.isdisjoint(prohibited_imports)
+    assert subprocess_calls == []
+
+
 def test_apply_from_delegates_apply_action_execution():
     """Apply-from should delegate selected file execution to batch-source support."""
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"

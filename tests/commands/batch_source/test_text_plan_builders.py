@@ -706,6 +706,51 @@ def test_build_include_text_file_action_plan_closes_partial_merge_on_failure(
         merged_index_buffer.to_bytes()
 
 
+def test_build_include_text_file_action_plan_closes_partial_merge_on_interrupt(
+    monkeypatch,
+    tmp_path,
+):
+    """An interrupted second merge should release the first target buffer."""
+    ownership = _Ownership()
+    index_buffer, _batch_buffer, _worktree_buffer = _patch_include_text_plan_io(
+        monkeypatch,
+        tmp_path,
+        ownership,
+    )
+    merged_index_buffer = LineBuffer.from_bytes(b"merged-index\n")
+
+    def merge_batch_from_line_sequences_as_buffer(
+        source_lines,
+        line_ownership,
+        target,
+    ):
+        if target is index_buffer:
+            return merged_index_buffer
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(
+        builders,
+        "merge_batch_from_line_sequences_as_buffer",
+        merge_batch_from_line_sequences_as_buffer,
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        builders.build_include_text_file_action_plan(
+            file_path="notes.txt",
+            file_meta={
+                "batch_source_commit": "commit",
+                "change_type": "modified",
+                "mode": "100644",
+            },
+            selected_ids={1},
+            selection_ids_to_include={7},
+            replacement_payload=None,
+        )
+
+    with pytest.raises(ValueError, match="buffer is closed"):
+        merged_index_buffer.to_bytes()
+
+
 def test_build_include_text_file_action_plan_returns_merged_plan(
     monkeypatch,
     tmp_path,

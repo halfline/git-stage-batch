@@ -547,12 +547,7 @@ def _require_unchanged_sift_inputs(
         or final_ref_identities != current_ref_identities
         or current_metadata != source_snapshot.metadata
     ):
-        exit_with_error(
-            _(
-                "Cannot sift batch '{source}' because it changed while sift "
-                "was running. Retry against the latest batch state."
-            ).format(source=source_batch)
-        )
+        _exit_sift_batch_changed(source_batch)
 
     current_worktree_identities = capture_worktree_identities(
         expected_worktree_identities
@@ -566,6 +561,22 @@ def _require_unchanged_sift_inputs(
                     "the current working tree."
                 ).format(source=source_batch, file=file_path)
             )
+
+    publication_ref_identities = _capture_source_batch_ref_identities(
+        source_batch
+    )
+    if publication_ref_identities != source_snapshot.ref_identities:
+        _exit_sift_batch_changed(source_batch)
+
+
+def _exit_sift_batch_changed(source_batch: str) -> None:
+    exit_with_error(
+        _(
+            "Cannot sift batch '{source}' because it changed while sift "
+            "was running. Retry against the latest batch state."
+        ).format(source=source_batch)
+    )
+
 
 def _close_sifted_results(
     retained_files: list[_sift_persistence.RetainedSiftedFile],

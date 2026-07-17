@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
@@ -59,12 +59,16 @@ class SiftedTextFileResult:
     ownership: BatchOwnership
     target_buffer: LineBuffer
     change_type: str
+    _closed: bool = field(default=False, init=False, repr=False)
 
     def target_source_buffer(self) -> LineBuffer | None:
         return self.target_buffer
 
     def close(self) -> None:
-        self.target_buffer.close()
+        if self._closed:
+            return
+        self._closed = True
+        _close_text_result_buffers(self.target_buffer, self.ownership)
 
 
 @dataclass
@@ -228,6 +232,28 @@ def compute_sifted_text_file(
         finally:
             if target_buffer is not None:
                 target_buffer.close()
+
+
+def _close_text_result_buffers(
+    target_buffer: LineBuffer,
+    ownership: BatchOwnership,
+) -> None:
+    buffers = [target_buffer, *_text_ownership_buffers(ownership)]
+    closed_ids: set[int] = set()
+    for buffer in buffers:
+        buffer_id = id(buffer)
+        if buffer_id in closed_ids:
+            continue
+        closed_ids.add(buffer_id)
+        buffer.close()
+
+
+def _text_ownership_buffers(ownership: BatchOwnership) -> list[LineBuffer]:
+    return [
+        deletion.content_lines
+        for deletion in ownership.deletions
+        if isinstance(deletion.content_lines, LineBuffer)
+    ]
 
 
 def build_ownership_from_working_and_target_lines(

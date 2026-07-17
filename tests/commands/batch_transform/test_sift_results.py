@@ -157,3 +157,44 @@ def test_sifted_text_result_closes_all_owned_buffers_once(monkeypatch):
     result.close()
 
     assert close_counts == {id(target): 1, id(deletion): 1}
+
+
+def test_ownership_derivation_closes_deletions_on_late_failure(monkeypatch):
+    """A failure after deletion construction must release its mapped content."""
+    deletion = LineBuffer.from_bytes(b"old\n")
+
+    class FakeBuilder:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return None
+
+        def append_line_range(self, lines, start, end):
+            return None
+
+        def finish(self):
+            return deletion
+
+    def fail_ranges(ranges):
+        raise RuntimeError("late range failure")
+
+    monkeypatch.setattr(
+        sift_results,
+        "AbsenceContentBuilder",
+        lambda **kwargs: FakeBuilder(),
+    )
+    monkeypatch.setattr(
+        sift_results.LineRanges,
+        "from_ranges",
+        staticmethod(fail_ranges),
+    )
+
+    with pytest.raises(RuntimeError, match="late range failure"):
+        sift_results.build_ownership_from_working_and_target_lines(
+            [b"old\n"],
+            [],
+        )
+
+    with pytest.raises(ValueError, match="buffer is closed"):
+        deletion.to_bytes()

@@ -91,10 +91,17 @@ def compute_sifted_mode_file(
     file_path: str,
     file_meta: dict,
     repo_root: Path,
+    *,
+    captured_worktree_mode: str | None = None,
 ) -> SiftedModeFileResult | None:
     """Drop a mode action once its target mode is already present."""
     change = FileModeChange(file_path, file_meta["old_mode"], file_meta["new_mode"])
-    if detect_file_mode_from_root(repo_root, file_path) == change.new_mode:
+    current_mode = (
+        detect_file_mode_from_root(repo_root, file_path)
+        if captured_worktree_mode is None
+        else captured_worktree_mode
+    )
+    if current_mode == change.new_mode:
         return None
     return SiftedModeFileResult(change)
 

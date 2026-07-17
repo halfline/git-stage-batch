@@ -1358,6 +1358,64 @@ class TestSiftFileJobs:
             "changed during recheck"
         )
 
+    def test_mode_sift_uses_captured_mode_across_transient_change(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        script = temp_git_repo / "script.sh"
+        script.write_text("#!/bin/sh\necho test\n")
+        script.chmod(0o644)
+        subprocess.run(
+            ["git", "add", script.name],
+            check=True,
+            cwd=temp_git_repo,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Mode sift baseline"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        script.chmod(0o755)
+        command_start()
+        command_include_to_batch(
+            "mode-source",
+            file=script.name,
+            quiet=True,
+        )
+        script.chmod(0o644)
+
+        def change_before_mode_compute(jobs, compute, **kwargs):
+            assert jobs == []
+            script.chmod(0o755)
+            return []
+
+        original_capture = sift_command.capture_worktree_identities
+
+        def restore_then_capture(file_paths):
+            script.chmod(0o644)
+            return original_capture(file_paths)
+
+        monkeypatch.setattr(
+            sift_command,
+            "run_file_jobs",
+            change_before_mode_compute,
+        )
+        monkeypatch.setattr(
+            sift_command,
+            "capture_worktree_identities",
+            restore_then_capture,
+        )
+
+        command_sift_batch("mode-source", "mode-destination")
+
+        mode_metadata = read_batch_metadata("mode-destination")["files"][
+            script.name
+        ]
+        assert mode_metadata["file_type"] == "mode"
+        assert mode_metadata["new_mode"] == "100755"
+
     def test_destination_appearing_after_compute_is_preserved(
         self,
         temp_git_repo,

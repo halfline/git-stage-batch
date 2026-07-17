@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 
 import git_stage_batch.commands.batch_transform.sift_results as sift_results
+from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
+from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.core.buffer import LineBuffer
 
 
@@ -124,3 +126,34 @@ def test_compute_sifted_binary_file_retains_existing_deletion(
     assert result.target_buffer is None
     with pytest.raises(ValueError, match="buffer is closed"):
         batch_source_buffer.to_bytes()
+
+
+def test_sifted_text_result_closes_all_owned_buffers_once(monkeypatch):
+    """Text results own their target and unique deletion content buffers."""
+    target = LineBuffer.from_bytes(b"target\n")
+    deletion = LineBuffer.from_bytes(b"old\n")
+    ownership = BatchOwnership.from_presence_lines(
+        ["1"],
+        [
+            AbsenceClaim(anchor_line=None, content_lines=deletion),
+            AbsenceClaim(anchor_line=1, content_lines=deletion),
+        ],
+    )
+    result = sift_results.SiftedTextFileResult(
+        ownership=ownership,
+        target_buffer=target,
+        change_type="modified",
+    )
+    close_counts: dict[int, int] = {}
+    original_close = LineBuffer.close
+
+    def count_close(buffer):
+        close_counts[id(buffer)] = close_counts.get(id(buffer), 0) + 1
+        original_close(buffer)
+
+    monkeypatch.setattr(LineBuffer, "close", count_close)
+
+    result.close()
+    result.close()
+
+    assert close_counts == {id(target): 1, id(deletion): 1}

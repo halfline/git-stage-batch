@@ -21,13 +21,11 @@ def read_index_entry(file_path: str) -> IndexEntry | None:
     """Return the exact index entry for a repository path."""
     result = run_git_command(
         ["ls-files", "--stage", "-z", "--", file_path],
-        check=False,
+        check=True,
         text_output=False,
         requires_index_lock=False,
         literal_pathspecs=True,
     )
-    if result.returncode != 0:
-        return None
 
     for record in result.stdout.split(b"\0"):
         if not record:
@@ -57,13 +55,11 @@ def read_index_entries(file_paths: Iterable[str]) -> dict[str, IndexEntry]:
         return {}
     result = run_git_command(
         ["ls-files", "--stage", "-z", "--", *unique_paths],
-        check=False,
+        check=True,
         text_output=False,
         requires_index_lock=False,
         literal_pathspecs=True,
     )
-    if result.returncode != 0:
-        return {}
 
     requested_paths = set(unique_paths)
     entries: dict[str, IndexEntry] = {}

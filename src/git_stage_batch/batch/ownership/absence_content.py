@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 
 from ...core.buffer import (
     LineBuffer,
@@ -14,8 +15,9 @@ from ...editor.line_editor import LineEditor
 class AbsenceContentBuilder:
     """Build absence content as a LineBuffer from appended line ranges."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, spool_dir: str | Path | None = None) -> None:
         self._editor: LineEditor | None = LineEditor(())
+        self._spool_dir = spool_dir
 
     def __enter__(self) -> AbsenceContentBuilder:
         self._check_open()
@@ -36,7 +38,10 @@ class AbsenceContentBuilder:
     def finish(self) -> LineBuffer:
         editor = self._check_open()
         try:
-            return LineBuffer.from_chunks(editor.line_chunks())
+            return LineBuffer.from_chunks(
+                editor.line_chunks(),
+                spool_dir=self._spool_dir,
+            )
         finally:
             self.close()
 

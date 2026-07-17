@@ -103,6 +103,9 @@ def compute_sifted_binary_file(
     file_path: str,
     file_meta: dict,
     repo_root: Path,
+    *,
+    working_tree_artifact_path: str | Path | None = None,
+    captured_working_tree_exists: bool | None = None,
 ) -> Optional[SiftedBinaryFileResult]:
     """Compute a sifted binary file result."""
     batch_source_commit = file_meta["batch_source_commit"]
@@ -113,9 +116,17 @@ def compute_sifted_binary_file(
     )
 
     full_path = repo_root / file_path
-    working_exists = full_path.exists()
+    working_exists = (
+        full_path.exists()
+        if captured_working_tree_exists is None
+        else captured_working_tree_exists
+    )
     working_buffer = (
-        LineBuffer.from_path(full_path)
+        LineBuffer.from_path(
+            full_path
+            if working_tree_artifact_path is None
+            else working_tree_artifact_path
+        )
         if working_exists else
         LineBuffer.from_bytes(b"")
     )

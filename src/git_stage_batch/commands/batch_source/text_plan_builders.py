@@ -21,6 +21,7 @@ from ...core.text_lifecycle import (
     selected_text_discard_change_type,
     selected_text_target_change_type,
 )
+from ...data.file_target_identity import IndexIdentity
 from ...data.file_modes import detect_file_mode_in_commit
 from ...utils.repository_buffers import (
     load_git_blob_as_buffer,
@@ -74,6 +75,14 @@ def apply_text_plan_requires_source(
         and normalized_text_change_type(file_meta.get("change_type"))
         == TextFileChangeType.DELETED
     )
+
+
+def include_text_plan_requires_source(
+    file_meta: dict,
+    selected_ids: set[int] | None,
+) -> bool:
+    """Return whether one include text plan needs batch source content."""
+    return apply_text_plan_requires_source(file_meta, selected_ids)
 
 
 def build_apply_text_file_action_plan(
@@ -201,17 +210,27 @@ def build_include_text_file_action_plan(
     selected_ids: set[int] | None,
     selection_ids_to_include: set[int] | None,
     replacement_payload: ReplacementPayload | None,
+    batch_source_object_id: str | None = None,
+    captured_index_identity: IndexIdentity | None = None,
+    working_tree_artifact_path: str | Path | None = None,
+    captured_working_tree_exists: bool | None = None,
+    spool_dir: str | Path | None = None,
 ) -> IncludeTextPlanBuildResult:
     """Build one deferred include-from text action plan."""
     text_change_type = normalized_text_change_type(file_meta.get("change_type"))
 
-    index_buffer = read_git_object_buffer_or_none(f":{file_path}")
-    index_exists = index_buffer is not None
-    if index_buffer is None:
-        index_buffer = LineBuffer.from_bytes(b"")
+    if captured_index_identity is None:
+        index_buffer = read_git_object_buffer_or_none(f":{file_path}")
+        index_exists = index_buffer is not None
+    else:
+        index_exists = captured_index_identity.exists
+        index_buffer = None
 
-    repo_root = get_git_repository_root_path()
-    working_exists = os.path.lexists(repo_root / file_path)
+    if captured_working_tree_exists is None:
+        repo_root = get_git_repository_root_path()
+        working_exists = os.path.lexists(repo_root / file_path)
+    else:
+        working_exists = captured_working_tree_exists
 
     batch_file_mode = str(file_meta.get("mode", "100644"))
     index_file_mode = mode_for_text_materialization(
@@ -224,8 +243,9 @@ def build_include_text_file_action_plan(
         selected_ids,
         destination_exists=working_exists,
     )
-    if selected_ids is None and text_change_type == TextFileChangeType.DELETED:
-        index_buffer.close()
+    if not include_text_plan_requires_source(file_meta, selected_ids):
+        if index_buffer is not None:
+            index_buffer.close()
         return IncludeTextPlanBuildResult(
             plan=_action_plans.IncludeTextFileActionPlan(
                 file_path,
@@ -238,10 +258,28 @@ def build_include_text_file_action_plan(
             )
         )
 
+    if (
+        index_buffer is None
+        and captured_index_identity is not None
+        and captured_index_identity.content_object_id is not None
+    ):
+        index_buffer = load_git_blob_as_buffer(
+            captured_index_identity.content_object_id,
+            spool_dir=spool_dir,
+        )
+    if index_buffer is None:
+        index_buffer = LineBuffer.from_bytes(b"", spool_dir=spool_dir)
+
     batch_source_commit = file_meta["batch_source_commit"]
-    batch_source_buffer = read_git_object_buffer_or_none(
-        f"{batch_source_commit}:{file_path}"
-    )
+    if batch_source_object_id is None:
+        batch_source_buffer = read_git_object_buffer_or_none(
+            f"{batch_source_commit}:{file_path}"
+        )
+    else:
+        batch_source_buffer = load_git_blob_as_buffer(
+            batch_source_object_id,
+            spool_dir=spool_dir,
+        )
     if batch_source_buffer is None:
         index_buffer.close()
         return IncludeTextPlanBuildResult(missing_source=True)
@@ -249,23 +287,46 @@ def build_include_text_file_action_plan(
     merged_index_buffer = None
     merged_working_buffer = None
     try:
-        with (
-            batch_source_buffer as batch_source_lines,
-            index_buffer as index_lines,
-            load_working_tree_file_as_buffer(file_path) as working_lines,
-        ):
+        with ExitStack() as resources:
+            batch_source_lines = resources.enter_context(batch_source_buffer)
+            index_lines = resources.enter_context(index_buffer)
+            if working_tree_artifact_path is None:
+                working_buffer = (
+                    load_working_tree_file_as_buffer(file_path)
+                    if spool_dir is None
+                    else load_working_tree_file_as_buffer(
+                        file_path,
+                        spool_dir=spool_dir,
+                    )
+                )
+            else:
+                working_buffer = LineBuffer.from_path(
+                    working_tree_artifact_path,
+                    spool_dir=spool_dir,
+                )
+            working_lines = resources.enter_context(working_buffer)
+            ownership_arguments = {}
+            if spool_dir is not None:
+                ownership_arguments["spool_dir"] = spool_dir
             with acquire_batch_ownership_for_display_ids_from_lines(
                 file_meta,
                 batch_source_lines,
                 selection_ids_to_include,
+                **ownership_arguments,
             ) as ownership:
                 if ownership.is_empty():
                     if (
                         selected_ids is None
                         and text_change_type == TextFileChangeType.ADDED
                     ):
-                        merged_index_buffer = LineBuffer.from_bytes(b"")
-                        merged_working_buffer = LineBuffer.from_bytes(b"")
+                        merged_index_buffer = LineBuffer.from_bytes(
+                            b"",
+                            spool_dir=spool_dir,
+                        )
+                        merged_working_buffer = LineBuffer.from_bytes(
+                            b"",
+                            spool_dir=spool_dir,
+                        )
                     else:
                         return IncludeTextPlanBuildResult()
                 else:
@@ -273,25 +334,34 @@ def build_include_text_file_action_plan(
                         source_lines = batch_source_lines
                         merge_ownership = ownership
                         if replacement_payload is not None:
+                            replacement_arguments = {}
+                            if spool_dir is not None:
+                                replacement_arguments["spool_dir"] = spool_dir
                             replacement_view = stack.enter_context(
                                 build_replacement_batch_view_from_lines(
                                     batch_source_lines,
                                     ownership,
                                     replacement_payload,
+                                    **replacement_arguments,
                                 )
                             )
                             source_lines = replacement_view.source_buffer
                             merge_ownership = replacement_view.ownership
+                        merge_arguments = {}
+                        if spool_dir is not None:
+                            merge_arguments["spool_dir"] = spool_dir
                         merged_index_buffer = merge_batch_from_line_sequences_as_buffer(
                             source_lines,
                             merge_ownership,
                             index_lines,
+                            **merge_arguments,
                         )
                         merged_working_buffer = (
                             merge_batch_from_line_sequences_as_buffer(
                                 source_lines,
                                 merge_ownership,
                                 working_lines,
+                                **merge_arguments,
                             )
                         )
 

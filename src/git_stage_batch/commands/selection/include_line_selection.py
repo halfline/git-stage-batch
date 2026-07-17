@@ -483,13 +483,19 @@ def try_build_index_content_via_transient_batch(
                 line_changes.path,
                 file_buffer_override=working_lines,
             )
-            add_file_to_batch(
-                batch_name,
-                line_changes.path,
-                ownership,
-                detect_file_mode(line_changes.path),
-                batch_source_commit=batch_source_commit,
-            )
+            try:
+                add_file_to_batch(
+                    batch_name,
+                    line_changes.path,
+                    ownership,
+                    detect_file_mode(line_changes.path),
+                    batch_source_commit=batch_source_commit,
+                )
+            except MergeError as error:
+                return TransientIncludeResult.failure(
+                    TransientIncludeFailureReason.PREPARATION_FAILED,
+                    detail=str(error),
+                )
 
             metadata = read_batch_metadata(batch_name)
             file_metadata = metadata.get("files", {}).get(line_changes.path)
@@ -525,7 +531,7 @@ def try_build_index_content_via_transient_batch(
                 except MergeError as error:
                     return TransientIncludeResult.failure(
                         TransientIncludeFailureReason.INDEX_MERGE_FAILED,
-                        detail=error.__class__.__name__,
+                        detail=str(error),
                     )
 
                 try:
@@ -539,7 +545,7 @@ def try_build_index_content_via_transient_batch(
                     target_index_buffer = None
                     return TransientIncludeResult.failure(
                         TransientIncludeFailureReason.WORKING_TREE_MERGE_FAILED,
-                        detail=error.__class__.__name__,
+                        detail=str(error),
                     )
 
                 with target_working_buffer:

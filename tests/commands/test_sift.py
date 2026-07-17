@@ -1330,6 +1330,34 @@ class TestSiftFileJobs:
         assert read_batch_metadata("parallel-source")["note"] == "changed during sift"
         assert not any(name.startswith("sift-tmp-") for name in list_batch_names())
 
+    def test_source_change_during_worktree_recheck_aborts_before_publication(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        _prepare_parallel_sift_source(temp_git_repo)
+        original_capture = sift_command.capture_worktree_identities
+
+        def capture_then_annotate(file_paths):
+            identities = original_capture(file_paths)
+            command_annotate_batch("parallel-source", "changed during recheck")
+            return identities
+
+        monkeypatch.setenv("GIT_STAGE_BATCH_JOBS", "1")
+        monkeypatch.setattr(
+            sift_command,
+            "capture_worktree_identities",
+            capture_then_annotate,
+        )
+
+        with pytest.raises(CommandError, match="changed while sift was running"):
+            command_sift_batch("parallel-source", "recheck-race-destination")
+
+        assert not batch_exists("recheck-race-destination")
+        assert read_batch_metadata("parallel-source")["note"] == (
+            "changed during recheck"
+        )
+
     def test_destination_appearing_after_compute_is_preserved(
         self,
         temp_git_repo,

@@ -15304,6 +15304,27 @@ def test_sift_jobs_do_not_bypass_parent_mutation_boundaries():
     assert subprocess_calls == []
 
 
+def test_sift_job_transport_has_no_content_bearing_fields():
+    """Sift IPC records should carry only compact scalars and artifact paths."""
+    sift_jobs = __import__(
+        "git_stage_batch.commands.batch_transform.sift_jobs",
+        fromlist=["sift_jobs"],
+    )
+    job_fields = set(sift_jobs.SiftTextFileJob.__dataclass_fields__)
+    result_fields = set(sift_jobs.SiftTextFileJobResult.__dataclass_fields__)
+    forbidden_fields = {
+        "content",
+        "content_bytes",
+        "lines",
+        "ownership",
+        "target_buffer",
+        "working_lines",
+    }
+
+    assert job_fields.isdisjoint(forbidden_fields)
+    assert result_fields.isdisjoint(forbidden_fields)
+
+
 def test_apply_from_delegates_apply_action_execution():
     """Apply-from should delegate selected file execution to batch-source support."""
     apply_from_path = SRC_ROOT / "commands" / "apply_from.py"

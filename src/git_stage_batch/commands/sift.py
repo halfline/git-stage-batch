@@ -31,7 +31,6 @@ from ..batch.state.reference_names import (
     format_legacy_batch_ref_name,
 )
 from ..batch.state.lifecycle import create_batch
-from ..batch.state.query import read_batch_metadata
 from ..batch.state.batch_names import batch_exists, validate_batch_name
 from ..batch.source.selector import require_plain_batch_name
 from .batch_transform import sift_persistence as _sift_persistence
@@ -105,7 +104,16 @@ def command_sift_batch(source_batch: str, dest_batch: str) -> None:
 
     source_files = source_metadata.get("files", {})
     if not source_files:
-        _handle_empty_source_batch(source_batch, dest_batch)
+        _require_unchanged_sift_inputs(
+            source_batch=source_batch,
+            source_snapshot=source_snapshot,
+            expected_worktree_identities={},
+        )
+        _handle_empty_source_batch(
+            source_batch,
+            dest_batch,
+            source_metadata=source_metadata,
+        )
         return
 
     in_place = source_batch == dest_batch
@@ -567,13 +575,17 @@ def _close_sifted_results(
         result.close()
 
 
-def _handle_empty_source_batch(source_batch: str, dest_batch: str) -> None:
+def _handle_empty_source_batch(
+    source_batch: str,
+    dest_batch: str,
+    *,
+    source_metadata: dict,
+) -> None:
     """Handle the case where the source batch is empty."""
     if source_batch == dest_batch:
         print(_("Batch '{name}' is already empty").format(name=source_batch), file=sys.stderr)
         return
 
-    source_metadata = read_batch_metadata(source_batch)
     create_batch(
         dest_batch,
         note=f"Sifted from {source_batch} (was empty)",

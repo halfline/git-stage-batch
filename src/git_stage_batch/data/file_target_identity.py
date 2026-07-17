@@ -40,6 +40,20 @@ class IndexIdentity:
     mode: str | None
     object_id: str | None
 
+    @property
+    def exists(self) -> bool:
+        """Return whether the stage-zero index entry exists."""
+        return self.object_id is not None
+
+    @property
+    def content_object_id(self) -> str | None:
+        """Return the object ID when the entry has loadable content."""
+        if self.object_id is None or not any(
+            character != "0" for character in self.object_id
+        ):
+            return None
+        return self.object_id
+
 
 def index_identity_from_entry(entry: IndexEntry | None) -> IndexIdentity:
     """Convert an optional stage-zero entry to its compact identity."""

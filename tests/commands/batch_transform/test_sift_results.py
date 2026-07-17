@@ -70,6 +70,35 @@ def test_compute_sifted_binary_file_retains_changed_content(
     result.target_buffer.close()
 
 
+def test_compute_sifted_binary_file_uses_captured_worktree(
+    monkeypatch,
+    tmp_path,
+):
+    """Parent-local binary sift should compare its stable captured artifact."""
+    batch_source_buffer = LineBuffer.from_bytes(b"target")
+    (tmp_path / "data.bin").write_bytes(b"changed live content")
+    artifact = tmp_path / "captured.bin"
+    artifact.write_bytes(b"target")
+    monkeypatch.setattr(
+        sift_results,
+        "read_git_object_buffer_or_empty",
+        lambda spec: batch_source_buffer,
+    )
+
+    result = sift_results.compute_sifted_binary_file(
+        "data.bin",
+        {
+            "batch_source_commit": "commit",
+            "change_type": "modified",
+        },
+        tmp_path,
+        working_tree_artifact_path=artifact,
+        captured_working_tree_exists=True,
+    )
+
+    assert result is None
+
+
 def test_compute_sifted_binary_file_removes_absent_deletion(
     monkeypatch,
     tmp_path,

@@ -371,10 +371,10 @@ def test_build_file_attribution_bulk_loads_batch_source_buffers(
         resolution_calls.append(refspecs)
         return original_resolve(refspecs)
 
-    def counting_buffer_stream(object_ids):
+    def counting_buffer_stream(object_ids, **kwargs):
         object_ids = tuple(object_ids)
         buffer_stream_calls.append(object_ids)
-        yield from original_buffer_stream(object_ids)
+        yield from original_buffer_stream(object_ids, **kwargs)
 
     monkeypatch.setattr(
         attribution_module,
@@ -461,10 +461,10 @@ def test_build_file_attribution_deduplicates_sources_deletions_and_mappings(
         deletion_stream_calls.append(object_ids)
         yield from original_deletion_stream(object_ids, **kwargs)
 
-    def recording_buffer_stream(object_ids):
+    def recording_buffer_stream(object_ids, **kwargs):
         object_ids = tuple(object_ids)
         buffer_stream_calls.append(object_ids)
-        yield from original_buffer_stream(object_ids)
+        yield from original_buffer_stream(object_ids, **kwargs)
 
     match_calls = 0
     original_match = attribution_module.match_lines
@@ -587,6 +587,72 @@ def test_supplemental_attribution_does_not_construct_a_state_ref():
     )
 
 
+def test_supplemental_override_is_not_treated_as_state_backed(monkeypatch):
+    """A same-name supplemental entry must retain supplemental source rules."""
+    captured = {}
+
+    def capture_batches(
+        _file_path,
+        all_batch_metadata,
+        *,
+        state_backed_batch_names,
+        **_kwargs,
+    ):
+        captured["metadata"] = all_batch_metadata
+        captured["state_backed_names"] = state_backed_batch_names
+
+    monkeypatch.setattr(
+        attribution_module,
+        "_attribute_batches",
+        capture_batches,
+    )
+    primary_metadata = {
+        "real": {
+            "files": {
+                "test.txt": {
+                    "batch_source_commit": "primary-source",
+                    "source_path": "primary/test.txt",
+                }
+            }
+        }
+    }
+    supplemental_metadata = {
+        "real": {
+            "files": {
+                "test.txt": {
+                    "batch_source_commit": "supplemental-source",
+                    "source_path": "supplemental/test.txt",
+                }
+            }
+        },
+        "unrelated": {
+            "files": {
+                "other.txt": {
+                    "batch_source_commit": "other-source",
+                }
+            }
+        },
+    }
+
+    build_file_attribution_from_lines(
+        "test.txt",
+        baseline_lines=(),
+        working_tree_lines=(),
+        batch_metadata_by_name=primary_metadata,
+        supplemental_batch_metadata=supplemental_metadata,
+    )
+
+    assert set(captured["metadata"]) == {"real"}
+    assert captured["state_backed_names"] == frozenset()
+    request = attribution_module._batch_source_requests(
+        "test.txt",
+        captured["metadata"],
+        state_backed_batch_names=captured["state_backed_names"],
+    )[0]
+    assert request.primary_refspec == "supplemental-source:test.txt"
+    assert request.fallback_refspec == "supplemental-source:test.txt"
+
+
 def test_trusted_many_batch_source_requests_do_not_revalidate_names(monkeypatch):
     """Attribution's trusted boundary must not spawn validation per batch."""
     metadata = {
@@ -653,6 +719,38 @@ def test_file_attribution_from_lines_matches_repository_wrapper(temp_repo):
 
     assert explicit == wrapped
     assert explicit_metrics == wrapper_metrics
+
+
+def test_file_attribution_from_lines_propagates_invocation_spool(
+    tmp_path,
+    monkeypatch,
+):
+    """Baseline matching should use the supplied job scratch storage."""
+    spool_directories = []
+    original_match_lines = attribution_units_module.match_lines
+
+    def record_match(*args, **kwargs):
+        spool_directories.append(kwargs.get("spool_dir"))
+        return original_match_lines(*args, **kwargs)
+
+    monkeypatch.setattr(
+        attribution_units_module,
+        "match_lines",
+        record_match,
+    )
+    spool_dir = tmp_path / "scratch"
+    spool_dir.mkdir()
+
+    attribution = build_file_attribution_from_lines(
+        "file.txt",
+        baseline_lines=[b"old\n"],
+        working_tree_lines=[b"new\n"],
+        batch_metadata_by_name={},
+        spool_dir=spool_dir,
+    )
+
+    assert attribution.file_path == "file.txt"
+    assert spool_directories == [spool_dir]
 
 
 def test_build_file_attribution_is_independent_of_batch_traversal_order(temp_repo):

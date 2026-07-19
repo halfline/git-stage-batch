@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -136,18 +136,31 @@ def read_batch_state_metadata(batch_name: str) -> dict[str, Any] | None:
 
 def read_batch_state_metadata_for_batches(
     batch_names: Iterable[str],
+    *,
+    state_commit_by_name: Mapping[str, str] | None = None,
 ) -> dict[str, dict[str, Any]]:
-    """Read normalized state-ref metadata for many batches in one Git process."""
+    """Read normalized state metadata for many validated batches.
+
+    When canonical commits are supplied, missing mappings intentionally skip
+    mutable state refs so the caller can retain one captured state boundary.
+    """
     unique_batch_names = list(dict.fromkeys(batch_names))
     for batch_name in unique_batch_names:
         validate_batch_name(batch_name)
     if not unique_batch_names:
         return {}
 
-    refspec_by_name = {
-        batch_name: f"{format_batch_state_ref_name(batch_name)}:batch.json"
-        for batch_name in unique_batch_names
-    }
+    refspec_by_name = {}
+    for batch_name in unique_batch_names:
+        if state_commit_by_name is not None:
+            if batch_name not in state_commit_by_name:
+                continue
+            state_commit = state_commit_by_name[batch_name]
+            _validate_canonical_state_commit(state_commit, batch_name)
+            state_source = state_commit
+        else:
+            state_source = format_batch_state_ref_name(batch_name)
+        refspec_by_name[batch_name] = f"{state_source}:batch.json"
     blobs = read_git_blobs_as_bytes(refspec_by_name.values())
 
     metadata_by_name: dict[str, dict[str, Any]] = {}
@@ -160,6 +173,24 @@ def read_batch_state_metadata_for_batches(
             batch_name,
         ).to_application_dict()
     return metadata_by_name
+
+
+def _validate_canonical_state_commit(
+    state_commit: object,
+    batch_name: str,
+) -> None:
+    if (
+        type(state_commit) is not str
+        or len(state_commit) not in {40, 64}
+        or any(
+            character not in "0123456789abcdefABCDEF"
+            for character in state_commit
+        )
+    ):
+        raise ValueError(
+            f"Canonical state commit for batch '{batch_name}' must be a "
+            "full hexadecimal object ID"
+        )
 
 
 def get_authoritative_batch_commit_sha(batch_name: str) -> str | None:

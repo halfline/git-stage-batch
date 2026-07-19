@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import pytest
 
+import git_stage_batch.core.mapped_storage as mapped_storage_module
 from git_stage_batch.core.buffer import LineBuffer
 import git_stage_batch.utils.repository_buffers as repository_buffers
 from git_stage_batch.utils.repository_buffers import (
@@ -38,9 +39,18 @@ def test_load_git_blob_as_buffer_loads_streamed_blob(monkeypatch):
         assert buffer[1] == b"beta\n"
 
 
-def test_stream_git_blob_buffers_spools_and_closes_each_source(monkeypatch):
+def test_stream_git_blob_buffers_spools_and_closes_each_source(
+    monkeypatch,
+    tmp_path,
+):
     """Batch-loaded source buffers should be mmap-backed and file-local."""
     payload = b"line\n" * 2_000
+    temporary_directories = []
+    real_temporary_file = mapped_storage_module._temporary_file
+
+    def recording_temporary_file(spool_dir=None):
+        temporary_directories.append(spool_dir)
+        return real_temporary_file(spool_dir)
 
     def fake_stream_git_blobs(blob_names):
         for blob_name in blob_names:
@@ -56,8 +66,18 @@ def test_stream_git_blob_buffers_spools_and_closes_each_source(monkeypatch):
         "stream_git_blobs",
         fake_stream_git_blobs,
     )
+    monkeypatch.setattr(
+        mapped_storage_module,
+        "_temporary_file",
+        recording_temporary_file,
+    )
+    spool_dir = tmp_path / "scratch"
+    spool_dir.mkdir()
 
-    buffers = stream_git_blob_buffers(["first", "second"])
+    buffers = stream_git_blob_buffers(
+        ["first", "second"],
+        spool_dir=spool_dir,
+    )
     first = next(buffers)
     assert first.buffer.uses_mapped_storage is True
     assert first.buffer[0] == b"line\n"
@@ -70,11 +90,18 @@ def test_stream_git_blob_buffers_spools_and_closes_each_source(monkeypatch):
     buffers.close()
     with pytest.raises(ValueError, match="closed"):
         len(second.buffer)
+    assert temporary_directories
+    assert all(
+        directory is not None
+        and directory.resolve() == spool_dir.resolve()
+        for directory in temporary_directories
+    )
 
 
-def test_load_git_tree_files_as_buffers_loads_tree_blobs(monkeypatch):
+def test_load_git_tree_files_as_buffers_loads_tree_blobs(monkeypatch, tmp_path):
     """Files from a Git tree are loaded by blob SHA."""
     calls = []
+    loaded_blobs = []
 
     def fake_list_git_tree_blobs(treeish, file_paths):
         calls.append((treeish, list(file_paths)))
@@ -83,8 +110,12 @@ def test_load_git_tree_files_as_buffers_loads_tree_blobs(monkeypatch):
             "beta.txt": GitTreeBlob("beta.txt", "100644", "beta-sha"),
         }
 
-    def fake_load_git_blob_as_buffer(blob_sha):
-        return LineBuffer.from_bytes(blob_sha.encode("ascii") + b"\n")
+    def fake_load_git_blob_as_buffer(blob_sha, *, spool_dir=None):
+        loaded_blobs.append((blob_sha, spool_dir))
+        return LineBuffer.from_bytes(
+            blob_sha.encode("ascii") + b"\n",
+            spool_dir=spool_dir,
+        )
 
     monkeypatch.setattr(
         repository_buffers,
@@ -97,9 +128,19 @@ def test_load_git_tree_files_as_buffers_loads_tree_blobs(monkeypatch):
         fake_load_git_blob_as_buffer,
     )
 
-    buffers = load_git_tree_files_as_buffers("HEAD", ["alpha.txt", "beta.txt"])
+    spool_dir = tmp_path / "scratch"
+    spool_dir.mkdir()
+    buffers = load_git_tree_files_as_buffers(
+        "HEAD",
+        ["alpha.txt", "beta.txt"],
+        spool_dir=spool_dir,
+    )
     try:
         assert calls == [("HEAD", ["alpha.txt", "beta.txt"])]
+        assert loaded_blobs == [
+            ("alpha-sha", spool_dir),
+            ("beta-sha", spool_dir),
+        ]
         assert buffers["alpha.txt"][0] == b"alpha-sha\n"
         assert buffers["beta.txt"][0] == b"beta-sha\n"
     finally:
@@ -119,7 +160,7 @@ def test_read_git_object_buffer_or_none_loads_streamed_output(monkeypatch):
         },
     )
 
-    def fake_load(blob_sha):
+    def fake_load(blob_sha, **_kwargs):
         calls.append(blob_sha)
         return LineBuffer.from_chunks([b"alpha\nbe", b"ta\n"])
 

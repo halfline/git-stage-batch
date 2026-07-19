@@ -8,6 +8,7 @@ import stat
 import subprocess
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
+from pathlib import Path
 
 from ..core.buffer import LineBuffer
 from ..utils.git_command import stream_git_command
@@ -47,15 +48,29 @@ class WorkingTreeObject:
     git_mode: str
 
 
-def load_git_blob_as_buffer(blob_sha: str) -> LineBuffer:
+def load_git_blob_as_buffer(
+    blob_sha: str,
+    *,
+    spool_dir: str | Path | None = None,
+) -> LineBuffer:
     """Load a Git blob as a line buffer."""
-    return LineBuffer.from_chunks(read_git_blob(blob_sha))
+    return LineBuffer.from_chunks(
+        read_git_blob(blob_sha),
+        spool_dir=spool_dir,
+    )
 
 
-def stream_git_blob_buffers(blob_names: Iterable[str]) -> Iterator[GitBlobBuffer]:
+def stream_git_blob_buffers(
+    blob_names: Iterable[str],
+    *,
+    spool_dir: str | Path | None = None,
+) -> Iterator[GitBlobBuffer]:
     """Yield one mmap-capable line buffer at a time from a Git batch reader."""
     for blob in stream_git_blobs(blob_names):
-        buffer = LineBuffer.from_chunks(blob.content_chunks)
+        buffer = LineBuffer.from_chunks(
+            blob.content_chunks,
+            spool_dir=spool_dir,
+        )
         try:
             yield GitBlobBuffer(
                 requested_name=blob.requested_name,
@@ -70,21 +85,30 @@ def stream_git_blob_buffers(blob_names: Iterable[str]) -> Iterator[GitBlobBuffer
 def load_git_tree_files_as_buffers(
     treeish: str,
     file_paths: list[str],
+    *,
+    spool_dir: str | Path | None = None,
 ) -> dict[str, LineBuffer]:
     """Load files from a Git tree as line buffers."""
     tree_blobs = list_git_tree_blobs(treeish, file_paths)
     buffers: dict[str, LineBuffer] = {}
     try:
         for file_path, blob in tree_blobs.items():
-            buffers[file_path] = load_git_blob_as_buffer(blob.blob_sha)
-    except Exception:
+            buffers[file_path] = load_git_blob_as_buffer(
+                blob.blob_sha,
+                spool_dir=spool_dir,
+            )
+    except BaseException:
         for buffer in buffers.values():
             buffer.close()
         raise
     return buffers
 
 
-def read_git_object_buffer_or_none(revision_path: str) -> LineBuffer | None:
+def read_git_object_buffer_or_none(
+    revision_path: str,
+    *,
+    spool_dir: str | Path | None = None,
+) -> LineBuffer | None:
     """Load a Git object, returning ``None`` only when it is absent."""
     # cat-file's traditional batch protocol is line-delimited and cannot
     # represent object expressions containing newlines. Validate the revision
@@ -111,7 +135,10 @@ def read_git_object_buffer_or_none(revision_path: str) -> LineBuffer | None:
                     f"Could not resolve Git revision {revision!r}"
                 ) from error
         try:
-            return LineBuffer.from_chunks(_stream_git_object(revision_path))
+            return LineBuffer.from_chunks(
+                _stream_git_object(revision_path),
+                spool_dir=spool_dir,
+            )
         except subprocess.CalledProcessError:
             return None
     try:
@@ -127,38 +154,66 @@ def read_git_object_buffer_or_none(revision_path: str) -> LineBuffer | None:
             f"Git object {revision_path!r} is {resolved.object_type}, not a blob"
         )
     try:
-        return load_git_blob_as_buffer(resolved.object_id)
+        return load_git_blob_as_buffer(
+            resolved.object_id,
+            spool_dir=spool_dir,
+        )
     except (subprocess.CalledProcessError, RuntimeError) as error:
         raise GitOperationFailed(
             f"Could not read Git object {revision_path!r}"
         ) from error
 
 
-def read_git_object_buffer(revision_path: str) -> LineBuffer:
+def read_git_object_buffer(
+    revision_path: str,
+    *,
+    spool_dir: str | Path | None = None,
+) -> LineBuffer:
     """Load a Git blob or raise a typed missing/failure exception."""
-    buffer = read_git_object_buffer_or_none(revision_path)
+    buffer = read_git_object_buffer_or_none(
+        revision_path,
+        spool_dir=spool_dir,
+    )
     if buffer is None:
         raise RepositoryObjectMissing(revision_path)
     return buffer
 
 
-def read_git_object_buffer_or_empty(revision_path: str) -> LineBuffer:
+def read_git_object_buffer_or_empty(
+    revision_path: str,
+    *,
+    spool_dir: str | Path | None = None,
+) -> LineBuffer:
     """Load a Git object as a line buffer, or an empty buffer if missing."""
-    buffer = read_git_object_buffer_or_none(revision_path)
+    buffer = read_git_object_buffer_or_none(
+        revision_path,
+        spool_dir=spool_dir,
+    )
     if buffer is None:
-        return LineBuffer.from_bytes(b"")
+        return LineBuffer.from_bytes(b"", spool_dir=spool_dir)
     return buffer
 
 
-def load_working_tree_file_as_buffer(file_path: str) -> LineBuffer:
+def load_working_tree_file_as_buffer(
+    file_path: str,
+    *,
+    spool_dir: str | Path | None = None,
+) -> LineBuffer:
     """Load a working-tree file, returning empty only when it is absent."""
     try:
-        return read_working_tree_object(file_path).buffer
+        return read_working_tree_object(
+            file_path,
+            spool_dir=spool_dir,
+        ).buffer
     except RepositoryPathMissing:
-        return LineBuffer.from_bytes(b"")
+        return LineBuffer.from_bytes(b"", spool_dir=spool_dir)
 
 
-def read_working_tree_object(file_path: str) -> WorkingTreeObject:
+def read_working_tree_object(
+    file_path: str,
+    *,
+    spool_dir: str | Path | None = None,
+) -> WorkingTreeObject:
     """Read Git-visible worktree content without following symlinks."""
     repo_root = get_git_repository_root_path()
     full_path = repo_root / file_path
@@ -166,7 +221,10 @@ def read_working_tree_object(file_path: str) -> WorkingTreeObject:
         metadata = full_path.lstat()
         if stat.S_ISLNK(metadata.st_mode):
             return WorkingTreeObject(
-                buffer=LineBuffer.from_bytes(os.readlink(os.fsencode(full_path))),
+                buffer=LineBuffer.from_bytes(
+                    os.readlink(os.fsencode(full_path)),
+                    spool_dir=spool_dir,
+                ),
                 kind="symlink",
                 git_mode="120000",
             )
@@ -176,7 +234,10 @@ def read_working_tree_object(file_path: str) -> WorkingTreeObject:
             )
         mode = "100755" if metadata.st_mode & stat.S_IXUSR else "100644"
         return WorkingTreeObject(
-            buffer=LineBuffer.from_path(full_path),
+            buffer=LineBuffer.from_path(
+                full_path,
+                spool_dir=spool_dir,
+            ),
             kind="regular",
             git_mode=mode,
         )

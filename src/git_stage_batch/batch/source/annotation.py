@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
+from pathlib import Path
 
 from ...core.models import LineEntry, LineLevelChange
 from ...utils.git_repository import get_git_repository_root_path
@@ -96,6 +97,7 @@ def acquire_batch_source_mapping(
     *,
     batch_source_commit: str | None,
     working_lines: Sequence[bytes],
+    spool_dir: str | Path | None = None,
 ) -> Iterator[LineMapping | None]:
     """Acquire one reusable source-to-working mapping for a repository file."""
     if not batch_source_commit:
@@ -103,7 +105,8 @@ def acquire_batch_source_mapping(
         return
 
     batch_source_buffer = read_git_object_buffer_or_none(
-        f"{batch_source_commit}:{path_value}"
+        f"{batch_source_commit}:{path_value}",
+        spool_dir=spool_dir,
     )
     if batch_source_buffer is None:
         yield None
@@ -111,7 +114,11 @@ def acquire_batch_source_mapping(
 
     with (
         batch_source_buffer as batch_source_lines,
-        match_lines(batch_source_lines, working_lines) as mapping,
+        match_lines(
+            batch_source_lines,
+            working_lines,
+            spool_dir=spool_dir,
+        ) as mapping,
     ):
         yield mapping
 
@@ -199,6 +206,8 @@ def annotate_with_batch_source_working_lines(
     path_value: str,
     line_changes: LineLevelChange,
     working_lines: Sequence[bytes],
+    *,
+    spool_dir: str | Path | None = None,
 ) -> LineLevelChange:
     """Annotate LineLevelChange with indexed working content lines."""
     batch_source_commit = get_batch_source_for_file(path_value)
@@ -206,6 +215,7 @@ def annotate_with_batch_source_working_lines(
         path_value,
         batch_source_commit=batch_source_commit,
         working_lines=working_lines,
+        spool_dir=spool_dir,
     ) as mapping:
         return annotate_with_batch_source_mapping(line_changes, mapping)
 
@@ -215,7 +225,12 @@ def annotate_with_batch_source_lines(
     *,
     batch_source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
+    spool_dir: str | Path | None = None,
 ) -> LineLevelChange:
     """Annotate LineLevelChange from indexed batch-source and working lines."""
-    with match_lines(batch_source_lines, working_lines) as mapping:
+    with match_lines(
+        batch_source_lines,
+        working_lines,
+        spool_dir=spool_dir,
+    ) as mapping:
         return annotate_with_batch_source_mapping(line_changes, mapping)

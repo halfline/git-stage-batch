@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from bisect import bisect_left
 from collections.abc import Hashable, Sequence
+from pathlib import Path
 from typing import TypeVar
 
 from .line_mapping import IntVector as _IntVector, LineMapping as _LineMapping
@@ -31,11 +32,17 @@ def _line_mapping_width(max_line_number: int) -> int:
     return 8
 
 
-def _new_line_mapping(size: int, max_line_number: int) -> MappedIntVector:
+def _new_line_mapping(
+    size: int,
+    max_line_number: int,
+    *,
+    spool_dir: str | Path | None = None,
+) -> MappedIntVector:
     return MappedIntVector(
         size,
         width=_line_mapping_width(max_line_number),
         fill=0,
+        spool_dir=spool_dir,
     )
 
 
@@ -528,7 +535,9 @@ def _align_segment(
 
 def match_acquirable_lines(
     source_lines: AcquirableLineSequence[LineContent],
-    target_lines: AcquirableLineSequence[LineContent]
+    target_lines: AcquirableLineSequence[LineContent],
+    *,
+    spool_dir: str | Path | None = None,
 ) -> _LineMapping:
     """Compute conservative structural alignment between source and target.
 
@@ -550,8 +559,8 @@ def match_acquirable_lines(
     Returns:
         A bidirectional line mapping with ambiguous lines left unmapped.
     """
-    source_to_target: MappedIntVector
-    target_to_source: MappedIntVector
+    source_to_target: MappedIntVector | None = None
+    target_to_source: MappedIntVector | None = None
     workspace: MatcherWorkspace
     max_line_number: int
     source_line_count: int
@@ -560,12 +569,19 @@ def match_acquirable_lines(
     source_line_count = len(source_lines)
     target_line_count = len(target_lines)
     max_line_number = max(source_line_count, target_line_count)
-    source_to_target = _new_line_mapping(source_line_count, max_line_number)
-    target_to_source = _new_line_mapping(target_line_count, max_line_number)
-
     try:
+        source_to_target = _new_line_mapping(
+            source_line_count,
+            max_line_number,
+            spool_dir=spool_dir,
+        )
+        target_to_source = _new_line_mapping(
+            target_line_count,
+            max_line_number,
+            spool_dir=spool_dir,
+        )
         with (
-            MatcherWorkspace() as workspace,
+            MatcherWorkspace(spool_dir=spool_dir) as workspace,
             source_lines.acquire_lines() as acquired_source_lines,
             target_lines.acquire_lines() as acquired_target_lines,
         ):
@@ -585,18 +601,23 @@ def match_acquirable_lines(
             source_to_target=source_to_target,
             target_to_source=target_to_source
         )
-    except Exception:
-        source_to_target.close()
-        target_to_source.close()
+    except BaseException:
+        if source_to_target is not None:
+            source_to_target.close()
+        if target_to_source is not None:
+            target_to_source.close()
         raise
 
 
 def match_lines(
     source_lines: Sequence[LineContent],
-    target_lines: Sequence[LineContent]
+    target_lines: Sequence[LineContent],
+    *,
+    spool_dir: str | Path | None = None,
 ) -> _LineMapping:
     """Compute conservative structural alignment between source and target."""
     return match_acquirable_lines(
         as_acquirable_line_sequence(source_lines),
         as_acquirable_line_sequence(target_lines),
+        spool_dir=spool_dir,
     )

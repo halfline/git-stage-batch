@@ -81,7 +81,7 @@ def filter_line_level_change_for_batches(
     attribution = build_file_attribution(
         file_path,
         batch_metadata_by_name=batch_metadata_by_name,
-        supplemental_batch_metadata=_consumed_batch_metadata(
+        supplemental_batch_metadata=consumed_batch_metadata(
             file_path,
             consumed_file_metadata,
         ),
@@ -105,12 +105,25 @@ def filter_line_level_change_with_attribution(
     attribution: FileAttribution,
     batch_metadata_by_name: dict[str, dict],
     consumed_file_metadata: dict | None,
+    captured_empty_lifecycle_is_batched: bool | None = None,
 ) -> LineLevelChange | None:
-    """Filter one hunk from caller-supplied file attribution and metadata."""
-    if _empty_lifecycle_change_is_batched(
-        line_changes,
-        batch_metadata_by_name=batch_metadata_by_name,
-    ):
+    """Filter one hunk from caller-supplied attribution and metadata.
+
+    ``None`` preserves the established repository-backed empty-lifecycle
+    check. File jobs pass a captured boolean to keep worker computation free
+    of mutable repository/session reads.
+    """
+    if captured_empty_lifecycle_is_batched is None:
+        lifecycle_is_batched = _empty_lifecycle_change_is_batched(
+            line_changes,
+            batch_metadata_by_name=batch_metadata_by_name,
+        )
+    else:
+        lifecycle_is_batched = (
+            not line_changes.lines
+            and captured_empty_lifecycle_is_batched
+        )
+    if lifecycle_is_batched:
         return None
 
     return _filter_line_level_change_with_prepared_resources(
@@ -154,7 +167,7 @@ def _filter_line_level_change_with_prepared_resources(
     )
 
 
-def _consumed_batch_metadata(
+def consumed_batch_metadata(
     file_path: str,
     consumed_file_metadata: dict | None,
 ) -> dict[str, dict] | None:

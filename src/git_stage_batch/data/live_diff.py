@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 
 from ..core.buffer import LineBuffer
@@ -41,3 +41,28 @@ def acquire_prepared_live_diff(**kwargs) -> Iterator[tuple[UnifiedDiffItem, ...]
     finally:
         for buffer in owned_buffers:
             buffer.close()
+
+
+def group_live_diff_by_file(
+    files: Sequence[str],
+    changes: Sequence[UnifiedDiffItem],
+) -> dict[str, tuple[UnifiedDiffItem, ...]]:
+    """Assign each live change once to its canonical requested file."""
+    requested_files = set(files)
+    grouped: dict[str, list[UnifiedDiffItem]] = {file_path: [] for file_path in files}
+    for change in changes:
+        preferred_path = change.path()
+        if preferred_path in requested_files:
+            grouped[preferred_path].append(change)
+            continue
+        change_paths = (
+            getattr(change, "old_path", None),
+            getattr(change, "new_path", None),
+        )
+        for file_path in files:
+            if file_path in change_paths:
+                grouped[file_path].append(change)
+                break
+    return {
+        file_path: tuple(file_changes) for file_path, file_changes in grouped.items()
+    }

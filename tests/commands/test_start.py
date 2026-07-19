@@ -125,6 +125,40 @@ class TestCommandStart:
         assert not session_is_active()
         assert readme.read_text() == "# Test\nModified\n"
 
+    def test_start_retries_silent_recovery_snapshot_refusal(self, temp_git_repo):
+        """A silent stash refusal should be retried before startup fails."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nModified\n")
+
+        from git_stage_batch.data import session as session_module
+
+        real_run_git_command = session_module.run_git_command
+        stash_calls = 0
+
+        def refuse_first_stash(command, *args, **kwargs):
+            nonlocal stash_calls
+            if command == ["stash", "create"]:
+                stash_calls += 1
+                if stash_calls == 1:
+                    return subprocess.CompletedProcess(
+                        command,
+                        1,
+                        stdout="",
+                        stderr="",
+                    )
+            return real_run_git_command(command, *args, **kwargs)
+
+        with patch.object(
+            session_module,
+            "run_git_command",
+            side_effect=refuse_first_stash,
+        ):
+            command_start()
+
+        assert stash_calls == 2
+        assert session_is_active()
+        assert read_text_file_contents(get_abort_stash_file_path()).strip()
+
     def test_start_preserves_original_error_when_abort_also_fails(
         self,
         temp_git_repo,

@@ -260,6 +260,20 @@ def _initialize_abort_state() -> None:
                 check=False,
                 requires_index_lock=False,
             )
+            # Git can refresh an ignored stat-only change and return 1 without
+            # a diagnostic. Retry once after that refresh before treating the
+            # result as a recovery-snapshot failure.
+            if (
+                stash_result.returncode == 1
+                and not stash_result.stdout.strip()
+                and not stash_result.stderr.strip()
+            ):
+                log_journal("session_retrying_silent_stash_failure")
+                stash_result = run_git_command(
+                    ["stash", "create"],
+                    check=False,
+                    requires_index_lock=False,
+                )
             stash_hash = stash_result.stdout.strip()
             stash_returncode = stash_result.returncode
             stash_stderr = stash_result.stderr

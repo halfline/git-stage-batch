@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
@@ -59,12 +59,16 @@ class SiftedTextFileResult:
     ownership: BatchOwnership
     target_buffer: LineBuffer
     change_type: str
+    _closed: bool = field(default=False, init=False, repr=False)
 
     def target_source_buffer(self) -> LineBuffer | None:
         return self.target_buffer
 
     def close(self) -> None:
-        self.target_buffer.close()
+        if self._closed:
+            return
+        self._closed = True
+        _close_text_result_buffers(self.target_buffer, self.ownership)
 
 
 @dataclass
@@ -230,6 +234,28 @@ def compute_sifted_text_file(
                 target_buffer.close()
 
 
+def _close_text_result_buffers(
+    target_buffer: LineBuffer,
+    ownership: BatchOwnership,
+) -> None:
+    buffers = [target_buffer, *_text_ownership_buffers(ownership)]
+    closed_ids: set[int] = set()
+    for buffer in buffers:
+        buffer_id = id(buffer)
+        if buffer_id in closed_ids:
+            continue
+        closed_ids.add(buffer_id)
+        buffer.close()
+
+
+def _text_ownership_buffers(ownership: BatchOwnership) -> list[LineBuffer]:
+    return [
+        deletion.content_lines
+        for deletion in ownership.deletions
+        if isinstance(deletion.content_lines, LineBuffer)
+    ]
+
+
 def build_ownership_from_working_and_target_lines(
     working_lines: Sequence[bytes],
     target_lines: Sequence[bytes],
@@ -261,39 +287,52 @@ def build_ownership_from_working_and_target_lines(
             content_lines=content_lines,
         )
 
-    for run in semantic_runs:
-        if run.kind == SemanticChangeKind.PRESENCE:
-            if run.target_start is not None and run.target_end is not None:
-                claimed_ranges.append((run.target_start, run.target_end))
-        elif run.kind == SemanticChangeKind.DELETION:
-            if run.source_start is not None and run.source_end is not None:
-                deletion_claims.append(
-                    build_absence_claim(
-                        anchor_line=run.target_anchor,
-                        source_start=run.source_start,
-                        source_end=run.source_end,
+    try:
+        for run in semantic_runs:
+            if run.kind == SemanticChangeKind.PRESENCE:
+                if run.target_start is not None and run.target_end is not None:
+                    claimed_ranges.append((run.target_start, run.target_end))
+            elif run.kind == SemanticChangeKind.DELETION:
+                if run.source_start is not None and run.source_end is not None:
+                    deletion_claims.append(
+                        build_absence_claim(
+                            anchor_line=run.target_anchor,
+                            source_start=run.source_start,
+                            source_end=run.source_end,
+                        )
                     )
-                )
-        elif run.kind == SemanticChangeKind.REPLACEMENT:
-            if run.source_start is not None and run.source_end is not None:
-                deletion_claims.append(
-                    build_absence_claim(
-                        anchor_line=run.target_anchor,
-                        source_start=run.source_start,
-                        source_end=run.source_end,
+            elif run.kind == SemanticChangeKind.REPLACEMENT:
+                if run.source_start is not None and run.source_end is not None:
+                    deletion_claims.append(
+                        build_absence_claim(
+                            anchor_line=run.target_anchor,
+                            source_start=run.source_start,
+                            source_end=run.source_end,
+                        )
                     )
-                )
-            if run.target_start is not None and run.target_end is not None:
-                claimed_ranges.append((run.target_start, run.target_end))
+                if run.target_start is not None and run.target_end is not None:
+                    claimed_ranges.append((run.target_start, run.target_end))
 
-    claimed_line_ranges = LineRanges.from_ranges(claimed_ranges)
-    if not claimed_line_ranges and not deletion_claims:
-        return None
+        claimed_line_ranges = LineRanges.from_ranges(claimed_ranges)
+        if not claimed_line_ranges and not deletion_claims:
+            return None
 
-    return BatchOwnership.from_presence_lines(
-        claimed_line_ranges.to_range_strings(),
-        deletion_claims,
-    )
+        return BatchOwnership.from_presence_lines(
+            claimed_line_ranges.to_range_strings(),
+            deletion_claims,
+        )
+    except BaseException:
+        closed_ids: set[int] = set()
+        for deletion in deletion_claims:
+            content_lines = deletion.content_lines
+            if not isinstance(content_lines, LineBuffer):
+                continue
+            buffer_id = id(content_lines)
+            if buffer_id in closed_ids:
+                continue
+            closed_ids.add(buffer_id)
+            content_lines.close()
+        raise
 
 
 def validate_sifted_text_file_result_from_lines(

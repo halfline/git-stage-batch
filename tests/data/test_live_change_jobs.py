@@ -37,7 +37,10 @@ from git_stage_batch.utils.file_io import (
     append_lines_to_file,
 )
 from git_stage_batch.utils.file_jobs import (
+    FileJobError,
+    FileJobExecution,
     assert_file_job_transport_value,
+    run_file_jobs,
 )
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,
@@ -179,6 +182,36 @@ def test_no_changes_builds_an_empty_plan(temp_git_repo):
     with acquire_live_change_count_plan() as plan:
         assert plan.atomic_count == 0
         assert plan.jobs == ()
+
+
+def test_remaining_hunk_estimate_selects_one_execution_policy(
+    temp_git_repo,
+    monkeypatch,
+):
+    file_path = temp_git_repo / "file.txt"
+    file_path.write_text("old\n")
+    _commit_all(temp_git_repo)
+    file_path.write_text("new\n")
+    selected = []
+
+    def select_execution(jobs, **selection):
+        selected.append((jobs, selection))
+        return FileJobExecution("inline", 1, "test selection")
+
+    monkeypatch.setenv("GIT_STAGE_BATCH_JOBS", "4")
+    monkeypatch.setattr(
+        remaining_hunks_module,
+        "select_file_job_execution",
+        select_execution,
+    )
+
+    assert estimate_remaining_hunks() == 1
+    assert len(selected) == 1
+    jobs, selection = selected[0]
+    assert [job.file_path for job in jobs] == ["file.txt"]
+    assert selection["requested_jobs"] == "4"
+    assert selection["platform"] == sys.platform
+    assert selection["cpu_count"] is None
 
 
 def test_blocked_hashes_and_paths_match_lazy_count(temp_git_repo):
@@ -520,6 +553,109 @@ def test_worktree_change_returns_stale_and_status_requests_retry(
         )
         with pytest.raises(CommandError, match="Retry the status command"):
             estimate_remaining_hunks()
+
+
+@_PROCESS_TEST
+def test_forced_process_reports_the_first_stale_file(
+    temp_git_repo,
+    monkeypatch,
+):
+    for file_name in ("a.txt", "b.txt"):
+        (temp_git_repo / file_name).write_text("old\n")
+    _commit_all(temp_git_repo)
+    for file_name in ("a.txt", "b.txt"):
+        (temp_git_repo / file_name).write_text("new\n")
+
+    with acquire_live_change_count_plan() as plan:
+        assert [job.file_path for job in plan.jobs] == ["a.txt", "b.txt"]
+        for file_name in ("a.txt", "b.txt"):
+            (temp_git_repo / file_name).write_text("changed after planning\n")
+
+        @contextmanager
+        def acquire_existing_plan():
+            yield plan
+
+        monkeypatch.setenv("GIT_STAGE_BATCH_JOBS", "2")
+        monkeypatch.setattr(
+            remaining_hunks_module,
+            "acquire_live_change_count_plan",
+            acquire_existing_plan,
+        )
+
+        with pytest.raises(CommandError) as error:
+            estimate_remaining_hunks()
+
+    assert "a.txt" in error.value.message
+    assert "b.txt" not in error.value.message
+
+
+@_PROCESS_TEST
+def test_forced_process_reports_the_same_first_failing_file_as_inline(
+    temp_git_repo,
+    monkeypatch,
+):
+    for file_name in ("a.txt", "b.txt"):
+        (temp_git_repo / file_name).write_text("old\n")
+    _commit_all(temp_git_repo)
+    for file_name in ("a.txt", "b.txt"):
+        (temp_git_repo / file_name).write_text("new\n")
+
+    with acquire_live_change_count_plan() as plan:
+        assert [job.file_path for job in plan.jobs] == ["a.txt", "b.txt"]
+        for job in plan.jobs:
+            Path(job.payload.input_manifest_path).unlink()
+
+        @contextmanager
+        def acquire_existing_plan():
+            yield plan
+
+        monkeypatch.setattr(
+            remaining_hunks_module,
+            "acquire_live_change_count_plan",
+            acquire_existing_plan,
+        )
+        failing_paths = []
+        for requested_jobs in ("1", "2"):
+            monkeypatch.setenv("GIT_STAGE_BATCH_JOBS", requested_jobs)
+            with pytest.raises(FileJobError) as error:
+                estimate_remaining_hunks()
+            failing_paths.append(error.value.file_path)
+
+    assert failing_paths == ["a.txt", "a.txt"]
+
+
+@_PROCESS_TEST
+def test_status_jobs_reduce_in_order_after_reverse_process_completion(
+    temp_git_repo,
+):
+    for file_index in range(4):
+        (temp_git_repo / f"{file_index}.txt").write_text("old\n")
+    _commit_all(temp_git_repo)
+    for file_index in range(4):
+        (temp_git_repo / f"{file_index}.txt").write_text("new\n")
+
+    with acquire_live_change_count_plan() as plan:
+        assert [job.ordinal for job in plan.jobs] == [0, 1, 2, 3]
+        results = run_file_jobs(
+            plan.jobs,
+            _count_with_reverse_completion_marker,
+            execution=FileJobExecution("process", 4, "test"),
+            repository_root=plan.repository_root,
+        )
+        completion_order = sorted(
+            plan.jobs,
+            key=lambda job: Path(
+                json.loads(
+                    Path(job.payload.input_manifest_path).read_text()
+                )["scratch_directory"],
+                "completion.marker",
+            ).stat().st_mtime_ns,
+        )
+
+    assert [job.ordinal for job in completion_order] == [3, 2, 1, 0]
+    assert [result.ordinal for result in results] == [0, 1, 2, 3]
+    assert [result.eligible_count for result in results] == [1, 1, 1, 1]
+
 
 def test_parser_buffers_can_close_immediately_after_spooling(
     temp_git_repo,

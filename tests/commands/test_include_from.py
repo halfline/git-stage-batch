@@ -3,6 +3,7 @@
 import os
 import stat
 import subprocess
+import sys
 
 import pytest
 
@@ -15,14 +16,27 @@ from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.commands.discard_from import command_discard_from_batch
 from git_stage_batch.commands.include import command_include_to_batch
 from git_stage_batch.commands.include_from import command_include_from_batch
+from git_stage_batch.commands.redo import command_redo
 from git_stage_batch.commands.show_from import command_show_from_batch
 from git_stage_batch.commands.start import command_start
+from git_stage_batch.commands.undo import command_undo
 from git_stage_batch.batch.file_display import render_batch_file_display
 from git_stage_batch.data.file_review.state import clear_last_file_review_state
+from git_stage_batch.data.file_target_identity import (
+    IndexIdentity,
+    WorktreeIdentity,
+)
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.git_command import run_git_command
 from git_stage_batch.utils.paths import ensure_state_directory_exists
+
+
+_RUNNING_UNDER_XDIST = "PYTEST_XDIST_WORKER" in os.environ
+_PROCESS_TEST = pytest.mark.skipif(
+    sys.platform != "linux" or _RUNNING_UNDER_XDIST,
+    reason="forced forkserver coverage runs on Linux with pytest -n 0",
+)
 
 
 @pytest.fixture
@@ -602,3 +616,233 @@ class TestCommandIncludeFromBatch:
         result = run_git_command(["show", ":test.txt"])
         assert result.stdout == "old one\nold two\nkeep\n"
         assert test_file.read_text() == "old one\nold two\nkeep\n"
+
+    def test_include_rejects_index_change_after_planning(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """A changed index target should abort before include mutation."""
+        target = temp_git_repo / "target.txt"
+        target.write_text("base\n")
+        run_git_command(["add", "target.txt"])
+        run_git_command(["commit", "-m", "Add target"])
+        target.write_text("batch\n")
+        command_start(quiet=True)
+        command_include_to_batch(
+            "test-batch",
+            file="target.txt",
+            quiet=True,
+        )
+        target.write_text("worktree target\n")
+        run_git_command(["reset", "HEAD", "target.txt"])
+
+        real_run_file_jobs = include_action.run_file_jobs
+
+        def mutate_index(*args, **kwargs):
+            results = real_run_file_jobs(*args, **kwargs)
+            object_id = run_git_command(
+                ["hash-object", "-w", "--stdin"],
+                stdin_chunks=(b"stale index\n",),
+            ).stdout.strip()
+            run_git_command(
+                [
+                    "update-index",
+                    "--cacheinfo",
+                    "100644",
+                    object_id,
+                    "target.txt",
+                ]
+            )
+            return results
+
+        monkeypatch.setattr(include_action, "run_file_jobs", mutate_index)
+
+        with pytest.raises(CommandError, match="Index changed"):
+            command_include_from_batch("test-batch")
+
+        assert run_git_command(["show", ":target.txt"]).stdout == "stale index\n"
+        assert target.read_text() == "worktree target\n"
+
+    def test_include_rejects_worktree_change_after_planning(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """A changed worktree target should abort before index mutation."""
+        target = temp_git_repo / "target.txt"
+        target.write_text("base\n")
+        run_git_command(["add", "target.txt"])
+        run_git_command(["commit", "-m", "Add target"])
+        target.write_text("batch\n")
+        command_start(quiet=True)
+        command_include_to_batch(
+            "test-batch",
+            file="target.txt",
+            quiet=True,
+        )
+        run_git_command(["checkout", "HEAD", "--", "target.txt"])
+
+        real_run_file_jobs = include_action.run_file_jobs
+        real_workspace = include_action.FileJobWorkspace
+        workspace_roots = []
+
+        def mutate_worktree(*args, **kwargs):
+            results = real_run_file_jobs(*args, **kwargs)
+            target.write_text("stale worktree\n")
+            return results
+
+        def record_workspace(*args, **kwargs):
+            workspace = real_workspace(*args, **kwargs)
+            workspace_roots.append(workspace.root)
+            return workspace
+
+        monkeypatch.setattr(include_action, "run_file_jobs", mutate_worktree)
+        monkeypatch.setattr(
+            include_action,
+            "FileJobWorkspace",
+            record_workspace,
+        )
+
+        with pytest.raises(CommandError, match="Working tree file changed"):
+            command_include_from_batch("test-batch")
+
+        assert run_git_command(["show", ":target.txt"]).stdout == "base\n"
+        assert target.read_text() == "stale worktree\n"
+        assert workspace_roots
+        assert all(not root.exists() for root in workspace_roots)
+
+    def test_include_reports_earlier_index_change_before_worktree_reads(
+        self,
+        monkeypatch,
+    ):
+        """Index staleness should win before any later worktree read failure."""
+        expected_index_identities = {
+            "first.txt": IndexIdentity("100644", "a" * 40),
+            "second.txt": IndexIdentity("100644", "b" * 40),
+        }
+        expected_worktree_identities = {
+            path: WorktreeIdentity(
+                True,
+                "regular",
+                0o644,
+                4,
+                "digest",
+            )
+            for path in expected_index_identities
+        }
+        monkeypatch.setattr(
+            include_action,
+            "read_index_entries",
+            lambda _paths: {},
+        )
+        monkeypatch.setattr(
+            include_action,
+            "capture_worktree_identity",
+            lambda _path: (_ for _ in ()).throw(
+                AssertionError("worktree read should not precede stale index")
+            ),
+        )
+
+        with pytest.raises(CommandError, match="Index changed.*first.txt"):
+            include_action._require_unchanged_include_targets(
+                expected_index_identities,
+                expected_worktree_identities,
+            )
+
+    @_PROCESS_TEST
+    def test_forced_process_include_matches_inline_targets_and_undo(
+        self,
+        temp_git_repo,
+        monkeypatch,
+        capsys,
+    ):
+        """Forced transports should publish the same ordered include result."""
+        baseline = {}
+        expected = {}
+        for index in range(4):
+            name = f"{index}.txt"
+            baseline[name] = f"base-{index}-" + "x" * 5000 + "\n"
+            expected[name] = f"batch-{index}-" + "y" * 5000 + "\n"
+            (temp_git_repo / name).write_text(baseline[name])
+        run_git_command(["add", "."])
+        run_git_command(["commit", "-m", "Add process targets"])
+        for name, content in expected.items():
+            (temp_git_repo / name).write_text(content)
+        command_start(quiet=True)
+        for name in expected:
+            command_include_to_batch(
+                "test-batch",
+                file=name,
+                quiet=True,
+            )
+        capsys.readouterr()
+        mapped_outputs = []
+        original_stage = (
+            include_action._text_file_actions.stage_text_file_to_index
+        )
+        original_write = (
+            include_action._text_file_actions.write_text_file_to_worktree
+        )
+
+        def record_stage(file_path, buffer, file_mode, change_type):
+            mapped_outputs.append(buffer.uses_mapped_storage)
+            return original_stage(
+                file_path,
+                buffer,
+                file_mode,
+                change_type,
+            )
+
+        def record_write(file_path, buffer, file_mode, change_type):
+            mapped_outputs.append(buffer.uses_mapped_storage)
+            return original_write(
+                file_path,
+                buffer,
+                file_mode,
+                change_type,
+            )
+
+        monkeypatch.setattr(
+            include_action._text_file_actions,
+            "stage_text_file_to_index",
+            record_stage,
+        )
+        monkeypatch.setattr(
+            include_action._text_file_actions,
+            "write_text_file_to_worktree",
+            record_write,
+        )
+
+        observations = []
+        for requested_jobs in ("1", "2"):
+            run_git_command(["reset", "--hard", "HEAD"])
+            monkeypatch.setenv("GIT_STAGE_BATCH_JOBS", requested_jobs)
+
+            command_include_from_batch("test-batch")
+
+            observations.append(
+                (
+                    {
+                        name: (temp_git_repo / name).read_text()
+                        for name in expected
+                    },
+                    run_git_command(["write-tree"]).stdout.strip(),
+                    capsys.readouterr(),
+                )
+            )
+            command_undo(force=True)
+            assert {
+                name: (temp_git_repo / name).read_text()
+                for name in baseline
+            } == baseline
+            command_redo(force=True)
+            assert {
+                name: (temp_git_repo / name).read_text()
+                for name in expected
+            } == expected
+            capsys.readouterr()
+
+        assert observations[0] == observations[1]
+        assert observations[0][0] == expected
+        assert mapped_outputs == [True] * 16

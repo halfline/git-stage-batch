@@ -193,3 +193,16 @@ def test_index_identity_converts_stage_zero_entries():
     assert index_identity_from_entry(
         IndexEntry("100755", "a" * 40)
     ) == IndexIdentity("100755", "a" * 40)
+
+
+def test_index_identity_distinguishes_entries_from_loadable_content():
+    missing = IndexIdentity(None, None)
+    intent_to_add = IndexIdentity("100644", "0" * 40)
+    populated = IndexIdentity("100644", "a" * 40)
+
+    assert missing.exists is False
+    assert missing.content_object_id is None
+    assert intent_to_add.exists is True
+    assert intent_to_add.content_object_id is None
+    assert populated.exists is True
+    assert populated.content_object_id == "a" * 40

@@ -13821,27 +13821,35 @@ def test_batch_source_text_plan_builders_own_apply_text_planning():
             "get_git_repository_root_path",
         },
     }
-    imports_text_plan_builders = False
-    direct_plan_imports = set()
+    planning_paths = (text_plan_jobs_path, apply_action_path)
+    imports_text_plan_builders = {path: False for path in planning_paths}
+    direct_plan_imports = {path: set() for path in planning_paths}
 
-    for imported_module, node in _import_from_nodes(text_plan_jobs_path):
-        imported_names = {alias.name for alias in node.names}
-        if (
-            imported_module == "git_stage_batch.commands.batch_source"
-            and "text_plan_builders" in imported_names
-        ):
-            imports_text_plan_builders = True
-        direct_plan_imports |= imported_names & disallowed_imports.get(
-            imported_module,
-            set(),
-        )
+    for path in planning_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "text_plan_builders" in imported_names
+            ):
+                imports_text_plan_builders[path] = True
+            direct_plan_imports[path] |= (
+                imported_names
+                & disallowed_imports.get(imported_module, set())
+            )
 
     action_text = apply_action_path.read_text()
     job_text = text_plan_jobs_path.read_text()
 
     assert public_names <= vars(text_plan_builders).keys()
-    assert imports_text_plan_builders
-    assert direct_plan_imports == set()
+    assert imports_text_plan_builders == {
+        text_plan_jobs_path: True,
+        apply_action_path: False,
+    }
+    assert direct_plan_imports == {
+        text_plan_jobs_path: set(),
+        apply_action_path: {"get_git_repository_root_path"},
+    }
     assert "build_apply_text_file_action_plan(" in job_text
     assert "build_apply_text_file_action_plan(" not in action_text
     assert "merge_batch_from_line_sequences_as_buffer(" not in action_text
@@ -13856,6 +13864,9 @@ def test_batch_source_text_plan_builders_own_include_text_planning():
     )
     include_action_path = (
         SRC_ROOT / "commands" / "batch_source" / "include_action.py"
+    )
+    text_plan_jobs_path = (
+        SRC_ROOT / "commands" / "batch_source" / "text_plan_jobs.py"
     )
     public_names = {
         "IncludeTextPlanBuildResult",
@@ -13888,27 +13899,37 @@ def test_batch_source_text_plan_builders_own_include_text_planning():
             "get_git_repository_root_path",
         },
     }
-    imports_text_plan_builders = False
-    direct_plan_imports = set()
+    planning_paths = (text_plan_jobs_path, include_action_path)
+    imports_text_plan_builders = {path: False for path in planning_paths}
+    direct_plan_imports = {path: set() for path in planning_paths}
 
-    for imported_module, node in _import_from_nodes(include_action_path):
-        imported_names = {alias.name for alias in node.names}
-        if (
-            imported_module == "git_stage_batch.commands.batch_source"
-            and "text_plan_builders" in imported_names
-        ):
-            imports_text_plan_builders = True
-        direct_plan_imports |= imported_names & disallowed_imports.get(
-            imported_module,
-            set(),
-        )
+    for path in planning_paths:
+        for imported_module, node in _import_from_nodes(path):
+            imported_names = {alias.name for alias in node.names}
+            if (
+                imported_module == "git_stage_batch.commands.batch_source"
+                and "text_plan_builders" in imported_names
+            ):
+                imports_text_plan_builders[path] = True
+            direct_plan_imports[path] |= (
+                imported_names
+                & disallowed_imports.get(imported_module, set())
+            )
 
     action_text = include_action_path.read_text()
+    job_text = text_plan_jobs_path.read_text()
 
     assert public_names <= vars(text_plan_builders).keys()
-    assert imports_text_plan_builders
-    assert direct_plan_imports == set()
-    assert "build_include_text_file_action_plan(" in action_text
+    assert imports_text_plan_builders == {
+        text_plan_jobs_path: True,
+        include_action_path: False,
+    }
+    assert direct_plan_imports == {
+        text_plan_jobs_path: set(),
+        include_action_path: {"get_git_repository_root_path"},
+    }
+    assert "build_include_text_file_action_plan(" in job_text
+    assert "build_include_text_file_action_plan(" not in action_text
     assert "merge_batch_from_line_sequences_as_buffer(" not in action_text
     assert "build_replacement_batch_view_from_lines(" not in action_text
     assert "selected_text_target_change_type(" not in action_text
@@ -14353,6 +14374,7 @@ def test_batch_source_candidate_preview_counts_own_failure_enumeration():
     }
     command_paths = {
         text_plan_jobs_path,
+        apply_action_path,
         include_action_path,
     }
     imports_candidate_preview_counts = {
@@ -14388,10 +14410,12 @@ def test_batch_source_candidate_preview_counts_own_failure_enumeration():
     assert public_names <= vars(candidate_preview_counts).keys()
     assert imports_candidate_preview_counts == {
         text_plan_jobs_path: True,
-        include_action_path: True,
+        apply_action_path: False,
+        include_action_path: False,
     }
     assert direct_count_imports == {
         text_plan_jobs_path: set(),
+        apply_action_path: set(),
         include_action_path: set(),
     }
     for path, old_names in old_function_names.items():
@@ -15198,8 +15222,8 @@ def test_batch_source_apply_action_owns_apply_execution():
     assert "finish_batch_source_action_review(" in action_text
 
 
-def test_apply_text_jobs_do_not_bypass_command_or_git_boundaries():
-    """Apply workers should use shared execution helpers and never spawn directly."""
+def test_text_plan_jobs_do_not_bypass_command_or_git_boundaries():
+    """Text-plan workers should use shared helpers and never spawn directly."""
     paths = (
         SRC_ROOT / "commands" / "batch_source" / "text_plan_jobs.py",
         SRC_ROOT / "data" / "file_target_identity.py",
@@ -15249,6 +15273,7 @@ def test_apply_from_delegates_apply_action_execution():
             "merge_refusals",
             "text_file_actions",
             "text_plan_builders",
+            "text_plan_jobs",
             "worktree_refusals",
         },
         "git_stage_batch.batch.binary_file_content": {
@@ -15308,16 +15333,18 @@ def test_batch_source_include_action_owns_include_execution():
         ("git_stage_batch.commands.batch_source", "action_plans"),
         ("git_stage_batch.commands.batch_source", "atomic_unit_refusals"),
         ("git_stage_batch.commands.batch_source", "binary_file_actions"),
-        ("git_stage_batch.commands.batch_source", "candidate_preview_counts"),
         ("git_stage_batch.commands.batch_source", "candidate_refusals"),
         ("git_stage_batch.commands.batch_source", "merge_refusals"),
         ("git_stage_batch.commands.batch_source", "text_file_actions"),
-        ("git_stage_batch.commands.batch_source", "text_plan_builders"),
+        ("git_stage_batch.commands.batch_source", "text_plan_jobs"),
         ("git_stage_batch.commands.batch_source", "worktree_refusals"),
         ("git_stage_batch.batch.binary_file_content", "read_binary_file_from_batch"),
         ("git_stage_batch.batch.submodule_pointer", "stage_submodule_pointer_from_batch"),
+        ("git_stage_batch.data.file_target_identity", "capture_worktree_identity"),
         ("git_stage_batch.data.session", "snapshot_file_if_untracked"),
         ("git_stage_batch.data.undo_checkpoints", "undo_checkpoint"),
+        ("git_stage_batch.utils.file_jobs", "run_file_jobs"),
+        ("git_stage_batch.utils.file_job_workspace", "FileJobWorkspace"),
     }
     action_imports = set()
 
@@ -15329,7 +15356,8 @@ def test_batch_source_include_action_owns_include_execution():
 
     assert public_names <= vars(include_action).keys()
     assert required_imports <= action_imports
-    assert "build_include_text_file_action_plan(" in action_text
+    assert "compute_include_text_plan_job" in action_text
+    assert "build_include_text_file_action_plan(" not in action_text
     assert "stage_text_file_to_index(" in action_text
     assert "stage_binary_file_to_index(" in action_text
     assert "finish_batch_source_action_review(" in action_text
@@ -15349,6 +15377,7 @@ def test_include_from_delegates_include_action_execution():
             "merge_refusals",
             "text_file_actions",
             "text_plan_builders",
+            "text_plan_jobs",
             "worktree_refusals",
         },
         "git_stage_batch.batch.binary_file_content": {

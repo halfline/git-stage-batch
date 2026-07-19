@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 from ..core.line_selection import format_line_ids
 from ..core.replacement import (
@@ -52,14 +53,20 @@ def build_replacement_batch_view_from_lines(
     source_lines: Sequence[bytes],
     ownership: BatchOwnership,
     replacement_text: str | ReplacementPayload,
+    *,
+    spool_dir: str | Path | None = None,
 ) -> ReplacementBatchView:
     """Build replacement source content from an indexed byte-line sequence."""
     payload = coerce_replacement_payload(replacement_text)
-    with replacement_line_chunks(payload) as replacement_lines:
+    with replacement_line_chunks(
+        payload,
+        spool_dir=spool_dir,
+    ) as replacement_lines:
         return _build_replacement_batch_view(
             source_lines,
             ownership,
             replacement_lines,
+            spool_dir=spool_dir,
         )
 
 
@@ -67,6 +74,8 @@ def _build_replacement_batch_view(
     source_lines: Sequence[bytes],
     ownership: BatchOwnership,
     replacement_lines: Sequence[bytes],
+    *,
+    spool_dir: str | Path | None = None,
 ) -> ReplacementBatchView:
     """Build a replacement view while its replacement line sequence is open."""
     claimed_source_lines = sorted(ownership.presence_line_set())
@@ -110,7 +119,8 @@ def _build_replacement_batch_view(
                     prefix_end=start_line - 1,
                     replacement_lines=replacement_lines,
                     suffix_start=end_line,
-                )
+                ),
+                spool_dir=spool_dir,
             ),
             ownership=BatchOwnership.from_presence_lines(
                 _format_presence_lines(new_claimed_lines),
@@ -162,7 +172,8 @@ def _build_replacement_batch_view(
                 prefix_end=insert_at,
                 replacement_lines=replacement_lines,
                 suffix_start=insert_at,
-            )
+            ),
+            spool_dir=spool_dir,
         ),
         ownership=BatchOwnership.from_presence_lines(
             _format_presence_lines(new_claimed_lines),

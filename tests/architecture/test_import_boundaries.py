@@ -13586,15 +13586,22 @@ def test_batch_source_file_list_action_owns_list_rendering():
     }
     helper_imports = {
         "ReviewSource",
+        "acquire_git_blob_buffers",
         "binary_change_from_batch_file_metadata",
+        "build_batch_file_display_from_inputs",
         "clear_selected_change_state_files",
+        "deletion_content_blob_ids",
+        "deletion_reference_blob_ids",
         "gitlink_change_from_batch_file_metadata",
         "make_binary_file_review_list_entry",
         "make_file_review_list_entry",
         "make_gitlink_file_review_list_entry",
         "mark_selected_change_cleared_by_file_list",
+        "ownership_from_metadata_dict",
+        "presence_claim_reference_blob_ids",
         "print_file_review_list",
-        "render_batch_file_display",
+        "replacement_origin_reference_blob_ids",
+        "resolve_git_objects",
     }
 
     helper_imported_names = set()
@@ -13611,15 +13618,22 @@ def test_batch_source_file_list_action_owns_show_flow():
     helper_path = SRC_ROOT / "commands" / "batch_source" / "file_list_action.py"
     action_dependency_names = {
         "ReviewSource",
+        "acquire_git_blob_buffers",
         "binary_change_from_batch_file_metadata",
+        "build_batch_file_display_from_inputs",
         "clear_selected_change_state_files",
+        "deletion_content_blob_ids",
+        "deletion_reference_blob_ids",
         "gitlink_change_from_batch_file_metadata",
         "make_binary_file_review_list_entry",
         "make_file_review_list_entry",
         "make_gitlink_file_review_list_entry",
         "mark_selected_change_cleared_by_file_list",
+        "ownership_from_metadata_dict",
+        "presence_claim_reference_blob_ids",
         "print_file_review_list",
-        "render_batch_file_display",
+        "replacement_origin_reference_blob_ids",
+        "resolve_git_objects",
     }
 
     show_from_tree = ast.parse(

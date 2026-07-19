@@ -12,7 +12,6 @@ import git_stage_batch.batch.ownership.display_lines as display_module
 import git_stage_batch.batch.file_display as file_display
 import git_stage_batch.batch.file_mergeability as file_mergeability
 import git_stage_batch.data.selected_change.paths as selected_change_paths
-import git_stage_batch.commands.show_from as show_from_module
 import git_stage_batch.commands.batch_source.file_list_action as file_list_action
 
 import subprocess
@@ -24,6 +23,8 @@ from git_stage_batch.commands.show_from import command_show_from_batch
 from git_stage_batch.core.line_selection import LineRanges
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import CommandError
+from git_stage_batch.exceptions import RepositoryDataInvalid
+from git_stage_batch.utils.git_object_io import GitObjectInfo
 from git_stage_batch.utils.paths import ensure_state_directory_exists
 from tests.batch.ownership.metadata_helpers import reject_materialized_ownership_metadata
 
@@ -445,27 +446,20 @@ class TestCommandShowFromBatch:
         command_include_to_batch("multi-file-batch", quiet=True, file="file2.txt")
         capsys.readouterr()
 
-        original_render = file_display.render_batch_file_display
+        original_build = file_list_action.build_batch_file_display_from_inputs
         rendered_files = []
         probe_flags = []
 
-        def counting_render(batch_name, file_path, metadata=None, *, probe_mergeability=True):
-            rendered_files.append(file_path)
-            probe_flags.append(probe_mergeability)
-            return original_render(
-                batch_name,
-                file_path,
-                metadata=metadata,
-                probe_mergeability=probe_mergeability,
-            )
+        def counting_build(**kwargs):
+            rendered_files.append(kwargs["file_path"])
+            probe_flags.append(kwargs["probe_mergeability"])
+            return original_build(**kwargs)
 
-        monkeypatch.setattr(file_list_action, "render_batch_file_display", counting_render)
-        if hasattr(show_from_module, "render_batch_file_display"):
-            monkeypatch.setattr(
-                show_from_module,
-                "render_batch_file_display",
-                counting_render,
-            )
+        monkeypatch.setattr(
+            file_list_action,
+            "build_batch_file_display_from_inputs",
+            counting_build,
+        )
 
         command_show_from_batch("multi-file-batch")
 
@@ -473,6 +467,150 @@ class TestCommandShowFromBatch:
         assert probe_flags == [False, False]
         captured = capsys.readouterr()
         assert "── matched files" in captured.out
+
+    def test_show_from_multi_file_list_supports_newline_path(
+        self,
+        temp_git_repo,
+        capsys,
+    ):
+        """Bulk source reads should retain the argv-safe unusual-path fallback."""
+        unusual_path = "unusual\npath.txt"
+        (temp_git_repo / unusual_path).write_text("before unusual\n")
+        (temp_git_repo / "normal.txt").write_text("before normal\n")
+        subprocess.run(
+            ["git", "add", "--", unusual_path, "normal.txt"],
+            cwd=temp_git_repo,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add unusual paths"],
+            cwd=temp_git_repo,
+            check=True,
+            capture_output=True,
+        )
+        (temp_git_repo / unusual_path).write_text("after unusual\n")
+        (temp_git_repo / "normal.txt").write_text("after normal\n")
+
+        command_start(quiet=True)
+        command_include_to_batch(
+            "unusual-paths",
+            quiet=True,
+            file=unusual_path,
+            auto_advance=False,
+        )
+        command_include_to_batch(
+            "unusual-paths",
+            quiet=True,
+            file="normal.txt",
+            auto_advance=False,
+        )
+        capsys.readouterr()
+
+        command_show_from_batch("unusual-paths")
+
+        output = capsys.readouterr().out
+        assert "Matched: 2 files" in output
+        assert unusual_path in output
+        assert "normal.txt" in output
+
+    def test_show_from_multi_file_list_rejects_non_blob_source(
+        self,
+        monkeypatch,
+    ):
+        """Malformed source entries must not disappear from the file list."""
+        source_commit = "a" * 40
+        source_name = f"{source_commit}:directory"
+        monkeypatch.setattr(
+            file_list_action,
+            "resolve_git_objects",
+            lambda _names: {
+                source_name: GitObjectInfo("b" * 40, "tree", 0),
+            },
+        )
+
+        with pytest.raises(RepositoryDataInvalid, match="tree, not a blob"):
+            file_list_action.show_batch_source_file_list(
+                batch_name="malformed",
+                files={
+                    "directory": {
+                        "batch_source_commit": source_commit,
+                        "presence_claims": [],
+                    },
+                    "other": {
+                        "file_type": "mode",
+                        "old_mode": "100644",
+                        "new_mode": "100755",
+                    },
+                },
+                selectable=False,
+                command_source_args="--from malformed",
+            )
+
+    @pytest.mark.parametrize("ownership_kind", ["deletion", "reference"])
+    @pytest.mark.parametrize(
+        ("bad_object_info", "message"),
+        [
+            (None, "is missing"),
+            (GitObjectInfo("c" * 40, "tree", 0), "tree, not a blob"),
+        ],
+    )
+    def test_show_from_multi_file_list_rejects_invalid_ownership_blob(
+        self,
+        monkeypatch,
+        ownership_kind,
+        bad_object_info,
+        message,
+    ):
+        """Bulk ownership reads should report malformed object references."""
+        source_commit = "a" * 40
+        source_name = f"{source_commit}:file.txt"
+        bad_object_id = "b" * 40
+        file_meta = {
+            "batch_source_commit": source_commit,
+            "presence_claims": [],
+        }
+        if ownership_kind == "deletion":
+            file_meta["deletions"] = [
+                {"after_source_line": None, "blob": bad_object_id}
+            ]
+        else:
+            file_meta["presence_claims"] = [
+                {
+                    "source_lines": ["1"],
+                    "baseline_references": {
+                        "1": {"after_line": 1, "after_blob": bad_object_id}
+                    },
+                }
+            ]
+
+        resolved = {
+            source_name: GitObjectInfo("d" * 40, "blob", 0),
+        }
+        if bad_object_info is not None:
+            resolved[bad_object_id] = bad_object_info
+        monkeypatch.setattr(
+            file_list_action,
+            "resolve_git_objects",
+            lambda _names: resolved,
+        )
+
+        with pytest.raises(
+            RepositoryDataInvalid,
+            match=rf"file\.txt.*{message}",
+        ):
+            file_list_action.show_batch_source_file_list(
+                batch_name="malformed",
+                files={
+                    "file.txt": file_meta,
+                    "other": {
+                        "file_type": "mode",
+                        "old_mode": "100644",
+                        "new_mode": "100755",
+                    },
+                },
+                selectable=False,
+                command_source_args="--from malformed",
+            )
 
     def test_non_selectable_multi_file_batch_preview_preserves_selection(self, temp_git_repo, capsys):
         """A non-selectable multi-file batch preview should not clear selected state."""

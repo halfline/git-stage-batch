@@ -26,6 +26,7 @@ import pytest
 import git_stage_batch.commands.file_scope.include_file as include_file_module
 import git_stage_batch.commands.file_scope.multi_file_actions as multi_file_actions
 import git_stage_batch.data.live_diff as live_diff
+import git_stage_batch.utils.git_command as git_command_module
 
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.again import command_again
@@ -997,6 +998,7 @@ class TestShowFileFlag:
 
         assert len(calls) == expected_live_diff_count
 
+
 class TestIncludeToBatchWithFile:
     """Test include --to BATCH with --file flag."""
 
@@ -1293,6 +1295,44 @@ class TestMultiFileBatchDisplay:
         assert "alpha.txt" in captured.out
         assert "beta.txt" in captured.out
         assert "gamma.txt" in captured.out
+
+    def test_show_from_multi_file_list_batches_blob_subprocesses(
+        self,
+        multi_file_repo,
+        capsys,
+        monkeypatch,
+    ):
+        """Batch file lists should use a fixed set of bulk Git calls."""
+        command_start()
+        capsys.readouterr()
+        command_include_to_batch("bulk", file="alpha.txt")
+        command_include_to_batch("bulk", file="beta.txt")
+        command_include_to_batch("bulk", file="gamma.txt")
+        capsys.readouterr()
+        original_run = git_command_module.run_command
+        original_stream = git_command_module.stream_command
+        cat_file_commands = []
+
+        def counting_run(arguments, *args, **kwargs):
+            if arguments[:2] == ["git", "cat-file"]:
+                cat_file_commands.append(tuple(arguments[1:]))
+            return original_run(arguments, *args, **kwargs)
+
+        def counting_stream(arguments, *args, **kwargs):
+            if arguments[:2] == ["git", "cat-file"]:
+                cat_file_commands.append(tuple(arguments[1:]))
+            yield from original_stream(arguments, *args, **kwargs)
+
+        monkeypatch.setattr(git_command_module, "run_command", counting_run)
+        monkeypatch.setattr(git_command_module, "stream_command", counting_stream)
+
+        command_show_from_batch("bulk")
+
+        assert cat_file_commands == [
+            ("cat-file", "--batch-check"),
+            ("cat-file", "--batch-check"),
+            ("cat-file", "--batch"),
+        ]
 
     def test_show_from_multi_file_open_command_uses_page_review(self, multi_file_repo, capsys):
         """Matched-file open commands should route to the page-aware batch review."""

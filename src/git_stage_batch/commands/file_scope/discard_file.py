@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from contextlib import nullcontext
 import shlex
 import sys
 
-from ...core.diff_parser import acquire_unified_diff
+from ...core.diff_parser import UnifiedDiffItem, acquire_unified_diff
 from ...core.hashing import (
     compute_binary_file_hash,
     compute_file_mode_change_hash,
@@ -86,9 +88,12 @@ def _print_discard_file_result(file_path: str) -> None:
 def discard_file_changes(
     file: str,
     *,
+    quiet: bool = False,
+    advance: bool = True,
     auto_advance: bool | None = None,
-) -> None:
-    """Discard all changes from one resolved file scope."""
+    _prepared_changes: Sequence[UnifiedDiffItem] | None = None,
+) -> int:
+    """Discard one file; prepared inputs require a caller-owned transaction."""
     if file == "":
         target_file = get_selected_change_file_path()
         if target_file is None:
@@ -107,17 +112,31 @@ def discard_file_changes(
                 print(_("No more hunks to process."), file=sys.stderr)
             else:
                 print(_("No selected hunk. Run 'show' first or specify file path."), file=sys.stderr)
-            return
+            return 0
     else:
         target_file = file
 
-    auto_add_untracked_files([target_file])
-    checkpoint_paths = checkpoint_paths_for_live_file(target_file)
-    with undo_checkpoint(
-        f"discard --file {file}".rstrip(),
-        worktree_paths=checkpoint_paths,
-        rollback_on_error=True,
-    ):
+    if _prepared_changes is None:
+        auto_add_untracked_files([target_file])
+        checkpoint_paths = checkpoint_paths_for_live_file(target_file)
+        checkpoint = undo_checkpoint(
+            f"discard --file {file}".rstrip(),
+            worktree_paths=checkpoint_paths,
+            rollback_on_error=True,
+        )
+        patch_context = acquire_unified_diff(
+            stream_live_git_diff(
+                full_index=True,
+                ignore_submodules="none",
+                submodule_format="short",
+                context_lines=get_context_lines(),
+            )
+        )
+    else:
+        checkpoint = nullcontext()
+        patch_context = nullcontext(iter(_prepared_changes))
+
+    with checkpoint:
         blocklist_path = get_block_list_file_path()
         blocked_hashes = read_text_file_line_set(blocklist_path)
 
@@ -125,14 +144,7 @@ def discard_file_changes(
         matching_changes = 0
         rename_change: RenameChange | None = None
         gitlink_change: GitlinkChange | None = None
-        with acquire_unified_diff(
-            stream_live_git_diff(
-                full_index=True,
-                ignore_submodules="none",
-                submodule_format="short",
-                context_lines=get_context_lines(),
-            )
-        ) as patches:
+        with patch_context as patches:
             for patch in patches:
                 if isinstance(patch, RenameChange):
                     if target_file not in (patch.old_path, patch.new_path):
@@ -171,13 +183,14 @@ def discard_file_changes(
                     hashes_to_block.append(patch_hash)
 
         if matching_changes == 0:
-            print(
-                _("No unstaged changes in file '{file}' to discard.").format(
-                    file=target_file,
-                ),
-                file=sys.stderr,
-            )
-            return
+            if not quiet:
+                print(
+                    _("No unstaged changes in file '{file}' to discard.").format(
+                        file=target_file,
+                    ),
+                    file=sys.stderr,
+                )
+            return 0
 
         snapshot_file_if_untracked(target_file)
         if rename_change is not None:
@@ -191,6 +204,12 @@ def discard_file_changes(
             append_lines_to_file(blocklist_path, [patch_hash])
             record_hunk_discarded(patch_hash)
 
-        _print_discard_file_result(target_file)
+        if not quiet:
+            _print_discard_file_result(target_file)
 
-        finish_selected_change_action(quiet=False, auto_advance=auto_advance)
+        if advance:
+            finish_selected_change_action(
+                quiet=quiet,
+                auto_advance=auto_advance,
+            )
+        return matching_changes

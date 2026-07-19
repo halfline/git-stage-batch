@@ -114,19 +114,65 @@ def discard_each_resolved_file(
     *,
     auto_advance: bool | None = None,
 ) -> None:
-    """Discard a multi-file live scope under one rename-complete checkpoint."""
+    """Discard a multi-file live scope and advance selection once."""
     _prepare_live_multi_file_action()
+    total_changes = 0
+    discarded_files = []
     checkpoint_paths = checkpoint_paths_for_live_files(list(files))
     with _multi_file_undo_checkpoint(
         "discard",
         files,
         worktree_paths=checkpoint_paths,
     ):
-        for file_path in files:
-            _discard_file.discard_file_changes(
-                file_path,
-                auto_advance=auto_advance,
+        auto_add_untracked_files(files)
+        target_snapshot = _capture_live_action_targets(checkpoint_paths)
+        with acquire_prepared_live_diff(
+            full_index=True,
+            ignore_submodules="none",
+            submodule_format="short",
+            context_lines=get_context_lines(),
+        ) as changes:
+            changes_by_file = group_live_diff_by_file(files, changes)
+            _require_prepared_change_paths_covered(
+                files,
+                changes_by_file,
+                checkpoint_paths,
             )
+            _require_live_action_targets_unchanged(
+                operation="discard",
+                expected=target_snapshot,
+            )
+            for file_path in files:
+                file_changes = changes_by_file[file_path]
+                if file_changes:
+                    _require_live_action_targets_unchanged(
+                        operation="discard",
+                        expected=target_snapshot,
+                        paths=paths_for_live_changes(file_changes),
+                    )
+                discarded_changes = _discard_file.discard_file_changes(
+                    file_path,
+                    quiet=True,
+                    advance=False,
+                    auto_advance=auto_advance,
+                    _prepared_changes=file_changes,
+                )
+                if discarded_changes > 0:
+                    total_changes += discarded_changes
+                    discarded_files.append(file_path)
+
+    if total_changes == 0:
+        print(_("No unstaged changes discarded from matched files."), file=sys.stderr)
+        return
+
+    should_show_next = select_next_change_after_action(auto_advance=auto_advance)
+    file_summary = _format_file_summary(discarded_files)
+    print(
+        _("✓ Unstaged changes discarded from {files}.").format(files=file_summary),
+        file=sys.stderr,
+    )
+    if should_show_next:
+        show_selected_change()
 
 
 def _format_file_summary(files: Sequence[str]) -> str:

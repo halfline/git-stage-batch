@@ -1,25 +1,42 @@
-"""Artifact-backed per-file planning for remaining live text changes."""
+"""Artifact-backed per-file counting for remaining live text changes."""
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 import json
 from pathlib import Path
 from typing import Any, TextIO
 
+from ..batch.attribution import (
+    AttributionMetrics,
+    build_file_attribution_from_lines,
+)
+from ..batch.source.annotation import (
+    acquire_batch_source_mapping,
+    annotate_with_batch_source_mapping,
+)
 from ..batch.source.cache import load_session_batch_sources
 from ..batch.state.query import list_batch_names, read_batch_metadata_for_batches
 from ..batch.state.reference_names import format_batch_state_ref_name
-from ..core.diff_parser import acquire_unified_diff
+from ..core.buffer import LineBuffer
+from ..core.diff_parser import (
+    acquire_unified_diff,
+    build_line_changes_from_patch_lines,
+)
 from ..core.hashing import compute_stable_hunk_hash_from_lines
 from ..core.models import SingleHunkPatch
+from ..core.text_lifecycle import TextFileChangeType
 from ..utils.file_job_workspace import FileJobWorkspace
 from ..utils.file_jobs import OrderedFileJob
 from ..utils.git_object_io import resolve_git_objects
 from ..utils.git_repository import get_git_repository_root_path
 from ..utils.paths import get_context_lines
+from ..utils.repository_buffers import (
+    load_working_tree_file_as_buffer,
+    read_git_object_buffer_or_none,
+)
 from ..utils.session_start_point import current_head_commit
 from .consumed_selections import load_consumed_selections_metadata
 from .live_change_candidates import (
@@ -28,6 +45,11 @@ from .live_change_candidates import (
     text_hunk_block_reason,
 )
 from .live_diff import stream_live_git_diff
+from .selected_change.hunk_filtering import (
+    consumed_batch_metadata,
+    filter_line_level_change_with_attribution,
+)
+
 
 @dataclass(frozen=True, slots=True)
 class WorktreeStatIdentity:
@@ -43,6 +65,39 @@ class WorktreeStatIdentity:
 
 
 @dataclass(frozen=True, slots=True)
+class AttributionMetricsSnapshot:
+    """Scalar attribution metrics safe to return through file-job transport."""
+
+    candidate_batches: int = 0
+    claimed_batches: int = 0
+    object_resolution_requests: int = 0
+    object_requests: int = 0
+    object_bytes: int = 0
+    unique_source_contents: int = 0
+    mapping_computations: int = 0
+    deletion_fingerprints: int = 0
+    attributed_units: int = 0
+
+    @classmethod
+    def from_metrics(
+        cls,
+        metrics: AttributionMetrics,
+    ) -> AttributionMetricsSnapshot:
+        """Freeze one mutable metrics accumulator."""
+        return cls(
+            candidate_batches=metrics.candidate_batches,
+            claimed_batches=metrics.claimed_batches,
+            object_resolution_requests=metrics.object_resolution_requests,
+            object_requests=metrics.object_requests,
+            object_bytes=metrics.object_bytes,
+            unique_source_contents=metrics.unique_source_contents,
+            mapping_computations=metrics.mapping_computations,
+            deletion_fingerprints=metrics.deletion_fingerprints,
+            attributed_units=metrics.attributed_units,
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class LiveTextFileJob:
     """Compact transport record for one contiguous live text file group."""
 
@@ -51,6 +106,18 @@ class LiveTextFileJob:
     input_manifest_path: str
     hunk_manifest_path: str
     expected_worktree_identity: WorktreeStatIdentity
+
+
+@dataclass(frozen=True, slots=True)
+class LiveTextFileCountResult:
+    """Scalar remaining-change counts for one live text file group."""
+
+    ordinal: int
+    file_path: str
+    eligible_count: int
+    already_batched_count: int
+    attribution_metrics: AttributionMetricsSnapshot
+    stale: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +164,126 @@ def acquire_live_change_count_plan() -> Iterator[LiveChangeCountPlan]:
     """Build one artifact plan whose workspace outlives execution/reduction."""
     with FileJobWorkspace() as workspace:
         yield _build_live_change_count_plan(workspace)
+
+
+def count_eligible_live_text_file(
+    job: LiveTextFileJob,
+) -> LiveTextFileCountResult:
+    """Count eligible hunks using one prepared attribution pass for a file."""
+    input_manifest = _read_json_manifest(job.input_manifest_path)
+    initial_identity = capture_worktree_stat_identity(job.file_path)
+    metrics = AttributionMetrics()
+    if initial_identity != job.expected_worktree_identity:
+        return _stale_result(job, metrics)
+
+    try:
+        with ExitStack() as stack:
+            spool_dir = Path(input_manifest["scratch_directory"])
+            working_tree_lines = stack.enter_context(
+                load_working_tree_file_as_buffer(
+                    job.file_path,
+                    spool_dir=spool_dir,
+                )
+            )
+            baseline_lines, baseline_exists = _acquire_baseline_lines(
+                input_manifest,
+                spool_dir=spool_dir,
+            )
+            baseline_lines = stack.enter_context(baseline_lines)
+            annotation_mapping = stack.enter_context(
+                acquire_batch_source_mapping(
+                    job.file_path,
+                    batch_source_commit=input_manifest.get(
+                        "batch_source_commit"
+                    ),
+                    working_lines=working_tree_lines,
+                    spool_dir=spool_dir,
+                )
+            )
+            batch_metadata_by_name = input_manifest["batch_metadata_by_name"]
+            consumed_file_metadata = input_manifest.get(
+                "consumed_file_metadata"
+            )
+            attribution = build_file_attribution_from_lines(
+                job.file_path,
+                baseline_lines=baseline_lines,
+                working_tree_lines=working_tree_lines,
+                batch_metadata_by_name=batch_metadata_by_name,
+                supplemental_batch_metadata=consumed_batch_metadata(
+                    job.file_path,
+                    consumed_file_metadata,
+                ),
+                batch_state_commit_by_name=input_manifest[
+                    "batch_state_commit_by_name"
+                ],
+                spool_dir=spool_dir,
+                metrics=metrics,
+            )
+            empty_lifecycle_change_type = _empty_lifecycle_change_type(
+                baseline_exists=baseline_exists,
+                baseline_lines=baseline_lines,
+                working_exists=initial_identity.exists,
+                working_tree_lines=working_tree_lines,
+            )
+            captured_empty_lifecycle_is_batched = (
+                _captured_empty_lifecycle_is_batched(
+                    job.file_path,
+                    change_type=empty_lifecycle_change_type,
+                    batch_metadata_by_name=batch_metadata_by_name,
+                )
+            )
+
+            eligible_count = 0
+            already_batched_count = 0
+            for hunk_record in _stream_hunk_manifest(job.hunk_manifest_path):
+                with LineBuffer.from_path(
+                    hunk_record["patch_artifact_path"],
+                    spool_dir=spool_dir,
+                ) as patch_lines:
+                    line_changes = build_line_changes_from_patch_lines(
+                        patch_lines,
+                        annotator=None,
+                    )
+                annotated_changes = annotate_with_batch_source_mapping(
+                    line_changes,
+                    annotation_mapping,
+                )
+                filtered_changes = filter_line_level_change_with_attribution(
+                    annotated_changes,
+                    attribution=attribution,
+                    batch_metadata_by_name=batch_metadata_by_name,
+                    consumed_file_metadata=consumed_file_metadata,
+                    captured_empty_lifecycle_is_batched=(
+                        captured_empty_lifecycle_is_batched
+                    ),
+                )
+                if filtered_changes is None:
+                    already_batched_count += 1
+                else:
+                    eligible_count += 1
+                del filtered_changes
+                del annotated_changes
+                del line_changes
+    except Exception:
+        if (
+            capture_worktree_stat_identity(job.file_path)
+            != job.expected_worktree_identity
+        ):
+            return _stale_result(job, metrics)
+        raise
+
+    if (
+        capture_worktree_stat_identity(job.file_path)
+        != job.expected_worktree_identity
+    ):
+        return _stale_result(job, metrics)
+    return LiveTextFileCountResult(
+        ordinal=job.ordinal,
+        file_path=job.file_path,
+        eligible_count=eligible_count,
+        already_batched_count=already_batched_count,
+        attribution_metrics=AttributionMetricsSnapshot.from_metrics(metrics),
+    )
 
 
 def _build_live_change_count_plan(
@@ -381,6 +568,59 @@ def _file_batch_metadata(
     }
 
 
+def _acquire_baseline_lines(
+    input_manifest: Mapping[str, Any],
+    *,
+    spool_dir: Path,
+) -> tuple[LineBuffer, bool]:
+    head_commit = input_manifest.get("head_commit")
+    baseline_path = input_manifest.get("baseline_path")
+    baseline_lines = None
+    if head_commit and baseline_path and baseline_path != "/dev/null":
+        baseline_lines = read_git_object_buffer_or_none(
+            f"{head_commit}:{baseline_path}",
+            spool_dir=spool_dir,
+        )
+    if baseline_lines is None:
+        return LineBuffer.from_bytes(b"", spool_dir=spool_dir), False
+    return baseline_lines, True
+
+
+def _empty_lifecycle_change_type(
+    *,
+    baseline_exists: bool,
+    baseline_lines: LineBuffer,
+    working_exists: bool,
+    working_tree_lines: LineBuffer,
+) -> TextFileChangeType | None:
+    if working_exists and working_tree_lines.byte_count == 0 and not baseline_exists:
+        return TextFileChangeType.ADDED
+    if (
+        not working_exists
+        and baseline_exists
+        and baseline_lines.byte_count == 0
+    ):
+        return TextFileChangeType.DELETED
+    return None
+
+
+def _captured_empty_lifecycle_is_batched(
+    file_path: str,
+    *,
+    change_type: TextFileChangeType | None,
+    batch_metadata_by_name: Mapping[str, dict],
+) -> bool:
+    if change_type is None:
+        return False
+    return any(
+        metadata.get("files", {})
+        .get(file_path, {})
+        .get("change_type")
+        == change_type
+        for metadata in batch_metadata_by_name.values()
+    )
+
+
 def _write_json_artifact(
     workspace: FileJobWorkspace,
     ordinal: int,
@@ -397,3 +637,28 @@ def _write_json_artifact(
         )
         output.write("\n")
     return path
+
+
+def _read_json_manifest(path: str) -> dict[str, Any]:
+    with Path(path).open(encoding="utf-8") as source:
+        return json.load(source)
+
+
+def _stream_hunk_manifest(path: str) -> Iterator[dict[str, Any]]:
+    with Path(path).open(encoding="utf-8") as source:
+        for line in source:
+            yield json.loads(line)
+
+
+def _stale_result(
+    job: LiveTextFileJob,
+    metrics: AttributionMetrics,
+) -> LiveTextFileCountResult:
+    return LiveTextFileCountResult(
+        ordinal=job.ordinal,
+        file_path=job.file_path,
+        eligible_count=0,
+        already_batched_count=0,
+        attribution_metrics=AttributionMetricsSnapshot.from_metrics(metrics),
+        stale=True,
+    )

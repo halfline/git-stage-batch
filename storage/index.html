@@ -12,27 +12,31 @@
         <meta name="author" content="Ray Strode">
       
       
-        <link rel="canonical" href="https://halfline.github.io/git-stage-batch/assets/">
+        <link rel="canonical" href="https://halfline.github.io/git-stage-batch/storage/">
       
       
+        <link rel="prev" href="../batches/">
+      
+      
+        <link rel="next" href="../benchmarking/">
       
       
         
       
       
-      <link rel="icon" href="favicon.svg">
+      <link rel="icon" href="../assets/favicon.svg">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
-        <title>Assets - git-stage-batch</title>
+        <title>Storage and Recovery - git-stage-batch</title>
       
     
     
-      <link rel="stylesheet" href="stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
         
-        <link rel="stylesheet" href="stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -51,7 +55,7 @@
       
     
     
-      <link rel="stylesheet" href="extra.css">
+      <link rel="stylesheet" href="../assets/extra.css">
     
     <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
@@ -86,7 +90,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#assets" class="md-skip">
+        <a href="#storage-and-recovery-refs" class="md-skip">
           Skip to content
         </a>
       
@@ -109,7 +113,7 @@
       data-md-component="logo"
     >
       
-  <img src="logo.svg" alt="logo">
+  <img src="../assets/logo.svg" alt="logo">
 
     </a>
 
@@ -130,7 +134,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Assets
+              Storage and Recovery
             
           </span>
         </div>
@@ -363,10 +367,12 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
+      <li class="md-tabs__item md-tabs__item--active">
         <a href="../batches/" class="md-tabs__link">
           
   
@@ -403,7 +409,7 @@
   <label class="md-nav__title" for="__drawer">
     <a href=".." title="git-stage-batch" class="md-nav__button md-logo" aria-label="git-stage-batch" data-md-component="logo">
       
-  <img src="logo.svg" alt="logo">
+  <img src="../assets/logo.svg" alt="logo">
 
     </a>
     git-stage-batch
@@ -777,28 +783,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
         
           
-        
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
-        
-          
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
             
   
   
@@ -816,7 +825,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
@@ -859,10 +868,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../storage/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage and Recovery
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -878,6 +914,103 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#batch-metadata-authority-and-crash-residue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Batch metadata authority and crash residue
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#object-identifiers-are-not-reachability-roots" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Object identifiers are not reachability roots
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scoped-undo-checkpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scoped undo checkpoints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#atomic-file-permissions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Atomic file permissions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#diagnostic-journals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diagnostic journals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#batch-metadata-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Batch metadata schema
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#attribution-working-set" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attribution working set
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -945,63 +1078,79 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#generating-the-demo-gif" class="md-nav__link">
+  <a href="#batch-metadata-authority-and-crash-residue" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Generating the Demo GIF
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Generating the Demo GIF">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#quick-method-recommended" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Quick Method (Recommended)
+        Batch metadata authority and crash residue
       
     </span>
   </a>
   
 </li>
-        
-          <li class="md-nav__item">
-  <a href="#manual-method" class="md-nav__link">
+      
+        <li class="md-nav__item">
+  <a href="#object-identifiers-are-not-reachability-roots" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Manual Method
+        Object identifiers are not reachability roots
       
     </span>
   </a>
   
 </li>
-        
-          <li class="md-nav__item">
-  <a href="#deploying" class="md-nav__link">
+      
+        <li class="md-nav__item">
+  <a href="#scoped-undo-checkpoints" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Deploying
+        Scoped undo checkpoints
       
     </span>
   </a>
   
 </li>
-        
-          <li class="md-nav__item">
-  <a href="#alternative-manual-recording" class="md-nav__link">
+      
+        <li class="md-nav__item">
+  <a href="#atomic-file-permissions" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Alternative: Manual Recording
+        Atomic file permissions
       
     </span>
   </a>
   
 </li>
-        
-      </ul>
-    </nav>
+      
+        <li class="md-nav__item">
+  <a href="#diagnostic-journals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diagnostic journals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#batch-metadata-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Batch metadata schema
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#attribution-working-set" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attribution working set
+      
+    </span>
+  </a>
   
 </li>
       
@@ -1025,64 +1174,141 @@
   
 
 
-<h1 id="assets">Assets<a class="headerlink" href="#assets" title="Permanent link">&para;</a></h1>
-<h2 id="generating-the-demo-gif">Generating the Demo GIF<a class="headerlink" href="#generating-the-demo-gif" title="Permanent link">&para;</a></h2>
-<p><strong>Note:</strong> The <code>demo.gif</code> file is <strong>not</strong> checked into git. It's generated during the documentation deployment process.</p>
-<p>To regenerate the demo animation locally:</p>
-<h3 id="quick-method-recommended">Quick Method (Recommended)<a class="headerlink" href="#quick-method-recommended" title="Permanent link">&para;</a></h3>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>./scripts/generate-demo.sh
-</span></code></pre></div>
-<p>This script:
-- Auto-downloads VHS and ttyd if not installed (to <code>~/.cache/git-stage-batch/</code>)
-- Creates a temporary throwaway git repository
-- Runs the VHS demo script in isolation
-- Generates <code>docs/assets/demo.gif</code>
-- Cleans up automatically</p>
-<p><strong>Requirements:</strong>
-- <code>ffmpeg</code> - <code>sudo dnf install ffmpeg</code> (Fedora) or <code>brew install ffmpeg</code> (macOS)
-- <code>git</code> and <code>curl</code>
-- VHS and ttyd are auto-downloaded if not present</p>
-<h3 id="manual-method">Manual Method<a class="headerlink" href="#manual-method" title="Permanent link">&para;</a></h3>
-<p>If you prefer to run VHS manually:</p>
-<ol>
-<li>
-<p><strong>Create a throwaway directory:</strong>
-   <div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nv">DEMO_DIR</span><span class="o">=</span><span class="k">$(</span>mktemp<span class="w"> </span>-d<span class="k">)</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DEMO_DIR</span><span class="s2">&quot;</span>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>git<span class="w"> </span>init
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>git<span class="w"> </span>config<span class="w"> </span>user.name<span class="w"> </span><span class="s2">&quot;Demo User&quot;</span>
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>git<span class="w"> </span>config<span class="w"> </span>user.email<span class="w"> </span><span class="s2">&quot;demo@example.com&quot;</span>
-</span></code></pre></div></p>
-</li>
-<li>
-<p><strong>Copy and run the tape:</strong>
-   <div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>cp<span class="w"> </span>/path/to/git-stage-batch/scripts/demo.tape<span class="w"> </span>.
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>vhs<span class="w"> </span>demo.tape
-</span></code></pre></div></p>
-</li>
-<li>
-<p><strong>Copy the result:</strong>
-   <div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>mv<span class="w"> </span>demo.gif<span class="w"> </span>/path/to/git-stage-batch/docs/assets/demo.gif
-</span></code></pre></div></p>
-</li>
-</ol>
-<h3 id="deploying">Deploying<a class="headerlink" href="#deploying" title="Permanent link">&para;</a></h3>
-<p>To deploy updated documentation to GitHub Pages:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Generate the demo GIF first (required - not in git)</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>./scripts/generate-demo.sh
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1"># Deploy to GitHub Pages</span>
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>uv<span class="w"> </span>run<span class="w"> </span>mkdocs<span class="w"> </span>gh-deploy
-</span></code></pre></div>
-<p>The demo GIF must be generated before each deployment since it's not checked into version control.</p>
-<h3 id="alternative-manual-recording">Alternative: Manual Recording<a class="headerlink" href="#alternative-manual-recording" title="Permanent link">&para;</a></h3>
-<p>You can also record manually with any screen recording tool:</p>
-<ol>
-<li>Set up a clean terminal with good contrast</li>
-<li>Run through the demo workflow</li>
-<li>Convert to GIF (keep under 5MB)</li>
-<li>Save as <code>docs/assets/demo.gif</code></li>
-</ol>
+<h1 id="storage-and-recovery-refs">Storage and Recovery Refs<a class="headerlink" href="#storage-and-recovery-refs" title="Permanent link">&para;</a></h1>
+<p>Git-stage-batch stores durable batch state under <code>refs/git-stage-batch/</code> and
+worktree-local session scratch files below the worktree's Git directory.</p>
+<h2 id="batch-metadata-authority-and-crash-residue">Batch metadata authority and crash residue<a class="headerlink" href="#batch-metadata-authority-and-crash-residue" title="Permanent link">&para;</a></h2>
+<p>Batch content and state refs are authoritative. A file-backed
+<code>batches/&lt;name&gt;/metadata.json</code> is only a compatibility/publication staging file;
+when a state ref exists, normal reads deliberately ignore that file. If a process
+stops between writing metadata and publishing or cleaning refs, run
+<code>git-stage-batch validate --porcelain</code> to classify the residue as redundant,
+stale, conflicting, orphaned, legacy-compatible, or invalid. Stale, conflicting,
+or unknown-schema files should be preserved for inspection rather than published
+as live batch state.</p>
+<h2 id="object-identifiers-are-not-reachability-roots">Object identifiers are not reachability roots<a class="headerlink" href="#object-identifiers-are-not-reachability-roots" title="Permanent link">&para;</a></h2>
+<p>Session manifests and abort snapshots serialize Git object IDs so state can be
+restored later. An object ID written into JSON is not an edge in Git's object
+graph. If the batch ref that previously named that object moves or is deleted,
+reflog expiration followed by garbage collection may otherwise prune it.</p>
+<p>During an active session, git-stage-batch creates internal refs below
+<code>refs/git-stage-batch/session/anchors/</code>. Each ref names a commit, tree, or blob
+that an undo, redo, or abort operation promises to restore. Checkpoint stack
+refs describe undo and redo order; anchor refs provide reachability. Those are
+separate responsibilities.</p>
+<p>Gitlink entries name commits in a submodule's separate object database. They
+cannot be rooted by refs in the superproject; their availability remains the
+responsibility of the nested repository.</p>
+<p>Anchors are created before a checkpoint is published or a command can mutate
+the protected refs. They remain for the session lifetime so every checkpoint
+still present on either stack remains recoverable. A successful <code>stop</code> or
+<code>abort</code> removes the complete anchor namespace. Reclaiming a stale linked-
+worktree owner also removes the abandoned session's anchors.</p>
+<p>Older checkpoints may not contain recorded anchor metadata. Git-stage-batch
+attempts to restore them while their serialized objects remain available. If
+an object has already been pruned, restoration stops before mutation and
+reports the missing recovery object rather than partially applying the
+checkpoint.</p>
+<h2 id="scoped-undo-checkpoints">Scoped undo checkpoints<a class="headerlink" href="#scoped-undo-checkpoints" title="Permanent link">&para;</a></h2>
+<p>Each mutating command declares the repository paths it reads or writes. Undo
+manifests record only those worktree paths and index entries. Once an operation
+finishes, its checkpoint is also reduced to the session files, batch metadata,
+and refs that actually changed. Unrelated dirty or staged files and unrelated
+application metadata are not copied into the finalized checkpoint. Regular
+files in one scope share bulk index, HEAD, and object writes, so checkpoint
+process count does not grow with unrelated worktree dirtiness.</p>
+<p>Undo and redo restore scoped index entries individually instead of replacing
+the complete index, and restore only changed application-state paths and batch
+refs. A later change outside the command scope remains in place. Changes to a
+scoped path or ref still cause the default safety refusal, and <code>--force</code>
+overwrites only state owned by that checkpoint. Legacy whole-index and
+whole-state checkpoints remain readable for sessions created by older
+versions.</p>
+<h2 id="atomic-file-permissions">Atomic file permissions<a class="headerlink" href="#atomic-file-permissions" title="Permanent link">&para;</a></h2>
+<p>Git-stage-batch writes session metadata, recovery manifests, batch
+compatibility metadata as private application state. Newly created state files
+use mode <code>0600</code>, including when the process has a permissive umask. Rewriting
+private state also restores that restrictive mode.</p>
+<p>Repository-owned files use a separate atomic-write policy. Updates to
+<code>.gitignore</code>, <code>.git/info/exclude</code>, and previously installed assistant assets
+preserve the existing file's permission bits and ownership where the platform
+allows it. New repository files use the conventional mode <code>0644</code>. If ownership
+cannot be restored, replacement permissions are narrowed rather than granting
+access through a different group.</p>
+<p>Atomic replacement writes and syncs a temporary file in the destination
+directory before renaming it over the target, then syncs the directory where
+the platform supports that operation. A failure before replacement leaves the
+old file complete. Symlink targets are never followed or silently replaced;
+the command stops with recovery guidance so callers can update the intended
+target explicitly.</p>
+<h2 id="diagnostic-journals">Diagnostic journals<a class="headerlink" href="#diagnostic-journals" title="Permanent link">&para;</a></h2>
+<p>Diagnostic journaling is disabled by default, so ordinary commands do not
+inspect the Python stack, serialize journal entries, open journal files, or run
+extra Git queries for diagnostics. Set <code>GIT_STAGE_BATCH_JOURNAL</code> to one of the
+following levels when investigating a problem:</p>
+<ul>
+<li><code>metadata-only</code> records structured operation names, stable source IDs,
+  object IDs, modes, sizes, and hashed path identifiers.</li>
+<li><code>verbose</code> adds a bounded stack for each event. Error events also include a
+  bounded stack at the metadata level.</li>
+<li><code>content-debug</code> additionally records raw paths, Git command output, and
+  short content previews. This level can expose repository content and should
+  only be enabled for a limited reproduction.</li>
+<li><code>disabled</code> turns journaling off explicitly.</li>
+</ul>
+<p>The historical <code>GIT_STAGE_BATCH_DEBUG</code> switch selects <code>verbose</code> for
+compatibility; it does not enable raw content capture.</p>
+<p>Journal files are stored under
+<code>$XDG_STATE_HOME/git-stage-batch/journals/</code>, or
+<code>~/.local/state/git-stage-batch/journals/</code> when <code>XDG_STATE_HOME</code> is unset. The
+filename contains a stable hash of the repository identity rather than its
+path. The journal directory uses mode <code>0700</code> and files use mode <code>0600</code>.
+<code>GIT_STAGE_BATCH_JOURNAL_PATH</code> can override the destination for a controlled
+debugging environment.</p>
+<p>Entries are queued in a bounded process buffer. The buffer flushes when it
+reaches 64 KiB, at each interactive action boundary, and when a CLI command
+exits. A process terminated without normal cleanup can lose entries since the
+last boundary; journaling never changes the durability of repository state.
+Writers use a per-journal lock so concurrent processes append complete JSON
+lines.</p>
+<p>The active file rotates at 5 MiB, retains at most three rotated files, and
+expires journal files after 30 days. Use <code>GIT_STAGE_BATCH_JOURNAL_MAX_BYTES</code>
+and <code>GIT_STAGE_BATCH_JOURNAL_RETENTION_DAYS</code> to adjust those limits. Run
+<code>git-stage-batch journal</code> for a content-free summary,
+<code>git-stage-batch journal --path</code> to locate the file, or
+<code>git-stage-batch journal --purge</code> to remove it. Add <code>--all</code> to purge data for
+all repositories. The disabled/event-heavy paths can be compared with
+<code>scripts/benchmark_journal.py</code> from a source checkout.</p>
+<h2 id="batch-metadata-schema">Batch metadata schema<a class="headerlink" href="#batch-metadata-schema" title="Permanent link">&para;</a></h2>
+<p>Authoritative <code>batch.json</code> records use a versioned schema. Schema version 1
+stores an opaque revision identifier, batch identity, timestamps, baseline and
+content object IDs, and validated per-path metadata. Writers emit only the
+canonical current schema, while readers migrate the historical unversioned
+shape in memory before exposing it to batch operations.</p>
+<p>An unversioned file-backed record is copied to <code>metadata.v0.json</code> before its
+first durable rewrite. Successful publication stores the canonical metadata in
+the state ref, whose parent retains the previous state-ref version, and removes
+the compatibility directory. Failed publication leaves the recovery copy for
+inspection. Metadata from a newer unsupported schema is never rewritten.</p>
+<p>Run <code>git-stage-batch validate</code> to validate every batch without changing it. The
+command checks schema compatibility, object IDs, content-ref agreement, and
+reports whether a legacy record would be migrated. Use <code>--porcelain</code> for a
+stable JSON report suitable for support tooling.</p>
+<h2 id="attribution-working-set">Attribution working set<a class="headerlink" href="#attribution-working-set" title="Permanent link">&para;</a></h2>
+<p>During hunk review, batch ownership is indexed by canonical file path for the
+current diff scan. Files without claims skip traversal across unrelated batch
+metadata. For a claimed file, source and deletion objects are requested once
+per role through bounded Git batch readers. Refspecs are resolved before
+content is loaded, so canonical state refs and legacy fallbacks that name the
+same blob share one source read and one line mapping. Deletion payloads are
+reduced to fingerprints as they stream, and normalized presence claims are
+computed once per batch/file key.</p>
+<p>Attribution processes one file and one unique source mapping at a time. It
+retains compact fingerprints and result units for the file, but releases each
+source payload and mapping before opening the next source. Traversal is sorted
+by batch name so optimization and metadata insertion order cannot alter
+ownership arbitration. Missing deletion objects and objects of the wrong Git
+type are ignored conservatively rather than hiding an unverified change.</p>
 
 
 
@@ -1221,12 +1447,12 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
       
-        <script src="extra.js"></script>
+        <script src="../assets/extra.js"></script>
       
     
   </body>

@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../assets/favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
@@ -33,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
         
         <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -1063,6 +1063,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#diagnostics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diagnostics
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Diagnostics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#journal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        journal
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#batch-operations" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1073,6 +1101,17 @@
   
     <nav class="md-nav" aria-label="Batch Operations">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#validate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        validate
+      
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#sift" class="md-nav__link">
@@ -1331,6 +1370,62 @@
     
   
     Batch Operations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage and Recovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../benchmarking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Matching Benchmarks
   
 
     
@@ -1772,6 +1867,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#diagnostics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diagnostics
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Diagnostics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#journal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        journal
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#batch-operations" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1782,6 +1905,17 @@
   
     <nav class="md-nav" aria-label="Batch Operations">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#validate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        validate
+      
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#sift" class="md-nav__link">
@@ -1854,6 +1988,13 @@ mixed. Exits with code 2 when other staged changes are present.</p>
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>❯ git-stage-batch start --no-auto-advance
 </span></code></pre></div>
 <p>Resets state if a session is already in progress.</p>
+<p>Untracked, non-ignored paths are discovered with a NUL-safe repository query
+and registered as intent-to-add entries in one bulk index update. Startup
+persists the complete auto-added path manifest once instead of rewriting it
+for every file, so work scales with the number and bytes of candidate paths.
+If a path disappears during discovery, startup refreshes the candidate set
+once. Git publishes the index through its lockfile transaction, and a failed
+bulk update rolls back the planned session manifest.</p>
 <p>Live session diffs render renames as atomic <code>old -&gt; new</code> choices. A selected
 rename can be included, skipped, or discarded with the rest of the workflow.
 At session start, staged renames and regular text deletions are temporarily
@@ -1922,6 +2063,14 @@ so users can run a listed apply or include command directly from that summary.
 Re-preview after editing the target file or changing the index.</p>
 <p>Submodule pointer changes are shown as atomic entries. They support whole-entry
 actions, but not <code>--line</code>.</p>
+<p>Executable-bit changes (<code>100644</code> ↔ <code>100755</code>) are also shown as atomic entries.
+When content and mode both change, content hunks are presented first and the
+mode remains as a separate later action. Mode actions support whole-file
+include, discard, skip, undo, redo, abort, and batch operations, but not
+<code>--line</code> or paged line review. Repositories configured with
+<code>core.fileMode=false</code> intentionally do not report executable-bit changes.</p>
+<p>Regular-file, symlink, and submodule type transitions are never treated as
+executable-bit changes. Unsupported type transitions are refused explicitly.</p>
 <p><strong>Options:</strong>
 - <code>--file [PATH]</code>: Display entire file instead of single hunk
   - Without PATH: uses selected hunk's file
@@ -2057,6 +2206,9 @@ later actions that do not specify either flag.</p>
 brackets included in <code>FORMAT</code> are hidden too. Without <code>FORMAT</code>, it prints
 <code>STAGING</code>. In prompt output, <code>{status}</code> is the operation name <code>STAGING</code>;
 <code>{progress_status}</code> exposes the underlying <code>in_progress</code> or <code>complete</code> state.
+Prompt rendering is lock-free and read-only so shell startup never waits for an
+in-progress staging operation. A prompt may briefly reflect either side of a
+concurrent update, but it does not modify or clean up session state.
 Format fields include <code>{status}</code>, <code>{status_label}</code>, <code>{progress_status}</code>,
 <code>{progress_label}</code>, <code>{iteration}</code>, <code>{processed}</code>, <code>{total}</code>, <code>{included}</code>,
 <code>{skipped}</code>, <code>{discarded}</code>, <code>{remaining}</code>, <code>{selected_file}</code>,
@@ -2064,6 +2216,24 @@ Format fields include <code>{status}</code>, <code>{status_label}</code>, <code>
 <code>included + skipped + discarded</code>; <code>{total}</code> is <code>{processed} + remaining</code>.</p>
 <hr />
 <h2 id="session-management">Session Management<a class="headerlink" href="#session-management" title="Permanent link">&para;</a></h2>
+<p>Only one linked worktree in a repository may own an active staging session at
+a time. Session scratch data remains local to its worktree, while batch and
+undo refs are shared by the repository. Mutating commands in another linked
+worktree therefore stop with an error until the owning worktree runs <code>stop</code> or
+<code>abort</code>. Read-only commands such as <code>status</code>, <code>show</code>, and <code>list</code> remain
+available.</p>
+<p>Ownership is released automatically by a successful <code>stop</code> or <code>abort</code>. If a
+worktree's session marker has already been removed, the next mutating command
+can reclaim the stale ownership record safely. An invalid ownership record is
+not removed automatically; its error identifies the file to inspect after
+confirming that no linked worktree still has an active session.</p>
+<p>A session can start before the repository has its first commit. In that case,
+Git's empty tree is used only as the staging comparison baseline while the
+unborn symbolic branch and initial index are recorded explicitly. <code>stop</code>
+preserves a first commit created during the session. <code>abort</code> removes that
+session-created branch tip, restores the original index, and leaves original
+first-commit files in the worktree. History-dependent commands such as
+<code>suggest-fixup</code> remain unavailable until the first commit exists.</p>
 <h3 id="again"><code>again</code><a class="headerlink" href="#again" title="Permanent link">&para;</a></h3>
 <p>Clear the blocklist and restart iteration through all hunks.</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>❯ git-stage-batch again
@@ -2099,7 +2269,9 @@ to its state before that operation.</p>
 </span></code></pre></div>
 <p><strong>Options:</strong>
 - <code>--force</code>: Overwrite changes made after the undo checkpoint</p>
-<p>Refuses by default if the current state has changed since the checkpoint.</p>
+<p>Refuses by default if a path, index entry, or batch ref in the operation's
+checkpoint scope has changed. Unrelated dirty and staged files are not retained
+by the checkpoint, do not cause conflicts, and are left unchanged by undo.</p>
 <hr />
 <h3 id="redo"><code>redo</code><a class="headerlink" href="#redo" title="Permanent link">&para;</a></h3>
 <p>Redo the most recently undone session operation.</p>
@@ -2107,7 +2279,8 @@ to its state before that operation.</p>
 </span></code></pre></div>
 <p><strong>Options:</strong>
 - <code>--force</code>: Overwrite changes made after the undo</p>
-<p>Refuses by default if the current state has changed since the undo.</p>
+<p>Refuses by default if scoped state has changed since the undo. Unrelated
+worktree and index changes remain untouched.</p>
 <p>Multiple undo/redo works in editor order:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="c1"># do A, do B, do C</span>
 </span><span id="__span-27-2"><a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>undo<span class="w">      </span><span class="c1"># removes C, redo stack: C</span>
@@ -2160,21 +2333,21 @@ to its state before that operation.</p>
 </span></code></pre></div></p>
 <hr />
 <h3 id="discard-file-path"><code>discard --file [PATH]</code><a class="headerlink" href="#discard-file-path" title="Permanent link">&para;</a></h3>
-<p>Discard entire file from the working tree.</p>
+<p>Discard all unstaged changes in one file.</p>
 <p><strong>Discard selected hunk's file:</strong>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-35-1"><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a>❯ git-stage-batch discard --file
 </span></code></pre></div></p>
 <p><strong>Discard specific file by path:</strong>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-36-1"><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>❯ git-stage-batch discard --file src/debug.py
 </span></code></pre></div></p>
-<p>Removes all changes from the specified file. When a path is provided, you can discard any file in your working tree regardless of which file the selected hunk is from.</p>
+<p>Restores the working-tree file from the index, preserving any staged content. A new untracked file is removed because it has no indexed version to restore. When a path is provided, you can discard changes from any file regardless of which file the selected hunk is from.</p>
 <p><strong>Use cases:</strong>
 - <code>--file</code> (no path): Discard the entire file of the selected hunk
 - <code>--file PATH</code>: Discard the specified file, even if it's not the selected file
 - <code>--files PATTERN...</code>: Discard all matched files as complete units</p>
 <div class="admonition warning">
 <p class="admonition-title">Destructive Operation</p>
-<p>This permanently removes the entire file from your working tree.</p>
+<p>This permanently removes the file's unstaged changes. To intentionally remove a tracked file, use <code>git rm -- PATH</code> instead.</p>
 </div>
 <hr />
 <h2 id="permanent-file-exclusion">Permanent File Exclusion<a class="headerlink" href="#permanent-file-exclusion" title="Permanent link">&para;</a></h2>
@@ -2405,10 +2578,36 @@ assistant can discover them automatically.</p>
 <p>Installing <code>codex-skills</code> also writes the shared internal drafter brief at
 <code>.agents/internal/commit-message-drafter.md</code>.</p>
 <hr />
+<h2 id="diagnostics">Diagnostics<a class="headerlink" href="#diagnostics" title="Permanent link">&para;</a></h2>
+<h3 id="journal"><code>journal</code><a class="headerlink" href="#journal" title="Permanent link">&para;</a></h3>
+<p>Locate, summarize, or remove private diagnostic journal data.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-58-1"><a id="__codelineno-58-1" name="__codelineno-58-1" href="#__codelineno-58-1"></a>git-stage-batch<span class="w"> </span>journal
+</span><span id="__span-58-2"><a id="__codelineno-58-2" name="__codelineno-58-2" href="#__codelineno-58-2"></a>git-stage-batch<span class="w"> </span>journal<span class="w"> </span>--path
+</span><span id="__span-58-3"><a id="__codelineno-58-3" name="__codelineno-58-3" href="#__codelineno-58-3"></a>git-stage-batch<span class="w"> </span>journal<span class="w"> </span>--purge
+</span></code></pre></div>
+<p>Journaling is disabled by default. Enable content-free operation metadata for
+a reproduction with <code>GIT_STAGE_BATCH_JOURNAL=metadata-only</code>, or add bounded
+call stacks with <code>verbose</code>. The <code>content-debug</code> level also records raw paths,
+Git command output, and short content previews, so use it only for a limited
+reproduction and purge it afterward.</p>
+<p>The default command prints the configured level, private per-user path, file
+count, entry count, and total size. <code>--porcelain</code> returns the same summary as
+stable JSON. <code>--path</code> prints only the current repository's location. <code>--purge</code>
+removes its active and rotated files; combine it with <code>--all</code> to remove journal
+data for every repository.</p>
+<hr />
 <h2 id="batch-operations">Batch Operations<a class="headerlink" href="#batch-operations" title="Permanent link">&para;</a></h2>
+<h3 id="validate"><code>validate</code><a class="headerlink" href="#validate" title="Permanent link">&para;</a></h3>
+<p>Validate persisted metadata for every batch without modifying refs or files.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-59-1"><a id="__codelineno-59-1" name="__codelineno-59-1" href="#__codelineno-59-1"></a>git-stage-batch<span class="w"> </span>validate
+</span><span id="__span-59-2"><a id="__codelineno-59-2" name="__codelineno-59-2" href="#__codelineno-59-2"></a>git-stage-batch<span class="w"> </span>validate<span class="w"> </span>--porcelain
+</span></code></pre></div>
+<p>The report identifies malformed or unsupported schemas, missing Git objects,
+content-ref mismatches, and unversioned metadata eligible for migration.</p>
+<hr />
 <h3 id="sift"><code>sift</code><a class="headerlink" href="#sift" title="Permanent link">&para;</a></h3>
 <p>Reconcile a batch against the current tip by removing portions whose effect is already present.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-58-1"><a id="__codelineno-58-1" name="__codelineno-58-1" href="#__codelineno-58-1"></a>❯ git-stage-batch sift --from OLD_BATCH --to NEW_BATCH
+<div class="language-text highlight"><pre><span></span><code><span id="__span-60-1"><a id="__codelineno-60-1" name="__codelineno-60-1" href="#__codelineno-60-1"></a>❯ git-stage-batch sift --from OLD_BATCH --to NEW_BATCH
 </span></code></pre></div>
 <p><strong>Required arguments:</strong>
 - <code>--from BATCH</code>: Source batch to sift
@@ -2416,11 +2615,11 @@ assistant can discover them automatically.</p>
 <p><strong>Purpose:</strong></p>
 <p>After ad hoc history surgery, some parts of a batch may already have landed in history while other parts are still unapplied. <code>sift</code> removes the already-present portions and writes the remaining unapplied portion to the destination batch.</p>
 <p><strong>Examples:</strong></p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-59-1"><a id="__codelineno-59-1" name="__codelineno-59-1" href="#__codelineno-59-1"></a><span class="c1"># Sift to a new batch</span>
-</span><span id="__span-59-2"><a id="__codelineno-59-2" name="__codelineno-59-2" href="#__codelineno-59-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>sift<span class="w"> </span>--from<span class="w"> </span>feature-cleanups<span class="w"> </span>--to<span class="w"> </span>feature-cleanups-pruned
-</span><span id="__span-59-3"><a id="__codelineno-59-3" name="__codelineno-59-3" href="#__codelineno-59-3"></a>
-</span><span id="__span-59-4"><a id="__codelineno-59-4" name="__codelineno-59-4" href="#__codelineno-59-4"></a><span class="c1"># In-place sift</span>
-</span><span id="__span-59-5"><a id="__codelineno-59-5" name="__codelineno-59-5" href="#__codelineno-59-5"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>sift<span class="w"> </span>--from<span class="w"> </span>feature-cleanups<span class="w"> </span>--to<span class="w"> </span>feature-cleanups
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-61-1"><a id="__codelineno-61-1" name="__codelineno-61-1" href="#__codelineno-61-1"></a><span class="c1"># Sift to a new batch</span>
+</span><span id="__span-61-2"><a id="__codelineno-61-2" name="__codelineno-61-2" href="#__codelineno-61-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>sift<span class="w"> </span>--from<span class="w"> </span>feature-cleanups<span class="w"> </span>--to<span class="w"> </span>feature-cleanups-pruned
+</span><span id="__span-61-3"><a id="__codelineno-61-3" name="__codelineno-61-3" href="#__codelineno-61-3"></a>
+</span><span id="__span-61-4"><a id="__codelineno-61-4" name="__codelineno-61-4" href="#__codelineno-61-4"></a><span class="c1"># In-place sift</span>
+</span><span id="__span-61-5"><a id="__codelineno-61-5" name="__codelineno-61-5" href="#__codelineno-61-5"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>sift<span class="w"> </span>--from<span class="w"> </span>feature-cleanups<span class="w"> </span>--to<span class="w"> </span>feature-cleanups
 </span></code></pre></div>
 <p><strong>Output:</strong></p>
 <p>Shows summary of:
@@ -2438,27 +2637,27 @@ assistant can discover them automatically.</p>
 </ul>
 <hr />
 <h2 id="workflow-example">Workflow Example<a class="headerlink" href="#workflow-example" title="Permanent link">&para;</a></h2>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-60-1"><a id="__codelineno-60-1" name="__codelineno-60-1" href="#__codelineno-60-1"></a><span class="c1"># Make some changes to multiple files</span>
-</span><span id="__span-60-2"><a id="__codelineno-60-2" name="__codelineno-60-2" href="#__codelineno-60-2"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;feature 1&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span>file1.txt
-</span><span id="__span-60-3"><a id="__codelineno-60-3" name="__codelineno-60-3" href="#__codelineno-60-3"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;feature 2&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span>file2.txt
-</span><span id="__span-60-4"><a id="__codelineno-60-4" name="__codelineno-60-4" href="#__codelineno-60-4"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;debug code&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span>file1.txt
-</span><span id="__span-60-5"><a id="__codelineno-60-5" name="__codelineno-60-5" href="#__codelineno-60-5"></a>
-</span><span id="__span-60-6"><a id="__codelineno-60-6" name="__codelineno-60-6" href="#__codelineno-60-6"></a><span class="c1"># Start staging session</span>
-</span><span id="__span-60-7"><a id="__codelineno-60-7" name="__codelineno-60-7" href="#__codelineno-60-7"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>start
-</span><span id="__span-60-8"><a id="__codelineno-60-8" name="__codelineno-60-8" href="#__codelineno-60-8"></a>
-</span><span id="__span-60-9"><a id="__codelineno-60-9" name="__codelineno-60-9" href="#__codelineno-60-9"></a><span class="c1"># Include first hunk (feature 1)</span>
-</span><span id="__span-60-10"><a id="__codelineno-60-10" name="__codelineno-60-10" href="#__codelineno-60-10"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include
-</span><span id="__span-60-11"><a id="__codelineno-60-11" name="__codelineno-60-11" href="#__codelineno-60-11"></a>❯<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;Add feature 1&quot;</span>
-</span><span id="__span-60-12"><a id="__codelineno-60-12" name="__codelineno-60-12" href="#__codelineno-60-12"></a>
-</span><span id="__span-60-13"><a id="__codelineno-60-13" name="__codelineno-60-13" href="#__codelineno-60-13"></a><span class="c1"># Discard debug code</span>
-</span><span id="__span-60-14"><a id="__codelineno-60-14" name="__codelineno-60-14" href="#__codelineno-60-14"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard
-</span><span id="__span-60-15"><a id="__codelineno-60-15" name="__codelineno-60-15" href="#__codelineno-60-15"></a>
-</span><span id="__span-60-16"><a id="__codelineno-60-16" name="__codelineno-60-16" href="#__codelineno-60-16"></a><span class="c1"># Include feature 2</span>
-</span><span id="__span-60-17"><a id="__codelineno-60-17" name="__codelineno-60-17" href="#__codelineno-60-17"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include
-</span><span id="__span-60-18"><a id="__codelineno-60-18" name="__codelineno-60-18" href="#__codelineno-60-18"></a>❯<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;Add feature 2&quot;</span>
-</span><span id="__span-60-19"><a id="__codelineno-60-19" name="__codelineno-60-19" href="#__codelineno-60-19"></a>
-</span><span id="__span-60-20"><a id="__codelineno-60-20" name="__codelineno-60-20" href="#__codelineno-60-20"></a><span class="c1"># Check if anything remains</span>
-</span><span id="__span-60-21"><a id="__codelineno-60-21" name="__codelineno-60-21" href="#__codelineno-60-21"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>status
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-62-1"><a id="__codelineno-62-1" name="__codelineno-62-1" href="#__codelineno-62-1"></a><span class="c1"># Make some changes to multiple files</span>
+</span><span id="__span-62-2"><a id="__codelineno-62-2" name="__codelineno-62-2" href="#__codelineno-62-2"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;feature 1&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span>file1.txt
+</span><span id="__span-62-3"><a id="__codelineno-62-3" name="__codelineno-62-3" href="#__codelineno-62-3"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;feature 2&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span>file2.txt
+</span><span id="__span-62-4"><a id="__codelineno-62-4" name="__codelineno-62-4" href="#__codelineno-62-4"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;debug code&quot;</span><span class="w"> </span>&gt;&gt;<span class="w"> </span>file1.txt
+</span><span id="__span-62-5"><a id="__codelineno-62-5" name="__codelineno-62-5" href="#__codelineno-62-5"></a>
+</span><span id="__span-62-6"><a id="__codelineno-62-6" name="__codelineno-62-6" href="#__codelineno-62-6"></a><span class="c1"># Start staging session</span>
+</span><span id="__span-62-7"><a id="__codelineno-62-7" name="__codelineno-62-7" href="#__codelineno-62-7"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>start
+</span><span id="__span-62-8"><a id="__codelineno-62-8" name="__codelineno-62-8" href="#__codelineno-62-8"></a>
+</span><span id="__span-62-9"><a id="__codelineno-62-9" name="__codelineno-62-9" href="#__codelineno-62-9"></a><span class="c1"># Include first hunk (feature 1)</span>
+</span><span id="__span-62-10"><a id="__codelineno-62-10" name="__codelineno-62-10" href="#__codelineno-62-10"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include
+</span><span id="__span-62-11"><a id="__codelineno-62-11" name="__codelineno-62-11" href="#__codelineno-62-11"></a>❯<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;Add feature 1&quot;</span>
+</span><span id="__span-62-12"><a id="__codelineno-62-12" name="__codelineno-62-12" href="#__codelineno-62-12"></a>
+</span><span id="__span-62-13"><a id="__codelineno-62-13" name="__codelineno-62-13" href="#__codelineno-62-13"></a><span class="c1"># Discard debug code</span>
+</span><span id="__span-62-14"><a id="__codelineno-62-14" name="__codelineno-62-14" href="#__codelineno-62-14"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>discard
+</span><span id="__span-62-15"><a id="__codelineno-62-15" name="__codelineno-62-15" href="#__codelineno-62-15"></a>
+</span><span id="__span-62-16"><a id="__codelineno-62-16" name="__codelineno-62-16" href="#__codelineno-62-16"></a><span class="c1"># Include feature 2</span>
+</span><span id="__span-62-17"><a id="__codelineno-62-17" name="__codelineno-62-17" href="#__codelineno-62-17"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>include
+</span><span id="__span-62-18"><a id="__codelineno-62-18" name="__codelineno-62-18" href="#__codelineno-62-18"></a>❯<span class="w"> </span>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;Add feature 2&quot;</span>
+</span><span id="__span-62-19"><a id="__codelineno-62-19" name="__codelineno-62-19" href="#__codelineno-62-19"></a>
+</span><span id="__span-62-20"><a id="__codelineno-62-20" name="__codelineno-62-20" href="#__codelineno-62-20"></a><span class="c1"># Check if anything remains</span>
+</span><span id="__span-62-21"><a id="__codelineno-62-21" name="__codelineno-62-21" href="#__codelineno-62-21"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>status
 </span></code></pre></div>
 
 
@@ -2601,7 +2800,7 @@ assistant can discover them automatically.</p>
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
       
         <script src="../assets/extra.js"></script>
       

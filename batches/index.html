@@ -18,12 +18,14 @@
         <link rel="prev" href="../ai-assistants/">
       
       
+        <link rel="next" href="../storage/">
+      
       
         
       
       
       <link rel="icon" href="../assets/favicon.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
@@ -31,7 +33,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
         
         <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -967,6 +969,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#executable-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Executable Modes
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1312,6 +1325,62 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage and Recovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../benchmarking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Matching Benchmarks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1406,6 +1475,17 @@
     <span class="md-ellipsis">
       
         Submodule Pointers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#executable-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Executable Modes
       
     </span>
   </a>
@@ -1796,6 +1876,21 @@ The core commands (start, include, skip, discard) handle the majority of use cas
 - A Git commit under <code>refs/git-stage-batch/batches/&lt;name&gt;</code> containing the realized batch content
 - A state commit under <code>refs/git-stage-batch/state/&lt;name&gt;</code> tracking the batch source commit and ownership structure</p>
 <p>Legacy batches under <code>refs/batches/&lt;name&gt;</code> are read as migration inputs. Once a batch is written by the current version, the legacy ref and file-backed metadata for that batch are removed.</p>
+<p>Batch names must be non-empty single path components no longer than 250 UTF-8
+bytes. In addition to spaces, slashes, backslashes, and colons, Git reserves
+characters and sequences such as <code>~</code>, <code>^</code>, <code>?</code>, <code>*</code>, <code>[</code>, <code>..</code>, and <code>@{</code>, as
+well as trailing dots and <code>.lock</code> suffixes. The name is checked with Git's own
+ref-format rules before any batch or session state is written. Unicode names
+are supported when they satisfy those rules.</p>
+<p>If an older version left file-backed metadata with an invalid name, batch
+discovery reports the entry instead of ignoring it. The diagnostic identifies
+the invalid name and its metadata under Git's <code>git-stage-batch/batches</code>
+directory. If a matching legacy <code>refs/batches/&lt;old-name&gt;</code> ref exists, choose a
+valid unused name, rename that ref with <code>git update-ref</code>, and move the metadata
+directory to the same new name. If no matching ref exists, the directory is
+orphaned metadata from a failed creation and does not contain a recoverable
+batch commit; inspect it if needed, then move it outside the state directory or
+remove it. Run <code>git-stage-batch list</code> again to verify the repair.</p>
 <h3 id="application-model-includeapply-from">Application Model (include/apply --from)<a class="headerlink" href="#application-model-includeapply-from" title="Permanent link">&para;</a></h3>
 <p>When applying a batch to your working tree or index, the tool uses <strong>structural merge</strong>:</p>
 <ol>
@@ -1846,6 +1941,12 @@ with <code>include --to BATCH</code>, shown with <code>show --from BATCH</code>,
 <code>discard --from BATCH</code>, and removed from a batch with <code>reset --from BATCH</code>.</p>
 <p>Because a submodule pointer has no line content in the superproject, <code>--line</code>
 is not supported for those entries.</p>
+<h3 id="executable-modes">Executable Modes<a class="headerlink" href="#executable-modes" title="Permanent link">&para;</a></h3>
+<p>Executable-bit changes are stored as atomic batch metadata with no line-content
+claims. They can be saved with <code>include --to</code> or <code>discard --to</code>, reviewed with
+<code>show --from</code>, staged or applied with <code>include --from</code> and <code>apply --from</code>,
+restored with <code>discard --from</code>, removed or moved with <code>reset --from</code>, and
+filtered with <code>sift</code>. Line selection is not supported for mode actions.</p>
 <hr />
 <h2 id="new"><code>new</code><a class="headerlink" href="#new" title="Permanent link">&para;</a></h2>
 <p>Create a new named batch for accumulating changes.</p>
@@ -2130,7 +2231,9 @@ If the batch doesn't exist, it will be automatically created.</p>
 <p><strong>File-level saving and discarding:</strong>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-39-1"><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a>❯ git-stage-batch discard --to batch-name --file
 </span></code></pre></div></p>
-<p>Save the entire selected file to the batch, then discard the entire file from the working tree. Useful when you want to completely remove a file while preserving it for potential recovery.</p>
+<p>Save all changes in the selected file to the batch, then remove those changes
+from the working tree. A tracked file returns to its indexed baseline; a newly
+added file is removed because it has no indexed version to restore.</p>
 <p><strong>Example workflow:</strong>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-40-1"><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a><span class="c1"># Accidentally included debug logging in your changes</span>
 </span><span id="__span-40-2"><a id="__codelineno-40-2" name="__codelineno-40-2" href="#__codelineno-40-2"></a>❯<span class="w"> </span>git-stage-batch<span class="w"> </span>start
@@ -2527,7 +2630,7 @@ Batches let you <strong>defer and group those parts</strong> so they can become 
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
       
         <script src="../assets/extra.js"></script>
       

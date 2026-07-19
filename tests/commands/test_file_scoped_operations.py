@@ -108,6 +108,7 @@ def multi_file_repo(tmp_path, monkeypatch):
     "action",
     [
         multi_file_actions.include_each_resolved_file,
+        multi_file_actions.discard_each_resolved_file,
     ],
 )
 def test_multi_file_mutation_rejects_uncaptured_rename_partner(
@@ -173,6 +174,41 @@ def test_multi_file_include_rejects_index_drift_before_later_file(
     ).returncode == 0
     assert "alpha2-modified" in (multi_file_repo / "alpha.txt").read_text()
     assert "beta2-modified" in (multi_file_repo / "beta.txt").read_text()
+
+
+def test_multi_file_discard_rejects_worktree_drift_before_later_file(
+    multi_file_repo,
+    monkeypatch,
+):
+    """A later file must not be discarded from a stale prepared worktree view."""
+    command_start(quiet=True, auto_advance=False)
+    original_discard = multi_file_actions._discard_file.discard_file_changes
+
+    def discard_then_drift(file_path, **kwargs):
+        result = original_discard(file_path, **kwargs)
+        if file_path == "alpha.txt":
+            (multi_file_repo / "beta.txt").write_text("concurrent change\n")
+        return result
+
+    monkeypatch.setattr(
+        multi_file_actions._discard_file,
+        "discard_file_changes",
+        discard_then_drift,
+    )
+
+    with pytest.raises(
+        CommandError,
+        match=r"Working tree file changed.*beta\.txt",
+    ):
+        multi_file_actions.discard_each_resolved_file(
+            ["alpha.txt", "beta.txt"],
+            auto_advance=False,
+        )
+
+    assert "alpha2-modified" in (multi_file_repo / "alpha.txt").read_text()
+    assert "beta2-modified" in (multi_file_repo / "beta.txt").read_text()
+
+
 def _create_one_to_many_replacement_repo(tmp_path, monkeypatch):
     repo = tmp_path / "test_repo"
     repo.mkdir()
@@ -932,6 +968,7 @@ class TestShowFileFlag:
             (["show", "--files", "*.txt"], 1),
             (["include", "--files", "*.txt", "--no-auto-advance"], 2),
             (["skip", "--files", "*.txt", "--no-auto-advance"], 1),
+            (["discard", "--files", "*.txt", "--no-auto-advance"], 2),
         ],
     )
     def test_multi_file_commands_bound_live_diff_subprocesses(

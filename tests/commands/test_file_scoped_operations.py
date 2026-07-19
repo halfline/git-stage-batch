@@ -24,6 +24,7 @@ import subprocess
 
 import pytest
 import git_stage_batch.commands.file_scope.include_file as include_file_module
+import git_stage_batch.commands.file_scope.multi_file_actions as multi_file_actions
 import git_stage_batch.data.live_diff as live_diff
 
 from git_stage_batch.commands.start import command_start
@@ -103,6 +104,75 @@ def multi_file_repo(tmp_path, monkeypatch):
     return repo
 
 
+@pytest.mark.parametrize(
+    "action",
+    [
+        multi_file_actions.include_each_resolved_file,
+    ],
+)
+def test_multi_file_mutation_rejects_uncaptured_rename_partner(
+    multi_file_repo,
+    action,
+):
+    """A rename revealed by auto-add must not escape the undo before-image."""
+    command_start(quiet=True, auto_advance=False)
+    (multi_file_repo / "alpha.txt").write_text("alpha1\nalpha2\nalpha3\n")
+    (multi_file_repo / "alpha.txt").rename(multi_file_repo / "renamed-alpha.txt")
+
+    with pytest.raises(CommandError, match="Uncaptured path.*alpha.txt"):
+        action(
+            ["renamed-alpha.txt", "beta.txt"],
+            auto_advance=False,
+        )
+
+    staged = subprocess.run(
+        ["git", "diff", "--cached", "--quiet"],
+        check=False,
+    )
+    assert staged.returncode == 0
+    renamed_index_entry = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", "--", "renamed-alpha.txt"],
+        check=False,
+        capture_output=True,
+    )
+    assert renamed_index_entry.returncode != 0
+    assert not (multi_file_repo / "alpha.txt").exists()
+    assert (multi_file_repo / "renamed-alpha.txt").exists()
+    assert "beta2-modified" in (multi_file_repo / "beta.txt").read_text()
+
+
+def test_multi_file_include_rejects_index_drift_before_later_file(
+    multi_file_repo,
+    monkeypatch,
+):
+    """A later file must not be staged from a stale prepared index view."""
+    command_start(quiet=True, auto_advance=False)
+    original_include = multi_file_actions._include_file.include_file_changes
+
+    def include_then_drift(file_path, **kwargs):
+        result = original_include(file_path, **kwargs)
+        if file_path == "alpha.txt":
+            subprocess.run(["git", "add", "beta.txt"], check=True)
+        return result
+
+    monkeypatch.setattr(
+        multi_file_actions._include_file,
+        "include_file_changes",
+        include_then_drift,
+    )
+
+    with pytest.raises(CommandError, match=r"Index changed.*beta\.txt"):
+        multi_file_actions.include_each_resolved_file(
+            ["alpha.txt", "beta.txt"],
+            auto_advance=False,
+        )
+
+    assert subprocess.run(
+        ["git", "diff", "--cached", "--quiet"],
+        check=False,
+    ).returncode == 0
+    assert "alpha2-modified" in (multi_file_repo / "alpha.txt").read_text()
+    assert "beta2-modified" in (multi_file_repo / "beta.txt").read_text()
 def _create_one_to_many_replacement_repo(tmp_path, monkeypatch):
     repo = tmp_path / "test_repo"
     repo.mkdir()
@@ -860,6 +930,7 @@ class TestShowFileFlag:
         ("arguments", "expected_live_diff_count"),
         [
             (["show", "--files", "*.txt"], 1),
+            (["include", "--files", "*.txt", "--no-auto-advance"], 2),
         ],
     )
     def test_multi_file_commands_bound_live_diff_subprocesses(

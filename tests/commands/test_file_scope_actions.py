@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from types import SimpleNamespace
 
 import git_stage_batch.commands.file_scope.multi_file_actions as multi_file_actions
@@ -45,6 +46,36 @@ def _capture_undo_checkpoints(monkeypatch):
 
     monkeypatch.setattr(multi_file_actions, "undo_checkpoint", fake_undo_checkpoint)
     return calls
+
+
+def _stub_prepared_diff(monkeypatch):
+    prepared_changes = ()
+    monkeypatch.setattr(
+        multi_file_actions,
+        "auto_add_untracked_files",
+        lambda files: None,
+    )
+    monkeypatch.setattr(
+        multi_file_actions,
+        "acquire_prepared_live_diff",
+        lambda **_kwargs: nullcontext(prepared_changes),
+    )
+    monkeypatch.setattr(
+        multi_file_actions,
+        "group_live_diff_by_file",
+        lambda files, changes: {file_path: changes for file_path in files},
+    )
+    monkeypatch.setattr(
+        multi_file_actions,
+        "_capture_live_action_targets",
+        lambda _paths: object(),
+    )
+    monkeypatch.setattr(
+        multi_file_actions,
+        "_require_live_action_targets_unchanged",
+        lambda **_kwargs: None,
+    )
+    return prepared_changes
 
 
 def test_run_for_each_resolved_file_wraps_multiple_files(monkeypatch):
@@ -155,9 +186,16 @@ def test_include_each_resolved_file_reports_aggregate_result(
     include_calls = []
     selection_calls = []
     show_calls = []
+    prepared_changes = _stub_prepared_diff(monkeypatch)
 
-    def fake_include_file(file_path, *, quiet=False, advance=True):
-        include_calls.append((file_path, quiet, advance))
+    def fake_include_file(
+        file_path,
+        *,
+        quiet=False,
+        advance=True,
+        _prepared_changes=None,
+    ):
+        include_calls.append((file_path, quiet, advance, _prepared_changes))
         return {"alpha.txt": 2, "beta.txt": 0}[file_path]
 
     monkeypatch.setattr(
@@ -196,8 +234,8 @@ def test_include_each_resolved_file_reports_aggregate_result(
         ("exit",),
     ]
     assert include_calls == [
-        ("alpha.txt", True, False),
-        ("beta.txt", True, False),
+        ("alpha.txt", True, False, prepared_changes),
+        ("beta.txt", True, False, prepared_changes),
     ]
     assert selection_calls == [True]
     assert show_calls == ["show"]

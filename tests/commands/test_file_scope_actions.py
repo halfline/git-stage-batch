@@ -249,9 +249,16 @@ def test_skip_each_resolved_file_stops_after_empty_result(
     checkpoint_calls = _capture_undo_checkpoints(monkeypatch)
     skip_calls = []
     selection_calls = []
+    prepared_changes = _stub_prepared_diff(monkeypatch)
 
-    def fake_skip_file(file_path, *, quiet=False, advance=True):
-        skip_calls.append((file_path, quiet, advance))
+    def fake_skip_file(
+        file_path,
+        *,
+        quiet=False,
+        advance=True,
+        _prepared_changes=None,
+    ):
+        skip_calls.append((file_path, quiet, advance, _prepared_changes))
         return 0
 
     monkeypatch.setattr(
@@ -282,8 +289,8 @@ def test_skip_each_resolved_file_stops_after_empty_result(
         ("exit",),
     ]
     assert skip_calls == [
-        ("alpha.txt", True, False),
-        ("beta.txt", True, False),
+        ("alpha.txt", True, False, prepared_changes),
+        ("beta.txt", True, False, prepared_changes),
     ]
     assert selection_calls == []
     assert "No hunks skipped from matched files." in captured.err

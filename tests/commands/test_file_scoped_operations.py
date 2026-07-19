@@ -931,6 +931,7 @@ class TestShowFileFlag:
         [
             (["show", "--files", "*.txt"], 1),
             (["include", "--files", "*.txt", "--no-auto-advance"], 2),
+            (["skip", "--files", "*.txt", "--no-auto-advance"], 1),
         ],
     )
     def test_multi_file_commands_bound_live_diff_subprocesses(

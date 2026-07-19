@@ -82,3 +82,17 @@ def test_reads_several_scoped_index_entries_in_one_lookup(temp_git_repo):
 
     assert set(entries) == {"one.txt", "two.txt"}
     assert all(entry.mode == "100644" for entry in entries.values())
+
+
+def test_single_entry_read_propagates_index_failure(temp_git_repo):
+    (temp_git_repo / ".git" / "index").write_bytes(b"invalid index")
+
+    with pytest.raises(subprocess.CalledProcessError):
+        read_index_entry("regular.txt")
+
+
+def test_bulk_entry_read_propagates_index_failure(temp_git_repo):
+    (temp_git_repo / ".git" / "index").write_bytes(b"invalid index")
+
+    with pytest.raises(subprocess.CalledProcessError):
+        read_index_entries(["one.txt", "two.txt"])

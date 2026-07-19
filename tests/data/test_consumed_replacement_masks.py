@@ -104,3 +104,23 @@ def test_filter_consumed_replacement_masks_returns_none_without_visible_changes(
     )
 
     assert replacement_masks.filter_consumed_replacement_masks(line_changes) is None
+
+
+def test_explicit_consumed_metadata_does_not_read_session_state(monkeypatch):
+    line_changes = _line_changes(_line("-", "old"), _line("+", "new"))
+    monkeypatch.setattr(
+        replacement_masks,
+        "read_consumed_file_metadata",
+        lambda _path: (_ for _ in ()).throw(AssertionError("unexpected session read")),
+    )
+
+    result = replacement_masks.filter_consumed_replacement_masks_with_metadata(
+        line_changes,
+        file_metadata={
+            "replacement_masks": [
+                {"deleted_lines": ["old"], "added_lines": ["new"]}
+            ]
+        },
+    )
+
+    assert result is None

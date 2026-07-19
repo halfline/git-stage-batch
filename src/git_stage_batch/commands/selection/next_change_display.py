@@ -14,7 +14,7 @@ from ...core.models import (
 from ...data.file_review.state import clear_last_file_review_state
 from ...data.live_change_candidates import (
     EligibleLiveChange,
-    iter_eligible_live_changes,
+    next_eligible_live_change,
 )
 from ...data.selected_change.file_changes import (
     cache_binary_file_change,
@@ -86,18 +86,19 @@ def show_next_unprocessed_change(
     """Show the first live change accepted by the shared eligibility policy."""
     preview_state = snapshot_selected_change_state() if not selectable else None
     try:
-        candidate = next(iter_eligible_live_changes(), None)
+        candidate = next_eligible_live_change()
         if candidate is None:
             if porcelain:
                 sys.exit(1)
             print(_("No more hunks to process."), file=sys.stderr)
             return
 
-        _cache_candidate(candidate)
-        if selectable:
-            clear_last_file_review_state()
-        if not porcelain:
-            _print_candidate(candidate, selectable=selectable)
+        with candidate:
+            _cache_candidate(candidate)
+            if selectable:
+                clear_last_file_review_state()
+            if not porcelain:
+                _print_candidate(candidate, selectable=selectable)
     finally:
         if preview_state is not None:
             restore_selected_change_state(preview_state)

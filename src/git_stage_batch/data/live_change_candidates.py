@@ -9,6 +9,7 @@ from typing import Iterator
 from ..batch.state.query import list_batch_names, read_batch_metadata_for_batches
 from ..batch.source.annotation import annotate_with_batch_source
 from ..core.diff_parser import acquire_unified_diff, build_line_changes_from_patch_lines
+from ..core.buffer import LineBuffer
 from ..core.hashing import (
     compute_binary_file_hash,
     compute_file_mode_change_hash,
@@ -67,6 +68,20 @@ class EligibleLiveChange:
     change: LiveChange
     stable_hash: str
     raw_patch: object
+
+    def close(self) -> None:
+        """Close raw patch storage owned by this prepared candidate."""
+        if isinstance(self.raw_patch, SingleHunkPatch) and isinstance(
+            self.raw_patch.lines,
+            LineBuffer,
+        ):
+            self.raw_patch.lines.close()
+
+    def __enter__(self) -> EligibleLiveChange:
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self.close()
 
 
 class LiveChangeScanContext:
@@ -150,15 +165,23 @@ def prepare_live_change(
         is_path_blocked(path, context.blocked_paths) for path in _paths_for_item(item)
     ):
         return None, SkipReason.BLOCKED_PATH
-    raw_patch = (
-        SingleHunkPatch(item.old_path, item.new_path, tuple(item.lines))
-        if isinstance(item, SingleHunkPatch)
-        else item
-    )
+    if isinstance(item, SingleHunkPatch):
+        owned_patch_lines = (
+            item.lines.clone()
+            if isinstance(item.lines, LineBuffer)
+            else LineBuffer.from_chunks(item.lines)
+        )
+        raw_patch = SingleHunkPatch(
+            item.old_path,
+            item.new_path,
+            owned_patch_lines,
+        )
+    else:
+        raw_patch = item
     return EligibleLiveChange(change, stable_hash, raw_patch), None
 
 
-def iter_eligible_live_changes() -> Iterator[EligibleLiveChange]:
+def stream_eligible_live_changes() -> Iterator[EligibleLiveChange]:
     """Stream all actionable live changes using one shared policy snapshot."""
     context = LiveChangeScanContext()
     with acquire_unified_diff(
@@ -173,3 +196,14 @@ def iter_eligible_live_changes() -> Iterator[EligibleLiveChange]:
             candidate, _reason = prepare_live_change(item, context)
             if candidate is not None:
                 yield candidate
+
+
+def next_eligible_live_change() -> EligibleLiveChange | None:
+    """Return one owned candidate and explicitly close its lazy diff scan."""
+    candidates = stream_eligible_live_changes()
+    try:
+        return next(candidates, None)
+    finally:
+        close = getattr(candidates, "close", None)
+        if close is not None:
+            close()

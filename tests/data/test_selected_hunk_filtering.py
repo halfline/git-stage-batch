@@ -12,7 +12,10 @@ from git_stage_batch.data.hunk_tracking import fetch_next_change
 from git_stage_batch.data.line_id_files import write_line_ids_file
 from git_stage_batch.data.selected_change.hunk_filtering import (
     apply_line_level_batch_filter_to_cached_hunk,
+    filter_line_level_change_with_attribution,
 )
+from git_stage_batch.batch.attribution import FileAttribution
+from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,
     get_processed_batch_ids_file_path,
@@ -108,3 +111,46 @@ def test_apply_line_level_batch_filter_returns_true_without_cached_hunk(
     temp_git_repo,
 ):
     assert apply_line_level_batch_filter_to_cached_hunk() is True
+
+
+def test_explicit_attribution_filter_is_io_free(monkeypatch):
+    """Prepared filtering should consume only caller-supplied resources."""
+    line_changes = LineLevelChange(
+        path="file.txt",
+        header=HunkHeader(old_start=1, old_len=1, new_start=1, new_len=1),
+        lines=[
+            LineEntry(
+                id=1,
+                kind="+",
+                old_line_number=None,
+                new_line_number=1,
+                text_bytes=b"new\n",
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        hunk_filtering_module,
+        "filter_owned_diff_fragments",
+        lambda changes, _attribution: (False, changes),
+    )
+    monkeypatch.setattr(
+        hunk_filtering_module,
+        "read_consumed_file_metadata",
+        lambda _path: (_ for _ in ()).throw(AssertionError("unexpected session read")),
+    )
+    monkeypatch.setattr(
+        hunk_filtering_module,
+        "log_journal",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("unexpected journal write")
+        ),
+    )
+
+    filtered = filter_line_level_change_with_attribution(
+        line_changes,
+        attribution=FileAttribution(file_path="file.txt", units=[]),
+        batch_metadata_by_name={},
+        consumed_file_metadata=None,
+    )
+
+    assert filtered is line_changes

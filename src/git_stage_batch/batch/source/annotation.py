@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 
 from ...core.models import LineEntry, LineLevelChange
 from ...utils.git_repository import get_git_repository_root_path
@@ -77,6 +78,42 @@ def _apply_batch_source_mapping(
         header=line_changes.header,
         lines=new_lines,
     )
+
+
+def annotate_with_batch_source_mapping(
+    line_changes: LineLevelChange,
+    mapping: LineMapping | None,
+) -> LineLevelChange:
+    """Annotate one hunk from a reusable batch-source mapping."""
+    if mapping is None:
+        return _fill_source_from_working_tree(line_changes)
+    return _apply_batch_source_mapping(line_changes, mapping)
+
+
+@contextmanager
+def acquire_batch_source_mapping(
+    path_value: str,
+    *,
+    batch_source_commit: str | None,
+    working_lines: Sequence[bytes],
+) -> Iterator[LineMapping | None]:
+    """Acquire one reusable source-to-working mapping for a repository file."""
+    if not batch_source_commit:
+        yield None
+        return
+
+    batch_source_buffer = read_git_object_buffer_or_none(
+        f"{batch_source_commit}:{path_value}"
+    )
+    if batch_source_buffer is None:
+        yield None
+        return
+
+    with (
+        batch_source_buffer as batch_source_lines,
+        match_lines(batch_source_lines, working_lines) as mapping,
+    ):
+        yield mapping
 
 
 def _fill_source_from_working_tree(line_changes: LineLevelChange) -> LineLevelChange:
@@ -165,21 +202,12 @@ def annotate_with_batch_source_working_lines(
 ) -> LineLevelChange:
     """Annotate LineLevelChange with indexed working content lines."""
     batch_source_commit = get_batch_source_for_file(path_value)
-    if not batch_source_commit:
-        return _fill_source_from_working_tree(line_changes)
-
-    batch_source_buffer = read_git_object_buffer_or_none(
-        f"{batch_source_commit}:{path_value}"
-    )
-    if batch_source_buffer is None:
-        return _fill_source_from_working_tree(line_changes)
-
-    with batch_source_buffer as batch_source_lines:
-        return annotate_with_batch_source_lines(
-            line_changes,
-            batch_source_lines=batch_source_lines,
-            working_lines=working_lines,
-        )
+    with acquire_batch_source_mapping(
+        path_value,
+        batch_source_commit=batch_source_commit,
+        working_lines=working_lines,
+    ) as mapping:
+        return annotate_with_batch_source_mapping(line_changes, mapping)
 
 
 def annotate_with_batch_source_lines(
@@ -190,4 +218,4 @@ def annotate_with_batch_source_lines(
 ) -> LineLevelChange:
     """Annotate LineLevelChange from indexed batch-source and working lines."""
     with match_lines(batch_source_lines, working_lines) as mapping:
-        return _apply_batch_source_mapping(line_changes, mapping)
+        return annotate_with_batch_source_mapping(line_changes, mapping)

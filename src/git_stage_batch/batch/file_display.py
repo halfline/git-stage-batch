@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Optional
 
 from .ownership import display_lines as batch_display
@@ -90,26 +91,42 @@ def _render_batch_file_display_from_ownership(
     if batch_source_buffer is None:
         return None
 
-    mergeable_id_ranges = LineRanges.empty()
-    units = []
-
     with batch_source_buffer as batch_source_lines:
-        # Build display lines (already has correct line IDs matching ownership)
-        display_lines = batch_display.build_display_lines_from_batch_source_lines(
-            batch_source_lines,
-            ownership,
-            context_lines=get_context_lines(),
+        return build_batch_file_display_from_inputs(
+            file_path=file_path,
+            file_meta=file_meta,
+            ownership=ownership,
+            batch_source_lines=batch_source_lines,
+            probe_mergeability=probe_mergeability,
         )
 
-        if probe_mergeability and display_lines:
-            mergeability = _file_mergeability.probe_batch_file_mergeability(
-                file_path=file_path,
-                ownership=ownership,
-                display_lines=display_lines,
-                batch_source_lines=batch_source_lines,
-            )
-            mergeable_id_ranges = mergeability.mergeable_id_ranges
-            units = mergeability.units
+
+def build_batch_file_display_from_inputs(
+    *,
+    file_path: str,
+    file_meta: dict,
+    ownership: BatchOwnership,
+    batch_source_lines: Sequence[bytes],
+    probe_mergeability: bool,
+) -> Optional[RenderedBatchDisplay]:
+    """Build a batch display from caller-owned source and ownership inputs."""
+    display_lines = batch_display.build_display_lines_from_batch_source_lines(
+        batch_source_lines,
+        ownership,
+        context_lines=get_context_lines(),
+    )
+
+    mergeable_id_ranges = LineRanges.empty()
+    units = []
+    if probe_mergeability and display_lines:
+        mergeability = _file_mergeability.probe_batch_file_mergeability(
+            file_path=file_path,
+            ownership=ownership,
+            display_lines=display_lines,
+            batch_source_lines=batch_source_lines,
+        )
+        mergeable_id_ranges = mergeability.mergeable_id_ranges
+        units = mergeability.units
 
     return _file_display_model.build_rendered_batch_display_model(
         file_path=file_path,

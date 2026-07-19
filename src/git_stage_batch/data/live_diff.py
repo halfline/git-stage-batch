@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 
 from ..core.buffer import LineBuffer
@@ -66,3 +66,21 @@ def group_live_diff_by_file(
     return {
         file_path: tuple(file_changes) for file_path, file_changes in grouped.items()
     }
+
+
+def paths_for_live_changes(
+    changes: Iterable[UnifiedDiffItem],
+) -> tuple[str, ...]:
+    """Return every repository path touched by prepared live changes."""
+    paths = []
+    for change in changes:
+        old_path = getattr(change, "old_path", None)
+        new_path = getattr(change, "new_path", None)
+        paths.extend(
+            path
+            for path in (old_path, new_path)
+            if path is not None and path != "/dev/null"
+        )
+        if old_path is None and new_path is None:
+            paths.append(change.path())
+    return tuple(dict.fromkeys(paths))

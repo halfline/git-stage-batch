@@ -38,6 +38,18 @@ def _git_accepts_batch_name(name: str) -> bool:
 
 def validate_batch_name(name: str) -> None:
     """Validate a batch name against product and Git ref requirements."""
+    validate_batch_name_constraints(name)
+
+    if not _git_accepts_batch_name(name):
+        raise CommandError(
+            _("Batch name '{name}' is not compatible with Git ref naming rules").format(
+                name=name
+            )
+        )
+
+
+def validate_batch_name_constraints(name: str) -> None:
+    """Validate product rules for a name already discovered through Git refs."""
     if not name:
         raise CommandError(_("Batch name cannot be empty"))
 
@@ -57,25 +69,25 @@ def validate_batch_name(name: str) -> None:
             )
         )
 
-    if not _git_accepts_batch_name(name):
-        raise CommandError(
-            _("Batch name '{name}' is not compatible with Git ref naming rules").format(
-                name=name
-            )
-        )
 
-
-def invalid_file_backed_batch_names() -> list[str]:
+def invalid_file_backed_batch_names(
+    *,
+    trusted_batch_names: set[str] | None = None,
+) -> list[str]:
     """Return legacy metadata names that cannot be used by current storage."""
     batches_directory = get_batches_directory_path()
     if not batches_directory.is_dir():
         return []
 
     invalid_names = []
+    trusted_names = trusted_batch_names or set()
     for metadata_path in batches_directory.rglob("metadata.json"):
         batch_name = metadata_path.parent.relative_to(batches_directory).as_posix()
         try:
-            validate_batch_name(batch_name)
+            if batch_name in trusted_names:
+                validate_batch_name_constraints(batch_name)
+            else:
+                validate_batch_name(batch_name)
         except CommandError:
             invalid_names.append(batch_name)
     return sorted(invalid_names)

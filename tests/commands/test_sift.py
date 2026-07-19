@@ -1,5 +1,7 @@
 """Tests for sift command."""
 
+from pathlib import Path
+
 from git_stage_batch.batch.merge.merge import merge_batch_from_line_sequences_as_buffer
 
 import subprocess
@@ -23,11 +25,15 @@ from git_stage_batch.commands.sift import (
     command_sift_batch,
 )
 from git_stage_batch.batch.state.query import list_batch_names, read_batch_metadata
+from git_stage_batch.batch.state.query import get_batch_tree_sha
 from git_stage_batch.batch.binary_file_storage import add_binary_file_to_batch
 from git_stage_batch.batch.file_entry_storage import read_file_from_batch
 from git_stage_batch.core.models import BinaryFileChange
 from git_stage_batch.data.hunk_tracking import fetch_next_change
 from git_stage_batch.exceptions import CommandError, MergeError
+from git_stage_batch.commands.annotate import command_annotate_batch
+import git_stage_batch.commands.sift as sift_command
+from git_stage_batch.utils.file_job_workspace import FileJobWorkspace
 from tests.batch.ownership.metadata_helpers import (
     acquire_ownership_for_metadata,
     reject_materialized_ownership_metadata as _reject_materialized_ownership_metadata,
@@ -1103,7 +1109,11 @@ class TestSiftCopyVsInPlace:
         command_include_to_batch("source-batch")
         readme.write_text("# Test\nbase\n")
 
+        failed_result = None
+
         def fail_persistence(*_args, **_kwargs):
+            nonlocal failed_result
+            failed_result = _args[3]
             raise OSError("synthetic persistence failure")
 
         monkeypatch.setattr(
@@ -1116,6 +1126,13 @@ class TestSiftCopyVsInPlace:
 
         assert not batch_exists("dest-batch")
         assert not any(name.startswith("sift-tmp-") for name in list_batch_names())
+        assert isinstance(failed_result, sift_results.SiftedTextFileResult)
+        with pytest.raises(ValueError, match="buffer is closed"):
+            failed_result.target_buffer.to_bytes()
+        for deletion in failed_result.ownership.deletions:
+            if isinstance(deletion.content_lines, LineBuffer):
+                with pytest.raises(ValueError, match="buffer is closed"):
+                    deletion.content_lines.to_bytes()
 
     def test_in_place_mode_is_atomic(self, temp_git_repo):
         """Test that in-place mode uses atomic update (all-or-nothing).
@@ -1144,3 +1161,397 @@ class TestSiftCopyVsInPlace:
         assert batch_exists("atomic-batch")
         metadata_after = read_batch_metadata("atomic-batch")
         assert "files" in metadata_after
+
+
+def _prepare_parallel_sift_source(repo, *, file_count: int = 2) -> list[str]:
+    file_paths = [f"parallel-{index}.txt" for index in range(file_count)]
+    for index, file_path in enumerate(file_paths):
+        (repo / file_path).write_text(f"start {index}\nold {index}\nend {index}\n")
+    subprocess.run(["git", "add", *file_paths], check=True, cwd=repo)
+    subprocess.run(
+        ["git", "commit", "-m", "Parallel sift baseline"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+    )
+    for index, file_path in enumerate(file_paths):
+        (repo / file_path).write_text(f"start {index}\nnew {index}\nend {index}\n")
+    command_start()
+    for file_path in file_paths:
+        command_include_to_batch(
+            "parallel-source",
+            file=file_path,
+            quiet=True,
+        )
+    for index, file_path in enumerate(file_paths):
+        (repo / file_path).write_text(f"start {index}\nold {index}\nend {index}\n")
+    return file_paths
+
+
+def _comparable_sift_metadata(batch_name: str) -> dict:
+    metadata = read_batch_metadata(batch_name)
+    return {
+        "baseline": metadata["baseline"],
+        "files": {
+            file_path: {
+                key: value
+                for key, value in file_meta.items()
+                if key != "batch_source_commit"
+            }
+            for file_path, file_meta in metadata["files"].items()
+        },
+    }
+
+
+class TestSiftFileJobs:
+    """Contract tests for inline and process text sift execution."""
+
+    def test_empty_source_change_before_copy_aborts(self, temp_git_repo, monkeypatch):
+        command_new_batch("empty-source")
+        original_snapshot = sift_command._read_source_batch_snapshot
+
+        def snapshot_then_annotate(batch_name):
+            snapshot = original_snapshot(batch_name)
+            command_annotate_batch(batch_name, "changed after snapshot")
+            return snapshot
+
+        monkeypatch.setattr(
+            sift_command,
+            "_read_source_batch_snapshot",
+            snapshot_then_annotate,
+        )
+
+        with pytest.raises(CommandError, match="changed while sift was running"):
+            command_sift_batch("empty-source", "empty-destination")
+
+        assert not batch_exists("empty-destination")
+        assert read_batch_metadata("empty-source")["note"] == "changed after snapshot"
+
+    def test_forced_process_matches_inline_publication(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        file_paths = _prepare_parallel_sift_source(temp_git_repo, file_count=4)
+        initial_worktree = {
+            file_path: (temp_git_repo / file_path).read_bytes()
+            for file_path in file_paths
+        }
+
+        monkeypatch.setenv("GIT_STAGE_BATCH_JOBS", "1")
+        command_sift_batch("parallel-source", "inline-destination")
+        for worker_count in (2, 4):
+            destination = f"process-{worker_count}-destination"
+            monkeypatch.setenv("GIT_STAGE_BATCH_JOBS", str(worker_count))
+            command_sift_batch("parallel-source", destination)
+
+            assert get_batch_tree_sha("inline-destination") == get_batch_tree_sha(
+                destination
+            )
+            assert _comparable_sift_metadata(
+                "inline-destination"
+            ) == _comparable_sift_metadata(destination)
+            assert list(read_batch_metadata(destination)["files"]) == file_paths
+        assert {
+            file_path: (temp_git_repo / file_path).read_bytes()
+            for file_path in file_paths
+        } == initial_worktree
+
+    def test_worktree_change_after_compute_aborts_before_publication(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        file_paths = _prepare_parallel_sift_source(temp_git_repo)
+        original_run = sift_command.run_file_jobs
+
+        def run_then_change(*args, **kwargs):
+            results = original_run(*args, **kwargs)
+            (temp_git_repo / file_paths[0]).write_text("changed after compute\n")
+            return results
+
+        monkeypatch.setenv("GIT_STAGE_BATCH_JOBS", "1")
+        monkeypatch.setattr(sift_command, "run_file_jobs", run_then_change)
+
+        with pytest.raises(
+            CommandError,
+            match="working-tree file 'parallel-0.txt' changed",
+        ):
+            command_sift_batch("parallel-source", "stale-worktree-destination")
+
+        assert not batch_exists("stale-worktree-destination")
+        assert not any(name.startswith("sift-tmp-") for name in list_batch_names())
+
+    def test_multiple_worker_refusals_report_source_order(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        file_paths = _prepare_parallel_sift_source(temp_git_repo)
+
+        def refuse_all(jobs, compute, **kwargs):
+            return [
+                sift_command._sift_jobs.SiftTextFileJobResult(
+                    ordinal=job.ordinal,
+                    file_path=job.file_path,
+                    outcome="merge_error",
+                    error_message=f"refused {job.file_path}",
+                )
+                for job in sorted(jobs, key=lambda item: item.ordinal)
+            ]
+
+        monkeypatch.setattr(sift_command, "run_file_jobs", refuse_all)
+
+        with pytest.raises(CommandError, match=f"refused {file_paths[0]}"):
+            command_sift_batch("parallel-source", "refused-destination")
+
+        assert not batch_exists("refused-destination")
+
+    def test_source_revision_change_after_compute_aborts_before_publication(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        _prepare_parallel_sift_source(temp_git_repo)
+        original_run = sift_command.run_file_jobs
+
+        def run_then_annotate(*args, **kwargs):
+            results = original_run(*args, **kwargs)
+            command_annotate_batch("parallel-source", "changed during sift")
+            return results
+
+        monkeypatch.setenv("GIT_STAGE_BATCH_JOBS", "1")
+        monkeypatch.setattr(sift_command, "run_file_jobs", run_then_annotate)
+
+        with pytest.raises(CommandError, match="changed while sift was running"):
+            command_sift_batch("parallel-source", "stale-source-destination")
+
+        assert not batch_exists("stale-source-destination")
+        assert read_batch_metadata("parallel-source")["note"] == "changed during sift"
+        assert not any(name.startswith("sift-tmp-") for name in list_batch_names())
+
+    def test_source_change_during_worktree_recheck_aborts_before_publication(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        _prepare_parallel_sift_source(temp_git_repo)
+        original_capture = sift_command.capture_worktree_identities
+
+        def capture_then_annotate(file_paths):
+            identities = original_capture(file_paths)
+            command_annotate_batch("parallel-source", "changed during recheck")
+            return identities
+
+        monkeypatch.setenv("GIT_STAGE_BATCH_JOBS", "1")
+        monkeypatch.setattr(
+            sift_command,
+            "capture_worktree_identities",
+            capture_then_annotate,
+        )
+
+        with pytest.raises(CommandError, match="changed while sift was running"):
+            command_sift_batch("parallel-source", "recheck-race-destination")
+
+        assert not batch_exists("recheck-race-destination")
+        assert read_batch_metadata("parallel-source")["note"] == (
+            "changed during recheck"
+        )
+
+    def test_mode_sift_uses_captured_mode_across_transient_change(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        script = temp_git_repo / "script.sh"
+        script.write_text("#!/bin/sh\necho test\n")
+        script.chmod(0o644)
+        subprocess.run(
+            ["git", "add", script.name],
+            check=True,
+            cwd=temp_git_repo,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Mode sift baseline"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        script.chmod(0o755)
+        command_start()
+        command_include_to_batch(
+            "mode-source",
+            file=script.name,
+            quiet=True,
+        )
+        script.chmod(0o644)
+
+        def change_before_mode_compute(jobs, compute, **kwargs):
+            assert jobs == []
+            script.chmod(0o755)
+            return []
+
+        original_capture = sift_command.capture_worktree_identities
+
+        def restore_then_capture(file_paths):
+            script.chmod(0o644)
+            return original_capture(file_paths)
+
+        monkeypatch.setattr(
+            sift_command,
+            "run_file_jobs",
+            change_before_mode_compute,
+        )
+        monkeypatch.setattr(
+            sift_command,
+            "capture_worktree_identities",
+            restore_then_capture,
+        )
+
+        command_sift_batch("mode-source", "mode-destination")
+
+        mode_metadata = read_batch_metadata("mode-destination")["files"][
+            script.name
+        ]
+        assert mode_metadata["file_type"] == "mode"
+        assert mode_metadata["new_mode"] == "100755"
+
+    def test_destination_appearing_after_compute_is_preserved(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        _prepare_parallel_sift_source(temp_git_repo)
+        original_run = sift_command.run_file_jobs
+
+        def run_then_create_destination(*args, **kwargs):
+            results = original_run(*args, **kwargs)
+            command_new_batch("raced-destination")
+            return results
+
+        monkeypatch.setenv("GIT_STAGE_BATCH_JOBS", "1")
+        monkeypatch.setattr(
+            sift_command,
+            "run_file_jobs",
+            run_then_create_destination,
+        )
+
+        with pytest.raises(CommandError, match="created while sift was running"):
+            command_sift_batch("parallel-source", "raced-destination")
+
+        assert batch_exists("raced-destination")
+        assert read_batch_metadata("raced-destination")["files"] == {}
+        assert not any(name.startswith("sift-tmp-") for name in list_batch_names())
+
+    def test_process_sift_preserves_added_text_boundaries(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        expected_content = {
+            "added-crlf.txt": b"first\r\nsecond\r\n",
+            "added-no-final-newline.txt": b"first\nsecond",
+        }
+        for file_path, content in expected_content.items():
+            (temp_git_repo / file_path).write_bytes(content)
+        command_start()
+        for file_path in expected_content:
+            command_include_to_batch(
+                "added-source",
+                file=file_path,
+                quiet=True,
+            )
+            (temp_git_repo / file_path).unlink()
+
+        monkeypatch.setenv("GIT_STAGE_BATCH_JOBS", "2")
+        command_sift_batch("added-source", "added-destination")
+
+        metadata = read_batch_metadata("added-destination")
+        assert list(metadata["files"]) == list(expected_content)
+        assert {
+            file_meta["change_type"]
+            for file_meta in metadata["files"].values()
+        } == {"added"}
+        command_apply_from_batch("added-destination")
+        assert {
+            file_path: (temp_git_repo / file_path).read_bytes()
+            for file_path in expected_content
+        } == expected_content
+
+    def test_process_sift_preserves_text_deletions(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        original_content = {
+            "deleted-a.txt": b"first\nold a\n",
+            "deleted-b.txt": b"first\nold b",
+        }
+        for file_path, content in original_content.items():
+            (temp_git_repo / file_path).write_bytes(content)
+        subprocess.run(
+            ["git", "add", *original_content],
+            check=True,
+            cwd=temp_git_repo,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Deletion baseline"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        for file_path in original_content:
+            (temp_git_repo / file_path).unlink()
+        command_start()
+        for file_path in original_content:
+            command_include_to_batch(
+                "deleted-source",
+                file=file_path,
+                quiet=True,
+            )
+        for file_path, content in original_content.items():
+            (temp_git_repo / file_path).write_bytes(content)
+
+        monkeypatch.setenv("GIT_STAGE_BATCH_JOBS", "2")
+        command_sift_batch("deleted-source", "deleted-destination")
+
+        metadata = read_batch_metadata("deleted-destination")
+        assert list(metadata["files"]) == list(original_content)
+        assert {
+            file_meta["change_type"]
+            for file_meta in metadata["files"].values()
+        } == {"deleted"}
+        command_apply_from_batch("deleted-destination")
+        assert all(
+            not (temp_git_repo / file_path).exists()
+            for file_path in original_content
+        )
+
+    def test_interruption_removes_private_sift_workspace(
+        self,
+        temp_git_repo,
+        tmp_path,
+        monkeypatch,
+    ):
+        _prepare_parallel_sift_source(temp_git_repo)
+        workspace_roots = []
+
+        class RecordingWorkspace(FileJobWorkspace):
+            def __init__(self):
+                super().__init__(parent_directory=tmp_path)
+                workspace_roots.append(self.root)
+
+        def interrupt(jobs, compute, **kwargs):
+            Path(jobs[0].payload.target_output_path).write_bytes(b"partial")
+            raise KeyboardInterrupt
+
+        monkeypatch.setenv("GIT_STAGE_BATCH_JOBS", "1")
+        monkeypatch.setattr(sift_command, "FileJobWorkspace", RecordingWorkspace)
+        monkeypatch.setattr(sift_command, "run_file_jobs", interrupt)
+
+        with pytest.raises(KeyboardInterrupt):
+            command_sift_batch("parallel-source", "interrupted-destination")
+
+        assert workspace_roots
+        assert all(not root.exists() for root in workspace_roots)
+        assert not batch_exists("interrupted-destination")

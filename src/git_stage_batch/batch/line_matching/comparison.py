@@ -11,6 +11,7 @@ from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from enum import Enum, auto
 from itertools import chain
+from pathlib import Path
 
 from .match import match_lines
 from ...core.models import LineLevelChange
@@ -99,13 +100,21 @@ def _validate_range_pair(
 def _trusted_matched_pairs(
     source_lines: Sequence[bytes],
     target_lines: Sequence[bytes],
+    *,
+    spool_dir: str | Path | None = None,
 ) -> Iterator[tuple[int, int]]:
     """Yield bidirectionally trusted source/target line pairs."""
+    match_options = {} if spool_dir is None else {"spool_dir": spool_dir}
     with (
-        match_lines(source_lines=source_lines, target_lines=target_lines) as alignment,
+        match_lines(
+            source_lines=source_lines,
+            target_lines=target_lines,
+            **match_options,
+        ) as alignment,
         match_lines(
             source_lines=target_lines,
             target_lines=source_lines,
+            **match_options,
         ) as reverse_alignment,
     ):
         for source_line, target_line in alignment.mapped_line_pairs():
@@ -118,7 +127,9 @@ def _trusted_matched_pairs(
 
 def derive_semantic_change_runs(
     source_lines: Sequence[bytes],
-    target_lines: Sequence[bytes]
+    target_lines: Sequence[bytes],
+    *,
+    spool_dir: str | Path | None = None,
 ) -> list[SemanticChangeRun]:
     """Derive semantic change runs from source ↔ target comparison.
 
@@ -146,7 +157,11 @@ def derive_semantic_change_runs(
     previous_source = 0
     previous_target = 0
 
-    matched_pairs = _trusted_matched_pairs(source_lines, target_lines)
+    matched_pairs = _trusted_matched_pairs(
+        source_lines,
+        target_lines,
+        spool_dir=spool_dir,
+    )
     sentinel_pair = ((len(source_lines) + 1, len(target_lines) + 1),)
 
     for source_line, target_line in chain(matched_pairs, sentinel_pair):

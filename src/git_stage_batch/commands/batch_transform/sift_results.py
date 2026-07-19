@@ -16,7 +16,6 @@ from ...batch.ownership.absence_content import AbsenceContentBuilder
 from ...batch.ownership.model import BatchOwnership
 from ...batch.ownership.absence_claims import AbsenceClaim
 from ...batch.ownership.metadata_loading import acquire_ownership_for_metadata_dict
-from ...batch.state.query import get_batch_baseline_commit
 from ...batch.realized_file_content import build_realized_buffer_from_lines
 from ...core.buffer import (
     LineBuffer,
@@ -32,7 +31,7 @@ from ...core.text_lifecycle import (
     sifted_empty_text_path_change_type,
 )
 from ...utils.repository_buffers import read_git_object_buffer_or_empty
-from ...utils.repository_buffers import load_working_tree_file_as_buffer
+from ...utils.repository_buffers import load_git_blob_as_buffer
 from ...exceptions import MergeError
 from ...core.text_lines import normalize_line_sequence_endings
 
@@ -91,10 +90,17 @@ def compute_sifted_mode_file(
     file_path: str,
     file_meta: dict,
     repo_root: Path,
+    *,
+    captured_worktree_mode: str | None = None,
 ) -> SiftedModeFileResult | None:
     """Drop a mode action once its target mode is already present."""
     change = FileModeChange(file_path, file_meta["old_mode"], file_meta["new_mode"])
-    if detect_file_mode_from_root(repo_root, file_path) == change.new_mode:
+    current_mode = (
+        detect_file_mode_from_root(repo_root, file_path)
+        if captured_worktree_mode is None
+        else captured_worktree_mode
+    )
+    if current_mode == change.new_mode:
         return None
     return SiftedModeFileResult(change)
 
@@ -103,6 +109,9 @@ def compute_sifted_binary_file(
     file_path: str,
     file_meta: dict,
     repo_root: Path,
+    *,
+    working_tree_artifact_path: str | Path | None = None,
+    captured_working_tree_exists: bool | None = None,
 ) -> Optional[SiftedBinaryFileResult]:
     """Compute a sifted binary file result."""
     batch_source_commit = file_meta["batch_source_commit"]
@@ -113,9 +122,17 @@ def compute_sifted_binary_file(
     )
 
     full_path = repo_root / file_path
-    working_exists = full_path.exists()
+    working_exists = (
+        full_path.exists()
+        if captured_working_tree_exists is None
+        else captured_working_tree_exists
+    )
     working_buffer = (
-        LineBuffer.from_path(full_path)
+        LineBuffer.from_path(
+            full_path
+            if working_tree_artifact_path is None
+            else working_tree_artifact_path
+        )
         if working_exists else
         LineBuffer.from_bytes(b"")
     )
@@ -153,43 +170,50 @@ def compute_sifted_binary_file(
 
 
 def compute_sifted_text_file(
-    source_batch: str,
     file_path: str,
     file_meta: dict,
-    repo_root: Path,
+    *,
+    baseline_object_id: str | None,
+    batch_source_object_id: str | None,
+    working_tree_artifact_path: str | Path,
+    captured_working_tree_exists: bool,
+    spool_dir: str | Path,
 ) -> Optional[SiftedTextFileResult]:
-    """Compute a sifted text file result."""
-    batch_source_commit = file_meta["batch_source_commit"]
+    """Compute one text sift result from immutable captured inputs."""
     change_type = normalized_text_change_type(file_meta.get("change_type"))
-    baseline_commit = get_batch_baseline_commit(source_batch)
-    full_path = repo_root / file_path
-    working_exists = full_path.exists()
-
-    batch_source_buffer = read_git_object_buffer_or_empty(
-        f"{batch_source_commit}:{file_path}"
+    batch_source_buffer = _load_git_blob_or_empty(
+        batch_source_object_id,
+        spool_dir=spool_dir,
     )
-    baseline_buffer = (
-        read_git_object_buffer_or_empty(f"{baseline_commit}:{file_path}")
-        if baseline_commit is not None else
-        LineBuffer.from_bytes(b"")
+    baseline_buffer = _load_git_blob_or_empty(
+        baseline_object_id,
+        spool_dir=spool_dir,
     )
-    working_buffer = load_working_tree_file_as_buffer(file_path)
+    working_buffer = LineBuffer.from_path(
+        working_tree_artifact_path,
+        spool_dir=spool_dir,
+    )
     target_buffer: LineBuffer | None = None
+    new_ownership: BatchOwnership | None = None
 
     with (
         batch_source_buffer,
         baseline_buffer,
         working_buffer,
-        acquire_ownership_for_metadata_dict(file_meta) as source_ownership,
+        acquire_ownership_for_metadata_dict(
+            file_meta,
+            spool_dir=spool_dir,
+        ) as source_ownership,
     ):
         target_buffer = build_realized_buffer_from_lines(
             baseline_buffer,
             batch_source_buffer,
             source_ownership,
+            spool_dir=spool_dir,
         )
         try:
             target_exists = change_type != TextFileChangeType.DELETED
-            if target_exists == working_exists and buffer_matches(
+            if target_exists == captured_working_tree_exists and buffer_matches(
                 working_buffer,
                 target_buffer,
             ):
@@ -201,12 +225,13 @@ def compute_sifted_text_file(
             new_ownership = build_ownership_from_working_and_target_lines(
                 working_lines=working_lines,
                 target_lines=target_lines,
+                spool_dir=spool_dir,
             )
             if new_ownership is None or new_ownership.is_empty():
                 result_change_type = sifted_empty_text_path_change_type(
                     change_type,
                     target_exists=target_exists,
-                    working_exists=working_exists,
+                    working_exists=captured_working_tree_exists,
                     target_content=target_buffer,
                     ownership_is_empty=True,
                 )
@@ -220,18 +245,33 @@ def compute_sifted_text_file(
                 target_lines=target_lines,
                 dest_ownership=new_ownership,
                 working_lines=working_lines,
+                spool_dir=spool_dir,
             )
 
             returned_target_buffer = target_buffer
             target_buffer = None
+            returned_ownership = new_ownership
+            new_ownership = None
             return SiftedTextFileResult(
-                ownership=new_ownership,
+                ownership=returned_ownership,
                 target_buffer=returned_target_buffer,
                 change_type=result_change_type.value,
             )
         finally:
             if target_buffer is not None:
                 target_buffer.close()
+            if new_ownership is not None:
+                _close_text_ownership_buffers(new_ownership)
+
+
+def _load_git_blob_or_empty(
+    object_id: str | None,
+    *,
+    spool_dir: str | Path,
+) -> LineBuffer:
+    if object_id is None:
+        return LineBuffer.from_bytes(b"", spool_dir=spool_dir)
+    return load_git_blob_as_buffer(object_id, spool_dir=spool_dir)
 
 
 def _close_text_result_buffers(
@@ -241,6 +281,16 @@ def _close_text_result_buffers(
     buffers = [target_buffer, *_text_ownership_buffers(ownership)]
     closed_ids: set[int] = set()
     for buffer in buffers:
+        buffer_id = id(buffer)
+        if buffer_id in closed_ids:
+            continue
+        closed_ids.add(buffer_id)
+        buffer.close()
+
+
+def _close_text_ownership_buffers(ownership: BatchOwnership) -> None:
+    closed_ids: set[int] = set()
+    for buffer in _text_ownership_buffers(ownership):
         buffer_id = id(buffer)
         if buffer_id in closed_ids:
             continue
@@ -259,11 +309,14 @@ def _text_ownership_buffers(ownership: BatchOwnership) -> list[LineBuffer]:
 def build_ownership_from_working_and_target_lines(
     working_lines: Sequence[bytes],
     target_lines: Sequence[bytes],
+    *,
+    spool_dir: str | Path | None = None,
 ) -> Optional[BatchOwnership]:
     """Build ownership from normalized working and target byte-line sequences."""
     semantic_runs = derive_semantic_change_runs(
         source_lines=working_lines,
         target_lines=target_lines,
+        **({} if spool_dir is None else {"spool_dir": spool_dir}),
     )
 
     claimed_ranges: list[tuple[int, int]] = []
@@ -275,7 +328,7 @@ def build_ownership_from_working_and_target_lines(
         source_start: int,
         source_end: int,
     ) -> AbsenceClaim:
-        with AbsenceContentBuilder() as builder:
+        with AbsenceContentBuilder(spool_dir=spool_dir) as builder:
             builder.append_line_range(
                 working_lines,
                 source_start - 1,
@@ -339,6 +392,8 @@ def validate_sifted_text_file_result_from_lines(
     target_lines: Sequence[bytes],
     dest_ownership: BatchOwnership,
     working_lines: Sequence[bytes],
+    *,
+    spool_dir: str | Path | None = None,
 ) -> None:
     """Validate a sifted representation against normalized byte-line sequences."""
     resolved = dest_ownership.resolve()
@@ -368,6 +423,7 @@ def validate_sifted_text_file_result_from_lines(
             target_lines,
             dest_ownership,
             working_lines,
+            spool_dir=spool_dir,
         )
     except MergeError as e:
         raise MergeError(

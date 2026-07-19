@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..core.buffer import LineBuffer
-from ..utils.git_command import stream_git_command
 from ..utils.git_command import run_git_command
 from ..utils.git_repository import get_git_repository_root_path
 from ..utils.git_object_io import (
@@ -58,6 +57,15 @@ def load_git_blob_as_buffer(
         read_git_blob(blob_sha),
         spool_dir=spool_dir,
     )
+
+
+def git_object_name_is_batch_protocol_safe(object_name: str) -> bool:
+    """Return whether an object name fits Git's line-delimited batch protocol."""
+    try:
+        object_name.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return "\n" not in object_name and "\r" not in object_name
 
 
 def stream_git_blob_buffers(
@@ -112,13 +120,8 @@ def read_git_object_buffer_or_none(
     """Load a Git object, returning ``None`` only when it is absent."""
     # cat-file's traditional batch protocol is line-delimited and cannot
     # represent object expressions containing newlines. Validate the revision
-    # independently, then use argv-safe `git show` for these unusual paths.
-    try:
-        revision_path.encode("utf-8")
-        batch_protocol_safe = "\n" not in revision_path and "\r" not in revision_path
-    except UnicodeEncodeError:
-        batch_protocol_safe = False
-    if not batch_protocol_safe:
+    # independently, then resolve these unusual expressions through argv.
+    if not git_object_name_is_batch_protocol_safe(revision_path):
         revision = (
             revision_path[1:]
             if revision_path.startswith(":")
@@ -134,13 +137,37 @@ def read_git_object_buffer_or_none(
                 raise GitOperationFailed(
                     f"Could not resolve Git revision {revision!r}"
                 ) from error
+        object_result = run_git_command(
+            ["rev-parse", "--verify", revision_path],
+            check=False,
+            requires_index_lock=False,
+        )
+        if object_result.returncode != 0:
+            return None
+        object_id = object_result.stdout.strip()
+        type_result = run_git_command(
+            ["cat-file", "-t", object_id],
+            check=False,
+            requires_index_lock=False,
+        )
+        if type_result.returncode != 0:
+            raise GitOperationFailed(
+                f"Could not resolve Git object {revision_path!r}"
+            )
+        object_type = type_result.stdout.strip()
+        if object_type != "blob":
+            raise RepositoryDataInvalid(
+                f"Git object {revision_path!r} is {object_type}, not a blob"
+            )
         try:
-            return LineBuffer.from_chunks(
-                _stream_git_object(revision_path),
+            return load_git_blob_as_buffer(
+                object_id,
                 spool_dir=spool_dir,
             )
-        except subprocess.CalledProcessError:
-            return None
+        except (subprocess.CalledProcessError, RuntimeError) as error:
+            raise GitOperationFailed(
+                f"Could not read Git object {revision_path!r}"
+            ) from error
     try:
         resolved = resolve_git_objects([revision_path]).get(revision_path)
     except (subprocess.CalledProcessError, RuntimeError) as error:
@@ -246,18 +273,4 @@ def read_working_tree_object(
             raise RepositoryPathMissing(file_path) from error
         raise RepositoryPathInaccessible(
             f"Could not read working-tree path {file_path!r}"
-        ) from error
-
-
-def _stream_git_object(revision_path: str) -> Iterator[bytes]:
-    try:
-        yield from stream_git_command(
-            ["show", revision_path],
-            requires_index_lock=False,
-        )
-    except subprocess.CalledProcessError as error:
-        raise subprocess.CalledProcessError(
-            error.returncode,
-            ["git", "show", revision_path],
-            stderr=error.stderr,
         ) from error

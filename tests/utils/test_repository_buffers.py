@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 
 import pytest
 
 import git_stage_batch.core.mapped_storage as mapped_storage_module
 from git_stage_batch.core.buffer import LineBuffer
+from git_stage_batch.exceptions import RepositoryDataInvalid
 import git_stage_batch.utils.repository_buffers as repository_buffers
 from git_stage_batch.utils.repository_buffers import (
+    git_object_name_is_batch_protocol_safe,
     load_git_blob_as_buffer,
     read_git_object_buffer_or_none,
     read_git_object_buffer_or_empty,
@@ -37,6 +40,19 @@ def test_load_git_blob_as_buffer_loads_streamed_blob(monkeypatch):
         assert calls == ["abc123"]
         assert buffer.uses_mapped_storage is False
         assert buffer[1] == b"beta\n"
+
+
+@pytest.mark.parametrize(
+    "object_name",
+    ["HEAD:path\nname", "HEAD:path\rname", "HEAD:path\udcffname"],
+)
+def test_git_object_name_rejects_batch_protocol_unsafe_paths(object_name):
+    """Line delimiters and surrogateescaped bytes require argv-safe reads."""
+    assert git_object_name_is_batch_protocol_safe(object_name) is False
+
+
+def test_git_object_name_accepts_normal_unicode_path():
+    assert git_object_name_is_batch_protocol_safe("HEAD:naïve file.txt") is True
 
 
 def test_stream_git_blob_buffers_spools_and_closes_each_source(
@@ -178,6 +194,31 @@ def test_read_git_object_buffer_or_none_returns_none_for_missing_object(monkeypa
     monkeypatch.setattr(repository_buffers, "resolve_git_objects", lambda _names: {})
 
     assert read_git_object_buffer_or_none("HEAD:missing.txt") is None
+
+
+def test_read_git_object_buffer_or_none_rejects_unsafe_non_blob(monkeypatch):
+    """The unusual-path fallback must retain the normal blob-only contract."""
+    calls = []
+
+    def fake_run(arguments, **_kwargs):
+        calls.append(arguments)
+        if arguments == ["rev-parse", "--verify", "HEAD^{tree}"]:
+            return SimpleNamespace(returncode=0, stdout="tree-id\n")
+        if arguments[0] == "rev-parse":
+            return SimpleNamespace(returncode=0, stdout="object-id\n")
+        assert arguments[:2] == ["cat-file", "-t"]
+        return SimpleNamespace(returncode=0, stdout="tree\n")
+
+    monkeypatch.setattr(repository_buffers, "run_git_command", fake_run)
+
+    with pytest.raises(RepositoryDataInvalid, match="tree, not a blob"):
+        read_git_object_buffer_or_none("HEAD:directory\nname")
+
+    assert calls == [
+        ["rev-parse", "--verify", "HEAD^{tree}"],
+        ["rev-parse", "--verify", "HEAD:directory\nname"],
+        ["cat-file", "-t", "object-id"],
+    ]
 
 
 def test_read_git_object_buffer_or_empty_returns_empty_for_missing_object(

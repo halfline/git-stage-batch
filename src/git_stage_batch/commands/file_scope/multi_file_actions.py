@@ -29,6 +29,7 @@ from ...exceptions import CommandError
 from ...i18n import _, ngettext
 from ...utils.git_repository import require_git_repository
 from ...utils.paths import ensure_state_directory_exists
+from ...utils.paths import get_context_lines
 from . import discard_file as _discard_file
 from .discard_to_batch import discard_files_to_batch
 from . import include_file as _include_file
@@ -310,15 +311,24 @@ def skip_each_resolved_file(
     skipped_files: list[str] = []
 
     with _multi_file_undo_checkpoint("skip", files):
-        for file_path in files:
-            skipped_hunks = _skip_file.skip_file_changes(
-                file_path,
-                quiet=True,
-                advance=False,
-            )
-            if skipped_hunks > 0:
-                total_hunks += skipped_hunks
-                skipped_files.append(file_path)
+        auto_add_untracked_files(files)
+        with acquire_prepared_live_diff(
+            context_lines=get_context_lines(),
+            full_index=True,
+            ignore_submodules="none",
+            submodule_format="short",
+        ) as changes:
+            changes_by_file = group_live_diff_by_file(files, changes)
+            for file_path in files:
+                skipped_hunks = _skip_file.skip_file_changes(
+                    file_path,
+                    quiet=True,
+                    advance=False,
+                    _prepared_changes=changes_by_file[file_path],
+                )
+                if skipped_hunks > 0:
+                    total_hunks += skipped_hunks
+                    skipped_files.append(file_path)
 
     if total_hunks == 0:
         print(_("No hunks skipped from matched files."), file=sys.stderr)

@@ -212,6 +212,42 @@ def test_build_apply_text_file_action_plan_returns_merged_plan(
     result.plan.close()
 
 
+def test_build_apply_text_file_action_plan_closes_merge_on_lifecycle_failure(
+    monkeypatch,
+    tmp_path,
+):
+    """A lifecycle failure should release the completed merge buffer."""
+    _patch_apply_text_plan_io(monkeypatch, tmp_path, _Ownership())
+    merged_buffer = LineBuffer.from_bytes(b"merged\n")
+    monkeypatch.setattr(
+        builders,
+        "merge_batch_from_line_sequences_as_buffer",
+        lambda *args, **kwargs: merged_buffer,
+    )
+    monkeypatch.setattr(
+        builders,
+        "selected_text_target_change_type",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            RuntimeError("lifecycle failed")
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="lifecycle failed"):
+        builders.build_apply_text_file_action_plan(
+            file_path="notes.txt",
+            file_meta={
+                "batch_source_commit": "commit",
+                "change_type": "modified",
+                "mode": "100644",
+            },
+            selected_ids=None,
+            selection_ids_to_apply=None,
+        )
+
+    with pytest.raises(ValueError, match="buffer is closed"):
+        _ = merged_buffer.byte_count
+
+
 def test_build_apply_text_file_action_plan_returns_deleted_plan(
     monkeypatch,
     tmp_path,
@@ -276,6 +312,36 @@ def test_build_apply_text_file_action_plan_reports_missing_source(
 
     assert result.missing_source
     assert result.plan is None
+
+
+def test_build_apply_text_file_action_plan_closes_source_when_target_load_fails(
+    monkeypatch,
+    tmp_path,
+):
+    """An artifact read failure should not retain the exact source buffer."""
+    batch_buffer = LineBuffer.from_bytes(b"batch\n")
+    monkeypatch.setattr(
+        builders,
+        "load_git_blob_as_buffer",
+        lambda object_id, spool_dir=None: batch_buffer,
+    )
+
+    with pytest.raises(FileNotFoundError):
+        builders.build_apply_text_file_action_plan(
+            file_path="notes.txt",
+            file_meta={
+                "batch_source_commit": "commit",
+                "change_type": "modified",
+                "mode": "100644",
+            },
+            selected_ids=None,
+            selection_ids_to_apply=None,
+            batch_source_object_id="a" * 40,
+            working_tree_artifact_path=tmp_path / "missing",
+        )
+
+    with pytest.raises(ValueError, match="buffer is closed"):
+        _ = batch_buffer.byte_count
 
 
 def test_build_apply_text_file_action_plan_skips_empty_partial_ownership(

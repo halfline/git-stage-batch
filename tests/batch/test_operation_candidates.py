@@ -113,3 +113,127 @@ def test_target_candidate_materialization_clones_before_buffer(monkeypatch):
     finally:
         before.close()
         preview.close()
+
+
+def test_target_candidate_materialization_closes_clone_when_merge_fails(
+    monkeypatch,
+):
+    """A refused candidate merge should release its cloned before-buffer."""
+    before = LineBuffer.from_bytes(b"before\n")
+    source = LineBuffer.from_bytes(b"source\n")
+    clones = []
+    real_clone = LineBuffer.clone
+
+    def record_clone(buffer, *, spool_dir=None):
+        clone = real_clone(buffer, spool_dir=spool_dir)
+        clones.append(clone)
+        return clone
+
+    monkeypatch.setattr(LineBuffer, "clone", record_clone)
+    monkeypatch.setattr(
+        operation_candidates,
+        "merge_batch_from_line_sequences_as_buffer",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            RuntimeError("merge failed")
+        ),
+    )
+
+    try:
+        with pytest.raises(RuntimeError, match="merge failed"):
+            operation_candidates._materialize_target_candidate(
+                target="worktree",
+                file_path="notes.txt",
+                source_lines=source,
+                ownership=object(),
+                before_lines=before,
+                candidate=None,
+                file_mode=None,
+                text_change_type=object(),
+                destination_exists=True,
+                selected_ids=None,
+            )
+
+        assert len(clones) == 1
+        with pytest.raises(ValueError, match="buffer is closed"):
+            _ = clones[0].byte_count
+    finally:
+        source.close()
+        before.close()
+
+
+def test_apply_candidate_build_closes_prior_previews_on_later_failure(
+    monkeypatch,
+):
+    """Partial candidate construction should not leak earlier previews."""
+
+    class _Target:
+        def __init__(self):
+            self.before_buffer = object()
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    first_target = _Target()
+    calls = 0
+
+    def materialize(**_kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return first_target
+        raise RuntimeError("second candidate failed")
+
+    monkeypatch.setattr(
+        operation_candidates,
+        "_merge_candidates_or_unambiguous",
+        lambda *args, **kwargs: (object(), object()),
+    )
+    monkeypatch.setattr(
+        operation_candidates,
+        "_materialize_target_candidate",
+        materialize,
+    )
+    monkeypatch.setattr(
+        operation_candidates,
+        "_fingerprint_batch",
+        lambda **kwargs: "batch",
+    )
+    monkeypatch.setattr(
+        operation_candidates,
+        "_fingerprint_scope",
+        lambda **kwargs: "scope",
+    )
+    monkeypatch.setattr(
+        operation_candidates,
+        "_fingerprint_target",
+        lambda *args: "target",
+    )
+    monkeypatch.setattr(
+        operation_candidates,
+        "_fingerprint_target_result",
+        lambda target: "result",
+    )
+    monkeypatch.setattr(
+        operation_candidates,
+        "_fingerprint_candidate_id",
+        lambda **kwargs: "candidate",
+    )
+
+    with pytest.raises(RuntimeError, match="second candidate failed"):
+        operation_candidates.build_apply_candidate_previews(
+            batch_name="batch",
+            file_path="notes.txt",
+            source_lines=object(),
+            ownership=object(),
+            worktree_lines=object(),
+            batch_source_commit="commit",
+            file_meta={},
+            text_change_type=object(),
+            worktree_file_mode=None,
+            worktree_exists=True,
+            selected_ids=None,
+            selection_ids=None,
+        )
+
+    assert first_target.closed

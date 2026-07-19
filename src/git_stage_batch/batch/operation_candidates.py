@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from itertools import product
+from pathlib import Path
 
 from ..core.buffer import LineBuffer
 from ..core.replacement import ReplacementPayload
@@ -35,12 +36,18 @@ def _merge_candidates_or_unambiguous(
     source_lines: LineBuffer,
     ownership,
     target_lines: LineBuffer,
+    *,
+    spool_dir: str | Path | None = None,
 ) -> tuple[MergeCandidate | None, ...]:
+    merge_arguments = {}
+    if spool_dir is not None:
+        merge_arguments["spool_dir"] = spool_dir
     try:
         with merge_batch_from_line_sequences_as_buffer(
             source_lines,
             ownership,
             target_lines,
+            **merge_arguments,
         ) as _buffer:
             pass
         return (None,)
@@ -49,11 +56,14 @@ def _merge_candidates_or_unambiguous(
     except MergeError:
         pass
 
+    candidate_arguments = {"max_candidates": _MAX_OPERATION_CANDIDATES}
+    if spool_dir is not None:
+        candidate_arguments["spool_dir"] = spool_dir
     candidate_set = enumerate_merge_batch_candidates_from_line_sequences(
         source_lines,
         ownership,
         target_lines,
-        max_candidates=_MAX_OPERATION_CANDIDATES,
+        **candidate_arguments,
     )
     if candidate_set.candidates:
         return candidate_set.candidates
@@ -72,35 +82,56 @@ def _materialize_target_candidate(
     text_change_type,
     destination_exists: bool,
     selected_ids: set[int] | None,
+    spool_dir: str | Path | None = None,
 ) -> _TargetCandidatePreview:
-    before_copy = before_lines.clone()
-    after = merge_batch_from_line_sequences_as_buffer(
-        source_lines,
-        ownership,
-        before_lines,
-        resolution=None if candidate is None else candidate.resolution,
+    before_copy = (
+        before_lines.clone()
+        if spool_dir is None
+        else before_lines.clone(spool_dir=spool_dir)
     )
-    return _TargetCandidatePreview(
-        target=target,
-        file_path=file_path,
-        before_buffer=before_copy,
-        after_buffer=after,
-        file_mode=file_mode,
-        change_type=selected_text_target_change_type(
-            text_change_type,
-            selected_ids,
-            after,
-        ).value,
-        destination_exists=destination_exists,
-        resolution=None if candidate is None else candidate.resolution,
-        resolution_ordinal=1 if candidate is None else candidate.ordinal,
-        resolution_count=1 if candidate is None else candidate.count,
-        summary="unambiguous" if candidate is None else candidate.summary,
-        explanation="" if candidate is None else candidate.explanation,
-        ambiguity_target_line_range=(
-            None if candidate is None else candidate.ambiguity_target_line_range
-        ),
-    )
+    merge_arguments = {
+        "resolution": None if candidate is None else candidate.resolution,
+    }
+    if spool_dir is not None:
+        merge_arguments["spool_dir"] = spool_dir
+    try:
+        after = merge_batch_from_line_sequences_as_buffer(
+            source_lines,
+            ownership,
+            before_lines,
+            **merge_arguments,
+        )
+    except BaseException:
+        before_copy.close()
+        raise
+    try:
+        return _TargetCandidatePreview(
+            target=target,
+            file_path=file_path,
+            before_buffer=before_copy,
+            after_buffer=after,
+            file_mode=file_mode,
+            change_type=selected_text_target_change_type(
+                text_change_type,
+                selected_ids,
+                after,
+            ).value,
+            destination_exists=destination_exists,
+            resolution=None if candidate is None else candidate.resolution,
+            resolution_ordinal=1 if candidate is None else candidate.ordinal,
+            resolution_count=1 if candidate is None else candidate.count,
+            summary="unambiguous" if candidate is None else candidate.summary,
+            explanation="" if candidate is None else candidate.explanation,
+            ambiguity_target_line_range=(
+                None
+                if candidate is None
+                else candidate.ambiguity_target_line_range
+            ),
+        )
+    except BaseException:
+        before_copy.close()
+        after.close()
+        raise
 
 
 def build_apply_candidate_previews(
@@ -117,12 +148,14 @@ def build_apply_candidate_previews(
     worktree_exists: bool,
     selected_ids: set[int] | None,
     selection_ids: set[int] | None,
+    spool_dir: str | Path | None = None,
 ) -> tuple[_OperationCandidatePreview, ...]:
     """Return apply candidates for a single file, or an empty tuple."""
     merge_candidates = _merge_candidates_or_unambiguous(
         source_lines,
         ownership,
         worktree_lines,
+        spool_dir=spool_dir,
     )
     if merge_candidates == (None,):
         return ()
@@ -143,54 +176,71 @@ def build_apply_candidate_previews(
     )
     count = len(merge_candidates)
     previews: list[_OperationCandidatePreview] = []
-    for ordinal, merge_candidate in enumerate(merge_candidates, start=1):
-        target_preview = _materialize_target_candidate(
-            target="worktree",
-            file_path=file_path,
-            source_lines=source_lines,
-            ownership=ownership,
-            before_lines=worktree_lines,
-            candidate=merge_candidate,
-            file_mode=worktree_file_mode,
-            text_change_type=text_change_type,
-            destination_exists=worktree_exists,
-            selected_ids=selected_ids,
-        )
-        target_fingerprints = {
-            "worktree": _fingerprint_target(
-                "worktree",
-                file_path,
-                target_preview.before_buffer,
+    try:
+        for ordinal, merge_candidate in enumerate(
+            merge_candidates,
+            start=1,
+        ):
+            target_preview = _materialize_target_candidate(
+                target="worktree",
+                file_path=file_path,
+                source_lines=source_lines,
+                ownership=ownership,
+                before_lines=worktree_lines,
+                candidate=merge_candidate,
+                file_mode=worktree_file_mode,
+                text_change_type=text_change_type,
+                destination_exists=worktree_exists,
+                selected_ids=selected_ids,
+                spool_dir=spool_dir,
             )
-        }
-        target_result_fingerprints = {
-            "worktree": _fingerprint_target_result(target_preview)
-        }
-        targets = (target_preview,)
-        preview = _OperationCandidatePreview(
-            operation="apply",
-            batch_name=batch_name,
-            file_path=file_path,
-            ordinal=ordinal,
-            count=count,
-            candidate_id="",
-            targets=targets,
-            batch_fingerprint=batch_fingerprint,
-            target_fingerprints=target_fingerprints,
-            target_result_fingerprints=target_result_fingerprints,
-            scope_fingerprint=scope_fingerprint,
-        )
-        preview.candidate_id = _fingerprint_candidate_id(
-            operation="apply",
-            batch_name=batch_name,
-            file_path=file_path,
-            scope_fingerprint=scope_fingerprint,
-            batch_fingerprint=batch_fingerprint,
-            target_fingerprints=target_fingerprints,
-            target_result_fingerprints=target_result_fingerprints,
-            targets=targets,
-        )
-        previews.append(preview)
+            try:
+                target_fingerprints = {
+                    "worktree": _fingerprint_target(
+                        "worktree",
+                        file_path,
+                        target_preview.before_buffer,
+                    )
+                }
+                target_result_fingerprints = {
+                    "worktree": _fingerprint_target_result(target_preview)
+                }
+                targets = (target_preview,)
+                preview = _OperationCandidatePreview(
+                    operation="apply",
+                    batch_name=batch_name,
+                    file_path=file_path,
+                    ordinal=ordinal,
+                    count=count,
+                    candidate_id="",
+                    targets=targets,
+                    batch_fingerprint=batch_fingerprint,
+                    target_fingerprints=target_fingerprints,
+                    target_result_fingerprints=(
+                        target_result_fingerprints
+                    ),
+                    scope_fingerprint=scope_fingerprint,
+                )
+                preview.candidate_id = _fingerprint_candidate_id(
+                    operation="apply",
+                    batch_name=batch_name,
+                    file_path=file_path,
+                    scope_fingerprint=scope_fingerprint,
+                    batch_fingerprint=batch_fingerprint,
+                    target_fingerprints=target_fingerprints,
+                    target_result_fingerprints=(
+                        target_result_fingerprints
+                    ),
+                    targets=targets,
+                )
+                previews.append(preview)
+            except BaseException:
+                target_preview.close()
+                raise
+    except BaseException:
+        for preview in previews:
+            preview.close()
+        raise
     return tuple(previews)
 
 
@@ -212,13 +262,20 @@ def build_include_candidate_previews(
     selected_ids: set[int] | None,
     selection_ids: set[int] | None,
     replacement_payload: ReplacementPayload | None = None,
+    spool_dir: str | Path | None = None,
 ) -> tuple[_OperationCandidatePreview, ...]:
     """Return include candidates for a single file, or an empty tuple."""
     index_candidates = _merge_candidates_or_unambiguous(
-        source_lines, ownership, index_lines
+        source_lines,
+        ownership,
+        index_lines,
+        spool_dir=spool_dir,
     )
     worktree_candidates = _merge_candidates_or_unambiguous(
-        source_lines, ownership, worktree_lines
+        source_lines,
+        ownership,
+        worktree_lines,
+        spool_dir=spool_dir,
     )
     if index_candidates == (None,) and worktree_candidates == (None,):
         return ()
@@ -246,70 +303,95 @@ def build_include_candidate_previews(
     )
     count = len(products)
     previews: list[_OperationCandidatePreview] = []
-    for ordinal, (index_candidate, worktree_candidate) in enumerate(products, start=1):
-        index_preview = _materialize_target_candidate(
-            target="index",
-            file_path=file_path,
-            source_lines=source_lines,
-            ownership=ownership,
-            before_lines=index_lines,
-            candidate=index_candidate,
-            file_mode=index_file_mode,
-            text_change_type=text_change_type,
-            destination_exists=index_exists,
-            selected_ids=selected_ids,
-        )
-        worktree_preview = _materialize_target_candidate(
-            target="worktree",
-            file_path=file_path,
-            source_lines=source_lines,
-            ownership=ownership,
-            before_lines=worktree_lines,
-            candidate=worktree_candidate,
-            file_mode=worktree_file_mode,
-            text_change_type=text_change_type,
-            destination_exists=worktree_exists,
-            selected_ids=selected_ids,
-        )
-        targets = (index_preview, worktree_preview)
-        target_fingerprints = {
-            "index": _fingerprint_target(
-                "index",
-                file_path,
-                index_preview.before_buffer,
-            ),
-            "worktree": _fingerprint_target(
-                "worktree",
-                file_path,
-                worktree_preview.before_buffer,
-            ),
-        }
-        target_result_fingerprints = {
-            "index": _fingerprint_target_result(index_preview),
-            "worktree": _fingerprint_target_result(worktree_preview),
-        }
-        preview = _OperationCandidatePreview(
-            operation="include",
-            batch_name=batch_name,
-            file_path=file_path,
-            ordinal=ordinal,
-            count=count,
-            candidate_id="",
-            targets=targets,
-            batch_fingerprint=batch_fingerprint,
-            target_fingerprints=target_fingerprints,
-            target_result_fingerprints=target_result_fingerprints,
-            scope_fingerprint=scope_fingerprint,
-        )
-        preview.candidate_id = _fingerprint_candidate_id(
-            operation="include",
-            batch_name=batch_name,
-            file_path=file_path,
-            scope_fingerprint=scope_fingerprint,
-            batch_fingerprint=batch_fingerprint,
-            target_fingerprints=target_fingerprints,
-            target_result_fingerprints=target_result_fingerprints,
-            targets=targets,
-        )
-        previews.append(preview)
+    try:
+        for ordinal, (
+            index_candidate,
+            worktree_candidate,
+        ) in enumerate(products, start=1):
+            index_preview = _materialize_target_candidate(
+                target="index",
+                file_path=file_path,
+                source_lines=source_lines,
+                ownership=ownership,
+                before_lines=index_lines,
+                candidate=index_candidate,
+                file_mode=index_file_mode,
+                text_change_type=text_change_type,
+                destination_exists=index_exists,
+                selected_ids=selected_ids,
+                spool_dir=spool_dir,
+            )
+            try:
+                worktree_preview = _materialize_target_candidate(
+                    target="worktree",
+                    file_path=file_path,
+                    source_lines=source_lines,
+                    ownership=ownership,
+                    before_lines=worktree_lines,
+                    candidate=worktree_candidate,
+                    file_mode=worktree_file_mode,
+                    text_change_type=text_change_type,
+                    destination_exists=worktree_exists,
+                    selected_ids=selected_ids,
+                    spool_dir=spool_dir,
+                )
+            except BaseException:
+                index_preview.close()
+                raise
+            try:
+                targets = (index_preview, worktree_preview)
+                target_fingerprints = {
+                    "index": _fingerprint_target(
+                        "index",
+                        file_path,
+                        index_preview.before_buffer,
+                    ),
+                    "worktree": _fingerprint_target(
+                        "worktree",
+                        file_path,
+                        worktree_preview.before_buffer,
+                    ),
+                }
+                target_result_fingerprints = {
+                    "index": _fingerprint_target_result(index_preview),
+                    "worktree": _fingerprint_target_result(
+                        worktree_preview
+                    ),
+                }
+                preview = _OperationCandidatePreview(
+                    operation="include",
+                    batch_name=batch_name,
+                    file_path=file_path,
+                    ordinal=ordinal,
+                    count=count,
+                    candidate_id="",
+                    targets=targets,
+                    batch_fingerprint=batch_fingerprint,
+                    target_fingerprints=target_fingerprints,
+                    target_result_fingerprints=(
+                        target_result_fingerprints
+                    ),
+                    scope_fingerprint=scope_fingerprint,
+                )
+                preview.candidate_id = _fingerprint_candidate_id(
+                    operation="include",
+                    batch_name=batch_name,
+                    file_path=file_path,
+                    scope_fingerprint=scope_fingerprint,
+                    batch_fingerprint=batch_fingerprint,
+                    target_fingerprints=target_fingerprints,
+                    target_result_fingerprints=(
+                        target_result_fingerprints
+                    ),
+                    targets=targets,
+                )
+                previews.append(preview)
+            except BaseException:
+                index_preview.close()
+                worktree_preview.close()
+                raise
+    except BaseException:
+        for preview in previews:
+            preview.close()
+        raise
     return tuple(previews)

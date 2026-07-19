@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Collection, Sequence
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .absence_constraints import (
@@ -46,6 +47,7 @@ def apply_presence_constraints(
     source_to_working_mapping: LineMapping | None = None,
     resolution: _MergeResolution | None = None,
     trusted_source_lines: Collection[int] = (),
+    spool_dir: str | Path | None = None,
 ) -> RealizedEntries:
     """Apply presence constraints: ensure all claimed lines exist in result.
 
@@ -64,7 +66,11 @@ def apply_presence_constraints(
     owned_mapping: LineMapping | None = None
     mapping = source_to_working_mapping
     if mapping is None:
-        owned_mapping = match_lines(source_lines, working_lines)
+        owned_mapping = match_lines(
+            source_lines,
+            working_lines,
+            spool_dir=spool_dir,
+        )
         mapping = owned_mapping
 
     try:
@@ -75,6 +81,7 @@ def apply_presence_constraints(
             mapping,
             resolution=resolution,
             trusted_source_lines=trusted_source_lines,
+            spool_dir=spool_dir,
         )
     finally:
         if owned_mapping is not None:
@@ -89,11 +96,12 @@ def _apply_presence_constraints_with_mapping(
     *,
     resolution: _MergeResolution | None = None,
     trusted_source_lines: Collection[int] = (),
+    spool_dir: str | Path | None = None,
 ) -> RealizedEntries:
     """Apply presence constraints using an existing source-to-working mapping."""
 
     if not presence_line_set:
-        result = RealizedEntries()
+        result = RealizedEntries(spool_dir=spool_dir)
         _realized_mapping.append_working_range_with_mapping(
             result,
             working_lines,
@@ -111,7 +119,7 @@ def _apply_presence_constraints_with_mapping(
     )
 
     if not missing_claimed:
-        result = RealizedEntries()
+        result = RealizedEntries(spool_dir=spool_dir)
         _realized_mapping.append_working_range_with_mapping(
             result,
             working_lines,
@@ -137,7 +145,7 @@ def _apply_presence_constraints_with_mapping(
             selected_choice_index = resolution.decisions[presence_key]
             for choice in presence_choices:
                 if choice.choice_index == selected_choice_index:
-                    result = RealizedEntries()
+                    result = RealizedEntries(spool_dir=spool_dir)
                     _realized_mapping.append_working_range_with_mapping(
                         result,
                         working_lines,
@@ -182,9 +190,10 @@ def _apply_presence_constraints_with_mapping(
                 presence_line_set,
                 mapping,
                 placements,
+                spool_dir=spool_dir,
             )
 
-    result = RealizedEntries()
+    result = RealizedEntries(spool_dir=spool_dir)
     working_idx = 0
 
     for source_line in range(1, len(source_lines) + 1):
@@ -249,9 +258,11 @@ def _realize_contextual_placements(
     presence_line_set: LineSelection,
     mapping: LineMapping,
     placements: Sequence[_PresenceRunPlacement],
+    *,
+    spool_dir: str | Path | None = None,
 ) -> RealizedEntries:
     """Insert missing runs at gaps chosen from distinctive context."""
-    result = RealizedEntries()
+    result = RealizedEntries(spool_dir=spool_dir)
     working_idx = 0
 
     for placement in placements:
@@ -325,6 +336,7 @@ def satisfy_constraints(
     strict: bool = True,
     source_to_working_mapping: LineMapping | None = None,
     resolution: _MergeResolution | None = None,
+    spool_dir: str | Path | None = None,
 ) -> RealizedEntries:
     """Apply presence and absence constraints until claimed lines survive."""
     trusted_source_lines = {
@@ -339,6 +351,7 @@ def satisfy_constraints(
         source_to_working_mapping=source_to_working_mapping,
         resolution=resolution,
         trusted_source_lines=trusted_source_lines,
+        spool_dir=spool_dir,
     )
 
     try:
@@ -364,6 +377,7 @@ def satisfy_constraints(
                 presence_line_set,
                 resolution=resolution,
                 trusted_source_lines=trusted_source_lines,
+                spool_dir=spool_dir,
             )
         finally:
             previous_entries.close()

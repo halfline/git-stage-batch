@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from ...core.buffer import LineBuffer
 from ...utils.git_object_io import read_git_blobs_as_bytes
 from ...utils.repository_buffers import load_git_blob_as_buffer
@@ -24,6 +26,8 @@ from .replacement_units import ReplacementUnit
 
 def acquire_ownership_for_metadata_dict(
     data: dict,
+    *,
+    spool_dir: str | Path | None = None,
 ) -> AcquiredBatchOwnership[BatchOwnership]:
     """Acquire ownership for metadata with buffered deletion blobs."""
     deletion_metadata = data.get("deletions", [])
@@ -35,7 +39,10 @@ def acquire_ownership_for_metadata_dict(
         for blob_sha in deletion_content_blob_ids(deletion_metadata):
             if blob_sha in blob_buffers:
                 continue
-            buffer = load_git_blob_as_buffer(blob_sha)
+            buffer = load_git_blob_as_buffer(
+                blob_sha,
+                spool_dir=spool_dir,
+            )
             blob_buffers[blob_sha] = buffer
             buffers.append(buffer)
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Sequence
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from . import baseline_edits as _baseline_edits
@@ -64,6 +65,7 @@ def merge_batch_from_line_sequences_as_buffer(
     *,
     source_to_working_mapping: LineMapping | None = None,
     resolution: _MergeResolution | None = None,
+    spool_dir: str | Path | None = None,
 ) -> LineBuffer:
     """Merge line sequences and return a buffer with destination line endings."""
     result_line_ending = _merge_result_line_ending_from_lines(
@@ -81,10 +83,12 @@ def merge_batch_from_line_sequences_as_buffer(
                     normalized_working_lines,
                     source_to_working_mapping=source_to_working_mapping,
                     resolution=resolution,
+                    spool_dir=spool_dir,
                 )
             ),
             result_line_ending,
-        )
+        ),
+        spool_dir=spool_dir,
     )
 
 
@@ -120,6 +124,7 @@ def _merge_batch_line_chunks(
     *,
     source_to_working_mapping: LineMapping | None = None,
     resolution: _MergeResolution | None = None,
+    spool_dir: str | Path | None = None,
 ) -> Iterator[bytes]:
     """Merge normalized byte-line sequences and yield normalized chunks."""
     with (
@@ -132,6 +137,7 @@ def _merge_batch_line_chunks(
             acquired_working_lines,
             source_to_working_mapping=source_to_working_mapping,
             resolution=resolution,
+            spool_dir=spool_dir,
         )
 
 
@@ -142,6 +148,7 @@ def _merge_batch_acquired_line_chunks(
     *,
     source_to_working_mapping: LineMapping | None = None,
     resolution: _MergeResolution | None = None,
+    spool_dir: str | Path | None = None,
 ) -> Iterator[bytes]:
     """Merge acquired normalized line sequences and yield normalized chunks."""
     resolved = ownership.resolve()
@@ -164,7 +171,11 @@ def _merge_batch_acquired_line_chunks(
     owned_mapping: LineMapping | None = None
     mapping = source_to_working_mapping
     if mapping is None:
-        owned_mapping = match_lines(source_lines, working_lines)
+        owned_mapping = match_lines(
+            source_lines,
+            working_lines,
+            spool_dir=spool_dir,
+        )
         mapping = owned_mapping
     try:
         if _baseline_edits.has_missing_origin_replacement_claims(
@@ -188,13 +199,18 @@ def _merge_batch_acquired_line_chunks(
             if resolution is None:
                 raise
 
+        constraint_arguments = {
+            "source_to_working_mapping": mapping,
+            "resolution": resolution,
+        }
+        if spool_dir is not None:
+            constraint_arguments["spool_dir"] = spool_dir
         realized_entries = _presence_constraints.satisfy_constraints(
             source_lines,
             working_lines,
             presence_line_set,
             deletion_claims,
-            source_to_working_mapping=mapping,
-            resolution=resolution,
+            **constraint_arguments,
         )
     except _MergeError:
         fallback_chunks = _baseline_edits.try_apply_baseline_replacement_units(
@@ -226,6 +242,7 @@ def enumerate_merge_batch_candidates_from_line_sequences(
     working_lines: Sequence[bytes],
     *,
     max_candidates: int = _MERGE_CANDIDATE_CAP,
+    spool_dir: str | Path | None = None,
 ) -> _MergeCandidateSet:
     """Enumerate safe merge candidates for an otherwise-refused merge.
 
@@ -244,6 +261,7 @@ def enumerate_merge_batch_candidates_from_line_sequences(
                 acquired_source_lines,
                 ownership,
                 acquired_working_lines,
+                spool_dir=spool_dir,
             ):
                 pass
             return _MergeCandidateSet(())
@@ -257,6 +275,7 @@ def enumerate_merge_batch_candidates_from_line_sequences(
                     ownership,
                     acquired_working_lines,
                     resolution=candidate_resolution,
+                    spool_dir=spool_dir,
                 ):
                     pass
             except _MergeError:
@@ -269,4 +288,5 @@ def enumerate_merge_batch_candidates_from_line_sequences(
             acquired_working_lines,
             resolution_is_valid=resolution_is_valid,
             max_candidates=max_candidates,
+            spool_dir=spool_dir,
         )

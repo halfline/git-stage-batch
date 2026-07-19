@@ -6037,8 +6037,13 @@ def test_file_scope_file_list_action_owns_live_list_rendering():
     }
     helper_imports = {
         "ReviewSource",
+        "acquire_prepared_live_diff",
+        "attach_live_binary_fingerprint",
+        "auto_add_untracked_files",
+        "build_combined_file_line_changes",
         "clear_selected_change_state_files",
         "compute_rename_change_hash",
+        "group_live_diff_by_file",
         "make_binary_file_review_list_entry",
         "make_file_review_list_entry",
         "make_gitlink_file_review_list_entry",
@@ -6046,11 +6051,6 @@ def test_file_scope_file_list_action_owns_live_list_rendering():
         "make_text_deletion_file_review_list_entry",
         "mark_selected_change_cleared_by_file_list",
         "print_file_review_list",
-        "render_binary_file_change",
-        "render_file_as_single_hunk",
-        "render_gitlink_change",
-        "render_rename_change",
-        "render_text_deletion_change",
         "text_deletion_change_is_batched",
     }
 
@@ -6117,8 +6117,13 @@ def test_file_scope_file_list_action_owns_show_entry_flow():
     show_path = SRC_ROOT / "commands" / "show.py"
     helper_path = SRC_ROOT / "commands" / "file_scope" / "file_list_action.py"
     action_dependency_names = {
+        "acquire_prepared_live_diff",
+        "attach_live_binary_fingerprint",
+        "auto_add_untracked_files",
+        "build_combined_file_line_changes",
         "compute_rename_change_hash",
         "clear_selected_change_state_files",
+        "group_live_diff_by_file",
         "make_binary_file_review_list_entry",
         "make_file_review_list_entry",
         "make_gitlink_file_review_list_entry",
@@ -6126,11 +6131,6 @@ def test_file_scope_file_list_action_owns_show_entry_flow():
         "make_text_deletion_file_review_list_entry",
         "mark_selected_change_cleared_by_file_list",
         "print_file_review_list",
-        "render_binary_file_change",
-        "render_file_as_single_hunk",
-        "render_gitlink_change",
-        "render_rename_change",
-        "render_text_deletion_change",
         "text_deletion_change_is_batched",
     }
 

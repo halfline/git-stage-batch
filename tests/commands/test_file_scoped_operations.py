@@ -24,10 +24,11 @@ import subprocess
 
 import pytest
 import git_stage_batch.commands.file_scope.include_file as include_file_module
+import git_stage_batch.data.live_diff as live_diff
 
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.again import command_again
-from git_stage_batch.commands.show import command_show
+from git_stage_batch.commands.show import command_show, command_show_file_list
 from git_stage_batch.commands.include import (
     command_include,
     command_include_to_batch,
@@ -672,6 +673,86 @@ class TestShowFileFlag:
         result = run_git_command(["diff", "--cached", "--name-only"])
         assert result.stdout == ""
 
+    def test_show_files_preserves_atomic_staged_unstaged_semantics(
+        self,
+        tmp_path,
+        monkeypatch,
+        capsys,
+    ):
+        """Staged-only atomic changes should stay out of the unstaged file list."""
+        repo = tmp_path / "test_repo"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+        subprocess.run(["git", "init"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], check=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], check=True)
+        for file_path in (
+            "binary.bin",
+            "mode.txt",
+            "cancelled-mode.txt",
+            "delete.txt",
+            "rename-old.txt",
+            "visible.txt",
+        ):
+            (repo / file_path).write_text(f"{file_path}\n")
+        (repo / "binary.bin").write_bytes(b"old\0binary\n")
+        # An empty deletion has no line hunk and exercises the atomic deletion
+        # renderer whose historical comparison base differs from text hunks.
+        (repo / "delete.txt").write_text("")
+        subprocess.run(["git", "add", "."], check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Initial"],
+            check=True,
+            capture_output=True,
+        )
+
+        (repo / "visible.txt").write_text("visible worktree change\n")
+        command_start(quiet=True, auto_advance=False)
+        capsys.readouterr()
+
+        # Stage the atomic changes after session-start normalization so they
+        # remain index-only, matching manual staging during an active session.
+        (repo / "mode.txt").chmod(0o755)
+        subprocess.run(["git", "add", "mode.txt"], check=True)
+        (repo / "cancelled-mode.txt").chmod(0o755)
+        subprocess.run(["git", "add", "cancelled-mode.txt"], check=True)
+        (repo / "cancelled-mode.txt").chmod(0o644)
+        (repo / "binary.bin").chmod(0o755)
+        subprocess.run(["git", "add", "binary.bin"], check=True)
+        (repo / "binary.bin").chmod(0o644)
+        (repo / "binary.bin").write_bytes(b"new\0binary\n")
+        subprocess.run(["git", "rm", "delete.txt"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "mv", "rename-old.txt", "rename-new.txt"],
+            check=True,
+        )
+        command_show_file_list(
+            [
+                "binary.bin",
+                "mode.txt",
+                "cancelled-mode.txt",
+                "delete.txt",
+                "rename-old.txt",
+                "rename-new.txt",
+                "visible.txt",
+            ],
+            selectable=False,
+        )
+
+        output = capsys.readouterr().out
+        binary_summary = next(
+            line
+            for line in output.splitlines()
+            if "binary.bin" in line and " · " in line
+        )
+        assert "executable mode" in binary_summary
+        assert "visible.txt" in output
+        assert "cancelled-mode.txt" in output
+        assert "show --file mode.txt" not in output
+        assert "delete.txt" not in output
+        assert "rename-old.txt" not in output
+        assert "rename-new.txt" not in output
+
     def test_include_files_reports_aggregate_staged_scope(self, multi_file_repo, capsys):
         """Include --files should report the full staged scope once."""
         command_start()
@@ -775,6 +856,37 @@ class TestShowFileFlag:
         with pytest.raises(CommandError, match="last command only showed files"):
             command_skip(quiet=True)
 
+    @pytest.mark.parametrize(
+        ("arguments", "expected_live_diff_count"),
+        [
+            (["show", "--files", "*.txt"], 1),
+        ],
+    )
+    def test_multi_file_commands_bound_live_diff_subprocesses(
+        self,
+        multi_file_repo,
+        capsys,
+        monkeypatch,
+        arguments,
+        expected_live_diff_count,
+    ):
+        """Multi-file work should use a fixed number of live Git diff scans."""
+        command_start()
+        capsys.readouterr()
+        original_stream = live_diff.stream_git_diff
+        calls = []
+
+        def counting_stream(**kwargs):
+            calls.append(kwargs)
+            return original_stream(**kwargs)
+
+        monkeypatch.setattr(live_diff, "stream_git_diff", counting_stream)
+
+        args = parse_command_line(arguments, quiet=True)
+        assert args is not None
+        args.func(args)
+
+        assert len(calls) == expected_live_diff_count
 
 class TestIncludeToBatchWithFile:
     """Test include --to BATCH with --file flag."""

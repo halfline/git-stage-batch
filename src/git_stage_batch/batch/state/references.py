@@ -8,7 +8,11 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
-from .reference_names import BATCH_CONTENT_REF_PREFIX, BATCH_STATE_REF_PREFIX, LEGACY_BATCH_REF_PREFIX
+from .reference_names import (
+    format_batch_content_ref_name,
+    format_batch_state_ref_name,
+    format_legacy_batch_ref_name,
+)
 from .compatibility_metadata import read_file_backed_batch_metadata_model
 from .metadata_schema import (
     BatchMetadata,
@@ -57,19 +61,19 @@ def _buffer_chunks(buffer: _StateBufferData):
 def get_batch_content_ref_name(batch_name: str) -> str:
     """Return the authoritative content ref for a batch."""
     validate_batch_name(batch_name)
-    return f"{BATCH_CONTENT_REF_PREFIX}{batch_name}"
+    return format_batch_content_ref_name(batch_name)
 
 
 def get_batch_state_ref_name(batch_name: str) -> str:
     """Return the authoritative state ref for a batch."""
     validate_batch_name(batch_name)
-    return f"{BATCH_STATE_REF_PREFIX}{batch_name}"
+    return format_batch_state_ref_name(batch_name)
 
 
 def get_legacy_batch_ref_name(batch_name: str) -> str:
     """Return the compatibility content ref for a batch."""
     validate_batch_name(batch_name)
-    return f"{LEGACY_BATCH_REF_PREFIX}{batch_name}"
+    return format_legacy_batch_ref_name(batch_name)
 
 
 def delete_batch_state_refs(batch_name: str) -> None:
@@ -141,7 +145,7 @@ def read_batch_state_metadata_for_batches(
         return {}
 
     refspec_by_name = {
-        batch_name: f"{get_batch_state_ref_name(batch_name)}:batch.json"
+        batch_name: f"{format_batch_state_ref_name(batch_name)}:batch.json"
         for batch_name in unique_batch_names
     }
     blobs = read_git_blobs_as_bytes(refspec_by_name.values())

@@ -8,7 +8,7 @@ content that may not currently be visible in the working tree.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from ..utils.git_object_io import (
@@ -27,7 +27,7 @@ from .attribution_units import (
     make_attribution_unit_id as _make_attribution_unit_id,
 )
 from .state.query import list_batch_names, read_batch_metadata_for_batches
-from .state.references import get_batch_state_ref_name
+from .state.reference_names import format_batch_state_ref_name
 from ..core.line_selection import parse_line_selection
 from ..utils.repository_buffers import (
     read_git_object_buffer_or_empty,
@@ -130,13 +130,42 @@ def build_file_attribution(
     supplemental_batch_metadata: dict[str, dict] | None = None,
     metrics: AttributionMetrics | None = None,
 ) -> FileAttribution:
-    """Build complete ownership attribution for a file."""
+    """Open repository buffers and build complete ownership attribution."""
+    with (
+        read_git_object_buffer_or_empty(f"HEAD:{file_path}") as baseline_lines,
+        load_working_tree_file_as_buffer(file_path) as working_tree_lines,
+    ):
+        return build_file_attribution_from_lines(
+            file_path,
+            baseline_lines=baseline_lines,
+            working_tree_lines=working_tree_lines,
+            batch_metadata_by_name=batch_metadata_by_name,
+            supplemental_batch_metadata=supplemental_batch_metadata,
+            metrics=metrics,
+        )
+
+
+def build_file_attribution_from_lines(
+    file_path: str,
+    *,
+    baseline_lines: Sequence[bytes],
+    working_tree_lines: Sequence[bytes],
+    batch_metadata_by_name: dict[str, dict] | None = None,
+    supplemental_batch_metadata: dict[str, dict] | None = None,
+    batch_state_commit_by_name: Mapping[str, str] | None = None,
+    metrics: AttributionMetrics | None = None,
+) -> FileAttribution:
+    """Build file attribution from caller-owned indexed line sequences."""
     all_batch_metadata = {}
     if batch_metadata_by_name is None:
         batch_metadata_by_name = read_batch_metadata_for_batches(list_batch_names())
     if metrics is not None:
         metrics.candidate_batches = len(batch_metadata_by_name)
 
+    # Capture names before merging supplemental metadata. Only entries from the
+    # primary metadata map may resolve source_path through state-backed storage.
+    # Supplemental entries, including __consumed__, use batch_source_commit.
+    state_backed_batch_names = frozenset(batch_metadata_by_name)
     for batch_name, metadata in batch_metadata_by_name.items():
         if file_path in metadata.get("files", {}):
             all_batch_metadata[batch_name] = metadata
@@ -146,38 +175,37 @@ def build_file_attribution(
     if metrics is not None:
         metrics.claimed_batches = len(all_batch_metadata)
 
-    baseline_buffer = read_git_object_buffer_or_empty(f"HEAD:{file_path}")
-    working_tree_buffer = load_working_tree_file_as_buffer(file_path)
-    with baseline_buffer as baseline_lines, working_tree_buffer as working_tree_lines:
-        all_units_map: dict[str, _AttributionUnit] = {}
-        with _build_file_comparison_from_lines(
-            file_path,
-            baseline_lines=baseline_lines,
-            working_tree_lines=working_tree_lines,
-        ) as comparison:
-            _enumerate_units_from_file_comparison(comparison, all_units_map)
+    all_units_map: dict[str, _AttributionUnit] = {}
+    with _build_file_comparison_from_lines(
+        file_path,
+        baseline_lines=baseline_lines,
+        working_tree_lines=working_tree_lines,
+    ) as comparison:
+        _enumerate_units_from_file_comparison(comparison, all_units_map)
 
-        baseline_unit_ids = tuple(all_units_map)
-        owners_by_unit_id = {unit_id: set() for unit_id in baseline_unit_ids}
-        _attribute_batches(
-            file_path,
-            all_batch_metadata,
-            working_tree_lines=working_tree_lines,
-            all_units_map=all_units_map,
-            baseline_unit_ids=baseline_unit_ids,
-            owners_by_unit_id=owners_by_unit_id,
-            metrics=metrics,
+    baseline_unit_ids = tuple(all_units_map)
+    owners_by_unit_id = {unit_id: set() for unit_id in baseline_unit_ids}
+    _attribute_batches(
+        file_path,
+        all_batch_metadata,
+        state_backed_batch_names=state_backed_batch_names,
+        batch_state_commit_by_name=batch_state_commit_by_name,
+        working_tree_lines=working_tree_lines,
+        all_units_map=all_units_map,
+        baseline_unit_ids=baseline_unit_ids,
+        owners_by_unit_id=owners_by_unit_id,
+        metrics=metrics,
+    )
+
+    attributed_units = [
+        AttributedUnit(
+            unit=unit,
+            owning_batches=owners_by_unit_id[unit_id],
         )
-
-        attributed_units = [
-            AttributedUnit(
-                unit=unit,
-                owning_batches=owners_by_unit_id[unit_id],
-            )
-            for unit_id, unit in all_units_map.items()
-        ]
-        if metrics is not None:
-            metrics.attributed_units = len(attributed_units)
+        for unit_id, unit in all_units_map.items()
+    ]
+    if metrics is not None:
+        metrics.attributed_units = len(attributed_units)
 
     return FileAttribution(file_path=file_path, units=attributed_units)
 
@@ -186,6 +214,8 @@ def _attribute_batches(
     file_path: str,
     all_batch_metadata: dict,
     *,
+    state_backed_batch_names: frozenset[str],
+    batch_state_commit_by_name: Mapping[str, str] | None,
     working_tree_lines: Sequence[bytes],
     all_units_map: dict[str, _AttributionUnit],
     baseline_unit_ids: Sequence[str],
@@ -193,7 +223,12 @@ def _attribute_batches(
     metrics: AttributionMetrics | None = None,
 ) -> None:
     """Attribute claims while retaining one source alignment at a time."""
-    source_requests = _batch_source_requests(file_path, all_batch_metadata)
+    source_requests = _batch_source_requests(
+        file_path,
+        all_batch_metadata,
+        state_backed_batch_names=state_backed_batch_names,
+        batch_state_commit_by_name=batch_state_commit_by_name,
+    )
     deletion_blob_ids = _deletion_blob_ids(source_requests)
     object_names = list(
         dict.fromkeys(
@@ -369,6 +404,9 @@ def _attribute_source_group(
 def _batch_source_requests(
     file_path: str,
     all_batch_metadata: dict,
+    *,
+    state_backed_batch_names: frozenset[str],
+    batch_state_commit_by_name: Mapping[str, str] | None = None,
 ) -> list[_BatchSourceRequest]:
     requests: list[_BatchSourceRequest] = []
     for batch_name in sorted(all_batch_metadata):
@@ -376,11 +414,16 @@ def _batch_source_requests(
         file_metadata = batch_metadata["files"][file_path]
         fallback_refspec = f"{file_metadata['batch_source_commit']}:{file_path}"
         source_path = file_metadata.get("source_path")
-        primary_refspec = (
-            f"{get_batch_state_ref_name(batch_name)}:{source_path}"
-            if source_path
-            else fallback_refspec
-        )
+        primary_refspec = fallback_refspec
+        if source_path and batch_name in state_backed_batch_names:
+            if batch_state_commit_by_name is None:
+                primary_refspec = (
+                    f"{format_batch_state_ref_name(batch_name)}:{source_path}"
+                )
+            elif batch_name in batch_state_commit_by_name:
+                primary_refspec = (
+                    f"{batch_state_commit_by_name[batch_name]}:{source_path}"
+                )
         requests.append(
             _BatchSourceRequest(
                 batch_name=batch_name,

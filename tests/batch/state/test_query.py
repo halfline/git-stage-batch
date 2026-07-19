@@ -4,6 +4,8 @@ import subprocess
 
 import pytest
 
+import git_stage_batch.batch.state.query as query_module
+import git_stage_batch.batch.state.references as state_refs_module
 from git_stage_batch.batch.state.query import (
     get_batch_baseline_commit,
     get_batch_commit_sha,
@@ -17,6 +19,7 @@ from git_stage_batch.batch.state.lifecycle import create_batch
 from git_stage_batch.batch.text_file_storage import add_file_to_batch
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.data.session import initialize_abort_state
+from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import get_batch_metadata_file_path, ensure_state_directory_exists
 
 
@@ -93,6 +96,56 @@ def test_read_batch_metadata_for_batches_returns_empty_for_missing_batch(temp_gi
     metadata_by_name = read_batch_metadata_for_batches(["missing"])
 
     assert metadata_by_name["missing"] == read_batch_metadata("missing")
+
+
+def test_bulk_metadata_validates_each_unique_name_once(monkeypatch):
+    """Bulk query boundaries should not revalidate names in lower layers."""
+    names = [f"batch-{index:04d}" for index in range(1_000)]
+    validation_calls = []
+
+    monkeypatch.setattr(
+        state_refs_module,
+        "validate_batch_name",
+        validation_calls.append,
+    )
+    monkeypatch.setattr(
+        state_refs_module,
+        "read_git_blobs_as_bytes",
+        lambda _refspecs: {},
+    )
+    monkeypatch.setattr(
+        query_module,
+        "_read_file_backed_batch_metadata_or_empty",
+        lambda _name: {"files": {}},
+    )
+
+    metadata = read_batch_metadata_for_batches([*names, *names[:10]])
+
+    assert list(metadata) == names
+    assert validation_calls == names
+
+
+def test_bulk_metadata_rejects_invalid_name_before_state_or_fallback_reads(
+    monkeypatch,
+):
+    """The public state reader remains the validation boundary for queries."""
+    monkeypatch.setattr(
+        state_refs_module,
+        "read_git_blobs_as_bytes",
+        lambda _refspecs: (_ for _ in ()).throw(
+            AssertionError("unexpected state read")
+        ),
+    )
+    monkeypatch.setattr(
+        query_module,
+        "_read_file_backed_batch_metadata_or_empty",
+        lambda _name: (_ for _ in ()).throw(
+            AssertionError("unexpected fallback read")
+        ),
+    )
+
+    with pytest.raises(CommandError):
+        read_batch_metadata_for_batches(["valid", "invalid/name"])
 
 
 def test_get_batch_commit_sha_existing(temp_git_repo):

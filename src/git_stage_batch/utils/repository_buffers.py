@@ -7,6 +7,7 @@ import errno
 import stat
 import subprocess
 from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -87,6 +88,27 @@ def stream_git_blob_buffers(
                 buffer=buffer,
             )
         finally:
+            buffer.close()
+
+
+@contextmanager
+def acquire_git_blob_buffers(
+    blob_names: Iterable[str],
+    *,
+    spool_dir: str | Path | None = None,
+) -> Iterator[dict[str, LineBuffer]]:
+    """Acquire reusable buffers for unique blobs through one batch stream."""
+    buffers: dict[str, LineBuffer] = {}
+    owned_buffers: list[LineBuffer] = []
+    try:
+        for blob in stream_git_blob_buffers(blob_names, spool_dir=spool_dir):
+            buffer = blob.buffer.clone(spool_dir=spool_dir)
+            owned_buffers.append(buffer)
+            buffers[blob.requested_name] = buffer
+            buffers[blob.object_id] = buffer
+        yield buffers
+    finally:
+        for buffer in owned_buffers:
             buffer.close()
 
 

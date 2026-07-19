@@ -16,28 +16,37 @@ from ..batch.state.query import list_batch_names
 from ..batch.state.batch_names import (
     invalid_file_backed_batch_names,
     validate_batch_name,
+    validate_batch_name_constraints,
 )
-from ..batch.state.references import (
-    get_authoritative_batch_commit_sha,
-    get_batch_content_ref_name,
-    get_batch_state_ref_name,
-    get_legacy_batch_ref_name,
+from ..batch.state.reference_names import (
+    format_batch_content_ref_name,
+    format_batch_state_ref_name,
+    format_legacy_batch_ref_name,
 )
 from ..exceptions import BatchMetadataError, CommandError
 from ..i18n import _
 from ..utils.file_io import read_text_file_contents
-from ..utils.git_command import run_git_command
+from ..utils.git_object_io import (
+    GitObjectInfo,
+    read_git_blobs_as_bytes,
+    resolve_git_objects,
+)
 from ..utils.git_repository import require_git_repository
 from ..utils.paths import get_batch_metadata_file_path
 
 
 def inspect_batch_metadata() -> list[dict[str, Any]]:
     """Return diagnostics for every discoverable batch without writing state."""
-    reports = []
-    invalid_file_names = invalid_file_backed_batch_names()
-    batch_names = sorted(
-        set(list_batch_names(validate_legacy_metadata=False)) | set(invalid_file_names)
+    ref_batch_names = list_batch_names(validate_legacy_metadata=False)
+    ref_batch_name_set = set(ref_batch_names)
+    invalid_file_names = invalid_file_backed_batch_names(
+        trusted_batch_names=ref_batch_name_set,
     )
+    batch_names = sorted(
+        ref_batch_name_set | set(invalid_file_names)
+    )
+    reports = []
+    validated_names = []
     for batch_name in batch_names:
         report: dict[str, Any] = {
             "batch": batch_name,
@@ -47,21 +56,83 @@ def inspect_batch_metadata() -> list[dict[str, Any]]:
             "errors": [],
         }
         try:
-            validate_batch_name(batch_name)
+            if batch_name in ref_batch_name_set:
+                validate_batch_name_constraints(batch_name)
+            else:
+                validate_batch_name(batch_name)
         except CommandError as error:
             report["status"] = "error"
             report["source"] = "legacy-file"
             report["errors"].append(error.message)
             reports.append(report)
             continue
-        state_result = run_git_command(
-            ["show", f"{get_batch_state_ref_name(batch_name)}:batch.json"],
-            check=False,
-            requires_index_lock=False,
+        validated_names.append(batch_name)
+        reports.append(report)
+
+    state_refspec_by_name = {
+        batch_name: f"{format_batch_state_ref_name(batch_name)}:batch.json"
+        for batch_name in validated_names
+    }
+    state_ref_by_name = {
+        batch_name: format_batch_state_ref_name(batch_name)
+        for batch_name in validated_names
+    }
+    related_ref_names = [
+        ref_name
+        for batch_name in validated_names
+        for ref_name in (
+            format_batch_content_ref_name(batch_name),
+            format_legacy_batch_ref_name(batch_name),
         )
-        if state_result.returncode == 0:
-            payload = state_result.stdout
+    ]
+    ref_objects = resolve_git_objects(
+        [
+            *state_ref_by_name.values(),
+            *state_refspec_by_name.values(),
+            *related_ref_names,
+        ]
+    )
+    state_payloads = read_git_blobs_as_bytes(
+        object_info.object_id
+        for refspec in state_refspec_by_name.values()
+        if (object_info := ref_objects.get(refspec)) is not None
+        and object_info.object_type == "blob"
+    )
+
+    decoded_models: list[tuple[dict[str, Any], BatchMetadata]] = []
+    reports_by_name = {report["batch"]: report for report in reports}
+    for batch_name in validated_names:
+        report = reports_by_name[batch_name]
+        state_ref = state_ref_by_name[batch_name]
+        state_refspec = state_refspec_by_name[batch_name]
+        state_ref_object = ref_objects.get(state_ref)
+        state_object = ref_objects.get(state_refspec)
+        authoritative_payload = (
+            state_payloads.get(state_object.object_id)
+            if state_object is not None and state_object.object_type == "blob"
+            else None
+        )
+        state_read_error = None
+        if state_ref_object is not None:
+            payload: str | bytes = (
+                authoritative_payload
+                if authoritative_payload is not None
+                else b""
+            )
             source = "state-ref"
+            if state_object is None:
+                state_read_error = (
+                    "authoritative batch state is missing path 'batch.json'"
+                )
+            elif state_object.object_type != "blob":
+                state_read_error = (
+                    "authoritative batch state path 'batch.json' is "
+                    f"{state_object.object_type}, not a blob"
+                )
+            elif authoritative_payload is None:
+                state_read_error = (
+                    "authoritative batch state object could not be read"
+                )
         else:
             metadata_path = get_batch_metadata_file_path(batch_name)
             payload = (
@@ -69,13 +140,20 @@ def inspect_batch_metadata() -> list[dict[str, Any]]:
             )
             source = "legacy-file"
         report["source"] = source
+        content_ref = format_batch_content_ref_name(batch_name)
+        legacy_ref = format_legacy_batch_ref_name(batch_name)
         _classify_compatibility_residue(
             batch_name,
             report,
-            authoritative_payload=(
-                state_result.stdout if state_result.returncode == 0 else None
+            authoritative_payload=authoritative_payload,
+            authoritative_state_exists=state_ref_object is not None,
+            related_ref_exists=(
+                content_ref in ref_objects or legacy_ref in ref_objects
             ),
         )
+        if state_read_error is not None:
+            report["errors"].append(state_read_error)
+            continue
 
         try:
             raw = json.loads(payload)
@@ -85,32 +163,48 @@ def inspect_batch_metadata() -> list[dict[str, Any]]:
             report["migration_required"] = report["schema_version"] == 0
             model = decode_batch_metadata(payload, expected_batch=batch_name)
             report["revision"] = model.revision
-            report["errors"].extend(_referential_errors(model))
+            decoded_models.append((report, model))
+        except UnicodeDecodeError as error:
+            report["errors"].append(
+                f"Batch '{batch_name}' metadata is not valid JSON: {error}"
+            )
         except (BatchMetadataError, json.JSONDecodeError) as error:
             report["errors"].append(str(error))
 
+    referenced_object_names = [
+        object_name
+        for _report, model in decoded_models
+        for _field, object_name in _metadata_object_fields(model)
+    ]
+    referenced_objects = resolve_git_objects(referenced_object_names)
+    for report, model in decoded_models:
+        content_ref = format_batch_content_ref_name(model.batch)
+        content_ref_info = ref_objects.get(content_ref)
+        report["errors"].extend(
+            _referential_errors(
+                model,
+                actual_commit=(
+                    content_ref_info.object_id
+                    if content_ref_info is not None
+                    else None
+                ),
+                object_info_by_name=referenced_objects,
+            )
+        )
+
+    for report in reports:
         if report["errors"]:
             report["status"] = "error"
-        reports.append(report)
     return reports
-
-
-def _ref_exists(ref_name: str) -> bool:
-    return (
-        run_git_command(
-            ["show-ref", "--verify", "--quiet", ref_name],
-            check=False,
-            requires_index_lock=False,
-        ).returncode
-        == 0
-    )
 
 
 def _classify_compatibility_residue(
     batch_name: str,
     report: dict[str, Any],
     *,
-    authoritative_payload: str | None,
+    authoritative_payload: str | bytes | None,
+    authoritative_state_exists: bool,
+    related_ref_exists: bool,
 ) -> None:
     """Classify crash-residual file metadata without making it authoritative."""
     metadata_path = get_batch_metadata_file_path(batch_name)
@@ -131,11 +225,29 @@ def _classify_compatibility_residue(
         report["errors"].append(f"invalid compatibility metadata residue: {error}")
         return
 
+    if authoritative_state_exists and authoritative_payload is None:
+        report["residue"] = {
+            "class": "unverifiable_residue",
+            "path": str(metadata_path),
+            "file_revision": file_model.revision,
+            "safe_automatic_repair": False,
+        }
+        return
+
     if authoritative_payload is not None:
-        state_model = decode_batch_metadata(
-            authoritative_payload,
-            expected_batch=batch_name,
-        )
+        try:
+            state_model = decode_batch_metadata(
+                authoritative_payload,
+                expected_batch=batch_name,
+            )
+        except (BatchMetadataError, json.JSONDecodeError):
+            report["residue"] = {
+                "class": "unverifiable_residue",
+                "path": str(metadata_path),
+                "file_revision": file_model.revision,
+                "safe_automatic_repair": False,
+            }
+            return
         if file_model.to_application_dict() == state_model.to_application_dict():
             residue_class = "redundant_residue"
             safe_repair = True
@@ -158,33 +270,19 @@ def _classify_compatibility_residue(
             )
         return
 
-    legacy_or_content = _ref_exists(
-        get_legacy_batch_ref_name(batch_name)
-    ) or _ref_exists(get_batch_content_ref_name(batch_name))
     report["residue"] = {
         "class": "legacy_compatibility_state"
-        if legacy_or_content
+        if related_ref_exists
         else "orphaned_create",
         "path": str(metadata_path),
         "file_revision": file_model.revision,
         "safe_automatic_repair": False,
     }
-    if not legacy_or_content:
+    if not related_ref_exists:
         report["errors"].append("orphaned batch metadata has no related refs")
 
 
-def _referential_errors(model: BatchMetadata) -> list[str]:
-    errors = []
-    expected_ref = get_batch_content_ref_name(model.batch)
-    actual_commit = get_authoritative_batch_commit_sha(model.batch)
-    if model.content_ref is not None and model.content_ref != expected_ref:
-        errors.append(
-            f"content_ref is {model.content_ref!r}; expected {expected_ref!r}"
-        )
-    if model.content_commit is not None and model.content_commit != actual_commit:
-        errors.append(
-            "content_commit does not match the authoritative batch content ref"
-        )
+def _metadata_object_fields(model: BatchMetadata) -> list[tuple[str, str]]:
     object_fields = []
     if model.baseline is not None:
         object_fields.append(("baseline", model.baseline))
@@ -200,13 +298,27 @@ def _referential_errors(model: BatchMetadata) -> list[str]:
                 object_fields.append(
                     (f"files[{entry.path!r}].deletions[{index}].blob", blob)
                 )
-    for field, object_id in object_fields:
-        result = run_git_command(
-            ["cat-file", "-e", object_id],
-            check=False,
-            requires_index_lock=False,
+    return object_fields
+
+
+def _referential_errors(
+    model: BatchMetadata,
+    *,
+    actual_commit: str | None,
+    object_info_by_name: Mapping[str, GitObjectInfo],
+) -> list[str]:
+    errors = []
+    expected_ref = format_batch_content_ref_name(model.batch)
+    if model.content_ref is not None and model.content_ref != expected_ref:
+        errors.append(
+            f"content_ref is {model.content_ref!r}; expected {expected_ref!r}"
         )
-        if result.returncode != 0:
+    if model.content_commit is not None and model.content_commit != actual_commit:
+        errors.append(
+            "content_commit does not match the authoritative batch content ref"
+        )
+    for field, object_id in _metadata_object_fields(model):
+        if object_id not in object_info_by_name:
             errors.append(f"{field} names missing object {object_id}")
     return errors
 

@@ -9,6 +9,7 @@ from git_stage_batch.batch.state.query import list_batch_names
 from git_stage_batch.batch.state.batch_names import (
     MAX_BATCH_NAME_BYTES,
     batch_exists,
+    invalid_file_backed_batch_names,
     validate_batch_name,
 )
 from git_stage_batch.exceptions import CommandError
@@ -103,6 +104,17 @@ def test_batch_discovery_reports_invalid_legacy_metadata(temp_git_repo):
     assert "Legacy batch metadata" in exc_info.value.message
     assert "legacy^name" in exc_info.value.message
     assert "refs/batches" in exc_info.value.message
+
+
+def test_trusted_ref_name_still_obeys_product_constraints(temp_git_repo):
+    """Ref discovery should bypass only Git's already-satisfied name checks."""
+    metadata_path = get_batch_metadata_file_path("nested/name")
+    metadata_path.parent.mkdir(parents=True)
+    metadata_path.write_text("{}")
+
+    assert invalid_file_backed_batch_names(
+        trusted_batch_names={"nested/name"},
+    ) == ["nested/name"]
 
 
 @pytest.mark.parametrize("name", ["ordinary", "café", "release-2026.07"])

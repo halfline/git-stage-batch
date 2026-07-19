@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import git_stage_batch.utils.git_command as git_command_module
 
 from git_stage_batch.batch.state.validation import (
     get_validated_baseline_commit,
@@ -345,6 +346,37 @@ def test_validate_batch_metadata_structure_invalid_batch_source_commit(temp_git_
     assert "0000000000000000000000000000000000000000" in error_msg
 
 
+@pytest.mark.parametrize(
+    ("metadata", "message"),
+    [
+        (
+            {"baseline": "HEAD\nHEAD", "files": {}},
+            "invalid baseline object",
+        ),
+        (
+            {
+                "baseline": "HEAD",
+                "files": {
+                    "test.txt": {
+                        "batch_source_commit": "HEAD\nHEAD",
+                        "presence_claims": [],
+                    }
+                },
+            },
+            "invalid batch_source_commit",
+        ),
+    ],
+)
+def test_validate_batch_metadata_structure_rejects_batch_unsafe_object_name(
+    temp_git_repo,
+    metadata,
+    message,
+):
+    """Corrupt object names must not inject requests into the batch protocol."""
+    with pytest.raises(BatchMetadataError, match=message):
+        validate_batch_metadata_structure(metadata, "test-batch")
+
+
 def test_load_and_validate_batch_metadata_success(temp_git_repo):
     """Loading and validating batch metadata succeeds for valid batch."""
     create_batch("test-batch", "Test note")
@@ -473,3 +505,34 @@ def test_validate_batch_metadata_structure_valid_structure(temp_git_repo):
 
     # Should not raise
     validate_batch_metadata_structure(metadata, "test-batch")
+
+
+def test_validate_batch_metadata_structure_bulk_checks_objects(
+    temp_git_repo,
+    monkeypatch,
+):
+    """Metadata validation should check every source through one Git process."""
+    commit = run_git_command(["rev-parse", "HEAD"]).stdout.strip()
+    metadata = {
+        "baseline": commit,
+        "files": {
+            f"file-{index}.txt": {
+                "batch_source_commit": commit,
+                "presence_claims": [],
+            }
+            for index in range(16)
+        },
+    }
+    original_run = git_command_module.run_command
+    cat_file_commands = []
+
+    def counting_run(arguments, *args, **kwargs):
+        if arguments[:2] == ["git", "cat-file"]:
+            cat_file_commands.append(tuple(arguments[1:]))
+        return original_run(arguments, *args, **kwargs)
+
+    monkeypatch.setattr(git_command_module, "run_command", counting_run)
+
+    validate_batch_metadata_structure(metadata, "test-batch")
+
+    assert cat_file_commands == [("cat-file", "--batch-check")]

@@ -126,7 +126,6 @@ def command_show_from_batch(
     _file_list_action.show_batch_source_file_list(
         batch_name=batch_name,
         files=files,
-        metadata=metadata,
         selectable=selectable,
         command_source_args=_batch_source_args(batch_name),
     )

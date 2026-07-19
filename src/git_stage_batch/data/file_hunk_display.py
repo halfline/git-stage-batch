@@ -47,7 +47,7 @@ def render_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
             paths=[file_path],
         )
     ) as patches:
-        return _build_combined_file_line_changes(
+        return build_combined_file_line_changes(
             file_path,
             patches,
         )
@@ -65,7 +65,7 @@ def render_unstaged_file_as_single_hunk(file_path: str) -> Optional[LineLevelCha
             paths=[file_path],
         )
     ) as patches:
-        return _build_combined_file_line_changes(
+        return build_combined_file_line_changes(
             file_path,
             patches,
         )
@@ -97,7 +97,7 @@ def build_file_hunk_from_buffer(
                 new_path=new_path,
             )
         ) as patches:
-            return _build_combined_file_line_changes(
+            return build_combined_file_line_changes(
                 file_path,
                 patches,
             )
@@ -159,7 +159,7 @@ def _stream_no_index_diff_lines(
         )
 
 
-def _build_combined_file_line_changes(
+def build_combined_file_line_changes(
     file_path: str,
     patches,
 ) -> Optional[LineLevelChange]:
@@ -176,7 +176,13 @@ def _build_combined_file_line_changes(
     for single_hunk in patches:
         if isinstance(
             single_hunk,
-            (BinaryFileChange, FileModeChange, GitlinkChange, RenameChange, TextFileDeletionChange),
+            (
+                BinaryFileChange,
+                FileModeChange,
+                GitlinkChange,
+                RenameChange,
+                TextFileDeletionChange,
+            ),
         ):
             continue
 

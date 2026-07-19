@@ -317,7 +317,7 @@ def build_include_text_file_action_plan(
         merged_index_buffer = None
         merged_working_buffer = None
         return IncludeTextPlanBuildResult(plan=plan)
-    except Exception:
+    except BaseException:
         _close_include_merge_buffers(merged_index_buffer, merged_working_buffer)
         raise
 

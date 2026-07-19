@@ -44,3 +44,9 @@ def test_group_live_diff_assigns_rename_partner_once():
         "new.txt": (rename,),
         "other.txt": (mode,),
     }
+
+
+def test_paths_for_live_changes_includes_both_rename_partners():
+    rename = RenameChange("old.txt", "new.txt")
+
+    assert live_diff.paths_for_live_changes([rename]) == ("old.txt", "new.txt")

@@ -4,17 +4,32 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from contextlib import AbstractContextManager, nullcontext
+from dataclasses import dataclass
 import shlex
 import sys
 from typing import Protocol
 
+from ...data.file_tracking import auto_add_untracked_files
+from ...data.file_target_identity import (
+    IndexIdentity,
+    WorktreeIdentity,
+    capture_worktree_identities,
+    index_identity_from_entry,
+)
 from ...data.hunk_tracking import select_next_change_after_action
+from ...data.index_entries import read_index_entries
+from ...data.live_diff import (
+    acquire_prepared_live_diff,
+    group_live_diff_by_file,
+    paths_for_live_changes,
+)
 from ...data.session import require_session_started
 from ...data.undo_checkpoints import undo_checkpoint
 from ...exceptions import CommandError
 from ...i18n import _, ngettext
 from ...utils.git_repository import require_git_repository
 from ...utils.paths import ensure_state_directory_exists
+from ...utils.paths import get_context_lines
 from . import discard_file as _discard_file
 from .discard_to_batch import discard_files_to_batch
 from . import include_file as _include_file
@@ -36,6 +51,14 @@ class ResolvedFileScope(Protocol):
 
     def optional_file(self) -> str | None:
         """Return the optional single-file path for command callbacks."""
+
+
+@dataclass(frozen=True, slots=True)
+class _LiveActionTargetSnapshot:
+    """Worktree and index identities behind one prepared live diff."""
+
+    index_by_path: dict[str, IndexIdentity]
+    worktree_by_path: dict[str, WorktreeIdentity]
 
 
 def _format_multi_file_operation(command: str, files: Sequence[str]) -> str:
@@ -91,19 +114,65 @@ def discard_each_resolved_file(
     *,
     auto_advance: bool | None = None,
 ) -> None:
-    """Discard a multi-file live scope under one rename-complete checkpoint."""
+    """Discard a multi-file live scope and advance selection once."""
     _prepare_live_multi_file_action()
+    total_changes = 0
+    discarded_files = []
     checkpoint_paths = checkpoint_paths_for_live_files(list(files))
     with _multi_file_undo_checkpoint(
         "discard",
         files,
         worktree_paths=checkpoint_paths,
     ):
-        for file_path in files:
-            _discard_file.discard_file_changes(
-                file_path,
-                auto_advance=auto_advance,
+        auto_add_untracked_files(files)
+        target_snapshot = _capture_live_action_targets(checkpoint_paths)
+        with acquire_prepared_live_diff(
+            full_index=True,
+            ignore_submodules="none",
+            submodule_format="short",
+            context_lines=get_context_lines(),
+        ) as changes:
+            changes_by_file = group_live_diff_by_file(files, changes)
+            _require_prepared_change_paths_covered(
+                files,
+                changes_by_file,
+                checkpoint_paths,
             )
+            _require_live_action_targets_unchanged(
+                operation="discard",
+                expected=target_snapshot,
+            )
+            for file_path in files:
+                file_changes = changes_by_file[file_path]
+                if file_changes:
+                    _require_live_action_targets_unchanged(
+                        operation="discard",
+                        expected=target_snapshot,
+                        paths=paths_for_live_changes(file_changes),
+                    )
+                discarded_changes = _discard_file.discard_file_changes(
+                    file_path,
+                    quiet=True,
+                    advance=False,
+                    auto_advance=auto_advance,
+                    _prepared_changes=file_changes,
+                )
+                if discarded_changes > 0:
+                    total_changes += discarded_changes
+                    discarded_files.append(file_path)
+
+    if total_changes == 0:
+        print(_("No unstaged changes discarded from matched files."), file=sys.stderr)
+        return
+
+    should_show_next = select_next_change_after_action(auto_advance=auto_advance)
+    file_summary = _format_file_summary(discarded_files)
+    print(
+        _("✓ Unstaged changes discarded from {files}.").format(files=file_summary),
+        file=sys.stderr,
+    )
+    if should_show_next:
+        show_selected_change()
 
 
 def _format_file_summary(files: Sequence[str]) -> str:
@@ -124,6 +193,89 @@ def _prepare_live_multi_file_action() -> None:
     ensure_state_directory_exists()
 
 
+def _require_prepared_change_paths_covered(
+    files: Sequence[str],
+    changes_by_file: dict[str, tuple],
+    checkpoint_paths: Sequence[str],
+) -> None:
+    """Reject prepared changes that reach beyond the undo before-image."""
+    prepared_paths = paths_for_live_changes(
+        change
+        for file_path in files
+        for change in changes_by_file[file_path]
+    )
+    missing_paths = sorted(set(prepared_paths) - set(checkpoint_paths))
+    if missing_paths:
+        raise CommandError(
+            _(
+                "The matched files changed while the undo checkpoint was being "
+                "prepared. Review them again and retry. Uncaptured path(s): {paths}"
+            ).format(paths=", ".join(missing_paths))
+        )
+
+
+def _capture_live_action_targets(
+    paths: Sequence[str],
+) -> _LiveActionTargetSnapshot:
+    """Capture repository identities used to prepare a mutating live action."""
+    unique_paths = tuple(dict.fromkeys(paths))
+    index_entries = read_index_entries(unique_paths)
+    return _LiveActionTargetSnapshot(
+        index_by_path={
+            path: index_identity_from_entry(index_entries.get(path))
+            for path in unique_paths
+        },
+        worktree_by_path=capture_worktree_identities(unique_paths),
+    )
+
+
+def _require_live_action_targets_unchanged(
+    *,
+    operation: str,
+    expected: _LiveActionTargetSnapshot,
+    paths: Sequence[str] | None = None,
+) -> None:
+    """Reject a prepared mutation when its index or worktree input is stale."""
+    target_paths = tuple(
+        dict.fromkeys(paths if paths is not None else expected.index_by_path)
+    )
+    current_index_entries = read_index_entries(target_paths)
+    current_worktree = capture_worktree_identities(target_paths)
+    for path in target_paths:
+        current_index = index_identity_from_entry(current_index_entries.get(path))
+        if current_index != expected.index_by_path[path]:
+            raise _live_action_target_changed_error(
+                operation=operation,
+                path=path,
+                target="index",
+            )
+        if current_worktree[path] != expected.worktree_by_path[path]:
+            raise _live_action_target_changed_error(
+                operation=operation,
+                path=path,
+                target="worktree",
+            )
+
+
+def _live_action_target_changed_error(
+    *,
+    operation: str,
+    path: str,
+    target: str,
+) -> CommandError:
+    label = _("Index") if target == "index" else _("Working tree file")
+    return CommandError(
+        _(
+            "{label} changed while multi-file {operation} was being prepared: "
+            "{path}. Review the current changes and retry."
+        ).format(
+            label=label,
+            operation=operation,
+            path=path,
+        )
+    )
+
+
 def include_each_resolved_file(
     files: Sequence[str],
     *,
@@ -140,15 +292,40 @@ def include_each_resolved_file(
         files,
         worktree_paths=checkpoint_paths,
     ):
-        for file_path in files:
-            staged_hunks = _include_file.include_file_changes(
-                file_path,
-                quiet=True,
-                advance=False,
+        auto_add_untracked_files(files)
+        target_snapshot = _capture_live_action_targets(checkpoint_paths)
+        with acquire_prepared_live_diff(
+            full_index=True,
+            ignore_submodules="none",
+            submodule_format="short",
+        ) as changes:
+            changes_by_file = group_live_diff_by_file(files, changes)
+            _require_prepared_change_paths_covered(
+                files,
+                changes_by_file,
+                checkpoint_paths,
             )
-            if staged_hunks > 0:
-                total_hunks += staged_hunks
-                staged_files.append(file_path)
+            _require_live_action_targets_unchanged(
+                operation="include",
+                expected=target_snapshot,
+            )
+            for file_path in files:
+                file_changes = changes_by_file[file_path]
+                if file_changes:
+                    _require_live_action_targets_unchanged(
+                        operation="include",
+                        expected=target_snapshot,
+                        paths=paths_for_live_changes(file_changes),
+                    )
+                staged_hunks = _include_file.include_file_changes(
+                    file_path,
+                    quiet=True,
+                    advance=False,
+                    _prepared_changes=file_changes,
+                )
+                if staged_hunks > 0:
+                    total_hunks += staged_hunks
+                    staged_files.append(file_path)
 
     if total_hunks == 0:
         print(_("No hunks staged from matched files."), file=sys.stderr)
@@ -180,15 +357,24 @@ def skip_each_resolved_file(
     skipped_files: list[str] = []
 
     with _multi_file_undo_checkpoint("skip", files):
-        for file_path in files:
-            skipped_hunks = _skip_file.skip_file_changes(
-                file_path,
-                quiet=True,
-                advance=False,
-            )
-            if skipped_hunks > 0:
-                total_hunks += skipped_hunks
-                skipped_files.append(file_path)
+        auto_add_untracked_files(files)
+        with acquire_prepared_live_diff(
+            context_lines=get_context_lines(),
+            full_index=True,
+            ignore_submodules="none",
+            submodule_format="short",
+        ) as changes:
+            changes_by_file = group_live_diff_by_file(files, changes)
+            for file_path in files:
+                skipped_hunks = _skip_file.skip_file_changes(
+                    file_path,
+                    quiet=True,
+                    advance=False,
+                    _prepared_changes=changes_by_file[file_path],
+                )
+                if skipped_hunks > 0:
+                    total_hunks += skipped_hunks
+                    skipped_files.append(file_path)
 
     if total_hunks == 0:
         print(_("No hunks skipped from matched files."), file=sys.stderr)

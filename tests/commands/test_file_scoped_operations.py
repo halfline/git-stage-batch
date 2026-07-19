@@ -24,10 +24,12 @@ import subprocess
 
 import pytest
 import git_stage_batch.commands.file_scope.include_file as include_file_module
+import git_stage_batch.commands.file_scope.multi_file_actions as multi_file_actions
+import git_stage_batch.data.live_diff as live_diff
 
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.again import command_again
-from git_stage_batch.commands.show import command_show
+from git_stage_batch.commands.show import command_show, command_show_file_list
 from git_stage_batch.commands.include import (
     command_include,
     command_include_to_batch,
@@ -100,6 +102,111 @@ def multi_file_repo(tmp_path, monkeypatch):
     (repo / "gamma.txt").write_text("gamma1\ngamma2-modified\ngamma3\ngamma4-new\n")
 
     return repo
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        multi_file_actions.include_each_resolved_file,
+        multi_file_actions.discard_each_resolved_file,
+    ],
+)
+def test_multi_file_mutation_rejects_uncaptured_rename_partner(
+    multi_file_repo,
+    action,
+):
+    """A rename revealed by auto-add must not escape the undo before-image."""
+    command_start(quiet=True, auto_advance=False)
+    (multi_file_repo / "alpha.txt").write_text("alpha1\nalpha2\nalpha3\n")
+    (multi_file_repo / "alpha.txt").rename(multi_file_repo / "renamed-alpha.txt")
+
+    with pytest.raises(CommandError, match="Uncaptured path.*alpha.txt"):
+        action(
+            ["renamed-alpha.txt", "beta.txt"],
+            auto_advance=False,
+        )
+
+    staged = subprocess.run(
+        ["git", "diff", "--cached", "--quiet"],
+        check=False,
+    )
+    assert staged.returncode == 0
+    renamed_index_entry = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", "--", "renamed-alpha.txt"],
+        check=False,
+        capture_output=True,
+    )
+    assert renamed_index_entry.returncode != 0
+    assert not (multi_file_repo / "alpha.txt").exists()
+    assert (multi_file_repo / "renamed-alpha.txt").exists()
+    assert "beta2-modified" in (multi_file_repo / "beta.txt").read_text()
+
+
+def test_multi_file_include_rejects_index_drift_before_later_file(
+    multi_file_repo,
+    monkeypatch,
+):
+    """A later file must not be staged from a stale prepared index view."""
+    command_start(quiet=True, auto_advance=False)
+    original_include = multi_file_actions._include_file.include_file_changes
+
+    def include_then_drift(file_path, **kwargs):
+        result = original_include(file_path, **kwargs)
+        if file_path == "alpha.txt":
+            subprocess.run(["git", "add", "beta.txt"], check=True)
+        return result
+
+    monkeypatch.setattr(
+        multi_file_actions._include_file,
+        "include_file_changes",
+        include_then_drift,
+    )
+
+    with pytest.raises(CommandError, match=r"Index changed.*beta\.txt"):
+        multi_file_actions.include_each_resolved_file(
+            ["alpha.txt", "beta.txt"],
+            auto_advance=False,
+        )
+
+    assert subprocess.run(
+        ["git", "diff", "--cached", "--quiet"],
+        check=False,
+    ).returncode == 0
+    assert "alpha2-modified" in (multi_file_repo / "alpha.txt").read_text()
+    assert "beta2-modified" in (multi_file_repo / "beta.txt").read_text()
+
+
+def test_multi_file_discard_rejects_worktree_drift_before_later_file(
+    multi_file_repo,
+    monkeypatch,
+):
+    """A later file must not be discarded from a stale prepared worktree view."""
+    command_start(quiet=True, auto_advance=False)
+    original_discard = multi_file_actions._discard_file.discard_file_changes
+
+    def discard_then_drift(file_path, **kwargs):
+        result = original_discard(file_path, **kwargs)
+        if file_path == "alpha.txt":
+            (multi_file_repo / "beta.txt").write_text("concurrent change\n")
+        return result
+
+    monkeypatch.setattr(
+        multi_file_actions._discard_file,
+        "discard_file_changes",
+        discard_then_drift,
+    )
+
+    with pytest.raises(
+        CommandError,
+        match=r"Working tree file changed.*beta\.txt",
+    ):
+        multi_file_actions.discard_each_resolved_file(
+            ["alpha.txt", "beta.txt"],
+            auto_advance=False,
+        )
+
+    assert "alpha2-modified" in (multi_file_repo / "alpha.txt").read_text()
+    assert "beta2-modified" in (multi_file_repo / "beta.txt").read_text()
 
 
 def _create_one_to_many_replacement_repo(tmp_path, monkeypatch):
@@ -672,6 +779,86 @@ class TestShowFileFlag:
         result = run_git_command(["diff", "--cached", "--name-only"])
         assert result.stdout == ""
 
+    def test_show_files_preserves_atomic_staged_unstaged_semantics(
+        self,
+        tmp_path,
+        monkeypatch,
+        capsys,
+    ):
+        """Staged-only atomic changes should stay out of the unstaged file list."""
+        repo = tmp_path / "test_repo"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+        subprocess.run(["git", "init"], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test"], check=True)
+        subprocess.run(["git", "config", "user.email", "test@test.com"], check=True)
+        for file_path in (
+            "binary.bin",
+            "mode.txt",
+            "cancelled-mode.txt",
+            "delete.txt",
+            "rename-old.txt",
+            "visible.txt",
+        ):
+            (repo / file_path).write_text(f"{file_path}\n")
+        (repo / "binary.bin").write_bytes(b"old\0binary\n")
+        # An empty deletion has no line hunk and exercises the atomic deletion
+        # renderer whose historical comparison base differs from text hunks.
+        (repo / "delete.txt").write_text("")
+        subprocess.run(["git", "add", "."], check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Initial"],
+            check=True,
+            capture_output=True,
+        )
+
+        (repo / "visible.txt").write_text("visible worktree change\n")
+        command_start(quiet=True, auto_advance=False)
+        capsys.readouterr()
+
+        # Stage the atomic changes after session-start normalization so they
+        # remain index-only, matching manual staging during an active session.
+        (repo / "mode.txt").chmod(0o755)
+        subprocess.run(["git", "add", "mode.txt"], check=True)
+        (repo / "cancelled-mode.txt").chmod(0o755)
+        subprocess.run(["git", "add", "cancelled-mode.txt"], check=True)
+        (repo / "cancelled-mode.txt").chmod(0o644)
+        (repo / "binary.bin").chmod(0o755)
+        subprocess.run(["git", "add", "binary.bin"], check=True)
+        (repo / "binary.bin").chmod(0o644)
+        (repo / "binary.bin").write_bytes(b"new\0binary\n")
+        subprocess.run(["git", "rm", "delete.txt"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "mv", "rename-old.txt", "rename-new.txt"],
+            check=True,
+        )
+        command_show_file_list(
+            [
+                "binary.bin",
+                "mode.txt",
+                "cancelled-mode.txt",
+                "delete.txt",
+                "rename-old.txt",
+                "rename-new.txt",
+                "visible.txt",
+            ],
+            selectable=False,
+        )
+
+        output = capsys.readouterr().out
+        binary_summary = next(
+            line
+            for line in output.splitlines()
+            if "binary.bin" in line and " · " in line
+        )
+        assert "executable mode" in binary_summary
+        assert "visible.txt" in output
+        assert "cancelled-mode.txt" in output
+        assert "show --file mode.txt" not in output
+        assert "delete.txt" not in output
+        assert "rename-old.txt" not in output
+        assert "rename-new.txt" not in output
+
     def test_include_files_reports_aggregate_staged_scope(self, multi_file_repo, capsys):
         """Include --files should report the full staged scope once."""
         command_start()
@@ -775,6 +962,40 @@ class TestShowFileFlag:
         with pytest.raises(CommandError, match="last command only showed files"):
             command_skip(quiet=True)
 
+    @pytest.mark.parametrize(
+        ("arguments", "expected_live_diff_count"),
+        [
+            (["show", "--files", "*.txt"], 1),
+            (["include", "--files", "*.txt", "--no-auto-advance"], 2),
+            (["skip", "--files", "*.txt", "--no-auto-advance"], 1),
+            (["discard", "--files", "*.txt", "--no-auto-advance"], 2),
+        ],
+    )
+    def test_multi_file_commands_bound_live_diff_subprocesses(
+        self,
+        multi_file_repo,
+        capsys,
+        monkeypatch,
+        arguments,
+        expected_live_diff_count,
+    ):
+        """Multi-file work should use a fixed number of live Git diff scans."""
+        command_start()
+        capsys.readouterr()
+        original_stream = live_diff.stream_git_diff
+        calls = []
+
+        def counting_stream(**kwargs):
+            calls.append(kwargs)
+            return original_stream(**kwargs)
+
+        monkeypatch.setattr(live_diff, "stream_git_diff", counting_stream)
+
+        args = parse_command_line(arguments, quiet=True)
+        assert args is not None
+        args.func(args)
+
+        assert len(calls) == expected_live_diff_count
 
 class TestIncludeToBatchWithFile:
     """Test include --to BATCH with --file flag."""

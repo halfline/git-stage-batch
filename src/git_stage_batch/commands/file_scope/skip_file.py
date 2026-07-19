@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from contextlib import nullcontext
 import sys
 
-from ...core.diff_parser import acquire_unified_diff, build_line_changes_from_patch_lines
+from ...core.diff_parser import (
+    UnifiedDiffItem,
+    acquire_unified_diff,
+    build_line_changes_from_patch_lines,
+)
 from ...core.hashing import (
     compute_binary_file_hash,
     compute_file_mode_change_hash,
@@ -44,8 +50,9 @@ def skip_file_changes(
     quiet: bool = False,
     advance: bool = True,
     auto_advance: bool | None = None,
+    _prepared_changes: Sequence[UnifiedDiffItem] | None = None,
 ) -> int:
-    """Skip all changes from one resolved file scope."""
+    """Skip one file; prepared inputs require a caller-owned transaction."""
     if file == "":
         target_file = get_selected_change_file_path()
         if target_file is None:
@@ -58,23 +65,30 @@ def skip_file_changes(
     else:
         target_file = file
 
-    auto_add_untracked_files([target_file])
-    with undo_checkpoint(
-        f"skip --file {file}".rstrip(),
-        worktree_paths=[target_file],
-    ):
-        blocklist_path = get_block_list_file_path()
-        blocked_hashes = read_text_file_line_set(blocklist_path)
-
-        hunks_skipped = 0
-        with acquire_unified_diff(
+    if _prepared_changes is None:
+        auto_add_untracked_files([target_file])
+        checkpoint = undo_checkpoint(
+            f"skip --file {file}".rstrip(),
+            worktree_paths=[target_file],
+        )
+        patch_context = acquire_unified_diff(
             stream_live_git_diff(
                 context_lines=get_context_lines(),
                 full_index=True,
                 ignore_submodules="none",
                 submodule_format="short",
             )
-        ) as patches:
+        )
+    else:
+        checkpoint = nullcontext()
+        patch_context = nullcontext(iter(_prepared_changes))
+
+    with checkpoint:
+        blocklist_path = get_block_list_file_path()
+        blocked_hashes = read_text_file_line_set(blocklist_path)
+
+        hunks_skipped = 0
+        with patch_context as patches:
             for patch in patches:
                 if isinstance(patch, FileModeChange):
                     if patch.path() != target_file:

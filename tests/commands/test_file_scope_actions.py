@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from types import SimpleNamespace
 
 import git_stage_batch.commands.file_scope.multi_file_actions as multi_file_actions
@@ -47,6 +48,36 @@ def _capture_undo_checkpoints(monkeypatch):
     return calls
 
 
+def _stub_prepared_diff(monkeypatch):
+    prepared_changes = ()
+    monkeypatch.setattr(
+        multi_file_actions,
+        "auto_add_untracked_files",
+        lambda files: None,
+    )
+    monkeypatch.setattr(
+        multi_file_actions,
+        "acquire_prepared_live_diff",
+        lambda **_kwargs: nullcontext(prepared_changes),
+    )
+    monkeypatch.setattr(
+        multi_file_actions,
+        "group_live_diff_by_file",
+        lambda files, changes: {file_path: changes for file_path in files},
+    )
+    monkeypatch.setattr(
+        multi_file_actions,
+        "_capture_live_action_targets",
+        lambda _paths: object(),
+    )
+    monkeypatch.setattr(
+        multi_file_actions,
+        "_require_live_action_targets_unchanged",
+        lambda **_kwargs: None,
+    )
+    return prepared_changes
+
+
 def test_run_for_each_resolved_file_wraps_multiple_files(monkeypatch):
     checkpoint_calls = _capture_undo_checkpoints(monkeypatch)
     callback_calls = []
@@ -73,6 +104,7 @@ def test_discard_each_resolved_file_expands_live_checkpoint_paths(monkeypatch):
     checkpoint_calls = _capture_undo_checkpoints(monkeypatch)
     discard_calls = []
     expansion_calls = []
+    prepared_changes = _stub_prepared_diff(monkeypatch)
 
     def expand_paths(paths):
         expansion_calls.append(paths)
@@ -91,8 +123,22 @@ def test_discard_each_resolved_file_expands_live_checkpoint_paths(monkeypatch):
     monkeypatch.setattr(
         multi_file_actions._discard_file,
         "discard_file_changes",
-        lambda file_path, *, auto_advance=None: discard_calls.append(
-            (file_path, auto_advance)
+        lambda file_path,
+        *,
+        quiet=False,
+        advance=True,
+        auto_advance=None,
+        _prepared_changes=None: (
+            discard_calls.append(
+                (
+                    file_path,
+                    quiet,
+                    advance,
+                    auto_advance,
+                    _prepared_changes,
+                )
+            )
+            or 0
         ),
     )
 
@@ -111,9 +157,80 @@ def test_discard_each_resolved_file_expands_live_checkpoint_paths(monkeypatch):
         ("exit",),
     ]
     assert discard_calls == [
-        ("rename-target.txt", False),
-        ("other.txt", False),
+        ("rename-target.txt", True, False, False, prepared_changes),
+        ("other.txt", True, False, False, prepared_changes),
     ]
+
+
+def test_discard_each_resolved_file_advances_once_after_transaction(
+    monkeypatch,
+    capsys,
+):
+    """A prepared multi-file discard should update selection only at the end."""
+    _capture_undo_checkpoints(monkeypatch)
+    prepared_changes = _stub_prepared_diff(monkeypatch)
+    discard_calls = []
+    selection_calls = []
+    show_calls = []
+
+    monkeypatch.setattr(
+        multi_file_actions,
+        "checkpoint_paths_for_live_files",
+        lambda files: list(files),
+    )
+    monkeypatch.setattr(
+        multi_file_actions,
+        "_prepare_live_multi_file_action",
+        lambda: None,
+    )
+
+    def fake_discard_file(
+        file_path,
+        *,
+        quiet=False,
+        advance=True,
+        auto_advance=None,
+        _prepared_changes=None,
+    ):
+        discard_calls.append(
+            (
+                file_path,
+                quiet,
+                advance,
+                auto_advance,
+                _prepared_changes,
+            )
+        )
+        return 1
+
+    monkeypatch.setattr(
+        multi_file_actions._discard_file,
+        "discard_file_changes",
+        fake_discard_file,
+    )
+    monkeypatch.setattr(
+        multi_file_actions,
+        "select_next_change_after_action",
+        lambda *, auto_advance=None: selection_calls.append(auto_advance) or True,
+    )
+    monkeypatch.setattr(
+        multi_file_actions,
+        "show_selected_change",
+        lambda: show_calls.append("show"),
+    )
+
+    multi_file_actions.discard_each_resolved_file(
+        ["alpha.txt", "beta.txt"],
+        auto_advance=True,
+    )
+
+    assert discard_calls == [
+        ("alpha.txt", True, False, True, prepared_changes),
+        ("beta.txt", True, False, True, prepared_changes),
+    ]
+    assert selection_calls == [True]
+    assert show_calls == ["show"]
+    assert "Unstaged changes discarded from 2 files" in capsys.readouterr().err
 
 
 def test_run_for_each_resolved_file_dispatches_optional_file(monkeypatch):
@@ -155,9 +272,16 @@ def test_include_each_resolved_file_reports_aggregate_result(
     include_calls = []
     selection_calls = []
     show_calls = []
+    prepared_changes = _stub_prepared_diff(monkeypatch)
 
-    def fake_include_file(file_path, *, quiet=False, advance=True):
-        include_calls.append((file_path, quiet, advance))
+    def fake_include_file(
+        file_path,
+        *,
+        quiet=False,
+        advance=True,
+        _prepared_changes=None,
+    ):
+        include_calls.append((file_path, quiet, advance, _prepared_changes))
         return {"alpha.txt": 2, "beta.txt": 0}[file_path]
 
     monkeypatch.setattr(
@@ -196,8 +320,8 @@ def test_include_each_resolved_file_reports_aggregate_result(
         ("exit",),
     ]
     assert include_calls == [
-        ("alpha.txt", True, False),
-        ("beta.txt", True, False),
+        ("alpha.txt", True, False, prepared_changes),
+        ("beta.txt", True, False, prepared_changes),
     ]
     assert selection_calls == [True]
     assert show_calls == ["show"]
@@ -211,9 +335,16 @@ def test_skip_each_resolved_file_stops_after_empty_result(
     checkpoint_calls = _capture_undo_checkpoints(monkeypatch)
     skip_calls = []
     selection_calls = []
+    prepared_changes = _stub_prepared_diff(monkeypatch)
 
-    def fake_skip_file(file_path, *, quiet=False, advance=True):
-        skip_calls.append((file_path, quiet, advance))
+    def fake_skip_file(
+        file_path,
+        *,
+        quiet=False,
+        advance=True,
+        _prepared_changes=None,
+    ):
+        skip_calls.append((file_path, quiet, advance, _prepared_changes))
         return 0
 
     monkeypatch.setattr(
@@ -244,8 +375,8 @@ def test_skip_each_resolved_file_stops_after_empty_result(
         ("exit",),
     ]
     assert skip_calls == [
-        ("alpha.txt", True, False),
-        ("beta.txt", True, False),
+        ("alpha.txt", True, False, prepared_changes),
+        ("beta.txt", True, False, prepared_changes),
     ]
     assert selection_calls == []
     assert "No hunks skipped from matched files." in captured.err

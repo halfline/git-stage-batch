@@ -13,6 +13,8 @@ from .references import get_batch_state_ref_name, get_legacy_batch_ref_name
 from ...exceptions import BatchMetadataError
 from ...i18n import _
 from ...utils.git_command import run_git_command
+from ...utils.git_object_io import resolve_git_objects
+from ...utils.repository_buffers import git_object_name_is_batch_protocol_safe
 from ...utils.paths import (
     get_batch_metadata_file_path,
     get_state_directory_path,
@@ -117,24 +119,8 @@ def validate_batch_metadata_structure(metadata: dict[str, Any], batch_name: str)
               "This indicates corrupted or incomplete batch state.").format(name=batch_name)
         )
 
-    # A normal batch uses a commit; a no-history batch uses the empty tree.
-    if baseline:
-        result = run_git_command(
-            ["cat-file", "-e", baseline],
-            check=False,
-            requires_index_lock=False,
-        )
-        if result.returncode != 0:
-            raise BatchMetadataError(
-                _("Batch '{name}' has invalid baseline object: {baseline}\n"
-                  "The baseline object does not exist in the repository.\n"
-                  "The batch metadata may be corrupted.").format(
-                    name=batch_name,
-                    baseline=baseline
-                )
-            )
-
     # Validate files structure if present
+    source_commits: list[tuple[str, object]] = []
     if "files" in metadata:
         files = metadata["files"]
         if not isinstance(files, dict):
@@ -170,21 +156,53 @@ def validate_batch_metadata_structure(metadata: dict[str, Any], batch_name: str)
             # Validate batch source commit exists
             batch_source_commit = file_meta.get("batch_source_commit")
             if batch_source_commit:
-                result = run_git_command(
-                    ["cat-file", "-e", batch_source_commit],
-                    check=False,
-                    requires_index_lock=False,
+                source_commits.append((file_path, batch_source_commit))
+
+    object_names = [
+        *([baseline] if baseline else []),
+        *(commit for _file_path, commit in source_commits),
+    ]
+    batch_object_names = [
+        object_name
+        for object_name in object_names
+        if isinstance(object_name, str)
+        and git_object_name_is_batch_protocol_safe(object_name)
+    ]
+    object_info_by_name = resolve_git_objects(batch_object_names)
+    if baseline and not _git_object_exists(baseline, object_info_by_name):
+        raise BatchMetadataError(
+            _("Batch '{name}' has invalid baseline object: {baseline}\n"
+              "The baseline object does not exist in the repository.\n"
+              "The batch metadata may be corrupted.").format(
+                name=batch_name,
+                baseline=baseline
+            )
+        )
+    for file_path, batch_source_commit in source_commits:
+        if not _git_object_exists(batch_source_commit, object_info_by_name):
+            raise BatchMetadataError(
+                _("Batch '{name}' has invalid batch_source_commit for file '{file}': {commit}\n"
+                  "The batch source commit does not exist in the repository.\n"
+                  "The batch metadata may be corrupted.").format(
+                    name=batch_name,
+                    file=file_path,
+                    commit=batch_source_commit
                 )
-                if result.returncode != 0:
-                    raise BatchMetadataError(
-                        _("Batch '{name}' has invalid batch_source_commit for file '{file}': {commit}\n"
-                          "The batch source commit does not exist in the repository.\n"
-                          "The batch metadata may be corrupted.").format(
-                            name=batch_name,
-                            file=file_path,
-                            commit=batch_source_commit
-                        )
-                    )
+            )
+
+
+def _git_object_exists(object_name: object, object_info_by_name: dict) -> bool:
+    """Check unusual metadata names through argv, outside the batch protocol."""
+    if not isinstance(object_name, str):
+        return False
+    if git_object_name_is_batch_protocol_safe(object_name):
+        return object_name in object_info_by_name
+    result = run_git_command(
+        ["cat-file", "-e", object_name],
+        check=False,
+        requires_index_lock=False,
+    )
+    return result.returncode == 0
 
 
 def load_and_validate_batch_metadata(batch_name: str) -> dict[str, Any]:

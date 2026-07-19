@@ -9,6 +9,7 @@ from .import_boundary_helpers import (
     SRC_ROOT,
     external_package_child_module_import_violations as _child_import_violations,
     import_from_nodes as _import_from_nodes,
+    internal_import_edges as _internal_import_edges,
     module_name_for_path as _module_name_for_path,
 )
 
@@ -271,6 +272,40 @@ def test_lower_packages_do_not_import_command_exit_helper():
                 violations.append(
                     f"{relative_path}:{node.lineno} imports exit_with_error"
                 )
+
+    assert violations == []
+
+
+def test_file_job_infrastructure_stays_domain_neutral():
+    """Generic job mechanics should not depend on product workflow layers."""
+    forbidden_import_roots = {
+        "git_stage_batch.batch",
+        "git_stage_batch.cli",
+        "git_stage_batch.commands",
+        "git_stage_batch.data",
+        "git_stage_batch.output",
+        "git_stage_batch.tui",
+        "git_stage_batch.utils.journal",
+        "git_stage_batch.utils.session_lock",
+    }
+    violations = []
+    infrastructure_modules = {
+        _module_name_for_path(path)
+        for path in (
+            SRC_ROOT / "utils" / "file_job_process.py",
+            SRC_ROOT / "utils" / "file_job_transport.py",
+            SRC_ROOT / "utils" / "file_jobs.py",
+            SRC_ROOT / "utils" / "file_job_workspace.py",
+        )
+    }
+    for edge in _internal_import_edges():
+        if edge.source not in infrastructure_modules:
+            continue
+        if any(
+            edge.target == root or edge.target.startswith(f"{root}.")
+            for root in forbidden_import_roots
+        ):
+            violations.append(f"{edge.source} imports {edge.target}")
 
     assert violations == []
 

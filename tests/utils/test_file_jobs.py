@@ -1113,3 +1113,349 @@ def test_process_execution_enforces_the_hard_worker_cap(
 
     assert results == list(range(10))
     assert observed_max_workers == [file_jobs_module._MAX_FILE_JOB_WORKERS]
+
+
+def test_collected_lower_ordinal_failure_wins_over_worker_failure(
+    tmp_path,
+    monkeypatch,
+):
+    """A later supervisor failure must not hide an earlier task failure."""
+
+    class FailingSupervisor:
+        def __init__(self, _compute, *, max_workers, repository_root):
+            self.pending = []
+            self.responses = 0
+
+        @property
+        def pending_count(self):
+            return len(self.pending)
+
+        @property
+        def can_submit(self):
+            return len(self.pending) < 4
+
+        def submit(self, job):
+            self.pending.append(job)
+
+        def receive(self):
+            self.responses += 1
+            if self.responses == 1:
+                self.pending = [job for job in self.pending if job.ordinal != 1]
+                return file_jobs_module._WorkerResponse(
+                    1,
+                    error_type="builtins.RuntimeError",
+                    error_message="one failed",
+                )
+            raise file_jobs_module._FileJobSupervisorError(
+                "worker exited while running job 4",
+                ordinal=4,
+            )
+
+        def close(self):
+            raise AssertionError("failed supervisor closed normally")
+
+        def terminate(self):
+            self.pending.clear()
+
+    monkeypatch.setattr(
+        file_jobs_module,
+        "_ProcessFileJobSupervisor",
+        FailingSupervisor,
+    )
+    jobs = [
+        OrderedFileJob(1, "one.txt", 20, 1),
+        OrderedFileJob(4, "four.txt", 10, 4),
+    ]
+
+    with pytest.raises(FileJobError) as error:
+        run_file_jobs(
+            jobs,
+            _identity,
+            execution=FileJobExecution("process", 2, "test"),
+            repository_root=tmp_path,
+        )
+
+    assert error.value.ordinal == 1
+    assert "one failed" in error.value.original_message
+
+
+def test_worker_failure_reports_its_job_instead_of_an_unrelated_ordinal(
+    tmp_path,
+    monkeypatch,
+):
+    """A specific worker failure should retain its own job identity."""
+
+    class FailingSupervisor:
+        def __init__(self, _compute, *, max_workers, repository_root):
+            self.pending = []
+
+        @property
+        def pending_count(self):
+            return len(self.pending)
+
+        @property
+        def can_submit(self):
+            return len(self.pending) < 4
+
+        def submit(self, job):
+            self.pending.append(job)
+
+        def receive(self):
+            raise file_jobs_module._FileJobSupervisorError(
+                "worker exited while running job 4",
+                ordinal=4,
+            )
+
+        def close(self):
+            raise AssertionError("failed supervisor closed normally")
+
+        def terminate(self):
+            self.pending.clear()
+
+    monkeypatch.setattr(
+        file_jobs_module,
+        "_ProcessFileJobSupervisor",
+        FailingSupervisor,
+    )
+    jobs = [
+        OrderedFileJob(0, "zero.txt", 10, 0),
+        OrderedFileJob(4, "four.txt", 20, 4),
+    ]
+
+    with pytest.raises(FileJobError) as error:
+        run_file_jobs(
+            jobs,
+            _identity,
+            execution=FileJobExecution("process", 2, "test"),
+            repository_root=tmp_path,
+        )
+
+    assert error.value.ordinal == 4
+    assert error.value.file_path == "four.txt"
+
+
+def test_transport_records_remain_compact_as_artifact_content_grows(tmp_path):
+    """Pickle should see paths and scalars, never complete artifact content."""
+    with FileJobWorkspace(parent_directory=tmp_path) as workspace:
+        small_path = workspace.write_buffer(
+            0,
+            "small.txt",
+            (b"unchanged\n", b"changed\n", b"unchanged\n"),
+        )
+        large_path = workspace.write_buffer(
+            0,
+            "large.txt",
+            itertools.chain(
+                itertools.repeat(b"unchanged\n", 100_000),
+                (b"changed\n",),
+            ),
+        )
+        scratch = workspace.scratch_directory(0)
+        small_job = _DigestJob(small_path, scratch, 0)
+        large_job = _DigestJob(large_path, scratch, 0)
+        small_result = _compute_digest(small_job)
+        large_result = _compute_digest(large_job)
+
+        assert abs(len(pickle.dumps(small_job)) - len(pickle.dumps(large_job))) < 32
+        assert (
+            abs(len(pickle.dumps(small_result)) - len(pickle.dumps(large_result))) < 16
+        )
+
+
+def test_transport_value_assertion_rejects_content_and_resource_graphs(
+    tmp_path,
+):
+    """IPC records must reject bytes, buffers, mappings, and mapped storage."""
+    forbidden_values = [
+        b"content",
+        bytearray(b"content"),
+        memoryview(b"content"),
+        (b"line\n",),
+        [b"line\n"],
+        _BytesPayload(b"content"),
+        LineMapping([0], [0]),
+    ]
+    with LineBuffer.from_bytes(b"line\n") as buffer:
+        forbidden_values.append(buffer)
+        for value in forbidden_values:
+            with pytest.raises(TypeError):
+                assert_file_job_transport_value(value)
+
+    mapped_path = tmp_path / "mapped"
+    mapped_path.write_bytes(b"mapped")
+    with mapped_path.open("r+b") as mapped_file:
+        with mmap.mmap(mapped_file.fileno(), 0) as mapped:
+            with pytest.raises(TypeError):
+                assert_file_job_transport_value(mapped)
+
+
+def test_transport_value_assertion_rejects_hidden_instance_state():
+    """Pickle-visible state must not hide outside declared record fields."""
+    payload = _ExtensiblePayload(1)
+    payload.hidden = b"content"
+    slotted_payload = _ManualSlotsPayload(1)
+    object.__setattr__(slotted_payload, "hidden", b"content")
+    list_payload = _ListPayload()
+    list_payload.append(b"content")
+    tuple_value = _ExtensibleTuple((1,))
+    tuple_value.hidden = b"content"
+    integer_value = _ExtensibleInteger(1)
+    integer_value.hidden = b"content"
+
+    for value in (
+        payload,
+        slotted_payload,
+        list_payload,
+        tuple_value,
+        integer_value,
+    ):
+        with pytest.raises(TypeError):
+            assert_file_job_transport_value(value)
+
+
+def test_transport_value_assertion_rejects_custom_pickle_behavior():
+    """Validated fields must be the only state serialized across IPC."""
+    for value in (_CustomPicklePayload(1), _CustomPickleMarker.ONE):
+        with pytest.raises(TypeError, match="custom pickle behavior"):
+            assert_file_job_transport_value(value)
+
+
+def test_transport_value_assertion_rejects_recursive_enum(monkeypatch):
+    """An enum value cycle should fail deterministically."""
+    monkeypatch.setattr(_RecursiveMarker.ONE, "_value_", _RecursiveMarker.ONE)
+
+    with pytest.raises(TypeError, match="recursive value"):
+        assert_file_job_transport_value(_RecursiveMarker.ONE)
+
+
+@pytest.mark.parametrize(
+    "value_builder",
+    (
+        _oversized_transport_string,
+        _oversized_transport_integer,
+        _oversized_transport_tuple,
+        _transport_value_with_too_many_strings,
+        _transport_value_with_too_many_values,
+        _transport_value_with_excessive_nesting,
+    ),
+)
+def test_transport_value_assertion_rejects_unbounded_values(value_builder):
+    """Successful IPC values should remain bounded independently of content."""
+    with pytest.raises(TypeError):
+        assert_file_job_transport_value(value_builder())
+
+
+@_PROCESS_TEST
+def test_process_failure_message_is_bounded(tmp_path):
+    """Worker diagnostics should not become an unbounded IPC result."""
+    with pytest.raises(FileJobError) as error:
+        run_file_jobs(
+            [OrderedFileJob(0, "file.txt", 1, 1)],
+            _large_error_compute,
+            execution=FileJobExecution("process", 1, "test"),
+            repository_root=tmp_path,
+        )
+
+    assert error.value.original_message.endswith("...")
+    assert (
+        len(error.value.original_message)
+        <= file_jobs_module._MAX_ERROR_MESSAGE_CHARACTERS
+    )
+
+
+def test_nested_compute_function_is_rejected_before_execution(tmp_path):
+    """Process callables must be top-level importable functions."""
+
+    def nested_compute(value):
+        return value
+
+    with pytest.raises(TypeError, match="top-level importable"):
+        run_file_jobs(
+            [OrderedFileJob(0, "file.txt", 1, 1)],
+            nested_compute,
+            execution=FileJobExecution("inline", 1, "test"),
+            repository_root=tmp_path,
+        )
+
+
+def test_main_module_compute_function_is_rejected_before_execution(
+    tmp_path,
+    monkeypatch,
+):
+    """Forkserver callables cannot depend on the launching main module."""
+    monkeypatch.setattr(_identity, "__module__", "__main__")
+
+    with pytest.raises(TypeError, match="top-level importable"):
+        run_file_jobs(
+            [OrderedFileJob(0, "file.txt", 1, 1)],
+            _identity,
+            execution=FileJobExecution("inline", 1, "test"),
+            repository_root=tmp_path,
+        )
+
+
+def test_non_importable_transport_dataclass_is_rejected():
+    """IPC dataclass types must be reconstructable in a forkserver child."""
+
+    @dataclass(frozen=True)
+    class LocalPayload:
+        marker: int
+
+    with pytest.raises(TypeError, match="non-importable value type"):
+        assert_file_job_transport_value(LocalPayload(1))
+
+
+def test_non_importable_integer_enum_is_rejected():
+    """Integer enum subclasses should not bypass IPC type validation."""
+
+    class LocalMarker(IntEnum):
+        ONE = 1
+
+    with pytest.raises(TypeError, match="non-importable value type"):
+        assert_file_job_transport_value(LocalMarker.ONE)
+
+
+def test_invalid_transport_is_rejected_even_without_jobs(tmp_path):
+    """An empty input should not hide an invalid execution contract."""
+    with pytest.raises(ValueError, match="unsupported file-job transport"):
+        run_file_jobs(
+            [],
+            _identity,
+            execution=FileJobExecution("unknown", 1, "test"),  # type: ignore[arg-type]
+            repository_root=tmp_path,
+        )
+
+
+def test_process_transport_is_rejected_outside_linux(
+    tmp_path,
+    monkeypatch,
+):
+    """A manually constructed execution policy cannot bypass platform scope."""
+    monkeypatch.setattr(file_jobs_module.sys, "platform", "darwin")
+
+    with pytest.raises(ValueError, match="requires Linux"):
+        run_file_jobs(
+            [],
+            _identity,
+            execution=FileJobExecution("process", 2, "test"),
+            repository_root=tmp_path,
+        )
+
+
+@pytest.mark.parametrize("max_workers", (0, -1, True, 1.5))
+def test_invalid_worker_count_is_rejected_even_without_jobs(
+    tmp_path,
+    max_workers,
+):
+    """An empty input should not hide an invalid worker-count contract."""
+    with pytest.raises(ValueError, match="positive worker count"):
+        run_file_jobs(
+            [],
+            _identity,
+            execution=FileJobExecution(
+                "inline",
+                max_workers,  # type: ignore[arg-type]
+                "test",
+            ),
+            repository_root=tmp_path,
+        )

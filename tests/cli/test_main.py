@@ -9,6 +9,8 @@ from unittest.mock import patch
 
 import pytest
 
+from git_stage_batch.utils.file_jobs import FileJobError
+
 main_module = import_module("git_stage_batch.cli.main")
 
 
@@ -30,6 +32,28 @@ def test_main_with_no_args():
                 with pytest.raises(SystemExit) as exc_info:
                     main_module.main()
                 assert exc_info.value.code == 1
+
+
+def test_main_reports_file_job_failures_without_a_traceback(capsys):
+    """Expected executor failures should use the command error boundary."""
+    error = FileJobError(3, "example.txt", "worker exited unexpectedly")
+
+    with patch.object(sys, "argv", ["git-stage-batch"]):
+        with patch.object(
+            main_module,
+            "dispatch_cli_mode",
+            side_effect=error,
+        ):
+            with patch.object(
+                main_module,
+                "parse_command_line",
+                return_value=Namespace(working_directory=None),
+            ):
+                with pytest.raises(SystemExit) as exc_info:
+                    main_module.main()
+
+    assert exc_info.value.code == 1
+    assert capsys.readouterr().err == f"{error}\n"
 
 
 def test_main_acquires_session_lock_before_dispatch():

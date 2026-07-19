@@ -67,6 +67,11 @@ def baseline_reference_insertion_position(
             ):
                 return None
             verified_boundary = True
+    elif position != len(working_lines):
+        # Historical EOF additions recorded only their preceding line.  That
+        # one-sided reference is exact only while the target still ends there;
+        # otherwise structural source mapping must choose the placement.
+        return None
 
     if not verified_boundary:
         return None

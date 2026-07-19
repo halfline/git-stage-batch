@@ -15,7 +15,7 @@ from git_stage_batch.commands.include import (
     command_include_line_as,
     command_include_to_batch,
 )
-from git_stage_batch.commands.selection import include_line_selection
+from git_stage_batch.commands.selection import include_line_action, include_line_selection
 from git_stage_batch.commands.selection.replacement_selection import (
     derive_replacement_line_runs,
 )
@@ -31,7 +31,7 @@ from git_stage_batch.data.line_state import load_line_changes_from_state
 from git_stage_batch.data.selected_change.clear_reasons import (
     selected_change_was_cleared_by_auto_advance_disabled,
 )
-from git_stage_batch.exceptions import CommandError, NoMoreHunks
+from git_stage_batch.exceptions import CommandError, MergeError, NoMoreHunks
 from git_stage_batch.utils.paths import get_state_directory_path
 from git_stage_batch.commands.again import command_again
 from tests.batch.ownership.metadata_helpers import (
@@ -872,6 +872,42 @@ class TestCommandIncludeLine:
             capture_output=True,
             text=True,
         ).stdout == ""
+
+    def test_include_line_converts_preparation_merge_error_to_refusal(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """Transient batch preparation ambiguity should remain user-facing."""
+        _prepare_single_line_change(temp_git_repo)
+        journal_entries = []
+
+        def raise_merge_error(*_args, **_kwargs):
+            raise MergeError("batch source no longer fits")
+
+        monkeypatch.setattr(
+            include_line_selection,
+            "add_file_to_batch",
+            raise_merge_error,
+        )
+        monkeypatch.setattr(
+            include_line_action,
+            "log_journal",
+            lambda event, **fields: journal_entries.append((event, fields)),
+        )
+
+        with pytest.raises(CommandError, match="Cannot safely include line"):
+            command_include_line("1")
+
+        assert subprocess.run(
+            ["git", "diff", "--cached", "--name-only"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        ).stdout == ""
+        assert journal_entries[-1][0] == "include_line_transient_batch_staging_declined"
+        assert journal_entries[-1][1]["detail"] == "batch source no longer fits"
 
     def test_include_line_handles_deletions(self, temp_git_repo):
         """Test that include --line handles deletions correctly."""

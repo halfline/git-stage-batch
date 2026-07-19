@@ -26,6 +26,7 @@ import pytest
 import git_stage_batch.commands.file_scope.include_file as include_file_module
 
 from git_stage_batch.commands.start import command_start
+from git_stage_batch.commands.again import command_again
 from git_stage_batch.commands.show import command_show
 from git_stage_batch.commands.include import (
     command_include,
@@ -1658,6 +1659,238 @@ class TestExplicitFilePath:
         expected[2:2] = ["early one\n", "early two\n"]
         expected.insert(17, "late staged\n")
         assert staged_content == "".join(expected)
+
+    def test_include_blank_lines_after_staging_adjacent_added_lines(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """A later blank-line selection should merge with adjacent staged additions."""
+        repo = tmp_path / "test_repo"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+
+        subprocess.run(["git", "init"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.name", "Test"],
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"],
+            check=True,
+            capture_output=True,
+        )
+
+        original = (
+            "def existing():\n"
+            "    pass\n"
+            "\n"
+            "\n"
+            "def following():\n"
+            "    pass\n"
+        )
+        rewritten = (
+            "def existing():\n"
+            "    pass\n"
+            "\n"
+            "\n"
+            "def first_added():\n"
+            "    first = 1\n"
+            "\n"
+            "\n"
+            "def second_added():\n"
+            "    second = 2\n"
+            "\n"
+            "\n"
+            "def following():\n"
+            "    pass\n"
+        )
+        first_staged = (
+            "def existing():\n"
+            "    pass\n"
+            "\n"
+            "\n"
+            "def first_added():\n"
+            "    first = 1\n"
+            "\n"
+            "\n"
+            "def following():\n"
+            "    pass\n"
+        )
+        file_path = repo / "module.py"
+        file_path.write_text(original)
+        subprocess.run(["git", "add", "module.py"], check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Initial"],
+            check=True,
+            capture_output=True,
+        )
+        file_path.write_text(rewritten)
+
+        command_start(quiet=True)
+        command_show(file="module.py", page="all", porcelain=True)
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+        content_ids = ",".join(
+            str(line.id)
+            for line in line_changes.lines
+            if line.id is not None
+            and line.kind == "+"
+            and line.display_text()
+            in {"def first_added():", "    first = 1"}
+        )
+        command_include_line(content_ids, file="module.py")
+
+        command_again(quiet=True)
+        command_show(file="module.py", page="all", porcelain=True)
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+        blank_id_values = [
+            line.id
+            for line in line_changes.lines
+            if line.id is not None
+            and line.kind == "+"
+            and not line.display_text()
+        ]
+        assert len(blank_id_values) == 4
+        blank_ids = ",".join(str(line_id) for line_id in blank_id_values[:2])
+
+        command_include_line(blank_ids, file="module.py")
+
+        assert run_git_command(["show", ":module.py"]).stdout == first_staged
+        assert file_path.read_text() == rewritten
+
+    def test_include_blank_line_after_staging_adjacent_eof_addition(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """A later EOF separator should remain after an adjacent staged line."""
+        repo = tmp_path / "test_repo"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+
+        subprocess.run(["git", "init"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.name", "Test"],
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"],
+            check=True,
+            capture_output=True,
+        )
+
+        file_path = repo / "module.py"
+        file_path.write_text("base\n")
+        subprocess.run(["git", "add", "module.py"], check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Initial"],
+            check=True,
+            capture_output=True,
+        )
+
+        rewritten = "base\nfirst\n\nsecond\n\n"
+        file_path.write_text(rewritten)
+
+        command_start(quiet=True)
+        command_show(file="module.py", page="all", porcelain=True)
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+        first_id = next(
+            line.id
+            for line in line_changes.lines
+            if line.id is not None and line.display_text() == "first"
+        )
+        command_include_line(str(first_id), file="module.py")
+
+        command_again(quiet=True)
+        command_show(file="module.py", page="all", porcelain=True)
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+        blank_id = next(
+            line.id
+            for line in line_changes.lines
+            if line.id is not None
+            and line.kind == "+"
+            and not line.display_text()
+        )
+
+        command_include_line(str(blank_id), file="module.py")
+
+        assert run_git_command(["show", ":module.py"]).stdout == "base\nfirst\n\n"
+        assert file_path.read_text() == rewritten
+
+    def test_named_batch_eof_addition_applies_after_staged_source_line(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """A batched EOF separator should follow an already-staged source line."""
+        repo = tmp_path / "test_repo"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+
+        subprocess.run(["git", "init"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.name", "Test"],
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"],
+            check=True,
+            capture_output=True,
+        )
+
+        file_path = repo / "module.py"
+        file_path.write_text("base\n")
+        subprocess.run(["git", "add", "module.py"], check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Initial"],
+            check=True,
+            capture_output=True,
+        )
+
+        rewritten = "base\nfirst\n\n"
+        file_path.write_text(rewritten)
+
+        command_start(quiet=True)
+        command_show(file="module.py", page="all", porcelain=True)
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+        first_id = next(
+            line.id
+            for line in line_changes.lines
+            if line.id is not None and line.display_text() == "first"
+        )
+        command_include_line(str(first_id), file="module.py")
+
+        command_again(quiet=True)
+        command_show(file="module.py", page="all", porcelain=True)
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+        blank_id = next(
+            line.id
+            for line in line_changes.lines
+            if line.id is not None
+            and line.kind == "+"
+            and not line.display_text()
+        )
+        command_include_to_batch(
+            "separator",
+            line_ids=str(blank_id),
+            file="module.py",
+            quiet=True,
+        )
+
+        assert run_git_command(["show", ":module.py"]).stdout == "base\nfirst\n"
+        command_include_from_batch("separator", file="module.py")
+
+        assert run_git_command(["show", ":module.py"]).stdout == rewritten
+        assert file_path.read_text() == rewritten
 
     def test_include_line_as_with_explicit_path_trims_matching_edge_anchors(self, tmp_path, monkeypatch):
         """Explicit file-scoped include --line --as should accept unchanged edge anchors."""

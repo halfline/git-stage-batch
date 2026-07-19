@@ -959,6 +959,27 @@ class TestMergeBatch:
 
         assert result == b"line1\nline2\nline4\n"
 
+    def test_legacy_eof_reference_defers_after_target_grows(self):
+        """An after-only EOF reference must not precede mapped target additions."""
+        source = b"base\nfirst\n\n"
+        working = b"base\nfirst\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["3"],
+            [],
+            baseline_references={
+                3: BaselineReference(
+                    after_line=1,
+                    after_content=b"base",
+                    before_line=None,
+                    has_before_line=False,
+                )
+            },
+        )
+
+        result = merge_batch(source, ownership, working)
+
+        assert result == source
+
     def test_baseline_referenced_fallback_yields_line_chunks(self):
         """Baseline-coordinate fallback returns line content chunks."""
         source_lines = [b"line1\n", b"line2\n", b"line3\n", b"line4\n"]

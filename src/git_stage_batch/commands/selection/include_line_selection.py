@@ -5,13 +5,18 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from enum import Enum
-import uuid
 import sys
+import uuid
 
 from ...batch.ownership.hunk_translation import (
     translate_hunk_selection_to_batch_ownership,
 )
+from ...batch.line_matching.match import match_lines
+from ...batch.merge.baseline_reference_positions import (
+    baseline_reference_insertion_position as _baseline_reference_insertion_position,
+)
 from ...batch.merge.merge import merge_batch_from_line_sequences_as_buffer
+from ...batch.ownership.references import BaselineReference as _BaselineReference
 from ...batch.state.lifecycle import create_batch, delete_batch
 from ...batch.ownership.metadata_loading import acquire_ownership_for_metadata_dict
 from ...batch.state.query import read_batch_metadata
@@ -19,6 +24,7 @@ from ...batch.selection import line_selection_not_valid_message
 from ...batch.text_file_storage import add_file_to_batch
 from ...batch.state.batch_names import batch_exists
 from ...core.buffer import LineBuffer, buffer_matches
+from ...core.text_lines import normalize_line_sequence_endings
 from ...batch.source.snapshots import create_batch_source_commit
 from ...data.selected_change.file_hunk_cache import cache_unstaged_file_as_single_hunk
 from ...data.file_modes import detect_file_mode
@@ -88,8 +94,8 @@ class IncludeLineSelectionContext:
     reset_processed_include_ids: bool = False
 
 
-def record_baseline_references_for_additions(line_changes) -> None:
-    """Attach old-file insertion references to addition lines for batch round trips."""
+def _record_diff_baseline_references_for_additions(line_changes) -> None:
+    """Attach insertion references from the old side of the displayed diff."""
     last_old_line: int | None = None
     last_old_text_bytes: bytes | None = None
     index = 0
@@ -121,7 +127,10 @@ def record_baseline_references_for_additions(line_changes) -> None:
                 addition_line.has_baseline_reference_after = True
                 addition_line.baseline_reference_before_line = next_old_line
                 addition_line.baseline_reference_before_text_bytes = next_old_text_bytes
-                addition_line.has_baseline_reference_before = next_old_line is not None
+                # A missing next old line is an explicit EOF boundary, not an
+                # unknown second side.  Preserve that distinction so a later
+                # merge does not insert before content appended to the target.
+                addition_line.has_baseline_reference_before = True
                 index += 1
             continue
 
@@ -129,6 +138,135 @@ def record_baseline_references_for_additions(line_changes) -> None:
             last_old_line = line.old_line_number
             last_old_text_bytes = line.text_bytes
         index += 1
+
+
+def _clear_addition_baseline_reference(addition_line) -> None:
+    """Remove insertion metadata that does not fit the captured baseline."""
+    addition_line.baseline_reference_after_line = None
+    addition_line.baseline_reference_after_text_bytes = None
+    addition_line.has_baseline_reference_after = False
+    addition_line.baseline_reference_before_line = None
+    addition_line.baseline_reference_before_text_bytes = None
+    addition_line.has_baseline_reference_before = False
+
+
+def _record_snapshot_baseline_references_for_additions(
+    line_changes,
+    *,
+    baseline_lines: Sequence[bytes],
+    source_lines: Sequence[bytes],
+) -> None:
+    """Attach insertion references in captured baseline coordinates.
+
+    A file-scoped view is rendered against the session comparison base, which
+    can differ from the current index after an earlier partial include. Align
+    the captured source and index directly so later selections use boundaries
+    from the baseline they will actually be merged into.
+    """
+
+    def reference_fits_baseline(line) -> bool:
+        reference = _BaselineReference(
+            after_line=line.baseline_reference_after_line,
+            after_content=line.baseline_reference_after_text_bytes,
+            has_after_line=line.has_baseline_reference_after,
+            before_line=line.baseline_reference_before_line,
+            before_content=line.baseline_reference_before_text_bytes,
+            has_before_line=line.has_baseline_reference_before,
+        )
+        position = _baseline_reference_insertion_position(
+            reference,
+            baseline_lines,
+        )
+        if position is None:
+            return False
+
+        # Legacy line views may carry an after-only EOF reference.  If the
+        # index now continues past that position, rebuild it from snapshots.
+        return line.has_baseline_reference_before or position == len(baseline_lines)
+
+    addition_lines = sorted(
+        (
+            line
+            for line in line_changes.lines
+            if (
+                line.kind == "+"
+                and line.source_line is not None
+                and 1 <= line.source_line <= len(source_lines)
+                and not reference_fits_baseline(line)
+            )
+        ),
+        key=lambda line: line.source_line,
+    )
+    if not addition_lines:
+        return
+
+    normalized_source_lines = normalize_line_sequence_endings(source_lines)
+    normalized_baseline_lines = normalize_line_sequence_endings(baseline_lines)
+    with match_lines(normalized_source_lines, normalized_baseline_lines) as mapping:
+        mapped_pairs = mapping.mapped_line_pairs()
+        previous_pair: tuple[int, int] | None = None
+        next_pair = next(mapped_pairs, None)
+
+        for addition_line in addition_lines:
+            source_line = addition_line.source_line
+            assert source_line is not None
+
+            while next_pair is not None and next_pair[0] < source_line:
+                previous_pair = next_pair
+                next_pair = next(mapped_pairs, None)
+
+            if next_pair is not None and next_pair[0] == source_line:
+                target_line = next_pair[1]
+                after_line = target_line - 1 if target_line > 1 else None
+                before_line = target_line
+                previous_pair = next_pair
+                next_pair = next(mapped_pairs, None)
+            else:
+                after_line = previous_pair[1] if previous_pair is not None else None
+                before_line = next_pair[1] if next_pair is not None else None
+                insertion_position = after_line or 0
+                expected_before_line = insertion_position + 1
+                actual_before_line = before_line or len(baseline_lines) + 1
+                if expected_before_line != actual_before_line:
+                    # Target-only content leaves the relative insertion order
+                    # ambiguous. Do not retain the diff reference that was
+                    # already proven invalid against this baseline.
+                    _clear_addition_baseline_reference(addition_line)
+                    continue
+
+            addition_line.baseline_reference_after_line = after_line
+            addition_line.baseline_reference_after_text_bytes = (
+                bytes(baseline_lines[after_line - 1])
+                if after_line is not None
+                else None
+            )
+            addition_line.has_baseline_reference_after = True
+            addition_line.baseline_reference_before_line = before_line
+            addition_line.baseline_reference_before_text_bytes = (
+                bytes(baseline_lines[before_line - 1])
+                if before_line is not None
+                else None
+            )
+            addition_line.has_baseline_reference_before = True
+
+
+def record_baseline_references_for_additions(
+    line_changes,
+    *,
+    baseline_lines: Sequence[bytes] | None = None,
+    source_lines: Sequence[bytes] | None = None,
+) -> None:
+    """Attach insertion references to addition lines for batch round trips."""
+    _record_diff_baseline_references_for_additions(line_changes)
+    if baseline_lines is None and source_lines is None:
+        return
+    if baseline_lines is None or source_lines is None:
+        raise ValueError("baseline_lines and source_lines must be provided together")
+    _record_snapshot_baseline_references_for_additions(
+        line_changes,
+        baseline_lines=baseline_lines,
+        source_lines=source_lines,
+    )
 
 
 def _snapshot_session_batch_sources_file() -> tuple[bool, bytes | None]:
@@ -321,7 +459,11 @@ def try_build_index_content_via_transient_batch(
         create_batch(batch_name, "Transient include-line selection")
         created_batch = True
 
-        record_baseline_references_for_additions(line_changes)
+        record_baseline_references_for_additions(
+            line_changes,
+            baseline_lines=hunk_base_lines,
+            source_lines=hunk_source_lines,
+        )
         ownership = translate_hunk_selection_to_batch_ownership(
             line_changes.lines,
             selected_display_ids,
@@ -341,13 +483,19 @@ def try_build_index_content_via_transient_batch(
                 line_changes.path,
                 file_buffer_override=working_lines,
             )
-            add_file_to_batch(
-                batch_name,
-                line_changes.path,
-                ownership,
-                detect_file_mode(line_changes.path),
-                batch_source_commit=batch_source_commit,
-            )
+            try:
+                add_file_to_batch(
+                    batch_name,
+                    line_changes.path,
+                    ownership,
+                    detect_file_mode(line_changes.path),
+                    batch_source_commit=batch_source_commit,
+                )
+            except MergeError as error:
+                return TransientIncludeResult.failure(
+                    TransientIncludeFailureReason.PREPARATION_FAILED,
+                    detail=str(error),
+                )
 
             metadata = read_batch_metadata(batch_name)
             file_metadata = metadata.get("files", {}).get(line_changes.path)
@@ -383,7 +531,7 @@ def try_build_index_content_via_transient_batch(
                 except MergeError as error:
                     return TransientIncludeResult.failure(
                         TransientIncludeFailureReason.INDEX_MERGE_FAILED,
-                        detail=error.__class__.__name__,
+                        detail=str(error),
                     )
 
                 try:
@@ -397,7 +545,7 @@ def try_build_index_content_via_transient_batch(
                     target_index_buffer = None
                     return TransientIncludeResult.failure(
                         TransientIncludeFailureReason.WORKING_TREE_MERGE_FAILED,
-                        detail=error.__class__.__name__,
+                        detail=str(error),
                     )
 
                 with target_working_buffer:

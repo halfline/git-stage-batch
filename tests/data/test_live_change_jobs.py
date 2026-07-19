@@ -299,3 +299,371 @@ def test_gitlink_change_remains_parent_counted(
     with acquire_live_change_count_plan() as plan:
         assert plan.atomic_count == 1
         assert plan.jobs == ()
+
+
+def test_many_hunks_reuse_one_file_preparation(temp_git_repo, monkeypatch):
+    _write_many_hunk_fixture(temp_git_repo)
+
+    with acquire_live_change_count_plan() as plan:
+        assert len(plan.jobs) == 1
+        calls = {
+            "working_tree": 0,
+            "annotation_mapping": 0,
+            "attribution": 0,
+        }
+        original_working_tree = live_jobs.load_working_tree_file_as_buffer
+        original_mapping = live_jobs.acquire_batch_source_mapping
+        original_attribution = live_jobs.build_file_attribution_from_lines
+
+        def load_working_tree(*args, **kwargs):
+            calls["working_tree"] += 1
+            return original_working_tree(*args, **kwargs)
+
+        @contextmanager
+        def acquire_mapping(*args, **kwargs):
+            calls["annotation_mapping"] += 1
+            with original_mapping(*args, **kwargs) as mapping:
+                yield mapping
+
+        def build_attribution(*args, **kwargs):
+            calls["attribution"] += 1
+            return original_attribution(*args, **kwargs)
+
+        monkeypatch.setattr(
+            live_jobs,
+            "load_working_tree_file_as_buffer",
+            load_working_tree,
+        )
+        monkeypatch.setattr(
+            live_jobs,
+            "acquire_batch_source_mapping",
+            acquire_mapping,
+        )
+        monkeypatch.setattr(
+            live_jobs,
+            "build_file_attribution_from_lines",
+            build_attribution,
+        )
+
+        result = count_eligible_live_text_file(plan.jobs[0].payload)
+
+    assert result.eligible_count == 2
+    assert result.already_batched_count == 0
+    assert calls == {
+        "working_tree": 1,
+        "annotation_mapping": 1,
+        "attribution": 1,
+    }
+
+
+def test_compute_does_not_read_session_metadata(
+    temp_git_repo,
+    monkeypatch,
+):
+    file_path = temp_git_repo / "file.txt"
+    file_path.write_text("old\n")
+    _commit_all(temp_git_repo)
+    file_path.write_text("new\n")
+
+    with acquire_live_change_count_plan() as plan:
+        assert len(plan.jobs) == 1
+
+        def unexpected_read(*_args, **_kwargs):
+            raise AssertionError("unexpected session metadata read")
+
+        monkeypatch.setattr(
+            live_jobs,
+            "load_session_batch_sources",
+            unexpected_read,
+        )
+        monkeypatch.setattr(
+            live_jobs,
+            "load_consumed_selections_metadata",
+            unexpected_read,
+        )
+        monkeypatch.setattr(
+            attribution_module,
+            "list_batch_names",
+            unexpected_read,
+        )
+        monkeypatch.setattr(
+            attribution_module,
+            "read_batch_metadata_for_batches",
+            unexpected_read,
+        )
+        monkeypatch.setattr(
+            annotation_module,
+            "get_batch_source_for_file",
+            unexpected_read,
+        )
+        monkeypatch.setattr(
+            hunk_filtering_module,
+            "read_consumed_file_metadata",
+            unexpected_read,
+        )
+        monkeypatch.setattr(
+            hunk_filtering_module,
+            "log_journal",
+            unexpected_read,
+        )
+
+        result = count_eligible_live_text_file(plan.jobs[0].payload)
+
+    assert result.eligible_count == 1
+    assert result.stale is False
+
+
+def test_empty_lifecycle_filter_uses_captured_metadata(
+    temp_git_repo,
+    monkeypatch,
+):
+    (temp_git_repo / "base.txt").write_text("base\n")
+    _commit_all(temp_git_repo)
+    empty_path = temp_git_repo / "empty.txt"
+    empty_path.write_bytes(b"")
+    _git(temp_git_repo, "add", "-N", "empty.txt")
+
+    with acquire_live_change_count_plan() as plan:
+        assert len(plan.jobs) == 1
+        job = plan.jobs[0].payload
+        input_path = Path(job.input_manifest_path)
+        input_manifest = json.loads(input_path.read_text())
+        input_manifest["batch_metadata_by_name"] = {
+            "empty-batch": {
+                "files": {
+                    "empty.txt": {
+                        "batch_source_commit": input_manifest["head_commit"],
+                        "change_type": "added",
+                    },
+                },
+            },
+        }
+        input_path.write_text(
+            json.dumps(input_manifest, ensure_ascii=True, separators=(",", ":"))
+            + "\n"
+        )
+        monkeypatch.setattr(
+            hunk_filtering_module._change_freshness,
+            "empty_text_lifecycle_change_is_batched",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                AssertionError("unexpected mutable lifecycle read")
+            ),
+        )
+
+        result = count_eligible_live_text_file(job)
+
+    assert result.eligible_count == 0
+    assert result.already_batched_count == 1
+
+
+def test_consumed_replacement_masks_are_loaded_once_and_applied(
+    temp_git_repo,
+):
+    file_path = temp_git_repo / "file.txt"
+    file_path.write_text("old\n")
+    _commit_all(temp_git_repo)
+    head_commit = _git_output(temp_git_repo, "rev-parse", "HEAD")
+    file_path.write_text("new\n")
+
+    consumed_path = get_session_consumed_selections_file_path()
+    consumed_path.parent.mkdir(parents=True, exist_ok=True)
+    consumed_path.write_text(
+        json.dumps({
+            "files": {
+                "file.txt": {
+                    "batch_source_commit": head_commit,
+                    "presence_claims": [],
+                    "deletions": [],
+                    "replacement_masks": [
+                        {
+                            "deleted_lines": ["old"],
+                            "added_lines": ["new"],
+                        },
+                    ],
+                },
+            },
+        })
+    )
+
+    assert _lazy_candidate_count() == 0
+    assert estimate_remaining_hunks() == 0
+    with acquire_live_change_count_plan() as plan:
+        assert len(plan.jobs) == 1
+        result = count_eligible_live_text_file(plan.jobs[0].payload)
+        assert result.eligible_count == 0
+        assert result.already_batched_count == 1
+
+
+def test_parser_buffers_can_close_immediately_after_spooling(
+    temp_git_repo,
+    monkeypatch,
+):
+    for file_name in ("a.txt", "b.txt"):
+        (temp_git_repo / file_name).write_text("old\n")
+    _commit_all(temp_git_repo)
+
+    path_sequence = ("a.txt", "b.txt", "a.txt")
+    parser_buffers = []
+
+    @contextmanager
+    def acquire_fake_diff(_lines):
+        def changes():
+            for path in path_sequence:
+                buffer = LineBuffer.from_chunks(
+                    (
+                        f"--- a/{path}\n".encode(),
+                        f"+++ b/{path}\n".encode(),
+                        b"@@ -1 +1 @@\n",
+                        b"-old\n",
+                        b"+new\n",
+                    )
+                )
+                parser_buffers.append(buffer)
+                try:
+                    yield SingleHunkPatch(path, path, buffer)
+                finally:
+                    buffer.close()
+
+        try:
+            yield changes()
+        finally:
+            for buffer in parser_buffers:
+                buffer.close()
+
+    monkeypatch.setattr(live_jobs, "acquire_unified_diff", acquire_fake_diff)
+    monkeypatch.setattr(live_jobs, "stream_live_git_diff", lambda **_kwargs: ())
+
+    with acquire_live_change_count_plan() as plan:
+        assert [job.file_path for job in plan.jobs] == list(path_sequence)
+        patch_paths = []
+        for job in plan.jobs:
+            records = [
+                json.loads(line)
+                for line in Path(
+                    job.payload.hunk_manifest_path
+                ).read_text().splitlines()
+            ]
+            assert len(records) == 1
+            patch_paths.append(Path(records[0]["patch_artifact_path"]))
+        assert all(path.read_bytes().endswith(b"+new\n") for path in patch_paths)
+
+    for buffer in parser_buffers:
+        with pytest.raises(ValueError, match="closed"):
+            next(buffer.byte_chunks())
+
+
+def test_job_and_result_transport_stay_content_independent(temp_git_repo):
+    file_path = temp_git_repo / "file.txt"
+    file_path.write_text("old\n")
+    _commit_all(temp_git_repo)
+    file_path.write_text("new\n")
+
+    with acquire_live_change_count_plan() as plan:
+        job = plan.jobs[0].payload
+        serialized_job = pickle.dumps(job)
+        hunk_records = [
+            json.loads(line)
+            for line in Path(job.hunk_manifest_path).read_text().splitlines()
+        ]
+        patch_path = Path(hunk_records[0]["patch_artifact_path"])
+        patch_path.write_bytes(b"x" * (2 * 1024 * 1024))
+
+        assert pickle.dumps(job) == serialized_job
+        assert len(serialized_job) < 1024
+        assert b"x" * 100 not in serialized_job
+        assert_file_job_transport_value(job)
+
+    result = LiveTextFileCountResult(
+        ordinal=0,
+        file_path="file.txt",
+        eligible_count=1,
+        already_batched_count=0,
+        attribution_metrics=AttributionMetricsSnapshot(),
+    )
+    assert len(pickle.dumps(result)) < 1024
+    assert_file_job_transport_value(result)
+
+
+def test_builder_loads_shared_snapshots_once(
+    temp_git_repo,
+    monkeypatch,
+):
+    for file_name in ("a.txt", "b.txt"):
+        (temp_git_repo / file_name).write_text("old\n")
+    _commit_all(temp_git_repo)
+    for file_name in ("a.txt", "b.txt"):
+        (temp_git_repo / file_name).write_text("new\n")
+
+    calls = {
+        "batch_names": 0,
+        "batch_metadata": 0,
+        "batch_sources": 0,
+        "consumed": 0,
+        "head": 0,
+        "state_commits": 0,
+    }
+    original_list_batch_names = live_jobs.list_batch_names
+    original_batch_metadata = live_jobs.read_batch_metadata_for_batches
+    original_batch_sources = live_jobs.load_session_batch_sources
+    original_consumed = live_jobs.load_consumed_selections_metadata
+    original_head = live_jobs.current_head_commit
+    original_resolve = live_jobs.resolve_git_objects
+
+    def list_batch_names():
+        calls["batch_names"] += 1
+        return original_list_batch_names()
+
+    def read_batch_metadata(batch_names, **kwargs):
+        calls["batch_metadata"] += 1
+        return original_batch_metadata(batch_names, **kwargs)
+
+    def load_batch_sources():
+        calls["batch_sources"] += 1
+        return original_batch_sources()
+
+    def load_consumed():
+        calls["consumed"] += 1
+        return original_consumed()
+
+    def read_head():
+        calls["head"] += 1
+        return original_head()
+
+    def resolve_state_commits(object_names):
+        calls["state_commits"] += 1
+        return original_resolve(object_names)
+
+    monkeypatch.setattr(live_jobs, "list_batch_names", list_batch_names)
+    monkeypatch.setattr(
+        live_jobs,
+        "read_batch_metadata_for_batches",
+        read_batch_metadata,
+    )
+    monkeypatch.setattr(
+        live_jobs,
+        "load_session_batch_sources",
+        load_batch_sources,
+    )
+    monkeypatch.setattr(
+        live_jobs,
+        "load_consumed_selections_metadata",
+        load_consumed,
+    )
+    monkeypatch.setattr(live_jobs, "current_head_commit", read_head)
+    monkeypatch.setattr(
+        live_jobs,
+        "resolve_git_objects",
+        resolve_state_commits,
+    )
+
+    with acquire_live_change_count_plan() as plan:
+        assert len(plan.jobs) == 2
+
+    assert calls == {
+        "batch_names": 1,
+        "batch_metadata": 1,
+        "batch_sources": 1,
+        "consumed": 1,
+        "head": 1,
+        "state_commits": 1,
+    }

@@ -4,11 +4,20 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from contextlib import AbstractContextManager, nullcontext
+from dataclasses import dataclass
 import shlex
 import sys
 from typing import Protocol
 
+from ...data.file_target_identity import (
+    IndexIdentity,
+    WorktreeIdentity,
+    capture_worktree_identities,
+    index_identity_from_entry,
+)
 from ...data.hunk_tracking import select_next_change_after_action
+from ...data.index_entries import read_index_entries
+from ...data.live_diff import paths_for_live_changes
 from ...data.session import require_session_started
 from ...data.undo_checkpoints import undo_checkpoint
 from ...exceptions import CommandError
@@ -36,6 +45,14 @@ class ResolvedFileScope(Protocol):
 
     def optional_file(self) -> str | None:
         """Return the optional single-file path for command callbacks."""
+
+
+@dataclass(frozen=True, slots=True)
+class _LiveActionTargetSnapshot:
+    """Worktree and index identities behind one prepared live diff."""
+
+    index_by_path: dict[str, IndexIdentity]
+    worktree_by_path: dict[str, WorktreeIdentity]
 
 
 def _format_multi_file_operation(command: str, files: Sequence[str]) -> str:
@@ -122,6 +139,89 @@ def _prepare_live_multi_file_action() -> None:
     require_git_repository()
     require_session_started()
     ensure_state_directory_exists()
+
+
+def _require_prepared_change_paths_covered(
+    files: Sequence[str],
+    changes_by_file: dict[str, tuple],
+    checkpoint_paths: Sequence[str],
+) -> None:
+    """Reject prepared changes that reach beyond the undo before-image."""
+    prepared_paths = paths_for_live_changes(
+        change
+        for file_path in files
+        for change in changes_by_file[file_path]
+    )
+    missing_paths = sorted(set(prepared_paths) - set(checkpoint_paths))
+    if missing_paths:
+        raise CommandError(
+            _(
+                "The matched files changed while the undo checkpoint was being "
+                "prepared. Review them again and retry. Uncaptured path(s): {paths}"
+            ).format(paths=", ".join(missing_paths))
+        )
+
+
+def _capture_live_action_targets(
+    paths: Sequence[str],
+) -> _LiveActionTargetSnapshot:
+    """Capture repository identities used to prepare a mutating live action."""
+    unique_paths = tuple(dict.fromkeys(paths))
+    index_entries = read_index_entries(unique_paths)
+    return _LiveActionTargetSnapshot(
+        index_by_path={
+            path: index_identity_from_entry(index_entries.get(path))
+            for path in unique_paths
+        },
+        worktree_by_path=capture_worktree_identities(unique_paths),
+    )
+
+
+def _require_live_action_targets_unchanged(
+    *,
+    operation: str,
+    expected: _LiveActionTargetSnapshot,
+    paths: Sequence[str] | None = None,
+) -> None:
+    """Reject a prepared mutation when its index or worktree input is stale."""
+    target_paths = tuple(
+        dict.fromkeys(paths if paths is not None else expected.index_by_path)
+    )
+    current_index_entries = read_index_entries(target_paths)
+    current_worktree = capture_worktree_identities(target_paths)
+    for path in target_paths:
+        current_index = index_identity_from_entry(current_index_entries.get(path))
+        if current_index != expected.index_by_path[path]:
+            raise _live_action_target_changed_error(
+                operation=operation,
+                path=path,
+                target="index",
+            )
+        if current_worktree[path] != expected.worktree_by_path[path]:
+            raise _live_action_target_changed_error(
+                operation=operation,
+                path=path,
+                target="worktree",
+            )
+
+
+def _live_action_target_changed_error(
+    *,
+    operation: str,
+    path: str,
+    target: str,
+) -> CommandError:
+    label = _("Index") if target == "index" else _("Working tree file")
+    return CommandError(
+        _(
+            "{label} changed while multi-file {operation} was being prepared: "
+            "{path}. Review the current changes and retry."
+        ).format(
+            label=label,
+            operation=operation,
+            path=path,
+        )
+    )
 
 
 def include_each_resolved_file(

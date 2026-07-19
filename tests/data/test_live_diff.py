@@ -1,7 +1,7 @@
 import pytest
 
 from git_stage_batch.core.buffer import LineBuffer
-from git_stage_batch.core.models import SingleHunkPatch
+from git_stage_batch.core.models import FileModeChange, RenameChange, SingleHunkPatch
 from git_stage_batch.data import live_diff
 
 
@@ -28,3 +28,19 @@ diff --git a/file.txt b/file.txt
 
     with pytest.raises(ValueError, match="buffer is closed"):
         list(change.lines)
+
+
+def test_group_live_diff_assigns_rename_partner_once():
+    rename = RenameChange("old.txt", "new.txt")
+    mode = FileModeChange("other.txt", "100644", "100755")
+
+    grouped = live_diff.group_live_diff_by_file(
+        ["old.txt", "new.txt", "other.txt"],
+        [rename, mode],
+    )
+
+    assert grouped == {
+        "old.txt": (),
+        "new.txt": (rename,),
+        "other.txt": (mode,),
+    }

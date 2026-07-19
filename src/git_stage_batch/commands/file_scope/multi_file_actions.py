@@ -9,6 +9,7 @@ import shlex
 import sys
 from typing import Protocol
 
+from ...data.file_tracking import auto_add_untracked_files
 from ...data.file_target_identity import (
     IndexIdentity,
     WorktreeIdentity,
@@ -17,7 +18,11 @@ from ...data.file_target_identity import (
 )
 from ...data.hunk_tracking import select_next_change_after_action
 from ...data.index_entries import read_index_entries
-from ...data.live_diff import paths_for_live_changes
+from ...data.live_diff import (
+    acquire_prepared_live_diff,
+    group_live_diff_by_file,
+    paths_for_live_changes,
+)
 from ...data.session import require_session_started
 from ...data.undo_checkpoints import undo_checkpoint
 from ...exceptions import CommandError
@@ -240,15 +245,40 @@ def include_each_resolved_file(
         files,
         worktree_paths=checkpoint_paths,
     ):
-        for file_path in files:
-            staged_hunks = _include_file.include_file_changes(
-                file_path,
-                quiet=True,
-                advance=False,
+        auto_add_untracked_files(files)
+        target_snapshot = _capture_live_action_targets(checkpoint_paths)
+        with acquire_prepared_live_diff(
+            full_index=True,
+            ignore_submodules="none",
+            submodule_format="short",
+        ) as changes:
+            changes_by_file = group_live_diff_by_file(files, changes)
+            _require_prepared_change_paths_covered(
+                files,
+                changes_by_file,
+                checkpoint_paths,
             )
-            if staged_hunks > 0:
-                total_hunks += staged_hunks
-                staged_files.append(file_path)
+            _require_live_action_targets_unchanged(
+                operation="include",
+                expected=target_snapshot,
+            )
+            for file_path in files:
+                file_changes = changes_by_file[file_path]
+                if file_changes:
+                    _require_live_action_targets_unchanged(
+                        operation="include",
+                        expected=target_snapshot,
+                        paths=paths_for_live_changes(file_changes),
+                    )
+                staged_hunks = _include_file.include_file_changes(
+                    file_path,
+                    quiet=True,
+                    advance=False,
+                    _prepared_changes=file_changes,
+                )
+                if staged_hunks > 0:
+                    total_hunks += staged_hunks
+                    staged_files.append(file_path)
 
     if total_hunks == 0:
         print(_("No hunks staged from matched files."), file=sys.stderr)

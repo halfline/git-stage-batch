@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
+from collections.abc import Sequence
+from contextlib import contextmanager, nullcontext
 import sys
 from typing import Iterator
 
-from ...core.diff_parser import acquire_unified_diff, patch_is_file_deletion
+from ...core.diff_parser import (
+    UnifiedDiffItem,
+    acquire_unified_diff,
+    patch_is_file_deletion,
+)
 from ...core.hashing import (
     compute_binary_file_hash,
     compute_file_mode_change_hash,
@@ -15,7 +20,13 @@ from ...core.hashing import (
     compute_stable_hunk_hash_from_lines,
     compute_text_file_deletion_hash,
 )
-from ...core.models import BinaryFileChange, FileModeChange, GitlinkChange, RenameChange, TextFileDeletionChange
+from ...core.models import (
+    BinaryFileChange,
+    FileModeChange,
+    GitlinkChange,
+    RenameChange,
+    TextFileDeletionChange,
+)
 from ...data.file_tracking import auto_add_untracked_files
 from ...data.live_diff import stream_live_git_diff
 from ...data.progress import record_hunk_included
@@ -52,8 +63,9 @@ def include_file_changes(
     quiet: bool = False,
     advance: bool = True,
     auto_advance: bool | None = None,
+    _prepared_changes: Sequence[UnifiedDiffItem] | None = None,
 ) -> int:
-    """Include all changes from one resolved file scope."""
+    """Include one file; prepared inputs require a caller-owned transaction."""
     if file == "":
         target_file = get_selected_change_file_path()
         if target_file is None:
@@ -79,24 +91,33 @@ def include_file_changes(
     else:
         target_file = file
 
-    auto_add_untracked_files([target_file])
-    checkpoint_paths = checkpoint_paths_for_live_file(target_file)
-    with undo_checkpoint(
-        f"include --file {file}".rstrip(),
-        worktree_paths=checkpoint_paths,
-    ):
-        hunks_staged = 0
-        submodule_pointers_staged = 0
-        renames_staged = 0
-        included_hashes: list[str] = []
-        staged_rename_pairs: set[tuple[str, str]] = set()
-        with _rollback_index_on_error(), acquire_unified_diff(
+    if _prepared_changes is None:
+        auto_add_untracked_files([target_file])
+        checkpoint_paths = checkpoint_paths_for_live_file(target_file)
+        checkpoint = undo_checkpoint(
+            f"include --file {file}".rstrip(),
+            worktree_paths=checkpoint_paths,
+        )
+        patch_context = acquire_unified_diff(
             stream_live_git_diff(
                 full_index=True,
                 ignore_submodules="none",
                 submodule_format="short",
             )
-        ) as patches:
+        )
+        rollback_context = _rollback_index_on_error()
+    else:
+        checkpoint = nullcontext()
+        patch_context = nullcontext(iter(_prepared_changes))
+        rollback_context = nullcontext()
+
+    with checkpoint:
+        hunks_staged = 0
+        submodule_pointers_staged = 0
+        renames_staged = 0
+        included_hashes: list[str] = []
+        staged_rename_pairs: set[tuple[str, str]] = set()
+        with rollback_context, patch_context as patches:
             for patch in patches:
                 if isinstance(patch, FileModeChange):
                     if patch.path() != target_file:
@@ -210,7 +231,10 @@ def include_file_changes(
 
     if hunks_staged == 0:
         if not quiet:
-            print(_("No hunks staged from {file}").format(file=target_file), file=sys.stderr)
+            print(
+                _("No hunks staged from {file}").format(file=target_file),
+                file=sys.stderr,
+            )
         return 0
 
     if quiet and advance:

@@ -225,6 +225,15 @@ class TestMatchLines:
         ) as mapping:
             assert list(mapping.mapped_line_pairs()) == [(1, 1), (3, 2)]
 
+    def test_line_mapping_uses_explicit_anchor_between_repeated_lines(self):
+        """A verified anchor divides otherwise ambiguous matching segments."""
+        source = [b"head\n", b"new\n", b"\n", b"tail\n"]
+        target = [b"head\n", b"\n", b"old\n", b"\n", b"tail\n"]
+
+        with match_lines(source, target, anchor_pairs=((3, 2),)) as mapping:
+            assert mapping.get_target_line_from_source_line(3) == 2
+            assert mapping.get_source_line_from_target_line(4) is None
+
     def test_identical_files(self):
         """Test alignment of identical files."""
         source = [b"line1\n", b"line2\n", b"line3\n"]

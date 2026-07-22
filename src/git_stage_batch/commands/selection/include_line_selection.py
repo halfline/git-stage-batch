@@ -45,6 +45,7 @@ from ...exceptions import MergeError, exit_with_error
 from ...i18n import _
 from ...staging.index_update import update_index_with_blob_buffer
 from ...utils.file_io import write_file_bytes
+from ...utils.git_index import git_write_tree
 from ...utils.paths import get_session_batch_sources_file_path
 from . import replacement_selection
 
@@ -456,7 +457,11 @@ def try_build_index_content_via_transient_batch(
     target_index_buffer: LineBuffer | None = None
 
     try:
-        create_batch(batch_name, "Transient include-line selection")
+        create_batch(
+            batch_name,
+            "Transient include-line selection",
+            baseline_commit=git_write_tree(),
+        )
         created_batch = True
 
         record_baseline_references_for_additions(

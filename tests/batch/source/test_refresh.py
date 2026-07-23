@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import git_stage_batch.batch.source.refresh as source_refresh
 from git_stage_batch.batch.source.refresh import (
     RefreshedBatchSelection,
     ensure_batch_source_current_for_selection,
+    prepare_initial_batch_source_for_selection,
 )
 from git_stage_batch.batch.source.selected_line_refresh import (
     refresh_selected_lines_against_new_source,
@@ -101,6 +103,156 @@ def test_ensure_batch_source_current_first_time_stale():
     assert result.ownership is None
     assert result.selected_lines[0].source_line == 1
     assert result.source_was_advanced is False
+
+
+def test_prepare_initial_batch_source_maps_selection(monkeypatch):
+    """A first session source receives matching selection coordinates."""
+    lines = [
+        LineEntry(
+            id=1, kind='+', old_line_number=None, new_line_number=2,
+            text_bytes=b"new line", text="new line", source_line=None
+        ),
+    ]
+    cached_sources = {}
+    monkeypatch.setattr(
+        source_refresh,
+        "load_session_batch_sources",
+        lambda: dict(cached_sources),
+    )
+    monkeypatch.setattr(
+        source_refresh,
+        "save_session_batch_sources",
+        lambda sources: cached_sources.update(sources),
+    )
+    monkeypatch.setattr(
+        source_refresh,
+        "create_batch_source_commit",
+        lambda _file_path: "new_source",
+    )
+    monkeypatch.setattr(
+        source_refresh,
+        "read_git_object_buffer_or_none",
+        lambda _object_name: LineBuffer.from_bytes(
+            b"header\nremoved earlier\nnew line\n"
+        ),
+    )
+    monkeypatch.setattr(
+        source_refresh,
+        "load_working_tree_file_as_buffer",
+        lambda _file_path: LineBuffer.from_bytes(b"header\nnew line\n"),
+    )
+
+    batch_source_commit, prepared_lines = (
+        prepare_initial_batch_source_for_selection(
+            "test.py",
+            lines,
+        )
+    )
+
+    assert batch_source_commit == "new_source"
+    assert prepared_lines[0].source_line == 3
+def test_refresh_consecutive_leading_deletions_share_file_start_anchor():
+    """Later rows in one leading deletion run must remain before line one."""
+    first_deletion = LineEntry(
+        id=1,
+        kind="-",
+        old_line_number=1,
+        new_line_number=None,
+        text_bytes=b"first",
+        source_line=None,
+    )
+    second_deletion = LineEntry(
+        id=2,
+        kind="-",
+        old_line_number=2,
+        new_line_number=None,
+        text_bytes=b"second",
+        source_line=1,
+    )
+    trailing_context = LineEntry(
+        id=None,
+        kind=" ",
+        old_line_number=3,
+        new_line_number=1,
+        text_bytes=b"remaining",
+        source_line=1,
+    )
+
+    refreshed = refresh_selected_lines_against_new_source(
+        [second_deletion],
+        coordinate_lines=[
+            first_deletion,
+            second_deletion,
+            trailing_context,
+        ],
+    )
+
+    assert refreshed[0].source_line is None
+
+
+def test_refresh_translates_deletion_anchor_after_synthetic_gap():
+    """A later hunk must not inherit source context from an earlier hunk."""
+    selected_deletion = LineEntry(
+        id=2,
+        kind="-",
+        old_line_number=5,
+        new_line_number=None,
+        text_bytes=b"deleted",
+        source_line=None,
+    )
+    coordinate_lines = [
+        LineEntry(
+            id=1,
+            kind="+",
+            old_line_number=None,
+            new_line_number=1,
+            text_bytes=b"added",
+        ),
+        LineEntry(
+            id=None,
+            kind=" ",
+            old_line_number=1,
+            new_line_number=2,
+            text_bytes=b"one",
+        ),
+        LineEntry(
+            id=None,
+            kind=" ",
+            old_line_number=None,
+            new_line_number=None,
+            text_bytes=b"... 3 more lines ...",
+        ),
+        selected_deletion,
+        LineEntry(
+            id=None,
+            kind=" ",
+            old_line_number=6,
+            new_line_number=6,
+            text_bytes=b"six",
+        ),
+    ]
+    working_lines = [
+        b"added\n",
+        b"one\n",
+        b"two\n",
+        b"three\n",
+        b"four\n",
+        b"six\n",
+    ]
+
+    refreshed_new = refresh_selected_lines_against_new_source(
+        [selected_deletion],
+        coordinate_lines=coordinate_lines,
+    )
+    refreshed_mapped = refresh_selected_lines_against_source_lines(
+        [selected_deletion],
+        source_lines=working_lines,
+        working_lines=working_lines,
+        coordinate_lines=coordinate_lines,
+    )
+
+    assert refreshed_new[0].source_line == 5
+    assert refreshed_mapped[0].source_line == 5
 
 
 def test_source_refresh_preserves_missing_final_newline():

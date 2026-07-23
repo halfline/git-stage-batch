@@ -7,8 +7,10 @@ advancement, ownership remapping, cache updates, and line re-annotation.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
+from ...core.models import LineEntry
 from .cache import (
     load_session_batch_sources,
     save_session_batch_sources,
@@ -59,6 +61,8 @@ def ensure_batch_source_current_for_selection(
     current_batch_source_commit: str | None,
     existing_ownership: BatchOwnership | None,
     selected_lines: list,
+    *,
+    coordinate_lines: Sequence[LineEntry] | None = None,
 ) -> RefreshedBatchSelection:
     """Ensure batch source is current for selection, advancing if needed.
 
@@ -83,6 +87,7 @@ def ensure_batch_source_current_for_selection(
         current_batch_source_commit: Current batch source commit (or None)
         existing_ownership: Existing ownership for this file (or None)
         selected_lines: LineEntry objects being added to batch
+        coordinate_lines: Complete hunk entries for selected-line coordinates.
 
     Returns:
         RefreshedBatchSelection with current source state
@@ -94,6 +99,7 @@ def ensure_batch_source_current_for_selection(
         cached_source_result = _prepare_initial_cached_source_for_selection(
             file_path,
             selected_lines,
+            coordinate_lines=coordinate_lines,
         )
         if cached_source_result is not None:
             batch_source_commit, prepared_selected_lines, source_was_advanced = (
@@ -130,6 +136,7 @@ def ensure_batch_source_current_for_selection(
                 source_lines=advance_result.source_buffer,
                 working_lines=(),
                 lineage=advance_result.lineage,
+                coordinate_lines=coordinate_lines,
             )
 
             return RefreshedBatchSelection(
@@ -151,7 +158,10 @@ def ensure_batch_source_current_for_selection(
         # First time - stale is normal. The batch source will be created from
         # the same working tree snapshot, so annotate now in that coordinate
         # space before translating ownership.
-        reannotated_lines = _refresh_lines_against_new_source(selected_lines)
+        reannotated_lines = _refresh_lines_against_new_source(
+            selected_lines,
+            coordinate_lines=coordinate_lines,
+        )
 
         return RefreshedBatchSelection(
             batch_source_commit=current_batch_source_commit,
@@ -179,6 +189,8 @@ def _cache_session_source(file_path: str, batch_source_commit: str) -> None:
 def _create_current_working_source_for_selection(
     file_path: str,
     selected_lines: list,
+    *,
+    coordinate_lines: Sequence[LineEntry] | None = None,
 ) -> tuple[str, list]:
     with load_working_tree_file_as_buffer(file_path) as working_lines:
         batch_source_commit = create_batch_source_commit(
@@ -188,13 +200,45 @@ def _create_current_working_source_for_selection(
     _cache_session_source(file_path, batch_source_commit)
     return (
         batch_source_commit,
-        _refresh_lines_against_new_source(selected_lines),
+        _refresh_lines_against_new_source(
+            selected_lines,
+            coordinate_lines=coordinate_lines,
+        ),
     )
+
+
+def _selection_mapped_to_source(
+    file_path: str,
+    selected_lines: list,
+    source_lines: Sequence[bytes],
+    *,
+    coordinate_lines: Sequence[LineEntry] | None = None,
+) -> list | None:
+    """Return selection coordinates verified against one saved source."""
+    has_deletion_lines = any(line.kind == "-" for line in selected_lines)
+    if (
+        not has_deletion_lines
+        and _selection_matches_source(selected_lines, source_lines)
+    ):
+        return selected_lines
+
+    with load_working_tree_file_as_buffer(file_path) as working_lines:
+        prepared_selected_lines = _refresh_lines_against_source(
+            selected_lines,
+            source_lines=source_lines,
+            working_lines=working_lines,
+            coordinate_lines=coordinate_lines,
+        )
+    if _selection_matches_source(prepared_selected_lines, source_lines):
+        return prepared_selected_lines
+    return None
 
 
 def _prepare_initial_cached_source_for_selection(
     file_path: str,
     selected_lines: list,
+    *,
+    coordinate_lines: Sequence[LineEntry] | None = None,
 ) -> tuple[str, list, bool] | None:
     batch_source_commit = load_session_batch_sources().get(file_path)
     if not batch_source_commit:
@@ -208,10 +252,69 @@ def _prepare_initial_cached_source_for_selection(
         )
 
     with source_buffer as source_lines:
-        if _selection_matches_source(selected_lines, source_lines):
-            return batch_source_commit, selected_lines, False
+        prepared_selected_lines = _selection_mapped_to_source(
+            file_path,
+            selected_lines,
+            source_lines,
+            coordinate_lines=coordinate_lines,
+        )
+        if prepared_selected_lines is not None:
+            return batch_source_commit, prepared_selected_lines, False
 
     new_batch_source_commit, reannotated_lines = (
-        _create_current_working_source_for_selection(file_path, selected_lines)
+        _create_current_working_source_for_selection(
+            file_path,
+            selected_lines,
+            coordinate_lines=coordinate_lines,
+        )
     )
     return new_batch_source_commit, reannotated_lines, True
+
+
+def prepare_initial_batch_source_for_selection(
+    file_path: str,
+    selected_lines: list,
+    *,
+    coordinate_lines: Sequence[LineEntry] | None = None,
+) -> tuple[str, list]:
+    """Create the first source and map selected lines into its coordinates."""
+    cached_source_result = _prepare_initial_cached_source_for_selection(
+        file_path,
+        selected_lines,
+        coordinate_lines=coordinate_lines,
+    )
+    if cached_source_result is not None:
+        batch_source_commit, prepared_selected_lines, _source_was_advanced = (
+            cached_source_result
+        )
+        return batch_source_commit, prepared_selected_lines
+
+    batch_source_commit = create_batch_source_commit(file_path)
+    _cache_session_source(file_path, batch_source_commit)
+    source_buffer = read_git_object_buffer_or_none(
+        f"{batch_source_commit}:{file_path}"
+    )
+    if source_buffer is None:
+        raise ValueError(
+            f"Cannot read initial batch source for {file_path} at "
+            f"{batch_source_commit}"
+        )
+
+    with source_buffer as source_lines:
+        prepared_selected_lines = _selection_mapped_to_source(
+            file_path,
+            selected_lines,
+            source_lines,
+            coordinate_lines=coordinate_lines,
+        )
+        if prepared_selected_lines is not None:
+            return batch_source_commit, prepared_selected_lines
+
+    new_batch_source_commit, reannotated_lines = (
+        _create_current_working_source_for_selection(
+            file_path,
+            selected_lines,
+            coordinate_lines=coordinate_lines,
+        )
+    )
+    return new_batch_source_commit, reannotated_lines

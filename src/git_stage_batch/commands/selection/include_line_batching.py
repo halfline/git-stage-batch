@@ -52,6 +52,7 @@ def include_file_lines_to_batch(
         file_path=file_path,
         selected_lines=selection.selected_lines,
         stale_source_action=_("Cannot include lines to batch"),
+        hunk_lines=line_changes.lines,
         snapshot_untracked=True,
     )
 
@@ -99,6 +100,7 @@ def include_selected_lines_to_batch(
         file_path=line_changes.path,
         selected_lines=selection.selected_lines,
         stale_source_action=_("Cannot include lines to batch"),
+        hunk_lines=line_changes.lines,
     )
 
     if not quiet:

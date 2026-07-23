@@ -15,6 +15,7 @@ from ...utils.repository_buffers import (
 from ..line_matching.line_mapping import LineMapping
 from ..line_matching.match import match_lines
 from .cache import get_batch_source_for_file
+from .line_coordinates import translate_display_source_coordinates
 
 
 def _apply_batch_source_mapping(
@@ -27,31 +28,12 @@ def _apply_batch_source_mapping(
     numbers. For deletions, uses the last known batch source line as insertion
     position.
     """
-    last_source_line: int | None = None
     new_lines: list[LineEntry] = []
 
-    for line in line_changes.lines:
-        source_line = None
-
-        if line.kind in {" ", "+"}:
-            if line.new_line_number is not None:
-                source_line = mapping.get_source_line_from_target_line(
-                    line.new_line_number
-                )
-            if source_line is not None:
-                last_source_line = source_line
-
-        elif line.kind == "-":
-            source_line = last_source_line
-            if (
-                source_line is None
-                and line.old_line_number is not None
-                and line.old_line_number > 1
-            ):
-                source_line = mapping.get_source_line_from_target_line(
-                    line.old_line_number - 1
-                )
-
+    for line, source_line in translate_display_source_coordinates(
+        line_changes.lines,
+        mapping.get_source_line_from_target_line,
+    ):
         new_lines.append(
             LineEntry(
                 id=line.id,
@@ -129,25 +111,12 @@ def _fill_source_from_working_tree(line_changes: LineLevelChange) -> LineLevelCh
     Used when no batch source exists yet. The working tree will become the batch
     source when changes are saved.
     """
-    last_source_line: int | None = None
     new_lines: list[LineEntry] = []
 
-    for line in line_changes.lines:
-        source_line = None
-
-        if line.kind in {" ", "+"}:
-            source_line = line.new_line_number
-            if source_line is not None:
-                last_source_line = source_line
-        elif line.kind == "-":
-            source_line = last_source_line
-            if (
-                source_line is None
-                and line.old_line_number is not None
-                and line.old_line_number > 1
-            ):
-                source_line = line.old_line_number - 1
-
+    for line, source_line in translate_display_source_coordinates(
+        line_changes.lines,
+        lambda line_number: line_number,
+    ):
         new_lines.append(
             LineEntry(
                 id=line.id,

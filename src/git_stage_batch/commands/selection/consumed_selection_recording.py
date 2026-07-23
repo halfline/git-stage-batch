@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from ...batch.ownership.model import BatchOwnership
 from ...batch.ownership.metadata_loading import acquire_ownership_for_metadata_dict
 from ...batch.ownership.merging import merge_batch_ownership
@@ -15,6 +17,7 @@ from ...batch.source.selected_line_refresh import (
     refresh_selected_lines_against_source_lines,
 )
 from ...core.buffer import LineBuffer
+from ...core.models import LineEntry
 from ...batch.source.snapshots import create_batch_source_commit
 from ...data.consumed_selections import (
     read_consumed_file_metadata,
@@ -27,6 +30,7 @@ def record_consumed_selection(
     *,
     source_buffer: LineBuffer,
     selected_lines: list,
+    coordinate_lines: Sequence[LineEntry] | None = None,
     replacement_mask: dict[str, list[str]] | None = None,
 ) -> None:
     """Persist consumed selection ownership for masking across `again`."""
@@ -73,6 +77,7 @@ def record_consumed_selection(
                         source_lines=advance_result.source_buffer,
                         working_lines=(),
                         lineage=advance_result.lineage,
+                        coordinate_lines=coordinate_lines,
                     )
             new_ownership = translate_lines_to_batch_ownership(selected_lines)
             persist_selection(
@@ -82,7 +87,10 @@ def record_consumed_selection(
             return
     else:
         if detect_stale_batch_source_for_selection(selected_lines):
-            selected_lines = refresh_selected_lines_against_new_source(selected_lines)
+            selected_lines = refresh_selected_lines_against_new_source(
+                selected_lines,
+                coordinate_lines=coordinate_lines,
+            )
         merged_ownership = translate_lines_to_batch_ownership(selected_lines)
         batch_source_commit = create_batch_source_commit(
             file_path,

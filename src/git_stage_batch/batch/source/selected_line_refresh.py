@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import replace
 
+from ...core.mapped_storage import MappedRecordVector, sort_mapped_records
 from ...core.models import LineEntry
 from ..line_matching.lineage import BatchSourceLineage
 from ..line_matching.match import match_lines
 from ..ownership.translation import detect_stale_batch_source_for_selection
+from .line_coordinates import translate_display_source_coordinates
+
+
+_MAX_UINT64 = (1 << 64) - 1
 
 
 def _line_entry_content(line: LineEntry) -> bytes:
@@ -38,7 +44,172 @@ def selected_lines_fit_source(
     return True
 
 
-def refresh_selected_lines_against_new_source(selected_lines: list) -> list:
+def _selected_line_record_index(
+    selected_line_records: Sequence[tuple[int, ...]],
+    line_id: int,
+) -> int | None:
+    """Return the mapped record index for one selected display ID."""
+    start = 0
+    end = len(selected_line_records)
+    while start < end:
+        middle = (start + end) // 2
+        candidate_id = selected_line_records[middle][0]
+        if candidate_id < line_id:
+            start = middle + 1
+        else:
+            end = middle
+    if (
+        start >= len(selected_line_records)
+        or selected_line_records[start][0] != line_id
+    ):
+        return None
+    return start
+
+
+@contextmanager
+def _acquire_coordinate_selected_line_records(
+    selected_lines: Sequence[LineEntry],
+    coordinate_lines: Sequence[LineEntry] | None,
+) -> Iterator[MappedRecordVector | None]:
+    """Index selected IDs in mapped storage when complete context identifies them."""
+    if coordinate_lines is None:
+        yield None
+        return
+
+    with MappedRecordVector(
+        len(selected_lines),
+        "QQQQ",
+    ) as selected_line_records:
+        for line in selected_lines:
+            line_id = line.id
+            if (
+                type(line_id) is not int
+                or line_id < 0
+                or line_id > _MAX_UINT64
+            ):
+                yield None
+                return
+            selected_line_records.append((line_id, 0, 0, 0))
+
+        sort_mapped_records(selected_line_records)
+        previous_line_id: int | None = None
+        for line_id, _count, _coordinate_index, _source_line in (
+            selected_line_records
+        ):
+            if line_id == previous_line_id:
+                yield None
+                return
+            previous_line_id = line_id
+
+        for coordinate_index, line in enumerate(coordinate_lines):
+            line_id = line.id
+            if (
+                type(line_id) is not int
+                or line_id < 0
+                or line_id > _MAX_UINT64
+            ):
+                continue
+            record_index = _selected_line_record_index(
+                selected_line_records,
+                line_id,
+            )
+            if record_index is None:
+                continue
+            selected_id, count, _coordinate_index, source_line = (
+                selected_line_records[record_index]
+            )
+            selected_line_records[record_index] = (
+                selected_id,
+                count + 1,
+                coordinate_index + 1,
+                source_line,
+            )
+
+        if any(record[1] != 1 for record in selected_line_records):
+            yield None
+            return
+        yield selected_line_records
+
+
+def _refresh_selected_line_coordinates(
+    selected_lines: Sequence[LineEntry],
+    coordinate_lines: Sequence[LineEntry] | None,
+    selected_line_records: MappedRecordVector | None,
+    map_working_line: Callable[[int], int | None],
+    *,
+    map_existing_source_line: Callable[[int], int | None] | None = None,
+) -> list[LineEntry]:
+    """Refresh selected entries while scanning complete coordinates when usable."""
+    lines_to_refresh = (
+        coordinate_lines
+        if selected_line_records is not None and coordinate_lines is not None
+        else selected_lines
+    )
+    reannotated_lines: list[LineEntry] = []
+
+    for line, source_line in translate_display_source_coordinates(
+        lines_to_refresh,
+        map_working_line,
+        map_existing_source_line=map_existing_source_line,
+    ):
+        if selected_line_records is None:
+            reannotated_lines.append(replace(line, source_line=source_line))
+            continue
+        line_id = line.id
+        if (
+            type(line_id) is not int
+            or line_id < 0
+            or line_id > _MAX_UINT64
+        ):
+            continue
+        record_index = _selected_line_record_index(
+            selected_line_records,
+            line_id,
+        )
+        if record_index is None:
+            continue
+        selected_id, count, coordinate_index, _source_line = (
+            selected_line_records[record_index]
+        )
+        selected_line_records[record_index] = (
+            selected_id,
+            count,
+            coordinate_index,
+            0 if source_line is None else source_line + 1,
+        )
+
+    if selected_line_records is None:
+        return reannotated_lines
+
+    assert coordinate_lines is not None
+    for selected_line in selected_lines:
+        selected_id = selected_line.id
+        assert selected_id is not None
+        record_index = _selected_line_record_index(
+            selected_line_records,
+            selected_id,
+        )
+        assert record_index is not None
+        _line_id, _count, coordinate_index, encoded_source_line = (
+            selected_line_records[record_index]
+        )
+        reannotated_lines.append(replace(
+            coordinate_lines[coordinate_index - 1],
+            source_line=(
+                encoded_source_line - 1
+                if encoded_source_line > 0
+                else None
+            ),
+        ))
+
+    return reannotated_lines
+
+
+def refresh_selected_lines_against_new_source(
+    selected_lines: list,
+    *,
+    coordinate_lines: Sequence[LineEntry] | None = None,
+) -> list:
     """Re-annotate selected lines for a first-time batch source.
 
     This helper is only used before a batch source exists.
@@ -58,32 +229,21 @@ def refresh_selected_lines_against_new_source(selected_lines: list) -> list:
 
     Args:
         selected_lines: LineEntry objects with potentially stale source_line values
+        coordinate_lines: Complete hunk entries used to locate selected deletions.
 
     Returns:
         New list of LineEntry objects with refreshed source_line values
     """
-    last_source_line = None
-    reannotated_lines = []
-
-    for line in selected_lines:
-        if line.kind in (" ", "+"):
-            source_line = line.new_line_number
-            if source_line is not None:
-                last_source_line = source_line
-        elif line.kind == "-":
-            source_line = last_source_line
-            if (
-                source_line is None
-                and line.old_line_number is not None
-                and line.old_line_number > 1
-            ):
-                source_line = line.old_line_number - 1
-        else:
-            source_line = None
-
-        reannotated_lines.append(replace(line, source_line=source_line))
-
-    return reannotated_lines
+    with _acquire_coordinate_selected_line_records(
+        selected_lines,
+        coordinate_lines,
+    ) as selected_line_records:
+        return _refresh_selected_line_coordinates(
+            selected_lines,
+            coordinate_lines,
+            selected_line_records,
+            lambda line_number: line_number,
+        )
 
 
 def refresh_selected_lines_against_source_lines(
@@ -92,6 +252,7 @@ def refresh_selected_lines_against_source_lines(
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
     lineage: BatchSourceLineage | None = None,
+    coordinate_lines: Sequence[LineEntry] | None = None,
 ) -> list:
     """Re-annotate selected lines against source and working-tree line sequences."""
     mapping = None
@@ -107,28 +268,21 @@ def refresh_selected_lines_against_source_lines(
             assert mapping is not None
             return mapping.get_source_line_from_target_line(line_number)
 
-        last_source_line = None
-        reannotated_lines = []
-
-        for line in selected_lines:
-            if line.kind in (" ", "+"):
-                source_line = map_working_line(line.new_line_number)
-                if source_line is not None:
-                    last_source_line = source_line
-            elif line.kind == "-":
-                source_line = last_source_line
-                if (
-                    source_line is None
-                    and line.old_line_number is not None
-                    and line.old_line_number > 1
-                ):
-                    source_line = map_working_line(line.old_line_number - 1)
-            else:
-                source_line = None
-
-            reannotated_lines.append(replace(line, source_line=source_line))
-
-        return reannotated_lines
+        with _acquire_coordinate_selected_line_records(
+            selected_lines,
+            coordinate_lines,
+        ) as selected_line_records:
+            return _refresh_selected_line_coordinates(
+                selected_lines,
+                coordinate_lines,
+                selected_line_records,
+                map_working_line,
+                map_existing_source_line=(
+                    lineage.translate_source_line
+                    if lineage is not None
+                    else None
+                ),
+            )
     finally:
         if mapping is not None:
             mapping.close()

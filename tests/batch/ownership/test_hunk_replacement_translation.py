@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from git_stage_batch.batch.ownership.hunk_replacement_translation import (
     translate_hunk_replacement_line_runs,
 )
@@ -34,6 +36,59 @@ def test_translate_hunk_replacement_line_runs_returns_empty_result():
     assert result.absence_claims == []
     assert result.replacement_units == []
     assert result.consumed_display_ids == set()
+
+
+def test_translate_hunk_replacement_line_runs_closes_inputs_on_error():
+    """Translation failures must release both streamed comparison inputs."""
+
+    class ClosableRuns:
+        def __init__(self, runs):
+            self._runs = iter(runs)
+            self.closed = False
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            return next(self._runs)
+
+        def close(self):
+            self.closed = True
+
+    displayed_runs = ClosableRuns((ReplacementLineRun(1, 1, 1, 1),))
+    origin_runs = ClosableRuns((ReplacementLineRun(1, 1, 1, 1),))
+    lines = [
+        LineEntry(
+            id=1,
+            kind="-",
+            old_line_number=1,
+            new_line_number=None,
+            text_bytes=b"old",
+            source_line=None,
+        ),
+        LineEntry(
+            id=2,
+            kind="+",
+            old_line_number=None,
+            new_line_number=1,
+            text_bytes=b"new",
+            source_line=None,
+        ),
+    ]
+
+    with pytest.raises(ValueError, match="source_line is None"):
+        translate_hunk_replacement_line_runs(
+            hunk_lines=lines,
+            selected_display_ids={1, 2},
+            replacement_line_runs=displayed_runs,
+            old_line_content=old_line_content_by_number(lines),
+            hunk_content_view=LineEntryContentSequence(lines),
+            replacement_origin_line_runs=origin_runs,
+            replacement_origin_source_lines=[b"old\n"],
+        )
+
+    assert displayed_runs.closed is True
+    assert origin_runs.closed is True
 
 
 def test_translate_hunk_replacement_line_runs_builds_replacement_result():
@@ -101,6 +156,74 @@ def test_translate_hunk_replacement_line_runs_builds_replacement_result():
     assert result.replacement_units[0].origin.new_start == 1
     assert result.replacement_units[0].origin.new_end == 2
     assert result.consumed_display_ids == {1, 3}
+
+
+def test_translate_hunk_replacement_uses_origin_baseline_content():
+    """Displayed index bytes must not become persistent replacement removals."""
+    lines = [
+        LineEntry(
+            id=1,
+            kind="-",
+            old_line_number=3,
+            new_line_number=None,
+            text_bytes=b"staged-one",
+            source_line=1,
+        ),
+        LineEntry(
+            id=2,
+            kind="-",
+            old_line_number=4,
+            new_line_number=None,
+            text_bytes=b"staged-two",
+            source_line=1,
+        ),
+        LineEntry(
+            id=3,
+            kind="+",
+            old_line_number=None,
+            new_line_number=3,
+            text_bytes=b"work-one",
+            source_line=3,
+        ),
+        LineEntry(
+            id=4,
+            kind="+",
+            old_line_number=None,
+            new_line_number=4,
+            text_bytes=b"work-two",
+            source_line=4,
+        ),
+    ]
+    displayed_run = ReplacementLineRun(
+        old_start=3,
+        old_end=4,
+        new_start=3,
+        new_end=4,
+    )
+    origin_run = ReplacementLineRun(
+        old_start=2,
+        old_end=3,
+        new_start=3,
+        new_end=4,
+    )
+    head_lines = [b"head\n", b"orig-one\n", b"orig-two\n", b"tail\n"]
+
+    result = translate_hunk_replacement_line_runs(
+        hunk_lines=lines,
+        selected_display_ids={1, 3},
+        replacement_line_runs=(displayed_run,),
+        old_line_content=old_line_content_by_number(lines),
+        hunk_content_view=LineEntryContentSequence(lines),
+        replacement_origin_line_runs=(origin_run,),
+        replacement_origin_source_lines=head_lines,
+    )
+
+    assert list(result.absence_claims[0].content_lines) == [b"orig-one\n"]
+    reference = result.absence_claims[0].baseline_reference
+    assert reference is not None
+    assert reference.after_line == 1
+    assert reference.before_line == 3
+    assert reference.before_content == b"orig-two\n"
 
 
 def test_translate_hunk_replacement_line_runs_keeps_large_ranges_compact(

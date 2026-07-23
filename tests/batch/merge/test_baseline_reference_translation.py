@@ -6,6 +6,10 @@ from git_stage_batch.batch.merge.baseline_reference_translation import (
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.references import BaselineReference
+from git_stage_batch.batch.ownership.replacement_units import (
+    ReplacementUnit,
+    ReplacementUnitOrigin,
+)
 
 
 def test_translates_presence_gap_from_shifted_selection_baseline():
@@ -139,3 +143,63 @@ def test_translates_trailing_deletion_before_target_suffix():
     assert reference.before_line == 3
     assert reference.after_content == b"head\n"
     assert reference.before_content == b"suffix\n"
+
+
+def test_translates_replacement_origin_from_live_head_to_batch_baseline():
+    head = [b"section2\n", b"x\n", b"old\n", b"y\n", b"end\n"]
+    selection_source = [b"staged\n", *head]
+    target = [
+        b"section1\n",
+        b"x\n",
+        b"old\n",
+        b"y\n",
+        b"section2\n",
+        b"x\n",
+        b"old\n",
+        b"y\n",
+        b"end\n",
+    ]
+    reference = BaselineReference(
+        after_line=2,
+        after_content=b"x",
+        before_line=4,
+        before_content=b"y",
+        has_before_line=True,
+    )
+    deletion = AbsenceClaim(
+        anchor_line=2,
+        content_lines=[b"old\n"],
+        baseline_reference=reference,
+    )
+    origin = ReplacementUnitOrigin(
+        old_start=3,
+        old_end=3,
+        new_start=3,
+        new_end=3,
+        baseline_reference=reference,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["3"],
+        [deletion],
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["3"],
+                deletion_indices=[0],
+                origin=origin,
+            )
+        ],
+    )
+
+    translate_ownership_baseline_references(
+        ownership,
+        selection_source,
+        target,
+        replacement_origin_source_lines=head,
+    )
+
+    assert deletion.baseline_reference is not None
+    assert deletion.baseline_reference.after_line == 6
+    assert deletion.baseline_reference.before_line == 8
+    assert origin.baseline_reference is not None
+    assert origin.baseline_reference.after_line == 6
+    assert origin.baseline_reference.before_line == 8

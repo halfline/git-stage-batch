@@ -36,13 +36,20 @@ def test_build_realized_content_routes_storage_to_invocation_spool(
     """Stored-file matching and realization use the caller's scratch path."""
     spool_dir = tmp_path / "scratch"
     spool_dir.mkdir()
+    matching_spools = []
     realization_spools = []
+    original_match_lines = realized_file_content._match_lines
     original_satisfy_constraints = realized_file_content.satisfy_constraints
+
+    def record_match(*args, **kwargs):
+        matching_spools.append(kwargs.get("spool_dir"))
+        return original_match_lines(*args, **kwargs)
 
     def record_realization(*args, **kwargs):
         realization_spools.append(kwargs.get("spool_dir"))
         return original_satisfy_constraints(*args, **kwargs)
 
+    monkeypatch.setattr(realized_file_content, "_match_lines", record_match)
     monkeypatch.setattr(
         realized_file_content,
         "satisfy_constraints",
@@ -62,6 +69,7 @@ def test_build_realized_content_routes_storage_to_invocation_spool(
     ):
         assert result.to_bytes() == b"one\ninserted\n"
 
+    assert matching_spools == [spool_dir]
     assert realization_spools == [spool_dir]
 
 

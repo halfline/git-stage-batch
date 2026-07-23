@@ -118,8 +118,14 @@ def test_source_refresh_preserves_missing_final_newline():
     ]
 
     refreshed_new = refresh_selected_lines_against_new_source(selected_lines)
+    refreshed_mapped = refresh_selected_lines_against_source_lines(
+        selected_lines,
+        source_lines=[b"unterminated"],
+        working_lines=[b"unterminated"],
+    )
 
     assert refreshed_new[0].has_trailing_newline is False
+    assert refreshed_mapped[0].has_trailing_newline is False
 def test_refresh_selected_lines_uses_synthesized_working_line_provenance():
     """Repeated working lines should use known synthesis identity."""
     ownership = BatchOwnership.from_presence_lines(["1,4"], [])

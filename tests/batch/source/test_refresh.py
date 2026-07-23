@@ -7,6 +7,7 @@ from git_stage_batch.batch.source.refresh import (
     ensure_batch_source_current_for_selection,
 )
 from git_stage_batch.batch.source.selected_line_refresh import (
+    refresh_selected_lines_against_new_source,
     refresh_selected_lines_against_source_lines,
 )
 from git_stage_batch.batch.ownership.model import BatchOwnership
@@ -102,6 +103,23 @@ def test_ensure_batch_source_current_first_time_stale():
     assert result.source_was_advanced is False
 
 
+def test_source_refresh_preserves_missing_final_newline():
+    """Coordinate refresh must not change selected-line byte identity."""
+    selected_lines = [
+        LineEntry(
+            id=1,
+            kind="+",
+            old_line_number=None,
+            new_line_number=1,
+            text_bytes=b"unterminated",
+            source_line=None,
+            has_trailing_newline=False,
+        ),
+    ]
+
+    refreshed_new = refresh_selected_lines_against_new_source(selected_lines)
+
+    assert refreshed_new[0].has_trailing_newline is False
 def test_refresh_selected_lines_uses_synthesized_working_line_provenance():
     """Repeated working lines should use known synthesis identity."""
     ownership = BatchOwnership.from_presence_lines(["1,4"], [])

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 
 from ...core.models import LineEntry
 from ..line_matching.lineage import BatchSourceLineage
@@ -80,20 +81,7 @@ def refresh_selected_lines_against_new_source(selected_lines: list) -> list:
         else:
             source_line = None
 
-        reannotated_lines.append(LineEntry(
-            id=line.id,
-            kind=line.kind,
-            old_line_number=line.old_line_number,
-            new_line_number=line.new_line_number,
-            text_bytes=line.text_bytes,
-            source_line=source_line,
-            baseline_reference_after_line=line.baseline_reference_after_line,
-            baseline_reference_after_text_bytes=line.baseline_reference_after_text_bytes,
-            has_baseline_reference_after=line.has_baseline_reference_after,
-            baseline_reference_before_line=line.baseline_reference_before_line,
-            baseline_reference_before_text_bytes=line.baseline_reference_before_text_bytes,
-            has_baseline_reference_before=line.has_baseline_reference_before,
-        ))
+        reannotated_lines.append(replace(line, source_line=source_line))
 
     return reannotated_lines
 
@@ -138,20 +126,7 @@ def refresh_selected_lines_against_source_lines(
             else:
                 source_line = None
 
-            reannotated_lines.append(LineEntry(
-                id=line.id,
-                kind=line.kind,
-                old_line_number=line.old_line_number,
-                new_line_number=line.new_line_number,
-                text_bytes=line.text_bytes,
-                source_line=source_line,
-                baseline_reference_after_line=line.baseline_reference_after_line,
-                baseline_reference_after_text_bytes=line.baseline_reference_after_text_bytes,
-                has_baseline_reference_after=line.has_baseline_reference_after,
-                baseline_reference_before_line=line.baseline_reference_before_line,
-                baseline_reference_before_text_bytes=line.baseline_reference_before_text_bytes,
-                has_baseline_reference_before=line.has_baseline_reference_before,
-            ))
+            reannotated_lines.append(replace(line, source_line=source_line))
 
         return reannotated_lines
     finally:

@@ -151,6 +151,34 @@ def _clear_addition_baseline_reference(addition_line) -> None:
     addition_line.has_baseline_reference_before = False
 
 
+def _set_addition_baseline_reference(
+    addition_line,
+    baseline_lines: Sequence[bytes],
+    insertion_position: int,
+) -> None:
+    """Record the two baseline lines surrounding an insertion position."""
+    after_line = insertion_position or None
+    before_line = (
+        insertion_position + 1
+        if insertion_position < len(baseline_lines)
+        else None
+    )
+    addition_line.baseline_reference_after_line = after_line
+    addition_line.baseline_reference_after_text_bytes = (
+        bytes(baseline_lines[after_line - 1])
+        if after_line is not None
+        else None
+    )
+    addition_line.has_baseline_reference_after = True
+    addition_line.baseline_reference_before_line = before_line
+    addition_line.baseline_reference_before_text_bytes = (
+        bytes(baseline_lines[before_line - 1])
+        if before_line is not None
+        else None
+    )
+    addition_line.has_baseline_reference_before = True
+
+
 def _record_snapshot_baseline_references_for_additions(
     line_changes,
     *,
@@ -235,20 +263,11 @@ def _record_snapshot_baseline_references_for_additions(
                     _clear_addition_baseline_reference(addition_line)
                     continue
 
-            addition_line.baseline_reference_after_line = after_line
-            addition_line.baseline_reference_after_text_bytes = (
-                bytes(baseline_lines[after_line - 1])
-                if after_line is not None
-                else None
+            _set_addition_baseline_reference(
+                addition_line,
+                baseline_lines,
+                after_line or 0,
             )
-            addition_line.has_baseline_reference_after = True
-            addition_line.baseline_reference_before_line = before_line
-            addition_line.baseline_reference_before_text_bytes = (
-                bytes(baseline_lines[before_line - 1])
-                if before_line is not None
-                else None
-            )
-            addition_line.has_baseline_reference_before = True
 
 
 def record_baseline_references_for_additions(

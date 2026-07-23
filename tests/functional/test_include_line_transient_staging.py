@@ -134,6 +134,48 @@ def test_include_line_transient_staging_pure_addition(functional_repo):
     assert _index_content(functional_repo, "file.txt") == "base\nfoo\n"
 
 
+def test_discard_to_batch_after_consecutive_line_includes(functional_repo):
+    _prepare_ambiguous_middle_insertion(functional_repo)
+
+    result = git_stage_batch(
+        "discard",
+        "--to",
+        "saved",
+        "--line",
+        "5-6",
+        "--no-auto-advance",
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _batch_content(functional_repo, "saved", "file.txt") == (
+        "top\n"
+        "save-a\n"
+        "save-b\n"
+        "\n"
+        "bottom\n"
+    )
+    assert _index_content(functional_repo, "file.txt") == (
+        "top\n"
+        "import-a\n"
+        "import-b\n"
+        "import-c\n"
+        "\n"
+        "bottom\n"
+    )
+    assert (functional_repo / "file.txt").read_text() == (
+        "top\n"
+        "import-a\n"
+        "import-b\n"
+        "import-c\n"
+        "\n"
+        "later-a\n"
+        "\n"
+        "bottom\n"
+    )
+
+
+
 def test_include_to_batch_translates_position_from_staged_index(functional_repo):
     """Persistent includes project index-relative gaps onto the batch baseline."""
     _commit_file(functional_repo, "file.txt", "a\nb\nb\nb\nb\n")

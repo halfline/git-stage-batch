@@ -17085,7 +17085,6 @@ def test_include_line_selection_stays_in_command_helper():
         "annotate_line_changes_with_working_tree_source",
         "line_sequence_ends_with_lf",
         "load_include_line_selection_context",
-        "record_baseline_references_for_additions",
         "selected_file_view_is_fresh_for",
         "selected_file_view_targets",
         "stage_live_line_target_buffer",
@@ -17714,7 +17713,6 @@ def test_include_line_batching_stays_in_command_helper():
         "batch_line_selection",
         "batch_line_updates",
         "include_file_selection",
-        "include_line_selection",
         "load_line_changes_from_state",
         "recalculate_selected_hunk_for_command",
         "require_selected_hunk",
@@ -17749,6 +17747,10 @@ def test_include_line_batching_stays_in_command_helper():
     assert not include_imports_helper
     assert action_imports_helper
     assert helper_imports <= helper_imported_names
+    assert {
+        "include_line_selection",
+        "insertion_references",
+    } & helper_imported_names
 
 
 def test_discard_line_selection_stays_in_command_helper():

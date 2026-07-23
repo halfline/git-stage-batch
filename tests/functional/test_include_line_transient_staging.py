@@ -40,6 +40,21 @@ def _index_bytes(repo, path: str) -> bytes:
     return result.stdout
 
 
+def _batch_content(repo, batch_name: str, path: str) -> str:
+    result = subprocess.run(
+        [
+            "git",
+            "show",
+            f"refs/git-stage-batch/batches/{batch_name}:{path}",
+        ],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout
+
+
 def _prepare_ambiguous_middle_insertion(repo) -> None:
     _commit_file(
         repo,
@@ -117,6 +132,57 @@ def test_include_line_transient_staging_pure_addition(functional_repo):
     git_stage_batch("include", "--line", "1")
 
     assert _index_content(functional_repo, "file.txt") == "base\nfoo\n"
+
+
+def test_include_to_batch_translates_position_from_staged_index(functional_repo):
+    """Persistent includes project index-relative gaps onto the batch baseline."""
+    _commit_file(functional_repo, "file.txt", "a\nb\nb\nb\nb\n")
+    (functional_repo / "file.txt").write_text(
+        "staged\n"
+        "a\n"
+        "b\n"
+        "b\n"
+        "b\n"
+        "b\n"
+    )
+    subprocess.run(
+        ["git", "add", "file.txt"],
+        check=True,
+        cwd=functional_repo,
+        capture_output=True,
+    )
+    (functional_repo / "file.txt").write_text(
+        "staged\n"
+        "a\n"
+        "unselected-before\n"
+        "b\n"
+        "b\n"
+        "selected\n"
+        "unselected-after\n"
+        "b\n"
+        "b\n"
+    )
+
+    git_stage_batch("start", "--no-auto-advance")
+    result = git_stage_batch(
+        "include",
+        "--to",
+        "saved",
+        "--line",
+        "2",
+        "--no-auto-advance",
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _batch_content(functional_repo, "saved", "file.txt") == (
+        "a\n"
+        "b\n"
+        "b\n"
+        "selected\n"
+        "b\n"
+        "b\n"
+    )
 
 
 def test_consecutive_line_includes_stage_ambiguous_middle_insertion(functional_repo):

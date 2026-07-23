@@ -13,6 +13,9 @@ from .ownership.metadata_loading import acquire_ownership_for_metadata_dict
 from .ownership.merging import merge_batch_ownership
 from .ownership.translation import translate_lines_to_batch_ownership
 from .ownership.replacement_line_runs import ReplacementLineRun
+from .merge.baseline_reference_translation import (
+    translate_ownership_baseline_references,
+)
 from .source.refresh import ensure_batch_source_current_for_selection
 
 
@@ -88,6 +91,8 @@ def prepare_batch_ownership_update_for_selection(
     *,
     hunk_lines: Sequence[LineEntry] | None = None,
     replacement_line_runs: Sequence[ReplacementLineRun] | None = None,
+    reference_source_lines: Sequence[bytes] | None = None,
+    reference_target_lines: Sequence[bytes] | None = None,
 ) -> PreparedBatchUpdate:
     """Prepare complete ownership update after stale-source handling."""
     refreshed = ensure_batch_source_current_for_selection(
@@ -103,6 +108,16 @@ def prepare_batch_ownership_update_for_selection(
         hunk_lines=hunk_lines,
         replacement_line_runs=replacement_line_runs,
     )
+    if (reference_source_lines is None) != (reference_target_lines is None):
+        raise ValueError(
+            "reference source and target lines must be provided together"
+        )
+    if reference_source_lines is not None and reference_target_lines is not None:
+        translate_ownership_baseline_references(
+            new_ownership,
+            reference_source_lines,
+            reference_target_lines,
+        )
 
     if refreshed.ownership:
         merged_ownership = merge_batch_ownership(refreshed.ownership, new_ownership)
@@ -125,6 +140,8 @@ def acquire_batch_ownership_update_for_selection(
     selected_lines: list,
     hunk_lines: Sequence[LineEntry] | None = None,
     replacement_line_runs: Sequence[ReplacementLineRun] | None = None,
+    reference_source_lines: Sequence[bytes] | None = None,
+    reference_target_lines: Sequence[bytes] | None = None,
 ) -> Iterator[PreparedBatchUpdate]:
     """Acquire existing ownership metadata while preparing a batch update.
 
@@ -140,6 +157,8 @@ def acquire_batch_ownership_update_for_selection(
             selected_lines=selected_lines,
             hunk_lines=hunk_lines,
             replacement_line_runs=replacement_line_runs,
+            reference_source_lines=reference_source_lines,
+            reference_target_lines=reference_target_lines,
         )
         return
 
@@ -152,4 +171,6 @@ def acquire_batch_ownership_update_for_selection(
             selected_lines=selected_lines,
             hunk_lines=hunk_lines,
             replacement_line_runs=replacement_line_runs,
+            reference_source_lines=reference_source_lines,
+            reference_target_lines=reference_target_lines,
         )

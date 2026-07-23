@@ -8,12 +8,18 @@ from contextlib import ExitStack
 from ...batch.state.lifecycle import create_batch
 from ...batch.ownership_update import acquire_batch_ownership_update_for_selection
 from ...batch.state.query import read_batch_metadata
+from ...batch.state.validation import get_validated_baseline_commit
 from ...batch.text_file_storage import add_file_to_batch
 from ...batch.state.batch_names import batch_exists
+from ...core.buffer import LineBuffer
 from ...data.file_modes import detect_file_mode
 from ...data.session import snapshot_file_if_untracked
+from ...data.selected_change.snapshots import (
+    load_selected_file_comparison_base_buffer,
+)
 from ...exceptions import exit_with_error
 from ...i18n import _
+from ...utils.repository_buffers import read_git_object_buffer_or_none
 
 
 def add_selected_lines_to_batch(
@@ -34,9 +40,21 @@ def add_selected_lines_to_batch(
     file_mode = detect_file_mode(file_path)
     metadata = read_batch_metadata(batch_name)
     file_metadata = metadata.get("files", {}).get(file_path)
+    baseline_commit = get_validated_baseline_commit(batch_name)
+    batch_baseline_lines = read_git_object_buffer_or_none(
+        f"{baseline_commit}:{file_path}"
+    )
+    if batch_baseline_lines is None:
+        batch_baseline_lines = LineBuffer.from_bytes(b"")
 
     with ExitStack() as ownership_stack:
+        reference_target_lines = ownership_stack.enter_context(
+            batch_baseline_lines
+        )
         try:
+            reference_source_lines = ownership_stack.enter_context(
+                load_selected_file_comparison_base_buffer(file_path)
+            )
             update = ownership_stack.enter_context(
                 acquire_batch_ownership_update_for_selection(
                     batch_name=batch_name,
@@ -45,6 +63,8 @@ def add_selected_lines_to_batch(
                     selected_lines=selected_lines,
                     hunk_lines=hunk_lines,
                     replacement_line_runs=replacement_line_runs,
+                    reference_source_lines=reference_source_lines,
+                    reference_target_lines=reference_target_lines,
                 )
             )
         except ValueError as e:

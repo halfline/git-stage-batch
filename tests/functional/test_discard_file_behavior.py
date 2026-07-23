@@ -10,7 +10,7 @@ from .conftest import git_stage_batch
 class TestDiscardFile:
     """Tests for discard --file removing files and preserving batch content."""
 
-    def test_discard_file_batch_saves_reordered_block(self, functional_repo):
+    def test_discard_file_batch_round_trips_reordered_block(self, functional_repo):
         """A saved whole-file rewrite must not duplicate a moved block."""
         file_path = functional_repo / "realize.py"
         baseline = """def realize():
@@ -97,6 +97,15 @@ class TestDiscardFile:
         ).stdout
         assert stored_content == rewritten
 
+        git_stage_batch(
+            "apply",
+            "--from",
+            "reordered-block",
+            "--file",
+            "realize.py",
+        )
+
+        assert file_path.read_text() == rewritten
 
     def test_discard_file_removes_new_file_from_working_tree(self, repo_with_changes):
         """Test that discarding a new file removes it from the working tree."""

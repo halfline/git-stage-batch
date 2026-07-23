@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from git_stage_batch.batch.ownership.model import BatchOwnership
+from git_stage_batch.batch.ownership.references import BaselineReference
 from git_stage_batch.batch.realized_file_content import (
     build_realized_buffer_from_lines,
 )
@@ -87,6 +88,42 @@ def test_build_realized_content_simple_insert():
 
     result = _build_realized_content_from_bytes(base_content, batch_source_content, ownership)
     assert result == b"A\nNEW\nB\n"
+def test_build_realized_content_uses_baseline_reference_for_ambiguous_insert():
+    """Stored content honors a verified insertion boundary when context repeats."""
+    base_content = b"top\n\nbottom\n"
+    batch_source_content = (
+        b"top\n"
+        b"import-a\n"
+        b"import-b\n"
+        b"import-c\n"
+        b"\n"
+        b"save-a\n"
+        b"save-b\n"
+        b"later-a\n"
+        b"\n"
+        b"bottom\n"
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["6-7"],
+        baseline_references={
+            line: BaselineReference(
+                after_line=1,
+                after_content=b"top",
+                before_line=2,
+                before_content=b"",
+                has_before_line=True,
+            )
+            for line in (6, 7)
+        },
+    )
+
+    result = _build_realized_content_from_bytes(
+        base_content,
+        batch_source_content,
+        ownership,
+    )
+
+    assert result == b"top\nsave-a\nsave-b\n\nbottom\n"
 
 
 def test_build_realized_content_from_lines_accepts_non_list_sequences(line_sequence):

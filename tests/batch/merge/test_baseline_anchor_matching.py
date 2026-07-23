@@ -63,3 +63,45 @@ def test_live_target_anchor_requires_verified_deletion_boundary():
         target,
         [verified_claim],
     ) == ((3, 2),)
+
+
+def test_live_target_rejects_repeated_verified_deletion_boundary():
+    """A stale coordinate must not select one of several identical blocks."""
+    source = [
+        b"P\n",
+        b"ANCHOR\n",
+        b"OLD\n",
+        b"NEXT\n",
+        b"MIDDLE\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"TAIL\n",
+    ]
+    target = [
+        b"P\n",
+        b"ANCHOR\n",
+        b"OLD\n",
+        b"NEXT\n",
+        b"FILL\n",
+        b"ANCHOR\n",
+        b"OLD\n",
+        b"NEXT\n",
+        b"MIDDLE\n",
+        b"ANCHOR\n",
+        b"OLD\n",
+        b"NEXT\n",
+        b"TAIL\n",
+    ]
+    claim = AbsenceClaim(
+        anchor_line=6,
+        content_lines=[b"OLD\n"],
+        baseline_reference=BaselineReference(
+            after_line=6,
+            after_content=b"ANCHOR\n",
+            before_line=8,
+            before_content=b"NEXT\n",
+            has_before_line=True,
+        ),
+    )
+
+    assert _deletion_anchor_pairs(source, target, [claim]) == ()

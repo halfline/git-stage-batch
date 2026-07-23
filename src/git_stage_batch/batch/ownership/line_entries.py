@@ -76,6 +76,32 @@ def baseline_reference_for_old_line_range(
     )
 
 
+def baseline_reference_for_file_line_range(
+    old_start: int,
+    old_end: int,
+    old_file_lines: Sequence[bytes],
+) -> BaselineReference:
+    """Build a reference for a range in a complete old-file sequence."""
+    after_line = old_start - 1 if old_start > 1 else None
+    before_line = old_end + 1 if old_end < len(old_file_lines) else None
+    return BaselineReference(
+        after_line=after_line,
+        after_content=(
+            bytes(old_file_lines[after_line - 1])
+            if after_line is not None
+            else None
+        ),
+        has_after_line=True,
+        before_line=before_line,
+        before_content=(
+            bytes(old_file_lines[before_line - 1])
+            if before_line is not None
+            else None
+        ),
+        has_before_line=True,
+    )
+
+
 def baseline_reference_for_presence_line(
     line: LineEntry,
 ) -> BaselineReference | None:
@@ -95,17 +121,30 @@ def baseline_reference_for_presence_line(
 
 def replacement_unit_origin_for_line_run(
     replacement_run: ReplacementLineRun,
-    old_line_content: dict[int, bytes],
+    old_line_content: dict[int, bytes] | None = None,
+    *,
+    old_file_lines: Sequence[bytes] | None = None,
 ) -> ReplacementUnitOrigin:
     """Build parent replacement context for a file-derived replacement run."""
+    if old_file_lines is not None:
+        baseline_reference = baseline_reference_for_file_line_range(
+            replacement_run.old_start,
+            replacement_run.old_end,
+            old_file_lines,
+        )
+    elif old_line_content is not None:
+        baseline_reference = baseline_reference_for_old_line_range(
+            replacement_run.old_start,
+            replacement_run.old_end,
+            old_line_content,
+        )
+    else:
+        raise ValueError("replacement origin requires old-file content")
+
     return ReplacementUnitOrigin(
         old_start=replacement_run.old_start,
         old_end=replacement_run.old_end,
         new_start=replacement_run.new_start,
         new_end=replacement_run.new_end,
-        baseline_reference=baseline_reference_for_old_line_range(
-            replacement_run.old_start,
-            replacement_run.old_end,
-            old_line_content,
-        ),
+        baseline_reference=baseline_reference,
     )

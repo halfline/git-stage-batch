@@ -11,7 +11,6 @@ from ...batch.state.query import read_batch_metadata
 from ...batch.state.validation import get_validated_baseline_commit
 from ...batch.text_file_storage import add_file_to_batch
 from ...batch.state.batch_names import batch_exists
-from ...core.buffer import LineBuffer
 from ...data.file_modes import detect_file_mode
 from ...data.session import snapshot_file_if_untracked
 from ...data.selected_change.snapshots import (
@@ -19,7 +18,7 @@ from ...data.selected_change.snapshots import (
 )
 from ...exceptions import exit_with_error
 from ...i18n import _
-from ...utils.repository_buffers import read_git_object_buffer_or_none
+from ...utils.repository_buffers import read_git_object_buffer_or_empty
 
 
 def add_selected_lines_to_batch(
@@ -41,15 +40,23 @@ def add_selected_lines_to_batch(
     metadata = read_batch_metadata(batch_name)
     file_metadata = metadata.get("files", {}).get(file_path)
     baseline_commit = get_validated_baseline_commit(batch_name)
-    batch_baseline_lines = read_git_object_buffer_or_none(
+    batch_baseline_lines = read_git_object_buffer_or_empty(
         f"{baseline_commit}:{file_path}"
     )
-    if batch_baseline_lines is None:
-        batch_baseline_lines = LineBuffer.from_bytes(b"")
+    replacement_origin_source_buffer = (
+        read_git_object_buffer_or_empty(f"HEAD:{file_path}")
+        if hunk_lines is not None and replacement_line_runs
+        else None
+    )
 
     with ExitStack() as ownership_stack:
         reference_target_lines = ownership_stack.enter_context(
             batch_baseline_lines
+        )
+        replacement_origin_source_lines = (
+            ownership_stack.enter_context(replacement_origin_source_buffer)
+            if replacement_origin_source_buffer is not None
+            else None
         )
         try:
             reference_source_lines = ownership_stack.enter_context(
@@ -65,6 +72,9 @@ def add_selected_lines_to_batch(
                     replacement_line_runs=replacement_line_runs,
                     reference_source_lines=reference_source_lines,
                     reference_target_lines=reference_target_lines,
+                    replacement_origin_source_lines=(
+                        replacement_origin_source_lines
+                    ),
                 )
             )
         except ValueError as e:

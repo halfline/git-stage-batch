@@ -13,6 +13,7 @@ from ..editor.line_endings import (
 )
 from ..core.text_lines import normalize_line_sequence_endings
 from ..exceptions import MergeError as _MergeError
+from .line_matching.match import match_lines as _match_lines
 from .merge import baseline_edits as _baseline_edits
 from .merge.presence_constraints import satisfy_constraints
 from .realization.entry_storage import realized_entry_content_chunks
@@ -73,14 +74,30 @@ def _stream_realized_content_chunks_from_lines(
             return
 
     try:
-        realized_entries = satisfy_constraints(
-            batch_source_lines,
-            base_lines,
-            presence_line_set,
-            deletion_claims,
-            strict=False,
-            spool_dir=spool_dir,
-        )
+        with (
+            _baseline_edits.acquire_deletion_anchor_pairs_for_target(
+                batch_source_lines,
+                base_lines,
+                deletion_claims,
+                trust_baseline_coordinates=True,
+                spool_dir=spool_dir,
+            ) as anchor_pairs,
+            _match_lines(
+                batch_source_lines,
+                base_lines,
+                anchor_pairs=anchor_pairs,
+                spool_dir=spool_dir,
+            ) as mapping,
+        ):
+            realized_entries = satisfy_constraints(
+                batch_source_lines,
+                base_lines,
+                presence_line_set,
+                deletion_claims,
+                strict=False,
+                source_to_working_mapping=mapping,
+                spool_dir=spool_dir,
+            )
     except _MergeError:
         baseline_chunks = _baseline_edits.try_apply_baseline_replacement_units(
             batch_source_lines,

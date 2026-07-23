@@ -8,7 +8,10 @@ import subprocess
 from git_stage_batch.batch.state.query import read_batch_metadata
 from git_stage_batch.batch.state.query import get_batch_commit_sha
 from git_stage_batch.commands.again import command_again
-from git_stage_batch.commands.discard import command_discard_to_batch
+from git_stage_batch.commands.discard import (
+    command_discard_line_as_to_batch,
+    command_discard_to_batch,
+)
 from git_stage_batch.commands.include import command_include_to_batch
 from git_stage_batch.commands.start import command_start
 
@@ -109,6 +112,50 @@ def test_again_include_to_new_batch_does_not_reuse_stale_session_source(function
     assert 'return "layer3"' not in source_content
     assert 'return "bridge"' in realized_content
     assert 'return "layer3"' not in realized_content
+
+
+def test_replacement_to_new_batch_uses_its_rewritten_source(functional_repo):
+    """A replacement must not retain coordinates from an earlier batch."""
+    test_file = functional_repo / "replacement.txt"
+    baseline = "header\nold\nfooter\n"
+    test_file.write_text(baseline)
+    subprocess.run(
+        ["git", "add", "replacement.txt"],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Add replacement file"],
+        check=True,
+        capture_output=True,
+    )
+
+    test_file.write_text("session-only\n" + baseline)
+    command_start(quiet=True)
+    command_discard_to_batch(
+        batch_name="earlier",
+        line_ids="1",
+        file="replacement.txt",
+        quiet=True,
+        advance=False,
+    )
+
+    test_file.write_text("header\nworking\nfooter\n")
+    command_again(quiet=True)
+    command_discard_line_as_to_batch(
+        "replacement",
+        "1",
+        "saved",
+        file="replacement.txt",
+        quiet=True,
+    )
+
+    assert test_file.read_text() == baseline
+    batch_commit = get_batch_commit_sha("replacement")
+    assert batch_commit is not None
+    assert _show_file(batch_commit, "replacement.txt") == (
+        "header\nsaved\nfooter\n"
+    )
 
 
 def test_initial_deletion_anchor_uses_session_snapshot_coordinates(functional_repo):

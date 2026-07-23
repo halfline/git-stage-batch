@@ -174,6 +174,20 @@ def test_discard_to_batch_after_consecutive_line_includes(functional_repo):
         "bottom\n"
     )
 
+    git_stage_batch("apply", "--from", "saved", "--file", "file.txt")
+
+    assert (functional_repo / "file.txt").read_text() == (
+        "top\n"
+        "import-a\n"
+        "import-b\n"
+        "import-c\n"
+        "\n"
+        "save-a\n"
+        "save-b\n"
+        "later-a\n"
+        "\n"
+        "bottom\n"
+    )
 
 
 def test_include_to_batch_translates_position_from_staged_index(functional_repo):

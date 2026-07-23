@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import git_stage_batch.batch.source.refresh as source_refresh
+import pytest
 from git_stage_batch.batch.source.refresh import (
     RefreshedBatchSelection,
     ensure_batch_source_current_for_selection,
@@ -11,6 +12,10 @@ from git_stage_batch.batch.source.refresh import (
 from git_stage_batch.batch.source.selected_line_refresh import (
     refresh_selected_lines_against_new_source,
     refresh_selected_lines_against_source_lines,
+)
+from git_stage_batch.batch.line_matching.lineage import (
+    BatchSourceLineage,
+    LineageRun,
 )
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.source.advancement import (
@@ -151,6 +156,83 @@ def test_prepare_initial_batch_source_maps_selection(monkeypatch):
 
     assert batch_source_commit == "new_source"
     assert prepared_lines[0].source_line == 3
+
+
+def test_prepare_initial_cached_source_remaps_deletion_anchor(monkeypatch):
+    """Deletion-only selections are mapped instead of range-validated."""
+    monkeypatch.setattr(
+        source_refresh,
+        "load_session_batch_sources",
+        lambda: {"test.py": "cached_source"},
+    )
+    monkeypatch.setattr(
+        source_refresh,
+        "read_git_object_buffer_or_none",
+        lambda _object_name: LineBuffer.from_bytes(
+            b"header\nextra\nanchor\ndelete me\nfooter\n"
+        ),
+    )
+    monkeypatch.setattr(
+        source_refresh,
+        "load_working_tree_file_as_buffer",
+        lambda _file_path: LineBuffer.from_bytes(
+            b"header\nanchor\nfooter\n"
+        ),
+    )
+    monkeypatch.setattr(
+        source_refresh,
+        "create_batch_source_commit",
+        lambda *_args, **_kwargs: pytest.fail(
+            "the cached source should remain usable"
+        ),
+    )
+    selected_lines = [
+        LineEntry(
+            id=1,
+            kind="-",
+            old_line_number=3,
+            new_line_number=None,
+            text_bytes=b"delete me",
+            source_line=2,
+        ),
+    ]
+
+    batch_source_commit, prepared_lines = (
+        prepare_initial_batch_source_for_selection(
+            "test.py",
+            selected_lines,
+        )
+    )
+
+    assert batch_source_commit == "cached_source"
+    assert prepared_lines[0].source_line == 3
+
+
+def test_refresh_deletion_anchor_uses_source_lineage_without_prior_context():
+    """A hunk-leading deletion retains its old batch-source identity."""
+    selected_line = LineEntry(
+        id=1,
+        kind="-",
+        old_line_number=3,
+        new_line_number=None,
+        text_bytes=b"delete me",
+        source_line=1,
+    )
+    with BatchSourceLineage.from_runs(
+        source_runs=[LineageRun(old_start=1, old_end=1, new_start=2)],
+        working_runs=[LineageRun(old_start=2, old_end=2, new_start=3)],
+    ) as lineage:
+        refreshed = refresh_selected_lines_against_source_lines(
+            [selected_line],
+            source_lines=[b"inserted\n", b"anchor\n"],
+            working_lines=[b"first\n", b"anchor\n"],
+            lineage=lineage,
+            coordinate_lines=[selected_line],
+        )
+
+    assert refreshed[0].source_line == 2
+
+
 def test_refresh_consecutive_leading_deletions_share_file_start_anchor():
     """Later rows in one leading deletion run must remain before line one."""
     first_deletion = LineEntry(
@@ -278,6 +360,8 @@ def test_source_refresh_preserves_missing_final_newline():
 
     assert refreshed_new[0].has_trailing_newline is False
     assert refreshed_mapped[0].has_trailing_newline is False
+
+
 def test_refresh_selected_lines_uses_synthesized_working_line_provenance():
     """Repeated working lines should use known synthesis identity."""
     ownership = BatchOwnership.from_presence_lines(["1,4"], [])

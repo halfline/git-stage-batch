@@ -209,6 +209,12 @@ def test_translate_lines_preserves_deletion_structure():
     assert isinstance(ownership.deletions[0].content_lines, LineBuffer)
     assert list(ownership.deletions[0].content_lines) == [b'del1\n', b'del2\n']
     assert ownership.deletions[0].anchor_line is None  # before any source line
+    leading_reference = ownership.deletions[0].baseline_reference
+    assert leading_reference.has_after_line is True
+    assert leading_reference.after_line is None
+    assert leading_reference.has_before_line is True
+    assert leading_reference.before_line == 3
+    assert leading_reference.before_content == b'context'
     assert isinstance(ownership.deletions[1].content_lines, LineBuffer)
     assert list(ownership.deletions[1].content_lines) == [b'del3\n']
     assert ownership.deletions[1].anchor_line == 1  # after source line 1
@@ -233,6 +239,36 @@ def test_translate_lines_keeps_file_start_anchor_for_deletion_run():
         b'first\n',
         b'second\n',
     ]
+
+
+def test_translate_lines_splits_deletions_separated_in_old_file():
+    """Omitted unchanged rows still delimit selected deletion claims."""
+    lines = [
+        LineEntry(
+            id=1,
+            kind="-",
+            old_line_number=1,
+            new_line_number=None,
+            text_bytes=b"first",
+            source_line=None,
+        ),
+        LineEntry(
+            id=2,
+            kind="-",
+            old_line_number=3,
+            new_line_number=None,
+            text_bytes=b"third",
+            source_line=1,
+        ),
+    ]
+
+    ownership = translate_lines_to_batch_ownership(lines)
+
+    assert len(ownership.deletions) == 2
+    assert list(ownership.deletions[0].content_lines) == [b"first\n"]
+    assert list(ownership.deletions[1].content_lines) == [b"third\n"]
+    assert ownership.deletions[0].anchor_line is None
+    assert ownership.deletions[1].anchor_line == 1
 
 
 def test_translate_hunk_selection_uses_full_hunk_boundaries():

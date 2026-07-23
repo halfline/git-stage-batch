@@ -218,6 +218,11 @@ def test_translate_lines_preserves_deletion_structure():
     assert isinstance(ownership.deletions[1].content_lines, LineBuffer)
     assert list(ownership.deletions[1].content_lines) == [b'del3\n']
     assert ownership.deletions[1].anchor_line == 1  # after source line 1
+    interior_reference = ownership.deletions[1].baseline_reference
+    assert interior_reference.has_after_line is True
+    assert interior_reference.after_line == 3
+    assert interior_reference.after_content == b'context'
+    assert interior_reference.has_before_line is False
     assert ownership.replacement_units == []
 
 

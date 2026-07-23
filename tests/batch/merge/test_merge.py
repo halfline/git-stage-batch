@@ -537,6 +537,38 @@ class TestMergeLineSequences:
         assert isinstance(entries, RealizedEntries)
         assert b"".join(entry.content for entry in entries) == b"line1\nline2\nline3\n"
 
+    def test_supplied_mapping_preserves_verified_deletion_anchor(self):
+        """A reusable plain mapping must not bypass saved removal anchors."""
+        source = [b"head\n", b"new\n", b"\n", b"tail\n"]
+        working = [b"head\n", b"\n", b"old\n", b"\n", b"tail\n"]
+        ownership = BatchOwnership.from_presence_lines(
+            ["2"],
+            [
+                AbsenceClaim(
+                    anchor_line=3,
+                    content_lines=[b"old\n"],
+                    baseline_reference=BaselineReference(
+                        after_line=2,
+                        after_content=b"\n",
+                        before_line=4,
+                        before_content=b"\n",
+                        has_before_line=True,
+                    ),
+                )
+            ],
+        )
+
+        with match_lines(source, working) as mapping:
+            assert mapping.get_target_line_from_source_line(3) == 4
+            result = merge_batch(
+                b"".join(source),
+                ownership,
+                b"".join(working),
+                source_to_working_mapping=mapping,
+            )
+
+        assert result == b"head\nnew\n\n\ntail\n"
+
     def test_discard_entry_builder_accepts_non_list_sequences(self, line_sequence):
         """Discard entry construction only requires sized iterable line sequences."""
         source = line_sequence([b"line1\n", b"line2\n", b"line3\n"])

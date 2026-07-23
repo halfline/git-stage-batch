@@ -34,12 +34,18 @@ from .live_diff import stream_live_git_diff
 from ..utils.session_start_point import session_comparison_base
 
 
-def render_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
+def render_file_as_single_hunk(
+    file_path: str,
+    *,
+    comparison_base: str | None = None,
+) -> Optional[LineLevelChange]:
     """Render all changes for a file as a single hunk without caching state."""
     auto_add_untracked_files([file_path])
+    if comparison_base is None:
+        comparison_base = session_comparison_base()
     with acquire_unified_diff(
         stream_live_git_diff(
-            base=session_comparison_base(),
+            base=comparison_base,
             context_lines=get_context_lines(),
             full_index=True,
             ignore_submodules="none",

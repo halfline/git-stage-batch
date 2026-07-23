@@ -28,10 +28,14 @@ from ...utils.paths import (
 )
 
 
-_SNAPSHOT_SCHEMA_VERSION = 2
+_SNAPSHOT_SCHEMA_VERSION = 3
 
 
-def write_snapshots_for_selected_file_path(file_path: str) -> None:
+def write_snapshots_for_selected_file_path(
+    file_path: str,
+    *,
+    comparison_base: str = "index",
+) -> None:
     """Write snapshots of the file from both the index and working tree."""
     with ExitStack() as stack:
         index_entry = read_index_entry(file_path)
@@ -80,6 +84,7 @@ def write_snapshots_for_selected_file_path(file_path: str) -> None:
         manifest = {
             "schema_version": _SNAPSHOT_SCHEMA_VERSION,
             "path": file_path,
+            "comparison_base": comparison_base,
             "index": {
                 "exists": index_entry is not None,
                 "mode": index_entry.mode if index_entry is not None else None,
@@ -111,6 +116,26 @@ def write_snapshots_for_selected_file_path(file_path: str) -> None:
                     }
                 )
             log_journal("write_snapshots_for_selected_file", **fields)
+
+
+def load_selected_file_comparison_base_buffer(file_path: str) -> LineBuffer:
+    """Load the old-side file used to render the current line selection."""
+    manifest = json.loads(
+        get_snapshot_metadata_file_path().read_text(encoding="utf-8")
+    )
+    if manifest.get("path") != file_path:
+        raise ValueError("selected-file snapshot path does not match selection")
+
+    comparison_base = manifest.get("comparison_base")
+    if comparison_base == "index":
+        return LineBuffer.from_path(get_index_snapshot_file_path())
+    if not isinstance(comparison_base, str) or not comparison_base:
+        raise ValueError("selected-file snapshot has no comparison base")
+
+    buffer = read_git_object_buffer_or_none(f"{comparison_base}:{file_path}")
+    if buffer is None:
+        return LineBuffer.from_bytes(b"")
+    return buffer
 
 
 def _buffer_line_count(buffer: LineBuffer) -> int:
@@ -174,6 +199,8 @@ def snapshots_are_stale(file_path: str) -> bool:
             if (
                 manifest.get("schema_version") != _SNAPSHOT_SCHEMA_VERSION
                 or manifest.get("path") != file_path
+                or not isinstance(manifest.get("comparison_base"), str)
+                or not manifest["comparison_base"]
             ):
                 return True
 

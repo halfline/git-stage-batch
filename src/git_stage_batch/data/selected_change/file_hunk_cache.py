@@ -16,6 +16,7 @@ from ...utils.paths import (
     get_processed_skip_ids_file_path,
     get_selected_hunk_hash_file_path,
 )
+from ...utils.session_start_point import session_comparison_base
 from ..file_hunk_display import (
     render_file_as_single_hunk,
     render_unstaged_file_as_single_hunk,
@@ -48,8 +49,16 @@ def cache_file_as_single_hunk(file_path: str) -> Optional[LineLevelChange]:
         LineLevelChange with all file changes, or None if no changes
     """
     try:
-        combined_line_changes = render_file_as_single_hunk(file_path)
-        return _cache_combined_file_line_changes(file_path, combined_line_changes)
+        comparison_base = session_comparison_base()
+        combined_line_changes = render_file_as_single_hunk(
+            file_path,
+            comparison_base=comparison_base,
+        )
+        return _cache_combined_file_line_changes(
+            file_path,
+            combined_line_changes,
+            comparison_base=comparison_base,
+        )
     except subprocess.CalledProcessError:
         return None
 
@@ -58,7 +67,11 @@ def cache_unstaged_file_as_single_hunk(file_path: str) -> Optional[LineLevelChan
     """Cache the remaining unstaged changes for a file as a single hunk."""
     try:
         combined_line_changes = render_unstaged_file_as_single_hunk(file_path)
-        return _cache_combined_file_line_changes(file_path, combined_line_changes)
+        return _cache_combined_file_line_changes(
+            file_path,
+            combined_line_changes,
+            comparison_base="index",
+        )
     except subprocess.CalledProcessError:
         return None
 
@@ -66,6 +79,8 @@ def cache_unstaged_file_as_single_hunk(file_path: str) -> Optional[LineLevelChan
 def _cache_combined_file_line_changes(
     file_path: str,
     combined_line_changes: Optional[LineLevelChange],
+    *,
+    comparison_base: str,
 ) -> Optional[LineLevelChange]:
     """Persist a combined file-scoped view as the current selection."""
     if combined_line_changes is None:
@@ -100,7 +115,10 @@ def _cache_combined_file_line_changes(
         ),
     )
 
-    write_snapshots_for_selected_file_path(file_path)
+    write_snapshots_for_selected_file_path(
+        file_path,
+        comparison_base=comparison_base,
+    )
     write_selected_change_kind(SelectedChangeKind.FILE)
 
     return combined_line_changes

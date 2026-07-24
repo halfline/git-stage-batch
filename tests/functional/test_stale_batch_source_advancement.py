@@ -158,6 +158,40 @@ def test_replacement_to_new_batch_uses_its_rewritten_source(functional_repo):
     )
 
 
+def test_replacement_after_earlier_deletion_uses_full_hunk_context(functional_repo):
+    """Rewritten deletion anchors must use current, not old-file, coordinates."""
+    test_file = functional_repo / "replacement.txt"
+    baseline = "A\nX\nB\nD\nC\n"
+    test_file.write_text(baseline)
+    subprocess.run(
+        ["git", "add", "replacement.txt"],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Add replacement anchors"],
+        check=True,
+        capture_output=True,
+    )
+
+    test_file.write_text("S\n" + baseline)
+    command_start(quiet=True)
+
+    test_file.write_text("A\nB\nC\n")
+    command_again(quiet=True)
+    command_discard_line_as_to_batch(
+        "replacement",
+        "2",
+        "Z",
+        file="replacement.txt",
+        quiet=True,
+    )
+
+    metadata = read_batch_metadata("replacement")
+    deletion = metadata["files"]["replacement.txt"]["deletions"][0]
+    assert deletion["after_source_line"] == 2
+
+
 def test_initial_deletion_anchor_uses_session_snapshot_coordinates(functional_repo):
     """A deletion-only first save remains extensible after session file drift."""
     test_file = functional_repo / "anchors.txt"

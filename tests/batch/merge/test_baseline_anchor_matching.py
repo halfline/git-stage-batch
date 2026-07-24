@@ -249,6 +249,42 @@ def test_live_merge_does_not_insert_at_ambiguous_baseline_coordinate():
     ]
 
 
+def test_live_target_accepts_one_unique_composite_deletion_boundary():
+    """Repeated payloads may still form one complete live boundary."""
+    source = [
+        b"A\n",
+        b"B\n",
+        b"A\n",
+        b"X\n",
+        b"O\n",
+        b"Y\n",
+        b"B\n",
+    ]
+    target = [
+        b"A\n",
+        b"O\n",
+        b"B\n",
+        b"A\n",
+        b"X\n",
+        b"O\n",
+        b"Y\n",
+        b"B\n",
+    ]
+    claim = AbsenceClaim(
+        anchor_line=1,
+        content_lines=[b"O\n"],
+        baseline_reference=BaselineReference(
+            after_line=1,
+            after_content=b"A\n",
+            before_line=3,
+            before_content=b"B\n",
+            has_before_line=True,
+        ),
+    )
+
+    assert _deletion_anchor_pairs(source, target, [claim]) == ((1, 1),)
+
+
 def test_live_target_checks_indexed_boundary_candidates(monkeypatch):
     """Many unique claims must not rescan every target boundary."""
     target = [f"line-{index}\n".encode() for index in range(1002)]

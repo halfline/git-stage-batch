@@ -12,6 +12,8 @@ from ..editor.line_endings import (
     restore_line_endings_in_chunks,
 )
 from ..core.text_lines import normalize_line_sequence_endings
+from ..exceptions import MergeError as _MergeError
+from .merge import baseline_edits as _baseline_edits
 from .merge.presence_constraints import satisfy_constraints
 from .realization.entry_storage import realized_entry_content_chunks
 
@@ -50,13 +52,26 @@ def _stream_realized_content_chunks_from_lines(
     presence_line_set = resolved.presence_line_set
     deletion_claims = resolved.deletion_claims
 
-    realized_entries = satisfy_constraints(
-        batch_source_lines,
-        base_lines,
-        presence_line_set,
-        deletion_claims,
-        strict=False,
-    )
+    try:
+        realized_entries = satisfy_constraints(
+            batch_source_lines,
+            base_lines,
+            presence_line_set,
+            deletion_claims,
+            strict=False,
+        )
+    except _MergeError:
+        baseline_chunks = _baseline_edits.try_apply_baseline_replacement_units(
+            batch_source_lines,
+            base_lines,
+            ownership,
+            presence_line_set,
+            deletion_claims,
+        )
+        if baseline_chunks is None:
+            raise
+        yield from baseline_chunks
+        return
 
     try:
         yield from realized_entry_content_chunks(realized_entries)

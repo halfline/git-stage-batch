@@ -40,6 +40,35 @@ def _index_bytes(repo, path: str) -> bytes:
     return result.stdout
 
 
+def _prepare_ambiguous_middle_insertion(repo) -> None:
+    _commit_file(
+        repo,
+        "file.txt",
+        "top\n"
+        "\n"
+        "bottom\n",
+    )
+    (repo / "file.txt").write_text(
+        "top\n"
+        "import-a\n"
+        "import-b\n"
+        "import-c\n"
+        "\n"
+        "save-a\n"
+        "save-b\n"
+        "later-a\n"
+        "\n"
+        "bottom\n"
+    )
+
+    git_stage_batch("start", "--no-auto-advance")
+    git_stage_batch("show", "--file", "file.txt", "--page", "all")
+    git_stage_batch("include", "--line", "1-2", "--no-auto-advance")
+    git_stage_batch("show", "--file", "file.txt", "--page", "all")
+    git_stage_batch("include", "--line", "3", "--no-auto-advance")
+    git_stage_batch("show", "--file", "file.txt", "--page", "all")
+
+
 def test_include_line_transient_staging_first_replace_row(functional_repo):
     _commit_file(functional_repo, "file.txt", "a\nb\n")
     (functional_repo / "file.txt").write_text("A\nB\n")
@@ -88,6 +117,42 @@ def test_include_line_transient_staging_pure_addition(functional_repo):
     git_stage_batch("include", "--line", "1")
 
     assert _index_content(functional_repo, "file.txt") == "base\nfoo\n"
+
+
+def test_consecutive_line_includes_stage_ambiguous_middle_insertion(functional_repo):
+    _prepare_ambiguous_middle_insertion(functional_repo)
+
+    result = git_stage_batch(
+        "include",
+        "--line",
+        "5-6",
+        "--no-auto-advance",
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _index_content(functional_repo, "file.txt") == (
+        "top\n"
+        "import-a\n"
+        "import-b\n"
+        "import-c\n"
+        "\n"
+        "save-a\n"
+        "save-b\n"
+        "bottom\n"
+    )
+    assert (functional_repo / "file.txt").read_text() == (
+        "top\n"
+        "import-a\n"
+        "import-b\n"
+        "import-c\n"
+        "\n"
+        "save-a\n"
+        "save-b\n"
+        "later-a\n"
+        "\n"
+        "bottom\n"
+    )
 
 
 def test_include_line_transient_staging_pure_addition_preserves_blank_anchor(functional_repo):

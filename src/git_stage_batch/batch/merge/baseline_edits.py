@@ -24,6 +24,7 @@ from ..line_matching.sequence_equality import (
     line_slice_equals as _line_slice_matches,
 )
 from ..line_matching.line_mapping import LineMapping
+from ..line_matching.match import match_lines as _match_lines
 from ..line_matching.match_workspace import MatcherWorkspace
 from ..line_matching.occurrence_index import (
     LinePayloadOccurrenceIndex,
@@ -509,6 +510,7 @@ def try_apply_baseline_replacement_units(
     *,
     resolution: _MergeResolution | None = None,
     max_resolution_choices: int = _DEFAULT_RESOLUTION_CHOICE_LIMIT,
+    spool_dir: str | Path | None = None,
 ) -> Iterator[bytes] | None:
     """Apply baseline-coordinate edits when structural source anchors fail.
 
@@ -579,6 +581,7 @@ def try_apply_baseline_replacement_units(
     claimed_line_references = ownership.presence_baseline_references()
     if remaining_claimed_lines:
         grouped_insertions: dict[int, list[int]] = {}
+        has_mapped_claimed_lines = False
         for claimed_line in sorted(remaining_claimed_lines):
             if claimed_line < 1 or claimed_line > len(source_lines):
                 return None
@@ -588,8 +591,31 @@ def try_apply_baseline_replacement_units(
                 working_lines,
             )
             if position is None:
-                return None
+                has_mapped_claimed_lines = True
+                continue
             grouped_insertions.setdefault(position, []).append(claimed_line)
+
+        if has_mapped_claimed_lines:
+            with _match_lines(
+                source_lines,
+                working_lines,
+                spool_dir=spool_dir,
+            ) as mapping:
+                for claimed_line in remaining_claimed_lines:
+                    reference = claimed_line_references.get(claimed_line)
+                    if _find_baseline_insertion_position(
+                        reference,
+                        working_lines,
+                    ) is not None:
+                        continue
+                    target_line = mapping.get_target_line_from_source_line(
+                        claimed_line
+                    )
+                    if target_line is None or any(
+                        start <= target_line - 1 < end
+                        for start, end, _replacement_lines in edits
+                    ):
+                        return None
 
         for position, claimed_lines in grouped_insertions.items():
             insertion_lines = [

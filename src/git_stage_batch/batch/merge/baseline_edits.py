@@ -346,30 +346,47 @@ def _replacement_edit_from_parent_offset(
     if old_line_count != new_line_count:
         return None
 
-    relative_offsets = [
-        claimed_line - new_start for claimed_line in sorted(claimed_lines)
-    ]
-    if (
-        not relative_offsets
-        or relative_offsets[0] < 0
-        or relative_offsets[-1] >= new_line_count
-    ):
+    if not claimed_lines:
         return None
-    if relative_offsets != list(
-        range(relative_offsets[0], relative_offsets[0] + len(relative_offsets))
+
+    first_claimed_line = claimed_lines[0]
+    if any(
+        claimed_line != first_claimed_line + offset
+        for offset, claimed_line in enumerate(claimed_lines)
     ):
         return None
 
     forbidden_sequence = normalize_line_sequence_endings(claim.content_lines)
-    if len(forbidden_sequence) != len(relative_offsets):
+    if len(forbidden_sequence) != len(claimed_lines):
         return None
 
     parent_bounds = _replacement_origin_absence_bounds(origin, working_lines)
     if parent_bounds is None:
         return None
 
+    claim_reference = claim.baseline_reference
+    origin_reference = getattr(origin, "baseline_reference", None)
+    if (
+        claim_reference is not None
+        and getattr(claim_reference, "has_after_line", False)
+        and origin_reference is not None
+        and getattr(origin_reference, "has_after_line", False)
+    ):
+        relative_offset = (
+            (getattr(claim_reference, "after_line", None) or 0)
+            - (getattr(origin_reference, "after_line", None) or 0)
+        )
+    else:
+        relative_offset = first_claimed_line - new_start
+
+    if (
+        relative_offset < 0
+        or relative_offset + len(claimed_lines) > new_line_count
+    ):
+        return None
+
     parent_start, parent_end = parent_bounds
-    start = parent_start + relative_offsets[0]
+    start = parent_start + relative_offset
     end = start + len(forbidden_sequence)
     if start < parent_start or end > parent_end:
         return None

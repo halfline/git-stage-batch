@@ -111,6 +111,41 @@ def test_again_include_to_new_batch_does_not_reuse_stale_session_source(function
     assert 'return "layer3"' not in realized_content
 
 
+def test_initial_deletion_anchor_uses_session_snapshot_coordinates(functional_repo):
+    """A deletion-only first save uses its session snapshot after file drift."""
+    test_file = functional_repo / "anchors.txt"
+    baseline = "header\nanchor\ndelete me\nfooter\n"
+    test_file.write_text(baseline)
+    subprocess.run(["git", "add", "anchors.txt"], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Add anchored deletion"],
+        check=True,
+        capture_output=True,
+    )
+
+    test_file.write_text(
+        "header\nextra at session start\nanchor\ndelete me\nfooter\n"
+    )
+    command_start(quiet=True)
+
+    test_file.write_text("header\nanchor\nfooter\n")
+    command_again(quiet=True)
+    command_discard_to_batch(
+        batch_name="saved",
+        line_ids="1",
+        file="anchors.txt",
+        quiet=True,
+        advance=False,
+    )
+
+    assert test_file.read_text() == baseline
+    first_batch_commit = get_batch_commit_sha("saved")
+    assert first_batch_commit is not None
+    assert _show_file(first_batch_commit, "anchors.txt") == (
+        "header\nanchor\nfooter\n"
+    )
+
+
 def test_stale_discard_preserves_previously_discarded_claimed_lines(functional_repo):
     """Advancing a discard batch must not drop lines already removed from WT."""
     test_file = functional_repo / "test.py"

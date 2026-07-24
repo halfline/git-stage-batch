@@ -115,3 +115,27 @@ def test_translates_leading_deletion_past_target_prefix():
     assert reference.before_line == 3
     assert reference.after_content == b"prefix\n"
     assert reference.before_content == b"tail\n"
+
+
+def test_translates_trailing_deletion_before_target_suffix():
+    source = [b"head\n", b"old\n"]
+    target = [b"head\n", b"old\n", b"suffix\n"]
+    deletion = AbsenceClaim(
+        anchor_line=1,
+        content_lines=[b"old\n"],
+        baseline_reference=BaselineReference(
+            after_line=1,
+            after_content=b"head",
+            has_after_line=True,
+        ),
+    )
+    ownership = BatchOwnership.from_presence_lines([], [deletion])
+
+    translate_ownership_baseline_references(ownership, source, target)
+
+    reference = deletion.baseline_reference
+    assert reference is not None
+    assert reference.after_line == 1
+    assert reference.before_line == 3
+    assert reference.after_content == b"head\n"
+    assert reference.before_content == b"suffix\n"

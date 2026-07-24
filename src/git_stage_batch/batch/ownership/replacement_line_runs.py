@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 
-from ..line_matching.comparison import SemanticChangeKind, derive_semantic_change_runs
+from ..line_matching.comparison import (
+    SemanticChangeKind,
+    stream_semantic_change_runs,
+)
 
 @dataclass(frozen=True, slots=True)
 class ReplacementLineRun:
@@ -37,22 +40,40 @@ def derive_replacement_line_runs_from_lines(
     new_file_lines: Sequence[bytes],
 ) -> list[ReplacementLineRun]:
     """Derive replacement line runs from old/new byte-line sequences."""
-    replacement_runs: list[ReplacementLineRun] = []
-    semantic_runs = derive_semantic_change_runs(old_file_lines, new_file_lines)
-    for run in semantic_runs:
-        if (
-            run.kind == SemanticChangeKind.REPLACEMENT
-            and run.source_start is not None
-            and run.source_end is not None
-            and run.target_start is not None
-            and run.target_end is not None
-        ):
-            replacement_runs.append(
-                ReplacementLineRun(
+    return list(
+        stream_replacement_line_runs_from_lines(
+            old_file_lines=old_file_lines,
+            new_file_lines=new_file_lines,
+        )
+    )
+
+
+def stream_replacement_line_runs_from_lines(
+    *,
+    old_file_lines: Sequence[bytes],
+    new_file_lines: Sequence[bytes],
+) -> Iterator[ReplacementLineRun]:
+    """Yield replacement runs without retaining a file-sized Python list."""
+    semantic_runs = stream_semantic_change_runs(
+        old_file_lines,
+        new_file_lines,
+    )
+    try:
+        for run in semantic_runs:
+            if (
+                run.kind == SemanticChangeKind.REPLACEMENT
+                and run.source_start is not None
+                and run.source_end is not None
+                and run.target_start is not None
+                and run.target_end is not None
+            ):
+                yield ReplacementLineRun(
                     old_start=run.source_start,
                     old_end=run.source_end,
                     new_start=run.target_start,
                     new_end=run.target_end,
                 )
-            )
-    return replacement_runs
+    finally:
+        close = getattr(semantic_runs, "close", None)
+        if close is not None:
+            close()

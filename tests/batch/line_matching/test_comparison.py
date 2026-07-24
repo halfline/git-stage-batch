@@ -2,11 +2,13 @@
 
 import pytest
 
+import git_stage_batch.batch.line_matching.comparison as comparison_module
 from git_stage_batch.batch.line_matching.comparison import (
     SemanticChangeKind,
     SemanticChangeRun,
     derive_replacement_display_id_run_sets_from_lines,
     derive_semantic_change_runs,
+    stream_semantic_change_runs,
 )
 from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange
 
@@ -23,6 +25,42 @@ def test_derive_semantic_change_runs_accepts_non_list_sequences(line_sequence):
     assert (runs[0].source_start, runs[0].source_end) == (2, 2)
     assert (runs[0].target_start, runs[0].target_end) == (2, 2)
     assert runs[0].target_anchor == 1
+
+
+def test_stream_semantic_change_runs_closes_matching_pairs(monkeypatch):
+    """Closing streamed changes must release their matcher resources."""
+
+    class ClosablePairs:
+        def __init__(self):
+            self._pairs = iter(((2, 2),))
+            self.closed = False
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            return next(self._pairs)
+
+        def close(self):
+            self.closed = True
+
+    matched_pairs = ClosablePairs()
+    monkeypatch.setattr(
+        comparison_module,
+        "_trusted_matched_pairs",
+        lambda *_args, **_kwargs: matched_pairs,
+    )
+    runs = stream_semantic_change_runs(
+        [b"old\n", b"tail\n"],
+        [b"new\n", b"tail\n"],
+    )
+
+    assert next(runs).kind == SemanticChangeKind.REPLACEMENT
+    assert matched_pairs.closed is False
+
+    runs.close()
+
+    assert matched_pairs.closed is True
 
 
 def test_derive_semantic_change_runs_uses_range_records():

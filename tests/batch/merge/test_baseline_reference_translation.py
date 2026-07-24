@@ -88,3 +88,30 @@ def test_translates_deletion_range_from_shifted_selection_baseline():
     assert reference.before_line == 3
     assert reference.after_content == b"a\n"
     assert reference.before_content == b"a\n"
+
+
+def test_translates_leading_deletion_past_target_prefix():
+    source = [b"old\n", b"tail\n"]
+    target = [b"prefix\n", b"old\n", b"tail\n"]
+    deletion = AbsenceClaim(
+        anchor_line=None,
+        content_lines=[b"old\n"],
+        baseline_reference=BaselineReference(
+            after_line=None,
+            after_content=None,
+            has_after_line=True,
+            before_line=2,
+            before_content=b"tail",
+            has_before_line=True,
+        ),
+    )
+    ownership = BatchOwnership.from_presence_lines([], [deletion])
+
+    translate_ownership_baseline_references(ownership, source, target)
+
+    reference = deletion.baseline_reference
+    assert reference is not None
+    assert reference.after_line == 1
+    assert reference.before_line == 3
+    assert reference.after_content == b"prefix\n"
+    assert reference.before_content == b"tail\n"

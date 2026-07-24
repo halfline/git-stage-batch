@@ -234,6 +234,18 @@ class TestMatchLines:
             assert mapping.get_target_line_from_source_line(3) == 2
             assert mapping.get_source_line_from_target_line(4) is None
 
+    def test_line_mapping_rejects_malformed_mixed_type_anchors(self):
+        """Malformed anchors should fail with the public validation error."""
+        with pytest.raises(
+            ValueError,
+            match="anchors must contain integer line numbers",
+        ):
+            match_lines(
+                [b"one\n", b"two\n"],
+                [b"one\n", b"two\n"],
+                anchor_pairs=(("bad", 1), (2, 2)),
+            )
+
     def test_identical_files(self):
         """Test alignment of identical files."""
         source = [b"line1\n", b"line2\n", b"line3\n"]

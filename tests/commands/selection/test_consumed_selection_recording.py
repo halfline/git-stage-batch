@@ -77,6 +77,68 @@ def test_record_consumed_selection_refreshes_stale_first_selection(temp_git_repo
     ]
 
 
+def test_consumed_replacement_uses_complete_hunk_coordinates(temp_git_repo):
+    """A shifted deletion anchor must use preceding unselected hunk context."""
+    test_file = temp_git_repo / "test.txt"
+    test_file.write_text("staged\ntop\nold\n")
+    subprocess.run(
+        ["git", "add", "test.txt"],
+        check=True,
+        cwd=temp_git_repo,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Add shifted replacement"],
+        check=True,
+        cwd=temp_git_repo,
+        capture_output=True,
+    )
+    test_file.write_text("top\nnew\n")
+    command_start()
+    context = LineEntry(
+        id=None,
+        kind=" ",
+        old_line_number=2,
+        new_line_number=1,
+        text_bytes=b"top",
+        text="top",
+        source_line=None,
+    )
+    deletion = LineEntry(
+        id=1,
+        kind="-",
+        old_line_number=3,
+        new_line_number=None,
+        text_bytes=b"old",
+        text="old",
+        source_line=None,
+    )
+    addition = LineEntry(
+        id=2,
+        kind="+",
+        old_line_number=None,
+        new_line_number=2,
+        text_bytes=b"new",
+        text="new",
+        source_line=None,
+    )
+
+    with LineBuffer.from_bytes(b"top\nnew\n") as source_buffer:
+        record_consumed_selection(
+            "test.txt",
+            source_buffer=source_buffer,
+            selected_lines=[deletion, addition],
+            coordinate_lines=[context, deletion, addition],
+        )
+
+    metadata = read_consumed_file_metadata("test.txt")
+    assert metadata is not None
+    with acquire_ownership_for_metadata(metadata) as ownership:
+        assert ownership.presence_line_set() == {2}
+        assert ownership.deletions[0].anchor_line == 1
+        assert list(ownership.deletions[0].content_lines) == [b"old\n"]
+
+
 def test_corrupt_consumed_selection_state_fails_closed(temp_git_repo):
     """Corrupt masking state must not make consumed lines visible again."""
     get_session_consumed_selections_file_path().parent.mkdir(

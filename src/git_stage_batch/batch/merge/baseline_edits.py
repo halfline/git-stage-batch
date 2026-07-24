@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ...core.line_selection import LineRanges, LineSelection, coerce_line_ranges
+from ...core.mapped_storage import sort_mapped_records
 from ...exceptions import MergeError as _MergeError
 from ...i18n import _
-from ...core.text_lines import normalize_line_endings
+from ...core.text_lines import normalize_line_sequence_endings
 from .baseline_reference_positions import (
     baseline_reference_absence_position as _find_baseline_absence_position,
     baseline_reference_insertion_position as _find_baseline_insertion_position,
@@ -21,6 +24,11 @@ from ..line_matching.sequence_equality import (
     line_slice_equals as _line_slice_matches,
 )
 from ..line_matching.line_mapping import LineMapping
+from ..line_matching.match_workspace import MatcherWorkspace
+from ..line_matching.occurrence_index import (
+    LinePayloadOccurrenceIndex,
+    normalized_line_payload as _reference_line_payload,
+)
 from .candidates import MergeResolution as _MergeResolution
 
 if TYPE_CHECKING:
@@ -39,6 +47,107 @@ def _selection_outside_bounds(lines: LineSelection, max_line: int) -> bool:
     return False
 
 
+@contextmanager
+def acquire_deletion_anchor_pairs_for_target(
+    source_lines: Sequence[bytes],
+    target_lines: Sequence[bytes],
+    deletion_claims: Sequence[AbsenceClaim],
+    *,
+    trust_baseline_coordinates: bool = False,
+    spool_dir: str | Path | None = None,
+) -> Iterator[Sequence[tuple[int, int]]]:
+    """Return coherent source-to-target anchors recorded by deletion claims.
+
+    Exact baseline realization may trust recorded coordinates after checking
+    the deleted bytes. Live targets additionally require the stored boundary
+    identity to match before a coordinate can constrain structural alignment.
+    """
+    with MatcherWorkspace(spool_dir=spool_dir) as workspace:
+        anchor_pairs = workspace.record_vector(
+            len(deletion_claims),
+            "QQ",
+        )
+        occurrence_index: LinePayloadOccurrenceIndex | None = None
+        for claim in deletion_claims:
+            source_line = claim.anchor_line
+            reference = claim.baseline_reference
+            target_line = None if reference is None else reference.after_line
+            if type(source_line) is not int or type(target_line) is not int:
+                continue
+            if source_line < 1 or source_line > len(source_lines):
+                continue
+            if target_line < 1 or target_line > len(target_lines):
+                continue
+            if source_lines[source_line - 1] != target_lines[target_line - 1]:
+                continue
+
+            if trust_baseline_coordinates:
+                forbidden_sequence = normalize_line_sequence_endings(
+                    claim.content_lines
+                )
+                if not forbidden_sequence or not _line_slice_matches(
+                    target_lines,
+                    target_line,
+                    forbidden_sequence,
+                ):
+                    continue
+            else:
+                removal_edit = _baseline_removal_edit(claim, target_lines)
+                if removal_edit is None:
+                    continue
+                if (
+                    not _removal_boundary_is_fixed_to_file_edge(claim)
+                    and occurrence_index is None
+                ):
+                    occurrence_index = LinePayloadOccurrenceIndex(
+                        workspace,
+                        target_lines,
+                    )
+                if not _live_removal_boundary_is_unique(
+                    claim,
+                    target_lines,
+                    removal_edit[0],
+                    occurrence_index,
+                ):
+                    continue
+
+            anchor_pairs.append((source_line, target_line))
+
+        sort_mapped_records(anchor_pairs)
+        previous_pair: tuple[int, int] | None = None
+        previous_source = 0
+        previous_target = 0
+        anchor_count = 0
+        for pair in anchor_pairs:
+            if pair == previous_pair:
+                continue
+            source_line, target_line = pair
+            if source_line <= previous_source or target_line <= previous_target:
+                anchor_pairs.truncate(0)
+                yield anchor_pairs
+                return
+            anchor_pairs[anchor_count] = pair
+            anchor_count += 1
+            previous_pair = pair
+            previous_source = source_line
+            previous_target = target_line
+
+        anchor_pairs.truncate(anchor_count)
+        yield anchor_pairs
+
+
+def _removal_boundary_is_fixed_to_file_edge(claim: AbsenceClaim) -> bool:
+    """Return whether a boundary marker admits only one target position."""
+    reference = claim.baseline_reference
+    return reference is not None and (
+        reference.after_line is None
+        or (
+            reference.has_before_line
+            and reference.before_line is None
+        )
+    )
+
+
 def _baseline_removal_edit(
     claim: AbsenceClaim,
     working_lines: Sequence[bytes],
@@ -46,7 +155,7 @@ def _baseline_removal_edit(
     if not claim.content_lines:
         return None
 
-    forbidden_sequence = [normalize_line_endings(line) for line in claim.content_lines]
+    forbidden_sequence = normalize_line_sequence_endings(claim.content_lines)
     position = _find_baseline_absence_position(
         claim.baseline_reference,
         working_lines,
@@ -57,6 +166,112 @@ def _baseline_removal_edit(
     if not _line_slice_matches(working_lines, position, forbidden_sequence):
         return None
     return position, position + len(forbidden_sequence), []
+
+
+def _removal_boundary_identity_matches_at(
+    claim: AbsenceClaim,
+    target_lines: Sequence[bytes],
+    position: int,
+    forbidden_sequence: Sequence[bytes],
+) -> bool:
+    """Return whether one target position has the claim's full identity."""
+    reference = claim.baseline_reference
+    if reference is None or not reference.has_after_line:
+        return False
+    if not _line_slice_matches(target_lines, position, forbidden_sequence):
+        return False
+
+    if reference.after_line is None:
+        if position != 0:
+            return False
+    else:
+        if position == 0 or reference.after_content is None:
+            return False
+        if _reference_line_payload(target_lines[position - 1]) != (
+            _reference_line_payload(reference.after_content)
+        ):
+            return False
+
+    if not reference.has_before_line:
+        return True
+
+    before_position = position + len(forbidden_sequence)
+    if reference.before_line is None:
+        return before_position == len(target_lines)
+    if before_position >= len(target_lines) or reference.before_content is None:
+        return False
+    return _reference_line_payload(target_lines[before_position]) == (
+        _reference_line_payload(reference.before_content)
+    )
+
+
+def _live_removal_boundary_is_unique(
+    claim: AbsenceClaim,
+    target_lines: Sequence[bytes],
+    expected_position: int,
+    occurrence_index: LinePayloadOccurrenceIndex | None,
+) -> bool:
+    """Require a live deletion boundary to identify one target occurrence."""
+    forbidden_sequence = normalize_line_sequence_endings(claim.content_lines)
+    if not forbidden_sequence or not _removal_boundary_identity_matches_at(
+        claim,
+        target_lines,
+        expected_position,
+        forbidden_sequence,
+    ):
+        return False
+    if _removal_boundary_is_fixed_to_file_edge(claim):
+        return True
+    if occurrence_index is None:
+        return False
+
+    reference = claim.baseline_reference
+    assert reference is not None
+    rarest_content: bytes | None = None
+    rarest_boundary_delta = 0
+    rarest_count = len(target_lines) + 1
+
+    def consider(content: bytes | None, boundary_delta: int) -> None:
+        nonlocal rarest_content
+        nonlocal rarest_boundary_delta
+        nonlocal rarest_count
+        if content is None:
+            return
+        count = occurrence_index.occurrence_count(content)
+        if count < rarest_count:
+            rarest_content = content
+            rarest_boundary_delta = boundary_delta
+            rarest_count = count
+
+    if reference.after_line is not None:
+        consider(reference.after_content, 1)
+    for offset in range(len(forbidden_sequence)):
+        consider(forbidden_sequence[offset], -offset)
+    if reference.has_before_line and reference.before_line is not None:
+        consider(reference.before_content, -len(forbidden_sequence))
+
+    if rarest_content is None or rarest_count == 0:
+        return False
+    if rarest_count == 1:
+        return True
+
+    last_position = len(target_lines) - len(forbidden_sequence)
+    for line_index in occurrence_index.matching_line_indexes(rarest_content):
+        position = line_index + rarest_boundary_delta
+        if (
+            position < 0
+            or position > last_position
+            or position == expected_position
+        ):
+            continue
+        if _removal_boundary_identity_matches_at(
+            claim,
+            target_lines,
+            position,
+            forbidden_sequence,
+        ):
+            return False
+    return True
 
 
 def _replacement_origin_absence_bounds(
@@ -144,7 +359,7 @@ def _replacement_edit_from_parent_offset(
     ):
         return None
 
-    forbidden_sequence = [normalize_line_endings(line) for line in claim.content_lines]
+    forbidden_sequence = normalize_line_sequence_endings(claim.content_lines)
     if len(forbidden_sequence) != len(relative_offsets):
         return None
 
@@ -188,7 +403,7 @@ def _replacement_edit_from_origin_resolution(
         return None
 
     choice_index = resolution.decisions[key]
-    forbidden_sequence = [normalize_line_endings(line) for line in claim.content_lines]
+    forbidden_sequence = normalize_line_sequence_endings(claim.content_lines)
     for choice in choices:
         if choice.choice_index == choice_index:
             return (

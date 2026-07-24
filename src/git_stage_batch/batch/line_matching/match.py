@@ -9,7 +9,11 @@ from typing import TypeVar
 
 from .line_mapping import IntVector as _IntVector, LineMapping as _LineMapping
 from .match_workspace import MatcherWorkspace
-from ...core.mapped_storage import MappedIntVector, MappedRecordVector
+from ...core.mapped_storage import (
+    MappedIntVector,
+    MappedRecordVector,
+    sort_mapped_records,
+)
 from ...core.text_lines import AcquirableLineSequence, as_acquirable_line_sequence
 
 
@@ -533,10 +537,107 @@ def _align_segment(
         workspace.close_resource(anchors)
 
 
+def _validated_anchor_pairs(
+    source_lines: Sequence[LineContent],
+    target_lines: Sequence[LineContent],
+    anchor_pairs: Sequence[tuple[int, int]],
+    workspace: MatcherWorkspace,
+) -> MappedRecordVector:
+    """Return sorted one-based anchor pairs after validating their alignment."""
+    for pair in anchor_pairs:
+        if (
+            not isinstance(pair, tuple)
+            or len(pair) != 2
+            or type(pair[0]) is not int
+            or type(pair[1]) is not int
+        ):
+            raise ValueError("line-matching anchors must contain integer line numbers")
+
+    validated = workspace.record_vector(
+        len(anchor_pairs),
+        _LINE_PAIR_RECORD_FORMAT,
+    )
+    for source_line, target_line in anchor_pairs:
+        if source_line < 1 or source_line > len(source_lines):
+            raise ValueError("line-matching source anchor is out of range")
+        if target_line < 1 or target_line > len(target_lines):
+            raise ValueError("line-matching target anchor is out of range")
+        if source_lines[source_line - 1] != target_lines[target_line - 1]:
+            raise ValueError("line-matching anchor content differs")
+        validated.append((source_line, target_line))
+
+    sort_mapped_records(validated)
+    previous_source_line = 0
+    previous_target_line = 0
+    previous_pair: tuple[int, int] | None = None
+    validated_count = 0
+
+    for pair in validated:
+        if pair == previous_pair:
+            continue
+        source_line, target_line = pair
+        if source_line <= previous_source_line or target_line <= previous_target_line:
+            raise ValueError("line-matching anchors must be strictly increasing")
+
+        previous_pair = pair
+        previous_source_line = source_line
+        previous_target_line = target_line
+        validated[validated_count] = pair
+        validated_count += 1
+
+    validated.truncate(validated_count)
+    return validated
+
+
+def _align_segments_around_anchors(
+    source_lines: Sequence[LineContent],
+    target_lines: Sequence[LineContent],
+    anchor_pairs: Sequence[tuple[int, int]],
+    source_to_target: _IntVector,
+    target_to_source: _IntVector,
+    workspace: MatcherWorkspace,
+) -> None:
+    """Align independent segments separated by trusted equal-line anchors."""
+    source_start = 0
+    target_start = 0
+
+    for source_line, target_line in anchor_pairs:
+        source_index = source_line - 1
+        target_index = target_line - 1
+        _align_segment(
+            source_lines,
+            target_lines,
+            source_start,
+            source_index,
+            target_start,
+            target_index,
+            source_to_target,
+            target_to_source,
+            workspace,
+        )
+        source_to_target[source_index] = target_line
+        target_to_source[target_index] = source_line
+        source_start = source_index + 1
+        target_start = target_index + 1
+
+    _align_segment(
+        source_lines,
+        target_lines,
+        source_start,
+        len(source_lines),
+        target_start,
+        len(target_lines),
+        source_to_target,
+        target_to_source,
+        workspace,
+    )
+
+
 def match_acquirable_lines(
     source_lines: AcquirableLineSequence[LineContent],
     target_lines: AcquirableLineSequence[LineContent],
     *,
+    anchor_pairs: Sequence[tuple[int, int]] = (),
     spool_dir: str | Path | None = None,
 ) -> _LineMapping:
     """Compute conservative structural alignment between source and target.
@@ -555,6 +656,7 @@ def match_acquirable_lines(
     Args:
         source_lines: Batch source file lines.
         target_lines: Working tree file lines.
+        anchor_pairs: Verified one-based equal-line pairs that divide matching.
 
     Returns:
         A bidirectional line mapping with ambiguous lines left unmapped.
@@ -585,13 +687,16 @@ def match_acquirable_lines(
             source_lines.acquire_lines() as acquired_source_lines,
             target_lines.acquire_lines() as acquired_target_lines,
         ):
-            _align_segment(
+            validated_anchor_pairs = _validated_anchor_pairs(
                 acquired_source_lines,
                 acquired_target_lines,
-                0,
-                source_line_count,
-                0,
-                target_line_count,
+                anchor_pairs,
+                workspace,
+            )
+            _align_segments_around_anchors(
+                acquired_source_lines,
+                acquired_target_lines,
+                validated_anchor_pairs,
                 source_to_target,
                 target_to_source,
                 workspace,
@@ -613,11 +718,13 @@ def match_lines(
     source_lines: Sequence[LineContent],
     target_lines: Sequence[LineContent],
     *,
+    anchor_pairs: Sequence[tuple[int, int]] = (),
     spool_dir: str | Path | None = None,
 ) -> _LineMapping:
     """Compute conservative structural alignment between source and target."""
     return match_acquirable_lines(
         as_acquirable_line_sequence(source_lines),
         as_acquirable_line_sequence(target_lines),
+        anchor_pairs=anchor_pairs,
         spool_dir=spool_dir,
     )

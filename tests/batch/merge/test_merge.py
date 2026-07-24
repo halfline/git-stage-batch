@@ -1860,6 +1860,64 @@ footer
             b"header\ntarget one\ntarget two\nclaimed\nfooter\n",
         ]
 
+    def test_repeated_presence_candidates_apply_reviewed_coordinates(self):
+        """A candidate must override an ambiguous saved insertion coordinate."""
+        source = b"""header
+old one
+old two
+old three
+claimed
+old tail
+footer
+"""
+        working = b"""header
+same
+same
+same
+footer
+"""
+        ownership = BatchOwnership.from_presence_lines(
+            ["5"],
+            [],
+            baseline_references={
+                5: BaselineReference(
+                    after_line=2,
+                    after_content=b"same",
+                    before_line=3,
+                    before_content=b"same",
+                    has_before_line=True,
+                )
+            },
+        )
+
+        candidate_set = enumerate_merge_batch_candidates_from_line_sequences(
+            source.splitlines(keepends=True),
+            ownership,
+            working.splitlines(keepends=True),
+            max_candidates=10,
+        )
+
+        assert [candidate.summary for candidate in candidate_set.candidates] == [
+            "insert source lines 5-5 after target line 1, before target line 2",
+            "insert source lines 5-5 after target line 2, before target line 3",
+            "insert source lines 5-5 after target line 3, before target line 4",
+            "insert source lines 5-5 after target line 4, before target line 5",
+        ]
+        assert [
+            merge_batch(
+                source,
+                ownership,
+                working,
+                resolution=candidate.resolution,
+            )
+            for candidate in candidate_set.candidates
+        ] == [
+            b"header\nclaimed\nsame\nsame\nsame\nfooter\n",
+            b"header\nsame\nclaimed\nsame\nsame\nfooter\n",
+            b"header\nsame\nsame\nclaimed\nsame\nfooter\n",
+            b"header\nsame\nsame\nsame\nclaimed\nfooter\n",
+        ]
+
     def test_contextual_presence_candidates_honor_preview_cap(self):
         """Wide ambiguous intervals should stop at the candidate safety cap."""
         source = b"header\nold one\nold two\nold three\nclaimed\nold tail\nfooter\n"
@@ -1911,6 +1969,65 @@ footer
         )
 
         assert candidate_set.candidates == ()
+
+    def test_replacement_review_does_not_waive_insertion_ambiguity(self):
+        """Reviewing one replacement cannot authorize an unrelated insertion."""
+        source = b"head\nnew one\nnew two\nclaimed\ntail\n"
+        working = b"head\nold two\nmid\nold two\nsame\nsame\nsame\ntail\n"
+        replacement_reference = BaselineReference(
+            after_line=2,
+            after_content=b"old one",
+            before_line=4,
+            before_content=b"tail",
+            has_before_line=True,
+        )
+        ownership = BatchOwnership.from_presence_lines(
+            ["3,4"],
+            [
+                AbsenceClaim(
+                    anchor_line=2,
+                    content_lines=[b"old two\n"],
+                    baseline_reference=replacement_reference,
+                )
+            ],
+            baseline_references={
+                3: replacement_reference,
+                4: BaselineReference(
+                    after_line=5,
+                    after_content=b"same",
+                    before_line=6,
+                    before_content=b"same",
+                    has_before_line=True,
+                ),
+            },
+            replacement_units=[
+                ReplacementUnit(
+                    presence_lines=["3"],
+                    deletion_indices=[0],
+                    origin=ReplacementUnitOrigin(
+                        old_start=2,
+                        old_end=3,
+                        new_start=2,
+                        new_end=3,
+                        baseline_reference=BaselineReference(
+                            after_line=1,
+                            after_content=b"head",
+                            before_line=4,
+                            before_content=b"tail",
+                            has_before_line=True,
+                        ),
+                    ),
+                )
+            ],
+        )
+
+        with pytest.raises(MergeError):
+            enumerate_merge_batch_candidates_from_line_sequences(
+                source.splitlines(keepends=True),
+                ownership,
+                working.splitlines(keepends=True),
+                max_candidates=10,
+            )
 
     def test_enumerates_displaced_absence_candidates(self):
         """Ambiguous nearby deletion content can be previewed as candidates."""

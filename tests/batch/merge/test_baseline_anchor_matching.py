@@ -189,6 +189,66 @@ def test_live_merge_does_not_apply_ambiguous_baseline_coordinate(supply_mapping)
     ]
 
 
+def test_live_merge_does_not_insert_at_ambiguous_baseline_coordinate():
+    """A stale repeated insertion boundary must defer to structural placement."""
+    source = [
+        b"P\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"MIDDLE\n",
+        b"ANCHOR\n",
+        b"NEW\n",
+        b"NEXT\n",
+        b"TAIL\n",
+    ]
+    target = [
+        b"P\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"FILL\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"MIDDLE\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"TAIL\n",
+    ]
+    ownership = BatchOwnership.from_presence_lines(
+        ["6"],
+        [],
+        baseline_references={
+            6: BaselineReference(
+                after_line=5,
+                after_content=b"ANCHOR\n",
+                before_line=6,
+                before_content=b"NEXT\n",
+                has_before_line=True,
+            ),
+        },
+    )
+
+    with merge_batch_from_line_sequences_as_buffer(
+        source,
+        ownership,
+        target,
+    ) as merged:
+        result = list(merged)
+
+    assert result == [
+        b"P\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"FILL\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"MIDDLE\n",
+        b"ANCHOR\n",
+        b"NEW\n",
+        b"NEXT\n",
+        b"TAIL\n",
+    ]
+
+
 def test_live_target_checks_indexed_boundary_candidates(monkeypatch):
     """Many unique claims must not rescan every target boundary."""
     target = [f"line-{index}\n".encode() for index in range(1002)]

@@ -225,6 +225,32 @@ def test_build_realized_content_uses_baseline_reference_for_ambiguous_insert():
     assert result == b"top\nsave-a\nsave-b\n\nbottom\n"
 
 
+def test_exact_baseline_inserts_content_equal_to_following_line():
+    """A baseline sibling must not masquerade as the selected insertion."""
+    base_content = b"same\nb\nsame\nsame\nb\nx\n"
+    batch_source_content = b"same\nsame\nsame\nsame\nb\nx\n"
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        baseline_references={
+            2: BaselineReference(
+                after_line=2,
+                after_content=b"b",
+                before_line=3,
+                before_content=b"same",
+                has_before_line=True,
+            ),
+        },
+    )
+
+    result = _build_realized_content_from_bytes(
+        base_content,
+        batch_source_content,
+        ownership,
+    )
+
+    assert result == b"same\nb\nsame\nsame\nsame\nb\nx\n"
+
+
 def test_build_realized_content_applies_deletion_when_source_matches_baseline():
     """Baseline fallback must not bypass storage deletion constraints."""
     content = b"first\nold value\n"

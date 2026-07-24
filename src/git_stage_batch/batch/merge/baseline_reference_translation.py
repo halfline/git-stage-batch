@@ -160,19 +160,27 @@ def _mapped_removal_position(
         candidates.add(first_target_line - 1)
 
     previous_target_line = (
-        0
+        None
         if source_position == 0
         else mapping.get_target_line_from_source_line(source_position)
     )
     next_source_line = source_position + line_count + 1
     next_target_line = (
-        len(target_lines) + 1
+        None
         if next_source_line > len(source_lines)
         else mapping.get_target_line_from_source_line(next_source_line)
     )
     if previous_target_line is not None and next_target_line is not None:
         if next_target_line - previous_target_line == line_count + 1:
             candidates.add(previous_target_line)
+    elif source_position == 0 and next_target_line == line_count + 1:
+        candidates.add(0)
+    elif (
+        next_source_line > len(source_lines)
+        and previous_target_line is not None
+        and len(target_lines) - previous_target_line == line_count
+    ):
+        candidates.add(previous_target_line)
 
     if len(candidates) != 1:
         return None

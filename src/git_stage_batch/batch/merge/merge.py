@@ -163,6 +163,7 @@ def _merge_batch_acquired_line_chunks(
         deletion_claims,
         resolution=resolution,
         max_resolution_choices=_MERGE_CANDIDATE_CAP + 1,
+        spool_dir=spool_dir,
     )
     if fallback_chunks is not None:
         yield from _byte_chunks(fallback_chunks)
@@ -221,6 +222,7 @@ def _merge_batch_acquired_line_chunks(
             deletion_claims,
             resolution=resolution,
             max_resolution_choices=_MERGE_CANDIDATE_CAP + 1,
+            spool_dir=spool_dir,
         )
         if fallback_chunks is not None:
             yield from _byte_chunks(fallback_chunks)

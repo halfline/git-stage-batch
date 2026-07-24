@@ -52,6 +52,23 @@ def _stream_realized_content_chunks_from_lines(
     presence_line_set = resolved.presence_line_set
     deletion_claims = resolved.deletion_claims
 
+    if any(
+        claim.anchor_line is None
+        and claim.baseline_reference is not None
+        and claim.baseline_reference.after_line is not None
+        for claim in deletion_claims
+    ):
+        baseline_chunks = _baseline_edits.try_apply_baseline_replacement_units(
+            batch_source_lines,
+            base_lines,
+            ownership,
+            presence_line_set,
+            deletion_claims,
+        )
+        if baseline_chunks is not None:
+            yield from baseline_chunks
+            return
+
     try:
         realized_entries = satisfy_constraints(
             batch_source_lines,

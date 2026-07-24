@@ -393,6 +393,13 @@ class MappedRecordVector(Sequence[tuple[int, ...]]):
         self._length += 1
         return index
 
+    def truncate(self, length: int) -> None:
+        """Reduce the logical record count without reallocating storage."""
+        self._require_open()
+        if length < 0 or length > self._length:
+            raise ValueError("length must not extend the record vector")
+        self._length = length
+
     def fill(self, record: Sequence[int]) -> None:
         """Set every existing record to one value."""
         self._require_open()
@@ -441,6 +448,39 @@ class MappedRecordVector(Sequence[tuple[int, ...]]):
     def _require_open(self) -> None:
         if self._closed:
             raise ValueError("mapped record vector is closed")
+
+
+def sort_mapped_records(records: MappedRecordVector) -> None:
+    """Sort fixed-width records in place without materializing a Python list."""
+    record_count = len(records)
+    for start in range(record_count // 2 - 1, -1, -1):
+        _sift_mapped_record(records, start, record_count)
+    for end in range(record_count - 1, 0, -1):
+        first = records[0]
+        records[0] = records[end]
+        records[end] = first
+        _sift_mapped_record(records, 0, end)
+
+
+def _sift_mapped_record(
+    records: MappedRecordVector,
+    start: int,
+    end: int,
+) -> None:
+    """Restore one max-heap branch within a mapped record vector."""
+    root = start
+    while True:
+        child = root * 2 + 1
+        if child >= end:
+            return
+        if child + 1 < end and records[child] < records[child + 1]:
+            child += 1
+        if records[root] >= records[child]:
+            return
+        root_record = records[root]
+        records[root] = records[child]
+        records[child] = root_record
+        root = child
 
 
 class ChunkedMappedRecordVector(Sequence[tuple[int, ...]]):

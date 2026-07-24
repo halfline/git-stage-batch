@@ -6,16 +6,19 @@ import os
 import sys
 
 from ...batch.source.annotation import annotate_with_batch_source
+from ...batch.ownership import insertion_references as _insertion_references
 from ...core.buffer import LineBuffer
 from ...core.replacement import ReplacementPayload
 from ...data.line_state import load_line_changes_from_state
-from ...utils.repository_buffers import load_working_tree_file_as_buffer
 from ...data.selected_change.loading import require_selected_hunk
 from ...exceptions import exit_with_error
 from ...i18n import _
 from ...staging.content_buffers import build_target_working_tree_buffer_from_lines
 from ...utils.git_repository import get_git_repository_root_path
 from ...utils.journal import log_journal
+from ...utils.repository_buffers import (
+    load_working_tree_file_as_buffer,
+)
 from . import batch_line_selection as _batch_line_selection
 from . import batch_line_updates as _batch_line_updates
 from . import discard_file_selection as _discard_file_selection
@@ -111,6 +114,9 @@ def discard_file_lines_to_batch(
             )
         return 0
 
+    _insertion_references.record_baseline_references_for_additions(
+        line_changes,
+    )
     replacement_line_runs = (
         _discard_line_replacement.derive_live_replacement_line_runs(file_path)
     )
@@ -187,6 +193,9 @@ def discard_selected_lines_to_batch(
             )
         )
 
+    _insertion_references.record_baseline_references_for_additions(
+        line_changes,
+    )
     replacement_line_runs = (
         _discard_line_replacement.derive_live_replacement_line_runs(
             line_changes.path

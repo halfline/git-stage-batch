@@ -28,7 +28,9 @@ def include_file_lines_to_batch(
     """Include specific lines from a file to batch."""
     cached_lines = _include_file_selection.load_explicit_file_selection(file_path)
     line_changes = annotate_with_batch_source(file_path, cached_lines)
-    _include_line_selection.record_baseline_references_for_additions(line_changes)
+    _include_line_selection.record_baseline_references_for_additions(
+        line_changes
+    )
 
     selection = _batch_line_selection.select_lines_for_batch_action(
         line_changes,
@@ -77,7 +79,9 @@ def include_selected_lines_to_batch(
     require_selected_hunk()
 
     line_changes = load_line_changes_from_state()
-    _include_line_selection.record_baseline_references_for_additions(line_changes)
+    _include_line_selection.record_baseline_references_for_additions(
+        line_changes
+    )
     selection = _batch_line_selection.select_lines_for_batch_action(
         line_changes,
         line_id_specification,

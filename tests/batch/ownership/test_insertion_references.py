@@ -1,6 +1,7 @@
-"""Focused tests for live include-line selection metadata."""
+"""Tests for persistent insertion-reference metadata."""
 
-from git_stage_batch.commands.selection.include_line_selection import (
+import git_stage_batch.batch.ownership.insertion_references as insertion_references
+from git_stage_batch.batch.ownership.insertion_references import (
     record_baseline_references_for_additions,
 )
 from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange
@@ -157,3 +158,42 @@ def test_snapshot_references_clear_ambiguous_stale_reference() -> None:
     assert not addition.has_baseline_reference_before
     assert addition.baseline_reference_before_line is None
     assert addition.baseline_reference_before_text_bytes is None
+
+
+def test_snapshot_reference_order_avoids_python_line_collections(
+    monkeypatch,
+) -> None:
+    """Source-order indexing should stay in storage-backed records."""
+    def fail_sorted(*_args, **_kwargs):
+        raise AssertionError("addition lines must not be collected on the heap")
+
+    monkeypatch.setattr(
+        insertion_references,
+        "sorted",
+        fail_sorted,
+        raising=False,
+    )
+    addition = LineEntry(
+        id=1,
+        kind="+",
+        old_line_number=None,
+        new_line_number=1,
+        text_bytes=b"added",
+        source_line=1,
+    )
+    tail = LineEntry(
+        id=None,
+        kind=" ",
+        old_line_number=1,
+        new_line_number=2,
+        text_bytes=b"tail",
+        source_line=2,
+    )
+
+    record_baseline_references_for_additions(
+        _line_changes([addition, tail]),
+        baseline_lines=[b"tail\n"],
+        source_lines=[b"added\n", b"tail\n"],
+    )
+
+    assert addition.baseline_reference_before_line == 1

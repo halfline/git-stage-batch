@@ -518,6 +518,45 @@ def _has_complete_baseline_references(
     return bool(presence_line_set or deletion_claims)
 
 
+def _all_deletions_are_already_absent(
+    deletion_claims: Sequence[AbsenceClaim],
+    working_lines: Sequence[bytes],
+) -> bool:
+    """Return whether baseline and source anchors prove removals satisfied."""
+    for claim in deletion_claims:
+        if not claim.content_lines:
+            continue
+        if _baseline_removal_edit(claim, working_lines) is not None:
+            return False
+
+        forbidden_sequence = normalize_line_sequence_endings(
+            claim.content_lines
+        )
+        if len(forbidden_sequence) > len(working_lines):
+            continue
+
+        anchor_line = claim.anchor_line
+        if anchor_line is None:
+            source_position = 0
+        elif (
+            type(anchor_line) is not int
+            or anchor_line < 1
+            or anchor_line > len(working_lines)
+        ):
+            return False
+        else:
+            source_position = anchor_line
+
+        if _line_slice_matches(
+            working_lines,
+            source_position,
+            forbidden_sequence,
+        ):
+            return False
+
+    return True
+
+
 def try_apply_baseline_replacement_units(
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
@@ -546,6 +585,9 @@ def try_apply_baseline_replacement_units(
         ownership,
         presence_line_set,
         deletion_claims,
+    ) and _all_deletions_are_already_absent(
+        deletion_claims,
+        working_lines,
     ):
         return iter(working_lines)
 

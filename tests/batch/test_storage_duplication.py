@@ -6,7 +6,10 @@ import git_stage_batch.batch.realized_file_content as realized_file_content
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.references import BaselineReference
-from git_stage_batch.batch.ownership.replacement_units import ReplacementUnit
+from git_stage_batch.batch.ownership.replacement_units import (
+    ReplacementUnit,
+    ReplacementUnitOrigin,
+)
 from git_stage_batch.batch.realized_file_content import (
     build_realized_buffer_from_lines,
 )
@@ -101,6 +104,53 @@ def test_build_realized_content_no_duplication_when_claiming_moved_line():
     # Count occurrences of "X"
     x_count = result_lines.count("X")
     assert x_count == 2, f"Expected 'X' to appear 2 times, but got {x_count} times: {result_lines}"
+
+
+def test_build_realized_content_uses_exact_split_replacement_reference():
+    """Repeated parent lines should retain the unselected sibling."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["3"],
+        [
+            AbsenceClaim(
+                anchor_line=2,
+                content_lines=[b"same\n"],
+                baseline_reference=BaselineReference(
+                    after_line=1,
+                    after_content=b"head",
+                    before_line=3,
+                    before_content=b"same",
+                    has_before_line=True,
+                ),
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["3"],
+                deletion_indices=[0],
+                origin=ReplacementUnitOrigin(
+                    old_start=2,
+                    old_end=3,
+                    new_start=2,
+                    new_end=3,
+                    baseline_reference=BaselineReference(
+                        after_line=1,
+                        after_content=b"head",
+                        before_line=4,
+                        before_content=b"tail",
+                        has_before_line=True,
+                    ),
+                ),
+            )
+        ],
+    )
+
+    result = _build_realized_content_from_bytes(
+        b"head\nsame\nsame\ntail\n",
+        b"saved\nhead\nnew1\nnew2\ntail\n",
+        ownership,
+    )
+
+    assert result == b"head\nnew1\nsame\ntail\n"
 
 
 def test_build_realized_content_duplicate_line_claimed():

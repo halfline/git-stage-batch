@@ -1165,6 +1165,30 @@ class TestMergeBatch:
 
         assert result == b"line1\nline3\n"
 
+    def test_identical_shifted_source_keeps_pending_structural_removal(self):
+        """A stale baseline coordinate must not hide a source-anchored removal."""
+        source = b"prefix\nA\nold value\nB\n"
+        ownership = BatchOwnership.from_presence_lines(
+            [],
+            [
+                AbsenceClaim(
+                    anchor_line=2,
+                    content_lines=[b"old value\n"],
+                    baseline_reference=BaselineReference(
+                        after_line=1,
+                        after_content=b"A",
+                        before_line=3,
+                        before_content=b"B",
+                        has_before_line=True,
+                    ),
+                )
+            ],
+        )
+
+        result = merge_batch(source, ownership, source)
+
+        assert result == b"prefix\nA\nB\n"
+
     def test_baseline_referenced_absence_rejects_unidentified_numeric_anchor(self):
         """A line number alone cannot prove which duplicate occurrence is owned."""
         source = b"line1\nnew context\nline3\n"
@@ -1289,6 +1313,59 @@ class TestMergeBatch:
         result = merge_batch(source, ownership, working)
 
         assert result == b"head\nold1\nnew2\ntail\n"
+
+    def test_split_replacement_uses_baseline_offset_after_source_prefix(self):
+        """Retained source-only lines must not shift a split replacement."""
+        source = b"saved\nhead\nnew1\nnew2\ntail\n"
+        working = b"head\nsame\nsame\ntail\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["3"],
+            [
+                AbsenceClaim(
+                    anchor_line=2,
+                    content_lines=[b"same\n"],
+                    baseline_reference=BaselineReference(
+                        after_line=1,
+                        after_content=b"head",
+                        before_line=3,
+                        before_content=b"same",
+                        has_before_line=True,
+                    ),
+                )
+            ],
+            baseline_references={
+                3: BaselineReference(
+                    after_line=1,
+                    after_content=b"head",
+                    before_line=3,
+                    before_content=b"same",
+                    has_before_line=True,
+                )
+            },
+            replacement_units=[
+                ReplacementUnit(
+                    presence_lines=["3"],
+                    deletion_indices=[0],
+                    origin=ReplacementUnitOrigin(
+                        old_start=2,
+                        old_end=3,
+                        new_start=2,
+                        new_end=3,
+                        baseline_reference=BaselineReference(
+                            after_line=1,
+                            after_content=b"head",
+                            before_line=4,
+                            before_content=b"tail",
+                            has_before_line=True,
+                        ),
+                    ),
+                )
+            ],
+        )
+
+        result = merge_batch(source, ownership, working)
+
+        assert result == b"head\nnew1\nsame\ntail\n"
 
     def test_split_replacement_origin_places_subunit_in_hybrid_parent(self):
         """Split units should reapply where unselected sibling lines remain new."""
@@ -1855,6 +1932,52 @@ footer
             "delete target line 3",
             "delete target line 4",
         ]
+
+    def test_repeated_absence_candidates_apply_reviewed_coordinates(self):
+        """A candidate must override an ambiguous saved deletion coordinate."""
+        source = b"a\nb\n"
+        working = b"a\nsame\nremove\nend\nmid\nsame\nremove\nend\nb\n"
+        ownership = BatchOwnership(
+            [],
+            [
+                AbsenceClaim(
+                    anchor_line=1,
+                    content_lines=[b"remove\n"],
+                    baseline_reference=BaselineReference(
+                        after_line=2,
+                        after_content=b"same",
+                        before_line=4,
+                        before_content=b"end",
+                        has_before_line=True,
+                    ),
+                )
+            ],
+        )
+
+        candidate_set = enumerate_merge_batch_candidates_from_line_sequences(
+            source.splitlines(keepends=True),
+            ownership,
+            working.splitlines(keepends=True),
+            max_candidates=10,
+        )
+
+        assert [candidate.summary for candidate in candidate_set.candidates] == [
+            "delete target line 3",
+            "delete target line 7",
+        ]
+        first, second = candidate_set.candidates
+        assert merge_batch(
+            source,
+            ownership,
+            working,
+            resolution=first.resolution,
+        ) == b"a\nsame\nend\nmid\nsame\nremove\nend\nb\n"
+        assert merge_batch(
+            source,
+            ownership,
+            working,
+            resolution=second.resolution,
+        ) == b"a\nsame\nremove\nend\nmid\nsame\nend\nb\n"
 
     def test_merge_multiple_deletions(self):
         """Test merge with multiple deletion constraints at different positions."""

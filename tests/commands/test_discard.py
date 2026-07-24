@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from git_stage_batch.utils.paths import get_abort_snapshots_directory_path
 from git_stage_batch.utils.paths import get_state_directory_path
+from git_stage_batch.batch.state.lifecycle import create_batch
 from git_stage_batch.batch.state.query import list_batch_files, read_batch_metadata
 from git_stage_batch.batch.file_entry_storage import read_file_from_batch
 from git_stage_batch.commands.discard import command_discard_to_batch
@@ -1261,6 +1262,75 @@ class TestCommandDiscardToBatch:
 
         command_apply_from_batch("feature-batch")
         assert readme.read_text() == "# Test\nstaged1\nline2\nline3\nline4\nline5\nline6\nline7\nstaged8\n"
+
+    def test_followup_replacement_projects_onto_older_batch_baseline(
+        self,
+        temp_git_repo,
+    ):
+        """An existing replacement batch must retain its original baseline."""
+        file_path = temp_git_repo / "replacement.txt"
+        file_path.write_text(
+            "prefix\n"
+            "head\n"
+            "old1\n"
+            "middle\n"
+            "old2\n"
+            "tail\n"
+        )
+        subprocess.run(
+            ["git", "add", "replacement.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add repeated replacements"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        create_batch("feature-batch")
+
+        file_path.write_text("head\nold1\nmiddle\nold2\ntail\n")
+        subprocess.run(
+            ["git", "add", "replacement.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Remove prefix"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        file_path.write_text("head\nedit1\nmiddle\nedit2\ntail\n")
+
+        command_start(quiet=True)
+        fetch_next_change()
+        command_discard_line_as_to_batch(
+            "feature-batch",
+            "1",
+            "saved1",
+            quiet=True,
+        )
+        command_discard_line_as_to_batch(
+            "feature-batch",
+            "1",
+            "saved2",
+            file="replacement.txt",
+            quiet=True,
+        )
+
+        assert file_path.read_text() == "head\nold1\nmiddle\nold2\ntail\n"
+        assert read_file_from_batch(
+            "feature-batch",
+            "replacement.txt",
+        ) == "prefix\nhead\nsaved1\nmiddle\nsaved2\ntail\n"
+
+        command_apply_from_batch("feature-batch")
+
+        assert file_path.read_text() == "head\nsaved1\nmiddle\nsaved2\ntail\n"
 
     def test_discard_line_as_to_batch_replaces_disjoint_file_scoped_regions(self, temp_git_repo):
         """Discard replacement should accept one contiguous range across regions."""

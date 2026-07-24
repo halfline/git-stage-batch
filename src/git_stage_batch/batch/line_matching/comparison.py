@@ -153,7 +153,22 @@ def derive_semantic_change_runs(
     Returns:
         List of semantic change runs describing the delta
     """
-    runs: list[SemanticChangeRun] = []
+    return list(
+        stream_semantic_change_runs(
+            source_lines,
+            target_lines,
+            spool_dir=spool_dir,
+        )
+    )
+
+
+def stream_semantic_change_runs(
+    source_lines: Sequence[bytes],
+    target_lines: Sequence[bytes],
+    *,
+    spool_dir: str | Path | None = None,
+) -> Iterator[SemanticChangeRun]:
+    """Yield semantic change runs without retaining one object per run."""
     previous_source = 0
     previous_target = 0
 
@@ -164,42 +179,45 @@ def derive_semantic_change_runs(
     )
     sentinel_pair = ((len(source_lines) + 1, len(target_lines) + 1),)
 
-    for source_line, target_line in chain(matched_pairs, sentinel_pair):
-        source_gap_start = previous_source + 1
-        source_gap_end = source_line - 1
-        target_gap_start = previous_target + 1
-        target_gap_end = target_line - 1
-        has_source_gap = source_gap_start <= source_gap_end
-        has_target_gap = target_gap_start <= target_gap_end
-        target_anchor = previous_target if previous_target != 0 else None
+    try:
+        for source_line, target_line in chain(matched_pairs, sentinel_pair):
+            source_gap_start = previous_source + 1
+            source_gap_end = source_line - 1
+            target_gap_start = previous_target + 1
+            target_gap_end = target_line - 1
+            has_source_gap = source_gap_start <= source_gap_end
+            has_target_gap = target_gap_start <= target_gap_end
+            target_anchor = previous_target if previous_target != 0 else None
 
-        if has_source_gap and has_target_gap:
-            runs.append(SemanticChangeRun(
-                kind=SemanticChangeKind.REPLACEMENT,
-                source_start=source_gap_start,
-                source_end=source_gap_end,
-                target_start=target_gap_start,
-                target_end=target_gap_end,
-                target_anchor=target_anchor,
-            ))
-        elif has_source_gap:
-            runs.append(SemanticChangeRun(
-                kind=SemanticChangeKind.DELETION,
-                source_start=source_gap_start,
-                source_end=source_gap_end,
-                target_anchor=target_anchor,
-            ))
-        elif has_target_gap:
-            runs.append(SemanticChangeRun(
-                kind=SemanticChangeKind.PRESENCE,
-                target_start=target_gap_start,
-                target_end=target_gap_end,
-            ))
+            if has_source_gap and has_target_gap:
+                yield SemanticChangeRun(
+                    kind=SemanticChangeKind.REPLACEMENT,
+                    source_start=source_gap_start,
+                    source_end=source_gap_end,
+                    target_start=target_gap_start,
+                    target_end=target_gap_end,
+                    target_anchor=target_anchor,
+                )
+            elif has_source_gap:
+                yield SemanticChangeRun(
+                    kind=SemanticChangeKind.DELETION,
+                    source_start=source_gap_start,
+                    source_end=source_gap_end,
+                    target_anchor=target_anchor,
+                )
+            elif has_target_gap:
+                yield SemanticChangeRun(
+                    kind=SemanticChangeKind.PRESENCE,
+                    target_start=target_gap_start,
+                    target_end=target_gap_end,
+                )
 
-        previous_source = source_line
-        previous_target = target_line
-
-    return runs
+            previous_source = source_line
+            previous_target = target_line
+    finally:
+        close = getattr(matched_pairs, "close", None)
+        if close is not None:
+            close()
 
 
 def derive_display_id_run_sets_from_lines(

@@ -112,7 +112,7 @@ def test_again_include_to_new_batch_does_not_reuse_stale_session_source(function
 
 
 def test_initial_deletion_anchor_uses_session_snapshot_coordinates(functional_repo):
-    """A deletion-only first save uses its session snapshot after file drift."""
+    """A deletion-only first save remains extensible after session file drift."""
     test_file = functional_repo / "anchors.txt"
     baseline = "header\nanchor\ndelete me\nfooter\n"
     test_file.write_text(baseline)
@@ -145,6 +145,20 @@ def test_initial_deletion_anchor_uses_session_snapshot_coordinates(functional_re
         "header\nanchor\nfooter\n"
     )
 
+    test_file.write_text(baseline + "later\n")
+    command_again(quiet=True)
+    command_discard_to_batch(
+        batch_name="saved",
+        file="anchors.txt",
+        quiet=True,
+        advance=False,
+    )
+
+    final_batch_commit = get_batch_commit_sha("saved")
+    assert final_batch_commit is not None
+    assert _show_file(final_batch_commit, "anchors.txt") == (
+        "header\nanchor\nfooter\nlater\n"
+    )
 
 
 def test_initial_later_deletion_uses_full_hunk_anchor_context(functional_repo):

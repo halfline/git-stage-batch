@@ -7,6 +7,9 @@ import inspect
 import git_stage_batch.batch.ownership_update as ownership_update_module
 import pytest
 from git_stage_batch.batch.ownership.model import BatchOwnership
+from git_stage_batch.batch.ownership.replacement_line_runs import (
+    ReplacementLineRun,
+)
 from git_stage_batch.batch.ownership_update import (
     PreparedBatchUpdate,
     acquire_batch_ownership_update_for_selection,
@@ -107,6 +110,51 @@ def test_prepare_batch_update_rejects_unprojected_deletion_reference():
             current_batch_source_commit=None,
             existing_ownership=None,
             selected_lines=lines,
+        )
+
+
+def test_prepare_batch_update_rejects_unprojected_replacement_origin():
+    """Replacement references require the live-HEAD coordinate source."""
+    hunk_lines = [
+        LineEntry(
+            id=1,
+            kind="-",
+            old_line_number=1,
+            new_line_number=None,
+            text_bytes=b"old",
+            source_line=None,
+        ),
+        LineEntry(
+            id=2,
+            kind="+",
+            old_line_number=None,
+            new_line_number=1,
+            text_bytes=b"new",
+            source_line=1,
+        ),
+    ]
+
+    with pytest.raises(
+        ValueError,
+        match="replacement baseline references require live HEAD lines",
+    ):
+        prepare_batch_ownership_update_for_selection(
+            batch_name="test-batch",
+            file_path="test.py",
+            current_batch_source_commit=None,
+            existing_ownership=None,
+            selected_lines=hunk_lines,
+            hunk_lines=hunk_lines,
+            replacement_line_runs=[
+                ReplacementLineRun(
+                    old_start=1,
+                    old_end=1,
+                    new_start=1,
+                    new_end=1,
+                ),
+            ],
+            reference_source_lines=[b"old\n"],
+            reference_target_lines=[b"old\n"],
         )
 
 

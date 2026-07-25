@@ -1,5 +1,7 @@
 """Tests for translating selection references onto batch baselines."""
 
+import pytest
+
 from git_stage_batch.batch.merge.baseline_reference_translation import (
     translate_ownership_baseline_references,
 )
@@ -285,3 +287,49 @@ def test_does_not_project_plain_deletion_onto_different_content():
 
     assert deletion.baseline_reference is None
     assert list(deletion.content_lines) == [b"old\n"]
+
+
+def test_rejects_replacement_missing_from_target_baseline():
+    """Projection must fail closed when the parent span no longer exists."""
+    source = [b"head\n", b"old\n", b"tail\n"]
+    target = [b"head\n", b"tail\n"]
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"head",
+        before_line=3,
+        before_content=b"tail",
+        has_before_line=True,
+    )
+    deletion = AbsenceClaim(
+        anchor_line=1,
+        content_lines=[b"old\n"],
+        baseline_reference=reference,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [deletion],
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["2"],
+                deletion_indices=[0],
+                origin=ReplacementUnitOrigin(
+                    old_start=2,
+                    old_end=2,
+                    new_start=2,
+                    new_end=2,
+                    baseline_reference=reference,
+                ),
+            )
+        ],
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="replacement origin could not be projected",
+    ):
+        translate_ownership_baseline_references(
+            ownership,
+            source,
+            target,
+            replacement_origin_source_lines=source,
+        )

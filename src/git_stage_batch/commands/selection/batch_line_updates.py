@@ -5,6 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from contextlib import ExitStack
 
+from ...batch.ownership.replacement_line_runs import (
+    stream_replacement_line_runs_from_lines,
+)
 from ...batch.state.lifecycle import create_batch
 from ...batch.ownership_update import acquire_batch_ownership_update_for_selection
 from ...batch.state.query import read_batch_metadata
@@ -18,7 +21,10 @@ from ...data.selected_change.snapshots import (
 )
 from ...exceptions import exit_with_error
 from ...i18n import _
-from ...utils.repository_buffers import read_git_object_buffer_or_empty
+from ...utils.repository_buffers import (
+    load_working_tree_file_as_buffer,
+    read_git_object_buffer_or_empty,
+)
 
 
 def add_selected_lines_to_batch(
@@ -28,7 +34,6 @@ def add_selected_lines_to_batch(
     selected_lines: Sequence,
     stale_source_action: str,
     hunk_lines: Sequence | None = None,
-    replacement_line_runs=None,
     snapshot_untracked: bool = False,
     before_add: Callable[[], None] | None = None,
 ) -> None:
@@ -40,21 +45,49 @@ def add_selected_lines_to_batch(
     metadata = read_batch_metadata(batch_name)
     file_metadata = metadata.get("files", {}).get(file_path)
     baseline_commit = get_validated_baseline_commit(batch_name)
-    replacement_origin_source_buffer = (
-        read_git_object_buffer_or_empty(f"HEAD:{file_path}")
-        if hunk_lines is not None and replacement_line_runs
-        else None
+    has_replacement_rows = (
+        hunk_lines is not None
+        and any(getattr(line, "kind", None) == "+" for line in hunk_lines)
+        and any(getattr(line, "kind", None) == "-" for line in hunk_lines)
     )
 
     with ExitStack() as ownership_stack:
         replacement_origin_source_lines = (
-            ownership_stack.enter_context(replacement_origin_source_buffer)
-            if replacement_origin_source_buffer is not None
+            ownership_stack.enter_context(
+                read_git_object_buffer_or_empty(f"HEAD:{file_path}")
+            )
+            if has_replacement_rows
+            else None
+        )
+        working_source_lines = (
+            ownership_stack.enter_context(
+                load_working_tree_file_as_buffer(file_path)
+            )
+            if has_replacement_rows
             else None
         )
         try:
             reference_source_lines = ownership_stack.enter_context(
                 load_selected_file_comparison_base_buffer(file_path)
+            )
+            replacement_line_runs = (
+                stream_replacement_line_runs_from_lines(
+                    old_file_lines=reference_source_lines,
+                    new_file_lines=working_source_lines,
+                )
+                if working_source_lines is not None
+                else None
+            )
+            replacement_origin_line_runs = (
+                stream_replacement_line_runs_from_lines(
+                    old_file_lines=replacement_origin_source_lines,
+                    new_file_lines=working_source_lines,
+                )
+                if (
+                    replacement_origin_source_lines is not None
+                    and working_source_lines is not None
+                )
+                else None
             )
             update = ownership_stack.enter_context(
                 acquire_batch_ownership_update_for_selection(
@@ -64,6 +97,9 @@ def add_selected_lines_to_batch(
                     selected_lines=selected_lines,
                     hunk_lines=hunk_lines,
                     replacement_line_runs=replacement_line_runs,
+                    replacement_origin_line_runs=(
+                        replacement_origin_line_runs
+                    ),
                     reference_source_lines=reference_source_lines,
                     batch_baseline_commit=baseline_commit,
                     replacement_origin_source_lines=(

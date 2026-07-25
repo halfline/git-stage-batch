@@ -22,8 +22,9 @@ from .replacement_units import (
 def detect_stale_batch_source_for_selection(selected_lines: list) -> bool:
     """Detect if selected lines cannot be expressed in current batch source.
 
-    Returns True if any claimed/addition line has source_line=None, indicating
-    the batch source is stale and must be advanced before translation.
+    Returns True if any context/addition line lacks a source coordinate,
+    indicating the batch source is stale and must be advanced before
+    translation.
 
     Args:
         selected_lines: List of LineEntry objects to check
@@ -32,8 +33,8 @@ def detect_stale_batch_source_for_selection(selected_lines: list) -> bool:
         True if batch source is stale, False otherwise
     """
     for line in selected_lines:
-        # Context and addition lines should have source_line populated
-        # If they don't, the current batch source cannot express this change
+        # Context and addition lines need source coordinates for claim
+        # translation and deletion boundaries.
         if line.kind in (' ', '+') and line.source_line is None:
             return True
         # A None deletion anchor is only current for deletions before line 1.
@@ -55,8 +56,8 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
 
     This function assumes all selected lines can be expressed in batch source
     space. Call detect_stale_batch_source_for_selection() first and handle stale
-    sources before calling this function. If source_line is None for claimed
-    lines, this raises an error instead of dropping them.
+    sources before calling this function. If a required source coordinate is
+    missing, this raises an error instead of dropping the affected change.
 
     Args:
         selected_lines: List of LineEntry objects to translate
@@ -65,11 +66,12 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
         BatchOwnership with presence claims and absence claims
 
     Raises:
-        ValueError: If any claimed line has source_line=None (stale batch source)
+        ValueError: If a required source coordinate is missing
     """
     # Translate to batch source-space ownership
     # Diff shows index→working tree, batch source = working tree
-    # Context/addition lines exist in batch source → presence claims
+    # Addition lines exist in batch source → presence claims
+    # Context lines only provide structural boundaries for those changes
     # Deletion lines don't exist in batch source → absence claims (suppression)
 
     content_view = _LineEntryContentSequence(selected_lines)
@@ -170,17 +172,23 @@ def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
                     f"Batch source is stale and must be advanced before translation."
                 )
 
-            claimed_source_lines.add_line(line.source_line)
-            if line.has_baseline_reference_after:
-                presence_baseline_references[line.source_line] = BaselineReference(
-                    after_line=line.baseline_reference_after_line,
-                    after_content=line.baseline_reference_after_text_bytes,
-                    has_after_line=line.has_baseline_reference_after,
-                    before_line=line.baseline_reference_before_line,
-                    before_content=line.baseline_reference_before_text_bytes,
-                    has_before_line=line.has_baseline_reference_before,
-                )
             if line.kind == '+':
+                claimed_source_lines.add_line(line.source_line)
+                if line.has_baseline_reference_after:
+                    presence_baseline_references[line.source_line] = (
+                        BaselineReference(
+                            after_line=line.baseline_reference_after_line,
+                            after_content=(
+                                line.baseline_reference_after_text_bytes
+                            ),
+                            has_after_line=line.has_baseline_reference_after,
+                            before_line=line.baseline_reference_before_line,
+                            before_content=(
+                                line.baseline_reference_before_text_bytes
+                            ),
+                            has_before_line=line.has_baseline_reference_before,
+                        )
+                    )
                 if flushed_deletion_indices:
                     finish_replacement_unit(active_replacement_unit)
                     active_replacement_unit = _ReplacementUnitBuilder(

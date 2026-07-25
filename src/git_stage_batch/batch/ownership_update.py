@@ -95,6 +95,44 @@ def _translate_selection_to_batch_ownership(
     return translate_lines_to_batch_ownership(selected_lines)
 
 
+def _ownership_has_baseline_references(ownership: BatchOwnership) -> bool:
+    """Return whether newly translated ownership carries baseline coordinates."""
+    if any(
+        claim.baseline_references
+        for claim in ownership.presence_claims
+    ):
+        return True
+    if any(
+        deletion.baseline_reference is not None
+        for deletion in ownership.deletions
+    ):
+        return True
+    return any(
+        unit.origin is not None
+        and unit.origin.baseline_reference is not None
+        for unit in ownership.replacement_units
+    )
+
+
+def _ownership_has_replacement_origin_references(
+    ownership: BatchOwnership,
+) -> bool:
+    """Return whether replacement metadata needs live-HEAD projection."""
+    for unit in ownership.replacement_units:
+        if unit.origin is None:
+            continue
+        if unit.origin.baseline_reference is not None:
+            return True
+        if any(
+            type(deletion_index) is int
+            and 0 <= deletion_index < len(ownership.deletions)
+            and ownership.deletions[deletion_index].baseline_reference is not None
+            for deletion_index in unit.deletion_indices
+        ):
+            return True
+    return False
+
+
 def prepare_batch_ownership_update_for_selection(
     batch_name: str,
     file_path: str,
@@ -158,6 +196,20 @@ def _prepare_batch_ownership_update_from_refreshed_selection(
     ):
         raise ValueError(
             "replacement origin source lines require reference target lines"
+        )
+    if (
+        _ownership_has_baseline_references(new_ownership)
+        and reference_source_lines is None
+    ):
+        raise ValueError(
+            "selection baseline references require source and batch baseline lines"
+        )
+    if (
+        _ownership_has_replacement_origin_references(new_ownership)
+        and replacement_origin_source_lines is None
+    ):
+        raise ValueError(
+            "replacement baseline references require live HEAD lines"
         )
     if reference_source_lines is not None and reference_target_lines is not None:
         translate_ownership_baseline_references(

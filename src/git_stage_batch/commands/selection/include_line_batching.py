@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 
 from ...batch.source.annotation import annotate_with_batch_source
+from ...batch.ownership import insertion_references as _insertion_references
 from ...data.line_state import load_line_changes_from_state
 from ...data.selected_change.loading import require_selected_hunk
 from ...exceptions import exit_with_error
@@ -12,7 +13,6 @@ from ...i18n import _
 from . import batch_line_selection as _batch_line_selection
 from . import batch_line_updates as _batch_line_updates
 from . import include_file_selection as _include_file_selection
-from . import include_line_selection as _include_line_selection
 from .action_completion import finish_selected_change_action
 from .selected_hunk_refresh import recalculate_selected_hunk_for_command
 
@@ -28,9 +28,7 @@ def include_file_lines_to_batch(
     """Include specific lines from a file to batch."""
     cached_lines = _include_file_selection.load_explicit_file_selection(file_path)
     line_changes = annotate_with_batch_source(file_path, cached_lines)
-    _include_line_selection.record_baseline_references_for_additions(
-        line_changes
-    )
+    _insertion_references.record_baseline_references_for_additions(line_changes)
 
     selection = _batch_line_selection.select_lines_for_batch_action(
         line_changes,
@@ -80,9 +78,7 @@ def include_selected_lines_to_batch(
     require_selected_hunk()
 
     line_changes = load_line_changes_from_state()
-    _include_line_selection.record_baseline_references_for_additions(
-        line_changes
-    )
+    _insertion_references.record_baseline_references_for_additions(line_changes)
     selection = _batch_line_selection.select_lines_for_batch_action(
         line_changes,
         line_id_specification,

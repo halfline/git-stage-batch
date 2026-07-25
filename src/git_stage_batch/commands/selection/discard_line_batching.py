@@ -117,17 +117,12 @@ def discard_file_lines_to_batch(
     _insertion_references.record_baseline_references_for_additions(
         line_changes,
     )
-    replacement_line_runs = (
-        _discard_line_replacement.derive_live_replacement_line_runs(file_path)
-    )
-
     _batch_line_updates.add_selected_lines_to_batch(
         batch_name=batch_name,
         file_path=file_path,
         selected_lines=selection.selected_lines,
         stale_source_action=_("Cannot discard lines to batch"),
         hunk_lines=line_changes.lines,
-        replacement_line_runs=replacement_line_runs,
         snapshot_untracked=True,
     )
 
@@ -196,19 +191,12 @@ def discard_selected_lines_to_batch(
     _insertion_references.record_baseline_references_for_additions(
         line_changes,
     )
-    replacement_line_runs = (
-        _discard_line_replacement.derive_live_replacement_line_runs(
-            line_changes.path
-        )
-    )
-
     _batch_line_updates.add_selected_lines_to_batch(
         batch_name=batch_name,
         file_path=line_changes.path,
         selected_lines=selection.selected_lines,
         stale_source_action=_("Cannot discard lines to batch"),
         hunk_lines=line_changes.lines,
-        replacement_line_runs=replacement_line_runs,
         snapshot_untracked=True,
         before_add=lambda: log_journal(
             "discard_lines_to_batch_before_add",

@@ -46,11 +46,6 @@ from ...utils.paths import get_session_batch_sources_file_path
 from . import replacement_selection
 
 
-record_baseline_references_for_additions = (
-    _insertion_references.record_baseline_references_for_additions
-)
-
-
 class TransientIncludeFailureReason(Enum):
     """Why transient batch staging could not safely realize a line selection."""
 

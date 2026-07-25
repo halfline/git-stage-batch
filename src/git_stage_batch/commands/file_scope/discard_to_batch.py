@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import os
 
 from ...batch.source.annotation import annotate_with_batch_source
+from ...batch.ownership import insertion_references as _insertion_references
 from ...batch.state.lifecycle import create_batch
 from ...batch.ownership_update import acquire_batch_ownership_update_for_selection
 from ...batch.state.query import read_batch_metadata
@@ -38,6 +39,7 @@ from ...utils.paths import (
     get_block_list_file_path,
     get_context_lines,
 )
+from ...utils.repository_buffers import read_git_object_buffer_or_empty
 from ...utils.session_start_point import session_comparison_base
 from ..selection.action_completion import finish_selected_change_action
 from ..index_cleanup import remove_path_from_index
@@ -58,6 +60,7 @@ class _TextFileDiscardInput:
 
     file_path: str
     file_mode: str
+    comparison_base: str
     all_lines_to_batch: list
     patches_to_discard: list[_PreparedPatchDiscard]
 
@@ -176,14 +179,19 @@ def _prepare_text_file_discard_to_batch(
     file_metadata = metadata.get("files", {}).get(file_path)
 
     try:
-        update = ownership_stack.enter_context(
-            acquire_batch_ownership_update_for_selection(
-                batch_name=batch_name,
-                file_path=file_path,
-                file_metadata=file_metadata,
-                selected_lines=discard_input.all_lines_to_batch,
+        with read_git_object_buffer_or_empty(
+            f"{discard_input.comparison_base}:{file_path}"
+        ) as reference_source_lines:
+            update = ownership_stack.enter_context(
+                acquire_batch_ownership_update_for_selection(
+                    batch_name=batch_name,
+                    file_path=file_path,
+                    file_metadata=file_metadata,
+                    selected_lines=discard_input.all_lines_to_batch,
+                    reference_source_lines=reference_source_lines,
+                    batch_baseline_commit=metadata.get("baseline"),
+                )
             )
-        )
     except ValueError as e:
         exit_with_error(
             _(
@@ -219,10 +227,11 @@ def _collect_text_file_discard_inputs(
     repo_root = get_git_repository_root_path()
     inputs_by_file: dict[str, _TextFileDiscardInput] = {}
     files_with_text_patches: set[str] = set()
+    comparison_base = session_comparison_base()
 
     with acquire_unified_diff(
         stream_live_git_diff(
-            base=session_comparison_base(),
+            base=comparison_base,
             context_lines=get_context_lines(),
             paths=files,
         )
@@ -255,11 +264,15 @@ def _collect_text_file_discard_inputs(
                 patch.lines,
                 annotator=annotate_with_batch_source,
             )
+            _insertion_references.record_baseline_references_for_additions(
+                hunk_lines,
+            )
             discard_input = inputs_by_file.get(file_path)
             if discard_input is None:
                 discard_input = _TextFileDiscardInput(
                     file_path=file_path,
                     file_mode=detect_file_mode_from_root(repo_root, file_path),
+                    comparison_base=comparison_base,
                     all_lines_to_batch=[],
                     patches_to_discard=[],
                 )

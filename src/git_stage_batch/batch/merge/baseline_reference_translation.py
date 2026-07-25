@@ -538,6 +538,33 @@ def _translate_replacement_origin_references(
             )
 
 
+def _require_projected_replacement_references(
+    ownership: BatchOwnership,
+) -> None:
+    """Reject replacement ownership that lost its persisted baseline identity."""
+    for unit in ownership.replacement_units:
+        if (
+            unit.origin is not None
+            and unit.origin.baseline_reference is None
+        ):
+            raise ValueError(
+                "replacement origin could not be projected onto the batch baseline"
+            )
+        for deletion_index in unit.deletion_indices:
+            if (
+                type(deletion_index) is not int
+                or deletion_index < 0
+                or deletion_index >= len(ownership.deletions)
+                or ownership.deletions[
+                    deletion_index
+                ].baseline_reference is None
+            ):
+                raise ValueError(
+                    "replacement deletion could not be projected onto "
+                    "the batch baseline"
+                )
+
+
 def translate_ownership_baseline_references(
     ownership: BatchOwnership,
     source_baseline_lines: Sequence[bytes],
@@ -594,6 +621,7 @@ def translate_ownership_baseline_references(
             replacement_origin_source_lines is None
             or not ownership.replacement_units
         ):
+            _require_projected_replacement_references(ownership)
             return
 
         normalized_origin_source = normalize_line_sequence_endings(
@@ -621,3 +649,4 @@ def translate_ownership_baseline_references(
                 target_lines,
                 mapping,
             )
+        _require_projected_replacement_references(ownership)

@@ -17,6 +17,7 @@ from ...core.text_lines import (
 from ..line_matching.line_range_view import LineRangeView
 from ..line_matching.line_mapping import LineMapping
 from ..line_matching.match import match_lines
+from ..ownership.absence_content import build_absence_content_from_range
 from ..ownership.model import BatchOwnership
 from ..ownership.references import BaselineReference
 from .baseline_reference_positions import (
@@ -205,6 +206,8 @@ def _translate_removal_reference(
     source_lines: Sequence[bytes],
     target_lines: Sequence[bytes],
     mapping: LineMapping,
+    *,
+    allow_content_change: bool = False,
 ) -> tuple[BaselineReference, int] | None:
     source_position = _recorded_removal_position(
         reference,
@@ -228,9 +231,12 @@ def _translate_removal_reference(
         target_lines,
         mapping,
     )
-    if target_position is None or any(
-        target_lines[target_position + offset] != content
-        for offset, content in enumerate(content_lines)
+    if target_position is None or (
+        not allow_content_change
+        and any(
+            target_lines[target_position + offset] != content
+            for offset, content in enumerate(content_lines)
+        )
     ):
         return None
     return (
@@ -355,9 +361,127 @@ def _translate_deletion_references(
             target_lines,
             mapping,
         )
-        deletion.baseline_reference = (
-            translated[0] if translated is not None else None
+        _apply_translated_deletion(
+            deletion,
+            content_lines,
+            target_lines,
+            translated,
         )
+
+
+def _apply_translated_deletion(
+    deletion,
+    content_lines: Sequence[bytes],
+    target_lines: Sequence[bytes],
+    translated: tuple[BaselineReference, int] | None,
+) -> None:
+    """Apply a projected reference and target-baseline removal content."""
+    if translated is None:
+        deletion.baseline_reference = None
+        return
+
+    deletion.baseline_reference, target_position = translated
+    if any(
+        target_lines[target_position + offset] != content
+        for offset, content in enumerate(content_lines)
+    ):
+        deletion.content_lines = build_absence_content_from_range(
+            target_lines,
+            target_position,
+            target_position + len(content_lines),
+        )
+
+
+def _translate_deletion_from_origin_offset(
+    deletion,
+    origin,
+    target_lines: Sequence[bytes],
+) -> tuple[BaselineReference, int] | None:
+    """Project one split replacement by its offset inside the parent."""
+    reference = deletion.baseline_reference
+    origin_reference = origin.baseline_reference
+    old_start = origin.old_start
+    old_line_count = origin.old_line_count
+    if (
+        reference is None
+        or not reference.has_after_line
+        or origin_reference is None
+        or not origin_reference.has_after_line
+        or type(old_start) is not int
+        or type(old_line_count) is not int
+        or old_line_count <= 0
+    ):
+        return None
+
+    source_position = reference.after_line or 0
+    relative_offset = source_position - (old_start - 1)
+    line_count = len(deletion.content_lines)
+    if (
+        relative_offset < 0
+        or line_count <= 0
+        or relative_offset + line_count > old_line_count
+    ):
+        return None
+
+    target_position = (origin_reference.after_line or 0) + relative_offset
+    if target_position + line_count > len(target_lines):
+        return None
+    return (
+        _reference_for_removal(
+            target_lines,
+            target_position,
+            line_count,
+        ),
+        target_position,
+    )
+
+
+def _translate_origin_backed_deletion_references(
+    ownership: BatchOwnership,
+    origin_backed: MappedIntVector,
+    source_lines: Sequence[bytes],
+    target_lines: Sequence[bytes],
+    mapping: LineMapping,
+) -> None:
+    """Translate replacement deletions from live HEAD, with parent fallback."""
+    for unit in ownership.replacement_units:
+        origin = unit.origin
+        if origin is None:
+            continue
+        for deletion_index in unit.deletion_indices:
+            if (
+                type(deletion_index) is not int
+                or deletion_index < 0
+                or deletion_index >= len(ownership.deletions)
+                or origin_backed[deletion_index] != 1
+            ):
+                continue
+
+            deletion = ownership.deletions[deletion_index]
+            content_lines = normalize_line_sequence_endings(
+                deletion.content_lines
+            )
+            translated = _translate_removal_reference(
+                deletion.baseline_reference,
+                content_lines,
+                source_lines,
+                target_lines,
+                mapping,
+                allow_content_change=True,
+            )
+            if translated is None:
+                translated = _translate_deletion_from_origin_offset(
+                    deletion,
+                    origin,
+                    target_lines,
+                )
+            _apply_translated_deletion(
+                deletion,
+                content_lines,
+                target_lines,
+                translated,
+            )
+            origin_backed[deletion_index] = 2
 
 
 def _translate_replacement_origin_references(
@@ -407,6 +531,7 @@ def _translate_replacement_origin_references(
                 source_lines,
                 target_lines,
                 mapping,
+                allow_content_change=True,
             )
             origin.baseline_reference = (
                 translated[0] if translated is not None else None
@@ -483,19 +608,15 @@ def translate_ownership_baseline_references(
             target_sequence.acquire_lines() as target_lines,
             match_lines(origin_source_lines, target_lines) as mapping,
         ):
-            _translate_deletion_references(
+            _translate_replacement_origin_references(
                 ownership,
-                (
-                    deletion_index
-                    for deletion_index in range(len(ownership.deletions))
-                    if origin_backed[deletion_index] != 0
-                ),
                 origin_source_lines,
                 target_lines,
                 mapping,
             )
-            _translate_replacement_origin_references(
+            _translate_origin_backed_deletion_references(
                 ownership,
+                origin_backed,
                 origin_source_lines,
                 target_lines,
                 mapping,

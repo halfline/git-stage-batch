@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Sequence
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 
 from ..core.models import LineEntry
@@ -16,7 +16,12 @@ from .ownership.replacement_line_runs import ReplacementLineRun
 from .merge.baseline_reference_translation import (
     translate_ownership_baseline_references,
 )
-from .source.refresh import ensure_batch_source_current_for_selection
+from .source.refresh import (
+    RefreshedBatchSelection,
+    ensure_batch_source_current_for_selection,
+    prepare_initial_batch_source_for_selection,
+)
+from ..utils.repository_buffers import read_git_object_buffer_or_empty
 
 
 @dataclass
@@ -110,8 +115,31 @@ def prepare_batch_ownership_update_for_selection(
         file_path=file_path,
         current_batch_source_commit=current_batch_source_commit,
         existing_ownership=existing_ownership,
-        selected_lines=selected_lines
+        selected_lines=selected_lines,
+        coordinate_lines=hunk_lines,
     )
+    return _prepare_batch_ownership_update_from_refreshed_selection(
+        refreshed,
+        hunk_lines=hunk_lines,
+        replacement_line_runs=replacement_line_runs,
+        replacement_origin_line_runs=replacement_origin_line_runs,
+        reference_source_lines=reference_source_lines,
+        reference_target_lines=reference_target_lines,
+        replacement_origin_source_lines=replacement_origin_source_lines,
+    )
+
+
+def _prepare_batch_ownership_update_from_refreshed_selection(
+    refreshed: RefreshedBatchSelection,
+    *,
+    hunk_lines: Sequence[LineEntry] | None = None,
+    replacement_line_runs: Iterable[ReplacementLineRun] | None = None,
+    replacement_origin_line_runs: Iterable[ReplacementLineRun] | None = None,
+    reference_source_lines: Sequence[bytes] | None = None,
+    reference_target_lines: Sequence[bytes] | None = None,
+    replacement_origin_source_lines: Sequence[bytes] | None = None,
+) -> PreparedBatchUpdate:
+    """Translate and merge a selection whose source is already established."""
 
     new_ownership = _translate_selection_to_batch_ownership(
         refreshed.selected_lines,
@@ -158,11 +186,12 @@ def acquire_batch_ownership_update_for_selection(
     file_path: str,
     file_metadata: dict | None,
     selected_lines: list,
+    initial_batch_source_commit: str | None = None,
     hunk_lines: Sequence[LineEntry] | None = None,
     replacement_line_runs: Iterable[ReplacementLineRun] | None = None,
     replacement_origin_line_runs: Iterable[ReplacementLineRun] | None = None,
     reference_source_lines: Sequence[bytes] | None = None,
-    reference_target_lines: Sequence[bytes] | None = None,
+    batch_baseline_commit: str | None = None,
     replacement_origin_source_lines: Sequence[bytes] | None = None,
 ) -> Iterator[PreparedBatchUpdate]:
     """Acquire existing ownership metadata while preparing a batch update.
@@ -170,33 +199,67 @@ def acquire_batch_ownership_update_for_selection(
     The yielded ownership may borrow deletion content from acquired metadata,
     so callers should persist or detach it before leaving the context.
     """
-    if file_metadata is None:
-        yield prepare_batch_ownership_update_for_selection(
-            batch_name=batch_name,
-            file_path=file_path,
-            current_batch_source_commit=None,
-            existing_ownership=None,
-            selected_lines=selected_lines,
-            hunk_lines=hunk_lines,
-            replacement_line_runs=replacement_line_runs,
-            replacement_origin_line_runs=replacement_origin_line_runs,
-            reference_source_lines=reference_source_lines,
-            reference_target_lines=reference_target_lines,
-            replacement_origin_source_lines=replacement_origin_source_lines,
-        )
-        return
+    with ExitStack() as stack:
+        if file_metadata is None:
+            if initial_batch_source_commit is None:
+                current_batch_source_commit, prepared_selected_lines = (
+                    prepare_initial_batch_source_for_selection(
+                        file_path,
+                        selected_lines,
+                        coordinate_lines=hunk_lines,
+                    )
+                )
+            else:
+                current_batch_source_commit = initial_batch_source_commit
+                prepared_selected_lines = selected_lines
+            existing_ownership = None
+            refreshed = RefreshedBatchSelection(
+                batch_source_commit=current_batch_source_commit,
+                ownership=existing_ownership,
+                selected_lines=prepared_selected_lines,
+                source_was_advanced=False,
+            )
+        else:
+            current_batch_source_commit = file_metadata.get(
+                "batch_source_commit"
+            )
+            existing_ownership = stack.enter_context(
+                acquire_ownership_for_metadata_dict(file_metadata)
+            )
+            refreshed = ensure_batch_source_current_for_selection(
+                batch_name=batch_name,
+                file_path=file_path,
+                current_batch_source_commit=current_batch_source_commit,
+                existing_ownership=existing_ownership,
+                selected_lines=selected_lines,
+                coordinate_lines=hunk_lines,
+            )
 
-    with acquire_ownership_for_metadata_dict(file_metadata) as existing_ownership:
-        yield prepare_batch_ownership_update_for_selection(
-            batch_name=batch_name,
-            file_path=file_path,
-            current_batch_source_commit=file_metadata.get("batch_source_commit"),
-            existing_ownership=existing_ownership,
-            selected_lines=selected_lines,
-            hunk_lines=hunk_lines,
-            replacement_line_runs=replacement_line_runs,
-            replacement_origin_line_runs=replacement_origin_line_runs,
-            reference_source_lines=reference_source_lines,
-            reference_target_lines=reference_target_lines,
-            replacement_origin_source_lines=replacement_origin_source_lines,
-        )
+        def prepare_update(
+            reference_target_lines: Sequence[bytes] | None,
+        ) -> PreparedBatchUpdate:
+            return _prepare_batch_ownership_update_from_refreshed_selection(
+                refreshed,
+                hunk_lines=hunk_lines,
+                replacement_line_runs=replacement_line_runs,
+                replacement_origin_line_runs=replacement_origin_line_runs,
+                reference_source_lines=reference_source_lines,
+                reference_target_lines=reference_target_lines,
+                replacement_origin_source_lines=replacement_origin_source_lines,
+            )
+
+        if reference_source_lines is None:
+            update = prepare_update(None)
+        else:
+            if not isinstance(batch_baseline_commit, str) or not (
+                batch_baseline_commit
+            ):
+                raise ValueError(
+                    "selection baseline lines require a batch baseline commit"
+                )
+            with read_git_object_buffer_or_empty(
+                f"{batch_baseline_commit}:{file_path}"
+            ) as reference_target_lines:
+                update = prepare_update(reference_target_lines)
+
+        yield update

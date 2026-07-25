@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 
 import git_stage_batch.batch.ownership_update as ownership_update_module
+import pytest
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership_update import (
     PreparedBatchUpdate,
@@ -81,6 +82,32 @@ def test_prepare_batch_ownership_update_first_time_deletion_anchor():
     assert result.batch_source_commit is None
     assert result.ownership_before is None
     assert result.ownership_after.deletions[0].anchor_line == 1
+
+
+def test_prepare_batch_update_rejects_unprojected_deletion_reference():
+    """Baseline-relative deletion metadata must be projected before merging."""
+    lines = [
+        LineEntry(
+            id=1,
+            kind="-",
+            old_line_number=2,
+            new_line_number=None,
+            text_bytes=b"old line",
+            source_line=1,
+        ),
+    ]
+
+    with pytest.raises(
+        ValueError,
+        match="selection baseline references require",
+    ):
+        prepare_batch_ownership_update_for_selection(
+            batch_name="test-batch",
+            file_path="test.py",
+            current_batch_source_commit=None,
+            existing_ownership=None,
+            selected_lines=lines,
+        )
 
 
 def test_prepare_batch_ownership_update_first_time():

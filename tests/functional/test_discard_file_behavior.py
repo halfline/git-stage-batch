@@ -10,6 +10,67 @@ from .conftest import git_stage_batch
 class TestDiscardFile:
     """Tests for discard --file removing files and preserving batch content."""
 
+    def test_discard_file_saves_leading_deletion_past_older_prefix(
+        self,
+        functional_repo,
+    ):
+        """Whole-file deletion projection follows content past an old prefix."""
+        file_path = functional_repo / "sections.txt"
+        file_path.write_text("prefix\nold\ntail\n")
+        subprocess.run(
+            ["git", "add", "sections.txt"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add prefixed section"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        git_stage_batch("new", "saved")
+
+        file_path.write_text("old\ntail\n")
+        subprocess.run(
+            ["git", "add", "sections.txt"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Remove prefix"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        file_path.write_text("tail\n")
+
+        git_stage_batch("start", "--no-auto-advance")
+        result = git_stage_batch(
+            "discard",
+            "--to",
+            "saved",
+            "--file",
+            "sections.txt",
+            "--no-auto-advance",
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        stored_content = subprocess.run(
+            [
+                "git",
+                "show",
+                "refs/git-stage-batch/batches/saved:sections.txt",
+            ],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+            text=True,
+        ).stdout
+        assert stored_content == "prefix\ntail\n"
+
     def test_discard_file_projects_replacement_onto_older_batch_baseline(
         self,
         functional_repo,

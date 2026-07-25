@@ -65,6 +65,40 @@ def test_presence_line_set_returns_line_ranges():
     assert ownership.resolve().presence_line_set == selection
 
 
+def test_translate_lines_uses_context_without_claiming_it():
+    """Unchanged hunk rows provide boundaries without becoming ownership."""
+    lines = [
+        LineEntry(
+            id=None,
+            kind=" ",
+            old_line_number=1,
+            new_line_number=1,
+            text_bytes=b"before",
+            source_line=1,
+        ),
+        LineEntry(
+            id=1,
+            kind="+",
+            old_line_number=None,
+            new_line_number=2,
+            text_bytes=b"inserted",
+            source_line=2,
+        ),
+        LineEntry(
+            id=None,
+            kind=" ",
+            old_line_number=2,
+            new_line_number=3,
+            text_bytes=b"after",
+            source_line=3,
+        ),
+    ]
+
+    ownership = translate_lines_to_batch_ownership(lines)
+
+    assert ownership.presence_line_set() == {2}
+
+
 def test_translate_lines_builds_selected_ranges_without_line_sets(monkeypatch):
     """Selected display lines should translate through range builders."""
     def fail_from_lines(cls, lines):

@@ -7,10 +7,12 @@ import os
 import sys
 
 from ...batch.source.annotation import annotate_with_batch_source
+from ...batch.ownership import insertion_references as _insertion_references
 from ...batch.state.lifecycle import create_batch
 from ...batch.ownership.model import BatchOwnership
 from ...batch.ownership_update import acquire_batch_ownership_update_for_selection
 from ...batch.state.query import read_batch_metadata
+from ...batch.state.validation import get_validated_baseline_commit
 from ...batch.text_file_storage import add_file_to_batch
 from ...batch.state.batch_names import batch_exists
 from ...core.buffer import LineBuffer
@@ -39,6 +41,7 @@ from ...utils.git_worktree import (
 from ...utils.git_repository import get_git_repository_root_path
 from ...utils.journal import log_journal
 from ...utils.paths import get_block_list_file_path, get_context_lines
+from ...utils.repository_buffers import read_git_object_buffer_or_empty
 from ...utils.session_start_point import session_comparison_base
 from ..selection.action_completion import finish_selected_change_action
 from ..selection import whole_file_batch_discarding as _whole_file_batch_discarding
@@ -127,6 +130,9 @@ def discard_file_to_batch(
                     patch.lines,
                     annotator=annotate_with_batch_source,
                 )
+                _insertion_references.record_baseline_references_for_additions(
+                    hunk_lines,
+                )
                 all_lines_to_batch.extend(hunk_lines.lines)
                 patches_to_discard.append((
                     patch_stack.enter_context(LineBuffer.from_chunks(patch.lines)),
@@ -185,8 +191,14 @@ def discard_file_to_batch(
 
         metadata = read_batch_metadata(batch_name)
         file_metadata = metadata.get("files", {}).get(file_path)
+        baseline_commit = get_validated_baseline_commit(batch_name)
 
         with ExitStack() as ownership_stack:
+            reference_source_lines = ownership_stack.enter_context(
+                read_git_object_buffer_or_empty(
+                    f"{comparison_base}:{file_path}"
+                )
+            )
             try:
                 update = ownership_stack.enter_context(
                     acquire_batch_ownership_update_for_selection(
@@ -194,6 +206,8 @@ def discard_file_to_batch(
                         file_path=file_path,
                         file_metadata=file_metadata,
                         selected_lines=all_lines_to_batch,
+                        reference_source_lines=reference_source_lines,
+                        batch_baseline_commit=baseline_commit,
                     )
                 )
             except ValueError as e:

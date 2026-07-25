@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 
 from ...batch.source.annotation import annotate_with_batch_source
+from ...batch.ownership import insertion_references as _insertion_references
 from ...batch.state.lifecycle import create_batch
 from ...batch.ownership_update import acquire_batch_ownership_update_for_selection
 from ...batch.state.query import read_batch_metadata
@@ -33,6 +34,7 @@ from ...exceptions import exit_with_error
 from ...i18n import _
 from ...utils.file_io import append_lines_to_file, read_text_file_line_set
 from ...utils.paths import get_block_list_file_path, get_context_lines
+from ...utils.repository_buffers import read_git_object_buffer_or_empty
 from . import whole_file_batch_staging as _whole_file_batch_staging
 from .action_completion import finish_selected_change_action
 
@@ -110,6 +112,9 @@ def include_selected_change_to_batch(
                 patch.lines,
                 annotator=annotate_with_batch_source,
             )
+            _insertion_references.record_baseline_references_for_additions(
+                selected_line_changes,
+            )
             selected_hash = patch_hash
             break
 
@@ -124,12 +129,19 @@ def include_selected_change_to_batch(
     file_metadata = metadata.get("files", {}).get(file_path)
 
     try:
-        with acquire_batch_ownership_update_for_selection(
-            batch_name=batch_name,
-            file_path=file_path,
-            file_metadata=file_metadata,
-            selected_lines=all_lines_to_batch,
-        ) as update:
+        with (
+            read_git_object_buffer_or_empty(
+                f":{file_path}"
+            ) as reference_source_lines,
+            acquire_batch_ownership_update_for_selection(
+                batch_name=batch_name,
+                file_path=file_path,
+                file_metadata=file_metadata,
+                selected_lines=all_lines_to_batch,
+                reference_source_lines=reference_source_lines,
+                batch_baseline_commit=metadata.get("baseline"),
+            ) as update,
+        ):
             add_file_to_batch(
                 batch_name,
                 file_path,

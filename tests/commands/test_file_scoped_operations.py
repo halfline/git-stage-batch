@@ -1248,9 +1248,9 @@ class TestBatchSourceWithFile:
         command_start()
         command_discard_to_batch("batch", file="simple.txt")
 
-        # Batch display shows additions: [#1] line1, [#2] line2, [#3] line3, [#4] line4
-        # Apply only line 3 (not line 4)
-        command_apply_from_batch("batch", line_ids="3", file="simple.txt")
+        # Batch display numbers only the two owned additions.
+        # Apply line3 (the first addition), but not line4.
+        command_apply_from_batch("batch", line_ids="1", file="simple.txt")
 
         content = (multi_file_repo / "simple.txt").read_text()
         # Should have line3
@@ -1581,10 +1581,9 @@ class TestFileAndLineIDCombinations:
         command_discard_to_batch("multi", file="alpha.txt")
         command_discard_to_batch("multi", file="beta.txt")
 
-        # Beta batch has: [#1] beta1, [#2] beta2 (deletion), [#3] beta2-modified, [#4] beta3, [#5] beta4-new
-        # Deletions are shown in batch display (as suppression constraints)
-        # Apply only line 5 from beta.txt (beta4-new)
-        command_apply_from_batch("multi", line_ids="5", file="beta.txt")
+        # Beta batch numbers the replacement pair and trailing addition.
+        # Apply only line 3 from beta.txt (beta4-new).
+        command_apply_from_batch("multi", line_ids="3", file="beta.txt")
 
         alpha_content = (multi_file_repo / "alpha.txt").read_text()
         beta_content = (multi_file_repo / "beta.txt").read_text()

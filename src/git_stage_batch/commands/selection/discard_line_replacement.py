@@ -19,10 +19,6 @@ from ...batch.merge.baseline_reference_translation import (
     translate_ownership_baseline_references,
 )
 from ...batch.state.query import read_batch_metadata
-from ...batch.ownership.replacement_line_runs import (
-    ReplacementLineRun,
-    derive_replacement_line_runs_from_lines,
-)
 from ...batch.selection import require_line_selection_in_view
 from ...batch.source.advancement import (
     advance_source_lines_preserving_existing_presence,
@@ -70,18 +66,6 @@ class DiscardLineReplacementSelection:
     rewritten_line_changes: object
     rewritten_selected_lines: list
     rewritten_working_lines: Sequence[bytes]
-
-
-def derive_live_replacement_line_runs(file_path: str) -> list[ReplacementLineRun]:
-    """Derive file-level replacement runs for the current live file state."""
-    with (
-        read_git_object_buffer_or_empty(f"HEAD:{file_path}") as baseline_lines,
-        load_working_tree_file_as_buffer(file_path) as working_lines,
-    ):
-        return derive_replacement_line_runs_from_lines(
-            old_file_lines=baseline_lines,
-            new_file_lines=working_lines,
-        )
 
 
 @contextmanager

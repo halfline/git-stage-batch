@@ -10,6 +10,154 @@ from .conftest import git_stage_batch
 class TestDiscardFile:
     """Tests for discard --file removing files and preserving batch content."""
 
+    def test_discard_file_projects_leading_deletion_past_older_prefix(
+        self,
+        functional_repo,
+    ):
+        """Whole-file deletion projection follows content past an old prefix."""
+        file_path = functional_repo / "sections.txt"
+        file_path.write_text("prefix\nold\ntail\n")
+        subprocess.run(
+            ["git", "add", "sections.txt"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add prefixed section"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        git_stage_batch("new", "saved")
+
+        file_path.write_text("old\ntail\n")
+        subprocess.run(
+            ["git", "add", "sections.txt"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Remove prefix"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        file_path.write_text("tail\n")
+
+        git_stage_batch("start", "--no-auto-advance")
+        result = git_stage_batch(
+            "discard",
+            "--to",
+            "saved",
+            "--file",
+            "sections.txt",
+            "--no-auto-advance",
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        stored_content = subprocess.run(
+            [
+                "git",
+                "show",
+                "refs/git-stage-batch/batches/saved:sections.txt",
+            ],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+            text=True,
+        ).stdout
+        assert stored_content == "prefix\ntail\n"
+
+        file_path.write_text("prefix\nold\ntail\n")
+        git_stage_batch(
+            "apply",
+            "--from",
+            "saved",
+            "--file",
+            "sections.txt",
+        )
+
+        assert file_path.read_text() == "prefix\ntail\n"
+
+    def test_discard_file_projects_replacement_onto_older_batch_baseline(
+        self,
+        functional_repo,
+    ):
+        """Whole-file saves must not reuse live-HEAD deletion coordinates."""
+        file_path = functional_repo / "sections.txt"
+        original = (
+            "section1\n"
+            "x\n"
+            "old\n"
+            "y\n"
+            "section2\n"
+            "x\n"
+            "old\n"
+            "y\n"
+            "end\n"
+        )
+        file_path.write_text(original)
+        subprocess.run(
+            ["git", "add", "sections.txt"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add repeated sections"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        git_stage_batch("new", "saved")
+
+        live_baseline = "section2\nx\nold\ny\nend\n"
+        file_path.write_text(live_baseline)
+        subprocess.run(
+            ["git", "add", "sections.txt"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Remove first section"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        file_path.write_text("section2\nx\nNEW\ny\nend\n")
+
+        git_stage_batch("start", "--no-auto-advance")
+        result = git_stage_batch(
+            "discard",
+            "--to",
+            "saved",
+            "--file",
+            "sections.txt",
+            "--no-auto-advance",
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        stored_content = subprocess.run(
+            [
+                "git",
+                "show",
+                "refs/git-stage-batch/batches/saved:sections.txt",
+            ],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+            text=True,
+        ).stdout
+        assert stored_content == original.replace(
+            "section2\nx\nold\n",
+            "section2\nx\nNEW\n",
+        )
+
     def test_discard_file_batch_round_trips_reordered_block(self, functional_repo):
         """A saved whole-file rewrite must not duplicate a moved block."""
         file_path = functional_repo / "realize.py"

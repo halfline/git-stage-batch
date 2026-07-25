@@ -5,7 +5,11 @@ from __future__ import annotations
 import inspect
 
 import git_stage_batch.batch.ownership_update as ownership_update_module
+import pytest
 from git_stage_batch.batch.ownership.model import BatchOwnership
+from git_stage_batch.batch.ownership.replacement_line_runs import (
+    ReplacementLineRun,
+)
 from git_stage_batch.batch.ownership_update import (
     PreparedBatchUpdate,
     acquire_batch_ownership_update_for_selection,
@@ -51,12 +55,12 @@ def test_prepare_batch_ownership_update_first_time_stale_blank_context():
         file_path="test.py",
         current_batch_source_commit=None,
         existing_ownership=None,
-        selected_lines=lines
+        selected_lines=lines,
     )
 
     assert result.batch_source_commit is None
     assert result.ownership_before is None
-    assert result.ownership_after.presence_claims[0].source_lines == ["1-2"]
+    assert result.ownership_after.presence_claims[0].source_lines == ["2"]
 
 
 def test_prepare_batch_ownership_update_first_time_deletion_anchor():
@@ -73,12 +77,85 @@ def test_prepare_batch_ownership_update_first_time_deletion_anchor():
         file_path="test.py",
         current_batch_source_commit=None,
         existing_ownership=None,
-        selected_lines=lines
+        selected_lines=lines,
+        reference_source_lines=[b"anchor\n", b"old line\n"],
+        reference_target_lines=[b"anchor\n", b"old line\n"],
     )
 
     assert result.batch_source_commit is None
     assert result.ownership_before is None
     assert result.ownership_after.deletions[0].anchor_line == 1
+
+
+def test_prepare_batch_update_rejects_unprojected_deletion_reference():
+    """Baseline-relative deletion metadata must be projected before merging."""
+    lines = [
+        LineEntry(
+            id=1,
+            kind="-",
+            old_line_number=2,
+            new_line_number=None,
+            text_bytes=b"old line",
+            source_line=1,
+        ),
+    ]
+
+    with pytest.raises(
+        ValueError,
+        match="selection baseline references require",
+    ):
+        prepare_batch_ownership_update_for_selection(
+            batch_name="test-batch",
+            file_path="test.py",
+            current_batch_source_commit=None,
+            existing_ownership=None,
+            selected_lines=lines,
+        )
+
+
+def test_prepare_batch_update_rejects_unprojected_replacement_origin():
+    """Replacement references require the live-HEAD coordinate source."""
+    hunk_lines = [
+        LineEntry(
+            id=1,
+            kind="-",
+            old_line_number=1,
+            new_line_number=None,
+            text_bytes=b"old",
+            source_line=None,
+        ),
+        LineEntry(
+            id=2,
+            kind="+",
+            old_line_number=None,
+            new_line_number=1,
+            text_bytes=b"new",
+            source_line=1,
+        ),
+    ]
+
+    with pytest.raises(
+        ValueError,
+        match="replacement baseline references require live HEAD lines",
+    ):
+        prepare_batch_ownership_update_for_selection(
+            batch_name="test-batch",
+            file_path="test.py",
+            current_batch_source_commit=None,
+            existing_ownership=None,
+            selected_lines=hunk_lines,
+            hunk_lines=hunk_lines,
+            replacement_line_runs=[
+                ReplacementLineRun(
+                    old_start=1,
+                    old_end=1,
+                    new_start=1,
+                    new_end=1,
+                ),
+            ],
+            reference_source_lines=[b"old\n"],
+            reference_target_lines=[b"old\n"],
+        )
 
 
 def test_prepare_batch_ownership_update_first_time():

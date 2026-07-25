@@ -8,6 +8,7 @@ import os
 import sys
 
 from ...batch.source.annotation import annotate_with_batch_source
+from ...batch.ownership import insertion_references as _insertion_references
 from ...batch.state.lifecycle import create_batch
 from ...batch.ownership_update import acquire_batch_ownership_update_for_selection
 from ...batch.state.query import read_batch_metadata
@@ -31,6 +32,9 @@ from ...data.file_modes import detect_file_mode
 from ...data.hunk_tracking import fetch_next_change
 from ...data.live_diff import stream_live_git_diff
 from ...data.progress import record_hunk_discarded
+from ...data.selected_change.snapshots import (
+    load_selected_file_comparison_base_buffer,
+)
 from ...data.session import snapshot_file_if_untracked
 from ...exceptions import NoMoreHunks, exit_with_error
 from ...i18n import _, ngettext
@@ -131,6 +135,9 @@ def _discard_text_hunk_to_batch(
         selected_patch_lines,
         annotator=annotate_with_batch_source,
     )
+    _insertion_references.record_baseline_references_for_additions(
+        line_changes,
+    )
     file_path = line_changes.path
 
     blocklist_path = get_block_list_file_path()
@@ -169,6 +176,9 @@ def _discard_text_hunk_to_batch(
                         patch.lines,
                         annotator=annotate_with_batch_source,
                     )
+                    _insertion_references.record_baseline_references_for_additions(
+                        hunk_lines,
+                    )
                     all_lines_to_batch.extend(hunk_lines.lines)
                     patches_to_discard.append((
                         patch_stack.enter_context(LineBuffer.from_chunks(patch.lines)),
@@ -182,6 +192,9 @@ def _discard_text_hunk_to_batch(
         file_metadata = metadata.get("files", {}).get(file_path)
 
         with ExitStack() as ownership_stack:
+            reference_source_lines = ownership_stack.enter_context(
+                load_selected_file_comparison_base_buffer(file_path)
+            )
             try:
                 update = ownership_stack.enter_context(
                     acquire_batch_ownership_update_for_selection(
@@ -189,6 +202,8 @@ def _discard_text_hunk_to_batch(
                         file_path=file_path,
                         file_metadata=file_metadata,
                         selected_lines=all_lines_to_batch,
+                        reference_source_lines=reference_source_lines,
+                        batch_baseline_commit=metadata.get("baseline"),
                     )
                 )
             except ValueError as e:

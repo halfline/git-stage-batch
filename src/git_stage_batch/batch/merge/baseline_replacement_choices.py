@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import hashlib
 from typing import TYPE_CHECKING, Any
 
-from ...core.text_lines import normalize_line_endings
+from ...core.text_lines import normalize_line_sequence_endings
 from ..line_matching.sequence_equality import line_slice_equals as _line_slice_matches
 
 if TYPE_CHECKING:
@@ -38,10 +38,9 @@ def replacement_origin_choices_for_unit(
     if origin is None or not claim.content_lines:
         return None, ()
 
-    forbidden_sequence = [
-        normalize_line_endings(line)
-        for line in claim.content_lines
-    ]
+    forbidden_sequence = normalize_line_sequence_endings(
+        claim.content_lines
+    )
     if not forbidden_sequence:
         return None, ()
     if len(forbidden_sequence) > len(working_lines):

@@ -12626,6 +12626,55 @@ def test_batch_merge_candidate_enumeration_owns_preview_building():
     assert violations == []
 
 
+def test_batch_baseline_edit_plan_owns_mapped_execution_storage():
+    """Baseline edit records and stream lifetime should stay below policy."""
+    baseline_edit_plan = __import__(
+        "git_stage_batch.batch.merge.baseline_edit_plan",
+        fromlist=["baseline_edit_plan"],
+    )
+    baseline_edits = __import__(
+        "git_stage_batch.batch.merge.baseline_edits",
+        fromlist=["baseline_edits"],
+    )
+    plan_path = SRC_ROOT / "batch" / "merge/baseline_edit_plan.py"
+    fallback_path = SRC_ROOT / "batch" / "merge/baseline_edits.py"
+    public_names = {
+        "BaselineEditPlan",
+        "BaselineEditStream",
+    }
+    expected_imports = {
+        fallback_path: public_names,
+    }
+    violations = []
+
+    assert public_names <= vars(baseline_edit_plan).keys()
+    assert public_names.isdisjoint(vars(baseline_edits))
+
+    for path in SRC_ROOT.rglob("*.py"):
+        if path == plan_path:
+            continue
+
+        imported_public_names = set()
+        for imported_module, node in _import_from_nodes(path):
+            if imported_module != (
+                "git_stage_batch.batch.merge.baseline_edit_plan"
+            ):
+                continue
+            imported_public_names.update(
+                alias.name for alias in node.names
+                if alias.name in public_names
+            )
+
+        if path in expected_imports:
+            assert expected_imports[path] <= imported_public_names
+        elif imported_public_names:
+            relative_path = path.relative_to(REPO_ROOT)
+            names = ", ".join(sorted(imported_public_names))
+            violations.append(f"{relative_path} imports {names}")
+
+    assert violations == []
+
+
 def test_batch_baseline_edits_own_replacement_fallback():
     """Baseline-coordinate merge fallback should live outside merge."""
     baseline_edits = __import__(

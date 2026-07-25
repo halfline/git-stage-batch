@@ -75,6 +75,16 @@ class BatchOwnership:
             references.update(claim.baseline_references)
         return references
 
+    def presence_baseline_reference(
+        self,
+        source_line: int,
+    ) -> _BaselineReference | None:
+        """Return the effective baseline reference for one source line."""
+        for claim in reversed(self.presence_claims):
+            if source_line in claim.baseline_references:
+                return claim.baseline_references[source_line]
+        return None
+
     def to_metadata_dict(self) -> dict:
         """Convert to metadata dictionary format for storage."""
         data = {

@@ -60,14 +60,19 @@ def _replacement_origin_candidate_set(
     try:
         selected_presence = coerce_line_ranges(presence_line_set)
         unresolved: list[
-            tuple[list[int], int, str, tuple[_BaselineReplacementOriginChoice, ...]]
+            tuple[
+                LineRanges,
+                int,
+                str,
+                tuple[_BaselineReplacementOriginChoice, ...],
+            ]
         ] = []
         for unit_index, unit in enumerate(getattr(ownership, "replacement_units", [])):
             if getattr(unit, "origin", None) is None:
                 continue
 
             claimed_selection = LineRanges.from_specs(unit.presence_lines)
-            claimed_lines = list(selected_presence.intersection(claimed_selection))
+            claimed_lines = selected_presence.intersection(claimed_selection)
             if not claimed_lines:
                 continue
             if all(
@@ -122,8 +127,9 @@ def _replacement_origin_candidate_set(
     count = len(valid_choices)
     claim = deletion_claims[deletion_index]
     line_count = len(claim.content_lines)
-    source_start = min(claimed_lines)
-    source_end = max(claimed_lines)
+    claimed_ranges = claimed_lines.ranges()
+    source_start = claimed_ranges[0][0]
+    source_end = claimed_ranges[-1][1]
     ambiguity_target_line_range = (
         min(choice.position + 1 for choice in valid_choices),
         max(choice.position + line_count for choice in valid_choices),

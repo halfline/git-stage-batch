@@ -53,3 +53,33 @@ def test_replacement_origin_choices_normalize_content_without_a_list(
 
     assert key is not None
     assert len(choices) == 1
+
+
+def test_replacement_origin_key_keeps_claimed_ranges_compact() -> None:
+    """Replacement review keys should describe ranges without listing lines."""
+    claim = AbsenceClaim(
+        anchor_line=None,
+        content_lines=[b"old value\n"],
+    )
+    unit = ReplacementUnit(
+        presence_lines=["1-1000"],
+        deletion_indices=[0],
+        origin=ReplacementUnitOrigin(
+            old_start=1,
+            old_end=1,
+            new_start=1,
+            new_end=1000,
+        ),
+    )
+
+    key, choices = baseline_replacement_choices.replacement_origin_choices_for_unit(
+        claim,
+        0,
+        unit,
+        LineRanges.from_ranges(((1, 1000),)),
+        [b"old value\n"],
+    )
+
+    assert key is not None
+    assert "claimed:1-1000:" in key
+    assert len(choices) == 1

@@ -13,6 +13,129 @@ from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange
 
 
+def _leading_deletion_changes() -> LineLevelChange:
+    return LineLevelChange(
+        path="file.txt",
+        header=HunkHeader(old_start=1, old_len=3, new_start=1, new_len=1),
+        lines=[
+            LineEntry(
+                id=1,
+                kind="-",
+                old_line_number=1,
+                new_line_number=None,
+                text_bytes=b"first",
+            ),
+            LineEntry(
+                id=2,
+                kind="-",
+                old_line_number=2,
+                new_line_number=None,
+                text_bytes=b"second",
+            ),
+            LineEntry(
+                id=None,
+                kind=" ",
+                old_line_number=3,
+                new_line_number=1,
+                text_bytes=b"remaining",
+            ),
+        ],
+    )
+
+
+def _gapped_deletion_changes() -> LineLevelChange:
+    return LineLevelChange(
+        path="file.txt",
+        header=HunkHeader(old_start=1, old_len=6, new_start=1, new_len=6),
+        lines=[
+            LineEntry(
+                id=1,
+                kind="+",
+                old_line_number=None,
+                new_line_number=1,
+                text_bytes=b"added",
+            ),
+            LineEntry(
+                id=None,
+                kind=" ",
+                old_line_number=1,
+                new_line_number=2,
+                text_bytes=b"one",
+            ),
+            LineEntry(
+                id=None,
+                kind=" ",
+                old_line_number=None,
+                new_line_number=None,
+                text_bytes=b"... 3 more lines ...",
+            ),
+            LineEntry(
+                id=2,
+                kind="-",
+                old_line_number=5,
+                new_line_number=None,
+                text_bytes=b"deleted",
+            ),
+            LineEntry(
+                id=None,
+                kind=" ",
+                old_line_number=6,
+                new_line_number=6,
+                text_bytes=b"six",
+            ),
+        ],
+    )
+
+
+def test_annotation_keeps_consecutive_leading_deletions_before_line_one():
+    """All rows in one leading deletion run share its file-start anchor."""
+    annotated = annotate_with_batch_source_mapping(
+        _leading_deletion_changes(),
+        None,
+    )
+
+    assert [line.source_line for line in annotated.lines] == [None, None, 1]
+
+
+def test_mapped_annotation_keeps_leading_deletion_run_anchor():
+    """Mapped annotation does not project later leading deletions after line one."""
+    annotated = annotate_with_batch_source_lines(
+        _leading_deletion_changes(),
+        batch_source_lines=[b"remaining\n"],
+        working_lines=[b"remaining\n"],
+    )
+
+    assert [line.source_line for line in annotated.lines] == [None, None, 1]
+
+
+def test_annotation_translates_deletion_anchor_after_synthetic_gap():
+    """A later hunk uses the cumulative diff delta, not earlier hunk context."""
+    changes = _gapped_deletion_changes()
+    working_lines = [
+        b"added\n",
+        b"one\n",
+        b"two\n",
+        b"three\n",
+        b"four\n",
+        b"six\n",
+    ]
+
+    first_source = annotate_with_batch_source_mapping(changes, None)
+    mapped_source = annotate_with_batch_source_lines(
+        changes,
+        batch_source_lines=working_lines,
+        working_lines=working_lines,
+    )
+
+    expected_source_lines = [1, 2, None, 5, 6]
+    assert [line.source_line for line in first_source.lines] == (
+        expected_source_lines
+    )
+    assert [line.source_line for line in mapped_source.lines] == (
+        expected_source_lines
+    )
+
+
 def test_annotate_with_batch_source_lines_accepts_non_list_byte_sequences(
     line_sequence,
 ):

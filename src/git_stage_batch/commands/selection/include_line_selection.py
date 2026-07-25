@@ -21,6 +21,7 @@ from ...batch.text_file_storage import add_file_to_batch
 from ...batch.state.batch_names import batch_exists
 from ...core.buffer import LineBuffer, buffer_matches
 from ...batch.source.snapshots import create_batch_source_commit
+from ...batch.source.line_coordinates import translate_display_source_coordinates
 from ...data.selected_change.file_hunk_cache import cache_unstaged_file_as_single_hunk
 from ...data.file_modes import detect_file_mode
 from ...data.file_tracking import auto_add_untracked_files
@@ -195,44 +196,11 @@ def annotate_line_changes_with_working_tree_source(line_changes):
     if line_changes is None:
         return None
 
-    last_source_line: int | None = None
-    coordinate_delta = 0
-    in_deletion_run = False
-    deletion_run_anchor: int | None = None
     new_lines = []
-    for line in line_changes.lines:
-        source_line = None
-        if line.kind == " ":
-            source_line = line.new_line_number
-            if source_line is not None:
-                last_source_line = source_line
-                if line.old_line_number is not None:
-                    coordinate_delta = line.new_line_number - line.old_line_number
-            else:
-                # Synthetic gaps separate hunk coordinate spaces. Do not carry
-                # an anchor across omitted working-tree lines.
-                last_source_line = None
-            in_deletion_run = False
-            deletion_run_anchor = None
-        elif line.kind == "+":
-            source_line = line.new_line_number
-            if source_line is not None:
-                last_source_line = source_line
-            coordinate_delta += 1
-            in_deletion_run = False
-            deletion_run_anchor = None
-        elif line.kind == "-":
-            if not in_deletion_run:
-                deletion_run_anchor = last_source_line
-                if deletion_run_anchor is None and line.old_line_number is not None:
-                    translated_anchor = (
-                        line.old_line_number - 1 + coordinate_delta
-                    )
-                    deletion_run_anchor = max(translated_anchor, 0) or None
-            source_line = deletion_run_anchor
-            coordinate_delta -= 1
-            in_deletion_run = True
-
+    for line, source_line in translate_display_source_coordinates(
+        line_changes.lines,
+        lambda line_number: line_number,
+    ):
         new_lines.append(replace(line, source_line=source_line))
 
     return replace(line_changes, lines=new_lines)

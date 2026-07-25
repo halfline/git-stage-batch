@@ -112,6 +112,7 @@ def apply_include_line_replacement(
         line_changes.path,
         source_buffer=hunk_source_lines,
         selected_lines=selected_lines,
+        coordinate_lines=line_changes.lines,
         replacement_mask={
             "deleted_lines": replacement_payload.as_text().splitlines(),
             "added_lines": [

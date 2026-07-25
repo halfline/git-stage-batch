@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -12,6 +12,10 @@ from ...core.mapped_storage import MappedRecordVector, sort_mapped_records
 from ...exceptions import MergeError as _MergeError
 from ...i18n import _
 from ...core.text_lines import normalize_line_sequence_endings
+from .baseline_edit_plan import (
+    BaselineEditPlan as _BaselineEditPlan,
+    BaselineEditStream as _BaselineEditStream,
+)
 from .baseline_reference_positions import (
     baseline_reference_absence_position as _find_baseline_absence_position,
     baseline_reference_insertion_position as _find_baseline_insertion_position,
@@ -37,7 +41,7 @@ if TYPE_CHECKING:
     from ..ownership.absence_claims import AbsenceClaim
 
 
-_BaselineLineEdit = tuple[int, int, list[bytes]]
+_BaselineRemovalEdit = tuple[int, int]
 _DEFAULT_RESOLUTION_CHOICE_LIMIT = 51
 
 
@@ -152,7 +156,7 @@ def _removal_boundary_is_fixed_to_file_edge(claim: AbsenceClaim) -> bool:
 def _baseline_removal_edit(
     claim: AbsenceClaim,
     working_lines: Sequence[bytes],
-) -> _BaselineLineEdit | None:
+) -> _BaselineRemovalEdit | None:
     if not claim.content_lines:
         return None
 
@@ -166,7 +170,7 @@ def _baseline_removal_edit(
         return None
     if not _line_slice_matches(working_lines, position, forbidden_sequence):
         return None
-    return position, position + len(forbidden_sequence), []
+    return position, position + len(forbidden_sequence)
 
 
 def _removal_boundary_identity_matches_at(
@@ -498,13 +502,12 @@ def _live_coordinate_edits_are_safe(
     working_lines: Sequence[bytes],
     deletion_claims: Sequence[AbsenceClaim],
     deletion_edit_bounds: Sequence[tuple[int, ...]],
-    insertion_groups: Mapping[int, Sequence[int]] | None,
-    claimed_line_references: Mapping[int, Any],
+    positioned_insertion_lines: Sequence[tuple[int, ...]] | None,
     *,
     spool_dir: str | Path | None,
 ) -> bool:
     """Return whether every coordinate edit has one live target boundary."""
-    if not deletion_claims and not insertion_groups:
+    if not deletion_claims and not positioned_insertion_lines:
         return True
 
     with MatcherWorkspace(spool_dir=spool_dir) as workspace:
@@ -609,17 +612,18 @@ def _live_coordinate_edits_are_safe(
                 return False
             replacement_reference_index = next_replacement_reference
 
-        if insertion_groups is not None:
-            for position, claimed_lines in insertion_groups.items():
-                for claimed_line in claimed_lines:
-                    reference = claimed_line_references.get(claimed_line)
-                    if not _live_insertion_boundary_is_unique(
-                        reference,
-                        working_lines,
-                        position,
-                        occurrence_index,
-                    ):
-                        return False
+        if positioned_insertion_lines is not None:
+            for position, claimed_line in positioned_insertion_lines:
+                reference = ownership.presence_baseline_reference(
+                    claimed_line
+                )
+                if not _live_insertion_boundary_is_unique(
+                    reference,
+                    working_lines,
+                    position,
+                    occurrence_index,
+                ):
+                    return False
 
     return True
 
@@ -649,7 +653,7 @@ def _replacement_edit_with_origin_guard(
     claim: AbsenceClaim,
     origin: Any,
     working_lines: Sequence[bytes],
-) -> _BaselineLineEdit | None:
+) -> _BaselineRemovalEdit | None:
     """Return a removal edit only if it fits inside the original parent unit."""
     removal_edit = _baseline_removal_edit(claim, working_lines)
     if removal_edit is None:
@@ -662,19 +666,19 @@ def _replacement_edit_with_origin_guard(
     if parent_bounds is None:
         return None
 
-    start, end, replacement_lines = removal_edit
+    start, end = removal_edit
     parent_start, parent_end = parent_bounds
     if start < parent_start or end > parent_end:
         return None
-    return start, end, replacement_lines
+    return start, end
 
 
 def _replacement_edit_from_parent_offset(
     claim: AbsenceClaim,
     origin: Any,
-    claimed_lines: Sequence[int],
+    claimed_lines: LineRanges,
     working_lines: Sequence[bytes],
-) -> _BaselineLineEdit | None:
+) -> _BaselineRemovalEdit | None:
     """Place an equal-size split replacement by offset inside its parent."""
     if origin is None or not claim.content_lines:
         return None
@@ -695,18 +699,15 @@ def _replacement_edit_from_parent_offset(
     if old_line_count != new_line_count:
         return None
 
-    if not claimed_lines:
+    claimed_ranges = claimed_lines.ranges()
+    if len(claimed_ranges) != 1:
         return None
 
-    first_claimed_line = claimed_lines[0]
-    if any(
-        claimed_line != first_claimed_line + offset
-        for offset, claimed_line in enumerate(claimed_lines)
-    ):
-        return None
+    first_claimed_line, last_claimed_line = claimed_ranges[0]
+    claimed_line_count = last_claimed_line - first_claimed_line + 1
 
     forbidden_sequence = normalize_line_sequence_endings(claim.content_lines)
-    if len(forbidden_sequence) != len(claimed_lines):
+    if len(forbidden_sequence) != claimed_line_count:
         return None
 
     parent_bounds = _replacement_origin_absence_bounds(origin, working_lines)
@@ -730,7 +731,7 @@ def _replacement_edit_from_parent_offset(
 
     if (
         relative_offset < 0
-        or relative_offset + len(claimed_lines) > new_line_count
+        or relative_offset + claimed_line_count > new_line_count
     ):
         return None
 
@@ -741,19 +742,19 @@ def _replacement_edit_from_parent_offset(
         return None
     if not _line_slice_matches(working_lines, start, forbidden_sequence):
         return None
-    return start, end, []
+    return start, end
 
 
 def _replacement_edit_from_origin_resolution(
     claim: AbsenceClaim,
     unit_index: int,
     unit: Any,
-    claimed_lines: Sequence[int],
+    claimed_lines: LineRanges,
     working_lines: Sequence[bytes],
     resolution: _MergeResolution | None,
     *,
     max_results: int,
-) -> _BaselineLineEdit | None:
+) -> _BaselineRemovalEdit | None:
     """Return a replacement edit from a reviewed origin-placement choice."""
     if resolution is None:
         return None
@@ -776,7 +777,6 @@ def _replacement_edit_from_origin_resolution(
             return (
                 choice.position,
                 choice.position + len(forbidden_sequence),
-                [],
             )
 
     raise _MergeError(_("Selected merge resolution is no longer valid"))
@@ -786,12 +786,12 @@ def _replacement_baseline_edit(
     claim: AbsenceClaim,
     unit_index: int,
     unit: Any,
-    claimed_lines: Sequence[int],
+    claimed_lines: LineRanges,
     working_lines: Sequence[bytes],
     resolution: _MergeResolution | None,
     *,
     max_resolution_choices: int,
-) -> tuple[_BaselineLineEdit, bool] | None:
+) -> tuple[_BaselineRemovalEdit, bool] | None:
     origin = getattr(unit, "origin", None)
     guarded_edit = _replacement_edit_with_origin_guard(
         claim,
@@ -824,33 +824,288 @@ def _replacement_baseline_edit(
     return reviewed_edit, True
 
 
-def _apply_non_overlapping_baseline_edits(
+def _selection_fits_source(
+    source_selection: LineRanges,
+    source_line_count: int,
+) -> bool:
+    """Return whether every selected source line has available content."""
+    ranges = source_selection.ranges()
+    return not ranges or ranges[-1][1] <= source_line_count
+
+
+def _positioned_source_lines_match(
+    source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
-    edits: list[_BaselineLineEdit],
-) -> Iterator[bytes] | None:
-    sorted_edits = sorted(edits, key=lambda edit: (edit[0], edit[1]))
-    previous_end = 0
-    for start, end, _replacement_lines in sorted_edits:
-        if start < previous_end:
+    position: int,
+    positioned_lines: Sequence[tuple[int, ...]],
+    start_index: int,
+    stop_index: int,
+) -> bool:
+    """Return whether one positioned source-line group already exists."""
+    line_count = stop_index - start_index
+    if position < 0 or position + line_count > len(working_lines):
+        return False
+
+    for offset, record_index in enumerate(range(start_index, stop_index)):
+        _record_position, source_line = positioned_lines[record_index]
+        if working_lines[position + offset] != source_lines[source_line - 1]:
+            return False
+    return True
+
+
+def _replacement_source_range_capacity(replacement_units: Sequence[Any]) -> int:
+    """Return mapped-record capacity for replacement source ranges."""
+    return sum(
+        line_spec.count(",") + 1
+        for unit in replacement_units
+        for line_spec in unit.presence_lines
+    )
+
+
+def _plan_replacement_unit_edits(
+    plan: _BaselineEditPlan,
+    source_line_count: int,
+    working_lines: Sequence[bytes],
+    replacement_units: Sequence[Any],
+    deletion_claims: Sequence[AbsenceClaim],
+    deletion_edit_bounds: MappedRecordVector,
+    resolution: _MergeResolution | None,
+    *,
+    max_resolution_choices: int,
+) -> LineRanges | None:
+    """Plan coupled replacement units and return their claimed source lines."""
+    unit_claimed_lines = LineRanges.empty()
+
+    for unit_index, unit in enumerate(replacement_units):
+        claimed_selection = LineRanges.from_specs(unit.presence_lines)
+        if (
+            not claimed_selection
+            or not _selection_fits_source(
+                claimed_selection,
+                source_line_count,
+            )
+            or len(unit.deletion_indices) != 1
+        ):
             return None
-        previous_end = max(previous_end, end)
 
-    return _iter_lines_with_baseline_edits(working_lines, sorted_edits)
+        deletion_index = unit.deletion_indices[0]
+        if deletion_index < 0 or deletion_index >= len(deletion_claims):
+            return None
+
+        replacement_edit = _replacement_baseline_edit(
+            deletion_claims[deletion_index],
+            unit_index,
+            unit,
+            claimed_selection,
+            working_lines,
+            resolution,
+            max_resolution_choices=max_resolution_choices,
+        )
+        if replacement_edit is None:
+            return None
+
+        removal_edit, coordinate_was_reviewed = replacement_edit
+        start, end = removal_edit
+        plan.add_source_selection(
+            start,
+            end,
+            claimed_selection,
+        )
+        deletion_edit_bounds[deletion_index] = (
+            1,
+            start,
+            end,
+            coordinate_was_reviewed,
+        )
+        unit_claimed_lines = unit_claimed_lines.union(claimed_selection)
+
+    return unit_claimed_lines
 
 
-def _iter_lines_with_baseline_edits(
+def _plan_independent_removal_edits(
+    plan: _BaselineEditPlan,
     working_lines: Sequence[bytes],
-    sorted_edits: Sequence[_BaselineLineEdit],
-) -> Iterator[bytes]:
-    position = 0
-    for start, end, replacement_lines in sorted_edits:
-        for index in range(position, start):
-            yield working_lines[index]
-        yield from replacement_lines
-        position = end
+    deletion_claims: Sequence[AbsenceClaim],
+    deletion_edit_bounds: MappedRecordVector,
+) -> bool:
+    """Plan removals not already coupled to replacement units."""
+    for deletion_index, claim in enumerate(deletion_claims):
+        if deletion_edit_bounds[deletion_index][0]:
+            continue
 
-    for index in range(position, len(working_lines)):
-        yield working_lines[index]
+        removal_edit = _baseline_removal_edit(claim, working_lines)
+        if removal_edit is None:
+            return False
+
+        start, end = removal_edit
+        plan.add_removal(start, end)
+        deletion_edit_bounds[deletion_index] = (
+            1,
+            start,
+            end,
+            0,
+        )
+
+    return True
+
+
+def _collect_presence_position_records(
+    workspace: MatcherWorkspace,
+    source_line_count: int,
+    working_lines: Sequence[bytes],
+    ownership: BatchOwnership,
+    remaining_claimed_lines: LineRanges,
+) -> tuple[MappedRecordVector, MappedRecordVector, bool] | None:
+    """Partition presence lines into positioned and mapping-backed records."""
+    positioned_lines = workspace.record_vector(
+        len(remaining_claimed_lines),
+        "QQ",
+    )
+    unmapped_lines = workspace.record_vector(
+        len(remaining_claimed_lines),
+        "Q",
+    )
+    positioned_lines_are_ordered = True
+    previous_position: int | None = None
+
+    for claimed_line in remaining_claimed_lines:
+        if claimed_line > source_line_count:
+            return None
+        position = _find_baseline_insertion_position(
+            ownership.presence_baseline_reference(claimed_line),
+            working_lines,
+        )
+        if position is None:
+            unmapped_lines.append((claimed_line,))
+        else:
+            if (
+                previous_position is not None
+                and position < previous_position
+            ):
+                positioned_lines_are_ordered = False
+            positioned_lines.append((position, claimed_line))
+            previous_position = position
+
+    return positioned_lines, unmapped_lines, positioned_lines_are_ordered
+
+
+def _mapping_preserves_unpositioned_presence(
+    plan: _BaselineEditPlan,
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    unmapped_lines: Sequence[tuple[int, ...]],
+    *,
+    spool_dir: str | Path | None,
+) -> bool:
+    """Return whether mapped unpositioned lines survive planned removals."""
+    if not unmapped_lines:
+        return True
+
+    with _match_lines(
+        source_lines,
+        working_lines,
+        spool_dir=spool_dir,
+    ) as mapping:
+        for claimed_line, in unmapped_lines:
+            target_line = mapping.get_target_line_from_source_line(
+                claimed_line
+            )
+            if (
+                target_line is None
+                or plan.removes_target_line(target_line - 1)
+            ):
+                return False
+    return True
+
+
+def _add_positioned_presence_insertions(
+    plan: _BaselineEditPlan,
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    positioned_lines: MappedRecordVector,
+    *,
+    positioned_lines_are_ordered: bool,
+    trust_baseline_coordinates: bool,
+) -> None:
+    """Group positioned presence lines and append required insertions."""
+    if not positioned_lines_are_ordered:
+        sort_mapped_records(positioned_lines)
+
+    group_start = 0
+    while group_start < len(positioned_lines):
+        position = positioned_lines[group_start][0]
+        group_stop = group_start + 1
+        while (
+            group_stop < len(positioned_lines)
+            and positioned_lines[group_stop][0] == position
+        ):
+            group_stop += 1
+
+        if (
+            trust_baseline_coordinates
+            or not _positioned_source_lines_match(
+                source_lines,
+                working_lines,
+                position,
+                positioned_lines,
+                group_start,
+                group_stop,
+            )
+        ):
+            plan.add_positioned_source_lines(
+                position,
+                positioned_lines,
+                group_start,
+                group_stop,
+            )
+        group_start = group_stop
+
+
+def _plan_presence_insertions(
+    plan: _BaselineEditPlan,
+    workspace: MatcherWorkspace,
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    ownership: BatchOwnership,
+    remaining_claimed_lines: LineRanges,
+    *,
+    trust_baseline_coordinates: bool,
+    spool_dir: str | Path | None,
+) -> MappedRecordVector | None:
+    """Plan explicit insertions and validate presence resolved by matching."""
+    position_records = _collect_presence_position_records(
+        workspace,
+        len(source_lines),
+        working_lines,
+        ownership,
+        remaining_claimed_lines,
+    )
+    if position_records is None:
+        return None
+    positioned_lines, unmapped_lines, positioned_lines_are_ordered = (
+        position_records
+    )
+
+    if not _mapping_preserves_unpositioned_presence(
+        plan,
+        source_lines,
+        working_lines,
+        unmapped_lines,
+        spool_dir=spool_dir,
+    ):
+        return None
+
+    workspace.close_resource(unmapped_lines)
+    _add_positioned_presence_insertions(
+        plan,
+        source_lines,
+        working_lines,
+        positioned_lines,
+        positioned_lines_are_ordered=positioned_lines_are_ordered,
+        trust_baseline_coordinates=trust_baseline_coordinates,
+    )
+
+    return positioned_lines
 
 
 def _has_complete_baseline_references(
@@ -858,9 +1113,8 @@ def _has_complete_baseline_references(
     presence_line_set: LineSelection,
     deletion_claims: list[AbsenceClaim],
 ) -> bool:
-    claimed_line_references = ownership.presence_baseline_references()
     for claimed_line in presence_line_set:
-        reference = claimed_line_references.get(claimed_line)
+        reference = ownership.presence_baseline_reference(claimed_line)
         if reference is None or not getattr(reference, "has_after_line", False):
             return False
     for claim in deletion_claims:
@@ -944,13 +1198,15 @@ def try_apply_baseline_replacement_units(
     ):
         return iter(working_lines)
 
-    with MappedRecordVector(
-        len(deletion_claims),
-        "QQQQ",
-        length=len(deletion_claims),
-        spool_dir=spool_dir,
-    ) as deletion_edit_bounds:
-        return _try_apply_baseline_replacement_units(
+    workspace = MatcherWorkspace(spool_dir=spool_dir)
+    try:
+        deletion_edit_bounds = workspace.record_vector(
+            len(deletion_claims),
+            "QQQQ",
+            length=len(deletion_claims),
+        )
+        plan = _build_baseline_edit_plan(
+            workspace,
             source_lines,
             working_lines,
             ownership,
@@ -962,9 +1218,28 @@ def try_apply_baseline_replacement_units(
             trust_baseline_coordinates=trust_baseline_coordinates,
             spool_dir=spool_dir,
         )
+        if plan is None:
+            workspace.close()
+            return None
+
+        workspace.close_resource(deletion_edit_bounds)
+        if not plan:
+            workspace.close()
+            return iter(working_lines)
+
+        return _BaselineEditStream(
+            plan,
+            source_lines,
+            working_lines,
+            workspace,
+        )
+    except Exception:
+        workspace.close()
+        raise
 
 
-def _try_apply_baseline_replacement_units(
+def _build_baseline_edit_plan(
+    workspace: MatcherWorkspace,
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
     ownership: BatchOwnership,
@@ -976,127 +1251,55 @@ def _try_apply_baseline_replacement_units(
     max_resolution_choices: int,
     trust_baseline_coordinates: bool,
     spool_dir: str | Path | None,
-) -> Iterator[bytes] | None:
-    """Build and validate exact-coordinate fallback edits."""
+) -> _BaselineEditPlan | None:
+    """Build and validate one storage-backed exact-coordinate edit plan."""
     replacement_units = getattr(ownership, "replacement_units", [])
-    edits: list[_BaselineLineEdit] = []
-    unit_claimed_lines = LineRanges.empty()
-    unit_deletion_indices: set[int] = set()
-
-    for unit_index, unit in enumerate(replacement_units):
-        claimed_selection = LineRanges.from_specs(unit.presence_lines)
-        claimed_lines = list(claimed_selection)
-        if not claimed_lines or len(unit.deletion_indices) != 1:
-            return None
-
-        deletion_index = unit.deletion_indices[0]
-        if deletion_index < 0 or deletion_index >= len(deletion_claims):
-            return None
-        replacement_lines: list[bytes] = []
-        for claimed_line in claimed_lines:
-            if claimed_line < 1 or claimed_line > len(source_lines):
-                return None
-            replacement_lines.append(source_lines[claimed_line - 1])
-
-        replacement_edit = _replacement_baseline_edit(
-            deletion_claims[deletion_index],
-            unit_index,
-            unit,
-            claimed_lines,
-            working_lines,
-            resolution,
-            max_resolution_choices=max_resolution_choices,
-        )
-        if replacement_edit is None:
-            return None
-        removal_edit, coordinate_was_reviewed = replacement_edit
-        start, end, _removed_lines = removal_edit
-        edits.append((start, end, replacement_lines))
-        deletion_edit_bounds[deletion_index] = (
-            1,
-            start,
-            end,
-            coordinate_was_reviewed,
-        )
-        unit_claimed_lines = unit_claimed_lines.union(claimed_selection)
-        unit_deletion_indices.add(deletion_index)
-
-    for deletion_index, claim in enumerate(deletion_claims):
-        if deletion_index in unit_deletion_indices:
-            continue
-        removal_edit = _baseline_removal_edit(claim, working_lines)
-        if removal_edit is None:
-            return None
-        edits.append(removal_edit)
-        deletion_edit_bounds[deletion_index] = (
-            1,
-            removal_edit[0],
-            removal_edit[1],
-            0,
-        )
-
     presence_lines = coerce_line_ranges(presence_line_set)
+    plan = _BaselineEditPlan(
+        workspace,
+        edit_capacity=(
+            len(replacement_units)
+            + len(deletion_claims)
+            + len(presence_lines)
+        ),
+        source_range_capacity=(
+            _replacement_source_range_capacity(replacement_units)
+            + len(presence_lines)
+        ),
+    )
+    unit_claimed_lines = _plan_replacement_unit_edits(
+        plan,
+        len(source_lines),
+        working_lines,
+        replacement_units,
+        deletion_claims,
+        deletion_edit_bounds,
+        resolution,
+        max_resolution_choices=max_resolution_choices,
+    )
+    if unit_claimed_lines is None:
+        return None
+    if not _plan_independent_removal_edits(
+        plan,
+        working_lines,
+        deletion_claims,
+        deletion_edit_bounds,
+    ):
+        return None
+
     remaining_claimed_lines = presence_lines.difference(unit_claimed_lines)
-    claimed_line_references = ownership.presence_baseline_references()
-    grouped_insertions: dict[int, list[int]] | None = None
-    if remaining_claimed_lines:
-        grouped_insertions = {}
-        has_mapped_claimed_lines = False
-        for claimed_line in sorted(remaining_claimed_lines):
-            if claimed_line < 1 or claimed_line > len(source_lines):
-                return None
-            reference = claimed_line_references.get(claimed_line)
-            position = _find_baseline_insertion_position(
-                reference,
-                working_lines,
-            )
-            if position is None:
-                has_mapped_claimed_lines = True
-                continue
-            grouped_insertions.setdefault(position, []).append(claimed_line)
-
-        if has_mapped_claimed_lines:
-            with _match_lines(
-                source_lines,
-                working_lines,
-                spool_dir=spool_dir,
-            ) as mapping:
-                for claimed_line in remaining_claimed_lines:
-                    reference = claimed_line_references.get(claimed_line)
-                    if _find_baseline_insertion_position(
-                        reference,
-                        working_lines,
-                    ) is not None:
-                        continue
-                    target_line = mapping.get_target_line_from_source_line(
-                        claimed_line
-                    )
-                    if target_line is None or any(
-                        start <= target_line - 1 < end
-                        for start, end, _replacement_lines in edits
-                    ):
-                        return None
-
-        for position, claimed_lines in grouped_insertions.items():
-            insertion_lines = [
-                source_lines[claimed_line - 1] for claimed_line in claimed_lines
-            ]
-            if (
-                not trust_baseline_coordinates
-                and _line_slice_matches(
-                    working_lines,
-                    position,
-                    insertion_lines,
-                )
-            ):
-                continue
-            edits.append(
-                (
-                    position,
-                    position,
-                    insertion_lines,
-                )
-            )
+    positioned_insertion_lines = _plan_presence_insertions(
+        plan,
+        workspace,
+        source_lines,
+        working_lines,
+        ownership,
+        remaining_claimed_lines,
+        trust_baseline_coordinates=trust_baseline_coordinates,
+        spool_dir=spool_dir,
+    )
+    if positioned_insertion_lines is None:
+        return None
 
     if unit_claimed_lines.union(remaining_claimed_lines) != presence_lines:
         return None
@@ -1107,14 +1310,16 @@ def _try_apply_baseline_replacement_units(
             working_lines,
             deletion_claims,
             deletion_edit_bounds,
-            grouped_insertions,
-            claimed_line_references,
+            positioned_insertion_lines,
             spool_dir=spool_dir,
         )
     ):
         return None
 
-    return _apply_non_overlapping_baseline_edits(working_lines, edits)
+    workspace.close_resource(positioned_insertion_lines)
+    if not plan.sort_and_validate():
+        return None
+    return plan
 
 
 def has_missing_origin_replacement_claims(

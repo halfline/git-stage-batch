@@ -2,6 +2,7 @@
 
 import pytest
 
+import git_stage_batch.batch.merge.baseline_edits as baseline_edits_module
 import git_stage_batch.batch.merge.merge as merge_module
 import git_stage_batch.batch.realization.provenance as provenance_module
 from git_stage_batch.batch.merge.baseline_correspondence import (
@@ -135,6 +136,43 @@ def test_merge_routes_mapping_and_output_storage_to_invocation_spool(
     assert observed_spools == [spool_dir]
     assert provenance_spools
     assert set(provenance_spools) == {spool_dir}
+
+
+def test_baseline_fallback_routes_matching_storage_to_invocation_spool(
+    tmp_path,
+    monkeypatch,
+):
+    """Fallback matching should remain beneath its job scratch directory."""
+    spool_dir = tmp_path / "scratch"
+    spool_dir.mkdir()
+    observed_spools = []
+    original_match_lines = baseline_edits_module._match_lines
+
+    def record_match(*args, **kwargs):
+        observed_spools.append(kwargs.get("spool_dir"))
+        return original_match_lines(*args, **kwargs)
+
+    monkeypatch.setattr(
+        baseline_edits_module,
+        "_match_lines",
+        record_match,
+    )
+    source_lines = [b"one\n", b"two\n"]
+    working_lines = [b"prefix\n", b"two\n"]
+    ownership = BatchOwnership.from_presence_lines(["2"], [])
+
+    fallback_chunks = try_apply_baseline_replacement_units(
+        source_lines,
+        working_lines,
+        ownership,
+        {2},
+        [],
+        spool_dir=spool_dir,
+    )
+
+    assert fallback_chunks is not None
+    assert list(fallback_chunks) == working_lines
+    assert observed_spools == [spool_dir]
 
 
 def merge_batch(

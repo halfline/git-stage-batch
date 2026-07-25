@@ -35,6 +35,7 @@ def build_realized_buffer_from_lines(
                 normalize_line_sequence_endings(base_lines),
                 normalize_line_sequence_endings(batch_source_lines),
                 ownership,
+                spool_dir=spool_dir,
             ),
             detect_line_ending(batch_source_lines),
         ),
@@ -46,6 +47,8 @@ def _stream_realized_content_chunks_from_lines(
     base_lines: Sequence[bytes],
     batch_source_lines: Sequence[bytes],
     ownership: "BatchOwnership",
+    *,
+    spool_dir: str | Path | None = None,
 ) -> Iterator[bytes]:
     """Yield realized batch content chunks from normalized line sequences."""
     resolved = ownership.resolve()
@@ -76,6 +79,7 @@ def _stream_realized_content_chunks_from_lines(
             presence_line_set,
             deletion_claims,
             strict=False,
+            spool_dir=spool_dir,
         )
     except _MergeError:
         baseline_chunks = _baseline_edits.try_apply_baseline_replacement_units(
@@ -84,6 +88,7 @@ def _stream_realized_content_chunks_from_lines(
             ownership,
             presence_line_set,
             deletion_claims,
+            spool_dir=spool_dir,
         )
         if baseline_chunks is None:
             raise

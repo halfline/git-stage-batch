@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import git_stage_batch.batch.realized_file_content as realized_file_content
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.references import BaselineReference
@@ -26,6 +27,42 @@ def _build_realized_content_from_bytes(
         ) as result,
     ):
         return result.to_bytes()
+
+
+def test_build_realized_content_routes_storage_to_invocation_spool(
+    tmp_path,
+    monkeypatch,
+):
+    """Stored-file matching and realization use the caller's scratch path."""
+    spool_dir = tmp_path / "scratch"
+    spool_dir.mkdir()
+    realization_spools = []
+    original_satisfy_constraints = realized_file_content.satisfy_constraints
+
+    def record_realization(*args, **kwargs):
+        realization_spools.append(kwargs.get("spool_dir"))
+        return original_satisfy_constraints(*args, **kwargs)
+
+    monkeypatch.setattr(
+        realized_file_content,
+        "satisfy_constraints",
+        record_realization,
+    )
+
+    ownership = BatchOwnership.from_presence_lines(["2"], [])
+    with (
+        LineBuffer.from_bytes(b"one\n") as base_lines,
+        LineBuffer.from_bytes(b"one\ninserted\n") as source_lines,
+        build_realized_buffer_from_lines(
+            base_lines,
+            source_lines,
+            ownership,
+            spool_dir=spool_dir,
+        ) as result,
+    ):
+        assert result.to_bytes() == b"one\ninserted\n"
+
+    assert realization_spools == [spool_dir]
 
 
 def test_build_realized_content_no_duplication_when_claiming_moved_line():

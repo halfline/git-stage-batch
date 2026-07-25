@@ -328,6 +328,30 @@ def test_discard_translates_deletion_position_from_staged_index(functional_repo)
     assert _batch_content(functional_repo, "saved", "file.txt") == "a\na\nb\n"
 
 
+def test_include_to_batch_projects_partial_staged_replacement(functional_repo):
+    """Replacement removal bytes come from the persistent batch baseline."""
+    _prepare_staged_replacement(functional_repo)
+
+    git_stage_batch("start", "--no-auto-advance")
+    result = git_stage_batch(
+        "include",
+        "--to",
+        "saved",
+        "--line",
+        "1,3",
+        "--no-auto-advance",
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _batch_content(functional_repo, "saved", "file.txt") == (
+        "head\n"
+        "work-one\n"
+        "orig-two\n"
+        "tail\n"
+    )
+
+
 def test_discard_to_batch_projects_partial_staged_replacement(functional_repo):
     """Discarded replacements suppress HEAD content rather than index content."""
     _prepare_staged_replacement(functional_repo)

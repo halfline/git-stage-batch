@@ -107,3 +107,21 @@ def test_selected_discard_projects_cached_comparison_onto_batch(functional_repo)
 
     assert result.returncode == 0, result.stderr
     assert _batch_file_content(functional_repo) == _expected_replacement(original)
+
+
+def test_selected_include_projects_index_onto_older_batch(functional_repo):
+    """Selected include must translate index coordinates to the batch baseline."""
+    _file_path, original = _prepare_replacement_against_older_batch(
+        functional_repo
+    )
+
+    result = git_stage_batch(
+        "include",
+        "--to",
+        "saved",
+        "--no-auto-advance",
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _batch_file_content(functional_repo) == _expected_replacement(original)

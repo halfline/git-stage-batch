@@ -1,10 +1,19 @@
 """Tests for line-matching anchors derived from deletion references."""
 
+from contextlib import nullcontext
+
+import pytest
+
 import git_stage_batch.batch.merge.baseline_edits as baseline_edits
 from git_stage_batch.batch.merge.baseline_edits import (
     acquire_deletion_anchor_pairs_for_target,
 )
+from git_stage_batch.batch.line_matching.match import match_lines
+from git_stage_batch.batch.merge.merge import (
+    merge_batch_from_line_sequences_as_buffer,
+)
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
+from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.references import BaselineReference
 
 
@@ -106,6 +115,174 @@ def test_live_target_rejects_repeated_verified_deletion_boundary():
     )
 
     assert _deletion_anchor_pairs(source, target, [claim]) == ()
+
+
+@pytest.mark.parametrize("supply_mapping", [False, True])
+def test_live_merge_does_not_apply_ambiguous_baseline_coordinate(supply_mapping):
+    """Structural placement must outrank a stale repeated baseline coordinate."""
+    source = [
+        b"P\n",
+        b"ANCHOR\n",
+        b"OLD\n",
+        b"NEXT\n",
+        b"MIDDLE\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"TAIL\n",
+    ]
+    target = [
+        b"P\n",
+        b"ANCHOR\n",
+        b"OLD\n",
+        b"NEXT\n",
+        b"FILL\n",
+        b"ANCHOR\n",
+        b"OLD\n",
+        b"NEXT\n",
+        b"MIDDLE\n",
+        b"ANCHOR\n",
+        b"OLD\n",
+        b"NEXT\n",
+        b"TAIL\n",
+    ]
+    claim = AbsenceClaim(
+        anchor_line=6,
+        content_lines=[b"OLD\n"],
+        baseline_reference=BaselineReference(
+            after_line=6,
+            after_content=b"ANCHOR\n",
+            before_line=8,
+            before_content=b"NEXT\n",
+            has_before_line=True,
+        ),
+    )
+    mapping_context = (
+        match_lines(source, target)
+        if supply_mapping
+        else nullcontext(None)
+    )
+
+    with (
+        mapping_context as mapping,
+        merge_batch_from_line_sequences_as_buffer(
+            source,
+            BatchOwnership([], [claim]),
+            target,
+            source_to_working_mapping=mapping,
+        ) as merged,
+    ):
+        result = list(merged)
+
+    assert result == [
+        b"P\n",
+        b"ANCHOR\n",
+        b"OLD\n",
+        b"NEXT\n",
+        b"FILL\n",
+        b"ANCHOR\n",
+        b"OLD\n",
+        b"NEXT\n",
+        b"MIDDLE\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"TAIL\n",
+    ]
+
+
+def test_live_merge_does_not_insert_at_ambiguous_baseline_coordinate():
+    """A stale repeated insertion boundary must defer to structural placement."""
+    source = [
+        b"P\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"MIDDLE\n",
+        b"ANCHOR\n",
+        b"NEW\n",
+        b"NEXT\n",
+        b"TAIL\n",
+    ]
+    target = [
+        b"P\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"FILL\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"MIDDLE\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"TAIL\n",
+    ]
+    ownership = BatchOwnership.from_presence_lines(
+        ["6"],
+        [],
+        baseline_references={
+            6: BaselineReference(
+                after_line=5,
+                after_content=b"ANCHOR\n",
+                before_line=6,
+                before_content=b"NEXT\n",
+                has_before_line=True,
+            ),
+        },
+    )
+
+    with merge_batch_from_line_sequences_as_buffer(
+        source,
+        ownership,
+        target,
+    ) as merged:
+        result = list(merged)
+
+    assert result == [
+        b"P\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"FILL\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"MIDDLE\n",
+        b"ANCHOR\n",
+        b"NEW\n",
+        b"NEXT\n",
+        b"TAIL\n",
+    ]
+
+
+def test_live_target_accepts_one_unique_composite_deletion_boundary():
+    """Repeated payloads may still form one complete live boundary."""
+    source = [
+        b"A\n",
+        b"B\n",
+        b"A\n",
+        b"X\n",
+        b"O\n",
+        b"Y\n",
+        b"B\n",
+    ]
+    target = [
+        b"A\n",
+        b"O\n",
+        b"B\n",
+        b"A\n",
+        b"X\n",
+        b"O\n",
+        b"Y\n",
+        b"B\n",
+    ]
+    claim = AbsenceClaim(
+        anchor_line=1,
+        content_lines=[b"O\n"],
+        baseline_reference=BaselineReference(
+            after_line=1,
+            after_content=b"A\n",
+            before_line=3,
+            before_content=b"B\n",
+            has_before_line=True,
+        ),
+    )
+
+    assert _deletion_anchor_pairs(source, target, [claim]) == ((1, 1),)
 
 
 def test_live_target_checks_indexed_boundary_candidates(monkeypatch):

@@ -10,6 +10,103 @@ from .conftest import git_stage_batch
 class TestDiscardFile:
     """Tests for discard --file removing files and preserving batch content."""
 
+    def test_discard_file_batch_round_trips_reordered_block(self, functional_repo):
+        """A saved whole-file rewrite must not duplicate a moved block."""
+        file_path = functional_repo / "realize.py"
+        baseline = """def realize():
+    fallback = try_baseline(
+        source,
+        base,
+        ownership,
+        presence,
+        deletions,
+    )
+    if fallback is not None:
+        return fallback
+
+    result = satisfy_constraints(
+        source,
+        base,
+        presence,
+        deletions,
+        strict=False,
+    )
+
+    return result
+"""
+        rewritten = """def realize():
+    try:
+        result = satisfy_constraints(
+            source,
+            base,
+            presence,
+            deletions,
+            strict=False,
+        )
+    except MergeError:
+        fallback = try_baseline(
+            source,
+            base,
+            ownership,
+            presence,
+            deletions,
+        )
+        if fallback is None:
+            raise
+        return fallback
+
+    return result
+"""
+        file_path.write_text(baseline)
+        subprocess.run(
+            ["git", "add", "realize.py"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add realization example"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        file_path.write_text(rewritten)
+
+        git_stage_batch("start", "--no-auto-advance")
+        git_stage_batch("show", "--file", "realize.py", "--page", "all")
+        git_stage_batch(
+            "discard",
+            "--to",
+            "reordered-block",
+            "--file",
+            "realize.py",
+            "--no-auto-advance",
+        )
+
+        assert file_path.read_text() == baseline
+        stored_content = subprocess.run(
+            [
+                "git",
+                "show",
+                "refs/git-stage-batch/batches/reordered-block:realize.py",
+            ],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+            text=True,
+        ).stdout
+        assert stored_content == rewritten
+
+        git_stage_batch(
+            "apply",
+            "--from",
+            "reordered-block",
+            "--file",
+            "realize.py",
+        )
+
+        assert file_path.read_text() == rewritten
+
     def test_discard_file_removes_new_file_from_working_tree(self, repo_with_changes):
         """Test that discarding a new file removes it from the working tree."""
         repo = repo_with_changes

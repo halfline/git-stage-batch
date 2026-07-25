@@ -171,13 +171,20 @@ def _merge_batch_acquired_line_chunks(
 
     owned_mapping: LineMapping | None = None
     mapping = source_to_working_mapping
-    if mapping is None:
-        owned_mapping = match_lines(
-            source_lines,
-            working_lines,
-            spool_dir=spool_dir,
-        )
-        mapping = owned_mapping
+    with _baseline_edits.acquire_deletion_anchor_pairs_for_target(
+        source_lines,
+        working_lines,
+        deletion_claims,
+        spool_dir=spool_dir,
+    ) as deletion_anchor_pairs:
+        if mapping is None or deletion_anchor_pairs:
+            owned_mapping = match_lines(
+                source_lines,
+                working_lines,
+                anchor_pairs=deletion_anchor_pairs,
+                spool_dir=spool_dir,
+            )
+            mapping = owned_mapping
     try:
         if _baseline_edits.has_missing_origin_replacement_claims(
             ownership,

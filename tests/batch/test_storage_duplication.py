@@ -6,6 +6,10 @@ import git_stage_batch.batch.realized_file_content as realized_file_content
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.references import BaselineReference
+from git_stage_batch.batch.ownership.replacement_units import (
+    ReplacementUnit,
+    ReplacementUnitOrigin,
+)
 from git_stage_batch.batch.realized_file_content import (
     build_realized_buffer_from_lines,
 )
@@ -36,13 +40,20 @@ def test_build_realized_content_routes_storage_to_invocation_spool(
     """Stored-file matching and realization use the caller's scratch path."""
     spool_dir = tmp_path / "scratch"
     spool_dir.mkdir()
+    matching_spools = []
     realization_spools = []
+    original_match_lines = realized_file_content._match_lines
     original_satisfy_constraints = realized_file_content.satisfy_constraints
+
+    def record_match(*args, **kwargs):
+        matching_spools.append(kwargs.get("spool_dir"))
+        return original_match_lines(*args, **kwargs)
 
     def record_realization(*args, **kwargs):
         realization_spools.append(kwargs.get("spool_dir"))
         return original_satisfy_constraints(*args, **kwargs)
 
+    monkeypatch.setattr(realized_file_content, "_match_lines", record_match)
     monkeypatch.setattr(
         realized_file_content,
         "satisfy_constraints",
@@ -62,6 +73,7 @@ def test_build_realized_content_routes_storage_to_invocation_spool(
     ):
         assert result.to_bytes() == b"one\ninserted\n"
 
+    assert matching_spools == [spool_dir]
     assert realization_spools == [spool_dir]
 
 
@@ -92,6 +104,53 @@ def test_build_realized_content_no_duplication_when_claiming_moved_line():
     # Count occurrences of "X"
     x_count = result_lines.count("X")
     assert x_count == 2, f"Expected 'X' to appear 2 times, but got {x_count} times: {result_lines}"
+
+
+def test_build_realized_content_uses_exact_split_replacement_reference():
+    """Repeated parent lines should retain the unselected sibling."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["3"],
+        [
+            AbsenceClaim(
+                anchor_line=2,
+                content_lines=[b"same\n"],
+                baseline_reference=BaselineReference(
+                    after_line=1,
+                    after_content=b"head",
+                    before_line=3,
+                    before_content=b"same",
+                    has_before_line=True,
+                ),
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["3"],
+                deletion_indices=[0],
+                origin=ReplacementUnitOrigin(
+                    old_start=2,
+                    old_end=3,
+                    new_start=2,
+                    new_end=3,
+                    baseline_reference=BaselineReference(
+                        after_line=1,
+                        after_content=b"head",
+                        before_line=4,
+                        before_content=b"tail",
+                        has_before_line=True,
+                    ),
+                ),
+            )
+        ],
+    )
+
+    result = _build_realized_content_from_bytes(
+        b"head\nsame\nsame\ntail\n",
+        b"saved\nhead\nnew1\nnew2\ntail\n",
+        ownership,
+    )
+
+    assert result == b"head\nnew1\nsame\ntail\n"
 
 
 def test_build_realized_content_duplicate_line_claimed():
@@ -166,6 +225,32 @@ def test_build_realized_content_uses_baseline_reference_for_ambiguous_insert():
     assert result == b"top\nsave-a\nsave-b\n\nbottom\n"
 
 
+def test_exact_baseline_inserts_content_equal_to_following_line():
+    """A baseline sibling must not masquerade as the selected insertion."""
+    base_content = b"same\nb\nsame\nsame\nb\nx\n"
+    batch_source_content = b"same\nsame\nsame\nsame\nb\nx\n"
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        baseline_references={
+            2: BaselineReference(
+                after_line=2,
+                after_content=b"b",
+                before_line=3,
+                before_content=b"same",
+                has_before_line=True,
+            ),
+        },
+    )
+
+    result = _build_realized_content_from_bytes(
+        base_content,
+        batch_source_content,
+        ownership,
+    )
+
+    assert result == b"same\nb\nsame\nsame\nsame\nb\nx\n"
+
+
 def test_build_realized_content_applies_deletion_when_source_matches_baseline():
     """Baseline fallback must not bypass storage deletion constraints."""
     content = b"first\nold value\n"
@@ -183,6 +268,84 @@ def test_build_realized_content_applies_deletion_when_source_matches_baseline():
     result = _build_realized_content_from_bytes(content, content, ownership)
 
     assert result == b""
+
+
+def test_build_realized_content_uses_deletion_anchor_for_moved_block():
+    """Stored content uses a recorded boundary when an anchor line repeats."""
+    base_content = b"""def realize():
+    fallback = try_baseline(
+        source,
+        base,
+        ownership,
+        presence,
+        deletions,
+    )
+    if fallback is not None:
+        return fallback
+
+    result = satisfy_constraints(
+        source,
+        base,
+        presence,
+        deletions,
+        strict=False,
+    )
+
+    return result
+"""
+    batch_source_content = b"""def realize():
+    try:
+        result = satisfy_constraints(
+            source,
+            base,
+            presence,
+            deletions,
+            strict=False,
+        )
+    except MergeError:
+        fallback = try_baseline(
+            source,
+            base,
+            ownership,
+            presence,
+            deletions,
+        )
+        if fallback is None:
+            raise
+        return fallback
+
+    return result
+"""
+    base_lines = base_content.splitlines(keepends=True)
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-22"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=base_lines[1:9],
+                baseline_reference=BaselineReference(after_line=1),
+            ),
+            AbsenceClaim(
+                anchor_line=21,
+                content_lines=base_lines[11:19],
+                baseline_reference=BaselineReference(after_line=11),
+            ),
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["2-19"],
+                deletion_indices=[0],
+            ),
+        ],
+    )
+
+    result = _build_realized_content_from_bytes(
+        base_content,
+        batch_source_content,
+        ownership,
+    )
+
+    assert result == batch_source_content
 
 
 def test_build_realized_content_from_lines_accepts_non_list_sequences(line_sequence):

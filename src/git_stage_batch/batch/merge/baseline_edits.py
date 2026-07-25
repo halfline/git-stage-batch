@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ...core.line_selection import LineRanges, LineSelection, coerce_line_ranges
-from ...core.mapped_storage import sort_mapped_records
+from ...core.mapped_storage import MappedRecordVector, sort_mapped_records
 from ...exceptions import MergeError as _MergeError
 from ...i18n import _
 from ...core.text_lines import normalize_line_sequence_endings
@@ -275,6 +275,355 @@ def _live_removal_boundary_is_unique(
     return True
 
 
+def _insertion_boundary_identity_matches_at(
+    reference: Any,
+    target_lines: Sequence[bytes],
+    position: int,
+) -> bool:
+    """Return whether one insertion position has the reference's full identity."""
+    if reference is None or not getattr(reference, "has_after_line", False):
+        return False
+
+    after_line = getattr(reference, "after_line", None)
+    if after_line is None:
+        if position != 0:
+            return False
+    else:
+        after_content = getattr(reference, "after_content", None)
+        if (
+            position == 0
+            or after_content is None
+            or _reference_line_payload(target_lines[position - 1])
+            != _reference_line_payload(after_content)
+        ):
+            return False
+
+    if getattr(reference, "has_before_line", False):
+        before_line = getattr(reference, "before_line", None)
+        if before_line is None:
+            return position == len(target_lines)
+        before_content = getattr(reference, "before_content", None)
+        return (
+            position < len(target_lines)
+            and before_content is not None
+            and _reference_line_payload(target_lines[position])
+            == _reference_line_payload(before_content)
+        )
+
+    return position == len(target_lines)
+
+
+def _live_insertion_boundary_is_unique(
+    reference: Any,
+    target_lines: Sequence[bytes],
+    expected_position: int,
+    occurrence_index: LinePayloadOccurrenceIndex,
+) -> bool:
+    """Require an insertion reference to identify one live target boundary."""
+    if not _insertion_boundary_identity_matches_at(
+        reference,
+        target_lines,
+        expected_position,
+    ):
+        return False
+
+    after_line = getattr(reference, "after_line", None)
+    before_line = getattr(reference, "before_line", None)
+    if after_line is None or (
+        getattr(reference, "has_before_line", False)
+        and before_line is None
+    ):
+        return True
+
+    rarest_content: bytes | None = None
+    rarest_boundary_delta = 0
+    rarest_count = len(target_lines) + 1
+
+    def consider(content: bytes | None, boundary_delta: int) -> None:
+        nonlocal rarest_content
+        nonlocal rarest_boundary_delta
+        nonlocal rarest_count
+        if content is None:
+            return
+        count = occurrence_index.occurrence_count(content)
+        if count < rarest_count:
+            rarest_content = content
+            rarest_boundary_delta = boundary_delta
+            rarest_count = count
+
+    if after_line is not None:
+        consider(getattr(reference, "after_content", None), 1)
+    if getattr(reference, "has_before_line", False) and before_line is not None:
+        consider(getattr(reference, "before_content", None), 0)
+
+    if rarest_content is None or rarest_count == 0:
+        return False
+    if rarest_count == 1:
+        return True
+
+    for line_index in occurrence_index.matching_line_indexes(rarest_content):
+        position = line_index + rarest_boundary_delta
+        if (
+            position < 0
+            or position > len(target_lines)
+            or position == expected_position
+        ):
+            continue
+        if _insertion_boundary_identity_matches_at(
+            reference,
+            target_lines,
+            position,
+        ):
+            return False
+    return True
+
+
+def _replacement_origin_boundary_identity_matches_at(
+    origin: Any,
+    target_lines: Sequence[bytes],
+    position: int,
+) -> bool:
+    """Return whether one target span has the replacement parent's identity."""
+    reference = getattr(origin, "baseline_reference", None)
+    old_line_count = getattr(origin, "old_line_count", None)
+    if (
+        reference is None
+        or not getattr(reference, "has_after_line", False)
+        or type(old_line_count) is not int
+        or old_line_count <= 0
+        or position < 0
+        or position + old_line_count > len(target_lines)
+    ):
+        return False
+
+    after_line = getattr(reference, "after_line", None)
+    if after_line is None:
+        if position != 0:
+            return False
+    else:
+        after_content = getattr(reference, "after_content", None)
+        if (
+            position == 0
+            or after_content is None
+            or _reference_line_payload(target_lines[position - 1])
+            != _reference_line_payload(after_content)
+        ):
+            return False
+
+    if not getattr(reference, "has_before_line", False):
+        return True
+
+    before_line = getattr(reference, "before_line", None)
+    before_position = position + old_line_count
+    if before_line is None:
+        return before_position == len(target_lines)
+    before_content = getattr(reference, "before_content", None)
+    return (
+        before_position < len(target_lines)
+        and before_content is not None
+        and _reference_line_payload(target_lines[before_position])
+        == _reference_line_payload(before_content)
+    )
+
+
+def _live_replacement_origin_boundary_is_unique(
+    origin: Any,
+    target_lines: Sequence[bytes],
+    expected_position: int,
+    occurrence_index: LinePayloadOccurrenceIndex,
+) -> bool:
+    """Require a replacement parent to identify one live target span."""
+    if not _replacement_origin_boundary_identity_matches_at(
+        origin,
+        target_lines,
+        expected_position,
+    ):
+        return False
+
+    reference = origin.baseline_reference
+    after_line = reference.after_line
+    before_line = reference.before_line
+    if after_line is None or (
+        reference.has_before_line
+        and before_line is None
+    ):
+        return True
+
+    rarest_content: bytes | None = None
+    rarest_boundary_delta = 0
+    rarest_count = len(target_lines) + 1
+
+    def consider(content: bytes | None, boundary_delta: int) -> None:
+        nonlocal rarest_content
+        nonlocal rarest_boundary_delta
+        nonlocal rarest_count
+        if content is None:
+            return
+        count = occurrence_index.occurrence_count(content)
+        if count < rarest_count:
+            rarest_content = content
+            rarest_boundary_delta = boundary_delta
+            rarest_count = count
+
+    if after_line is not None:
+        consider(reference.after_content, 1)
+    if reference.has_before_line and before_line is not None:
+        consider(reference.before_content, -origin.old_line_count)
+
+    if rarest_content is None or rarest_count == 0:
+        return False
+    if rarest_count == 1:
+        return True
+
+    last_position = len(target_lines) - origin.old_line_count
+    for line_index in occurrence_index.matching_line_indexes(rarest_content):
+        position = line_index + rarest_boundary_delta
+        if (
+            position < 0
+            or position > last_position
+            or position == expected_position
+        ):
+            continue
+        if _replacement_origin_boundary_identity_matches_at(
+            origin,
+            target_lines,
+            position,
+        ):
+            return False
+    return True
+
+
+def _live_coordinate_edits_are_safe(
+    ownership: BatchOwnership,
+    working_lines: Sequence[bytes],
+    deletion_claims: Sequence[AbsenceClaim],
+    deletion_edit_bounds: Sequence[tuple[int, ...]],
+    insertion_groups: Mapping[int, Sequence[int]] | None,
+    claimed_line_references: Mapping[int, Any],
+    *,
+    spool_dir: str | Path | None,
+) -> bool:
+    """Return whether every coordinate edit has one live target boundary."""
+    if not deletion_claims and not insertion_groups:
+        return True
+
+    with MatcherWorkspace(spool_dir=spool_dir) as workspace:
+        occurrence_index = LinePayloadOccurrenceIndex(
+            workspace,
+            working_lines,
+        )
+        replacement_reference_count = sum(
+            len(unit.deletion_indices)
+            for unit in ownership.replacement_units
+        )
+        replacement_units_by_deletion = workspace.record_vector(
+            replacement_reference_count,
+            "QQ",
+        )
+        for unit_index, unit in enumerate(ownership.replacement_units):
+            for deletion_index in unit.deletion_indices:
+                if (
+                    type(deletion_index) is int
+                    and 0 <= deletion_index < len(deletion_claims)
+                ):
+                    replacement_units_by_deletion.append((
+                        deletion_index,
+                        unit_index,
+                    ))
+        sort_mapped_records(replacement_units_by_deletion)
+
+        replacement_reference_index = 0
+        for deletion_index, claim in enumerate(deletion_claims):
+            (
+                has_actual_bounds,
+                actual_start,
+                actual_end,
+                coordinate_was_reviewed,
+            ) = (
+                deletion_edit_bounds[deletion_index]
+            )
+            if not has_actual_bounds:
+                return False
+            actual_bounds = (actual_start, actual_end)
+            while (
+                replacement_reference_index
+                < len(replacement_units_by_deletion)
+                and replacement_units_by_deletion[
+                    replacement_reference_index
+                ][0] < deletion_index
+            ):
+                replacement_reference_index += 1
+            next_replacement_reference = replacement_reference_index
+            while (
+                next_replacement_reference
+                < len(replacement_units_by_deletion)
+                and replacement_units_by_deletion[
+                    next_replacement_reference
+                ][0] == deletion_index
+            ):
+                next_replacement_reference += 1
+            if coordinate_was_reviewed:
+                replacement_reference_index = next_replacement_reference
+                continue
+
+            removal_edit = _baseline_removal_edit(claim, working_lines)
+            if (
+                removal_edit is not None
+                and actual_bounds == removal_edit[:2]
+                and _live_removal_boundary_is_unique(
+                    claim,
+                    working_lines,
+                    removal_edit[0],
+                    occurrence_index,
+                )
+            ):
+                replacement_reference_index = next_replacement_reference
+                continue
+
+            origin_is_safe = False
+            for reference_index in range(
+                replacement_reference_index,
+                next_replacement_reference,
+            ):
+                unit_index = replacement_units_by_deletion[reference_index][1]
+                unit = ownership.replacement_units[unit_index]
+                origin = getattr(unit, "origin", None)
+                parent_bounds = _replacement_origin_absence_bounds(
+                    origin,
+                    working_lines,
+                )
+                if (
+                    parent_bounds is not None
+                    and parent_bounds[0] <= actual_bounds[0]
+                    and actual_bounds[1] <= parent_bounds[1]
+                    and _live_replacement_origin_boundary_is_unique(
+                        origin,
+                        working_lines,
+                        parent_bounds[0],
+                        occurrence_index,
+                    )
+                ):
+                    origin_is_safe = True
+                    break
+            if not origin_is_safe:
+                return False
+            replacement_reference_index = next_replacement_reference
+
+        if insertion_groups is not None:
+            for position, claimed_lines in insertion_groups.items():
+                for claimed_line in claimed_lines:
+                    reference = claimed_line_references.get(claimed_line)
+                    if not _live_insertion_boundary_is_unique(
+                        reference,
+                        working_lines,
+                        position,
+                        occurrence_index,
+                    ):
+                        return False
+
+    return True
+
+
 def _replacement_origin_absence_bounds(
     origin: Any,
     working_lines: Sequence[bytes],
@@ -346,30 +695,47 @@ def _replacement_edit_from_parent_offset(
     if old_line_count != new_line_count:
         return None
 
-    relative_offsets = [
-        claimed_line - new_start for claimed_line in sorted(claimed_lines)
-    ]
-    if (
-        not relative_offsets
-        or relative_offsets[0] < 0
-        or relative_offsets[-1] >= new_line_count
-    ):
+    if not claimed_lines:
         return None
-    if relative_offsets != list(
-        range(relative_offsets[0], relative_offsets[0] + len(relative_offsets))
+
+    first_claimed_line = claimed_lines[0]
+    if any(
+        claimed_line != first_claimed_line + offset
+        for offset, claimed_line in enumerate(claimed_lines)
     ):
         return None
 
     forbidden_sequence = normalize_line_sequence_endings(claim.content_lines)
-    if len(forbidden_sequence) != len(relative_offsets):
+    if len(forbidden_sequence) != len(claimed_lines):
         return None
 
     parent_bounds = _replacement_origin_absence_bounds(origin, working_lines)
     if parent_bounds is None:
         return None
 
+    claim_reference = claim.baseline_reference
+    origin_reference = getattr(origin, "baseline_reference", None)
+    if (
+        claim_reference is not None
+        and getattr(claim_reference, "has_after_line", False)
+        and origin_reference is not None
+        and getattr(origin_reference, "has_after_line", False)
+    ):
+        relative_offset = (
+            (getattr(claim_reference, "after_line", None) or 0)
+            - (getattr(origin_reference, "after_line", None) or 0)
+        )
+    else:
+        relative_offset = first_claimed_line - new_start
+
+    if (
+        relative_offset < 0
+        or relative_offset + len(claimed_lines) > new_line_count
+    ):
+        return None
+
     parent_start, parent_end = parent_bounds
-    start = parent_start + relative_offsets[0]
+    start = parent_start + relative_offset
     end = start + len(forbidden_sequence)
     if start < parent_start or end > parent_end:
         return None
@@ -425,8 +791,16 @@ def _replacement_baseline_edit(
     resolution: _MergeResolution | None,
     *,
     max_resolution_choices: int,
-) -> _BaselineLineEdit | None:
+) -> tuple[_BaselineLineEdit, bool] | None:
     origin = getattr(unit, "origin", None)
+    guarded_edit = _replacement_edit_with_origin_guard(
+        claim,
+        origin,
+        working_lines,
+    )
+    if guarded_edit is not None:
+        return guarded_edit, False
+
     offset_edit = _replacement_edit_from_parent_offset(
         claim,
         origin,
@@ -434,17 +808,9 @@ def _replacement_baseline_edit(
         working_lines,
     )
     if offset_edit is not None:
-        return offset_edit
+        return offset_edit, False
 
-    guarded_edit = _replacement_edit_with_origin_guard(
-        claim,
-        origin,
-        working_lines,
-    )
-    if guarded_edit is not None:
-        return guarded_edit
-
-    return _replacement_edit_from_origin_resolution(
+    reviewed_edit = _replacement_edit_from_origin_resolution(
         claim,
         unit_index,
         unit,
@@ -453,6 +819,9 @@ def _replacement_baseline_edit(
         resolution,
         max_results=max_resolution_choices,
     )
+    if reviewed_edit is None:
+        return None
+    return reviewed_edit, True
 
 
 def _apply_non_overlapping_baseline_edits(
@@ -501,6 +870,45 @@ def _has_complete_baseline_references(
     return bool(presence_line_set or deletion_claims)
 
 
+def _all_deletions_are_already_absent(
+    deletion_claims: Sequence[AbsenceClaim],
+    working_lines: Sequence[bytes],
+) -> bool:
+    """Return whether baseline and source anchors prove removals satisfied."""
+    for claim in deletion_claims:
+        if not claim.content_lines:
+            continue
+        if _baseline_removal_edit(claim, working_lines) is not None:
+            return False
+
+        forbidden_sequence = normalize_line_sequence_endings(
+            claim.content_lines
+        )
+        if len(forbidden_sequence) > len(working_lines):
+            continue
+
+        anchor_line = claim.anchor_line
+        if anchor_line is None:
+            source_position = 0
+        elif (
+            type(anchor_line) is not int
+            or anchor_line < 1
+            or anchor_line > len(working_lines)
+        ):
+            return False
+        else:
+            source_position = anchor_line
+
+        if _line_slice_matches(
+            working_lines,
+            source_position,
+            forbidden_sequence,
+        ):
+            return False
+
+    return True
+
+
 def try_apply_baseline_replacement_units(
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
@@ -510,6 +918,7 @@ def try_apply_baseline_replacement_units(
     *,
     resolution: _MergeResolution | None = None,
     max_resolution_choices: int = _DEFAULT_RESOLUTION_CHOICE_LIMIT,
+    trust_baseline_coordinates: bool = False,
     spool_dir: str | Path | None = None,
 ) -> Iterator[bytes] | None:
     """Apply baseline-coordinate edits when structural source anchors fail.
@@ -529,9 +938,46 @@ def try_apply_baseline_replacement_units(
         ownership,
         presence_line_set,
         deletion_claims,
+    ) and _all_deletions_are_already_absent(
+        deletion_claims,
+        working_lines,
     ):
         return iter(working_lines)
 
+    with MappedRecordVector(
+        len(deletion_claims),
+        "QQQQ",
+        length=len(deletion_claims),
+        spool_dir=spool_dir,
+    ) as deletion_edit_bounds:
+        return _try_apply_baseline_replacement_units(
+            source_lines,
+            working_lines,
+            ownership,
+            presence_line_set,
+            deletion_claims,
+            deletion_edit_bounds,
+            resolution=resolution,
+            max_resolution_choices=max_resolution_choices,
+            trust_baseline_coordinates=trust_baseline_coordinates,
+            spool_dir=spool_dir,
+        )
+
+
+def _try_apply_baseline_replacement_units(
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    ownership: BatchOwnership,
+    presence_line_set: LineSelection,
+    deletion_claims: list[AbsenceClaim],
+    deletion_edit_bounds: MappedRecordVector,
+    *,
+    resolution: _MergeResolution | None,
+    max_resolution_choices: int,
+    trust_baseline_coordinates: bool,
+    spool_dir: str | Path | None,
+) -> Iterator[bytes] | None:
+    """Build and validate exact-coordinate fallback edits."""
     replacement_units = getattr(ownership, "replacement_units", [])
     edits: list[_BaselineLineEdit] = []
     unit_claimed_lines = LineRanges.empty()
@@ -552,7 +998,7 @@ def try_apply_baseline_replacement_units(
                 return None
             replacement_lines.append(source_lines[claimed_line - 1])
 
-        removal_edit = _replacement_baseline_edit(
+        replacement_edit = _replacement_baseline_edit(
             deletion_claims[deletion_index],
             unit_index,
             unit,
@@ -561,10 +1007,17 @@ def try_apply_baseline_replacement_units(
             resolution,
             max_resolution_choices=max_resolution_choices,
         )
-        if removal_edit is None:
+        if replacement_edit is None:
             return None
+        removal_edit, coordinate_was_reviewed = replacement_edit
         start, end, _removed_lines = removal_edit
         edits.append((start, end, replacement_lines))
+        deletion_edit_bounds[deletion_index] = (
+            1,
+            start,
+            end,
+            coordinate_was_reviewed,
+        )
         unit_claimed_lines = unit_claimed_lines.union(claimed_selection)
         unit_deletion_indices.add(deletion_index)
 
@@ -575,12 +1028,19 @@ def try_apply_baseline_replacement_units(
         if removal_edit is None:
             return None
         edits.append(removal_edit)
+        deletion_edit_bounds[deletion_index] = (
+            1,
+            removal_edit[0],
+            removal_edit[1],
+            0,
+        )
 
     presence_lines = coerce_line_ranges(presence_line_set)
     remaining_claimed_lines = presence_lines.difference(unit_claimed_lines)
     claimed_line_references = ownership.presence_baseline_references()
+    grouped_insertions: dict[int, list[int]] | None = None
     if remaining_claimed_lines:
-        grouped_insertions: dict[int, list[int]] = {}
+        grouped_insertions = {}
         has_mapped_claimed_lines = False
         for claimed_line in sorted(remaining_claimed_lines):
             if claimed_line < 1 or claimed_line > len(source_lines):
@@ -621,7 +1081,14 @@ def try_apply_baseline_replacement_units(
             insertion_lines = [
                 source_lines[claimed_line - 1] for claimed_line in claimed_lines
             ]
-            if _line_slice_matches(working_lines, position, insertion_lines):
+            if (
+                not trust_baseline_coordinates
+                and _line_slice_matches(
+                    working_lines,
+                    position,
+                    insertion_lines,
+                )
+            ):
                 continue
             edits.append(
                 (
@@ -632,6 +1099,19 @@ def try_apply_baseline_replacement_units(
             )
 
     if unit_claimed_lines.union(remaining_claimed_lines) != presence_lines:
+        return None
+    if (
+        not trust_baseline_coordinates
+        and not _live_coordinate_edits_are_safe(
+            ownership,
+            working_lines,
+            deletion_claims,
+            deletion_edit_bounds,
+            grouped_insertions,
+            claimed_line_references,
+            spool_dir=spool_dir,
+        )
+    ):
         return None
 
     return _apply_non_overlapping_baseline_edits(working_lines, edits)

@@ -89,3 +89,21 @@ def test_bulk_discard_projects_onto_older_batch_baseline(functional_repo):
 
     assert result.returncode == 0, result.stderr
     assert _batch_file_content(functional_repo) == _expected_replacement(original)
+
+
+def test_selected_discard_projects_cached_comparison_onto_batch(functional_repo):
+    """Selected discard must use the comparison snapshot that built its hunk."""
+    _file_path, original = _prepare_replacement_against_older_batch(
+        functional_repo
+    )
+
+    result = git_stage_batch(
+        "discard",
+        "--to",
+        "saved",
+        "--no-auto-advance",
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _batch_file_content(functional_repo) == _expected_replacement(original)

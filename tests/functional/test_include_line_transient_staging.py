@@ -55,6 +55,37 @@ def _batch_content(repo, batch_name: str, path: str) -> str:
     return result.stdout
 
 
+def _prepare_staged_replacement(repo) -> None:
+    _commit_file(
+        repo,
+        "file.txt",
+        "head\n"
+        "orig-one\n"
+        "orig-two\n"
+        "tail\n",
+    )
+    (repo / "file.txt").write_text(
+        "staged-prefix\n"
+        "head\n"
+        "staged-one\n"
+        "staged-two\n"
+        "tail\n"
+    )
+    subprocess.run(
+        ["git", "add", "file.txt"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+    )
+    (repo / "file.txt").write_text(
+        "staged-prefix\n"
+        "head\n"
+        "work-one\n"
+        "work-two\n"
+        "tail\n"
+    )
+
+
 def _prepare_ambiguous_middle_insertion(repo) -> None:
     _commit_file(
         repo,
@@ -295,6 +326,30 @@ def test_discard_translates_deletion_position_from_staged_index(functional_repo)
 
     assert result.returncode == 0, result.stderr
     assert _batch_content(functional_repo, "saved", "file.txt") == "a\na\nb\n"
+
+
+def test_discard_to_batch_projects_partial_staged_replacement(functional_repo):
+    """Discarded replacements suppress HEAD content rather than index content."""
+    _prepare_staged_replacement(functional_repo)
+
+    git_stage_batch("start", "--no-auto-advance")
+    result = git_stage_batch(
+        "discard",
+        "--to",
+        "saved",
+        "--line",
+        "1,3",
+        "--no-auto-advance",
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _batch_content(functional_repo, "saved", "file.txt") == (
+        "head\n"
+        "work-one\n"
+        "orig-two\n"
+        "tail\n"
+    )
 
 
 def test_discard_translates_replacement_origin_for_older_batch(functional_repo):

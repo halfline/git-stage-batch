@@ -203,3 +203,85 @@ def test_translates_replacement_origin_from_live_head_to_batch_baseline():
     assert origin.baseline_reference is not None
     assert origin.baseline_reference.after_line == 6
     assert origin.baseline_reference.before_line == 8
+
+
+def test_projects_split_replacement_content_through_parent_origin():
+    """A saved baseline may have different bytes inside the same parent span."""
+    head = [b"head\n", b"head-one\n", b"head-two\n", b"tail\n"]
+    target = [b"head\n", b"saved-one\n", b"saved-two\n", b"tail\n"]
+    deletion_reference = BaselineReference(
+        after_line=1,
+        after_content=b"head",
+        before_line=3,
+        before_content=b"head-two",
+        has_before_line=True,
+    )
+    origin_reference = BaselineReference(
+        after_line=1,
+        after_content=b"head",
+        before_line=4,
+        before_content=b"tail",
+        has_before_line=True,
+    )
+    deletion = AbsenceClaim(
+        anchor_line=1,
+        content_lines=[b"head-one\n"],
+        baseline_reference=deletion_reference,
+    )
+    origin = ReplacementUnitOrigin(
+        old_start=2,
+        old_end=3,
+        new_start=2,
+        new_end=3,
+        baseline_reference=origin_reference,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [deletion],
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["2"],
+                deletion_indices=[0],
+                origin=origin,
+            )
+        ],
+    )
+
+    translate_ownership_baseline_references(
+        ownership,
+        head,
+        target,
+        replacement_origin_source_lines=head,
+    )
+
+    assert list(deletion.content_lines) == [b"saved-one\n"]
+    assert deletion.baseline_reference is not None
+    assert deletion.baseline_reference.after_line == 1
+    assert deletion.baseline_reference.before_line == 3
+    assert deletion.baseline_reference.before_content == b"saved-two\n"
+    assert origin.baseline_reference is not None
+    assert origin.baseline_reference.after_line == 1
+    assert origin.baseline_reference.before_line == 4
+
+
+def test_does_not_project_plain_deletion_onto_different_content():
+    """Ordinary deletions must not absorb unrelated target-baseline bytes."""
+    source = [b"head\n", b"old\n", b"tail\n"]
+    target = [b"head\n", b"unrelated\n", b"tail\n"]
+    deletion = AbsenceClaim(
+        anchor_line=1,
+        content_lines=[b"old\n"],
+        baseline_reference=BaselineReference(
+            after_line=1,
+            after_content=b"head",
+            before_line=3,
+            before_content=b"tail",
+            has_before_line=True,
+        ),
+    )
+    ownership = BatchOwnership.from_presence_lines([], [deletion])
+
+    translate_ownership_baseline_references(ownership, source, target)
+
+    assert deletion.baseline_reference is None
+    assert list(deletion.content_lines) == [b"old\n"]

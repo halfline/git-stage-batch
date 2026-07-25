@@ -191,6 +191,43 @@ class TestCommandIncludeToBatch:
         with pytest.raises(NoMoreHunks):
             fetch_next_change()
 
+    def test_partial_leading_deletion_uses_full_hunk_boundary(self, temp_git_repo):
+        """Selecting a later leading deletion keeps an earlier deleted line."""
+        file_path = temp_git_repo / "leading.txt"
+        file_path.write_text("first\nsecond\nremaining\n")
+        subprocess.run(
+            ["git", "add", "leading.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add leading lines"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        file_path.write_text("remaining\n")
+
+        command_start()
+        fetch_next_change()
+        line_changes = load_line_changes_from_state()
+        second_deletion = next(
+            line
+            for line in line_changes.lines
+            if line.kind == "-" and line.text_bytes == b"second"
+        )
+
+        command_include_to_batch(
+            "leading-deletion",
+            line_ids=str(second_deletion.id),
+        )
+
+        assert read_file_from_batch(
+            "leading-deletion",
+            "leading.txt",
+        ) == "first\nremaining\n"
+
     def test_include_empty_deleted_text_file_to_batch(self, temp_git_repo):
         """Whole-file include to batch should persist empty text deletions."""
         empty_file = temp_git_repo / "empty.txt"

@@ -40,9 +40,6 @@ def add_selected_lines_to_batch(
     metadata = read_batch_metadata(batch_name)
     file_metadata = metadata.get("files", {}).get(file_path)
     baseline_commit = get_validated_baseline_commit(batch_name)
-    batch_baseline_lines = read_git_object_buffer_or_empty(
-        f"{baseline_commit}:{file_path}"
-    )
     replacement_origin_source_buffer = (
         read_git_object_buffer_or_empty(f"HEAD:{file_path}")
         if hunk_lines is not None and replacement_line_runs
@@ -50,9 +47,6 @@ def add_selected_lines_to_batch(
     )
 
     with ExitStack() as ownership_stack:
-        reference_target_lines = ownership_stack.enter_context(
-            batch_baseline_lines
-        )
         replacement_origin_source_lines = (
             ownership_stack.enter_context(replacement_origin_source_buffer)
             if replacement_origin_source_buffer is not None
@@ -71,7 +65,7 @@ def add_selected_lines_to_batch(
                     hunk_lines=hunk_lines,
                     replacement_line_runs=replacement_line_runs,
                     reference_source_lines=reference_source_lines,
-                    reference_target_lines=reference_target_lines,
+                    batch_baseline_commit=baseline_commit,
                     replacement_origin_source_lines=(
                         replacement_origin_source_lines
                     ),

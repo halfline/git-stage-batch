@@ -15,6 +15,9 @@ from ...batch.ownership.merging import merge_batch_ownership
 from ...batch.ownership.remapping import remap_batch_ownership_with_lineage
 from ...batch.ownership.translation import translate_lines_to_batch_ownership
 from ...batch.ownership_update import acquire_batch_ownership_update_for_selection
+from ...batch.merge.baseline_reference_translation import (
+    translate_ownership_baseline_references,
+)
 from ...batch.state.query import read_batch_metadata
 from ...batch.ownership.replacement_line_runs import (
     ReplacementLineRun,
@@ -184,17 +187,40 @@ def add_discard_line_replacement_to_batch(
 
     metadata = read_batch_metadata(batch_name)
     file_metadata = metadata.get("files", {}).get(selection.file_path)
-    batch_source_commit = None
 
     with ExitStack() as ownership_stack:
         try:
             if file_metadata is None:
+                batch_source_commit = create_batch_source_commit(
+                    selection.file_path,
+                    file_buffer_override=selection.rewritten_working_lines,
+                )
+                _record_session_batch_source(
+                    selection.file_path,
+                    batch_source_commit,
+                )
+                prepared_selected_lines = (
+                    refresh_selected_lines_against_source_lines(
+                        selection.rewritten_selected_lines,
+                        source_lines=selection.rewritten_working_lines,
+                        working_lines=selection.rewritten_working_lines,
+                        coordinate_lines=selection.rewritten_line_changes.lines,
+                    )
+                )
+                reference_source_lines = ownership_stack.enter_context(
+                    read_git_object_buffer_or_empty(
+                        f"HEAD:{selection.file_path}"
+                    )
+                )
                 update = ownership_stack.enter_context(
                     acquire_batch_ownership_update_for_selection(
                         batch_name=batch_name,
                         file_path=selection.file_path,
                         file_metadata=None,
-                        selected_lines=selection.rewritten_selected_lines,
+                        selected_lines=prepared_selected_lines,
+                        initial_batch_source_commit=batch_source_commit,
+                        reference_source_lines=reference_source_lines,
+                        batch_baseline_commit=metadata.get("baseline"),
                     )
                 )
                 ownership = update.ownership_after
@@ -203,6 +229,7 @@ def add_discard_line_replacement_to_batch(
                 ownership, batch_source_commit = _merge_replacement_with_batch(
                     selection,
                     file_metadata=file_metadata,
+                    batch_baseline_commit=metadata.get("baseline"),
                     ownership_stack=ownership_stack,
                 )
         except ValueError as e:
@@ -214,13 +241,6 @@ def add_discard_line_replacement_to_batch(
                     "Error: {error}"
                 ).format(file=selection.file_path, batch=batch_name, error=str(e))
             )
-
-        if batch_source_commit is None:
-            batch_source_commit = create_batch_source_commit(
-                selection.file_path,
-                file_buffer_override=selection.rewritten_working_lines,
-            )
-            _record_session_batch_source(selection.file_path, batch_source_commit)
 
         snapshot_file_if_untracked(selection.file_path)
         add_file_to_batch(
@@ -236,8 +256,12 @@ def _merge_replacement_with_batch(
     selection: DiscardLineReplacementSelection,
     *,
     file_metadata: dict,
+    batch_baseline_commit: object,
     ownership_stack: ExitStack,
 ):
+    if not isinstance(batch_baseline_commit, str) or not batch_baseline_commit:
+        raise ValueError("replacement update requires a batch baseline commit")
+
     current_batch_source = file_metadata.get("batch_source_commit")
     existing_ownership = ownership_stack.enter_context(
         acquire_ownership_for_metadata_dict(file_metadata)
@@ -254,6 +278,12 @@ def _merge_replacement_with_batch(
 
     with (
         old_source_buffer as old_source_lines,
+        read_git_object_buffer_or_empty(
+            f"HEAD:{selection.file_path}"
+        ) as reference_source_lines,
+        read_git_object_buffer_or_empty(
+            f"{batch_baseline_commit}:{selection.file_path}"
+        ) as reference_target_lines,
         advance_source_lines_preserving_existing_presence(
             old_lines=old_source_lines,
             working_lines=selection.rewritten_working_lines,
@@ -269,8 +299,14 @@ def _merge_replacement_with_batch(
             source_lines=source_with_provenance.source_buffer,
             working_lines=(),
             lineage=source_with_provenance.lineage,
+            coordinate_lines=selection.rewritten_line_changes.lines,
         )
         new_ownership = translate_lines_to_batch_ownership(refreshed_selected_lines)
+        translate_ownership_baseline_references(
+            new_ownership,
+            reference_source_lines,
+            reference_target_lines,
+        )
         batch_source_commit = create_batch_source_commit(
             selection.file_path,
             file_buffer_override=source_with_provenance.source_buffer,

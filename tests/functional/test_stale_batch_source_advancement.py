@@ -181,6 +181,40 @@ def test_initial_later_deletion_uses_full_hunk_anchor_context(functional_repo):
     assert _show_file(batch_commit, "anchors.txt") == "A\nX\nB\nC\n"
 
 
+def test_initial_included_deletion_uses_full_hunk_anchor_context(functional_repo):
+    """Include-to-batch must retain context preceding a later deletion."""
+    test_file = functional_repo / "anchors.txt"
+    baseline = "A\nX\nB\nD\nC\n"
+    test_file.write_text(baseline)
+    subprocess.run(["git", "add", "anchors.txt"], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Add included deletion anchors"],
+        check=True,
+        capture_output=True,
+    )
+
+    test_file.write_text("S\n" + baseline)
+    command_start(quiet=True)
+
+    test_file.write_text("A\nB\nC\n")
+    command_again(quiet=True)
+    command_include_to_batch(
+        batch_name="saved",
+        line_ids="2",
+        file="anchors.txt",
+        quiet=True,
+        auto_advance=False,
+    )
+
+    metadata = read_batch_metadata("saved")
+    deletion = metadata["files"]["anchors.txt"]["deletions"][0]
+    assert deletion["after_source_line"] == 4
+
+    batch_commit = get_batch_commit_sha("saved")
+    assert batch_commit is not None
+    assert _show_file(batch_commit, "anchors.txt") == "A\nX\nB\nC\n"
+
+
 def test_stale_discard_preserves_previously_discarded_claimed_lines(functional_repo):
     """Advancing a discard batch must not drop lines already removed from WT."""
     test_file = functional_repo / "test.py"

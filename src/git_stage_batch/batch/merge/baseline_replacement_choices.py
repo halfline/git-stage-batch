@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import hashlib
 from typing import TYPE_CHECKING, Any
 
+from ...core.line_selection import LineSelection, coerce_line_ranges
 from ...core.text_lines import normalize_line_sequence_endings
 from ..line_matching.sequence_equality import line_slice_equals as _line_slice_matches
 
@@ -28,7 +29,7 @@ def replacement_origin_choices_for_unit(
     claim: AbsenceClaim,
     unit_index: int,
     unit: Any,
-    claimed_lines: Sequence[int],
+    claimed_lines: LineSelection,
     working_lines: Sequence[bytes],
     *,
     max_results: int | None = None,
@@ -86,10 +87,10 @@ def _replacement_origin_ambiguity_key(
     unit_index: int,
     deletion_index: int,
     origin: Any,
-    claimed_lines: Sequence[int],
+    claimed_lines: LineSelection,
     forbidden_sequence: Sequence[bytes],
 ) -> str:
-    claimed = ",".join(str(line) for line in claimed_lines)
+    claimed = coerce_line_ranges(claimed_lines).to_line_spec()
     digest = _sequence_digest(forbidden_sequence)
     return (
         f"replacement-origin:{unit_index}:delete:{deletion_index}:"

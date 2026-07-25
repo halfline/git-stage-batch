@@ -14,6 +14,7 @@ from ...core.text_lines import (
     normalize_line_endings,
     normalize_line_sequence_endings,
 )
+from ..line_matching.line_range_view import LineRangeView
 from ..line_matching.line_mapping import LineMapping
 from ..line_matching.match import match_lines
 from ..ownership.model import BatchOwnership
@@ -359,12 +360,72 @@ def _translate_deletion_references(
         )
 
 
+def _translate_replacement_origin_references(
+    ownership: BatchOwnership,
+    source_lines: Sequence[bytes],
+    target_lines: Sequence[bytes],
+    mapping: LineMapping,
+) -> None:
+    """Translate each shared replacement-parent reference exactly once."""
+    with MappedRecordVector(
+        len(ownership.replacement_units),
+        "QQ",
+    ) as origin_units:
+        for unit_index, unit in enumerate(ownership.replacement_units):
+            if unit.origin is not None:
+                origin_units.append((id(unit.origin), unit_index))
+        sort_mapped_records(origin_units)
+
+        previous_origin_id: int | None = None
+        for origin_id, unit_index in origin_units:
+            if origin_id == previous_origin_id:
+                continue
+            previous_origin_id = origin_id
+            origin = ownership.replacement_units[unit_index].origin
+            assert origin is not None
+
+            old_start = origin.old_start
+            old_end = origin.old_end
+            if (
+                type(old_start) is not int
+                or type(old_end) is not int
+                or old_start < 1
+                or old_end < old_start
+                or old_end > len(source_lines)
+            ):
+                origin.baseline_reference = None
+                continue
+
+            content_lines = LineRangeView(
+                source_lines,
+                old_start - 1,
+                old_end,
+            )
+            translated = _translate_removal_reference(
+                origin.baseline_reference,
+                content_lines,
+                source_lines,
+                target_lines,
+                mapping,
+            )
+            origin.baseline_reference = (
+                translated[0] if translated is not None else None
+            )
+
+
 def translate_ownership_baseline_references(
     ownership: BatchOwnership,
     source_baseline_lines: Sequence[bytes],
     target_baseline_lines: Sequence[bytes],
+    *,
+    replacement_origin_source_lines: Sequence[bytes] | None = None,
 ) -> None:
-    """Rebase newly translated ownership references onto a batch baseline."""
+    """Rebase newly translated ownership references onto a batch baseline.
+
+    Ordinary claims use the selected view's comparison base. File-derived
+    replacement origins use live HEAD coordinates and require their separate
+    source sequence when available.
+    """
     with MappedIntVector(
         len(ownership.deletions),
         width=4,
@@ -391,6 +452,7 @@ def translate_ownership_baseline_references(
                 target_lines,
                 mapping,
             )
+
             _translate_deletion_references(
                 ownership,
                 (
@@ -399,6 +461,42 @@ def translate_ownership_baseline_references(
                     if origin_backed[deletion_index] == 0
                 ),
                 source_lines,
+                target_lines,
+                mapping,
+            )
+
+        if (
+            replacement_origin_source_lines is None
+            or not ownership.replacement_units
+        ):
+            return
+
+        normalized_origin_source = normalize_line_sequence_endings(
+            replacement_origin_source_lines
+        )
+        origin_source_sequence = as_acquirable_line_sequence(
+            normalized_origin_source
+        )
+
+        with (
+            origin_source_sequence.acquire_lines() as origin_source_lines,
+            target_sequence.acquire_lines() as target_lines,
+            match_lines(origin_source_lines, target_lines) as mapping,
+        ):
+            _translate_deletion_references(
+                ownership,
+                (
+                    deletion_index
+                    for deletion_index in range(len(ownership.deletions))
+                    if origin_backed[deletion_index] != 0
+                ),
+                origin_source_lines,
+                target_lines,
+                mapping,
+            )
+            _translate_replacement_origin_references(
+                ownership,
+                origin_source_lines,
                 target_lines,
                 mapping,
             )

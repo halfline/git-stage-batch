@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 
@@ -61,7 +61,9 @@ def _translate_selection_to_batch_ownership(
     selected_lines: list,
     *,
     hunk_lines: Sequence[LineEntry] | None = None,
-    replacement_line_runs: Sequence[ReplacementLineRun] | None = None,
+    replacement_line_runs: Iterable[ReplacementLineRun] | None = None,
+    replacement_origin_line_runs: Iterable[ReplacementLineRun] | None = None,
+    replacement_origin_source_lines: Sequence[bytes] | None = None,
 ) -> BatchOwnership:
     """Translate a selection, using full-hunk replacement context when available."""
     selected_ids = {
@@ -76,7 +78,13 @@ def _translate_selection_to_batch_ownership(
                 selected_lines,
             ),
             selected_ids,
-            replacement_line_runs=list(replacement_line_runs),
+            replacement_line_runs=replacement_line_runs,
+            replacement_origin_line_runs=replacement_origin_line_runs,
+            replacement_origin_source_lines=(
+                replacement_origin_source_lines
+                if replacement_origin_line_runs is not None
+                else None
+            ),
         )
 
     return translate_lines_to_batch_ownership(selected_lines)
@@ -90,9 +98,11 @@ def prepare_batch_ownership_update_for_selection(
     selected_lines: list,
     *,
     hunk_lines: Sequence[LineEntry] | None = None,
-    replacement_line_runs: Sequence[ReplacementLineRun] | None = None,
+    replacement_line_runs: Iterable[ReplacementLineRun] | None = None,
+    replacement_origin_line_runs: Iterable[ReplacementLineRun] | None = None,
     reference_source_lines: Sequence[bytes] | None = None,
     reference_target_lines: Sequence[bytes] | None = None,
+    replacement_origin_source_lines: Sequence[bytes] | None = None,
 ) -> PreparedBatchUpdate:
     """Prepare complete ownership update after stale-source handling."""
     refreshed = ensure_batch_source_current_for_selection(
@@ -107,16 +117,26 @@ def prepare_batch_ownership_update_for_selection(
         refreshed.selected_lines,
         hunk_lines=hunk_lines,
         replacement_line_runs=replacement_line_runs,
+        replacement_origin_line_runs=replacement_origin_line_runs,
+        replacement_origin_source_lines=replacement_origin_source_lines,
     )
     if (reference_source_lines is None) != (reference_target_lines is None):
         raise ValueError(
             "reference source and target lines must be provided together"
+        )
+    if (
+        replacement_origin_source_lines is not None
+        and reference_target_lines is None
+    ):
+        raise ValueError(
+            "replacement origin source lines require reference target lines"
         )
     if reference_source_lines is not None and reference_target_lines is not None:
         translate_ownership_baseline_references(
             new_ownership,
             reference_source_lines,
             reference_target_lines,
+            replacement_origin_source_lines=replacement_origin_source_lines,
         )
 
     if refreshed.ownership:
@@ -139,9 +159,11 @@ def acquire_batch_ownership_update_for_selection(
     file_metadata: dict | None,
     selected_lines: list,
     hunk_lines: Sequence[LineEntry] | None = None,
-    replacement_line_runs: Sequence[ReplacementLineRun] | None = None,
+    replacement_line_runs: Iterable[ReplacementLineRun] | None = None,
+    replacement_origin_line_runs: Iterable[ReplacementLineRun] | None = None,
     reference_source_lines: Sequence[bytes] | None = None,
     reference_target_lines: Sequence[bytes] | None = None,
+    replacement_origin_source_lines: Sequence[bytes] | None = None,
 ) -> Iterator[PreparedBatchUpdate]:
     """Acquire existing ownership metadata while preparing a batch update.
 
@@ -157,8 +179,10 @@ def acquire_batch_ownership_update_for_selection(
             selected_lines=selected_lines,
             hunk_lines=hunk_lines,
             replacement_line_runs=replacement_line_runs,
+            replacement_origin_line_runs=replacement_origin_line_runs,
             reference_source_lines=reference_source_lines,
             reference_target_lines=reference_target_lines,
+            replacement_origin_source_lines=replacement_origin_source_lines,
         )
         return
 
@@ -171,6 +195,8 @@ def acquire_batch_ownership_update_for_selection(
             selected_lines=selected_lines,
             hunk_lines=hunk_lines,
             replacement_line_runs=replacement_line_runs,
+            replacement_origin_line_runs=replacement_origin_line_runs,
             reference_source_lines=reference_source_lines,
             reference_target_lines=reference_target_lines,
+            replacement_origin_source_lines=replacement_origin_source_lines,
         )

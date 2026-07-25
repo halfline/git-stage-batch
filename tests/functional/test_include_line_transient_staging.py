@@ -255,6 +255,109 @@ def test_discard_translates_repeated_boundary_from_staged_index(functional_repo)
     )
 
 
+def test_discard_translates_deletion_position_from_staged_index(functional_repo):
+    """Saved deletions use the batch baseline, not shifted index coordinates."""
+    _commit_file(functional_repo, "file.txt", "a\nb\na\nb\n")
+    (functional_repo / "file.txt").write_text(
+        "staged-one\n"
+        "staged-two\n"
+        "a\n"
+        "b\n"
+        "a\n"
+        "b\n"
+    )
+    subprocess.run(
+        ["git", "add", "file.txt"],
+        check=True,
+        cwd=functional_repo,
+        capture_output=True,
+    )
+    (functional_repo / "file.txt").write_text(
+        "staged-one\n"
+        "staged-two\n"
+        "a\n"
+        "a\n"
+        "b\n"
+    )
+
+    git_stage_batch("start", "--no-auto-advance")
+    result = git_stage_batch(
+        "discard",
+        "--to",
+        "saved",
+        "--file",
+        "file.txt",
+        "--line",
+        "1",
+        "--no-auto-advance",
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _batch_content(functional_repo, "saved", "file.txt") == "a\na\nb\n"
+
+
+def test_discard_translates_replacement_origin_for_older_batch(functional_repo):
+    """Replacement fallback uses the persisted batch baseline coordinates."""
+    original = (
+        "section1\n"
+        "x\n"
+        "old\n"
+        "y\n"
+        "section2\n"
+        "x\n"
+        "old\n"
+        "y\n"
+        "end\n"
+    )
+    _commit_file(functional_repo, "file.txt", original)
+    git_stage_batch("new", "saved")
+
+    (functional_repo / "file.txt").write_text(
+        "section2\n"
+        "x\n"
+        "old\n"
+        "y\n"
+        "end\n"
+    )
+    subprocess.run(
+        ["git", "add", "file.txt"],
+        check=True,
+        cwd=functional_repo,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Remove first section"],
+        check=True,
+        cwd=functional_repo,
+        capture_output=True,
+    )
+    (functional_repo / "file.txt").write_text(
+        "section2\n"
+        "x\n"
+        "NEW\n"
+        "y\n"
+        "end\n"
+    )
+
+    git_stage_batch("start", "--no-auto-advance")
+    result = git_stage_batch(
+        "discard",
+        "--to",
+        "saved",
+        "--line",
+        "1-2",
+        "--no-auto-advance",
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _batch_content(functional_repo, "saved", "file.txt") == original.replace(
+        "section2\nx\nold\n",
+        "section2\nx\nNEW\n",
+    )
+
+
 def test_include_to_batch_translates_position_from_staged_index(functional_repo):
     """Persistent includes project index-relative gaps onto the batch baseline."""
     _commit_file(functional_repo, "file.txt", "a\nb\nb\nb\nb\n")

@@ -9639,7 +9639,7 @@ def test_batch_hunk_replacement_translation_owns_replacement_runs():
         "_hunk_replacement_translation.translate_hunk_replacement_line_runs"
         in hunk_text
     )
-    assert "for replacement_run in replacement_line_runs" in replacement_text
+    assert "for replacement_run in replacement_run_iterator" in replacement_text
 
 
 def test_batch_ownership_line_entries_own_entry_helpers():
@@ -10488,11 +10488,15 @@ def test_batch_replacement_line_runs_own_public_derivation():
         SRC_ROOT / "batch" / "ownership_update.py": {
             "ReplacementLineRun",
         },
-        SRC_ROOT / "commands" / "selection" / "discard_line_replacement.py": (
-            public_names
-        ),
+        SRC_ROOT / "commands" / "selection" / "discard_line_replacement.py": {
+            "ReplacementLineRun",
+            "derive_replacement_line_runs_from_lines",
+        },
         SRC_ROOT / "commands" / "selection" / "replacement_selection.py": (
-            public_names
+            {
+                "ReplacementLineRun",
+                "derive_replacement_line_runs_from_lines",
+            }
         ),
     }
     violations = []
@@ -11919,6 +11923,7 @@ def test_batch_line_range_view_stays_out_of_realized_entries():
     }
     expected_imports = {
         SRC_ROOT / "batch" / "merge/baseline_correspondence.py": public_names,
+        SRC_ROOT / "batch" / "merge/baseline_reference_translation.py": public_names,
         SRC_ROOT / "batch" / "realization/entry_storage.py": public_names,
     }
     violations = []
@@ -17980,7 +17985,6 @@ def test_discard_line_replacement_stays_in_command_helper():
     }
     old_discard_names = {
         "_add_discard_line_replacement_to_batch",
-        "_derive_live_replacement_line_runs",
         "_command_discard_file_lines_to_batch",
         "_command_discard_lines_to_batch",
         "_command_discard_lines_to_batch_as",

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 
 from ...core.line_selection import LineRanges
 from ...core.models import LineEntry
@@ -29,7 +29,9 @@ def translate_hunk_selection_to_batch_ownership(
     hunk_lines: list[LineEntry],
     selected_display_ids: set[int],
     *,
-    replacement_line_runs: list[_ReplacementLineRun] | None = None,
+    replacement_line_runs: Iterable[_ReplacementLineRun] | None = None,
+    replacement_origin_line_runs: Iterable[_ReplacementLineRun] | None = None,
+    replacement_origin_source_lines: Sequence[bytes] | None = None,
     baseline_lines: Sequence[bytes] | None = None,
 ) -> BatchOwnership:
     """Translate selected live-hunk IDs while retaining full-hunk boundaries.
@@ -61,6 +63,8 @@ def translate_hunk_selection_to_batch_ownership(
             replacement_line_runs=replacement_line_runs or (),
             old_line_content=old_line_content,
             hunk_content_view=hunk_content_view,
+            replacement_origin_line_runs=replacement_origin_line_runs,
+            replacement_origin_source_lines=replacement_origin_source_lines,
         )
     )
     claimed_source_lines = LineRangeBuilder()

@@ -58,7 +58,7 @@ def test_stale_source_advancement_on_discard(functional_repo):
     first_batch_source = metadata["files"]["test.py"]["batch_source_commit"]
 
     # Verify the batch captured the modification
-    assert _presence_source_lines(metadata["files"]["test.py"]) == ["1-3"]
+    assert _presence_source_lines(metadata["files"]["test.py"]) == ["2"]
 
     # Now add ENTIRELY NEW code that doesn't exist in the batch source
     # The batch source has "line 1\nmodified line 2\nline 3\n"
@@ -77,9 +77,10 @@ def test_stale_source_advancement_on_discard(functional_repo):
     # Batch source should have changed
     assert second_batch_source != first_batch_source
 
-    # Verify ownership was preserved and extended
-    # Should now claim all 5 lines
-    assert "1-5" in ",".join(_presence_source_lines(metadata["files"]["test.py"]))
+    # Verify ownership was preserved and extended without claiming context.
+    assert ",".join(
+        _presence_source_lines(metadata["files"]["test.py"])
+    ) == "2,4-5"
 
 
 def test_again_include_to_new_batch_does_not_reuse_stale_session_source(functional_repo):
@@ -112,6 +113,48 @@ def test_again_include_to_new_batch_does_not_reuse_stale_session_source(function
     assert 'return "layer3"' not in source_content
     assert 'return "bridge"' in realized_content
     assert 'return "layer3"' not in realized_content
+
+
+def test_again_discard_to_new_batch_uses_current_file_coordinates(functional_repo):
+    """A first discard after again must not claim removed session-start lines."""
+    test_file = functional_repo / "layers.txt"
+    baseline = "header\nsection one\nsection two\nfooter\n"
+    session_content = (
+        "header\n"
+        "removed before discard\n"
+        "section one\n"
+        "section two\n"
+        "footer\n"
+        "saved by discard\n"
+    )
+    current_content = baseline + "saved by discard\n"
+
+    test_file.write_text(baseline)
+    subprocess.run(["git", "add", "layers.txt"], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Add layered file"],
+        check=True,
+        capture_output=True,
+    )
+
+    test_file.write_text(session_content)
+    command_start(quiet=True)
+
+    test_file.write_text(current_content)
+    command_again(quiet=True)
+    command_discard_to_batch(
+        batch_name="current-layer",
+        file="layers.txt",
+        quiet=True,
+        advance=False,
+    )
+
+    assert test_file.read_text() == baseline
+
+    batch_commit = get_batch_commit_sha("current-layer")
+    assert batch_commit is not None
+    realized_content = _show_file(batch_commit, "layers.txt")
+    assert realized_content == current_content
 
 
 def test_replacement_to_new_batch_uses_its_rewritten_source(functional_repo):
@@ -342,7 +385,7 @@ def test_stale_discard_preserves_previously_discarded_claimed_lines(functional_r
 
     assert "owned earlier\n" in source
     assert "new later\n" in source
-    assert ",".join(_presence_source_lines(file_metadata)) == "1-3"
+    assert ",".join(_presence_source_lines(file_metadata)) == "1,3"
 
 
 def test_existing_ownership_preserved_through_advancement(functional_repo):

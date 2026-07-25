@@ -51,12 +51,12 @@ def test_prepare_batch_ownership_update_first_time_stale_blank_context():
         file_path="test.py",
         current_batch_source_commit=None,
         existing_ownership=None,
-        selected_lines=lines
+        selected_lines=lines,
     )
 
     assert result.batch_source_commit is None
     assert result.ownership_before is None
-    assert result.ownership_after.presence_claims[0].source_lines == ["1-2"]
+    assert result.ownership_after.presence_claims[0].source_lines == ["2"]
 
 
 def test_prepare_batch_ownership_update_first_time_deletion_anchor():
@@ -73,7 +73,9 @@ def test_prepare_batch_ownership_update_first_time_deletion_anchor():
         file_path="test.py",
         current_batch_source_commit=None,
         existing_ownership=None,
-        selected_lines=lines
+        selected_lines=lines,
+        reference_source_lines=[b"anchor\n", b"old line\n"],
+        reference_target_lines=[b"anchor\n", b"old line\n"],
     )
 
     assert result.batch_source_commit is None

@@ -10462,6 +10462,36 @@ def test_batch_absence_content_owns_public_builders():
     assert violations == []
 
 
+def test_batch_insertion_references_own_addition_metadata():
+    """Insertion ownership metadata should not be owned by an include command."""
+    insertion_references = __import__(
+        "git_stage_batch.batch.ownership.insertion_references",
+        fromlist=["insertion_references"],
+    )
+    include_selection = __import__(
+        "git_stage_batch.commands.selection.include_line_selection",
+        fromlist=["include_line_selection"],
+    )
+    public_name = "record_baseline_references_for_additions"
+    consumer_paths = {
+        SRC_ROOT / "commands" / "selection" / "discard_line_batching.py",
+        SRC_ROOT / "commands" / "selection" / "include_line_batching.py",
+        SRC_ROOT / "commands" / "selection" / "include_line_selection.py",
+    }
+
+    assert public_name in vars(insertion_references)
+    assert public_name not in vars(include_selection)
+
+    for path in consumer_paths:
+        imported_modules = {
+            alias.name
+            for imported_module, node in _import_from_nodes(path)
+            if imported_module == "git_stage_batch.batch.ownership"
+            for alias in node.names
+        }
+        assert "insertion_references" in imported_modules
+
+
 def test_batch_replacement_line_runs_own_public_derivation():
     """Replacement run derivation should live outside ownership metadata."""
     replacement_line_runs = __import__(
@@ -10475,10 +10505,12 @@ def test_batch_replacement_line_runs_own_public_derivation():
     public_names = {
         "ReplacementLineRun",
         "derive_replacement_line_runs_from_lines",
+        "stream_replacement_line_runs_from_lines",
     }
     private_names = {
         "_ReplacementLineRun",
         "_derive_replacement_line_runs_from_lines",
+        "_stream_replacement_line_runs_from_lines",
     }
     expected_imports = {
         SRC_ROOT / "batch" / "ownership/hunk_translation.py": {
@@ -10488,16 +10520,15 @@ def test_batch_replacement_line_runs_own_public_derivation():
         SRC_ROOT / "batch" / "ownership_update.py": {
             "ReplacementLineRun",
         },
-        SRC_ROOT / "commands" / "selection" / "discard_line_replacement.py": {
-            "ReplacementLineRun",
-            "derive_replacement_line_runs_from_lines",
-        },
         SRC_ROOT / "commands" / "selection" / "replacement_selection.py": (
             {
                 "ReplacementLineRun",
                 "derive_replacement_line_runs_from_lines",
             }
         ),
+        SRC_ROOT / "commands" / "selection" / "batch_line_updates.py": {
+            "stream_replacement_line_runs_from_lines",
+        },
     }
     violations = []
 
@@ -17718,6 +17749,7 @@ def test_include_line_batching_stays_in_command_helper():
         "batch_line_selection",
         "batch_line_updates",
         "include_file_selection",
+        "insertion_references",
         "load_line_changes_from_state",
         "recalculate_selected_hunk_for_command",
         "require_selected_hunk",
@@ -17752,10 +17784,6 @@ def test_include_line_batching_stays_in_command_helper():
     assert not include_imports_helper
     assert action_imports_helper
     assert helper_imports <= helper_imported_names
-    assert {
-        "include_line_selection",
-        "insertion_references",
-    } & helper_imported_names
 
 
 def test_discard_line_selection_stays_in_command_helper():
@@ -17975,7 +18003,6 @@ def test_discard_line_replacement_stays_in_command_helper():
         "DiscardLineReplacementSelection",
         "add_discard_line_replacement_to_batch",
         "build_discard_line_replacement_target_buffer",
-        "derive_live_replacement_line_runs",
         "prepare_discard_line_replacement_selection",
     }
     line_batching_names = {
@@ -18003,7 +18030,6 @@ def test_discard_line_replacement_stays_in_command_helper():
         "create_batch",
         "create_batch_source_commit",
         "detect_file_mode",
-        "derive_replacement_line_runs_from_lines",
         "read_git_object_buffer_or_none",
         "read_git_object_buffer_or_empty",
         "load_line_changes_from_state",

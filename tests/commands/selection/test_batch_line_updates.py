@@ -1,5 +1,7 @@
 """Tests for selected-line batch update command boundaries."""
 
+from types import SimpleNamespace
+
 import pytest
 
 import git_stage_batch.commands.selection.batch_line_updates as batch_line_updates
@@ -60,8 +62,10 @@ def test_invalid_comparison_snapshot_becomes_command_error(monkeypatch):
             file_path="module.py",
             selected_lines=[],
             stale_source_action="Cannot include lines to batch",
-            hunk_lines=[object()],
-            replacement_line_runs=[object()],
+            hunk_lines=[
+                SimpleNamespace(kind="-"),
+                SimpleNamespace(kind="+"),
+            ],
         )
 
     assert error.value.exit_code == 1

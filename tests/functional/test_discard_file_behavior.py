@@ -10,7 +10,7 @@ from .conftest import git_stage_batch
 class TestDiscardFile:
     """Tests for discard --file removing files and preserving batch content."""
 
-    def test_discard_file_saves_leading_deletion_past_older_prefix(
+    def test_discard_file_projects_leading_deletion_past_older_prefix(
         self,
         functional_repo,
     ):
@@ -70,6 +70,17 @@ class TestDiscardFile:
             text=True,
         ).stdout
         assert stored_content == "prefix\ntail\n"
+
+        file_path.write_text("prefix\nold\ntail\n")
+        git_stage_batch(
+            "apply",
+            "--from",
+            "saved",
+            "--file",
+            "sections.txt",
+        )
+
+        assert file_path.read_text() == "prefix\ntail\n"
 
     def test_discard_file_projects_replacement_onto_older_batch_baseline(
         self,

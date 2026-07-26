@@ -191,7 +191,22 @@ class TestLineRanges:
 
         assert selection.ranges() == ((1, 3),)
 
-    def test_parse_selection_ranges_does_not_expand_ranges(self):
+    def test_parse_selection_ranges_does_not_expand_ranges(
+        self,
+        monkeypatch,
+    ):
+        original_from_ranges = LineRanges.from_ranges
+
+        def require_range_stream(cls, ranges):
+            assert not isinstance(ranges, (list, tuple))
+            return original_from_ranges(ranges)
+
+        monkeypatch.setattr(
+            LineRanges,
+            "from_ranges",
+            classmethod(require_range_stream),
+        )
+
         selection = parse_line_selection_ranges("1-1000000,1000002")
 
         assert selection.ranges() == ((1, 1000000), (1000002, 1000002))

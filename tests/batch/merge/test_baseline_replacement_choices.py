@@ -56,6 +56,7 @@ def test_replacement_origin_choices_normalize_content_without_a_list(
         unit,
         LineRanges.from_ranges(((1, 1),)),
         [b"old value\n"],
+        max_results=2,
     )
 
     assert key is not None
@@ -85,6 +86,7 @@ def test_replacement_origin_key_keeps_claimed_ranges_compact() -> None:
         unit,
         LineRanges.from_ranges(((1, 1000),)),
         [b"old value\n"],
+        max_results=2,
     )
 
     assert key is not None

@@ -19,8 +19,38 @@ jobs:
           fetch-depth: 0
 
       - name: Push to Codeberg
+        env:
+          CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
+          GIT_TERMINAL_PROMPT: "0"
+        shell: bash
         run: |
-          git remote add codeberg https://halfline:${{ secrets.CODEBERG_TOKEN }}@codeberg.org/halfline/git-stage-batch.git
-          git fetch --prune origin '+refs/heads/*:refs/mirror/heads/*' '+refs/tags/*:refs/tags/*'
-          git push codeberg --force --prune 'refs/mirror/heads/*:refs/heads/*'
-          git push codeberg --tags --force
+          set -uo pipefail
+
+          git remote add codeberg "https://halfline:${CODEBERG_TOKEN}@codeberg.org/halfline/git-stage-batch.git"
+
+          max_attempts=5
+          for (( attempt=1; attempt<=max_attempts; attempt+=1 )); do
+            echo "::group::Codeberg mirror attempt ${attempt} of ${max_attempts}"
+
+            if git fetch --force --prune origin \
+                '+refs/heads/*:refs/mirror/heads/*' \
+                '+refs/tags/*:refs/mirror/tags/*' &&
+              git push codeberg --force --prune \
+                'refs/mirror/heads/*:refs/heads/*' \
+                'refs/mirror/tags/*:refs/tags/*'
+            then
+              echo "::endgroup::"
+              echo "Codeberg mirror synchronized."
+              exit 0
+            fi
+
+            echo "::endgroup::"
+            if (( attempt < max_attempts )); then
+              delay_seconds=$((10 * 2 ** (attempt - 1)))
+              echo "Codeberg mirror attempt ${attempt} failed; retrying in ${delay_seconds} seconds."
+              sleep "${delay_seconds}"
+            fi
+          done
+
+          echo "::error title=Codeberg mirror failed::Codeberg mirror failed after ${max_attempts} attempts."
+          exit 1

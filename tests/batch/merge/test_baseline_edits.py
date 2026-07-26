@@ -255,6 +255,44 @@ def test_baseline_edit_planning_rejects_incomplete_replacement_unit() -> None:
     assert result is None
 
 
+def test_baseline_edit_planning_accepts_integer_source_range_metadata() -> None:
+    """Replacement range metadata should retain its documented integer form."""
+    source_lines = [b"new value\n"]
+    working_lines = [b"old value\n"]
+    deletion_claims = [
+        AbsenceClaim(
+            anchor_line=None,
+            content_lines=[b"old value\n"],
+            baseline_reference=_boundary_reference(
+                after_line=None,
+                before_line=None,
+            ),
+        ),
+    ]
+    ownership = BatchOwnership.from_presence_lines(
+        ["1"],
+        deletion_claims,
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=[1],
+                deletion_indices=[0],
+            ),
+        ],
+    )
+
+    result = baseline_edits.try_apply_baseline_replacement_units(
+        source_lines,
+        working_lines,
+        ownership,
+        LineRanges.from_ranges(((1, 1),)),
+        deletion_claims,
+        trust_baseline_coordinates=True,
+    )
+
+    assert result is not None
+    assert list(result) == source_lines
+
+
 def test_baseline_replacement_payload_stays_lazy(
     monkeypatch,
 ) -> None:

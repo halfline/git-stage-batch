@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from bisect import bisect_right
 from dataclasses import dataclass, field
+from itertools import chain
 from typing import Iterable, Iterator, Protocol
 
 
@@ -153,10 +154,21 @@ class LineRanges:
 
     @classmethod
     def from_specs(cls, line_ranges: Iterable[str | int]) -> LineRanges:
-        specs = [str(line) for line in line_ranges]
-        if not specs:
+        remaining_specs = iter(line_ranges)
+        try:
+            first_spec = next(remaining_specs)
+        except StopIteration:
             return cls.empty()
-        return parse_line_selection_ranges(",".join(specs))
+
+        if isinstance(first_spec, str) and not first_spec.strip():
+            try:
+                second_spec = next(remaining_specs)
+            except StopIteration as error:
+                raise ValueError("Selection string cannot be empty") from error
+            specs = chain((first_spec, second_spec), remaining_specs)
+        else:
+            specs = chain((first_spec,), remaining_specs)
+        return cls.from_ranges(scan_line_range_specs(specs))
 
     def __contains__(self, line_number: object) -> bool:
         if type(line_number) is not int:

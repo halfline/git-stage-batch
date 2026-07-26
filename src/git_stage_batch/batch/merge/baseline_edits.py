@@ -870,10 +870,14 @@ def _plan_replacement_unit_edits(
 
         deletion_index = unit.deletion_indices[0]
         if (
-            deletion_index < 0
+            type(deletion_index) is not int
+            or deletion_index < 0
             or deletion_index >= len(deletion_claims)
         ):
             return False
+        if deletion_edit_bounds[deletion_index][0]:
+            return False
+
         replacement_edit = _replacement_baseline_edit(
             deletion_claims[deletion_index],
             unit_index,

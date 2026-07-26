@@ -7,10 +7,17 @@ from collections.abc import Sequence
 import pytest
 
 from git_stage_batch.batch.merge import baseline_edits
+from git_stage_batch.batch.merge.baseline_replacement_choices import (
+    replacement_origin_choices_for_unit,
+)
+from git_stage_batch.batch.merge.candidates import MergeResolution
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.references import BaselineReference
-from git_stage_batch.batch.ownership.replacement_units import ReplacementUnit
+from git_stage_batch.batch.ownership.replacement_units import (
+    ReplacementUnit,
+    ReplacementUnitOrigin,
+)
 from git_stage_batch.core.line_selection import LineRanges
 
 
@@ -255,6 +262,46 @@ def test_baseline_edit_planning_rejects_incomplete_replacement_unit() -> None:
     assert result is None
 
 
+@pytest.mark.parametrize("deletion_index", [False, 0.0])
+def test_baseline_edit_planning_rejects_noninteger_deletion_index(
+    deletion_index,
+) -> None:
+    """Malformed replacement indexes should fail closed at the unit boundary."""
+    source_lines = [b"new value\n"]
+    working_lines = [b"old value\n"]
+    deletion_claims = [
+        AbsenceClaim(
+            anchor_line=None,
+            content_lines=[b"old value\n"],
+            baseline_reference=_boundary_reference(
+                after_line=None,
+                before_line=None,
+            ),
+        ),
+    ]
+    ownership = BatchOwnership.from_presence_lines(
+        ["1"],
+        deletion_claims,
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["1"],
+                deletion_indices=[deletion_index],
+            ),
+        ],
+    )
+
+    result = baseline_edits.try_apply_baseline_replacement_units(
+        source_lines,
+        working_lines,
+        ownership,
+        LineRanges.from_ranges(((1, 1),)),
+        deletion_claims,
+        trust_baseline_coordinates=True,
+    )
+
+    assert result is None
+
+
 def test_baseline_edit_planning_accepts_integer_source_range_metadata() -> None:
     """Replacement range metadata should retain its documented integer form."""
     source_lines = [b"new value\n"]
@@ -291,6 +338,71 @@ def test_baseline_edit_planning_accepts_integer_source_range_metadata() -> None:
 
     assert result is not None
     assert list(result) == source_lines
+
+
+def test_baseline_edit_planning_rejects_duplicate_deletion_binding() -> None:
+    """One deletion claim must not be rebound by a later replacement unit."""
+    source_lines = [b"new one\n", b"new two\n"]
+    working_lines = [b"old\n", b"x\n", b"old\n"]
+    claim = AbsenceClaim(
+        anchor_line=None,
+        content_lines=[b"old\n"],
+        baseline_reference=_boundary_reference(
+            after_line=None,
+            before_line=2,
+            before_content=b"x",
+        ),
+    )
+    origin = ReplacementUnitOrigin(
+        old_start=1,
+        old_end=1,
+        new_start=2,
+        new_end=2,
+        baseline_reference=BaselineReference(
+            after_line=99,
+            after_content=b"missing",
+        ),
+    )
+    units = [
+        ReplacementUnit(
+            presence_lines=["1"],
+            deletion_indices=[0],
+        ),
+        ReplacementUnit(
+            presence_lines=["2"],
+            deletion_indices=[0],
+            origin=origin,
+        ),
+    ]
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-2"],
+        [claim],
+        replacement_units=units,
+    )
+    key, choices = replacement_origin_choices_for_unit(
+        claim,
+        1,
+        units[1],
+        ((2, 2),),
+        working_lines,
+        max_results=10,
+    )
+
+    assert key is not None
+    assert [(choice.choice_index, choice.position) for choice in choices] == [
+        (1, 0),
+        (2, 2),
+    ]
+    result = baseline_edits.try_apply_baseline_replacement_units(
+        source_lines,
+        working_lines,
+        ownership,
+        LineRanges.from_ranges(((1, 2),)),
+        [claim],
+        resolution=MergeResolution({key: 2}),
+    )
+
+    assert result is None
 
 
 def test_baseline_replacement_payload_stays_lazy(

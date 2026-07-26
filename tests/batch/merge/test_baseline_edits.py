@@ -315,6 +315,59 @@ def test_baseline_replacement_payload_stays_lazy(
     assert source_lines.read_count == line_count
 
 
+def test_fragmented_replacement_planning_avoids_heap_selections(
+    monkeypatch,
+) -> None:
+    """Fragmented replacement ranges should stay in mapped planning storage."""
+    selected_ranges = tuple((line, line) for line in range(1, 2000, 2))
+    range_spec = ",".join(str(start) for start, _end in selected_ranges)
+    selected_lines = LineRanges.from_ranges(selected_ranges)
+    source_lines = _CountingLines(1999)
+    working_lines = [b"old value\n"]
+    replacement_reference = _boundary_reference(
+        after_line=None,
+        before_line=None,
+    )
+    deletion_claims = [
+        AbsenceClaim(
+            anchor_line=None,
+            content_lines=[b"old value\n"],
+            baseline_reference=replacement_reference,
+        ),
+    ]
+    ownership = BatchOwnership.from_presence_lines(
+        [range_spec],
+        deletion_claims,
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=[range_spec],
+                deletion_indices=[0],
+            ),
+        ],
+    )
+
+    def fail_heap_selection(*_args, **_kwargs):
+        raise AssertionError("baseline planning rebuilt a heap selection")
+
+    monkeypatch.setattr(LineRanges, "from_specs", fail_heap_selection)
+    monkeypatch.setattr(LineRanges, "union", fail_heap_selection)
+    monkeypatch.setattr(LineRanges, "difference", fail_heap_selection)
+
+    result = baseline_edits.try_apply_baseline_replacement_units(
+        source_lines,
+        working_lines,
+        ownership,
+        selected_lines,
+        deletion_claims,
+        trust_baseline_coordinates=True,
+    )
+
+    assert result is not None
+    assert source_lines.read_count == 0
+    assert sum(1 for _line in result) == 1000
+    assert source_lines.read_count == 1000
+
+
 def test_baseline_insertion_planning_does_not_flatten_references(
     monkeypatch,
 ) -> None:

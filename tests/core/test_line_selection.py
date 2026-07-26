@@ -8,6 +8,7 @@ from git_stage_batch.core.line_selection import (
     format_line_ids,
     parse_line_selection,
     parse_line_selection_ranges,
+    scan_line_range_specs,
 )
 
 
@@ -190,13 +191,95 @@ class TestLineRanges:
 
         assert selection.ranges() == ((1, 3),)
 
-    def test_parse_selection_ranges_does_not_expand_ranges(self):
+    def test_parse_selection_ranges_does_not_expand_ranges(
+        self,
+        monkeypatch,
+    ):
+        original_from_ranges = LineRanges.from_ranges
+
+        def require_range_stream(cls, ranges):
+            assert not isinstance(ranges, (list, tuple))
+            return original_from_ranges(ranges)
+
+        monkeypatch.setattr(
+            LineRanges,
+            "from_ranges",
+            classmethod(require_range_stream),
+        )
+
         selection = parse_line_selection_ranges("1-1000000,1000002")
 
         assert selection.ranges() == ((1, 1000000), (1000002, 1000002))
         assert len(selection) == 1000001
         assert 999999 in selection
         assert 1000001 not in selection
+
+    def test_scans_range_specs_without_reading_ahead(self):
+        def specifications():
+            yield "1-3,5"
+            raise AssertionError("range scanning read the next specification")
+
+        ranges = scan_line_range_specs(specifications())
+
+        assert next(ranges) == (1, 3)
+        assert next(ranges) == (5, 5)
+        with pytest.raises(
+            AssertionError,
+            match="range scanning read the next specification",
+        ):
+            next(ranges)
+
+    def test_scans_raw_ranges_without_normalizing_them(self):
+        assert tuple(scan_line_range_specs(["5-7,1", 3])) == (
+            (5, 7),
+            (1, 1),
+            (3, 3),
+        )
+
+    def test_from_specs_preserves_single_blank_rejection(self):
+        with pytest.raises(ValueError, match="Selection string cannot be empty"):
+            LineRanges.from_specs([" "])
+
+        assert LineRanges.from_specs([]) == LineRanges.empty()
+        assert LineRanges.from_specs(["", ""]) == LineRanges.empty()
+
+    @pytest.mark.parametrize(
+        ("specification", "message"),
+        [
+            ("0", "Line ID must be positive: 0"),
+            ("0-2", "Line IDs must be positive: 0-2"),
+            ("2-1", "Range start must be <= end: 2-1"),
+        ],
+    )
+    def test_from_specs_preserves_validation_messages(
+        self,
+        specification,
+        message,
+    ):
+        with pytest.raises(ValueError, match=message):
+            LineRanges.from_specs([specification])
+
+    def test_from_specs_streams_into_range_scanner(self, monkeypatch):
+        scanned_specs = []
+
+        def scan_specs(specs):
+            assert not isinstance(specs, (list, tuple))
+            for specification in specs:
+                scanned_specs.append(specification)
+                line = int(specification)
+                yield line, line
+
+        monkeypatch.setattr(
+            "git_stage_batch.core.line_selection.scan_line_range_specs",
+            scan_specs,
+        )
+
+        selection = LineRanges.from_specs(
+            specification for specification in ("3", "1")
+        )
+
+        assert scanned_specs == ["3", "1"]
+        assert selection.ranges() == ((1, 1), (3, 3))
 
     def test_count_intersection_and_difference_use_ranges(self):
         selection = parse_line_selection_ranges("1-10,20-30")

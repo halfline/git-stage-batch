@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from bisect import bisect_right
 from dataclasses import dataclass, field
+from itertools import chain
 from typing import Iterable, Iterator, Protocol
 
 
@@ -88,6 +89,43 @@ def coerce_line_ranges(selection: LineSelection | Iterable[int]) -> LineRanges:
     return LineRanges.from_lines(selection)
 
 
+def scan_line_range_specs(
+    line_ranges: Iterable[str | int],
+) -> Iterator[tuple[int, int]]:
+    """Yield raw inclusive ranges from line specifications without collecting."""
+    for line_range in line_ranges:
+        specification = str(line_range)
+        item_start = 0
+        while item_start <= len(specification):
+            separator = specification.find(",", item_start)
+            item_stop = len(specification) if separator < 0 else separator
+            item = specification[item_start:item_stop].strip()
+            if item:
+                range_separator = item.find("-", 1)
+                if range_separator < 0:
+                    try:
+                        start = end = int(item)
+                    except ValueError as error:
+                        raise ValueError(f"Invalid line ID: {item}") from error
+                    if start <= 0:
+                        raise ValueError(f"Line ID must be positive: {item}")
+                else:
+                    try:
+                        start = int(item[:range_separator].strip())
+                        end = int(item[range_separator + 1 :].strip())
+                    except ValueError as error:
+                        raise ValueError(f"Invalid range: {item}") from error
+                    if start <= 0 or end <= 0:
+                        raise ValueError(f"Line IDs must be positive: {item}")
+                if start > end:
+                    raise ValueError(f"Range start must be <= end: {item}")
+                yield start, end
+
+            if separator < 0:
+                break
+            item_start = separator + 1
+
+
 @dataclass(frozen=True, slots=True)
 class LineRanges:
     """Immutable 1-based line selection stored as normalized inclusive ranges."""
@@ -116,10 +154,21 @@ class LineRanges:
 
     @classmethod
     def from_specs(cls, line_ranges: Iterable[str | int]) -> LineRanges:
-        specs = [str(line) for line in line_ranges]
-        if not specs:
+        remaining_specs = iter(line_ranges)
+        try:
+            first_spec = next(remaining_specs)
+        except StopIteration:
             return cls.empty()
-        return parse_line_selection_ranges(",".join(specs))
+
+        if isinstance(first_spec, str) and not first_spec.strip():
+            try:
+                second_spec = next(remaining_specs)
+            except StopIteration as error:
+                raise ValueError("Selection string cannot be empty") from error
+            specs = chain((first_spec, second_spec), remaining_specs)
+        else:
+            specs = chain((first_spec,), remaining_specs)
+        return cls.from_ranges(scan_line_range_specs(specs))
 
     def __contains__(self, line_number: object) -> bool:
         if type(line_number) is not int:
@@ -333,46 +382,7 @@ def parse_line_selection_ranges(selection: str) -> LineRanges:
     """Parse a line selection string into normalized line ranges."""
     if not selection or not selection.strip():
         raise ValueError("Selection string cannot be empty")
-
-    ranges: list[tuple[int, int]] = []
-    parts = selection.split(",")
-
-    for part in parts:
-        part = part.strip()
-        if not part:
-            continue
-
-        range_separator_pos = part.find("-", 1)
-        if range_separator_pos != -1:
-            start_str = part[:range_separator_pos]
-            end_str = part[range_separator_pos + 1:]
-
-            try:
-                start = int(start_str.strip())
-                end = int(end_str.strip())
-            except ValueError as e:
-                raise ValueError(f"Invalid range: {part}") from e
-
-            if start <= 0 or end <= 0:
-                raise ValueError(f"Line IDs must be positive: {part}")
-
-            if start > end:
-                raise ValueError(f"Range start must be <= end: {part}")
-
-            ranges.append((start, end))
-            continue
-
-        try:
-            line_id = int(part)
-        except ValueError as e:
-            raise ValueError(f"Invalid line ID: {part}") from e
-
-        if line_id <= 0:
-            raise ValueError(f"Line ID must be positive: {part}")
-
-        ranges.append((line_id, line_id))
-
-    return LineRanges.from_ranges(ranges)
+    return LineRanges.from_ranges(scan_line_range_specs((selection,)))
 
 
 def format_line_ids(line_ids: list[str | int]) -> str:

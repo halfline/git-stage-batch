@@ -17,7 +17,12 @@ from .baseline_replacement_choices import (
     ReplacementOriginChoice as _BaselineReplacementOriginChoice,
     replacement_origin_choices_for_unit as _replacement_origin_choices_for_unit,
 )
+from .baseline_replacement_ranges import (
+    collect_replacement_source_ranges as _collect_replacement_source_ranges,
+    selected_replacement_source_ranges as _selected_replacement_source_ranges,
+)
 from ..line_matching.match import match_lines
+from ..line_matching.match_workspace import MatcherWorkspace
 from .candidates import (
     MergeCandidate as _MergeCandidate,
     MergeCandidateSet as _MergeCandidateSet,
@@ -28,7 +33,7 @@ from .validation import (
     check_structural_validity as _check_merge_structural_validity,
 )
 from . import presence_placement_choices as _presence_placement_choices
-from ...core.line_selection import LineRanges, LineSelection, coerce_line_ranges
+from ...core.line_selection import LineSelection, coerce_line_ranges
 from ...exceptions import MergeError as _MergeError
 from ...i18n import _
 from ...core.text_lines import normalize_line_endings
@@ -69,63 +74,102 @@ def _find_unresolved_replacement_origin(
         spool_dir=spool_dir,
     )
     try:
-        selected_presence = coerce_line_ranges(presence_line_set)
-        unresolved = None
-        for unit_index, unit in enumerate(
-            getattr(ownership, "replacement_units", [])
-        ):
-            if getattr(unit, "origin", None) is None:
-                continue
-
-            claimed_selection = LineRanges.from_specs(unit.presence_lines)
-            claimed_lines = selected_presence.intersection(claimed_selection)
-            if not claimed_lines:
-                continue
-            if all(
-                1 <= claimed_line <= len(source_lines)
-                and owned_mapping.get_target_line_from_source_line(claimed_line)
-                is not None
-                for claimed_line in claimed_lines
+        range_workspace = MatcherWorkspace(spool_dir=spool_dir)
+        try:
+            selected_presence = coerce_line_ranges(presence_line_set)
+            unresolved = None
+            for unit_index, unit in enumerate(
+                getattr(ownership, "replacement_units", [])
             ):
-                continue
-            if len(unit.deletion_indices) != 1:
-                raise _MergeError(
-                    _("Batch was created from a different version of the file")
-                )
+                if getattr(unit, "origin", None) is None:
+                    continue
 
-            deletion_index = unit.deletion_indices[0]
-            if type(deletion_index) is not int:
-                raise _MergeError(
-                    _("Batch was created from a different version of the file")
+                claimed_ranges = _collect_replacement_source_ranges(
+                    range_workspace,
+                    unit.presence_lines,
                 )
-            if deletion_index < 0 or deletion_index >= len(deletion_claims):
-                raise _MergeError(
-                    _("Batch was created from a different version of the file")
-                )
-            key, choices = _replacement_origin_choices_for_unit(
-                deletion_claims[deletion_index],
-                unit_index,
-                unit,
-                claimed_lines,
-                working_lines,
-                max_results=max_candidates + 1,
-            )
-            if key is None:
-                continue
-            claimed_ranges = claimed_lines.ranges()
-            candidate = _UnresolvedReplacementOrigin(
-                source_start=claimed_ranges[0][0],
-                source_end=claimed_ranges[-1][1],
-                deletion_index=deletion_index,
-                ambiguity_key=key,
-                choices=choices,
-            )
-            if unresolved is not None:
-                raise _MergeError(
-                    _("Multiple split replacement placements need review")
-                )
-            unresolved = candidate
-        return unresolved
+                if claimed_ranges is None:
+                    raise _MergeError(
+                        _("Batch was created from a different version of the file")
+                    )
+                try:
+                    source_start: int | None = None
+                    source_end: int | None = None
+                    all_claimed_lines_are_mapped = True
+                    for (
+                        claimed_start,
+                        claimed_end,
+                    ) in _selected_replacement_source_ranges(
+                        claimed_ranges,
+                        selected_presence,
+                    ):
+                        if source_start is None:
+                            source_start = claimed_start
+                        source_end = claimed_end
+                        if not all_claimed_lines_are_mapped:
+                            continue
+                        for claimed_line in range(claimed_start, claimed_end + 1):
+                            if (
+                                claimed_line > len(source_lines)
+                                or owned_mapping.get_target_line_from_source_line(
+                                    claimed_line
+                                )
+                                is None
+                            ):
+                                all_claimed_lines_are_mapped = False
+                                break
+
+                    if source_start is None or source_end is None:
+                        continue
+                    if all_claimed_lines_are_mapped:
+                        continue
+                    if len(unit.deletion_indices) != 1:
+                        raise _MergeError(
+                            _("Batch was created from a different version of the file")
+                        )
+
+                    deletion_index = unit.deletion_indices[0]
+                    if type(deletion_index) is not int:
+                        raise _MergeError(
+                            _("Batch was created from a different version of the file")
+                        )
+                    if (
+                        deletion_index < 0
+                        or deletion_index >= len(deletion_claims)
+                    ):
+                        raise _MergeError(
+                            _("Batch was created from a different version of the file")
+                        )
+                    key, choices = _replacement_origin_choices_for_unit(
+                        deletion_claims[deletion_index],
+                        unit_index,
+                        unit,
+                        _selected_replacement_source_ranges(
+                            claimed_ranges,
+                            selected_presence,
+                        ),
+                        working_lines,
+                        max_results=max_candidates + 1,
+                    )
+                    if key is None:
+                        continue
+                    candidate = _UnresolvedReplacementOrigin(
+                        source_start=source_start,
+                        source_end=source_end,
+                        deletion_index=deletion_index,
+                        ambiguity_key=key,
+                        choices=choices,
+                    )
+                    if unresolved is not None:
+                        raise _MergeError(
+                            _("Multiple split replacement placements need review")
+                        )
+                    unresolved = candidate
+                finally:
+                    range_workspace.close_resource(claimed_ranges)
+            return unresolved
+        finally:
+            range_workspace.close()
     finally:
         owned_mapping.close()
 

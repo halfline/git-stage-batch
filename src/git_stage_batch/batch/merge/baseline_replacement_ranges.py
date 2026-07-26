@@ -11,7 +11,7 @@ from ..line_matching.match_workspace import MatcherWorkspace
 
 def collect_replacement_source_ranges(
     workspace: MatcherWorkspace,
-    range_specs: Sequence[str],
+    range_specs: Sequence[str | int],
 ) -> MappedRecordVector | None:
     """Parse and normalize one replacement selection in mapped storage."""
     source_ranges = workspace.record_vector(
@@ -35,10 +35,13 @@ def collect_replacement_source_ranges(
 
 
 def replacement_source_range_capacity(
-    range_specs: Sequence[str],
+    range_specs: Sequence[str | int],
 ) -> int:
     """Return an upper bound for records parsed from range specifications."""
-    return sum(range_spec.count(",") + 1 for range_spec in range_specs)
+    return sum(
+        range_spec.count(",") + 1 if isinstance(range_spec, str) else 1
+        for range_spec in range_specs
+    )
 
 
 def selected_replacement_source_ranges(

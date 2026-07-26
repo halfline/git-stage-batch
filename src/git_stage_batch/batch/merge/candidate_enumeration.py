@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -40,18 +41,28 @@ if TYPE_CHECKING:
 _MergeResolutionValidator = Callable[[_MergeResolution], bool]
 
 
-def _replacement_origin_candidate_set(
+@dataclass(frozen=True, slots=True)
+class _UnresolvedReplacementOrigin:
+    """One replacement origin that still needs an explicit placement."""
+
+    source_start: int
+    source_end: int
+    deletion_index: int
+    ambiguity_key: str
+    choices: tuple[_BaselineReplacementOriginChoice, ...]
+
+
+def _find_unresolved_replacement_origin(
     source_lines: Sequence[bytes],
     ownership: "BatchOwnership",
     working_lines: Sequence[bytes],
     presence_line_set: LineSelection,
     deletion_claims: list["AbsenceClaim"],
     *,
-    resolution_is_valid: _MergeResolutionValidator,
     max_candidates: int,
     spool_dir: str | Path | None,
-) -> _MergeCandidateSet:
-    """Enumerate reviewed placements for one unresolved split replacement."""
+) -> _UnresolvedReplacementOrigin | None:
+    """Return the only unresolved split replacement, if there is one."""
     owned_mapping = match_lines(
         source_lines,
         working_lines,
@@ -59,15 +70,10 @@ def _replacement_origin_candidate_set(
     )
     try:
         selected_presence = coerce_line_ranges(presence_line_set)
-        unresolved: list[
-            tuple[
-                LineRanges,
-                int,
-                str,
-                tuple[_BaselineReplacementOriginChoice, ...],
-            ]
-        ] = []
-        for unit_index, unit in enumerate(getattr(ownership, "replacement_units", [])):
+        unresolved = None
+        for unit_index, unit in enumerate(
+            getattr(ownership, "replacement_units", [])
+        ):
             if getattr(unit, "origin", None) is None:
                 continue
 
@@ -88,6 +94,10 @@ def _replacement_origin_candidate_set(
                 )
 
             deletion_index = unit.deletion_indices[0]
+            if type(deletion_index) is not int:
+                raise _MergeError(
+                    _("Batch was created from a different version of the file")
+                )
             if deletion_index < 0 or deletion_index >= len(deletion_claims):
                 raise _MergeError(
                     _("Batch was created from a different version of the file")
@@ -102,16 +112,53 @@ def _replacement_origin_candidate_set(
             )
             if key is None:
                 continue
-            unresolved.append((claimed_lines, deletion_index, key, choices))
+            claimed_ranges = claimed_lines.ranges()
+            candidate = _UnresolvedReplacementOrigin(
+                source_start=claimed_ranges[0][0],
+                source_end=claimed_ranges[-1][1],
+                deletion_index=deletion_index,
+                ambiguity_key=key,
+                choices=choices,
+            )
+            if unresolved is not None:
+                raise _MergeError(
+                    _("Multiple split replacement placements need review")
+                )
+            unresolved = candidate
+        return unresolved
     finally:
         owned_mapping.close()
 
-    if not unresolved:
-        return _MergeCandidateSet(())
-    if len(unresolved) > 1:
-        raise _MergeError(_("Multiple split replacement placements need review"))
 
-    claimed_lines, deletion_index, key, choices = unresolved[0]
+def _replacement_origin_candidate_set(
+    source_lines: Sequence[bytes],
+    ownership: "BatchOwnership",
+    working_lines: Sequence[bytes],
+    presence_line_set: LineSelection,
+    deletion_claims: list["AbsenceClaim"],
+    *,
+    resolution_is_valid: _MergeResolutionValidator,
+    max_candidates: int,
+    spool_dir: str | Path | None,
+) -> _MergeCandidateSet:
+    """Enumerate reviewed placements for one unresolved split replacement."""
+    unresolved = _find_unresolved_replacement_origin(
+        source_lines,
+        ownership,
+        working_lines,
+        presence_line_set,
+        deletion_claims,
+        max_candidates=max_candidates,
+        spool_dir=spool_dir,
+    )
+    if unresolved is None:
+        return _MergeCandidateSet(())
+
+    source_start = unresolved.source_start
+    source_end = unresolved.source_end
+    deletion_index = unresolved.deletion_index
+    key = unresolved.ambiguity_key
+    choices = unresolved.choices
     if len(choices) > max_candidates:
         raise _MergeError(_("Too many merge candidates to preview safely"))
 
@@ -127,9 +174,6 @@ def _replacement_origin_candidate_set(
     count = len(valid_choices)
     claim = deletion_claims[deletion_index]
     line_count = len(claim.content_lines)
-    claimed_ranges = claimed_lines.ranges()
-    source_start = claimed_ranges[0][0]
-    source_end = claimed_ranges[-1][1]
     ambiguity_target_line_range = (
         min(choice.position + 1 for choice in valid_choices),
         max(choice.position + line_count for choice in valid_choices),

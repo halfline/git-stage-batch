@@ -1081,7 +1081,7 @@ def _add_positioned_presence_insertions(
     *,
     positioned_lines_are_ordered: bool,
     trust_baseline_coordinates: bool,
-) -> None:
+) -> bool:
     """Append required insertion groups and retain only their source records."""
     if not positioned_lines_are_ordered:
         sort_mapped_records(positioned_lines)
@@ -1134,6 +1134,8 @@ def _add_positioned_presence_insertions(
                     break
                 scan_index += 1
 
+            if 0 < removed_line_count < group_end - position:
+                return False
             retain_group = removed_line_count == group_end - position
 
         if retain_group:
@@ -1148,6 +1150,7 @@ def _add_positioned_presence_insertions(
                 retained_line_count += 1
         group_start = group_stop
     positioned_lines.truncate(retained_line_count)
+    return True
 
 
 def _plan_presence_insertions(
@@ -1190,7 +1193,7 @@ def _plan_presence_insertions(
     target_spans = plan.sorted_target_spans()
     if target_spans is None:
         return None
-    _add_positioned_presence_insertions(
+    if not _add_positioned_presence_insertions(
         plan,
         source_lines,
         working_lines,
@@ -1198,7 +1201,8 @@ def _plan_presence_insertions(
         target_spans,
         positioned_lines_are_ordered=positioned_lines_are_ordered,
         trust_baseline_coordinates=trust_baseline_coordinates,
-    )
+    ):
+        return None
 
     return positioned_lines
 

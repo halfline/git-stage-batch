@@ -419,3 +419,66 @@ def test_baseline_edit_planning_closes_workspace_on_base_exception(
 
     assert len(workspaces) == 1
     assert workspaces[0].was_closed is True
+
+
+def test_baseline_edit_stream_closes_workspace_on_base_exception(
+    monkeypatch,
+) -> None:
+    """Interrupted payload reads should release mapped planning storage."""
+    workspaces = []
+    original_workspace = baseline_edits.MatcherWorkspace
+
+    class TrackingWorkspace(original_workspace):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            self.was_closed = False
+            workspaces.append(self)
+
+        def close(self) -> None:
+            self.was_closed = True
+            super().close()
+
+    source_lines = _InterruptingLines(1)
+    working_lines = [b"old\n", b"tail\n"]
+    replacement_reference = _boundary_reference(
+        after_line=None,
+        before_line=2,
+        before_content=b"tail",
+    )
+    deletion_claims = [
+        AbsenceClaim(
+            anchor_line=None,
+            content_lines=[b"old\n"],
+            baseline_reference=replacement_reference,
+        ),
+    ]
+    ownership = BatchOwnership.from_presence_lines(
+        ["1"],
+        deletion_claims,
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["1"],
+                deletion_indices=[0],
+            ),
+        ],
+    )
+    monkeypatch.setattr(
+        baseline_edits,
+        "MatcherWorkspace",
+        TrackingWorkspace,
+    )
+
+    result = baseline_edits.try_apply_baseline_replacement_units(
+        source_lines,
+        working_lines,
+        ownership,
+        LineRanges.from_ranges(((1, 1),)),
+        deletion_claims,
+        trust_baseline_coordinates=True,
+    )
+
+    assert result is not None
+    assert workspaces[0].was_closed is False
+    with pytest.raises(KeyboardInterrupt):
+        next(result)
+    assert workspaces[0].was_closed is True

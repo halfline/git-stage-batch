@@ -36,12 +36,15 @@ def replacement_origin_choices_for_unit(
     claimed_ranges: LineSelection | Iterable[tuple[int, int]],
     working_lines: Sequence[bytes],
     *,
-    max_results: int | None = None,
+    max_results: int,
 ) -> tuple[str | None, tuple[ReplacementOriginChoice, ...]]:
     """Return explicit target placements for an origin-tracked replacement.
 
     Range-record inputs must be normalized and ordered like ``LineSelection.ranges()``.
     """
+    if type(max_results) is not int or max_results < 1:
+        raise ValueError("max_results must be positive")
+
     origin = getattr(unit, "origin", None)
     if origin is None or not claim.content_lines:
         return None, ()
@@ -70,7 +73,7 @@ def replacement_origin_choices_for_unit(
                 ),
             )
         )
-        if max_results is not None and len(choices) >= max_results:
+        if len(choices) >= max_results:
             break
 
     if not choices:

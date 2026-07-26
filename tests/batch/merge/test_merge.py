@@ -1964,6 +1964,25 @@ footer
                 max_candidates=3,
             )
 
+    @pytest.mark.parametrize("max_candidates", [0, 51, True, 1.0, None])
+    def test_candidate_enumeration_rejects_unsupported_caps(
+        self,
+        max_candidates,
+    ):
+        """Public candidate limits must fit the merge application safety cap."""
+        ownership = BatchOwnership.from_presence_lines(["1"], [])
+
+        with pytest.raises(
+            ValueError,
+            match="max_candidates must be between 1 and 50",
+        ):
+            enumerate_merge_batch_candidates_from_line_sequences(
+                [b"claimed\n"],
+                ownership,
+                [],
+                max_candidates=max_candidates,
+            )
+
     def test_multiple_contextual_ambiguities_remain_a_hard_refusal(self):
         """Independent ambiguous runs should not form a candidate product."""
         source = b"""header

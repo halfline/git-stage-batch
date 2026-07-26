@@ -94,6 +94,10 @@ def _find_unresolved_replacement_origin(
                 )
 
             deletion_index = unit.deletion_indices[0]
+            if type(deletion_index) is not int:
+                raise _MergeError(
+                    _("Batch was created from a different version of the file")
+                )
             if deletion_index < 0 or deletion_index >= len(deletion_claims):
                 raise _MergeError(
                     _("Batch was created from a different version of the file")

@@ -52,5 +52,10 @@ jobs:
             fi
           done
 
-          echo "::error title=Codeberg mirror failed::Codeberg mirror failed after ${max_attempts} attempts."
-          exit 1
+          echo "::warning title=Codeberg mirror delayed::Codeberg mirror failed after ${max_attempts} attempts. GitHub remains the source of truth; a later mirror run can reconcile the complete ref set."
+          {
+            echo "### Codeberg mirror delayed"
+            echo
+            echo "The mirror failed after ${max_attempts} attempts. GitHub remains the source of truth, and a later run can reconcile the complete branch and tag set."
+          } >> "${GITHUB_STEP_SUMMARY}"
+          exit 0

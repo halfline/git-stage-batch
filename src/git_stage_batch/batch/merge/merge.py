@@ -260,6 +260,13 @@ def enumerate_merge_batch_candidates_from_line_sequences(
     verifies that the ordinary merge refuses, then enumerates supported
     ambiguity choices one at a time.
     """
+    if (
+        type(max_candidates) is not int
+        or max_candidates < 1
+        or max_candidates > _MERGE_CANDIDATE_CAP
+    ):
+        raise ValueError(f"max_candidates must be between 1 and {_MERGE_CANDIDATE_CAP}")
+
     normalized_source_lines = normalize_line_sequence_endings(source_lines)
     normalized_working_lines = normalize_line_sequence_endings(working_lines)
     with (

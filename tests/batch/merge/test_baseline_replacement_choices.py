@@ -2,6 +2,8 @@
 
 import re
 
+import pytest
+
 from git_stage_batch.batch.merge import baseline_replacement_choices
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership.replacement_units import (
@@ -9,6 +11,22 @@ from git_stage_batch.batch.ownership.replacement_units import (
     ReplacementUnitOrigin,
 )
 from git_stage_batch.core.line_selection import LineRanges
+
+
+@pytest.mark.parametrize("max_results", [-1, 0, True, 1.0, None])
+def test_replacement_origin_choices_require_positive_integer_limit(
+    max_results,
+) -> None:
+    """Replacement review should reject invalid collection bounds."""
+    with pytest.raises(ValueError, match="max_results must be positive"):
+        baseline_replacement_choices.replacement_origin_choices_for_unit(
+            AbsenceClaim(anchor_line=None, content_lines=[]),
+            0,
+            object(),
+            LineRanges.empty(),
+            [],
+            max_results=max_results,
+        )
 
 
 def test_replacement_origin_choices_normalize_content_without_a_list(

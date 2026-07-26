@@ -8,6 +8,7 @@ from git_stage_batch.core.line_selection import (
     format_line_ids,
     parse_line_selection,
     parse_line_selection_ranges,
+    scan_line_range_specs,
 )
 
 
@@ -197,6 +198,28 @@ class TestLineRanges:
         assert len(selection) == 1000001
         assert 999999 in selection
         assert 1000001 not in selection
+
+    def test_scans_range_specs_without_reading_ahead(self):
+        def specifications():
+            yield "1-3,5"
+            raise AssertionError("range scanning read the next specification")
+
+        ranges = scan_line_range_specs(specifications())
+
+        assert next(ranges) == (1, 3)
+        assert next(ranges) == (5, 5)
+        with pytest.raises(
+            AssertionError,
+            match="range scanning read the next specification",
+        ):
+            next(ranges)
+
+    def test_scans_raw_ranges_without_normalizing_them(self):
+        assert tuple(scan_line_range_specs(["5-7,1", 3])) == (
+            (5, 7),
+            (1, 1),
+            (3, 3),
+        )
 
     def test_count_intersection_and_difference_use_ranges(self):
         selection = parse_line_selection_ranges("1-10,20-30")

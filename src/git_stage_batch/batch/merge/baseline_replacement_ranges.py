@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 
-from ...core.line_selection import scan_line_range_specs
+from ...core.line_selection import LineRanges, scan_line_range_specs
 from ...core.mapped_storage import MappedRecordVector, sort_mapped_records
 from ..line_matching.match_workspace import MatcherWorkspace
 
@@ -39,6 +39,30 @@ def replacement_source_range_capacity(
 ) -> int:
     """Return an upper bound for records parsed from range specifications."""
     return sum(range_spec.count(",") + 1 for range_spec in range_specs)
+
+
+def selected_replacement_source_ranges(
+    source_ranges: Sequence[tuple[int, ...]],
+    selected_lines: LineRanges,
+) -> Iterator[tuple[int, int]]:
+    """Yield intersections between normalized source ranges and a selection."""
+    selected_ranges = selected_lines.ranges()
+    source_range_index = 0
+    selected_range_index = 0
+    while source_range_index < len(source_ranges) and selected_range_index < len(
+        selected_ranges
+    ):
+        source_start, source_end = source_ranges[source_range_index]
+        selected_start, selected_end = selected_ranges[selected_range_index]
+        start = max(source_start, selected_start)
+        end = min(source_end, selected_end)
+        if start <= end:
+            yield start, end
+
+        if source_end < selected_end:
+            source_range_index += 1
+        else:
+            selected_range_index += 1
 
 
 def _compact_source_ranges(source_ranges: MappedRecordVector) -> None:

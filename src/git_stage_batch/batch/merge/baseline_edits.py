@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -210,6 +210,57 @@ def _removal_boundary_identity_matches_at(
     )
 
 
+def _boundary_identity_occurs_once(
+    occurrence_index: LinePayloadOccurrenceIndex,
+    expected_position: int,
+    last_position: int,
+    *,
+    after_content: bytes | None,
+    span_contents: Sequence[bytes],
+    before_content: bytes | None,
+    before_delta: int,
+    identity_matches_at: Callable[[int], bool],
+) -> bool:
+    """Return whether indexed boundary content identifies one full identity."""
+    rarest_content: bytes | None = None
+    rarest_boundary_delta = 0
+    rarest_count: int | None = None
+
+    def consider(content: bytes | None, boundary_delta: int) -> None:
+        nonlocal rarest_content
+        nonlocal rarest_boundary_delta
+        nonlocal rarest_count
+        if content is None:
+            return
+        count = occurrence_index.occurrence_count(content)
+        if rarest_count is None or count < rarest_count:
+            rarest_content = content
+            rarest_boundary_delta = boundary_delta
+            rarest_count = count
+
+    consider(after_content, 1)
+    for offset, content in enumerate(span_contents):
+        consider(content, -offset)
+    consider(before_content, before_delta)
+
+    if rarest_content is None or rarest_count is None or rarest_count == 0:
+        return False
+    if rarest_count == 1:
+        return True
+
+    for line_index in occurrence_index.matching_line_indexes(rarest_content):
+        position = line_index + rarest_boundary_delta
+        if (
+            position < 0
+            or position > last_position
+            or position == expected_position
+        ):
+            continue
+        if identity_matches_at(position):
+            return False
+    return True
+
+
 def _live_removal_boundary_is_unique(
     claim: AbsenceClaim,
     target_lines: Sequence[bytes],
@@ -232,51 +283,27 @@ def _live_removal_boundary_is_unique(
 
     reference = claim.baseline_reference
     assert reference is not None
-    rarest_content: bytes | None = None
-    rarest_boundary_delta = 0
-    rarest_count = len(target_lines) + 1
-
-    def consider(content: bytes | None, boundary_delta: int) -> None:
-        nonlocal rarest_content
-        nonlocal rarest_boundary_delta
-        nonlocal rarest_count
-        if content is None:
-            return
-        count = occurrence_index.occurrence_count(content)
-        if count < rarest_count:
-            rarest_content = content
-            rarest_boundary_delta = boundary_delta
-            rarest_count = count
-
-    if reference.after_line is not None:
-        consider(reference.after_content, 1)
-    for offset in range(len(forbidden_sequence)):
-        consider(forbidden_sequence[offset], -offset)
-    if reference.has_before_line and reference.before_line is not None:
-        consider(reference.before_content, -len(forbidden_sequence))
-
-    if rarest_content is None or rarest_count == 0:
-        return False
-    if rarest_count == 1:
-        return True
-
-    last_position = len(target_lines) - len(forbidden_sequence)
-    for line_index in occurrence_index.matching_line_indexes(rarest_content):
-        position = line_index + rarest_boundary_delta
-        if (
-            position < 0
-            or position > last_position
-            or position == expected_position
-        ):
-            continue
-        if _removal_boundary_identity_matches_at(
+    return _boundary_identity_occurs_once(
+        occurrence_index,
+        expected_position,
+        len(target_lines) - len(forbidden_sequence),
+        after_content=(
+            reference.after_content if reference.after_line is not None else None
+        ),
+        span_contents=forbidden_sequence,
+        before_content=(
+            reference.before_content
+            if reference.has_before_line and reference.before_line is not None
+            else None
+        ),
+        before_delta=-len(forbidden_sequence),
+        identity_matches_at=lambda position: _removal_boundary_identity_matches_at(
             claim,
             target_lines,
             position,
             forbidden_sequence,
-        ):
-            return False
-    return True
+        ),
+    )
 
 
 def _insertion_boundary_identity_matches_at(

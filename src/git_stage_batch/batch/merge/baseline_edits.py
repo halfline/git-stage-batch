@@ -40,6 +40,7 @@ if TYPE_CHECKING:
     from ..ownership.model import BatchOwnership
     from ..ownership.absence_claims import AbsenceClaim
     from ..ownership.references import BaselineReference
+    from ..ownership.replacement_units import ReplacementUnitOrigin
 
 
 _BaselineRemovalEdit = tuple[int, int]
@@ -394,7 +395,7 @@ def _live_insertion_boundary_is_unique(
 
 
 def _replacement_origin_boundary_identity_matches_at(
-    origin: Any,
+    origin: ReplacementUnitOrigin | None,
     target_lines: Sequence[bytes],
     position: int,
 ) -> bool:
@@ -442,13 +443,13 @@ def _replacement_origin_boundary_identity_matches_at(
 
 
 def _live_replacement_origin_boundary_is_unique(
-    origin: Any,
+    origin: ReplacementUnitOrigin | None,
     target_lines: Sequence[bytes],
     expected_position: int,
     occurrence_index: LinePayloadOccurrenceIndex,
 ) -> bool:
     """Require a replacement parent to identify one live target span."""
-    if not _replacement_origin_boundary_identity_matches_at(
+    if origin is None or not _replacement_origin_boundary_identity_matches_at(
         origin,
         target_lines,
         expected_position,
@@ -464,48 +465,26 @@ def _live_replacement_origin_boundary_is_unique(
     ):
         return True
 
-    rarest_content: bytes | None = None
-    rarest_boundary_delta = 0
-    rarest_count = len(target_lines) + 1
-
-    def consider(content: bytes | None, boundary_delta: int) -> None:
-        nonlocal rarest_content
-        nonlocal rarest_boundary_delta
-        nonlocal rarest_count
-        if content is None:
-            return
-        count = occurrence_index.occurrence_count(content)
-        if count < rarest_count:
-            rarest_content = content
-            rarest_boundary_delta = boundary_delta
-            rarest_count = count
-
-    if after_line is not None:
-        consider(reference.after_content, 1)
-    if reference.has_before_line and before_line is not None:
-        consider(reference.before_content, -origin.old_line_count)
-
-    if rarest_content is None or rarest_count == 0:
-        return False
-    if rarest_count == 1:
-        return True
-
-    last_position = len(target_lines) - origin.old_line_count
-    for line_index in occurrence_index.matching_line_indexes(rarest_content):
-        position = line_index + rarest_boundary_delta
-        if (
-            position < 0
-            or position > last_position
-            or position == expected_position
-        ):
-            continue
-        if _replacement_origin_boundary_identity_matches_at(
-            origin,
-            target_lines,
-            position,
-        ):
-            return False
-    return True
+    return _boundary_identity_occurs_once(
+        occurrence_index,
+        expected_position,
+        len(target_lines) - origin.old_line_count,
+        after_content=(reference.after_content if after_line is not None else None),
+        span_contents=(),
+        before_content=(
+            reference.before_content
+            if reference.has_before_line and before_line is not None
+            else None
+        ),
+        before_delta=-origin.old_line_count,
+        identity_matches_at=lambda position: (
+            _replacement_origin_boundary_identity_matches_at(
+                origin,
+                target_lines,
+                position,
+            )
+        ),
+    )
 
 
 def _live_coordinate_edits_are_safe(

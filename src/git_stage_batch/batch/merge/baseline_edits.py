@@ -1077,6 +1077,7 @@ def _add_positioned_presence_insertions(
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
     positioned_lines: MappedRecordVector,
+    target_spans: Sequence[tuple[int, ...]],
     *,
     positioned_lines_are_ordered: bool,
     trust_baseline_coordinates: bool,
@@ -1087,6 +1088,7 @@ def _add_positioned_presence_insertions(
 
     group_start = 0
     retained_line_count = 0
+    target_span_index = 0
     while group_start < len(positioned_lines):
         position = positioned_lines[group_start][0]
         group_stop = group_start + 1
@@ -1095,6 +1097,12 @@ def _add_positioned_presence_insertions(
             and positioned_lines[group_stop][0] == position
         ):
             group_stop += 1
+
+        while (
+            target_span_index < len(target_spans)
+            and target_spans[target_span_index][1] <= position
+        ):
+            target_span_index += 1
 
         group_matches = (
             not trust_baseline_coordinates
@@ -1108,7 +1116,27 @@ def _add_positioned_presence_insertions(
             )
         )
 
-        if not group_matches:
+        retain_group = not group_matches
+        if group_matches:
+            group_end = position + group_stop - group_start
+            removed_line_count = 0
+            scan_index = target_span_index
+            while (
+                scan_index < len(target_spans)
+                and target_spans[scan_index][0] < group_end
+            ):
+                span_start, span_end = target_spans[scan_index]
+                removed_line_count += max(
+                    0,
+                    min(group_end, span_end) - max(position, span_start),
+                )
+                if span_end >= group_end:
+                    break
+                scan_index += 1
+
+            retain_group = removed_line_count == group_end - position
+
+        if retain_group:
             plan.add_positioned_source_lines(
                 position,
                 positioned_lines,
@@ -1159,11 +1187,15 @@ def _plan_presence_insertions(
         return None
 
     workspace.close_resource(unmapped_lines)
+    target_spans = plan.sorted_target_spans()
+    if target_spans is None:
+        return None
     _add_positioned_presence_insertions(
         plan,
         source_lines,
         working_lines,
         positioned_lines,
+        target_spans,
         positioned_lines_are_ordered=positioned_lines_are_ordered,
         trust_baseline_coordinates=trust_baseline_coordinates,
     )

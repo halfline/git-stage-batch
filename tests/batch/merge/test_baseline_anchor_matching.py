@@ -8,6 +8,10 @@ import git_stage_batch.batch.merge.baseline_edits as baseline_edits
 from git_stage_batch.batch.merge.baseline_edits import (
     acquire_deletion_anchor_pairs_for_target,
 )
+from git_stage_batch.batch.line_matching.match_workspace import MatcherWorkspace
+from git_stage_batch.batch.line_matching.occurrence_index import (
+    LinePayloadOccurrenceIndex,
+)
 from git_stage_batch.batch.line_matching.match import match_lines
 from git_stage_batch.batch.merge.merge import (
     merge_batch_from_line_sequences_as_buffer,
@@ -15,6 +19,7 @@ from git_stage_batch.batch.merge.merge import (
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.references import BaselineReference
+from git_stage_batch.batch.ownership.replacement_units import ReplacementUnitOrigin
 
 
 def _deletion_anchor_pairs(*args, **kwargs):
@@ -283,6 +288,45 @@ def test_live_target_accepts_one_unique_composite_deletion_boundary():
     )
 
     assert _deletion_anchor_pairs(source, target, [claim]) == ((1, 1),)
+
+
+def test_live_target_rejects_repeated_replacement_parent_boundary():
+    """A repeated parent identity must not validate a replacement coordinate."""
+    target = [
+        b"head\n",
+        b"old one\n",
+        b"old two\n",
+        b"tail\n",
+        b"gap\n",
+        b"head\n",
+        b"old one\n",
+        b"old two\n",
+        b"tail\n",
+    ]
+    origin = ReplacementUnitOrigin(
+        old_start=2,
+        old_end=3,
+        new_start=2,
+        new_end=3,
+        baseline_reference=BaselineReference(
+            after_line=1,
+            after_content=b"head\n",
+            before_line=4,
+            before_content=b"tail\n",
+            has_before_line=True,
+        ),
+    )
+
+    with MatcherWorkspace() as workspace:
+        occurrence_index = LinePayloadOccurrenceIndex(workspace, target)
+        is_unique = baseline_edits._live_replacement_origin_boundary_is_unique(
+            origin,
+            target,
+            1,
+            occurrence_index,
+        )
+
+    assert is_unique is False
 
 
 def test_live_target_checks_indexed_boundary_candidates(monkeypatch):

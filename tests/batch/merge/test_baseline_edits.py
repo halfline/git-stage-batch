@@ -121,6 +121,103 @@ def test_baseline_edit_planning_composes_all_edit_kinds() -> None:
     assert list(result) == [b"new value\n", b"inserted\n", b"tail\n"]
 
 
+def test_same_boundary_replacement_payloads_follow_source_order() -> None:
+    """Replacement and insertion payloads at one boundary should retain order."""
+    source_lines = [b"new one\n", b"new two\n"]
+    working_lines = [b"old\n"]
+    replacement_reference = _boundary_reference(
+        after_line=None,
+        before_line=None,
+    )
+    insertion_reference = _boundary_reference(
+        after_line=None,
+        before_line=1,
+        before_content=b"old\n",
+    )
+    deletion_claims = [
+        AbsenceClaim(
+            anchor_line=None,
+            content_lines=[b"old\n"],
+            baseline_reference=replacement_reference,
+        ),
+    ]
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-2"],
+        deletion_claims,
+        baseline_references={
+            1: insertion_reference,
+            2: insertion_reference,
+        },
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["1"],
+                deletion_indices=[0],
+            ),
+        ],
+    )
+
+    for trust_baseline_coordinates in (False, True):
+        result = baseline_edits.try_apply_baseline_replacement_units(
+            source_lines,
+            working_lines,
+            ownership,
+            LineRanges.from_ranges(((1, 2),)),
+            deletion_claims,
+            trust_baseline_coordinates=trust_baseline_coordinates,
+        )
+
+        assert result is not None
+        assert list(result) == source_lines
+
+
+def test_same_boundary_noncontiguous_payloads_follow_source_order() -> None:
+    """Payload ranges from separate edits should merge by source position."""
+    source_lines = [b"new one\n", b"new two\n", b"new three\n"]
+    working_lines = [b"old\n"]
+    replacement_reference = _boundary_reference(
+        after_line=None,
+        before_line=None,
+    )
+    insertion_reference = _boundary_reference(
+        after_line=None,
+        before_line=1,
+        before_content=b"old\n",
+    )
+    deletion_claims = [
+        AbsenceClaim(
+            anchor_line=None,
+            content_lines=[b"old\n"],
+            baseline_reference=replacement_reference,
+        ),
+    ]
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-3"],
+        deletion_claims,
+        baseline_references={
+            1: insertion_reference,
+            2: insertion_reference,
+            3: insertion_reference,
+        },
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["1", "3"],
+                deletion_indices=[0],
+            ),
+        ],
+    )
+
+    result = baseline_edits.try_apply_baseline_replacement_units(
+        source_lines,
+        working_lines,
+        ownership,
+        LineRanges.from_ranges(((1, 3),)),
+        deletion_claims,
+    )
+
+    assert result is not None
+    assert list(result) == source_lines
+
+
 def test_baseline_edit_planning_rejects_incomplete_replacement_unit() -> None:
     """Replacement metadata without one removal must fail closed."""
     source_lines = [b"new value\n"]

@@ -906,10 +906,10 @@ def _plan_replacement_unit_edits(
 
         removal_edit, coordinate_was_reviewed = replacement_edit
         start, end = removal_edit
-        plan.add_source_selection(
+        plan.add_source_ranges(
             start,
             end,
-            claimed_selection,
+            claimed_selection.ranges(),
         )
         deletion_edit_bounds[deletion_index] = (
             1,

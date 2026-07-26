@@ -875,6 +875,9 @@ def _plan_replacement_unit_edits(
             or deletion_index >= len(deletion_claims)
         ):
             return False
+        if deletion_edit_bounds[deletion_index][0]:
+            return False
+
         replacement_edit = _replacement_baseline_edit(
             deletion_claims[deletion_index],
             unit_index,

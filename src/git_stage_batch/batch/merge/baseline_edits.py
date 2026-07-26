@@ -1233,7 +1233,7 @@ def try_apply_baseline_replacement_units(
             working_lines,
             workspace,
         )
-    except Exception:
+    except BaseException:
         workspace.close()
         raise
 

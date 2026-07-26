@@ -1038,7 +1038,7 @@ def _mapping_preserves_unpositioned_presence(
     plan: _BaselineEditPlan,
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
-    unmapped_lines: Sequence[tuple[int, ...]],
+    unmapped_lines: MappedRecordVector,
     *,
     spool_dir: str | Path | None,
 ) -> bool:
@@ -1046,21 +1046,30 @@ def _mapping_preserves_unpositioned_presence(
     if not unmapped_lines:
         return True
 
+    if not plan.sort_target_spans_and_validate():
+        return False
+
+    target_lines_are_ordered = True
+    previous_target_line: int | None = None
     with _match_lines(
         source_lines,
         working_lines,
         spool_dir=spool_dir,
     ) as mapping:
-        for claimed_line, in unmapped_lines:
-            target_line = mapping.get_target_line_from_source_line(
-                claimed_line
-            )
-            if (
-                target_line is None
-                or plan.removes_target_line(target_line - 1)
-            ):
+        for record_index in range(len(unmapped_lines)):
+            claimed_line = unmapped_lines[record_index][0]
+            target_line = mapping.get_target_line_from_source_line(claimed_line)
+            if target_line is None:
                 return False
-    return True
+            target_index = target_line - 1
+            if previous_target_line is not None and target_index < previous_target_line:
+                target_lines_are_ordered = False
+            unmapped_lines[record_index] = (target_index,)
+            previous_target_line = target_index
+
+    if not target_lines_are_ordered:
+        sort_mapped_records(unmapped_lines)
+    return not plan.removes_any_target_lines(unmapped_lines)
 
 
 def _add_positioned_presence_insertions(
@@ -1068,15 +1077,18 @@ def _add_positioned_presence_insertions(
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
     positioned_lines: MappedRecordVector,
+    target_spans: Sequence[tuple[int, ...]],
     *,
     positioned_lines_are_ordered: bool,
     trust_baseline_coordinates: bool,
-) -> None:
-    """Group positioned presence lines and append required insertions."""
+) -> bool:
+    """Append required insertion groups and retain only their source records."""
     if not positioned_lines_are_ordered:
         sort_mapped_records(positioned_lines)
 
     group_start = 0
+    retained_line_count = 0
+    target_span_index = 0
     while group_start < len(positioned_lines):
         position = positioned_lines[group_start][0]
         group_stop = group_start + 1
@@ -1086,9 +1098,15 @@ def _add_positioned_presence_insertions(
         ):
             group_stop += 1
 
-        if (
-            trust_baseline_coordinates
-            or not _positioned_source_lines_match(
+        while (
+            target_span_index < len(target_spans)
+            and target_spans[target_span_index][1] <= position
+        ):
+            target_span_index += 1
+
+        group_matches = (
+            not trust_baseline_coordinates
+            and _positioned_source_lines_match(
                 source_lines,
                 working_lines,
                 position,
@@ -1096,14 +1114,43 @@ def _add_positioned_presence_insertions(
                 group_start,
                 group_stop,
             )
-        ):
+        )
+
+        retain_group = not group_matches
+        if group_matches:
+            group_end = position + group_stop - group_start
+            removed_line_count = 0
+            scan_index = target_span_index
+            while (
+                scan_index < len(target_spans)
+                and target_spans[scan_index][0] < group_end
+            ):
+                span_start, span_end = target_spans[scan_index]
+                removed_line_count += max(
+                    0,
+                    min(group_end, span_end) - max(position, span_start),
+                )
+                if span_end >= group_end:
+                    break
+                scan_index += 1
+
+            if 0 < removed_line_count < group_end - position:
+                return False
+            retain_group = removed_line_count == group_end - position
+
+        if retain_group:
             plan.add_positioned_source_lines(
                 position,
                 positioned_lines,
                 group_start,
                 group_stop,
             )
+            for record_index in range(group_start, group_stop):
+                positioned_lines[retained_line_count] = positioned_lines[record_index]
+                retained_line_count += 1
         group_start = group_stop
+    positioned_lines.truncate(retained_line_count)
+    return True
 
 
 def _plan_presence_insertions(
@@ -1143,14 +1190,19 @@ def _plan_presence_insertions(
         return None
 
     workspace.close_resource(unmapped_lines)
-    _add_positioned_presence_insertions(
+    target_spans = plan.sorted_target_spans()
+    if target_spans is None:
+        return None
+    if not _add_positioned_presence_insertions(
         plan,
         source_lines,
         working_lines,
         positioned_lines,
+        target_spans,
         positioned_lines_are_ordered=positioned_lines_are_ordered,
         trust_baseline_coordinates=trust_baseline_coordinates,
-    )
+    ):
+        return None
 
     return positioned_lines
 

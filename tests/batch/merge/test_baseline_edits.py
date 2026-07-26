@@ -405,6 +405,141 @@ def test_baseline_edit_planning_rejects_duplicate_deletion_binding() -> None:
     assert result is None
 
 
+def test_live_planning_ignores_already_present_insertion_groups() -> None:
+    """A skipped no-op group should not need an ambiguous insertion boundary."""
+    same = b"same\n"
+    source_lines = [same, same, same, b"new\n"]
+    working_lines = [same, same, same, b"old\n"]
+    noop_reference = _boundary_reference(
+        after_line=1,
+        after_content=b"same",
+        before_line=2,
+        before_content=b"same",
+    )
+    replacement_reference = _boundary_reference(
+        after_line=3,
+        after_content=b"same",
+        before_line=None,
+    )
+    claim = AbsenceClaim(
+        anchor_line=3,
+        content_lines=[b"old\n"],
+        baseline_reference=replacement_reference,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2", "4"],
+        [claim],
+        baseline_references={
+            2: noop_reference,
+            4: replacement_reference,
+        },
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["4"],
+                deletion_indices=[0],
+            ),
+        ],
+    )
+
+    result = baseline_edits.try_apply_baseline_replacement_units(
+        source_lines,
+        working_lines,
+        ownership,
+        LineRanges.from_ranges(((2, 2), (4, 4))),
+        [claim],
+    )
+
+    assert result is not None
+    assert list(result) == source_lines
+
+
+def test_live_planning_reinserts_payload_removed_by_replacement() -> None:
+    """Matching insertion bytes should survive a planned target removal."""
+    source_lines = [b"new\n", b"old\n"]
+    working_lines = [b"old\n"]
+    replacement_reference = _boundary_reference(
+        after_line=None,
+        before_line=None,
+    )
+    insertion_reference = _boundary_reference(
+        after_line=None,
+        before_line=1,
+        before_content=b"old",
+    )
+    claim = AbsenceClaim(
+        anchor_line=None,
+        content_lines=[b"old\n"],
+        baseline_reference=replacement_reference,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-2"],
+        [claim],
+        baseline_references={2: insertion_reference},
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["1"],
+                deletion_indices=[0],
+            ),
+        ],
+    )
+
+    result = baseline_edits.try_apply_baseline_replacement_units(
+        source_lines,
+        working_lines,
+        ownership,
+        LineRanges.from_ranges(((1, 2),)),
+        [claim],
+    )
+
+    assert result is not None
+    assert list(result) == source_lines
+
+
+def test_live_planning_rejects_partially_removed_matching_payload() -> None:
+    """A partly removed no-op group should fail instead of duplicating content."""
+    source_lines = [b"new\n", b"old\n", b"tail\n"]
+    working_lines = [b"old\n", b"tail\n"]
+    replacement_reference = _boundary_reference(
+        after_line=None,
+        before_line=2,
+        before_content=b"tail",
+    )
+    insertion_reference = _boundary_reference(
+        after_line=None,
+        before_line=1,
+        before_content=b"old",
+    )
+    claim = AbsenceClaim(
+        anchor_line=None,
+        content_lines=[b"old\n"],
+        baseline_reference=replacement_reference,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-3"],
+        [claim],
+        baseline_references={
+            2: insertion_reference,
+            3: insertion_reference,
+        },
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["1"],
+                deletion_indices=[0],
+            ),
+        ],
+    )
+
+    result = baseline_edits.try_apply_baseline_replacement_units(
+        source_lines,
+        working_lines,
+        ownership,
+        LineRanges.from_ranges(((1, 3),)),
+        [claim],
+    )
+
+    assert result is None
+
+
 def test_baseline_replacement_payload_stays_lazy(
     monkeypatch,
 ) -> None:

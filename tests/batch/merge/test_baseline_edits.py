@@ -495,6 +495,51 @@ def test_live_planning_reinserts_payload_removed_by_replacement() -> None:
     assert list(result) == source_lines
 
 
+def test_live_planning_rejects_partially_removed_matching_payload() -> None:
+    """A partly removed no-op group should fail instead of duplicating content."""
+    source_lines = [b"new\n", b"old\n", b"tail\n"]
+    working_lines = [b"old\n", b"tail\n"]
+    replacement_reference = _boundary_reference(
+        after_line=None,
+        before_line=2,
+        before_content=b"tail",
+    )
+    insertion_reference = _boundary_reference(
+        after_line=None,
+        before_line=1,
+        before_content=b"old",
+    )
+    claim = AbsenceClaim(
+        anchor_line=None,
+        content_lines=[b"old\n"],
+        baseline_reference=replacement_reference,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-3"],
+        [claim],
+        baseline_references={
+            2: insertion_reference,
+            3: insertion_reference,
+        },
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["1"],
+                deletion_indices=[0],
+            ),
+        ],
+    )
+
+    result = baseline_edits.try_apply_baseline_replacement_units(
+        source_lines,
+        working_lines,
+        ownership,
+        LineRanges.from_ranges(((1, 3),)),
+        [claim],
+    )
+
+    assert result is None
+
+
 def test_baseline_replacement_payload_stays_lazy(
     monkeypatch,
 ) -> None:

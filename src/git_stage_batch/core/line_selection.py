@@ -382,46 +382,7 @@ def parse_line_selection_ranges(selection: str) -> LineRanges:
     """Parse a line selection string into normalized line ranges."""
     if not selection or not selection.strip():
         raise ValueError("Selection string cannot be empty")
-
-    ranges: list[tuple[int, int]] = []
-    parts = selection.split(",")
-
-    for part in parts:
-        part = part.strip()
-        if not part:
-            continue
-
-        range_separator_pos = part.find("-", 1)
-        if range_separator_pos != -1:
-            start_str = part[:range_separator_pos]
-            end_str = part[range_separator_pos + 1:]
-
-            try:
-                start = int(start_str.strip())
-                end = int(end_str.strip())
-            except ValueError as e:
-                raise ValueError(f"Invalid range: {part}") from e
-
-            if start <= 0 or end <= 0:
-                raise ValueError(f"Line IDs must be positive: {part}")
-
-            if start > end:
-                raise ValueError(f"Range start must be <= end: {part}")
-
-            ranges.append((start, end))
-            continue
-
-        try:
-            line_id = int(part)
-        except ValueError as e:
-            raise ValueError(f"Invalid line ID: {part}") from e
-
-        if line_id <= 0:
-            raise ValueError(f"Line ID must be positive: {part}")
-
-        ranges.append((line_id, line_id))
-
-    return LineRanges.from_ranges(ranges)
+    return LineRanges.from_ranges(scan_line_range_specs((selection,)))
 
 
 def format_line_ids(line_ids: list[str | int]) -> str:

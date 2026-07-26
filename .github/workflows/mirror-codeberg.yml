@@ -6,6 +6,10 @@ on:
     tags: ["**"]
   delete:
 
+concurrency:
+  group: codeberg-mirror
+  cancel-in-progress: false
+
 jobs:
   mirror:
     runs-on: ubuntu-latest

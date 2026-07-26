@@ -88,6 +88,43 @@ def coerce_line_ranges(selection: LineSelection | Iterable[int]) -> LineRanges:
     return LineRanges.from_lines(selection)
 
 
+def scan_line_range_specs(
+    line_ranges: Iterable[str | int],
+) -> Iterator[tuple[int, int]]:
+    """Yield raw inclusive ranges from line specifications without collecting."""
+    for line_range in line_ranges:
+        specification = str(line_range)
+        item_start = 0
+        while item_start <= len(specification):
+            separator = specification.find(",", item_start)
+            item_stop = len(specification) if separator < 0 else separator
+            item = specification[item_start:item_stop].strip()
+            if item:
+                range_separator = item.find("-", 1)
+                if range_separator < 0:
+                    try:
+                        start = end = int(item)
+                    except ValueError as error:
+                        raise ValueError(f"Invalid line ID: {item}") from error
+                    if start <= 0:
+                        raise ValueError(f"Line ID must be positive: {item}")
+                else:
+                    try:
+                        start = int(item[:range_separator].strip())
+                        end = int(item[range_separator + 1 :].strip())
+                    except ValueError as error:
+                        raise ValueError(f"Invalid range: {item}") from error
+                    if start <= 0 or end <= 0:
+                        raise ValueError(f"Line IDs must be positive: {item}")
+                if start > end:
+                    raise ValueError(f"Range start must be <= end: {item}")
+                yield start, end
+
+            if separator < 0:
+                break
+            item_start = separator + 1
+
+
 @dataclass(frozen=True, slots=True)
 class LineRanges:
     """Immutable 1-based line selection stored as normalized inclusive ranges."""

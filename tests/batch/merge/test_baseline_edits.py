@@ -453,6 +453,48 @@ def test_live_planning_ignores_already_present_insertion_groups() -> None:
     assert list(result) == source_lines
 
 
+def test_live_planning_reinserts_payload_removed_by_replacement() -> None:
+    """Matching insertion bytes should survive a planned target removal."""
+    source_lines = [b"new\n", b"old\n"]
+    working_lines = [b"old\n"]
+    replacement_reference = _boundary_reference(
+        after_line=None,
+        before_line=None,
+    )
+    insertion_reference = _boundary_reference(
+        after_line=None,
+        before_line=1,
+        before_content=b"old",
+    )
+    claim = AbsenceClaim(
+        anchor_line=None,
+        content_lines=[b"old\n"],
+        baseline_reference=replacement_reference,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-2"],
+        [claim],
+        baseline_references={2: insertion_reference},
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["1"],
+                deletion_indices=[0],
+            ),
+        ],
+    )
+
+    result = baseline_edits.try_apply_baseline_replacement_units(
+        source_lines,
+        working_lines,
+        ownership,
+        LineRanges.from_ranges(((1, 2),)),
+        [claim],
+    )
+
+    assert result is not None
+    assert list(result) == source_lines
+
+
 def test_baseline_replacement_payload_stays_lazy(
     monkeypatch,
 ) -> None:

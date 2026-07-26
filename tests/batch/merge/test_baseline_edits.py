@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+import pytest
+
 from git_stage_batch.batch.merge import baseline_edits
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership.model import BatchOwnership
@@ -29,6 +31,17 @@ class _CountingLines(Sequence[bytes]):
             raise IndexError(index)
         self.read_count += 1
         return b"new value\n"
+
+
+class _InterruptingLines(Sequence[bytes]):
+    def __init__(self, line_count: int) -> None:
+        self.line_count = line_count
+
+    def __len__(self) -> int:
+        return self.line_count
+
+    def __getitem__(self, index: int | slice) -> bytes | Sequence[bytes]:
+        raise KeyboardInterrupt
 
 
 def _boundary_reference(
@@ -345,4 +358,64 @@ def test_baseline_edit_stream_closes_planning_workspace(
     assert workspaces[0].was_closed is False
     assert next(result) == b"first\n"
     result.close()
+    assert workspaces[0].was_closed is True
+
+
+def test_baseline_edit_planning_closes_workspace_on_base_exception(
+    monkeypatch,
+) -> None:
+    """Interrupted planning should release mapped scratch storage."""
+    workspaces = []
+    original_workspace = baseline_edits.MatcherWorkspace
+
+    class TrackingWorkspace(original_workspace):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            self.was_closed = False
+            workspaces.append(self)
+
+        def close(self) -> None:
+            self.was_closed = True
+            super().close()
+
+    source_lines = [b"new\n", b"extra\n"]
+    working_lines = _InterruptingLines(1)
+    replacement_reference = _boundary_reference(
+        after_line=None,
+        before_line=None,
+    )
+    deletion_claims = [
+        AbsenceClaim(
+            anchor_line=None,
+            content_lines=[b"old\n"],
+            baseline_reference=replacement_reference,
+        ),
+    ]
+    ownership = BatchOwnership.from_presence_lines(
+        ["1"],
+        deletion_claims,
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["1"],
+                deletion_indices=[0],
+            ),
+        ],
+    )
+    monkeypatch.setattr(
+        baseline_edits,
+        "MatcherWorkspace",
+        TrackingWorkspace,
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        baseline_edits.try_apply_baseline_replacement_units(
+            source_lines,
+            working_lines,
+            ownership,
+            LineRanges.from_ranges(((1, 1),)),
+            deletion_claims,
+            trust_baseline_coordinates=True,
+        )
+
+    assert len(workspaces) == 1
     assert workspaces[0].was_closed is True

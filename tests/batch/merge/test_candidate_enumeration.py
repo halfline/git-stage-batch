@@ -18,6 +18,39 @@ class _UnreadableReplacementUnit:
         raise AssertionError("candidate discovery read a third unresolved unit")
 
 
+@pytest.mark.parametrize("deletion_index", [False, 0.0])
+def test_replacement_origin_discovery_rejects_noninteger_deletion_index(
+    deletion_index,
+) -> None:
+    """Replacement review should reject noninteger deletion aliases."""
+    source_lines = [b"new value\n"]
+    working_lines = [b"old value\n"]
+    deletion_claims = [
+        AbsenceClaim(anchor_line=None, content_lines=[b"old value\n"]),
+    ]
+    ownership = BatchOwnership.from_presence_lines(
+        ["1"],
+        deletion_claims,
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["1"],
+                deletion_indices=[deletion_index],
+                origin=ReplacementUnitOrigin(1, 1, 1, 1),
+            ),
+        ],
+    )
+
+    with pytest.raises(
+        MergeError,
+        match="Batch was created from a different version of the file",
+    ):
+        candidate_enumeration.enumerate_merge_batch_candidates_for_lines(
+            source_lines,
+            ownership,
+            working_lines,
+            resolution_is_valid=lambda _resolution: True,
+            max_candidates=10,
+        )
 def test_replacement_origin_discovery_stops_after_second_unresolved_unit() -> None:
     """A second unresolved replacement should fail before reading later units."""
     source_lines = [b"new one\n", b"new two\n"]

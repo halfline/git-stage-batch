@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from ...core.line_selection import LineRanges, LineSelection, coerce_line_ranges
 from ...core.mapped_storage import MappedRecordVector, sort_mapped_records
@@ -22,6 +22,11 @@ from .baseline_reference_positions import (
 )
 from .baseline_replacement_choices import (
     replacement_origin_choices_for_unit as _replacement_origin_choices_for_unit,
+)
+from .baseline_replacement_ranges import (
+    collect_replacement_source_ranges as _collect_replacement_source_ranges,
+    replacement_source_range_capacity as _replacement_source_range_capacity,
+    selected_replacement_source_ranges as _selected_replacement_source_ranges,
 )
 from ..line_matching.sequence_equality import (
     line_sequences_equal as _line_sequences_match,
@@ -40,7 +45,10 @@ if TYPE_CHECKING:
     from ..ownership.model import BatchOwnership
     from ..ownership.absence_claims import AbsenceClaim
     from ..ownership.references import BaselineReference
-    from ..ownership.replacement_units import ReplacementUnitOrigin
+    from ..ownership.replacement_units import (
+        ReplacementUnit,
+        ReplacementUnitOrigin,
+    )
 
 
 _BaselineRemovalEdit = tuple[int, int]
@@ -619,7 +627,7 @@ def _live_coordinate_edits_are_safe(
 
 
 def _replacement_origin_absence_bounds(
-    origin: Any,
+    origin: ReplacementUnitOrigin | None,
     working_lines: Sequence[bytes],
 ) -> tuple[int, int] | None:
     """Return the target bounds of an original replacement parent, if provable."""
@@ -641,7 +649,7 @@ def _replacement_origin_absence_bounds(
 
 def _replacement_edit_with_origin_guard(
     claim: AbsenceClaim,
-    origin: Any,
+    origin: ReplacementUnitOrigin | None,
     working_lines: Sequence[bytes],
 ) -> _BaselineRemovalEdit | None:
     """Return a removal edit only if it fits inside the original parent unit."""
@@ -665,8 +673,8 @@ def _replacement_edit_with_origin_guard(
 
 def _replacement_edit_from_parent_offset(
     claim: AbsenceClaim,
-    origin: Any,
-    claimed_lines: LineRanges,
+    origin: ReplacementUnitOrigin | None,
+    claimed_ranges: Sequence[tuple[int, ...]],
     working_lines: Sequence[bytes],
 ) -> _BaselineRemovalEdit | None:
     """Place an equal-size split replacement by offset inside its parent."""
@@ -689,7 +697,6 @@ def _replacement_edit_from_parent_offset(
     if old_line_count != new_line_count:
         return None
 
-    claimed_ranges = claimed_lines.ranges()
     if len(claimed_ranges) != 1:
         return None
 
@@ -738,8 +745,8 @@ def _replacement_edit_from_parent_offset(
 def _replacement_edit_from_origin_resolution(
     claim: AbsenceClaim,
     unit_index: int,
-    unit: Any,
-    claimed_lines: LineRanges,
+    unit: ReplacementUnit,
+    claimed_ranges: Sequence[tuple[int, ...]],
     working_lines: Sequence[bytes],
     resolution: _MergeResolution | None,
     *,
@@ -753,7 +760,7 @@ def _replacement_edit_from_origin_resolution(
         claim,
         unit_index,
         unit,
-        claimed_lines,
+        ((source_start, source_end) for source_start, source_end in claimed_ranges),
         working_lines,
         max_results=max_results,
     )
@@ -775,8 +782,8 @@ def _replacement_edit_from_origin_resolution(
 def _replacement_baseline_edit(
     claim: AbsenceClaim,
     unit_index: int,
-    unit: Any,
-    claimed_lines: LineRanges,
+    unit: ReplacementUnit,
+    claimed_ranges: Sequence[tuple[int, ...]],
     working_lines: Sequence[bytes],
     resolution: _MergeResolution | None,
     *,
@@ -794,7 +801,7 @@ def _replacement_baseline_edit(
     offset_edit = _replacement_edit_from_parent_offset(
         claim,
         origin,
-        claimed_lines,
+        claimed_ranges,
         working_lines,
     )
     if offset_edit is not None:
@@ -804,7 +811,7 @@ def _replacement_baseline_edit(
         claim,
         unit_index,
         unit,
-        claimed_lines,
+        claimed_ranges,
         working_lines,
         resolution,
         max_results=max_resolution_choices,
@@ -812,15 +819,6 @@ def _replacement_baseline_edit(
     if reviewed_edit is None:
         return None
     return reviewed_edit, True
-
-
-def _selection_fits_source(
-    source_selection: LineRanges,
-    source_line_count: int,
-) -> bool:
-    """Return whether every selected source line has available content."""
-    ranges = source_selection.ranges()
-    return not ranges or ranges[-1][1] <= source_line_count
 
 
 def _positioned_source_lines_match(
@@ -843,73 +841,122 @@ def _positioned_source_lines_match(
     return True
 
 
-def _replacement_source_range_capacity(replacement_units: Sequence[Any]) -> int:
-    """Return mapped-record capacity for replacement source ranges."""
-    return sum(
-        line_spec.count(",") + 1
-        for unit in replacement_units
-        for line_spec in unit.presence_lines
-    )
-
-
 def _plan_replacement_unit_edits(
+    workspace: MatcherWorkspace,
     plan: _BaselineEditPlan,
     source_line_count: int,
     working_lines: Sequence[bytes],
-    replacement_units: Sequence[Any],
+    replacement_units: Sequence[ReplacementUnit],
     deletion_claims: Sequence[AbsenceClaim],
     deletion_edit_bounds: MappedRecordVector,
+    replacement_source_ranges: MappedRecordVector,
     resolution: _MergeResolution | None,
     *,
     max_resolution_choices: int,
-) -> LineRanges | None:
-    """Plan coupled replacement units and return their claimed source lines."""
-    unit_claimed_lines = LineRanges.empty()
-
+) -> bool:
+    """Plan coupled replacement units and record their claimed source ranges."""
     for unit_index, unit in enumerate(replacement_units):
-        claimed_selection = LineRanges.from_specs(unit.presence_lines)
+        claimed_ranges = _collect_replacement_source_ranges(
+            workspace,
+            unit.presence_lines,
+        )
         if (
-            not claimed_selection
-            or not _selection_fits_source(
-                claimed_selection,
-                source_line_count,
-            )
+            claimed_ranges is None
+            or not claimed_ranges
+            or claimed_ranges[-1][1] > source_line_count
             or len(unit.deletion_indices) != 1
         ):
-            return None
+            return False
 
         deletion_index = unit.deletion_indices[0]
-        if deletion_index < 0 or deletion_index >= len(deletion_claims):
-            return None
-
+        if (
+            deletion_index < 0
+            or deletion_index >= len(deletion_claims)
+        ):
+            return False
         replacement_edit = _replacement_baseline_edit(
             deletion_claims[deletion_index],
             unit_index,
             unit,
-            claimed_selection,
+            claimed_ranges,
             working_lines,
             resolution,
             max_resolution_choices=max_resolution_choices,
         )
         if replacement_edit is None:
-            return None
+            return False
 
         removal_edit, coordinate_was_reviewed = replacement_edit
         start, end = removal_edit
         plan.add_source_ranges(
             start,
             end,
-            claimed_selection.ranges(),
+            ((source_start, source_end) for source_start, source_end in claimed_ranges),
         )
+        for source_start, source_end in claimed_ranges:
+            replacement_source_ranges.append((source_start, source_end))
         deletion_edit_bounds[deletion_index] = (
             1,
             start,
             end,
             coordinate_was_reviewed,
         )
-        unit_claimed_lines = unit_claimed_lines.union(claimed_selection)
+        workspace.close_resource(claimed_ranges)
 
-    return unit_claimed_lines
+    return True
+
+
+def _replacement_source_ranges_fit_presence(
+    presence_lines: LineRanges,
+    replacement_source_ranges: MappedRecordVector,
+) -> bool:
+    """Sort replacement ranges and require disjoint presence coverage."""
+    sort_mapped_records(replacement_source_ranges)
+    presence_ranges = presence_lines.ranges()
+    presence_range_index = 0
+    previous_replacement_end = 0
+
+    for source_start, source_end in replacement_source_ranges:
+        if source_start < 1 or source_end < source_start:
+            return False
+        if source_start <= previous_replacement_end:
+            return False
+        while (
+            presence_range_index < len(presence_ranges)
+            and presence_ranges[presence_range_index][1] < source_start
+        ):
+            presence_range_index += 1
+        if presence_range_index >= len(presence_ranges):
+            return False
+        presence_start, presence_end = presence_ranges[presence_range_index]
+        if presence_start > source_start or source_end > presence_end:
+            return False
+        previous_replacement_end = source_end
+
+    return True
+
+
+def _presence_lines_without_replacements(
+    presence_lines: LineRanges,
+    replacement_source_ranges: Sequence[tuple[int, ...]],
+) -> Iterator[int]:
+    """Yield claimed source lines not carried by replacement units."""
+    replacement_range_index = 0
+    for presence_start, presence_end in presence_lines.ranges():
+        remaining_start = presence_start
+        while (
+            replacement_range_index < len(replacement_source_ranges)
+            and replacement_source_ranges[replacement_range_index][0] <= presence_end
+        ):
+            replacement_start, replacement_end = replacement_source_ranges[
+                replacement_range_index
+            ]
+            for claimed_line in range(remaining_start, replacement_start):
+                yield claimed_line
+            remaining_start = replacement_end + 1
+            replacement_range_index += 1
+        for claimed_line in range(remaining_start, presence_end + 1):
+            yield claimed_line
 
 
 def _plan_independent_removal_edits(
@@ -944,21 +991,25 @@ def _collect_presence_position_records(
     source_line_count: int,
     working_lines: Sequence[bytes],
     ownership: BatchOwnership,
-    remaining_claimed_lines: LineRanges,
+    presence_lines: LineRanges,
+    replacement_source_ranges: Sequence[tuple[int, ...]],
 ) -> tuple[MappedRecordVector, MappedRecordVector, bool] | None:
     """Partition presence lines into positioned and mapping-backed records."""
     positioned_lines = workspace.record_vector(
-        len(remaining_claimed_lines),
+        len(presence_lines),
         "QQ",
     )
     unmapped_lines = workspace.record_vector(
-        len(remaining_claimed_lines),
+        len(presence_lines),
         "Q",
     )
     positioned_lines_are_ordered = True
     previous_position: int | None = None
 
-    for claimed_line in remaining_claimed_lines:
+    for claimed_line in _presence_lines_without_replacements(
+        presence_lines,
+        replacement_source_ranges,
+    ):
         if claimed_line > source_line_count:
             return None
         position = _find_baseline_insertion_position(
@@ -1057,7 +1108,8 @@ def _plan_presence_insertions(
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
     ownership: BatchOwnership,
-    remaining_claimed_lines: LineRanges,
+    presence_lines: LineRanges,
+    replacement_source_ranges: Sequence[tuple[int, ...]],
     *,
     trust_baseline_coordinates: bool,
     spool_dir: str | Path | None,
@@ -1068,7 +1120,8 @@ def _plan_presence_insertions(
         len(source_lines),
         working_lines,
         ownership,
-        remaining_claimed_lines,
+        presence_lines,
+        replacement_source_ranges,
     )
     if position_records is None:
         return None
@@ -1245,6 +1298,10 @@ def _build_baseline_edit_plan(
     """Build and validate one storage-backed exact-coordinate edit plan."""
     replacement_units = getattr(ownership, "replacement_units", [])
     presence_lines = coerce_line_ranges(presence_line_set)
+    replacement_source_range_capacity = sum(
+        _replacement_source_range_capacity(unit.presence_lines)
+        for unit in replacement_units
+    )
     plan = _BaselineEditPlan(
         workspace,
         edit_capacity=(
@@ -1253,21 +1310,30 @@ def _build_baseline_edit_plan(
             + len(presence_lines)
         ),
         source_range_capacity=(
-            _replacement_source_range_capacity(replacement_units)
-            + len(presence_lines)
+            replacement_source_range_capacity + len(presence_lines)
         ),
     )
-    unit_claimed_lines = _plan_replacement_unit_edits(
+    replacement_source_ranges = workspace.record_vector(
+        replacement_source_range_capacity,
+        "QQ",
+    )
+    if not _plan_replacement_unit_edits(
+        workspace,
         plan,
         len(source_lines),
         working_lines,
         replacement_units,
         deletion_claims,
         deletion_edit_bounds,
+        replacement_source_ranges,
         resolution,
         max_resolution_choices=max_resolution_choices,
-    )
-    if unit_claimed_lines is None:
+    ):
+        return None
+    if not _replacement_source_ranges_fit_presence(
+        presence_lines,
+        replacement_source_ranges,
+    ):
         return None
     if not _plan_independent_removal_edits(
         plan,
@@ -1277,22 +1343,21 @@ def _build_baseline_edit_plan(
     ):
         return None
 
-    remaining_claimed_lines = presence_lines.difference(unit_claimed_lines)
     positioned_insertion_lines = _plan_presence_insertions(
         plan,
         workspace,
         source_lines,
         working_lines,
         ownership,
-        remaining_claimed_lines,
+        presence_lines,
+        replacement_source_ranges,
         trust_baseline_coordinates=trust_baseline_coordinates,
         spool_dir=spool_dir,
     )
     if positioned_insertion_lines is None:
         return None
 
-    if unit_claimed_lines.union(remaining_claimed_lines) != presence_lines:
-        return None
+    workspace.close_resource(replacement_source_ranges)
     if (
         not trust_baseline_coordinates
         and not _live_coordinate_edits_are_safe(
@@ -1317,16 +1382,34 @@ def has_missing_origin_replacement_claims(
     presence_line_set: LineSelection,
     source_lines: Sequence[bytes],
     mapping: LineMapping,
+    *,
+    spool_dir: str | Path | None = None,
 ) -> bool:
     """Return whether parent-tracked replacement lines would need placement."""
     selected_presence = coerce_line_ranges(presence_line_set)
-    for unit in getattr(ownership, "replacement_units", []):
-        if getattr(unit, "origin", None) is None:
-            continue
-        claimed_selection = LineRanges.from_specs(unit.presence_lines)
-        for claimed_line in selected_presence.intersection(claimed_selection):
-            if claimed_line < 1 or claimed_line > len(source_lines):
+    with MatcherWorkspace(spool_dir=spool_dir) as workspace:
+        for unit in getattr(ownership, "replacement_units", []):
+            if getattr(unit, "origin", None) is None:
                 continue
-            if mapping.get_target_line_from_source_line(claimed_line) is None:
+            claimed_ranges = _collect_replacement_source_ranges(
+                workspace,
+                unit.presence_lines,
+            )
+            if claimed_ranges is None:
                 return True
+            try:
+                for claimed_start, claimed_end in _selected_replacement_source_ranges(
+                    claimed_ranges,
+                    selected_presence,
+                ):
+                    for claimed_line in range(claimed_start, claimed_end + 1):
+                        if claimed_line > len(source_lines):
+                            continue
+                        if (
+                            mapping.get_target_line_from_source_line(claimed_line)
+                            is None
+                        ):
+                            return True
+            finally:
+                workspace.close_resource(claimed_ranges)
     return False

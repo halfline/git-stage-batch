@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 import hashlib
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-from ...core.line_selection import LineSelection, coerce_line_ranges
 from ...core.text_lines import normalize_line_sequence_endings
 from ..line_matching.sequence_equality import line_slice_equals as _line_slice_matches
 
 if TYPE_CHECKING:
+    from ...core.line_selection import LineSelection
     from ..ownership.absence_claims import AbsenceClaim
+    from ..ownership.replacement_units import (
+        ReplacementUnit,
+        ReplacementUnitOrigin,
+    )
 
 
 @dataclass(frozen=True)
@@ -28,13 +32,16 @@ class ReplacementOriginChoice:
 def replacement_origin_choices_for_unit(
     claim: AbsenceClaim,
     unit_index: int,
-    unit: Any,
-    claimed_lines: LineSelection,
+    unit: ReplacementUnit,
+    claimed_ranges: LineSelection | Iterable[tuple[int, int]],
     working_lines: Sequence[bytes],
     *,
     max_results: int | None = None,
 ) -> tuple[str | None, tuple[ReplacementOriginChoice, ...]]:
-    """Return explicit target placements for an origin-tracked replacement."""
+    """Return explicit target placements for an origin-tracked replacement.
+
+    Range-record inputs must be normalized and ordered like ``LineSelection.ranges()``.
+    """
     origin = getattr(unit, "origin", None)
     if origin is None or not claim.content_lines:
         return None, ()
@@ -77,26 +84,57 @@ def replacement_origin_choices_for_unit(
         unit_index,
         deletion_indices[0],
         origin,
-        claimed_lines,
+        _replacement_range_records(claimed_ranges),
         forbidden_sequence,
     )
     return key, tuple(choices)
 
 
+def _replacement_range_records(
+    claimed_ranges: LineSelection | Iterable[tuple[int, int]],
+) -> Iterable[tuple[int, int]]:
+    """Return range records without materializing a streamed input."""
+    ranges = getattr(claimed_ranges, "ranges", None)
+    if ranges is not None:
+        return ranges()
+    return claimed_ranges
+
+
 def _replacement_origin_ambiguity_key(
     unit_index: int,
     deletion_index: int,
-    origin: Any,
-    claimed_lines: LineSelection,
+    origin: ReplacementUnitOrigin,
+    claimed_ranges: Iterable[tuple[int, int]],
     forbidden_sequence: Sequence[bytes],
 ) -> str:
-    claimed = coerce_line_ranges(claimed_lines).to_line_spec()
+    claimed = _range_sequence_identity(claimed_ranges)
     digest = _sequence_digest(forbidden_sequence)
     return (
         f"replacement-origin:{unit_index}:delete:{deletion_index}:"
         f"claimed:{claimed}:old:{origin.old_start}-{origin.old_end}:"
         f"new:{origin.new_start}-{origin.new_end}:{digest}"
     )
+
+
+def _range_sequence_identity(
+    ranges: Iterable[tuple[int, int]],
+) -> str:
+    hasher = hashlib.sha256()
+    first_line: int | None = None
+    last_line: int | None = None
+    range_count = 0
+    for start, end in ranges:
+        if first_line is None:
+            first_line = start
+        last_line = end
+        range_count += 1
+        hasher.update(str(start).encode("ascii"))
+        hasher.update(b":")
+        hasher.update(str(end).encode("ascii"))
+        hasher.update(b";")
+
+    span = "empty" if first_line is None else f"{first_line}-{last_line}"
+    return f"{span}:{range_count}:{hasher.hexdigest()[:12]}"
 
 
 def _sequence_digest(lines: Sequence[bytes]) -> str:

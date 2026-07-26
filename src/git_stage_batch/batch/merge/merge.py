@@ -191,6 +191,7 @@ def _merge_batch_acquired_line_chunks(
             presence_line_set,
             source_lines,
             mapping,
+            spool_dir=spool_dir,
         ):
             raise _MergeError(
                 _(

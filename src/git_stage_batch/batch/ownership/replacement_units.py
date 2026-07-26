@@ -73,7 +73,7 @@ class ReplacementUnit:
     canonical deletion constraint is stored only once in metadata.
     """
 
-    presence_lines: list[str]
+    presence_lines: list[str | int]
     deletion_indices: list[int]
     origin: ReplacementUnitOrigin | None = field(default=None, compare=False)
 

@@ -184,7 +184,7 @@ class BaselineEditStream(Iterator[bytes]):
         except StopIteration:
             self.close()
             raise
-        except Exception:
+        except BaseException:
             self.close()
             raise
 

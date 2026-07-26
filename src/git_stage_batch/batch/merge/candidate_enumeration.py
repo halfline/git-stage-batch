@@ -61,8 +61,8 @@ def _find_unresolved_replacement_origin(
     *,
     max_candidates: int,
     spool_dir: str | Path | None,
-) -> list[_UnresolvedReplacementOrigin]:
-    """Return unresolved split replacements that need explicit placement."""
+) -> _UnresolvedReplacementOrigin | None:
+    """Return the only unresolved split replacement, if there is one."""
     owned_mapping = match_lines(
         source_lines,
         working_lines,
@@ -70,7 +70,7 @@ def _find_unresolved_replacement_origin(
     )
     try:
         selected_presence = coerce_line_ranges(presence_line_set)
-        unresolved: list[_UnresolvedReplacementOrigin] = []
+        unresolved = None
         for unit_index, unit in enumerate(
             getattr(ownership, "replacement_units", [])
         ):
@@ -109,15 +109,18 @@ def _find_unresolved_replacement_origin(
             if key is None:
                 continue
             claimed_ranges = claimed_lines.ranges()
-            unresolved.append(
-                _UnresolvedReplacementOrigin(
-                    source_start=claimed_ranges[0][0],
-                    source_end=claimed_ranges[-1][1],
-                    deletion_index=deletion_index,
-                    ambiguity_key=key,
-                    choices=choices,
-                )
+            candidate = _UnresolvedReplacementOrigin(
+                source_start=claimed_ranges[0][0],
+                source_end=claimed_ranges[-1][1],
+                deletion_index=deletion_index,
+                ambiguity_key=key,
+                choices=choices,
             )
+            if unresolved is not None:
+                raise _MergeError(
+                    _("Multiple split replacement placements need review")
+                )
+            unresolved = candidate
         return unresolved
     finally:
         owned_mapping.close()
@@ -144,17 +147,14 @@ def _replacement_origin_candidate_set(
         max_candidates=max_candidates,
         spool_dir=spool_dir,
     )
-    if not unresolved:
+    if unresolved is None:
         return _MergeCandidateSet(())
-    if len(unresolved) > 1:
-        raise _MergeError(_("Multiple split replacement placements need review"))
 
-    unresolved_origin = unresolved[0]
-    source_start = unresolved_origin.source_start
-    source_end = unresolved_origin.source_end
-    deletion_index = unresolved_origin.deletion_index
-    key = unresolved_origin.ambiguity_key
-    choices = unresolved_origin.choices
+    source_start = unresolved.source_start
+    source_end = unresolved.source_end
+    deletion_index = unresolved.deletion_index
+    key = unresolved.ambiguity_key
+    choices = unresolved.choices
     if len(choices) > max_candidates:
         raise _MergeError(_("Too many merge candidates to preview safely"))
 

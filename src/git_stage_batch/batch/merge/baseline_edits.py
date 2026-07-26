@@ -39,6 +39,7 @@ from .candidates import MergeResolution as _MergeResolution
 if TYPE_CHECKING:
     from ..ownership.model import BatchOwnership
     from ..ownership.absence_claims import AbsenceClaim
+    from ..ownership.references import BaselineReference
 
 
 _BaselineRemovalEdit = tuple[int, int]
@@ -307,7 +308,7 @@ def _live_removal_boundary_is_unique(
 
 
 def _insertion_boundary_identity_matches_at(
-    reference: Any,
+    reference: BaselineReference | None,
     target_lines: Sequence[bytes],
     position: int,
 ) -> bool:
@@ -345,7 +346,7 @@ def _insertion_boundary_identity_matches_at(
 
 
 def _live_insertion_boundary_is_unique(
-    reference: Any,
+    reference: BaselineReference | None,
     target_lines: Sequence[bytes],
     expected_position: int,
     occurrence_index: LinePayloadOccurrenceIndex,
@@ -366,47 +367,30 @@ def _live_insertion_boundary_is_unique(
     ):
         return True
 
-    rarest_content: bytes | None = None
-    rarest_boundary_delta = 0
-    rarest_count = len(target_lines) + 1
-
-    def consider(content: bytes | None, boundary_delta: int) -> None:
-        nonlocal rarest_content
-        nonlocal rarest_boundary_delta
-        nonlocal rarest_count
-        if content is None:
-            return
-        count = occurrence_index.occurrence_count(content)
-        if count < rarest_count:
-            rarest_content = content
-            rarest_boundary_delta = boundary_delta
-            rarest_count = count
-
-    if after_line is not None:
-        consider(getattr(reference, "after_content", None), 1)
-    if getattr(reference, "has_before_line", False) and before_line is not None:
-        consider(getattr(reference, "before_content", None), 0)
-
-    if rarest_content is None or rarest_count == 0:
-        return False
-    if rarest_count == 1:
-        return True
-
-    for line_index in occurrence_index.matching_line_indexes(rarest_content):
-        position = line_index + rarest_boundary_delta
-        if (
-            position < 0
-            or position > len(target_lines)
-            or position == expected_position
-        ):
-            continue
-        if _insertion_boundary_identity_matches_at(
+    return _boundary_identity_occurs_once(
+        occurrence_index,
+        expected_position,
+        len(target_lines),
+        after_content=(
+            getattr(reference, "after_content", None)
+            if after_line is not None
+            else None
+        ),
+        span_contents=(),
+        before_content=(
+            getattr(reference, "before_content", None)
+            if (
+                getattr(reference, "has_before_line", False) and before_line is not None
+            )
+            else None
+        ),
+        before_delta=0,
+        identity_matches_at=lambda position: _insertion_boundary_identity_matches_at(
             reference,
             target_lines,
             position,
-        ):
-            return False
-    return True
+        ),
+    )
 
 
 def _replacement_origin_boundary_identity_matches_at(

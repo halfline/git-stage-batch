@@ -1038,7 +1038,7 @@ def _mapping_preserves_unpositioned_presence(
     plan: _BaselineEditPlan,
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
-    unmapped_lines: Sequence[tuple[int, ...]],
+    unmapped_lines: MappedRecordVector,
     *,
     spool_dir: str | Path | None,
 ) -> bool:
@@ -1046,21 +1046,30 @@ def _mapping_preserves_unpositioned_presence(
     if not unmapped_lines:
         return True
 
+    if not plan.sort_target_spans_and_validate():
+        return False
+
+    target_lines_are_ordered = True
+    previous_target_line: int | None = None
     with _match_lines(
         source_lines,
         working_lines,
         spool_dir=spool_dir,
     ) as mapping:
-        for claimed_line, in unmapped_lines:
-            target_line = mapping.get_target_line_from_source_line(
-                claimed_line
-            )
-            if (
-                target_line is None
-                or plan.removes_target_line(target_line - 1)
-            ):
+        for record_index in range(len(unmapped_lines)):
+            claimed_line = unmapped_lines[record_index][0]
+            target_line = mapping.get_target_line_from_source_line(claimed_line)
+            if target_line is None:
                 return False
-    return True
+            target_index = target_line - 1
+            if previous_target_line is not None and target_index < previous_target_line:
+                target_lines_are_ordered = False
+            unmapped_lines[record_index] = (target_index,)
+            previous_target_line = target_index
+
+    if not target_lines_are_ordered:
+        sort_mapped_records(unmapped_lines)
+    return not plan.removes_any_target_lines(unmapped_lines)
 
 
 def _add_positioned_presence_insertions(

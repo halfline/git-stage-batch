@@ -78,23 +78,47 @@ class BaselineEditPlan:
         if pending_start is not None and pending_end is not None:
             self._add_payload_range(position, pending_start, pending_end)
 
-    def removes_target_line(self, target_index: int) -> bool:
-        """Return whether a planned non-insertion edit covers a target line."""
-        return any(
-            start <= target_index < end
-            for start, end in self._target_spans
-        )
+    def removes_any_target_lines(
+        self,
+        sorted_target_lines: Sequence[tuple[int, ...]],
+    ) -> bool:
+        """Return whether sorted target indexes intersect a target span."""
+        target_span_index = 0
+        for (target_line,) in sorted_target_lines:
+            while (
+                target_span_index < len(self._target_spans)
+                and self._target_spans[target_span_index][1] <= target_line
+            ):
+                target_span_index += 1
+            if target_span_index >= len(self._target_spans):
+                return False
+            start, end = self._target_spans[target_span_index]
+            if start <= target_line < end:
+                return True
+        return False
 
-    def sort_and_validate(self) -> bool:
-        """Sort plan records and reject overlapping target or source spans."""
+    def sorted_target_spans(
+        self,
+    ) -> Sequence[tuple[int, ...]] | None:
+        """Return sorted target spans, or None when they overlap."""
+        if not self.sort_target_spans_and_validate():
+            return None
+        return self._target_spans
+
+    def sort_target_spans_and_validate(self) -> bool:
+        """Sort target spans and reject overlaps or empty reversals."""
         if not self._target_spans_are_ordered:
             sort_mapped_records(self._target_spans)
             self._target_spans_are_ordered = True
+        return self._target_spans_are_valid()
+
+    def sort_and_validate(self) -> bool:
+        """Sort plan records and reject overlapping target or source spans."""
         if not self._payload_ranges_are_ordered:
             sort_mapped_records(self._payload_ranges)
             self._payload_ranges_are_ordered = True
         return (
-            self._target_spans_are_valid()
+            self.sorted_target_spans() is not None
             and self._payload_ranges_are_valid()
             and self._payload_positions_avoid_target_interiors()
         )

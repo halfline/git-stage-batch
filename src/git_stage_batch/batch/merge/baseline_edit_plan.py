@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 
-from ...core.line_selection import LineRanges
 from ...core.mapped_storage import sort_mapped_records
 from ..line_matching.match_workspace import MatcherWorkspace
 
@@ -19,36 +18,36 @@ class BaselineEditPlan:
         edit_capacity: int,
         source_range_capacity: int,
     ) -> None:
-        self._edits = workspace.record_vector(
+        self._target_spans = workspace.record_vector(
             edit_capacity,
-            "QQQQQ",
-        )
-        self._source_ranges = workspace.record_vector(
-            source_range_capacity,
             "QQ",
         )
-        self._next_ordinal = 0
-        self._edits_are_ordered = True
-        self._previous_sort_key: tuple[int, int] | None = None
+        self._payload_ranges = workspace.record_vector(
+            source_range_capacity,
+            "QQQ",
+        )
+        self._target_spans_are_ordered = True
+        self._payload_ranges_are_ordered = True
+        self._previous_target_span: tuple[int, int] | None = None
+        self._previous_payload_range: tuple[int, int, int] | None = None
 
     def __bool__(self) -> bool:
-        return bool(self._edits)
+        return bool(self._target_spans or self._payload_ranges)
 
     def add_removal(self, start: int, end: int) -> None:
         """Append one target removal without replacement source lines."""
-        self._append_edit(start, end, len(self._source_ranges))
+        self._add_target_span(start, end)
 
-    def add_source_selection(
+    def add_source_ranges(
         self,
         start: int,
         end: int,
-        source_selection: LineRanges,
+        source_ranges: Iterable[tuple[int, int]],
     ) -> None:
-        """Append one edit whose payload is a range-backed source selection."""
-        source_range_start = len(self._source_ranges)
-        for source_start, source_end in source_selection.ranges():
-            self._source_ranges.append((source_start, source_end))
-        self._append_edit(start, end, source_range_start)
+        """Append one edit whose payload comes from source ranges."""
+        self._add_target_span(start, end)
+        for source_start, source_end in source_ranges:
+            self._add_payload_range(start, source_start, source_end)
 
     def add_positioned_source_lines(
         self,
@@ -58,7 +57,6 @@ class BaselineEditPlan:
         stop_index: int,
     ) -> None:
         """Append one insertion from sorted position/source-line records."""
-        source_range_start = len(self._source_ranges)
         pending_start: int | None = None
         pending_end: int | None = None
 
@@ -73,43 +71,33 @@ class BaselineEditPlan:
             if source_line == pending_end + 1:
                 pending_end = source_line
                 continue
-            self._source_ranges.append((pending_start, pending_end))
+            self._add_payload_range(position, pending_start, pending_end)
             pending_start = source_line
             pending_end = source_line
 
         if pending_start is not None and pending_end is not None:
-            self._source_ranges.append((pending_start, pending_end))
-        self._append_edit(position, position, source_range_start)
+            self._add_payload_range(position, pending_start, pending_end)
 
     def removes_target_line(self, target_index: int) -> bool:
         """Return whether a planned non-insertion edit covers a target line."""
         return any(
             start <= target_index < end
-            for (
-                start,
-                end,
-                _ordinal,
-                _source_range_start,
-                _source_range_stop,
-            ) in self._edits
+            for start, end in self._target_spans
         )
 
     def sort_and_validate(self) -> bool:
-        """Sort edits by target position and reject overlapping target spans."""
-        if not self._edits_are_ordered:
-            sort_mapped_records(self._edits)
-        previous_end = 0
-        for (
-            start,
-            end,
-            _ordinal,
-            _source_range_start,
-            _source_range_stop,
-        ) in self._edits:
-            if start < previous_end:
-                return False
-            previous_end = max(previous_end, end)
-        return True
+        """Sort plan records and reject overlapping target or source spans."""
+        if not self._target_spans_are_ordered:
+            sort_mapped_records(self._target_spans)
+            self._target_spans_are_ordered = True
+        if not self._payload_ranges_are_ordered:
+            sort_mapped_records(self._payload_ranges)
+            self._payload_ranges_are_ordered = True
+        return (
+            self._target_spans_are_valid()
+            and self._payload_ranges_are_valid()
+            and self._payload_positions_avoid_target_interiors()
+        )
 
     def stream_lines(
         self,
@@ -117,49 +105,119 @@ class BaselineEditPlan:
         working_lines: Sequence[bytes],
     ) -> Iterator[bytes]:
         """Yield working lines with the validated edit plan applied."""
+        target_span_index = 0
+        payload_range_index = 0
         position = 0
-        for (
-            start,
-            end,
-            _ordinal,
-            source_range_start,
-            source_range_stop,
-        ) in self._edits:
-            for working_index in range(position, start):
+        while target_span_index < len(self._target_spans) or payload_range_index < len(
+            self._payload_ranges
+        ):
+            target_position = (
+                self._target_spans[target_span_index][0]
+                if target_span_index < len(self._target_spans)
+                else None
+            )
+            payload_position = (
+                self._payload_ranges[payload_range_index][0]
+                if payload_range_index < len(self._payload_ranges)
+                else None
+            )
+            if target_position is None:
+                next_position = payload_position
+            elif payload_position is None:
+                next_position = target_position
+            else:
+                next_position = min(target_position, payload_position)
+            assert next_position is not None
+
+            for working_index in range(position, next_position):
                 yield working_lines[working_index]
-            for source_range_index in range(
-                source_range_start,
-                source_range_stop,
+
+            while (
+                payload_range_index < len(self._payload_ranges)
+                and self._payload_ranges[payload_range_index][0] == next_position
             ):
-                source_start, source_end = self._source_ranges[source_range_index]
+                _target_position, source_start, source_end = self._payload_ranges[
+                    payload_range_index
+                ]
                 for source_line in range(source_start, source_end + 1):
                     yield source_lines[source_line - 1]
-            position = end
+                payload_range_index += 1
+
+            if (
+                target_span_index < len(self._target_spans)
+                and self._target_spans[target_span_index][0] == next_position
+            ):
+                _target_start, position = self._target_spans[target_span_index]
+                target_span_index += 1
+            else:
+                position = next_position
 
         for working_index in range(position, len(working_lines)):
             yield working_lines[working_index]
 
-    def _append_edit(
+    def _add_target_span(
         self,
         start: int,
         end: int,
-        source_range_start: int,
     ) -> None:
-        source_range_stop = len(self._source_ranges)
-        sort_key = (start, end)
-        if self._previous_sort_key is not None and sort_key < self._previous_sort_key:
-            self._edits_are_ordered = False
-        self._edits.append(
-            (
-                start,
-                end,
-                self._next_ordinal,
-                source_range_start,
-                source_range_stop,
-            )
-        )
-        self._previous_sort_key = sort_key
-        self._next_ordinal += 1
+        if start == end:
+            return
+        span = (start, end)
+        if self._previous_target_span is not None and span < self._previous_target_span:
+            self._target_spans_are_ordered = False
+        self._target_spans.append(span)
+        self._previous_target_span = span
+
+    def _add_payload_range(
+        self,
+        target_position: int,
+        source_start: int,
+        source_end: int,
+    ) -> None:
+        payload_range = (target_position, source_start, source_end)
+        if (
+            self._previous_payload_range is not None
+            and payload_range < self._previous_payload_range
+        ):
+            self._payload_ranges_are_ordered = False
+        self._payload_ranges.append(payload_range)
+        self._previous_payload_range = payload_range
+
+    def _target_spans_are_valid(self) -> bool:
+        previous_end = 0
+        for start, end in self._target_spans:
+            if end <= start or start < previous_end:
+                return False
+            previous_end = end
+        return True
+
+    def _payload_ranges_are_valid(self) -> bool:
+        previous_target: int | None = None
+        previous_source_end = 0
+        for target_position, source_start, source_end in self._payload_ranges:
+            if source_start < 1 or source_end < source_start:
+                return False
+            if target_position != previous_target:
+                previous_target = target_position
+            elif source_start <= previous_source_end:
+                return False
+            previous_source_end = source_end
+        return True
+
+    def _payload_positions_avoid_target_interiors(self) -> bool:
+        target_span_index = 0
+        for target_position, _source_start, _source_end in self._payload_ranges:
+            while (
+                target_span_index < len(self._target_spans)
+                and self._target_spans[target_span_index][1] <= target_position
+            ):
+                target_span_index += 1
+            if target_span_index >= len(self._target_spans):
+                return True
+            target_start, target_end = self._target_spans[target_span_index]
+            if target_start < target_position < target_end:
+                return False
+        return True
 
 
 class BaselineEditStream(Iterator[bytes]):

@@ -6,12 +6,12 @@ import hashlib
 import json
 import re
 import uuid
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import Enum
 from types import MappingProxyType
-from typing import Any, TypeAlias
+from typing import Any, TypeAlias, cast
 
 from ...exceptions import BatchMetadataError
 from ...utils.git_repository import object_id_hex_length
@@ -79,6 +79,27 @@ class BatchFileMetadata:
     def to_dict(self) -> dict[str, Any]:
         return _thaw_mapping(self.values)
 
+    @property
+    def batch_source_commit(self) -> str | None:
+        """Return the validated source commit, when this entry has one."""
+        return cast(str | None, self.values.get("batch_source_commit"))
+
+    @property
+    def mode(self) -> str:
+        """Return the validated Git mode used for stored source content."""
+        mode = self.values.get("mode")
+        return mode if isinstance(mode, str) else "100644"
+
+    def with_source_path(self) -> BatchFileMetadata:
+        """Return this entry with its canonical state-tree source path."""
+        return replace(
+            self,
+            values=MappingProxyType({
+                **self.values,
+                "source_path": f"sources/{self.path}",
+            }),
+        )
+
 
 @dataclass(frozen=True)
 class BatchMetadata:
@@ -116,6 +137,41 @@ class BatchMetadata:
             "content_commit": self.content_commit,
             "files": {entry.path: entry.to_dict() for entry in self.files},
         }
+
+    def for_publication(
+        self,
+        *,
+        content_ref: str,
+        content_commit: str,
+        source_paths: Iterable[str],
+    ) -> BatchMetadata:
+        """Derive a new canonical state-ref model from validated metadata."""
+        if not content_ref:
+            _invalid(self.batch, "'content_ref' must be a non-empty string")
+        _validate_object_id(content_commit, self.batch, "content_commit")
+
+        source_path_set = frozenset(source_paths)
+        file_paths = {entry.path for entry in self.files}
+        unknown_source_paths = source_path_set - file_paths
+        if unknown_source_paths:
+            _invalid(
+                self.batch,
+                "source snapshots reference unknown file(s): "
+                f"{_field_list(unknown_source_paths)}",
+            )
+
+        return replace(
+            self,
+            revision=new_batch_metadata_revision(),
+            files=tuple(
+                entry.with_source_path()
+                if entry.path in source_path_set else
+                entry
+                for entry in self.files
+            ),
+            content_ref=content_ref,
+            content_commit=content_commit,
+        )
 
 
 def new_batch_metadata_revision() -> str:

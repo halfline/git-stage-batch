@@ -4,59 +4,7 @@ from pathlib import Path
 
 import subprocess
 
-import pytest
-
-from .conftest import git_stage_batch, get_staged_files
-
-
-INTERACTIVE_TIMEOUT = 15
-
-
-def decode_timeout_output(value):
-    if isinstance(value, bytes):
-        return value.decode(errors="replace")
-    return value or ""
-
-
-def run_interactive(*inputs, timeout=INTERACTIVE_TIMEOUT):
-    """Run interactive mode with simulated input.
-
-    Args:
-        *inputs: Input strings to send to interactive mode
-        timeout: Timeout in seconds
-
-    Returns:
-        subprocess.CompletedProcess
-    """
-
-    # Find the venv git-stage-batch to ensure we use in-tree version
-    test_dir = Path(__file__).parent
-    project_root = test_dir.parent.parent
-    venv_gsb = project_root / ".venv" / "bin" / "git-stage-batch"
-
-    if venv_gsb.exists():
-        cmd = [str(venv_gsb), "-i"]
-    else:
-        cmd = ["uv", "run", "--", "git-stage-batch", "-i"]
-
-    input_text = "\n".join(inputs) + "\n"
-
-    try:
-        result = subprocess.run(
-            cmd,
-            input=input_text,
-            text=True,
-            capture_output=True,
-            timeout=timeout,
-            check=False
-        )
-        return result
-    except subprocess.TimeoutExpired as error:
-        output = (
-            decode_timeout_output(error.output)
-            + decode_timeout_output(error.stderr)
-        )
-        pytest.fail(f"Interactive mode timed out\n{output}")
+from .conftest import git_stage_batch, get_staged_files, run_interactive
 
 
 class TestInteractiveMode:
@@ -76,24 +24,7 @@ class TestInteractiveMode:
 
     def test_interactive_command_alias(self, repo_with_changes):
         """Test starting with 'interactive' command."""
-
-        test_dir = Path(__file__).parent
-        project_root = test_dir.parent.parent
-        venv_gsb = project_root / ".venv" / "bin" / "git-stage-batch"
-
-        if venv_gsb.exists():
-            cmd = [str(venv_gsb), "interactive"]
-        else:
-            cmd = ["uv", "run", "--", "git-stage-batch", "interactive"]
-
-        result = subprocess.run(
-            cmd,
-            input="q\n",
-            text=True,
-            capture_output=True,
-            timeout=INTERACTIVE_TIMEOUT,
-            check=False
-        )
+        result = run_interactive("q", cli_args=("interactive",))
         assert result.returncode == 0
 
     def test_interactive_with_no_changes(self, functional_repo):

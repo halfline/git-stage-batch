@@ -74,7 +74,7 @@ def add_binary_file_to_batch(
             "mode": file_mode,
         }
 
-        write_file_backed_batch_metadata(batch_name, metadata)
+        metadata_model = write_file_backed_batch_metadata(batch_name, metadata)
 
         source_buffers = (
             {file_path: current_binary_buffer}
@@ -87,12 +87,14 @@ def add_binary_file_to_batch(
                 file_path,
                 blob_sha,
                 file_mode,
+                metadata=metadata_model,
                 source_buffers=source_buffers,
             )
         else:
             _content_commits.remove_file_from_batch_commit(
                 batch_name,
                 file_path,
+                metadata=metadata_model,
                 source_buffers=source_buffers,
             )
     finally:

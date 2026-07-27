@@ -12,6 +12,7 @@ from ...utils.git_index import (
     temp_git_index,
 )
 from ...utils.git_object_io import get_git_object_type
+from .metadata_schema import BatchMetadata
 from .query import get_batch_baseline_commit, get_batch_commit_sha
 from .references import read_file_backed_batch_metadata, sync_batch_state_refs
 
@@ -37,6 +38,7 @@ def remove_file_from_batch_commit(
     batch_name: str,
     file_path: str,
     *,
+    metadata: BatchMetadata,
     source_buffers: dict[str, LineBuffer] | None = None,
 ) -> None:
     """Remove a file from a batch content commit tree."""
@@ -58,6 +60,7 @@ def remove_file_from_batch_commit(
 
     sync_batch_state_refs(
         batch_name,
+        metadata,
         content_commit=commit_sha,
         source_buffers=source_buffers,
     )
@@ -69,6 +72,7 @@ def update_batch_commit(
     blob_sha: str,
     file_mode: str,
     *,
+    metadata: BatchMetadata,
     source_buffers: dict[str, LineBuffer] | None = None,
 ) -> None:
     """Update a file entry in a batch content commit tree."""
@@ -93,6 +97,7 @@ def update_batch_commit(
 
     sync_batch_state_refs(
         batch_name,
+        metadata,
         content_commit=commit_sha,
         source_buffers=source_buffers,
     )
@@ -102,6 +107,8 @@ def update_batch_gitlink_commit(
     batch_name: str,
     file_path: str,
     oid: str,
+    *,
+    metadata: BatchMetadata,
 ) -> None:
     """Update a submodule pointer entry in a batch content commit tree."""
     with temp_git_index() as env:
@@ -118,4 +125,4 @@ def update_batch_gitlink_commit(
         message=f"Batch: {batch_name}",
     )
 
-    sync_batch_state_refs(batch_name, content_commit=commit_sha)
+    sync_batch_state_refs(batch_name, metadata, content_commit=commit_sha)

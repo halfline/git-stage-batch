@@ -124,13 +124,14 @@ def add_sifted_text_file_to_batch(
         file_metadata["change_type"] = text_change_type.value
     metadata["files"][file_path] = file_metadata
 
-    write_file_backed_batch_metadata(batch_name, metadata)
+    metadata_model = write_file_backed_batch_metadata(batch_name, metadata)
 
     source_buffers = {file_path: target_buffer}
     if text_change_type == TextFileChangeType.DELETED:
         remove_file_from_batch_commit(
             batch_name,
             file_path,
+            metadata=metadata_model,
             source_buffers=source_buffers,
         )
     else:
@@ -139,6 +140,7 @@ def add_sifted_text_file_to_batch(
             file_path,
             target_blob_sha,
             file_mode,
+            metadata=metadata_model,
             source_buffers=source_buffers,
         )
 
@@ -247,10 +249,14 @@ def publish_sifted_files(
         )
         if replace_existing and source_metadata.get("created_at"):
             temp_metadata["created_at"] = source_metadata["created_at"]
-        write_file_backed_batch_metadata(destination_batch, temp_metadata)
+        metadata_model = write_file_backed_batch_metadata(
+            destination_batch,
+            temp_metadata,
+        )
         destination_metadata_written = True
         sync_batch_state_refs(
             destination_batch,
+            metadata_model,
             content_commit=commit_sha,
             source_buffers=_source_buffers_from_sift_results(retained_files),
         )

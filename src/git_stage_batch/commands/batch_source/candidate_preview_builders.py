@@ -7,12 +7,10 @@ from contextlib import ExitStack
 from typing import Any
 
 from . import candidate_inputs as _candidate_inputs
+from . import candidate_planning as _candidate_planning
 from ..selection import replacement_selection
 from ...batch.operation_candidate_types import OperationCandidatePreview
-from ...batch.operation_candidates import (
-    build_apply_candidate_previews,
-    build_include_candidate_previews,
-)
+from ...batch.operation_candidates import build_include_candidate_previews
 from ...batch.replacement import build_replacement_batch_view_from_lines
 from ...batch.selection import acquire_batch_ownership_for_display_ids_from_lines
 from ...batch.source.selector import BatchSourceSelector
@@ -89,6 +87,33 @@ def build_batch_source_candidate_previews(
                 action,
             )
 
+        replacement_payload = None
+        if replacement_text is not None:
+            if operation == "apply":
+                exit_with_error(
+                    _("Replacement preview is not valid for apply candidates.")
+                )
+            if not selected_ids:
+                exit_with_error(_("`show --from --as` requires `--line`."))
+            replacement_selection.require_contiguous_display_selection(
+                selected_ids,
+            )
+            replacement_payload = coerce_replacement_payload(replacement_text)
+
+        if operation == "apply":
+            with load_working_tree_file_as_buffer(file_path) as working_lines:
+                return _candidate_planning.plan_apply_candidate_previews(
+                    batch_name=selector.batch_name,
+                    file_path=file_path,
+                    file_meta=file_meta,
+                    batch_source_lines=batch_source_lines,
+                    batch_source_commit=batch_source_ref.commit,
+                    worktree_lines=working_lines,
+                    worktree_target=worktree_target,
+                    selected_ids=selected_ids,
+                    selection_ids=selection_ids_to_apply,
+                )
+
         with acquire_batch_ownership_for_display_ids_from_lines(
             file_meta,
             batch_source_lines,
@@ -97,18 +122,7 @@ def build_batch_source_candidate_previews(
             with ExitStack() as stack:
                 source_for_candidates = batch_source_lines
                 candidate_ownership = ownership
-                replacement_payload = None
-                if replacement_text is not None:
-                    if operation == "apply":
-                        exit_with_error(
-                            _("Replacement preview is not valid for apply candidates.")
-                        )
-                    if not selected_ids:
-                        exit_with_error(_("`show --from --as` requires `--line`."))
-                    replacement_selection.require_contiguous_display_selection(
-                        selected_ids,
-                    )
-                    replacement_payload = coerce_replacement_payload(replacement_text)
+                if replacement_payload is not None:
                     try:
                         replacement_view = build_replacement_batch_view_from_lines(
                             batch_source_lines,
@@ -120,23 +134,6 @@ def build_batch_source_candidate_previews(
                     replacement_view = stack.enter_context(replacement_view)
                     source_for_candidates = replacement_view.source_buffer
                     candidate_ownership = replacement_view.ownership
-
-                if operation == "apply":
-                    with load_working_tree_file_as_buffer(file_path) as working_lines:
-                        return build_apply_candidate_previews(
-                            batch_name=selector.batch_name,
-                            file_path=file_path,
-                            source_lines=source_for_candidates,
-                            ownership=candidate_ownership,
-                            worktree_lines=working_lines,
-                            batch_source_commit=batch_source_ref.commit,
-                            file_meta=file_meta,
-                            text_change_type=worktree_target.text_change_type,
-                            worktree_file_mode=worktree_target.file_mode,
-                            worktree_exists=worktree_target.exists,
-                            selected_ids=selected_ids,
-                            selection_ids=selection_ids_to_apply,
-                        )
 
                 index_buffer = read_git_object_buffer_or_none(f":{file_path}")
                 index_exists = index_buffer is not None

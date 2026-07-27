@@ -64,6 +64,25 @@ def test_v1_round_trip_is_deterministic_and_immutable():
         model.files[0].values["mode"] = "100755"  # type: ignore[index]
 
 
+def test_publication_derives_a_new_immutable_model():
+    model = decode_batch_metadata(_v1_metadata(), expected_batch="feature")
+
+    published = model.for_publication(
+        content_ref="refs/git-stage-batch/batches/feature",
+        content_commit=_oid("d"),
+        source_paths={"src/example.py"},
+    )
+
+    assert published.revision != model.revision
+    assert published.content_commit == _oid("d")
+    assert published.files[0].batch_source_commit == _oid("c")
+    assert published.files[0].mode == "100644"
+    assert published.files[0].values["source_path"] == "sources/src/example.py"
+    assert "source_path" not in model.files[0].values
+    with pytest.raises(TypeError):
+        published.files[0].values["source_path"] = "other"  # type: ignore[index]
+
+
 def test_unversioned_state_metadata_migrates_deterministically():
     legacy = {
         "batch": "feature",

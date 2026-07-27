@@ -3375,7 +3375,7 @@ def test_file_review_records_stay_out_of_state_module():
         SRC_ROOT / "output" / "file_review_footer.py": {
             "ReviewSource",
         },
-        SRC_ROOT / "output" / "file_review_action_selections.py": {
+        SRC_ROOT / "data" / "file_review" / "action_selections.py": {
             "ReviewSource",
         },
         SRC_ROOT / "output" / "file_review_state_builder.py": {
@@ -3936,8 +3936,8 @@ def test_file_review_output_uses_action_selection_module():
         for imported_module, _node in _import_from_nodes(review_state_builder_path)
     }
     file_review_action_selections = __import__(
-        "git_stage_batch.output.file_review_action_selections",
-        fromlist=["file_review_action_selections"],
+        "git_stage_batch.data.file_review.action_selections",
+        fromlist=["action_selections"],
     )
     public_names = {
         "change_index_containing_review_display_ids",
@@ -3948,8 +3948,11 @@ def test_file_review_output_uses_action_selection_module():
         "shown_line_action_selections",
     }
 
-    assert "git_stage_batch.output.file_review_action_selections" in imported_modules
-    assert "git_stage_batch.output.file_review_action_selections" in state_builder_imports
+    assert "git_stage_batch.data.file_review.action_selections" in imported_modules
+    assert (
+        "git_stage_batch.data.file_review.action_selections"
+        in state_builder_imports
+    )
     assert public_names <= vars(file_review_action_selections).keys()
     assert "def _shown_line_action_selections" not in review_output_text
     assert "def _display_ids_for_change_pages" not in review_output_text

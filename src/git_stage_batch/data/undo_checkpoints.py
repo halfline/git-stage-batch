@@ -26,7 +26,7 @@ from .recovery_anchors import (
 )
 from ..utils.session_start_point import current_head_commit
 from . import undo_restore as _undo_restore
-from . import undo_worktree as _undo_worktree
+from .undo import worktree as _undo_worktree
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.git_command import (

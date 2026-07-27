@@ -9,15 +9,15 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from ..core.buffer import LineBuffer
-from ..utils.git_command import run_git_command
-from ..utils.git_index import GitIndexEntryUpdate
-from ..utils.git_repository import (
+from ...core.buffer import LineBuffer
+from ...utils.git_command import run_git_command
+from ...utils.git_index import GitIndexEntryUpdate
+from ...utils.git_repository import (
     get_git_repository_root_path,
     is_git_repository_root_path,
 )
-from ..utils.git_object_io import create_git_blob, create_git_blobs_from_paths
-from ..git_paths import decode_path, nul_records
+from ...utils.git_object_io import create_git_blob, create_git_blobs_from_paths
+from ...git_paths import decode_path, nul_records
 
 
 def changed_worktree_paths() -> list[str]:

@@ -1,39 +1,14 @@
 """Comprehensive tests for abort, again, and display correctness."""
 
-from pathlib import Path
-import pytest
-
 import subprocess
 
-from .conftest import git_stage_batch, get_staged_files, get_unstaged_diff, get_git_status
-
-
-def run_interactive(*inputs, timeout=5):
-    """Run interactive mode with simulated input."""
-
-    test_dir = Path(__file__).parent
-    project_root = test_dir.parent.parent
-    venv_gsb = project_root / ".venv" / "bin" / "git-stage-batch"
-
-    if venv_gsb.exists():
-        cmd = [str(venv_gsb), "-i"]
-    else:
-        cmd = ["uv", "run", "--", "git-stage-batch", "-i"]
-
-    input_text = "\n".join(inputs) + "\n"
-
-    try:
-        result = subprocess.run(
-            cmd,
-            input=input_text,
-            text=True,
-            capture_output=True,
-            timeout=timeout,
-            check=False
-        )
-        return result
-    except subprocess.TimeoutExpired:
-        pytest.fail("Interactive mode timed out")
+from .conftest import (
+    get_git_status,
+    get_staged_files,
+    get_unstaged_diff,
+    git_stage_batch,
+    run_interactive,
+)
 
 
 class TestAbortThorough:

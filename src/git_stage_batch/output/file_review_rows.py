@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ..core.models import LineEntry
 from .colors import Colors
-from .file_review_model import FileReviewModel
+from ..data.file_review.model import FileReviewModel
 
 
 def maximum_display_id_digit_count(model: FileReviewModel) -> int:

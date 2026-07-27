@@ -7,7 +7,7 @@ from ..core.line_selection import format_line_ids
 from ..core.models import LineLevelChange
 from ..i18n import _
 from . import file_review_change_segments as _file_review_change_segments
-from .file_review_model import ReviewChange
+from ..data.file_review.model import ReviewChange
 
 
 def _build_review_change(

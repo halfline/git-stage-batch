@@ -23,7 +23,7 @@ from .file_review_action_selections import (
     pages_containing_review_display_ids,
     selection_ids_for_display_ids,
 )
-from .file_review_model import FileReviewModel, ReviewChange
+from ..data.file_review.model import FileReviewModel, ReviewChange
 
 
 def _coerce_actionable_reason(reason: str) -> ActionableSelectionReason:

@@ -6,7 +6,7 @@ from ..core.actionable_changes import ActionableSelection, ActionableSelectionRe
 from ..core.models import LineEntry
 from ..data.file_review.records import ReviewSource
 from .file_review_display_ids import display_ids_for_rows
-from .file_review_model import FileReviewModel, ReviewChange
+from ..data.file_review.model import FileReviewModel, ReviewChange
 
 
 def change_is_live_splittable(change: ReviewChange) -> bool:

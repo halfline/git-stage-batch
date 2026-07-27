@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ..core.models import LineLevelChange, ReviewActionGroup
 from .file_review_changes import build_file_review_changes
-from .file_review_model import FileReviewModel
+from ..data.file_review.model import FileReviewModel
 from .file_review_model_selections import derive_file_review_actionable_selections
 from .file_review_pagination import paginate_file_review_changes
 

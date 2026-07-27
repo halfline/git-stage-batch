@@ -5,7 +5,7 @@ from __future__ import annotations
 from ..core.line_selection import format_line_ids
 from ..data.file_review.records import ReviewSource
 from ..i18n import _
-from .file_review_model import ReviewChangeFragment
+from ..data.file_review.model import ReviewChangeFragment
 
 
 def display_line_spec(line_spec: str) -> str:

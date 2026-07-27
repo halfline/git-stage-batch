@@ -7,7 +7,7 @@ import shutil
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Iterator
 
 from .undo.refs import (
     SESSION_REDO_STACK_REF,
@@ -24,12 +24,10 @@ from .recovery_anchors import (
 from ..utils.session_start_point import current_head_commit
 from .undo import restore as _undo_restore
 from .undo import snapshots as _undo_snapshots
+from .undo import state as _undo_state
 from .undo import worktree as _undo_worktree
 from ..exceptions import CommandError
 from ..i18n import _
-from ..utils.git_command import (
-    run_git_command,
-)
 from ..utils.git_refs import (
     update_git_refs,
 )
@@ -53,8 +51,6 @@ _PENDING_CHECKPOINT: str | None = None
 _PENDING_CHECKPOINT_REPOSITORY: Path | None = None
 _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR: bool | None = None
 _PENDING_CHECKPOINT_ROLLBACK_CAUSE: BaseException | None = None
-EXPLICIT_WORKTREE_SCOPE = "explicit"
-CHANGED_WORKTREE_SCOPE = "changed"
 
 
 def _clear_pending_checkpoint() -> None:
@@ -126,26 +122,7 @@ def _checkpoint_worktree_scope(
     worktree_paths: list[str],
 ) -> tuple[str, list[str]]:
     """Return checkpoint scope metadata and paths to snapshot."""
-    return EXPLICIT_WORKTREE_SCOPE, sorted(set(worktree_paths))
-
-
-def _uses_explicit_worktree_scope(manifest: dict[str, Any]) -> bool:
-    """Return whether a checkpoint intentionally scoped worktree snapshots."""
-    return manifest.get("worktree_path_scope") == EXPLICIT_WORKTREE_SCOPE
-
-
-def _restore_intent_to_add_state(state: dict[str, Any]) -> None:
-    """Restore exact intent-to-add flags and fail closed for legacy checkpoints."""
-    saved_paths = state.get("intent_to_add_paths")
-    if isinstance(saved_paths, list):
-        paths = [path for path in saved_paths if isinstance(path, str)]
-    else:
-        # Legacy checkpoints did not save the intent-to-add bit. An empty
-        # index blob is ambiguous: it can be either intent-to-add or a fully
-        # staged empty file. Failing closed avoids demoting staged content
-        # based on append-only session history.
-        paths = []
-    _undo_restore.restore_intent_to_add_entries(paths)
+    return _undo_state.EXPLICIT_WORKTREE_SCOPE, sorted(set(worktree_paths))
 
 
 def _create_undo_checkpoint(
@@ -361,11 +338,7 @@ def _rollback_failed_checkpoint(
 
     manifest = _undo_restore.read_json_from_commit(checkpoint, "manifest.json")
     validate_recovery_state(manifest)
-    _restore_metadata_state(checkpoint, manifest)
-    _undo_restore.restore_refs(manifest.get("refs", {}))
-    _restore_index_state(manifest)
-    _undo_restore.restore_worktree(checkpoint, manifest)
-    _restore_intent_to_add_state(manifest)
+    _undo_state.restore_checkpoint_state(checkpoint, manifest)
 
     parent = checkpoint_parent(checkpoint)
     updates: list[tuple[str, str]] = []
@@ -409,7 +382,7 @@ def finalize_pending_checkpoint() -> None:
         ) from error
 
     paths = set(manifest.get("tracked_worktree_paths", []))
-    if not _uses_explicit_worktree_scope(manifest):
+    if not _undo_state.uses_explicit_worktree_scope(manifest):
         paths.update(_undo_worktree.changed_worktree_paths())
     paths = sorted(paths)
     index_paths = sorted(
@@ -495,204 +468,6 @@ def finalize_pending_checkpoint() -> None:
     update_git_refs(updates=[(SESSION_UNDO_STACK_REF, checkpoint_commit)])
 
 
-def _worktree_state_by_path(entries: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    normalized = {}
-    for entry in entries:
-        normalized_entry = entry
-        if (
-            entry.get("kind") == "gitlink"
-            and entry.get("exists", False)
-            and not entry.get("worktree_oid")
-            and not entry.get("archive", False)
-        ):
-            # Before filesystem presence was recorded independently, an
-            # index/HEAD-only gitlink used exists=True for an absent worktree.
-            normalized_entry = {**entry, "exists": False}
-        normalized[entry["path"]] = normalized_entry
-    return normalized
-
-
-def _detect_conflicts_against_state(expected_state: dict[str, Any]) -> list[str]:
-    conflicts: list[str] = []
-    current = _undo_snapshots.snapshot_current_state(
-        [entry["path"] for entry in expected_state.get("worktree_paths", [])],
-        index_paths=expected_state.get("tracked_index_paths"),
-        ref_names=expected_state.get("tracked_refs"),
-    )
-
-    if "index_entries" in expected_state:
-        index_changed = current.get("index_entries") != expected_state.get(
-            "index_entries"
-        )
-    else:
-        index_result = run_git_command(
-            ["write-tree"],
-            check=False,
-            requires_index_lock=False,
-        )
-        index_changed = (
-            index_result.stdout.strip() if index_result.returncode == 0 else None
-        ) != expected_state.get("index_tree")
-    if index_changed:
-        conflicts.append(_("index"))
-
-    if current.get("refs") != expected_state.get("refs"):
-        conflicts.append(_("batch refs"))
-
-    expected_worktree = _worktree_state_by_path(expected_state.get("worktree_paths", []))
-    current_worktree = _worktree_state_by_path(current.get("worktree_paths", []))
-    for path, expected in sorted(expected_worktree.items()):
-        actual = current_worktree.get(path)
-        if actual != expected:
-            conflicts.append(path)
-
-    for prefix, source_dir, label in (
-        ("session", get_session_directory_path(), _("session state")),
-        ("batches", get_batches_directory_path(), _("batch metadata")),
-        ("repository", get_git_directory_path(), _("repository metadata")),
-    ):
-        tracked_paths = expected_state.get(f"tracked_{prefix}_paths")
-        expected_files = expected_state.get(f"{prefix}_files")
-        if isinstance(tracked_paths, list) and isinstance(expected_files, dict):
-            conflict_paths = [
-                path
-                for path in tracked_paths
-                if not (prefix == "session" and path.startswith("selected/"))
-            ]
-            current_files = _undo_snapshots.filesystem_directory_state(
-                source_dir,
-                relative_paths=conflict_paths,
-            )
-            expected_conflict_files = {
-                path: expected_files[path]
-                for path in conflict_paths
-                if path in expected_files
-            }
-            if current_files != expected_conflict_files:
-                conflicts.append(label)
-
-    return conflicts
-
-
-def _detect_conflicts(manifest: dict[str, Any]) -> list[str]:
-    after = manifest.get("after")
-    if not isinstance(after, dict):
-        return [_('incomplete checkpoint')]
-    return _detect_conflicts_against_state(after)
-
-
-def _detect_redo_conflicts(manifest: dict[str, Any]) -> list[str]:
-    after_undo = manifest.get("after_undo")
-    if not isinstance(after_undo, dict):
-        return [_('incomplete checkpoint')]
-    return _detect_conflicts_against_state(after_undo)
-
-
-def _redo_relevant_paths(manifest: dict[str, Any]) -> list[str]:
-    paths: set[str] = set()
-    paths.update(manifest.get("tracked_worktree_paths", []))
-    for entry in manifest.get("worktree_paths", []):
-        paths.add(entry["path"])
-    after = manifest.get("after")
-    if isinstance(after, dict):
-        for entry in after.get("worktree_paths", []):
-            paths.add(entry["path"])
-    if not _uses_explicit_worktree_scope(manifest):
-        paths.update(_undo_worktree.changed_worktree_paths())
-    return sorted(paths)
-
-
-def _redo_relevant_index_paths(manifest: dict[str, Any]) -> list[str]:
-    """Return index paths owned by an undo/redo checkpoint."""
-    paths = set(
-        manifest.get("tracked_index_paths", manifest.get("tracked_worktree_paths", []))
-    )
-    for state_name in ("after", "after_undo"):
-        state = manifest.get(state_name)
-        if isinstance(state, dict):
-            paths.update(state.get("tracked_index_paths", []))
-            paths.update(state.get("index_entries", {}))
-    paths.update(manifest.get("index_entries", {}))
-    return sorted(paths)
-
-
-def _redo_relevant_refs(manifest: dict[str, Any]) -> list[str]:
-    """Return refs owned by an undo/redo checkpoint."""
-    refs = set(manifest.get("tracked_refs", []))
-    for state_name in ("after", "after_undo"):
-        state = manifest.get(state_name)
-        if isinstance(state, dict):
-            refs.update(state.get("tracked_refs", []))
-    return sorted(refs)
-
-
-def _restore_index_state(state: dict[str, Any]) -> None:
-    """Restore scoped index entries, with legacy whole-tree compatibility."""
-    index_entries = state.get("index_entries")
-    if not isinstance(index_entries, dict):
-        index_tree = state.get("index_tree")
-        if index_tree:
-            git_read_tree(index_tree)
-        return
-
-    if "tracked_index_paths" in state:
-        scoped_paths = set(state.get("tracked_index_paths", []))
-    else:
-        scoped_paths = set(state.get("tracked_worktree_paths", []))
-        for entry in state.get("worktree_paths", []):
-            if isinstance(entry, dict) and isinstance(entry.get("path"), str):
-                scoped_paths.add(entry["path"])
-    scoped_paths.update(index_entries)
-
-    updates: list[GitIndexEntryUpdate] = []
-    for file_path in sorted(scoped_paths):
-        entry = index_entries.get(file_path)
-        if isinstance(entry, dict):
-            mode = entry.get("mode")
-            object_id = entry.get("object_id")
-            if isinstance(mode, str) and isinstance(object_id, str):
-                updates.append(
-                    GitIndexEntryUpdate(
-                        file_path=file_path,
-                        mode=mode,
-                        blob_sha=object_id,
-                    )
-                )
-                continue
-        updates.append(GitIndexEntryUpdate(file_path=file_path, force_remove=True))
-    git_update_index_entries(updates)
-
-
-def _restore_metadata_state(commit: str, manifest: dict[str, Any]) -> None:
-    """Restore scoped application state with legacy whole-directory support."""
-    for prefix, target_dir in (
-        ("session", get_session_directory_path()),
-        ("batches", get_batches_directory_path()),
-    ):
-        tracked_paths = manifest.get(f"tracked_{prefix}_paths")
-        if isinstance(tracked_paths, list):
-            _undo_restore.restore_tree_paths(
-                commit,
-                prefix=prefix,
-                target_dir=target_dir,
-                tracked_paths=tracked_paths,
-            )
-        else:
-            _undo_restore.restore_tree_prefix(
-                commit,
-                prefix=prefix,
-                target_dir=target_dir,
-            )
-    repository_paths = manifest.get("tracked_repository_paths")
-    if isinstance(repository_paths, list):
-        _undo_restore.restore_tree_paths(
-            commit,
-            prefix="repository",
-            target_dir=get_git_directory_path(),
-            tracked_paths=repository_paths,
-        )
-
-
 def undo_last_checkpoint(*, force: bool = False) -> str:
     """Restore the latest undo checkpoint and pop it from the undo stack."""
     finalize_pending_checkpoint()
@@ -705,7 +480,7 @@ def undo_last_checkpoint(*, force: bool = False) -> str:
     after = manifest.get("after")
     if isinstance(after, dict):
         validate_recovery_state(after)
-    conflicts = _detect_conflicts(manifest)
+    conflicts = _undo_state.detect_undo_conflicts(manifest)
     if conflicts and not force:
         preview = ", ".join(conflicts[:5])
         if len(conflicts) > 5:
@@ -716,9 +491,9 @@ def undo_last_checkpoint(*, force: bool = False) -> str:
         )
 
     operation = str(manifest.get("operation", "operation"))
-    redo_paths = _redo_relevant_paths(manifest)
-    redo_index_paths = _redo_relevant_index_paths(manifest)
-    redo_refs = _redo_relevant_refs(manifest)
+    redo_paths = _undo_state.redo_relevant_paths(manifest)
+    redo_index_paths = _undo_state.redo_relevant_index_paths(manifest)
+    redo_refs = _undo_state.redo_relevant_refs(manifest)
     redo_target = _undo_snapshots.snapshot_current_state(
         redo_paths,
         index_paths=redo_index_paths,
@@ -745,16 +520,7 @@ def undo_last_checkpoint(*, force: bool = False) -> str:
             repository_paths,
         )
 
-        _restore_metadata_state(checkpoint, manifest)
-        _undo_restore.restore_refs(
-            manifest.get("refs", {}),
-            tracked_refs=manifest.get("tracked_refs"),
-        )
-
-        _restore_index_state(manifest)
-
-        _undo_restore.restore_worktree(checkpoint, manifest)
-        _restore_intent_to_add_state(manifest)
+        _undo_state.restore_checkpoint_state(checkpoint, manifest)
 
         after_undo = _undo_snapshots.snapshot_current_state(
             redo_paths,
@@ -820,7 +586,7 @@ def redo_last_checkpoint(*, force: bool = False) -> str:
     after_undo = manifest.get("after_undo")
     if isinstance(after_undo, dict):
         validate_recovery_state(after_undo)
-    conflicts = _detect_redo_conflicts(manifest)
+    conflicts = _undo_state.detect_redo_conflicts(manifest)
     if conflicts and not force:
         preview = ", ".join(conflicts[:5])
         if len(conflicts) > 5:
@@ -830,16 +596,7 @@ def redo_last_checkpoint(*, force: bool = False) -> str:
               "Run 'git-stage-batch redo --force' to overwrite those changes.").format(items=preview)
         )
 
-    _restore_metadata_state(redo_node, manifest)
-    _undo_restore.restore_refs(
-        manifest.get("refs", {}),
-        tracked_refs=manifest.get("tracked_refs"),
-    )
-
-    _restore_index_state(manifest)
-
-    _undo_restore.restore_worktree(redo_node, manifest)
-    _restore_intent_to_add_state(manifest)
+    _undo_state.restore_checkpoint_state(redo_node, manifest)
 
     undo_checkpoint = manifest.get("undo_checkpoint")
     if undo_checkpoint:

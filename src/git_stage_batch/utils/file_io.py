@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-import errno
 import os
 import stat
-import tempfile
 from collections.abc import Collection
 from enum import Enum
 from pathlib import Path
 from typing import Iterable
 
+from .atomic_write import (
+    fsync_directory as _fsync_directory,
+    write_chunks_atomically,
+)
 from ..exceptions import CommandError
 from ..git_paths import decode_path, encode_path, nul_records
 from ..i18n import _
@@ -145,40 +147,6 @@ def _replacement_mode(
     raise ValueError(f"unsupported atomic write mode policy: {mode_policy!r}")
 
 
-def _preserve_ownership(
-    file_descriptor: int,
-    metadata: os.stat_result | None,
-) -> bool:
-    if metadata is None or not hasattr(os, "fchown"):
-        return True
-    try:
-        os.fchown(file_descriptor, metadata.st_uid, metadata.st_gid)
-    except PermissionError:
-        # An unprivileged owner often cannot restore a non-default group. The
-        # caller will remove group/other access before publishing the file.
-        return False
-    return True
-
-
-def fsync_directory(path: Path) -> None:
-    """Durably publish directory-entry changes where the platform permits."""
-    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
-    try:
-        directory_descriptor = os.open(path, flags)
-    except OSError as error:
-        if os.name == "nt" or error.errno in (errno.EINVAL, errno.ENOTSUP):
-            return
-        raise
-    try:
-        try:
-            os.fsync(directory_descriptor)
-        except OSError as error:
-            if error.errno not in (errno.EBADF, errno.EINVAL, errno.ENOTSUP):
-                raise
-    finally:
-        os.close(directory_descriptor)
-
-
 def _write_file_contents_atomically(
     path: Path,
     data: bytes,
@@ -187,28 +155,14 @@ def _write_file_contents_atomically(
     mode: int | None,
 ) -> None:
     """Replace one state file without exposing partial contents."""
-    path.parent.mkdir(parents=True, exist_ok=True)
     metadata = _existing_file_metadata(path)
     replacement_mode = _replacement_mode(metadata, mode_policy, mode)
-    file_descriptor, temporary_name = tempfile.mkstemp(
-        dir=path.parent,
-        prefix=f".{path.name}.",
-        suffix=".tmp",
+    write_chunks_atomically(
+        path,
+        (data,),
+        mode=replacement_mode,
+        existing_metadata=metadata,
     )
-    temporary_path = Path(temporary_name)
-    try:
-        with os.fdopen(file_descriptor, "wb") as file_handle:
-            file_handle.write(data)
-            file_handle.flush()
-            ownership_preserved = _preserve_ownership(file_handle.fileno(), metadata)
-            if not ownership_preserved:
-                replacement_mode &= 0o700
-            os.fchmod(file_handle.fileno(), replacement_mode)
-            os.fsync(file_handle.fileno())
-        os.replace(temporary_path, path)
-        fsync_directory(path.parent)
-    finally:
-        temporary_path.unlink(missing_ok=True)
 
 
 def path_is_empty(path: Path) -> bool:
@@ -246,7 +200,7 @@ def append_lines_to_file(path: Path, lines: Iterable[str]) -> None:
             file_handle.write(str(line).rstrip() + "\n")
         file_handle.flush()
         os.fsync(file_handle.fileno())
-    fsync_directory(path.parent)
+    _fsync_directory(path.parent)
 
 
 def read_file_paths_file(path: Path) -> list[str]:

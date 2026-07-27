@@ -12,11 +12,10 @@ from .undo import state as _undo_state
 from .undo import worktree as _undo_worktree
 from .undo.checkpoints import finalize_pending_checkpoint
 from .undo.checkpoints import undo_checkpoint as undo_checkpoint
+from .undo.checkpoints import redo_last_checkpoint as redo_last_checkpoint
 from .undo.refs import (
-    SESSION_REDO_STACK_REF,
     SESSION_UNDO_STACK_REF,
     checkpoint_parent,
-    current_redo_commit,
     current_undo_commit,
 )
 from .recovery_anchors import validate_recovery_state
@@ -134,40 +133,3 @@ def undo_last_checkpoint(*, force: bool = False) -> str:
         update_git_refs(deletes=[SESSION_UNDO_STACK_REF])
 
     return operation
-
-
-def redo_last_checkpoint(*, force: bool = False) -> str:
-    """Reapply the most recently undone operation from the redo stack."""
-    finalize_pending_checkpoint()
-    redo_node = current_redo_commit()
-    if redo_node is None:
-        raise CommandError(_("Nothing to redo."))
-
-    manifest = _undo_restore.read_json_from_commit(redo_node, "manifest.json")
-    validate_recovery_state(manifest)
-    after_undo = manifest.get("after_undo")
-    if isinstance(after_undo, dict):
-        validate_recovery_state(after_undo)
-    conflicts = _undo_state.detect_redo_conflicts(manifest)
-    if conflicts and not force:
-        preview = ", ".join(conflicts[:5])
-        if len(conflicts) > 5:
-            preview = _("{preview}, and {count} more").format(preview=preview, count=len(conflicts) - 5)
-        raise CommandError(
-            _("Cannot redo because current state has changed since the undo: {items}.\n"
-              "Run 'git-stage-batch redo --force' to overwrite those changes.").format(items=preview)
-        )
-
-    _undo_state.restore_checkpoint_state(redo_node, manifest)
-
-    undo_checkpoint = manifest.get("undo_checkpoint")
-    if undo_checkpoint:
-        update_git_refs(updates=[(SESSION_UNDO_STACK_REF, undo_checkpoint)])
-
-    parent = checkpoint_parent(redo_node)
-    if parent:
-        update_git_refs(updates=[(SESSION_REDO_STACK_REF, parent)])
-    else:
-        update_git_refs(deletes=[SESSION_REDO_STACK_REF])
-
-    return str(manifest.get("operation", "operation"))

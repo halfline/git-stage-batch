@@ -254,6 +254,48 @@ def test_repeated_anchor_fallback_uses_reviewed_occurrence(functional_repo):
     assert (functional_repo / "file.txt").read_text() == changed
 
 
+@pytest.mark.parametrize(
+    ("second_line_spec", "staged_addition"),
+    [
+        pytest.param("2", "selected\nunselected\n", id="later-text-line"),
+        pytest.param("3", "selected\n\n", id="later-blank-line"),
+    ],
+)
+def test_consecutive_line_includes_before_repeated_anchor(
+    functional_repo,
+    second_line_spec,
+    staged_addition,
+):
+    """A prior include can anchor another line from the same reviewed group."""
+    changed, expected_prefix, expected_suffix = (
+        _prepare_repeated_anchor_insertion(functional_repo)
+    )
+
+    git_stage_batch("start", "--no-auto-advance")
+    git_stage_batch("show", "--file", "file.txt", "--page", "all")
+    first_result = git_stage_batch(
+        "include",
+        "--line",
+        "1",
+        "--no-auto-advance",
+        check=False,
+    )
+    second_result = git_stage_batch(
+        "include",
+        "--line",
+        second_line_spec,
+        "--no-auto-advance",
+        check=False,
+    )
+
+    assert first_result.returncode == 0, first_result.stderr
+    assert second_result.returncode == 0, second_result.stderr
+    assert _index_content(functional_repo, "file.txt") == (
+        expected_prefix + staged_addition + expected_suffix
+    )
+    assert (functional_repo / "file.txt").read_text() == changed
+
+
 def test_discard_to_batch_after_consecutive_line_includes(functional_repo):
     _prepare_ambiguous_middle_insertion(functional_repo)
 

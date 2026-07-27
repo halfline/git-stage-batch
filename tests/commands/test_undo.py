@@ -14,7 +14,7 @@ from git_stage_batch.data.undo_checkpoints import (
     undo_checkpoint,
     undo_last_checkpoint,
 )
-from git_stage_batch.data.undo_refs import current_undo_commit
+from git_stage_batch.data.undo.refs import current_undo_commit
 from git_stage_batch.data.session import path_is_intent_to_add
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import (

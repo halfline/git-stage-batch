@@ -2474,13 +2474,14 @@ def test_selected_change_path_query_stays_in_path_module():
 def test_undo_ref_bookkeeping_stays_in_undo_refs():
     """Undo stack ref helpers should stay out of undo snapshot storage."""
     old_undo_path = SRC_ROOT / "data" / "undo.py"
+    old_undo_refs_path = SRC_ROOT / "data" / "undo_refs.py"
     undo = __import__(
         "git_stage_batch.data.undo_checkpoints",
         fromlist=["undo_checkpoints"],
     )
     undo_refs = __import__(
-        "git_stage_batch.data.undo_refs",
-        fromlist=["undo_refs"],
+        "git_stage_batch.data.undo.refs",
+        fromlist=["refs"],
     )
     ref_names = {
         "SESSION_REDO_STACK_REF",
@@ -2523,12 +2524,13 @@ def test_undo_ref_bookkeeping_stays_in_undo_refs():
     for imported_module, node in _import_from_nodes(session_path):
         imported_names = {alias.name for alias in node.names}
         if (
-            imported_module == "git_stage_batch.data.undo_refs"
+            imported_module == "git_stage_batch.data.undo.refs"
             and "clear_undo_history" in imported_names
         ):
             session_imports_undo_refs = True
 
     assert not old_undo_path.exists()
+    assert not old_undo_refs_path.exists()
     assert old_imports == []
     assert session_imports_undo_refs
 

@@ -9,7 +9,8 @@ from ..data.start_time_changes import (
     restore_unstaged_start_time_deletions,
     restore_unstaged_start_time_renames,
 )
-from ..data.session import clear_session_state, session_is_active
+from ..data.session import clear_session_state
+from ..data.session_marker import session_is_active
 from ..data.session_ownership import (
     release_session_ownership,
     require_current_session_owner,

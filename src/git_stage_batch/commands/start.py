@@ -8,7 +8,8 @@ from ..data.auto_advance import DEFAULT_AUTO_ADVANCE, write_auto_advance_default
 from ..data.hunk_tracking import fetch_next_change
 from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..data.file_tracking import auto_add_untracked_files
-from ..data.session import clear_session_state, initialize_abort_state, session_is_active
+from ..data.session import clear_session_state, initialize_abort_state
+from ..data.session_marker import session_is_active
 from ..data.session_ownership import (
     claim_session_ownership,
     require_no_foreign_session_owner,

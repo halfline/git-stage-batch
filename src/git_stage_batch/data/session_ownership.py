@@ -15,7 +15,7 @@ from ..utils.paths import (
     get_active_session_owner_file_path,
     get_common_state_directory_path,
 )
-from .session import active_session_marker_path, session_is_active
+from .session_marker import active_session_marker_path, session_is_active
 
 
 @dataclass(frozen=True)

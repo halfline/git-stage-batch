@@ -7,7 +7,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-from ..data.session import session_is_active
+from ..data.session_marker import session_is_active
 from ..data.status_summary import read_status_summary as _read_status_summary
 from ..exceptions import CommandError
 from ..i18n import _

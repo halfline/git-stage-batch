@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import sys
 
-from ..data.session import session_is_active
+from ..data.session_marker import session_is_active
 from ..utils.session_start_point import load_session_start_point
 from ..exceptions import CommandError
 from ..i18n import _

@@ -8,7 +8,7 @@ from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.selected_change.loading import require_selected_hunk
 from ...data.index_entries import read_index_entry
 from ...data.session import path_is_intent_to_add, snapshot_file_if_untracked
-from ...data.undo_checkpoints import undo_checkpoint
+from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import exit_with_error
 from ...i18n import _
 from ...utils.git_worktree import git_checkout_index_paths

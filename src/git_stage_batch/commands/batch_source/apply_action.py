@@ -30,7 +30,7 @@ from ...data.file_target_identity import (
     capture_worktree_identities,
     capture_worktree_identity,
 )
-from ...data.undo_checkpoints import undo_checkpoint
+from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import (
     AtomicUnitError,
     CommandError,

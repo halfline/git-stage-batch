@@ -25,7 +25,7 @@ from ...data.session import (
     snapshot_files_if_untracked,
 )
 from ...data.file_modes import apply_git_file_mode
-from ...data.undo_checkpoints import undo_checkpoint
+from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import NoMoreHunks, exit_with_error
 from ...i18n import _
 from ...utils.file_io import append_lines_to_file, path_is_empty, read_text_file_contents

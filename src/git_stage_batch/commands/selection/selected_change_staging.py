@@ -19,7 +19,7 @@ from ...data.index_entries import read_index_entry
 from ...data.progress import record_hunk_included
 from ...data.selected_change.loading import load_selected_change
 from ...data.selected_change.paths import worktree_paths_for_selected_change
-from ...data.undo_checkpoints import undo_checkpoint
+from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import NoMoreHunks, exit_with_error
 from ...i18n import _
 from ...utils.file_io import read_text_file_contents

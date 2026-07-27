@@ -6,7 +6,8 @@ import os
 import pytest
 import subprocess
 
-from git_stage_batch.data import undo_restore, undo_worktree
+from git_stage_batch.data.undo import restore as undo_restore
+from git_stage_batch.data.undo import worktree as undo_worktree
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.git_object_io import create_git_blob
 

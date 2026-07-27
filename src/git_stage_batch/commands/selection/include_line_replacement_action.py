@@ -10,7 +10,7 @@ from ...data.file_review.action_scope import finish_review_scoped_line_action
 from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.line_id_files import write_line_ids_file
 from ...data.selected_change.store import restore_selected_change_state
-from ...data.undo_checkpoints import undo_checkpoint
+from ...data.undo.checkpoints import undo_checkpoint
 from ...i18n import _
 from ...utils.paths import get_processed_include_ids_file_path
 from . import include_line_replacement as _include_line_replacement

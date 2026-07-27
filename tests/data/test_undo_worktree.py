@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import subprocess
 
-from git_stage_batch.data import undo_worktree
+from git_stage_batch.data.undo import worktree as undo_worktree
 
 
 def _initialize_repository(tmp_path, monkeypatch):

@@ -9,12 +9,12 @@ from git_stage_batch.commands.include import command_include_file, command_inclu
 from git_stage_batch.commands.discard import command_discard_file
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.undo import command_undo
-from git_stage_batch.data.undo_checkpoints import (
+from git_stage_batch.data.undo.checkpoints import (
     redo_last_checkpoint,
     undo_checkpoint,
     undo_last_checkpoint,
 )
-from git_stage_batch.data.undo_refs import current_undo_commit
+from git_stage_batch.data.undo.refs import current_undo_commit
 from git_stage_batch.data.session import path_is_intent_to_add
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import (
@@ -443,11 +443,11 @@ def test_caught_nested_transaction_error_rolls_back_outer_checkpoint(temp_git_re
 
 def test_failed_checkpoint_finalization_requires_force(temp_git_repo, monkeypatch):
     """A manifest persistence failure should leave a guarded before-image."""
-    from git_stage_batch.data import undo_checkpoints as checkpoints
+    from git_stage_batch.data.undo import snapshots as undo_snapshots
 
     target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
     get_session_directory_path().mkdir(parents=True, exist_ok=True)
-    original_directory_state = checkpoints._filesystem_directory_state
+    original_directory_state = undo_snapshots.filesystem_directory_state
     calls = 0
 
     def fail_during_finalization(*args, **kwargs):
@@ -458,8 +458,8 @@ def test_failed_checkpoint_finalization_requires_force(temp_git_repo, monkeypatc
         return original_directory_state(*args, **kwargs)
 
     monkeypatch.setattr(
-        checkpoints,
-        "_filesystem_directory_state",
+        undo_snapshots,
+        "filesystem_directory_state",
         fail_during_finalization,
     )
 
@@ -471,8 +471,8 @@ def test_failed_checkpoint_finalization_requires_force(temp_git_repo, monkeypatc
         undo_last_checkpoint()
 
     monkeypatch.setattr(
-        checkpoints,
-        "_filesystem_directory_state",
+        undo_snapshots,
+        "filesystem_directory_state",
         original_directory_state,
     )
     undo_last_checkpoint(force=True)
@@ -482,7 +482,7 @@ def test_failed_checkpoint_finalization_requires_force(temp_git_repo, monkeypatc
 
 def test_unreadable_checkpoint_manifest_fails_finalization(temp_git_repo, monkeypatch):
     """Finalization must report an unreadable before-image manifest."""
-    from git_stage_batch.data import undo_checkpoints as checkpoints
+    from git_stage_batch.data.undo import checkpoints
 
     target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
     get_session_directory_path().mkdir(parents=True, exist_ok=True)
@@ -639,7 +639,7 @@ def test_scoped_undo_preserves_unrelated_application_metadata(temp_git_repo):
 
 def test_incomplete_checkpoint_requires_force(temp_git_repo, monkeypatch):
     """A checkpoint interrupted before finalization must not restore silently."""
-    from git_stage_batch.data import undo_checkpoints as checkpoints
+    from git_stage_batch.data.undo import checkpoints
 
     target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
     get_session_directory_path().mkdir(parents=True, exist_ok=True)

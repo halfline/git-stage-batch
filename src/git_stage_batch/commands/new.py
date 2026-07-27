@@ -5,7 +5,7 @@ from __future__ import annotations
 from ..batch.state.lifecycle import create_batch
 from ..batch.source.selector import require_plain_batch_name
 import sys
-from ..data.undo_checkpoints import undo_checkpoint
+from ..data.undo.checkpoints import undo_checkpoint
 from ..i18n import _
 from ..utils.git_repository import require_git_repository
 

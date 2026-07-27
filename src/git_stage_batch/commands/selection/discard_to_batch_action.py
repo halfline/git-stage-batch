@@ -9,7 +9,7 @@ from ...data.selected_change.store import (
     SelectedChangeKind,
     read_selected_change_kind,
 )
-from ...data.undo_checkpoints import undo_checkpoint
+from ...data.undo.checkpoints import undo_checkpoint
 from ...batch.state.batch_names import validate_batch_name
 from ...exceptions import exit_with_error
 from ...i18n import _

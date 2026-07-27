@@ -6,6 +6,7 @@ from .import_boundary_helpers import (
     ForbiddenImportRule,
     forbidden_import_violations,
     internal_import_edges,
+    internal_module_import_edges,
     modules_defining,
 )
 
@@ -97,6 +98,71 @@ def test_atomic_buffer_publication_stays_out_of_core():
     assert modules_defining(atomic_symbols) == {
         "git_stage_batch.utils.atomic_write": atomic_symbols,
     }
+
+
+def test_undo_checkpoint_orchestration_delegates_state_policy():
+    """Stack orchestration must not absorb snapshot or restore policy."""
+    snapshot_symbols = {
+        "filesystem_directory_state",
+        "push_redo_node",
+        "snapshot_current_state",
+        "write_snapshot_commit",
+    }
+    snapshot_module = "git_stage_batch.data.undo.snapshots"
+    assert modules_defining(snapshot_symbols) == {
+        snapshot_module: snapshot_symbols,
+    }
+
+    state_symbols = {
+        "detect_redo_conflicts",
+        "detect_undo_conflicts",
+        "restore_checkpoint_state",
+    }
+    state_module = "git_stage_batch.data.undo.state"
+    assert modules_defining(state_symbols) == {
+        state_module: state_symbols,
+    }
+
+    rules = (
+        ForbiddenImportRule(
+            snapshot_module,
+            "git_stage_batch.data.undo.checkpoints",
+            "snapshot storage must stay below stack orchestration",
+        ),
+        ForbiddenImportRule(
+            state_module,
+            "git_stage_batch.data.undo.checkpoints",
+            "checkpoint state policy must stay below stack orchestration",
+        ),
+    )
+    assert forbidden_import_violations(rules) == []
+
+    consumers = {
+        edge.source
+        for edge in internal_module_import_edges()
+        if edge.target in {snapshot_module, state_module}
+    }
+    assert consumers == {
+        "git_stage_batch.data.undo.checkpoints",
+        "git_stage_batch.data.undo.state",
+    }
+
+
+def test_undo_subpackage_hides_internal_policy_modules():
+    """Undo consumers use checkpoints or refs, not internal policy modules."""
+    implementation_prefix = "git_stage_batch.data.undo."
+    public_modules = {
+        "git_stage_batch.data.undo.checkpoints",
+        "git_stage_batch.data.undo.refs",
+    }
+    violations = [
+        f"{edge.source}:{edge.line} -> {edge.target}"
+        for edge in internal_module_import_edges()
+        if edge.target.startswith(implementation_prefix)
+        and not edge.source.startswith(implementation_prefix)
+        and edge.target not in public_modules
+    ]
+    assert violations == []
 
 
 def test_tui_shell_boundary_does_not_own_repository_locking():

@@ -14,7 +14,7 @@ from ...data.selected_change.store import (
     snapshot_selected_change_state,
 )
 from ...data.session import snapshot_file_if_untracked
-from ...data.undo_checkpoints import undo_checkpoint
+from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import exit_with_error
 from ...i18n import _
 from ...utils.buffer_io import write_buffer_to_working_tree_path

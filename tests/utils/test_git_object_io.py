@@ -4,7 +4,7 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.data import undo_checkpoints
+from git_stage_batch.data.undo import snapshots as undo_snapshots
 from git_stage_batch.utils.git_command import run_git_command
 from git_stage_batch.utils.git_index import git_write_tree, temp_git_index
 from git_stage_batch.utils.git_object_io import (
@@ -195,13 +195,13 @@ def test_directory_snapshot_hashes_normal_files_in_one_batch(
         return {path: blob_sha for path in paths}
 
     monkeypatch.setattr(
-        undo_checkpoints,
+        undo_snapshots,
         "create_git_blobs_from_paths",
         fake_create_git_blobs_from_paths,
     )
 
     with temp_git_index() as env:
-        undo_checkpoints._add_directory_to_index(
+        undo_snapshots.add_directory_to_index(
             env,
             source_dir=source_dir,
             tree_prefix="session",

@@ -10,21 +10,21 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from ..utils.buffer_io import write_buffer_to_working_tree_path
-from ..utils.repository_buffers import load_git_blob_as_buffer
-from .undo_refs import list_restorable_refs
-from ..exceptions import CommandError
-from ..i18n import _
-from ..utils.git_command import (
+from ...utils.buffer_io import write_buffer_to_working_tree_path
+from ...utils.repository_buffers import load_git_blob_as_buffer
+from .refs import list_restorable_refs
+from ...exceptions import CommandError
+from ...i18n import _
+from ...utils.git_command import (
     run_git_command,
 )
-from ..git_paths import decode_path
-from ..utils.git_refs import (
+from ...git_paths import decode_path
+from ...utils.git_refs import (
     update_git_refs,
 )
-from ..utils.git_worktree import git_checkout_detached, git_submodule_update_checkout
-from ..utils.git_index import git_add_paths, git_update_index
-from ..utils.git_repository import (
+from ...utils.git_worktree import git_checkout_detached, git_submodule_update_checkout
+from ...utils.git_index import git_add_paths, git_update_index
+from ...utils.git_repository import (
     get_git_repository_root_path,
     is_git_repository_root_path,
 )

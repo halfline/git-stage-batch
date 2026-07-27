@@ -24,7 +24,7 @@ from ...data.live_diff import (
     paths_for_live_changes,
 )
 from ...data.session import require_session_started
-from ...data.undo_checkpoints import undo_checkpoint
+from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import CommandError
 from ...i18n import _, ngettext
 from ...utils.git_repository import require_git_repository

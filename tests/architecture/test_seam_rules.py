@@ -4,11 +4,18 @@ from __future__ import annotations
 
 from .import_boundary_helpers import (
     ForbiddenImportRule,
+    find_dependency_cycle,
     forbidden_import_violations,
     internal_import_edges,
     internal_module_import_edges,
     modules_defining,
 )
+
+
+def test_internal_runtime_module_graph_is_acyclic():
+    """Concrete runtime module dependencies must form a directed acyclic graph."""
+    cycle = find_dependency_cycle(internal_module_import_edges())
+    assert cycle is None, " -> ".join(cycle or ())
 
 
 def test_live_change_policy_has_one_owner():

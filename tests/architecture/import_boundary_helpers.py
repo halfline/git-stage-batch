@@ -132,6 +132,46 @@ def internal_module_import_edges(
     return tuple(edges)
 
 
+def find_dependency_cycle(
+    edges: tuple[ImportEdge, ...],
+) -> tuple[str, ...] | None:
+    """Return one deterministic dependency cycle, including its repeated root."""
+    adjacency: dict[str, set[str]] = {}
+    for edge in edges:
+        adjacency.setdefault(edge.source, set()).add(edge.target)
+        adjacency.setdefault(edge.target, set())
+
+    state: dict[str, int] = {}
+    stack: list[str] = []
+    stack_indexes: dict[str, int] = {}
+
+    def visit(module: str) -> tuple[str, ...] | None:
+        state[module] = 1
+        stack_indexes[module] = len(stack)
+        stack.append(module)
+
+        for dependency in sorted(adjacency[module]):
+            dependency_state = state.get(dependency, 0)
+            if dependency_state == 0:
+                cycle = visit(dependency)
+                if cycle is not None:
+                    return cycle
+            elif dependency_state == 1:
+                return tuple((*stack[stack_indexes[dependency] :], dependency))
+
+        stack.pop()
+        stack_indexes.pop(module)
+        state[module] = 2
+        return None
+
+    for module in sorted(adjacency):
+        if state.get(module, 0) == 0:
+            cycle = visit(module)
+            if cycle is not None:
+                return cycle
+    return None
+
+
 def forbidden_import_violations(
     rules: tuple[ForbiddenImportRule, ...],
 ) -> list[str]:

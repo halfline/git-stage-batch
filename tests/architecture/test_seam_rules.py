@@ -3,12 +3,396 @@
 from __future__ import annotations
 
 from .import_boundary_helpers import (
+    ArchitectureSeam,
+    ConsumerRule,
     ForbiddenImportRule,
+    ImportedSymbolsRule,
+    PrivateModulesRule,
+    SymbolOwnership,
     find_dependency_cycle,
-    forbidden_import_violations,
     internal_import_edges,
     internal_module_import_edges,
-    modules_defining,
+    seam_violations,
+)
+
+
+def _owned(module: str, *names: str) -> SymbolOwnership:
+    return SymbolOwnership(module, frozenset(names))
+
+
+def _forbid(
+    sources: str | frozenset[str],
+    target: str,
+    reason: str,
+    *,
+    allowed_sources: tuple[str, ...] = (),
+    names: tuple[str, ...] = (),
+) -> ForbiddenImportRule:
+    return ForbiddenImportRule(
+        sources=sources,
+        target_prefix=target,
+        reason=reason,
+        allowed_sources=frozenset(allowed_sources),
+        forbidden_names=frozenset(names),
+    )
+
+
+def _imports(
+    source: str,
+    target: str,
+    *,
+    required: tuple[str, ...] = (),
+    forbidden: tuple[str, ...] = (),
+) -> ImportedSymbolsRule:
+    return ImportedSymbolsRule(
+        source=source,
+        target=target,
+        required_names=frozenset(required),
+        forbidden_names=frozenset(forbidden),
+    )
+
+
+def _consumers(
+    targets: tuple[str, ...],
+    *,
+    required: tuple[str, ...],
+) -> ConsumerRule:
+    return ConsumerRule(
+        targets=frozenset(targets),
+        required_sources=frozenset(required),
+    )
+
+
+FILE_JOB_MODULES = frozenset(
+    {
+        "git_stage_batch.utils.file_job_process",
+        "git_stage_batch.utils.file_job_transport",
+        "git_stage_batch.utils.file_job_workspace",
+        "git_stage_batch.utils.file_jobs",
+    }
+)
+
+LIVE_CHANGE_MODULE = "git_stage_batch.data.live_change_candidates"
+SESSION_MARKER_MODULE = "git_stage_batch.data.session_marker"
+FILE_REVIEW_STATE_MODULE = "git_stage_batch.data.file_review.state_builder"
+BUFFER_IO_MODULE = "git_stage_batch.utils.buffer_io"
+ATOMIC_WRITE_MODULE = "git_stage_batch.utils.atomic_write"
+BATCH_REFERENCES_MODULE = "git_stage_batch.batch.state.references"
+BATCH_METADATA_MODULE = "git_stage_batch.batch.state.metadata_schema"
+CANDIDATE_PLANNING_MODULE = "git_stage_batch.commands.batch_source.candidate_planning"
+UNDO_PREFIX = "git_stage_batch.data.undo"
+UNDO_CHECKPOINTS_MODULE = f"{UNDO_PREFIX}.checkpoints"
+UNDO_REFS_MODULE = f"{UNDO_PREFIX}.refs"
+UNDO_SNAPSHOTS_MODULE = f"{UNDO_PREFIX}.snapshots"
+UNDO_STATE_MODULE = f"{UNDO_PREFIX}.state"
+BLOCK_ACTIONS_MODULE = "git_stage_batch.tui.file_review.block_actions"
+
+
+ARCHITECTURE_SEAMS = (
+    ArchitectureSeam(
+        name="runtime-layer-directions",
+        forbidden_imports=(
+            _forbid(
+                "git_stage_batch.batch",
+                "git_stage_batch.data",
+                "batch domain code must stay below workflow state",
+            ),
+            _forbid(
+                "git_stage_batch.core",
+                "git_stage_batch.editor",
+                "core values must not depend on editor mutation machinery",
+            ),
+            _forbid(
+                "git_stage_batch.commands",
+                "git_stage_batch.tui",
+                "commands must remain reusable outside the interactive UI",
+            ),
+            *(
+                _forbid(
+                    package,
+                    "git_stage_batch.exceptions",
+                    "lower layers raise errors without command-exit policy",
+                    names=("exit_with_error",),
+                )
+                for package in (
+                    "git_stage_batch.batch",
+                    "git_stage_batch.core",
+                    "git_stage_batch.data",
+                    "git_stage_batch.utils",
+                )
+            ),
+        ),
+    ),
+    ArchitectureSeam(
+        name="generic-file-job-infrastructure",
+        forbidden_imports=tuple(
+            _forbid(
+                FILE_JOB_MODULES,
+                target,
+                "generic file jobs must remain independent of product policy",
+            )
+            for target in (
+                "git_stage_batch.batch",
+                "git_stage_batch.cli",
+                "git_stage_batch.commands",
+                "git_stage_batch.data",
+                "git_stage_batch.output",
+                "git_stage_batch.tui",
+                "git_stage_batch.utils.journal",
+                "git_stage_batch.utils.session_lock",
+            )
+        ),
+    ),
+    ArchitectureSeam(
+        name="live-change-policy",
+        ownership=(
+            _owned(
+                LIVE_CHANGE_MODULE,
+                "prepare_live_change",
+                "stream_eligible_live_changes",
+            ),
+        ),
+        forbidden_imports=(
+            _forbid(
+                "git_stage_batch.data.hunk_tracking",
+                "git_stage_batch.core.hashing",
+                "navigation must consume prepared live-change candidates",
+            ),
+            _forbid(
+                "git_stage_batch.data.remaining_hunks",
+                "git_stage_batch.core.hashing",
+                "status must count canonical file-job results",
+            ),
+            _forbid(
+                "git_stage_batch.data.remaining_hunks",
+                LIVE_CHANGE_MODULE,
+                "status must not fall back to the lazy candidate stream",
+            ),
+            _forbid(
+                "git_stage_batch.commands.selection.next_change_display",
+                "git_stage_batch.core.hashing",
+                "display must render prepared live-change candidates",
+            ),
+            _forbid(
+                "git_stage_batch.data.hunk_tracking",
+                "git_stage_batch.data.selected_change.hunk_filtering",
+                "navigation must not recreate batch-ownership filtering",
+            ),
+            _forbid(
+                "git_stage_batch.data.hunk_tracking",
+                "git_stage_batch.output",
+                "navigation returns state instead of rendering output",
+            ),
+            _forbid(
+                "git_stage_batch.data.hunk_tracking",
+                "git_stage_batch.commands.show",
+                "navigation state must not invoke a command entry point",
+            ),
+        ),
+        consumers=(
+            _consumers(
+                (LIVE_CHANGE_MODULE,),
+                required=(
+                    "git_stage_batch.commands.selection.next_change_display",
+                    "git_stage_batch.data.hunk_tracking",
+                    "git_stage_batch.data.live_change_jobs",
+                ),
+            ),
+        ),
+    ),
+    ArchitectureSeam(
+        name="repository-readers",
+        forbidden_imports=(
+            _forbid(
+                "git_stage_batch.utils.repository_buffers",
+                "git_stage_batch.commands",
+                "repository readers are lower-level infrastructure",
+            ),
+            _forbid(
+                "git_stage_batch.utils.repository_buffers",
+                "git_stage_batch.data",
+                "repository readers cannot depend on session state",
+            ),
+        ),
+    ),
+    ArchitectureSeam(
+        name="active-session-marker",
+        ownership=(
+            _owned(
+                SESSION_MARKER_MODULE,
+                "active_session_marker_path",
+                "session_is_active",
+            ),
+        ),
+        forbidden_imports=(
+            _forbid(
+                SESSION_MARKER_MODULE,
+                "git_stage_batch.data.session",
+                "read-only session checks must stay below session mutation",
+            ),
+        ),
+    ),
+    ArchitectureSeam(
+        name="file-review-state",
+        ownership=(
+            _owned(
+                FILE_REVIEW_STATE_MODULE,
+                "make_file_review_state",
+                "resolve_default_review_pages",
+            ),
+        ),
+        forbidden_imports=(
+            _forbid(
+                "git_stage_batch.data.file_review",
+                "git_stage_batch.output",
+                "review data and policy cannot depend on terminal presentation",
+            ),
+        ),
+    ),
+    ArchitectureSeam(
+        name="atomic-buffer-publication",
+        ownership=(
+            _owned(
+                BUFFER_IO_MODULE,
+                "write_buffer_to_path",
+                "write_buffer_to_working_tree_path",
+            ),
+            _owned(
+                ATOMIC_WRITE_MODULE,
+                "fsync_directory",
+                "replace_symlink_atomically",
+                "write_chunks_atomically",
+            ),
+        ),
+    ),
+    ArchitectureSeam(
+        name="validated-batch-state-publication",
+        ownership=(_owned(BATCH_REFERENCES_MODULE, "sync_batch_state_refs"),),
+        imported_symbols=(
+            _imports(
+                BATCH_REFERENCES_MODULE,
+                BATCH_METADATA_MODULE,
+                required=("BatchMetadata",),
+                forbidden=("metadata_from_application_dict",),
+            ),
+        ),
+    ),
+    ArchitectureSeam(
+        name="batch-source-candidate-planning",
+        ownership=(
+            _owned(
+                CANDIDATE_PLANNING_MODULE,
+                "plan_apply_candidate_previews",
+                "plan_include_candidate_previews",
+            ),
+        ),
+        forbidden_imports=(
+            _forbid(
+                "git_stage_batch.commands.batch_source",
+                "git_stage_batch.batch.operation_candidates",
+                "batch-source callers must use shared candidate planning",
+                allowed_sources=(CANDIDATE_PLANNING_MODULE,),
+            ),
+        ),
+        consumers=(
+            _consumers(
+                (CANDIDATE_PLANNING_MODULE,),
+                required=(
+                    "git_stage_batch.commands.batch_source.candidate_materialization",
+                    "git_stage_batch.commands.batch_source.candidate_preview_builders",
+                    "git_stage_batch.commands.batch_source.candidate_preview_counts",
+                ),
+            ),
+        ),
+    ),
+    ArchitectureSeam(
+        name="undo-checkpoint-policy",
+        ownership=(
+            _owned(
+                UNDO_SNAPSHOTS_MODULE,
+                "filesystem_directory_state",
+                "push_redo_node",
+                "snapshot_current_state",
+                "write_snapshot_commit",
+            ),
+            _owned(
+                UNDO_STATE_MODULE,
+                "detect_redo_conflicts",
+                "detect_undo_conflicts",
+                "restore_checkpoint_state",
+            ),
+        ),
+        forbidden_imports=(
+            _forbid(
+                UNDO_SNAPSHOTS_MODULE,
+                UNDO_CHECKPOINTS_MODULE,
+                "snapshot storage must stay below stack orchestration",
+            ),
+            _forbid(
+                UNDO_STATE_MODULE,
+                UNDO_CHECKPOINTS_MODULE,
+                "checkpoint state policy must stay below stack orchestration",
+            ),
+        ),
+        consumers=(
+            _consumers(
+                (UNDO_SNAPSHOTS_MODULE, UNDO_STATE_MODULE),
+                required=(UNDO_CHECKPOINTS_MODULE, UNDO_STATE_MODULE),
+            ),
+        ),
+        private_modules=(
+            PrivateModulesRule(
+                module_prefix=UNDO_PREFIX,
+                public_modules=frozenset(
+                    {
+                        UNDO_CHECKPOINTS_MODULE,
+                        UNDO_REFS_MODULE,
+                    }
+                ),
+            ),
+        ),
+    ),
+    ArchitectureSeam(
+        name="file-review-ignore-mutations",
+        ownership=(
+            _owned(
+                BLOCK_ACTIONS_MODULE,
+                "apply_block_action",
+                "block_review_file",
+                "prompt_block_local_only",
+                "unblock_review_file",
+            ),
+        ),
+        forbidden_imports=(
+            _forbid(
+                "git_stage_batch.tui.file_review",
+                "git_stage_batch.commands.block_file",
+                "file-review navigation must delegate block commands",
+                allowed_sources=(BLOCK_ACTIONS_MODULE,),
+            ),
+            _forbid(
+                "git_stage_batch.tui.file_review",
+                "git_stage_batch.commands.unblock_file",
+                "file-review navigation must delegate unblock commands",
+                allowed_sources=(BLOCK_ACTIONS_MODULE,),
+            ),
+            _forbid(
+                "git_stage_batch.tui.file_review",
+                "git_stage_batch.data.ignore_files",
+                "file-review navigation must not edit ignore files directly",
+            ),
+        ),
+    ),
+    ArchitectureSeam(
+        name="tui-shell-locking",
+        forbidden_imports=(
+            _forbid(
+                "git_stage_batch.tui.shell_command",
+                "git_stage_batch.utils.session_lock",
+                "shell waits must never hold the repository lock",
+            ),
+        ),
+    ),
 )
 
 
@@ -18,240 +402,22 @@ def test_internal_runtime_module_graph_is_acyclic():
     assert cycle is None, " -> ".join(cycle or ())
 
 
-def test_live_change_policy_has_one_owner():
-    """Hashing, blocking, and batch ownership policy belongs to candidates."""
-    policy_symbols = {
-        "prepare_live_change",
-        "stream_eligible_live_changes",
-    }
-    assert modules_defining(policy_symbols) == {
-        "git_stage_batch.data.live_change_candidates": policy_symbols,
-    }
-
-    rules = (
-        ForbiddenImportRule(
-            "git_stage_batch.data.hunk_tracking",
-            "git_stage_batch.core.hashing",
-            "navigation must consume prepared live-change candidates",
-        ),
-        ForbiddenImportRule(
-            "git_stage_batch.data.remaining_hunks",
-            "git_stage_batch.core.hashing",
-            "status must count canonical file-job results",
-        ),
-        ForbiddenImportRule(
-            "git_stage_batch.data.remaining_hunks",
-            "git_stage_batch.data.live_change_candidates",
-            "status must not fall back to the lazy candidate stream",
-        ),
-        ForbiddenImportRule(
-            "git_stage_batch.commands.selection.next_change_display",
-            "git_stage_batch.core.hashing",
-            "display must render prepared live-change candidates",
-        ),
-        ForbiddenImportRule(
-            "git_stage_batch.data.hunk_tracking",
-            "git_stage_batch.data.selected_change.hunk_filtering",
-            "navigation must not recreate batch-ownership filtering",
-        ),
-    )
-    assert forbidden_import_violations(rules) == []
-
-    consumers = {
-        edge.source
-        for edge in internal_import_edges()
-        if edge.target == "git_stage_batch.data.live_change_candidates"
-    }
-    assert {
-        "git_stage_batch.data.hunk_tracking",
-        "git_stage_batch.data.live_change_jobs",
-        "git_stage_batch.commands.selection.next_change_display",
-    } <= consumers
-    assert "git_stage_batch.data.remaining_hunks" not in consumers
-
-
-def test_repository_readers_stay_below_policy_layers():
-    """Repository readers must not depend on command or session policy."""
-    rules = (
-        ForbiddenImportRule(
-            "git_stage_batch.utils.repository_buffers",
-            "git_stage_batch.commands",
-            "repository readers are lower-level infrastructure",
-        ),
-        ForbiddenImportRule(
-            "git_stage_batch.utils.repository_buffers",
-            "git_stage_batch.data",
-            "repository readers cannot depend on session state",
-        ),
-    )
-    assert forbidden_import_violations(rules) == []
-
-
-def test_file_review_state_policy_stays_below_output():
-    """Persisted review policy must not depend on terminal presentation."""
-    policy_symbols = {
-        "make_file_review_state",
-        "resolve_default_review_pages",
-    }
-    assert modules_defining(policy_symbols) == {
-        "git_stage_batch.data.file_review.state_builder": policy_symbols,
-    }
-
-    rules = (
-        ForbiddenImportRule(
-            "git_stage_batch.data.file_review",
-            "git_stage_batch.output",
-            "review data and policy cannot depend on terminal presentation",
-        ),
-    )
-    assert forbidden_import_violations(rules) == []
-
-
-def test_atomic_buffer_publication_stays_out_of_core():
-    """Core buffers describe bytes; filesystem publication belongs to utils."""
-    publication_symbols = {
-        "write_buffer_to_path",
-        "write_buffer_to_working_tree_path",
-    }
-    assert modules_defining(publication_symbols) == {
-        "git_stage_batch.utils.buffer_io": publication_symbols,
-    }
-
-    atomic_symbols = {
-        "fsync_directory",
-        "replace_symlink_atomically",
-        "write_chunks_atomically",
-    }
-    assert modules_defining(atomic_symbols) == {
-        "git_stage_batch.utils.atomic_write": atomic_symbols,
-    }
-
-
-def test_batch_state_publication_consumes_validated_metadata():
-    """State publication accepts the schema model without thawing it first."""
-    publication_symbols = {"sync_batch_state_refs"}
-    assert modules_defining(publication_symbols) == {
-        "git_stage_batch.batch.state.references": publication_symbols,
-    }
-
-    schema_imports = {
-        name
-        for edge in internal_import_edges()
-        if edge.source == "git_stage_batch.batch.state.references"
-        and edge.target == "git_stage_batch.batch.state.metadata_schema"
-        for name in edge.names
-    }
-    assert "BatchMetadata" in schema_imports
-    assert "metadata_from_application_dict" not in schema_imports
-
-
-def test_batch_source_candidate_planning_has_one_owner():
-    """Show, count, and execution paths share candidate construction policy."""
-    planning_symbols = {
-        "plan_apply_candidate_previews",
-        "plan_include_candidate_previews",
-    }
-    planning_module = (
-        "git_stage_batch.commands.batch_source.candidate_planning"
-    )
-    assert modules_defining(planning_symbols) == {
-        planning_module: planning_symbols,
-    }
-
-    rules = (
-        ForbiddenImportRule(
-            "git_stage_batch.commands.batch_source",
-            "git_stage_batch.batch.operation_candidates",
-            "batch-source callers must use shared candidate planning",
-            allowed_sources=frozenset({planning_module}),
-        ),
-    )
-    assert forbidden_import_violations(rules) == []
-
-    consumers = {
-        edge.source
-        for edge in internal_module_import_edges()
-        if edge.target == planning_module
-    }
-    assert consumers == {
-        "git_stage_batch.commands.batch_source.candidate_materialization",
-        "git_stage_batch.commands.batch_source.candidate_preview_builders",
-        "git_stage_batch.commands.batch_source.candidate_preview_counts",
-    }
-
-
-def test_undo_checkpoint_orchestration_delegates_state_policy():
-    """Stack orchestration must not absorb snapshot or restore policy."""
-    snapshot_symbols = {
-        "filesystem_directory_state",
-        "push_redo_node",
-        "snapshot_current_state",
-        "write_snapshot_commit",
-    }
-    snapshot_module = "git_stage_batch.data.undo.snapshots"
-    assert modules_defining(snapshot_symbols) == {
-        snapshot_module: snapshot_symbols,
-    }
-
-    state_symbols = {
-        "detect_redo_conflicts",
-        "detect_undo_conflicts",
-        "restore_checkpoint_state",
-    }
-    state_module = "git_stage_batch.data.undo.state"
-    assert modules_defining(state_symbols) == {
-        state_module: state_symbols,
-    }
-
-    rules = (
-        ForbiddenImportRule(
-            snapshot_module,
-            "git_stage_batch.data.undo.checkpoints",
-            "snapshot storage must stay below stack orchestration",
-        ),
-        ForbiddenImportRule(
-            state_module,
-            "git_stage_batch.data.undo.checkpoints",
-            "checkpoint state policy must stay below stack orchestration",
-        ),
-    )
-    assert forbidden_import_violations(rules) == []
-
-    consumers = {
-        edge.source
-        for edge in internal_module_import_edges()
-        if edge.target in {snapshot_module, state_module}
-    }
-    assert consumers == {
-        "git_stage_batch.data.undo.checkpoints",
-        "git_stage_batch.data.undo.state",
-    }
-
-
-def test_undo_subpackage_hides_internal_policy_modules():
-    """Undo consumers use checkpoints or refs, not internal policy modules."""
-    implementation_prefix = "git_stage_batch.data.undo."
-    public_modules = {
-        "git_stage_batch.data.undo.checkpoints",
-        "git_stage_batch.data.undo.refs",
-    }
+def test_subpackages_do_not_define_runtime_facades():
+    """Internal callers import concrete modules instead of package facades."""
     violations = [
         f"{edge.source}:{edge.line} -> {edge.target}"
-        for edge in internal_module_import_edges()
-        if edge.target.startswith(implementation_prefix)
-        and not edge.source.startswith(implementation_prefix)
-        and edge.target not in public_modules
+        for edge in internal_import_edges()
+        if edge.source.endswith(".__init__")
+        and edge.source != "git_stage_batch.__init__"
     ]
     assert violations == []
 
 
-def test_tui_shell_boundary_does_not_own_repository_locking():
-    """Arbitrary shell children run outside repository action locks."""
-    rules = (
-        ForbiddenImportRule(
-            "git_stage_batch.tui.shell_command",
-            "git_stage_batch.utils.session_lock",
-            "shell waits must never hold the repository lock",
-        ),
-    )
-    assert forbidden_import_violations(rules) == []
+def test_policy_seams():
+    """Every policy seam must retain its owner and dependency direction."""
+    violations = [
+        f"{seam.name}: {violation}"
+        for seam in ARCHITECTURE_SEAMS
+        for violation in seam_violations(seam)
+    ]
+    assert violations == []

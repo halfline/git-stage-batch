@@ -1,14 +1,14 @@
-"""Helpers for architecture import-boundary tests."""
+"""Source scanners for declarative architecture seam tests."""
 
 from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-SRC_ROOT = REPO_ROOT / "src" / "git_stage_batch"
+SRC_ROOT = Path(__file__).resolve().parents[2] / "src" / "git_stage_batch"
 
 
 @dataclass(frozen=True)
@@ -23,23 +23,79 @@ class ImportEdge:
 
 @dataclass(frozen=True)
 class ForbiddenImportRule:
-    """A declarative prohibition on one architectural dependency edge."""
+    """One prohibited dependency direction within a policy seam."""
 
-    source_prefix: str
+    sources: str | frozenset[str]
     target_prefix: str
     reason: str
     allowed_sources: frozenset[str] = frozenset()
+    forbidden_names: frozenset[str] = frozenset()
 
 
-def internal_import_edges() -> tuple[ImportEdge, ...]:
-    """Return the observed internal import graph with actionable locations."""
-    edges = []
-    for path in SRC_ROOT.rglob("*.py"):
-        source = module_name_for_path(path)
+@dataclass(frozen=True)
+class SymbolOwnership:
+    """Top-level symbols that must have exactly one module owner."""
+
+    module: str
+    names: frozenset[str]
+
+
+@dataclass(frozen=True)
+class ImportedSymbolsRule:
+    """Names that one module must or must not import from another."""
+
+    source: str
+    target: str
+    required_names: frozenset[str] = frozenset()
+    forbidden_names: frozenset[str] = frozenset()
+
+
+@dataclass(frozen=True)
+class ConsumerRule:
+    """Required consumers of concrete modules."""
+
+    targets: frozenset[str]
+    required_sources: frozenset[str]
+
+
+@dataclass(frozen=True)
+class PrivateModulesRule:
+    """Internal modules that callers outside a subtree must not import."""
+
+    module_prefix: str
+    public_modules: frozenset[str]
+
+
+@dataclass(frozen=True)
+class ArchitectureSeam:
+    """A policy boundary expressed through ownership and dependency rules."""
+
+    name: str
+    ownership: tuple[SymbolOwnership, ...] = ()
+    forbidden_imports: tuple[ForbiddenImportRule, ...] = ()
+    imported_symbols: tuple[ImportedSymbolsRule, ...] = ()
+    consumers: tuple[ConsumerRule, ...] = ()
+    private_modules: tuple[PrivateModulesRule, ...] = ()
+
+
+@cache
+def _parsed_modules() -> tuple[tuple[str, Path, ast.Module], ...]:
+    modules = []
+    for path in sorted(SRC_ROOT.rglob("*.py")):
+        module = _module_name_for_path(path)
         tree = ast.parse(path.read_text(), filename=str(path))
+        modules.append((module, path, tree))
+    return tuple(modules)
+
+
+@cache
+def internal_import_edges() -> tuple[ImportEdge, ...]:
+    """Return internal imports with actionable source locations."""
+    edges = []
+    for source, _path, tree in _parsed_modules():
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom):
-                target = resolve_import_from_module(
+                target = _resolve_import_from_module(
                     current_module=source,
                     level=node.level,
                     module=node.module,
@@ -48,67 +104,66 @@ def internal_import_edges() -> tuple[ImportEdge, ...]:
                     continue
                 edges.append(
                     ImportEdge(
-                        source,
-                        target,
-                        node.lineno,
-                        frozenset(alias.name for alias in node.names),
+                        source=source,
+                        target=target,
+                        line=node.lineno,
+                        names=frozenset(alias.name for alias in node.names),
                     )
                 )
             elif isinstance(node, ast.Import):
-                for alias in node.names:
-                    if alias.name.startswith("git_stage_batch"):
-                        edges.append(
-                            ImportEdge(
-                                source,
-                                alias.name,
-                                node.lineno,
-                                frozenset(),
-                            )
-                        )
+                edges.extend(
+                    ImportEdge(
+                        source=source,
+                        target=alias.name,
+                        line=node.lineno,
+                        names=frozenset(),
+                    )
+                    for alias in node.names
+                    if alias.name.startswith("git_stage_batch")
+                )
     return tuple(edges)
 
 
+@cache
 def internal_module_import_edges(
     *,
     include_type_checking: bool = False,
 ) -> tuple[ImportEdge, ...]:
-    """Return imports between concrete internal modules.
+    """Return imports resolved to concrete internal modules.
 
     ``from package import child`` contributes an edge to ``package.child`` when
-    that child is a module. This closes a gap in the broader boundary scanner,
-    whose package-level edges are sufficient for policy checks but not cycle
-    detection.
+    that child is a module. Type-checking-only edges are omitted by default so
+    callers can inspect the runtime dependency graph.
     """
     module_paths = {
-        _importable_module_name_for_path(path): path
-        for path in SRC_ROOT.rglob("*.py")
+        _importable_module_name_for_path(path): (path, tree)
+        for _module, path, tree in _parsed_modules()
     }
     known_modules = set(module_paths)
     edges: list[ImportEdge] = []
 
-    for source, path in module_paths.items():
+    for source, (path, tree) in module_paths.items():
         resolution_source = (
             f"{source}.__init__" if path.name == "__init__.py" else source
         )
-        tree = ast.parse(path.read_text(), filename=str(path))
         for node in _import_nodes(
             tree,
             include_type_checking=include_type_checking,
         ):
             if isinstance(node, ast.Import):
-                for alias in node.names:
-                    if alias.name in known_modules and alias.name != source:
-                        edges.append(
-                            ImportEdge(
-                                source,
-                                alias.name,
-                                node.lineno,
-                                frozenset(),
-                            )
-                        )
+                edges.extend(
+                    ImportEdge(
+                        source=source,
+                        target=alias.name,
+                        line=node.lineno,
+                        names=frozenset(),
+                    )
+                    for alias in node.names
+                    if alias.name in known_modules and alias.name != source
+                )
                 continue
 
-            target = resolve_import_from_module(
+            target = _resolve_import_from_module(
                 current_module=resolution_source,
                 level=node.level,
                 module=node.module,
@@ -124,7 +179,12 @@ def internal_module_import_edges(
                 if (candidate := f"{target}.{name}") in known_modules
             )
             edges.extend(
-                ImportEdge(source, imported, node.lineno, imported_names)
+                ImportEdge(
+                    source=source,
+                    target=imported,
+                    line=node.lineno,
+                    names=imported_names,
+                )
                 for imported in sorted(targets)
                 if imported != source
             )
@@ -172,6 +232,62 @@ def find_dependency_cycle(
     return None
 
 
+def seam_violations(seam: ArchitectureSeam) -> list[str]:
+    """Return every ownership or dependency violation for one seam."""
+    violations = forbidden_import_violations(seam.forbidden_imports)
+
+    for ownership in seam.ownership:
+        observed = modules_defining(ownership.names)
+        expected = {ownership.module: set(ownership.names)}
+        if observed != expected:
+            violations.append(
+                f"{sorted(ownership.names)!r} must be defined only by "
+                f"{ownership.module}; found {_sorted_mapping(observed)!r}"
+            )
+
+    for rule in seam.imported_symbols:
+        observed = {
+            name
+            for edge in internal_import_edges()
+            if edge.source == rule.source and edge.target == rule.target
+            for name in edge.names
+        }
+        missing = rule.required_names - observed
+        forbidden = rule.forbidden_names & observed
+        if missing:
+            violations.append(
+                f"{rule.source} must import {sorted(missing)!r} from {rule.target}"
+            )
+        if forbidden:
+            violations.append(
+                f"{rule.source} must not import {sorted(forbidden)!r} "
+                f"from {rule.target}"
+            )
+
+    concrete_edges = internal_module_import_edges()
+    for rule in seam.consumers:
+        observed = {
+            edge.source for edge in concrete_edges if edge.target in rule.targets
+        }
+        missing = rule.required_sources - observed
+        if missing:
+            violations.append(
+                f"{sorted(rule.targets)!r} must be consumed by {sorted(missing)!r}"
+            )
+
+    for rule in seam.private_modules:
+        violations.extend(
+            f"{edge.source}:{edge.line} -> {edge.target}: "
+            f"{rule.module_prefix} implementation modules are private"
+            for edge in concrete_edges
+            if _in_module_tree(edge.target, rule.module_prefix)
+            and not _in_module_tree(edge.source, rule.module_prefix)
+            and edge.target not in rule.public_modules
+        )
+
+    return sorted(violations)
+
+
 def forbidden_import_violations(
     rules: tuple[ForbiddenImportRule, ...],
 ) -> list[str]:
@@ -179,22 +295,30 @@ def forbidden_import_violations(
     violations = []
     for edge in internal_import_edges():
         for rule in rules:
-            if (
-                edge.source.startswith(rule.source_prefix)
-                and edge.target.startswith(rule.target_prefix)
-                and edge.source not in rule.allowed_sources
-            ):
-                violations.append(
-                    f"{edge.source}:{edge.line} -> {edge.target}: {rule.reason}"
-                )
+            if not _source_matches(edge.source, rule.sources):
+                continue
+            if not _in_module_tree(edge.target, rule.target_prefix):
+                continue
+            if edge.source in rule.allowed_sources:
+                continue
+
+            forbidden_names = edge.names & rule.forbidden_names
+            if rule.forbidden_names and not forbidden_names:
+                continue
+
+            names = (
+                f" ({', '.join(sorted(forbidden_names))})" if forbidden_names else ""
+            )
+            violations.append(
+                f"{edge.source}:{edge.line} -> {edge.target}{names}: {rule.reason}"
+            )
     return sorted(violations)
 
 
-def modules_defining(names: set[str]) -> dict[str, set[str]]:
+def modules_defining(names: frozenset[str]) -> dict[str, set[str]]:
     """Return internal modules that define any named top-level symbol."""
     definitions: dict[str, set[str]] = {}
-    for path in SRC_ROOT.rglob("*.py"):
-        tree = ast.parse(path.read_text(), filename=str(path))
+    for module, _path, tree in _parsed_modules():
         found = {
             node.name
             for node in tree.body
@@ -202,11 +326,28 @@ def modules_defining(names: set[str]) -> dict[str, set[str]]:
             and node.name in names
         }
         if found:
-            definitions[module_name_for_path(path)] = found
+            definitions[module] = found
     return definitions
 
 
-def module_name_for_path(path: Path) -> str:
+def _source_matches(
+    module: str,
+    sources: str | frozenset[str],
+) -> bool:
+    if isinstance(sources, str):
+        return _in_module_tree(module, sources)
+    return module in sources
+
+
+def _in_module_tree(module: str, prefix: str) -> bool:
+    return module == prefix or module.startswith(f"{prefix}.")
+
+
+def _sorted_mapping(mapping: dict[str, set[str]]) -> dict[str, list[str]]:
+    return {module: sorted(names) for module, names in sorted(mapping.items())}
+
+
+def _module_name_for_path(path: Path) -> str:
     relative_path = path.relative_to(SRC_ROOT).with_suffix("")
     return ".".join(("git_stage_batch", *relative_path.parts))
 
@@ -259,7 +400,7 @@ def _import_nodes(
     return tuple(visitor.nodes)
 
 
-def resolve_import_from_module(
+def _resolve_import_from_module(
     *,
     current_module: str,
     level: int,
@@ -276,57 +417,3 @@ def resolve_import_from_module(
     if module:
         return ".".join((*base_package, *module.split(".")))
     return ".".join(base_package)
-
-
-def import_from_nodes(path: Path) -> list[tuple[str | None, ast.ImportFrom]]:
-    current_module = module_name_for_path(path)
-    tree = ast.parse(path.read_text(), filename=str(path))
-    nodes = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom):
-            nodes.append((
-                resolve_import_from_module(
-                    current_module=current_module,
-                    level=node.level,
-                    module=node.module,
-                ),
-                node,
-            ))
-    return nodes
-
-
-def package_path_for_module(module: str) -> Path | None:
-    if not module.startswith("git_stage_batch."):
-        return None
-
-    package_path = SRC_ROOT.joinpath(*module.split(".")[1:])
-    if not (package_path / "__init__.py").exists():
-        return None
-
-    return package_path
-
-
-def external_package_child_module_import_violations(
-    disallowed_children: dict[str, set[str]],
-) -> list[str]:
-    violations = []
-
-    for path in SRC_ROOT.rglob("*.py"):
-        for imported_module, node in import_from_nodes(path):
-            if imported_module not in disallowed_children:
-                continue
-
-            package_path = package_path_for_module(imported_module)
-            if package_path is not None and package_path in path.parents:
-                continue
-
-            imported_names = {alias.name for alias in node.names}
-            disallowed_names = (
-                imported_names & disallowed_children[imported_module]
-            )
-            if disallowed_names:
-                relative_path = path.relative_to(REPO_ROOT)
-                names = ", ".join(sorted(disallowed_names))
-                violations.append(f"{relative_path}:{node.lineno} imports {names}")
-
-    return violations

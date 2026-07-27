@@ -10,8 +10,8 @@ from ...data.file_tracking import list_untracked_files
 from ...exceptions import CommandError
 from ...i18n import _
 from ...utils.file_patterns import list_changed_files, resolve_gitignore_style_patterns
+from . import block_actions
 from .batch_actions import apply_batch_file_action
-from .block_actions import block_review_file
 from .live_actions import apply_live_file_action
 from .session import FileReviewSessionState
 from ..flow import FlowState, LocationRole
@@ -112,28 +112,6 @@ def choose_review_file(
         print(_("Invalid file selection."), file=sys.stderr)
 
 
-def prompt_block_local_only() -> bool | None:
-    """Prompt for the block-file destination."""
-    try:
-        choice = unlocked_input(
-            wrap_prompt_for_readline(
-                _("Block target [g]itignore, [l]ocal exclude, or q: ")
-            )
-        ).strip().lower()
-    except (KeyboardInterrupt, EOFError):
-        return None
-
-    if choice in {"q", "quit", "cancel"}:
-        return None
-    if choice in {"l", "local", "local exclude"}:
-        return True
-    if choice in {"", "g", "gitignore"}:
-        return False
-
-    print(_("Invalid block target."), file=sys.stderr)
-    return None
-
-
 def _mark_file_choice(
     choice: str,
     entries: list[ReviewFileEntry],
@@ -204,14 +182,14 @@ def _apply_marked_file_action(
             _("This will add the marked files to ignore state."),
         ):
             return
-        local_only = prompt_block_local_only()
+        local_only = block_actions.prompt_block_local_only()
         if local_only is None:
             return
 
     for path in sorted(marked_paths):
         try:
             if action == "B":
-                block_review_file(path, local_only=local_only)
+                block_actions.block_review_file(path, local_only=local_only)
                 continue
 
             state = FileReviewSessionState(flow_state=flow_state, file_path=path)

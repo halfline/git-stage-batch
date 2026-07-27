@@ -7,13 +7,15 @@ import sys
 from ...exceptions import CommandError
 from ...i18n import _
 from .session import FileReviewSessionState
-from ..prompts import confirm_destructive_operation
+from ..prompts import (
+    confirm_destructive_operation,
+    unlocked_input,
+    wrap_prompt_for_readline,
+)
 
 
 def apply_block_action(state: FileReviewSessionState, action: str) -> None:
     """Run a block or unblock action for the reviewed file."""
-    from .file_browser import prompt_block_local_only
-
     if action == "B":
         if not confirm_destructive_operation(
             "block",
@@ -35,6 +37,28 @@ def apply_block_action(state: FileReviewSessionState, action: str) -> None:
         unblock_review_file(state.file_path)
     except CommandError as e:
         print(e.message, file=sys.stderr)
+
+
+def prompt_block_local_only() -> bool | None:
+    """Prompt for the block-file destination."""
+    try:
+        choice = unlocked_input(
+            wrap_prompt_for_readline(
+                _("Block target [g]itignore, [l]ocal exclude, or q: ")
+            )
+        ).strip().lower()
+    except (KeyboardInterrupt, EOFError):
+        return None
+
+    if choice in {"q", "quit", "cancel"}:
+        return None
+    if choice in {"l", "local", "local exclude"}:
+        return True
+    if choice in {"", "g", "gitignore"}:
+        return False
+
+    print(_("Invalid block target."), file=sys.stderr)
+    return None
 
 
 def block_review_file(file_path: str, *, local_only: bool) -> None:

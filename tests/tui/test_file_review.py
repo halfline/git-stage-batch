@@ -894,7 +894,7 @@ class TestHandleFileBrowser:
                 return_value=True,
             ):
                 with patch(
-                    "git_stage_batch.tui.file_review.file_browser.prompt_block_local_only",
+                    "git_stage_batch.tui.file_review.block_actions.prompt_block_local_only",
                     return_value=True,
                 ):
                     with patch(

@@ -25,7 +25,7 @@ from .recovery_anchors import (
     validate_recovery_state,
 )
 from ..utils.session_start_point import current_head_commit
-from . import undo_restore as _undo_restore
+from .undo import restore as _undo_restore
 from .undo import worktree as _undo_worktree
 from ..exceptions import CommandError
 from ..i18n import _

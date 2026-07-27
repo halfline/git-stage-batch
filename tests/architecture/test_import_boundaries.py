@@ -2581,8 +2581,8 @@ def test_undo_snapshot_restore_stays_in_restore_module():
         fromlist=["undo_checkpoints"],
     )
     undo_restore = __import__(
-        "git_stage_batch.data.undo_restore",
-        fromlist=["undo_restore"],
+        "git_stage_batch.data.undo.restore",
+        fromlist=["restore"],
     )
     restore_names = {
         "read_json_from_commit",

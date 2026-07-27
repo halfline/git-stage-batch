@@ -51,7 +51,7 @@ from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.output.colors import Colors
 from git_stage_batch.output.file_review import print_file_review
 from git_stage_batch.output.file_review_model_builder import build_file_review_model
-from git_stage_batch.output.file_review_state_builder import make_file_review_state
+from git_stage_batch.data.file_review.state_builder import make_file_review_state
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,
     get_line_changes_json_file_path,

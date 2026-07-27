@@ -82,7 +82,10 @@ def test_repository_readers_stay_below_policy_layers():
 
 def test_file_review_state_policy_stays_below_output():
     """Persisted review policy must not depend on terminal presentation."""
-    policy_symbols = {"resolve_default_review_pages"}
+    policy_symbols = {
+        "make_file_review_state",
+        "resolve_default_review_pages",
+    }
     assert modules_defining(policy_symbols) == {
         "git_stage_batch.data.file_review.state_builder": policy_symbols,
     }

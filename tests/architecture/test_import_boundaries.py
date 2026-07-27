@@ -3155,7 +3155,7 @@ def test_file_review_fingerprints_stay_out_of_state_module():
             "compute_current_file_review_diff_fingerprint",
         },
         SRC_ROOT / "data" / "file_review" / "freshness.py": public_names,
-        SRC_ROOT / "output" / "file_review_state_builder.py": public_names,
+        SRC_ROOT / "data" / "file_review" / "state_builder.py": public_names,
     }
     violations = []
 
@@ -3378,7 +3378,7 @@ def test_file_review_records_stay_out_of_state_module():
         SRC_ROOT / "data" / "file_review" / "action_selections.py": {
             "ReviewSource",
         },
-        SRC_ROOT / "output" / "file_review_state_builder.py": {
+        SRC_ROOT / "data" / "file_review" / "state_builder.py": {
             "FileReviewAction",
             "FileReviewSelectionState",
             "FileReviewState",
@@ -3927,7 +3927,9 @@ def test_file_review_callers_use_model_builder():
 def test_file_review_output_uses_action_selection_module():
     """File-review output should not own page action selection mapping."""
     review_output_path = SRC_ROOT / "output" / "file_review.py"
-    review_state_builder_path = SRC_ROOT / "output" / "file_review_state_builder.py"
+    review_state_builder_path = (
+        SRC_ROOT / "data" / "file_review" / "state_builder.py"
+    )
     review_output_text = review_output_path.read_text()
     imported_modules = {
         imported_module
@@ -3962,8 +3964,8 @@ def test_file_review_output_uses_action_selection_module():
     assert "def _selection_ids_for_display_ids" not in review_output_text
 
 
-def test_show_file_display_uses_data_default_review_pages():
-    """Show file display should import default page policy from data."""
+def test_show_file_display_uses_data_file_review_state_builder():
+    """Show file display should import review state assembly from data."""
     review_output_path = SRC_ROOT / "output" / "file_review.py"
     review_output_text = review_output_path.read_text()
     show_paths = (
@@ -3975,6 +3977,7 @@ def test_show_file_display_uses_data_default_review_pages():
         fromlist=["state_builder"],
     )
     public_names = {
+        "make_file_review_state",
         "resolve_default_review_pages",
     }
     direct_state_builder_imports: dict[str, set[str]] = {}
@@ -3995,6 +3998,7 @@ def test_show_file_display_uses_data_default_review_pages():
                 )
 
     assert public_names <= vars(file_review_state_builder).keys()
+    assert "def make_file_review_state" not in review_output_text
     assert "def resolve_default_review_pages" not in review_output_text
     assert direct_state_builder_imports == {
         "src/git_stage_batch/commands/file_scope/file_display_action.py": (

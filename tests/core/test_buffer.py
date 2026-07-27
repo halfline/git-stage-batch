@@ -10,6 +10,7 @@ from collections.abc import Sequence
 import pytest
 
 from git_stage_batch.core import buffer as buffer_module
+from git_stage_batch.utils import atomic_write as atomic_write_module
 from git_stage_batch.core.buffer import (
     LineBuffer,
     buffer_byte_chunks,
@@ -18,6 +19,8 @@ from git_stage_batch.core.buffer import (
     buffer_has_data,
     buffer_matches,
     buffer_preview,
+)
+from git_stage_batch.utils.buffer_io import (
     write_buffer_to_path,
     write_buffer_to_working_tree_path,
 )
@@ -264,7 +267,7 @@ def test_symlink_write_keeps_old_entry_until_atomic_replace(tmp_path, monkeypatc
         assert os.readlink(output_path) == "old-target"
         original_replace(source, destination)
 
-    monkeypatch.setattr(buffer_module.os, "replace", inspect_replace)
+    monkeypatch.setattr(atomic_write_module.os, "replace", inspect_replace)
 
     write_buffer_to_path(output_path, b"new-target")
 
@@ -280,7 +283,7 @@ def test_failed_symlink_publication_preserves_old_entry(tmp_path, monkeypatch):
     def fail_replace(*args):
         raise OSError("simulated publication failure")
 
-    monkeypatch.setattr(buffer_module.os, "replace", fail_replace)
+    monkeypatch.setattr(atomic_write_module.os, "replace", fail_replace)
 
     with pytest.raises(OSError, match="simulated publication failure"):
         write_buffer_to_path(output_path, b"new-target")
@@ -332,7 +335,7 @@ def test_atomic_regular_write_tightens_mode_when_ownership_cannot_be_preserved(
     monkeypatch,
 ):
     """A differently owned replacement must not retain group or other access."""
-    if not hasattr(buffer_module.os, "fchown"):
+    if not hasattr(atomic_write_module.os, "fchown"):
         pytest.skip("fchown is not available")
 
     output_path = tmp_path / "path"
@@ -342,7 +345,7 @@ def test_atomic_regular_write_tightens_mode_when_ownership_cannot_be_preserved(
     def fail_fchown(*_args):
         raise PermissionError("ownership cannot be preserved")
 
-    monkeypatch.setattr(buffer_module.os, "fchown", fail_fchown)
+    monkeypatch.setattr(atomic_write_module.os, "fchown", fail_fchown)
 
     write_buffer_to_path(output_path, b"new")
 

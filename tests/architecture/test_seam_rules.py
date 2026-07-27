@@ -80,7 +80,15 @@ def test_repository_readers_stay_below_policy_layers():
 
 
 def test_atomic_buffer_publication_stays_out_of_core():
-    """Atomic filesystem publication belongs to utils."""
+    """Core buffers describe bytes; filesystem publication belongs to utils."""
+    publication_symbols = {
+        "write_buffer_to_path",
+        "write_buffer_to_working_tree_path",
+    }
+    assert modules_defining(publication_symbols) == {
+        "git_stage_batch.utils.buffer_io": publication_symbols,
+    }
+
     atomic_symbols = {
         "fsync_directory",
         "replace_symlink_atomically",

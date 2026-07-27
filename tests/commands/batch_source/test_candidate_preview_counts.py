@@ -114,18 +114,21 @@ def test_count_apply_candidate_previews_for_file_counts_previews(
     tmp_path,
 ):
     """Apply candidate counting should return closed preview counts."""
-    ownership = _patch_apply_candidate_count_io(monkeypatch, tmp_path)
+    _patch_apply_candidate_count_io(monkeypatch, tmp_path)
     previews = (_Preview(), _Preview())
     calls = {}
 
-    def build_apply_candidate_previews(**kwargs):
-        calls["build"] = kwargs
+    def plan_apply_candidate_previews(**kwargs):
+        calls["build"] = {
+            **kwargs,
+            "source_bytes": kwargs["batch_source_lines"].to_bytes(),
+        }
         return previews
 
     monkeypatch.setattr(
-        counts,
-        "build_apply_candidate_previews",
-        build_apply_candidate_previews,
+        counts._candidate_planning,
+        "plan_apply_candidate_previews",
+        plan_apply_candidate_previews,
     )
 
     result = counts.count_apply_candidate_previews_for_file(
@@ -142,10 +145,10 @@ def test_count_apply_candidate_previews_for_file_counts_previews(
     assert result == CandidatePreviewCount(count=2)
     assert calls["build"]["batch_name"] == "cleanup"
     assert calls["build"]["file_path"] == "notes.txt"
-    assert calls["build"]["ownership"] is ownership
+    assert calls["build"]["source_bytes"] == b"batch\n"
     assert calls["build"]["selected_ids"] == {7}
     assert calls["build"]["selection_ids"] == {7}
-    assert calls["build"]["worktree_exists"]
+    assert calls["build"]["worktree_target"].exists
     assert [preview.closed for preview in previews] == [True, True]
 
 
@@ -179,13 +182,13 @@ def test_count_apply_candidate_previews_for_file_reports_limit(
     """Apply candidate counting should preserve enumeration limit messages."""
     _patch_apply_candidate_count_io(monkeypatch, tmp_path)
 
-    def build_apply_candidate_previews(**kwargs):
+    def plan_apply_candidate_previews(**kwargs):
         raise CandidateEnumerationLimitError("too many")
 
     monkeypatch.setattr(
-        counts,
-        "build_apply_candidate_previews",
-        build_apply_candidate_previews,
+        counts._candidate_planning,
+        "plan_apply_candidate_previews",
+        plan_apply_candidate_previews,
     )
 
     result = counts.count_apply_candidate_previews_for_file(

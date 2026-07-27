@@ -61,7 +61,6 @@ class _ReplacementView(AbstractContextManager):
 
 
 def _patch_apply_materialization_io(monkeypatch, tmp_path):
-    ownership = object()
     batch_buffer = LineBuffer.from_bytes(b"batch\n")
     worktree_buffer = LineBuffer.from_bytes(b"worktree\n")
     (tmp_path / "notes.txt").write_bytes(b"worktree\n")
@@ -81,22 +80,19 @@ def _patch_apply_materialization_io(monkeypatch, tmp_path):
         "load_working_tree_file_as_buffer",
         lambda file_path: worktree_buffer,
     )
-    monkeypatch.setattr(
-        materialization,
-        "acquire_batch_ownership_for_display_ids_from_lines",
-        lambda file_meta, source_lines, selection_ids: _OwnershipContext(ownership),
-    )
-    return ownership
 
 
 def test_materialize_apply_candidate_returns_reviewed_preview(monkeypatch, tmp_path):
     """Apply materialization should return the reviewed preview and mode."""
-    ownership = _patch_apply_materialization_io(monkeypatch, tmp_path)
+    _patch_apply_materialization_io(monkeypatch, tmp_path)
     previews = (_Preview("first"), _Preview("second"))
     calls = {}
 
-    def build_apply_candidate_previews(**kwargs):
-        calls["build"] = kwargs
+    def plan_apply_candidate_previews(**kwargs):
+        calls["build"] = {
+            **kwargs,
+            "source_bytes": kwargs["batch_source_lines"].to_bytes(),
+        }
         return previews
 
     def require_preview(loaded_previews, ordinal, **kwargs):
@@ -107,9 +103,9 @@ def test_materialize_apply_candidate_returns_reviewed_preview(monkeypatch, tmp_p
         calls["require_state"] = (preview, ordinal, kwargs)
 
     monkeypatch.setattr(
-        materialization,
-        "build_apply_candidate_previews",
-        build_apply_candidate_previews,
+        materialization._candidate_planning,
+        "plan_apply_candidate_previews",
+        plan_apply_candidate_previews,
     )
     monkeypatch.setattr(
         materialization._candidate_previews,
@@ -144,10 +140,10 @@ def test_materialize_apply_candidate_returns_reviewed_preview(monkeypatch, tmp_p
     assert result.file_mode is None
     assert calls["build"]["batch_name"] == "cleanup"
     assert calls["build"]["file_path"] == "notes.txt"
-    assert calls["build"]["ownership"] is ownership
+    assert calls["build"]["source_bytes"] == b"batch\n"
     assert calls["build"]["selected_ids"] == {3}
     assert calls["build"]["selection_ids"] == {9}
-    assert calls["build"]["worktree_exists"]
+    assert calls["build"]["worktree_target"].exists
     assert calls["require_preview"] == (
         previews,
         2,
@@ -180,8 +176,8 @@ def test_materialize_apply_candidate_closes_previews_on_state_failure(
     previews = (_Preview("first"), _Preview("second"))
 
     monkeypatch.setattr(
-        materialization,
-        "build_apply_candidate_previews",
+        materialization._candidate_planning,
+        "plan_apply_candidate_previews",
         lambda **kwargs: previews,
     )
     monkeypatch.setattr(

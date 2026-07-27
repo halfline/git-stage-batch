@@ -72,21 +72,24 @@ def test_build_batch_source_candidate_previews_builds_apply_candidates(
     tmp_path,
 ):
     """Apply candidate construction should pass translated selection IDs."""
-    ownership = _patch_common_candidate_builder_io(monkeypatch, tmp_path)
+    _patch_common_candidate_builder_io(monkeypatch, tmp_path)
     calls = {}
 
     def translate_selection_ids(batch_name, file_path, selected_ids, action):
         calls["translation"] = (batch_name, file_path, selected_ids, action)
         return {10}, None
 
-    def build_apply_candidate_previews(**kwargs):
-        calls["build"] = kwargs
+    def plan_apply_candidate_previews(**kwargs):
+        calls["build"] = {
+            **kwargs,
+            "source_bytes": kwargs["batch_source_lines"].to_bytes(),
+        }
         return ("apply-preview",)
 
     monkeypatch.setattr(
-        builders,
-        "build_apply_candidate_previews",
-        build_apply_candidate_previews,
+        builders._candidate_planning,
+        "plan_apply_candidate_previews",
+        plan_apply_candidate_previews,
     )
 
     previews = builders.build_batch_source_candidate_previews(
@@ -113,10 +116,10 @@ def test_build_batch_source_candidate_previews_builds_apply_candidates(
     )
     assert calls["build"]["batch_name"] == "cleanup"
     assert calls["build"]["file_path"] == "notes.txt"
-    assert calls["build"]["ownership"] is ownership
+    assert calls["build"]["source_bytes"] == b"batch\n"
     assert calls["build"]["selected_ids"] == {1}
     assert calls["build"]["selection_ids"] == {10}
-    assert calls["build"]["worktree_exists"]
+    assert calls["build"]["worktree_target"].exists
 
 
 def test_build_batch_source_candidate_previews_builds_include_replacement(

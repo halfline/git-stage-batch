@@ -1,5 +1,6 @@
 """Shared fixtures for functional tests."""
 
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -48,11 +49,15 @@ def run_interactive(
             check=False,
         )
     except subprocess.TimeoutExpired as error:
-        output = (
-            _decode_timeout_output(error.output)
-            + _decode_timeout_output(error.stderr)
+        stdout = _decode_timeout_output(error.stdout)
+        stderr = _decode_timeout_output(error.stderr)
+        pytest.fail(
+            f"Interactive command timed out after {timeout} seconds\n"
+            f"Command: {shlex.join(command)}\n"
+            f"Scripted input: {inputs!r}\n"
+            f"STDOUT:\n{stdout or '<empty>'}\n"
+            f"STDERR:\n{stderr or '<empty>'}"
         )
-        pytest.fail(f"Interactive mode timed out\n{output}")
 
 
 @pytest.fixture

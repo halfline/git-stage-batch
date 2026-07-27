@@ -14,12 +14,10 @@ from ...core.diff_parser import build_line_changes_from_patch_lines
 from ...core.models import (
     LineLevelChange,
 )
-from ...core.buffer import (
-    LineBuffer,
-    write_buffer_to_path,
-)
+from ...core.buffer import LineBuffer
+from ...utils.atomic_write import fsync_directory
+from ...utils.buffer_io import write_buffer_to_path
 from ...utils.file_io import (
-    fsync_directory,
     read_text_file_contents,
     write_file_bytes,
     write_text_file_contents,

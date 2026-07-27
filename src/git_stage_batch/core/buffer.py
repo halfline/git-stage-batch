@@ -5,12 +5,8 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from contextlib import nullcontext
 import mmap
-import os
 from pathlib import Path
-import stat
-import tempfile
 from typing import Any, BinaryIO, Generic, Iterator, TypeVar, overload
-import uuid
 
 from .mapped_storage import (
     ChunkedMappedRecordVector,
@@ -736,113 +732,3 @@ def buffer_preview(buffer: BufferInput, size: int = 200) -> bytes:
         if len(preview) >= size:
             break
     return bytes(preview)
-
-
-def write_buffer_to_path(path: str | Path, buffer: BufferInput) -> None:
-    """Write buffer bytes to a path, creating parent directories as needed."""
-    file_path = Path(path)
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    if file_path.is_symlink():
-        target = b"".join(buffer_byte_chunks(buffer))
-        _replace_with_symlink_atomically(file_path, target)
-        return
-
-    _write_regular_file_atomically(file_path, buffer)
-
-
-def write_buffer_to_working_tree_path(
-    path: str | Path,
-    buffer: BufferInput,
-    *,
-    mode: str | None = None,
-) -> None:
-    """Write buffer bytes as a Git working-tree path with the given mode."""
-    file_path = Path(path)
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-
-    if mode == "120000":
-        target = b"".join(buffer_byte_chunks(buffer))
-        _replace_with_symlink_atomically(file_path, target)
-        return
-
-    requested_mode = None
-    if mode == "100755":
-        requested_mode = 0o755
-    elif mode == "100644":
-        requested_mode = 0o644
-    _write_regular_file_atomically(file_path, buffer, mode=requested_mode)
-
-
-def _write_regular_file_atomically(
-    file_path: Path,
-    buffer: BufferInput,
-    *,
-    mode: int | None = None,
-) -> None:
-    """Stream a regular file through a same-directory atomic replacement."""
-    try:
-        metadata = file_path.lstat()
-    except FileNotFoundError:
-        metadata = None
-    if metadata is not None and not stat.S_ISREG(metadata.st_mode):
-        metadata = None
-    replacement_mode = (
-        mode
-        if mode is not None
-        else stat.S_IMODE(metadata.st_mode) if metadata is not None else 0o644
-    )
-    file_descriptor, temporary_name = tempfile.mkstemp(
-        dir=file_path.parent,
-        prefix=".git-stage-batch-",
-        suffix=".tmp",
-    )
-    temporary_path = Path(temporary_name)
-    try:
-        with os.fdopen(file_descriptor, "wb") as file_handle:
-            for chunk in buffer_byte_chunks(buffer):
-                file_handle.write(chunk)
-            file_handle.flush()
-            if metadata is not None and hasattr(os, "fchown"):
-                try:
-                    os.fchown(file_handle.fileno(), metadata.st_uid, metadata.st_gid)
-                except PermissionError:
-                    replacement_mode &= 0o700
-            os.fchmod(file_handle.fileno(), replacement_mode)
-            os.fsync(file_handle.fileno())
-        os.replace(temporary_path, file_path)
-        _fsync_directory(file_path.parent)
-    finally:
-        temporary_path.unlink(missing_ok=True)
-
-
-def _replace_with_symlink_atomically(file_path: Path, target: bytes) -> None:
-    """Publish a symlink through a same-directory atomic replacement."""
-    temporary_path = None
-    for _attempt in range(100):
-        candidate = file_path.parent / f".git-stage-batch-{uuid.uuid4().hex}.tmp"
-        try:
-            os.symlink(target, os.fsencode(candidate))
-        except FileExistsError:
-            continue
-        temporary_path = candidate
-        break
-
-    if temporary_path is None:
-        raise FileExistsError(f"Unable to create temporary symlink for {file_path}")
-
-    try:
-        os.replace(temporary_path, file_path)
-        _fsync_directory(file_path.parent)
-    finally:
-        temporary_path.unlink(missing_ok=True)
-
-
-def _fsync_directory(directory: Path) -> None:
-    directory_descriptor = os.open(
-        directory,
-        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
-    )
-    try:
-        os.fsync(directory_descriptor)
-    finally:
-        os.close(directory_descriptor)

@@ -79,6 +79,26 @@ def test_repository_readers_stay_below_policy_layers():
     assert forbidden_import_violations(rules) == []
 
 
+def test_atomic_buffer_publication_stays_out_of_core():
+    """Core buffers describe bytes; filesystem publication belongs to utils."""
+    publication_symbols = {
+        "write_buffer_to_path",
+        "write_buffer_to_working_tree_path",
+    }
+    assert modules_defining(publication_symbols) == {
+        "git_stage_batch.utils.buffer_io": publication_symbols,
+    }
+
+    atomic_symbols = {
+        "fsync_directory",
+        "replace_symlink_atomically",
+        "write_chunks_atomically",
+    }
+    assert modules_defining(atomic_symbols) == {
+        "git_stage_batch.utils.atomic_write": atomic_symbols,
+    }
+
+
 def test_tui_shell_boundary_does_not_own_repository_locking():
     """Arbitrary shell children run outside repository action locks."""
     rules = (

@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import os
 
-from ...core.buffer import (
-    LineBuffer,
-    write_buffer_to_working_tree_path,
-)
+from ...core.buffer import LineBuffer
 from ...core.text_lifecycle import TextFileChangeType, normalized_text_change_type
 from ...staging.index_update import update_index_with_blob_buffer
+from ...utils.buffer_io import write_buffer_to_working_tree_path
 from ...utils.git_index import git_update_index
 from ...utils.git_repository import get_git_repository_root_path
 from ...utils.git_object_io import create_git_blob

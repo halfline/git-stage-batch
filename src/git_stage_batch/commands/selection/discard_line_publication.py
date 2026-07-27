@@ -7,10 +7,10 @@ from pathlib import Path
 from ...core.buffer import (
     BufferInput,
     buffer_matches,
-    write_buffer_to_working_tree_path,
 )
 from ...data.file_modes import detect_file_mode
 from ...data.index_entries import read_index_entry
+from ...utils.buffer_io import write_buffer_to_working_tree_path
 from ...utils.repository_buffers import read_git_object_buffer_or_none
 
 

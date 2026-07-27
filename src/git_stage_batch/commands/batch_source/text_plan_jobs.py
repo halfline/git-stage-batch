@@ -9,10 +9,10 @@ from typing import Literal
 
 from . import candidate_preview_counts as _candidate_preview_counts
 from . import text_plan_builders as _text_plan_builders
-from ...core.buffer import write_buffer_to_path
 from ...core.replacement import ReplacementPayload
 from ...data.file_target_identity import IndexIdentity, WorktreeIdentity
 from ...exceptions import AtomicUnitError, CommandError, MergeError
+from ...utils.buffer_io import write_buffer_to_path
 
 
 ApplyTextPlanOutcome = Literal[

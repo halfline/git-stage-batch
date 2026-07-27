@@ -10,8 +10,8 @@ from ...core.buffer import (
     buffer_matches,
     buffer_byte_count,
     buffer_preview,
-    write_buffer_to_path,
 )
+from ...utils.buffer_io import write_buffer_to_path
 from ...utils.repository_buffers import (
     read_git_object_buffer_or_none,
     read_working_tree_object,

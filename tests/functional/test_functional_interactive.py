@@ -4,12 +4,7 @@ from pathlib import Path
 
 import subprocess
 
-from .conftest import (
-    INTERACTIVE_TIMEOUT,
-    git_stage_batch,
-    get_staged_files,
-    run_interactive,
-)
+from .conftest import git_stage_batch, get_staged_files, run_interactive
 
 
 class TestInteractiveMode:
@@ -29,24 +24,7 @@ class TestInteractiveMode:
 
     def test_interactive_command_alias(self, repo_with_changes):
         """Test starting with 'interactive' command."""
-
-        test_dir = Path(__file__).parent
-        project_root = test_dir.parent.parent
-        venv_gsb = project_root / ".venv" / "bin" / "git-stage-batch"
-
-        if venv_gsb.exists():
-            cmd = [str(venv_gsb), "interactive"]
-        else:
-            cmd = ["uv", "run", "--", "git-stage-batch", "interactive"]
-
-        result = subprocess.run(
-            cmd,
-            input="q\n",
-            text=True,
-            capture_output=True,
-            timeout=INTERACTIVE_TIMEOUT,
-            check=False
-        )
+        result = run_interactive("q", cli_args=("interactive",))
         assert result.returncode == 0
 
     def test_interactive_with_no_changes(self, functional_repo):

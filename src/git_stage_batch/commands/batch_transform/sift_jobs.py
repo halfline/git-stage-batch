@@ -11,9 +11,10 @@ from typing import Literal
 from . import sift_results as _sift_results
 from ...batch.ownership.absence_claims import AbsenceClaim
 from ...batch.ownership.model import BatchOwnership
-from ...core.buffer import LineBuffer, write_buffer_to_path
+from ...core.buffer import LineBuffer
 from ...data.file_target_identity import WorktreeIdentity
 from ...exceptions import MergeError
+from ...utils.buffer_io import write_buffer_to_path
 from ...utils.file_job_workspace import FileJobWorkspace
 
 

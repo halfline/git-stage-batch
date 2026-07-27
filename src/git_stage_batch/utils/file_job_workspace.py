@@ -20,7 +20,8 @@ import stat
 import tempfile
 from typing import Any
 
-from ..core.buffer import BufferInput, LineBuffer, write_buffer_to_path
+from ..core.buffer import BufferInput, LineBuffer
+from .buffer_io import write_buffer_to_path
 
 
 _STANDARD_PATH_TYPES = frozenset({

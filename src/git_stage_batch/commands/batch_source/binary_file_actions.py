@@ -5,11 +5,9 @@ from __future__ import annotations
 from enum import Enum
 import os
 
-from ...core.buffer import (
-    LineBuffer,
-    write_buffer_to_working_tree_path,
-)
+from ...core.buffer import LineBuffer
 from ...data.file_modes import detect_file_mode_in_commit
+from ...utils.buffer_io import write_buffer_to_working_tree_path
 from ...utils.repository_buffers import read_git_object_buffer_or_none
 from ...utils.git_index import git_update_index
 from ...utils.git_repository import get_git_repository_root_path

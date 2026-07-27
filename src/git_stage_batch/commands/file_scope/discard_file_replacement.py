@@ -5,7 +5,7 @@ from __future__ import annotations
 from contextlib import ExitStack
 import sys
 
-from ...core.buffer import LineBuffer, write_buffer_to_working_tree_path
+from ...core.buffer import LineBuffer
 from ...core.replacement import ReplacementPayload, coerce_replacement_payload
 from ...data.file_review.state import clear_last_file_review_state_if_file_matches
 from ...data.selected_change.paths import get_selected_change_file_path
@@ -17,6 +17,7 @@ from ...data.session import snapshot_file_if_untracked
 from ...data.undo_checkpoints import undo_checkpoint
 from ...exceptions import exit_with_error
 from ...i18n import _
+from ...utils.buffer_io import write_buffer_to_working_tree_path
 from ...utils.git_repository import get_git_repository_root_path
 from ..selection import discard_file_selection as _discard_file_selection
 from ..selection.selected_hunk_refresh import recalculate_selected_hunk_for_command

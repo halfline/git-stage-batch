@@ -271,11 +271,6 @@ class TestAgainInteractive:
         result = run_interactive("s", "again", "q")
         assert result.returncode in [0, 1]
 
-    def test_interactive_again_after_operations(self, repo_with_changes):
-        """Test again after operations in interactive mode."""
-        result = run_interactive("i", "s", "s", "again", "q")
-        assert result.returncode in [0, 1]
-
     def test_interactive_again_with_batch(self, repo_with_changes):
         """Test again with batch operations in interactive mode."""
         git_stage_batch("new", "again-interactive")

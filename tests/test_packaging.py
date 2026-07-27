@@ -63,6 +63,13 @@ class TestWheelContents:
             'git_stage_batch/__init__.py',
             'git_stage_batch/i18n.py',
             'git_stage_batch/_version.py',
+            'git_stage_batch/data/undo/__init__.py',
+            'git_stage_batch/data/undo/checkpoints.py',
+            'git_stage_batch/data/undo/refs.py',
+            'git_stage_batch/data/undo/restore.py',
+            'git_stage_batch/data/undo/snapshots.py',
+            'git_stage_batch/data/undo/state.py',
+            'git_stage_batch/data/undo/worktree.py',
         ]
 
         for expected in expected_files:

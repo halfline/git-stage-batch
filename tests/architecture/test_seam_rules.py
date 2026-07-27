@@ -144,9 +144,25 @@ def test_undo_checkpoint_orchestration_delegates_state_policy():
     }
     assert consumers == {
         "git_stage_batch.data.undo.checkpoints",
-        "git_stage_batch.data.undo_checkpoints",
         "git_stage_batch.data.undo.state",
     }
+
+
+def test_undo_subpackage_hides_internal_policy_modules():
+    """Undo consumers use checkpoints or refs, not internal policy modules."""
+    implementation_prefix = "git_stage_batch.data.undo."
+    public_modules = {
+        "git_stage_batch.data.undo.checkpoints",
+        "git_stage_batch.data.undo.refs",
+    }
+    violations = [
+        f"{edge.source}:{edge.line} -> {edge.target}"
+        for edge in internal_module_import_edges()
+        if edge.target.startswith(implementation_prefix)
+        and not edge.source.startswith(implementation_prefix)
+        and edge.target not in public_modules
+    ]
+    assert violations == []
 
 
 def test_tui_shell_boundary_does_not_own_repository_locking():

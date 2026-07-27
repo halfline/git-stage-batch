@@ -2473,9 +2473,7 @@ def test_selected_change_path_query_stays_in_path_module():
 
 def test_undo_ref_bookkeeping_stays_in_undo_refs():
     """Undo stack ref helpers should stay out of undo snapshot storage."""
-    old_undo_path = SRC_ROOT / "data" / "undo.py"
-    old_undo_refs_path = SRC_ROOT / "data" / "undo_refs.py"
-    undo = __import__(
+    checkpoints = __import__(
         "git_stage_batch.data.undo.checkpoints",
         fromlist=["checkpoints"],
     )
@@ -2506,25 +2504,21 @@ def test_undo_ref_bookkeeping_stays_in_undo_refs():
     }
     session_path = SRC_ROOT / "data" / "session.py"
     session_imports_undo_refs = False
-    old_imports = []
+    old_module_paths = [
+        SRC_ROOT / "data" / file_name
+        for file_name in (
+            "undo.py",
+            "undo_checkpoints.py",
+            "undo_refs.py",
+            "undo_restore.py",
+            "undo_snapshots.py",
+            "undo_state.py",
+            "undo_worktree.py",
+        )
+    ]
 
     assert ref_names <= vars(undo_refs).keys()
-    assert old_undo_names.isdisjoint(vars(undo))
-
-    for path in SRC_ROOT.rglob("*.py"):
-        if (
-            path == SRC_ROOT / "data" / "undo_checkpoints.py"
-            or SRC_ROOT / "data" / "undo" in path.parents
-        ):
-            continue
-        for imported_module, node in _import_from_nodes(path):
-            if imported_module != "git_stage_batch.data.undo":
-                continue
-
-            relative_path = path.relative_to(REPO_ROOT)
-            old_imports.append(
-                f"{relative_path}:{node.lineno} imports {imported_module}"
-            )
+    assert old_undo_names.isdisjoint(vars(checkpoints))
 
     for imported_module, node in _import_from_nodes(session_path):
         imported_names = {alias.name for alias in node.names}
@@ -2534,21 +2528,19 @@ def test_undo_ref_bookkeeping_stays_in_undo_refs():
         ):
             session_imports_undo_refs = True
 
-    assert not old_undo_path.exists()
-    assert not old_undo_refs_path.exists()
-    assert old_imports == []
+    assert all(not path.exists() for path in old_module_paths)
     assert session_imports_undo_refs
 
 
 def test_undo_worktree_capture_stays_in_worktree_module():
     """Undo worktree capture should stay out of checkpoint orchestration."""
-    undo = __import__(
+    checkpoints = __import__(
         "git_stage_batch.data.undo.checkpoints",
         fromlist=["checkpoints"],
     )
     undo_worktree = __import__(
         "git_stage_batch.data.undo.worktree",
-        fromlist=["worktree"],
+        fromlist=["undo_worktree"],
     )
     worktree_names = {
         "changed_worktree_paths",
@@ -2574,20 +2566,20 @@ def test_undo_worktree_capture_stays_in_worktree_module():
     }
 
     assert worktree_names <= vars(undo_worktree).keys()
-    assert worktree_names.isdisjoint(vars(undo))
-    assert old_undo_names.isdisjoint(vars(undo))
+    assert worktree_names.isdisjoint(vars(checkpoints))
+    assert old_undo_names.isdisjoint(vars(checkpoints))
 
 
 def test_undo_snapshot_restore_stays_in_restore_module():
     """Undo snapshot restoration should stay out of checkpoint orchestration."""
-    undo_path = SRC_ROOT / "data" / "undo" / "checkpoints.py"
-    undo = __import__(
+    checkpoints_path = SRC_ROOT / "data" / "undo" / "checkpoints.py"
+    checkpoints = __import__(
         "git_stage_batch.data.undo.checkpoints",
         fromlist=["checkpoints"],
     )
     undo_restore = __import__(
         "git_stage_batch.data.undo.restore",
-        fromlist=["restore"],
+        fromlist=["undo_restore"],
     )
     restore_names = {
         "read_json_from_commit",
@@ -2610,12 +2602,12 @@ def test_undo_snapshot_restore_stays_in_restore_module():
     }
     undo_imports = {
         imported_module
-        for imported_module, _node in _import_from_nodes(undo_path)
+        for imported_module, _node in _import_from_nodes(checkpoints_path)
     }
 
     assert restore_names <= vars(undo_restore).keys()
-    assert restore_names.isdisjoint(vars(undo))
-    assert old_undo_names.isdisjoint(vars(undo))
+    assert restore_names.isdisjoint(vars(checkpoints))
+    assert old_undo_names.isdisjoint(vars(checkpoints))
     assert "git_stage_batch.core.buffer" not in undo_imports
     assert "git_stage_batch.utils.repository_buffers" not in undo_imports
     assert "git_stage_batch.utils.file_io" not in undo_imports

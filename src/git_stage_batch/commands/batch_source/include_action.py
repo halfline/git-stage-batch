@@ -33,7 +33,7 @@ from ...data.file_target_identity import (
 )
 from ...data.index_entries import read_index_entries
 from ...data.session import snapshot_file_if_untracked
-from ...data.undo_checkpoints import undo_checkpoint
+from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import AtomicUnitError, CommandError, exit_with_error
 from ...i18n import _
 from ...utils.file_job_workspace import FileJobWorkspace

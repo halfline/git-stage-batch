@@ -16,7 +16,7 @@ from ...batch.submodule_pointer import (
     is_batch_submodule_pointer,
 )
 from ...data.session import snapshot_file_if_untracked
-from ...data.undo_checkpoints import undo_checkpoint
+from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import (
     AtomicUnitError,
     BatchMetadataError,

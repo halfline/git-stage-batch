@@ -22,7 +22,7 @@ from ...data.progress import (
 )
 from ...data.selected_change.loading import load_selected_change
 from ...data.selected_change.paths import worktree_paths_for_selected_change
-from ...data.undo_checkpoints import undo_checkpoint
+from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import NoMoreHunks
 from ...i18n import _
 from ...utils.file_io import append_lines_to_file, read_text_file_contents

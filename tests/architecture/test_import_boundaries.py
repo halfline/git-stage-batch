@@ -2542,8 +2542,8 @@ def test_undo_worktree_capture_stays_in_worktree_module():
         fromlist=["undo_checkpoints"],
     )
     undo_worktree = __import__(
-        "git_stage_batch.data.undo_worktree",
-        fromlist=["undo_worktree"],
+        "git_stage_batch.data.undo.worktree",
+        fromlist=["worktree"],
     )
     worktree_names = {
         "changed_worktree_paths",

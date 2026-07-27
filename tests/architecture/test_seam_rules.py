@@ -138,6 +138,41 @@ def test_batch_state_publication_consumes_validated_metadata():
     assert "metadata_from_application_dict" not in schema_imports
 
 
+def test_batch_source_candidate_planning_has_one_owner():
+    """Show, count, and execution paths share candidate construction policy."""
+    planning_symbols = {
+        "plan_apply_candidate_previews",
+        "plan_include_candidate_previews",
+    }
+    planning_module = (
+        "git_stage_batch.commands.batch_source.candidate_planning"
+    )
+    assert modules_defining(planning_symbols) == {
+        planning_module: planning_symbols,
+    }
+
+    rules = (
+        ForbiddenImportRule(
+            "git_stage_batch.commands.batch_source",
+            "git_stage_batch.batch.operation_candidates",
+            "batch-source callers must use shared candidate planning",
+            allowed_sources=frozenset({planning_module}),
+        ),
+    )
+    assert forbidden_import_violations(rules) == []
+
+    consumers = {
+        edge.source
+        for edge in internal_module_import_edges()
+        if edge.target == planning_module
+    }
+    assert consumers == {
+        "git_stage_batch.commands.batch_source.candidate_materialization",
+        "git_stage_batch.commands.batch_source.candidate_preview_builders",
+        "git_stage_batch.commands.batch_source.candidate_preview_counts",
+    }
+
+
 def test_undo_checkpoint_orchestration_delegates_state_policy():
     """Stack orchestration must not absorb snapshot or restore policy."""
     snapshot_symbols = {

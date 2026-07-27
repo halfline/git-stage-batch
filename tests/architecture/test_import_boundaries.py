@@ -13171,6 +13171,12 @@ def test_operation_candidate_types_own_preview_records():
         SRC_ROOT
         / "commands"
         / "batch_source"
+        / "candidate_planning.py": {
+            "OperationCandidatePreview",
+        },
+        SRC_ROOT
+        / "commands"
+        / "batch_source"
         / "candidate_preview_builders.py": {
             "OperationCandidatePreview",
         },
@@ -14651,6 +14657,7 @@ def test_batch_source_candidate_materialization_owns_reviewed_candidate_loading(
         for path in preview_free_paths
     }
     materialization_imports_candidate_previews = False
+    materialization_imports_candidate_planning = False
     materialization_builder_imports = set()
 
     for path in preview_free_paths:
@@ -14677,6 +14684,11 @@ def test_batch_source_candidate_materialization_owns_reviewed_candidate_loading(
             and "candidate_previews" in imported_names
         ):
             materialization_imports_candidate_previews = True
+        if (
+            imported_module == "git_stage_batch.commands.batch_source"
+            and "candidate_planning" in imported_names
+        ):
+            materialization_imports_candidate_planning = True
         if imported_module == "git_stage_batch.batch.operation_candidates":
             materialization_builder_imports |= imported_names & builder_names
 
@@ -14695,7 +14707,8 @@ def test_batch_source_candidate_materialization_owns_reviewed_candidate_loading(
         include_from_path: set(),
     }
     assert materialization_imports_candidate_previews
-    assert materialization_builder_imports == builder_names
+    assert materialization_imports_candidate_planning
+    assert materialization_builder_imports == set()
 
     for path in preview_free_paths:
         command_text = path.read_text()

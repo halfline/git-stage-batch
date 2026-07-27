@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
-from typing import overload
+from typing import cast, overload
 
 from ..core.buffer import LineBuffer
 from ..core.text_lines import normalize_line_ending
@@ -646,7 +646,7 @@ class LineEditor(Sequence[_LineLike]):
         active_sources: set[LineEditor] = set()
         for owner in self._pieces.active_owners():
             if owner is not None and owner is not self:
-                active_sources.add(owner)
+                active_sources.add(cast(LineEditor, owner))
 
         for source in active_sources:
             self._borrow_editor(source)

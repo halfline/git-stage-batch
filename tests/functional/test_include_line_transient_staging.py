@@ -215,6 +215,45 @@ def test_include_line_transient_staging_before_repeated_anchor(
     assert (functional_repo / "file.txt").read_text() == changed
 
 
+def test_repeated_anchor_fallback_uses_reviewed_occurrence(functional_repo):
+    """Recorded coordinates distinguish the later repeated boundary."""
+    prefix = "import pytest\n\n\n"
+    first_fixture = (
+        "@pytest.fixture\n"
+        "def first_fixture():\n"
+        "    return None\n"
+        "\n"
+        "\n"
+    )
+    second_fixture = (
+        "@pytest.fixture\n"
+        "def second_fixture():\n"
+        "    return None\n"
+    )
+    changed = (
+        prefix
+        + first_fixture
+        + "selected\nunselected\n\n\n"
+        + second_fixture
+    )
+    _commit_file(
+        functional_repo,
+        "file.txt",
+        prefix + first_fixture + second_fixture,
+    )
+    (functional_repo / "file.txt").write_text(changed)
+
+    git_stage_batch("start")
+    git_stage_batch("show", "--file", "file.txt", "--page", "all")
+    result = git_stage_batch("include", "--line", "1", check=False)
+
+    assert result.returncode == 0, result.stderr
+    assert _index_content(functional_repo, "file.txt") == (
+        prefix + first_fixture + "selected\n" + second_fixture
+    )
+    assert (functional_repo / "file.txt").read_text() == changed
+
+
 def test_discard_to_batch_after_consecutive_line_includes(functional_repo):
     _prepare_ambiguous_middle_insertion(functional_repo)
 

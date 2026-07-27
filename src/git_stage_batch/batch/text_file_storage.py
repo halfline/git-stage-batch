@@ -245,7 +245,10 @@ def add_files_to_batch(batch_name: str, updates: list[BatchFileUpdate]) -> None:
                 )
             git_update_index_entries(index_updates, env=env)
 
-            write_file_backed_batch_metadata(batch_name, metadata)
+            metadata_model = write_file_backed_batch_metadata(
+                batch_name,
+                metadata,
+            )
             if batch_sources_changed:
                 save_session_batch_sources(batch_sources)
 
@@ -260,6 +263,7 @@ def add_files_to_batch(batch_name: str, updates: list[BatchFileUpdate]) -> None:
         from .state.references import sync_batch_state_refs
         sync_batch_state_refs(
             batch_name,
+            metadata_model,
             content_commit=commit_sha,
             source_buffers=batch_source_buffers,
         )

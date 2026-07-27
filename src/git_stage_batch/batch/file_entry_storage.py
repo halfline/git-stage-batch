@@ -18,8 +18,12 @@ def remove_file_from_batch(batch_name: str, file_path: str) -> None:
     """Remove a file from batch metadata and batch commit tree."""
     metadata = read_batch_metadata(batch_name)
     metadata.get("files", {}).pop(file_path, None)
-    write_file_backed_batch_metadata(batch_name, metadata)
-    _content_commits.remove_file_from_batch_commit(batch_name, file_path)
+    metadata_model = write_file_backed_batch_metadata(batch_name, metadata)
+    _content_commits.remove_file_from_batch_commit(
+        batch_name,
+        file_path,
+        metadata=metadata_model,
+    )
 
 
 def copy_file_from_batch_to_batch(
@@ -38,22 +42,42 @@ def copy_file_from_batch_to_batch(
         dest_metadata["files"] = {}
     dest_metadata["files"][file_path] = deepcopy(file_meta)
 
-    write_file_backed_batch_metadata(dest_batch, dest_metadata)
+    metadata_model = write_file_backed_batch_metadata(
+        dest_batch,
+        dest_metadata,
+    )
 
     source_commit = get_batch_commit_sha(source_batch)
     if not source_commit:
-        _content_commits.remove_file_from_batch_commit(dest_batch, file_path)
+        _content_commits.remove_file_from_batch_commit(
+            dest_batch,
+            file_path,
+            metadata=metadata_model,
+        )
         return
 
     if file_meta.get("file_type") == "gitlink":
         if file_meta.get("change_type") == "deleted":
-            _content_commits.remove_file_from_batch_commit(dest_batch, file_path)
+            _content_commits.remove_file_from_batch_commit(
+                dest_batch,
+                file_path,
+                metadata=metadata_model,
+            )
             return
         oid = file_meta.get("new_oid")
         if not oid:
-            _content_commits.remove_file_from_batch_commit(dest_batch, file_path)
+            _content_commits.remove_file_from_batch_commit(
+                dest_batch,
+                file_path,
+                metadata=metadata_model,
+            )
             return
-        _content_commits.update_batch_gitlink_commit(dest_batch, file_path, oid)
+        _content_commits.update_batch_gitlink_commit(
+            dest_batch,
+            file_path,
+            oid,
+            metadata=metadata_model,
+        )
         return
 
     source_buffer = read_git_object_buffer_or_none(f"{source_commit}:{file_path}")
@@ -66,9 +90,14 @@ def copy_file_from_batch_to_batch(
             file_path,
             blob_sha,
             file_mode,
+            metadata=metadata_model,
         )
     else:
-        _content_commits.remove_file_from_batch_commit(dest_batch, file_path)
+        _content_commits.remove_file_from_batch_commit(
+            dest_batch,
+            file_path,
+            metadata=metadata_model,
+        )
 
 
 def read_file_from_batch(batch_name: str, file_path: str) -> Optional[str]:

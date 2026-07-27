@@ -18,7 +18,6 @@ from .metadata_schema import (
     BatchMetadata,
     decode_batch_metadata,
     encode_batch_metadata,
-    metadata_from_application_dict,
 )
 from .batch_names import validate_batch_name
 from ...exceptions import BatchMetadataError
@@ -208,23 +207,23 @@ def get_authoritative_batch_commit_sha(batch_name: str) -> str | None:
 
 def sync_batch_state_refs(
     batch_name: str,
+    metadata: BatchMetadata,
     *,
     content_commit: str | None = None,
     source_buffers: dict[str, LineBuffer] | None = None,
 ) -> None:
-    """Publish batch metadata and source snapshots into authoritative Git refs."""
+    """Publish validated metadata and source snapshots into authoritative refs."""
     validate_batch_name(batch_name)
+    if metadata.batch != batch_name:
+        raise ValueError(
+            f"Cannot publish metadata for batch '{metadata.batch}' as '{batch_name}'"
+        )
 
     existing_content_commit = get_authoritative_batch_commit_sha(batch_name)
     content_commit = content_commit or existing_content_commit or _legacy_batch_commit_sha(batch_name)
     if not content_commit:
         delete_batch_state_refs(batch_name)
         return
-
-    file_backed_model = read_file_backed_batch_metadata_model(batch_name)
-    if file_backed_model is None:
-        raise ValueError(f"Batch '{batch_name}' has no file-backed metadata to publish")
-    metadata = file_backed_model.to_application_dict()
 
     existing_state_ref = run_git_command(
         ["rev-parse", "--verify", get_batch_state_ref_name(batch_name)],
@@ -242,25 +241,23 @@ def sync_batch_state_refs(
             requires_index_lock=False,
         )
         existing_state_model = _decode_state_metadata(existing_state.stdout, batch_name)
-        if file_backed_model.revision != existing_state_model.revision:
+        if metadata.revision != existing_state_model.revision:
             remove_file_backed_batch_metadata(batch_name)
             raise BatchMetadataError(
                 f"Batch '{batch_name}' changed after its metadata was read. "
                 "Retry the operation against the latest batch state."
             )
 
-    state_files = {}
-
     source_buffers = source_buffers or {}
     buffer_updates: list[_StateBufferUpdate] = []
     managed_buffers: list[LineBuffer] = []
+    published_source_paths: set[str] = set()
 
     try:
         with temp_git_index() as env:
-            for file_path, file_meta in metadata.get("files", {}).items():
-                state_file_meta = dict(file_meta)
-
-                source_commit = file_meta.get("batch_source_commit")
+            for file_metadata in metadata.files:
+                file_path = file_metadata.path
+                source_commit = file_metadata.batch_source_commit
                 if source_commit:
                     source_buffer = source_buffers.get(file_path)
                     if source_buffer is None:
@@ -276,19 +273,15 @@ def sync_batch_state_refs(
                             _StateBufferUpdate(
                                 path=source_path,
                                 data=source_buffer,
-                                mode=file_meta.get("mode", "100644"),
+                                mode=file_metadata.mode,
                             )
                         )
-                        state_file_meta["source_path"] = source_path
+                        published_source_paths.add(file_path)
 
-                state_files[file_path] = state_file_meta
-
-            state_model = metadata_from_application_dict(
-                batch_name,
-                {**metadata, "files": state_files},
+            state_model = metadata.for_publication(
                 content_ref=get_batch_content_ref_name(batch_name),
                 content_commit=content_commit,
-                new_revision=True,
+                source_paths=published_source_paths,
             )
             state_json = encode_batch_metadata(state_model).encode("utf-8")
             buffer_updates.append(_StateBufferUpdate(path="batch.json", data=state_json))

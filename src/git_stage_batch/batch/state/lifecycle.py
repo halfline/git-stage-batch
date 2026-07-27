@@ -43,7 +43,7 @@ def create_batch(name: str, note: str = "", baseline_commit: str | None = None) 
         "baseline": baseline_commit,
         "files": {}
     }
-    write_file_backed_batch_metadata(name, metadata)
+    metadata_model = write_file_backed_batch_metadata(name, metadata)
 
     tree_result = run_git_command(["rev-parse", f"{baseline_commit}^{{tree}}"], requires_index_lock=False)
     tree_sha = tree_result.stdout.strip()
@@ -51,7 +51,7 @@ def create_batch(name: str, note: str = "", baseline_commit: str | None = None) 
     commit_sha = git_commit_tree(tree_sha, parents=parents, message=f"Batch: {name}")
 
     from .references import sync_batch_state_refs
-    sync_batch_state_refs(name, content_commit=commit_sha)
+    sync_batch_state_refs(name, metadata_model, content_commit=commit_sha)
 
 
 def delete_batch(name: str) -> None:
@@ -81,7 +81,7 @@ def update_batch_note(name: str, note: str) -> None:
 
     # Update note
     metadata["note"] = note
-    write_file_backed_batch_metadata(name, metadata)
+    metadata_model = write_file_backed_batch_metadata(name, metadata)
 
     from .references import sync_batch_state_refs
-    sync_batch_state_refs(name)
+    sync_batch_state_refs(name, metadata_model)

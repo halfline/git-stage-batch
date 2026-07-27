@@ -124,5 +124,12 @@ def restore_batch_refs() -> None:
             )
             remove_file_backed_batch_metadata(batch_name)
         else:
-            write_file_backed_batch_metadata(batch_name, full_metadata)
-            sync_batch_state_refs(batch_name, content_commit=commit_sha)
+            metadata_model = write_file_backed_batch_metadata(
+                batch_name,
+                full_metadata,
+            )
+            sync_batch_state_refs(
+                batch_name,
+                metadata_model,
+                content_commit=commit_sha,
+            )

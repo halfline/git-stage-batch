@@ -39,11 +39,12 @@ def add_file_mode_to_batch(batch_name: str, change: FileModeChange) -> None:
             "presence_claims": [],
             "deletions": [],
         }
-        write_file_backed_batch_metadata(batch_name, metadata)
+        metadata_model = write_file_backed_batch_metadata(batch_name, metadata)
         _content_commits.update_batch_commit(
             batch_name,
             file_path,
             blob_sha,
             change.new_mode,
+            metadata=metadata_model,
             source_buffers={file_path: buffer},
         )

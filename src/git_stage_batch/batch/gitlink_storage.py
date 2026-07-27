@@ -33,10 +33,14 @@ def add_gitlink_to_batch(
         "new_oid": gitlink_change.new_oid,
     }
 
-    write_file_backed_batch_metadata(batch_name, metadata)
+    metadata_model = write_file_backed_batch_metadata(batch_name, metadata)
 
     if gitlink_change.is_deleted_file():
-        _content_commits.remove_file_from_batch_commit(batch_name, file_path)
+        _content_commits.remove_file_from_batch_commit(
+            batch_name,
+            file_path,
+            metadata=metadata_model,
+        )
         return
 
     if gitlink_change.new_oid is None:
@@ -48,4 +52,5 @@ def add_gitlink_to_batch(
         batch_name,
         file_path,
         gitlink_change.new_oid,
+        metadata=metadata_model,
     )

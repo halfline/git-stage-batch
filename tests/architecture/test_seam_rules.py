@@ -120,6 +120,24 @@ def test_atomic_buffer_publication_stays_out_of_core():
     }
 
 
+def test_batch_state_publication_consumes_validated_metadata():
+    """State publication accepts the schema model without thawing it first."""
+    publication_symbols = {"sync_batch_state_refs"}
+    assert modules_defining(publication_symbols) == {
+        "git_stage_batch.batch.state.references": publication_symbols,
+    }
+
+    schema_imports = {
+        name
+        for edge in internal_import_edges()
+        if edge.source == "git_stage_batch.batch.state.references"
+        and edge.target == "git_stage_batch.batch.state.metadata_schema"
+        for name in edge.names
+    }
+    assert "BatchMetadata" in schema_imports
+    assert "metadata_from_application_dict" not in schema_imports
+
+
 def test_undo_checkpoint_orchestration_delegates_state_policy():
     """Stack orchestration must not absorb snapshot or restore policy."""
     snapshot_symbols = {

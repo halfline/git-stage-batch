@@ -252,8 +252,8 @@ def reset_all_claims_from_batch(batch_name: str) -> None:
     """Remove all claims from a batch."""
     metadata = read_batch_metadata(batch_name)
     metadata["files"] = {}
-    write_file_backed_batch_metadata(batch_name, metadata)
-    sync_batch_state_refs(batch_name)
+    metadata_model = write_file_backed_batch_metadata(batch_name, metadata)
+    sync_batch_state_refs(batch_name, metadata_model)
 
 
 def _ensure_destination_batch(

@@ -32,10 +32,8 @@ from ...exceptions import exit_with_error
 from ...i18n import _
 from ...output.file_review import print_file_review
 from ...output.file_review_model_builder import build_file_review_model
-from ...output.file_review_state_builder import (
-    make_file_review_state,
-    resolve_default_review_pages,
-)
+from ...data.file_review.state_builder import resolve_default_review_pages
+from ...output.file_review_state_builder import make_file_review_state
 from ...output.hunk import print_line_level_changes
 from ...output.patch import (
     print_binary_file_change,

@@ -1,12 +1,12 @@
-"""Passive records for file-review output models."""
+"""Passive records for page-aware file review."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..core.actionable_changes import ActionableSelectionReason
-from ..core.models import HunkHeader, LineEntry, LineLevelChange, ReviewActionGroup
-from ..data.file_review.records import ReviewSource
+from ...core.actionable_changes import ActionableSelectionReason
+from ...core.models import HunkHeader, LineEntry, LineLevelChange, ReviewActionGroup
+from .records import ReviewSource
 
 
 @dataclass(frozen=True)

@@ -1,29 +1,29 @@
-"""Persisted state assembly for file review output."""
+"""Persisted state assembly for page-aware file review."""
 
 from __future__ import annotations
 
-from ..core.actionable_changes import ActionableSelectionReason
-from ..core.models import LineLevelChange, ReviewActionGroup
-from ..data.file_review.fingerprints import (
+from ...core.actionable_changes import ActionableSelectionReason
+from ...core.models import LineLevelChange, ReviewActionGroup
+from .fingerprints import (
     compute_current_file_review_diff_fingerprint,
     fingerprint_selected_file_view,
 )
-from ..data.file_review.records import (
+from .records import (
     FileReviewAction,
     FileReviewSelectionState,
     FileReviewState,
     ReviewSource,
 )
-from ..data.file_review.pages import normalize_page_spec, parse_page_selection
-from ..data.selected_change.store import SelectedChangeKind
-from .file_review_action_selections import (
+from .pages import normalize_page_spec, parse_page_selection
+from ..selected_change.store import SelectedChangeKind
+from .action_selections import (
     change_index_containing_review_display_ids,
     change_is_live_splittable,
     display_ids_for_change_pages,
     pages_containing_review_display_ids,
     selection_ids_for_display_ids,
 )
-from .file_review_model import FileReviewModel, ReviewChange
+from .model import FileReviewModel, ReviewChange
 
 
 def _coerce_actionable_reason(reason: str) -> ActionableSelectionReason:

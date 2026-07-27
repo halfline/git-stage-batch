@@ -3155,7 +3155,7 @@ def test_file_review_fingerprints_stay_out_of_state_module():
             "compute_current_file_review_diff_fingerprint",
         },
         SRC_ROOT / "data" / "file_review" / "freshness.py": public_names,
-        SRC_ROOT / "output" / "file_review_state_builder.py": public_names,
+        SRC_ROOT / "data" / "file_review" / "state_builder.py": public_names,
     }
     violations = []
 
@@ -3375,10 +3375,10 @@ def test_file_review_records_stay_out_of_state_module():
         SRC_ROOT / "output" / "file_review_footer.py": {
             "ReviewSource",
         },
-        SRC_ROOT / "output" / "file_review_action_selections.py": {
+        SRC_ROOT / "data" / "file_review" / "action_selections.py": {
             "ReviewSource",
         },
-        SRC_ROOT / "output" / "file_review_state_builder.py": {
+        SRC_ROOT / "data" / "file_review" / "state_builder.py": {
             "FileReviewAction",
             "FileReviewSelectionState",
             "FileReviewState",
@@ -3493,7 +3493,9 @@ def test_file_review_output_does_not_import_hunk_navigation():
 
 def test_file_review_state_builder_uses_page_selection_module():
     """File-review state assembly should not own page-spec parsing."""
-    review_state_builder_path = SRC_ROOT / "output" / "file_review_state_builder.py"
+    review_state_builder_path = (
+        SRC_ROOT / "data" / "file_review" / "state_builder.py"
+    )
     review_state_builder_text = review_state_builder_path.read_text()
     imported_modules = {
         imported_module
@@ -3651,7 +3653,7 @@ def test_file_review_changes_own_review_change_assembly():
     builder_model_imports = {
         alias.name
         for imported_module, node in _import_from_nodes(review_model_builder_path)
-        if imported_module == "git_stage_batch.output.file_review_model"
+        if imported_module == "git_stage_batch.data.file_review.model"
         for alias in node.names
     }
     file_review_changes = __import__(
@@ -3683,13 +3685,13 @@ def test_file_review_changes_own_review_change_assembly():
     assert "ReviewChange" in changes_text
     assert "format_line_ids" in changes_text
     assert "flush_segment" not in changes_text
-    assert "file_review_model import ReviewChange" not in segments_text
+    assert "file_review.model import ReviewChange" not in segments_text
     assert "ReviewChange(" not in segments_text
     assert "flush_segment" in segments_text
 
 
-def test_file_review_output_uses_model_module():
-    """File-review output should not own passive model records."""
+def test_file_review_output_uses_data_model():
+    """File-review output should consume passive review model records."""
     review_output_path = SRC_ROOT / "output" / "file_review.py"
     review_output_text = review_output_path.read_text()
     imported_modules = {
@@ -3697,8 +3699,8 @@ def test_file_review_output_uses_model_module():
         for imported_module, _node in _import_from_nodes(review_output_path)
     }
     file_review_model = __import__(
-        "git_stage_batch.output.file_review_model",
-        fromlist=["file_review_model"],
+        "git_stage_batch.data.file_review.model",
+        fromlist=["model"],
     )
     model_names = {
         "FileReviewModel",
@@ -3708,15 +3710,15 @@ def test_file_review_output_uses_model_module():
         "ReviewChangeFragment",
     }
 
-    assert "git_stage_batch.output.file_review_model" in imported_modules
+    assert "git_stage_batch.data.file_review.model" in imported_modules
     assert model_names <= vars(file_review_model).keys()
     for model_name in model_names:
         assert f"class {model_name}" not in review_output_text
     assert "from dataclasses import dataclass" not in review_output_text
 
 
-def test_file_review_output_uses_display_id_module():
-    """File-review output should not own row display-ID mapping."""
+def test_file_review_output_uses_data_display_id_module():
+    """File-review output should consume row display-ID mapping."""
     review_output_path = SRC_ROOT / "output" / "file_review.py"
     review_output_text = review_output_path.read_text()
     imported_modules = {
@@ -3724,11 +3726,11 @@ def test_file_review_output_uses_display_id_module():
         for imported_module, _node in _import_from_nodes(review_output_path)
     }
     file_review_display_ids = __import__(
-        "git_stage_batch.output.file_review_display_ids",
-        fromlist=["file_review_display_ids"],
+        "git_stage_batch.data.file_review.display_ids",
+        fromlist=["display_ids"],
     )
 
-    assert "git_stage_batch.output.file_review_display_ids" in imported_modules
+    assert "git_stage_batch.data.file_review.display_ids" in imported_modules
     assert "display_ids_for_rows" in vars(file_review_display_ids)
     assert "def display_ids_for_rows" not in review_output_text
     assert "def _display_ids_for_rows" not in review_output_text
@@ -3925,7 +3927,9 @@ def test_file_review_callers_use_model_builder():
 def test_file_review_output_uses_action_selection_module():
     """File-review output should not own page action selection mapping."""
     review_output_path = SRC_ROOT / "output" / "file_review.py"
-    review_state_builder_path = SRC_ROOT / "output" / "file_review_state_builder.py"
+    review_state_builder_path = (
+        SRC_ROOT / "data" / "file_review" / "state_builder.py"
+    )
     review_output_text = review_output_path.read_text()
     imported_modules = {
         imported_module
@@ -3936,8 +3940,8 @@ def test_file_review_output_uses_action_selection_module():
         for imported_module, _node in _import_from_nodes(review_state_builder_path)
     }
     file_review_action_selections = __import__(
-        "git_stage_batch.output.file_review_action_selections",
-        fromlist=["file_review_action_selections"],
+        "git_stage_batch.data.file_review.action_selections",
+        fromlist=["action_selections"],
     )
     public_names = {
         "change_index_containing_review_display_ids",
@@ -3948,8 +3952,11 @@ def test_file_review_output_uses_action_selection_module():
         "shown_line_action_selections",
     }
 
-    assert "git_stage_batch.output.file_review_action_selections" in imported_modules
-    assert "git_stage_batch.output.file_review_action_selections" in state_builder_imports
+    assert "git_stage_batch.data.file_review.action_selections" in imported_modules
+    assert (
+        "git_stage_batch.data.file_review.action_selections"
+        in state_builder_imports
+    )
     assert public_names <= vars(file_review_action_selections).keys()
     assert "def _shown_line_action_selections" not in review_output_text
     assert "def _display_ids_for_change_pages" not in review_output_text
@@ -3957,8 +3964,8 @@ def test_file_review_output_uses_action_selection_module():
     assert "def _selection_ids_for_display_ids" not in review_output_text
 
 
-def test_show_file_display_uses_file_review_state_builder():
-    """Show file display should not import review state assembly from rendering."""
+def test_show_file_display_uses_data_file_review_state_builder():
+    """Show file display should import review state assembly from data."""
     review_output_path = SRC_ROOT / "output" / "file_review.py"
     review_output_text = review_output_path.read_text()
     show_paths = (
@@ -3966,8 +3973,8 @@ def test_show_file_display_uses_file_review_state_builder():
         SRC_ROOT / "commands" / "batch_source" / "file_display_action.py",
     )
     file_review_state_builder = __import__(
-        "git_stage_batch.output.file_review_state_builder",
-        fromlist=["file_review_state_builder"],
+        "git_stage_batch.data.file_review.state_builder",
+        fromlist=["state_builder"],
     )
     public_names = {
         "make_file_review_state",
@@ -3981,7 +3988,7 @@ def test_show_file_display_uses_file_review_state_builder():
         old_renderer_imports[str(path.relative_to(REPO_ROOT))] = set()
         for imported_module, node in _import_from_nodes(path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.output.file_review_state_builder":
+            if imported_module == "git_stage_batch.data.file_review.state_builder":
                 direct_state_builder_imports[str(path.relative_to(REPO_ROOT))] |= (
                     imported_names & public_names
                 )

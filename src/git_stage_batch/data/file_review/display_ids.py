@@ -1,8 +1,8 @@
-"""Display ID helpers for file review output."""
+"""Display ID helpers for file review models."""
 
 from __future__ import annotations
 
-from ..core.models import LineEntry
+from ...core.models import LineEntry
 
 
 def display_ids_for_rows(

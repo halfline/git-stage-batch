@@ -1,12 +1,12 @@
-"""Actionable selection helpers for file review output."""
+"""Actionable selection queries over file review models."""
 
 from __future__ import annotations
 
-from ..core.actionable_changes import ActionableSelection, ActionableSelectionReason
-from ..core.models import LineEntry
-from ..data.file_review.records import ReviewSource
-from .file_review_display_ids import display_ids_for_rows
-from .file_review_model import FileReviewModel, ReviewChange
+from ...core.actionable_changes import ActionableSelection, ActionableSelectionReason
+from ...core.models import LineEntry
+from .display_ids import display_ids_for_rows
+from .model import FileReviewModel, ReviewChange
+from .records import ReviewSource
 
 
 def change_is_live_splittable(change: ReviewChange) -> bool:

@@ -80,6 +80,26 @@ def test_repository_readers_stay_below_policy_layers():
     assert forbidden_import_violations(rules) == []
 
 
+def test_file_review_state_policy_stays_below_output():
+    """Persisted review policy must not depend on terminal presentation."""
+    policy_symbols = {
+        "make_file_review_state",
+        "resolve_default_review_pages",
+    }
+    assert modules_defining(policy_symbols) == {
+        "git_stage_batch.data.file_review.state_builder": policy_symbols,
+    }
+
+    rules = (
+        ForbiddenImportRule(
+            "git_stage_batch.data.file_review",
+            "git_stage_batch.output",
+            "review data and policy cannot depend on terminal presentation",
+        ),
+    )
+    assert forbidden_import_violations(rules) == []
+
+
 def test_atomic_buffer_publication_stays_out_of_core():
     """Core buffers describe bytes; filesystem publication belongs to utils."""
     publication_symbols = {

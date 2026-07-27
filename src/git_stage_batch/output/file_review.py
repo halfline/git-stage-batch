@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+from ..data.file_review.action_selections import shown_line_action_selections
+from ..data.file_review.display_ids import display_ids_for_rows
+from ..data.file_review.model import FileReviewModel
 from ..data.file_review.records import ReviewSource
 from ..i18n import _
 from .colors import Colors
-from .file_review_action_selections import shown_line_action_selections
-from .file_review_display_ids import display_ids_for_rows
 from .file_review_footer import print_file_review_footer
-from .file_review_model import FileReviewModel
 from .file_review_rows import (
     maximum_display_id_digit_count,
     print_file_review_rows,

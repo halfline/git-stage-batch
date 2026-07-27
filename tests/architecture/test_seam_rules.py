@@ -6,6 +6,7 @@ from .import_boundary_helpers import (
     ForbiddenImportRule,
     forbidden_import_violations,
     internal_import_edges,
+    internal_module_import_edges,
     modules_defining,
 )
 
@@ -97,6 +98,36 @@ def test_atomic_buffer_publication_stays_out_of_core():
     assert modules_defining(atomic_symbols) == {
         "git_stage_batch.utils.atomic_write": atomic_symbols,
     }
+
+
+def test_undo_checkpoint_orchestration_delegates_state_policy():
+    """Stack orchestration must not absorb snapshot policy."""
+    snapshot_symbols = {
+        "filesystem_directory_state",
+        "push_redo_node",
+        "snapshot_current_state",
+        "write_snapshot_commit",
+    }
+    snapshot_module = "git_stage_batch.data.undo.snapshots"
+    assert modules_defining(snapshot_symbols) == {
+        snapshot_module: snapshot_symbols,
+    }
+
+    rules = (
+        ForbiddenImportRule(
+            snapshot_module,
+            "git_stage_batch.data.undo_checkpoints",
+            "snapshot storage must stay below stack orchestration",
+        ),
+    )
+    assert forbidden_import_violations(rules) == []
+
+    consumers = {
+        edge.source
+        for edge in internal_module_import_edges()
+        if edge.target == snapshot_module
+    }
+    assert consumers == {"git_stage_batch.data.undo_checkpoints"}
 
 
 def test_tui_shell_boundary_does_not_own_repository_locking():

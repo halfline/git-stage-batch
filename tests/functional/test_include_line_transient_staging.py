@@ -325,6 +325,32 @@ def test_repeated_anchor_fallback_preserves_unrelated_staged_content(
     assert file_path.read_text() == staged_prefix + changed
 
 
+def test_repeated_anchor_fallback_preserves_index_line_endings(functional_repo):
+    """Exact reviewed coordinates retain the index's normalized line endings."""
+    changed, expected_prefix, expected_suffix = (
+        _prepare_repeated_anchor_insertion(functional_repo)
+    )
+    subprocess.run(
+        ["git", "config", "core.autocrlf", "true"],
+        check=True,
+        cwd=functional_repo,
+        capture_output=True,
+    )
+    file_path = functional_repo / "file.txt"
+    changed_crlf = changed.replace("\n", "\r\n").encode()
+    file_path.write_bytes(changed_crlf)
+
+    git_stage_batch("start")
+    git_stage_batch("show", "--file", "file.txt", "--page", "all")
+    result = git_stage_batch("include", "--line", "1", check=False)
+
+    assert result.returncode == 0, result.stderr
+    assert _index_bytes(functional_repo, "file.txt") == (
+        expected_prefix + "selected\n" + expected_suffix
+    ).encode()
+    assert file_path.read_bytes() == changed_crlf
+
+
 def test_discard_to_batch_after_consecutive_line_includes(functional_repo):
     _prepare_ambiguous_middle_insertion(functional_repo)
 

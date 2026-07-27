@@ -6,6 +6,7 @@ import stat
 
 import pytest
 
+import git_stage_batch.utils.atomic_write as atomic_write
 import git_stage_batch.utils.file_io as file_io
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.file_io import read_file_paths_file
@@ -120,7 +121,7 @@ class TestWriteTextFileContents:
             file_io.write_text_file_contents(test_file, "New content")
 
         assert test_file.read_text(encoding="utf-8") == "Old content"
-        assert list(tmp_path.glob(".test.txt.*.tmp")) == []
+        assert list(tmp_path.glob(".git-stage-batch-*.tmp")) == []
 
     @pytest.mark.parametrize("mode", [0o600, 0o644, 0o660, 0o755])
     def test_project_write_preserves_existing_mode(self, tmp_path, mode):
@@ -213,7 +214,7 @@ class TestWriteTextFileContents:
             write_text_file_contents(test_file, "new")
 
         assert test_file.read_text(encoding="utf-8") == "old"
-        assert list(tmp_path.glob(".test.txt.*.tmp")) == []
+        assert list(tmp_path.glob(".git-stage-batch-*.tmp")) == []
 
     def test_unwritable_directory_failure_preserves_existing_contents(
         self,
@@ -226,7 +227,7 @@ class TestWriteTextFileContents:
         def refuse_temp_file(**_kwargs):
             raise PermissionError("directory is read-only")
 
-        monkeypatch.setattr(file_io.tempfile, "mkstemp", refuse_temp_file)
+        monkeypatch.setattr(atomic_write.tempfile, "mkstemp", refuse_temp_file)
 
         with pytest.raises(PermissionError, match="read-only"):
             write_text_file_contents(test_file, "new")

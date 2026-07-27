@@ -79,6 +79,18 @@ def test_repository_readers_stay_below_policy_layers():
     assert forbidden_import_violations(rules) == []
 
 
+def test_atomic_buffer_publication_stays_out_of_core():
+    """Atomic filesystem publication belongs to utils."""
+    atomic_symbols = {
+        "fsync_directory",
+        "replace_symlink_atomically",
+        "write_chunks_atomically",
+    }
+    assert modules_defining(atomic_symbols) == {
+        "git_stage_batch.utils.atomic_write": atomic_symbols,
+    }
+
+
 def test_tui_shell_boundary_does_not_own_repository_locking():
     """Arbitrary shell children run outside repository action locks."""
     rules = (

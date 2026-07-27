@@ -111,20 +111,8 @@ def git_stage_batch(*args, input_text=None, check=True):
         subprocess.CompletedProcess
     """
 
-    # Find the project root (where pyproject.toml is)
-    test_dir = Path(__file__).parent
-    project_root = test_dir.parent.parent
-    venv_gsb = project_root / ".venv" / "bin" / "git-stage-batch"
-
-    # Use the venv git-stage-batch directly to ensure we get the in-tree version
-    if venv_gsb.exists():
-        cmd = [str(venv_gsb)] + list(args)
-    else:
-        # Fallback to uv run if venv not found
-        cmd = ["uv", "run", "--", "git-stage-batch"] + list(args)
-
     result = subprocess.run(
-        cmd,
+        _git_stage_batch_command(*args),
         input=input_text,
         text=True,
         encoding="utf-8",

@@ -2476,8 +2476,8 @@ def test_undo_ref_bookkeeping_stays_in_undo_refs():
     old_undo_path = SRC_ROOT / "data" / "undo.py"
     old_undo_refs_path = SRC_ROOT / "data" / "undo_refs.py"
     undo = __import__(
-        "git_stage_batch.data.undo_checkpoints",
-        fromlist=["undo_checkpoints"],
+        "git_stage_batch.data.undo.checkpoints",
+        fromlist=["checkpoints"],
     )
     undo_refs = __import__(
         "git_stage_batch.data.undo.refs",
@@ -2512,6 +2512,11 @@ def test_undo_ref_bookkeeping_stays_in_undo_refs():
     assert old_undo_names.isdisjoint(vars(undo))
 
     for path in SRC_ROOT.rglob("*.py"):
+        if (
+            path == SRC_ROOT / "data" / "undo_checkpoints.py"
+            or SRC_ROOT / "data" / "undo" in path.parents
+        ):
+            continue
         for imported_module, node in _import_from_nodes(path):
             if imported_module != "git_stage_batch.data.undo":
                 continue
@@ -2538,8 +2543,8 @@ def test_undo_ref_bookkeeping_stays_in_undo_refs():
 def test_undo_worktree_capture_stays_in_worktree_module():
     """Undo worktree capture should stay out of checkpoint orchestration."""
     undo = __import__(
-        "git_stage_batch.data.undo_checkpoints",
-        fromlist=["undo_checkpoints"],
+        "git_stage_batch.data.undo.checkpoints",
+        fromlist=["checkpoints"],
     )
     undo_worktree = __import__(
         "git_stage_batch.data.undo.worktree",
@@ -2575,10 +2580,10 @@ def test_undo_worktree_capture_stays_in_worktree_module():
 
 def test_undo_snapshot_restore_stays_in_restore_module():
     """Undo snapshot restoration should stay out of checkpoint orchestration."""
-    undo_path = SRC_ROOT / "data" / "undo_checkpoints.py"
+    undo_path = SRC_ROOT / "data" / "undo" / "checkpoints.py"
     undo = __import__(
-        "git_stage_batch.data.undo_checkpoints",
-        fromlist=["undo_checkpoints"],
+        "git_stage_batch.data.undo.checkpoints",
+        fromlist=["checkpoints"],
     )
     undo_restore = __import__(
         "git_stage_batch.data.undo.restore",
@@ -4973,7 +4978,7 @@ def test_argument_parser_delegates_multi_file_action_flow():
             helper_file_scope_imported_names |= {alias.name for alias in node.names}
 
     assert "git_stage_batch.data.hunk_tracking" not in parser_imports
-    assert "git_stage_batch.data.undo_checkpoints" not in parser_imports
+    assert "git_stage_batch.data.undo.checkpoints" not in parser_imports
     assert (
         "git_stage_batch.commands.file_scope.multi_file_actions"
         not in parser_imports
@@ -4983,7 +4988,7 @@ def test_argument_parser_delegates_multi_file_action_flow():
         for imports in dispatch_imports.values()
     )
     assert "git_stage_batch.data.hunk_tracking" in helper_imports
-    assert "git_stage_batch.data.undo_checkpoints" in helper_imports
+    assert "git_stage_batch.data.undo.checkpoints" in helper_imports
     assert "git_stage_batch.commands.include" not in helper_imports
     assert "git_stage_batch.commands.skip" not in helper_imports
     assert {"discard_file", "include_file", "skip_file"} <= (
@@ -5773,7 +5778,7 @@ def test_include_to_batch_action_owns_resolved_dispatch():
     assert "load_selected_change" in action_imports[
         "git_stage_batch.data.selected_change.loading"
     ]
-    assert "undo_checkpoint" in action_imports["git_stage_batch.data.undo_checkpoints"]
+    assert "undo_checkpoint" in action_imports["git_stage_batch.data.undo.checkpoints"]
     assert {
         "BinaryFileChange",
         "GitlinkChange",
@@ -5825,7 +5830,7 @@ def test_include_delegates_include_to_batch_action_routing():
         "git_stage_batch.data.selected_change.loading": {
             "load_selected_change",
         },
-        "git_stage_batch.data.undo_checkpoints": {
+        "git_stage_batch.data.undo.checkpoints": {
             "undo_checkpoint",
         },
         "git_stage_batch.exceptions": {
@@ -5878,7 +5883,7 @@ def test_discard_to_batch_action_owns_resolved_dispatch():
     assert "load_selected_change" in action_imports[
         "git_stage_batch.data.selected_change.loading"
     ]
-    assert "undo_checkpoint" in action_imports["git_stage_batch.data.undo_checkpoints"]
+    assert "undo_checkpoint" in action_imports["git_stage_batch.data.undo.checkpoints"]
     assert {
         "BinaryFileChange",
         "RenameChange",
@@ -5928,7 +5933,7 @@ def test_discard_delegates_discard_to_batch_action_routing():
         "git_stage_batch.data.selected_change.loading": {
             "load_selected_change",
         },
-        "git_stage_batch.data.undo_checkpoints": {
+        "git_stage_batch.data.undo.checkpoints": {
             "undo_checkpoint",
         },
         "git_stage_batch.exceptions": {
@@ -15302,7 +15307,7 @@ def test_batch_source_apply_action_owns_apply_execution():
         ("git_stage_batch.batch.submodule_pointer", "apply_submodule_pointer_from_batch"),
         ("git_stage_batch.data.file_target_identity", "capture_worktree_identity"),
         ("git_stage_batch.data.session", "snapshot_file_if_untracked"),
-        ("git_stage_batch.data.undo_checkpoints", "undo_checkpoint"),
+        ("git_stage_batch.data.undo.checkpoints", "undo_checkpoint"),
         ("git_stage_batch.utils.file_jobs", "run_file_jobs"),
         ("git_stage_batch.utils.file_job_workspace", "FileJobWorkspace"),
     }
@@ -15401,7 +15406,7 @@ def test_sift_jobs_do_not_bypass_parent_mutation_boundaries():
         "git_stage_batch.batch.state.lifecycle",
         "git_stage_batch.batch.state.references",
         "git_stage_batch.commands.batch_transform.sift_persistence",
-        "git_stage_batch.data.undo_checkpoints",
+        "git_stage_batch.data.undo.checkpoints",
         "git_stage_batch.staging.index_update",
         "git_stage_batch.utils.git_command",
         "git_stage_batch.utils.journal",
@@ -15484,7 +15489,7 @@ def test_apply_from_delegates_apply_action_execution():
         "git_stage_batch.data.session": {
             "snapshot_file_if_untracked",
         },
-        "git_stage_batch.data.undo_checkpoints": {
+        "git_stage_batch.data.undo.checkpoints": {
             "undo_checkpoint",
         },
     }
@@ -15537,7 +15542,7 @@ def test_batch_source_include_action_owns_include_execution():
         ("git_stage_batch.batch.submodule_pointer", "stage_submodule_pointer_from_batch"),
         ("git_stage_batch.data.file_target_identity", "capture_worktree_identity"),
         ("git_stage_batch.data.session", "snapshot_file_if_untracked"),
-        ("git_stage_batch.data.undo_checkpoints", "undo_checkpoint"),
+        ("git_stage_batch.data.undo.checkpoints", "undo_checkpoint"),
         ("git_stage_batch.utils.file_jobs", "run_file_jobs"),
         ("git_stage_batch.utils.file_job_workspace", "FileJobWorkspace"),
     }
@@ -15588,7 +15593,7 @@ def test_include_from_delegates_include_action_execution():
         "git_stage_batch.data.session": {
             "snapshot_file_if_untracked",
         },
-        "git_stage_batch.data.undo_checkpoints": {
+        "git_stage_batch.data.undo.checkpoints": {
             "undo_checkpoint",
         },
     }
@@ -15635,7 +15640,7 @@ def test_batch_source_discard_action_owns_discard_execution():
         ("git_stage_batch.batch.state.validation", "get_validated_baseline_commit"),
         ("git_stage_batch.batch.submodule_pointer", "discard_submodule_pointer_from_batch"),
         ("git_stage_batch.data.session", "snapshot_file_if_untracked"),
-        ("git_stage_batch.data.undo_checkpoints", "undo_checkpoint"),
+        ("git_stage_batch.data.undo.checkpoints", "undo_checkpoint"),
     }
     action_imports = set()
 
@@ -15675,7 +15680,7 @@ def test_discard_from_delegates_discard_action_execution():
         "git_stage_batch.data.session": {
             "snapshot_file_if_untracked",
         },
-        "git_stage_batch.data.undo_checkpoints": {
+        "git_stage_batch.data.undo.checkpoints": {
             "undo_checkpoint",
         },
     }

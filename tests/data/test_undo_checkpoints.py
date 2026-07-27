@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from git_stage_batch.data import undo_checkpoints
+from git_stage_batch.data.undo import checkpoints as undo_checkpoints
 from git_stage_batch.data.undo import state as undo_state
 from git_stage_batch.exceptions import CommandError
 

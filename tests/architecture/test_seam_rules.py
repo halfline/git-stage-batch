@@ -126,12 +126,12 @@ def test_undo_checkpoint_orchestration_delegates_state_policy():
     rules = (
         ForbiddenImportRule(
             snapshot_module,
-            "git_stage_batch.data.undo_checkpoints",
+            "git_stage_batch.data.undo.checkpoints",
             "snapshot storage must stay below stack orchestration",
         ),
         ForbiddenImportRule(
             state_module,
-            "git_stage_batch.data.undo_checkpoints",
+            "git_stage_batch.data.undo.checkpoints",
             "checkpoint state policy must stay below stack orchestration",
         ),
     )
@@ -143,6 +143,7 @@ def test_undo_checkpoint_orchestration_delegates_state_policy():
         if edge.target in {snapshot_module, state_module}
     }
     assert consumers == {
+        "git_stage_batch.data.undo.checkpoints",
         "git_stage_batch.data.undo_checkpoints",
         "git_stage_batch.data.undo.state",
     }

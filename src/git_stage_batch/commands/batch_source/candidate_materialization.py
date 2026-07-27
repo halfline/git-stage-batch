@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from contextlib import ExitStack
 from dataclasses import dataclass
 
 from . import candidate_inputs as _candidate_inputs
@@ -12,9 +11,6 @@ from ...batch.operation_candidate_types import (
     OperationCandidatePreview,
     TargetCandidatePreview,
 )
-from ...batch.operation_candidates import build_include_candidate_previews
-from ...batch.replacement import build_replacement_batch_view_from_lines
-from ...batch.selection import acquire_batch_ownership_for_display_ids_from_lines
 from ...core.buffer import LineBuffer
 from ...core.replacement import ReplacementPayload
 from ...utils.repository_buffers import (
@@ -192,65 +188,41 @@ def materialize_include_candidate(
         index_buffer as index_lines,
         load_working_tree_file_as_buffer(file_path) as working_lines,
     ):
-        with acquire_batch_ownership_for_display_ids_from_lines(
-            file_meta,
-            batch_source_lines,
-            selection_ids_to_include,
-        ) as ownership:
-            with ExitStack() as stack:
-                source_for_candidates = batch_source_lines
-                candidate_ownership = ownership
-                if replacement_payload is not None:
-                    try:
-                        replacement_view = build_replacement_batch_view_from_lines(
-                            batch_source_lines,
-                            ownership,
-                            replacement_payload,
-                        )
-                    except ValueError as e:
-                        exit_with_error(str(e))
-                    replacement_view = stack.enter_context(replacement_view)
-                    source_for_candidates = replacement_view.source_buffer
-                    candidate_ownership = replacement_view.ownership
-                try:
-                    previews = build_include_candidate_previews(
-                        batch_name=batch_name,
-                        file_path=file_path,
-                        source_lines=source_for_candidates,
-                        ownership=candidate_ownership,
-                        index_lines=index_lines,
-                        worktree_lines=working_lines,
-                        batch_source_commit=batch_source_ref.commit,
-                        file_meta=file_meta,
-                        text_change_type=worktree_target.text_change_type,
-                        index_file_mode=index_target.file_mode,
-                        worktree_file_mode=worktree_target.file_mode,
-                        index_exists=index_target.exists,
-                        worktree_exists=worktree_target.exists,
-                        selected_ids=selected_ids,
-                        selection_ids=selection_ids_to_include,
-                        replacement_payload=replacement_payload,
-                    )
-                except (MergeError, ValueError) as e:
-                    exit_with_error(str(e))
+        try:
+            previews = _candidate_planning.plan_include_candidate_previews(
+                batch_name=batch_name,
+                file_path=file_path,
+                file_meta=file_meta,
+                batch_source_lines=batch_source_lines,
+                batch_source_commit=batch_source_ref.commit,
+                index_lines=index_lines,
+                index_target=index_target,
+                worktree_lines=working_lines,
+                worktree_target=worktree_target,
+                selected_ids=selected_ids,
+                selection_ids=selection_ids_to_include,
+                replacement_payload=replacement_payload,
+            )
+        except (MergeError, ValueError) as e:
+            exit_with_error(str(e))
 
-            try:
-                preview = _candidate_previews.require_candidate_preview_for_ordinal(
-                    previews,
-                    ordinal,
-                    batch_name=batch_name,
-                    operation="include",
-                    file_path=file_path,
-                )
-                _candidate_previews.require_candidate_preview_state(
-                    preview,
-                    ordinal,
-                    selector=raw_selector,
-                    file_path=file_path,
-                )
-            except Exception:
-                _candidate_previews.close_candidate_previews(previews)
-                raise
+        try:
+            preview = _candidate_previews.require_candidate_preview_for_ordinal(
+                previews,
+                ordinal,
+                batch_name=batch_name,
+                operation="include",
+                file_path=file_path,
+            )
+            _candidate_previews.require_candidate_preview_state(
+                preview,
+                ordinal,
+                selector=raw_selector,
+                file_path=file_path,
+            )
+        except Exception:
+            _candidate_previews.close_candidate_previews(previews)
+            raise
 
     return IncludeCandidateMaterialization(
         preview=preview,

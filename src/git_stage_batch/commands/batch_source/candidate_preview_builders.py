@@ -3,16 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from contextlib import ExitStack
 from typing import Any
 
 from . import candidate_inputs as _candidate_inputs
 from . import candidate_planning as _candidate_planning
 from ..selection import replacement_selection
 from ...batch.operation_candidate_types import OperationCandidatePreview
-from ...batch.operation_candidates import build_include_candidate_previews
-from ...batch.replacement import build_replacement_batch_view_from_lines
-from ...batch.selection import acquire_batch_ownership_for_display_ids_from_lines
 from ...batch.source.selector import BatchSourceSelector
 from ...core.buffer import LineBuffer
 from ...core.replacement import ReplacementPayload, coerce_replacement_payload
@@ -114,55 +110,33 @@ def build_batch_source_candidate_previews(
                     selection_ids=selection_ids_to_apply,
                 )
 
-        with acquire_batch_ownership_for_display_ids_from_lines(
-            file_meta,
-            batch_source_lines,
-            selection_ids_to_apply,
-        ) as ownership:
-            with ExitStack() as stack:
-                source_for_candidates = batch_source_lines
-                candidate_ownership = ownership
-                if replacement_payload is not None:
-                    try:
-                        replacement_view = build_replacement_batch_view_from_lines(
-                            batch_source_lines,
-                            ownership,
-                            replacement_payload,
-                        )
-                    except ValueError as e:
-                        exit_with_error(str(e))
-                    replacement_view = stack.enter_context(replacement_view)
-                    source_for_candidates = replacement_view.source_buffer
-                    candidate_ownership = replacement_view.ownership
-
-                index_buffer = read_git_object_buffer_or_none(f":{file_path}")
-                index_exists = index_buffer is not None
-                if index_buffer is None:
-                    index_buffer = LineBuffer.from_bytes(b"")
-                index_target = _candidate_inputs.candidate_index_text_target(
+        index_buffer = read_git_object_buffer_or_none(f":{file_path}")
+        index_exists = index_buffer is not None
+        if index_buffer is None:
+            index_buffer = LineBuffer.from_bytes(b"")
+        index_target = _candidate_inputs.candidate_index_text_target(
+            file_meta=file_meta,
+            selected_ids=selected_ids,
+            index_exists=index_exists,
+        )
+        with (
+            index_buffer as index_lines,
+            load_working_tree_file_as_buffer(file_path) as working_lines,
+        ):
+            try:
+                return _candidate_planning.plan_include_candidate_previews(
+                    batch_name=selector.batch_name,
+                    file_path=file_path,
                     file_meta=file_meta,
+                    batch_source_lines=batch_source_lines,
+                    batch_source_commit=batch_source_ref.commit,
+                    index_lines=index_lines,
+                    index_target=index_target,
+                    worktree_lines=working_lines,
+                    worktree_target=worktree_target,
                     selected_ids=selected_ids,
-                    index_exists=index_exists,
+                    selection_ids=selection_ids_to_apply,
+                    replacement_payload=replacement_payload,
                 )
-                with (
-                    index_buffer as index_lines,
-                    load_working_tree_file_as_buffer(file_path) as working_lines,
-                ):
-                    return build_include_candidate_previews(
-                        batch_name=selector.batch_name,
-                        file_path=file_path,
-                        source_lines=source_for_candidates,
-                        ownership=candidate_ownership,
-                        index_lines=index_lines,
-                        worktree_lines=working_lines,
-                        batch_source_commit=batch_source_ref.commit,
-                        file_meta=file_meta,
-                        text_change_type=worktree_target.text_change_type,
-                        index_file_mode=index_target.file_mode,
-                        worktree_file_mode=worktree_target.file_mode,
-                        index_exists=index_target.exists,
-                        worktree_exists=worktree_target.exists,
-                        selected_ids=selected_ids,
-                        selection_ids=selection_ids_to_apply,
-                        replacement_payload=replacement_payload,
-                    )
+            except _candidate_planning.CandidateReplacementError as e:
+                exit_with_error(str(e))

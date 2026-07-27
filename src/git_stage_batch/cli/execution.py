@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 
 from ..commands.show import command_show
-from ..data.session import session_is_active
+from ..data.session_marker import session_is_active
 from ..exceptions import exit_with_error
 from ..i18n import _
 

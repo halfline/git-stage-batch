@@ -11,7 +11,7 @@ import pytest
 from git_stage_batch.commands.abort import command_abort
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.stop import command_stop
-from git_stage_batch.data.session import session_is_active
+from git_stage_batch.data.session_marker import session_is_active
 from git_stage_batch.data.session_ownership import require_no_foreign_session_owner
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import get_active_session_owner_file_path

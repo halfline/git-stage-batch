@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from contextlib import nullcontext
 
-from ..data.session import session_is_active
+from ..data.session_marker import session_is_active
 from ..data.undo_checkpoints import undo_checkpoint
 from ..data.ignore_files import (
     add_pattern_to_gitignore,

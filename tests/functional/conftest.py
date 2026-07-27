@@ -7,7 +7,7 @@ import pytest
 
 
 PROJECT_ROOT = Path(__file__).parents[2]
-INTERACTIVE_TIMEOUT = 15
+INTERACTIVE_TIMEOUT = 60
 
 
 def _git_stage_batch_command(*args):

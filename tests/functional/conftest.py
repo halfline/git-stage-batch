@@ -6,6 +6,19 @@ from pathlib import Path
 import pytest
 
 
+PROJECT_ROOT = Path(__file__).parents[2]
+
+
+def _git_stage_batch_command(*args):
+    """Build a command that runs git-stage-batch from the working tree."""
+    venv_gsb = PROJECT_ROOT / ".venv" / "bin" / "git-stage-batch"
+
+    if venv_gsb.exists():
+        return [str(venv_gsb), *args]
+
+    return ["uv", "run", "--", "git-stage-batch", *args]
+
+
 @pytest.fixture
 def functional_repo(tmp_path, monkeypatch):
     """Create a realistic git repository for functional testing.

@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from git_stage_batch.commands.start import command_start
-from git_stage_batch.data.session import session_is_active
+from git_stage_batch.data.session_marker import session_is_active
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.file_io import read_text_file_contents
 from git_stage_batch.utils.paths import (

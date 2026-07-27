@@ -1,6 +1,6 @@
-"""Tests for session state helpers."""
+"""Tests for active-session marker helpers."""
 
-from git_stage_batch.data.session import (
+from git_stage_batch.data.session_marker import (
     active_session_marker_path,
     session_is_active,
 )

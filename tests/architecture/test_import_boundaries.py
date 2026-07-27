@@ -4727,8 +4727,8 @@ def test_status_summary_uses_batch_selected_binary_validation():
     assert "selected_batch_binary_file_for_batch" not in status_summary_text
 
 
-def test_active_session_query_stays_in_session_data():
-    """Callers should ask session data whether a session is active."""
+def test_active_session_query_stays_in_session_marker_data():
+    """Callers should use the read-only active-session marker seam."""
     caller_paths = (
         SRC_ROOT / "cli" / "execution.py",
         SRC_ROOT / "commands" / "block_file.py",
@@ -4737,16 +4737,16 @@ def test_active_session_query_stays_in_session_data():
         SRC_ROOT / "commands" / "unblock_file.py",
         SRC_ROOT / "tui" / "session_startup.py",
     )
-    session = __import__(
-        "git_stage_batch.data.session",
-        fromlist=["session"],
+    session_marker = __import__(
+        "git_stage_batch.data.session_marker",
+        fromlist=["session_marker"],
     )
     public_names = {
         "active_session_marker_path",
         "session_is_active",
     }
 
-    assert public_names <= vars(session).keys()
+    assert public_names <= vars(session_marker).keys()
 
     for caller_path in caller_paths:
         caller_tree = ast.parse(caller_path.read_text(), filename=str(caller_path))
@@ -4755,18 +4755,18 @@ def test_active_session_query_stays_in_session_data():
             for node in ast.walk(caller_tree)
             if isinstance(node, ast.ClassDef | ast.FunctionDef)
         }
-        caller_imported_session_names = set()
+        caller_imported_marker_names = set()
         caller_imported_path_names = set()
 
         for imported_module, node in _import_from_nodes(caller_path):
             imported_names = {alias.name for alias in node.names}
-            if imported_module == "git_stage_batch.data.session":
-                caller_imported_session_names |= imported_names
+            if imported_module == "git_stage_batch.data.session_marker":
+                caller_imported_marker_names |= imported_names
             if imported_module == "git_stage_batch.utils.paths":
                 caller_imported_path_names |= imported_names
 
         assert "_session_marker_path" not in caller_names
-        assert "session_is_active" in caller_imported_session_names
+        assert "session_is_active" in caller_imported_marker_names
         assert "get_abort_head_file_path" not in caller_imported_path_names
         assert "get_state_directory_path" not in caller_imported_path_names
         assert "session/abort/head.txt" not in caller_path.read_text()
@@ -6891,7 +6891,7 @@ def test_tui_session_startup_owns_interactive_startup():
     }
     startup_imports = {
         "git_stage_batch.commands.start",
-        "git_stage_batch.data.session",
+        "git_stage_batch.data.session_marker",
         "git_stage_batch.utils.file_io",
         "git_stage_batch.utils.git_command",
         "git_stage_batch.utils.paths",

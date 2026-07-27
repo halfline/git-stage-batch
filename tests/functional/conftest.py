@@ -7,6 +7,7 @@ import pytest
 
 
 PROJECT_ROOT = Path(__file__).parents[2]
+INTERACTIVE_TIMEOUT = 15
 
 
 def _git_stage_batch_command(*args):
@@ -17,6 +18,41 @@ def _git_stage_batch_command(*args):
         return [str(venv_gsb), *args]
 
     return ["uv", "run", "--", "git-stage-batch", *args]
+
+
+def _decode_timeout_output(value):
+    """Return captured timeout output as displayable text."""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value or ""
+
+
+def run_interactive(
+    *inputs,
+    cli_args=("-i",),
+    timeout=INTERACTIVE_TIMEOUT,
+):
+    """Run an interactive command with scripted input and a CI-safe hang guard."""
+    command = _git_stage_batch_command(*cli_args)
+    input_text = "\n".join(inputs) + "\n"
+
+    try:
+        return subprocess.run(
+            command,
+            input=input_text,
+            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        output = (
+            _decode_timeout_output(error.output)
+            + _decode_timeout_output(error.stderr)
+        )
+        pytest.fail(f"Interactive mode timed out\n{output}")
 
 
 @pytest.fixture

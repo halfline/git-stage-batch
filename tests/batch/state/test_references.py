@@ -114,6 +114,33 @@ def test_state_ref_contains_batch_json_and_source_snapshot(temp_git_repo):
     assert source_content == "line1\nline2\nline3\n"
 
 
+def test_state_publication_consumes_validated_metadata_model(
+    temp_git_repo,
+    monkeypatch,
+):
+    """Publication should not thaw validated metadata back into application dicts."""
+    create_batch("test-batch", "Before")
+    metadata = read_batch_metadata("test-batch")
+    metadata["note"] = "After"
+    metadata_model = write_file_backed_batch_metadata("test-batch", metadata)
+
+    def fail_to_application_dict(_metadata):
+        raise AssertionError("publication must consume the validated model")
+
+    monkeypatch.setattr(
+        type(metadata_model),
+        "to_application_dict",
+        fail_to_application_dict,
+    )
+
+    sync_batch_state_refs("test-batch", metadata_model)
+
+    batch_json = json.loads(
+        _git_show(f"{get_batch_state_ref_name('test-batch')}:batch.json")
+    )
+    assert batch_json["note"] == "After"
+
+
 def test_stale_metadata_writer_cannot_replace_newer_state(temp_git_repo):
     create_batch("test-batch", "Original")
     stale_metadata = read_batch_metadata("test-batch")
@@ -121,10 +148,13 @@ def test_stale_metadata_writer_cannot_replace_newer_state(temp_git_repo):
     current_state = _git_rev_parse(get_batch_state_ref_name("test-batch"))
 
     stale_metadata["note"] = "Stale"
-    write_file_backed_batch_metadata("test-batch", stale_metadata)
+    stale_model = write_file_backed_batch_metadata(
+        "test-batch",
+        stale_metadata,
+    )
 
     with pytest.raises(BatchMetadataError, match="changed after its metadata was read"):
-        sync_batch_state_refs("test-batch")
+        sync_batch_state_refs("test-batch", stale_model)
 
     assert _git_rev_parse(get_batch_state_ref_name("test-batch")) == current_state
     assert read_batch_metadata("test-batch")["note"] == "Current"

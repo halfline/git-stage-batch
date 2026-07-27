@@ -14708,9 +14708,7 @@ def test_batch_source_candidate_materialization_owns_reviewed_candidate_loading(
     }
     assert materialization_imports_candidate_previews
     assert materialization_imports_candidate_planning
-    assert materialization_builder_imports == {
-        "build_include_candidate_previews",
-    }
+    assert materialization_builder_imports == set()
 
     for path in preview_free_paths:
         command_text = path.read_text()

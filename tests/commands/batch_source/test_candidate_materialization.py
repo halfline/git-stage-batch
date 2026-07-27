@@ -2,25 +2,12 @@
 
 from __future__ import annotations
 
-from contextlib import AbstractContextManager
-
 import pytest
 
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.core.replacement import ReplacementPayload
 from git_stage_batch.exceptions import CommandError
 import git_stage_batch.commands.batch_source.candidate_materialization as materialization
-
-
-class _OwnershipContext(AbstractContextManager):
-    def __init__(self, ownership: object) -> None:
-        self.ownership = ownership
-
-    def __enter__(self) -> object:
-        return self.ownership
-
-    def __exit__(self, exc_type, exc_value, traceback) -> None:
-        return None
 
 
 class _Target:
@@ -43,21 +30,6 @@ class _Preview:
 
     def require_target(self, name: str) -> _Target:
         return next(target for target in self.targets if target.target == name)
-
-
-class _ReplacementView(AbstractContextManager):
-    def __init__(self, source_buffer: LineBuffer, ownership: object) -> None:
-        self.source_buffer = source_buffer
-        self.ownership = ownership
-        self.closed = False
-
-    def __enter__(self) -> _ReplacementView:
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback) -> None:
-        self.source_buffer.close()
-        self.closed = True
-        return None
 
 
 def _patch_apply_materialization_io(monkeypatch, tmp_path):
@@ -237,7 +209,6 @@ def test_materialize_apply_candidate_rejects_binary_entries():
 
 
 def _patch_include_materialization_io(monkeypatch, tmp_path):
-    ownership = object()
     batch_buffer = LineBuffer.from_bytes(b"batch\n")
     index_buffer = LineBuffer.from_bytes(b"index\n")
     worktree_buffer = LineBuffer.from_bytes(b"worktree\n")
@@ -265,12 +236,6 @@ def _patch_include_materialization_io(monkeypatch, tmp_path):
         "load_working_tree_file_as_buffer",
         lambda file_path: worktree_buffer,
     )
-    monkeypatch.setattr(
-        materialization,
-        "acquire_batch_ownership_for_display_ids_from_lines",
-        lambda file_meta, source_lines, selection_ids: _OwnershipContext(ownership),
-    )
-    return ownership
 
 
 def test_materialize_include_candidate_returns_reviewed_preview(
@@ -278,23 +243,17 @@ def test_materialize_include_candidate_returns_reviewed_preview(
     tmp_path,
 ):
     """Include materialization should return the reviewed preview and modes."""
-    ownership = _patch_include_materialization_io(monkeypatch, tmp_path)
+    _patch_include_materialization_io(monkeypatch, tmp_path)
     replacement_payload = ReplacementPayload.from_text("replacement\n")
-    replacement_ownership = object()
-    replacement_view = _ReplacementView(
-        LineBuffer.from_bytes(b"replacement\n"),
-        replacement_ownership,
-    )
     targets = (_Target("index"), _Target("worktree"))
     previews = (_Preview("first"), _Preview("second", targets))
     calls = {}
 
-    def build_replacement_batch_view_from_lines(source_lines, view_ownership, payload):
-        calls["replacement"] = (source_lines, view_ownership, payload)
-        return replacement_view
-
-    def build_include_candidate_previews(**kwargs):
-        calls["build"] = kwargs
+    def plan_include_candidate_previews(**kwargs):
+        calls["build"] = {
+            **kwargs,
+            "source_bytes": kwargs["batch_source_lines"].to_bytes(),
+        }
         return previews
 
     def require_preview(loaded_previews, ordinal, **kwargs):
@@ -305,14 +264,9 @@ def test_materialize_include_candidate_returns_reviewed_preview(
         calls["require_state"] = (preview, ordinal, kwargs)
 
     monkeypatch.setattr(
-        materialization,
-        "build_replacement_batch_view_from_lines",
-        build_replacement_batch_view_from_lines,
-    )
-    monkeypatch.setattr(
-        materialization,
-        "build_include_candidate_previews",
-        build_include_candidate_previews,
+        materialization._candidate_planning,
+        "plan_include_candidate_previews",
+        plan_include_candidate_previews,
     )
     monkeypatch.setattr(
         materialization._candidate_previews,
@@ -348,17 +302,14 @@ def test_materialize_include_candidate_returns_reviewed_preview(
     assert result.file_path == "notes.txt"
     assert result.index_file_mode is None
     assert result.worktree_file_mode is None
-    assert calls["replacement"][1] is ownership
-    assert calls["replacement"][2] is replacement_payload
     assert calls["build"]["batch_name"] == "cleanup"
     assert calls["build"]["file_path"] == "notes.txt"
-    assert calls["build"]["source_lines"] is replacement_view.source_buffer
-    assert calls["build"]["ownership"] is replacement_ownership
+    assert calls["build"]["source_bytes"] == b"batch\n"
     assert calls["build"]["selected_ids"] == {3}
     assert calls["build"]["selection_ids"] == {9}
     assert calls["build"]["replacement_payload"] is replacement_payload
-    assert calls["build"]["index_exists"]
-    assert calls["build"]["worktree_exists"]
+    assert calls["build"]["index_target"].exists
+    assert calls["build"]["worktree_target"].exists
     assert calls["require_preview"] == (
         previews,
         2,
@@ -376,8 +327,6 @@ def test_materialize_include_candidate_returns_reviewed_preview(
             "file_path": "notes.txt",
         },
     )
-    assert replacement_view.closed
-
     result.close()
 
     assert [preview.closed for preview in previews] == [True, True]
@@ -395,8 +344,8 @@ def test_materialize_include_candidate_closes_previews_on_state_failure(
     )
 
     monkeypatch.setattr(
-        materialization,
-        "build_include_candidate_previews",
+        materialization._candidate_planning,
+        "plan_include_candidate_previews",
         lambda **kwargs: previews,
     )
     monkeypatch.setattr(

@@ -142,6 +142,7 @@ def test_batch_source_candidate_planning_has_one_owner():
     """Show, count, and execution paths share candidate construction policy."""
     planning_symbols = {
         "plan_apply_candidate_previews",
+        "plan_include_candidate_previews",
     }
     planning_module = (
         "git_stage_batch.commands.batch_source.candidate_planning"
@@ -149,6 +150,16 @@ def test_batch_source_candidate_planning_has_one_owner():
     assert modules_defining(planning_symbols) == {
         planning_module: planning_symbols,
     }
+
+    rules = (
+        ForbiddenImportRule(
+            "git_stage_batch.commands.batch_source",
+            "git_stage_batch.batch.operation_candidates",
+            "batch-source callers must use shared candidate planning",
+            allowed_sources=frozenset({planning_module}),
+        ),
+    )
+    assert forbidden_import_violations(rules) == []
 
     consumers = {
         edge.source

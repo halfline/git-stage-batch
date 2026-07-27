@@ -60,6 +60,88 @@ def _show_index_file(repo, file_name: str) -> str:
     ).stdout
 
 
+def test_transient_index_buffer_prefers_structural_merge(monkeypatch):
+    """Ordinary index merges should not use the coordinate fallback."""
+    structural_result = object()
+    monkeypatch.setattr(
+        include_line_selection,
+        "merge_batch_from_line_sequences_as_buffer",
+        lambda *_args: structural_result,
+    )
+    monkeypatch.setattr(
+        include_line_selection,
+        "build_realized_buffer_from_lines",
+        lambda *_args, **_kwargs: pytest.fail("coordinate fallback was used"),
+    )
+
+    result = include_line_selection.build_transient_index_buffer(
+        source_lines=[b"base\n", b"selected\n"],
+        ownership=object(),
+        current_index_lines=[b"base\n"],
+        hunk_base_lines=[b"base\n"],
+    )
+
+    assert result is structural_result
+
+
+def test_transient_index_buffer_uses_reviewed_coordinates_for_unchanged_index(
+    monkeypatch,
+):
+    """An unchanged reviewed index can resolve an ambiguous structural merge."""
+    coordinate_result = object()
+
+    def refuse_structural_merge(*_args):
+        raise MergeError("repeated boundary")
+
+    monkeypatch.setattr(
+        include_line_selection,
+        "merge_batch_from_line_sequences_as_buffer",
+        refuse_structural_merge,
+    )
+    monkeypatch.setattr(
+        include_line_selection,
+        "build_realized_buffer_from_lines",
+        lambda *_args, **_kwargs: coordinate_result,
+    )
+
+    result = include_line_selection.build_transient_index_buffer(
+        source_lines=[b"base\n", b"selected\n"],
+        ownership=object(),
+        current_index_lines=[b"base\n"],
+        hunk_base_lines=[b"base\n"],
+    )
+
+    assert result is coordinate_result
+
+
+def test_transient_index_buffer_rejects_coordinates_after_index_change(
+    monkeypatch,
+):
+    """A changed index must retain the ambiguity-safe merge refusal."""
+
+    def refuse_structural_merge(*_args):
+        raise MergeError("repeated boundary")
+
+    monkeypatch.setattr(
+        include_line_selection,
+        "merge_batch_from_line_sequences_as_buffer",
+        refuse_structural_merge,
+    )
+    monkeypatch.setattr(
+        include_line_selection,
+        "build_realized_buffer_from_lines",
+        lambda *_args, **_kwargs: pytest.fail("stale coordinates were trusted"),
+    )
+
+    with pytest.raises(MergeError, match="repeated boundary"):
+        include_line_selection.build_transient_index_buffer(
+            source_lines=[b"base\n", b"selected\n"],
+            ownership=object(),
+            current_index_lines=[b"changed\n"],
+            hunk_base_lines=[b"base\n"],
+        )
+
+
 @pytest.fixture
 def temp_git_repo(tmp_path, monkeypatch):
     """Create a temporary git repository for testing."""

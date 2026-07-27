@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from ..batch.state.reference_names import (
+from ...batch.state.reference_names import (
     BATCH_CONTENT_REF_PREFIX,
     BATCH_STATE_REF_PREFIX,
     LEGACY_BATCH_REF_PREFIX,
 )
-from ..utils.git_command import run_git_command
-from ..utils.git_refs import update_git_refs
+from ...utils.git_command import run_git_command
+from ...utils.git_refs import update_git_refs
 
 
 SESSION_UNDO_STACK_REF = "refs/git-stage-batch/session/undo-stack"
@@ -80,7 +80,7 @@ def clear_redo_history() -> None:
 
 def clear_undo_history() -> None:
     """Clear all undo and redo checkpoints for the current session."""
-    from .recovery_anchors import clear_recovery_anchors
+    from ..recovery_anchors import clear_recovery_anchors
 
     update_git_refs(deletes=[SESSION_UNDO_STACK_REF])
     clear_redo_history()

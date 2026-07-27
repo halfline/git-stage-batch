@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-from .undo_refs import (
+from .undo.refs import (
     SESSION_REDO_STACK_REF,
     SESSION_UNDO_STACK_REF,
     checkpoint_parent,

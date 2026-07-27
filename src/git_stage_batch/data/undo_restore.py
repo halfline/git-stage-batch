@@ -12,7 +12,7 @@ from typing import Any
 
 from ..utils.buffer_io import write_buffer_to_working_tree_path
 from ..utils.repository_buffers import load_git_blob_as_buffer
-from .undo_refs import list_restorable_refs
+from .undo.refs import list_restorable_refs
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.git_command import (

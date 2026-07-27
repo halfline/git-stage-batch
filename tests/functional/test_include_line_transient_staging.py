@@ -2,6 +2,8 @@
 
 import subprocess
 
+import pytest
+
 from .conftest import git_stage_batch
 
 
@@ -115,6 +117,24 @@ def _prepare_ambiguous_middle_insertion(repo) -> None:
     git_stage_batch("show", "--file", "file.txt", "--page", "all")
 
 
+def _prepare_repeated_anchor_insertion(repo) -> tuple[str, str, str]:
+    prefix = "import pytest\n\n\n"
+    suffix = (
+        "@pytest.fixture\n"
+        "def first_fixture():\n"
+        "    return None\n"
+        "\n"
+        "\n"
+        "@pytest.fixture\n"
+        "def second_fixture():\n"
+        "    return None\n"
+    )
+    changed = prefix + "selected\nunselected\n\n\n" + suffix
+    _commit_file(repo, "file.txt", prefix + suffix)
+    (repo / "file.txt").write_text(changed)
+    return changed, prefix, suffix
+
+
 def test_include_line_transient_staging_first_replace_row(functional_repo):
     _commit_file(functional_repo, "file.txt", "a\nb\n")
     (functional_repo / "file.txt").write_text("A\nB\n")
@@ -163,6 +183,36 @@ def test_include_line_transient_staging_pure_addition(functional_repo):
     git_stage_batch("include", "--line", "1")
 
     assert _index_content(functional_repo, "file.txt") == "base\nfoo\n"
+
+
+@pytest.mark.parametrize(
+    ("line_spec", "staged_addition"),
+    [
+        pytest.param("1", "selected\n", id="first-line"),
+        pytest.param("2", "unselected\n", id="later-line"),
+        pytest.param("1-2", "selected\nunselected\n", id="multiple-lines"),
+        pytest.param("3", "\n", id="blank-line"),
+    ],
+)
+def test_include_line_transient_staging_before_repeated_anchor(
+    functional_repo,
+    line_spec,
+    staged_addition,
+):
+    """A fresh file review can stage an insertion before a repeated anchor."""
+    changed, expected_prefix, expected_suffix = (
+        _prepare_repeated_anchor_insertion(functional_repo)
+    )
+
+    git_stage_batch("start")
+    git_stage_batch("show", "--file", "file.txt", "--page", "all")
+    result = git_stage_batch("include", "--line", line_spec, check=False)
+
+    assert result.returncode == 0, result.stderr
+    assert _index_content(functional_repo, "file.txt") == (
+        expected_prefix + staged_addition + expected_suffix
+    )
+    assert (functional_repo / "file.txt").read_text() == changed
 
 
 def test_discard_to_batch_after_consecutive_line_includes(functional_repo):

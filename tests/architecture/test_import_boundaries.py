@@ -3651,7 +3651,7 @@ def test_file_review_changes_own_review_change_assembly():
     builder_model_imports = {
         alias.name
         for imported_module, node in _import_from_nodes(review_model_builder_path)
-        if imported_module == "git_stage_batch.output.file_review_model"
+        if imported_module == "git_stage_batch.data.file_review.model"
         for alias in node.names
     }
     file_review_changes = __import__(
@@ -3683,13 +3683,13 @@ def test_file_review_changes_own_review_change_assembly():
     assert "ReviewChange" in changes_text
     assert "format_line_ids" in changes_text
     assert "flush_segment" not in changes_text
-    assert "file_review_model import ReviewChange" not in segments_text
+    assert "file_review.model import ReviewChange" not in segments_text
     assert "ReviewChange(" not in segments_text
     assert "flush_segment" in segments_text
 
 
-def test_file_review_output_uses_model_module():
-    """File-review output should not own passive model records."""
+def test_file_review_output_uses_data_model():
+    """File-review output should consume passive review model records."""
     review_output_path = SRC_ROOT / "output" / "file_review.py"
     review_output_text = review_output_path.read_text()
     imported_modules = {
@@ -3697,8 +3697,8 @@ def test_file_review_output_uses_model_module():
         for imported_module, _node in _import_from_nodes(review_output_path)
     }
     file_review_model = __import__(
-        "git_stage_batch.output.file_review_model",
-        fromlist=["file_review_model"],
+        "git_stage_batch.data.file_review.model",
+        fromlist=["model"],
     )
     model_names = {
         "FileReviewModel",
@@ -3708,7 +3708,7 @@ def test_file_review_output_uses_model_module():
         "ReviewChangeFragment",
     }
 
-    assert "git_stage_batch.output.file_review_model" in imported_modules
+    assert "git_stage_batch.data.file_review.model" in imported_modules
     assert model_names <= vars(file_review_model).keys()
     for model_name in model_names:
         assert f"class {model_name}" not in review_output_text

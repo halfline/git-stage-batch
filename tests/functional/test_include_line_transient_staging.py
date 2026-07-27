@@ -296,6 +296,35 @@ def test_consecutive_line_includes_before_repeated_anchor(
     assert (functional_repo / "file.txt").read_text() == changed
 
 
+def test_repeated_anchor_fallback_preserves_unrelated_staged_content(
+    functional_repo,
+):
+    """Exact reviewed coordinates retain content staged before the session."""
+    changed, expected_prefix, expected_suffix = (
+        _prepare_repeated_anchor_insertion(functional_repo)
+    )
+    staged_prefix = "staged before review\n"
+    file_path = functional_repo / "file.txt"
+    file_path.write_text(staged_prefix + expected_prefix + expected_suffix)
+    subprocess.run(
+        ["git", "add", "file.txt"],
+        check=True,
+        cwd=functional_repo,
+        capture_output=True,
+    )
+    file_path.write_text(staged_prefix + changed)
+
+    git_stage_batch("start")
+    git_stage_batch("show", "--file", "file.txt", "--page", "all")
+    result = git_stage_batch("include", "--line", "2", check=False)
+
+    assert result.returncode == 0, result.stderr
+    assert _index_content(functional_repo, "file.txt") == (
+        staged_prefix + expected_prefix + "selected\n" + expected_suffix
+    )
+    assert file_path.read_text() == staged_prefix + changed
+
+
 def test_discard_to_batch_after_consecutive_line_includes(functional_repo):
     _prepare_ambiguous_middle_insertion(functional_repo)
 

@@ -16,7 +16,7 @@ from ..data.file_review.records import (
 )
 from ..data.file_review.pages import normalize_page_spec, parse_page_selection
 from ..data.selected_change.store import SelectedChangeKind
-from .file_review_action_selections import (
+from ..data.file_review.action_selections import (
     change_index_containing_review_display_ids,
     change_is_live_splittable,
     display_ids_for_change_pages,

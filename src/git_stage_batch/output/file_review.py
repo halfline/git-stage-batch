@@ -5,7 +5,7 @@ from __future__ import annotations
 from ..data.file_review.records import ReviewSource
 from ..i18n import _
 from .colors import Colors
-from .file_review_action_selections import shown_line_action_selections
+from ..data.file_review.action_selections import shown_line_action_selections
 from ..data.file_review.display_ids import display_ids_for_rows
 from .file_review_footer import print_file_review_footer
 from ..data.file_review.model import FileReviewModel

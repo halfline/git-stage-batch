@@ -22,6 +22,7 @@ from ...batch.state.batch_names import batch_exists
 from ...core.buffer import LineBuffer, buffer_matches
 from ...batch.source.snapshots import create_batch_source_commit
 from ...batch.source.line_coordinates import translate_display_source_coordinates
+from ...batch.realized_file_content import build_realized_buffer_from_lines
 from ...data.selected_change.file_hunk_cache import cache_unstaged_file_as_single_hunk
 from ...data.file_modes import detect_file_mode
 from ...data.file_tracking import auto_add_untracked_files
@@ -201,6 +202,34 @@ def annotate_line_changes_with_working_tree_source(line_changes):
     return replace(line_changes, lines=new_lines)
 
 
+def build_transient_index_buffer(
+    *,
+    source_lines: Sequence[bytes],
+    ownership,
+    current_index_lines: Sequence[bytes],
+    hunk_base_lines: Sequence[bytes],
+) -> LineBuffer:
+    """Merge structurally, then use unchanged reviewed index coordinates."""
+    try:
+        return merge_batch_from_line_sequences_as_buffer(
+            source_lines,
+            ownership,
+            current_index_lines,
+        )
+    except MergeError:
+        # The ownership references use the reviewed index snapshot's
+        # coordinates. They are a safe fallback only while the live index
+        # still matches that exact baseline.
+        if not buffer_matches(current_index_lines, hunk_base_lines):
+            raise
+        return build_realized_buffer_from_lines(
+            current_index_lines,
+            source_lines,
+            ownership,
+            preferred_line_ending_lines=current_index_lines,
+        )
+
+
 def try_build_index_content_via_transient_batch(
     *,
     line_changes,
@@ -316,10 +345,11 @@ def try_build_index_content_via_transient_batch(
                 source_buffer as source_lines,
             ):
                 try:
-                    target_index_buffer = merge_batch_from_line_sequences_as_buffer(
-                        source_lines,
-                        ownership,
-                        current_index_lines,
+                    target_index_buffer = build_transient_index_buffer(
+                        source_lines=source_lines,
+                        ownership=ownership,
+                        current_index_lines=current_index_lines,
+                        hunk_base_lines=hunk_base_lines,
                     )
                 except MergeError as error:
                     return TransientIncludeResult.failure(

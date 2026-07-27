@@ -379,6 +379,22 @@ def test_build_realized_buffer_from_lines_returns_buffer():
         assert result.byte_count == len(b"A\r\nNEW\r\nB\r\n")
 
 
+def test_build_realized_buffer_can_prefer_base_line_endings():
+    """A target merge can retain LF when its batch source uses CRLF."""
+    base_content = b"A\nB\n"
+    batch_source_content = b"A\r\nNEW\r\nB\r\n"
+    ownership = BatchOwnership.from_presence_lines(["2"], [])
+    base_lines = base_content.splitlines(keepends=True)
+
+    with build_realized_buffer_from_lines(
+        base_lines,
+        batch_source_content.splitlines(keepends=True),
+        ownership,
+        preferred_line_ending_lines=base_lines,
+    ) as result:
+        assert result.to_bytes() == b"A\nNEW\nB\n"
+
+
 def test_build_realized_content_equal_block_with_unclaimed_insert():
     """Test that unclaimed inserts don't appear, and equal blocks work correctly."""
     # Base: A, B, C

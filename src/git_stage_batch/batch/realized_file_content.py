@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from ..core.buffer import LineBuffer
 from ..editor.line_endings import (
-    detect_line_ending,
+    choose_line_ending,
     restore_line_endings_in_chunks,
 )
 from ..core.text_lines import normalize_line_sequence_endings
@@ -27,9 +27,15 @@ def build_realized_buffer_from_lines(
     batch_source_lines: Sequence[bytes],
     ownership: "BatchOwnership",
     *,
+    preferred_line_ending_lines: Sequence[bytes] | None = None,
     spool_dir: str | Path | None = None,
 ) -> LineBuffer:
-    """Build realized batch content as a line buffer."""
+    """Build realized content, optionally preferring a target's line endings."""
+    line_ending_sources = (
+        (batch_source_lines,)
+        if preferred_line_ending_lines is None
+        else (preferred_line_ending_lines, batch_source_lines)
+    )
     return LineBuffer.from_chunks(
         restore_line_endings_in_chunks(
             _stream_realized_content_chunks_from_lines(
@@ -38,7 +44,7 @@ def build_realized_buffer_from_lines(
                 ownership,
                 spool_dir=spool_dir,
             ),
-            detect_line_ending(batch_source_lines),
+            choose_line_ending(*line_ending_sources),
         ),
         spool_dir=spool_dir,
     )

@@ -5,7 +5,7 @@ from __future__ import annotations
 from ..core.actionable_changes import ActionableSelection, ActionableSelectionReason
 from ..core.models import LineEntry
 from ..data.file_review.records import ReviewSource
-from .file_review_display_ids import display_ids_for_rows
+from ..data.file_review.display_ids import display_ids_for_rows
 from ..data.file_review.model import FileReviewModel, ReviewChange
 
 

@@ -101,7 +101,7 @@ def test_atomic_buffer_publication_stays_out_of_core():
 
 
 def test_undo_checkpoint_orchestration_delegates_state_policy():
-    """Stack orchestration must not absorb snapshot policy."""
+    """Stack orchestration must not absorb snapshot or restore policy."""
     snapshot_symbols = {
         "filesystem_directory_state",
         "push_redo_node",
@@ -113,11 +113,26 @@ def test_undo_checkpoint_orchestration_delegates_state_policy():
         snapshot_module: snapshot_symbols,
     }
 
+    state_symbols = {
+        "detect_redo_conflicts",
+        "detect_undo_conflicts",
+        "restore_checkpoint_state",
+    }
+    state_module = "git_stage_batch.data.undo.state"
+    assert modules_defining(state_symbols) == {
+        state_module: state_symbols,
+    }
+
     rules = (
         ForbiddenImportRule(
             snapshot_module,
             "git_stage_batch.data.undo_checkpoints",
             "snapshot storage must stay below stack orchestration",
+        ),
+        ForbiddenImportRule(
+            state_module,
+            "git_stage_batch.data.undo_checkpoints",
+            "checkpoint state policy must stay below stack orchestration",
         ),
     )
     assert forbidden_import_violations(rules) == []
@@ -125,9 +140,12 @@ def test_undo_checkpoint_orchestration_delegates_state_policy():
     consumers = {
         edge.source
         for edge in internal_module_import_edges()
-        if edge.target == snapshot_module
+        if edge.target in {snapshot_module, state_module}
     }
-    assert consumers == {"git_stage_batch.data.undo_checkpoints"}
+    assert consumers == {
+        "git_stage_batch.data.undo_checkpoints",
+        "git_stage_batch.data.undo.state",
+    }
 
 
 def test_tui_shell_boundary_does_not_own_repository_locking():

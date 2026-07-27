@@ -8100,7 +8100,6 @@ def test_tui_file_review_file_browser_owns_file_selection():
         "ReviewFileEntry",
         "choose_review_file",
         "list_review_file_entries",
-        "prompt_block_local_only",
     }
     moved_names = {
         "ReviewFileEntry",
@@ -8236,6 +8235,11 @@ def test_tui_file_review_block_actions_own_block_commands():
         imported_module
         for imported_module, _node in _import_from_nodes(file_browser_path)
     }
+    file_browser_imports_block_actions = any(
+        imported_module == "git_stage_batch.tui.file_review"
+        and any(alias.name == "block_actions" for alias in node.names)
+        for imported_module, node in _import_from_nodes(file_browser_path)
+    )
     block_action_imports = {
         imported_module
         for imported_module, _node in _import_from_nodes(block_actions_path)
@@ -8252,19 +8256,26 @@ def test_tui_file_review_block_actions_own_block_commands():
     assert {
         "apply_block_action",
         "block_review_file",
+        "prompt_block_local_only",
         "unblock_review_file",
     } <= vars(block_actions).keys()
+    assert "prompt_block_local_only" not in vars(
+        __import__(
+            "git_stage_batch.tui.file_review.file_browser",
+            fromlist=["file_browser"],
+        )
+    )
     assert "_apply_block_action" not in browser_function_names
     assert all(snippet not in browser_text for snippet in old_browser_snippets)
     assert "git_stage_batch.tui.file_review.block_actions" in browser_imports
-    assert "git_stage_batch.tui.file_review.block_actions" in file_browser_imports
+    assert file_browser_imports_block_actions
     assert "git_stage_batch.commands.block_file" not in browser_imports
     assert "git_stage_batch.commands.unblock_file" not in browser_imports
     assert "git_stage_batch.commands.block_file" not in file_browser_imports
     assert "git_stage_batch.commands.unblock_file" not in file_browser_imports
     assert "git_stage_batch.commands.block_file" in block_action_imports
     assert "git_stage_batch.commands.unblock_file" in block_action_imports
-    assert "git_stage_batch.tui.file_review.file_browser" in block_action_imports
+    assert "git_stage_batch.tui.file_review.file_browser" not in block_action_imports
     assert "git_stage_batch.tui.prompts" in block_action_imports
 
 

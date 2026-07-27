@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from ..core.models import LineEntry
+from ..data.file_review.model import (
+    FileReviewPage,
+    ReviewChange,
+    ReviewChangeFragment,
+)
 from . import file_review_layout
-from ..data.file_review.model import FileReviewPage, ReviewChange, ReviewChangeFragment
 
 
 def paginate_file_review_changes(

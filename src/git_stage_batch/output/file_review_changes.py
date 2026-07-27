@@ -5,9 +5,9 @@ from __future__ import annotations
 from ..core.actionable_changes import ActionableSelection, ActionableSelectionReason
 from ..core.line_selection import format_line_ids
 from ..core.models import LineLevelChange
+from ..data.file_review.model import ReviewChange
 from ..i18n import _
 from . import file_review_change_segments as _file_review_change_segments
-from ..data.file_review.model import ReviewChange
 
 
 def _build_review_change(

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from ..core.models import LineEntry
-from .colors import Colors
 from ..data.file_review.model import FileReviewModel
+from .colors import Colors
 
 
 def maximum_display_id_digit_count(model: FileReviewModel) -> int:

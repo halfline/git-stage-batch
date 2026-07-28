@@ -29,6 +29,10 @@ from .candidates import (
     MergeResolution as _MergeResolution,
     MergeResolutionDecision as _MergeResolutionDecision,
 )
+from .coordinate_strategy import (
+    AMBIGUITY_KEY as _COORDINATE_STRATEGY_AMBIGUITY_KEY,
+    CoordinateStrategyChoice as _CoordinateStrategyChoice,
+)
 from .validation import (
     check_structural_validity as _check_merge_structural_validity,
 )
@@ -57,6 +61,58 @@ class _UnresolvedReplacementOrigin:
     choices: tuple[_BaselineReplacementOriginChoice, ...]
 
 
+def _coordinate_strategy_candidate_set(
+    *,
+    strategies_differ: bool,
+    max_candidates: int,
+) -> _MergeCandidateSet:
+    """Offer both merge strategies when their valid results disagree."""
+    if not strategies_differ:
+        return _MergeCandidateSet.refused()
+    if max_candidates < 2:
+        raise _MergeError(_("Too many merge candidates to preview safely"))
+
+    explanation = _(
+        "recorded baseline coordinates and structural content matching "
+        "produce different results"
+    )
+    choices = (
+        (
+            _CoordinateStrategyChoice.STRUCTURAL,
+            _("use structural content matching"),
+        ),
+        (
+            _CoordinateStrategyChoice.RECORDED_COORDINATES,
+            _("use recorded baseline coordinates"),
+        ),
+    )
+    return _MergeCandidateSet.review_required(
+        tuple(
+            _MergeCandidate(
+                ordinal=ordinal,
+                count=len(choices),
+                decisions=(
+                    _MergeResolutionDecision(
+                        ambiguity_key=_COORDINATE_STRATEGY_AMBIGUITY_KEY,
+                        choice_index=choice_index.value,
+                        choice_label=summary,
+                    ),
+                ),
+                summary=summary,
+                source_line_range=None,
+                target_after_line=None,
+                target_before_line=None,
+                explanation=explanation,
+                ambiguity_target_line_range=None,
+            )
+            for ordinal, (choice_index, summary) in enumerate(
+                choices,
+                start=1,
+            )
+        )
+    )
+
+
 def _find_unresolved_replacement_origin(
     source_lines: Sequence[bytes],
     ownership: "BatchOwnership",
@@ -78,10 +134,8 @@ def _find_unresolved_replacement_origin(
         try:
             selected_presence = coerce_line_ranges(presence_line_set)
             unresolved = None
-            for unit_index, unit in enumerate(
-                getattr(ownership, "replacement_units", [])
-            ):
-                if getattr(unit, "origin", None) is None:
+            for unit_index, unit in enumerate(ownership.replacement_units):
+                if unit.origin is None:
                     continue
 
                 claimed_ranges = _collect_replacement_source_ranges(
@@ -196,7 +250,7 @@ def _replacement_origin_candidate_set(
         spool_dir=spool_dir,
     )
     if unresolved is None:
-        return _MergeCandidateSet(())
+        return _MergeCandidateSet.refused()
 
     source_start = unresolved.source_start
     source_end = unresolved.source_end
@@ -213,7 +267,7 @@ def _replacement_origin_candidate_set(
             valid_choices.append(choice)
 
     if not valid_choices:
-        return _MergeCandidateSet(())
+        return _MergeCandidateSet.refused()
 
     count = len(valid_choices)
     claim = deletion_claims[deletion_index]
@@ -261,7 +315,7 @@ def _replacement_origin_candidate_set(
                 ambiguity_target_line_range=ambiguity_target_line_range,
             )
         )
-    return _MergeCandidateSet(tuple(candidates))
+    return _MergeCandidateSet.review_required(tuple(candidates))
 
 
 def _presence_candidate_set(
@@ -300,7 +354,7 @@ def _presence_candidate_set(
     if presence_key is not None and len(presence_choices) > max_candidates:
         raise _MergeError(_("Too many merge candidates to preview safely"))
     if presence_key is None or len(presence_choices) <= 1:
-        return _MergeCandidateSet(())
+        return _MergeCandidateSet.refused()
 
     valid_choices: list[_presence_placement_choices.PresenceChoice] = []
     for choice in presence_choices:
@@ -309,7 +363,7 @@ def _presence_candidate_set(
             valid_choices.append(choice)
 
     if len(valid_choices) <= 1:
-        return _MergeCandidateSet(())
+        return _MergeCandidateSet.refused()
 
     count = len(valid_choices)
     ambiguity_target_line_range = (
@@ -350,7 +404,7 @@ def _presence_candidate_set(
                 ambiguity_target_line_range=ambiguity_target_line_range,
             )
         )
-    return _MergeCandidateSet(tuple(candidates))
+    return _MergeCandidateSet.review_required(tuple(candidates))
 
 
 def _absence_candidate_set(
@@ -365,7 +419,7 @@ def _absence_candidate_set(
     spool_dir: str | Path | None,
 ) -> _MergeCandidateSet:
     if not deletion_claims:
-        return _MergeCandidateSet(())
+        return _MergeCandidateSet.refused()
 
     if len([claim for claim in deletion_claims if claim.content_lines]) != 1:
         raise _MergeError(_("Batch was created from a different version of the file"))
@@ -383,16 +437,12 @@ def _absence_candidate_set(
             source_lines,
             working_lines,
         )
-        presence_arguments = {
-            "source_to_working_mapping": owned_mapping,
-        }
-        if spool_dir is not None:
-            presence_arguments["spool_dir"] = spool_dir
         realized_entries = _presence_constraints.apply_presence_constraints(
             source_lines,
             working_lines,
             presence_line_set,
-            **presence_arguments,
+            source_to_working_mapping=owned_mapping,
+            spool_dir=spool_dir,
         )
     finally:
         owned_mapping.close()
@@ -422,7 +472,7 @@ def _absence_candidate_set(
         if len(choices) > max_candidates:
             raise _MergeError(_("Too many merge candidates to preview safely"))
         if len(choices) <= 1:
-            return _MergeCandidateSet(())
+            return _MergeCandidateSet.refused()
 
         valid_choices: list[_MergeAbsenceChoice] = []
         for choice in choices:
@@ -431,7 +481,7 @@ def _absence_candidate_set(
                 valid_choices.append(choice)
 
         if len(valid_choices) <= 1:
-            return _MergeCandidateSet(())
+            return _MergeCandidateSet.refused()
 
         count = len(valid_choices)
         ambiguity_target_line_range = (
@@ -475,7 +525,7 @@ def _absence_candidate_set(
                     ambiguity_target_line_range=ambiguity_target_line_range,
                 )
             )
-        return _MergeCandidateSet(tuple(candidates))
+        return _MergeCandidateSet.review_required(tuple(candidates))
     finally:
         realized_entries.close()
 
@@ -487,9 +537,17 @@ def enumerate_merge_batch_candidates_for_lines(
     *,
     resolution_is_valid: _MergeResolutionValidator,
     max_candidates: int,
+    coordinate_strategies_differ: bool = False,
     spool_dir: str | Path | None = None,
 ) -> _MergeCandidateSet:
     """Enumerate merge candidates for acquired normalized line sequences."""
+    coordinate_strategy_candidates = _coordinate_strategy_candidate_set(
+        strategies_differ=coordinate_strategies_differ,
+        max_candidates=max_candidates,
+    )
+    if coordinate_strategy_candidates.candidates:
+        return coordinate_strategy_candidates
+
     resolved = ownership.resolve()
     presence_line_set = resolved.presence_line_set
     deletion_claims = resolved.deletion_claims

@@ -156,6 +156,112 @@ def test_coordinate_detection_scans_references_not_selected_lines() -> None:
     )
 
 
+def test_trusted_plan_composes_partial_replacement_and_repeated_insertion() -> None:
+    """Partial replacements and additions retain pre-staged target content."""
+    source_lines = [
+        line.encode()
+        for line in (
+            "head\n",
+            "NEW-A\n",
+            "NEW-B\n",
+            "section\n",
+            "marker\n",
+            "ADDED\n",
+            "end\n",
+            "section\n",
+            "marker\n",
+            "end\n",
+            "tail\n",
+        )
+    ]
+    working_lines = [
+        line.encode()
+        for line in (
+            "staged\n",
+            "head\n",
+            "old-a\n",
+            "old-b\n",
+            "section\n",
+            "marker\n",
+            "end\n",
+            "section\n",
+            "marker\n",
+            "end\n",
+            "tail\n",
+        )
+    ]
+    replacement_reference = _boundary_reference(
+        after_line=2,
+        after_content=b"head\n",
+        before_line=4,
+        before_content=b"old-b\n",
+    )
+    insertion_reference = _boundary_reference(
+        after_line=6,
+        after_content=b"marker\n",
+        before_line=7,
+        before_content=b"end\n",
+    )
+    deletion_claims = [
+        AbsenceClaim(
+            anchor_line=1,
+            content_lines=[b"old-a\n"],
+            baseline_reference=replacement_reference,
+        )
+    ]
+    ownership = BatchOwnership.from_presence_lines(
+        ["2", "6"],
+        deletion_claims,
+        baseline_references={
+            2: replacement_reference,
+            6: insertion_reference,
+        },
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["2"],
+                deletion_indices=[0],
+                origin=ReplacementUnitOrigin(
+                    old_start=2,
+                    old_end=3,
+                    new_start=2,
+                    new_end=3,
+                    baseline_reference=_boundary_reference(
+                        after_line=2,
+                        after_content=b"head\n",
+                        before_line=5,
+                        before_content=b"section\n",
+                    ),
+                ),
+            )
+        ],
+    )
+
+    result = baseline_edits.try_apply_baseline_replacement_units(
+        source_lines,
+        working_lines,
+        ownership,
+        LineRanges.from_ranges(((2, 2), (6, 6))),
+        deletion_claims,
+        trust_baseline_coordinates=True,
+    )
+
+    assert result is not None
+    assert list(result) == [
+        b"staged\n",
+        b"head\n",
+        b"NEW-A\n",
+        b"old-b\n",
+        b"section\n",
+        b"marker\n",
+        b"ADDED\n",
+        b"end\n",
+        b"section\n",
+        b"marker\n",
+        b"end\n",
+        b"tail\n",
+    ]
+
+
 def test_same_boundary_replacement_payloads_follow_source_order() -> None:
     """Replacement and insertion payloads at one boundary should retain order."""
     source_lines = [b"new one\n", b"new two\n"]

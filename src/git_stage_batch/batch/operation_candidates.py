@@ -280,8 +280,8 @@ def build_include_candidate_previews(
     if index_candidates == (None,) and worktree_candidates == (None,):
         return ()
 
-    products = list(product(index_candidates, worktree_candidates))
-    if len(products) > _MAX_OPERATION_CANDIDATES:
+    product_count = len(index_candidates) * len(worktree_candidates)
+    if product_count > _MAX_OPERATION_CANDIDATES:
         raise _CandidateEnumerationLimitError(
             "too many include candidates to preview safely"
         )
@@ -301,13 +301,16 @@ def build_include_candidate_previews(
         selection_ids=selection_ids,
         replacement_payload=replacement_payload,
     )
-    count = len(products)
+    count = product_count
     previews: list[_OperationCandidatePreview] = []
     try:
         for ordinal, (
             index_candidate,
             worktree_candidate,
-        ) in enumerate(products, start=1):
+        ) in enumerate(
+            product(index_candidates, worktree_candidates),
+            start=1,
+        ):
             index_preview = _materialize_target_candidate(
                 target="index",
                 file_path=file_path,

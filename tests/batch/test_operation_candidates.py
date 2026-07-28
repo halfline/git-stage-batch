@@ -5,12 +5,17 @@ from __future__ import annotations
 import pytest
 
 from git_stage_batch.batch import operation_candidates
+import git_stage_batch.batch.merge.merge as merge_module
+from git_stage_batch.batch.merge.candidates import MergeCandidateSet
+from git_stage_batch.batch.ownership.model import BatchOwnership
+from git_stage_batch.batch.ownership.references import BaselineReference
 from git_stage_batch.batch.operation_candidate_types import (
     CandidateEnumerationLimitError,
     OperationCandidatePreview,
     TargetCandidatePreview,
 )
 from git_stage_batch.core.buffer import LineBuffer
+from git_stage_batch.exceptions import MergeError
 
 
 def _target(name: str) -> TargetCandidatePreview:
@@ -73,6 +78,96 @@ def test_operation_candidate_preview_rejects_missing_target():
         preview.close()
 
     assert exc_info.value.args == ("index",)
+
+
+def test_operation_planning_preserves_an_unenumerable_refusal(monkeypatch):
+    """An empty candidate set is not success unless the ordinary merge worked."""
+    monkeypatch.setattr(
+        operation_candidates,
+        "enumerate_merge_batch_candidates_from_line_sequences",
+        lambda *_args, **_kwargs: MergeCandidateSet.refused(),
+    )
+
+    with pytest.raises(
+        MergeError,
+        match="Batch was created from a different version of the file",
+    ):
+        operation_candidates._merge_candidates_or_unambiguous(
+            object(),
+            object(),
+            object(),
+        )
+
+
+def test_operation_planning_recognizes_an_unambiguous_merge(monkeypatch):
+    """A successful ordinary merge should not produce candidate previews."""
+    monkeypatch.setattr(
+        operation_candidates,
+        "enumerate_merge_batch_candidates_from_line_sequences",
+        lambda *_args, **_kwargs: MergeCandidateSet.ordinary_merge(),
+    )
+
+    assert operation_candidates._merge_candidates_or_unambiguous(
+        object(),
+        object(),
+        object(),
+    ) is None
+
+
+def test_coordinate_candidate_planning_runs_each_baseline_strategy_once(
+    monkeypatch,
+):
+    """Operation planning must reuse candidate discovery's initial merge."""
+    source = LineBuffer.from_bytes(
+        b"P\nANCHOR\nNEXT\nMIDDLE\nANCHOR\nNEW\nNEXT\nTAIL\n"
+    )
+    target = LineBuffer.from_bytes(
+        b"P\nANCHOR\nNEXT\nFILL\nANCHOR\nNEXT\nMIDDLE\n"
+        b"ANCHOR\nNEXT\nTAIL\n"
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["6"],
+        [],
+        baseline_references={
+            6: BaselineReference(
+                after_line=5,
+                after_content=b"ANCHOR\n",
+                before_line=6,
+                before_content=b"NEXT\n",
+                has_before_line=True,
+            )
+        },
+    )
+    planning_modes = []
+    original_plan = (
+        merge_module._baseline_edits.try_apply_baseline_replacement_units
+    )
+
+    def count_plan(*args, **kwargs):
+        planning_modes.append(
+            kwargs.get("trust_baseline_coordinates", False)
+        )
+        return original_plan(*args, **kwargs)
+
+    monkeypatch.setattr(
+        merge_module._baseline_edits,
+        "try_apply_baseline_replacement_units",
+        count_plan,
+    )
+
+    try:
+        candidates = operation_candidates._merge_candidates_or_unambiguous(
+            source,
+            ownership,
+            target,
+        )
+    finally:
+        source.close()
+        target.close()
+
+    assert candidates is not None
+    assert len(candidates) == 2
+    assert planning_modes == [False, True]
 
 
 def test_include_candidate_limit_precedes_product_materialization(

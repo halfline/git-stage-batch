@@ -7,15 +7,20 @@ from pathlib import Path
 
 from ..core.buffer import LineBuffer
 from ..core.replacement import ReplacementPayload
-from ..core.text_lifecycle import selected_text_target_change_type
-from ..exceptions import AtomicUnitError, MergeError
+from ..core.text_lifecycle import (
+    TextFileChangeType,
+    selected_text_target_change_type,
+)
+from ..exceptions import MergeError
 from .merge.merge import (
     enumerate_merge_batch_candidates_from_line_sequences,
     merge_batch_from_line_sequences_as_buffer,
 )
 from .merge.candidates import (
     MergeCandidate,
+    MergeCandidateSetOutcome,
 )
+from .ownership.model import BatchOwnership
 from .operation_candidate_types import (
     CandidateEnumerationLimitError as _CandidateEnumerationLimitError,
     CandidateTarget as _CandidateTarget,
@@ -34,39 +39,25 @@ from .operation_candidate_fingerprints import (
 
 def _merge_candidates_or_unambiguous(
     source_lines: LineBuffer,
-    ownership,
+    ownership: BatchOwnership,
     target_lines: LineBuffer,
     *,
     spool_dir: str | Path | None = None,
-) -> tuple[MergeCandidate | None, ...]:
-    merge_arguments = {}
-    if spool_dir is not None:
-        merge_arguments["spool_dir"] = spool_dir
-    try:
-        with merge_batch_from_line_sequences_as_buffer(
-            source_lines,
-            ownership,
-            target_lines,
-            **merge_arguments,
-        ) as _buffer:
-            pass
-        return (None,)
-    except AtomicUnitError:
-        raise
-    except MergeError:
-        pass
-
-    candidate_arguments = {"max_candidates": _MAX_OPERATION_CANDIDATES}
-    if spool_dir is not None:
-        candidate_arguments["spool_dir"] = spool_dir
+) -> tuple[MergeCandidate, ...] | None:
     candidate_set = enumerate_merge_batch_candidates_from_line_sequences(
         source_lines,
         ownership,
         target_lines,
-        **candidate_arguments,
+        max_candidates=_MAX_OPERATION_CANDIDATES,
+        spool_dir=spool_dir,
     )
-    if candidate_set.candidates:
+    if candidate_set.outcome is MergeCandidateSetOutcome.REVIEW_REQUIRED:
         return candidate_set.candidates
+    if (
+        candidate_set.outcome
+        is MergeCandidateSetOutcome.ORDINARY_MERGE_SUCCEEDED
+    ):
+        return None
     raise MergeError("Batch was created from a different version of the file")
 
 
@@ -75,11 +66,11 @@ def _materialize_target_candidate(
     target: _CandidateTarget,
     file_path: str,
     source_lines: LineBuffer,
-    ownership,
+    ownership: BatchOwnership,
     before_lines: LineBuffer,
     candidate: MergeCandidate | None,
     file_mode: str | None,
-    text_change_type,
+    text_change_type: str | TextFileChangeType,
     destination_exists: bool,
     selected_ids: set[int] | None,
     spool_dir: str | Path | None = None,
@@ -89,17 +80,13 @@ def _materialize_target_candidate(
         if spool_dir is None
         else before_lines.clone(spool_dir=spool_dir)
     )
-    merge_arguments = {
-        "resolution": None if candidate is None else candidate.resolution,
-    }
-    if spool_dir is not None:
-        merge_arguments["spool_dir"] = spool_dir
     try:
         after = merge_batch_from_line_sequences_as_buffer(
             source_lines,
             ownership,
             before_lines,
-            **merge_arguments,
+            resolution=None if candidate is None else candidate.resolution,
+            spool_dir=spool_dir,
         )
     except BaseException:
         before_copy.close()
@@ -139,11 +126,11 @@ def build_apply_candidate_previews(
     batch_name: str,
     file_path: str,
     source_lines: LineBuffer,
-    ownership,
+    ownership: BatchOwnership,
     worktree_lines: LineBuffer,
     batch_source_commit: str,
-    file_meta: dict,
-    text_change_type,
+    file_meta: dict[str, object],
+    text_change_type: str | TextFileChangeType,
     worktree_file_mode: str | None,
     worktree_exists: bool,
     selected_ids: set[int] | None,
@@ -157,7 +144,7 @@ def build_apply_candidate_previews(
         worktree_lines,
         spool_dir=spool_dir,
     )
-    if merge_candidates == (None,):
+    if merge_candidates is None:
         return ()
 
     batch_fingerprint = _fingerprint_batch(
@@ -249,12 +236,12 @@ def build_include_candidate_previews(
     batch_name: str,
     file_path: str,
     source_lines: LineBuffer,
-    ownership,
+    ownership: BatchOwnership,
     index_lines: LineBuffer,
     worktree_lines: LineBuffer,
     batch_source_commit: str,
-    file_meta: dict,
-    text_change_type,
+    file_meta: dict[str, object],
+    text_change_type: str | TextFileChangeType,
     index_file_mode: str | None,
     worktree_file_mode: str | None,
     index_exists: bool,
@@ -277,10 +264,16 @@ def build_include_candidate_previews(
         worktree_lines,
         spool_dir=spool_dir,
     )
-    if index_candidates == (None,) and worktree_candidates == (None,):
+    if index_candidates is None and worktree_candidates is None:
         return ()
 
-    product_count = len(index_candidates) * len(worktree_candidates)
+    index_choices = (
+        (None,) if index_candidates is None else index_candidates
+    )
+    worktree_choices = (
+        (None,) if worktree_candidates is None else worktree_candidates
+    )
+    product_count = len(index_choices) * len(worktree_choices)
     if product_count > _MAX_OPERATION_CANDIDATES:
         raise _CandidateEnumerationLimitError(
             "too many include candidates to preview safely"
@@ -308,7 +301,7 @@ def build_include_candidate_previews(
             index_candidate,
             worktree_candidate,
         ) in enumerate(
-            product(index_candidates, worktree_candidates),
+            product(index_choices, worktree_choices),
             start=1,
         ):
             index_preview = _materialize_target_candidate(

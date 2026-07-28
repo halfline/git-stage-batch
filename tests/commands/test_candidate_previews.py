@@ -213,6 +213,59 @@ def _create_contextual_presence_batch(repo):
     (repo / "file.txt").write_text("header\ntarget one\ntarget two\nfooter\n")
 
 
+def _create_coordinate_strategy_batch(repo):
+    source = (
+        "P\n"
+        "ANCHOR\n"
+        "NEXT\n"
+        "MIDDLE\n"
+        "ANCHOR\n"
+        "NEW\n"
+        "NEXT\n"
+        "TAIL\n"
+    )
+    (repo / "file.txt").write_text(source)
+    subprocess.run(["git", "add", "file.txt"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Add coordinate source file"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+    )
+    initialize_abort_state()
+    create_batch("coordinate-choice")
+    add_file_to_batch(
+        "coordinate-choice",
+        "file.txt",
+        BatchOwnership.from_presence_lines(
+            ["6"],
+            [],
+            baseline_references={
+                6: BaselineReference(
+                    after_line=5,
+                    after_content=b"ANCHOR\n",
+                    before_line=6,
+                    before_content=b"NEXT\n",
+                    has_before_line=True,
+                )
+            },
+        ),
+        "100644",
+    )
+    (repo / "file.txt").write_text(
+        "P\n"
+        "ANCHOR\n"
+        "NEXT\n"
+        "FILL\n"
+        "ANCHOR\n"
+        "NEXT\n"
+        "MIDDLE\n"
+        "ANCHOR\n"
+        "NEXT\n"
+        "TAIL\n"
+    )
+
+
 def _candidate_state_has_file(batch_name, file_path):
     state_path = get_batch_candidate_state_file_path()
     if not state_path.exists():
@@ -245,6 +298,48 @@ def test_contextual_presence_candidates_can_be_previewed_and_applied(
     assert (temp_git_repo / "file.txt").read_text() == (
         "header\ntarget one\nclaimed\ntarget two\nfooter\n"
     )
+
+
+def test_coordinate_strategy_candidates_can_be_reviewed_and_applied(
+    temp_git_repo,
+    capsys,
+):
+    """Conflicting valid strategies should use the reviewed candidate flow."""
+    _create_coordinate_strategy_batch(temp_git_repo)
+
+    with pytest.raises(CommandError) as exc_info:
+        command_apply_from_batch("coordinate-choice", file="file.txt")
+
+    assert "file.txt has 2 apply candidates" in exc_info.value.message
+    command_show_from_batch("coordinate-choice:apply", file="file.txt")
+
+    overview = capsys.readouterr()
+    assert "apply candidates  ·  2 choices" in overview.out
+    assert "Candidate 1/2" in overview.out
+    assert "Candidate 2/2" in overview.out
+    assert _candidate_state_has_file("coordinate-choice", "file.txt")
+
+    command_apply_from_batch(
+        "coordinate-choice:apply:1",
+        file="file.txt",
+    )
+
+    captured = capsys.readouterr()
+    assert "Applied candidate 1 of 2" in captured.err
+    assert (temp_git_repo / "file.txt").read_text() == (
+        "P\n"
+        "ANCHOR\n"
+        "NEXT\n"
+        "FILL\n"
+        "ANCHOR\n"
+        "NEXT\n"
+        "MIDDLE\n"
+        "ANCHOR\n"
+        "NEW\n"
+        "NEXT\n"
+        "TAIL\n"
+    )
+    assert not _candidate_state_has_file("coordinate-choice", "file.txt")
 
 
 def test_show_candidate_set_lists_context_and_commands(temp_git_repo, capsys):

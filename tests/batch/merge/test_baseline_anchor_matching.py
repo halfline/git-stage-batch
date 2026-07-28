@@ -20,6 +20,7 @@ from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.references import BaselineReference
 from git_stage_batch.batch.ownership.replacement_units import ReplacementUnitOrigin
+from git_stage_batch.exceptions import MergeError
 
 
 def _deletion_anchor_pairs(*args, **kwargs):
@@ -124,7 +125,7 @@ def test_live_target_rejects_repeated_verified_deletion_boundary():
 
 @pytest.mark.parametrize("supply_mapping", [False, True])
 def test_live_merge_does_not_apply_ambiguous_baseline_coordinate(supply_mapping):
-    """Structural placement must outrank a stale repeated baseline coordinate."""
+    """A stale deletion coordinate must conflict with structural placement."""
     source = [
         b"P\n",
         b"ANCHOR\n",
@@ -167,35 +168,21 @@ def test_live_merge_does_not_apply_ambiguous_baseline_coordinate(supply_mapping)
         else nullcontext(None)
     )
 
-    with (
-        mapping_context as mapping,
-        merge_batch_from_line_sequences_as_buffer(
-            source,
-            BatchOwnership([], [claim]),
-            target,
-            source_to_working_mapping=mapping,
-        ) as merged,
-    ):
-        result = list(merged)
-
-    assert result == [
-        b"P\n",
-        b"ANCHOR\n",
-        b"OLD\n",
-        b"NEXT\n",
-        b"FILL\n",
-        b"ANCHOR\n",
-        b"OLD\n",
-        b"NEXT\n",
-        b"MIDDLE\n",
-        b"ANCHOR\n",
-        b"NEXT\n",
-        b"TAIL\n",
-    ]
+    with mapping_context as mapping:
+        with pytest.raises(
+            MergeError,
+            match="recorded baseline coordinates and structural content matching",
+        ):
+            merge_batch_from_line_sequences_as_buffer(
+                source,
+                BatchOwnership([], [claim]),
+                target,
+                source_to_working_mapping=mapping,
+            )
 
 
 def test_live_merge_does_not_insert_at_ambiguous_baseline_coordinate():
-    """A stale repeated insertion boundary must defer to structural placement."""
+    """A stale insertion coordinate must conflict with structural placement."""
     source = [
         b"P\n",
         b"ANCHOR\n",
@@ -232,6 +219,55 @@ def test_live_merge_does_not_insert_at_ambiguous_baseline_coordinate():
         },
     )
 
+    with pytest.raises(
+        MergeError,
+        match="recorded baseline coordinates and structural content matching",
+    ):
+        merge_batch_from_line_sequences_as_buffer(
+            source,
+            ownership,
+            target,
+        )
+
+
+def test_live_merge_accepts_identical_coordinate_and_structural_candidates():
+    """Matching candidates should not make a repeated boundary ambiguous."""
+    source = [
+        b"P\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"MIDDLE\n",
+        b"ANCHOR\n",
+        b"NEW\n",
+        b"NEXT\n",
+        b"TAIL\n",
+    ]
+    target = [
+        b"P\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"FILL\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"MIDDLE\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"TAIL\n",
+    ]
+    ownership = BatchOwnership.from_presence_lines(
+        ["6"],
+        [],
+        baseline_references={
+            6: BaselineReference(
+                after_line=8,
+                after_content=b"ANCHOR\n",
+                before_line=9,
+                before_content=b"NEXT\n",
+                has_before_line=True,
+            ),
+        },
+    )
+
     with merge_batch_from_line_sequences_as_buffer(
         source,
         ownership,
@@ -252,6 +288,56 @@ def test_live_merge_does_not_insert_at_ambiguous_baseline_coordinate():
         b"NEXT\n",
         b"TAIL\n",
     ]
+
+
+def test_repeated_boundary_candidates_match_with_pre_staged_prefix():
+    """A pre-staged prefix must not stale exact reviewed coordinates."""
+    source = [
+        b"staged\n",
+        b"P\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"MIDDLE\n",
+        b"ANCHOR\n",
+        b"NEW\n",
+        b"NEXT\n",
+        b"TAIL\n",
+    ]
+    target = [
+        b"staged\n",
+        b"P\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"FILL\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"MIDDLE\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"TAIL\n",
+    ]
+    ownership = BatchOwnership.from_presence_lines(
+        ["7"],
+        [],
+        baseline_references={
+            7: BaselineReference(
+                after_line=9,
+                after_content=b"ANCHOR\n",
+                before_line=10,
+                before_content=b"NEXT\n",
+                has_before_line=True,
+            ),
+        },
+    )
+
+    with merge_batch_from_line_sequences_as_buffer(
+        source,
+        ownership,
+        target,
+    ) as merged:
+        result = list(merged)
+
+    assert result == target[:9] + [b"NEW\n"] + target[9:]
 
 
 def test_live_target_accepts_one_unique_composite_deletion_boundary():

@@ -1,8 +1,12 @@
 """Tests for structural batch merge algorithm."""
 
+from itertools import repeat
+import tracemalloc
+
 import pytest
 
 import git_stage_batch.batch.merge.baseline_edits as baseline_edits_module
+import git_stage_batch.batch.merge.candidate_enumeration as candidate_enumeration_module
 import git_stage_batch.batch.merge.merge as merge_module
 import git_stage_batch.batch.realization.provenance as provenance_module
 from git_stage_batch.batch.merge.baseline_correspondence import (
@@ -19,6 +23,11 @@ from git_stage_batch.batch.discard import (
     discard_batch_from_line_sequences_as_buffer,
 )
 from git_stage_batch.batch.line_matching.match import match_lines
+from git_stage_batch.batch.merge.candidates import (
+    MergeCandidateSetOutcome,
+    MergeResolution,
+)
+from git_stage_batch.batch.merge.coordinate_strategy import AMBIGUITY_KEY
 from git_stage_batch.batch.merge.validation import check_structural_validity
 from git_stage_batch.batch.merge.merge import (
     _merge_batch_line_chunks,
@@ -33,7 +42,7 @@ from git_stage_batch.batch.realization.entry_storage import (
     realized_entry_content_chunks,
 )
 from git_stage_batch.core.buffer import LineBuffer
-from git_stage_batch.exceptions import MergeError
+from git_stage_batch.exceptions import AtomicUnitError, MergeError
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership.model import (
     BatchOwnership,
@@ -90,6 +99,352 @@ class _GuardedLine:
 
     def endswith(self, suffix):
         raise AssertionError("line endings should not be materialized")
+
+
+class _CloseTrackingIterator:
+    """Chunk iterator that records explicit cleanup."""
+
+    def __init__(self, chunks):
+        self._chunks = iter(chunks)
+        self.closed = False
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return next(self._chunks)
+
+    def close(self):
+        self.closed = True
+
+
+def test_candidate_comparison_preserves_structural_chunk_boundaries():
+    """Stream comparison must not fragment the selected structural output."""
+    structural_chunks = [b"alpha\n", b"beta\n", b"gamma\n"]
+    coordinate_chunks = [b"", b"alpha\nbe", b"ta\ngamma", b"\n", b""]
+
+    result = list(
+        merge_module._yield_identical_candidate_chunks(
+            coordinate_chunks,
+            structural_chunks,
+        )
+    )
+
+    assert result == structural_chunks
+
+
+def test_candidate_comparison_does_not_copy_large_chunk_remainders():
+    """Uneven candidate chunks must use constant-size comparison state."""
+    structural_chunk = b"x" * 1024
+    coordinate_chunk = structural_chunk * 512
+
+    tracemalloc.start()
+    try:
+        yielded_count = sum(
+            1
+            for _chunk in merge_module._yield_identical_candidate_chunks(
+                (coordinate_chunk,),
+                repeat(structural_chunk, 512),
+            )
+        )
+        _current_heap, peak_heap = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert yielded_count == 512
+    assert peak_heap < 64 * 1024
+
+
+@pytest.mark.parametrize("candidates_match", [True, False])
+def test_coordinate_candidate_is_closed_after_comparison(
+    monkeypatch,
+    candidates_match,
+):
+    """Compared coordinate streams must close on acceptance and ambiguity."""
+    source = [b"a\n", b"new\n", b"b\n"]
+    target = [b"a\n", b"b\n"]
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [],
+        baseline_references={
+            2: BaselineReference(
+                after_line=1,
+                after_content=b"a\n",
+                before_line=2,
+                before_content=b"b\n",
+                has_before_line=True,
+            )
+        },
+    )
+    coordinate_candidate = _CloseTrackingIterator(
+        source if candidates_match else [b"a\n", b"b\n", b"new\n"]
+    )
+    planning_modes = []
+
+    def plan_candidate(*_args, **kwargs):
+        trust_coordinates = kwargs.get("trust_baseline_coordinates", False)
+        planning_modes.append(trust_coordinates)
+        return coordinate_candidate if trust_coordinates else None
+
+    monkeypatch.setattr(
+        merge_module._baseline_edits,
+        "try_apply_baseline_replacement_units",
+        plan_candidate,
+    )
+
+    if candidates_match:
+        with merge_batch_from_line_sequences_as_buffer(
+            source,
+            ownership,
+            target,
+        ) as merged:
+            assert list(merged) == source
+    else:
+        with pytest.raises(
+            MergeError,
+            match="recorded baseline coordinates and structural content matching",
+        ):
+            merge_batch_from_line_sequences_as_buffer(
+                source,
+                ownership,
+                target,
+            )
+
+    assert planning_modes == [False, True]
+    assert coordinate_candidate.closed
+
+
+def test_coordinate_candidate_is_closed_when_structural_planning_refuses(
+    monkeypatch,
+):
+    """A coordinate stream must close when no structural candidate exists."""
+    source = [b"a\n", b"new\n", b"b\n"]
+    target = [b"a\n", b"b\n"]
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [],
+        baseline_references={
+            2: BaselineReference(
+                after_line=1,
+                after_content=b"a\n",
+                before_line=2,
+                before_content=b"b\n",
+                has_before_line=True,
+            )
+        },
+    )
+    coordinate_candidate = _CloseTrackingIterator(source)
+
+    monkeypatch.setattr(
+        merge_module._baseline_edits,
+        "try_apply_baseline_replacement_units",
+        lambda *_args, **kwargs: (
+            coordinate_candidate
+            if kwargs.get("trust_baseline_coordinates", False)
+            else None
+        ),
+    )
+
+    def refuse_structural_candidate(*_args, **_kwargs):
+        raise MergeError("structural candidate is invalid")
+
+    monkeypatch.setattr(
+        merge_module,
+        "_build_structural_realized_entries",
+        refuse_structural_candidate,
+    )
+
+    with pytest.raises(MergeError, match="structural candidate is invalid"):
+        merge_batch_from_line_sequences_as_buffer(
+            source,
+            ownership,
+            target,
+        )
+
+    assert coordinate_candidate.closed
+
+
+@pytest.mark.parametrize("choice", [0, 3, True, "1", None])
+def test_coordinate_strategy_rejects_invalid_resolution_values(choice):
+    """Only serialized values of the strategy enum are valid choices."""
+    resolution = MergeResolution({AMBIGUITY_KEY: choice})
+
+    with pytest.raises(
+        MergeError,
+        match="Selected merge resolution is no longer valid",
+    ):
+        merge_batch_from_line_sequences_as_buffer(
+            [b"same\n"],
+            BatchOwnership([], []),
+            [b"same\n"],
+            resolution=resolution,
+        )
+
+
+def test_candidate_enumeration_propagates_atomic_unit_errors(monkeypatch):
+    """Candidate discovery must not reinterpret atomic selection failures."""
+
+    def refuse_atomic_selection(*_args, **_kwargs):
+        raise AtomicUnitError("select the complete replacement")
+        yield
+
+    monkeypatch.setattr(
+        merge_module,
+        "_merge_batch_acquired_line_chunks",
+        refuse_atomic_selection,
+    )
+
+    with pytest.raises(
+        AtomicUnitError,
+        match="select the complete replacement",
+    ):
+        enumerate_merge_batch_candidates_from_line_sequences(
+            [b"source\n"],
+            BatchOwnership([], []),
+            [b"target\n"],
+        )
+
+
+def test_candidate_enumeration_marks_an_ordinary_merge_as_unambiguous():
+    """An empty candidate set must distinguish success from hard refusal."""
+    candidate_set = enumerate_merge_batch_candidates_from_line_sequences(
+        [b"same\n"],
+        BatchOwnership([], []),
+        [b"same\n"],
+    )
+
+    assert candidate_set.candidates == ()
+    assert (
+        candidate_set.outcome
+        is MergeCandidateSetOutcome.ORDINARY_MERGE_SUCCEEDED
+    )
+
+
+def test_large_merge_without_coordinates_plans_baseline_once(monkeypatch):
+    """Large legacy batches should not repeat an inapplicable baseline plan."""
+    source = [f"line {index}\n".encode() for index in range(10_000)]
+    target = [b"remove me\n", *source]
+    ownership = BatchOwnership(
+        [],
+        [AbsenceClaim(anchor_line=None, content_lines=[b"remove me\n"])],
+    )
+    planning_modes = []
+    original_plan = (
+        merge_module._baseline_edits.try_apply_baseline_replacement_units
+    )
+
+    def count_plan(*args, **kwargs):
+        planning_modes.append(
+            kwargs.get("trust_baseline_coordinates", False)
+        )
+        return original_plan(*args, **kwargs)
+
+    monkeypatch.setattr(
+        merge_module._baseline_edits,
+        "try_apply_baseline_replacement_units",
+        count_plan,
+    )
+
+    with merge_batch_from_line_sequences_as_buffer(
+        source,
+        ownership,
+        target,
+    ) as merged:
+        assert len(merged) == len(source)
+
+    assert planning_modes == [False]
+
+
+def test_coordinate_candidate_discovery_reuses_initial_comparison(monkeypatch):
+    """Candidate discovery must not repeat both baseline planning passes."""
+    source = [
+        b"P\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"MIDDLE\n",
+        b"ANCHOR\n",
+        b"NEW\n",
+        b"NEXT\n",
+        b"TAIL\n",
+    ]
+    target = [
+        b"P\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"FILL\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"MIDDLE\n",
+        b"ANCHOR\n",
+        b"NEXT\n",
+        b"TAIL\n",
+    ]
+    ownership = BatchOwnership.from_presence_lines(
+        ["6"],
+        [],
+        baseline_references={
+            6: BaselineReference(
+                after_line=5,
+                after_content=b"ANCHOR\n",
+                before_line=6,
+                before_content=b"NEXT\n",
+                has_before_line=True,
+            )
+        },
+    )
+    planning_modes = []
+    original_plan = (
+        merge_module._baseline_edits.try_apply_baseline_replacement_units
+    )
+
+    def count_plan(*args, **kwargs):
+        planning_modes.append(
+            kwargs.get("trust_baseline_coordinates", False)
+        )
+        return original_plan(*args, **kwargs)
+
+    monkeypatch.setattr(
+        merge_module._baseline_edits,
+        "try_apply_baseline_replacement_units",
+        count_plan,
+    )
+
+    def fail_duplicate_matching(*_args, **_kwargs):
+        raise AssertionError("coordinate candidate discovery repeated line matching")
+
+    monkeypatch.setattr(
+        candidate_enumeration_module,
+        "match_lines",
+        fail_duplicate_matching,
+    )
+
+    candidate_set = enumerate_merge_batch_candidates_from_line_sequences(
+        source,
+        ownership,
+        target,
+    )
+
+    assert len(candidate_set.candidates) == 2
+    assert planning_modes == [False, True]
+
+    planning_modes.clear()
+    with merge_batch_from_line_sequences_as_buffer(
+        source,
+        ownership,
+        target,
+        resolution=candidate_set.candidates[0].resolution,
+    ) as _structural_result:
+        pass
+    assert planning_modes == []
+
+    with merge_batch_from_line_sequences_as_buffer(
+        source,
+        ownership,
+        target,
+        resolution=candidate_set.candidates[1].resolution,
+    ) as _coordinate_result:
+        pass
+    assert planning_modes == [True]
 
 
 def test_merge_routes_mapping_and_output_storage_to_invocation_spool(
@@ -2020,6 +2375,7 @@ footer
         )
 
         assert candidate_set.candidates == ()
+        assert candidate_set.outcome is MergeCandidateSetOutcome.REFUSED
 
     def test_replacement_review_does_not_waive_insertion_ambiguity(self):
         """Reviewing one replacement cannot authorize an unrelated insertion."""

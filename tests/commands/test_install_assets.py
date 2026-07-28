@@ -18,12 +18,29 @@ def temp_git_repo(tmp_path, monkeypatch):
     monkeypatch.chdir(repo)
 
     subprocess.run(["git", "init"], check=True, cwd=repo, capture_output=True)
-    subprocess.run(["git", "config", "user.name", "Test User"], check=True, cwd=repo, capture_output=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+    )
 
     (repo / "README.md").write_text("# Test\n")
-    subprocess.run(["git", "add", "README.md"], check=True, cwd=repo, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "Initial commit"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "add", "README.md"], check=True, cwd=repo, capture_output=True
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Initial commit"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+    )
 
     return repo
 
@@ -35,10 +52,22 @@ class TestCommandInstallAssets:
         """Installing without a group should install all bundled asset groups."""
         command_install_assets()
 
-        claude_agent = temp_git_repo / ".claude" / "agents" / "commit-message-drafter.md"
-        claude_decompose_agent = temp_git_repo / ".claude" / "agents" / "decompose-analyzer.md"
-        claude_unstaged = temp_git_repo / ".claude" / "skills" / "commit-unstaged-changes" / "SKILL.md"
-        claude_staged = temp_git_repo / ".claude" / "skills" / "commit-staged-changes" / "SKILL.md"
+        claude_agent = (
+            temp_git_repo / ".claude" / "agents" / "commit-message-drafter.md"
+        )
+        claude_decompose_agent = (
+            temp_git_repo / ".claude" / "agents" / "decompose-analyzer.md"
+        )
+        claude_unstaged = (
+            temp_git_repo
+            / ".claude"
+            / "skills"
+            / "commit-unstaged-changes"
+            / "SKILL.md"
+        )
+        claude_staged = (
+            temp_git_repo / ".claude" / "skills" / "commit-staged-changes" / "SKILL.md"
+        )
         claude_decompose = (
             temp_git_repo
             / ".claude"
@@ -46,9 +75,25 @@ class TestCommandInstallAssets:
             / "decompose-and-commit-unstaged-changes"
             / "SKILL.md"
         )
-        codex_internal_drafter = temp_git_repo / ".agents" / "internal" / "commit-message-drafter.md"
-        codex_unstaged = temp_git_repo / ".agents" / "skills" / "commit-unstaged-changes" / "SKILL.md"
-        codex_staged = temp_git_repo / ".agents" / "skills" / "commit-staged-changes" / "SKILL.md"
+        claude_messages = (
+            temp_git_repo / ".claude" / "skills" / "refine-commit-messages" / "SKILL.md"
+        )
+        claude_refine = (
+            temp_git_repo / ".claude" / "skills" / "refine-history" / "SKILL.md"
+        )
+        codex_internal_drafter = (
+            temp_git_repo / ".agents" / "internal" / "commit-message-drafter.md"
+        )
+        codex_unstaged = (
+            temp_git_repo
+            / ".agents"
+            / "skills"
+            / "commit-unstaged-changes"
+            / "SKILL.md"
+        )
+        codex_staged = (
+            temp_git_repo / ".agents" / "skills" / "commit-staged-changes" / "SKILL.md"
+        )
         codex_decompose = (
             temp_git_repo
             / ".agents"
@@ -56,16 +101,26 @@ class TestCommandInstallAssets:
             / "decompose-and-commit-unstaged-changes"
             / "SKILL.md"
         )
+        codex_messages = (
+            temp_git_repo / ".agents" / "skills" / "refine-commit-messages" / "SKILL.md"
+        )
+        codex_refine = (
+            temp_git_repo / ".agents" / "skills" / "refine-history" / "SKILL.md"
+        )
         codex_config = temp_git_repo / ".codex" / "config.toml"
         assert claude_agent.exists()
         assert claude_decompose_agent.exists()
         assert claude_unstaged.exists()
         assert claude_staged.exists()
         assert claude_decompose.exists()
+        assert claude_messages.exists()
+        assert claude_refine.exists()
         assert codex_internal_drafter.exists()
         assert codex_unstaged.exists()
         assert codex_staged.exists()
         assert codex_decompose.exists()
+        assert codex_messages.exists()
+        assert codex_refine.exists()
         assert codex_config.exists()
         assert not (temp_git_repo / "skills").exists()
 
@@ -76,11 +131,13 @@ class TestCommandInstallAssets:
         ) in captured.err
         assert (
             "Installed Claude skills: commit-staged-changes, commit-unstaged-changes, "
-            "decompose-and-commit-unstaged-changes"
+            "decompose-and-commit-unstaged-changes, refine-commit-messages, "
+            "refine-history"
         ) in captured.err
         assert (
             "Installed Codex skills: commit-staged-changes, commit-unstaged-changes, "
-            "decompose-and-commit-unstaged-changes"
+            "decompose-and-commit-unstaged-changes, refine-commit-messages, "
+            "refine-history"
         ) in captured.err
 
     def test_install_all_claude_agents(self, temp_git_repo, capsys):
@@ -88,11 +145,15 @@ class TestCommandInstallAssets:
         command_install_assets("claude-agents")
 
         agent_file = temp_git_repo / ".claude" / "agents" / "commit-message-drafter.md"
-        decompose_agent = temp_git_repo / ".claude" / "agents" / "decompose-rebuilder.md"
+        decompose_agent = (
+            temp_git_repo / ".claude" / "agents" / "decompose-rebuilder.md"
+        )
         assert agent_file.exists()
         assert decompose_agent.exists()
         assert "name: commit-message-drafter" in agent_file.read_text(encoding="utf-8")
-        assert "name: decompose-rebuilder" in decompose_agent.read_text(encoding="utf-8")
+        assert "name: decompose-rebuilder" in decompose_agent.read_text(
+            encoding="utf-8"
+        )
 
         captured = capsys.readouterr()
         assert (
@@ -106,15 +167,25 @@ class TestCommandInstallAssets:
 
         agent_dir = temp_git_repo / ".claude" / "agents"
         assert (agent_dir / "commit-message-drafter.md").exists()
-        assert sorted(path.name for path in agent_dir.iterdir()) == ["commit-message-drafter.md"]
+        assert sorted(path.name for path in agent_dir.iterdir()) == [
+            "commit-message-drafter.md"
+        ]
 
     def test_install_all_claude_skills(self, temp_git_repo, capsys):
         """Installing a Claude asset group should write bundled skills."""
         command_install_assets("claude-skills")
 
         agent_file = temp_git_repo / ".claude" / "agents" / "commit-message-drafter.md"
-        staged_skill = temp_git_repo / ".claude" / "skills" / "commit-staged-changes" / "SKILL.md"
-        unstaged_skill = temp_git_repo / ".claude" / "skills" / "commit-unstaged-changes" / "SKILL.md"
+        staged_skill = (
+            temp_git_repo / ".claude" / "skills" / "commit-staged-changes" / "SKILL.md"
+        )
+        unstaged_skill = (
+            temp_git_repo
+            / ".claude"
+            / "skills"
+            / "commit-unstaged-changes"
+            / "SKILL.md"
+        )
         decompose_skill = (
             temp_git_repo
             / ".claude"
@@ -122,20 +193,36 @@ class TestCommandInstallAssets:
             / "decompose-and-commit-unstaged-changes"
             / "SKILL.md"
         )
-        decompose_agent = temp_git_repo / ".claude" / "agents" / "decompose-batch-peeler.md"
+        message_skill = (
+            temp_git_repo / ".claude" / "skills" / "refine-commit-messages" / "SKILL.md"
+        )
+        refine_skill = (
+            temp_git_repo / ".claude" / "skills" / "refine-history" / "SKILL.md"
+        )
+        decompose_agent = (
+            temp_git_repo / ".claude" / "agents" / "decompose-batch-peeler.md"
+        )
         assert agent_file.exists()
         assert staged_skill.exists()
         assert unstaged_skill.exists()
         assert decompose_skill.exists()
+        assert message_skill.exists()
+        assert refine_skill.exists()
         assert decompose_agent.exists()
         assert "name: commit-staged-changes" in staged_skill.read_text(encoding="utf-8")
-        assert "name: commit-unstaged-changes" in unstaged_skill.read_text(encoding="utf-8")
-        assert "name: decompose-and-commit-unstaged-changes" in decompose_skill.read_text(encoding="utf-8")
+        assert "name: commit-unstaged-changes" in unstaged_skill.read_text(
+            encoding="utf-8"
+        )
+        assert (
+            "name: decompose-and-commit-unstaged-changes"
+            in decompose_skill.read_text(encoding="utf-8")
+        )
 
         captured = capsys.readouterr()
         assert (
             "Installed Claude skills: commit-staged-changes, commit-unstaged-changes, "
-            "decompose-and-commit-unstaged-changes"
+            "decompose-and-commit-unstaged-changes, refine-commit-messages, "
+            "refine-history"
         ) in captured.err
 
     def test_install_single_skill(self, temp_git_repo):
@@ -147,11 +234,15 @@ class TestCommandInstallAssets:
         assert (agent_dir / "commit-message-drafter.md").exists()
         assert not (agent_dir / "decompose-analyzer.md").exists()
         assert (skill_dir / "commit-unstaged-changes" / "SKILL.md").exists()
-        assert sorted(path.name for path in skill_dir.iterdir()) == ["commit-unstaged-changes"]
+        assert sorted(path.name for path in skill_dir.iterdir()) == [
+            "commit-unstaged-changes"
+        ]
 
-    def test_install_decompose_claude_skill_installs_entry_agents(self, temp_git_repo):
-        """Selecting the decompose Claude skill should install its helper agents."""
-        command_install_assets("claude-skills", ["decompose-and-commit-unstaged-changes"])
+    def test_install_decompose_claude_skill_installs_dependencies(self, temp_git_repo):
+        """Selecting the decompose Claude skill should install all dependencies."""
+        command_install_assets(
+            "claude-skills", ["decompose-and-commit-unstaged-changes"]
+        )
 
         agent_dir = temp_git_repo / ".claude" / "agents"
         skill_dir = temp_git_repo / ".claude" / "skills"
@@ -160,24 +251,49 @@ class TestCommandInstallAssets:
         assert (agent_dir / "decompose-batch-peeler.md").exists()
         assert (agent_dir / "decompose-deconstructor.md").exists()
         assert (agent_dir / "decompose-rebuilder.md").exists()
-        assert (skill_dir / "decompose-and-commit-unstaged-changes" / "SKILL.md").exists()
+        assert (
+            skill_dir / "decompose-and-commit-unstaged-changes" / "SKILL.md"
+        ).exists()
+        assert (skill_dir / "refine-commit-messages" / "SKILL.md").exists()
+        assert (skill_dir / "refine-history" / "SKILL.md").exists()
+        assert (
+            skill_dir / "refine-history" / "scripts" / "refine-history-checkpoint.py"
+        ).exists()
         assert sorted(path.name for path in skill_dir.iterdir()) == [
-            "decompose-and-commit-unstaged-changes"
+            "decompose-and-commit-unstaged-changes",
+            "refine-commit-messages",
+            "refine-history",
         ]
 
     def test_install_all_codex_skills(self, temp_git_repo, capsys):
         """Installing a Codex asset group should write bundled skills."""
         command_install_assets("codex-skills")
 
-        internal_drafter = temp_git_repo / ".agents" / "internal" / "commit-message-drafter.md"
-        staged_skill = temp_git_repo / ".agents" / "skills" / "commit-staged-changes" / "SKILL.md"
-        unstaged_skill = temp_git_repo / ".agents" / "skills" / "commit-unstaged-changes" / "SKILL.md"
+        internal_drafter = (
+            temp_git_repo / ".agents" / "internal" / "commit-message-drafter.md"
+        )
+        staged_skill = (
+            temp_git_repo / ".agents" / "skills" / "commit-staged-changes" / "SKILL.md"
+        )
+        unstaged_skill = (
+            temp_git_repo
+            / ".agents"
+            / "skills"
+            / "commit-unstaged-changes"
+            / "SKILL.md"
+        )
         decompose_skill = (
             temp_git_repo
             / ".agents"
             / "skills"
             / "decompose-and-commit-unstaged-changes"
             / "SKILL.md"
+        )
+        message_skill = (
+            temp_git_repo / ".agents" / "skills" / "refine-commit-messages" / "SKILL.md"
+        )
+        refine_skill = (
+            temp_git_repo / ".agents" / "skills" / "refine-history" / "SKILL.md"
         )
         codex_config = temp_git_repo / ".codex" / "config.toml"
         staged_openai_yaml = (
@@ -216,22 +332,85 @@ class TestCommandInstallAssets:
         assert staged_skill.exists()
         assert unstaged_skill.exists()
         assert decompose_skill.exists()
+        assert message_skill.exists()
+        assert refine_skill.exists()
         assert codex_config.exists()
         assert staged_openai_yaml.exists()
         assert unstaged_openai_yaml.exists()
         assert decompose_openai_yaml.exists()
         assert decompose_reference.exists()
-        assert "# Commit Message Drafter" in internal_drafter.read_text(encoding="utf-8")
+        assert "# Commit Message Drafter" in internal_drafter.read_text(
+            encoding="utf-8"
+        )
         assert "name: commit-staged-changes" in staged_skill.read_text(encoding="utf-8")
-        assert "name: commit-unstaged-changes" in unstaged_skill.read_text(encoding="utf-8")
-        assert "name: decompose-and-commit-unstaged-changes" in decompose_skill.read_text(encoding="utf-8")
-        assert 'sandbox_mode = "workspace-write"' in codex_config.read_text(encoding="utf-8")
+        assert "name: commit-unstaged-changes" in unstaged_skill.read_text(
+            encoding="utf-8"
+        )
+        assert (
+            "name: decompose-and-commit-unstaged-changes"
+            in decompose_skill.read_text(encoding="utf-8")
+        )
+        assert 'sandbox_mode = "workspace-write"' in codex_config.read_text(
+            encoding="utf-8"
+        )
 
         captured = capsys.readouterr()
         assert (
             "Installed Codex skills: commit-staged-changes, commit-unstaged-changes, "
-            "decompose-and-commit-unstaged-changes"
+            "decompose-and-commit-unstaged-changes, refine-commit-messages, "
+            "refine-history"
         ) in captured.err
+
+    def test_install_single_refine_history_skills(self, temp_git_repo):
+        """The standalone history skill should install with its own support files."""
+        command_install_assets("claude-skills", ["refine-history"])
+        command_install_assets("codex-skills", ["refine-history"])
+
+        claude_dir = temp_git_repo / ".claude" / "skills" / "refine-history"
+        codex_dir = temp_git_repo / ".agents" / "skills" / "refine-history"
+        claude_messages = (
+            temp_git_repo / ".claude" / "skills" / "refine-commit-messages"
+        )
+        codex_messages = temp_git_repo / ".agents" / "skills" / "refine-commit-messages"
+        assert (claude_dir / "SKILL.md").exists()
+        assert (claude_dir / "references" / "rewrite-procedures.md").exists()
+        assert (claude_dir / "scripts" / "refine-history-checkpoint.py").exists()
+        assert (codex_dir / "SKILL.md").exists()
+        assert (codex_dir / "agents" / "openai.yaml").exists()
+        assert (codex_dir / "references" / "rewrite-procedures.md").exists()
+        assert (codex_dir / "scripts" / "refine-history-checkpoint.py").exists()
+        assert (
+            claude_messages / "scripts" / "refine-commit-messages-checkpoint.py"
+        ).exists()
+        assert (
+            codex_messages / "scripts" / "refine-commit-messages-checkpoint.py"
+        ).exists()
+
+    def test_install_single_refine_commit_messages_skills(self, temp_git_repo):
+        """Message refinement should install independently for both assistants."""
+        command_install_assets("claude-skills", ["refine-commit-messages"])
+        command_install_assets("codex-skills", ["refine-commit-messages"])
+
+        claude_dir = temp_git_repo / ".claude" / "skills" / "refine-commit-messages"
+        codex_dir = temp_git_repo / ".agents" / "skills" / "refine-commit-messages"
+        assert (claude_dir / "SKILL.md").exists()
+        assert (claude_dir / "references" / "message-guidelines.md").exists()
+        assert (
+            claude_dir / "scripts" / "refine-commit-messages-checkpoint.py"
+        ).exists()
+        assert (codex_dir / "SKILL.md").exists()
+        assert (codex_dir / "agents" / "openai.yaml").exists()
+        assert (codex_dir / "references" / "message-guidelines.md").exists()
+        claude_drafter = (
+            temp_git_repo / ".claude" / "agents" / "commit-message-drafter.md"
+        ).read_text(encoding="utf-8")
+        codex_drafter = (
+            temp_git_repo / ".agents" / "internal" / "commit-message-drafter.md"
+        ).read_text(encoding="utf-8")
+        assert "mode: `staged` or `historical`" in claude_drafter
+        assert "mode: `staged` or `historical`" in codex_drafter
+        assert "--git-path hooks/commit-msg" in claude_drafter
+        assert "--git-path hooks/commit-msg" in codex_drafter
 
     def test_install_single_codex_skill(self, temp_git_repo):
         """Selecting one Codex skill should install only that skill."""
@@ -239,35 +418,64 @@ class TestCommandInstallAssets:
 
         skill_dir = temp_git_repo / ".agents" / "skills"
         assert (temp_git_repo / ".codex" / "config.toml").exists()
-        assert (temp_git_repo / ".agents" / "internal" / "commit-message-drafter.md").exists()
+        assert (
+            temp_git_repo / ".agents" / "internal" / "commit-message-drafter.md"
+        ).exists()
         assert (skill_dir / "commit-unstaged-changes" / "SKILL.md").exists()
-        assert sorted(path.name for path in skill_dir.iterdir()) == ["commit-unstaged-changes"]
+        assert sorted(path.name for path in skill_dir.iterdir()) == [
+            "commit-unstaged-changes"
+        ]
 
     def test_install_single_codex_decompose_skill(self, temp_git_repo):
         """Selecting the decompose Codex skill should install its bundled references."""
-        command_install_assets("codex-skills", ["decompose-and-commit-unstaged-changes"])
+        command_install_assets(
+            "codex-skills", ["decompose-and-commit-unstaged-changes"]
+        )
 
         skill_dir = temp_git_repo / ".agents" / "skills"
         decompose_dir = skill_dir / "decompose-and-commit-unstaged-changes"
         assert (temp_git_repo / ".codex" / "config.toml").exists()
-        assert (temp_git_repo / ".agents" / "internal" / "commit-message-drafter.md").exists()
+        assert (
+            temp_git_repo / ".agents" / "internal" / "commit-message-drafter.md"
+        ).exists()
         assert (decompose_dir / "SKILL.md").exists()
         assert (decompose_dir / "agents" / "openai.yaml").exists()
         assert (decompose_dir / "references" / "decompose-analyzer.md").exists()
         assert (decompose_dir / "scripts" / "decompose-checkpoint.py").exists()
+        assert (skill_dir / "refine-history" / "SKILL.md").exists()
+        assert (skill_dir / "refine-commit-messages" / "SKILL.md").exists()
+        assert (
+            skill_dir / "refine-history" / "scripts" / "refine-history-checkpoint.py"
+        ).exists()
         assert sorted(path.name for path in skill_dir.iterdir()) == [
-            "decompose-and-commit-unstaged-changes"
+            "decompose-and-commit-unstaged-changes",
+            "refine-commit-messages",
+            "refine-history",
         ]
 
     def test_install_filtered_assets_across_all_groups(self, temp_git_repo, capsys):
         """Filtering without a group should install matches from every asset group."""
         command_install_assets(filters=["commit-*"])
 
-        assert (temp_git_repo / ".claude" / "agents" / "commit-message-drafter.md").exists()
-        assert not (temp_git_repo / ".claude" / "agents" / "decompose-analyzer.md").exists()
-        assert (temp_git_repo / ".agents" / "internal" / "commit-message-drafter.md").exists()
-        assert (temp_git_repo / ".claude" / "skills" / "commit-staged-changes" / "SKILL.md").exists()
-        assert (temp_git_repo / ".claude" / "skills" / "commit-unstaged-changes" / "SKILL.md").exists()
+        assert (
+            temp_git_repo / ".claude" / "agents" / "commit-message-drafter.md"
+        ).exists()
+        assert not (
+            temp_git_repo / ".claude" / "agents" / "decompose-analyzer.md"
+        ).exists()
+        assert (
+            temp_git_repo / ".agents" / "internal" / "commit-message-drafter.md"
+        ).exists()
+        assert (
+            temp_git_repo / ".claude" / "skills" / "commit-staged-changes" / "SKILL.md"
+        ).exists()
+        assert (
+            temp_git_repo
+            / ".claude"
+            / "skills"
+            / "commit-unstaged-changes"
+            / "SKILL.md"
+        ).exists()
         assert not (
             temp_git_repo
             / ".claude"
@@ -275,8 +483,16 @@ class TestCommandInstallAssets:
             / "decompose-and-commit-unstaged-changes"
             / "SKILL.md"
         ).exists()
-        assert (temp_git_repo / ".agents" / "skills" / "commit-staged-changes" / "SKILL.md").exists()
-        assert (temp_git_repo / ".agents" / "skills" / "commit-unstaged-changes" / "SKILL.md").exists()
+        assert (
+            temp_git_repo / ".agents" / "skills" / "commit-staged-changes" / "SKILL.md"
+        ).exists()
+        assert (
+            temp_git_repo
+            / ".agents"
+            / "skills"
+            / "commit-unstaged-changes"
+            / "SKILL.md"
+        ).exists()
         assert not (
             temp_git_repo
             / ".agents"
@@ -288,8 +504,14 @@ class TestCommandInstallAssets:
 
         captured = capsys.readouterr()
         assert "Installed Claude agent 'commit-message-drafter'" in captured.err
-        assert "Installed Claude skills: commit-staged-changes, commit-unstaged-changes" in captured.err
-        assert "Installed Codex skills: commit-staged-changes, commit-unstaged-changes" in captured.err
+        assert (
+            "Installed Claude skills: commit-staged-changes, commit-unstaged-changes"
+            in captured.err
+        )
+        assert (
+            "Installed Codex skills: commit-staged-changes, commit-unstaged-changes"
+            in captured.err
+        )
 
     def test_install_from_subdirectory_uses_repo_root(self, temp_git_repo, monkeypatch):
         """Assets should install relative to the repository root."""
@@ -299,11 +521,20 @@ class TestCommandInstallAssets:
 
         command_install_assets("claude-skills", ["commit-unstaged-changes"])
 
-        assert (temp_git_repo / ".claude" / "skills" / "commit-unstaged-changes" / "SKILL.md").exists()
+        assert (
+            temp_git_repo
+            / ".claude"
+            / "skills"
+            / "commit-unstaged-changes"
+            / "SKILL.md"
+        ).exists()
 
     def test_unmatched_filter_raises_error(self, temp_git_repo):
         """Unmatched filters in one group should raise a command error."""
-        with pytest.raises(CommandError, match="No bundled assets in 'claude-skills' matched: missing-skill"):
+        with pytest.raises(
+            CommandError,
+            match="No bundled assets in 'claude-skills' matched: missing-skill",
+        ):
             command_install_assets("claude-skills", ["missing-skill"])
 
     def test_codex_internal_drafter_is_not_installable_by_name(self, temp_git_repo):
@@ -316,12 +547,21 @@ class TestCommandInstallAssets:
 
     def test_unmatched_filter_across_all_groups_raises_error(self, temp_git_repo):
         """Unmatched filters without a group should raise a generic command error."""
-        with pytest.raises(CommandError, match="No bundled assets in 'all asset groups' matched: missing-skill"):
+        with pytest.raises(
+            CommandError,
+            match="No bundled assets in 'all asset groups' matched: missing-skill",
+        ):
             command_install_assets(filters=["missing-skill"])
 
     def test_existing_skill_requires_force(self, temp_git_repo):
         """Existing installed skills should not be overwritten by default."""
-        skill_file = temp_git_repo / ".claude" / "skills" / "commit-unstaged-changes" / "SKILL.md"
+        skill_file = (
+            temp_git_repo
+            / ".claude"
+            / "skills"
+            / "commit-unstaged-changes"
+            / "SKILL.md"
+        )
         skill_file.parent.mkdir(parents=True)
         skill_file.write_text("local override\n", encoding="utf-8")
 
@@ -347,7 +587,9 @@ class TestCommandInstallAssets:
 
         assert agent_file.read_text(encoding="utf-8") == "local override\n"
 
-    def test_existing_entry_required_agent_blocks_decompose_skill_install(self, temp_git_repo):
+    def test_existing_entry_required_agent_blocks_decompose_skill_install(
+        self, temp_git_repo
+    ):
         """Installing the decompose Claude skill should refuse to overwrite its helper agents."""
         agent_file = temp_git_repo / ".claude" / "agents" / "decompose-analyzer.md"
         agent_file.parent.mkdir(parents=True)
@@ -357,7 +599,9 @@ class TestCommandInstallAssets:
             CommandError,
             match=r"Refusing to overwrite existing claude agent '\.claude/agents/decompose-analyzer.md'",
         ):
-            command_install_assets("claude-skills", ["decompose-and-commit-unstaged-changes"])
+            command_install_assets(
+                "claude-skills", ["decompose-and-commit-unstaged-changes"]
+            )
 
         assert agent_file.read_text(encoding="utf-8") == "local override\n"
 
@@ -377,7 +621,13 @@ class TestCommandInstallAssets:
 
     def test_force_overwrites_existing_skill(self, temp_git_repo):
         """Force mode should replace an existing installed skill."""
-        skill_file = temp_git_repo / ".claude" / "skills" / "commit-unstaged-changes" / "SKILL.md"
+        skill_file = (
+            temp_git_repo
+            / ".claude"
+            / "skills"
+            / "commit-unstaged-changes"
+            / "SKILL.md"
+        )
         skill_file.parent.mkdir(parents=True)
         skill_file.write_text("local override\n", encoding="utf-8")
 
@@ -387,7 +637,9 @@ class TestCommandInstallAssets:
         assert "name: commit-unstaged-changes" in content
         assert "local override" not in content
 
-    def test_force_overwrites_required_agent_during_claude_skill_install(self, temp_git_repo):
+    def test_force_overwrites_required_agent_during_claude_skill_install(
+        self, temp_git_repo
+    ):
         """Force mode should replace a required Claude agent during skill install."""
         agent_file = temp_git_repo / ".claude" / "agents" / "commit-message-drafter.md"
         agent_file.parent.mkdir(parents=True)
@@ -413,7 +665,13 @@ class TestCommandInstallAssets:
 
     def test_existing_codex_skill_requires_force(self, temp_git_repo):
         """Existing installed Codex skills should not be overwritten by default."""
-        skill_file = temp_git_repo / ".agents" / "skills" / "commit-unstaged-changes" / "SKILL.md"
+        skill_file = (
+            temp_git_repo
+            / ".agents"
+            / "skills"
+            / "commit-unstaged-changes"
+            / "SKILL.md"
+        )
         skill_file.parent.mkdir(parents=True)
         skill_file.write_text("local override\n", encoding="utf-8")
 
@@ -429,7 +687,7 @@ class TestCommandInstallAssets:
         """Existing repo-local Codex config should not be overwritten by default."""
         config_file = temp_git_repo / ".codex" / "config.toml"
         config_file.parent.mkdir(parents=True)
-        config_file.write_text("sandbox_mode = \"read-only\"\n", encoding="utf-8")
+        config_file.write_text('sandbox_mode = "read-only"\n', encoding="utf-8")
 
         with pytest.raises(
             CommandError,
@@ -437,7 +695,7 @@ class TestCommandInstallAssets:
         ):
             command_install_assets("codex-skills", ["commit-unstaged-changes"])
 
-        assert config_file.read_text(encoding="utf-8") == "sandbox_mode = \"read-only\"\n"
+        assert config_file.read_text(encoding="utf-8") == 'sandbox_mode = "read-only"\n'
 
     def test_file_named_dot_codex_raises_command_error(self, temp_git_repo):
         """A file blocking the Codex config directory should not cause a traceback."""
@@ -452,7 +710,13 @@ class TestCommandInstallAssets:
 
     def test_force_overwrites_existing_codex_skill(self, temp_git_repo):
         """Force mode should replace an existing installed Codex skill."""
-        skill_file = temp_git_repo / ".agents" / "skills" / "commit-unstaged-changes" / "SKILL.md"
+        skill_file = (
+            temp_git_repo
+            / ".agents"
+            / "skills"
+            / "commit-unstaged-changes"
+            / "SKILL.md"
+        )
         skill_file.parent.mkdir(parents=True)
         skill_file.write_text("local override\n", encoding="utf-8")
 
@@ -466,7 +730,7 @@ class TestCommandInstallAssets:
         """Force mode should replace an existing repo-local Codex config."""
         config_file = temp_git_repo / ".codex" / "config.toml"
         config_file.parent.mkdir(parents=True)
-        config_file.write_text("sandbox_mode = \"read-only\"\n", encoding="utf-8")
+        config_file.write_text('sandbox_mode = "read-only"\n', encoding="utf-8")
 
         command_install_assets("codex-skills", ["commit-unstaged-changes"], force=True)
 

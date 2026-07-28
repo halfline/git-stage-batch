@@ -6,6 +6,7 @@ import pytest
 
 from git_stage_batch.batch import operation_candidates
 from git_stage_batch.batch.operation_candidate_types import (
+    CandidateEnumerationLimitError,
     OperationCandidatePreview,
     TargetCandidatePreview,
 )
@@ -72,6 +73,52 @@ def test_operation_candidate_preview_rejects_missing_target():
         preview.close()
 
     assert exc_info.value.args == ("index",)
+
+
+def test_include_candidate_limit_precedes_product_materialization(
+    monkeypatch,
+):
+    """Over-limit target choices should fail before building their product."""
+    target_candidates = iter(
+        (
+            tuple(object() for _index in range(8)),
+            tuple(object() for _index in range(8)),
+        )
+    )
+    monkeypatch.setattr(
+        operation_candidates,
+        "_merge_candidates_or_unambiguous",
+        lambda *_args, **_kwargs: next(target_candidates),
+    )
+    monkeypatch.setattr(
+        operation_candidates,
+        "product",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("candidate product was materialized")
+        ),
+    )
+
+    with pytest.raises(
+        CandidateEnumerationLimitError,
+        match="too many include candidates",
+    ):
+        operation_candidates.build_include_candidate_previews(
+            batch_name="batch",
+            file_path="notes.txt",
+            source_lines=object(),
+            ownership=object(),
+            index_lines=object(),
+            worktree_lines=object(),
+            batch_source_commit="commit",
+            file_meta={},
+            text_change_type="modified",
+            index_file_mode=None,
+            worktree_file_mode=None,
+            index_exists=True,
+            worktree_exists=True,
+            selected_ids=None,
+            selection_ids=None,
+        )
 
 
 def test_target_candidate_materialization_clones_before_buffer(monkeypatch):

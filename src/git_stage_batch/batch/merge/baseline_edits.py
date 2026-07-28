@@ -1214,13 +1214,45 @@ def _has_complete_baseline_references(
 ) -> bool:
     for claimed_line in presence_line_set:
         reference = ownership.presence_baseline_reference(claimed_line)
-        if reference is None or not getattr(reference, "has_after_line", False):
+        if reference is None or not reference.has_after_line:
             return False
     for claim in deletion_claims:
         reference = claim.baseline_reference
-        if reference is None or not getattr(reference, "has_after_line", False):
+        if reference is None or not reference.has_after_line:
             return False
     return bool(presence_line_set or deletion_claims)
+
+
+def has_recorded_baseline_coordinates(
+    ownership: BatchOwnership,
+    presence_line_set: LineSelection,
+    deletion_claims: Sequence[AbsenceClaim],
+) -> bool:
+    """Return whether selected edit metadata includes a recorded coordinate."""
+    for presence_claim in ownership.presence_claims:
+        for claimed_line, presence_reference in (
+            presence_claim.baseline_references.items()
+        ):
+            if (
+                claimed_line in presence_line_set
+                and presence_reference.has_after_line
+            ):
+                return True
+    for deletion_claim in deletion_claims:
+        deletion_reference = deletion_claim.baseline_reference
+        if (
+            deletion_reference is not None
+            and deletion_reference.has_after_line
+        ):
+            return True
+    for unit in ownership.replacement_units:
+        origin = unit.origin
+        if origin is None:
+            continue
+        origin_reference = origin.baseline_reference
+        if origin_reference is not None and origin_reference.has_after_line:
+            return True
+    return False
 
 
 def _all_deletions_are_already_absent(

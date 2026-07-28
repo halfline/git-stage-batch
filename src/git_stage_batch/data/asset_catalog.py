@@ -56,7 +56,11 @@ ASSET_GROUPS: dict[str, AssetGroup] = {
         required_entry="SKILL.md",
         companion_assets=(
             CompanionAsset(
-                source_segments=("assets", "claude-agents", "commit-message-drafter.md"),
+                source_segments=(
+                    "assets",
+                    "claude-agents",
+                    "commit-message-drafter.md",
+                ),
                 target_segments=(".claude", "agents", "commit-message-drafter.md"),
                 display_name="Claude agent",
             ),
@@ -66,22 +70,46 @@ ASSET_GROUPS: dict[str, AssetGroup] = {
                 "decompose-and-commit-unstaged-changes",
                 (
                     CompanionAsset(
-                        source_segments=("assets", "claude-agents", "decompose-analyzer.md"),
+                        source_segments=(
+                            "assets",
+                            "claude-agents",
+                            "decompose-analyzer.md",
+                        ),
                         target_segments=(".claude", "agents", "decompose-analyzer.md"),
                         display_name="Claude agent",
                     ),
                     CompanionAsset(
-                        source_segments=("assets", "claude-agents", "decompose-batch-peeler.md"),
-                        target_segments=(".claude", "agents", "decompose-batch-peeler.md"),
+                        source_segments=(
+                            "assets",
+                            "claude-agents",
+                            "decompose-batch-peeler.md",
+                        ),
+                        target_segments=(
+                            ".claude",
+                            "agents",
+                            "decompose-batch-peeler.md",
+                        ),
                         display_name="Claude agent",
                     ),
                     CompanionAsset(
-                        source_segments=("assets", "claude-agents", "decompose-deconstructor.md"),
-                        target_segments=(".claude", "agents", "decompose-deconstructor.md"),
+                        source_segments=(
+                            "assets",
+                            "claude-agents",
+                            "decompose-deconstructor.md",
+                        ),
+                        target_segments=(
+                            ".claude",
+                            "agents",
+                            "decompose-deconstructor.md",
+                        ),
                         display_name="Claude agent",
                     ),
                     CompanionAsset(
-                        source_segments=("assets", "claude-agents", "decompose-rebuilder.md"),
+                        source_segments=(
+                            "assets",
+                            "claude-agents",
+                            "decompose-rebuilder.md",
+                        ),
                         target_segments=(".claude", "agents", "decompose-rebuilder.md"),
                         display_name="Claude agent",
                     ),

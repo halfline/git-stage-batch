@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import Enum
 
 
 @dataclass(frozen=True)
@@ -43,8 +44,45 @@ class MergeCandidate:
         )
 
 
+class MergeCandidateSetOutcome(Enum):
+    """Outcome represented by one merge-candidate discovery result."""
+
+    REFUSED = "refused"
+    ORDINARY_MERGE_SUCCEEDED = "ordinary-merge-succeeded"
+    REVIEW_REQUIRED = "review-required"
+
+
 @dataclass(frozen=True)
 class MergeCandidateSet:
-    """Merge candidates for one target."""
+    """Validated merge-candidate discovery result for one target."""
 
     candidates: tuple[MergeCandidate, ...]
+    outcome: MergeCandidateSetOutcome = MergeCandidateSetOutcome.REFUSED
+
+    def __post_init__(self) -> None:
+        review_required = (
+            self.outcome is MergeCandidateSetOutcome.REVIEW_REQUIRED
+        )
+        if bool(self.candidates) != review_required:
+            raise ValueError(
+                "review-required results must contain candidates and "
+                "other results must not"
+            )
+
+    @classmethod
+    def refused(cls) -> MergeCandidateSet:
+        """Return a hard refusal with no enumerable review choices."""
+        return cls((), MergeCandidateSetOutcome.REFUSED)
+
+    @classmethod
+    def ordinary_merge(cls) -> MergeCandidateSet:
+        """Return an ordinary merge that needs no candidate review."""
+        return cls((), MergeCandidateSetOutcome.ORDINARY_MERGE_SUCCEEDED)
+
+    @classmethod
+    def review_required(
+        cls,
+        candidates: tuple[MergeCandidate, ...],
+    ) -> MergeCandidateSet:
+        """Return a nonempty set of reviewed merge choices."""
+        return cls(candidates, MergeCandidateSetOutcome.REVIEW_REQUIRED)

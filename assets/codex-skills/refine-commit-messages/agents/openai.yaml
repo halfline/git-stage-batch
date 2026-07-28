@@ -1,0 +1,4 @@
+interface:
+  display_name: "Refine Commit Messages"
+  short_description: "Audit and refine a commit series narrative"
+  default_prompt: "Use $refine-commit-messages to refine the messages in an existing local commit series."

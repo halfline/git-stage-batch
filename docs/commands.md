@@ -856,7 +856,10 @@ assistant can discover them automatically.
 ❯ git-stage-batch install-assets --filter 'commit-*'
 ❯ git-stage-batch install-assets claude-agents --filter 'commit-*'
 ❯ git-stage-batch install-assets claude-skills --filter 'commit-*'
-❯ git-stage-batch install-assets codex-skills --filter 'commit-*' 'squash-*'
+❯ git-stage-batch install-assets claude-skills --filter refine-commit-messages
+❯ git-stage-batch install-assets claude-skills --filter refine-history
+❯ git-stage-batch install-assets claude-skills --filter decompose-and-commit-unstaged-changes
+❯ git-stage-batch install-assets codex-skills --filter 'commit-*' refine-commit-messages refine-history
 ```
 
 **Options:**
@@ -868,10 +871,24 @@ assistant can discover them automatically.
 
 Bundled assets currently include the Claude agent
 `commit-message-drafter`, Claude decomposition agents, the Claude skills
-`commit-staged-changes`, `commit-unstaged-changes`, and
-`decompose-and-commit-unstaged-changes`, and the Codex skills
-`commit-staged-changes`, `commit-unstaged-changes`, and
-`decompose-and-commit-unstaged-changes`.
+`commit-staged-changes`, `commit-unstaged-changes`,
+`decompose-and-commit-unstaged-changes`, `refine-commit-messages`, and
+`refine-history`, plus the Codex versions of those five skills.
+
+Selecting `decompose-and-commit-unstaged-changes` also installs its
+`refine-history` and `refine-commit-messages` dependencies automatically.
+Selecting `refine-history` also installs `refine-commit-messages`.
+
+`refine-commit-messages BASE_SHA` audits a linear series and rewords
+noncompliant messages by default. It proves that every tree, patch boundary,
+author identity/date, signature presence, and series position remains
+unchanged. Its explicit `audit BASE_SHA` mode reports findings and complete
+proposed replacements without updating refs or commits.
+
+`refine-history BASE_SHA` additionally splits broad commits and integrates
+late repair commits before delegating its message pass. Its `resume` form
+continues the skill-owned checkpoint on its original branch after
+interruption. Mutating modes accept only clean, unpublished draft history.
 
 Installing `codex-skills` also writes the shared internal drafter brief at
 `.agents/internal/commit-message-drafter.md`.

@@ -10,7 +10,6 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -124,6 +123,19 @@ def artifact_state(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def infer_resume_target(state: dict[str, Any]) -> str:
+    phase = state["phase"]
+    if phase == "phase3-complete":
+        return "complete"
+    if phase in {"phase3-running", "refine-history-running"}:
+        if state["batch_count"]:
+            return "phase3-after-gate2"
+        return "gate3-or-manual-audit"
+    if phase == "phase2-complete":
+        return "phase3-after-gate2"
+    if phase in {"phase1-complete", "phase2-running"}:
+        return "phase2-after-gate1"
+    if phase == "phase1-candidate":
+        return "gate1"
     if state["batch_count"] and state["plan_exists"]:
         return "phase3-after-gate2"
     if state["plan_exists"]:
@@ -262,7 +274,7 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument(
         "--mode",
         required=True,
-        choices=["full", "deconstruct", "reconstruct", "resume", "history-polish"],
+        choices=["full", "deconstruct", "reconstruct", "resume"],
     )
     start.add_argument("--base")
     start.set_defaults(func=cmd_start)

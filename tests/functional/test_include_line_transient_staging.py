@@ -209,6 +209,75 @@ def test_include_complete_repeated_boundary_insertion(functional_repo):
 
     assert result.returncode == 0, result.stderr
     assert _index_content(functional_repo, "file.txt") == expected
+
+
+def test_ambiguous_saved_insertion_uses_reviewed_candidate(functional_repo):
+    """A saved insertion must require review before choosing its boundary."""
+    original, changed, expected = _repeated_boundary_insertion_contents()
+    _commit_file(functional_repo, "file.txt", original)
+    (functional_repo / "file.txt").write_text(changed)
+
+    git_stage_batch("start", "--no-auto-advance")
+    git_stage_batch("show", "--file", "file.txt", "--page", "all")
+    include_result = git_stage_batch(
+        "include",
+        "--to",
+        "saved",
+        "--line",
+        "7-49",
+        "--no-auto-advance",
+        check=False,
+    )
+    (functional_repo / "file.txt").write_text(original)
+    apply_result = git_stage_batch(
+        "apply",
+        "--from",
+        "saved",
+        "--file",
+        "file.txt",
+        check=False,
+    )
+
+    assert include_result.returncode == 0, include_result.stderr
+    assert apply_result.returncode != 0
+    assert "file.txt has 2 apply candidates" in apply_result.stderr
+    assert (functional_repo / "file.txt").read_text() == original
+
+    overview_result = git_stage_batch(
+        "show",
+        "--from",
+        "saved:apply",
+        "--file",
+        "file.txt",
+        check=False,
+    )
+    preview_result = git_stage_batch(
+        "show",
+        "--from",
+        "saved:apply:2",
+        "--file",
+        "file.txt",
+        check=False,
+    )
+    reviewed_apply_result = git_stage_batch(
+        "apply",
+        "--from",
+        "saved:apply:2",
+        "--file",
+        "file.txt",
+        check=False,
+    )
+
+    assert overview_result.returncode == 0, overview_result.stderr
+    assert "apply candidates  ·  2 choices" in overview_result.stdout
+    assert "Candidate 1/2" in overview_result.stdout
+    assert "Candidate 2/2" in overview_result.stdout
+    assert preview_result.returncode == 0, preview_result.stderr
+    assert "apply candidate 2/2" in preview_result.stdout
+    assert reviewed_apply_result.returncode == 0, reviewed_apply_result.stderr
+    assert (functional_repo / "file.txt").read_text() == expected
+
+
 @pytest.mark.parametrize(
     ("line_spec", "staged_addition"),
     [

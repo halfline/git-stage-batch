@@ -36,7 +36,7 @@ def build_wheel(tmp_path_factory):
         ],
         cwd=project_root,
         capture_output=True,
-        text=True
+        text=True,
     )
 
     if result.returncode != 0:
@@ -55,21 +55,21 @@ class TestWheelContents:
 
     def test_wheel_contains_all_source_files(self, build_wheel):
         """Test that wheel contains all Python source files."""
-        with zipfile.ZipFile(build_wheel, 'r') as whl:
+        with zipfile.ZipFile(build_wheel, "r") as whl:
             files = whl.namelist()
 
         # Check for core modules
         expected_files = [
-            'git_stage_batch/__init__.py',
-            'git_stage_batch/i18n.py',
-            'git_stage_batch/_version.py',
-            'git_stage_batch/data/undo/__init__.py',
-            'git_stage_batch/data/undo/checkpoints.py',
-            'git_stage_batch/data/undo/refs.py',
-            'git_stage_batch/data/undo/restore.py',
-            'git_stage_batch/data/undo/snapshots.py',
-            'git_stage_batch/data/undo/state.py',
-            'git_stage_batch/data/undo/worktree.py',
+            "git_stage_batch/__init__.py",
+            "git_stage_batch/i18n.py",
+            "git_stage_batch/_version.py",
+            "git_stage_batch/data/undo/__init__.py",
+            "git_stage_batch/data/undo/checkpoints.py",
+            "git_stage_batch/data/undo/refs.py",
+            "git_stage_batch/data/undo/restore.py",
+            "git_stage_batch/data/undo/snapshots.py",
+            "git_stage_batch/data/undo/state.py",
+            "git_stage_batch/data/undo/worktree.py",
         ]
 
         for expected in expected_files:
@@ -77,163 +77,214 @@ class TestWheelContents:
 
     def test_wheel_contains_packaged_man_pages(self, build_wheel):
         """Test that wheel contains the packaged man page fallbacks."""
-        with zipfile.ZipFile(build_wheel, 'r') as whl:
+        with zipfile.ZipFile(build_wheel, "r") as whl:
             files = whl.namelist()
 
         packaged_pages = {
             Path(file).name
             for file in files
-            if file.startswith('git_stage_batch/assets/man/man1/')
+            if file.startswith("git_stage_batch/assets/man/man1/")
         }
         expected_pages = {
-            'git-stage-batch.1',
-            'git-stage-batch-include.1',
-            'git-stage-batch-discard.1',
-            'git-stage-batch-install-assets.1',
-            'git-stage-batch-journal.1',
-            'git-stage-batch-validate.1',
+            "git-stage-batch.1",
+            "git-stage-batch-include.1",
+            "git-stage-batch-discard.1",
+            "git-stage-batch-install-assets.1",
+            "git-stage-batch-journal.1",
+            "git-stage-batch-validate.1",
         }
 
         assert expected_pages <= packaged_pages
 
     def test_wheel_contains_claude_skill_asset(self, build_wheel):
         """Test that wheel contains the bundled Claude skill asset."""
-        with zipfile.ZipFile(build_wheel, 'r') as whl:
+        with zipfile.ZipFile(build_wheel, "r") as whl:
             files = whl.namelist()
 
         assert any(
-            'git_stage_batch/assets/claude-skills/commit-unstaged-changes/SKILL.md' in f
+            "git_stage_batch/assets/claude-skills/commit-unstaged-changes/SKILL.md" in f
             for f in files
         ), "Missing bundled Claude skill asset"
 
     def test_wheel_contains_claude_staged_skill_asset(self, build_wheel):
         """Test that wheel contains the bundled staged Claude skill asset."""
-        with zipfile.ZipFile(build_wheel, 'r') as whl:
+        with zipfile.ZipFile(build_wheel, "r") as whl:
             files = whl.namelist()
 
         assert any(
-            'git_stage_batch/assets/claude-skills/commit-staged-changes/SKILL.md' in f
+            "git_stage_batch/assets/claude-skills/commit-staged-changes/SKILL.md" in f
             for f in files
         ), "Missing bundled staged Claude skill asset"
 
     def test_wheel_contains_claude_decompose_skill_asset(self, build_wheel):
         """Test that wheel contains the bundled decompose Claude skill asset."""
-        with zipfile.ZipFile(build_wheel, 'r') as whl:
+        with zipfile.ZipFile(build_wheel, "r") as whl:
             files = whl.namelist()
 
         assert any(
-            'git_stage_batch/assets/claude-skills/decompose-and-commit-unstaged-changes/SKILL.md' in f
+            "git_stage_batch/assets/claude-skills/decompose-and-commit-unstaged-changes/SKILL.md"
+            in f
             for f in files
         ), "Missing bundled decompose Claude skill asset"
 
-    def test_wheel_contains_claude_agent_asset(self, build_wheel):
-        """Test that wheel contains the bundled Claude agent asset."""
-        with zipfile.ZipFile(build_wheel, 'r') as whl:
+    def test_wheel_contains_claude_refine_history_skill_asset(self, build_wheel):
+        """Test that wheel contains the standalone Claude history skill."""
+        with zipfile.ZipFile(build_wheel, "r") as whl:
             files = whl.namelist()
 
         assert any(
-            'git_stage_batch/assets/claude-agents/commit-message-drafter.md' in f
+            "git_stage_batch/assets/claude-skills/refine-history/scripts/refine-history-checkpoint.py"
+            in f
+            for f in files
+        ), "Missing bundled refine-history Claude skill asset"
+
+    def test_wheel_contains_claude_refine_messages_skill_asset(self, build_wheel):
+        """Test that wheel contains the standalone Claude message skill."""
+        with zipfile.ZipFile(build_wheel, "r") as whl:
+            files = whl.namelist()
+
+        assert any(
+            "git_stage_batch/assets/claude-skills/refine-commit-messages/"
+            "scripts/refine-commit-messages-checkpoint.py" in f
+            for f in files
+        ), "Missing bundled refine-commit-messages Claude skill asset"
+
+    def test_wheel_contains_claude_agent_asset(self, build_wheel):
+        """Test that wheel contains the bundled Claude agent asset."""
+        with zipfile.ZipFile(build_wheel, "r") as whl:
+            files = whl.namelist()
+
+        assert any(
+            "git_stage_batch/assets/claude-agents/commit-message-drafter.md" in f
             for f in files
         ), "Missing bundled Claude agent asset"
 
     def test_wheel_contains_claude_decompose_agent_asset(self, build_wheel):
         """Test that wheel contains the bundled decompose Claude agent asset."""
-        with zipfile.ZipFile(build_wheel, 'r') as whl:
+        with zipfile.ZipFile(build_wheel, "r") as whl:
             files = whl.namelist()
 
         assert any(
-            'git_stage_batch/assets/claude-agents/decompose-rebuilder.md' in f
+            "git_stage_batch/assets/claude-agents/decompose-rebuilder.md" in f
             for f in files
         ), "Missing bundled decompose Claude agent asset"
 
     def test_wheel_contains_codex_skill_asset(self, build_wheel):
         """Test that wheel contains the bundled Codex skill asset."""
-        with zipfile.ZipFile(build_wheel, 'r') as whl:
+        with zipfile.ZipFile(build_wheel, "r") as whl:
             files = whl.namelist()
 
         assert any(
-            'git_stage_batch/assets/codex-skills/commit-unstaged-changes/SKILL.md' in f
+            "git_stage_batch/assets/codex-skills/commit-unstaged-changes/SKILL.md" in f
             for f in files
         ), "Missing bundled Codex skill asset"
 
     def test_wheel_contains_codex_drafter_internal_asset(self, build_wheel):
         """Test that wheel contains the bundled internal Codex drafter asset."""
-        with zipfile.ZipFile(build_wheel, 'r') as whl:
+        with zipfile.ZipFile(build_wheel, "r") as whl:
             files = whl.namelist()
 
         assert any(
-            'git_stage_batch/assets/codex-skills/internal/commit-message-drafter.md' in f
+            "git_stage_batch/assets/codex-skills/internal/commit-message-drafter.md"
+            in f
             for f in files
         ), "Missing bundled internal Codex drafter asset"
 
     def test_wheel_contains_codex_staged_skill_asset(self, build_wheel):
         """Test that wheel contains the bundled staged Codex skill asset."""
-        with zipfile.ZipFile(build_wheel, 'r') as whl:
+        with zipfile.ZipFile(build_wheel, "r") as whl:
             files = whl.namelist()
 
         assert any(
-            'git_stage_batch/assets/codex-skills/commit-staged-changes/SKILL.md' in f
+            "git_stage_batch/assets/codex-skills/commit-staged-changes/SKILL.md" in f
             for f in files
         ), "Missing bundled staged Codex skill asset"
 
     def test_wheel_contains_codex_decompose_skill_asset(self, build_wheel):
         """Test that wheel contains the bundled decompose Codex skill asset."""
-        with zipfile.ZipFile(build_wheel, 'r') as whl:
+        with zipfile.ZipFile(build_wheel, "r") as whl:
             files = whl.namelist()
 
         assert any(
-            'git_stage_batch/assets/codex-skills/decompose-and-commit-unstaged-changes/SKILL.md' in f
+            "git_stage_batch/assets/codex-skills/decompose-and-commit-unstaged-changes/SKILL.md"
+            in f
             for f in files
         ), "Missing bundled decompose Codex skill asset"
 
-    def test_wheel_contains_codex_staged_openai_yaml_asset(self, build_wheel):
-        """Test that wheel contains the staged Codex UI metadata asset."""
-        with zipfile.ZipFile(build_wheel, 'r') as whl:
+    def test_wheel_contains_codex_refine_history_skill_asset(self, build_wheel):
+        """Test that wheel contains the standalone Codex history skill."""
+        with zipfile.ZipFile(build_wheel, "r") as whl:
             files = whl.namelist()
 
         assert any(
-            'git_stage_batch/assets/codex-skills/commit-staged-changes/agents/openai.yaml' in f
+            "git_stage_batch/assets/codex-skills/refine-history/agents/openai.yaml" in f
+            for f in files
+        ), "Missing bundled refine-history Codex skill asset"
+
+    def test_wheel_contains_codex_refine_messages_skill_asset(self, build_wheel):
+        """Test that wheel contains the standalone Codex message skill."""
+        with zipfile.ZipFile(build_wheel, "r") as whl:
+            files = whl.namelist()
+
+        assert any(
+            "git_stage_batch/assets/codex-skills/refine-commit-messages/"
+            "agents/openai.yaml" in f
+            for f in files
+        ), "Missing bundled refine-commit-messages Codex skill asset"
+
+    def test_wheel_contains_codex_staged_openai_yaml_asset(self, build_wheel):
+        """Test that wheel contains the staged Codex UI metadata asset."""
+        with zipfile.ZipFile(build_wheel, "r") as whl:
+            files = whl.namelist()
+
+        assert any(
+            "git_stage_batch/assets/codex-skills/commit-staged-changes/agents/openai.yaml"
+            in f
             for f in files
         ), "Missing bundled staged Codex UI metadata asset"
 
     def test_wheel_contains_codex_decompose_reference_asset(self, build_wheel):
         """Test that wheel contains the decompose Codex reference assets."""
-        with zipfile.ZipFile(build_wheel, 'r') as whl:
+        with zipfile.ZipFile(build_wheel, "r") as whl:
             files = whl.namelist()
 
         assert any(
-            'git_stage_batch/assets/codex-skills/decompose-and-commit-unstaged-changes/references/decompose-rebuilder.md' in f
+            "git_stage_batch/assets/codex-skills/decompose-and-commit-unstaged-changes/references/decompose-rebuilder.md"
+            in f
             for f in files
         ), "Missing bundled decompose Codex reference asset"
         assert any(
-            'git_stage_batch/assets/codex-skills/decompose-and-commit-unstaged-changes/agents/openai.yaml' in f
+            "git_stage_batch/assets/codex-skills/decompose-and-commit-unstaged-changes/agents/openai.yaml"
+            in f
             for f in files
         ), "Missing bundled decompose Codex UI metadata asset"
 
     def test_wheel_contains_codex_config_asset(self, build_wheel):
         """Test that wheel contains the bundled Codex config asset."""
-        with zipfile.ZipFile(build_wheel, 'r') as whl:
+        with zipfile.ZipFile(build_wheel, "r") as whl:
             files = whl.namelist()
 
         assert any(
-            'git_stage_batch/assets/codex-skills/config/config.toml' in f
-            for f in files
+            "git_stage_batch/assets/codex-skills/config/config.toml" in f for f in files
         ), "Missing bundled Codex config asset"
+
     def test_wheel_contains_entry_point_script(self, build_wheel):
         """Test that wheel contains the executable entry point."""
-        with zipfile.ZipFile(build_wheel, 'r') as whl:
+        with zipfile.ZipFile(build_wheel, "r") as whl:
             files = whl.namelist()
             # Check for entry_points.txt
-            assert any('entry_points.txt' in f for f in files), \
+            assert any("entry_points.txt" in f for f in files), (
                 "Missing entry_points.txt"
+            )
 
             # Find the entry_points.txt file dynamically
-            entry_points_file = next(f for f in files if 'entry_points.txt' in f)
+            entry_points_file = next(f for f in files if "entry_points.txt" in f)
 
             # Verify entry_points.txt contains git-stage-batch
-            entry_points_content = whl.read(entry_points_file).decode('utf-8')
-            assert 'git-stage-batch' in entry_points_content, \
+            entry_points_content = whl.read(entry_points_file).decode("utf-8")
+            assert "git-stage-batch" in entry_points_content, (
                 "Missing git-stage-batch entry point in entry_points.txt"
+            )
 
 
 class TestWheelInstallation:
@@ -251,9 +302,7 @@ class TestWheelInstallation:
         """Test that the wheel can be installed in a clean environment."""
         pip_path = clean_venv / "bin" / "pip"
         result = subprocess.run(
-            [str(pip_path), "install", str(build_wheel)],
-            capture_output=True,
-            text=True
+            [str(pip_path), "install", str(build_wheel)], capture_output=True, text=True
         )
 
         assert result.returncode == 0, f"Install failed: {result.stderr}"
@@ -270,7 +319,7 @@ class TestWheelInstallation:
         result = subprocess.run(
             [str(python_path), "-c", "import git_stage_batch; print('OK')"],
             capture_output=True,
-            text=True
+            text=True,
         )
 
         assert result.returncode == 0
@@ -293,7 +342,7 @@ class TestMesonInstallation:
                 ["meson", "setup", str(build_dir), f"--prefix={install_prefix}"],
                 cwd=project_root,
                 capture_output=True,
-                text=True
+                text=True,
             )
 
             if result.returncode != 0:
@@ -303,7 +352,7 @@ class TestMesonInstallation:
             result = subprocess.run(
                 ["meson", "compile", "-C", str(build_dir)],
                 capture_output=True,
-                text=True
+                text=True,
             )
 
             assert result.returncode == 0, f"Meson compile failed: {result.stderr}"
@@ -312,7 +361,7 @@ class TestMesonInstallation:
             result = subprocess.run(
                 ["meson", "install", "-C", str(build_dir)],
                 capture_output=True,
-                text=True
+                text=True,
             )
 
             assert result.returncode == 0, f"Meson install failed: {result.stderr}"
@@ -320,7 +369,9 @@ class TestMesonInstallation:
             # Check that Python files were installed
             # Meson typically installs to prefix/lib/pythonX.Y/site-packages
             site_packages = list(install_prefix.glob("lib*/python*/site-packages"))
-            assert len(site_packages) > 0, "No site-packages directory found in install prefix"
+            assert len(site_packages) > 0, (
+                "No site-packages directory found in install prefix"
+            )
 
             package_dir = site_packages[0] / "git_stage_batch"
             assert package_dir.exists(), f"Package not installed to {package_dir}"
@@ -341,16 +392,15 @@ class TestMesonInstallation:
             subprocess.run(
                 ["meson", "setup", str(build_dir), f"--prefix={install_prefix}"],
                 cwd=project_root,
-                capture_output=True
+                capture_output=True,
             )
             subprocess.run(
-                ["meson", "compile", "-C", str(build_dir)],
-                capture_output=True
+                ["meson", "compile", "-C", str(build_dir)], capture_output=True
             )
             result = subprocess.run(
                 ["meson", "install", "-C", str(build_dir)],
                 capture_output=True,
-                text=True
+                text=True,
             )
 
             if result.returncode != 0:
@@ -366,7 +416,7 @@ class TestMesonInstallation:
                 [sys.executable, "-c", "import git_stage_batch; print('OK')"],
                 capture_output=True,
                 text=True,
-                env={**subprocess.os.environ, **env}
+                env={**subprocess.os.environ, **env},
             )
 
             assert result.returncode == 0, f"Import failed: {result.stderr}"

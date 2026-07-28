@@ -85,6 +85,42 @@ ASSET_GROUPS: dict[str, AssetGroup] = {
                         target_segments=(".claude", "agents", "decompose-rebuilder.md"),
                         display_name="Claude agent",
                     ),
+                    CompanionAsset(
+                        source_segments=("assets", "claude-skills", "refine-history"),
+                        target_segments=(".claude", "skills", "refine-history"),
+                        display_name="Claude skill",
+                    ),
+                    CompanionAsset(
+                        source_segments=(
+                            "assets",
+                            "claude-skills",
+                            "refine-commit-messages",
+                        ),
+                        target_segments=(
+                            ".claude",
+                            "skills",
+                            "refine-commit-messages",
+                        ),
+                        display_name="Claude skill",
+                    ),
+                ),
+            ),
+            (
+                "refine-history",
+                (
+                    CompanionAsset(
+                        source_segments=(
+                            "assets",
+                            "claude-skills",
+                            "refine-commit-messages",
+                        ),
+                        target_segments=(
+                            ".claude",
+                            "skills",
+                            "refine-commit-messages",
+                        ),
+                        display_name="Claude skill",
+                    ),
                 ),
             ),
         ),

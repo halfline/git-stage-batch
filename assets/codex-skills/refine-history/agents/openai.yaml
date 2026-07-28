@@ -1,0 +1,4 @@
+interface:
+  display_name: "Refine History"
+  short_description: "Polish a local commit series safely"
+  default_prompt: "Use $refine-history to rewrite the local commit series after an explicit base into a clean incremental history."

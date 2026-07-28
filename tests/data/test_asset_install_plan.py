@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import pytest
 
+from git_stage_batch.data.asset_catalog import AssetGroup
 from git_stage_batch.data.asset_install_plan import plan_asset_installs
-from git_stage_batch.data.asset_selection import select_asset_entries
+from git_stage_batch.data.asset_selection import (
+    SelectedAssetGroup,
+    select_asset_entries,
+)
 from git_stage_batch.exceptions import CommandError
 
 
@@ -50,7 +54,108 @@ def test_plan_asset_installs_adds_entry_companions(tmp_path):
         ".claude/agents/decompose-deconstructor.md",
         ".claude/agents/decompose-rebuilder.md",
         ".claude/skills/decompose-and-commit-unstaged-changes",
+        ".claude/skills/refine-commit-messages",
+        ".claude/skills/refine-history",
     ]
+
+
+def test_plan_refine_history_as_standalone_skill(tmp_path):
+    """History refinement should install without decomposition agents."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    selected = select_asset_entries("claude-skills", ["refine-history"])
+
+    planned = plan_asset_installs(selected, repo_root)
+
+    assert _relative_destinations(repo_root, planned) == [
+        ".claude/agents/commit-message-drafter.md",
+        ".claude/skills/refine-commit-messages",
+        ".claude/skills/refine-history",
+    ]
+
+
+def test_plan_refine_commit_messages_as_standalone_skill(tmp_path):
+    """Message refinement should install without full history refinement."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    selected = select_asset_entries(
+        "codex-skills",
+        ["refine-commit-messages"],
+    )
+
+    planned = plan_asset_installs(selected, repo_root)
+
+    assert _relative_destinations(repo_root, planned) == [
+        ".agents/internal/commit-message-drafter.md",
+        ".agents/skills/refine-commit-messages",
+        ".codex/config.toml",
+    ]
+
+
+def test_plan_deduplicates_selected_dependency(tmp_path):
+    """Selecting all skills should plan a shared dependency only once."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    selected = select_asset_entries("claude-skills", None)
+
+    destinations = _relative_destinations(
+        repo_root,
+        plan_asset_installs(selected, repo_root),
+    )
+
+    assert destinations.count(".claude/skills/refine-history") == 1
+    assert destinations.count(".claude/skills/refine-commit-messages") == 1
+
+
+def test_plan_rejects_different_sources_for_one_destination(tmp_path):
+    """Destination deduplication must not silently choose one source."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    first_source = tmp_path / "first" / "skill"
+    second_source = tmp_path / "second" / "skill"
+    first_source.mkdir(parents=True)
+    second_source.mkdir(parents=True)
+    first_group = AssetGroup(
+        source_segments=("first",),
+        target_segments=(".skills",),
+        display_name_singular="Skill",
+        display_name_plural="Skills",
+        required_entry="SKILL.md",
+    )
+    second_group = AssetGroup(
+        source_segments=("second",),
+        target_segments=(".skills",),
+        display_name_singular="Skill",
+        display_name_plural="Skills",
+        required_entry="SKILL.md",
+    )
+    selected = (
+        SelectedAssetGroup(first_group, {"skill": first_source}),
+        SelectedAssetGroup(second_group, {"skill": second_source}),
+    )
+
+    with pytest.raises(
+        CommandError,
+        match=r"different sources target the same destination: '\.skills/skill'",
+    ):
+        plan_asset_installs(selected, repo_root)
+
+
+def test_plan_decompose_rejects_existing_refine_dependency(tmp_path):
+    """A decompose install should not overwrite an existing refine skill."""
+    repo_root = tmp_path / "repo"
+    dependency = repo_root / ".claude" / "skills" / "refine-history"
+    dependency.mkdir(parents=True)
+    selected = select_asset_entries(
+        "claude-skills",
+        ["decompose-and-commit-unstaged-changes"],
+    )
+
+    with pytest.raises(
+        CommandError,
+        match=r"Refusing to overwrite existing claude skill '\.claude/skills/refine-history'",
+    ):
+        plan_asset_installs(selected, repo_root)
 
 
 def test_plan_asset_installs_rejects_existing_entry_without_force(tmp_path):

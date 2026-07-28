@@ -1,6 +1,6 @@
 ---
 name: decompose-and-commit-unstaged-changes
-description: Decompose unstaged working-tree changes into a clean commit series by identifying narrow product, workflow, or architectural concerns, peeling them into git-stage-batch batches, rebuilding atomic commits, or polishing an already-built series.
+description: Decompose unstaged working-tree changes into a clean commit series by identifying narrow product, workflow, or architectural concerns, peeling them into git-stage-batch batches, and rebuilding atomic commits.
 metadata:
   short-description: Decompose unstaged changes into commits
 ---
@@ -8,8 +8,7 @@ metadata:
 # Decompose and Commit Unstaged Changes
 
 Orchestrate the decomposition of unstaged working-tree changes into a clean
-commit series through three phases. When requested, polish an already-built
-commit series without re-running the decomposition phases.
+commit series through three phases.
 
 This Codex version bundles the detailed phase briefs as reference files. Read
 each reference before running the corresponding phase:
@@ -17,7 +16,7 @@ each reference before running the corresponding phase:
 - `references/decompose-analyzer.md` for Phase 1
 - `references/decompose-deconstructor.md` for Phase 2
 - `references/decompose-batch-peeler.md` when peeling one concern inside Phase 2
-- `references/decompose-rebuilder.md` for Phase 3 and history polishing
+- `references/decompose-rebuilder.md` for Phase 3
 
 Use fresh-context subagents for the phase briefs when available. If subagents
 are unavailable, execute the same briefs in the main context without weakening
@@ -30,17 +29,13 @@ $decompose-and-commit-unstaged-changes
 $decompose-and-commit-unstaged-changes deconstruct
 $decompose-and-commit-unstaged-changes reconstruct
 $decompose-and-commit-unstaged-changes resume
-$decompose-and-commit-unstaged-changes history-polish BASE_SHA
 ```
 
 Without an argument, run all three phases end to end. With `deconstruct`,
 run Phases 1-2 only. With `reconstruct`, assume batches already exist and
 run Phase 3 only. With `resume`, inspect the workspace-local workflow state
 directory, batch refs, and the current `HEAD`, then continue from the latest
-phase whose gate can still be proven. With `history-polish`, assume the final
-tree is already committed and rewrite only the existing commit series between
-the explicit `BASE_SHA` and `HEAD`; do not read an old checkpoint to choose the
-base for a fresh history-polish run.
+phase whose gate can still be proven.
 
 This skill is autonomous and non-interactive. Do not ask the user to review
 intermediate steps.
@@ -161,10 +156,14 @@ Then choose the resume point:
 3. If `resume_target` is `phase3-after-gate2`, rerun Gate 2 from refs. If it
    passes, continue Phase 3 with remaining batches. If it fails, return to
    Phase 2 and fix the batch plan before rebuilding.
-4. If `resume_target` is `gate3-or-manual-audit`, rerun Gate 3 and the
-   committed-snapshot verification loop before reporting success. If any
-   batch refs remain, prefer `phase3-after-gate2` instead.
+4. If `resume_target` is `gate3-or-manual-audit`, finish the required
+   `refine-history` pass before rerunning Gate 3. If its checkpoint exists,
+   invoke `refine-history resume`; otherwise invoke it with the canonical
+   `base` from the decompose checkpoint. If any batch refs remain, prefer
+   `phase3-after-gate2` instead.
 5. If `resume_target` is `fresh`, run the normal full workflow from Phase 1.
+6. If `resume_target` is `complete`, revalidate the `refine-history`
+   completion gate and Gate 3 before reporting the existing result.
 
 Do not treat a candidate plan plus narrative as sufficient progress by
 itself. Candidate artifacts are resumable only through Gate 1. A failed Gate 1
@@ -175,274 +174,6 @@ After every successful gate or phase transition, run:
 ```bash
 python .agents/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py mark --phase PHASE-NAME
 ```
-
-## History-Polish Mode
-
-`history-polish` is a targeted rewrite mode for a series that has already been
-rebuilt and committed. It does not run Phase 1 analysis, Phase 2 deconstruction,
-or Phase 3 batch application. Its only job is to improve the existing commit
-series so it reads like a natural incremental evolution while preserving the
-final tree exactly.
-
-Use this mode when the final `HEAD` tree is correct but the series still has
-broad snapshot commits, late repair/process commits, generic artifact-shaped
-subjects, docs-before-code commits, implementation-only runs followed by
-test-only runs, or other narrative problems. This mode is also the resumable
-entry point for rerunning only the final split and repair-integration stages
-after an earlier full run was interrupted.
-
-Start from the repository root, block workflow state from batch review, and
-read the installed `git-stage-batch` help before using any batch command:
-
-```bash
-REPO_ROOT=$(git --no-optional-locks rev-parse --show-toplevel)
-cd "$REPO_ROOT"
-export DECOMPOSE_STATE_DIR=$(python .agents/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py state-dir)
-mkdir -p "$DECOMPOSE_STATE_DIR"
-git-stage-batch block-file --local-only .git-stage-batch/
-python .agents/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py status --json
-git-stage-batch --help
-git-stage-batch start --help
-git-stage-batch show --help
-git-stage-batch include --help
-git-stage-batch stop --help
-git-stage-batch status --help
-git-stage-batch list --help
-```
-
-Determine the base of the series from the explicit `BASE_SHA` argument. Fresh
-`history-polish` must not read an old checkpoint, `history-polish-*` file,
-narrative, plan, audit, or review artifact before the fresh start step clears
-the state directory. Existing state files are contaminated inputs from another
-attempt, not context for the current polish run. If no base argument was
-supplied, stop and ask for `BASE_SHA`; do not guess from branch names, old
-refs, reflog entries, or checkpoint state.
-
-```bash
-if test -z "${BASE_SHA:-}"; then
-  echo "history-polish requires BASE_SHA; rerun as history-polish BASE_SHA"
-  exit 1
-fi
-git --no-optional-locks merge-base --is-ancestor "$BASE_SHA" HEAD
-```
-
-Require a clean tree and no stale batch session before rewriting history:
-
-```bash
-git --no-optional-locks status --short
-git-stage-batch list
-git-stage-batch status
-```
-
-If any command reports pending work, active state, or stale `decompose-*`
-batches, stop and report the blocker. Do not start history polishing while
-ordinary working-tree changes or old batch refs are present.
-
-Start a fresh checkpoint before reading or writing any state artifacts. The
-start command clears stale files in `.git-stage-batch/` for non-resume modes;
-that cleanup is intentional. Only after that fresh start should this run record
-the tree and series it is about to preserve:
-
-```bash
-python .agents/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py start --mode history-polish --base "$BASE_SHA"
-git --no-optional-locks rev-parse HEAD^{tree} > "$DECOMPOSE_STATE_DIR/history-polish-pre-tree.txt"
-git --no-optional-locks rev-list --count "$BASE_SHA"..HEAD > "$DECOMPOSE_STATE_DIR/history-polish-pre-count.txt"
-git --no-optional-locks log --reverse --format='%H %s' "$BASE_SHA"..HEAD > "$DECOMPOSE_STATE_DIR/history-polish-pre-series.txt"
-python .agents/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py mark --phase history-polish-running --note "starting history polish"
-```
-
-Before judging commits, generate a pressure list of commits that are presumed
-split candidates. Do not rely on intuition or subject lines alone:
-
-```bash
-python - "$BASE_SHA" <<'PY' > "$DECOMPOSE_STATE_DIR/history-polish-pressure-list.txt"
-import re
-import subprocess
-import sys
-
-base = sys.argv[1]
-log = subprocess.check_output(
-    ["git", "--no-optional-locks", "log", "--reverse", "--format=%H%x00%s", f"{base}..HEAD"],
-    text=True,
-)
-for line in log.splitlines():
-    if not line:
-        continue
-    sha, subject = line.split("\x00", 1)
-    stat = subprocess.check_output(
-        ["git", "--no-optional-locks", "show", "--shortstat", "--format=", "--find-renames", sha],
-        text=True,
-    )
-    names = subprocess.check_output(
-        ["git", "--no-optional-locks", "show", "--name-only", "--format=", "--find-renames", sha],
-        text=True,
-    ).splitlines()
-    files = insertions = deletions = 0
-    m = re.search(r"(\d+) files? changed", stat)
-    if m:
-        files = int(m.group(1))
-    m = re.search(r"(\d+) insertions?", stat)
-    if m:
-        insertions = int(m.group(1))
-    m = re.search(r"(\d+) deletions?", stat)
-    if m:
-        deletions = int(m.group(1))
-    reasons = []
-    if insertions + deletions >= 500:
-        reasons.append(f"{insertions + deletions} changed lines")
-    if files >= 10:
-        reasons.append(f"{files} files")
-    if re.search(r"\b(Add|Register|Cover|Scaffold|Invoke|Wire|Expand)\b", subject, re.I):
-        reasons.append("artifact/action-shaped subject")
-    if any(re.search(r"(^docs?/|README|examples/|tests?/|workflows?|cli|build|pyproject|setup|Makefile)", p) for p in names):
-        reasons.append("docs/tests/orchestration/build surface")
-    if reasons:
-        print(f"{sha[:12]} {subject} :: {'; '.join(reasons)}")
-PY
-```
-
-Then run the polish in three passes:
-
-1. Final evolution split audit. Inspect every commit in `BASE_SHA..HEAD` in
-   order. For each commit, record `keep`, `split`, `reword`, or `integrate` in
-   `$DECOMPOSE_STATE_DIR/history-polish-audit.md`, with the concrete reason and
-   the smaller product state that should exist after any replacement commit.
-   Use the `Split a broad committed snapshot` procedure below for every split
-   candidate. Every commit in `history-polish-pressure-list.txt` starts as
-   `split` until proven otherwise. A `keep` verdict for one of those commits is
-   valid only when the audit lists the concrete split probes considered and the
-   exact immediate breakage or narrative regression each probe would cause.
-   Also reconcile the subject and body against the patch: every meaningful
-   helper, result field, fixture family, REST surface, data model, CLI branch,
-   docs section, and build hook must be either the named outcome of the commit,
-   required support for that named outcome, or a separate outcome that needs a
-   later replacement commit. A narrow subject does not make unmentioned patch
-   content part of the same concern.
-   Vague explanations such as "single behavior", "same module", "one module",
-   "same function", "one function", "one entry point", "single CLI entry
-   point", "fixture set", "tests belong together", "tests for one module",
-   "tests for one function", "coherent unit", "shared helper", "large but
-   related", "single pipeline", "one pipeline", "same pipeline",
-   "full pipeline", "execution pipeline", "artificial subdivision",
-   "no meaningful subdivision", "across its variants", or "all stages" are
-   failed audit entries.
-
-   A pipeline, function, module, command, test file, or fixture tree is not a
-   concern boundary by itself. If a pressured `keep` claims that a patch is one
-   pipeline, one function, or one module, the audit must name the smallest first
-   runnable version of that pipeline/function/module, then list each later
-   enrichment, adopter, variant, error path, docs section, fixture, and proof
-   that could land after the spine. If any later item can be added while the
-   earlier spine still builds and passes its narrow proof, split it. A keep is
-   valid only when every proposed later item would immediately break the
-   committed snapshot or make the history less coherent in a concrete,
-   path-specific way.
-
-   After any rewrite, restart the audit from the beginning because later SHAs
-   and dependencies have changed.
-   Use this shape for pressured keeps:
-
-   ```text
-   #### SHA subject
-   - Verdict: KEEP
-   - Pressure: 1530 changed lines; tests/orchestration surface
-   - Smallest runnable spine: parser setup plus one executor assertion that
-     proves the command dispatches a minimal request.
-   - Later enrichments checked: fixture builders, second executor mode,
-     error-path assertions, docs examples.
-   - Split probes considered:
-     1. Move parser setup before executor assertions.
-        Immediate breakage: test file imports helper X that is introduced by the
-        executor assertion block on the same commit; separating would require a
-        new smaller helper commit, so create that helper split first or keep is
-        invalid.
-     2. Move fixture builders before lookaside assertions.
-        Immediate breakage: no breakage; split this commit.
-   - Result: SPLIT because probe 2 is independently coherent.
-   ```
-
-   A pressured `keep` with any "no breakage" probe is not a keep; split it. A
-   pressured `keep` that does not name a smallest runnable spine and later
-   enrichments is not a keep; continue splitting.
-2. Repair/process integration. Scan the full range for commits that restore,
-   repair, clean up, compensate for decomposition, or mention process
-   mechanics. Use the `Integrate late repair commits` procedure below to amend
-   each hunk into the earlier commit where it first belonged, then drop the
-   repair/process commit. If a hunk cannot be placed confidently, fail the
-   workflow instead of keeping a repair commit.
-3. Subject and narrative cleanup. Reword subjects that describe artifacts
-   instead of outcomes, contain multiple actions, contain `and`, `also`,
-   `as well as`, or a semicolon, or hide multiple behaviors behind a generic
-   summary. Reword with an edit stop so the replacement subject can be checked
-   against the actual patch:
-
-```bash
-BASE_SHA=PUT_BASE_SHA_HERE
-BAD_SHA=PUT_COMMIT_WITH_BAD_SUBJECT_HERE
-BAD_SHORT=$(git rev-parse --short=7 "$BAD_SHA")
-GIT_SEQUENCE_EDITOR="sed -i -E 's/^pick (${BAD_SHORT}[0-9a-f]*) /edit \\1 /'" git rebase -i "$BASE_SHA"
-git --no-optional-locks show --stat --patch --find-renames HEAD
-NEW_SUBJECT='PUT_SINGLE_OUTCOME_SUBJECT_HERE'
-git commit --amend -m "$NEW_SUBJECT"
-python .agents/skills/decompose-and-commit-unstaged-changes/scripts/verify-head-snapshot.py --ref HEAD -- python -m compileall -q src tests
-git rebase --continue
-```
-
-After every split, integration, or reword, rerun the relevant verification
-loop over the changed committed snapshots. Do not continue with a failing
-intermediate commit just because the final tree will be fixed later.
-
-Before reporting success, reject weak audit language, rerun Gate 3 in full,
-and verify that the final tree did not change:
-
-```bash
-python - <<'PY'
-import os
-import re
-import sys
-from pathlib import Path
-
-audit = Path(os.environ["DECOMPOSE_STATE_DIR"]) / "history-polish-audit.md"
-text = audit.read_text(encoding="utf-8")
-weak = re.compile(
-    r"\b(single behavior|same module|one module|same function|one function|"
-    r"one entry point|single CLI entry point|fixture set|tests belong together|"
-    r"tests for one module|tests for one function|coherent unit|shared helper|"
-    r"large but related|single pipeline|one pipeline|same pipeline|"
-    r"full pipeline|execution pipeline|artificial subdivision|"
-    r"no meaningful subdivision|across its variants|all stages)\b",
-    re.I,
-)
-matches = [line for line in text.splitlines() if weak.search(line)]
-if matches:
-    print("history-polish audit has weak keep rationale; split or write concrete immediate breakage")
-    print("\n".join(matches[:20]))
-    sys.exit(1)
-blocks = re.split(r"\n####\s+", text)
-missing_spine = []
-for block in blocks:
-    if "Verdict: KEEP" not in block or "Pressure:" not in block:
-        continue
-    if not re.search(r"\b(pipeline|function|module|command|entry point|test file|fixture tree)\b", block, re.I):
-        continue
-    if not re.search(r"Smallest runnable", block, re.I):
-        missing_spine.append(block.splitlines()[0][:160])
-if missing_spine:
-    print("pressured keep lacks Smallest runnable spine analysis:")
-    print("\n".join(missing_spine[:20]))
-    sys.exit(1)
-PY
-test "$(git --no-optional-locks rev-parse HEAD^{tree})" = "$(cat "$DECOMPOSE_STATE_DIR/history-polish-pre-tree.txt")"
-git --no-optional-locks rev-list --count "$BASE_SHA"..HEAD > "$DECOMPOSE_STATE_DIR/history-polish-post-count.txt"
-git --no-optional-locks log --reverse --format='%H %s' "$BASE_SHA"..HEAD > "$DECOMPOSE_STATE_DIR/history-polish-post-series.txt"
-python .agents/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py mark --phase history-polish-complete --note "history polish passed"
-```
-
-The completion report for this mode must include the original commit count,
-the final commit count, which commits were split, which repair/process commits
-were integrated or dropped, which subjects were reworded, which pressured
-commits were kept with exact breakage reasons, and the validation commands that
-passed.
 
 ## Operating Contract
 
@@ -1393,16 +1124,21 @@ execute the prompt in the main context:
 > subsets or the repository's full test command for behavior, import, packaging,
 > or orchestration changes. If any committed snapshot fails, amend or rewrite
 > the offending commit before continuing. Do not accumulate late repair commits.
-> After all batches are committed, run the final evolution split audit before
-> Gate 3. Re-read the actual series as a story of incremental development:
-> every commit should be the next coherent product state, not a finished
-> subsystem dropped into place. Split any commit that still contains separable
-> concerns, sublayers, adapters, docs, tests, fixtures, build changes, or
-> coordinator paths. Then run the final history-polish pass. Any late
-> repair/process commit must be integrated into the commit where the repaired
-> behavior first belonged, using the explicit interactive rebase commands in
-> Safety and Recovery. Do not report success with a tail commit that restores
-> content lost during decomposition.
+> After all batches are committed and dropped, return control to the
+> coordinator. Do not perform a separate post-rebuild rewrite in this phase;
+> `refine-history` owns the post-rebuild rewrite.
+
+After the Phase 3 worker returns, require the first-class `refine-history`
+skill. Read `.agents/skills/refine-history/SKILL.md`, mark the handoff, and
+execute it with `BASE_SHA`:
+
+```bash
+python .agents/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py mark --phase refine-history-running --note "handing rebuilt series to refine-history"
+```
+
+If the skill is not installed, stop with an instruction to install the bundled
+`refine-history` Codex skill; do not silently skip the final history refinement
+or fall back to an embedded copy of that workflow.
 
 ### Gate 3: Definition of Done
 
@@ -1436,63 +1172,9 @@ git --no-optional-locks ls-tree HEAD PATH_FROM_GITMODULES ...
 Do not run the placeholder literally; replace it with every path printed by
 the first command.
 
-6. No commit subject in the series contains `and`, `also`, `as well as`,
-   a semicolon, or two independent actions:
-
-```bash
-git --no-optional-locks log --format='%s' {BASE_SHA}..HEAD
-```
-
-   Scan each subject. If any violates the single-action rule, the series
-   is not complete.
-
-7. No commit in the series is a schema dump, coordinator dump, or
-   artifact-category commit. Check for subjects starting with broad
-   patterns like "Add shared", "Add all", "Wire all", "Cover all",
-   "Add data models for", or "Add ... and ...".
-8. No subject merely names the artifact added. A valid subject names the
-   behavior, invariant, workflow, or contract that becomes true after the
-   commit. Subjects shaped like `Add MODULE`, `Cover MODULE`, `Register X`,
-   `Expand README`, or `Wire integration` must be rewritten or the commit must
-   be split unless that exact action is the product-level outcome.
-9. No commit creates a new non-generated code or test file over 600 lines as
-   one finished artifact. Split large files into internal behavior slices with
-   nearby proof.
-10. The final evolution split audit has been performed after all batches were
-    rebuilt. For every commit in `{BASE_SHA}..HEAD`, inspect its subject, body,
-    diffstat, and patch. If a commit can be split into a smaller coherent
-    groundwork commit, behavior slice, adopter, test proof, docs update,
-    fixture slice, build-system slice, or coordinator call path, split it with
-    the committed-snapshot split procedure below before success.
-11. No commit is a late repair/process commit. Scan the full series for
-    subjects or bodies containing `restore`, `repair`, `lost`,
-    `decomposition`, `batch`, `fixup`, or `cleanup`, and inspect any `fix:`
-    commit that appears after the feature it repairs:
-
-```bash
-BASE_SHA=PUT_BASE_SHA_HERE python - <<'PY'
-import os, re, subprocess, sys
-base = os.environ["BASE_SHA"]
-log = subprocess.check_output(
-    ["git", "--no-optional-locks", "log", "--reverse", "--format=%H%x00%s%x00%b%x00END", f"{base}..HEAD"],
-    text=True,
-)
-bad = []
-for entry in log.split("\x00END\n"):
-    if not entry.strip():
-        continue
-    sha, subject, body = (entry.split("\x00", 2) + [""])[:3]
-    text = subject + "\n" + body
-    if re.search(r"\b(restore|repair|lost|decomposition|batch|fixup|cleanup)\b", text, re.I):
-        bad.append(f"{sha[:12]} {subject}")
-if bad:
-    print("late repair/process commits must be integrated into earlier commits:")
-    print("\n".join(bad))
-    sys.exit(1)
-PY
-```
-
-    If this finds anything, use the final repair integration procedure below.
+6. The `refine-history` completion gate passed for `BASE_SHA..HEAD`, including
+   exact final-tree preservation, committed-snapshot verification, the final
+   split audit, repair integration, and message cleanup.
 
 If any check fails, report the specific failure. Do not report success
 while holding unfinished-work signals.
@@ -1510,8 +1192,7 @@ After all gates pass, report:
 - How many concerns were identified
 - How many commits were created
 - The subject line of each commit in series order
-- Which commits were split during the final evolution split audit, or that no
-  split candidates remained
+- The `refine-history` completion summary
 - Any manual repairs or plan adjustments that were needed
 
 ## Safety and Recovery
@@ -1610,235 +1291,6 @@ conflict paths, and run `git rebase --continue`. That conflict-resolution
 bookkeeping is not a staging method for ordinary commit slices. After the
 rebase finishes, re-run the verification loop over `BASE_SHA..HEAD` and repeat
 for the next first failing commit if needed.
-
-#### Split a broad committed snapshot
-
-After the rebuild is complete, do one final split round over the actual commit
-series. The goal is not smaller commits for their own sake; the goal is a
-history that reads like a maintainer evolved the project one coherent product
-state at a time.
-
-Start with a clean tree and write the audit under the workflow state directory,
-not `.agents`:
-
-```bash
-export DECOMPOSE_STATE_DIR=$(python .agents/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py state-dir)
-mkdir -p "$DECOMPOSE_STATE_DIR"
-git-stage-batch block-file --local-only .git-stage-batch/
-git --no-optional-locks status --short
-BASE_SHA=PUT_BASE_SHA_HERE
-git --no-optional-locks log --reverse --format='%H %s' "$BASE_SHA"..HEAD > "$DECOMPOSE_STATE_DIR/final-split-audit.txt"
-```
-
-For every commit in the range, inspect both the message and patch:
-
-```bash
-COMMIT_SHA=PUT_COMMIT_SHA_HERE
-git --no-optional-locks show --stat --summary --find-renames "$COMMIT_SHA"
-git --no-optional-locks show --patch --find-renames "$COMMIT_SHA"
-```
-
-Treat a commit as a split candidate when any of these are true:
-
-- The subject or body lists multiple outcomes, even without using `and`.
-- The diff adds a finished module, coordinator, command, docs section, fixture
-  tree, or build-system surface that could have had a smaller first version.
-- One commit mixes groundwork with the first adopter, or one adopter with
-  later adopters.
-- A source commit contains tests for several behaviors, or a test commit covers
-  unrelated behavior that could prove earlier commits.
-- Docs or examples describe behavior that was not true immediately after the
-  preceding commit.
-- A file's final shape appears all at once instead of visibly accreting across
-  the series.
-- The subject names one concern but the patch contains another meaningful
-  concern that is not required support for the named outcome.
-
-Bad pattern: a commit titled like "Reconstruct Jira fixtures" also adds git
-source repository capture, Jira miss discovery, issue fixture writing, search
-fixture writing, starting-issue stubs, and dev-status capture. Better pattern:
-commit source repo capture, miss discovery, issue fixtures, search fixtures,
-starting stubs, and dev-status as separate product states.
-
-If the commit can be split, rewrite it mechanically. Mark the broad commit for
-editing. For one split candidate, rebase from that commit's parent; do not
-rebase the whole range from `BASE_SHA` just to edit one later commit because
-previous rewrites can trigger skipped-cherry-pick behavior and widen the
-conflict surface:
-
-```bash
-SPLIT_SHA=PUT_BROAD_COMMIT_SHA_HERE
-GIT_SEQUENCE_EDITOR="sed -i '1s/^pick /edit /'" git rebase -i "$SPLIT_SHA^"
-```
-
-Use a `BASE_SHA` todo only when deliberately editing several commits in one
-rebase.
-
-When rebase stops at the broad commit, uncommit it into the working tree:
-
-```bash
-git reset --mixed HEAD^
-git --no-optional-locks status --short
-git --no-optional-locks diff --stat
-git-stage-batch start
-```
-
-Plan the replacement mini-series before staging. Each replacement commit must
-answer:
-
-- What smaller product state exists after this commit?
-- What exact earlier state does it evolve?
-- What proof lands with or immediately after the behavior?
-- Which final-tree content must still be absent?
-- Will this commit be assembled from original hunks, or from a reconstructed
-  whole-file snapshot that better represents the intended intermediate state?
-- Which remaining diff content is a separate later outcome rather than support
-  for this commit?
-
-Do not force the original diff's hunk boundaries to define the new history. A
-large move/modify patch, generated fixture, rewritten docs section, or
-finished coordinator may need a whole-cloth intermediate version before the
-final file shape. Line-level staging being awkward is not a reason to keep a
-broad commit; it is a reason to reconstruct the next smaller product state
-and stage that snapshot deliberately.
-
-Stage and commit one sublayer at a time with `git-stage-batch`.
-
-When the original hunks already match the desired sublayer, use line
-selection:
-
-```bash
-git-stage-batch show
-git-stage-batch include --line SUBLAYER_LINE_IDS --no-auto-advance
-git --no-optional-locks diff --cached
-git commit
-python .agents/skills/decompose-and-commit-unstaged-changes/scripts/verify-head-snapshot.py --ref HEAD -- python -m compileall -q src tests
-git-stage-batch stop
-git --no-optional-locks status --short
-# If unstaged changes remain for another sublayer, start the next review pass:
-git-stage-batch start
-```
-
-When the desired sublayer is clearer as rewritten file content, reconstruct
-that file in the working tree, then stage exactly that snapshot through
-`include --file --as-stdin`:
-
-```bash
-# Edit PATH so it contains only the file content that should exist after
-# this replacement commit, not the final all-features version.
-git-stage-batch show --file PATH --no-advance
-git-stage-batch include --file PATH --as-stdin --no-auto-advance < PATH
-git --no-optional-locks diff --cached -- PATH
-git --no-optional-locks diff --cached --check
-git commit
-python .agents/skills/decompose-and-commit-unstaged-changes/scripts/verify-head-snapshot.py --ref HEAD -- python -m compileall -q src tests
-git-stage-batch stop
-git --no-optional-locks status --short
-# If unstaged changes remain for another sublayer, start the next review pass:
-git-stage-batch start
-```
-
-Whole-file reconstruction is allowed to simplify a tangled historical patch,
-not to hide multiple outcomes in one commit. The staged file must represent
-one smaller product state, and later commits must visibly evolve it toward the
-final tree. For Python whole-file snapshots, compile is only a minimum check;
-also run the narrow behavior test or import/use path that would catch missing
-runtime names introduced by the reconstructed intermediate file.
-
-After each replacement commit, inspect the remaining unstaged diff as a new
-split candidate before committing it. Do not treat the residue as one final
-commit by default. If the residue contains another helper family, result field,
-fixture family, REST surface, docs section, or adopter that can land after the
-current committed state, split again.
-
-Use the same commit-message standards and `commit-message-drafter` inputs as
-normal rebuild commits. Prefer this order: minimal groundwork, first consumer,
-narrow proof, next consumer, narrow proof, docs/examples only after the
-documented behavior exists. Do not recreate the original broad commit under a
-vague summary. Write commit bodies with the project's line-length and wording
-rules in mind; if the commit hook rejects only the message, retry the same
-staged diff with a corrected message.
-
-When the broad commit has been fully replaced and `git status --short` is
-clean, continue the rebase:
-
-```bash
-git --no-optional-locks status --short
-git rebase --continue
-```
-
-After the rebase finishes, rerun the final split audit from the beginning.
-History rewriting changes later SHAs and can reveal new split candidates. Stop
-only when a full pass finds no remaining commit that can be split into a
-better incremental evolution.
-
-#### Integrate late repair commits
-
-Gate 3 must not leave a tail commit whose purpose is to restore, repair,
-recover, clean up, or compensate for the decomposition. Integrate each such
-commit into the earlier commit where the hunk first belonged, then drop the
-repair commit.
-
-First require a clean tree and list suspicious commits:
-
-```bash
-export DECOMPOSE_STATE_DIR=$(python .agents/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py state-dir)
-mkdir -p "$DECOMPOSE_STATE_DIR"
-git-stage-batch block-file --local-only .git-stage-batch/
-git --no-optional-locks status --short
-BASE_SHA=PUT_BASE_SHA_HERE
-git --no-optional-locks log --reverse --format='%H %s' "$BASE_SHA"..HEAD
-```
-
-For each suspicious repair commit, inspect the diff and write down the target
-commit for each hunk:
-
-```bash
-REPAIR_SHA=PUT_REPAIR_SHA_HERE
-git --no-optional-locks show --stat --patch --find-renames "$REPAIR_SHA"
-git --no-optional-locks log --reverse --format='%H %s' "$BASE_SHA"..HEAD -- PATH_TOUCHED_BY_REPAIR
-```
-
-If one repair commit contains hunks for different historical points, split the
-allocation by hunk. Do not squash the whole repair into a convenient nearby
-commit unless every hunk first belongs there. If any hunk cannot be placed
-confidently, fail the workflow instead of keeping a repair commit.
-
-For a one-target repair, use this exact pattern. It edits the target commit,
-drops the later repair commit from the todo list, and leaves you stopped at the
-target so you can amend it:
-
-```bash
-BASE_SHA=PUT_BASE_SHA_HERE
-TARGET_SHA=PUT_COMMIT_THAT_SHOULD_HAVE_CONTAINED_THE_HUNK
-REPAIR_SHA=PUT_REPAIR_COMMIT_TO_DROP
-TARGET_SHORT=$(git rev-parse --short=7 "$TARGET_SHA")
-REPAIR_SHORT=$(git rev-parse --short=7 "$REPAIR_SHA")
-git --no-optional-locks show --format= --binary "$REPAIR_SHA" > "$DECOMPOSE_STATE_DIR/repair-$REPAIR_SHORT.patch"
-GIT_SEQUENCE_EDITOR="sed -i -E -e 's/^pick (${TARGET_SHORT}[0-9a-f]*) /edit \\1 /' -e 's/^pick (${REPAIR_SHORT}[0-9a-f]*) /drop \\1 /'" git rebase -i "$BASE_SHA"
-```
-
-When rebase stops at the target commit, apply only the hunk or hunks that
-belong in that target. Prefer `git apply --3way` for modest whole-patch
-repairs; otherwise edit manually. Stage the selected repair hunk with
-`git-stage-batch`, not Git's built-in partial staging:
-
-```bash
-git apply --3way "$DECOMPOSE_STATE_DIR/repair-$REPAIR_SHORT.patch" || true
-git-stage-batch start
-git-stage-batch show
-git-stage-batch include --line TARGET_HUNK_LINE_IDS --no-auto-advance
-git --no-optional-locks diff --cached
-git commit --amend --no-edit
-python .agents/skills/decompose-and-commit-unstaged-changes/scripts/verify-head-snapshot.py --ref HEAD -- python -m compileall -q src tests
-git rebase --continue
-```
-
-For a repair commit whose hunks belong in several earlier commits, repeat the
-same pattern with all target commits marked `edit` and the repair commit marked
-`drop`. At each stop, stage only the hunks allocated to that target, amend,
-verify, and continue. After the rebase finishes, rerun Gate 3 from the
-beginning.
 
 ### Preserving work
 

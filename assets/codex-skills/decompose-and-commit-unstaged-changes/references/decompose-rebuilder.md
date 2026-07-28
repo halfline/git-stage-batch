@@ -406,16 +406,9 @@ python .agents/skills/decompose-and-commit-unstaged-changes/scripts/verify-head-
 - Do not continue with known breakage. If a committed snapshot fails, fix the
   offending commit by amending or otherwise rewriting before creating any later
   commit. Do not add a late repair commit.
-- After all batches are committed, run the final evolution split audit before
-  reporting completion. Re-read the actual commit series as an incremental
-  product story. If a commit still contains separable groundwork, behavior
-  slices, adopters, tests, docs, fixtures, build-system changes, or coordinator
-  paths, split that committed snapshot before Gate 3.
-- After all batches are committed, run the final history-polish pass. If any
-  commit restores content, repairs decomposition damage, recovers lost lines,
-  cleans up broad staging, or otherwise exists only because the rebuild went
-  wrong, rewrite it into the earlier commit where the hunk belonged and drop
-  the repair commit.
+- After all batches are committed and dropped, return control to the
+  coordinator. The first-class `refine-history` skill owns the series-wide
+  split, repair-integration, and message-cleanup pass.
 
 ### Rewriting a failed committed snapshot
 
@@ -504,175 +497,6 @@ bookkeeping is not a staging method for ordinary commit slices. After the
 rebase finishes, re-run the verification loop over `BASE_SHA..HEAD`. If another
 commit fails, repeat this section for the new first failing commit.
 
-### Final evolution split audit
-
-Before the history-polish scan and before reporting completion, perform one
-more split round over the actual committed series. The objective is a coherent
-evolution of the project, not merely a clean final tree. A reviewer should be
-able to stop at any commit and see the next believable product state.
-
-Write audit scratch files under `.git-stage-batch/` via `DECOMPOSE_STATE_DIR`,
-not under `.agents`:
-
-```bash
-export DECOMPOSE_STATE_DIR=$(python .agents/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py state-dir)
-mkdir -p "$DECOMPOSE_STATE_DIR"
-git-stage-batch block-file --local-only .git-stage-batch/
-git --no-optional-locks status --short
-BASE_SHA=PUT_BASE_SHA_HERE
-git --no-optional-locks log --reverse --format='%H %s' "$BASE_SHA"..HEAD > "$DECOMPOSE_STATE_DIR/final-split-audit.txt"
-```
-
-Inspect every commit's message, diffstat, and patch:
-
-```bash
-COMMIT_SHA=PUT_COMMIT_SHA_HERE
-git --no-optional-locks show --stat --summary --find-renames "$COMMIT_SHA"
-git --no-optional-locks show --patch --find-renames "$COMMIT_SHA"
-```
-
-Split candidates include:
-
-- A subject or body that lists several outcomes under one generic summary.
-- A finished module, command, coordinator, docs section, fixture tree, or build
-  surface that could have started smaller.
-- Groundwork bundled with its first adopter, or one adopter bundled with later
-  adopters.
-- Tests that prove several unrelated behaviors, or tests delayed far from the
-  behavior they prove.
-- Docs or examples that describe features not true immediately after the prior
-  commit.
-- A large final file shape appearing in one commit instead of accreting through
-  sublayers.
-
-For each candidate, rewrite the commit with an interactive rebase. Mark the
-candidate commit for edit:
-
-```bash
-SPLIT_SHA=PUT_BROAD_COMMIT_SHA_HERE
-SPLIT_SHORT=$(git rev-parse --short=7 "$SPLIT_SHA")
-GIT_SEQUENCE_EDITOR="sed -i -E 's/^pick (${SPLIT_SHORT}[0-9a-f]*) /edit \\1 /'" git rebase -i "$BASE_SHA"
-```
-
-When rebase stops, uncommit the broad snapshot into the working tree:
-
-```bash
-git reset --mixed HEAD^
-git --no-optional-locks status --short
-git --no-optional-locks diff --stat
-git-stage-batch start
-```
-
-Plan the replacement mini-series before staging. Each replacement commit must
-describe the smaller product state after it, the earlier state it evolves, the
-nearby proof, and the final-tree content that remains absent.
-
-Stage and commit one sublayer at a time with `git-stage-batch`:
-
-```bash
-git-stage-batch show
-git-stage-batch include --line SUBLAYER_LINE_IDS --no-auto-advance
-git --no-optional-locks diff --cached
-git commit
-python .agents/skills/decompose-and-commit-unstaged-changes/scripts/verify-head-snapshot.py --ref HEAD -- python -m compileall -q src tests
-git-stage-batch stop
-git --no-optional-locks status --short
-# If unstaged changes remain for another sublayer, start the next review pass:
-git-stage-batch start
-```
-
-Use a fresh-context commit-message-drafter subagent for every replacement commit. Keep the
-replacement series in this shape where possible: minimal groundwork, first
-consumer, narrow proof, next consumer, narrow proof, docs/examples after the
-behavior exists. If a replacement commit starts to need a generic summary,
-split it again.
-
-When the broad commit is fully replaced and the tree is clean, continue:
-
-```bash
-git --no-optional-locks status --short
-git rebase --continue
-```
-
-After each split rebase finishes, rerun this audit from the beginning because
-SHAs changed and later commits may now expose new split candidates. Stop only
-after a complete pass finds no commit that can become a better incremental
-step.
-
-### Final history-polish pass
-
-Before reporting completion, scan the complete series for repair/process
-commits. A pristine history cannot end with "restore lost content", "repair
-batch decomposition", "cleanup after rebuild", or similar commits.
-
-```bash
-export DECOMPOSE_STATE_DIR=$(python .agents/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py state-dir)
-mkdir -p "$DECOMPOSE_STATE_DIR"
-git-stage-batch block-file --local-only .git-stage-batch/
-BASE_SHA=PUT_BASE_SHA_HERE python - <<'PY'
-import os, re, subprocess, sys
-base = os.environ["BASE_SHA"]
-log = subprocess.check_output(
-    ["git", "--no-optional-locks", "log", "--reverse", "--format=%H%x00%s%x00%b%x00END", f"{base}..HEAD"],
-    text=True,
-)
-bad = []
-for entry in log.split("\x00END\n"):
-    if not entry.strip():
-        continue
-    sha, subject, body = (entry.split("\x00", 2) + [""])[:3]
-    text = subject + "\n" + body
-    if re.search(r"\b(restore|repair|lost|decomposition|batch|fixup|cleanup)\b", text, re.I):
-        bad.append(f"{sha[:12]} {subject}")
-if bad:
-    print("late repair/process commits must be integrated into earlier commits:")
-    print("\n".join(bad))
-    sys.exit(1)
-PY
-```
-
-For every suspicious commit, inspect the patch and decide where each hunk first
-belongs in the history:
-
-```bash
-REPAIR_SHA=PUT_REPAIR_SHA_HERE
-git --no-optional-locks show --stat --patch --find-renames "$REPAIR_SHA"
-git --no-optional-locks log --reverse --format='%H %s' "$BASE_SHA"..HEAD -- PATH_TOUCHED_BY_REPAIR
-```
-
-If all hunks belong in one earlier commit, use this exact non-interactive
-interactive rebase pattern. It marks the target commit `edit`, marks the
-repair commit `drop`, and then stops at the target so you can amend it:
-
-```bash
-TARGET_SHA=PUT_COMMIT_THAT_SHOULD_HAVE_CONTAINED_THE_HUNK
-REPAIR_SHA=PUT_REPAIR_COMMIT_TO_DROP
-TARGET_SHORT=$(git rev-parse --short=7 "$TARGET_SHA")
-REPAIR_SHORT=$(git rev-parse --short=7 "$REPAIR_SHA")
-git --no-optional-locks show --format= --binary "$REPAIR_SHA" > "$DECOMPOSE_STATE_DIR/repair-$REPAIR_SHORT.patch"
-GIT_SEQUENCE_EDITOR="sed -i -E -e 's/^pick (${TARGET_SHORT}[0-9a-f]*) /edit \\1 /' -e 's/^pick (${REPAIR_SHORT}[0-9a-f]*) /drop \\1 /'" git rebase -i "$BASE_SHA"
-```
-
-When rebase stops at the target, integrate only the hunks allocated to that
-target:
-
-```bash
-git apply --3way "$DECOMPOSE_STATE_DIR/repair-$REPAIR_SHORT.patch" || true
-git-stage-batch start
-git-stage-batch show
-git-stage-batch include --line TARGET_HUNK_LINE_IDS --no-auto-advance
-git --no-optional-locks diff --cached
-git commit --amend --no-edit
-python .agents/skills/decompose-and-commit-unstaged-changes/scripts/verify-head-snapshot.py --ref HEAD -- python -m compileall -q src tests
-git rebase --continue
-```
-
-If a repair commit contains hunks for several historical points, mark every
-target commit `edit` and the repair commit `drop` in the same rebase. At each
-stop, stage only the hunks for that target, amend, verify, and continue. If a
-hunk cannot be confidently assigned to the commit where it first belonged,
-fail the workflow instead of keeping the repair commit.
-
 ### 6. Clean up the applied batch
 
 After all mini-series commits for this concern are complete:
@@ -756,13 +580,12 @@ docs: Document run after orchestration support
 
 ## Finalization
 
-After all concerns are committed, run the final evolution split audit and the
-final history-polish pass. Only then stop the session and checkpoint
-completion:
+After all concerns are committed and their batches are dropped, stop the
+session, checkpoint the rebuild, and return control to the coordinator:
 
 ```bash
 git-stage-batch stop
-python .agents/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py mark --phase phase3-complete --note "rebuild complete"
+python .agents/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py mark --phase phase3-running --note "rebuild complete; awaiting refine-history"
 ```
 
 Report:
@@ -770,8 +593,6 @@ Report:
 - How many concerns were processed
 - How many commits were created
 - Which concerns expanded into multiple commits
-- Which commits were split during the final evolution split audit, or that no
-  split candidates remained
 - The subject line of each commit in series order
 - Any manual repairs needed during rebuild
 - Results of `git-stage-batch list` (should be empty)

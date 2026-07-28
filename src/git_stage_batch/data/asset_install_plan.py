@@ -53,6 +53,40 @@ def plan_asset_installs(
 ) -> tuple[PlannedAssetInstall, ...]:
     """Return the packaged asset sources and destinations to install."""
     planned_installs: list[PlannedAssetInstall] = []
+    planned_destinations: dict[Path, tuple[str, ...]] = {}
+
+    def append_install(
+        source: Traversable,
+        destination: Path,
+        *,
+        source_key: tuple[str, ...],
+        display_kind: str,
+        display_name: str,
+    ) -> None:
+        # A selected entry can also be a dependency of another selected entry.
+        # Install that shared tree once while retaining both selections in the
+        # user-facing summary.
+        if destination in planned_destinations:
+            if planned_destinations[destination] != source_key:
+                raise CommandError(
+                    _(
+                        "Bundled assets from different sources target the same "
+                        "destination: '{destination}'."
+                    ).format(destination=destination.relative_to(repo_root))
+                )
+            return
+        _validate_overwrite(
+            source,
+            destination,
+            repo_root,
+            force=force,
+            display_kind=display_kind,
+            display_name=display_name,
+        )
+        planned_installs.append(
+            PlannedAssetInstall(source=source, destination=destination)
+        )
+        planned_destinations[destination] = source_key
 
     for selected_group in selected_entries_by_group:
         group = selected_group.group
@@ -60,47 +94,32 @@ def plan_asset_installs(
         target_root = repo_root.joinpath(*group.target_segments)
         for entry_name, entry in selected_entries.items():
             destination = target_root / (entry.name if entry.is_file() else entry_name)
-            _validate_overwrite(
+            append_install(
                 entry,
                 destination,
-                repo_root,
-                force=force,
+                source_key=(*group.source_segments, entry.name),
                 display_kind=group.display_name_singular,
                 display_name=entry_name,
-            )
-            planned_installs.append(
-                PlannedAssetInstall(source=entry, destination=destination)
             )
             for companion in get_entry_companion_assets(group, entry_name):
                 destination = repo_root.joinpath(*companion.target_segments)
                 companion_source = get_companion_asset_source(companion)
-                _validate_overwrite(
+                append_install(
                     companion_source,
                     destination,
-                    repo_root,
-                    force=force,
+                    source_key=companion.source_segments,
                     display_kind=companion.display_name,
                     display_name=str(destination.relative_to(repo_root)),
-                )
-                planned_installs.append(
-                    PlannedAssetInstall(
-                        source=companion_source,
-                        destination=destination,
-                    )
                 )
         for companion in group.companion_assets:
             destination = repo_root.joinpath(*companion.target_segments)
             companion_source = get_companion_asset_source(companion)
-            _validate_overwrite(
+            append_install(
                 companion_source,
                 destination,
-                repo_root,
-                force=force,
+                source_key=companion.source_segments,
                 display_kind=companion.display_name,
                 display_name=str(destination.relative_to(repo_root)),
-            )
-            planned_installs.append(
-                PlannedAssetInstall(source=companion_source, destination=destination)
             )
 
     return tuple(planned_installs)

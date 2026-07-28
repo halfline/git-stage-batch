@@ -23,8 +23,7 @@ def test_select_asset_entries_filters_across_groups():
     selected = select_asset_entries(None, ["commit-*"])
 
     assert [
-        (group.group.display_name_plural, sorted(group.entries))
-        for group in selected
+        (group.group.display_name_plural, sorted(group.entries)) for group in selected
     ] == [
         ("Claude agents", ["commit-message-drafter"]),
         ("Claude skills", ["commit-staged-changes", "commit-unstaged-changes"]),
@@ -36,6 +35,30 @@ def test_select_asset_entries_rejects_unknown_group():
     """Unknown groups should raise the install-assets unknown-group error."""
     with pytest.raises(CommandError, match="Unknown asset group 'missing-group'"):
         select_asset_entries("missing-group", None)
+
+
+def test_select_refine_history_across_assistant_groups():
+    """The standalone history skill should be selectable for both assistants."""
+    selected = select_asset_entries(None, ["refine-history"])
+
+    assert [
+        (group.group.display_name_plural, sorted(group.entries)) for group in selected
+    ] == [
+        ("Claude skills", ["refine-history"]),
+        ("Codex skills", ["refine-history"]),
+    ]
+
+
+def test_select_refine_commit_messages_across_assistant_groups():
+    """The message-only history skill should be independently selectable."""
+    selected = select_asset_entries(None, ["refine-commit-messages"])
+
+    assert [
+        (group.group.display_name_plural, sorted(group.entries)) for group in selected
+    ] == [
+        ("Claude skills", ["refine-commit-messages"]),
+        ("Codex skills", ["refine-commit-messages"]),
+    ]
 
 
 def test_select_asset_entries_rejects_unmatched_group_filter():

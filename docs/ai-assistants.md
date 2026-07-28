@@ -42,11 +42,39 @@ The bundled Claude skills currently include:
 - `commit-unstaged-changes` for splitting unstaged work into one or more commits
 - `decompose-and-commit-unstaged-changes` for peeling larger unstaged work into
   concern batches and rebuilding a fine-grained commit series
+- `refine-commit-messages` for auditing and rewording messages in an existing
+  series without changing any patch or commit boundary
+- `refine-history` for splitting, rewording, and integrating commits in an
+  existing local draft series after an explicit base commit
 
-The regular commit skills stage the current working tree into new commits. The
-decomposition skill may rewrite commits it just created while polishing a local
-draft series, but it is not intended to rewrite shared or protected branch
-history.
+The regular commit skills stage the current working tree into new commits.
+The decomposition skill hands its rebuilt series to `refine-history` for the
+final boundary rewrite, and `refine-history` delegates its final prose pass to
+`refine-commit-messages`. You can also invoke either skill directly:
+
+```bash
+claude "/refine-commit-messages BASE_SHA"
+claude "/refine-commit-messages audit BASE_SHA"
+claude "/refine-commit-messages resume"
+claude "/refine-history BASE_SHA"
+claude "/refine-history resume"
+```
+
+The default forms of both refinement skills require a clean, non-empty, linear
+range after an explicit base and refuse shared, protected, or ambiguously
+published history. Message refinement rewords by default and proves every
+patch, boundary, tree, author identity/date, and signature presence is
+unchanged. Its `audit BASE_SHA` form may inspect shared history because it does
+not update refs or commits. The `resume` forms continue each skill's checkpoint
+on its original branch.
+
+Selecting the decomposition skill installs both refinement dependencies, and
+selecting `refine-history` installs `refine-commit-messages`:
+
+```bash
+git-stage-batch install-assets claude-skills \
+  --filter decompose-and-commit-unstaged-changes
+```
 
 Create or update `CLAUDE.md` in your repository root:
 
@@ -108,6 +136,10 @@ the reader does not know the project well.
   - Be precise about scope (if it only improves one aspect, say so)
   - Use "This commit addresses that by..."
   - If part of a series, use progression words: "begins", "continues", "completes"
+- **Fourth paragraph**: connect every commit in a multi-commit series
+  - Earlier commits name the remaining work in future tense
+  - The penultimate commit specifically says what the final commit will do
+  - The final commit concludes the series instead of promising more work
 
 **Key rules:**
 - Write in **present tense** about the selected state ("has", not "used to have")
@@ -171,6 +203,24 @@ The bundled Codex skills currently include:
 - `commit-unstaged-changes` for splitting unstaged work into one or more commits
 - `decompose-and-commit-unstaged-changes` for peeling larger unstaged work into
   concern batches and rebuilding a fine-grained commit series
+- `refine-commit-messages` for auditing and rewording messages in an existing
+  series without changing any patch or commit boundary
+- `refine-history` for splitting, rewording, and integrating commits in an
+  existing local draft series after an explicit base commit
+
+The decomposition skill uses `refine-history` for its final committed-series
+rewrite, which delegates its final prose pass to `refine-commit-messages`.
+Invoke the latter directly as `$refine-commit-messages BASE_SHA`; it rewords by
+default, while `$refine-commit-messages audit BASE_SHA` only reports findings
+and proposed messages. Both mutating skills support `resume`, require a clean,
+linear local draft range after an explicit base, and create recovery refs.
+Message refinement verifies that every patch and boundary is unchanged; full
+history refinement additionally verifies every commit snapshot and the final
+tree.
+
+Selecting `decompose-and-commit-unstaged-changes` automatically installs its
+two refinement dependencies. Selecting `refine-history` automatically installs
+`refine-commit-messages`.
 
 Installing `codex-skills` also writes a shared internal drafter brief to
 `.agents/internal/commit-message-drafter.md` for those skills to use when

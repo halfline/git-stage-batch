@@ -5,6 +5,7 @@ import subprocess
 import pytest
 
 from .conftest import git_stage_batch
+from .repeated_boundary_fixture import captured_repeated_boundary_insertion
 
 
 def _commit_file(repo, path: str, content: str) -> None:
@@ -185,6 +186,29 @@ def test_include_line_transient_staging_pure_addition(functional_repo):
     assert _index_content(functional_repo, "file.txt") == "base\nfoo\n"
 
 
+def _repeated_boundary_insertion_contents() -> tuple[str, str, str]:
+    """Return the captured repeated-boundary insertion regression contents."""
+    return captured_repeated_boundary_insertion()
+
+
+def test_include_complete_repeated_boundary_insertion(functional_repo):
+    """A full repeated-boundary insertion must retain selected closing lines."""
+    original, changed, expected = _repeated_boundary_insertion_contents()
+    _commit_file(functional_repo, "file.txt", original)
+    (functional_repo / "file.txt").write_text(changed)
+
+    git_stage_batch("start", "--no-auto-advance")
+    git_stage_batch("show", "--file", "file.txt", "--page", "all")
+    result = git_stage_batch(
+        "include",
+        "--line",
+        "7-49",
+        "--no-auto-advance",
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _index_content(functional_repo, "file.txt") == expected
 @pytest.mark.parametrize(
     ("line_spec", "staged_addition"),
     [

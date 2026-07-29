@@ -20,11 +20,14 @@ from . import text_plan_jobs as _text_plan_jobs
 from . import worktree_refusals as _worktree_refusals
 from ...batch.binary_file_content import read_binary_file_from_batch
 from ...batch.operation_candidate_types import CandidatePreviewCount
+from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...batch.submodule_pointer import (
     is_batch_submodule_pointer,
     stage_submodule_pointer_from_batch,
 )
 from ...core.replacement import ReplacementPayload
+from ...core.models import RenderedBatchDisplay
+from ...core.text_lifecycle import TextFileChangeType
 from ...data.file_target_identity import (
     IndexIdentity,
     WorktreeIdentity,
@@ -50,7 +53,7 @@ from ...utils.git_repository import get_git_repository_root_path
 class _IncludeTextInput:
     ordinal: int
     file_path: str
-    file_meta: dict
+    file_meta: BatchFileMetadataDict
     index_identity: IndexIdentity
     worktree_identity: WorktreeIdentity
     worktree_artifact: Path
@@ -65,8 +68,8 @@ class _IncludePlanCapture:
     plans_by_ordinal: dict[int, _action_plans.BatchSourceActionPlan]
     command_errors_by_ordinal: dict[int, CommandError]
     unexpected_errors_by_ordinal: dict[int, str]
-    mode_actions: list[tuple[str, dict]]
-    binary_metadata_by_ordinal: dict[int, dict]
+    mode_actions: list[tuple[str, BatchFileMetadataDict]]
+    binary_metadata_by_ordinal: dict[int, BatchFileMetadataDict]
     index_identities: dict[str, IndexIdentity]
     worktree_identities: dict[str, WorktreeIdentity]
 
@@ -140,11 +143,16 @@ def execute_include_action(
                                 plan.file_meta,
                                 plan.buffer,
                             )
-                        else:
+                        elif isinstance(
+                            plan,
+                            _action_plans.SubmodulePointerActionPlan,
+                        ):
                             stage_submodule_pointer_from_batch(
                                 plan.file_path,
                                 plan.file_meta,
                             )
+                        else:
+                            raise TypeError("unsupported include action plan")
                     for file_path, file_meta in mode_actions:
                         _file_mode_actions.stage_file_mode(file_path, file_meta)
                         _file_mode_actions.apply_new_file_mode(
@@ -168,16 +176,16 @@ def execute_include_action(
 def _build_include_action_plans(
     *,
     batch_name: str,
-    files: dict[str, dict],
+    files: dict[str, BatchFileMetadataDict],
     selected_ids: set[int] | None,
     selection_ids_to_include: set[int] | None,
-    rendered,
+    rendered: RenderedBatchDisplay | None,
     replacement_payload: ReplacementPayload | None,
     repository_root: Path,
     workspace: FileJobWorkspace,
 ) -> tuple[
     list[_action_plans.BatchSourceActionPlan],
-    list[tuple[str, dict]],
+    list[tuple[str, BatchFileMetadataDict]],
     dict[str, IndexIdentity],
     dict[str, WorktreeIdentity],
 ]:
@@ -220,7 +228,7 @@ def _build_include_action_plans(
 
 def _capture_include_plan_inputs(
     *,
-    files: dict[str, dict],
+    files: dict[str, BatchFileMetadataDict],
     selected_ids: set[int] | None,
     workspace: FileJobWorkspace,
 ) -> _IncludePlanCapture:
@@ -234,8 +242,8 @@ def _capture_include_plan_inputs(
     plans_by_ordinal: dict[int, _action_plans.BatchSourceActionPlan] = {}
     command_errors_by_ordinal: dict[int, CommandError] = {}
     unexpected_errors_by_ordinal: dict[int, str] = {}
-    mode_actions: list[tuple[str, dict]] = []
-    binary_metadata_by_ordinal: dict[int, dict] = {}
+    mode_actions: list[tuple[str, BatchFileMetadataDict]] = []
+    binary_metadata_by_ordinal: dict[int, BatchFileMetadataDict] = {}
     text_inputs: list[_IncludeTextInput] = []
 
     for ordinal, (file_path, file_meta) in enumerate(files.items()):
@@ -402,9 +410,16 @@ def _build_include_text_jobs(
                 expected_index_identity=text_input.index_identity,
                 expected_worktree_identity=text_input.worktree_identity,
             )
-            source_info = object_info_by_id.get(source_object_id)
-            index_info = object_info_by_id.get(
-                text_input.index_identity.content_object_id
+            source_info = (
+                None
+                if source_object_id is None
+                else object_info_by_id.get(source_object_id)
+            )
+            index_object_id = text_input.index_identity.content_object_id
+            index_info = (
+                None
+                if index_object_id is None
+                else object_info_by_id.get(index_object_id)
             )
             jobs.append(
                 OrderedFileJob(
@@ -464,8 +479,8 @@ def _run_include_text_jobs(
 def _reduce_include_action_plans(
     *,
     batch_name: str,
-    files: dict[str, dict],
-    rendered,
+    files: dict[str, BatchFileMetadataDict],
+    rendered: RenderedBatchDisplay | None,
     capture: _IncludePlanCapture,
     text_results_by_ordinal: dict[int, _text_plan_jobs.IncludeTextPlanJobResult],
     workspace: FileJobWorkspace,
@@ -555,20 +570,20 @@ def _reduce_include_action_plans(
                 worktree_buffer,
                 result.index_file_mode,
                 result.worktree_file_mode,
-                result.index_change_type,
-                result.worktree_change_type,
+                TextFileChangeType(result.index_change_type),
+                TextFileChangeType(result.worktree_change_type),
             )
         elif result.outcome == "noop":
             continue
         elif result.outcome == "atomic_unit_error":
-            error = AtomicUnitError(
+            atomic_error = AtomicUnitError(
                 details["message"],
                 details.get("required_selection_ids"),
                 details.get("unit_kind"),
             )
             if rendered:
                 _atomic_unit_refusals.translate_atomic_unit_error_to_gutter_ids(
-                    error,
+                    atomic_error,
                     rendered,
                     "include from",
                     batch_name,
@@ -576,7 +591,7 @@ def _reduce_include_action_plans(
             exit_with_error(
                 _("Failed to include from batch '{name}': {error}").format(
                     name=batch_name,
-                    error=str(error),
+                    error=str(atomic_error),
                 )
             )
         elif result.outcome == "command_error":

@@ -9,6 +9,10 @@ from ...batch.atomic_file_changes import (
     gitlink_change_from_batch_file_metadata,
 )
 from ...batch.file_display import render_batch_file_display
+from ...batch.state.metadata_types import (
+    BatchFileMetadataDict,
+    BatchMetadataDict,
+)
 from ...core.models import FileModeChange, LineLevelChange
 from ...data.selected_change.batch_file_cache import cache_rendered_batch_file_display
 from ...data.batch_selected_changes import (
@@ -17,6 +21,7 @@ from ...data.batch_selected_changes import (
 )
 from ...data.file_review.pages import normalize_page_spec
 from ...data.file_review.records import ReviewSource
+from ...data.file_review.model import FileReviewModel
 from ...data.file_review.state import (
     clear_last_file_review_state,
     write_last_file_review_state,
@@ -44,7 +49,10 @@ from ...output.patch import (
 )
 
 
-def _shown_pages_for_display_ids(review_model, display_ids: set[int]) -> tuple[int, ...]:
+def _shown_pages_for_display_ids(
+    review_model: FileReviewModel,
+    display_ids: set[int],
+) -> tuple[int, ...]:
     """Return review pages that contain the selected display IDs."""
     return tuple(
         sorted(
@@ -61,8 +69,8 @@ def show_batch_source_file_display(
     *,
     batch_name: str,
     file_path: str,
-    files: dict[str, dict],
-    metadata: dict,
+    files: dict[str, BatchFileMetadataDict],
+    metadata: BatchMetadataDict,
     selected_ids: set[int] | None,
     selectable: bool,
     page: str | None,
@@ -157,7 +165,7 @@ def show_batch_source_file_display(
         )
         return
 
-    review_model = None
+    review_model: FileReviewModel | None = None
     review_gutter_to_selection_id = (
         rendered.review_gutter_to_selection_id
         or rendered.gutter_to_selection_id
@@ -168,7 +176,7 @@ def show_batch_source_file_display(
     )
     review_action_groups = rendered.review_action_groups or None
 
-    def get_review_model():
+    def get_review_model() -> FileReviewModel:
         nonlocal review_model
         if review_model is None:
             review_model = build_file_review_model(

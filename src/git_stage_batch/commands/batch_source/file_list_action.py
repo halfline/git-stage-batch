@@ -17,6 +17,8 @@ from ...batch.ownership.metadata_blobs import (
     replacement_origin_reference_blob_ids,
 )
 from ...batch.ownership.metadata_loading import ownership_from_metadata_dict
+from ...batch.state.metadata_types import BatchFileMetadataDict
+from ...core.buffer import LineBuffer
 from ...core.models import FileModeChange
 from ...data.file_review.records import ReviewSource
 from ...data.selected_change.clear_reasons import (
@@ -26,6 +28,7 @@ from ...data.selected_change.lifecycle import clear_selected_change_state_files
 from ...exceptions import RepositoryDataInvalid
 from ...i18n import _
 from ...output.file_review_list import (
+    FileReviewListEntry,
     make_binary_file_review_list_entry,
     make_file_review_list_entry,
     make_gitlink_file_review_list_entry,
@@ -33,6 +36,7 @@ from ...output.file_review_list import (
     print_file_review_list,
 )
 from ...utils.git_object_io import resolve_git_objects
+from ...utils.git_object_io import GitObjectInfo
 from ...utils.repository_buffers import (
     acquire_git_blob_buffers,
     git_object_name_is_batch_protocol_safe,
@@ -43,12 +47,12 @@ from ...utils.repository_buffers import (
 def show_batch_source_file_list(
     *,
     batch_name: str,
-    files: dict[str, dict],
+    files: dict[str, BatchFileMetadataDict],
     selectable: bool,
     command_source_args: str,
 ) -> None:
     """Show a navigational list for multiple files from a batch."""
-    entries = []
+    entries: list[FileReviewListEntry] = []
     text_files = {
         file_path: file_meta
         for file_path, file_meta in files.items()
@@ -161,8 +165,8 @@ def show_batch_source_file_list(
 
 def _require_ownership_blobs(
     *,
-    text_files: dict[str, dict],
-    object_info_by_name: dict,
+    text_files: dict[str, BatchFileMetadataDict],
+    object_info_by_name: dict[str, GitObjectInfo],
 ) -> None:
     """Require every blob referenced by ownership metadata to be readable."""
     for file_path, file_meta in text_files.items():
@@ -190,11 +194,11 @@ def _require_ownership_blobs(
 
 def _append_batch_file_entries(
     *,
-    entries: list,
-    files: dict[str, dict],
-    source_buffer_by_path: dict,
+    entries: list[FileReviewListEntry],
+    files: dict[str, BatchFileMetadataDict],
+    source_buffer_by_path: dict[str, LineBuffer],
     reference_contents: dict[str, bytes],
-    deletion_buffers: dict,
+    deletion_buffers: dict[str, LineBuffer],
 ) -> None:
     """Append ordered batch entries from caller-owned bulk object inputs."""
     for file_path, file_meta in files.items():

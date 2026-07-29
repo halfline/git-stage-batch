@@ -65,6 +65,7 @@ def command_reset_from_batch(
                 effective_line_ids,
             )
         elif line_ids is not None:
+            assert effective_line_ids is not None
             _reset_claims.reset_line_claims_from_batch(
                 batch_name,
                 effective_line_ids,

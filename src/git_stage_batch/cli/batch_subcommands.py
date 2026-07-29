@@ -156,7 +156,7 @@ def add_apply_subcommand(subparsers: Subparsers) -> None:
     parser_apply.set_defaults(func=dispatch_apply_command)
 
 
-def add_reset_subcommand(subparsers) -> None:
+def add_reset_subcommand(subparsers: Subparsers) -> None:
     """Register the reset subcommand."""
     parser_reset = add_subcommand_parser(
         subparsers,

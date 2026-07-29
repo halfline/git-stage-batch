@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import sys
-import json
 
-from ..data.batch_refs import restore_batch_refs
+from ..data.batch_refs import (
+    batch_ref_snapshot_recovery_objects,
+    load_batch_refs_snapshot,
+    restore_batch_refs,
+)
 from ..data.session import clear_session_state
 from ..data.session_ownership import (
     release_session_ownership,
@@ -88,23 +92,28 @@ def command_abort(*, quiet: bool = False) -> None:
         if abort_stash_path.exists()
         else None
     )
-    recovery_objects = [start_point.head_commit, start_point.index_tree, abort_stash]
-    batch_snapshot_path = get_abort_state_directory_path() / "batch-refs.json"
-    try:
-        batch_snapshot = json.loads(read_text_file_contents(batch_snapshot_path))
-    except json.JSONDecodeError:
-        batch_snapshot = {}
-    for batch_state in batch_snapshot.values():
-        recovery_objects.extend(
-            [batch_state.get("commit_sha"), batch_state.get("state_commit_sha")]
-        )
+    batch_snapshot = load_batch_refs_snapshot()
+    recovery_objects: list[str | None] = [
+        start_point.head_commit,
+        start_point.index_tree,
+        abort_stash,
+        *batch_ref_snapshot_recovery_objects(batch_snapshot),
+    ]
     try:
         recovery_anchors = json.loads(
             read_text_file_contents(get_abort_recovery_anchors_file_path())
         )
     except json.JSONDecodeError:
         recovery_anchors = None
-    validate_recovery_objects(recovery_objects, anchors=recovery_anchors)
+    try:
+        validate_recovery_objects(recovery_objects, anchors=recovery_anchors)
+    except CommandError as error:
+        raise CommandError(
+            _(
+                "{error}\nThe session remains active; repair the recovery state "
+                "and run 'git-stage-batch abort' again."
+            ).format(error=error.message)
+        ) from error
 
     # Reset auto-added files first
     if not start_point.is_unborn and get_auto_added_files_file_path().exists():
@@ -199,7 +208,7 @@ def command_abort(*, quiet: bool = False) -> None:
 
     # Restore batch refs to their original state
     # This recreates both git refs and metadata files from the snapshot
-    restore_batch_refs()
+    restore_batch_refs(batch_snapshot)
 
     # Clear all session state (preserves batches and batch-sources)
     # Do this AFTER restore_batch_refs so snapshot file is available

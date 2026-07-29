@@ -6,6 +6,7 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 from pathlib import Path
+import sys
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +16,8 @@ SOURCE_ROOT = REPOSITORY_ROOT / "src" / "git_stage_batch"
 # These boundaries consume untrusted JSON, mirror deliberately permissive
 # third-party APIs, or provide generic JSON/pickle transport. Keeping the
 # allowlist symbol-specific prevents a whole module from becoming an Any sink.
+ALLOWED_EXPLICIT_ANY = frozenset({
+})
 
 
 @dataclass(frozen=True)
@@ -197,8 +200,30 @@ def explicit_any_uses() -> list[ExplicitAnyUse]:
         visitor = _ExplicitAnyVisitor(relative_path, tree)
         visitor.visit(tree)
         uses.extend(visitor.uses)
-
-
-
-
     return uses
+
+
+def main() -> int:
+    uses = explicit_any_uses()
+    identities = {use.identity for use in uses}
+    unexpected = [
+        use for use in uses if use.identity not in ALLOWED_EXPLICIT_ANY
+    ]
+    stale = sorted(ALLOWED_EXPLICIT_ANY - identities)
+    if not unexpected and not stale:
+        print(
+            "Type hygiene passed: explicit Any is confined to "
+            f"{len(identities)} reviewed boundary slots."
+        )
+        return 0
+    for use in unexpected:
+        print(
+            f"{use.path}:{use.line}: explicit Any is not an approved "
+            f"dynamic boundary ({use.identity}; {use.annotation})",
+            file=sys.stderr,
+        )
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

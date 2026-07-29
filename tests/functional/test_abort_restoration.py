@@ -1,11 +1,44 @@
 """Tests for abort restoration behavior."""
 
+import json
 import os
 import subprocess
 
 import pytest
 
 from .conftest import git_stage_batch
+
+
+def _damage_batch_ref_snapshot(snapshot_path, original_payload, damage):
+    if damage == "missing":
+        snapshot_path.unlink()
+        return
+    if damage == "empty":
+        snapshot_path.write_text("", encoding="utf-8")
+        return
+    if damage == "malformed-json":
+        snapshot_path.write_text("{", encoding="utf-8")
+        return
+    if damage == "top-level-array":
+        snapshot_path.write_text("[]\n", encoding="utf-8")
+        return
+
+    snapshot = json.loads(original_payload)
+    if damage == "batches-array":
+        snapshot["batches"] = []
+    elif damage == "missing-schema-version":
+        del snapshot["schema_version"]
+    else:
+        entry = snapshot["batches"]["before-session"]
+        if damage == "entry-array":
+            snapshot["batches"]["before-session"] = []
+        elif damage == "metadata-files-array":
+            entry["metadata"]["files"] = []
+        elif damage == "missing-object":
+            entry["commit_sha"] = "0" * len(entry["commit_sha"])
+        else:
+            raise AssertionError(f"unknown damage mode: {damage}")
+    snapshot_path.write_text(json.dumps(snapshot) + "\n", encoding="utf-8")
 
 
 @pytest.fixture
@@ -293,6 +326,130 @@ def test_abort_stash_conflict_keeps_session_for_retry(functional_repo):
     ).stdout.split(b"\0")
     assert b" M README.md" in status
     assert b"A  new.txt" in status
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        "missing",
+        "empty",
+        "malformed-json",
+        "top-level-array",
+        "batches-array",
+        "missing-schema-version",
+        "entry-array",
+        "metadata-files-array",
+        "missing-object",
+    ],
+)
+def test_abort_batch_snapshot_preflight_is_strict_and_retryable(
+    functional_repo,
+    damage,
+):
+    """Damaged required batch state must fail before mutation and allow retry."""
+    readme_path = functional_repo / "README.md"
+    session_start_bytes = b"# dirty before session\n"
+    readme_path.write_bytes(session_start_bytes)
+    git_stage_batch("new", "before-session")
+    git_stage_batch("start")
+
+    git_dir = functional_repo / ".git"
+    snapshot_path = (
+        git_dir / "git-stage-batch" / "session" / "abort" / "batch-refs.json"
+    )
+    marker_path = git_dir / "git-stage-batch" / "session" / "abort" / "head.txt"
+    owner_path = git_dir / "git-stage-batch" / "active-session.json"
+    original_snapshot = snapshot_path.read_text(encoding="utf-8")
+
+    git_stage_batch("drop", "before-session")
+    git_stage_batch("new", "during-session")
+    during_session_bytes = b"# changed during session\n"
+    readme_path.write_bytes(during_session_bytes)
+
+    head_before_abort = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    index_before_abort = subprocess.run(
+        ["git", "write-tree"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    marker_before_abort = marker_path.read_bytes()
+    owner_before_abort = owner_path.read_bytes()
+
+    _damage_batch_ref_snapshot(snapshot_path, original_snapshot, damage)
+    failed_abort = git_stage_batch("abort", check=False)
+
+    assert failed_abort.returncode != 0
+    assert "session remains active" in failed_abort.stderr.lower()
+    assert "Session aborted" not in failed_abort.stderr
+    assert "All changes reverted" not in failed_abort.stderr
+    assert marker_path.read_bytes() == marker_before_abort
+    assert owner_path.read_bytes() == owner_before_abort
+    assert readme_path.read_bytes() == during_session_bytes
+    assert subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == head_before_abort
+    assert subprocess.run(
+        ["git", "write-tree"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == index_before_abort
+    assert subprocess.run(
+        [
+            "git",
+            "show-ref",
+            "--verify",
+            "--quiet",
+            "refs/git-stage-batch/batches/before-session",
+        ],
+        check=False,
+    ).returncode != 0
+    assert subprocess.run(
+        [
+            "git",
+            "show-ref",
+            "--verify",
+            "--quiet",
+            "refs/git-stage-batch/batches/during-session",
+        ],
+        check=False,
+    ).returncode == 0
+
+    snapshot_path.write_text(original_snapshot, encoding="utf-8")
+    git_stage_batch("abort")
+
+    assert readme_path.read_bytes() == session_start_bytes
+    assert subprocess.run(
+        [
+            "git",
+            "show-ref",
+            "--verify",
+            "--quiet",
+            "refs/git-stage-batch/batches/before-session",
+        ],
+        check=False,
+    ).returncode == 0
+    assert subprocess.run(
+        [
+            "git",
+            "show-ref",
+            "--verify",
+            "--quiet",
+            "refs/git-stage-batch/batches/during-session",
+        ],
+        check=False,
+    ).returncode != 0
+    assert not marker_path.exists()
+    assert not owner_path.exists()
 
 
 @pytest.mark.parametrize("link_target", ["README.md", "missing-target"])

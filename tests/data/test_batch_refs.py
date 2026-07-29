@@ -7,9 +7,15 @@ import subprocess
 
 import pytest
 
-from git_stage_batch.data.batch_refs import restore_batch_refs, snapshot_batch_refs
+from git_stage_batch.data.batch_refs import (
+    BATCH_REF_SNAPSHOT_SCHEMA_VERSION,
+    load_batch_refs_snapshot,
+    restore_batch_refs,
+    snapshot_batch_refs,
+)
 from git_stage_batch.batch.state.lifecycle import create_batch, update_batch_note
 from git_stage_batch.batch.state.references import get_batch_content_ref_name
+from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.file_io import read_text_file_contents
 from git_stage_batch.utils.git_command import run_git_command
 from git_stage_batch.utils.paths import (
@@ -48,7 +54,11 @@ class TestSnapshotBatchRefs:
         assert snapshot_path.exists()
 
         snapshot_data = json.loads(read_text_file_contents(snapshot_path))
-        assert snapshot_data == {}
+        assert snapshot_data == {
+            "schema_version": BATCH_REF_SNAPSHOT_SCHEMA_VERSION,
+            "batches": {},
+        }
+        assert load_batch_refs_snapshot() == snapshot_data
 
     def test_snapshot_with_batches(self, temp_git_repo):
         """Test snapshotting existing batches."""
@@ -72,25 +82,49 @@ class TestSnapshotBatchRefs:
         snapshot_path = get_batch_refs_snapshot_file_path()
         snapshot_data = json.loads(read_text_file_contents(snapshot_path))
 
-        assert batch_name in snapshot_data
-        assert snapshot_data[batch_name]["commit_sha"] == commit_sha
+        assert snapshot_data["schema_version"] == BATCH_REF_SNAPSHOT_SCHEMA_VERSION
+        assert batch_name in snapshot_data["batches"]
+        assert snapshot_data["batches"][batch_name]["commit_sha"] == commit_sha
         # Metadata is now nested under "metadata" key
-        assert snapshot_data[batch_name]["metadata"]["note"] == "Test note"
-        assert snapshot_data[batch_name]["metadata"]["created_at"] == "2026-03-13T12:00:00Z"
+        assert snapshot_data["batches"][batch_name]["metadata"]["note"] == "Test note"
+        assert (
+            snapshot_data["batches"][batch_name]["metadata"]["created_at"]
+            == "2026-03-13T12:00:00Z"
+        )
 
 
 class TestRestoreBatchRefs:
     """Tests for restore_batch_refs function."""
 
-    def test_restore_with_no_snapshot(self, temp_git_repo):
-        """Test restoring when no snapshot exists."""
-        # Should not error
-        restore_batch_refs()
+    def test_load_requires_snapshot(self, temp_git_repo):
+        """Required recovery state must not treat absence as an empty snapshot."""
+        with pytest.raises(CommandError, match="recovery snapshot is missing"):
+            load_batch_refs_snapshot()
+
+    @pytest.mark.parametrize(
+        "snapshot",
+        [
+            {"schema_version": True, "batches": {}},
+            {"schema_version": BATCH_REF_SNAPSHOT_SCHEMA_VERSION + 1, "batches": {}},
+            {
+                "schema_version": BATCH_REF_SNAPSHOT_SCHEMA_VERSION,
+                "batches": [],
+            },
+        ],
+    )
+    def test_load_rejects_invalid_snapshot_schema(self, temp_git_repo, snapshot):
+        write_text_file_contents(
+            get_batch_refs_snapshot_file_path(),
+            json.dumps(snapshot),
+        )
+
+        with pytest.raises(CommandError, match="recovery snapshot is invalid"):
+            load_batch_refs_snapshot()
 
     def test_restore_drops_new_batches(self, temp_git_repo):
         """Test that batches created after snapshot are dropped."""
         # Create empty snapshot
-        snapshot_batch_refs()
+        snapshot = snapshot_batch_refs()
 
         # Create a new batch
         batch_name = "new-batch"
@@ -102,8 +136,10 @@ class TestRestoreBatchRefs:
         result = run_git_command(["show-ref", f"refs/batches/{batch_name}"], check=False)
         assert result.returncode == 0
 
-        # Restore
-        restore_batch_refs()
+        # Restoration consumes the preflighted object instead of rereading
+        # recovery state that can change after preflight.
+        get_batch_refs_snapshot_file_path().unlink()
+        restore_batch_refs(snapshot)
 
         # Verify batch was dropped
         result = run_git_command(["show-ref", f"refs/batches/{batch_name}"], check=False)
@@ -123,7 +159,7 @@ class TestRestoreBatchRefs:
         write_text_file_contents(metadata_path, json.dumps(metadata))
 
         # Snapshot
-        snapshot_batch_refs()
+        snapshot = snapshot_batch_refs()
 
         # Delete the batch
         run_git_command(["update-ref", "-d", f"refs/batches/{batch_name}"])
@@ -133,7 +169,7 @@ class TestRestoreBatchRefs:
         assert result.returncode != 0
 
         # Restore
-        restore_batch_refs()
+        restore_batch_refs(snapshot)
 
         # Verify batch was restored into authoritative storage
         result = run_git_command(["show-ref", get_batch_content_ref_name(batch_name)], check=False)
@@ -152,7 +188,7 @@ class TestRestoreBatchRefs:
         run_git_command(["update-ref", f"refs/batches/{batch_name}", original_sha])
 
         # Snapshot
-        snapshot_batch_refs()
+        snapshot = snapshot_batch_refs()
 
         # Make another commit
         (temp_git_repo / "newfile.txt").write_text("content\n")
@@ -169,7 +205,7 @@ class TestRestoreBatchRefs:
         assert result.stdout.strip() == new_sha
 
         # Restore
-        restore_batch_refs()
+        restore_batch_refs(snapshot)
 
         # Verify batch was reverted to original commit in authoritative storage
         result = run_git_command(["rev-parse", get_batch_content_ref_name(batch_name)])
@@ -188,13 +224,13 @@ class TestRestoreBatchRefs:
             ["rev-parse", f"refs/git-stage-batch/state/{batch_name}"]
         ).stdout.strip()
 
-        snapshot_batch_refs()
+        snapshot = snapshot_batch_refs()
         update_batch_note(batch_name, "after")
         assert run_git_command(
             ["rev-parse", f"refs/git-stage-batch/state/{batch_name}"]
         ).stdout.strip() != original_state_sha
 
-        restore_batch_refs()
+        restore_batch_refs(snapshot)
 
         restored_content_sha = run_git_command(
             ["rev-parse", f"refs/git-stage-batch/batches/{batch_name}"]

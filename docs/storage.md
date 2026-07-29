@@ -27,6 +27,16 @@ that an undo, redo, or abort operation promises to restore. Checkpoint stack
 refs describe undo and redo order; anchor refs provide reachability. Those are
 separate responsibilities.
 
+The worktree-local `session/abort/batch-refs.json` file is required recovery
+state once `session/abort/head.txt` publishes the active session. Its
+`schema_version` identifies the snapshot format, and its `batches` object
+contains each batch's content ref, optional state ref, and validated metadata.
+Abort loads this snapshot once and validates its complete structure and
+referenced objects before changing HEAD, the index, the worktree, or batch
+refs. Missing, empty, malformed, or unsupported snapshot state leaves the
+session marker and repository-wide ownership record intact for repair and
+retry.
+
 Gitlink entries name commits in a submodule's separate object database. They
 cannot be rooted by refs in the superproject; their availability remains the
 responsibility of the nested repository.

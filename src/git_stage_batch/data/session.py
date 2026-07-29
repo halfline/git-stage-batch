@@ -6,7 +6,7 @@ import json
 import os
 import shutil
 
-from .batch_refs import snapshot_batch_refs
+from .batch_refs import batch_ref_snapshot_recovery_objects, snapshot_batch_refs
 from .recovery_anchors import anchor_recovery_objects
 from ..utils.session_start_point import (
     resolve_session_start_point,
@@ -312,11 +312,12 @@ def _initialize_abort_state() -> None:
         log_journal("session_stash_created", stash_hash=stash_hash)
 
     batch_snapshot = snapshot_batch_refs()
-    recovery_objects = [start_point.head_commit, stash_hash, start_point.index_tree]
-    for batch_state in batch_snapshot.values():
-        recovery_objects.extend(
-            [batch_state.get("commit_sha"), batch_state.get("state_commit_sha")]
-        )
+    recovery_objects: list[str | None] = [
+        start_point.head_commit,
+        stash_hash,
+        start_point.index_tree,
+        *batch_ref_snapshot_recovery_objects(batch_snapshot),
+    ]
     recovery_anchors = anchor_recovery_objects(recovery_objects)
     write_text_file_contents(
         get_abort_recovery_anchors_file_path(),

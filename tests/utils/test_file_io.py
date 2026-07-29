@@ -18,6 +18,7 @@ from git_stage_batch.utils.file_io import (
     AtomicWriteModePolicy,
     PROJECT_FILE_MODE,
     append_lines_to_file,
+    read_required_text_file_contents,
     read_text_file_contents,
     write_file_bytes,
     write_text_file_contents,
@@ -61,6 +62,20 @@ class TestReadTextFileContents:
         content = read_text_file_contents(test_file)
 
         assert content == "Line 1\nLine 2\nLine 3\n"
+
+
+class TestReadRequiredTextFileContents:
+    """Tests for read_required_text_file_contents function."""
+
+    def test_read_empty_file(self, tmp_path):
+        test_file = tmp_path / "empty.txt"
+        test_file.write_text("", encoding="utf-8")
+
+        assert read_required_text_file_contents(test_file) == ""
+
+    def test_missing_file_raises(self, tmp_path):
+        with pytest.raises(FileNotFoundError):
+            read_required_text_file_contents(tmp_path / "missing.txt")
 
 
 class TestWriteTextFileContents:

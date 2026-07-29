@@ -5,11 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 import pickle
 from pathlib import Path
-from typing import Literal
 from typing import Literal, TypedDict, cast
 
 from . import candidate_preview_counts as _candidate_preview_counts
 from . import text_plan_builders as _text_plan_builders
+from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.replacement import ReplacementPayload
 from ...core.buffer import LineBuffer
 from ...core.text_lifecycle import normalized_text_change_type
@@ -53,6 +53,26 @@ _TEXT_CHANGE_TYPES = frozenset({
     "modified",
     "deleted",
 })
+
+
+class _ApplyInputMetadata(TypedDict):
+    """Serialized inputs for one apply text-planning worker."""
+
+    batch_name: str
+    batch_source_object_id: str | None
+    file_meta: BatchFileMetadataDict
+    selected_ids: list[int] | None
+    selection_ids: list[int] | None
+    working_tree_artifact_path: str
+    scratch_directory: str
+
+
+class _IncludeInputMetadata(_ApplyInputMetadata):
+    """Serialized inputs for one include text-planning worker."""
+
+    replacement_artifact_path: str | None
+    replacement_display_text: str | None
+    replacement_exact: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,9 +134,10 @@ def compute_apply_text_plan_job(
     job: ApplyTextPlanJob,
 ) -> ApplyTextPlanJobResult:
     """Build one text apply plan from immutable artifact inputs."""
-    input_metadata = _read_pickle(job.input_artifact_path)
-    if type(input_metadata) is not dict:
+    raw_input_metadata = _read_pickle(job.input_artifact_path)
+    if type(raw_input_metadata) is not dict:
         raise TypeError("apply text-plan input must be a dictionary")
+    input_metadata = cast(_ApplyInputMetadata, raw_input_metadata)
     file_meta = input_metadata["file_meta"]
     selected_ids = _optional_int_set(input_metadata["selected_ids"])
     selection_ids = _optional_int_set(input_metadata["selection_ids"])
@@ -150,7 +171,7 @@ def compute_apply_text_plan_job(
 
         plan = build_result.plan
         try:
-            change_type = getattr(plan.change_type, "value", plan.change_type)
+            change_type = normalized_text_change_type(plan.change_type).value
             output_path = None
             if plan.buffer is not None and change_type != "deleted":
                 write_buffer_to_path(job.output_path, plan.buffer)
@@ -224,9 +245,10 @@ def compute_include_text_plan_job(
     job: IncludeTextPlanJob,
 ) -> IncludeTextPlanJobResult:
     """Build one text include plan from immutable artifact inputs."""
-    input_metadata = _read_pickle(job.input_artifact_path)
-    if type(input_metadata) is not dict:
+    raw_input_metadata = _read_pickle(job.input_artifact_path)
+    if type(raw_input_metadata) is not dict:
         raise TypeError("include text-plan input must be a dictionary")
+    input_metadata = cast(_IncludeInputMetadata, raw_input_metadata)
     file_meta = input_metadata["file_meta"]
     selected_ids = _optional_int_set(input_metadata["selected_ids"])
     selection_ids = _optional_int_set(input_metadata["selection_ids"])
@@ -262,16 +284,12 @@ def compute_include_text_plan_job(
 
         plan = build_result.plan
         try:
-            index_change_type = getattr(
+            index_change_type = normalized_text_change_type(
                 plan.index_change_type,
-                "value",
-                plan.index_change_type,
-            )
-            worktree_change_type = getattr(
+            ).value
+            worktree_change_type = normalized_text_change_type(
                 plan.working_change_type,
-                "value",
-                plan.working_change_type,
-            )
+            ).value
             index_output_path = _write_plan_output(
                 job.index_output_path,
                 plan.index_buffer,
@@ -365,7 +383,7 @@ def compute_include_text_plan_job(
 
 
 def apply_text_plan_requires_source(
-    file_meta: dict,
+    file_meta: BatchFileMetadataDict,
     selected_ids: set[int] | None,
 ) -> bool:
     """Return whether one apply text plan needs batch source content."""
@@ -376,7 +394,7 @@ def apply_text_plan_requires_source(
 
 
 def include_text_plan_requires_source(
-    file_meta: dict,
+    file_meta: BatchFileMetadataDict,
     selected_ids: set[int] | None,
 ) -> bool:
     """Return whether one include text plan needs batch source content."""
@@ -606,7 +624,7 @@ def _write_plan_output(
 
 
 def _replacement_payload_from_metadata(
-    input_metadata: dict,
+    input_metadata: _IncludeInputMetadata,
 ) -> ReplacementPayload | None:
     replacement_path = input_metadata["replacement_artifact_path"]
     if replacement_path is None:

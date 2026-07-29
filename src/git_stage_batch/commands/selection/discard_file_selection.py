@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ...core.models import LineLevelChange
 from ...data.selected_change.file_hunk_cache import cache_unstaged_file_as_single_hunk
 from ...data.file_tracking import auto_add_untracked_files
 from ...data.line_state import load_line_changes_from_state
@@ -15,7 +16,7 @@ from ...i18n import _
 from .include_line_selection import selected_file_view_is_fresh_for
 
 
-def load_explicit_file_selection(file_path: str):
+def load_explicit_file_selection(file_path: str) -> LineLevelChange:
     """Return the active file-scoped view for an explicit discard target."""
     auto_add_untracked_files([file_path])
     reuse_selected_file_view = (

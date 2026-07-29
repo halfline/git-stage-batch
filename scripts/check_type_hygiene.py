@@ -141,6 +141,11 @@ class _ExplicitAnyVisitor(ast.NodeVisitor):
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
         self._visit_function(node)
 
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self.qualifiers.append(node.name)
+        for statement in node.body:
+            self.visit(statement)
+        self.qualifiers.pop()
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
         if _contains_any(

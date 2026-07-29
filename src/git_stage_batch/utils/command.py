@@ -35,6 +35,7 @@ import locale
 import os
 import subprocess
 from collections.abc import Iterable, Iterator
+from typing import Literal, overload
 
 from . import command_events, command_streaming
 
@@ -323,6 +324,48 @@ def stream_command(
         proc.close()
 
 
+@overload
+def run_command(
+    arguments: list[str],
+    stdin_chunks: Iterable[bytes] | None = None,
+    *,
+    check: bool = True,
+    text_output: Literal[True] = True,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+    capture_stdout: bool = True,
+    capture_stderr: bool = True,
+) -> subprocess.CompletedProcess[str]: ...
+
+
+@overload
+def run_command(
+    arguments: list[str],
+    stdin_chunks: Iterable[bytes] | None = None,
+    *,
+    check: bool = True,
+    text_output: Literal[False],
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+    capture_stdout: bool = True,
+    capture_stderr: bool = True,
+) -> subprocess.CompletedProcess[bytes]: ...
+
+
+@overload
+def run_command(
+    arguments: list[str],
+    stdin_chunks: Iterable[bytes] | None = None,
+    *,
+    check: bool = True,
+    text_output: bool,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+    capture_stdout: bool = True,
+    capture_stderr: bool = True,
+) -> subprocess.CompletedProcess[str] | subprocess.CompletedProcess[bytes]: ...
+
+
 def run_command(
     arguments: list[str],
     stdin_chunks: Iterable[bytes] | None = None,
@@ -333,7 +376,7 @@ def run_command(
     env: dict[str, str] | None = None,
     capture_stdout: bool = True,
     capture_stderr: bool = True,
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str] | subprocess.CompletedProcess[bytes]:
     """Run a command to completion and capture stdout/stderr.
 
     This is the one-shot counterpart to stream_command(). It returns a
@@ -360,33 +403,40 @@ def run_command(
             elif event.fd == 2:
                 stderr_chunks.append(event.data)
 
-    stdout = b"".join(stdout_chunks) if capture_stdout else None
-    stderr = b"".join(stderr_chunks) if capture_stderr else None
+    stdout_bytes = b"".join(stdout_chunks) if capture_stdout else None
+    stderr_bytes = b"".join(stderr_chunks) if capture_stderr else None
 
+    result: subprocess.CompletedProcess[str] | subprocess.CompletedProcess[bytes]
     if text_output:
         encoding = locale.getpreferredencoding(False)
-        stdout = (
-            stdout.decode(encoding, errors="surrogateescape")
-            if stdout is not None
+        stdout_text = (
+            stdout_bytes.decode(encoding, errors="surrogateescape")
+            if stdout_bytes is not None
             else None
         )
-        stderr = (
-            stderr.decode(encoding, errors="surrogateescape")
-            if stderr is not None
+        stderr_text = (
+            stderr_bytes.decode(encoding, errors="surrogateescape")
+            if stderr_bytes is not None
             else None
         )
-
-    result = subprocess.CompletedProcess(
-        arguments,
-        returncode,
-        stdout=stdout,
-        stderr=stderr,
-    )
+        result = subprocess.CompletedProcess(
+            arguments,
+            returncode,
+            stdout=stdout_text,
+            stderr=stderr_text,
+        )
+    else:
+        result = subprocess.CompletedProcess(
+            arguments,
+            returncode,
+            stdout=stdout_bytes,
+            stderr=stderr_bytes,
+        )
     if check and returncode != 0:
         raise subprocess.CalledProcessError(
             returncode,
             arguments,
-            output=stdout,
-            stderr=stderr,
+            output=result.stdout,
+            stderr=result.stderr,
         )
     return result

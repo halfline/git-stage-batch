@@ -19,6 +19,7 @@ from .candidates import (
 from .coordinate_strategy import (
     AMBIGUITY_KEY as _COORDINATE_STRATEGY_AMBIGUITY_KEY,
     CoordinateStrategyChoice as _CoordinateStrategyChoice,
+    has_recorded_baseline_coordinates as _has_recorded_baseline_coordinates,
 )
 from .validation import (
     check_structural_validity as _check_merge_structural_validity,
@@ -362,7 +363,7 @@ def _merge_batch_acquired_line_chunks(
     )
 
     if strategy_choice == _CoordinateStrategyChoice.RECORDED_COORDINATES:
-        if not _baseline_edits.has_recorded_baseline_coordinates(
+        if not _has_recorded_baseline_coordinates(
             ownership,
             presence_line_set,
             deletion_claims,
@@ -410,7 +411,7 @@ def _merge_batch_acquired_line_chunks(
     coordinate_candidate = None
     if (
         resolution is None
-        and _baseline_edits.has_recorded_baseline_coordinates(
+        and _has_recorded_baseline_coordinates(
             ownership,
             presence_line_set,
             deletion_claims,

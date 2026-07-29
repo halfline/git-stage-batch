@@ -64,7 +64,7 @@ def add_validate_subcommand(subparsers) -> None:
     )
 
 
-def add_drop_subcommand(subparsers) -> None:
+def add_drop_subcommand(subparsers: Subparsers) -> None:
     """Register the drop subcommand."""
     parser_drop = add_subcommand_parser(
         subparsers,

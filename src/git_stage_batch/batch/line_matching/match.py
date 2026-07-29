@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from bisect import bisect_left
-from collections.abc import Hashable, Sequence
+from collections.abc import Hashable, Iterable, Sequence
 from pathlib import Path
 from typing import TypeVar
 
@@ -572,10 +572,11 @@ def _validated_anchor_pairs(
     previous_pair: tuple[int, int] | None = None
     validated_count = 0
 
-    for pair in validated:
+    for pair_record in validated:
+        source_line, target_line = pair_record
+        pair = (source_line, target_line)
         if pair == previous_pair:
             continue
-        source_line, target_line = pair
         if source_line <= previous_source_line or target_line <= previous_target_line:
             raise ValueError("line-matching anchors must be strictly increasing")
 
@@ -592,7 +593,7 @@ def _validated_anchor_pairs(
 def _align_segments_around_anchors(
     source_lines: Sequence[LineContent],
     target_lines: Sequence[LineContent],
-    anchor_pairs: Sequence[tuple[int, int]],
+    anchor_pairs: Iterable[tuple[int, int]],
     source_to_target: _IntVector,
     target_to_source: _IntVector,
     workspace: MatcherWorkspace,
@@ -696,7 +697,10 @@ def match_acquirable_lines(
             _align_segments_around_anchors(
                 acquired_source_lines,
                 acquired_target_lines,
-                validated_anchor_pairs,
+                (
+                    (pair[0], pair[1])
+                    for pair in validated_anchor_pairs
+                ),
                 source_to_target,
                 target_to_source,
                 workspace,

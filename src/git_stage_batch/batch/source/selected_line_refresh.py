@@ -22,7 +22,7 @@ def _line_entry_content(line: LineEntry) -> bytes:
 
 
 def selected_lines_fit_source(
-    selected_lines: list,
+    selected_lines: list[LineEntry],
     source_lines: Sequence[bytes],
 ) -> bool:
     """Return whether selected presence lines can be claimed from source bytes."""
@@ -183,11 +183,11 @@ def _refresh_selected_line_coordinates(
 
     assert coordinate_lines is not None
     for selected_line in selected_lines:
-        selected_id = selected_line.id
-        assert selected_id is not None
+        selected_display_id = selected_line.id
+        assert selected_display_id is not None
         record_index = _selected_line_record_index(
             selected_line_records,
-            selected_id,
+            selected_display_id,
         )
         assert record_index is not None
         _line_id, _count, coordinate_index, encoded_source_line = (
@@ -206,10 +206,10 @@ def _refresh_selected_line_coordinates(
 
 
 def refresh_selected_lines_against_new_source(
-    selected_lines: list,
+    selected_lines: list[LineEntry],
     *,
     coordinate_lines: Sequence[LineEntry] | None = None,
-) -> list:
+) -> list[LineEntry]:
     """Re-annotate selected lines for a first-time batch source.
 
     This helper is only used before a batch source exists.
@@ -247,22 +247,20 @@ def refresh_selected_lines_against_new_source(
 
 
 def refresh_selected_lines_against_source_lines(
-    selected_lines: list,
+    selected_lines: list[LineEntry],
     *,
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
     lineage: BatchSourceLineage | None = None,
     coordinate_lines: Sequence[LineEntry] | None = None,
-) -> list:
+) -> list[LineEntry]:
     """Re-annotate selected lines against source and working-tree line sequences."""
     mapping = None
     if lineage is None:
         mapping = match_lines(source_lines, working_lines)
 
     try:
-        def map_working_line(line_number: int | None) -> int | None:
-            if line_number is None:
-                return None
+        def map_working_line(line_number: int) -> int | None:
             if lineage is not None:
                 return lineage.translate_working_line(line_number)
             assert mapping is not None

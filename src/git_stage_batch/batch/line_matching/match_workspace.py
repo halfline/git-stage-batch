@@ -18,6 +18,11 @@ class MatcherWorkspace(ManagedMappedResources):
         super().__init__()
         self._spool_dir = spool_dir
 
+    def __enter__(self) -> MatcherWorkspace:
+        """Return this specialized workspace from a context manager."""
+        super().__enter__()
+        return self
+
     def int_vector(
         self,
         length: int,
@@ -32,7 +37,7 @@ class MatcherWorkspace(ManagedMappedResources):
             fill=fill,
             spool_dir=self._spool_dir,
         )
-        return self.track(vector)  # type: ignore[return-value]
+        return self.track(vector)
 
     def record_vector(
         self,
@@ -48,4 +53,4 @@ class MatcherWorkspace(ManagedMappedResources):
             length=length,
             spool_dir=self._spool_dir,
         )
-        return self.track(vector)  # type: ignore[return-value]
+        return self.track(vector)

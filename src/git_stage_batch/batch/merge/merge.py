@@ -370,7 +370,7 @@ def _merge_batch_acquired_line_chunks(
         ):
             raise _MergeError(_("Selected merge resolution is no longer valid"))
         selected_coordinate_candidate = (
-            _baseline_edits.try_apply_baseline_replacement_units(
+            _baseline_edits.try_apply_baseline_coordinate_edits(
                 source_lines,
                 working_lines,
                 ownership,
@@ -391,7 +391,7 @@ def _merge_batch_acquired_line_chunks(
         return
 
     if strategy_choice is None:
-        fallback_chunks = _baseline_edits.try_apply_baseline_replacement_units(
+        fallback_chunks = _baseline_edits.try_apply_baseline_coordinate_edits(
             source_lines,
             working_lines,
             ownership,
@@ -418,7 +418,7 @@ def _merge_batch_acquired_line_chunks(
         )
     ):
         coordinate_candidate = (
-            _baseline_edits.try_apply_baseline_replacement_units(
+            _baseline_edits.try_apply_baseline_coordinate_edits(
                 source_lines,
                 working_lines,
                 ownership,

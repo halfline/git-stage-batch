@@ -63,7 +63,7 @@ def _stream_realized_content_chunks_from_lines(
     presence_line_set = resolved.presence_line_set
     deletion_claims = resolved.deletion_claims
 
-    baseline_chunks = _baseline_edits.try_apply_baseline_replacement_units(
+    baseline_chunks = _baseline_edits.try_apply_baseline_coordinate_edits(
         batch_source_lines,
         base_lines,
         ownership,
@@ -102,7 +102,7 @@ def _stream_realized_content_chunks_from_lines(
                 spool_dir=spool_dir,
             )
     except _MergeError:
-        baseline_chunks = _baseline_edits.try_apply_baseline_replacement_units(
+        baseline_chunks = _baseline_edits.try_apply_baseline_coordinate_edits(
             batch_source_lines,
             base_lines,
             ownership,

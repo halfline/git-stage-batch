@@ -14,7 +14,10 @@ class BatchFileMetadataDict(BatchOwnershipMetadata, total=False):
 
     batch_source_commit: str
     change_type: Literal["added", "modified", "deleted"]
+    file_type: Literal["binary", "gitlink", "mode"]
     mode: str
+    old_mode: str
+    new_mode: str
 
 
 

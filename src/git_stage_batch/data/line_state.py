@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from base64 import b64decode, b64encode
-from typing import Any, Optional
+from typing import TypedDict, cast
 
 from ..core.models import LineLevelChange, HunkHeader, LineEntry
 from ..exceptions import CommandError
@@ -19,7 +19,42 @@ from ..utils.paths import (
 )
 
 
-def convert_line_changes_to_serializable_dict(line_changes: LineLevelChange) -> dict[str, Any]:
+class SerializedHunkHeader(TypedDict):
+    """Persisted unified-diff coordinates."""
+
+    old_start: int
+    old_len: int
+    new_start: int
+    new_len: int
+
+
+class _RequiredSerializedLineEntry(TypedDict):
+    id: int | None
+    kind: str
+    old_lineno: int | None
+    new_lineno: int | None
+
+
+class SerializedLineEntry(_RequiredSerializedLineEntry, total=False):
+    """Persisted line entry, including the legacy text representation."""
+
+    text_bytes_b64: str
+    text: str
+    source_line: int | None
+    has_trailing_newline: bool
+
+
+class SerializedLineChanges(TypedDict):
+    """Persisted selected-hunk line state."""
+
+    path: str
+    header: SerializedHunkHeader
+    lines: list[SerializedLineEntry]
+
+
+def convert_line_changes_to_serializable_dict(
+    line_changes: LineLevelChange,
+) -> SerializedLineChanges:
     """Convert LineLevelChange to a JSON-serializable dictionary."""
     return {
         "path": line_changes.path,
@@ -44,7 +79,69 @@ def convert_line_changes_to_serializable_dict(line_changes: LineLevelChange) -> 
     }
 
 
-def load_line_changes_from_state() -> Optional[LineLevelChange]:
+def _json_object(value: object, description: str) -> dict[str, object]:
+    if not isinstance(value, dict) or not all(
+        isinstance(key, str) for key in value
+    ):
+        raise ValueError(f"{description} must be a JSON object")
+    return cast(dict[str, object], value)
+
+
+def _json_array(value: object, description: str) -> list[object]:
+    if not isinstance(value, list):
+        raise ValueError(f"{description} must be a JSON array")
+    return cast(list[object], value)
+
+
+def _required_string(
+    data: dict[str, object],
+    field: str,
+    description: str,
+) -> str:
+    value = data.get(field)
+    if not isinstance(value, str):
+        raise ValueError(f"{description}.{field} must be a string")
+    return value
+
+
+def _required_int(
+    data: dict[str, object],
+    field: str,
+    description: str,
+) -> int:
+    value = data.get(field)
+    if type(value) is not int:
+        raise ValueError(f"{description}.{field} must be an integer")
+    return value
+
+
+def _optional_int(
+    data: dict[str, object],
+    field: str,
+    description: str,
+) -> int | None:
+    value = data.get(field)
+    if value is not None and type(value) is not int:
+        raise ValueError(f"{description}.{field} must be an integer or null")
+    return value
+
+
+def _line_text_bytes(
+    line_data: dict[str, object],
+    description: str,
+) -> bytes:
+    encoded = line_data.get("text_bytes_b64")
+    if isinstance(encoded, str):
+        return b64decode(encoded.encode("ascii"))
+    legacy_text = line_data.get("text")
+    if not isinstance(legacy_text, str):
+        raise ValueError(
+            f"{description} must contain text_bytes_b64 or legacy text"
+        )
+    return legacy_text.encode("utf-8", errors="surrogateescape")
+
+
+def load_line_changes_from_state() -> LineLevelChange | None:
     """Load the selected hunk from saved state.
 
     Returns:
@@ -52,26 +149,57 @@ def load_line_changes_from_state() -> Optional[LineLevelChange]:
     """
     if not get_selected_hunk_patch_file_path().exists() or not get_line_changes_json_file_path().exists():
         return None
-    data = json.loads(read_text_file_contents(get_line_changes_json_file_path()))
-    header = HunkHeader(**data["header"])
+    raw_data: object = json.loads(
+        read_text_file_contents(get_line_changes_json_file_path())
+    )
+    data = _json_object(raw_data, "line state")
+    header_data = _json_object(data.get("header"), "line state header")
+    header = HunkHeader(
+        old_start=_required_int(header_data, "old_start", "line state header"),
+        old_len=_required_int(header_data, "old_len", "line state header"),
+        new_start=_required_int(header_data, "new_start", "line state header"),
+        new_len=_required_int(header_data, "new_len", "line state header"),
+    )
 
-    def line_text_bytes(line_entry_data: dict[str, Any]) -> bytes:
-        if "text_bytes_b64" in line_entry_data:
-            return b64decode(line_entry_data["text_bytes_b64"].encode("ascii"))
-        return line_entry_data["text"].encode("utf-8", errors="surrogateescape")
-
-    lines = []
-    for le in data["lines"]:
-        text_bytes = line_text_bytes(le)
-        lines.append(LineEntry(id=le["id"],
-                               kind=le["kind"],
-                               old_line_number=le["old_lineno"],
-                               new_line_number=le["new_lineno"],
-                               text_bytes=text_bytes,
-                               source_line=le.get("source_line"),
-                               has_trailing_newline=le.get("has_trailing_newline", True)))
-    return LineLevelChange(path=data["path"], header=header, lines=lines)
-
+    lines: list[LineEntry] = []
+    for index, raw_line in enumerate(
+        _json_array(data.get("lines"), "line state lines")
+    ):
+        description = f"line state lines[{index}]"
+        line_data = _json_object(raw_line, description)
+        trailing_newline = line_data.get("has_trailing_newline", True)
+        if not isinstance(trailing_newline, bool):
+            raise ValueError(
+                f"{description}.has_trailing_newline must be a boolean"
+            )
+        lines.append(
+            LineEntry(
+                id=_optional_int(line_data, "id", description),
+                kind=_required_string(line_data, "kind", description),
+                old_line_number=_optional_int(
+                    line_data,
+                    "old_lineno",
+                    description,
+                ),
+                new_line_number=_optional_int(
+                    line_data,
+                    "new_lineno",
+                    description,
+                ),
+                text_bytes=_line_text_bytes(line_data, description),
+                source_line=_optional_int(
+                    line_data,
+                    "source_line",
+                    description,
+                ),
+                has_trailing_newline=trailing_newline,
+            )
+        )
+    return LineLevelChange(
+        path=_required_string(data, "path", "line state"),
+        header=header,
+        lines=lines,
+    )
 
 def compute_remaining_changed_line_ids() -> list[int]:
     """Compute which changed line IDs haven't been processed yet."""

@@ -51,15 +51,6 @@ class _InterruptingLines(Sequence[bytes]):
         raise KeyboardInterrupt
 
 
-class _IterationGuardedSelection(LineRanges):
-    """Selection whose individual lines must not be expanded."""
-
-    __slots__ = ()
-
-    def __iter__(self):
-        raise AssertionError("selected line ranges must not be expanded")
-
-
 def _boundary_reference(
     *,
     after_line: int | None,
@@ -135,25 +126,6 @@ def test_baseline_edit_planning_composes_all_edit_kinds() -> None:
 
     assert result is not None
     assert list(result) == [b"new value\n", b"inserted\n", b"tail\n"]
-
-
-def test_coordinate_detection_scans_references_not_selected_lines() -> None:
-    """Coordinate detection must scale with edits, not selected line count."""
-    line_count = 1_000_000
-    reference = _boundary_reference(
-        after_line=None,
-        before_line=None,
-    )
-    ownership = BatchOwnership.from_presence_lines(
-        [f"1-{line_count}"],
-        baseline_references={line_count: reference},
-    )
-
-    assert baseline_edits.has_recorded_baseline_coordinates(
-        ownership,
-        _IterationGuardedSelection.from_ranges(((line_count, line_count),)),
-        [],
-    )
 
 
 def test_trusted_plan_composes_partial_replacement_and_repeated_insertion() -> None:

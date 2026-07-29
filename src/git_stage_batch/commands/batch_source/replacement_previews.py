@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
 
 from ..selection import replacement_selection
 from ...batch.replacement import build_replacement_batch_view_from_lines
 from ...batch.selection import acquire_batch_ownership_for_display_ids_from_lines
+from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...batch.submodule_pointer import is_batch_submodule_pointer
 from ...core.replacement import ReplacementPayload, coerce_replacement_payload
+from ...core.models import RenderedBatchDisplay
 from ...data.file_review.batch_selection import (
     translate_batch_file_gutter_ids_to_selection_ids,
 )
@@ -22,15 +23,15 @@ from ...utils.paths import get_context_lines
 
 
 SelectionTranslator = Callable[
-    [str, str, set[int], FileReviewAction],
-    tuple[set[int], Any],
+    [str, str, set[int] | None, FileReviewAction | str],
+    tuple[set[int] | None, RenderedBatchDisplay | None],
 ]
 
 
 def print_batch_source_replacement_preview(
     *,
     batch_name: str,
-    files: dict,
+    files: dict[str, BatchFileMetadataDict],
     file_path: str,
     selected_ids: set[int],
     replacement_text: str | ReplacementPayload,
@@ -62,6 +63,8 @@ def print_batch_source_replacement_preview(
             selected_ids,
             FileReviewAction.INCLUDE_FROM_BATCH,
         )
+        if selection_ids is None:
+            raise ValueError("selection translation omitted selected lines")
         with acquire_batch_ownership_for_display_ids_from_lines(
             file_meta,
             batch_source_lines,

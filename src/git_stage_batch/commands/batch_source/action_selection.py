@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from ...batch.selection import (
     require_single_file_context_for_line_selection,
 )
+from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...batch.submodule_pointer import (
     is_batch_submodule_pointer,
     refuse_batch_submodule_pointer_lines,
@@ -35,7 +36,7 @@ class BatchSourceActionSelection:
     """Resolved files, line IDs, and command text for an action command."""
 
     file: str | None
-    files: dict
+    files: dict[str, BatchFileMetadataDict]
     selected_ids: set[int] | None
     selection_ids: set[int] | None
     rendered: "RenderedBatchDisplay | None"
@@ -176,7 +177,11 @@ def _resolve_batch_source_action_files(
     line_ids: str | None,
     patterns: list[str] | None,
     command_name: str,
-) -> tuple[str | None, dict, set[int] | None]:
+) -> tuple[
+    str | None,
+    dict[str, BatchFileMetadataDict],
+    set[int] | None,
+]:
     file = resolve_current_batch_atomic_file_scope(
         context.batch_name,
         context.all_files,
@@ -200,7 +205,7 @@ def _resolve_batch_source_action_files(
 
 
 def _refuse_line_selection_for_atomic_files(
-    files: dict,
+    files: dict[str, BatchFileMetadataDict],
     selected_ids: set[int] | None,
     *,
     binary_message: str,
@@ -222,7 +227,7 @@ def _refuse_line_selection_for_atomic_files(
 
 def _translate_selected_ids(
     batch_name: str,
-    files: dict,
+    files: dict[str, BatchFileMetadataDict],
     selected_ids: set[int] | None,
     action: FileReviewAction,
 ) -> tuple[set[int] | None, "RenderedBatchDisplay | None"]:

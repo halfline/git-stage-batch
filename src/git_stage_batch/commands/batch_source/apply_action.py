@@ -19,6 +19,9 @@ from . import text_file_actions as _text_file_actions
 from . import text_plan_jobs as _text_plan_jobs
 from . import worktree_refusals as _worktree_refusals
 from ...batch.operation_candidate_types import CandidatePreviewCount
+from ...batch.state.metadata_types import BatchFileMetadataDict
+from ...core.models import RenderedBatchDisplay
+from ...core.text_lifecycle import TextFileChangeType
 from ...batch.binary_file_content import read_binary_file_from_batch
 from ...batch.submodule_pointer import (
     apply_submodule_pointer_from_batch,
@@ -51,7 +54,7 @@ from ...utils.git_object_io import list_git_tree_blobs, resolve_git_objects
 class _ApplyTextInput:
     ordinal: int
     file_path: str
-    file_meta: dict
+    file_meta: BatchFileMetadataDict
     identity: WorktreeIdentity
     worktree_artifact: Path
     scratch_directory: Path
@@ -65,8 +68,8 @@ class _ApplyPlanCapture:
     plans_by_ordinal: dict[int, _action_plans.BatchSourceActionPlan]
     command_errors_by_ordinal: dict[int, CommandError]
     unexpected_errors_by_ordinal: dict[int, str]
-    mode_actions: list[tuple[str, dict]]
-    binary_metadata_by_ordinal: dict[int, dict]
+    mode_actions: list[tuple[str, BatchFileMetadataDict]]
+    binary_metadata_by_ordinal: dict[int, BatchFileMetadataDict]
     worktree_identities: dict[str, WorktreeIdentity]
 
 
@@ -153,11 +156,16 @@ def execute_apply_action(
                                 ),
                             )
                             _print_binary_worktree_result(plan.file_path, action)
-                        else:
+                        elif isinstance(
+                            plan,
+                            _action_plans.SubmodulePointerActionPlan,
+                        ):
                             apply_submodule_pointer_from_batch(
                                 plan.file_path,
                                 plan.file_meta,
                             )
+                        else:
+                            raise TypeError("unsupported apply action plan")
                     for file_path, file_meta in mode_actions:
                         _file_mode_actions.apply_new_file_mode(file_path, file_meta)
             except CommandError:
@@ -177,15 +185,15 @@ def execute_apply_action(
 def _build_apply_action_plans(
     *,
     batch_name: str,
-    files: dict[str, dict],
+    files: dict[str, BatchFileMetadataDict],
     selected_ids: set[int] | None,
     selection_ids_to_apply: set[int] | None,
-    rendered,
+    rendered: RenderedBatchDisplay | None,
     repository_root: Path,
     workspace: FileJobWorkspace,
 ) -> tuple[
     list[_action_plans.BatchSourceActionPlan],
-    list[tuple[str, dict]],
+    list[tuple[str, BatchFileMetadataDict]],
     dict[str, WorktreeIdentity],
 ]:
     capture = _capture_apply_plan_inputs(
@@ -221,7 +229,7 @@ def _build_apply_action_plans(
 
 def _capture_apply_plan_inputs(
     *,
-    files: dict[str, dict],
+    files: dict[str, BatchFileMetadataDict],
     selected_ids: set[int] | None,
     workspace: FileJobWorkspace,
 ) -> _ApplyPlanCapture:
@@ -229,8 +237,8 @@ def _capture_apply_plan_inputs(
     plans_by_ordinal: dict[int, _action_plans.BatchSourceActionPlan] = {}
     command_errors_by_ordinal: dict[int, CommandError] = {}
     unexpected_errors_by_ordinal: dict[int, str] = {}
-    mode_actions: list[tuple[str, dict]] = []
-    binary_metadata_by_ordinal: dict[int, dict] = {}
+    mode_actions: list[tuple[str, BatchFileMetadataDict]] = []
+    binary_metadata_by_ordinal: dict[int, BatchFileMetadataDict] = {}
     worktree_identities: dict[str, WorktreeIdentity] = {}
     text_inputs: list[_ApplyTextInput] = []
 
@@ -399,8 +407,8 @@ def _run_apply_text_jobs(
 def _reduce_apply_action_plans(
     *,
     batch_name: str,
-    files: dict[str, dict],
-    rendered,
+    files: dict[str, BatchFileMetadataDict],
+    rendered: RenderedBatchDisplay | None,
     capture: _ApplyPlanCapture,
     text_results_by_ordinal: dict[int, _text_plan_jobs.ApplyTextPlanJobResult],
     workspace: FileJobWorkspace,
@@ -472,19 +480,19 @@ def _reduce_apply_action_plans(
                 result.file_path,
                 buffer,
                 result.file_mode,
-                result.change_type,
+                TextFileChangeType(result.change_type),
             )
         elif result.outcome == "noop":
             continue
         elif result.outcome == "atomic_unit_error":
-            error = AtomicUnitError(
+            atomic_error = AtomicUnitError(
                 details["message"],
                 details.get("required_selection_ids"),
                 details.get("unit_kind"),
             )
             if rendered:
                 _atomic_unit_refusals.translate_atomic_unit_error_to_gutter_ids(
-                    error,
+                    atomic_error,
                     rendered,
                     "apply",
                     batch_name,
@@ -492,7 +500,7 @@ def _reduce_apply_action_plans(
             exit_with_error(
                 _("Failed to apply batch '{name}': {error}").format(
                     name=batch_name,
-                    error=str(error),
+                    error=str(atomic_error),
                 )
             )
         elif result.outcome == "command_error":

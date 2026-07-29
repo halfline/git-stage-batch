@@ -15,6 +15,7 @@ from .ownership.units import (
 from .ownership.unit_rebuild import rebuild_ownership_from_units
 from .ownership.unit_selection import select_ownership_units_by_display_ids
 from .ownership.unit_validation import validate_ownership_units
+from .state.metadata_types import BatchFileMetadataDict
 from ..core.line_selection import (
     LineRanges,
     LineSelection,
@@ -111,7 +112,7 @@ def require_line_selection_in_view(
 
 def require_single_file_context_for_line_selection(
     batch_name: str,
-    files: dict[str, dict],
+    files: dict[str, BatchFileMetadataDict],
     line_ids: Optional[str],
     operation_verb: str,
 ) -> Optional[set[int]]:
@@ -140,12 +141,13 @@ def require_single_file_context_for_line_selection(
     ):
         return None
 
+    assert line_ids is not None
     return set(parse_line_selection(line_ids))
 
 
 def require_single_file_context_for_line_selection_ranges(
     batch_name: str,
-    files: dict[str, dict],
+    files: dict[str, BatchFileMetadataDict],
     line_ids: Optional[str],
     operation_verb: str,
 ) -> Optional[LineRanges]:
@@ -158,12 +160,13 @@ def require_single_file_context_for_line_selection_ranges(
     ):
         return None
 
+    assert line_ids is not None
     return parse_line_selection_ranges(line_ids)
 
 
 def _line_selection_has_single_file_context(
     batch_name: str,
-    files: dict[str, dict],
+    files: dict[str, BatchFileMetadataDict],
     line_ids: Optional[str],
     operation_verb: str,
 ) -> bool:
@@ -186,7 +189,7 @@ def _line_selection_has_single_file_context(
 
 @contextmanager
 def acquire_batch_ownership_for_display_ids_from_lines(
-    file_meta: dict,
+    file_meta: BatchFileMetadataDict,
     batch_source_lines: Sequence[bytes],
     selected_ids: Optional[set[int]],
     *,

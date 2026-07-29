@@ -15,6 +15,10 @@ from typing import Any, TypeAlias, cast
 
 from ...exceptions import BatchMetadataError
 from ...utils.git_repository import object_id_hex_length
+from .metadata_types import (
+    BatchFileMetadataDict,
+    BatchMetadataDict,
+)
 
 
 CURRENT_BATCH_METADATA_SCHEMA_VERSION = 1
@@ -76,8 +80,8 @@ class BatchFileMetadata:
     path: str
     values: Mapping[str, JsonValue]
 
-    def to_dict(self) -> dict[str, Any]:
-        return _thaw_mapping(self.values)
+    def to_dict(self) -> BatchFileMetadataDict:
+        return cast(BatchFileMetadataDict, _thaw_mapping(self.values))
 
     @property
     def batch_source_commit(self) -> str | None:
@@ -114,7 +118,7 @@ class BatchMetadata:
     content_ref: str | None = None
     content_commit: str | None = None
 
-    def to_application_dict(self) -> dict[str, Any]:
+    def to_application_dict(self) -> BatchMetadataDict:
         """Return the compatibility mapping used by current domain code."""
         return {
             "revision": self.revision,

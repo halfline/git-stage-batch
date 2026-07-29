@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from ...batch.operation_candidate_state import save_candidate_preview_state
+from ...batch.source.selector import BatchSourceSelector
+from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.replacement import ReplacementPayload
 from ...data.file_review.batch_selection import (
     translate_batch_file_gutter_ids_to_selection_ids,
@@ -19,9 +21,9 @@ from . import candidate_previews as _candidate_previews
 
 def show_batch_source_candidate_preview(
     *,
-    selector,
+    selector: BatchSourceSelector,
     batch_name: str,
-    files: dict,
+    files: dict[str, BatchFileMetadataDict],
     selected_ids: set[int] | None,
     replacement_text: str | ReplacementPayload | None,
     patterns: list[str] | None,
@@ -29,6 +31,9 @@ def show_batch_source_candidate_preview(
     note: str | None,
 ) -> None:
     """Render a candidate preview for a show-from batch source selector."""
+    operation = selector.candidate_operation
+    if operation is None:
+        raise ValueError("candidate preview requires an operation")
     if patterns is not None or len(files) != 1:
         exit_with_error(_("Candidate preview requires exactly one file."))
     file_path = list(files.keys())[0]
@@ -52,7 +57,7 @@ def show_batch_source_candidate_preview(
         exit_with_error(
             _("Batch '{batch}' has no {operation} candidates for {file}.").format(
                 batch=batch_name,
-                operation=selector.candidate_operation,
+                operation=operation,
                 file=file_path,
             )
         )
@@ -75,7 +80,7 @@ def show_batch_source_candidate_preview(
             previews,
             selector.candidate_ordinal,
             batch_name=batch_name,
-            operation=selector.candidate_operation,
+            operation=operation,
             file_path=file_path,
         )
         render_operation_candidate(

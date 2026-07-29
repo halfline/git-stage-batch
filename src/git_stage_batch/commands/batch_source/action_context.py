@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ...batch.state.metadata_types import (
+    BatchFileMetadataDict,
+    BatchMetadataDict,
+)
 from ...batch.state.validation import read_validated_batch_metadata
 from ...batch.source.selector import (
     BatchSourceSelector,
@@ -27,8 +31,8 @@ class BatchSourceActionContext:
     batch_name: str
     file: str | None
     scope_resolution: ActionScopeResolution
-    metadata: dict
-    all_files: dict
+    metadata: BatchMetadataDict
+    all_files: dict[str, BatchFileMetadataDict]
 
 
 def resolve_batch_source_action_context(

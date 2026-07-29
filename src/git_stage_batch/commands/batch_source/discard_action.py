@@ -29,7 +29,7 @@ from ...i18n import _
 
 def _print_binary_discard_result(
     file_path: str,
-    action: _binary_file_actions.BinaryWorktreeAction,
+    action: _binary_file_actions.BinaryWorktreeAction | None,
 ) -> None:
     """Print discard-from status for a binary working-tree action."""
     if action is _binary_file_actions.BinaryWorktreeAction.REPLACED:

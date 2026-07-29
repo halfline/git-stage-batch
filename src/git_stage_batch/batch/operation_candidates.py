@@ -21,6 +21,7 @@ from .merge.candidates import (
     MergeCandidateSetOutcome,
 )
 from .ownership.model import BatchOwnership
+from .state.metadata_types import BatchFileMetadataDict
 from .operation_candidate_types import (
     CandidateEnumerationLimitError as _CandidateEnumerationLimitError,
     CandidateTarget as _CandidateTarget,
@@ -129,7 +130,7 @@ def build_apply_candidate_previews(
     ownership: BatchOwnership,
     worktree_lines: LineBuffer,
     batch_source_commit: str,
-    file_meta: dict[str, object],
+    file_meta: BatchFileMetadataDict,
     text_change_type: str | TextFileChangeType,
     worktree_file_mode: str | None,
     worktree_exists: bool,
@@ -240,7 +241,7 @@ def build_include_candidate_previews(
     index_lines: LineBuffer,
     worktree_lines: LineBuffer,
     batch_source_commit: str,
-    file_meta: dict[str, object],
+    file_meta: BatchFileMetadataDict,
     text_change_type: str | TextFileChangeType,
     index_file_mode: str | None,
     worktree_file_mode: str | None,

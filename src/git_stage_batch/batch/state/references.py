@@ -6,8 +6,6 @@ import shutil
 import subprocess
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any
-
 from .reference_names import (
     format_batch_content_ref_name,
     format_batch_state_ref_name,
@@ -19,6 +17,7 @@ from .metadata_schema import (
     decode_batch_metadata,
     encode_batch_metadata,
 )
+from .metadata_types import BatchMetadataDict
 from .batch_names import validate_batch_name
 from ...exceptions import BatchMetadataError
 from ...core.buffer import LineBuffer
@@ -50,7 +49,7 @@ class _StateBufferUpdate:
     mode: str = "100644"
 
 
-def _buffer_chunks(buffer: _StateBufferData):
+def _buffer_chunks(buffer: _StateBufferData) -> Iterable[bytes]:
     if isinstance(buffer, LineBuffer):
         yield from buffer.byte_chunks()
     else:
@@ -103,7 +102,7 @@ def _legacy_batch_commit_sha(batch_name: str) -> str | None:
     return result.stdout.strip()
 
 
-def read_file_backed_batch_metadata(batch_name: str) -> dict:
+def read_file_backed_batch_metadata(batch_name: str) -> BatchMetadataDict:
     model = read_file_backed_batch_metadata_model(batch_name)
     if model is None:
         return {
@@ -119,7 +118,7 @@ def _decode_state_metadata(payload: str | bytes, batch_name: str) -> BatchMetada
     return decode_batch_metadata(payload, expected_batch=batch_name)
 
 
-def read_batch_state_metadata(batch_name: str) -> dict[str, Any] | None:
+def read_batch_state_metadata(batch_name: str) -> BatchMetadataDict | None:
     """Read normalized batch metadata from the authoritative state ref."""
     validate_batch_name(batch_name)
     result = run_git_command(
@@ -137,7 +136,7 @@ def read_batch_state_metadata_for_batches(
     batch_names: Iterable[str],
     *,
     state_commit_by_name: Mapping[str, str] | None = None,
-) -> dict[str, dict[str, Any]]:
+) -> dict[str, BatchMetadataDict]:
     """Read normalized state metadata for many validated batches.
 
     When canonical commits are supplied, missing mappings intentionally skip
@@ -162,7 +161,7 @@ def read_batch_state_metadata_for_batches(
         refspec_by_name[batch_name] = f"{state_source}:batch.json"
     blobs = read_git_blobs_as_bytes(refspec_by_name.values())
 
-    metadata_by_name: dict[str, dict[str, Any]] = {}
+    metadata_by_name: dict[str, BatchMetadataDict] = {}
     for batch_name, refspec in refspec_by_name.items():
         blob = blobs.get(refspec)
         if blob is None:

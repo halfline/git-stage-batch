@@ -6,14 +6,15 @@ metadata early and produce clear error messages.
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Mapping
 
 from .query import read_batch_metadata
+from .metadata_types import BatchMetadataDict
 from .references import get_batch_state_ref_name, get_legacy_batch_ref_name
 from ...exceptions import BatchMetadataError
 from ...i18n import _
 from ...utils.git_command import run_git_command
-from ...utils.git_object_io import resolve_git_objects
+from ...utils.git_object_io import GitObjectInfo, resolve_git_objects
 from ...utils.repository_buffers import git_object_name_is_batch_protocol_safe
 from ...utils.paths import (
     get_batch_metadata_file_path,
@@ -89,7 +90,10 @@ def validate_batch_metadata_file_exists(batch_name: str) -> None:
         pass
 
 
-def validate_batch_metadata_structure(metadata: dict[str, Any], batch_name: str) -> None:
+def validate_batch_metadata_structure(
+    metadata: BatchMetadataDict,
+    batch_name: str,
+) -> None:
     """Verify that batch metadata has required structure and fields.
 
     Args:
@@ -120,7 +124,7 @@ def validate_batch_metadata_structure(metadata: dict[str, Any], batch_name: str)
         )
 
     # Validate files structure if present
-    source_commits: list[tuple[str, object]] = []
+    source_commits: list[tuple[str, str]] = []
     if "files" in metadata:
         files = metadata["files"]
         if not isinstance(files, dict):
@@ -191,10 +195,11 @@ def validate_batch_metadata_structure(metadata: dict[str, Any], batch_name: str)
             )
 
 
-def _git_object_exists(object_name: object, object_info_by_name: dict) -> bool:
+def _git_object_exists(
+    object_name: str,
+    object_info_by_name: Mapping[str, GitObjectInfo],
+) -> bool:
     """Check unusual metadata names through argv, outside the batch protocol."""
-    if not isinstance(object_name, str):
-        return False
     if git_object_name_is_batch_protocol_safe(object_name):
         return object_name in object_info_by_name
     result = run_git_command(
@@ -205,7 +210,7 @@ def _git_object_exists(object_name: object, object_info_by_name: dict) -> bool:
     return result.returncode == 0
 
 
-def load_and_validate_batch_metadata(batch_name: str) -> dict[str, Any]:
+def load_and_validate_batch_metadata(batch_name: str) -> BatchMetadataDict:
     """Load batch metadata and validate its structure.
 
     This is the primary entry point for commands that need batch metadata.
@@ -313,7 +318,7 @@ def get_validated_baseline_commit(batch_name: str) -> str:
     return baseline
 
 
-def read_validated_batch_metadata(batch_name: str) -> dict[str, Any]:
+def read_validated_batch_metadata(batch_name: str) -> BatchMetadataDict:
     """Read and validate batch metadata (command entry point helper).
 
     This is a drop-in replacement for read_batch_metadata that adds validation.

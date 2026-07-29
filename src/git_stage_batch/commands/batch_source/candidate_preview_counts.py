@@ -12,6 +12,7 @@ from ...batch.operation_candidate_types import (
     CandidateEnumerationLimitError,
     CandidatePreviewCount,
 )
+from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.buffer import LineBuffer
 from ...core.replacement import ReplacementPayload
 from ...data.file_target_identity import IndexIdentity
@@ -27,7 +28,7 @@ def count_apply_candidate_previews_for_file(
     *,
     batch_name: str,
     file_path: str,
-    file_meta: dict,
+    file_meta: BatchFileMetadataDict,
     selection_ids_to_apply: set[int] | None,
     batch_source_object_id: str | None = None,
     working_tree_artifact_path: str | Path | None = None,
@@ -112,7 +113,7 @@ def count_include_candidate_previews_for_file(
     *,
     batch_name: str,
     file_path: str,
-    file_meta: dict,
+    file_meta: BatchFileMetadataDict,
     selection_ids_to_include: set[int] | None,
     replacement_payload: ReplacementPayload | None,
     batch_source_object_id: str | None = None,

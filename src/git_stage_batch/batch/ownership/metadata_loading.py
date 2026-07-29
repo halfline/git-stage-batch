@@ -21,11 +21,12 @@ from .metadata_blobs import (
     presence_claim_reference_blob_ids,
     replacement_origin_reference_blob_ids,
 )
+from .metadata_types import BatchOwnershipMetadata
 from .replacement_units import ReplacementUnit
 
 
 def acquire_ownership_for_metadata_dict(
-    data: dict,
+    data: BatchOwnershipMetadata,
     *,
     spool_dir: str | Path | None = None,
 ) -> AcquiredBatchOwnership[BatchOwnership]:
@@ -70,7 +71,7 @@ def acquire_ownership_for_metadata_dict(
 
 
 def ownership_from_metadata_dict(
-    data: dict,
+    data: BatchOwnershipMetadata,
     *,
     blob_contents: dict[str, bytes],
     deletion_blob_buffers: dict[str, LineBuffer] | None = None,

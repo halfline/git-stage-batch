@@ -6,6 +6,7 @@ import shlex
 from dataclasses import dataclass
 
 from ...batch.state.query import read_batch_metadata
+from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...batch.source.selector import require_plain_batch_name
 from ...batch.state.batch_names import batch_exists, validate_batch_name
 from ...core.line_selection import LineRanges
@@ -28,7 +29,7 @@ class ResetClaimSelection:
 
     batch_name: str
     file: str | None
-    all_files: dict
+    all_files: dict[str, BatchFileMetadataDict]
     effective_line_ids: LineRanges | None
     affected_files: set[str]
     operation_parts: tuple[str, ...]
@@ -45,7 +46,7 @@ def resolve_reset_claim_selection(
     """Resolve reset-from-batch scope without rejecting empty batches."""
     batch_name = require_plain_batch_name(batch_name, "reset")
     validate_batch_name(batch_name)
-    extra_action_parts = ()
+    extra_action_parts: tuple[str, ...] = ()
     if to_batch is not None:
         extra_action_parts = ("--to", shlex.quote(to_batch))
     scope_resolution = resolve_batch_source_action_scope(

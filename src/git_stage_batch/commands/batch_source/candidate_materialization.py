@@ -11,6 +11,7 @@ from ...batch.operation_candidate_types import (
     OperationCandidatePreview,
     TargetCandidatePreview,
 )
+from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.buffer import LineBuffer
 from ...core.replacement import ReplacementPayload
 from ...utils.repository_buffers import (
@@ -65,7 +66,7 @@ def materialize_apply_candidate(
     batch_name: str,
     raw_selector: str,
     ordinal: int,
-    files: dict,
+    files: dict[str, BatchFileMetadataDict],
     selected_ids: set[int] | None,
     selection_ids_to_apply: set[int] | None,
 ) -> ApplyCandidateMaterialization:
@@ -144,7 +145,7 @@ def materialize_include_candidate(
     batch_name: str,
     raw_selector: str,
     ordinal: int,
-    files: dict,
+    files: dict[str, BatchFileMetadataDict],
     selected_ids: set[int] | None,
     selection_ids_to_include: set[int] | None,
     replacement_payload: ReplacementPayload | None,

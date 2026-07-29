@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import os
 from typing import Iterable
 
+from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...batch.submodule_pointer import is_batch_submodule_pointer
 from ...core.text_lifecycle import (
     TextFileChangeType,
@@ -40,14 +41,14 @@ class CandidateIndexTarget:
     file_mode: str | None
 
 
-def is_text_candidate_entry(file_meta: dict) -> bool:
+def is_text_candidate_entry(file_meta: BatchFileMetadataDict) -> bool:
     """Return whether a batch file entry supports text candidate handling."""
     return file_meta.get("file_type") not in {"binary", "mode"} and not is_batch_submodule_pointer(file_meta)
 
 
 def candidate_batch_source_ref(
     file_path: str,
-    file_meta: dict,
+    file_meta: BatchFileMetadataDict,
 ) -> CandidateBatchSourceRef | None:
     """Return the batch source object reference, or None when metadata lacks one."""
     batch_source_commit = file_meta.get("batch_source_commit")
@@ -61,7 +62,7 @@ def candidate_batch_source_ref(
 
 def require_candidate_batch_source_ref(
     file_path: str,
-    file_meta: dict,
+    file_meta: BatchFileMetadataDict,
 ) -> CandidateBatchSourceRef:
     """Return the batch source object reference for validated candidate metadata."""
     batch_source_commit = file_meta["batch_source_commit"]
@@ -74,7 +75,7 @@ def require_candidate_batch_source_ref(
 def candidate_worktree_text_target(
     *,
     file_path: str,
-    file_meta: dict,
+    file_meta: BatchFileMetadataDict,
     selected_ids: Iterable[int] | None,
     captured_working_tree_exists: bool | None = None,
 ) -> CandidateWorktreeTarget:
@@ -97,7 +98,7 @@ def candidate_worktree_text_target(
 
 def candidate_index_text_target(
     *,
-    file_meta: dict,
+    file_meta: BatchFileMetadataDict,
     selected_ids: Iterable[int] | None,
     index_exists: bool,
 ) -> CandidateIndexTarget:
@@ -112,5 +113,5 @@ def candidate_index_text_target(
     )
 
 
-def _batch_file_mode(file_meta: dict) -> str:
+def _batch_file_mode(file_meta: BatchFileMetadataDict) -> str:
     return str(file_meta.get("mode", "100644"))

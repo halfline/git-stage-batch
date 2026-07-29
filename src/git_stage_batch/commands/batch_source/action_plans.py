@@ -6,13 +6,17 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Protocol
 
+from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.buffer import LineBuffer
+from ...core.text_lifecycle import TextFileChangeType
 
 
 class BatchSourceActionPlan(Protocol):
     """Plan record that may hold resources until command execution."""
 
-    file_path: str
+    @property
+    def file_path(self) -> str:
+        ...
 
     def close(self) -> None:
         ...
@@ -25,7 +29,7 @@ class ApplyTextFileActionPlan:
     file_path: str
     buffer: LineBuffer | None
     file_mode: str | None
-    change_type: str
+    change_type: TextFileChangeType
 
     def close(self) -> None:
         if self.buffer is not None:
@@ -41,8 +45,8 @@ class IncludeTextFileActionPlan:
     working_buffer: LineBuffer | None
     index_file_mode: str | None
     working_file_mode: str | None
-    index_change_type: str
-    working_change_type: str
+    index_change_type: TextFileChangeType
+    working_change_type: TextFileChangeType
 
     def close(self) -> None:
         if self.index_buffer is not None:
@@ -61,7 +65,7 @@ class DiscardTextFileActionPlan:
     file_path: str
     buffer: LineBuffer | None
     file_mode: str | None
-    change_type: str
+    change_type: TextFileChangeType
 
     def close(self) -> None:
         if self.buffer is not None:
@@ -73,7 +77,7 @@ class BinaryFileActionPlan:
     """Deferred binary file action with optional stored batch content."""
 
     file_path: str
-    file_meta: dict
+    file_meta: BatchFileMetadataDict
     buffer: LineBuffer | None
 
     def close(self) -> None:
@@ -86,7 +90,7 @@ class SubmodulePointerActionPlan:
     """Deferred submodule pointer action."""
 
     file_path: str
-    file_meta: dict
+    file_meta: BatchFileMetadataDict
 
     def close(self) -> None:
         return None

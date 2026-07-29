@@ -18,7 +18,12 @@ from ...batch.ownership.units import (
 from ...batch.ownership.unit_rebuild import rebuild_ownership_from_units
 from ...batch.ownership.unit_selection import filter_ownership_units_by_display_ids
 from ...batch.ownership.unit_validation import validate_ownership_units
+from ...batch.ownership.unit_types import OwnershipUnit
 from ...batch.state.query import read_batch_metadata
+from ...batch.state.metadata_types import (
+    BatchFileMetadataDict,
+    BatchMetadataDict,
+)
 from ...batch.selection import require_display_ids_available
 from ...batch.state.references import sync_batch_state_refs
 from ...batch.text_file_storage import (
@@ -217,7 +222,7 @@ def partition_line_ownership_units(
     *,
     batch_name: str,
     file_path: str,
-):
+) -> tuple[list[OwnershipUnit], list[OwnershipUnit]]:
     """Partition ownership units by selected display line IDs."""
     units = build_ownership_units_from_batch_source_lines(
         ownership,
@@ -259,7 +264,7 @@ def reset_all_claims_from_batch(batch_name: str) -> None:
 def _ensure_destination_batch(
     source_batch: str,
     dest_batch: str,
-    source_metadata: dict,
+    source_metadata: BatchMetadataDict,
 ) -> None:
     """Create destination batch from source baseline, or verify compatibility."""
     source_baseline = source_metadata.get("baseline")
@@ -288,7 +293,7 @@ def _ensure_destination_batch(
 def _add_ownership_to_destination(
     dest_batch: str,
     file_path: str,
-    source_file_meta: dict,
+    source_file_meta: BatchFileMetadataDict,
     ownership: BatchOwnership,
 ) -> None:
     """Add selected text ownership to destination, merging with compatible claims."""

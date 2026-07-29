@@ -13,6 +13,7 @@ from ...batch.operation_candidates import (
 )
 from ...batch.replacement import build_replacement_batch_view_from_lines
 from ...batch.selection import acquire_batch_ownership_for_display_ids_from_lines
+from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.buffer import LineBuffer
 from ...core.replacement import ReplacementPayload
 
@@ -25,7 +26,7 @@ def plan_apply_candidate_previews(
     *,
     batch_name: str,
     file_path: str,
-    file_meta: dict,
+    file_meta: BatchFileMetadataDict,
     batch_source_lines: LineBuffer,
     batch_source_commit: str,
     worktree_lines: LineBuffer,
@@ -35,12 +36,11 @@ def plan_apply_candidate_previews(
     spool_dir: str | Path | None = None,
 ) -> tuple[OperationCandidatePreview, ...]:
     """Build apply previews from normalized source and target inputs."""
-    ownership_arguments = _spool_arguments(spool_dir)
     with acquire_batch_ownership_for_display_ids_from_lines(
         file_meta,
         batch_source_lines,
         selection_ids,
-        **ownership_arguments,
+        spool_dir=spool_dir,
     ) as ownership:
         return _build_apply_candidate_previews(
             batch_name=batch_name,
@@ -55,7 +55,7 @@ def plan_apply_candidate_previews(
             worktree_exists=worktree_target.exists,
             selected_ids=selected_ids,
             selection_ids=selection_ids,
-            **ownership_arguments,
+            spool_dir=spool_dir,
         )
 
 
@@ -63,7 +63,7 @@ def plan_include_candidate_previews(
     *,
     batch_name: str,
     file_path: str,
-    file_meta: dict,
+    file_meta: BatchFileMetadataDict,
     batch_source_lines: LineBuffer,
     batch_source_commit: str,
     index_lines: LineBuffer,
@@ -76,14 +76,13 @@ def plan_include_candidate_previews(
     spool_dir: str | Path | None = None,
 ) -> tuple[OperationCandidatePreview, ...]:
     """Build include previews from normalized source and target inputs."""
-    spool_arguments = _spool_arguments(spool_dir)
     with ExitStack() as stack:
         ownership = stack.enter_context(
             acquire_batch_ownership_for_display_ids_from_lines(
                 file_meta,
                 batch_source_lines,
                 selection_ids,
-                **spool_arguments,
+                spool_dir=spool_dir,
             )
         )
         source_for_candidates = batch_source_lines
@@ -94,7 +93,7 @@ def plan_include_candidate_previews(
                     batch_source_lines,
                     ownership,
                     replacement_payload,
-                    **spool_arguments,
+                    spool_dir=spool_dir,
                 )
             except ValueError as error:
                 raise CandidateReplacementError(str(error)) from error
@@ -119,11 +118,5 @@ def plan_include_candidate_previews(
             selected_ids=selected_ids,
             selection_ids=selection_ids,
             replacement_payload=replacement_payload,
-            **spool_arguments,
+            spool_dir=spool_dir,
         )
-
-
-def _spool_arguments(spool_dir: str | Path | None) -> dict[str, str | Path]:
-    if spool_dir is None:
-        return {}
-    return {"spool_dir": spool_dir}

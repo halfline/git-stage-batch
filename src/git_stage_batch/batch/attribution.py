@@ -28,6 +28,7 @@ from .attribution_units import (
     make_attribution_unit_id as _make_attribution_unit_id,
 )
 from .state.query import list_batch_names, read_batch_metadata_for_batches
+from .state.metadata_types import BatchFileMetadataDict, BatchMetadataDict
 from .state.reference_names import format_batch_state_ref_name
 from ..core.line_selection import parse_line_selection
 from ..utils.repository_buffers import (
@@ -73,7 +74,7 @@ class BatchAttributionContext:
     """Reusable source alignment for one batch/file attribution pass."""
 
     batch_name: str
-    file_metadata: dict
+    file_metadata: BatchFileMetadataDict
     batch_source_lines: Sequence[bytes]
     alignment: _LineMapping
     deletion_fingerprints: dict[
@@ -87,7 +88,7 @@ class BatchAttributionContext:
 @dataclass(frozen=True)
 class _BatchSourceRequest:
     batch_name: str
-    file_metadata: dict
+    file_metadata: BatchFileMetadataDict
     primary_refspec: str
     fallback_refspec: str
 
@@ -97,12 +98,14 @@ class _ResolvedBatchSourceRequest:
     """One batch claim grouped by its canonical source blob identity."""
 
     batch_name: str
-    file_metadata: dict
+    file_metadata: BatchFileMetadataDict
     source_object_id: str | None
     presence_source_lines: tuple[int, ...]
 
 
-def _parse_presence_source_lines(file_metadata: dict) -> list[int]:
+def _parse_presence_source_lines(
+    file_metadata: BatchFileMetadataDict,
+) -> list[int]:
     presence_lines: list[int] = []
     for claim in file_metadata.get("presence_claims", []):
         source_lines = claim.get("source_lines", [])
@@ -118,7 +121,7 @@ def _parse_presence_source_lines(file_metadata: dict) -> list[int]:
     return presence_lines
 
 
-def _has_presence_source_lines(file_metadata: dict) -> bool:
+def _has_presence_source_lines(file_metadata: BatchFileMetadataDict) -> bool:
     return bool(
         file_metadata.get("presence_claims") or file_metadata.get("claimed_lines")
     )
@@ -127,8 +130,8 @@ def _has_presence_source_lines(file_metadata: dict) -> bool:
 def build_file_attribution(
     file_path: str,
     *,
-    batch_metadata_by_name: dict[str, dict] | None = None,
-    supplemental_batch_metadata: dict[str, dict] | None = None,
+    batch_metadata_by_name: dict[str, BatchMetadataDict] | None = None,
+    supplemental_batch_metadata: dict[str, BatchMetadataDict] | None = None,
     spool_dir: str | Path | None = None,
     metrics: AttributionMetrics | None = None,
 ) -> FileAttribution:
@@ -159,14 +162,14 @@ def build_file_attribution_from_lines(
     *,
     baseline_lines: Sequence[bytes],
     working_tree_lines: Sequence[bytes],
-    batch_metadata_by_name: dict[str, dict] | None = None,
-    supplemental_batch_metadata: dict[str, dict] | None = None,
+    batch_metadata_by_name: dict[str, BatchMetadataDict] | None = None,
+    supplemental_batch_metadata: dict[str, BatchMetadataDict] | None = None,
     batch_state_commit_by_name: Mapping[str, str] | None = None,
     spool_dir: str | Path | None = None,
     metrics: AttributionMetrics | None = None,
 ) -> FileAttribution:
     """Build file attribution from caller-owned indexed line sequences."""
-    all_batch_metadata = {}
+    all_batch_metadata: dict[str, BatchMetadataDict] = {}
     if batch_metadata_by_name is None:
         batch_metadata_by_name = read_batch_metadata_for_batches(list_batch_names())
     if metrics is not None:
@@ -175,7 +178,7 @@ def build_file_attribution_from_lines(
     # Only entries retained from the primary metadata map may resolve
     # source_path through state-backed storage. Supplemental entries, including
     # __consumed__ and any same-name override, use batch_source_commit.
-    state_backed_batch_names = set()
+    state_backed_batch_names: set[str] = set()
     for batch_name, metadata in batch_metadata_by_name.items():
         if file_path in metadata.get("files", {}):
             all_batch_metadata[batch_name] = metadata
@@ -200,7 +203,10 @@ def build_file_attribution_from_lines(
         _enumerate_units_from_file_comparison(comparison, all_units_map)
 
     baseline_unit_ids = tuple(all_units_map)
-    owners_by_unit_id = {unit_id: set() for unit_id in baseline_unit_ids}
+    owners_by_unit_id: dict[str, set[str]] = {
+        unit_id: set()
+        for unit_id in baseline_unit_ids
+    }
     _attribute_batches(
         file_path,
         all_batch_metadata,
@@ -229,7 +235,7 @@ def build_file_attribution_from_lines(
 
 def _attribute_batches(
     file_path: str,
-    all_batch_metadata: dict,
+    all_batch_metadata: dict[str, BatchMetadataDict],
     *,
     state_backed_batch_names: frozenset[str],
     batch_state_commit_by_name: Mapping[str, str] | None,
@@ -428,7 +434,7 @@ def _attribute_source_group(
 
 def _batch_source_requests(
     file_path: str,
-    all_batch_metadata: dict,
+    all_batch_metadata: dict[str, BatchMetadataDict],
     *,
     state_backed_batch_names: frozenset[str],
     batch_state_commit_by_name: Mapping[str, str] | None = None,

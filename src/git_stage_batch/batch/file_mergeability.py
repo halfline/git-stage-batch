@@ -12,6 +12,7 @@ from ..utils.repository_buffers import load_working_tree_file_as_buffer
 from .merge import merge as batch_merge
 from .line_matching.match import match_lines
 from .ownership.model import BatchOwnership
+from .ownership.display_lines import OwnershipDisplayLine
 from .ownership.unit_rebuild import rebuild_ownership_from_units
 from .ownership.unit_types import OwnershipUnit
 from .ownership.unit_validation import validate_ownership_units
@@ -30,7 +31,7 @@ def probe_batch_file_mergeability(
     *,
     file_path: str,
     ownership: BatchOwnership,
-    display_lines: list[dict],
+    display_lines: list[OwnershipDisplayLine],
     batch_source_lines: Sequence[bytes],
 ) -> BatchFileMergeability:
     """Return mergeable display IDs and ownership units for batch display lines."""

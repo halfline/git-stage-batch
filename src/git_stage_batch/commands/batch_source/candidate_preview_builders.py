@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
 
 from . import candidate_inputs as _candidate_inputs
 from . import candidate_planning as _candidate_planning
 from ..selection import replacement_selection
 from ...batch.operation_candidate_types import OperationCandidatePreview
 from ...batch.source.selector import BatchSourceSelector
+from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.buffer import LineBuffer
+from ...core.models import RenderedBatchDisplay
 from ...core.replacement import ReplacementPayload, coerce_replacement_payload
 from ...data.file_review.batch_selection import (
     translate_batch_file_gutter_ids_to_selection_ids,
@@ -25,15 +26,15 @@ from ...i18n import _
 
 
 SelectionTranslator = Callable[
-    [str, str, set[int], FileReviewAction],
-    tuple[set[int], Any],
+    [str, str, set[int] | None, FileReviewAction | str],
+    tuple[set[int] | None, RenderedBatchDisplay | None],
 ]
 
 
 def build_batch_source_candidate_previews(
     *,
     selector: BatchSourceSelector,
-    files: dict,
+    files: dict[str, BatchFileMetadataDict],
     file_path: str,
     selected_ids: set[int] | None,
     replacement_text: str | ReplacementPayload | None,

@@ -7,6 +7,7 @@ import sys
 from . import candidate_materialization as _candidate_materialization
 from . import text_file_actions as _text_file_actions
 from ...batch.operation_candidate_state import clear_candidate_preview_state_for_file
+from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.replacement import ReplacementPayload
 from ...data.session import snapshot_file_if_untracked
 from ...data.undo.checkpoints import undo_checkpoint
@@ -18,7 +19,7 @@ def execute_apply_candidate(
     batch_name: str,
     raw_selector: str,
     ordinal: int,
-    files: dict,
+    files: dict[str, BatchFileMetadataDict],
     selected_ids: set[int] | None,
     selection_ids_to_apply: set[int] | None,
 ) -> None:
@@ -77,7 +78,7 @@ def execute_include_candidate(
     batch_name: str,
     raw_selector: str,
     ordinal: int,
-    files: dict,
+    files: dict[str, BatchFileMetadataDict],
     selected_ids: set[int] | None,
     selection_ids_to_include: set[int] | None,
     replacement_payload: ReplacementPayload | None,

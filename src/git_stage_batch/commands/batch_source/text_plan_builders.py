@@ -6,12 +6,14 @@ from contextlib import ExitStack
 from dataclasses import dataclass
 import os
 from pathlib import Path
+from typing import TypedDict
 
 from . import action_plans as _action_plans
 from ...batch.discard import discard_batch_from_line_sequences_as_buffer
 from ...batch.merge.merge import merge_batch_from_line_sequences_as_buffer
 from ...batch.replacement import build_replacement_batch_view_from_lines
 from ...batch.selection import acquire_batch_ownership_for_display_ids_from_lines
+from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.buffer import LineBuffer
 from ...core.replacement import ReplacementPayload
 from ...core.text_lifecycle import (
@@ -29,6 +31,18 @@ from ...utils.repository_buffers import (
     load_working_tree_file_as_buffer,
 )
 from ...utils.git_repository import get_git_repository_root_path
+
+
+class _SpoolDirOptions(TypedDict, total=False):
+    """Typed optional arguments for spool-aware helpers."""
+
+    spool_dir: str | Path
+
+
+def _spool_dir_options(spool_dir: str | Path | None) -> _SpoolDirOptions:
+    if spool_dir is None:
+        return {}
+    return {"spool_dir": spool_dir}
 
 
 @dataclass(frozen=True)
@@ -66,7 +80,7 @@ def _close_include_merge_buffers(
 
 
 def apply_text_plan_requires_source(
-    file_meta: dict,
+    file_meta: BatchFileMetadataDict,
     selected_ids: set[int] | None,
 ) -> bool:
     """Return whether one apply text plan needs batch source content."""
@@ -78,7 +92,7 @@ def apply_text_plan_requires_source(
 
 
 def include_text_plan_requires_source(
-    file_meta: dict,
+    file_meta: BatchFileMetadataDict,
     selected_ids: set[int] | None,
 ) -> bool:
     """Return whether one include text plan needs batch source content."""
@@ -88,7 +102,7 @@ def include_text_plan_requires_source(
 def build_apply_text_file_action_plan(
     *,
     file_path: str,
-    file_meta: dict,
+    file_meta: BatchFileMetadataDict,
     selected_ids: set[int] | None,
     selection_ids_to_apply: set[int] | None,
     batch_source_object_id: str | None = None,
@@ -156,14 +170,12 @@ def build_apply_text_file_action_plan(
                 spool_dir=spool_dir,
             )
         working_lines = stack.enter_context(working_tree_buffer)
-        ownership_arguments = {}
-        if spool_dir is not None:
-            ownership_arguments["spool_dir"] = spool_dir
+        spool_options = _spool_dir_options(spool_dir)
         with acquire_batch_ownership_for_display_ids_from_lines(
             file_meta,
             batch_source_lines,
             selection_ids_to_apply,
-            **ownership_arguments,
+            **spool_options,
         ) as ownership:
             if ownership.is_empty():
                 if selected_ids is None and text_change_type == TextFileChangeType.ADDED:
@@ -174,14 +186,11 @@ def build_apply_text_file_action_plan(
                 else:
                     return ApplyTextPlanBuildResult()
             else:
-                merge_arguments = {}
-                if spool_dir is not None:
-                    merge_arguments["spool_dir"] = spool_dir
                 merged_buffer = merge_batch_from_line_sequences_as_buffer(
                     batch_source_lines,
                     ownership,
                     working_lines,
-                    **merge_arguments,
+                    **spool_options,
                 )
 
     try:
@@ -206,7 +215,7 @@ def build_apply_text_file_action_plan(
 def build_include_text_file_action_plan(
     *,
     file_path: str,
-    file_meta: dict,
+    file_meta: BatchFileMetadataDict,
     selected_ids: set[int] | None,
     selection_ids_to_include: set[int] | None,
     replacement_payload: ReplacementPayload | None,
@@ -305,14 +314,12 @@ def build_include_text_file_action_plan(
                     spool_dir=spool_dir,
                 )
             working_lines = resources.enter_context(working_buffer)
-            ownership_arguments = {}
-            if spool_dir is not None:
-                ownership_arguments["spool_dir"] = spool_dir
+            spool_options = _spool_dir_options(spool_dir)
             with acquire_batch_ownership_for_display_ids_from_lines(
                 file_meta,
                 batch_source_lines,
                 selection_ids_to_include,
-                **ownership_arguments,
+                **spool_options,
             ) as ownership:
                 if ownership.is_empty():
                     if (
@@ -334,34 +341,28 @@ def build_include_text_file_action_plan(
                         source_lines = batch_source_lines
                         merge_ownership = ownership
                         if replacement_payload is not None:
-                            replacement_arguments = {}
-                            if spool_dir is not None:
-                                replacement_arguments["spool_dir"] = spool_dir
                             replacement_view = stack.enter_context(
                                 build_replacement_batch_view_from_lines(
                                     batch_source_lines,
                                     ownership,
                                     replacement_payload,
-                                    **replacement_arguments,
+                                    **spool_options,
                                 )
                             )
                             source_lines = replacement_view.source_buffer
                             merge_ownership = replacement_view.ownership
-                        merge_arguments = {}
-                        if spool_dir is not None:
-                            merge_arguments["spool_dir"] = spool_dir
                         merged_index_buffer = merge_batch_from_line_sequences_as_buffer(
                             source_lines,
                             merge_ownership,
                             index_lines,
-                            **merge_arguments,
+                            **spool_options,
                         )
                         merged_working_buffer = (
                             merge_batch_from_line_sequences_as_buffer(
                                 source_lines,
                                 merge_ownership,
                                 working_lines,
-                                **merge_arguments,
+                                **spool_options,
                             )
                         )
 
@@ -395,7 +396,7 @@ def build_include_text_file_action_plan(
 def build_discard_text_file_action_plan(
     *,
     file_path: str,
-    file_meta: dict,
+    file_meta: BatchFileMetadataDict,
     baseline_commit: str,
     selected_ids: set[int] | None,
     selection_ids_to_discard: set[int] | None,

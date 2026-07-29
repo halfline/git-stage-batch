@@ -10,6 +10,7 @@ from . import file_display_model as _file_display_model
 from . import file_mergeability as _file_mergeability
 from .ownership.model import BatchOwnership
 from .ownership.metadata_loading import acquire_ownership_for_metadata_dict
+from .state.metadata_types import BatchFileMetadataDict, BatchMetadataDict
 from .state.query import read_batch_metadata
 from ..core.line_selection import LineRanges
 from ..core.models import (
@@ -24,7 +25,7 @@ from ..utils.paths import get_context_lines
 def render_batch_file_display(
     batch_name: str,
     file_path: str,
-    metadata: dict | None = None,
+    metadata: BatchMetadataDict | None = None,
     *,
     probe_mergeability: bool = True,
 ) -> Optional['RenderedBatchDisplay']:
@@ -79,7 +80,7 @@ def _render_batch_file_display_from_ownership(
     *,
     batch_source_commit: str,
     file_path: str,
-    file_meta: dict,
+    file_meta: BatchFileMetadataDict,
     ownership: BatchOwnership,
     probe_mergeability: bool,
 ) -> Optional['RenderedBatchDisplay']:
@@ -104,7 +105,7 @@ def _render_batch_file_display_from_ownership(
 def build_batch_file_display_from_inputs(
     *,
     file_path: str,
-    file_meta: dict,
+    file_meta: BatchFileMetadataDict,
     ownership: BatchOwnership,
     batch_source_lines: Sequence[bytes],
     probe_mergeability: bool,

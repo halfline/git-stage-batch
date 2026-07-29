@@ -5,6 +5,7 @@ from pathlib import Path
 from git_stage_batch.batch.merge.merge import merge_batch_from_line_sequences_as_buffer
 
 import subprocess
+import sys
 import pytest
 
 from git_stage_batch.batch.state.batch_names import batch_exists
@@ -1227,6 +1228,10 @@ class TestSiftFileJobs:
         assert not batch_exists("empty-destination")
         assert read_batch_metadata("empty-source")["note"] == "changed after snapshot"
 
+    @pytest.mark.skipif(
+        sys.platform != "linux",
+        reason="process sift execution is supported on Linux only",
+    )
     def test_forced_process_matches_inline_publication(
         self,
         temp_git_repo,
@@ -1443,6 +1448,10 @@ class TestSiftFileJobs:
         assert read_batch_metadata("raced-destination")["files"] == {}
         assert not any(name.startswith("sift-tmp-") for name in list_batch_names())
 
+    @pytest.mark.skipif(
+        sys.platform != "linux",
+        reason="process sift execution is supported on Linux only",
+    )
     def test_process_sift_preserves_added_text_boundaries(
         self,
         temp_git_repo,
@@ -1478,6 +1487,10 @@ class TestSiftFileJobs:
             for file_path in expected_content
         } == expected_content
 
+    @pytest.mark.skipif(
+        sys.platform != "linux",
+        reason="process sift execution is supported on Linux only",
+    )
     def test_process_sift_preserves_text_deletions(
         self,
         temp_git_repo,

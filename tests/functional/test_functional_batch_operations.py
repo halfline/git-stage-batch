@@ -679,7 +679,10 @@ class TestBatchRebaseWorkflow:
         # Rebase to edit the first commit
         # HEAD~2 goes back before both our commits, allowing us to edit both
         # sed will change the first pick to edit (which is "Add feature skeleton")
-        env = {**subprocess.os.environ, "GIT_SEQUENCE_EDITOR": "sed -i '1s/pick/edit/'"}
+        env = {
+            **subprocess.os.environ,
+            "GIT_SEQUENCE_EDITOR": "sed -i.bak '1s/^pick/edit/'",
+        }
         rebase_result = subprocess.run(
             ["git", "rebase", "-i", "HEAD~2"],
             env=env,

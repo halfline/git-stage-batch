@@ -180,7 +180,8 @@ pip install git-stage-batch
 
 - Python 3.10 or newer; CI covers current releases through Python 3.14
 - Git 2.31 or newer
-- A POSIX operating system; Linux is the currently tested platform. Native Windows is not supported.
+- A POSIX operating system; Linux and macOS are tested in CI. Native Windows
+  is not supported.
 
 ## Documentation
 

@@ -7,6 +7,7 @@ import json
 from typing import TYPE_CHECKING, TypedDict
 
 from ..core.buffer import buffer_byte_chunks
+from .ownership.absence_claims import AbsenceClaim
 from .ownership.references import BaselineReference
 
 if TYPE_CHECKING:
@@ -31,6 +32,13 @@ class _BaselineReferenceFingerprint(TypedDict):
     before_line: int | None
     before_content: str | None
     has_before_line: bool
+class _AbsenceClaimFingerprint(TypedDict):
+    """Canonical fingerprint fields for an absence claim."""
+
+    anchor_line: int | None
+    content: str
+    line_count: int
+    baseline_reference: _BaselineReferenceFingerprint | None
 def _hash_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -95,7 +103,7 @@ def _baseline_reference_payload(
     }
 
 
-def _absence_claim_payload(claim) -> dict:
+def _absence_claim_payload(claim: AbsenceClaim) -> _AbsenceClaimFingerprint:
     return {
         "anchor_line": claim.anchor_line,
         "content": _buffer_fingerprint(claim.content_lines),

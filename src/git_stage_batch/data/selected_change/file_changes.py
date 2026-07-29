@@ -46,6 +46,7 @@ from .metadata_types import (
     SelectedBinaryData,
     SelectedGitlinkData,
     SelectedModeData,
+    SelectedRenameData,
 )
 
 
@@ -149,7 +150,7 @@ def read_selected_mode_data() -> SelectedModeData | None:
     return cast(SelectedModeData, data) if isinstance(data, dict) else None
 
 
-def read_selected_rename_data() -> dict | None:
+def read_selected_rename_data() -> SelectedRenameData | None:
     """Read cached rename selection data, if structurally valid."""
     rename_path = get_selected_rename_file_json_path()
     if not rename_path.exists():
@@ -158,7 +159,7 @@ def read_selected_rename_data() -> dict | None:
         rename_data = json.loads(read_text_file_contents(rename_path))
     except json.JSONDecodeError:
         return None
-    return rename_data if isinstance(rename_data, dict) else None
+    return cast(SelectedRenameData, rename_data) if isinstance(rename_data, dict) else None
 
 
 def load_selected_rename_change() -> RenameChange | None:

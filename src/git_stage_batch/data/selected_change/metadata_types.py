@@ -6,6 +6,8 @@ from typing import Literal, TypedDict
 
 
 ChangeType = Literal["added", "modified", "deleted"]
+
+
 class SelectedBinaryData(TypedDict, total=False):
     """Cached binary-file selection metadata."""
 
@@ -16,6 +18,8 @@ class SelectedBinaryData(TypedDict, total=False):
     batch_name: str | None
     batch_binary_fingerprint: str | None
     comparison_base: str | None
+
+
 class SelectedGitlinkData(TypedDict, total=False):
     """Cached submodule-pointer selection metadata."""
 
@@ -27,6 +31,8 @@ class SelectedGitlinkData(TypedDict, total=False):
     batch_name: str | None
     batch_gitlink_fingerprint: str | None
     comparison_base: str | None
+
+
 class SelectedModeData(TypedDict, total=False):
     """Cached executable-mode selection metadata."""
 
@@ -34,3 +40,12 @@ class SelectedModeData(TypedDict, total=False):
     old_mode: str
     new_mode: str
     batch_name: str | None
+
+
+class SelectedRenameData(TypedDict, total=False):
+    """Cached rename selection metadata."""
+
+    old_path: str
+
+
+    new_path: str

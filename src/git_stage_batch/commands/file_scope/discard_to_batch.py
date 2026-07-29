@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass
 import os
 
 from ...batch.source.annotation import annotate_with_batch_source
 from ...batch.ownership import insertion_references as _insertion_references
+from ...batch.ownership.model import BatchOwnership
+from ...batch.state.metadata_types import BatchMetadataDict
 from ...batch.state.lifecycle import create_batch
 from ...batch.ownership_update import acquire_batch_ownership_update_for_selection
 from ...batch.state.query import read_batch_metadata
@@ -17,7 +19,14 @@ from ...batch.state.batch_names import batch_exists
 from ...core.buffer import LineBuffer
 from ...core.diff_parser import acquire_unified_diff, build_line_changes_from_patch_lines
 from ...core.hashing import compute_stable_hunk_hash_from_lines
-from ...core.models import BinaryFileChange, FileModeChange, GitlinkChange, RenameChange, TextFileDeletionChange
+from ...core.models import (
+    BinaryFileChange,
+    FileModeChange,
+    GitlinkChange,
+    LineEntry,
+    RenameChange,
+    TextFileDeletionChange,
+)
 from ...data.file_modes import detect_file_mode_from_root
 from ...data.file_tracking import auto_add_untracked_files
 from ...data.live_diff import stream_live_git_diff
@@ -61,7 +70,7 @@ class _TextFileDiscardInput:
     file_path: str
     file_mode: str
     comparison_base: str
-    all_lines_to_batch: list
+    all_lines_to_batch: list[LineEntry]
     patches_to_discard: list[_PreparedPatchDiscard]
 
 
@@ -79,7 +88,7 @@ class _PreparedTextFileDiscardToBatch:
 
     file_path: str
     file_mode: str
-    ownership: object
+    ownership: BatchOwnership
     batch_source_commit: str | None
     patches_to_discard: list[_PreparedPatchDiscard]
 
@@ -95,7 +104,7 @@ class DiscardFilesToBatchResult:
 class _DiscardFilesToBatchSession:
     """Mutable publication state for one multi-file discard-to-batch action."""
 
-    def __init__(self, batch_name: str, metadata: dict) -> None:
+    def __init__(self, batch_name: str, metadata: BatchMetadataDict) -> None:
         self._batch_name = batch_name
         self._metadata = metadata
         self._ownership_stack = ExitStack()
@@ -168,7 +177,7 @@ def _prepare_text_file_discard_to_batch(
     batch_name: str,
     discard_input: _TextFileDiscardInput,
     *,
-    metadata: dict,
+    metadata: BatchMetadataDict,
     ownership_stack: ExitStack,
 ) -> _PreparedTextFileDiscardToBatch | None:
     """Prepare one normal text file discard without publishing batch state."""
@@ -299,7 +308,7 @@ def _run_reverse_apply_for_prepared_discards(
     *,
     check_only: bool = False,
 ) -> None:
-    def patch_chunks():
+    def patch_chunks() -> Iterator[bytes]:
         for prepared in prepared_discards:
             for patch in prepared.patches_to_discard:
                 yield from patch.patch_lines

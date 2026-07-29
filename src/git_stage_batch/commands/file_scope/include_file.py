@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from contextlib import contextmanager, nullcontext
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 import sys
 from typing import Iterator
 
@@ -91,6 +91,9 @@ def include_file_changes(
     else:
         target_file = file
 
+    checkpoint: AbstractContextManager[None]
+    patch_context: AbstractContextManager[Iterator[UnifiedDiffItem]]
+    rollback_context: AbstractContextManager[None]
     if _prepared_changes is None:
         auto_add_untracked_files([target_file])
         checkpoint_paths = checkpoint_paths_for_live_file(target_file)

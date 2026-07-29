@@ -25,3 +25,11 @@ def resolve_replacement_text(args: argparse.Namespace) -> ReplacementText | None
     if as_text is not None:
         return ReplacementText(as_text, exact=True)
     return None
+
+
+def require_replacement_text(args: argparse.Namespace) -> ReplacementText:
+    """Return requested replacement text or reject an inconsistent dispatch."""
+    replacement_text = resolve_replacement_text(args)
+    if replacement_text is None:
+        raise CommandError(_("Replacement text was not provided."))
+    return replacement_text

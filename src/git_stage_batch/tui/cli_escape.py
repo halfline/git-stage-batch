@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from collections.abc import Callable
 import os
 import shlex
@@ -26,7 +27,7 @@ _READ_ONLY_COMMANDS = frozenset(
 )
 
 
-def _execute_embedded_args(args) -> None:
+def _execute_embedded_args(args: argparse.Namespace) -> None:
     """Apply normal cwd and target-repository locking for one TUI command."""
     original_cwd = os.getcwd()
     try:

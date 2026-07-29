@@ -353,6 +353,9 @@ exact-coordinate responsibilities:
 - [`batch/merge/baseline_replacement_edits.py`](src/git_stage_batch/batch/merge/baseline_replacement_edits.py)
   plans replacement edits at verified baseline positions and records which
   source ranges supply their new content.
+- [`batch/merge/baseline_removal_edits.py`](src/git_stage_batch/batch/merge/baseline_removal_edits.py)
+  plans removals that are not part of replacement units and detects when
+  claimed content is already absent.
 - [`batch/merge/baseline_presence_edits.py`](src/git_stage_batch/batch/merge/baseline_presence_edits.py)
   plans insertions for required source lines at recorded baseline positions
   and checks that structurally matched lines survive other planned edits.

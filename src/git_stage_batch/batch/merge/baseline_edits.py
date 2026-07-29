@@ -1,4 +1,4 @@
-"""Baseline-coordinate edit fallback for batch merge."""
+"""Coordinate-based edit planning and streaming for batch merge."""
 
 from __future__ import annotations
 
@@ -78,13 +78,19 @@ def try_apply_baseline_coordinate_edits(
     trust_baseline_coordinates: bool = False,
     spool_dir: str | Path | None = None,
 ) -> Iterator[bytes] | None:
-    """Apply baseline-coordinate edits when structural source anchors fail.
+    """Return content edited at recorded baseline coordinates, if safe.
 
-    This is a conservative fallback for same-source round trips where the batch
-    source is the post-change file and the target is still the pre-change
-    baseline/index. In that shape, source anchors can legitimately be absent
-    even though the old baseline bytes still exist at an exact recorded
-    coordinate.
+    Combine replacement, removal, and insertion plans at positions saved from
+    the batch baseline. By default, keep required source lines that are already
+    present and reject coordinates whose saved boundary identifies more than
+    one live-target location. Setting ``trust_baseline_coordinates`` makes the
+    recorded positions authoritative. It skips live-target uniqueness and
+    already-present insertion checks while retaining boundary, removal-content,
+    and plan-consistency checks.
+
+    Return ``None`` if any selected edit cannot be planned safely. A plan that
+    changes content returns a lazy stream that owns its planning workspace until
+    the stream is exhausted or closed.
     """
     if _selection_outside_bounds(presence_line_set, len(source_lines)):
         return None

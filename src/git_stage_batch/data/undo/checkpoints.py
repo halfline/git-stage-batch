@@ -505,7 +505,7 @@ def undo_last_checkpoint(*, force: bool = False) -> str:
     manifest = _undo_restore.read_json_from_commit(checkpoint, "manifest.json")
     validate_recovery_state(manifest)
     after = manifest.get("after")
-    if isinstance(after, dict):
+    if after is not None:
         validate_recovery_state(after)
     conflicts = _undo_state.detect_undo_conflicts(manifest)
     if conflicts and not force:

@@ -8,9 +8,7 @@ from typing import TYPE_CHECKING
 
 from ...core.line_selection import LineSelection, coerce_line_ranges
 from ...core.mapped_storage import MappedRecordVector
-from ...core.text_lines import normalize_line_sequence_endings
 from .baseline_anchor_matching import (
-    baseline_removal_edit as _baseline_removal_edit,
     live_coordinate_edits_are_safe as _live_coordinate_edits_are_safe,
 )
 from .baseline_edit_plan import (
@@ -19,6 +17,10 @@ from .baseline_edit_plan import (
 )
 from .baseline_presence_edits import (
     plan_presence_insertions as _plan_presence_insertions,
+)
+from .baseline_removal_edits import (
+    all_deletions_are_already_absent as _all_deletions_are_already_absent,
+    plan_independent_removal_edits as _plan_independent_removal_edits,
 )
 from .baseline_replacement_edits import (
     plan_replacement_unit_edits as _plan_replacement_unit_edits,
@@ -31,7 +33,6 @@ from .baseline_replacement_ranges import (
 )
 from ..line_matching.sequence_equality import (
     line_sequences_equal as _line_sequences_match,
-    line_slice_equals as _line_slice_matches,
 )
 from ..line_matching.line_mapping import LineMapping
 from ..line_matching.match_workspace import MatcherWorkspace
@@ -50,33 +51,6 @@ def _selection_outside_bounds(lines: LineSelection, max_line: int) -> bool:
         if line < 1 or line > max_line:
             return True
     return False
-
-
-def _plan_independent_removal_edits(
-    plan: _BaselineEditPlan,
-    working_lines: Sequence[bytes],
-    deletion_claims: Sequence[AbsenceClaim],
-    deletion_edit_bounds: MappedRecordVector,
-) -> bool:
-    """Plan removals not already coupled to replacement units."""
-    for deletion_index, claim in enumerate(deletion_claims):
-        if deletion_edit_bounds[deletion_index][0]:
-            continue
-
-        removal_edit = _baseline_removal_edit(claim, working_lines)
-        if removal_edit is None:
-            return False
-
-        start, end = removal_edit
-        plan.add_removal(start, end)
-        deletion_edit_bounds[deletion_index] = (
-            1,
-            start,
-            end,
-            0,
-        )
-
-    return True
 
 
 def _has_complete_baseline_references(
@@ -125,45 +99,6 @@ def has_recorded_baseline_coordinates(
         if origin_reference is not None and origin_reference.has_after_line:
             return True
     return False
-
-
-def _all_deletions_are_already_absent(
-    deletion_claims: Sequence[AbsenceClaim],
-    working_lines: Sequence[bytes],
-) -> bool:
-    """Return whether baseline and source anchors prove removals satisfied."""
-    for claim in deletion_claims:
-        if not claim.content_lines:
-            continue
-        if _baseline_removal_edit(claim, working_lines) is not None:
-            return False
-
-        forbidden_sequence = normalize_line_sequence_endings(
-            claim.content_lines
-        )
-        if len(forbidden_sequence) > len(working_lines):
-            continue
-
-        anchor_line = claim.anchor_line
-        if anchor_line is None:
-            source_position = 0
-        elif (
-            type(anchor_line) is not int
-            or anchor_line < 1
-            or anchor_line > len(working_lines)
-        ):
-            return False
-        else:
-            source_position = anchor_line
-
-        if _line_slice_matches(
-            working_lines,
-            source_position,
-            forbidden_sequence,
-        ):
-            return False
-
-    return True
 
 
 def try_apply_baseline_replacement_units(

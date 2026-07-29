@@ -31,8 +31,18 @@ PROJECT_FILE_MODE = 0o644
 _PATH_LIST_MAGIC = b"\0git-stage-batch-path-list-v1\0"
 
 
+def read_required_text_file_contents(path: Path) -> str:
+    """Read a required file's text contents with UTF-8 encoding.
+
+    Unlike :func:`read_text_file_contents`, absence is not treated as empty
+    content. Callers that require durable state can therefore distinguish a
+    missing file from a present, zero-length file.
+    """
+    return path.read_text(encoding="utf-8", errors="surrogateescape")
+
+
 def read_text_file_contents(path: Path) -> str:
-    """Read a file's text contents with UTF-8 encoding.
+    """Read an optional file's text contents with UTF-8 encoding.
 
     Args:
         path: Path to the file to read
@@ -40,11 +50,10 @@ def read_text_file_contents(path: Path) -> str:
     Returns:
         File contents as string, or empty string if file doesn't exist
     """
-    return (
-        path.read_text(encoding="utf-8", errors="surrogateescape")
-        if path.exists()
-        else ""
-    )
+    try:
+        return read_required_text_file_contents(path)
+    except FileNotFoundError:
+        return ""
 
 
 def write_text_file_contents(

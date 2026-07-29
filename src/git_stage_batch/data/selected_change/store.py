@@ -203,8 +203,11 @@ def write_selected_change_kind(kind: SelectedChangeKind) -> None:
 def invalidate_selected_change_cache() -> None:
     """Durably hide the old cache before replacing its component files."""
     kind_path = get_selected_change_kind_file_path()
+    selected_directory = kind_path.parent
+    if not selected_directory.exists():
+        return
     kind_path.unlink(missing_ok=True)
-    fsync_directory(kind_path.parent)
+    fsync_directory(selected_directory)
 
 
 def read_selected_change_kind() -> SelectedChangeKind | None:

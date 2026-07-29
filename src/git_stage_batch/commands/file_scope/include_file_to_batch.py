@@ -18,6 +18,7 @@ from ...core.models import (
     FileModeChange,
     SingleHunkPatch,
 )
+from ...utils.context_lines import get_context_lines
 from ...data.file_change_display import (
     render_binary_file_change,
     render_gitlink_change,
@@ -30,7 +31,6 @@ from ...utils.session_start_point import session_comparison_base
 from ...data.session import snapshot_file_if_untracked
 from ...exceptions import exit_with_error
 from ...i18n import _
-from ...utils.paths import get_context_lines
 from ...utils.repository_buffers import read_git_object_buffer_or_empty
 from ..selection import whole_file_batch_staging as _whole_file_batch_staging
 from ..selection.action_completion import finish_selected_change_action

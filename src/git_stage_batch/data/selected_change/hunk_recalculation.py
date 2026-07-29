@@ -27,11 +27,11 @@ from ...core.models import (
 from ...utils.file_io import read_text_file_line_set
 from ...utils.paths import (
     get_block_list_file_path,
-    get_context_lines,
     get_processed_include_ids_file_path,
     get_processed_skip_ids_file_path,
 )
 from ..auto_advance import resolve_auto_advance
+from ...utils.context_lines import get_context_lines
 from ..line_id_files import write_line_ids_file
 from .. import change_freshness as _change_freshness
 from .. import line_state as _line_state

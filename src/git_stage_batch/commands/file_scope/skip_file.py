@@ -26,6 +26,7 @@ from ...core.models import (
     RenameChange,
     TextFileDeletionChange,
 )
+from ...utils.context_lines import get_context_lines
 from ...data.file_tracking import auto_add_untracked_files
 from ...data.live_diff import stream_live_git_diff
 from ...data.progress import (
@@ -40,7 +41,7 @@ from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.undo.checkpoints import undo_checkpoint
 from ...i18n import _, ngettext
 from ...utils.file_io import append_lines_to_file, read_text_file_line_set
-from ...utils.paths import get_block_list_file_path, get_context_lines
+from ...utils.paths import get_block_list_file_path
 from ..selection.action_completion import finish_selected_change_action
 
 

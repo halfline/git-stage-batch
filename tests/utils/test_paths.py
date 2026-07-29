@@ -27,14 +27,15 @@ from git_stage_batch.utils.paths import get_processed_batch_ids_file_path
 from git_stage_batch.utils.paths import get_batched_hunks_file_path
 from git_stage_batch.utils.paths import get_start_batch_refs_file_path
 
+import inspect
 import subprocess
 from pathlib import Path
 
 import pytest
 
+from git_stage_batch.utils import paths as path_utils
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,
-    get_context_lines,
     get_context_lines_file_path,
     get_state_directory_path,
 )
@@ -57,6 +58,97 @@ def temp_git_repo(tmp_path, monkeypatch):
     subprocess.run(["git", "commit", "-m", "Initial commit"], check=True, cwd=repo, capture_output=True)
 
     return repo
+
+
+_PATH_GETTERS = [
+    (name, getter)
+    for name, getter in vars(path_utils).items()
+    if (
+        inspect.isfunction(getter)
+        and getter.__module__ == path_utils.__name__
+        and name.startswith("get_")
+        and name.endswith("_path")
+    )
+]
+
+
+@pytest.mark.parametrize(
+    ("name", "getter"),
+    _PATH_GETTERS,
+    ids=[name for name, _getter in _PATH_GETTERS],
+)
+def test_path_getters_do_not_create_state(temp_git_repo, name, getter):
+    """Constructing any state path must not create repository directories."""
+    required_parameters = [
+        parameter
+        for parameter in inspect.signature(getter).parameters.values()
+        if parameter.default is inspect.Parameter.empty
+    ]
+    arguments = ["example-batch"] if required_parameters else []
+
+    result = getter(*arguments)
+
+    assert isinstance(result, Path), name
+    assert not (temp_git_repo / ".git" / "git-stage-batch").exists(), name
+
+
+@pytest.mark.parametrize(
+    ("ensure_directory", "get_directory"),
+    [
+        (
+            path_utils.ensure_state_directory_exists,
+            path_utils.get_state_directory_path,
+        ),
+        (
+            path_utils.ensure_session_directory_exists,
+            path_utils.get_session_directory_path,
+        ),
+        (
+            path_utils.ensure_selected_state_directory_exists,
+            path_utils.get_selected_state_directory_path,
+        ),
+        (
+            path_utils.ensure_progress_state_directory_exists,
+            path_utils.get_progress_state_directory_path,
+        ),
+        (
+            path_utils.ensure_processed_state_directory_exists,
+            path_utils.get_processed_state_directory_path,
+        ),
+        (
+            path_utils.ensure_config_state_directory_exists,
+            path_utils.get_config_state_directory_path,
+        ),
+        (
+            path_utils.ensure_abort_state_directory_exists,
+            path_utils.get_abort_state_directory_path,
+        ),
+        (
+            path_utils.ensure_abort_snapshots_directory_exists,
+            path_utils.get_abort_snapshots_directory_path,
+        ),
+        (
+            path_utils.ensure_fixup_state_directory_exists,
+            path_utils.get_fixup_state_directory_path,
+        ),
+        (
+            path_utils.ensure_candidate_state_directory_exists,
+            path_utils.get_candidate_state_directory_path,
+        ),
+    ],
+)
+def test_explicit_directory_ensure_creates_requested_path(
+    temp_git_repo,
+    ensure_directory,
+    get_directory,
+):
+    """Explicit ensure helpers should create their selected directory."""
+    expected_directory = get_directory()
+    assert not expected_directory.exists()
+
+    ensure_directory()
+
+    assert expected_directory.is_dir()
 
 
 class TestGetStateDirectoryPath:
@@ -191,29 +283,6 @@ class TestLineLevelOperationPaths:
         lock_path = get_session_lock_file_path()
         state_dir = get_state_directory_path()
         assert lock_path == state_dir / "session.lock"
-
-
-class TestGetContextLines:
-    """Tests for get_context_lines function."""
-
-    def test_get_context_lines_default(self, temp_git_repo):
-        """Test that get_context_lines returns 3 when file doesn't exist."""
-        ensure_state_directory_exists()
-        assert get_context_lines() == 3
-
-    def test_get_context_lines_reads_file(self, temp_git_repo):
-        """Test that get_context_lines reads value from file."""
-        ensure_state_directory_exists()
-        context_file = get_context_lines_file_path()
-        context_file.write_text("5\n")
-        assert get_context_lines() == 5
-
-    def test_get_context_lines_invalid_content(self, temp_git_repo):
-        """Test that get_context_lines returns 3 for invalid content."""
-        ensure_state_directory_exists()
-        context_file = get_context_lines_file_path()
-        context_file.write_text("not-a-number\n")
-        assert get_context_lines() == 3
 
 
 class TestGetContextLinesFilePath:

@@ -20,6 +20,7 @@ from ...core.diff_parser import acquire_unified_diff, build_line_changes_from_pa
 from ...core.hashing import compute_stable_hunk_hash_from_lines
 from ...core.models import BinaryFileChange, FileModeChange, GitlinkChange, RenameChange, TextFileDeletionChange
 from ...core.text_lifecycle import TextFileChangeType
+from ...utils.context_lines import get_context_lines
 from ...data.file_change_display import (
     render_binary_file_change,
     render_gitlink_change,
@@ -40,7 +41,7 @@ from ...utils.git_worktree import (
 )
 from ...utils.git_repository import get_git_repository_root_path
 from ...utils.journal import log_journal
-from ...utils.paths import get_block_list_file_path, get_context_lines
+from ...utils.paths import get_block_list_file_path
 from ...utils.repository_buffers import read_git_object_buffer_or_empty
 from ...utils.session_start_point import session_comparison_base
 from ..selection.action_completion import finish_selected_change_action

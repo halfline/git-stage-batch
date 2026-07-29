@@ -28,8 +28,8 @@ from ..utils.repository_buffers import read_git_object_buffer_or_none
 from ..i18n import ngettext
 from ..utils.git_command import stream_git_command
 from ..git_paths import encode_path, quote_path_token
-from ..utils.paths import get_context_lines
 from ..core.text_lines import bytes_to_lines
+from ..utils.context_lines import get_context_lines
 from .file_tracking import auto_add_untracked_files
 from .live_diff import stream_live_git_diff
 from ..utils.session_start_point import session_comparison_base

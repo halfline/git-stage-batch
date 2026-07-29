@@ -11,6 +11,7 @@ from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...batch.submodule_pointer import is_batch_submodule_pointer
 from ...core.replacement import ReplacementPayload, coerce_replacement_payload
 from ...core.models import RenderedBatchDisplay
+from ...utils.context_lines import get_context_lines
 from ...data.file_review.batch_selection import (
     translate_batch_file_gutter_ids_to_selection_ids,
 )
@@ -19,7 +20,6 @@ from ...utils.repository_buffers import read_git_object_buffer_or_none
 from ...exceptions import exit_with_error
 from ...i18n import _
 from ...output.candidate_preview_diff import render_candidate_buffer_diff
-from ...utils.paths import get_context_lines
 
 
 SelectionTranslator = Callable[

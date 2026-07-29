@@ -30,6 +30,7 @@ from ..utils.git_repository import get_git_repository_root_path
 from ..utils.journal import journal_enabled, log_journal
 from .index_entries import IndexEntry, read_index_entries
 from ..utils.paths import (
+    ensure_abort_snapshots_directory_exists,
     get_abort_head_file_path,
     get_abort_snapshot_list_file_path,
     get_abort_snapshots_directory_path,
@@ -338,6 +339,7 @@ def _snapshot_worktree_paths_for_unborn_abort(file_paths: list[str]) -> None:
         source = repo_root / file_path
         if not os.path.lexists(source) or (source.is_dir() and not source.is_symlink()):
             continue
+        ensure_abort_snapshots_directory_exists()
         target = snapshot_dir / file_path
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target, follow_symlinks=False)
@@ -399,6 +401,7 @@ def snapshot_file_if_untracked(
     # Save a complete before-image for files and standalone repositories.
     snapshot_dir = get_abort_snapshots_directory_path()
     snapshot_path = snapshot_dir / file_path
+    ensure_abort_snapshots_directory_exists()
     snapshot_path.parent.mkdir(parents=True, exist_ok=True)
     if full_path.is_dir() and not full_path.is_symlink():
         shutil.copytree(full_path, snapshot_path, symlinks=True)
@@ -453,6 +456,7 @@ def snapshot_files_if_untracked(file_paths: list[str]) -> None:
         if not os.path.lexists(full_path):
             continue
         snapshot_path = snapshot_dir / file_path
+        ensure_abort_snapshots_directory_exists()
         snapshot_path.parent.mkdir(parents=True, exist_ok=True)
         if full_path.is_dir() and not full_path.is_symlink():
             shutil.copytree(full_path, snapshot_path, symlinks=True)

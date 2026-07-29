@@ -15,6 +15,7 @@ from git_stage_batch.data.selected_change.hunk_recalculation import (
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.utils.file_io import append_lines_to_file
 from git_stage_batch.utils.paths import (
+    ensure_processed_state_directory_exists,
     ensure_state_directory_exists,
     get_block_list_file_path,
     get_processed_include_ids_file_path,
@@ -124,6 +125,7 @@ class TestRecalculateCurrentHunkForFile:
 
         # Cache hunk and add some processed IDs
         fetch_next_change()
+        ensure_processed_state_directory_exists()
         get_processed_include_ids_file_path().write_text("1\n2\n")
 
         # Recalculate

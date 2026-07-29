@@ -98,7 +98,7 @@ def add_annotate_subcommand(subparsers) -> None:
     )
 
 
-def add_sift_subcommand(subparsers) -> None:
+def add_sift_subcommand(subparsers: Subparsers) -> None:
     """Register the sift subcommand."""
     parser_sift = add_subcommand_parser(
         subparsers,

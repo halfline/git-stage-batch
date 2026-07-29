@@ -20,7 +20,7 @@ from ...data.progress import (
     record_rename_hunk_skipped,
     record_text_deletion_hunk_skipped,
 )
-from ...data.selected_change.loading import load_selected_change
+from ...data.selected_change.loading import SelectedChange, load_selected_change
 from ...data.selected_change.paths import worktree_paths_for_selected_change
 from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import NoMoreHunks
@@ -60,7 +60,7 @@ def skip_selected_change(
 
 
 def _skip_loaded_selected_change(
-    item,
+    item: SelectedChange,
     *,
     quiet: bool,
     auto_advance: bool | None,

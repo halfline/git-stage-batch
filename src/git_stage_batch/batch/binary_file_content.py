@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-
 from ..core.buffer import LineBuffer
 from ..utils.repository_buffers import read_git_object_buffer_or_none
+from .state.metadata_types import BatchFileMetadataDict
 from .state.query import get_batch_commit_sha
 
 
 def read_binary_file_from_batch(
     batch_name: str,
     file_path: str,
-    file_meta: Mapping[str, object],
+    file_meta: BatchFileMetadataDict,
     *,
     missing_content_message: str | None = None,
 ) -> LineBuffer | None:

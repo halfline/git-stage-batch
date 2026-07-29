@@ -64,7 +64,7 @@ def add_again_subcommand(subparsers: Subparsers) -> None:
     )
 
 
-def add_stop_subcommand(subparsers) -> None:
+def add_stop_subcommand(subparsers: Subparsers) -> None:
     """Register the stop subcommand."""
     parser_stop = add_subcommand_parser(
         subparsers,

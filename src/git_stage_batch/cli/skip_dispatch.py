@@ -29,8 +29,10 @@ def dispatch_skip_command(args: argparse.Namespace) -> None:
                 auto_advance=args.auto_advance,
             )
         else:
+            resolved_file = resolved_file_scope.optional_file()
+            assert resolved_file is not None
             command_skip_file(
-                resolved_file_scope.optional_file(),
+                resolved_file,
                 auto_advance=args.auto_advance,
             )
     else:

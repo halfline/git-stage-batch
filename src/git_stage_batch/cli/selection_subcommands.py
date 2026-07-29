@@ -158,7 +158,7 @@ def add_include_subcommand(subparsers: Subparsers) -> None:
     parser_include.set_defaults(func=dispatch_include_command)
 
 
-def add_skip_subcommand(subparsers) -> None:
+def add_skip_subcommand(subparsers: Subparsers) -> None:
     """Register the skip subcommand."""
     parser_skip = add_subcommand_parser(
         subparsers,

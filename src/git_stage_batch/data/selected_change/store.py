@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from types import TracebackType
 
 from ...core.diff_parser import build_line_changes_from_patch_lines
 from ...core.models import (
@@ -64,7 +65,7 @@ class SelectedChangeStateSnapshot:
     """Temporary file copy of selected change state."""
 
     paths: dict[str, Path | None]
-    temporary_directory: tempfile.TemporaryDirectory
+    temporary_directory: tempfile.TemporaryDirectory[str]
 
     def close(self) -> None:
         self.temporary_directory.cleanup()
@@ -72,7 +73,12 @@ class SelectedChangeStateSnapshot:
     def __enter__(self) -> SelectedChangeStateSnapshot:
         return self
 
-    def __exit__(self, exc_type, exc, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()
 
 
@@ -111,7 +117,7 @@ def load_line_changes_from_patch_path(patch_path: Path) -> LineLevelChange:
         return build_line_changes_from_patch_lines(patch_lines)
 
 
-def _selected_change_state_paths():
+def _selected_change_state_paths() -> dict[str, Path]:
     """Return files that make up the cached selected change state."""
     return {
         "patch": get_selected_hunk_patch_file_path(),
@@ -134,7 +140,7 @@ def _selected_change_state_paths():
 
 def snapshot_selected_change_state() -> SelectedChangeStateSnapshot:
     """Capture the current selected change cache."""
-    temporary_directory = tempfile.TemporaryDirectory()
+    temporary_directory = tempfile.TemporaryDirectory[str]()
     snapshot_root = Path(temporary_directory.name)
     snapshot_paths: dict[str, Path | None] = {}
 

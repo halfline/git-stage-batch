@@ -4,11 +4,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from types import TracebackType
 from typing import Iterator
 
 from ..batch.state.query import list_batch_names, read_batch_metadata_for_batches
+from ..batch.state.metadata_types import BatchMetadataDict
 from ..batch.source.annotation import annotate_with_batch_source
-from ..core.diff_parser import acquire_unified_diff, build_line_changes_from_patch_lines
+from ..core.diff_parser import (
+    UnifiedDiffItem,
+    acquire_unified_diff,
+    build_line_changes_from_patch_lines,
+)
 from ..core.buffer import LineBuffer
 from ..core.hashing import (
     compute_binary_file_hash,
@@ -67,7 +73,7 @@ class EligibleLiveChange:
 
     change: LiveChange
     stable_hash: str
-    raw_patch: object
+    raw_patch: UnifiedDiffItem
 
     def close(self) -> None:
         """Close raw patch storage owned by this prepared candidate."""
@@ -80,7 +86,12 @@ class EligibleLiveChange:
     def __enter__(self) -> EligibleLiveChange:
         return self
 
-    def __exit__(self, exc_type, exc, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()
 
 
@@ -90,14 +101,16 @@ class LiveChangeScanContext:
     def __init__(
         self,
         *,
-        batch_metadata_by_name: dict[str, dict] | None = None,
+        batch_metadata_by_name: dict[str, BatchMetadataDict] | None = None,
     ) -> None:
         self.blocked_paths = read_file_paths_file(get_blocked_files_file_path())
         self.blocked_hashes = read_text_file_line_set(get_block_list_file_path())
         self._metadata_by_name = batch_metadata_by_name
-        self._metadata_by_path: dict[str, dict[str, dict]] | None = None
+        self._metadata_by_path: (
+            dict[str, dict[str, BatchMetadataDict]] | None
+        ) = None
 
-    def metadata_by_name(self) -> dict[str, dict]:
+    def metadata_by_name(self) -> dict[str, BatchMetadataDict]:
         """Return the complete batch metadata snapshot for this scan."""
         if self._metadata_by_name is None:
             self._metadata_by_name = read_batch_metadata_for_batches(
@@ -105,7 +118,10 @@ class LiveChangeScanContext:
             )
         return self._metadata_by_name
 
-    def metadata_for_path(self, file_path: str) -> dict[str, dict]:
+    def metadata_for_path(
+        self,
+        file_path: str,
+    ) -> dict[str, BatchMetadataDict]:
         if self._metadata_by_path is None:
             self._metadata_by_path = {}
             for batch_name, metadata in self.metadata_by_name().items():
@@ -114,17 +130,17 @@ class LiveChangeScanContext:
         return self._metadata_by_path.get(file_path, {})
 
 
-def live_change_paths(item: object) -> tuple[str, ...]:
+def live_change_paths(item: UnifiedDiffItem) -> tuple[str, ...]:
     """Return every repository path covered by one parsed live change."""
     if isinstance(item, RenameChange):
         return item.old_path, item.new_path
     if isinstance(item, SingleHunkPatch) and item.old_path != item.new_path:
         return item.old_path, item.new_path
-    return (item.path(),)  # type: ignore[attr-defined]
+    return (item.path(),)
 
 
 def blocked_live_change_reason(
-    item: object,
+    item: UnifiedDiffItem,
     stable_hash: str,
     context: LiveChangeScanContext,
 ) -> SkipReason | None:
@@ -189,7 +205,7 @@ def prepare_atomic_live_change(
 
 
 def prepare_live_change(
-    item: object,
+    item: UnifiedDiffItem,
     context: LiveChangeScanContext,
 ) -> tuple[EligibleLiveChange | None, SkipReason | None]:
     """Apply the common blocked/batched policy to one parsed diff item."""

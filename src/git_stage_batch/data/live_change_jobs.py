@@ -7,7 +7,7 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 import json
 from pathlib import Path
-from typing import Any, TextIO
+from typing import TextIO, TypedDict, cast
 
 from ..batch.attribution import (
     AttributionMetrics,
@@ -19,6 +19,7 @@ from ..batch.source.annotation import (
 )
 from ..batch.source.cache import load_session_batch_sources
 from ..batch.state.query import list_batch_names, read_batch_metadata_for_batches
+from ..batch.state.metadata_types import BatchFileMetadataDict, BatchMetadataDict
 from ..batch.state.reference_names import format_batch_state_ref_name
 from ..core.buffer import LineBuffer
 from ..core.diff_parser import (
@@ -127,6 +128,29 @@ class LiveChangeCountPlan:
     jobs: tuple[OrderedFileJob[LiveTextFileJob], ...]
     atomic_count: int
     repository_root: Path
+
+
+class _LiveInputManifest(TypedDict):
+    """Artifact manifest consumed by one live text-file worker."""
+
+    file_path: str
+    baseline_path: str
+    head_commit: str | None
+    batch_source_commit: str | None
+    batch_metadata_by_name: dict[str, BatchMetadataDict]
+    consumed_file_metadata: BatchFileMetadataDict | None
+    batch_state_commit_by_name: dict[str, str]
+    scratch_directory: str
+
+
+class _LiveHunkRecord(TypedDict):
+    """One patch artifact row in a live text-file job."""
+
+    ordinal: int
+    old_path: str
+    new_path: str
+    stable_hash: str
+    patch_artifact_path: str
 
 
 def capture_worktree_stat_identity(
@@ -415,8 +439,8 @@ class _LiveTextFileGroup:
         repository_root: Path,
         head_commit: str | None,
         batch_source_commit: str | None,
-        batch_metadata_by_name: dict[str, dict],
-        consumed_file_metadata: dict | None,
+        batch_metadata_by_name: dict[str, BatchMetadataDict],
+        consumed_file_metadata: BatchFileMetadataDict | None,
         batch_state_commit_by_name: dict[str, str],
     ) -> None:
         self.workspace = workspace
@@ -471,7 +495,7 @@ class _LiveTextFileGroup:
             item.lines,
         )
         self._patch_artifact_bytes += patch_path.stat().st_size
-        record = {
+        record: _LiveHunkRecord = {
             "ordinal": ordinal,
             "old_path": item.old_path,
             "new_path": item.new_path,
@@ -555,9 +579,9 @@ def _batch_state_commit_snapshot(
 
 
 def _file_batch_metadata(
-    batch_metadata_by_name: Mapping[str, dict],
+    batch_metadata_by_name: Mapping[str, BatchMetadataDict],
     file_path: str,
-) -> dict[str, dict]:
+) -> dict[str, BatchMetadataDict]:
     return {
         batch_name: {
             "files": {
@@ -569,7 +593,7 @@ def _file_batch_metadata(
 
 
 def _acquire_baseline_lines(
-    input_manifest: Mapping[str, Any],
+    input_manifest: _LiveInputManifest,
     *,
     spool_dir: Path,
 ) -> tuple[LineBuffer, bool]:
@@ -608,7 +632,7 @@ def _captured_empty_lifecycle_is_batched(
     file_path: str,
     *,
     change_type: TextFileChangeType | None,
-    batch_metadata_by_name: Mapping[str, dict],
+    batch_metadata_by_name: Mapping[str, BatchMetadataDict],
 ) -> bool:
     if change_type is None:
         return False
@@ -625,7 +649,7 @@ def _write_json_artifact(
     workspace: FileJobWorkspace,
     ordinal: int,
     name: str,
-    value: Any,
+    value: object,
 ) -> Path:
     path = workspace.artifact_path(ordinal, name)
     with path.open("x", encoding="utf-8") as output:
@@ -639,15 +663,114 @@ def _write_json_artifact(
     return path
 
 
-def _read_json_manifest(path: str) -> dict[str, Any]:
+def _required_manifest_string(
+    values: dict[str, object],
+    key: str,
+) -> str:
+    value = values.get(key)
+    if not isinstance(value, str):
+        raise ValueError(f"live-change manifest field {key!r} must be a string")
+    return value
+
+
+def _optional_manifest_string(
+    values: dict[str, object],
+    key: str,
+) -> str | None:
+    value = values.get(key)
+    if value is not None and not isinstance(value, str):
+        raise ValueError(
+            f"live-change manifest field {key!r} must be a string or null"
+        )
+    return value
+
+
+def _read_json_manifest(path: str) -> _LiveInputManifest:
     with Path(path).open(encoding="utf-8") as source:
-        return json.load(source)
+        value: object = json.load(source)
+    if not isinstance(value, dict) or not all(
+        isinstance(key, str) for key in value
+    ):
+        raise ValueError("live-change manifest must be a JSON object")
+    values = cast(dict[str, object], value)
+    batch_metadata = values.get("batch_metadata_by_name")
+    if not isinstance(batch_metadata, dict) or not all(
+        isinstance(key, str) and isinstance(metadata, dict)
+        for key, metadata in batch_metadata.items()
+    ):
+        raise ValueError(
+            "live-change manifest field 'batch_metadata_by_name' "
+            "must be an object of metadata objects"
+        )
+    consumed_metadata = values.get("consumed_file_metadata")
+    if consumed_metadata is not None and not isinstance(
+        consumed_metadata,
+        dict,
+    ):
+        raise ValueError(
+            "live-change manifest field 'consumed_file_metadata' "
+            "must be an object or null"
+        )
+    state_commits = values.get("batch_state_commit_by_name")
+    if not isinstance(state_commits, dict) or not all(
+        isinstance(key, str) and isinstance(commit, str)
+        for key, commit in state_commits.items()
+    ):
+        raise ValueError(
+            "live-change manifest field 'batch_state_commit_by_name' "
+            "must map names to object IDs"
+        )
+    return {
+        "file_path": _required_manifest_string(values, "file_path"),
+        "baseline_path": _required_manifest_string(values, "baseline_path"),
+        "head_commit": _optional_manifest_string(values, "head_commit"),
+        "batch_source_commit": _optional_manifest_string(
+            values,
+            "batch_source_commit",
+        ),
+        "batch_metadata_by_name": cast(
+            dict[str, BatchMetadataDict],
+            batch_metadata,
+        ),
+        "consumed_file_metadata": cast(
+            BatchFileMetadataDict | None,
+            consumed_metadata,
+        ),
+        "batch_state_commit_by_name": cast(dict[str, str], state_commits),
+        "scratch_directory": _required_manifest_string(
+            values,
+            "scratch_directory",
+        ),
+    }
 
 
-def _stream_hunk_manifest(path: str) -> Iterator[dict[str, Any]]:
+def _stream_hunk_manifest(path: str) -> Iterator[_LiveHunkRecord]:
     with Path(path).open(encoding="utf-8") as source:
         for line in source:
-            yield json.loads(line)
+            value: object = json.loads(line)
+            if not isinstance(value, dict) or not all(
+                isinstance(key, str) for key in value
+            ):
+                raise ValueError("hunk manifest entry must be a JSON object")
+            values = cast(dict[str, object], value)
+            ordinal = values.get("ordinal")
+            if type(ordinal) is not int:
+                raise ValueError(
+                    "hunk manifest field 'ordinal' must be an integer"
+                )
+            yield {
+                "ordinal": ordinal,
+                "old_path": _required_manifest_string(values, "old_path"),
+                "new_path": _required_manifest_string(values, "new_path"),
+                "stable_hash": _required_manifest_string(
+                    values,
+                    "stable_hash",
+                ),
+                "patch_artifact_path": _required_manifest_string(
+                    values,
+                    "patch_artifact_path",
+                ),
+            }
 
 
 def _stale_result(

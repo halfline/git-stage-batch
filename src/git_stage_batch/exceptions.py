@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, NoReturn
 
 
 class CommandError(Exception):
     """Raised when a command fails and needs to exit with an error code."""
 
-    def __init__(self, message: str, exit_code: int = 1):
+    def __init__(self, message: str, exit_code: int = 1) -> None:
         self.message = message
         self.exit_code = exit_code
         super().__init__(message)
@@ -40,7 +40,7 @@ class GitOperationFailed(RepositoryReadError):
     """Raised when Git fails while reading repository state."""
 
 
-def exit_with_error(message: str, exit_code: int = 1) -> None:
+def exit_with_error(message: str, exit_code: int = 1) -> NoReturn:
     """Raise a CommandError instead of exiting directly."""
     raise CommandError(message, exit_code)
 
@@ -141,7 +141,7 @@ class AtomicUnitError(MergeError):
         message: str,
         required_selection_ids: Iterable[int] | None = None,
         unit_kind: str | None = None,
-    ):
+    ) -> None:
         super().__init__(message)
         self.required_selection_ids = required_selection_ids
         self.unit_kind = unit_kind

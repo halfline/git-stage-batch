@@ -6,6 +6,7 @@ from collections.abc import Iterable, Mapping
 from typing import Optional
 
 from .reference_names import BATCH_CONTENT_REF_PREFIX, LEGACY_BATCH_REF_PREFIX
+from .metadata_types import BatchMetadataDict
 from .references import (
     get_authoritative_batch_commit_sha,
     get_legacy_batch_ref_name,
@@ -20,7 +21,7 @@ from ...utils.git_command import run_git_command
 from ...git_paths import decode_path, nul_records
 
 
-def read_batch_metadata(name: str) -> dict:
+def read_batch_metadata(name: str) -> BatchMetadataDict:
     """Read metadata for a batch.
 
     Returns metadata with structure:
@@ -53,7 +54,7 @@ def read_batch_metadata_for_batches(
     batch_names: Iterable[str],
     *,
     batch_state_commit_by_name: Mapping[str, str] | None = None,
-) -> dict[str, dict]:
+) -> dict[str, BatchMetadataDict]:
     """Read metadata for many batches with one bulk state lookup pass."""
     unique_batch_names = list(dict.fromkeys(batch_names))
     if not unique_batch_names:
@@ -75,7 +76,7 @@ def read_batch_metadata_for_batches(
     return metadata_by_name
 
 
-def _empty_batch_metadata() -> dict:
+def _empty_batch_metadata() -> BatchMetadataDict:
     return {
         "note": "",
         "created_at": "",
@@ -84,7 +85,9 @@ def _empty_batch_metadata() -> dict:
     }
 
 
-def _read_file_backed_batch_metadata_or_empty(name: str) -> dict:
+def _read_file_backed_batch_metadata_or_empty(
+    name: str,
+) -> BatchMetadataDict:
     model = read_file_backed_batch_metadata_model(name)
     if model is None:
         return _empty_batch_metadata()

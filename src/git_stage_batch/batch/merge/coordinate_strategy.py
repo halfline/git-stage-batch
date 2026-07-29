@@ -1,4 +1,4 @@
-"""Resolution values for coordinate-versus-structural merge ambiguity."""
+"""Recorded-coordinate availability and merge-strategy choices."""
 
 from __future__ import annotations
 

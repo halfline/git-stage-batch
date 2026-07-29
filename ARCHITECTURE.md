@@ -327,9 +327,19 @@ implementation until its caller is removed:
 Each kind of persisted session record has one data module that reads and writes
 it. Use this sequence when adding or changing a record:
 
-1. Add the path in [`utils/paths.py`](src/git_stage_batch/utils/paths.py).
+Path construction under
+[`utils/paths.py`](src/git_stage_batch/utils/paths.py) is side-effect free.
+Calling a `get_*_path()` function must not create repository state. Generic
+file writers create their parent immediately before writing; code that writes
+directories directly uses the matching `ensure_*_directory_exists()` helper at
+that write boundary. Readers never ensure directories merely to inspect a
+path.
+
+1. Add the pure path in
+   [`utils/paths.py`](src/git_stage_batch/utils/paths.py).
 2. Add serialization and validation in the module under `data/` that owns the
-   record.
+   record. Add an explicit directory ensure only when the storage operation
+   cannot use the generic file writer.
 3. Decide when the record is created, refreshed, and cleared. Selected-change
    files are enumerated by
    [`data/selected_change/store.py`](src/git_stage_batch/data/selected_change/store.py)

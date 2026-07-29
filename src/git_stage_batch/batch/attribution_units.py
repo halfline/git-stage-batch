@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from types import TracebackType
 
 from . import attribution_fingerprints as _attribution_fingerprints
 from .line_matching.line_mapping import LineMapping
@@ -57,7 +58,12 @@ class FileComparison:
     def __enter__(self) -> FileComparison:
         return self
 
-    def __exit__(self, exc_type, exc, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()
 
 
@@ -83,7 +89,9 @@ def make_attribution_unit_id(
             return fingerprint.sha1[:8]
         if content is None or not content:
             return "none"
-        return _attribution_fingerprints.fingerprint_bytes(content).sha1[:8]
+        content_fingerprint = _attribution_fingerprints.fingerprint_bytes(content)
+        assert content_fingerprint is not None
+        return content_fingerprint.sha1[:8]
 
     if kind == AttributionUnitKind.PRESENCE_ONLY:
         line_str = str(claimed_line) if claimed_line is not None else "missing"

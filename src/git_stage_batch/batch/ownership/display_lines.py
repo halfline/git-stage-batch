@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Literal, TypeVar, TypedDict
 
 from ...i18n import ngettext
 
@@ -15,6 +15,17 @@ if TYPE_CHECKING:
 LineForDisplay = TypeVar("LineForDisplay", bytes, str)
 
 
+class OwnershipDisplayLine(TypedDict, total=False):
+    """One rendered ownership line and its selection coordinates."""
+
+    id: int | None
+    type: Literal["claimed", "context", "deletion", "gap"]
+    source_line: int
+    deletion_index: int
+    omitted_line_count: int
+    content: str
+
+
 def _decode_display_line(line: bytes) -> str:
     return line.decode("utf-8", errors="replace")
 
@@ -23,7 +34,7 @@ def build_display_lines_from_batch_source_lines(
     source_lines: Sequence[bytes],
     ownership: 'BatchOwnership',
     context_lines: int | None = None,
-) -> list[dict]:
+) -> list[OwnershipDisplayLine]:
     """Build display representation from indexed batch-source lines."""
     return _build_display_lines_from_batch_source_lines(
         source_lines,
@@ -39,13 +50,13 @@ def _build_display_lines_from_batch_source_lines(
     context_lines: int | None,
     *,
     source_line_to_text: Callable[[LineForDisplay], str],
-) -> list[dict]:
+) -> list[OwnershipDisplayLine]:
     """Build display representation from indexed batch-source lines."""
     if context_lines is None:
         context_lines = 0
     claimed_set = ownership.presence_line_set()
 
-    display_lines = []
+    display_lines: list[OwnershipDisplayLine] = []
     display_id = 1
 
     # Build map of absence claim positions

@@ -14,6 +14,8 @@ from ..core.models import (
     ReviewActionGroup,
 )
 from .ownership.unit_types import OwnershipUnit
+from .ownership.display_lines import OwnershipDisplayLine
+from .state.metadata_types import BatchFileMetadataDict
 
 
 _BATCH_MERGE_REVIEW_ACTIONS = (
@@ -27,8 +29,8 @@ _BATCH_RESET_REVIEW_ACTION = "reset-from-batch"
 def build_rendered_batch_display_model(
     *,
     file_path: str,
-    file_meta: dict,
-    display_lines: list[dict],
+    file_meta: BatchFileMetadataDict,
+    display_lines: list[OwnershipDisplayLine],
     mergeable_id_ranges: LineRanges,
     units: Sequence[OwnershipUnit],
 ) -> Optional[RenderedBatchDisplay]:

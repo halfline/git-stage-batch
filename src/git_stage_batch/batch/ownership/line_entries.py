@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import overload
 
 from ...core.models import LineEntry
 from .claims import LineRangeBuilder
@@ -47,6 +48,14 @@ class LineEntryContentSequence(Sequence[bytes]):
 
     def __len__(self) -> int:
         return len(self._lines)
+
+    @overload
+    def __getitem__(self, index: int) -> bytes:
+        ...
+
+    @overload
+    def __getitem__(self, index: slice) -> Sequence[bytes]:
+        ...
 
     def __getitem__(self, index: int | slice) -> bytes | Sequence[bytes]:
         if isinstance(index, slice):

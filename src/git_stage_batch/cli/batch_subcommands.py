@@ -37,7 +37,7 @@ def add_new_subcommand(subparsers: Subparsers) -> None:
     )
 
 
-def add_list_subcommand(subparsers) -> None:
+def add_list_subcommand(subparsers: Subparsers) -> None:
     """Register the list subcommand."""
     parser_list = add_subcommand_parser(
         subparsers,

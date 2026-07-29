@@ -17,7 +17,7 @@ def apply_live_line_action(
             from ...commands.include import command_include_to_batch
 
             command_include_to_batch(
-                state.flow_state.target.batch_name,
+                state.flow_state.target.require_batch_name(),
                 line_ids=line_ids,
                 file=state.file_path,
                 quiet=True,
@@ -40,7 +40,7 @@ def apply_live_line_action(
         from ...commands.discard import command_discard_to_batch
 
         command_discard_to_batch(
-            state.flow_state.target.batch_name,
+            state.flow_state.target.require_batch_name(),
             line_ids=line_ids,
             file=state.file_path,
             quiet=True,

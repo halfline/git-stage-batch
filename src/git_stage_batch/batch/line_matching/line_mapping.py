@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from types import TracebackType
 from typing import Protocol
 
 
@@ -31,7 +32,12 @@ class LineMapping:
         self._close_on_exit = True
         return self
 
-    def __exit__(self, exc_type, exc, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         if self._close_on_exit:
             self.close()
 

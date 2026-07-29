@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from types import TracebackType
 
 from ...core.line_selection import LineRanges, LineSelection, coerce_line_ranges
 from ...core.mapped_storage import ChunkedMappedRecordVector
@@ -224,7 +225,12 @@ class _LineageRunTable:
         self._require_open()
         return self
 
-    def __exit__(self, exc_type, exc, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()
 
     def __del__(self) -> None:
@@ -353,7 +359,12 @@ class BatchSourceLineage:
         self._require_open()
         return self
 
-    def __exit__(self, exc_type, exc, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()
 
     def __del__(self) -> None:

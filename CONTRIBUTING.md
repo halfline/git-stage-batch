@@ -8,6 +8,7 @@ This project uses [uv](https://docs.astral.sh/uv/) for development workflow and 
 
 **Requirements:**
 - Python 3.10 through 3.14
+- Git 2.31 or newer
 - uv (for development)
 - meson and ninja-build (install via your system package manager)
 

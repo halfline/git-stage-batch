@@ -14,7 +14,7 @@ from git_stage_batch.batch.merge.baseline_correspondence import (
     build_baseline_correspondence,
 )
 from git_stage_batch.batch.merge.baseline_edits import (
-    try_apply_baseline_replacement_units,
+    try_apply_baseline_coordinate_edits,
 )
 from git_stage_batch.batch.discard_reversal import reverse_presence_constraints
 from git_stage_batch.batch.discard import (
@@ -188,7 +188,7 @@ def test_coordinate_candidate_is_closed_after_comparison(
 
     monkeypatch.setattr(
         merge_module._baseline_edits,
-        "try_apply_baseline_replacement_units",
+        "try_apply_baseline_coordinate_edits",
         plan_candidate,
     )
 
@@ -237,7 +237,7 @@ def test_coordinate_candidate_is_closed_when_structural_planning_refuses(
 
     monkeypatch.setattr(
         merge_module._baseline_edits,
-        "try_apply_baseline_replacement_units",
+        "try_apply_baseline_coordinate_edits",
         lambda *_args, **kwargs: (
             coordinate_candidate
             if kwargs.get("trust_baseline_coordinates", False)
@@ -330,7 +330,7 @@ def test_large_merge_without_coordinates_plans_baseline_once(monkeypatch):
     )
     planning_modes = []
     original_plan = (
-        merge_module._baseline_edits.try_apply_baseline_replacement_units
+        merge_module._baseline_edits.try_apply_baseline_coordinate_edits
     )
 
     def count_plan(*args, **kwargs):
@@ -341,7 +341,7 @@ def test_large_merge_without_coordinates_plans_baseline_once(monkeypatch):
 
     monkeypatch.setattr(
         merge_module._baseline_edits,
-        "try_apply_baseline_replacement_units",
+        "try_apply_baseline_coordinate_edits",
         count_plan,
     )
 
@@ -394,7 +394,7 @@ def test_coordinate_candidate_discovery_reuses_initial_comparison(monkeypatch):
     )
     planning_modes = []
     original_plan = (
-        merge_module._baseline_edits.try_apply_baseline_replacement_units
+        merge_module._baseline_edits.try_apply_baseline_coordinate_edits
     )
 
     def count_plan(*args, **kwargs):
@@ -405,7 +405,7 @@ def test_coordinate_candidate_discovery_reuses_initial_comparison(monkeypatch):
 
     monkeypatch.setattr(
         merge_module._baseline_edits,
-        "try_apply_baseline_replacement_units",
+        "try_apply_baseline_coordinate_edits",
         count_plan,
     )
 
@@ -516,7 +516,7 @@ def test_baseline_fallback_routes_matching_storage_to_invocation_spool(
     working_lines = [b"prefix\n", b"two\n"]
     ownership = BatchOwnership.from_presence_lines(["2"], [])
 
-    fallback_chunks = try_apply_baseline_replacement_units(
+    fallback_chunks = try_apply_baseline_coordinate_edits(
         source_lines,
         working_lines,
         ownership,
@@ -1491,7 +1491,7 @@ class TestMergeBatch:
                 for line in (2, 4)
             },
         )
-        fallback_chunks = try_apply_baseline_replacement_units(
+        fallback_chunks = try_apply_baseline_coordinate_edits(
             source_lines,
             working_lines,
             ownership,

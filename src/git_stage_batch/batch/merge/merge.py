@@ -19,6 +19,7 @@ from .candidates import (
 from .coordinate_strategy import (
     AMBIGUITY_KEY as _COORDINATE_STRATEGY_AMBIGUITY_KEY,
     CoordinateStrategyChoice as _CoordinateStrategyChoice,
+    has_recorded_baseline_coordinates as _has_recorded_baseline_coordinates,
 )
 from .validation import (
     check_structural_validity as _check_merge_structural_validity,
@@ -362,14 +363,14 @@ def _merge_batch_acquired_line_chunks(
     )
 
     if strategy_choice == _CoordinateStrategyChoice.RECORDED_COORDINATES:
-        if not _baseline_edits.has_recorded_baseline_coordinates(
+        if not _has_recorded_baseline_coordinates(
             ownership,
             presence_line_set,
             deletion_claims,
         ):
             raise _MergeError(_("Selected merge resolution is no longer valid"))
         selected_coordinate_candidate = (
-            _baseline_edits.try_apply_baseline_replacement_units(
+            _baseline_edits.try_apply_baseline_coordinate_edits(
                 source_lines,
                 working_lines,
                 ownership,
@@ -390,7 +391,7 @@ def _merge_batch_acquired_line_chunks(
         return
 
     if strategy_choice is None:
-        fallback_chunks = _baseline_edits.try_apply_baseline_replacement_units(
+        fallback_chunks = _baseline_edits.try_apply_baseline_coordinate_edits(
             source_lines,
             working_lines,
             ownership,
@@ -410,14 +411,14 @@ def _merge_batch_acquired_line_chunks(
     coordinate_candidate = None
     if (
         resolution is None
-        and _baseline_edits.has_recorded_baseline_coordinates(
+        and _has_recorded_baseline_coordinates(
             ownership,
             presence_line_set,
             deletion_claims,
         )
     ):
         coordinate_candidate = (
-            _baseline_edits.try_apply_baseline_replacement_units(
+            _baseline_edits.try_apply_baseline_coordinate_edits(
                 source_lines,
                 working_lines,
                 ownership,

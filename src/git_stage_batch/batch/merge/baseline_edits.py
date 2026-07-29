@@ -1,4 +1,4 @@
-"""Baseline-coordinate edit fallback for batch merge."""
+"""Coordinate-based edit planning and streaming for batch merge."""
 
 from __future__ import annotations
 
@@ -66,39 +66,7 @@ def _has_complete_baseline_references(
     return bool(presence_line_set or deletion_claims)
 
 
-def has_recorded_baseline_coordinates(
-    ownership: BatchOwnership,
-    presence_line_set: LineSelection,
-    deletion_claims: Sequence[AbsenceClaim],
-) -> bool:
-    """Return whether selected edit metadata includes a recorded coordinate."""
-    for presence_claim in ownership.presence_claims:
-        for claimed_line, presence_reference in (
-            presence_claim.baseline_references.items()
-        ):
-            if (
-                claimed_line in presence_line_set
-                and presence_reference.has_after_line
-            ):
-                return True
-    for deletion_claim in deletion_claims:
-        deletion_reference = deletion_claim.baseline_reference
-        if (
-            deletion_reference is not None
-            and deletion_reference.has_after_line
-        ):
-            return True
-    for unit in ownership.replacement_units:
-        origin = unit.origin
-        if origin is None:
-            continue
-        origin_reference = origin.baseline_reference
-        if origin_reference is not None and origin_reference.has_after_line:
-            return True
-    return False
-
-
-def try_apply_baseline_replacement_units(
+def try_apply_baseline_coordinate_edits(
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
     ownership: BatchOwnership,
@@ -110,13 +78,19 @@ def try_apply_baseline_replacement_units(
     trust_baseline_coordinates: bool = False,
     spool_dir: str | Path | None = None,
 ) -> Iterator[bytes] | None:
-    """Apply baseline-coordinate edits when structural source anchors fail.
+    """Return content edited at recorded baseline coordinates, if safe.
 
-    This is a conservative fallback for same-source round trips where the batch
-    source is the post-change file and the target is still the pre-change
-    baseline/index. In that shape, source anchors can legitimately be absent
-    even though the old baseline bytes still exist at an exact recorded
-    coordinate.
+    Combine replacement, removal, and insertion plans at positions saved from
+    the batch baseline. By default, keep required source lines that are already
+    present and reject coordinates whose saved boundary identifies more than
+    one live-target location. Setting ``trust_baseline_coordinates`` makes the
+    recorded positions authoritative. It skips live-target uniqueness and
+    already-present insertion checks while retaining boundary, removal-content,
+    and plan-consistency checks.
+
+    Return ``None`` if any selected edit cannot be planned safely. A plan that
+    changes content returns a lazy stream that owns its planning workspace until
+    the stream is exhausted or closed.
     """
     if _selection_outside_bounds(presence_line_set, len(source_lines)):
         return None

@@ -347,6 +347,9 @@ line and every absence claim:
 owns structural validation. The merge helpers separate these structural and
 exact-coordinate responsibilities:
 
+- [`batch/merge/coordinate_strategy.py`](src/git_stage_batch/batch/merge/coordinate_strategy.py)
+  detects whether a merge has recorded positions and defines the reviewed
+  choice between using those positions and structural content matching.
 - [`batch/merge/baseline_anchor_matching.py`](src/git_stage_batch/batch/merge/baseline_anchor_matching.py)
   proves recorded boundaries identify the intended live-target positions and
   supplies safe deletion anchors to structural matching.

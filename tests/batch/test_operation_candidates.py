@@ -140,7 +140,7 @@ def test_coordinate_candidate_planning_runs_each_baseline_strategy_once(
     )
     planning_modes = []
     original_plan = (
-        merge_module._baseline_edits.try_apply_baseline_replacement_units
+        merge_module._baseline_edits.try_apply_baseline_coordinate_edits
     )
 
     def count_plan(*args, **kwargs):
@@ -151,7 +151,7 @@ def test_coordinate_candidate_planning_runs_each_baseline_strategy_once(
 
     monkeypatch.setattr(
         merge_module._baseline_edits,
-        "try_apply_baseline_replacement_units",
+        "try_apply_baseline_coordinate_edits",
         count_plan,
     )
 

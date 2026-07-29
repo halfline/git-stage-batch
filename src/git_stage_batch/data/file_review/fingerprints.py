@@ -5,10 +5,8 @@ from __future__ import annotations
 import json
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
-
 from ...core.buffer import LineBuffer
-from ...core.models import ReviewActionGroup
+from ...core.models import LineLevelChange, ReviewActionGroup
 from ...utils.paths import (
     get_index_snapshot_file_path,
     get_working_tree_snapshot_file_path,
@@ -20,7 +18,7 @@ from ..line_state import (
 from ..selected_change.store import SelectedChangeKind
 
 
-def _json_hash(payload: Any) -> str:
+def _json_hash(payload: object) -> str:
     data = json.dumps(
         payload,
         sort_keys=True,
@@ -50,12 +48,12 @@ def fingerprint_selected_file_view(
     gutter_to_selection_id: dict[int, int] | None = None,
     actionable_selection_groups: tuple[tuple[int, ...], ...] | None = None,
     review_action_groups: tuple[ReviewActionGroup, ...] | None = None,
-    line_changes=None,
+    line_changes: LineLevelChange | None = None,
 ) -> str:
     """Fingerprint the selected file view and its current line ID space."""
     if line_changes is None:
         line_changes = load_line_changes_from_state()
-    snapshots = {}
+    snapshots: dict[str, str | None] = {}
     for name, path in (
         ("index", get_index_snapshot_file_path()),
         ("working_tree", get_working_tree_snapshot_file_path()),
@@ -89,7 +87,7 @@ def fingerprint_selected_file_view(
 
 def compute_current_file_review_diff_fingerprint(
     file_path: str,
-    line_changes=None,
+    line_changes: LineLevelChange | None = None,
 ) -> str:
     """Fingerprint the cached selected file diff for freshness checks."""
     if line_changes is None:

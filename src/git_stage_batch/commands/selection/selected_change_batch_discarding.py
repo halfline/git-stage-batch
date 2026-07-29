@@ -26,6 +26,7 @@ from ...core.models import (
     BinaryFileChange,
     GitlinkChange,
     RenameChange,
+    SingleHunkPatch,
     TextFileDeletionChange,
 )
 from ...data.file_modes import detect_file_mode
@@ -153,15 +154,11 @@ def _discard_text_hunk_to_batch(
                 stream_live_git_diff(context_lines=get_context_lines())
             ) as patches:
                 for patch in patches:
-                    if isinstance(patch, RenameChange):
-                        continue
-
-                    if isinstance(patch, TextFileDeletionChange):
-                        continue
-
                     if isinstance(patch, GitlinkChange):
                         exit_with_error(_("Discarding submodule pointer changes to a batch is not supported yet."))
                     if isinstance(patch, BinaryFileChange):
+                        continue
+                    if not isinstance(patch, SingleHunkPatch):
                         continue
 
                     if patch.new_path != file_path:

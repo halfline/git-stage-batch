@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from . import attribution_fingerprints as _attribution_fingerprints
 from .attribution import (
@@ -11,7 +10,7 @@ from .attribution import (
     FileAttribution,
 )
 from .attribution_units import AttributionUnitKind
-from ..core.models import LineLevelChange
+from ..core.models import LineEntry, LineLevelChange
 
 
 @dataclass(frozen=True)
@@ -34,7 +33,7 @@ class _CollectedAddedRun:
 
 
 def _collect_deleted_run(
-    lines: list,
+    lines: list[LineEntry],
     start_idx: int,
 ) -> _CollectedDeletedRun:
     end_idx = start_idx
@@ -52,7 +51,7 @@ def _collect_deleted_run(
 
 
 def _collect_added_run(
-    lines: list,
+    lines: list[LineEntry],
     start_idx: int,
 ) -> _CollectedAddedRun:
     end_idx = start_idx
@@ -83,7 +82,7 @@ def _collect_added_run(
 
 def project_attribution_to_diff(
     attribution: FileAttribution,
-    line_changes,
+    line_changes: LineLevelChange,
 ) -> dict[int, AttributedUnit]:
     """Project file attribution onto diff fragments."""
     display_to_unit: dict[int, AttributedUnit] = {}
@@ -194,7 +193,7 @@ def project_attribution_to_diff(
 def _anchor_consistent_with_diff_position(
     unit_anchor: int | None,
     deletion_start_idx: int,
-    lines: list,
+    lines: list[LineEntry],
 ) -> bool:
     """Sanity-check a unit-defined anchor against available diff context."""
     preceding_working_line = None
@@ -211,12 +210,12 @@ def _anchor_consistent_with_diff_position(
 
 
 def filter_owned_diff_fragments(
-    line_changes,
+    line_changes: LineLevelChange,
     attribution: FileAttribution,
-) -> tuple[bool, Any]:
+) -> tuple[bool, LineLevelChange | None]:
     """Filter displayed diff fragments that correspond to owned units."""
     display_to_unit = project_attribution_to_diff(attribution, line_changes)
-    filtered_lines = []
+    filtered_lines: list[LineEntry] = []
 
     for idx, line_entry in enumerate(line_changes.lines):
         attr_unit = display_to_unit.get(idx)

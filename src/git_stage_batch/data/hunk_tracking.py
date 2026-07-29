@@ -5,12 +5,14 @@ from __future__ import annotations
 from typing import Union
 
 from ..batch.state.query import list_batch_names, read_batch_metadata_for_batches
+from ..batch.state.metadata_types import BatchMetadataDict
 from ..core.models import (
     BinaryFileChange,
     FileModeChange,
     GitlinkChange,
     LineLevelChange,
     RenameChange,
+    SingleHunkPatch,
     TextFileDeletionChange,
 )
 from ..exceptions import NoMoreHunks
@@ -28,18 +30,23 @@ class _BatchMetadataSnapshot:
     """Lazy batch metadata snapshot for one hunk navigation scan."""
 
     def __init__(self) -> None:
-        self._metadata_by_name: dict[str, dict] | None = None
-        self._metadata_by_path: dict[str, dict[str, dict]] | None = None
+        self._metadata_by_name: dict[str, BatchMetadataDict] | None = None
+        self._metadata_by_path: (
+            dict[str, dict[str, BatchMetadataDict]] | None
+        ) = None
 
-    def metadata_by_name(self) -> dict[str, dict]:
+    def metadata_by_name(self) -> dict[str, BatchMetadataDict]:
         if self._metadata_by_name is None:
             self._metadata_by_name = read_batch_metadata_for_batches(list_batch_names())
         return self._metadata_by_name
 
-    def metadata_for_path(self, file_path: str) -> dict[str, dict]:
+    def metadata_for_path(
+        self,
+        file_path: str,
+    ) -> dict[str, BatchMetadataDict]:
         """Return only batches with metadata for one canonical path."""
         if self._metadata_by_path is None:
-            metadata_by_path: dict[str, dict[str, dict]] = {}
+            metadata_by_path: dict[str, dict[str, BatchMetadataDict]] = {}
             for batch_name, metadata in self.metadata_by_name().items():
                 for path in metadata.get("files", {}):
                     metadata_by_path.setdefault(path, {})[batch_name] = metadata
@@ -78,6 +85,7 @@ def fetch_next_change() -> Union[
             elif isinstance(item, BinaryFileChange):
                 _selected_file_changes.cache_binary_file_change(item)
             else:
+                assert isinstance(candidate.raw_patch, SingleHunkPatch)
                 _selected_store.cache_hunk_change(
                     candidate.raw_patch.lines,
                     candidate.stable_hash,

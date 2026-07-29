@@ -10,6 +10,7 @@ from ...batch.ownership.replacement_line_runs import (
     derive_replacement_line_runs_from_lines,
 )
 from ...exceptions import exit_with_error
+from ...core.models import LineEntry, LineLevelChange
 from ...i18n import _
 
 
@@ -36,13 +37,13 @@ def require_contiguous_display_selection(selected_ids: set[int]) -> None:
 
 
 def build_leading_replacement_addition_selection_error(
-    line_changes,
+    line_changes: LineLevelChange,
     selected_ids: set[int],
 ) -> str | None:
     """Reject include selections that split an inserted replacement prefix."""
-    changed_run: list = []
+    changed_run: list[LineEntry] = []
 
-    def check_run(run: list) -> str | None:
+    def check_run(run: list[LineEntry]) -> str | None:
         if not run:
             return None
         deletion_ids = tuple(
@@ -104,7 +105,7 @@ def build_leading_replacement_addition_selection_error(
 
 
 def build_partial_structural_run_selection_error(
-    line_changes,
+    line_changes: LineLevelChange,
     selected_ids: set[int],
     *,
     hunk_base_lines: Sequence[bytes],
@@ -142,7 +143,10 @@ def build_partial_structural_run_selection_error(
     )
 
 
-def expand_replacement_selection_ids(line_changes, requested_ids: set[int]) -> set[int]:
+def expand_replacement_selection_ids(
+    line_changes: LineLevelChange,
+    requested_ids: set[int],
+) -> set[int]:
     """Expand a selection to the smallest adjacent mixed replacement run."""
     selected_indices = [
         index

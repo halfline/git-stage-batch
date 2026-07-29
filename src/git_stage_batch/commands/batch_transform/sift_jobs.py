@@ -6,11 +6,12 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 import pickle
-from typing import Literal
+from typing import Literal, TypedDict, cast
 
 from . import sift_results as _sift_results
 from ...batch.ownership.absence_claims import AbsenceClaim
 from ...batch.ownership.model import BatchOwnership
+from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.buffer import LineBuffer
 from ...data.file_target_identity import WorktreeIdentity
 from ...exceptions import MergeError
@@ -21,6 +22,20 @@ from ...utils.file_job_workspace import FileJobWorkspace
 SiftTextJobOutcome = Literal["retained", "removed", "merge_error"]
 _MANIFEST_VERSION = 1
 _MAX_ERROR_MESSAGE_CHARACTERS = 4 * 1024
+
+
+class SiftTextJobInput(TypedDict):
+    """Private pickle payload captured for one sift worker."""
+
+    baseline_object_id: str | None
+    batch_source_object_id: str | None
+    file_meta: BatchFileMetadataDict
+    working_tree_artifact_path: str
+
+
+class _SiftDeletionRecord(TypedDict):
+    anchor_line: int | None
+    content_path: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,9 +68,10 @@ def compute_sifted_text_file_job(
     job: SiftTextFileJob,
 ) -> SiftTextFileJobResult:
     """Compute and stream one text sift result into private artifacts."""
-    input_metadata = _read_pickle(job.input_artifact_path)
-    if type(input_metadata) is not dict:
+    input_value = _read_pickle(job.input_artifact_path)
+    if type(input_value) is not dict:
         raise TypeError("sift text input must be a dictionary")
+    input_metadata = cast(SiftTextJobInput, input_value)
 
     try:
         result = _sift_results.compute_sifted_text_file(
@@ -160,7 +176,7 @@ def load_sifted_text_file_result(
             spool_dir=job.scratch_directory,
         )
         opened_buffers.append(target_buffer)
-        deletions = []
+        deletions: list[AbsenceClaim] = []
         for deletion_record in deletion_records:
             content_buffer = workspace.read_buffer(
                 deletion_record["content_path"],
@@ -243,7 +259,7 @@ def _require_supported_ownership(ownership: BatchOwnership) -> None:
 def _validate_manifest(
     value: object,
     job: SiftTextFileJob,
-) -> tuple[list[str], list[dict[str, object]], str]:
+) -> tuple[list[str], list[_SiftDeletionRecord], str]:
     if type(value) is not dict:
         raise TypeError("sift text manifest must be a dictionary")
     if set(value) != {
@@ -273,7 +289,7 @@ def _validate_manifest(
     deletion_values = value.get("deletions")
     if not isinstance(deletion_values, list):
         raise TypeError("sift text manifest has invalid deletions")
-    deletion_records: list[dict[str, object]] = []
+    deletion_records: list[_SiftDeletionRecord] = []
     deletion_directory = Path(job.deletion_output_directory)
     for index, deletion_value in enumerate(deletion_values):
         if type(deletion_value) is not dict:
@@ -300,9 +316,14 @@ def _validate_manifest(
                 "content_path": str(expected_path),
             }
         )
-    return presence_lines, deletion_records, change_type
+    return (
+        cast(list[str], presence_lines),
+        deletion_records,
+        cast(str, change_type),
+    )
 
 
-def _read_pickle(path: str | Path):
+def _read_pickle(path: str | Path) -> object:
     with Path(path).open("rb") as source:
-        return pickle.load(source)
+        value: object = pickle.load(source)
+        return value

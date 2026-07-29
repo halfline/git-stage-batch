@@ -6,6 +6,7 @@ import os
 import sys
 
 from ...batch.submodule_pointer import discard_submodule_pointer_from_batch
+from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.buffer import LineBuffer
 from ...core.diff_parser import build_line_changes_from_patch_lines, patch_is_new_file
 from ...core.models import (
@@ -18,6 +19,7 @@ from ...core.models import (
 from ...data.hunk_tracking import fetch_next_change
 from ...data.progress import record_hunk_discarded
 from ...data.selected_change.loading import load_selected_change
+from ...data.selected_change.loading import SelectedChange
 from ...data.selected_change.paths import worktree_paths_for_selected_change
 from ...data.session import (
     path_is_intent_to_add,
@@ -73,7 +75,7 @@ def discard_selected_change(
 
 
 def _discard_loaded_selected_change(
-    item,
+    item: SelectedChange,
     *,
     quiet: bool,
     auto_advance: bool | None,
@@ -300,7 +302,7 @@ def discard_gitlink_change(gitlink_change: GitlinkChange) -> None:
     file_path = gitlink_change.path()
     if gitlink_change.is_new_file():
         snapshot_file_if_untracked(file_path, intent_to_add=True)
-    file_meta = {
+    file_meta: BatchFileMetadataDict = {
         "file_type": "gitlink",
         "change_type": gitlink_change.change_type,
         "old_oid": gitlink_change.old_oid,

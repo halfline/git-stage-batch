@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-
+from .state.metadata_types import BatchFileMetadataDict
 from ..core.models import BinaryFileChange, GitlinkChange
 
 
 def binary_change_from_batch_file_metadata(
     file_path: str,
-    file_meta: Mapping[str, object],
+    file_meta: BatchFileMetadataDict,
 ) -> BinaryFileChange | None:
     """Return an atomic binary batch change, if the entry is binary."""
     if file_meta.get("file_type") != "binary":
@@ -26,7 +25,7 @@ def binary_change_from_batch_file_metadata(
 
 def gitlink_change_from_batch_file_metadata(
     file_path: str,
-    file_meta: Mapping[str, object],
+    file_meta: BatchFileMetadataDict,
 ) -> GitlinkChange | None:
     """Return an atomic submodule pointer batch change, if the entry is one."""
     if file_meta.get("file_type") != "gitlink":

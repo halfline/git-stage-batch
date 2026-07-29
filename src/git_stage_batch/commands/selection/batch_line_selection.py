@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from ...batch.selection import require_line_selection_in_view
 from ...core.line_selection import parse_line_selection
+from ...core.models import LineEntry, LineLevelChange
 
 
 @dataclass(frozen=True)
@@ -13,11 +14,11 @@ class BatchLineSelection:
     """Line IDs and matching changed lines selected for a batch action."""
 
     requested_ids: set[int]
-    selected_lines: list
+    selected_lines: list[LineEntry]
 
 
 def select_lines_for_batch_action(
-    line_changes,
+    line_changes: LineLevelChange,
     line_id_specification: str,
 ) -> BatchLineSelection:
     """Validate line IDs against a view and return matching changed lines."""

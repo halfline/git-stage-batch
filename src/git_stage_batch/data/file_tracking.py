@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from collections.abc import Iterable
 
@@ -84,7 +85,9 @@ def auto_add_untracked_files(
     recorded_paths = read_file_paths_file(auto_added_path)
     recorded_set = set(recorded_paths)
 
-    def apply_transition(candidate_paths: list[str]):
+    def apply_transition(
+        candidate_paths: list[str],
+    ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
         new_paths = [path for path in candidate_paths if path not in recorded_set]
         manifest_existed = auto_added_path.exists()
         if new_paths:

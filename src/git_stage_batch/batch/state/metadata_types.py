@@ -43,6 +43,18 @@ class BatchMetadataDict(TypedDict, total=False):
     files: dict[str, BatchFileMetadataDict]
 
 
+class BatchStorageMetadataDict(TypedDict):
+    """Canonical current-schema mapping persisted as ``batch.json``."""
+
+    schema_version: int
+    revision: str
+    batch: str
+    note: str
+    created_at: str
+    baseline: str | None
+    content_ref: str | None
+    content_commit: str | None
+    files: dict[str, BatchFileMetadataDict]
 
 
 def add_ownership_metadata(

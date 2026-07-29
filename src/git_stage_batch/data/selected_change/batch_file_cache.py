@@ -6,6 +6,7 @@ import json
 from typing import Optional
 
 from ...batch.state.query import read_batch_metadata
+from ...batch.state.metadata_types import BatchMetadataDict
 from ...core.hashing import compute_stable_hunk_hash_from_lines
 from ...core.models import RenderedBatchDisplay
 from ...exceptions import CommandError
@@ -37,7 +38,7 @@ def _patch_path_token(path: str) -> bytes:
 def cache_batch_as_single_hunk(
     batch_name: str,
     file_path: str | None = None,
-    metadata: dict | None = None,
+    metadata: BatchMetadataDict | None = None,
 ) -> Optional[RenderedBatchDisplay]:
     """Load one batch file and cache it as the selected hunk."""
     if metadata is None:

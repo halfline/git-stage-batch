@@ -14,7 +14,10 @@ from ...batch.state.validation import get_validated_baseline_commit
 from ...batch.text_file_storage import add_file_to_batch
 from ...batch.state.batch_names import batch_exists
 from ...core.diff_parser import acquire_unified_diff, build_line_changes_from_patch_lines
-from ...core.models import FileModeChange, RenameChange, TextFileDeletionChange
+from ...core.models import (
+    FileModeChange,
+    SingleHunkPatch,
+)
 from ...data.file_change_display import (
     render_binary_file_change,
     render_gitlink_change,
@@ -97,7 +100,7 @@ def include_file_to_batch(
             if isinstance(patch, FileModeChange):
                 mode_change = patch
                 continue
-            if isinstance(patch, (RenameChange, TextFileDeletionChange)):
+            if not isinstance(patch, SingleHunkPatch):
                 continue
             hunk_lines = build_line_changes_from_patch_lines(
                 patch.lines,

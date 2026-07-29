@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ...core.replacement import ReplacementPayload, coerce_replacement_payload
 from ...data.file_review.action_scope import finish_review_scoped_line_action
+from ...data.file_review.records import FileReviewState
 from ...data.selected_change.loading import require_selected_hunk
 from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.selected_change.store import (
@@ -22,7 +23,7 @@ def discard_live_line_replacement_to_batch(
     replacement_text: str | ReplacementPayload,
     file: str | None = None,
     *,
-    review_state,
+    review_state: FileReviewState | None,
     no_edge_overlap: bool = False,
     quiet: bool = False,
     auto_advance: bool | None = None,

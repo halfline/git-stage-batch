@@ -5,6 +5,11 @@ from __future__ import annotations
 import uuid
 
 from ...batch.state.lifecycle import create_batch
+from ...batch.state.metadata_types import (
+    BatchFileMetadataDict,
+    BatchMetadataDict,
+    add_ownership_metadata,
+)
 from ...batch.state.compatibility_metadata import write_file_backed_batch_metadata
 from ...batch.ownership.model import BatchOwnership
 from ...batch.state.query import get_batch_baseline_commit, read_batch_metadata
@@ -37,7 +42,7 @@ from ...utils.git_object_io import create_git_blob
 from .sift_results import SiftedBinaryFileResult, SiftedFileResult, SiftedModeFileResult
 
 
-RetainedSiftedFile = tuple[str, dict, SiftedFileResult]
+RetainedSiftedFile = tuple[str, BatchFileMetadataDict, SiftedFileResult]
 
 
 def create_synthetic_batch_source_commit(
@@ -115,11 +120,11 @@ def add_sifted_text_file_to_batch(
         metadata["files"] = {}
 
     text_change_type = normalized_text_change_type(change_type)
-    file_metadata = {
+    file_metadata: BatchFileMetadataDict = {
         "batch_source_commit": batch_source_commit,
-        **ownership.to_metadata_dict(),
         "mode": file_mode,
     }
+    add_ownership_metadata(file_metadata, ownership.to_metadata_dict())
     if text_change_type != TextFileChangeType.MODIFIED:
         file_metadata["change_type"] = text_change_type.value
     metadata["files"][file_path] = file_metadata
@@ -148,7 +153,7 @@ def add_sifted_text_file_to_batch(
 def add_sifted_file_to_batch(
     batch_name: str,
     file_path: str,
-    file_meta: dict,
+    file_meta: BatchFileMetadataDict,
     result: SiftedFileResult,
 ) -> None:
     """Persist any retained sifted file result into a batch."""
@@ -180,7 +185,7 @@ def add_sifted_file_to_batch(
 def replace_batch_with_sifted_files(
     batch_name: str,
     retained_files: list[RetainedSiftedFile],
-    source_metadata: dict,
+    source_metadata: BatchMetadataDict,
 ) -> None:
     """Replace a batch atomically with retained sifted file results."""
     publish_sifted_files(
@@ -196,7 +201,7 @@ def publish_sifted_files(
     *,
     destination_batch: str,
     retained_files: list[RetainedSiftedFile],
-    source_metadata: dict,
+    source_metadata: BatchMetadataDict,
     destination_note: str,
     replace_existing: bool,
 ) -> None:

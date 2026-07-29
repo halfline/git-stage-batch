@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Generator
+from collections.abc import Generator, Iterable
 import os
 import subprocess
 import tempfile
 from typing import Optional
 
 from ..core.diff_parser import (
+    UnifiedDiffItem,
     acquire_unified_diff,
     build_line_changes_from_patch_lines,
 )
@@ -167,17 +168,17 @@ def _stream_no_index_diff_lines(
 
 def build_combined_file_line_changes(
     file_path: str,
-    patches,
-) -> Optional[LineLevelChange]:
+    patches: Iterable[UnifiedDiffItem],
+) -> LineLevelChange | None:
     """Combine file diff hunks into one file-scoped LineLevelChange."""
-    all_line_entries = []
+    all_line_entries: list[LineEntry] = []
     line_id_counter = 1
-    min_old_start = None
-    max_old_end = None
-    min_new_start = None
-    max_new_end = None
-    previous_old_end = None
-    previous_new_end = None
+    min_old_start: int | None = None
+    max_old_end: int | None = None
+    min_new_start: int | None = None
+    max_new_end: int | None = None
+    previous_old_end: int | None = None
+    previous_new_end: int | None = None
 
     for single_hunk in patches:
         if isinstance(
@@ -251,6 +252,10 @@ def build_combined_file_line_changes(
     if not all_line_entries:
         return None
 
+    assert min_old_start is not None
+    assert max_old_end is not None
+    assert min_new_start is not None
+    assert max_new_end is not None
     combined_header = HunkHeader(
         old_start=min_old_start,
         old_len=max_old_end - min_old_start,

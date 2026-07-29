@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from hashlib import sha256
 
 from ..batch.state.query import get_batch_commit_sha, read_batch_metadata
+from ..batch.state.metadata_types import BatchFileMetadataDict
 from ..core.models import BinaryFileChange
 from ..exceptions import CommandError
 from ..i18n import _
@@ -30,7 +31,7 @@ from .selected_change.clear_reasons import (
 def compute_batch_binary_fingerprint(
     batch_name: str,
     file_path: str,
-    file_meta: Mapping[str, object],
+    file_meta: BatchFileMetadataDict,
 ) -> str:
     """Return a stable identity for the current binary content stored in a batch."""
     batch_blob = None
@@ -80,7 +81,7 @@ def selected_batch_binary_batch_name() -> str | None:
 
 def selected_batch_binary_file_for_batch(
     batch_name: str,
-    all_files: Mapping[str, dict],
+    all_files: Mapping[str, BatchFileMetadataDict],
 ) -> str | None:
     """Return the selected batch-binary file if it still exists in batch metadata."""
     if not selected_batch_binary_matches_batch(batch_name):
@@ -143,7 +144,7 @@ def load_current_selected_batch_binary_file(
 
 def require_current_selected_batch_binary_file_for_batch(
     batch_name: str,
-    all_files: Mapping[str, dict],
+    all_files: Mapping[str, BatchFileMetadataDict],
 ) -> str | None:
     """Return selected batch-binary file for this batch, or refuse if it went stale."""
     if not selected_batch_binary_matches_batch(batch_name):
@@ -174,7 +175,7 @@ def require_current_selected_batch_binary_file_for_batch(
 
 def compute_batch_gitlink_fingerprint(
     file_path: str,
-    file_meta: Mapping[str, object],
+    file_meta: BatchFileMetadataDict,
 ) -> str:
     """Return a stable identity for the current stored submodule pointer."""
     payload = {
@@ -201,7 +202,7 @@ def selected_batch_gitlink_matches_batch(batch_name: str) -> bool:
 
 def selected_batch_gitlink_file_for_batch(
     batch_name: str,
-    all_files: Mapping[str, dict],
+    all_files: Mapping[str, BatchFileMetadataDict],
 ) -> str | None:
     """Return the selected batch submodule pointer if it is still current."""
     if not selected_batch_gitlink_matches_batch(batch_name):
@@ -239,7 +240,7 @@ def selected_batch_gitlink_file_for_batch(
 
 def require_current_selected_batch_gitlink_file_for_batch(
     batch_name: str,
-    all_files: Mapping[str, dict],
+    all_files: Mapping[str, BatchFileMetadataDict],
 ) -> str | None:
     """Return selected batch submodule pointer, or refuse if it went stale."""
     if not selected_batch_gitlink_matches_batch(batch_name):

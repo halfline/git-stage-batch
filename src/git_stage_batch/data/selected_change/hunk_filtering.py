@@ -12,6 +12,7 @@ from ...batch.attribution import (
 )
 from ...batch.attribution_projection import filter_owned_diff_fragments
 from ...batch.state.query import list_batch_names, read_batch_metadata_for_batches
+from ...batch.state.metadata_types import BatchFileMetadataDict, BatchMetadataDict
 from ...core.models import LineLevelChange
 from ...utils.file_io import write_text_file_contents
 from ...utils.journal import log_journal
@@ -24,7 +25,7 @@ from ..consumed_selections import read_consumed_file_metadata
 
 def apply_line_level_batch_filter_to_cached_hunk(
     *,
-    batch_metadata_by_name: dict[str, dict] | None = None,
+    batch_metadata_by_name: dict[str, BatchMetadataDict] | None = None,
 ) -> bool:
     """Filter cached hunk using file-centric ownership attribution.
 
@@ -64,7 +65,7 @@ def apply_line_level_batch_filter_to_cached_hunk(
 def filter_line_level_change_for_batches(
     line_changes: LineLevelChange,
     *,
-    batch_metadata_by_name: dict[str, dict] | None = None,
+    batch_metadata_by_name: dict[str, BatchMetadataDict] | None = None,
 ) -> LineLevelChange | None:
     """Return the unowned portion of a live line change, or ``None``."""
     file_path = line_changes.path
@@ -103,8 +104,8 @@ def filter_line_level_change_with_attribution(
     line_changes: LineLevelChange,
     *,
     attribution: FileAttribution,
-    batch_metadata_by_name: dict[str, dict],
-    consumed_file_metadata: dict | None,
+    batch_metadata_by_name: dict[str, BatchMetadataDict],
+    consumed_file_metadata: BatchFileMetadataDict | None,
     captured_empty_lifecycle_is_batched: bool | None = None,
 ) -> LineLevelChange | None:
     """Filter one hunk from caller-supplied attribution and metadata.
@@ -136,7 +137,7 @@ def filter_line_level_change_with_attribution(
 def _empty_lifecycle_change_is_batched(
     line_changes: LineLevelChange,
     *,
-    batch_metadata_by_name: dict[str, dict],
+    batch_metadata_by_name: dict[str, BatchMetadataDict],
 ) -> bool:
     return not line_changes.lines and (
         _change_freshness.empty_text_lifecycle_change_is_batched(
@@ -150,7 +151,7 @@ def _filter_line_level_change_with_prepared_resources(
     line_changes: LineLevelChange,
     *,
     attribution: FileAttribution,
-    consumed_file_metadata: dict | None,
+    consumed_file_metadata: BatchFileMetadataDict | None,
 ) -> LineLevelChange | None:
     """Project attribution and replacement masks without repository I/O."""
 
@@ -160,6 +161,7 @@ def _filter_line_level_change_with_prepared_resources(
     )
     if should_skip:
         return None
+    assert filtered_line_changes is not None
 
     return _consumed_replacement_masks.filter_consumed_replacement_masks_with_metadata(
         filtered_line_changes,
@@ -169,14 +171,13 @@ def _filter_line_level_change_with_prepared_resources(
 
 def consumed_batch_metadata(
     file_path: str,
-    consumed_file_metadata: dict | None,
-) -> dict[str, dict] | None:
+    consumed_file_metadata: BatchFileMetadataDict | None,
+) -> dict[str, BatchMetadataDict] | None:
     if consumed_file_metadata is None:
         return None
-    return {
-        "__consumed__": {
-            "files": {
-                file_path: consumed_file_metadata,
-            },
+    consumed_metadata: BatchMetadataDict = {
+        "files": {
+            file_path: consumed_file_metadata,
         },
     }
+    return {"__consumed__": consumed_metadata}

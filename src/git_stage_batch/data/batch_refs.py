@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import shutil
-from typing import Any
+from typing import TypeAlias, TypedDict, cast
 
+from ..batch.state.metadata_types import BatchMetadataDict
 from ..batch.state.reference_names import BATCH_CONTENT_REF_PREFIX, LEGACY_BATCH_REF_PREFIX
 from ..batch.state.query import read_batch_metadata
 from ..batch.state.compatibility_metadata import write_file_backed_batch_metadata
@@ -20,6 +21,17 @@ from ..utils.file_io import read_text_file_contents, write_text_file_contents
 from ..utils.git_command import run_git_command
 from ..utils.git_refs import update_git_refs
 from ..utils.paths import get_batch_directory_path, get_batch_refs_snapshot_file_path
+
+
+class BatchRefSnapshotEntry(TypedDict):
+    """One batch's refs plus validated application metadata."""
+
+    commit_sha: str
+    state_commit_sha: str | None
+    metadata: BatchMetadataDict
+
+
+BatchRefSnapshot: TypeAlias = dict[str, BatchRefSnapshotEntry]
 
 
 def _list_batch_content_refs() -> dict[str, str]:
@@ -56,7 +68,7 @@ def _get_batch_state_ref_commit(batch_name: str) -> str | None:
     return result.stdout.strip()
 
 
-def snapshot_batch_refs() -> dict[str, dict[str, Any]]:
+def snapshot_batch_refs() -> BatchRefSnapshot:
     """Save selected state of all batch refs to snapshot file for abort support.
 
     Stores a single JSON object mapping batch names to their state:
@@ -64,18 +76,40 @@ def snapshot_batch_refs() -> dict[str, dict[str, Any]]:
 
     This includes complete metadata so dropped batches can be fully restored.
     """
-    snapshot_data = {}
+    snapshot_data: BatchRefSnapshot = {}
     for batch_name, commit_sha in _list_batch_content_refs().items():
         full_metadata = read_batch_metadata(batch_name)
 
         snapshot_data[batch_name] = {
             "commit_sha": commit_sha,
             "state_commit_sha": _get_batch_state_ref_commit(batch_name),
-            "metadata": full_metadata
+            "metadata": full_metadata,
         }
 
     write_text_file_contents(get_batch_refs_snapshot_file_path(), json.dumps(snapshot_data, indent=2))
     return snapshot_data
+
+
+def _decode_batch_ref_snapshot(payload: str) -> BatchRefSnapshot | None:
+    """Return a structurally valid snapshot mapping, or ignore stale garbage."""
+    value: object = json.loads(payload)
+    if not isinstance(value, dict):
+        return None
+    for batch_name, entry in value.items():
+        if not isinstance(batch_name, str) or not isinstance(entry, dict):
+            return None
+        commit_sha = entry.get("commit_sha")
+        state_commit_sha = entry.get("state_commit_sha")
+        metadata = entry.get("metadata")
+        if not isinstance(commit_sha, str):
+            return None
+        if state_commit_sha is not None and not isinstance(state_commit_sha, str):
+            return None
+        if not isinstance(metadata, dict) or not all(
+            isinstance(key, str) for key in metadata
+        ):
+            return None
+    return cast(BatchRefSnapshot, value)
 
 
 def restore_batch_refs() -> None:
@@ -92,8 +126,12 @@ def restore_batch_refs() -> None:
 
     # Load snapshot
     try:
-        snapshot_data: dict[str, Any] = json.loads(read_text_file_contents(snapshot_path))
-    except (json.JSONDecodeError, KeyError):
+        snapshot_data = _decode_batch_ref_snapshot(
+            read_text_file_contents(snapshot_path)
+        )
+    except json.JSONDecodeError:
+        return
+    if snapshot_data is None:
         return
 
     # Get selected batch refs
@@ -112,7 +150,7 @@ def restore_batch_refs() -> None:
     for batch_name, batch_state in snapshot_data.items():
         commit_sha = batch_state["commit_sha"]
         state_commit_sha = batch_state.get("state_commit_sha")
-        full_metadata = batch_state.get("metadata", {})
+        full_metadata = batch_state["metadata"]
 
         if state_commit_sha:
             update_git_refs(

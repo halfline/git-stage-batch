@@ -18,6 +18,7 @@ from ...utils.git_repository import object_id_hex_length
 from .metadata_types import (
     BatchFileMetadataDict,
     BatchMetadataDict,
+    BatchStorageMetadataDict,
 )
 
 
@@ -128,7 +129,7 @@ class BatchMetadata:
             "files": {entry.path: entry.to_dict() for entry in self.files},
         }
 
-    def to_storage_dict(self) -> dict[str, Any]:
+    def to_storage_dict(self) -> BatchStorageMetadataDict:
         """Return the canonical current-version storage representation."""
         return {
             "schema_version": CURRENT_BATCH_METADATA_SCHEMA_VERSION,

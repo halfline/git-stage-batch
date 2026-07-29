@@ -96,6 +96,7 @@ def command_show_from_batch(
             exit_with_error(_("`show --from --as` requires `--line`."))
         if len(files) != 1:
             exit_with_error(_("`show --from --as` requires exactly one file."))
+        assert selected_ids is not None
         file_path = list(files.keys())[0]
         _replacement_previews.print_batch_source_replacement_preview(
             batch_name=batch_name,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Protocol
 
 from ...core.line_selection import LineRanges, LineSelection, coerce_line_ranges
 from ...exceptions import CommandError
@@ -19,6 +20,18 @@ def _format_line_ranges(selection: LineRanges) -> str:
 class _ReviewValidationGroup:
     display_ids: LineRanges
     is_splittable: bool
+
+
+class ReviewSelectionForValidation(Protocol):
+    """Selection fields needed by review-scoped validation."""
+
+    @property
+    def display_ids(self) -> tuple[int, ...]:
+        """Return the IDs displayed for this selection."""
+
+    @property
+    def is_splittable(self) -> bool:
+        """Return whether partial selection is valid."""
 
 
 def shown_review_selections_for_action(
@@ -42,7 +55,7 @@ def shown_review_selections_for_action(
 
 def validate_review_scoped_line_selection(
     requested_ids: LineSelection | Iterable[int],
-    valid_selections: Iterable[_records.FileReviewSelectionState],
+    valid_selections: Iterable[ReviewSelectionForValidation],
 ) -> None:
     """Validate a union of complete actionable review selections."""
     requested_ranges = coerce_line_ranges(requested_ids)

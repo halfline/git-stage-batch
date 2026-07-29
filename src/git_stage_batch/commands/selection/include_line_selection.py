@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from enum import Enum
 import sys
 import uuid
 
+from ...batch.ownership.model import BatchOwnership
 from ...batch.ownership.hunk_translation import (
     translate_hunk_selection_to_batch_ownership,
 )
@@ -23,10 +25,11 @@ from ...core.buffer import LineBuffer, buffer_matches
 from ...batch.source.snapshots import create_batch_source_commit
 from ...batch.source.line_coordinates import translate_display_source_coordinates
 from ...batch.realized_file_content import build_realized_buffer_from_lines
+from ...core.models import LineEntry, LineLevelChange
 from ...data.selected_change.file_hunk_cache import cache_unstaged_file_as_single_hunk
 from ...data.file_modes import detect_file_mode
 from ...data.file_tracking import auto_add_untracked_files
-from ...data.line_state import load_line_changes_from_state
+from ...data.line_state import require_line_changes_from_state
 from ...utils.repository_buffers import (
     read_git_object_buffer_or_none,
     load_working_tree_file_as_buffer,
@@ -35,6 +38,7 @@ from ...data.selected_change.loading import require_selected_hunk
 from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.selected_change.store import (
     SelectedChangeKind,
+    SelectedChangeStateSnapshot,
     read_selected_change_kind,
     snapshot_selected_change_state,
 )
@@ -86,9 +90,9 @@ class TransientIncludeResult:
 class IncludeLineSelectionContext:
     """Resolved selected-line view for a live include action."""
 
-    line_changes: object
+    line_changes: LineLevelChange
     preserve_selected_state: bool = False
-    saved_selected_state: object | None = None
+    saved_selected_state: SelectedChangeStateSnapshot | None = None
     reset_processed_include_ids: bool = False
 
 
@@ -134,14 +138,14 @@ def selected_file_view_is_fresh_for(target_file: str) -> bool:
 
 def load_include_line_selection_context(
     file: str | None,
-    selected_state_stack,
+    selected_state_stack: ExitStack,
 ) -> IncludeLineSelectionContext:
     """Resolve the selected line view for include --line."""
     if file is None:
         require_selected_hunk()
         return IncludeLineSelectionContext(
             line_changes=annotate_line_changes_with_working_tree_source(
-                load_line_changes_from_state()
+                require_line_changes_from_state()
             )
         )
 
@@ -161,7 +165,7 @@ def load_include_line_selection_context(
     saved_selected_state = None
 
     if reuse_selected_file_view:
-        line_changes = load_line_changes_from_state()
+        line_changes = require_line_changes_from_state()
     else:
         if file != "" and not selected_file_view_targets_file:
             preserve_selected_state = True
@@ -169,9 +173,10 @@ def load_include_line_selection_context(
                 snapshot_selected_change_state()
             )
 
-        line_changes = cache_unstaged_file_as_single_hunk(target_file)
-        if line_changes is None:
+        cached_line_changes = cache_unstaged_file_as_single_hunk(target_file)
+        if cached_line_changes is None:
             exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
+        line_changes = cached_line_changes
 
     return IncludeLineSelectionContext(
         line_changes=annotate_line_changes_with_working_tree_source(line_changes),
@@ -187,12 +192,11 @@ def line_sequence_ends_with_lf(lines: Sequence[bytes]) -> bool:
     return line_count > 0 and lines[line_count - 1].endswith(b"\n")
 
 
-def annotate_line_changes_with_working_tree_source(line_changes):
+def annotate_line_changes_with_working_tree_source(
+    line_changes: LineLevelChange,
+) -> LineLevelChange:
     """Attach working-tree source line positions to line changes."""
-    if line_changes is None:
-        return None
-
-    new_lines = []
+    new_lines: list[LineEntry] = []
     for line, source_line in translate_display_source_coordinates(
         line_changes.lines,
         lambda line_number: line_number,
@@ -205,7 +209,7 @@ def annotate_line_changes_with_working_tree_source(line_changes):
 def build_transient_index_buffer(
     *,
     source_lines: Sequence[bytes],
-    ownership,
+    ownership: BatchOwnership,
     current_index_lines: Sequence[bytes],
     hunk_base_lines: Sequence[bytes],
 ) -> LineBuffer:
@@ -232,7 +236,7 @@ def build_transient_index_buffer(
 
 def try_build_index_content_via_transient_batch(
     *,
-    line_changes,
+    line_changes: LineLevelChange,
     selected_display_ids: set[int],
     current_index_lines: Sequence[bytes],
     hunk_base_lines: Sequence[bytes],
@@ -259,11 +263,12 @@ def try_build_index_content_via_transient_batch(
                     TransientIncludeFailureReason.WORKING_TREE_WOULD_CHANGE,
                     detail="working tree changed after new-file snapshot",
                 )
+        selected_source_lines: list[bytes] = []
+        for line in selected_lines:
+            assert line.source_line is not None
+            selected_source_lines.append(hunk_source_lines[line.source_line - 1])
         return TransientIncludeResult.success(
-            LineBuffer.from_chunks(
-                hunk_source_lines[line.source_line - 1]
-                for line in selected_lines
-            )
+            LineBuffer.from_chunks(selected_source_lines)
         )
 
     batch_name = f"include-line-{uuid.uuid4().hex}"
@@ -326,14 +331,14 @@ def try_build_index_content_via_transient_batch(
                     TransientIncludeFailureReason.MISSING_BATCH_METADATA
                 )
 
-            batch_source_commit = file_metadata.get("batch_source_commit")
-            if not batch_source_commit:
+            stored_batch_source_commit = file_metadata.get("batch_source_commit")
+            if not stored_batch_source_commit:
                 return TransientIncludeResult.failure(
                     TransientIncludeFailureReason.MISSING_BATCH_METADATA
                 )
 
             source_buffer = read_git_object_buffer_or_none(
-                f"{batch_source_commit}:{line_changes.path}"
+                f"{stored_batch_source_commit}:{line_changes.path}"
             )
             if source_buffer is None:
                 return TransientIncludeResult.failure(

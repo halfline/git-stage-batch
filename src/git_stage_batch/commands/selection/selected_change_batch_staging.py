@@ -25,6 +25,7 @@ from ...core.models import (
     BinaryFileChange,
     GitlinkChange,
     RenameChange,
+    SingleHunkPatch,
     TextFileDeletionChange,
 )
 from ...data.file_modes import detect_file_mode
@@ -103,6 +104,8 @@ def include_selected_change_to_batch(
                     return
                 continue
 
+            if not isinstance(patch, SingleHunkPatch):
+                continue
             patch_hash = compute_stable_hunk_hash_from_lines(patch.lines)
             if patch_hash in blocked_hashes:
                 continue

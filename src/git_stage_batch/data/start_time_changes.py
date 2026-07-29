@@ -280,7 +280,12 @@ def read_staged_renames() -> list[StagedRename]:
         new_path = item.get("new_path")
         new_mode = item.get("new_mode")
         new_blob = item.get("new_blob")
-        if not all(isinstance(value, str) for value in (old_path, new_path, new_mode, new_blob)):
+        if (
+            not isinstance(old_path, str)
+            or not isinstance(new_path, str)
+            or not isinstance(new_mode, str)
+            or not isinstance(new_blob, str)
+        ):
             continue
         renames.append(
             StagedRename(
@@ -313,7 +318,11 @@ def read_staged_deletions() -> list[StagedDeletion]:
         file_path = item.get("path")
         old_mode = item.get("old_mode")
         old_blob = item.get("old_blob")
-        if not all(isinstance(value, str) for value in (file_path, old_mode, old_blob)):
+        if (
+            not isinstance(file_path, str)
+            or not isinstance(old_mode, str)
+            or not isinstance(old_blob, str)
+        ):
             continue
         deletions.append(
             StagedDeletion(

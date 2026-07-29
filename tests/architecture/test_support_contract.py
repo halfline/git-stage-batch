@@ -35,3 +35,11 @@ def test_ci_exercises_macos():
     workflow = _read_project_file(".github/workflows/ci.yml")
 
     assert "runs-on: macos-latest" in workflow
+
+
+def test_ci_install_checks_both_distribution_formats():
+    """Built wheels and source distributions should each be installed."""
+    workflow = _read_project_file(".github/workflows/ci.yml")
+
+    assert "dist/*.whl" in workflow
+    assert "dist/*.tar.gz" in workflow

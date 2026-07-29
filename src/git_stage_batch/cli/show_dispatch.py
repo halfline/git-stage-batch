@@ -3,22 +3,38 @@
 from __future__ import annotations
 
 import argparse
+from typing import TypedDict
 
 from ..batch.state.query import read_batch_metadata
 from ..batch.source.selector import batch_name_for_source_lookup
 from ..batch.state.batch_names import batch_exists
 from ..commands.show import command_show, command_show_file_list
 from ..commands.show_from import command_show_from_batch
+from ..core.replacement import ReplacementPayload
 from ..exceptions import CommandError
 from ..i18n import _
-from .file_scope import resolve_batch_file_scope, resolve_live_file_scope
+from .file_scope import FileScope, resolve_batch_file_scope, resolve_live_file_scope
 from .replacement_input import resolve_replacement_text
+
+
+class _ShowFromOptions(TypedDict, total=False):
+    patterns: list[str] | None
+    selectable: bool
+    page: str | None
+    porcelain: bool
+    replacement_text: str | ReplacementPayload | None
+
+
+class _ShowLiveOptions(TypedDict, total=False):
+    page: str | None
+    porcelain: bool
+    selectable: bool
 
 
 def _validate_show_page_request(
     args: argparse.Namespace,
     *,
-    resolved_file_scope,
+    resolved_file_scope: FileScope,
 ) -> None:
     lookup_batch = (
         batch_name_for_source_lookup(args.from_batch)
@@ -54,7 +70,7 @@ def _validate_show_page_request(
 def _dispatch_show_from_batch(
     args: argparse.Namespace,
     *,
-    resolved_file_scope,
+    resolved_file_scope: FileScope,
     replacement_requested: bool,
 ) -> None:
     replacement_text = (
@@ -62,37 +78,33 @@ def _dispatch_show_from_batch(
         if replacement_requested
         else None
     )
-    show_kwargs = {"page": args.page}
+    options: _ShowFromOptions = {"page": args.page}
     if args.porcelain:
-        show_kwargs["porcelain"] = args.porcelain
+        options["porcelain"] = True
     if not args.advance:
-        show_kwargs["selectable"] = False
-    if replacement_text is not None:
-        show_kwargs["replacement_text"] = replacement_text
+        options["selectable"] = False
+    if replacement_requested:
+        options["replacement_text"] = replacement_text
     if resolved_file_scope.is_multiple:
         if args.line_ids:
             raise CommandError(_("Cannot use --lines with multiple files."))
         if replacement_requested:
             raise CommandError(_("`show --as` requires exactly one resolved file."))
-        command_show_from_batch(
-            args.from_batch,
-            args.line_ids,
-            patterns=args.file_patterns,
-            **show_kwargs,
-        )
+        options["patterns"] = args.file_patterns
+        command_show_from_batch(args.from_batch, args.line_ids, **options)
     else:
         command_show_from_batch(
             args.from_batch,
             args.line_ids,
             resolved_file_scope.optional_file(),
-            **show_kwargs,
+            **options,
         )
 
 
 def _dispatch_show_live(
     args: argparse.Namespace,
     *,
-    resolved_file_scope,
+    resolved_file_scope: FileScope,
 ) -> None:
     if args.line_ids or not resolved_file_scope.is_implicit:
         if resolved_file_scope.is_multiple and args.porcelain:
@@ -100,30 +112,30 @@ def _dispatch_show_live(
         if resolved_file_scope.is_multiple:
             if args.line_ids:
                 raise CommandError(_("Cannot use --lines with multiple files."))
-            show_list_kwargs = {}
-            if not args.advance:
-                show_list_kwargs["selectable"] = False
-            command_show_file_list(
-                list(resolved_file_scope.files),
-                **show_list_kwargs,
-            )
+            if args.advance:
+                command_show_file_list(list(resolved_file_scope.files))
+            else:
+                command_show_file_list(
+                    list(resolved_file_scope.files),
+                    selectable=False,
+                )
         else:
-            show_kwargs = {
-                "file": resolved_file_scope.optional_file(),
+            options: _ShowLiveOptions = {
                 "page": args.page,
                 "porcelain": args.porcelain,
             }
             if not args.advance:
-                show_kwargs["selectable"] = False
+                options["selectable"] = False
             command_show(
-                **show_kwargs,
+                file=resolved_file_scope.optional_file(),
+                **options,
             )
         return
 
-    show_kwargs = {"porcelain": args.porcelain}
-    if not args.advance:
-        show_kwargs["selectable"] = False
-    command_show(**show_kwargs)
+    if args.advance:
+        command_show(porcelain=args.porcelain)
+    else:
+        command_show(porcelain=args.porcelain, selectable=False)
 
 
 def dispatch_show_command(args: argparse.Namespace) -> None:

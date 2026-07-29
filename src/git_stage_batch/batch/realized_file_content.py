@@ -14,6 +14,7 @@ from ..editor.line_endings import (
 from ..core.text_lines import normalize_line_sequence_endings
 from ..exceptions import MergeError as _MergeError
 from .line_matching.match import match_lines as _match_lines
+from .merge import baseline_anchor_matching as _baseline_anchor_matching
 from .merge import baseline_edits as _baseline_edits
 from .merge.presence_constraints import satisfy_constraints
 from .realization.entry_storage import realized_entry_content_chunks
@@ -77,7 +78,7 @@ def _stream_realized_content_chunks_from_lines(
 
     try:
         with (
-            _baseline_edits.acquire_deletion_anchor_pairs_for_target(
+            _baseline_anchor_matching.acquire_deletion_anchor_pairs_for_target(
                 batch_source_lines,
                 base_lines,
                 deletion_claims,

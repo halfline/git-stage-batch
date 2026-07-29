@@ -5,7 +5,8 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-from contextlib import nullcontext
+import argparse
+from contextlib import AbstractContextManager, nullcontext
 
 from ..exceptions import CommandError
 from ..i18n import _
@@ -28,14 +29,14 @@ _READ_ONLY_COMMANDS = frozenset(
 )
 
 
-def acquire_session_lock():
+def acquire_session_lock() -> AbstractContextManager[None]:
     """Load the POSIX lock backend only after the platform check."""
     from ..utils.session_lock import acquire_session_lock as acquire_lock
 
     return acquire_lock()
 
 
-def _command_may_mutate(args) -> bool:
+def _command_may_mutate(args: argparse.Namespace) -> bool:
     """Return whether dispatch may change worktree-local or shared state."""
     if getattr(args, "interactive_flag", False):
         return True

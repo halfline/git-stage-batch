@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .models import FileChangeType
+
 
 BINARY_FILES_MARKER = b"Binary files"
 DEV_NULL_PATH = b"/dev/null"
@@ -19,7 +21,7 @@ def metadata_indicates_binary_file(metadata_lines: list[bytes]) -> bool:
     return binary_file_diff_line(metadata_lines) is not None
 
 
-def binary_change_type(metadata_lines: list[bytes]) -> str:
+def binary_change_type(metadata_lines: list[bytes]) -> FileChangeType:
     """Derive added/modified/deleted from binary-file diff metadata."""
     binary_line = binary_file_diff_line(metadata_lines) or b"Binary files differ"
 

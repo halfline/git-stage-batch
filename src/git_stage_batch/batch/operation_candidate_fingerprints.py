@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from ..core.buffer import buffer_byte_chunks
+from .ownership.absence_claims import AbsenceClaim
+from .ownership.claims import PresenceClaim
+from .ownership.references import BaselineReference
+from .ownership.replacement_units import ReplacementUnit
 
 if TYPE_CHECKING:
     from ..core.buffer import LineBuffer
@@ -19,6 +23,53 @@ if TYPE_CHECKING:
 
 
 ALGORITHM_VERSION = 2
+
+
+class _BaselineReferenceFingerprint(TypedDict):
+    """Canonical fingerprint fields for a baseline boundary."""
+
+    after_line: int | None
+    after_content: str | None
+    has_after_line: bool
+    before_line: int | None
+    before_content: str | None
+    has_before_line: bool
+
+
+class _AbsenceClaimFingerprint(TypedDict):
+    """Canonical fingerprint fields for an absence claim."""
+
+    anchor_line: int | None
+    content: str
+    line_count: int
+    baseline_reference: _BaselineReferenceFingerprint | None
+
+
+class _PresenceClaimFingerprint(TypedDict):
+    """Canonical fingerprint fields for a presence claim."""
+
+    source_lines: list[str]
+    baseline_references: list[
+        tuple[int, _BaselineReferenceFingerprint | None]
+    ]
+
+
+class _ReplacementOriginFingerprint(TypedDict):
+    """Canonical fingerprint fields for a replacement origin."""
+
+    old_start: int
+    old_end: int
+    new_start: int
+    new_end: int
+    baseline_reference: _BaselineReferenceFingerprint | None
+
+
+class _ReplacementUnitFingerprint(TypedDict):
+    """Canonical fingerprint fields for a replacement unit."""
+
+    presence_lines: list[str | int]
+    deletion_indices: list[int]
+    origin: _ReplacementOriginFingerprint | None
 
 
 def _hash_bytes(data: bytes) -> str:
@@ -62,7 +113,9 @@ def target_result_fingerprint(target: TargetCandidatePreview) -> str:
     })
 
 
-def _baseline_reference_payload(reference) -> dict | None:
+def _baseline_reference_payload(
+    reference: BaselineReference | None,
+) -> _BaselineReferenceFingerprint | None:
     if reference is None:
         return None
     return {
@@ -83,7 +136,7 @@ def _baseline_reference_payload(reference) -> dict | None:
     }
 
 
-def _absence_claim_payload(claim) -> dict:
+def _absence_claim_payload(claim: AbsenceClaim) -> _AbsenceClaimFingerprint:
     return {
         "anchor_line": claim.anchor_line,
         "content": _buffer_fingerprint(claim.content_lines),
@@ -92,20 +145,22 @@ def _absence_claim_payload(claim) -> dict:
     }
 
 
-def _presence_claim_payload(claim) -> dict:
+def _presence_claim_payload(claim: PresenceClaim) -> _PresenceClaimFingerprint:
     return {
         "source_lines": claim.source_lines,
         "baseline_references": [
-            [line, _baseline_reference_payload(reference)]
+            (line, _baseline_reference_payload(reference))
             for line, reference in sorted(claim.baseline_references.items())
         ],
     }
 
 
-def _replacement_unit_payload(unit) -> dict:
+def _replacement_unit_payload(
+    unit: ReplacementUnit,
+) -> _ReplacementUnitFingerprint:
     origin = unit.origin
     return {
-        "presence_lines": unit.presence_lines,
+        "presence_lines": list(unit.presence_lines),
         "deletion_indices": unit.deletion_indices,
         "origin": None if origin is None else {
             "old_start": origin.old_start,

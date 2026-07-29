@@ -38,6 +38,9 @@ class ReplacementPayload:
 class ReplacementText(str):
     """String-compatible replacement value carrying exact source bytes."""
 
+    data: bytes
+    exact: bool
+
     def __new__(
         cls,
         text: str,

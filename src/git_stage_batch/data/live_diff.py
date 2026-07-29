@@ -11,19 +11,82 @@ from ..core.models import SingleHunkPatch
 from ..utils.git_command import stream_git_diff
 
 
-def stream_live_git_diff(**kwargs):
+def stream_live_git_diff(
+    *,
+    base: str | None = None,
+    target: str | None = None,
+    cached: bool = False,
+    context_lines: int | None = None,
+    no_color: bool = True,
+    full_index: bool = False,
+    find_renames: bool = True,
+    no_renames: bool = False,
+    ignore_submodules: str | None = None,
+    submodule_format: str | None = None,
+    paths: Iterable[str] = (),
+    stdin_chunks: Iterable[bytes] | None = None,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+) -> Iterator[bytes]:
     """Stream actionable live changes with rename detection enabled."""
-    kwargs.setdefault("find_renames", True)
-    return stream_git_diff(**kwargs)
+    return stream_git_diff(
+        base=base,
+        target=target,
+        cached=cached,
+        context_lines=context_lines,
+        no_color=no_color,
+        full_index=full_index,
+        find_renames=find_renames,
+        no_renames=no_renames,
+        ignore_submodules=ignore_submodules,
+        submodule_format=submodule_format,
+        paths=paths,
+        stdin_chunks=stdin_chunks,
+        cwd=cwd,
+        env=env,
+    )
 
 
 @contextmanager
-def acquire_prepared_live_diff(**kwargs) -> Iterator[tuple[UnifiedDiffItem, ...]]:
+def acquire_prepared_live_diff(
+    *,
+    base: str | None = None,
+    target: str | None = None,
+    cached: bool = False,
+    context_lines: int | None = None,
+    no_color: bool = True,
+    full_index: bool = False,
+    find_renames: bool = True,
+    no_renames: bool = False,
+    ignore_submodules: str | None = None,
+    submodule_format: str | None = None,
+    paths: Iterable[str] = (),
+    stdin_chunks: Iterable[bytes] | None = None,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+) -> Iterator[tuple[UnifiedDiffItem, ...]]:
     """Acquire one reusable live diff while owning cloned hunk buffers."""
     owned_buffers: list[LineBuffer] = []
     changes: list[UnifiedDiffItem] = []
     try:
-        with acquire_unified_diff(stream_live_git_diff(**kwargs)) as parsed:
+        with acquire_unified_diff(
+            stream_live_git_diff(
+                base=base,
+                target=target,
+                cached=cached,
+                context_lines=context_lines,
+                no_color=no_color,
+                full_index=full_index,
+                find_renames=find_renames,
+                no_renames=no_renames,
+                ignore_submodules=ignore_submodules,
+                submodule_format=submodule_format,
+                paths=paths,
+                stdin_chunks=stdin_chunks,
+                cwd=cwd,
+                env=env,
+            )
+        ) as parsed:
             for change in parsed:
                 if isinstance(change, SingleHunkPatch):
                     lines = change.lines
@@ -72,7 +135,7 @@ def paths_for_live_changes(
     changes: Iterable[UnifiedDiffItem],
 ) -> tuple[str, ...]:
     """Return every repository path touched by prepared live changes."""
-    paths = []
+    paths: list[str] = []
     for change in changes:
         old_path = getattr(change, "old_path", None)
         new_path = getattr(change, "new_path", None)

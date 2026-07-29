@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 
 from ...data.change_freshness import text_deletion_change_is_batched
+from ...core.models import LineLevelChange
 from ...data.file_change_display import (
     render_binary_file_change,
     render_gitlink_change,
@@ -49,7 +50,7 @@ from ...output.patch import (
 from ...utils.session_start_point import session_comparison_base
 
 
-def _load_previous_selection_for_review():
+def _load_previous_selection_for_review() -> LineLevelChange | None:
     """Best-effort load of the prior selection for page anchoring."""
     try:
         return load_line_changes_from_state()

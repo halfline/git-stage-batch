@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from contextlib import nullcontext
+from collections.abc import Iterator, Sequence
+from contextlib import AbstractContextManager, nullcontext
 import sys
 
 from ...core.diff_parser import (
@@ -65,6 +65,8 @@ def skip_file_changes(
     else:
         target_file = file
 
+    checkpoint: AbstractContextManager[None]
+    patch_context: AbstractContextManager[Iterator[UnifiedDiffItem]]
     if _prepared_changes is None:
         auto_add_untracked_files([target_file])
         checkpoint = undo_checkpoint(

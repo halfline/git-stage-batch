@@ -9,6 +9,7 @@ from .state.validation import get_validated_baseline_commit
 from .state.compatibility_metadata import write_file_backed_batch_metadata
 from .state.lifecycle import create_batch
 from .state.query import get_batch_commit_sha, read_batch_metadata
+from .state.metadata_types import BatchFileMetadataDict, add_ownership_metadata
 from .state.batch_names import batch_exists, validate_batch_name
 from ..core.text_lifecycle import (
     TextFileChangeType,
@@ -205,11 +206,14 @@ def add_files_to_batch(batch_name: str, updates: list[BatchFileUpdate]) -> None:
                     ).exists(),
                 )
 
-                file_metadata = {
+                file_metadata: BatchFileMetadataDict = {
                     "batch_source_commit": batch_source_commit,
-                    **update.ownership.to_metadata_dict(),
-                    "mode": update.file_mode
+                    "mode": update.file_mode,
                 }
+                add_ownership_metadata(
+                    file_metadata,
+                    update.ownership.to_metadata_dict(),
+                )
                 if text_change_type != TextFileChangeType.MODIFIED:
                     file_metadata["change_type"] = text_change_type.value
                 metadata["files"][file_path] = file_metadata

@@ -106,7 +106,7 @@ def _handle_line_include(flow_state: FlowState, line_ids: str) -> None:
             command_include_line(line_ids, auto_advance=True)
         elif flow_state.target.role is LocationRole.BATCH:
             command_include_to_batch(
-                flow_state.target.batch_name,
+                flow_state.target.require_batch_name(),
                 line_ids=line_ids,
                 quiet=True,
                 auto_advance=True,
@@ -117,7 +117,10 @@ def _handle_line_include(flow_state: FlowState, line_ids: str) -> None:
         if flow_state.target.role is not LocationRole.STAGING_AREA:
             print(_("Batch-to-batch transfers not yet supported."), file=sys.stderr)
             return
-        command_include_from_batch(flow_state.source.batch_name, line_ids=line_ids)
+        command_include_from_batch(
+            flow_state.source.require_batch_name(),
+            line_ids=line_ids,
+        )
     else:
         raise ValueError(f"Unknown source role: {flow_state.source.role}")
 

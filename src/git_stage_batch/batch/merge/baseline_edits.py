@@ -27,14 +27,11 @@ from .baseline_replacement_edits import (
     replacement_source_ranges_fit_presence as _replacement_source_ranges_fit_presence,
 )
 from .baseline_replacement_ranges import (
-    collect_replacement_source_ranges as _collect_replacement_source_ranges,
     replacement_source_range_capacity as _replacement_source_range_capacity,
-    selected_replacement_source_ranges as _selected_replacement_source_ranges,
 )
 from ..line_matching.sequence_equality import (
     line_sequences_equal as _line_sequences_match,
 )
-from ..line_matching.line_mapping import LineMapping
 from ..line_matching.match_workspace import MatcherWorkspace
 from .candidates import MergeResolution as _MergeResolution
 
@@ -270,41 +267,3 @@ def _build_baseline_edit_plan(
     if not plan.sort_and_validate():
         return None
     return plan
-
-
-def has_missing_origin_replacement_claims(
-    ownership: BatchOwnership,
-    presence_line_set: LineSelection,
-    source_lines: Sequence[bytes],
-    mapping: LineMapping,
-    *,
-    spool_dir: str | Path | None = None,
-) -> bool:
-    """Return whether parent-tracked replacement lines would need placement."""
-    selected_presence = coerce_line_ranges(presence_line_set)
-    with MatcherWorkspace(spool_dir=spool_dir) as workspace:
-        for unit in getattr(ownership, "replacement_units", []):
-            if getattr(unit, "origin", None) is None:
-                continue
-            claimed_ranges = _collect_replacement_source_ranges(
-                workspace,
-                unit.presence_lines,
-            )
-            if claimed_ranges is None:
-                return True
-            try:
-                for claimed_start, claimed_end in _selected_replacement_source_ranges(
-                    claimed_ranges,
-                    selected_presence,
-                ):
-                    for claimed_line in range(claimed_start, claimed_end + 1):
-                        if claimed_line > len(source_lines):
-                            continue
-                        if (
-                            mapping.get_target_line_from_source_line(claimed_line)
-                            is None
-                        ):
-                            return True
-            finally:
-                workspace.close_resource(claimed_ranges)
-    return False

@@ -6,11 +6,13 @@ import hashlib
 import json
 from typing import TYPE_CHECKING, TypedDict
 
-from ..core.buffer import buffer_byte_chunks
+from ..core.buffer import BufferInput, buffer_byte_chunks
 from .ownership.absence_claims import AbsenceClaim
 from .ownership.claims import PresenceClaim
+from .ownership.model import BatchOwnership
 from .ownership.references import BaselineReference
 from .ownership.replacement_units import ReplacementUnit
+from .state.metadata_types import BatchFileMetadataDict
 
 if TYPE_CHECKING:
     from ..core.buffer import LineBuffer
@@ -76,14 +78,14 @@ def _hash_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _buffer_fingerprint(buffer) -> str:
+def _buffer_fingerprint(buffer: BufferInput) -> str:
     digest = hashlib.sha256()
     for chunk in buffer_byte_chunks(buffer):
         digest.update(chunk)
     return digest.hexdigest()
 
 
-def _json_fingerprint(payload) -> str:
+def _json_fingerprint(payload: object) -> str:
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
@@ -174,7 +176,7 @@ def _replacement_unit_payload(
     }
 
 
-def _ownership_fingerprint(ownership) -> str:
+def _ownership_fingerprint(ownership: BatchOwnership) -> str:
     return _json_fingerprint({
         "presence_claims": [
             _presence_claim_payload(claim)
@@ -253,9 +255,9 @@ def batch_fingerprint(
     batch_name: str,
     file_path: str,
     source_buffer: LineBuffer,
-    ownership,
+    ownership: BatchOwnership,
     batch_source_commit: str,
-    file_meta: dict,
+    file_meta: BatchFileMetadataDict,
 ) -> str:
     return _json_fingerprint({
         "algorithm_version": ALGORITHM_VERSION,

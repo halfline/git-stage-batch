@@ -7,6 +7,7 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 
 from ..core.models import LineEntry
+from .state.metadata_types import BatchFileMetadataDict
 from .ownership.hunk_translation import translate_hunk_selection_to_batch_ownership
 from .ownership.model import BatchOwnership
 from .ownership.metadata_loading import acquire_ownership_for_metadata_dict
@@ -63,7 +64,7 @@ def _merge_refreshed_selected_lines_into_hunk(
 
 
 def _translate_selection_to_batch_ownership(
-    selected_lines: list,
+    selected_lines: list[LineEntry],
     *,
     hunk_lines: Sequence[LineEntry] | None = None,
     replacement_line_runs: Iterable[ReplacementLineRun] | None = None,
@@ -138,7 +139,7 @@ def prepare_batch_ownership_update_for_selection(
     file_path: str,
     current_batch_source_commit: str | None,
     existing_ownership: BatchOwnership | None,
-    selected_lines: list,
+    selected_lines: list[LineEntry],
     *,
     hunk_lines: Sequence[LineEntry] | None = None,
     replacement_line_runs: Iterable[ReplacementLineRun] | None = None,
@@ -236,8 +237,8 @@ def acquire_batch_ownership_update_for_selection(
     *,
     batch_name: str,
     file_path: str,
-    file_metadata: dict | None,
-    selected_lines: list,
+    file_metadata: BatchFileMetadataDict | None,
+    selected_lines: list[LineEntry],
     initial_batch_source_commit: str | None = None,
     hunk_lines: Sequence[LineEntry] | None = None,
     replacement_line_runs: Iterable[ReplacementLineRun] | None = None,
@@ -252,6 +253,7 @@ def acquire_batch_ownership_update_for_selection(
     so callers should persist or detach it before leaving the context.
     """
     with ExitStack() as stack:
+        current_batch_source_commit: str | None
         if file_metadata is None:
             if initial_batch_source_commit is None:
                 current_batch_source_commit, prepared_selected_lines = (

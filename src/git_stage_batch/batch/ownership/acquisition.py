@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import TracebackType
 from typing import Generic, TypeVar
 
 from ...core.buffer import LineBuffer
@@ -26,5 +27,10 @@ class AcquiredBatchOwnership(Generic[_OwnershipT]):
     def __enter__(self) -> _OwnershipT:
         return self.ownership
 
-    def __exit__(self, exc_type, exc, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()

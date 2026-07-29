@@ -17,6 +17,51 @@ documentation section, and build hook must be either the named outcome or
 necessary support for it. A patch with several independent outcomes belongs
 in `refine-history`; do not disguise it with a broader message.
 
+## Low-context prose
+
+Assume the reader understands ordinary software development and Git, but has
+never seen this repository. The message should let that reader identify the
+selected state, the concrete limitation, and the effect of the patch without
+first decoding local vocabulary.
+
+- Make each message independently understandable. Do not require the reader to
+  open an earlier commit to recover a definition or remember a local term.
+- Prefer a short, complete sentence over a coined label or compressed noun
+  phrase. Do not turn a relationship into phrases such as `metadata bridge`,
+  `ownership path`, `state seam`, or `typing surface` when plain prose can say
+  what data moves, who uses it, and why.
+- Do not invent a one- or two-word name for an idea solely to shorten the
+  message. A memorable label is not automatically a clear explanation.
+- Use an established project term only when it is the clearest name for the
+  concept. Define a codebase-specific or ambiguous term at first use in every
+  message with a brief appositive or plain-language clause.
+- Introduce a code identifier by its role when the name alone is not
+  self-explanatory: `SelectionResult, the object that carries the chosen
+  hunks`, rather than treating `SelectionResult` as prior knowledge. Repeat
+  that brief role in a later message when the identifier appears there again.
+- Expand uncommon abbreviations on first use. Common terms such as Git, CLI,
+  API, and JSON need no definition unless the repository gives them a special
+  meaning.
+- Spell out the relationship hidden by compounds such as `X-backed`,
+  `X-aware`, `X-driven`, or `X-shaped` when more than one interpretation is
+  plausible.
+- Replace abstract verbs such as `thread`, `surface`, `normalize`, `harden`,
+  or `plumb` with the concrete behavior when the abstraction would force the
+  reader to inspect the patch.
+- Give pronouns clear antecedents. Do not make a reader search earlier
+  paragraphs to learn what `it`, `that path`, or `the state` means.
+
+For example, `state: Harden ownership recovery` leaves both the failure and
+the role of ownership unclear. `state: Restore saved line selections after
+reopening a session` states the behavior directly. Likewise, replace `The
+typed path lacks a metadata bridge` with a sentence such as `Saved selections
+do not carry the file name and object identifier needed to find their source
+files again`.
+
+Apply a read-once test: a newcomer should be able to paraphrase what existed,
+what was missing, and what this commit changes. If the paraphrase depends on
+guessing a local term, define the term or rewrite the sentence.
+
 ## Message shape
 
 Use a concise, single-outcome subject with the repository's normal lowercase

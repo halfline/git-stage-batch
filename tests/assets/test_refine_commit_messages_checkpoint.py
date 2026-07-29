@@ -29,6 +29,14 @@ CLAUDE_HELPER = (
 )
 CODEX_SKILL = CODEX_HELPER.parents[1] / "SKILL.md"
 CLAUDE_SKILL = CLAUDE_HELPER.parents[1] / "SKILL.md"
+CODEX_GUIDELINES = CODEX_HELPER.parents[1] / "references" / "message-guidelines.md"
+CLAUDE_GUIDELINES = CLAUDE_HELPER.parents[1] / "references" / "message-guidelines.md"
+CODEX_DRAFTER = (
+    PROJECT_ROOT / "assets" / "codex-skills" / "internal" / "commit-message-drafter.md"
+)
+CLAUDE_DRAFTER = (
+    PROJECT_ROOT / "assets" / "claude-agents" / "commit-message-drafter.md"
+)
 
 
 def _git(
@@ -133,6 +141,21 @@ def test_public_audit_mode_uses_a_positional_keyword() -> None:
     assert (
         'argument-hint: "<base-sha> | audit <base-sha> | resume"' in claude_skill
     )
+
+
+def test_message_guidance_requires_low_context_prose() -> None:
+    """Drafters should explain repository terms instead of inventing shorthand."""
+    for path in (CODEX_GUIDELINES, CLAUDE_GUIDELINES):
+        guidance = path.read_text(encoding="utf-8")
+        assert "## Low-context prose" in guidance
+        assert "Do not invent a one- or two-word name" in guidance
+        assert "Define a codebase-specific or ambiguous term at first use" in guidance
+        assert "Make each message independently understandable" in guidance
+        assert "Apply a read-once test" in guidance
+
+    for path in (CODEX_DRAFTER, CLAUDE_DRAFTER):
+        drafter = " ".join(path.read_text(encoding="utf-8").split())
+        assert "Write for a reader who has never seen the repository" in drafter
 
 
 def test_start_freezes_base_and_binds_resume_to_the_branch(git_repo: Path) -> None:

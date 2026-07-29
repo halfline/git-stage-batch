@@ -84,6 +84,8 @@ We follow strict commit message conventions to maintain a clear and understandab
 - **Wrap body paragraphs at 75 characters.**
 - **Be humble and forward thinking.** Avoid words like "comprehensive" or "crucial", and avoid a tone that could sound like bragging or seem short-sighted.
 - **Do not invent concise self-describing labels for internal ideas and use them casually,** expecting the reader to implicitly know what they should mean. Explain things in a way that reduces cognitive load on the reader.
+- **Define codebase-specific or ambiguous terms at first use in every message.** A reader should not need another commit in the series to learn what a term or identifier means.
+- **Prefer a complete plain-language sentence over compressed shorthand.** Spell out the behavior hidden by noun piles, abstract verbs, or compounds such as `X-backed` and `X-aware` when their meaning is not obvious.
 
 ### Format
 
@@ -205,6 +207,8 @@ Before finalizing a commit message, check:
 - If this is an incremental step, does it clearly say so?
 - If this is the penultimate commit in a series, does the fourth paragraph name what the upcoming final commit will do?
 - If this is an earlier non-final commit in a series, does the fourth paragraph name what subsequent commits will do?
+- Can a newcomer understand the state, limitation, and change without decoding coined shorthand?
+- Are codebase-specific or ambiguous terms defined in this message rather than only in another commit?
 - Do body paragraphs wrap at 75 characters?
 
 ### Example: Single Commit

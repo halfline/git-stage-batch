@@ -27,7 +27,10 @@ noncompliant commits. Preserve the commit count, order, tree at every series
 position, author identity/date, signature presence, and final tree.
 
 Read `references/message-guidelines.md` before auditing. Treat the patches as
-evidence for the prose, never as editable material.
+evidence for the prose, never as editable material. Within each message,
+reject unexplained local terms, coined shorthand, and compressed labels that
+make a newcomer decode the prose when a plain sentence could state the
+behavior directly.
 
 ## Usage
 

@@ -325,7 +325,7 @@ def parse_positive_selection(
     if not selection or not selection.strip():
         raise ValueError("Selection string cannot be empty")
 
-    selected_ids = set()
+    selected_ids: set[int] = set()
     parts = selection.split(",")
     invalid_item_name = "line ID" if item_name == "Line ID" else item_name
 
@@ -385,7 +385,7 @@ def parse_line_selection_ranges(selection: str) -> LineRanges:
     return LineRanges.from_ranges(scan_line_range_specs((selection,)))
 
 
-def format_line_ids(line_ids: list[str | int]) -> str:
+def format_line_ids(line_ids: Iterable[str | int]) -> str:
     """Format a list of line IDs into a compact range representation.
 
     Converts consecutive line IDs into ranges for compact display.

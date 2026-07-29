@@ -90,7 +90,7 @@ def add_undo_subcommand(subparsers) -> None:
     parser_undo.set_defaults(func=lambda args: command_undo(force=args.force))
 
 
-def add_redo_subcommand(subparsers) -> None:
+def add_redo_subcommand(subparsers: Subparsers) -> None:
     """Register the redo subcommand."""
     parser_redo = add_subcommand_parser(
         subparsers,

@@ -6,7 +6,7 @@ import sys
 
 from ...batch.source.annotation import annotate_with_batch_source
 from ...batch.ownership import insertion_references as _insertion_references
-from ...data.line_state import load_line_changes_from_state
+from ...data.line_state import require_line_changes_from_state
 from ...data.selected_change.loading import require_selected_hunk
 from ...exceptions import exit_with_error
 from ...i18n import _
@@ -77,7 +77,7 @@ def include_selected_lines_to_batch(
     """Save selected hunk lines to a batch."""
     require_selected_hunk()
 
-    line_changes = load_line_changes_from_state()
+    line_changes = require_line_changes_from_state()
     _insertion_references.record_baseline_references_for_additions(line_changes)
     selection = _batch_line_selection.select_lines_for_batch_action(
         line_changes,

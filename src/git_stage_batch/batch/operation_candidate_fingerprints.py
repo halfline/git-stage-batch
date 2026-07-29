@@ -47,6 +47,14 @@ class _PresenceClaimFingerprint(TypedDict):
     baseline_references: list[
         tuple[int, _BaselineReferenceFingerprint | None]
     ]
+class _ReplacementOriginFingerprint(TypedDict):
+    """Canonical fingerprint fields for a replacement origin."""
+
+    old_start: int
+    old_end: int
+    new_start: int
+    new_end: int
+    baseline_reference: _BaselineReferenceFingerprint | None
 def _hash_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 

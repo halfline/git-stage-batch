@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from .query import read_batch_metadata
 from .compatibility_metadata import write_file_backed_batch_metadata
+from .metadata_types import BatchMetadataDict
 from .batch_names import batch_exists, validate_batch_name
 from ...exceptions import CommandError
 from ...i18n import _
@@ -37,7 +38,7 @@ def create_batch(name: str, note: str = "", baseline_commit: str | None = None) 
             else get_empty_git_tree_object_id()
         )
 
-    metadata = {
+    metadata: BatchMetadataDict = {
         "note": note,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "baseline": baseline_commit,

@@ -47,37 +47,52 @@ def ensure_state_directory_exists() -> None:
 
 def get_session_directory_path() -> Path:
     """Get the directory containing active session scratch state."""
-    path = get_state_directory_path() / "session"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    return get_state_directory_path() / "session"
+
+
+def ensure_session_directory_exists() -> None:
+    """Create the active session scratch directory if it does not exist."""
+    get_session_directory_path().mkdir(parents=True, exist_ok=True)
 
 
 def get_selected_state_directory_path() -> Path:
     """Get the directory containing the selected change cache."""
-    path = get_session_directory_path() / "selected"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    return get_session_directory_path() / "selected"
+
+
+def ensure_selected_state_directory_exists() -> None:
+    """Create the selected change cache directory if it does not exist."""
+    get_selected_state_directory_path().mkdir(parents=True, exist_ok=True)
 
 
 def get_progress_state_directory_path() -> Path:
     """Get the directory containing hunk progress state."""
-    path = get_session_directory_path() / "progress"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    return get_session_directory_path() / "progress"
+
+
+def ensure_progress_state_directory_exists() -> None:
+    """Create the hunk progress directory if it does not exist."""
+    get_progress_state_directory_path().mkdir(parents=True, exist_ok=True)
 
 
 def get_processed_state_directory_path() -> Path:
     """Get the directory containing processed line-id state."""
-    path = get_session_directory_path() / "processed"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    return get_session_directory_path() / "processed"
+
+
+def ensure_processed_state_directory_exists() -> None:
+    """Create the processed line-id directory if it does not exist."""
+    get_processed_state_directory_path().mkdir(parents=True, exist_ok=True)
 
 
 def get_config_state_directory_path() -> Path:
     """Get the directory containing session configuration state."""
-    path = get_session_directory_path() / "config"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    return get_session_directory_path() / "config"
+
+
+def ensure_config_state_directory_exists() -> None:
+    """Create the session configuration directory if it does not exist."""
+    get_config_state_directory_path().mkdir(parents=True, exist_ok=True)
 
 
 def get_auto_advance_config_file_path() -> Path:
@@ -87,23 +102,32 @@ def get_auto_advance_config_file_path() -> Path:
 
 def get_abort_state_directory_path() -> Path:
     """Get the directory containing abort/recovery state."""
-    path = get_session_directory_path() / "abort"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    return get_session_directory_path() / "abort"
+
+
+def ensure_abort_state_directory_exists() -> None:
+    """Create the abort recovery directory if it does not exist."""
+    get_abort_state_directory_path().mkdir(parents=True, exist_ok=True)
 
 
 def get_fixup_state_directory_path() -> Path:
     """Get the directory containing suggest-fixup state."""
-    path = get_session_directory_path() / "fixup"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    return get_session_directory_path() / "fixup"
+
+
+def ensure_fixup_state_directory_exists() -> None:
+    """Create the suggest-fixup state directory if it does not exist."""
+    get_fixup_state_directory_path().mkdir(parents=True, exist_ok=True)
 
 
 def get_candidate_state_directory_path() -> Path:
     """Get the directory containing batch candidate iteration state."""
-    path = get_session_directory_path() / "candidates"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    return get_session_directory_path() / "candidates"
+
+
+def ensure_candidate_state_directory_exists() -> None:
+    """Create the batch candidate state directory if it does not exist."""
+    get_candidate_state_directory_path().mkdir(parents=True, exist_ok=True)
 
 
 def get_batch_candidate_state_file_path() -> Path:
@@ -269,6 +293,11 @@ def get_abort_snapshots_directory_path() -> Path:
         Path to snapshots directory
     """
     return get_abort_state_directory_path() / "untracked"
+
+
+def ensure_abort_snapshots_directory_exists() -> None:
+    """Create the untracked-file recovery directory if it does not exist."""
+    get_abort_snapshots_directory_path().mkdir(parents=True, exist_ok=True)
 
 
 def get_abort_snapshot_list_file_path() -> Path:

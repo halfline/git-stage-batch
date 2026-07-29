@@ -50,7 +50,7 @@ def add_start_subcommand(subparsers) -> None:
     )
 
 
-def add_again_subcommand(subparsers) -> None:
+def add_again_subcommand(subparsers: Subparsers) -> None:
     """Register the again subcommand."""
     parser_again = add_subcommand_parser(
         subparsers,

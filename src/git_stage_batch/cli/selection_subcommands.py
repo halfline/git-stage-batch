@@ -185,7 +185,7 @@ def add_skip_subcommand(subparsers) -> None:
     parser_skip.set_defaults(func=dispatch_skip_command)
 
 
-def add_discard_subcommand(subparsers) -> None:
+def add_discard_subcommand(subparsers: Subparsers) -> None:
     """Register the discard subcommand."""
     parser_discard = add_subcommand_parser(
         subparsers,

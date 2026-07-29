@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from importlib import import_module
 
 from git_stage_batch.cli import pager as pager_module
+from git_stage_batch.cli.argument_parser import parse_command_line
 from git_stage_batch.cli.pager import should_page_output
 
 main_module = import_module("git_stage_batch.cli.main")
@@ -20,6 +21,11 @@ def _make_args(**overrides) -> argparse.Namespace:
         "working_directory": None,
     }
     defaults.update(overrides)
+    command = defaults["command"]
+    if "command_policy" not in defaults and isinstance(command, str):
+        parsed_args = parse_command_line([command], quiet=True)
+        if parsed_args is not None:
+            defaults["command_policy"] = parsed_args.command_policy
     return argparse.Namespace(**defaults)
 
 
@@ -35,6 +41,15 @@ def test_should_page_include_when_stdout_is_tty(monkeypatch):
     monkeypatch.setattr("sys.stdout.isatty", lambda: True)
 
     assert should_page_output(_make_args(command="include")) is True
+
+
+def test_should_page_from_declared_policy_instead_of_command_name(monkeypatch):
+    """Pager eligibility should travel with registration metadata."""
+    args = _make_args(command="show")
+    args.command = "renamed-show"
+    monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+
+    assert should_page_output(args) is True
 
 
 def test_should_not_page_porcelain_output(monkeypatch):

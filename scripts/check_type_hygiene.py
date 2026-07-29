@@ -173,6 +173,19 @@ class _ExplicitAnyVisitor(ast.NodeVisitor):
         if node.value is not None:
             self.visit(node.value)
 
+    def visit_Call(self, node: ast.Call) -> None:
+        if (
+            isinstance(node.func, ast.Name)
+            and node.func.id == "cast"
+            and node.args
+            and _contains_any(
+                node.args[0],
+                any_names=self.any_names,
+                typing_names=self.typing_names,
+            )
+        ):
+            self._record(node.args[0], "cast")
+        self.generic_visit(node)
 
 
 def explicit_any_uses() -> list[ExplicitAnyUse]:

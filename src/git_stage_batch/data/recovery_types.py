@@ -43,6 +43,30 @@ class WorktreePathState(_RequiredWorktreePathState, total=False):
 FilesystemState: TypeAlias = dict[str, FilesystemEntryState]
 
 
+class CheckpointState(TypedDict, total=False):
+    """One compatible undo/redo state or manifest mapping."""
+
+    head: str | None
+    index_tree: str
+    operation: str
+    undo_checkpoint: str
+    index_entries: dict[str, IndexEntryState]
+    refs: dict[str, str]
+    recovery_anchors: dict[str, str]
+    intent_to_add_paths: list[str]
+    tracked_worktree_paths: list[str]
+    tracked_index_paths: list[str]
+    tracked_refs: list[str]
+    tracked_session_paths: list[str]
+    tracked_batches_paths: list[str]
+    tracked_repository_paths: list[str]
+    worktree_paths: list[WorktreePathState]
+    session_files: FilesystemState
+    batches_files: FilesystemState
+    repository_files: FilesystemState
+    worktree_path_scope: Literal["explicit"]
+    after: CheckpointState
+    after_undo: CheckpointState
 
 
 

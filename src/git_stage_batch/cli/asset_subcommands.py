@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from ..commands.install_assets import command_install_assets
 from ..i18n import _
-from .subcommand_parser import add_subcommand_parser
+from .subcommand_parser import Subparsers, add_subcommand_parser
 
 
-def add_install_assets_subcommand(subparsers) -> None:
+def add_install_assets_subcommand(subparsers: Subparsers) -> None:
     """Register the install-assets subcommand."""
     parser_install_assets = add_subcommand_parser(
         subparsers,

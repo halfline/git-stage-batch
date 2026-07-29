@@ -11,7 +11,10 @@ from ..i18n import _
 
 def _get_asset_group_root(group: AssetGroup) -> Traversable:
     """Return the packaged root for an asset group."""
-    return resources.files("git_stage_batch").joinpath(*group.source_segments)
+    root = resources.files("git_stage_batch")
+    for segment in group.source_segments:
+        root = root.joinpath(segment)
+    return root
 
 
 def _get_install_entry_name(group: AssetGroup, entry: Traversable) -> str:
@@ -49,7 +52,10 @@ def list_asset_group_entries(
 
 def get_companion_asset_source(companion: CompanionAsset) -> Traversable:
     """Return the packaged source for a companion asset."""
-    return resources.files("git_stage_batch").joinpath(*companion.source_segments)
+    source = resources.files("git_stage_batch")
+    for segment in companion.source_segments:
+        source = source.joinpath(segment)
+    return source
 
 
 def get_entry_companion_assets(

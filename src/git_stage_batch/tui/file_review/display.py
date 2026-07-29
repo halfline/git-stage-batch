@@ -26,7 +26,7 @@ def render_file_review(
             from ...commands.show_from import command_show_from_batch
 
             command_show_from_batch(
-                flow_state.source.batch_name,
+                flow_state.source.require_batch_name(),
                 file=file_path,
                 page=page_spec,
                 selectable=True,

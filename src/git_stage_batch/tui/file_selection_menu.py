@@ -82,7 +82,7 @@ def _handle_file_include(flow_state: FlowState) -> None:
             command_include_file(file="", auto_advance=True)
         elif flow_state.target.role is LocationRole.BATCH:
             command_include_to_batch(
-                flow_state.target.batch_name,
+                flow_state.target.require_batch_name(),
                 file="",
                 quiet=True,
                 auto_advance=True,
@@ -93,7 +93,10 @@ def _handle_file_include(flow_state: FlowState) -> None:
         if flow_state.target.role is not LocationRole.STAGING_AREA:
             print(_("Batch-to-batch transfers not yet supported."), file=sys.stderr)
             return
-        command_include_from_batch(flow_state.source.batch_name, file="")
+        command_include_from_batch(
+            flow_state.source.require_batch_name(),
+            file="",
+        )
     else:
         raise ValueError(f"Unknown source role: {flow_state.source.role}")
 
@@ -120,7 +123,7 @@ def _handle_file_discard(flow_state: FlowState, filename: str) -> None:
                 command_discard_file(file="", auto_advance=True)
         elif flow_state.target.role is LocationRole.BATCH:
             command_discard_to_batch(
-                flow_state.target.batch_name,
+                flow_state.target.require_batch_name(),
                 file="",
                 quiet=True,
                 auto_advance=True,
@@ -131,6 +134,9 @@ def _handle_file_discard(flow_state: FlowState, filename: str) -> None:
         if flow_state.target.role is not LocationRole.STAGING_AREA:
             print(_("Batch-to-batch transfers not yet supported."), file=sys.stderr)
             return
-        command_discard_from_batch(flow_state.source.batch_name, file="")
+        command_discard_from_batch(
+            flow_state.source.require_batch_name(),
+            file="",
+        )
     else:
         raise ValueError(f"Unknown source role: {flow_state.source.role}")

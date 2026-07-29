@@ -22,7 +22,7 @@ def handle_hunk_include(flow_state: FlowState) -> None:
             command_include(quiet=True, auto_advance=True)
         elif flow_state.target.role is LocationRole.BATCH:
             command_include_to_batch(
-                flow_state.target.batch_name,
+                flow_state.target.require_batch_name(),
                 quiet=True,
                 auto_advance=True,
             )
@@ -35,7 +35,7 @@ def handle_hunk_include(flow_state: FlowState) -> None:
                 file=sys.stderr,
             )
             raise BypassRefresh()
-        command_include_from_batch(flow_state.source.batch_name)
+        command_include_from_batch(flow_state.source.require_batch_name())
     else:
         raise ValueError(f"Unknown source role: {flow_state.source.role}")
 
@@ -65,7 +65,7 @@ def handle_hunk_discard(flow_state: FlowState) -> None:
                 command_discard(quiet=True, auto_advance=True)
         elif flow_state.target.role is LocationRole.BATCH:
             command_discard_to_batch(
-                flow_state.target.batch_name,
+                flow_state.target.require_batch_name(),
                 quiet=True,
                 auto_advance=True,
             )
@@ -78,6 +78,6 @@ def handle_hunk_discard(flow_state: FlowState) -> None:
                 file=sys.stderr,
             )
             raise BypassRefresh()
-        command_discard_from_batch(flow_state.source.batch_name)
+        command_discard_from_batch(flow_state.source.require_batch_name())
     else:
         raise ValueError(f"Unknown source role: {flow_state.source.role}")

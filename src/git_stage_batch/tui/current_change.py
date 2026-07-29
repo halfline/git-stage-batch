@@ -24,7 +24,9 @@ class CurrentChange:
 def load_current_change(flow_state: FlowState) -> CurrentChange | None:
     """Load the change currently selected by the interactive source."""
     if flow_state.source.role is LocationRole.BATCH:
-        rendered = cache_batch_as_single_hunk(flow_state.source.batch_name)
+        rendered = cache_batch_as_single_hunk(
+            flow_state.source.require_batch_name()
+        )
         if rendered is None:
             return None
         return CurrentChange(

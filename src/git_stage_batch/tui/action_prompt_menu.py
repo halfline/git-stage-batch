@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import shutil
+from collections.abc import Sequence
 
 from ..i18n import _
 from ..output.colors import Colors, format_hotkey
@@ -19,7 +20,7 @@ def _visible_len(text: str) -> int:
 
 def format_menu_section_lines(
     label: str,
-    options: list[tuple[str, str, str]],
+    options: Sequence[tuple[str, str, str]],
     use_color: bool,
 ) -> list[str]:
     """Format one menu section, wrapping options across continuation lines."""

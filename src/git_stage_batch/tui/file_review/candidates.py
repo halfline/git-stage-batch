@@ -24,7 +24,7 @@ def browse_candidates(state: FileReviewSessionState) -> None:
     if operation is None:
         return
 
-    batch_name = state.flow_state.source.batch_name
+    batch_name = state.flow_state.source.require_batch_name()
     selector = f"{batch_name}:{operation}"
 
     try:

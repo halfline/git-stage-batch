@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import ClassVar
 
 from ..i18n import _
 
@@ -32,6 +33,12 @@ class FlowLocation:
         """Create a batch location."""
         return cls(LocationRole.BATCH, batch_name)
 
+    def require_batch_name(self) -> str:
+        """Return the batch name for a batch location."""
+        if self.role is not LocationRole.BATCH or self.batch_name is None:
+            raise ValueError("flow location is not a batch")
+        return self.batch_name
+
     def get_display_label(self) -> str:
         """Get display label for this location."""
         if self.role is LocationRole.WORKING_TREE:
@@ -44,8 +51,8 @@ class FlowLocation:
         return self.batch_name
 
     # Constants for common locations
-    WORKING_TREE = None  # type: ignore  # Will be set after class definition
-    STAGING_AREA = None  # type: ignore
+    WORKING_TREE: ClassVar[FlowLocation]
+    STAGING_AREA: ClassVar[FlowLocation]
 
 
 # Set constants after class is fully defined

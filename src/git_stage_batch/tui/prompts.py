@@ -99,21 +99,7 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
         # Grouped secondary menu sections
         print()
 
-        rendered_sections = []
-
-        def append_section(
-                rendered_sections,
-                label,
-                options,
-                use_color,
-        ):
-                rendered_sections.extend(
-                        action_prompt_menu.format_menu_section_lines(
-                                label,
-                                options,
-                                use_color,
-                        )
-                )
+        rendered_sections: list[str] = []
 
         section_specs = [
                 (pgettext("menu section label", "Other scope"), option_groups.scope),
@@ -122,17 +108,18 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
         ]
 
         for label, options in section_specs:
-                if options:
-                        append_section(
-                                rendered_sections,
-                                label,
-                                options,
-                                use_color,
-                        )
+            if options:
+                rendered_sections.extend(
+                    action_prompt_menu.format_menu_section_lines(
+                        label,
+                        options,
+                        use_color,
+                    )
+                )
 
         if rendered_sections:
-                for rendered_section in rendered_sections:
-                        print(rendered_section)
+            for rendered_section in rendered_sections:
+                print(rendered_section)
 
         print()
     try:

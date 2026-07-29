@@ -45,6 +45,13 @@ class ReplacementUnitMetadata(TypedDict, total=False):
     presence_lines: list[str | int]
     claimed_lines: list[str | int]
     deletion_indices: list[int]
-
-
     original_unit: ReplacementUnitOriginMetadata
+
+
+class BatchOwnershipMetadata(TypedDict, total=False):
+    """Complete serialized ownership record for one batch file."""
+
+    presence_claims: list[PresenceClaimMetadata]
+    claimed_lines: list[str | int]
+    deletions: list[AbsenceClaimMetadata]
+    replacement_units: list[ReplacementUnitMetadata]

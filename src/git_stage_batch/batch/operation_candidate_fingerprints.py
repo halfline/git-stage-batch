@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from ..core.buffer import buffer_byte_chunks
+from .ownership.references import BaselineReference
 
 if TYPE_CHECKING:
     from ..core.buffer import LineBuffer
@@ -21,6 +22,15 @@ if TYPE_CHECKING:
 ALGORITHM_VERSION = 2
 
 
+class _BaselineReferenceFingerprint(TypedDict):
+    """Canonical fingerprint fields for a baseline boundary."""
+
+    after_line: int | None
+    after_content: str | None
+    has_after_line: bool
+    before_line: int | None
+    before_content: str | None
+    has_before_line: bool
 def _hash_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -62,7 +72,9 @@ def target_result_fingerprint(target: TargetCandidatePreview) -> str:
     })
 
 
-def _baseline_reference_payload(reference) -> dict | None:
+def _baseline_reference_payload(
+    reference: BaselineReference | None,
+) -> _BaselineReferenceFingerprint | None:
     if reference is None:
         return None
     return {

@@ -7,12 +7,13 @@ import shutil
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Literal
 
 from . import restore as _undo_restore
 from . import snapshots as _undo_snapshots
 from . import state as _undo_state
 from . import worktree as _undo_worktree
+from ..recovery_types import CheckpointState, worktree_metadata_without_blob
 from .refs import (
     SESSION_REDO_STACK_REF,
     SESSION_UNDO_STACK_REF,
@@ -120,7 +121,7 @@ def _validate_nested_checkpoint(
 
 def _checkpoint_worktree_scope(
     worktree_paths: list[str],
-) -> tuple[str, list[str]]:
+) -> tuple[Literal["explicit"], list[str]]:
     """Return checkpoint scope metadata and paths to snapshot."""
     return _undo_state.EXPLICIT_WORKTREE_SCOPE, sorted(set(worktree_paths))
 
@@ -152,14 +153,14 @@ def _create_undo_checkpoint(
     )
     recovery_anchors = anchor_recovery_state(before)
 
-    manifest = {
+    manifest: CheckpointState = {
         "operation": operation,
         "head": current_head_commit(),
         "index_entries": before["index_entries"],
         "intent_to_add_paths": before["intent_to_add_paths"],
         "refs": before["refs"],
         "worktree_paths": [
-            {key: value for key, value in entry.items() if key != "blob"}
+            worktree_metadata_without_blob(entry)
             for entry in before["worktree_paths"]
         ],
         "tracked_worktree_paths": tracked_worktree_paths,
@@ -307,8 +308,8 @@ def undo_checkpoint(
         raise
     else:
         if checkpoint is not None:
-            nested_error = _PENDING_CHECKPOINT_ROLLBACK_CAUSE
-            if nested_error is not None:
+            pending_nested_error = _PENDING_CHECKPOINT_ROLLBACK_CAUSE
+            if pending_nested_error is not None:
                 try:
                     _rollback_failed_checkpoint(
                         checkpoint,
@@ -322,16 +323,16 @@ def undo_checkpoint(
                             "Operation error: {operation_error}\n"
                             "Rollback error: {rollback_error}"
                         ).format(
-                            operation_error=nested_error,
+                            operation_error=pending_nested_error,
                             rollback_error=rollback_error,
                         )
-                    ) from nested_error
+                    ) from pending_nested_error
                 raise CommandError(
                     _(
                         "A nested transactional operation failed, so the "
                         "enclosing operation was rolled back: {error}"
-                    ).format(error=nested_error)
-                ) from nested_error
+                    ).format(error=pending_nested_error)
+                ) from pending_nested_error
             finalize_pending_checkpoint()
 
 

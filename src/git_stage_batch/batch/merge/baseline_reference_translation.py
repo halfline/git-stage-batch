@@ -18,8 +18,10 @@ from ..line_matching.line_range_view import LineRangeView
 from ..line_matching.line_mapping import LineMapping
 from ..line_matching.match import match_lines
 from ..ownership.absence_content import build_absence_content_from_range
+from ..ownership.absence_claims import AbsenceClaim
 from ..ownership.model import BatchOwnership
 from ..ownership.references import BaselineReference
+from ..ownership.replacement_units import ReplacementUnitOrigin
 from .baseline_reference_positions import (
     baseline_reference_insertion_position,
 )
@@ -222,6 +224,7 @@ def _translate_removal_reference(
         )
         if target_position is None:
             return None
+        assert reference is not None
         return reference, target_position
 
     target_position = _mapped_removal_position(
@@ -370,7 +373,7 @@ def _translate_deletion_references(
 
 
 def _apply_translated_deletion(
-    deletion,
+    deletion: AbsenceClaim,
     content_lines: Sequence[bytes],
     target_lines: Sequence[bytes],
     translated: tuple[BaselineReference, int] | None,
@@ -393,8 +396,8 @@ def _apply_translated_deletion(
 
 
 def _translate_deletion_from_origin_offset(
-    deletion,
-    origin,
+    deletion: AbsenceClaim,
+    origin: ReplacementUnitOrigin,
     target_lines: Sequence[bytes],
 ) -> tuple[BaselineReference, int] | None:
     """Project one split replacement by its offset inside the parent."""

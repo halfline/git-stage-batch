@@ -26,7 +26,7 @@ def add_check_unstaged_subcommand(subparsers: Subparsers) -> None:
     parser_check_unstaged.set_defaults(func=lambda _: command_check_unstaged())
 
 
-def add_start_subcommand(subparsers) -> None:
+def add_start_subcommand(subparsers: Subparsers) -> None:
     """Register the start subcommand."""
     parser_start = add_subcommand_parser(
         subparsers,

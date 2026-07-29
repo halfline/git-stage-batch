@@ -7,6 +7,11 @@ from typing import Literal, TypedDict
 from ..ownership.metadata_types import BatchOwnershipMetadata
 
 
+class ReplacementMaskMetadata(TypedDict, total=False):
+    """A consumed replacement signature stored for later filtering."""
+
+    deleted_lines: list[str]
+    added_lines: list[str]
 
 
 class BatchFileMetadataDict(BatchOwnershipMetadata, total=False):
@@ -18,9 +23,24 @@ class BatchFileMetadataDict(BatchOwnershipMetadata, total=False):
     mode: str
     old_mode: str
     new_mode: str
+    old_oid: str | None
+    new_oid: str | None
     source_path: str
+    replacement_masks: list[ReplacementMaskMetadata]
 
 
+class BatchMetadataDict(TypedDict, total=False):
+    """Validated application mapping for a complete batch."""
+
+    schema_version: int
+    revision: str | None
+    batch: str
+    note: str
+    created_at: str
+    baseline: str | None
+    content_ref: str | None
+    content_commit: str | None
+    files: dict[str, BatchFileMetadataDict]
 
 
 

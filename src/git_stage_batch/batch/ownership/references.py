@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from ...utils.git_object_io import create_git_blob
 from .metadata_blobs import read_metadata_blob as _metadata_blob_content
+from .metadata_types import BaselineReferenceMetadata
 
 
 @dataclass
@@ -24,9 +25,9 @@ class BaselineReference:
     before_content: bytes | None = None
     has_before_line: bool = False
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> BaselineReferenceMetadata:
         """Serialize to metadata dictionary."""
-        data = {}
+        data: BaselineReferenceMetadata = {}
         if self.has_after_line:
             data["after_line"] = self.after_line
         if self.after_content is not None:
@@ -40,7 +41,7 @@ class BaselineReference:
     @classmethod
     def from_dict(
         cls,
-        data: dict,
+        data: BaselineReferenceMetadata,
         blob_contents: dict[str, bytes] | None = None,
     ) -> BaselineReference:
         """Deserialize from metadata dictionary."""

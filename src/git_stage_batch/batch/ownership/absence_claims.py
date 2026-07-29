@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from ...core.buffer import LineBuffer, buffer_byte_chunks
 from ...utils.git_object_io import create_git_blob
+from .metadata_types import AbsenceClaimMetadata
 from .references import BaselineReference
 
 
@@ -33,10 +34,10 @@ class AbsenceClaim:
     content_lines: Sequence[bytes]
     baseline_reference: BaselineReference | None = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> AbsenceClaimMetadata:
         """Serialize to metadata dictionary."""
         blob_sha = create_git_blob(buffer_byte_chunks(self.content_lines))
-        data = {
+        data: AbsenceClaimMetadata = {
             "after_source_line": self.anchor_line,
             "blob": blob_sha,
         }
@@ -47,7 +48,7 @@ class AbsenceClaim:
     @classmethod
     def from_dict(
         cls,
-        data: dict,
+        data: AbsenceClaimMetadata,
         blob_contents: dict[str, bytes] | None = None,
         blob_buffers: dict[str, LineBuffer] | None = None,
     ) -> AbsenceClaim:

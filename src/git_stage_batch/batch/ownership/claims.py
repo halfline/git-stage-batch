@@ -6,10 +6,13 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from ...core.line_selection import LineRanges, LineSelection
+from .metadata_types import PresenceClaimMetadata
 from .references import BaselineReference
 
 
-def parse_ownership_line_ranges(line_ranges: list[str] | list[int]) -> LineRanges:
+def parse_ownership_line_ranges(
+    line_ranges: Iterable[str | int],
+) -> LineRanges:
     """Parse source line range strings into a selection."""
     return LineRanges.from_specs(line_ranges)
 
@@ -75,9 +78,9 @@ class PresenceClaim:
         """Return batch-source line numbers covered by this presence claim."""
         return parse_ownership_line_ranges(self.source_lines)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> PresenceClaimMetadata:
         """Serialize to metadata dictionary."""
-        data = {"source_lines": self.source_lines}
+        data: PresenceClaimMetadata = {"source_lines": self.source_lines}
         if self.baseline_references:
             data["baseline_references"] = {
                 str(line): reference.to_dict()
@@ -88,7 +91,7 @@ class PresenceClaim:
     @classmethod
     def from_dict(
         cls,
-        data: dict,
+        data: PresenceClaimMetadata,
         blob_contents: dict[str, bytes] | None = None,
     ) -> PresenceClaim:
         """Deserialize from metadata dictionary."""

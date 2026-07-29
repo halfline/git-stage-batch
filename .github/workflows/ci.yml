@@ -205,14 +205,26 @@ jobs:
       - name: Install other dependencies
         run: uv sync --all-groups
 
-      - name: Build wheel
+      - name: Build distributions
         run: uv build
 
       - name: Verify wheel installs
         run: |
-          uv venv /tmp/test-install
-          uv pip install --python /tmp/test-install/bin/python dist/*.whl
-          /tmp/test-install/bin/git-stage-batch --help
+          uv venv "$RUNNER_TEMP/wheel-install"
+          uv pip install \
+            --no-config \
+            --python "$RUNNER_TEMP/wheel-install/bin/python" \
+            dist/*.whl
+          "$RUNNER_TEMP/wheel-install/bin/git-stage-batch" --help
+
+      - name: Verify source distribution installs
+        run: |
+          uv venv "$RUNNER_TEMP/sdist-install"
+          uv pip install \
+            --no-config \
+            --python "$RUNNER_TEMP/sdist-install/bin/python" \
+            dist/*.tar.gz
+          "$RUNNER_TEMP/sdist-install/bin/git-stage-batch" --help
 
   sha256-repository:
     runs-on: ubuntu-latest

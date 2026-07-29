@@ -36,7 +36,7 @@ def add_block_file_subcommand(subparsers: Subparsers) -> None:
     )
 
 
-def add_unblock_file_subcommand(subparsers) -> None:
+def add_unblock_file_subcommand(subparsers: Subparsers) -> None:
     """Register the unblock-file subcommand."""
     parser_unblock_file = add_subcommand_parser(
         subparsers,

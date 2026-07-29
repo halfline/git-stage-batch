@@ -191,7 +191,7 @@ def _enable_fake_signing(repo: Path) -> None:
     signer.write_text(
         "#!/bin/sh\n"
         "cat >/dev/null\n"
-        "printf '%s\\n' "
+        "printf '\\n%s\\n' "
         "'[GNUPG:] SIG_CREATED D 1 10 00 0 0 0 0 0' >&2\n"
         "printf '%s\\n' "
         "'-----BEGIN PGP SIGNATURE-----' "

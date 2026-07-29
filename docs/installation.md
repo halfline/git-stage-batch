@@ -72,7 +72,7 @@ This runs the tool without permanently installing it.
 
 - **Python 3.10 or newer.** CI covers current releases through Python 3.14;
   newer releases are allowed before they enter the tested matrix.
-- **Git 2.29 or newer** available on `PATH`
+- **Git 2.31 or newer** available on `PATH`
 - **POSIX operating system.** Linux is tested in CI; native Windows is not
   supported because repository locking, signals, symlinks, and terminal process
   control currently use POSIX facilities.

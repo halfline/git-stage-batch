@@ -85,6 +85,67 @@ jobs:
         if: matrix.python-version == '3.10'
         run: uv run mypy
 
+  minimum-git:
+    runs-on: ubuntu-latest
+    env:
+      GIT_VERSION: "2.31.0"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out minimum supported Git
+        uses: actions/checkout@v4
+        with:
+          repository: git/git
+          ref: v${{ env.GIT_VERSION }}
+          path: git-source
+          persist-credentials: false
+
+      - name: Install Git build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            autoconf \
+            build-essential \
+            gettext \
+            libcurl4-openssl-dev \
+            libexpat1-dev \
+            zlib1g-dev
+
+      - name: Build minimum supported Git
+        run: |
+          make -C git-source configure
+          cd git-source
+          ./configure --prefix="$RUNNER_TEMP/git-${GIT_VERSION}"
+          make -j2 all NO_GETTEXT=YesPlease NO_TCLTK=YesPlease
+          make install NO_GETTEXT=YesPlease NO_TCLTK=YesPlease
+          echo "$RUNNER_TEMP/git-${GIT_VERSION}/bin" >> "$GITHUB_PATH"
+
+      - name: Verify minimum Git version
+        run: test "$(git version)" = "git version ${GIT_VERSION}"
+
+      - name: Configure git identity
+        run: |
+          git config --global user.name "CI"
+          git config --global user.email "ci@test"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.10"
+
+      - name: Set up Python
+        run: uv python install 3.10
+
+      - name: Set up test environment
+        run: |
+          uv venv
+          uv pip install --group dev
+          uv sync --all-groups
+
+      - name: Run tests with minimum Git
+        run: uv run pytest -n auto
+
   build:
     runs-on: ubuntu-latest
 

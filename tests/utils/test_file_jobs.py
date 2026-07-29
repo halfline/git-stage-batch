@@ -42,6 +42,10 @@ _PROCESS_TEST = pytest.mark.skipif(
     sys.platform != "linux" or _RUNNING_UNDER_XDIST,
     reason="forced forkserver coverage runs on Linux with pytest -n 0",
 )
+_LINUX_PROCESS_TEST = pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="process file-job execution is supported on Linux only",
+)
 _PARENT_COMPUTE_CALLS = 0
 
 
@@ -411,6 +415,7 @@ def test_compute_keyboard_interrupt_propagates_across_process_transport(
     assert not root.exists()
 
 
+@_LINUX_PROCESS_TEST
 def test_process_scheduler_submits_largest_first_with_bounded_pending(
     tmp_path,
     monkeypatch,
@@ -476,6 +481,7 @@ def test_process_scheduler_submits_largest_first_with_bounded_pending(
     assert lifecycle == {"closed": True, "terminated": False}
 
 
+@_LINUX_PROCESS_TEST
 def test_process_scheduler_stops_admission_after_task_failure(
     tmp_path,
     monkeypatch,
@@ -546,6 +552,7 @@ def test_process_scheduler_stops_admission_after_task_failure(
     assert lifecycle == {"closed": False, "terminated": True}
 
 
+@_LINUX_PROCESS_TEST
 def test_process_failure_waits_only_for_pending_lower_ordinals(
     tmp_path,
     monkeypatch,
@@ -664,6 +671,7 @@ def test_lowest_ordinal_failure_wins(tmp_path):
     assert "one" in error.value.original_message
 
 
+@_LINUX_PROCESS_TEST
 def test_process_construction_failure_does_not_compute_inline(
     tmp_path,
     monkeypatch,
@@ -689,6 +697,7 @@ def test_process_construction_failure_does_not_compute_inline(
     assert _PARENT_COMPUTE_CALLS == 0
 
 
+@_LINUX_PROCESS_TEST
 def test_partially_started_worker_is_killed_and_connections_are_closed(
     tmp_path,
     monkeypatch,
@@ -812,6 +821,7 @@ def test_worker_death_does_not_retry_inline(tmp_path):
     assert _PARENT_COMPUTE_CALLS == 0
 
 
+@_LINUX_PROCESS_TEST
 def test_keyboard_interrupt_terminates_workers_before_workspace_cleanup(
     tmp_path,
     monkeypatch,
@@ -1019,6 +1029,7 @@ def test_linux_auto_respects_cpu_availability():
     )
 
 
+@_LINUX_PROCESS_TEST
 def test_linux_auto_uses_process_affinity_when_cpu_count_is_unspecified(
     monkeypatch,
 ):
@@ -1059,6 +1070,7 @@ def test_forced_process_selection_respects_job_cpu_and_worker_caps():
     )
 
 
+@_LINUX_PROCESS_TEST
 def test_process_execution_enforces_the_hard_worker_cap(
     tmp_path,
     monkeypatch,
@@ -1115,6 +1127,7 @@ def test_process_execution_enforces_the_hard_worker_cap(
     assert observed_max_workers == [file_jobs_module._MAX_FILE_JOB_WORKERS]
 
 
+@_LINUX_PROCESS_TEST
 def test_collected_lower_ordinal_failure_wins_over_worker_failure(
     tmp_path,
     monkeypatch,
@@ -1179,6 +1192,7 @@ def test_collected_lower_ordinal_failure_wins_over_worker_failure(
     assert "one failed" in error.value.original_message
 
 
+@_LINUX_PROCESS_TEST
 def test_worker_failure_reports_its_job_instead_of_an_unrelated_ordinal(
     tmp_path,
     monkeypatch,

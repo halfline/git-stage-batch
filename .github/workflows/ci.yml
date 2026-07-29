@@ -146,6 +146,39 @@ jobs:
       - name: Run tests with minimum Git
         run: uv run pytest -n auto
 
+  macos:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure git identity
+        run: |
+          git config --global user.name "CI"
+          git config --global user.email "ci@test"
+
+      - name: Install gettext
+        run: |
+          brew install gettext
+          echo "$(brew --prefix gettext)/bin" >> "$GITHUB_PATH"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Set up test environment
+        run: |
+          uv venv
+          uv pip install --group dev
+          uv sync --all-groups
+
+      - name: Run tests on macOS
+        run: uv run pytest -n auto
+
   build:
     runs-on: ubuntu-latest
 

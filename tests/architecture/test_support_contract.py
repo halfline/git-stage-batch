@@ -28,3 +28,10 @@ def test_ci_exercises_minimum_git():
     assert 'GIT_VERSION: "2.31.0"' in workflow
     assert 'repository: git/git' in workflow
     assert 'run: test "$(git version)" = "git version ${GIT_VERSION}"' in workflow
+
+
+def test_ci_exercises_macos():
+    """CI should cover the documented macOS platform."""
+    workflow = _read_project_file(".github/workflows/ci.yml")
+
+    assert "runs-on: macos-latest" in workflow

@@ -8,6 +8,7 @@ import git_stage_batch.batch.line_matching.match as match_module
 import git_stage_batch.core.mapped_storage as mapped_storage_module
 from git_stage_batch.batch.line_matching.match import match_lines
 from git_stage_batch.batch.line_matching.match_workspace import MatcherWorkspace
+from git_stage_batch.core.mapped_storage import MAPPED_STORAGE_OFFLOAD_SIZE_THRESHOLD
 
 
 def test_matcher_workspace_tracks_and_closes_resources():
@@ -48,7 +49,8 @@ def test_match_lines_routes_mapped_storage_to_requested_spool(
     )
     spool_dir = tmp_path / "scratch"
     spool_dir.mkdir()
-    lines = [f"line {index}\n".encode() for index in range(2_000)]
+    line_count = MAPPED_STORAGE_OFFLOAD_SIZE_THRESHOLD // 4 + 1
+    lines = [f"line {index}\n".encode() for index in range(line_count)]
 
     with match_lines(lines, lines, spool_dir=spool_dir) as mapping:
         assert len(tuple(mapping.mapped_line_pairs())) == len(lines)

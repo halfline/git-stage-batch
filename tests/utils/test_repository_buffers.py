@@ -8,6 +8,7 @@ import pytest
 
 import git_stage_batch.core.mapped_storage as mapped_storage_module
 from git_stage_batch.core.buffer import LineBuffer
+from git_stage_batch.core.mapped_storage import MAPPED_STORAGE_OFFLOAD_SIZE_THRESHOLD
 from git_stage_batch.exceptions import RepositoryDataInvalid
 import git_stage_batch.utils.repository_buffers as repository_buffers
 from git_stage_batch.utils.repository_buffers import (
@@ -60,7 +61,7 @@ def test_stream_git_blob_buffers_spools_and_closes_each_source(
     tmp_path,
 ):
     """Batch-loaded source buffers should be mmap-backed and file-local."""
-    payload = b"line\n" * 2_000
+    payload = b"line\n" * (MAPPED_STORAGE_OFFLOAD_SIZE_THRESHOLD // 5 + 1)
     temporary_directories = []
     real_temporary_file = mapped_storage_module._temporary_file
 

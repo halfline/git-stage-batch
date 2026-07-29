@@ -13,6 +13,7 @@ keywords = ["git", "staging", "commit", "diff", "patch"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
+    "Operating System :: MacOS :: MacOS X",
     "Operating System :: POSIX",
     "Operating System :: POSIX :: Linux",
     "Intended Audience :: Developers",

@@ -2,6 +2,7 @@
 
 import os
 import subprocess
+import sys
 
 import pytest
 
@@ -16,7 +17,7 @@ SPECIAL_PATHS = [
     "old b/component.txt",
     "trailing-space.txt ",
 ]
-if os.name == "posix":
+if os.name == "posix" and sys.platform != "darwin":
     SPECIAL_PATHS.append(os.fsdecode(b"non-utf8-\xff.txt"))
 
 

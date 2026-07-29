@@ -44,6 +44,7 @@ from .store import (
 from .snapshots import write_snapshots_for_selected_file_path
 from .metadata_types import (
     SelectedBinaryData,
+    SelectedGitlinkData,
 )
 
 
@@ -82,7 +83,7 @@ def load_selected_binary_file() -> BinaryFileChange | None:
         return None
 
 
-def read_selected_gitlink_data() -> dict | None:
+def read_selected_gitlink_data() -> SelectedGitlinkData | None:
     """Read cached gitlink selection data, if structurally valid."""
     gitlink_path = get_selected_gitlink_file_json_path()
     if not gitlink_path.exists():
@@ -91,7 +92,7 @@ def read_selected_gitlink_data() -> dict | None:
         gitlink_data = json.loads(read_text_file_contents(gitlink_path))
     except json.JSONDecodeError:
         return None
-    return gitlink_data if isinstance(gitlink_data, dict) else None
+    return cast(SelectedGitlinkData, gitlink_data) if isinstance(gitlink_data, dict) else None
 
 
 def load_selected_gitlink_change() -> GitlinkChange | None:

@@ -16,3 +16,14 @@ class SelectedBinaryData(TypedDict, total=False):
     batch_name: str | None
     batch_binary_fingerprint: str | None
     comparison_base: str | None
+class SelectedGitlinkData(TypedDict, total=False):
+    """Cached submodule-pointer selection metadata."""
+
+    old_path: str
+    new_path: str
+    old_oid: str | None
+    new_oid: str | None
+    change_type: ChangeType
+    batch_name: str | None
+    batch_gitlink_fingerprint: str | None
+    comparison_base: str | None

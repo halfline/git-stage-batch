@@ -6,6 +6,7 @@ import tracemalloc
 import pytest
 
 import git_stage_batch.batch.merge.baseline_edits as baseline_edits_module
+import git_stage_batch.batch.merge.baseline_presence_edits as baseline_presence_edits_module
 import git_stage_batch.batch.merge.candidate_enumeration as candidate_enumeration_module
 import git_stage_batch.batch.merge.merge as merge_module
 import git_stage_batch.batch.realization.provenance as provenance_module
@@ -501,14 +502,19 @@ def test_baseline_fallback_routes_matching_storage_to_invocation_spool(
     spool_dir = tmp_path / "scratch"
     spool_dir.mkdir()
     observed_spools = []
-    original_match_lines = baseline_edits_module._match_lines
+    matching_module = (
+        baseline_edits_module
+        if hasattr(baseline_edits_module, "_match_lines")
+        else baseline_presence_edits_module
+    )
+    original_match_lines = matching_module._match_lines
 
     def record_match(*args, **kwargs):
         observed_spools.append(kwargs.get("spool_dir"))
         return original_match_lines(*args, **kwargs)
 
     monkeypatch.setattr(
-        baseline_edits_module,
+        matching_module,
         "_match_lines",
         record_match,
     )

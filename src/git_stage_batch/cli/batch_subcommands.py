@@ -78,7 +78,7 @@ def add_drop_subcommand(subparsers) -> None:
     parser_drop.set_defaults(func=lambda args: command_drop_batch(args.batch_name))
 
 
-def add_annotate_subcommand(subparsers) -> None:
+def add_annotate_subcommand(subparsers: Subparsers) -> None:
     """Register the annotate subcommand."""
     parser_annotate = add_subcommand_parser(
         subparsers,

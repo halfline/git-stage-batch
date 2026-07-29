@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ...core.models import BinaryFileChange, FileModeChange, RenameChange, TextFileDeletionChange
 from ...data.file_review.action_scope import finish_review_scoped_line_action
+from ...data.file_review.records import FileReviewState
 from ...data.selected_change.loading import load_selected_change
 from ...data.selected_change.store import (
     SelectedChangeKind,
@@ -29,7 +30,7 @@ def execute_discard_to_batch_action(
     line_ids: str | None,
     file: str | None,
     original_file_scope: str | None,
-    review_state,
+    review_state: FileReviewState | None,
     quiet: bool,
     advance: bool,
     auto_advance: bool | None,

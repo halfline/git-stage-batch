@@ -5,12 +5,17 @@ from __future__ import annotations
 import argparse
 import os
 import tempfile
-from contextlib import nullcontext
+from contextlib import AbstractContextManager, nullcontext
 from importlib import resources
 from pathlib import Path
+from types import TracebackType
+from typing import TYPE_CHECKING, Any, Callable, cast
 
 from ..utils.command import run_command
 from ..utils.git_command import run_git_command
+
+if TYPE_CHECKING:
+    from importlib.abc import Traversable
 
 
 class GitHelpArgumentParser(argparse.ArgumentParser):
@@ -18,14 +23,14 @@ class GitHelpArgumentParser(argparse.ArgumentParser):
 
     def __init__(
         self,
-        *args,
+        *args: Any,
         help_topic: str | None = None,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         self._git_help_topic = help_topic
         super().__init__(*args, **kwargs)
 
-    def print_help(self, file=None):
+    def print_help(self, file: object | None = None) -> None:
         """Try to use git help, fall back to argparse help."""
         if (
             self._git_help_topic is not None
@@ -34,7 +39,7 @@ class GitHelpArgumentParser(argparse.ArgumentParser):
             return
 
         # Fall back to standard argparse help
-        super().print_help(file)
+        super().print_help(cast(Any, file))
 
 
 def _resolve_default_manpath() -> str | None:
@@ -84,23 +89,29 @@ def _try_git_help_with_environment(
     return result.returncode == 0
 
 
-def _with_real_manpath_root(manpage_path: Path):
+def _with_real_manpath_root(manpage_path: Path) -> AbstractContextManager[Path]:
     """Yield a manpath root that contains the requested man page."""
     if manpage_path.parent.name == "man1":
         return nullcontext(manpage_path.parent.parent)
 
     class _TemporaryManRoot:
-        def __enter__(self):
-            self._temp_dir = tempfile.TemporaryDirectory(prefix="git-stage-batch-help-")
+        def __enter__(self) -> Path:
+            self._temp_dir = tempfile.TemporaryDirectory[str](
+                prefix="git-stage-batch-help-"
+            )
             temp_root = Path(self._temp_dir.name)
             temp_manpage = temp_root / "man1" / manpage_path.name
             temp_manpage.parent.mkdir(parents=True, exist_ok=True)
             temp_manpage.write_bytes(manpage_path.read_bytes())
             return temp_root
 
-        def __exit__(self, exc_type, exc, tb):
+        def __exit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc: BaseException | None,
+            tb: TracebackType | None,
+        ) -> None:
             self._temp_dir.cleanup()
-            return False
 
     return _TemporaryManRoot()
 
@@ -118,7 +129,12 @@ def _git_help_name_for_help_topic(help_topic: str) -> str:
 def _show_git_stage_batch_help(help_topic: str = "stage-batch") -> bool:
     """Show git-stage-batch help from packaged or system man pages."""
     try:
-        packaged_manpage = resources.files("git_stage_batch").joinpath(
+        packaged_manpage = resources.files("git_stage_batch")
+        join_resource_path = cast(
+            "Callable[..., Traversable]",
+            packaged_manpage.joinpath,
+        )
+        packaged_manpage = join_resource_path(
             "assets",
             "man",
             "man1",

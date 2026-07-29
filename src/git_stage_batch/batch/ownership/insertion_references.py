@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from ...core.mapped_storage import MappedRecordVector, sort_mapped_records
+from ...core.models import LineEntry, LineLevelChange
 from ...core.text_lines import normalize_line_sequence_endings
 from ..line_matching.match import match_lines
 from ..merge.baseline_reference_positions import (
@@ -13,7 +14,9 @@ from ..merge.baseline_reference_positions import (
 from .references import BaselineReference
 
 
-def _record_diff_baseline_references_for_additions(line_changes) -> None:
+def _record_diff_baseline_references_for_additions(
+    line_changes: LineLevelChange,
+) -> None:
     """Attach insertion references from the old side of the displayed diff."""
     last_old_line: int | None = None
     last_old_text_bytes: bytes | None = None
@@ -62,7 +65,7 @@ def _record_diff_baseline_references_for_additions(line_changes) -> None:
         index += 1
 
 
-def _clear_addition_baseline_reference(addition_line) -> None:
+def _clear_addition_baseline_reference(addition_line: LineEntry) -> None:
     """Remove insertion metadata that does not fit the captured baseline."""
     addition_line.baseline_reference_after_line = None
     addition_line.baseline_reference_after_text_bytes = None
@@ -73,7 +76,7 @@ def _clear_addition_baseline_reference(addition_line) -> None:
 
 
 def _set_addition_baseline_reference(
-    addition_line,
+    addition_line: LineEntry,
     baseline_lines: Sequence[bytes],
     insertion_position: int,
 ) -> None:
@@ -101,14 +104,14 @@ def _set_addition_baseline_reference(
 
 
 def _record_snapshot_baseline_references_for_additions(
-    line_changes,
+    line_changes: LineLevelChange,
     *,
     baseline_lines: Sequence[bytes],
     source_lines: Sequence[bytes],
 ) -> None:
     """Attach insertion references in captured baseline coordinates."""
 
-    def reference_fits_baseline(line) -> bool:
+    def reference_fits_baseline(line: LineEntry) -> bool:
         reference = BaselineReference(
             after_line=line.baseline_reference_after_line,
             after_content=line.baseline_reference_after_text_bytes,
@@ -192,7 +195,7 @@ def _record_snapshot_baseline_references_for_additions(
 
 
 def record_baseline_references_for_additions(
-    line_changes,
+    line_changes: LineLevelChange,
     *,
     baseline_lines: Sequence[bytes] | None = None,
     source_lines: Sequence[bytes] | None = None,

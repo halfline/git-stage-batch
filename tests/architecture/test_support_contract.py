@@ -43,3 +43,13 @@ def test_ci_install_checks_both_distribution_formats():
 
     assert "dist/*.whl" in workflow
     assert "dist/*.tar.gz" in workflow
+
+
+def test_release_uses_trusted_publishing():
+    """The PyPI job should use OIDC without a stored publishing token."""
+    workflow = _read_project_file(".github/workflows/release.yml")
+
+    assert "id-token: write" in workflow
+    assert "pypa/gh-action-pypi-publish@release/v1" in workflow
+    assert "secrets." not in workflow
+    assert "password:" not in workflow

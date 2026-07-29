@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TypedDict
 
 from ...batch.line_matching.comparison import (
     SemanticChangeKind,
@@ -35,6 +35,18 @@ from ...utils.repository_buffers import read_git_object_buffer_or_empty
 from ...utils.repository_buffers import load_git_blob_as_buffer
 from ...exceptions import MergeError
 from ...core.text_lines import normalize_line_sequence_endings
+
+
+class _SpoolDirOptions(TypedDict, total=False):
+    """Typed optional arguments for spool-aware helpers."""
+
+    spool_dir: str | Path
+
+
+def _spool_dir_options(spool_dir: str | Path | None) -> _SpoolDirOptions:
+    if spool_dir is None:
+        return {}
+    return {"spool_dir": spool_dir}
 
 
 @dataclass
@@ -173,7 +185,7 @@ def compute_sifted_binary_file(
 
 def compute_sifted_text_file(
     file_path: str,
-    file_meta: dict,
+    file_meta: BatchFileMetadataDict,
     *,
     baseline_object_id: str | None,
     batch_source_object_id: str | None,
@@ -318,7 +330,7 @@ def build_ownership_from_working_and_target_lines(
     semantic_runs = derive_semantic_change_runs(
         source_lines=working_lines,
         target_lines=target_lines,
-        **({} if spool_dir is None else {"spool_dir": spool_dir}),
+        **_spool_dir_options(spool_dir),
     )
 
     claimed_ranges: list[tuple[int, int]] = []

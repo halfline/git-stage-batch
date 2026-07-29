@@ -55,6 +55,14 @@ def _contains_any(
     )
 
 
+def _is_type_alias_annotation(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Name)
+        and node.id == "TypeAlias"
+    ) or (
+        isinstance(node, ast.Attribute)
+        and node.attr == "TypeAlias"
+    )
 
 
 class _ExplicitAnyVisitor(ast.NodeVisitor):
@@ -134,6 +142,31 @@ class _ExplicitAnyVisitor(ast.NodeVisitor):
         self._visit_function(node)
 
 
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if _contains_any(
+            node.annotation,
+            any_names=self.any_names,
+            typing_names=self.typing_names,
+        ):
+            self._record(
+                node.annotation,
+                f"variable:{ast.unparse(node.target)}",
+            )
+        if (
+            node.value is not None
+            and _is_type_alias_annotation(node.annotation)
+            and _contains_any(
+                node.value,
+                any_names=self.any_names,
+                typing_names=self.typing_names,
+            )
+        ):
+            self._record(
+                node.value,
+                f"type-alias:{ast.unparse(node.target)}",
+            )
+        if node.value is not None:
+            self.visit(node.value)
 
 
 

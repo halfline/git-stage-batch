@@ -74,7 +74,7 @@ def add_stop_subcommand(subparsers: Subparsers) -> None:
     parser_stop.set_defaults(func=lambda _: command_stop())
 
 
-def add_undo_subcommand(subparsers) -> None:
+def add_undo_subcommand(subparsers: Subparsers) -> None:
     """Register the undo subcommand."""
     parser_undo = add_subcommand_parser(
         subparsers,

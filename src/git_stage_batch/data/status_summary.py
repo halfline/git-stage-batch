@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import cast
 
 from .batch_selected_changes import (
     load_current_selected_batch_binary_file,
@@ -31,6 +32,11 @@ from .selected_change.store import (
     read_selected_change_kind,
 )
 from .session import get_iteration_count
+from .status_types import (
+    ChangeSummary,
+    FileReviewSummary,
+    StatusSummary,
+)
 from ..utils.file_io import count_nonblank_text_file_lines, stream_text_file_lines
 from ..utils.paths import (
     get_discarded_hunks_file_path,
@@ -41,7 +47,7 @@ from ..utils.paths import (
 )
 
 
-def read_status_summary() -> dict:
+def read_status_summary() -> StatusSummary:
     """Read the complete machine-readable status summary for an active session."""
     iteration = get_iteration_count()
 
@@ -74,8 +80,8 @@ def read_status_summary() -> dict:
     }
 
 
-def _read_skipped_hunks() -> list[dict]:
-    skipped_hunks = []
+def _read_skipped_hunks() -> list[ChangeSummary]:
+    skipped_hunks: list[ChangeSummary] = []
     jsonl_path = get_skipped_hunks_jsonl_file_path()
     if not jsonl_path.exists():
         return skipped_hunks
@@ -84,7 +90,9 @@ def _read_skipped_hunks() -> list[dict]:
         if not line.strip():
             continue
         try:
-            skipped_hunks.append(json.loads(line))
+            parsed = json.loads(line)
+            if isinstance(parsed, dict):
+                skipped_hunks.append(cast(ChangeSummary, parsed))
         except json.JSONDecodeError:
             pass
 
@@ -151,7 +159,7 @@ def _read_live_review_display_ids(file_path: str) -> list[int] | None:
     })
 
 
-def _read_selected_change_summary() -> tuple[bool, dict | None]:
+def _read_selected_change_summary() -> tuple[bool, ChangeSummary | None]:
     """Return whether a non-stale selected change exists and its status summary."""
     selected_kind = read_selected_change_kind()
     if selected_kind == SelectedChangeKind.RENAME:
@@ -248,12 +256,16 @@ def _read_selected_change_summary() -> tuple[bool, dict | None]:
             if selected_kind is not None
             else SelectedChangeKind.HUNK.value
         )
+        ids: list[int]
         if selected_kind == SelectedChangeKind.BATCH_FILE:
             ids = _read_batch_review_display_ids(line_changes.path)
         elif selected_kind == SelectedChangeKind.FILE:
-            ids = _read_live_review_display_ids(line_changes.path)
-            if ids is None:
-                ids = line_changes.changed_line_ids()
+            live_ids = _read_live_review_display_ids(line_changes.path)
+            ids = (
+                line_changes.changed_line_ids()
+                if live_ids is None
+                else live_ids
+            )
         else:
             ids = line_changes.changed_line_ids()
         return True, {
@@ -266,7 +278,7 @@ def _read_selected_change_summary() -> tuple[bool, dict | None]:
         return False, None
 
 
-def _read_file_review_summary() -> dict | None:
+def _read_file_review_summary() -> FileReviewSummary | None:
     review_state = read_last_file_review_state(clear_invalid=False)
     if review_state is None:
         return None

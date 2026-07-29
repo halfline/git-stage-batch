@@ -116,7 +116,7 @@ def add_abort_subcommand(subparsers) -> None:
     parser_abort.set_defaults(func=lambda _: command_abort())
 
 
-def add_status_subcommand(subparsers) -> None:
+def add_status_subcommand(subparsers: Subparsers) -> None:
     """Register the status subcommand."""
     parser_status = add_subcommand_parser(
         subparsers,

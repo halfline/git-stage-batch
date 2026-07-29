@@ -21,6 +21,7 @@ from ...data.selected_change.snapshots import (
 )
 from ...exceptions import exit_with_error
 from ...i18n import _
+from ...core.models import LineEntry
 from ...utils.repository_buffers import (
     load_working_tree_file_as_buffer,
     read_git_object_buffer_or_empty,
@@ -31,9 +32,9 @@ def add_selected_lines_to_batch(
     *,
     batch_name: str,
     file_path: str,
-    selected_lines: Sequence,
+    selected_lines: Sequence[LineEntry],
     stale_source_action: str,
-    hunk_lines: Sequence | None = None,
+    hunk_lines: Sequence[LineEntry] | None = None,
     snapshot_untracked: bool = False,
     before_add: Callable[[], None] | None = None,
 ) -> None:
@@ -94,7 +95,7 @@ def add_selected_lines_to_batch(
                     batch_name=batch_name,
                     file_path=file_path,
                     file_metadata=file_metadata,
-                    selected_lines=selected_lines,
+                    selected_lines=list(selected_lines),
                     hunk_lines=hunk_lines,
                     replacement_line_runs=replacement_line_runs,
                     replacement_origin_line_runs=(

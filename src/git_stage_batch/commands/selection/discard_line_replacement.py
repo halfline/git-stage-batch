@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 import os
@@ -19,6 +19,7 @@ from ...batch.merge.baseline_reference_translation import (
     translate_ownership_baseline_references,
 )
 from ...batch.state.query import read_batch_metadata
+from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...batch.selection import require_line_selection_in_view
 from ...batch.source.advancement import (
     advance_source_lines_preserving_existing_presence,
@@ -30,7 +31,9 @@ from ...batch.text_file_storage import add_file_to_batch
 from ...batch.state.batch_names import batch_exists
 from ...core.buffer import LineBuffer, buffer_ends_with_lf
 from ...core.line_selection import parse_line_selection
+from ...core.models import LineEntry, LineLevelChange
 from ...core.replacement import ReplacementPayload, coerce_replacement_payload
+from ...batch.ownership.model import BatchOwnership
 from ...batch.source.cache import (
     load_session_batch_sources,
     save_session_batch_sources,
@@ -59,13 +62,13 @@ from . import replacement_selection
 class DiscardLineReplacementSelection:
     """Prepared replacement selection for discard-to-batch."""
 
-    line_changes: object
+    line_changes: LineLevelChange
     file_path: str
     working_file_path: Path
-    selected_lines: list
-    rewritten_line_changes: object
-    rewritten_selected_lines: list
-    rewritten_working_lines: Sequence[bytes]
+    selected_lines: list[LineEntry]
+    rewritten_line_changes: LineLevelChange
+    rewritten_selected_lines: list[LineEntry]
+    rewritten_working_lines: LineBuffer
 
 
 @contextmanager
@@ -77,6 +80,8 @@ def prepare_discard_line_replacement_selection(
 ) -> Iterator[DiscardLineReplacementSelection]:
     """Prepare rewritten line selection state for discard-to-batch."""
     line_changes = load_line_changes_from_state()
+    if line_changes is None:
+        exit_with_error(_("No selected hunk. Run 'start' first."))
     requested_ids = set(parse_line_selection(line_id_specification))
     require_line_selection_in_view(
         line_changes,
@@ -173,6 +178,7 @@ def add_discard_line_replacement_to_batch(
     file_metadata = metadata.get("files", {}).get(selection.file_path)
 
     with ExitStack() as ownership_stack:
+        batch_source_commit: str | None
         try:
             if file_metadata is None:
                 batch_source_commit = create_batch_source_commit(
@@ -239,10 +245,10 @@ def add_discard_line_replacement_to_batch(
 def _merge_replacement_with_batch(
     selection: DiscardLineReplacementSelection,
     *,
-    file_metadata: dict,
-    batch_baseline_commit: object,
+    file_metadata: BatchFileMetadataDict,
+    batch_baseline_commit: str | None,
     ownership_stack: ExitStack,
-):
+) -> tuple[BatchOwnership, str]:
     if not isinstance(batch_baseline_commit, str) or not batch_baseline_commit:
         raise ValueError("replacement update requires a batch baseline commit")
 
@@ -309,9 +315,9 @@ def _record_session_batch_source(file_path: str, batch_source_commit: str) -> No
 
 
 def _select_rewritten_replacement_lines(
-    original_selected_lines: list,
-    rewritten_line_changes,
-) -> list:
+    original_selected_lines: list[LineEntry],
+    rewritten_line_changes: LineLevelChange,
+) -> list[LineEntry]:
     """Find the rewritten changed span that overlaps the original selection."""
     original_old_lines = {
         line.old_line_number

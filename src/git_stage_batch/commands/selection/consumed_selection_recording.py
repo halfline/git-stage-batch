@@ -11,6 +11,11 @@ from ...batch.ownership.translation import (
     detect_stale_batch_source_for_selection,
     translate_lines_to_batch_ownership,
 )
+from ...batch.state.metadata_types import (
+    BatchFileMetadataDict,
+    ReplacementMaskMetadata,
+    add_ownership_metadata,
+)
 from ...batch.source.advancement import advance_batch_source_for_file_with_provenance
 from ...batch.source.selected_line_refresh import (
     refresh_selected_lines_against_new_source,
@@ -29,9 +34,9 @@ def record_consumed_selection(
     file_path: str,
     *,
     source_buffer: LineBuffer,
-    selected_lines: list,
+    selected_lines: list[LineEntry],
     coordinate_lines: Sequence[LineEntry] | None = None,
-    replacement_mask: dict[str, list[str]] | None = None,
+    replacement_mask: ReplacementMaskMetadata | None = None,
 ) -> None:
     """Persist consumed selection ownership for masking across `again`."""
     existing_file_metadata = read_consumed_file_metadata(file_path)
@@ -41,10 +46,10 @@ def record_consumed_selection(
         batch_source_commit: str,
         ownership: BatchOwnership,
     ) -> None:
-        file_metadata = {
+        file_metadata: BatchFileMetadataDict = {
             "batch_source_commit": batch_source_commit,
-            **ownership.to_metadata_dict(),
         }
+        add_ownership_metadata(file_metadata, ownership.to_metadata_dict())
         existing_replacement_masks = (
             existing_file_metadata.get("replacement_masks", [])
             if existing_file_metadata else

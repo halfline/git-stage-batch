@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Generator, Iterable, Iterator, Sequence
 
 from ...core.mapped_storage import sort_mapped_records
 from ..line_matching.match_workspace import MatcherWorkspace
@@ -127,7 +127,7 @@ class BaselineEditPlan:
         self,
         source_lines: Sequence[bytes],
         working_lines: Sequence[bytes],
-    ) -> Iterator[bytes]:
+    ) -> Generator[bytes, None, None]:
         """Yield working lines with the validated edit plan applied."""
         target_span_index = 0
         payload_range_index = 0

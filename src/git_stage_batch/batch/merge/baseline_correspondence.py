@@ -37,7 +37,7 @@ class BaselineCorrespondence:
     """Restoration correspondence from source lines back to baseline regions."""
 
     regions: list[BaselineRegion]
-    _region_start_lines: array = field(init=False, repr=False)
+    _region_start_lines: array[int] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         self._region_start_lines = array(

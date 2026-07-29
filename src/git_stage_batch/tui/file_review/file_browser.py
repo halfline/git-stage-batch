@@ -31,7 +31,7 @@ def list_review_file_entries(
 ) -> list[ReviewFileEntry]:
     """Return reviewable files for the current interactive source."""
     if flow_state.source.role is LocationRole.BATCH:
-        batch_name = flow_state.source.batch_name
+        batch_name = flow_state.source.require_batch_name()
         metadata = read_batch_metadata(batch_name)
         candidates = list(metadata.get("files", {}).keys())
     else:
@@ -189,6 +189,7 @@ def _apply_marked_file_action(
     for path in sorted(marked_paths):
         try:
             if action == "B":
+                assert local_only is not None
                 block_actions.block_review_file(path, local_only=local_only)
                 continue
 

@@ -26,6 +26,7 @@ import sys
 
 from ..exceptions import MergeError
 from ..batch.state.validation import read_validated_batch_metadata
+from ..batch.state.metadata_types import BatchFileMetadataDict, BatchMetadataDict
 from ..batch.state.reference_names import (
     format_batch_content_ref_name,
     format_batch_state_ref_name,
@@ -60,7 +61,7 @@ from ..utils.git_object_io import list_git_tree_blobs, resolve_git_objects
 
 @dataclass(frozen=True, slots=True)
 class _SourceBatchSnapshot:
-    metadata: dict
+    metadata: BatchMetadataDict
     ref_identities: tuple[tuple[str, str | None], ...]
 
 
@@ -68,7 +69,7 @@ class _SourceBatchSnapshot:
 class _TextSiftInput:
     ordinal: int
     file_path: str
-    file_meta: dict
+    file_meta: BatchFileMetadataDict
     worktree_identity: WorktreeIdentity
     worktree_artifact_path: Path
     scratch_directory: Path
@@ -241,7 +242,7 @@ def _print_sift_summary(
 
 def _build_sifted_files(
     *,
-    source_metadata: dict,
+    source_metadata: BatchMetadataDict,
     repository_root: Path,
     workspace: FileJobWorkspace,
 ) -> tuple[
@@ -280,7 +281,7 @@ def _build_sifted_files(
 
 def _capture_sift_inputs(
     *,
-    source_files: dict[str, dict],
+    source_files: dict[str, BatchFileMetadataDict],
     repository_root: Path,
     workspace: FileJobWorkspace,
 ) -> _SiftInputCapture:
@@ -331,7 +332,7 @@ def _capture_sift_inputs(
 
 def _build_sift_text_jobs(
     *,
-    source_metadata: dict,
+    source_metadata: BatchMetadataDict,
     capture: _SiftInputCapture,
     workspace: FileJobWorkspace,
 ) -> list[OrderedFileJob[_sift_jobs.SiftTextFileJob]]:
@@ -355,17 +356,18 @@ def _build_sift_text_jobs(
         source_object_id = source_blob_by_input.get(
             (text_input.ordinal, text_input.file_path)
         )
+        input_metadata: _sift_jobs.SiftTextJobInput = {
+            "baseline_object_id": baseline_object_id,
+            "batch_source_object_id": source_object_id,
+            "file_meta": text_input.file_meta,
+            "working_tree_artifact_path": str(
+                text_input.worktree_artifact_path
+            ),
+        }
         input_artifact = workspace.write_pickle(
             text_input.ordinal,
             "sift-input.pickle",
-            {
-                "baseline_object_id": baseline_object_id,
-                "batch_source_object_id": source_object_id,
-                "file_meta": text_input.file_meta,
-                "working_tree_artifact_path": str(
-                    text_input.worktree_artifact_path
-                ),
-            },
+            input_metadata,
         )
         target_output_path = workspace.output_path(
             text_input.ordinal,
@@ -417,8 +419,8 @@ def _run_sift_text_jobs(
         result_label="sift text",
         run_jobs=run_file_jobs,
     )
-    job_by_ordinal = {}
-    result_by_ordinal = {}
+    job_by_ordinal: dict[int, _sift_jobs.SiftTextFileJob] = {}
+    result_by_ordinal: dict[int, _sift_jobs.SiftTextFileJobResult] = {}
     for ordered_job, result in paired_results:
         job_by_ordinal[ordered_job.ordinal] = ordered_job.payload
         result_by_ordinal[result.ordinal] = result
@@ -427,7 +429,7 @@ def _run_sift_text_jobs(
 
 def _reduce_sift_results(
     *,
-    source_files: dict[str, dict],
+    source_files: dict[str, BatchFileMetadataDict],
     capture: _SiftInputCapture,
     execution: _SiftTextExecution,
     repository_root: Path,
@@ -437,6 +439,7 @@ def _reduce_sift_results(
     retained_files: list[_sift_persistence.RetainedSiftedFile] = []
     try:
         for ordinal, (file_path, file_meta) in enumerate(source_files.items()):
+            sifted_result: _sift_results.SiftedFileResult | None
             if file_meta.get("file_type") == "mode":
                 sifted_result = _sift_results.compute_sifted_mode_file(
                     file_path,
@@ -642,7 +645,7 @@ def _handle_empty_source_batch(
     source_batch: str,
     dest_batch: str,
     *,
-    source_metadata: dict,
+    source_metadata: BatchMetadataDict,
 ) -> None:
     """Handle the case where the source batch is empty."""
     if source_batch == dest_batch:

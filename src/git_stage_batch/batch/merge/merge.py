@@ -22,6 +22,7 @@ from .coordinate_strategy import (
 )
 from .validation import (
     check_structural_validity as _check_merge_structural_validity,
+    has_missing_origin_replacement_claims as _has_missing_origin_replacement_claims,
 )
 from ..line_matching.line_mapping import LineMapping
 from ..line_matching.match import match_lines
@@ -174,7 +175,7 @@ def _build_structural_realized_entries(
                 )
                 mapping = owned_mapping
 
-        if _baseline_edits.has_missing_origin_replacement_claims(
+        if _has_missing_origin_replacement_claims(
             ownership,
             presence_line_set,
             source_lines,

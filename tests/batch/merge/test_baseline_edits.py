@@ -116,7 +116,7 @@ def test_baseline_edit_planning_composes_all_edit_kinds() -> None:
         ],
     )
 
-    result = baseline_edits.try_apply_baseline_replacement_units(
+    result = baseline_edits.try_apply_baseline_coordinate_edits(
         source_lines,
         working_lines,
         ownership,
@@ -208,7 +208,7 @@ def test_trusted_plan_composes_partial_replacement_and_repeated_insertion() -> N
         ],
     )
 
-    result = baseline_edits.try_apply_baseline_replacement_units(
+    result = baseline_edits.try_apply_baseline_coordinate_edits(
         source_lines,
         working_lines,
         ownership,
@@ -270,7 +270,7 @@ def test_same_boundary_replacement_payloads_follow_source_order() -> None:
     )
 
     for trust_baseline_coordinates in (False, True):
-        result = baseline_edits.try_apply_baseline_replacement_units(
+        result = baseline_edits.try_apply_baseline_coordinate_edits(
             source_lines,
             working_lines,
             ownership,
@@ -319,7 +319,7 @@ def test_same_boundary_noncontiguous_payloads_follow_source_order() -> None:
         ],
     )
 
-    result = baseline_edits.try_apply_baseline_replacement_units(
+    result = baseline_edits.try_apply_baseline_coordinate_edits(
         source_lines,
         working_lines,
         ownership,
@@ -356,7 +356,7 @@ def test_baseline_edit_planning_rejects_incomplete_replacement_unit() -> None:
         ],
     )
 
-    result = baseline_edits.try_apply_baseline_replacement_units(
+    result = baseline_edits.try_apply_baseline_coordinate_edits(
         source_lines,
         working_lines,
         ownership,
@@ -396,7 +396,7 @@ def test_baseline_edit_planning_rejects_noninteger_deletion_index(
         ],
     )
 
-    result = baseline_edits.try_apply_baseline_replacement_units(
+    result = baseline_edits.try_apply_baseline_coordinate_edits(
         source_lines,
         working_lines,
         ownership,
@@ -433,7 +433,7 @@ def test_baseline_edit_planning_accepts_integer_source_range_metadata() -> None:
         ],
     )
 
-    result = baseline_edits.try_apply_baseline_replacement_units(
+    result = baseline_edits.try_apply_baseline_coordinate_edits(
         source_lines,
         working_lines,
         ownership,
@@ -499,7 +499,7 @@ def test_baseline_edit_planning_rejects_duplicate_deletion_binding() -> None:
         (1, 0),
         (2, 2),
     ]
-    result = baseline_edits.try_apply_baseline_replacement_units(
+    result = baseline_edits.try_apply_baseline_coordinate_edits(
         source_lines,
         working_lines,
         ownership,
@@ -547,7 +547,7 @@ def test_live_planning_ignores_already_present_insertion_groups() -> None:
         ],
     )
 
-    result = baseline_edits.try_apply_baseline_replacement_units(
+    result = baseline_edits.try_apply_baseline_coordinate_edits(
         source_lines,
         working_lines,
         ownership,
@@ -589,7 +589,7 @@ def test_live_planning_reinserts_payload_removed_by_replacement() -> None:
         ],
     )
 
-    result = baseline_edits.try_apply_baseline_replacement_units(
+    result = baseline_edits.try_apply_baseline_coordinate_edits(
         source_lines,
         working_lines,
         ownership,
@@ -635,7 +635,7 @@ def test_live_planning_rejects_partially_removed_matching_payload() -> None:
         ],
     )
 
-    result = baseline_edits.try_apply_baseline_replacement_units(
+    result = baseline_edits.try_apply_baseline_coordinate_edits(
         source_lines,
         working_lines,
         ownership,
@@ -691,7 +691,7 @@ def test_baseline_replacement_payload_stays_lazy(
         raising=False,
     )
 
-    result = baseline_edits.try_apply_baseline_replacement_units(
+    result = baseline_edits.try_apply_baseline_coordinate_edits(
         source_lines,
         working_lines,
         ownership,
@@ -744,7 +744,7 @@ def test_fragmented_replacement_planning_avoids_heap_selections(
     monkeypatch.setattr(LineRanges, "union", fail_heap_selection)
     monkeypatch.setattr(LineRanges, "difference", fail_heap_selection)
 
-    result = baseline_edits.try_apply_baseline_replacement_units(
+    result = baseline_edits.try_apply_baseline_coordinate_edits(
         source_lines,
         working_lines,
         ownership,
@@ -785,7 +785,7 @@ def test_baseline_insertion_planning_does_not_flatten_references(
         fail_flatten,
     )
 
-    result = baseline_edits.try_apply_baseline_replacement_units(
+    result = baseline_edits.try_apply_baseline_coordinate_edits(
         source_lines,
         [],
         ownership,
@@ -821,7 +821,7 @@ def test_baseline_insertion_planning_sorts_target_positions() -> None:
         },
     )
 
-    result = baseline_edits.try_apply_baseline_replacement_units(
+    result = baseline_edits.try_apply_baseline_coordinate_edits(
         source_lines,
         working_lines,
         ownership,
@@ -885,7 +885,7 @@ def test_baseline_edit_stream_closes_planning_workspace(
         TrackingWorkspace,
     )
 
-    result = baseline_edits.try_apply_baseline_replacement_units(
+    result = baseline_edits.try_apply_baseline_coordinate_edits(
         source_lines,
         working_lines,
         ownership,
@@ -949,7 +949,7 @@ def test_baseline_edit_planning_closes_workspace_on_base_exception(
     )
 
     with pytest.raises(KeyboardInterrupt):
-        baseline_edits.try_apply_baseline_replacement_units(
+        baseline_edits.try_apply_baseline_coordinate_edits(
             source_lines,
             working_lines,
             ownership,
@@ -1009,7 +1009,7 @@ def test_baseline_edit_stream_closes_workspace_on_base_exception(
         TrackingWorkspace,
     )
 
-    result = baseline_edits.try_apply_baseline_replacement_units(
+    result = baseline_edits.try_apply_baseline_coordinate_edits(
         source_lines,
         working_lines,
         ownership,

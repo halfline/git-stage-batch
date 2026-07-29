@@ -47,7 +47,7 @@ def add_list_subcommand(subparsers: Subparsers) -> None:
     parser_list.set_defaults(func=lambda _: command_list_batches())
 
 
-def add_validate_subcommand(subparsers) -> None:
+def add_validate_subcommand(subparsers: Subparsers) -> None:
     """Register the non-mutating batch metadata diagnostic command."""
     parser_validate = add_subcommand_parser(
         subparsers,

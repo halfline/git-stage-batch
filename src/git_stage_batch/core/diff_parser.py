@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Iterable, Iterator, Union
+from collections.abc import Callable, Generator, Iterable, Iterator
+from types import TracebackType
 
 from . import binary_diff as _binary_diff
 from . import diff_headers as _diff_headers
@@ -31,7 +31,14 @@ from ..git_paths import encode_path, quote_path_token
 
 # Type for annotator hooks that enrich LineLevelChange with additional metadata
 LineLevelChangeAnnotator = Callable[[str, LineLevelChange], LineLevelChange]
-UnifiedDiffItem = Union[SingleHunkPatch, BinaryFileChange, FileModeChange, GitlinkChange, RenameChange, TextFileDeletionChange]
+UnifiedDiffItem = (
+    SingleHunkPatch
+    | BinaryFileChange
+    | FileModeChange
+    | GitlinkChange
+    | RenameChange
+    | TextFileDeletionChange
+)
 
 
 def patch_is_file_deletion(patch_lines: Iterable[bytes]) -> bool:
@@ -58,7 +65,7 @@ class _UnifiedDiffParserBuildContext:
     def __init__(self, lines: Iterable[bytes]) -> None:
         self._lines = lines
         self._buffers: list[LineBuffer] = []
-        self._parser: Iterator[UnifiedDiffItem] | None = None
+        self._parser: Generator[UnifiedDiffItem, None, None] | None = None
         self._closed = False
 
     def close(self) -> None:
@@ -82,7 +89,12 @@ class _UnifiedDiffParserBuildContext:
         self._parser = self._iter_owned()
         return self._parser
 
-    def __exit__(self, exc_type, exc, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()
 
     def _own_buffer(self, buffer: LineBuffer) -> LineBuffer:
@@ -100,7 +112,7 @@ class _UnifiedDiffParserBuildContext:
         if isinstance(item, SingleHunkPatch) and isinstance(item.lines, LineBuffer):
             self._release_buffer(item.lines)
 
-    def _iter_owned(self) -> Iterator[UnifiedDiffItem]:
+    def _iter_owned(self) -> Generator[UnifiedDiffItem, None, None]:
         current_item: UnifiedDiffItem | None = None
         parser = self._parse()
 
@@ -129,11 +141,11 @@ class _UnifiedDiffParserBuildContext:
             lines=self._own_buffer(LineBuffer.from_chunks(lines)),
         )
 
-    def _parse(self) -> Iterator[UnifiedDiffItem]:
+    def _parse(self) -> Generator[UnifiedDiffItem, None, None]:
         line_iter = iter(self._lines)
-        lookahead = None  # One-line lookahead buffer
+        lookahead: bytes | None = None  # One-line lookahead buffer
 
-        def next_line():
+        def next_line() -> bytes | None:
             """Get next line, using lookahead if available."""
             nonlocal lookahead
             if lookahead is not None:
@@ -145,7 +157,7 @@ class _UnifiedDiffParserBuildContext:
             except StopIteration:
                 return None
 
-        def peek_line():
+        def peek_line() -> bytes | None:
             """Peek at next line without consuming it."""
             nonlocal lookahead
             if lookahead is None:
@@ -239,8 +251,8 @@ class _UnifiedDiffParserBuildContext:
 
                     # Collect metadata lines until we hit the --- line (start of unified diff)
                     # Files with no hunks (binary, mode-only, rename-only, empty) won't have --- line
-                    metadata_lines = []
-                    old_file_line = None
+                    metadata_lines: list[bytes] = []
+                    old_file_line: bytes | None = None
                     while True:
                         next_l = next_line()
                         if next_l is None:

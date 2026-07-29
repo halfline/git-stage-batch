@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Iterable
 
+from .models import FileChangeType
+
 
 INDEX_LINE_PATTERN = re.compile(br"^index ([0-9a-f]+)\.\.([0-9a-f]+)(?: ([0-7]+))?$")
 SUBPROJECT_COMMIT_PATTERN = re.compile(br"^([+-])Subproject commit ([0-9a-f]+)(?:-[^\s]+)?$")
@@ -63,7 +65,7 @@ def gitlink_change_type(
     metadata_lines: list[bytes],
     old_oid: str | None,
     new_oid: str | None,
-) -> str:
+) -> FileChangeType:
     """Derive added/modified/deleted from gitlink diff metadata."""
     if any(line == b"new file mode 160000" for line in metadata_lines):
         return "added"

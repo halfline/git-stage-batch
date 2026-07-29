@@ -65,6 +65,12 @@ preview = true
 [tool.pytest.ini_options]
 addopts = ["--import-mode=importlib", "-n", "auto"]
 
+[tool.mypy]
+python_version = "3.10"
+files = ["src/git_stage_batch"]
+strict = true
+show_error_codes = true
+
 [tool.uv.extra-build-dependencies]
 git-stage-batch = [
     "meson-python>=0.17.0",

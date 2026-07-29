@@ -77,6 +77,14 @@ jobs:
       - name: Run Ruff
         run: uv run ruff check src tests
 
+      - name: Check type hygiene
+        if: matrix.python-version == '3.10'
+        run: uv run python scripts/check_type_hygiene.py
+
+      - name: Run strict type checks
+        if: matrix.python-version == '3.10'
+        run: uv run mypy
+
   build:
     runs-on: ubuntu-latest
 

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable
 from dataclasses import dataclass, fields, is_dataclass
 from enum import Enum
 import importlib
+from typing import Any, cast
 from pathlib import (
     Path,
     PosixPath,
@@ -78,7 +79,7 @@ def _assert_transport_value(
             label=label,
             state=state,
             depth=depth,
-            values=(value.value,),
+            values=((f"{label}[0]", value.value),),
         )
         return
     # Exact scalar and collection types are intentional. State-bearing
@@ -112,7 +113,10 @@ def _assert_transport_value(
             label=label,
             state=state,
             depth=depth,
-            values=value,
+            values=(
+                (f"{label}[{index}]", item)
+                for index, item in enumerate(value)
+            ),
         )
         return
     if isinstance(value, tuple):
@@ -126,9 +130,9 @@ def _assert_transport_value(
             state=state,
             depth=depth,
             values=(
-                (field.name, getattr(value, field.name)) for field in fields(value)
+                (f"{label}.{field.name}", getattr(value, field.name))
+                for field in fields(cast(Any, value))
             ),
-            named_values=True,
         )
         return
     raise TypeError(
@@ -171,7 +175,7 @@ def _assert_transport_dataclass_shape(value: object, *, label: str) -> None:
     if parameters is None or not parameters.frozen or hasattr(value, "__dict__"):
         raise TypeError(f"{label} must use a frozen slots dataclass")
 
-    field_names = {field.name for field in fields(value)}
+    field_names = {field.name for field in fields(cast(Any, value))}
     for value_class in value_type.__mro__:
         if value_class is object:
             continue
@@ -241,19 +245,14 @@ def _recurse_transport_values(
     label: str,
     state: _TransportValidationState,
     depth: int,
-    values: Sequence[object] | Iterator[tuple[str, object]],
-    named_values: bool = False,
+    values: Iterable[tuple[str, object]],
 ) -> None:
     value_id = id(owner)
     if value_id in state.active_ids:
         raise TypeError(f"{label} contains a recursive value")
     state.active_ids.add(value_id)
     try:
-        for index, value in enumerate(values):
-            value_label = f"{label}[{index}]"
-            if named_values:
-                value_name, value = value
-                value_label = f"{label}.{value_name}"
+        for value_label, value in values:
             _assert_transport_value(
                 value,
                 label=value_label,

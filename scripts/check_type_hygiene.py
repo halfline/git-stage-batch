@@ -75,6 +75,22 @@ ALLOWED_EXPLICIT_ANY = frozenset({
     "Subparsers.add_parser::param:kwargs",
     "src/git_stage_batch/cli/subcommand_parser.py::"
     "add_subcommand_parser::param:kwargs",
+    "src/git_stage_batch/utils/file_job_transport.py::"
+    "_assert_transport_value::cast",
+    "src/git_stage_batch/utils/file_job_transport.py::"
+    "_assert_transport_dataclass_shape::cast",
+    "src/git_stage_batch/utils/file_job_workspace.py::"
+    "FileJobWorkspace.write_json::param:value",
+    "src/git_stage_batch/utils/file_job_workspace.py::"
+    "FileJobWorkspace.read_json::return",
+    "src/git_stage_batch/utils/file_job_workspace.py::"
+    "FileJobWorkspace.write_jsonl::param:values",
+    "src/git_stage_batch/utils/file_job_workspace.py::"
+    "FileJobWorkspace.stream_jsonl::return",
+    "src/git_stage_batch/utils/file_job_workspace.py::"
+    "FileJobWorkspace.write_pickle::param:value",
+    "src/git_stage_batch/utils/file_job_workspace.py::"
+    "FileJobWorkspace.read_pickle::return",
 })
 
 
@@ -278,6 +294,11 @@ def main() -> int:
         print(
             f"{use.path}:{use.line}: explicit Any is not an approved "
             f"dynamic boundary ({use.identity}; {use.annotation})",
+            file=sys.stderr,
+        )
+    for identity in stale:
+        print(
+            f"stale explicit-Any allowlist entry: {identity}",
             file=sys.stderr,
         )
     return 1

@@ -18,7 +18,8 @@ from pathlib import (
 import pickle
 import stat
 import tempfile
-from typing import Any
+from types import TracebackType
+from typing import Any, cast
 
 from ..core.buffer import BufferInput, LineBuffer
 from .buffer_io import write_buffer_to_path
@@ -190,7 +191,12 @@ class FileJobWorkspace(AbstractContextManager["FileJobWorkspace"]):
         self._require_open()
         return self
 
-    def __exit__(self, exc_type, exc, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()
 
     def _allocate_path(
@@ -294,7 +300,7 @@ def _assert_pickle_metadata_value(
             value,
             label=label,
             active_ids=active_ids,
-            values=value,
+            values=cast(Iterable[object], value),
         )
         return
     if isinstance(value, (dict, list, tuple, set, frozenset)):

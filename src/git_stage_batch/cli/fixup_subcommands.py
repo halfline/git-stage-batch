@@ -9,6 +9,14 @@ from ..commands.suggest_fixup import (
     command_suggest_fixup_line,
 )
 from ..i18n import _
+from .command_policy import (
+    CommandPolicy,
+    LockingPolicy,
+    PagerPolicy,
+    RepositoryPolicy,
+    SessionOwnershipPolicy,
+    StateChangePolicy,
+)
 from .subcommand_parser import Subparsers, add_subcommand_parser
 
 
@@ -36,6 +44,13 @@ def add_suggest_fixup_subcommand(subparsers: Subparsers) -> None:
     parser_suggest_fixup = add_subcommand_parser(
         subparsers,
         "suggest-fixup",
+        policy=CommandPolicy(
+            session_ownership=SessionOwnershipPolicy.REQUIRE_AVAILABLE,
+            locking=LockingPolicy.SESSION,
+            repository=RepositoryPolicy.REQUIRED,
+            pager=PagerPolicy.NEVER,
+            state_changes=StateChangePolicy.SCRATCH,
+        ),
         aliases=["x"],
         help=_("Suggest which commit the selected hunk should be fixed up to"),
     )

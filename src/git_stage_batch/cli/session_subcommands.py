@@ -13,6 +13,14 @@ from ..commands.undo import command_undo
 from ..i18n import _
 from ..output.status_prompt import DEFAULT_PROMPT_FORMAT
 from .auto_advance_options import add_auto_advance_arguments
+from .command_policy import (
+    CommandPolicy,
+    LockingPolicy,
+    PagerPolicy,
+    RepositoryPolicy,
+    SessionOwnershipPolicy,
+    StateChangePolicy,
+)
 from .subcommand_parser import Subparsers, add_subcommand_parser
 
 
@@ -21,6 +29,13 @@ def add_check_unstaged_subcommand(subparsers: Subparsers) -> None:
     parser_check_unstaged = add_subcommand_parser(
         subparsers,
         "check-unstaged",
+        policy=CommandPolicy(
+            session_ownership=SessionOwnershipPolicy.ALLOW_FOREIGN,
+            locking=LockingPolicy.SESSION,
+            repository=RepositoryPolicy.REQUIRED,
+            pager=PagerPolicy.NEVER,
+            state_changes=StateChangePolicy.NONE,
+        ),
         help=_("Check whether the index fits an unstaged-only workflow"),
     )
     parser_check_unstaged.set_defaults(func=lambda _: command_check_unstaged())
@@ -31,6 +46,13 @@ def add_start_subcommand(subparsers: Subparsers) -> None:
     parser_start = add_subcommand_parser(
         subparsers,
         "start",
+        policy=CommandPolicy(
+            session_ownership=SessionOwnershipPolicy.REQUIRE_AVAILABLE,
+            locking=LockingPolicy.SESSION,
+            repository=RepositoryPolicy.REQUIRED,
+            pager=PagerPolicy.ELIGIBLE,
+            state_changes=StateChangePolicy.DURABLE,
+        ),
         help=_("Start a new batch staging session"),
     )
     parser_start.add_argument(
@@ -55,6 +77,13 @@ def add_again_subcommand(subparsers: Subparsers) -> None:
     parser_again = add_subcommand_parser(
         subparsers,
         "again",
+        policy=CommandPolicy(
+            session_ownership=SessionOwnershipPolicy.REQUIRE_AVAILABLE,
+            locking=LockingPolicy.SESSION,
+            repository=RepositoryPolicy.REQUIRED,
+            pager=PagerPolicy.ELIGIBLE,
+            state_changes=StateChangePolicy.DURABLE,
+        ),
         aliases=["a"],
         help=_("Clear state and start a fresh pass"),
     )
@@ -69,6 +98,13 @@ def add_stop_subcommand(subparsers: Subparsers) -> None:
     parser_stop = add_subcommand_parser(
         subparsers,
         "stop",
+        policy=CommandPolicy(
+            session_ownership=SessionOwnershipPolicy.REQUIRE_AVAILABLE,
+            locking=LockingPolicy.SESSION,
+            repository=RepositoryPolicy.REQUIRED,
+            pager=PagerPolicy.NEVER,
+            state_changes=StateChangePolicy.DURABLE,
+        ),
         help=_("Stop the selected session and clear state"),
     )
     parser_stop.set_defaults(func=lambda _: command_stop())
@@ -79,6 +115,13 @@ def add_undo_subcommand(subparsers: Subparsers) -> None:
     parser_undo = add_subcommand_parser(
         subparsers,
         "undo",
+        policy=CommandPolicy(
+            session_ownership=SessionOwnershipPolicy.REQUIRE_AVAILABLE,
+            locking=LockingPolicy.SESSION,
+            repository=RepositoryPolicy.REQUIRED,
+            pager=PagerPolicy.NEVER,
+            state_changes=StateChangePolicy.DURABLE,
+        ),
         aliases=["u", "back"],
         help=_("Undo the most recent undoable session operation"),
     )
@@ -95,6 +138,13 @@ def add_redo_subcommand(subparsers: Subparsers) -> None:
     parser_redo = add_subcommand_parser(
         subparsers,
         "redo",
+        policy=CommandPolicy(
+            session_ownership=SessionOwnershipPolicy.REQUIRE_AVAILABLE,
+            locking=LockingPolicy.SESSION,
+            repository=RepositoryPolicy.REQUIRED,
+            pager=PagerPolicy.NEVER,
+            state_changes=StateChangePolicy.DURABLE,
+        ),
         aliases=["forward"],
         help=_("Redo the most recently undone session operation"),
     )
@@ -111,6 +161,13 @@ def add_abort_subcommand(subparsers: Subparsers) -> None:
     parser_abort = add_subcommand_parser(
         subparsers,
         "abort",
+        policy=CommandPolicy(
+            session_ownership=SessionOwnershipPolicy.REQUIRE_AVAILABLE,
+            locking=LockingPolicy.SESSION,
+            repository=RepositoryPolicy.REQUIRED,
+            pager=PagerPolicy.NEVER,
+            state_changes=StateChangePolicy.DURABLE,
+        ),
         help=_("Restore repository to pre-session state"),
     )
     parser_abort.set_defaults(func=lambda _: command_abort())
@@ -121,6 +178,13 @@ def add_status_subcommand(subparsers: Subparsers) -> None:
     parser_status = add_subcommand_parser(
         subparsers,
         "status",
+        policy=CommandPolicy(
+            session_ownership=SessionOwnershipPolicy.ALLOW_FOREIGN,
+            locking=LockingPolicy.SESSION_EXCEPT_PROMPT,
+            repository=RepositoryPolicy.OPTIONAL_FOR_PROMPT,
+            pager=PagerPolicy.ELIGIBLE,
+            state_changes=StateChangePolicy.NONE,
+        ),
         aliases=["st"],
         help=_("Show selected session status"),
     )

@@ -9,7 +9,15 @@ from pathlib import PurePosixPath
 from ..batch.state.query import list_batch_files
 from ..exceptions import CommandError
 from ..utils.file_patterns import list_changed_files
-from .subcommand_parser import Subparsers
+from .command_policy import (
+    CommandPolicy,
+    LockingPolicy,
+    PagerPolicy,
+    RepositoryPolicy,
+    SessionOwnershipPolicy,
+    StateChangePolicy,
+)
+from .subcommand_parser import Subparsers, add_subcommand_parser
 
 
 _WILDMATCH_META = frozenset({"*", "?", "["})
@@ -116,8 +124,17 @@ def command_complete_files(current_token: str, *, from_batch: str | None = None)
 
 def add_completion_subcommand(subparsers: Subparsers) -> None:
     """Register the hidden file-completion subcommand."""
-    parser_complete_files = subparsers.add_parser(
+    parser_complete_files = add_subcommand_parser(
+        subparsers,
         "__complete-files",
+        policy=CommandPolicy(
+            session_ownership=SessionOwnershipPolicy.REQUIRE_AVAILABLE,
+            locking=LockingPolicy.SESSION,
+            repository=RepositoryPolicy.REQUIRED,
+            pager=PagerPolicy.ELIGIBLE,
+            state_changes=StateChangePolicy.NONE,
+        ),
+        help_topic="stage-batch",
         help=argparse.SUPPRESS,
     )
     parser_complete_files.add_argument(

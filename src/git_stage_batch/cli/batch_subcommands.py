@@ -10,6 +10,14 @@ from ..commands.new import command_new_batch
 from ..commands.sift import command_sift_batch
 from ..i18n import _
 from .apply_dispatch import dispatch_apply_command
+from .command_policy import (
+    CommandPolicy,
+    LockingPolicy,
+    PagerPolicy,
+    RepositoryPolicy,
+    SessionOwnershipPolicy,
+    StateChangePolicy,
+)
 from .file_arguments import add_file_argument
 from .reset_dispatch import dispatch_reset_command
 from .subcommand_parser import Subparsers, add_subcommand_parser
@@ -20,6 +28,13 @@ def add_new_subcommand(subparsers: Subparsers) -> None:
     parser_new = add_subcommand_parser(
         subparsers,
         "new",
+        policy=CommandPolicy(
+            session_ownership=SessionOwnershipPolicy.REQUIRE_AVAILABLE,
+            locking=LockingPolicy.SESSION,
+            repository=RepositoryPolicy.REQUIRED,
+            pager=PagerPolicy.NEVER,
+            state_changes=StateChangePolicy.DURABLE,
+        ),
         help=_("Create a new batch"),
     )
     parser_new.add_argument(
@@ -42,6 +57,13 @@ def add_list_subcommand(subparsers: Subparsers) -> None:
     parser_list = add_subcommand_parser(
         subparsers,
         "list",
+        policy=CommandPolicy(
+            session_ownership=SessionOwnershipPolicy.ALLOW_FOREIGN,
+            locking=LockingPolicy.SESSION,
+            repository=RepositoryPolicy.REQUIRED,
+            pager=PagerPolicy.ELIGIBLE,
+            state_changes=StateChangePolicy.NONE,
+        ),
         help=_("List all batches"),
     )
     parser_list.set_defaults(func=lambda _: command_list_batches())
@@ -52,6 +74,13 @@ def add_validate_subcommand(subparsers: Subparsers) -> None:
     parser_validate = add_subcommand_parser(
         subparsers,
         "validate",
+        policy=CommandPolicy(
+            session_ownership=SessionOwnershipPolicy.ALLOW_FOREIGN,
+            locking=LockingPolicy.SESSION,
+            repository=RepositoryPolicy.REQUIRED,
+            pager=PagerPolicy.NEVER,
+            state_changes=StateChangePolicy.NONE,
+        ),
         help=_("Validate persisted batch metadata"),
     )
     parser_validate.add_argument(
@@ -69,6 +98,13 @@ def add_drop_subcommand(subparsers: Subparsers) -> None:
     parser_drop = add_subcommand_parser(
         subparsers,
         "drop",
+        policy=CommandPolicy(
+            session_ownership=SessionOwnershipPolicy.REQUIRE_AVAILABLE,
+            locking=LockingPolicy.SESSION,
+            repository=RepositoryPolicy.REQUIRED,
+            pager=PagerPolicy.NEVER,
+            state_changes=StateChangePolicy.DURABLE,
+        ),
         help=_("Delete a batch"),
     )
     parser_drop.add_argument(
@@ -83,6 +119,13 @@ def add_annotate_subcommand(subparsers: Subparsers) -> None:
     parser_annotate = add_subcommand_parser(
         subparsers,
         "annotate",
+        policy=CommandPolicy(
+            session_ownership=SessionOwnershipPolicy.REQUIRE_AVAILABLE,
+            locking=LockingPolicy.SESSION,
+            repository=RepositoryPolicy.REQUIRED,
+            pager=PagerPolicy.NEVER,
+            state_changes=StateChangePolicy.DURABLE,
+        ),
         help=_("Add or update batch description"),
     )
     parser_annotate.add_argument(
@@ -103,6 +146,13 @@ def add_sift_subcommand(subparsers: Subparsers) -> None:
     parser_sift = add_subcommand_parser(
         subparsers,
         "sift",
+        policy=CommandPolicy(
+            session_ownership=SessionOwnershipPolicy.REQUIRE_AVAILABLE,
+            locking=LockingPolicy.SESSION,
+            repository=RepositoryPolicy.REQUIRED,
+            pager=PagerPolicy.NEVER,
+            state_changes=StateChangePolicy.DURABLE,
+        ),
         help=_("Remove already-present portions from a batch"),
     )
     parser_sift.add_argument(
@@ -129,6 +179,13 @@ def add_apply_subcommand(subparsers: Subparsers) -> None:
     parser_apply = add_subcommand_parser(
         subparsers,
         "apply",
+        policy=CommandPolicy(
+            session_ownership=SessionOwnershipPolicy.REQUIRE_AVAILABLE,
+            locking=LockingPolicy.SESSION,
+            repository=RepositoryPolicy.REQUIRED,
+            pager=PagerPolicy.NEVER,
+            state_changes=StateChangePolicy.DURABLE,
+        ),
         help=_("Apply batch changes to working tree"),
     )
     parser_apply.add_argument(
@@ -161,6 +218,13 @@ def add_reset_subcommand(subparsers: Subparsers) -> None:
     parser_reset = add_subcommand_parser(
         subparsers,
         "reset",
+        policy=CommandPolicy(
+            session_ownership=SessionOwnershipPolicy.REQUIRE_AVAILABLE,
+            locking=LockingPolicy.SESSION,
+            repository=RepositoryPolicy.REQUIRED,
+            pager=PagerPolicy.NEVER,
+            state_changes=StateChangePolicy.DURABLE,
+        ),
         help=_("Remove claims from batch"),
     )
     parser_reset.add_argument(

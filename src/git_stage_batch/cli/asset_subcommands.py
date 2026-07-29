@@ -4,6 +4,14 @@ from __future__ import annotations
 
 from ..commands.install_assets import command_install_assets
 from ..i18n import _
+from .command_policy import (
+    CommandPolicy,
+    LockingPolicy,
+    PagerPolicy,
+    RepositoryPolicy,
+    SessionOwnershipPolicy,
+    StateChangePolicy,
+)
 from .subcommand_parser import Subparsers, add_subcommand_parser
 
 
@@ -12,6 +20,13 @@ def add_install_assets_subcommand(subparsers: Subparsers) -> None:
     parser_install_assets = add_subcommand_parser(
         subparsers,
         "install-assets",
+        policy=CommandPolicy(
+            session_ownership=SessionOwnershipPolicy.REQUIRE_AVAILABLE,
+            locking=LockingPolicy.SESSION,
+            repository=RepositoryPolicy.REQUIRED,
+            pager=PagerPolicy.NEVER,
+            state_changes=StateChangePolicy.DURABLE,
+        ),
         help=_("Install bundled assistant assets into the repository"),
     )
     parser_install_assets.add_argument(

@@ -5,6 +5,14 @@ from __future__ import annotations
 from ..commands.block_file import command_block_file
 from ..commands.unblock_file import command_unblock_file
 from ..i18n import _
+from .command_policy import (
+    CommandPolicy,
+    LockingPolicy,
+    PagerPolicy,
+    RepositoryPolicy,
+    SessionOwnershipPolicy,
+    StateChangePolicy,
+)
 from .subcommand_parser import Subparsers, add_subcommand_parser
 
 
@@ -13,6 +21,13 @@ def add_block_file_subcommand(subparsers: Subparsers) -> None:
     parser_block_file = add_subcommand_parser(
         subparsers,
         "block-file",
+        policy=CommandPolicy(
+            session_ownership=SessionOwnershipPolicy.REQUIRE_AVAILABLE,
+            locking=LockingPolicy.SESSION,
+            repository=RepositoryPolicy.REQUIRED,
+            pager=PagerPolicy.ELIGIBLE,
+            state_changes=StateChangePolicy.DURABLE,
+        ),
         aliases=["bf"],
         help=_("Permanently exclude a file (adds to .gitignore)"),
     )
@@ -41,6 +56,13 @@ def add_unblock_file_subcommand(subparsers: Subparsers) -> None:
     parser_unblock_file = add_subcommand_parser(
         subparsers,
         "unblock-file",
+        policy=CommandPolicy(
+            session_ownership=SessionOwnershipPolicy.REQUIRE_AVAILABLE,
+            locking=LockingPolicy.SESSION,
+            repository=RepositoryPolicy.REQUIRED,
+            pager=PagerPolicy.ELIGIBLE,
+            state_changes=StateChangePolicy.DURABLE,
+        ),
         aliases=["ubf"],
         help=_("Remove a file from the blocked list"),
     )

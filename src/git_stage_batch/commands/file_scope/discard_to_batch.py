@@ -27,6 +27,7 @@ from ...core.models import (
     RenameChange,
     TextFileDeletionChange,
 )
+from ...utils.context_lines import get_context_lines
 from ...data.file_modes import detect_file_mode_from_root
 from ...data.file_tracking import auto_add_untracked_files
 from ...data.live_diff import stream_live_git_diff
@@ -46,7 +47,6 @@ from ...utils.journal import log_journal
 from ...utils.paths import (
     ensure_state_directory_exists,
     get_block_list_file_path,
-    get_context_lines,
 )
 from ...utils.repository_buffers import read_git_object_buffer_or_empty
 from ...utils.session_start_point import session_comparison_base

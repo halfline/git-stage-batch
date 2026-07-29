@@ -14,6 +14,7 @@ from ...core.models import (
     SingleHunkPatch,
     TextFileDeletionChange,
 )
+from ...utils.context_lines import get_context_lines
 from ...data.binary_identity import attach_live_binary_fingerprint
 from ...data.change_freshness import text_deletion_change_is_batched
 from ...data.file_hunk_display import build_combined_file_line_changes
@@ -35,7 +36,6 @@ from ...output.file_review_list import (
     print_file_review_list,
 )
 from ...utils.session_start_point import session_comparison_base
-from ...utils.paths import get_context_lines
 
 
 def show_live_file_list(files: list[str], *, selectable: bool = True) -> None:

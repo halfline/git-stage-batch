@@ -33,12 +33,12 @@ from ..utils.file_job_workspace import FileJobWorkspace
 from ..utils.file_jobs import OrderedFileJob
 from ..utils.git_object_io import resolve_git_objects
 from ..utils.git_repository import get_git_repository_root_path
-from ..utils.paths import get_context_lines
 from ..utils.repository_buffers import (
     load_working_tree_file_as_buffer,
     read_git_object_buffer_or_none,
 )
 from ..utils.session_start_point import current_head_commit
+from ..utils.context_lines import get_context_lines
 from .consumed_selections import load_consumed_selections_metadata
 from .live_change_candidates import (
     LiveChangeScanContext,

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .file_io import read_text_file_contents
 from .git_repository import get_git_common_directory_path, get_git_directory_path
 
 
@@ -370,21 +369,6 @@ def get_context_lines_file_path() -> Path:
         Path to context lines file
     """
     return get_config_state_directory_path() / "context-lines.txt"
-
-
-def get_context_lines() -> int:
-    """Get stored context lines value, defaulting to 3.
-
-    Returns:
-        Number of context lines to use in diffs
-    """
-    context_file = get_context_lines_file_path()
-    if context_file.exists():
-        try:
-            return int(read_text_file_contents(context_file).strip())
-        except ValueError:
-            return 3
-    return 3
 
 
 def get_suggest_fixup_state_file_path() -> Path:

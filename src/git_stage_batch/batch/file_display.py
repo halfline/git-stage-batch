@@ -16,10 +16,10 @@ from ..core.line_selection import LineRanges
 from ..core.models import (
     RenderedBatchDisplay,
 )
+from ..utils.context_lines import get_context_lines
 from ..utils.repository_buffers import (
     read_git_object_buffer_or_none,
 )
-from ..utils.paths import get_context_lines
 
 
 def render_batch_file_display(

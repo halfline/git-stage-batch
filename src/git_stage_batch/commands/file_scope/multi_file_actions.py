@@ -10,6 +10,7 @@ import sys
 from typing import Protocol
 
 from ...data.file_tracking import auto_add_untracked_files
+from ...utils.context_lines import get_context_lines
 from ...data.file_target_identity import (
     IndexIdentity,
     WorktreeIdentity,
@@ -30,7 +31,6 @@ from ...exceptions import CommandError
 from ...i18n import _, ngettext
 from ...utils.git_repository import require_git_repository
 from ...utils.paths import ensure_state_directory_exists
-from ...utils.paths import get_context_lines
 from . import discard_file as _discard_file
 from .discard_to_batch import discard_files_to_batch
 from . import include_file as _include_file

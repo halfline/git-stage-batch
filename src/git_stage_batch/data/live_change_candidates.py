@@ -41,8 +41,8 @@ from ..utils.file_io import (
 from ..utils.paths import (
     get_block_list_file_path,
     get_blocked_files_file_path,
-    get_context_lines,
 )
+from ..utils.context_lines import get_context_lines
 from .change_freshness import text_deletion_change_is_batched
 from .binary_identity import attach_live_binary_fingerprint
 from .live_diff import stream_live_git_diff

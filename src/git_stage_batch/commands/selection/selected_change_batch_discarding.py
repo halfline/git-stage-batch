@@ -29,6 +29,7 @@ from ...core.models import (
     SingleHunkPatch,
     TextFileDeletionChange,
 )
+from ...utils.context_lines import get_context_lines
 from ...data.file_modes import detect_file_mode
 from ...data.hunk_tracking import fetch_next_change
 from ...data.live_diff import stream_live_git_diff
@@ -52,7 +53,6 @@ from ...utils.git_repository import get_git_repository_root_path
 from ...utils.journal import log_journal
 from ...utils.paths import (
     get_block_list_file_path,
-    get_context_lines,
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
 )

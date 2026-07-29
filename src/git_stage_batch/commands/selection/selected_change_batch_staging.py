@@ -28,13 +28,14 @@ from ...core.models import (
     SingleHunkPatch,
     TextFileDeletionChange,
 )
+from ...utils.context_lines import get_context_lines
 from ...data.file_modes import detect_file_mode
 from ...data.live_diff import stream_live_git_diff
 from ...data.progress import record_hunk_skipped
 from ...exceptions import exit_with_error
 from ...i18n import _
 from ...utils.file_io import append_lines_to_file, read_text_file_line_set
-from ...utils.paths import get_block_list_file_path, get_context_lines
+from ...utils.paths import get_block_list_file_path
 from ...utils.repository_buffers import read_git_object_buffer_or_empty
 from . import whole_file_batch_staging as _whole_file_batch_staging
 from .action_completion import finish_selected_change_action

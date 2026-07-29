@@ -23,6 +23,7 @@ from ...core.models import (
     RenameChange,
     TextFileDeletionChange,
 )
+from ...utils.context_lines import get_context_lines
 from ...data.file_tracking import auto_add_untracked_files
 from ...data.index_entries import read_index_entry
 from ...data.live_diff import stream_live_git_diff
@@ -37,7 +38,7 @@ from ...utils.git_command import run_git_command
 from ...utils.git_index import git_update_index
 from ...utils.git_repository import get_git_repository_root_path
 from ...utils.git_worktree import git_checkout_index_paths
-from ...utils.paths import get_block_list_file_path, get_context_lines
+from ...utils.paths import get_block_list_file_path
 from ..selection.action_completion import finish_selected_change_action
 from .target_path import checkpoint_paths_for_live_file
 from ..selection.selected_change_discarding import (

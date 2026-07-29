@@ -6,7 +6,7 @@ import os
 
 from ...batch.selection import require_line_selection_in_view
 from ...core.line_selection import parse_line_selection
-from ...data.line_state import load_line_changes_from_state
+from ...data.line_state import require_line_changes_from_state
 from ...utils.repository_buffers import load_working_tree_file_as_buffer
 from ...data.selected_change.loading import require_selected_hunk
 from ...data.selected_change.paths import get_selected_change_file_path
@@ -26,7 +26,7 @@ def discard_worktree_line_selection(
     """Discard selected line IDs from the working tree."""
     if file is None:
         require_selected_hunk()
-        line_changes = load_line_changes_from_state()
+        line_changes = require_line_changes_from_state()
     else:
         if file == "":
             target_file = get_selected_change_file_path()

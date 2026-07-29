@@ -7,11 +7,11 @@ from dataclasses import dataclass
 import hashlib
 from typing import TYPE_CHECKING
 
+from ...core.line_selection import LineRanges
 from ...core.text_lines import normalize_line_sequence_endings
 from ..line_matching.sequence_equality import line_slice_equals as _line_slice_matches
 
 if TYPE_CHECKING:
-    from ...core.line_selection import LineSelection
     from ..ownership.absence_claims import AbsenceClaim
     from ..ownership.replacement_units import (
         ReplacementUnit,
@@ -33,7 +33,7 @@ def replacement_origin_choices_for_unit(
     claim: AbsenceClaim,
     unit_index: int,
     unit: ReplacementUnit,
-    claimed_ranges: LineSelection | Iterable[tuple[int, int]],
+    claimed_ranges: LineRanges | Iterable[tuple[int, int]],
     working_lines: Sequence[bytes],
     *,
     max_results: int,
@@ -45,7 +45,7 @@ def replacement_origin_choices_for_unit(
     if type(max_results) is not int or max_results < 1:
         raise ValueError("max_results must be positive")
 
-    origin = getattr(unit, "origin", None)
+    origin = unit.origin
     if origin is None or not claim.content_lines:
         return None, ()
 
@@ -79,7 +79,7 @@ def replacement_origin_choices_for_unit(
     if not choices:
         return None, ()
 
-    deletion_indices = getattr(unit, "deletion_indices", [])
+    deletion_indices = unit.deletion_indices
     if len(deletion_indices) != 1:
         return None, ()
 
@@ -94,12 +94,11 @@ def replacement_origin_choices_for_unit(
 
 
 def _replacement_range_records(
-    claimed_ranges: LineSelection | Iterable[tuple[int, int]],
+    claimed_ranges: LineRanges | Iterable[tuple[int, int]],
 ) -> Iterable[tuple[int, int]]:
     """Return range records without materializing a streamed input."""
-    ranges = getattr(claimed_ranges, "ranges", None)
-    if ranges is not None:
-        return ranges()
+    if isinstance(claimed_ranges, LineRanges):
+        return claimed_ranges.ranges()
     return claimed_ranges
 
 

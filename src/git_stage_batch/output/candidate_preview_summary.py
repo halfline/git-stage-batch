@@ -5,13 +5,25 @@ from __future__ import annotations
 import difflib
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Protocol, TypeAlias
 
-from ..batch.operation_candidate_types import OperationCandidatePreview
+from ..batch.operation_candidate_types import (
+    OperationCandidatePreview,
+    TargetCandidatePreview,
+)
 from ..i18n import _
 from . import candidate_preview_snippets
 
 _CANDIDATE_OVERVIEW_CONTEXT_LINES = 2
 _CANDIDATE_OVERVIEW_MAX_LINES = 9
+
+
+class _ScopedByteLine(Protocol):
+    def __bytes__(self) -> bytes:
+        """Materialize this scoped line."""
+
+
+_CandidateLine: TypeAlias = bytes | _ScopedByteLine
 
 
 @dataclass(frozen=True)
@@ -80,13 +92,15 @@ def candidate_target_subject_label(target_name: str) -> str:
     return _("working tree")
 
 
-def _ambiguity_block_line_text(line: object) -> str:
+def _ambiguity_block_line_text(line: _CandidateLine | str) -> str:
     if not isinstance(line, str):
         return _overview_line_text(bytes(line))
     return line.rstrip("\n").rstrip("\r")
 
 
-def summarize_ambiguity_block(lines: Sequence[bytes | str]) -> str:
+def summarize_ambiguity_block(
+    lines: Sequence[_CandidateLine | str],
+) -> str:
     if not lines:
         return _("ambiguous block")
     if len(lines) == 1:
@@ -111,7 +125,9 @@ def summarize_ambiguity_block(lines: Sequence[bytes | str]) -> str:
     return _("{count} lines").format(count=len(lines))
 
 
-def candidate_target_summary(target) -> CandidateTargetSummary:
+def candidate_target_summary(
+    target: TargetCandidatePreview,
+) -> CandidateTargetSummary:
     with (
         target.before_buffer.acquire_lines() as before_lines,
         target.after_buffer.acquire_lines() as after_lines,
@@ -124,9 +140,9 @@ def candidate_target_summary(target) -> CandidateTargetSummary:
 
 
 def _candidate_target_summary_from_lines(
-    target,
-    before_lines: Sequence[bytes],
-    after_lines: Sequence[bytes],
+    target: TargetCandidatePreview,
+    before_lines: Sequence[_CandidateLine],
+    after_lines: Sequence[_CandidateLine],
 ) -> CandidateTargetSummary:
     """Build a summary while scoped no-copy line views are active."""
     opcode = _first_changed_opcode(before_lines, after_lines)
@@ -211,16 +227,16 @@ def common_candidate_target_indexes(
     return tuple(common_indexes)
 
 
-def _overview_line_text(line: bytes) -> str:
-    line = bytes(line)
-    if line.endswith(b"\n"):
-        line = line[:-1]
-        if line.endswith(b"\r"):
-            line = line[:-1]
-    return line.decode("utf-8", errors="surrogateescape")
+def _overview_line_text(line: _CandidateLine) -> str:
+    content = bytes(line)
+    if content.endswith(b"\n"):
+        content = content[:-1]
+        if content.endswith(b"\r"):
+            content = content[:-1]
+    return content.decode("utf-8", errors="surrogateescape")
 
 
-def _summarize_overview_lines(lines: Sequence[bytes]) -> str:
+def _summarize_overview_lines(lines: Sequence[_CandidateLine]) -> str:
     if not lines:
         return _("nothing")
     if len(lines) == 1:
@@ -235,7 +251,7 @@ def _summarize_overview_lines(lines: Sequence[bytes]) -> str:
 
 
 def _delete_ambiguity_block_context(
-    before_lines: Sequence[bytes],
+    before_lines: Sequence[_CandidateLine],
     before_start: int,
     before_end: int,
     ambiguity_target_line_range: tuple[int, int] | None,
@@ -289,8 +305,8 @@ def _delete_ambiguity_block_context(
 
 
 def _first_changed_opcode(
-    before_lines: Sequence[bytes],
-    after_lines: Sequence[bytes],
+    before_lines: Sequence[_CandidateLine],
+    after_lines: Sequence[_CandidateLine],
 ) -> tuple[str, int, int, int, int] | None:
     matcher = difflib.SequenceMatcher(a=before_lines, b=after_lines, autojunk=False)
     for tag, before_start, before_end, after_start, after_end in matcher.get_opcodes():
@@ -300,10 +316,10 @@ def _first_changed_opcode(
 
 
 def _nearby_context_summary(
-    before_lines: Sequence[bytes],
+    before_lines: Sequence[_CandidateLine],
     before_start: int,
     before_end: int,
-    changed_lines: Sequence[bytes],
+    changed_lines: Sequence[_CandidateLine],
 ) -> str:
     changed_text = {
         text.strip()
@@ -334,8 +350,8 @@ def _nearby_context_summary(
 
 def _overview_action_title(
     tag: str,
-    before_lines: Sequence[bytes],
-    after_lines: Sequence[bytes],
+    before_lines: Sequence[_CandidateLine],
+    after_lines: Sequence[_CandidateLine],
     before_start: int,
     before_end: int,
     after_start: int,
@@ -399,8 +415,8 @@ def _append_overview_line(
 
 
 def _overview_snippet_lines(
-    before_lines: Sequence[bytes],
-    after_lines: Sequence[bytes],
+    before_lines: Sequence[_CandidateLine],
+    after_lines: Sequence[_CandidateLine],
     before_start: int,
     before_end: int,
     after_start: int,

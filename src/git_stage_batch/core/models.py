@@ -7,6 +7,9 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 
+FileChangeType = Literal["added", "modified", "deleted"]
+
+
 @dataclass
 class HunkHeader:
     """Represents the header line of a unified diff hunk."""
@@ -70,7 +73,7 @@ class BinaryFileChange:
     """
     old_path: str
     new_path: str
-    change_type: Literal["added", "modified", "deleted"]
+    change_type: FileChangeType
     content_fingerprint: str | None = None
 
     def is_new_file(self) -> bool:
@@ -137,7 +140,7 @@ class GitlinkChange:
     new_path: str
     old_oid: str | None
     new_oid: str | None
-    change_type: Literal["added", "modified", "deleted"]
+    change_type: FileChangeType
 
     def path(self) -> str:
         """Return the repository path that identifies this gitlink change."""

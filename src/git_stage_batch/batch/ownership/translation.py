@@ -17,9 +17,12 @@ from .replacement_units import (
     ReplacementUnit as _ReplacementUnit,
     normalize_replacement_units,
 )
+from ...core.models import LineEntry
 
 
-def detect_stale_batch_source_for_selection(selected_lines: list) -> bool:
+def detect_stale_batch_source_for_selection(
+    selected_lines: list[LineEntry],
+) -> bool:
     """Detect if selected lines cannot be expressed in current batch source.
 
     Returns True if any context/addition line lacks a source coordinate,
@@ -48,7 +51,9 @@ def detect_stale_batch_source_for_selection(selected_lines: list) -> bool:
     return False
 
 
-def translate_lines_to_batch_ownership(selected_lines: list) -> BatchOwnership:
+def translate_lines_to_batch_ownership(
+    selected_lines: list[LineEntry],
+) -> BatchOwnership:
     """Translate display lines to batch source ownership.
 
     Creates presence claims and suppression constraints (deletion_claims).

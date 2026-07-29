@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from ...core.line_selection import LineSelection
 from ..line_matching.lineage import BatchSourceLineage
@@ -21,7 +21,7 @@ from .replacement_units import ReplacementUnit, normalize_replacement_units
 def _remap_replacement_units(
     replacement_units: list[ReplacementUnit],
     *,
-    map_claimed_line,
+    map_claimed_line: Callable[[int], int | None],
     deletion_count: int,
 ) -> list[ReplacementUnit]:
     """Remap explicit replacement-unit presence lines into a new source space."""

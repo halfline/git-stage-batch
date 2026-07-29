@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import argparse
+
 from ..commands.suggest_fixup import (
     command_suggest_fixup,
     command_suggest_fixup_line,
 )
 from ..i18n import _
-from .subcommand_parser import add_subcommand_parser
+from .subcommand_parser import Subparsers, add_subcommand_parser
 
 
-def _dispatch_suggest_fixup_command(args) -> None:
+def _dispatch_suggest_fixup_command(args: argparse.Namespace) -> None:
     if args.line_ids:
         command_suggest_fixup_line(
             args.line_ids,
@@ -29,7 +31,7 @@ def _dispatch_suggest_fixup_command(args) -> None:
     )
 
 
-def add_suggest_fixup_subcommand(subparsers) -> None:
+def add_suggest_fixup_subcommand(subparsers: Subparsers) -> None:
     """Register the suggest-fixup subcommand."""
     parser_suggest_fixup = add_subcommand_parser(
         subparsers,

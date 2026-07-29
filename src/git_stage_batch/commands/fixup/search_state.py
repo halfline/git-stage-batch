@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ...data.suggest_fixup_state import (
+    SuggestFixupState,
     clear_suggest_fixup_state,
     suggest_fixup_state_should_reset,
 )
@@ -24,9 +25,9 @@ class SuggestFixupSearchTarget:
 
 def reset_suggest_fixup_state_for_search(
     *,
-    state: dict | None,
+    state: SuggestFixupState | None,
     target: SuggestFixupSearchTarget,
-) -> dict | None:
+) -> SuggestFixupState | None:
     """Return state after clearing stale data for a changed search target."""
     if state and suggest_fixup_state_should_reset(
         target.hunk_hash,

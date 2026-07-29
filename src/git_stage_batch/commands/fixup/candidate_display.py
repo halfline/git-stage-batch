@@ -7,13 +7,14 @@ import subprocess
 
 from ...exceptions import exit_with_error
 from ...i18n import _
+from ...data.suggest_fixup_state import SuggestFixupState
 from ...utils.git_command import run_git_command
 from .history import get_commit_details, show_commit_diff_for_file
 
 
 def show_last_suggest_fixup_candidate(
     *,
-    state: dict | None,
+    state: SuggestFixupState | None,
     effective_boundary: str,
     file_path: str,
     porcelain: bool,

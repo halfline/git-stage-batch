@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ...data.suggest_fixup_state import SuggestFixupState
 from .boundary import require_suggest_fixup_boundary_range
 from .candidate_display import (
     display_suggest_fixup_candidate,
@@ -14,7 +15,7 @@ from .search_targets import SuggestFixupResolvedTarget
 
 def run_suggest_fixup_search(
     *,
-    state: dict | None,
+    state: SuggestFixupState | None,
     resolved_target: SuggestFixupResolvedTarget,
     show_last: bool,
     porcelain: bool,

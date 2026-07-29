@@ -15,7 +15,7 @@ def git_apply_to_worktree(
     unidiff_zero: bool = False,
     check_only: bool = False,
     check: bool = True,
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str]:
     """Apply patch chunks to the working tree without writing the index."""
     arguments = ["apply", "--whitespace=nowarn"]
     if reverse:
@@ -37,7 +37,7 @@ def git_checkout_paths(
     paths: Sequence[str],
     *,
     check: bool = True,
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str]:
     """Check out paths from a treeish into the index and working tree."""
     return run_git_command(
         ["checkout", treeish, "--", *paths],
@@ -51,7 +51,7 @@ def git_checkout_index_paths(
     paths: Sequence[str],
     *,
     check: bool = True,
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str]:
     """Restore working-tree paths from the index without changing the index."""
     return run_git_command(
         ["checkout", "--", *paths],
@@ -67,7 +67,7 @@ def git_checkout_detached(
     cwd: str,
     force: bool = False,
     check: bool = True,
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str]:
     """Check out one commit in detached mode inside another Git worktree."""
     arguments = ["checkout", "--detach"]
     if force:
@@ -89,7 +89,7 @@ def git_remove_paths(
     quiet: bool = False,
     ignore_unmatch: bool = False,
     check: bool = True,
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str]:
     """Remove paths from the index, and from the worktree unless cached."""
     arguments = ["rm"]
     if cached:
@@ -114,7 +114,7 @@ def git_reset_hard(
     *,
     env: dict[str, str] | None = None,
     check: bool = True,
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str]:
     """Reset HEAD, index, and worktree to a revision."""
     return run_git_command(
         ["reset", "--hard", revision],
@@ -130,7 +130,7 @@ def git_apply_stash(
     restore_index: bool = False,
     env: dict[str, str] | None = None,
     check: bool = True,
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str]:
     """Apply a stash to the worktree, optionally restoring index state."""
     arguments = ["stash", "apply"]
     if restore_index:
@@ -149,7 +149,7 @@ def git_submodule_update_checkout(
     *,
     cwd: str | None = None,
     check: bool = True,
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str]:
     """Ensure submodule worktrees exist using checkout update mode."""
     return run_git_command(
         ["submodule", "update", "--init", "--checkout", "--", *paths],

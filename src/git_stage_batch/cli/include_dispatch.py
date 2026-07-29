@@ -21,7 +21,7 @@ from ..commands.include_from import command_include_from_batch
 from ..exceptions import CommandError
 from ..i18n import _
 from .file_scope import resolve_batch_file_scope, resolve_live_file_scope
-from .replacement_input import resolve_replacement_text
+from .replacement_input import require_replacement_text
 
 
 def _dispatch_include_replacement(args: argparse.Namespace) -> None:
@@ -43,7 +43,7 @@ def _dispatch_include_replacement(args: argparse.Namespace) -> None:
         resolved_file = resolved_batch_scope.require_single_file(
             _("Cannot use --lines with multiple files.")
         )
-        replacement_text = resolve_replacement_text(args)
+        replacement_text = require_replacement_text(args)
         command_include_from_batch(
             args.from_batch,
             args.line_ids,
@@ -56,7 +56,7 @@ def _dispatch_include_replacement(args: argparse.Namespace) -> None:
         resolved_file = resolved_live_scope.require_single_file(
             _("Cannot use --lines with multiple files.")
         )
-        replacement_text = resolve_replacement_text(args)
+        replacement_text = require_replacement_text(args)
         command_include_line_as(
             args.line_ids,
             replacement_text,
@@ -88,7 +88,7 @@ def _dispatch_include_replacement(args: argparse.Namespace) -> None:
             )
         if resolved_live_scope.is_multiple:
             raise CommandError(_("Cannot use --as with multiple files."))
-        replacement_text = resolve_replacement_text(args)
+        replacement_text = require_replacement_text(args)
         command_include_file_as(
             replacement_text,
             file=resolved_live_scope.optional_file(),
@@ -159,8 +159,10 @@ def dispatch_include_command(args: argparse.Namespace) -> None:
                 auto_advance=args.auto_advance,
             )
         elif not resolved_live_scope.is_implicit:
+            resolved_file = resolved_live_scope.optional_file()
+            assert resolved_file is not None
             command_include_file(
-                resolved_live_scope.optional_file(),
+                resolved_file,
                 auto_advance=args.auto_advance,
             )
         else:

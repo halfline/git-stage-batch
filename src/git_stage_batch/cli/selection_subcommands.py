@@ -85,7 +85,7 @@ def add_show_subcommand(subparsers: Subparsers) -> None:
     parser_show.set_defaults(func=dispatch_show_command)
 
 
-def add_include_subcommand(subparsers) -> None:
+def add_include_subcommand(subparsers: Subparsers) -> None:
     """Register the include subcommand."""
     parser_include = add_subcommand_parser(
         subparsers,

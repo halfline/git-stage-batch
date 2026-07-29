@@ -332,8 +332,8 @@ def _build_target_index_buffer_with_replaced_lines(
 ) -> LineBuffer:
     """Build index content while replacement line storage is open."""
     def longest_prefix_context_match(
-        candidate_lines: list[bytes],
-        context_lines: list[bytes],
+        candidate_lines: Sequence[bytes],
+        context_lines: Sequence[bytes],
     ) -> int:
         max_count = min(len(candidate_lines), len(context_lines))
         for count in range(max_count, 0, -1):
@@ -342,8 +342,8 @@ def _build_target_index_buffer_with_replaced_lines(
         return 0
 
     def longest_suffix_context_match(
-        candidate_lines: list[bytes],
-        context_lines: list[bytes],
+        candidate_lines: Sequence[bytes],
+        context_lines: Sequence[bytes],
     ) -> int:
         max_count = min(len(candidate_lines), len(context_lines))
         for count in range(max_count, 0, -1):
@@ -604,8 +604,8 @@ def _build_target_working_tree_buffer_with_replaced_lines(
 ) -> LineBuffer:
     """Build working content while replacement line storage is open."""
     def longest_prefix_context_match(
-        candidate_lines: list[bytes],
-        context_lines: list[bytes],
+        candidate_lines: Sequence[bytes],
+        context_lines: Sequence[bytes],
     ) -> int:
         max_count = min(len(candidate_lines), len(context_lines))
         for count in range(max_count, 0, -1):
@@ -614,8 +614,8 @@ def _build_target_working_tree_buffer_with_replaced_lines(
         return 0
 
     def longest_suffix_context_match(
-        candidate_lines: list[bytes],
-        context_lines: list[bytes],
+        candidate_lines: Sequence[bytes],
+        context_lines: Sequence[bytes],
     ) -> int:
         max_count = min(len(candidate_lines), len(context_lines))
         for count in range(max_count, 0, -1):

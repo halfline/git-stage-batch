@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, TypedDict
 
 from ..core.buffer import buffer_byte_chunks
 from .ownership.absence_claims import AbsenceClaim
+from .ownership.claims import PresenceClaim
 from .ownership.references import BaselineReference
 
 if TYPE_CHECKING:
@@ -39,6 +40,13 @@ class _AbsenceClaimFingerprint(TypedDict):
     content: str
     line_count: int
     baseline_reference: _BaselineReferenceFingerprint | None
+class _PresenceClaimFingerprint(TypedDict):
+    """Canonical fingerprint fields for a presence claim."""
+
+    source_lines: list[str]
+    baseline_references: list[
+        tuple[int, _BaselineReferenceFingerprint | None]
+    ]
 def _hash_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -112,11 +120,11 @@ def _absence_claim_payload(claim: AbsenceClaim) -> _AbsenceClaimFingerprint:
     }
 
 
-def _presence_claim_payload(claim) -> dict:
+def _presence_claim_payload(claim: PresenceClaim) -> _PresenceClaimFingerprint:
     return {
         "source_lines": claim.source_lines,
         "baseline_references": [
-            [line, _baseline_reference_payload(reference)]
+            (line, _baseline_reference_payload(reference))
             for line, reference in sorted(claim.baseline_references.items())
         ],
     }

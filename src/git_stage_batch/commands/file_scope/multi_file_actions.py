@@ -23,6 +23,7 @@ from ...data.live_diff import (
     group_live_diff_by_file,
     paths_for_live_changes,
 )
+from ...core.diff_parser import UnifiedDiffItem
 from ...data.session import require_session_started
 from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import CommandError
@@ -83,7 +84,7 @@ def _multi_file_undo_checkpoint(
 
 def run_for_each_resolved_file(
     file_scope: ResolvedFileScope,
-    callback: Callable[[str | None], None],
+    callback: Callable[[str | None], object],
     *,
     line_ids: str | None = None,
     undo_operation: str | None = None,
@@ -195,7 +196,7 @@ def _prepare_live_multi_file_action() -> None:
 
 def _require_prepared_change_paths_covered(
     files: Sequence[str],
-    changes_by_file: dict[str, tuple],
+    changes_by_file: dict[str, tuple[UnifiedDiffItem, ...]],
     checkpoint_paths: Sequence[str],
 ) -> None:
     """Reject prepared changes that reach beyond the undo before-image."""

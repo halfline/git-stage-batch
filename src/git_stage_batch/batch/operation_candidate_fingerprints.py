@@ -10,6 +10,7 @@ from ..core.buffer import buffer_byte_chunks
 from .ownership.absence_claims import AbsenceClaim
 from .ownership.claims import PresenceClaim
 from .ownership.references import BaselineReference
+from .ownership.replacement_units import ReplacementUnit
 
 if TYPE_CHECKING:
     from ..core.buffer import LineBuffer
@@ -33,6 +34,8 @@ class _BaselineReferenceFingerprint(TypedDict):
     before_line: int | None
     before_content: str | None
     has_before_line: bool
+
+
 class _AbsenceClaimFingerprint(TypedDict):
     """Canonical fingerprint fields for an absence claim."""
 
@@ -40,6 +43,8 @@ class _AbsenceClaimFingerprint(TypedDict):
     content: str
     line_count: int
     baseline_reference: _BaselineReferenceFingerprint | None
+
+
 class _PresenceClaimFingerprint(TypedDict):
     """Canonical fingerprint fields for a presence claim."""
 
@@ -47,6 +52,8 @@ class _PresenceClaimFingerprint(TypedDict):
     baseline_references: list[
         tuple[int, _BaselineReferenceFingerprint | None]
     ]
+
+
 class _ReplacementOriginFingerprint(TypedDict):
     """Canonical fingerprint fields for a replacement origin."""
 
@@ -55,6 +62,16 @@ class _ReplacementOriginFingerprint(TypedDict):
     new_start: int
     new_end: int
     baseline_reference: _BaselineReferenceFingerprint | None
+
+
+class _ReplacementUnitFingerprint(TypedDict):
+    """Canonical fingerprint fields for a replacement unit."""
+
+    presence_lines: list[str | int]
+    deletion_indices: list[int]
+    origin: _ReplacementOriginFingerprint | None
+
+
 def _hash_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -138,10 +155,12 @@ def _presence_claim_payload(claim: PresenceClaim) -> _PresenceClaimFingerprint:
     }
 
 
-def _replacement_unit_payload(unit) -> dict:
+def _replacement_unit_payload(
+    unit: ReplacementUnit,
+) -> _ReplacementUnitFingerprint:
     origin = unit.origin
     return {
-        "presence_lines": unit.presence_lines,
+        "presence_lines": list(unit.presence_lines),
         "deletion_indices": unit.deletion_indices,
         "origin": None if origin is None else {
             "old_start": origin.old_start,

@@ -5,10 +5,10 @@ from __future__ import annotations
 from ..commands.block_file import command_block_file
 from ..commands.unblock_file import command_unblock_file
 from ..i18n import _
-from .subcommand_parser import add_subcommand_parser
+from .subcommand_parser import Subparsers, add_subcommand_parser
 
 
-def add_block_file_subcommand(subparsers) -> None:
+def add_block_file_subcommand(subparsers: Subparsers) -> None:
     """Register the block-file subcommand."""
     parser_block_file = add_subcommand_parser(
         subparsers,

@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
-from typing import cast, overload
+from types import TracebackType
+from typing import Generic, TypeVar, cast, overload
 
 from ..core.buffer import LineBuffer
 from ..core.text_lines import normalize_line_ending
 from .line_endings import detect_line_ending, restore_line_endings_in_chunks
 from .line_export import line_body, line_body_chunks
-from .piece_table import LineLike, LinePieceTable, LineRange, SOURCE_RUN
+from .piece_table import LineLike, LineOwner, LinePieceTable, LineRange, SOURCE_RUN
 
 
 class LineCursor:
@@ -28,6 +29,7 @@ _LineLike = LineLike
 
 _TransformResult = _BytesLike | Iterable[_LineLike]
 _Selection = tuple[int, int | None]
+_SliceLineT = TypeVar("_SliceLineT")
 
 
 class LineEditor(Sequence[_LineLike]):
@@ -50,7 +52,12 @@ class LineEditor(Sequence[_LineLike]):
         self._require_open()
         return self
 
-    def __exit__(self, exc_type, exc, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()
 
     @property
@@ -713,6 +720,12 @@ class _SelectedLineSequence(Sequence[bytes]):
         selection_end = self._editor._resolve_selection_end(self._selection_end)
         return selection_end - self._selection_start
 
+    @overload
+    def __getitem__(self, index: int) -> bytes: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> Sequence[bytes]: ...
+
     def __getitem__(self, index: int | slice) -> bytes | Sequence[bytes]:
         if isinstance(index, slice):
             return _SelectedLineSliceSequence(self, index)
@@ -732,12 +745,12 @@ class _SelectedLineSequence(Sequence[bytes]):
             raise IndexError(index) from exc
 
 
-class _SelectedLineSliceSequence(Sequence[bytes]):
+class _SelectedLineSliceSequence(Sequence[_SliceLineT], Generic[_SliceLineT]):
     """Lazy slice view over selected editor lines."""
 
     def __init__(
         self,
-        parent: Sequence[bytes],
+        parent: Sequence[_SliceLineT],
         line_slice: slice,
     ) -> None:
         if line_slice.step == 0:
@@ -748,7 +761,16 @@ class _SelectedLineSliceSequence(Sequence[bytes]):
     def __len__(self) -> int:
         return len(range(*self._resolved_range()))
 
-    def __getitem__(self, index: int | slice) -> bytes | Sequence[bytes]:
+    @overload
+    def __getitem__(self, index: int) -> _SliceLineT: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> Sequence[_SliceLineT]: ...
+
+    def __getitem__(
+        self,
+        index: int | slice,
+    ) -> _SliceLineT | Sequence[_SliceLineT]:
         if isinstance(index, slice):
             return _SelectedLineSliceSequence(self, index)
 
@@ -852,7 +874,7 @@ def _validated_line_range(
     start: int,
     end: int,
     *,
-    owner: LineEditor | None,
+    owner: LineOwner | None,
     validate_end: bool = True,
 ) -> LineRange:
     _validate_line_range(lines, start, end, validate_end=validate_end)
@@ -881,10 +903,9 @@ def _coerce_line_range(
             validate_end=False,
         )
 
-    try:
-        values = tuple(line_range)  # type: ignore[arg-type]
-    except TypeError as exc:
-        raise TypeError("expected line range tuple") from exc
+    if not isinstance(line_range, Iterable):
+        raise TypeError("expected line range tuple")
+    values = tuple(line_range)
 
     if len(values) == 3:
         lines, start, end = values
@@ -902,7 +923,12 @@ def _coerce_line_range(
     if owner is not None and not isinstance(owner, LineEditor):
         raise TypeError("expected editor owner")
 
-    return _validated_line_range(lines, start, end, owner=owner)
+    return _validated_line_range(
+        cast(Sequence[_LineLike], lines),
+        start,
+        end,
+        owner=owner,
+    )
 
 
 def _line_ranges_line_count(ranges: Sequence[LineRange]) -> int:

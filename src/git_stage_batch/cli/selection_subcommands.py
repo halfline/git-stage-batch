@@ -6,6 +6,14 @@ import argparse
 
 from ..i18n import _
 from .auto_advance_options import add_auto_advance_arguments
+from .command_policy import (
+    CommandPolicy,
+    LockingPolicy,
+    PagerPolicy,
+    RepositoryPolicy,
+    SessionOwnershipPolicy,
+    StateChangePolicy,
+)
 from .discard_dispatch import dispatch_discard_command
 from .file_arguments import add_file_argument
 from .include_dispatch import dispatch_include_command
@@ -19,6 +27,13 @@ def add_show_subcommand(subparsers: Subparsers) -> None:
     parser_show = add_subcommand_parser(
         subparsers,
         "show",
+        policy=CommandPolicy(
+            session_ownership=SessionOwnershipPolicy.ALLOW_FOREIGN,
+            locking=LockingPolicy.SESSION,
+            repository=RepositoryPolicy.REQUIRED,
+            pager=PagerPolicy.ELIGIBLE,
+            state_changes=StateChangePolicy.SCRATCH,
+        ),
         help=_("Show the selected hunk"),
     )
     parser_show.add_argument(
@@ -90,6 +105,13 @@ def add_include_subcommand(subparsers: Subparsers) -> None:
     parser_include = add_subcommand_parser(
         subparsers,
         "include",
+        policy=CommandPolicy(
+            session_ownership=SessionOwnershipPolicy.REQUIRE_AVAILABLE,
+            locking=LockingPolicy.SESSION,
+            repository=RepositoryPolicy.REQUIRED,
+            pager=PagerPolicy.ELIGIBLE,
+            state_changes=StateChangePolicy.DURABLE,
+        ),
         aliases=["i"],
         help=_("Stage the selected hunk"),
     )
@@ -163,6 +185,13 @@ def add_skip_subcommand(subparsers: Subparsers) -> None:
     parser_skip = add_subcommand_parser(
         subparsers,
         "skip",
+        policy=CommandPolicy(
+            session_ownership=SessionOwnershipPolicy.REQUIRE_AVAILABLE,
+            locking=LockingPolicy.SESSION,
+            repository=RepositoryPolicy.REQUIRED,
+            pager=PagerPolicy.ELIGIBLE,
+            state_changes=StateChangePolicy.SCRATCH,
+        ),
         aliases=["s"],
         help=_("Skip the selected hunk without staging"),
     )
@@ -190,6 +219,13 @@ def add_discard_subcommand(subparsers: Subparsers) -> None:
     parser_discard = add_subcommand_parser(
         subparsers,
         "discard",
+        policy=CommandPolicy(
+            session_ownership=SessionOwnershipPolicy.REQUIRE_AVAILABLE,
+            locking=LockingPolicy.SESSION,
+            repository=RepositoryPolicy.REQUIRED,
+            pager=PagerPolicy.ELIGIBLE,
+            state_changes=StateChangePolicy.DURABLE,
+        ),
         aliases=["d"],
         help=_("Remove the selected hunk from working tree"),
     )

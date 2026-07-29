@@ -14,6 +14,12 @@ from git_stage_batch.utils.file_jobs import FileJobError
 main_module = import_module("git_stage_batch.cli.main")
 
 
+def _parse_args(*arguments: str) -> Namespace:
+    args = main_module.parse_command_line(list(arguments), quiet=True)
+    assert args is not None
+    return args
+
+
 def test_main_callable():
     """Test that main is callable."""
     assert main_module.main is not None
@@ -108,9 +114,9 @@ def test_main_rejects_mutation_owned_by_another_worktree(capsys):
     dispatch.assert_not_called()
 
 
-def test_main_allows_read_only_command_with_foreign_owner():
-    """Read-only repository inspection does not require session ownership."""
-    args = Namespace(working_directory=None, command="status")
+def test_main_allows_foreign_compatible_command_with_foreign_owner():
+    """A command's declared ownership policy controls the foreign-owner guard."""
+    args = _parse_args("status")
 
     with patch.object(sys, "argv", ["git-stage-batch", "status"]):
         with patch.object(main_module, "parse_command_line", return_value=args):
@@ -133,22 +139,29 @@ def test_main_skips_session_lock_for_prompt_status():
     def fake_dispatch(args):
         events.append(("dispatch", args.prompt_format))
 
-    args = Namespace(working_directory=None, prompt_format="STAGING")
+    args = _parse_args("status", "--for-prompt")
 
     with patch.object(sys, "argv", ["git-stage-batch", "status", "--for-prompt"]):
         with patch.object(main_module, "parse_command_line", return_value=args):
             with patch.object(main_module, "should_page_output", return_value=False):
                 with patch.object(
                     main_module,
-                    "acquire_session_lock",
-                    side_effect=AssertionError("prompt status must not lock"),
+                    "require_git_repository",
+                    side_effect=AssertionError(
+                        "prompt status must remain available outside repositories"
+                    ),
                 ):
                     with patch.object(
                         main_module,
-                        "dispatch_cli_mode",
-                        side_effect=fake_dispatch,
+                        "acquire_session_lock",
+                        side_effect=AssertionError("prompt status must not lock"),
                     ):
-                        main_module.main()
+                        with patch.object(
+                            main_module,
+                            "dispatch_cli_mode",
+                            side_effect=fake_dispatch,
+                        ):
+                            main_module.main()
 
     assert events == [("dispatch", "STAGING")]
 
@@ -160,10 +173,7 @@ def test_main_skips_session_lock_for_rich_prompt_status():
     def fake_dispatch(args):
         events.append(("dispatch", args.prompt_format))
 
-    args = Namespace(
-        working_directory=None,
-        prompt_format="{processed}/{total}",
-    )
+    args = _parse_args("status", "--for-prompt", "{processed}/{total}")
 
     with patch.object(sys, "argv", ["git-stage-batch", "status", "--for-prompt"]):
         with patch.object(main_module, "parse_command_line", return_value=args):

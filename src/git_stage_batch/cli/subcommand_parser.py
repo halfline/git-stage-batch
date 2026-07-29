@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from typing import Any, Protocol, cast
 
+from .command_policy import CommandPolicy
 from .git_help import GitHelpArgumentParser
 
 
@@ -22,11 +23,13 @@ class Subparsers(Protocol):
 def add_subcommand_parser(
     subparsers: Subparsers,
     command_name: str,
+    *,
+    policy: CommandPolicy,
     **kwargs: Any,
 ) -> GitHelpArgumentParser:
     """Add a subcommand parser wired to its git help topic."""
     help_topic = kwargs.pop("help_topic", f"stage-batch-{command_name}")
-    return cast(
+    parser = cast(
         GitHelpArgumentParser,
         subparsers.add_parser(
             command_name,
@@ -34,3 +37,5 @@ def add_subcommand_parser(
             **kwargs,
         ),
     )
+    parser.set_defaults(command_policy=policy)
+    return parser

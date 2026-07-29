@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from .. import __version__
 from ..i18n import _
+from .command_policy import IMPLICIT_SHOW_POLICY
 from .git_help import GitHelpArgumentParser
 from .subcommand_registry import add_cli_subcommands
 
@@ -16,6 +17,7 @@ def build_root_parser() -> GitHelpArgumentParser:
         help_topic="stage-batch",
         exit_on_error=False,
     )
+    parser.set_defaults(command_policy=IMPLICIT_SHOW_POLICY)
     parser.add_argument(
         "--version",
         action="version",

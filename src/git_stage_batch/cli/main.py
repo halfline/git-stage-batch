@@ -5,28 +5,22 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-import argparse
 from contextlib import AbstractContextManager, nullcontext
 
+from ..data.session_ownership import require_no_foreign_session_owner
 from ..exceptions import CommandError
 from ..i18n import _
 from ..runtime import dispatch_cli_mode
-from ..data.session_ownership import require_no_foreign_session_owner
 from ..utils.journal import flush_journal
+from ..utils.git_repository import require_git_repository
 from .argument_parser import parse_command_line
-from .pager import pager_output, should_page_output
-
-
-_READ_ONLY_COMMANDS = frozenset(
-    {
-        "check-unstaged",
-        "journal",
-        "list",
-        "show",
-        "status",
-        "validate",
-    }
+from .command_policy import (
+    SessionOwnershipPolicy,
+    policy_for_args,
+    policy_requires_repository,
+    policy_uses_session_lock,
 )
+from .pager import pager_output, should_page_output
 
 
 def acquire_session_lock() -> AbstractContextManager[None]:
@@ -34,15 +28,6 @@ def acquire_session_lock() -> AbstractContextManager[None]:
     from ..utils.session_lock import acquire_session_lock as acquire_lock
 
     return acquire_lock()
-
-
-def _command_may_mutate(args: argparse.Namespace) -> bool:
-    """Return whether dispatch may change worktree-local or shared state."""
-    if getattr(args, "interactive_flag", False):
-        return True
-    if getattr(args, "interactive_command", False):
-        return True
-    return getattr(args, "command", None) not in _READ_ONLY_COMMANDS
 
 
 def _configure_terminal_streams() -> None:
@@ -70,22 +55,25 @@ def main() -> None:
         if args is not None:
             if args.working_directory is not None:
                 os.chdir(args.working_directory)
-            skip_session_lock = getattr(args, "prompt_format", None) is not None
-            interactive = bool(
-                getattr(args, "interactive_flag", False)
-                or getattr(args, "interactive_command", False)
-            )
+            policy = policy_for_args(args)
+            if policy_requires_repository(policy, args):
+                require_git_repository()
             pager_context = (
-                pager_output() if should_page_output(args) else nullcontext()
+                pager_output()
+                if should_page_output(args)
+                else nullcontext()
             )
             lock_context = (
-                nullcontext()
-                if skip_session_lock or interactive
-                else acquire_session_lock()
+                acquire_session_lock()
+                if policy_uses_session_lock(policy, args)
+                else nullcontext()
             )
             with pager_context:
                 with lock_context:
-                    if not skip_session_lock and _command_may_mutate(args):
+                    if (
+                        policy.session_ownership
+                        is SessionOwnershipPolicy.REQUIRE_AVAILABLE
+                    ):
                         require_no_foreign_session_owner()
                     dispatch_cli_mode(args)
         else:

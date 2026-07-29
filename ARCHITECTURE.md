@@ -100,18 +100,47 @@ Every explicit non-interactive command follows this sequence:
    normalizes file arguments.
 3. [`cli/root_parser.py`](src/git_stage_batch/cli/root_parser.py) creates the
    root parser and asks `add_cli_subcommands()` to register commands.
-4. One parser registration function stores a callable in `args.func` with
-   `set_defaults(func=...)`.
-5. `dispatch_cli_mode()` in [`runtime.py`](src/git_stage_batch/runtime.py)
+4. One parser registration function attaches a
+   [`CommandPolicy`](src/git_stage_batch/cli/command_policy.py) and stores a
+   callable in `args.func` with `set_defaults(func=...)`.
+5. `main()` applies the declared repository, locking, pager, and
+   session-ownership policies.
+6. `dispatch_cli_mode()` in [`runtime.py`](src/git_stage_batch/runtime.py)
    sends non-interactive work to `execute_non_interactive_args()`.
-6. [`cli/execution.py`](src/git_stage_batch/cli/execution.py) calls
+7. [`cli/execution.py`](src/git_stage_batch/cli/execution.py) calls
    `args.func(args)`.
-7. That callable invokes a function under `commands/`, either directly or
+8. That callable invokes a function under `commands/`, either directly or
    through a dispatch module under `cli/` when several option combinations
    share one command name.
 
 The parser chooses *which* operation the user requested. The function under
 `commands/` owns *how* that operation behaves.
+
+### Command runtime policy
+
+Every call to `add_subcommand_parser()` declares five independent policy
+dimensions beside the command registration:
+
+- **Session ownership** says whether the command may run while an active
+  session belongs to another worktree. It does not claim that a command is
+  literally read-only.
+- **Locking** says whether `main()` acquires the repository session lock,
+  leaves locking to interactive mode, or bypasses the lock for shell-prompt
+  status.
+- **Repository requirement** says whether the invocation requires a Git
+  repository. Prompt status is deliberately allowed outside one.
+- **Pager eligibility** says whether human-readable terminal output may use
+  Git's configured pager. Porcelain and prompt output still bypass paging.
+- **State changes** describe the most persistent state the command may change:
+  none; scratch selection, review, cache, or iteration state; or durable
+  repository, batch, session-lifecycle, asset, or journal state.
+
+These dimensions remain independent. For example, `show` may refresh
+worktree-local selection and cache files while still being allowed when
+another worktree owns the active session. The journal command may purge
+durable diagnostic files without changing session-owned repository state.
+Architecture tests require every registered parser, including hidden commands
+and aliases, to carry a complete policy.
 
 ### Example: `status`
 
@@ -231,7 +260,8 @@ Follow these steps:
 2. Register the command in the matching file under `src/git_stage_batch/cli/`.
    Current groups include session commands, selected-change commands,
    file-blocking commands, fixup commands, asset commands, and named-batch
-   commands.
+   commands. Declare its session-ownership, locking, repository, pager, and
+   state-change policies in the same `add_subcommand_parser()` call.
 3. Add that registration function to
    `cli/subcommand_registry.py`. A new option on an existing command does not
    need another registry entry.

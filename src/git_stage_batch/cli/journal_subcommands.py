@@ -4,6 +4,14 @@ from __future__ import annotations
 
 from ..commands.journal import command_journal
 from ..i18n import _
+from .command_policy import (
+    CommandPolicy,
+    LockingPolicy,
+    PagerPolicy,
+    RepositoryPolicy,
+    SessionOwnershipPolicy,
+    StateChangePolicy,
+)
 from .subcommand_parser import Subparsers, add_subcommand_parser
 
 
@@ -12,6 +20,13 @@ def add_journal_subcommand(subparsers: Subparsers) -> None:
     parser = add_subcommand_parser(
         subparsers,
         "journal",
+        policy=CommandPolicy(
+            session_ownership=SessionOwnershipPolicy.ALLOW_FOREIGN,
+            locking=LockingPolicy.SESSION,
+            repository=RepositoryPolicy.REQUIRED,
+            pager=PagerPolicy.NEVER,
+            state_changes=StateChangePolicy.DURABLE,
+        ),
         help=_("Inspect or purge diagnostic journal data"),
     )
     action = parser.add_mutually_exclusive_group()

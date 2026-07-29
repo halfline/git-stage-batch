@@ -11,34 +11,23 @@ from typing import Iterator, TextIO, cast
 
 from ..utils.command import start_command
 from ..utils.git_command import run_git_command
+from .command_policy import CommandPolicy, PagerPolicy, policy_for_args
 
 
-_PAGEABLE_COMMANDS = {
-    None,
-    "again",
-    "block-file",
-    "discard",
-    "include",
-    "list",
-    "show",
-    "skip",
-    "start",
-    "status",
-    "unblock-file",
-    "__complete-files",
-}
-
-
-def should_page_output(args: argparse.Namespace) -> bool:
+def should_page_output(
+    args: argparse.Namespace,
+    *,
+    policy: CommandPolicy | None = None,
+) -> bool:
     """Return whether the selected CLI command should write through a pager."""
+    selected_policy = policy if policy is not None else policy_for_args(args)
+    if selected_policy.pager is PagerPolicy.NEVER:
+        return False
+
     if not sys.stdout.isatty():
         return False
 
     if getattr(args, "interactive_flag", False):
-        return False
-
-    command = getattr(args, "command", None)
-    if command == "interactive":
         return False
 
     if getattr(args, "porcelain", False):
@@ -47,7 +36,7 @@ def should_page_output(args: argparse.Namespace) -> bool:
     if getattr(args, "prompt_format", None) is not None:
         return False
 
-    return command in _PAGEABLE_COMMANDS
+    return True
 
 
 def _resolve_git_pager() -> str | None:

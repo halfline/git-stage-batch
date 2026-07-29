@@ -63,7 +63,7 @@ def apply_live_replacement_action(
         from ...commands.discard import command_discard_line_as_to_batch
 
         command_discard_line_as_to_batch(
-            state.flow_state.target.batch_name,
+            state.flow_state.target.require_batch_name(),
             line_ids,
             replacement_text,
             file=state.file_path,

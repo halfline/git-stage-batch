@@ -124,7 +124,7 @@ def add_sift_subcommand(subparsers: Subparsers) -> None:
     )
 
 
-def add_apply_subcommand(subparsers) -> None:
+def add_apply_subcommand(subparsers: Subparsers) -> None:
     """Register the apply subcommand."""
     parser_apply = add_subcommand_parser(
         subparsers,

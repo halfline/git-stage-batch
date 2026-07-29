@@ -5,6 +5,7 @@ from __future__ import annotations
 from enum import Enum
 import os
 
+from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.buffer import LineBuffer
 from ...data.file_modes import detect_file_mode_in_commit
 from ...utils.buffer_io import write_buffer_to_working_tree_path
@@ -49,7 +50,7 @@ def discard_binary_file_to_worktree(
 
 def write_binary_file_to_worktree(
     file_path: str,
-    file_meta: dict,
+    file_meta: BatchFileMetadataDict,
     buffer: LineBuffer | None,
     *,
     missing_content_message: str | None = None,
@@ -85,7 +86,7 @@ def write_binary_file_to_worktree(
 
 def stage_binary_file_to_index(
     file_path: str,
-    file_meta: dict,
+    file_meta: BatchFileMetadataDict,
     buffer: LineBuffer | None,
 ) -> None:
     """Stage one binary batch target into the index."""

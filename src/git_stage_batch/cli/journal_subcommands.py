@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from ..commands.journal import command_journal
 from ..i18n import _
-from .subcommand_parser import add_subcommand_parser
+from .subcommand_parser import Subparsers, add_subcommand_parser
 
 
-def add_journal_subcommand(subparsers) -> None:
+def add_journal_subcommand(subparsers: Subparsers) -> None:
     """Register the diagnostic journal management command."""
     parser = add_subcommand_parser(
         subparsers,

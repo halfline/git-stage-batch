@@ -13,10 +13,10 @@ from ..commands.undo import command_undo
 from ..i18n import _
 from ..output.status_prompt import DEFAULT_PROMPT_FORMAT
 from .auto_advance_options import add_auto_advance_arguments
-from .subcommand_parser import add_subcommand_parser
+from .subcommand_parser import Subparsers, add_subcommand_parser
 
 
-def add_check_unstaged_subcommand(subparsers) -> None:
+def add_check_unstaged_subcommand(subparsers: Subparsers) -> None:
     """Register the check-unstaged subcommand."""
     parser_check_unstaged = add_subcommand_parser(
         subparsers,
@@ -26,7 +26,7 @@ def add_check_unstaged_subcommand(subparsers) -> None:
     parser_check_unstaged.set_defaults(func=lambda _: command_check_unstaged())
 
 
-def add_start_subcommand(subparsers) -> None:
+def add_start_subcommand(subparsers: Subparsers) -> None:
     """Register the start subcommand."""
     parser_start = add_subcommand_parser(
         subparsers,
@@ -50,7 +50,7 @@ def add_start_subcommand(subparsers) -> None:
     )
 
 
-def add_again_subcommand(subparsers) -> None:
+def add_again_subcommand(subparsers: Subparsers) -> None:
     """Register the again subcommand."""
     parser_again = add_subcommand_parser(
         subparsers,
@@ -64,7 +64,7 @@ def add_again_subcommand(subparsers) -> None:
     )
 
 
-def add_stop_subcommand(subparsers) -> None:
+def add_stop_subcommand(subparsers: Subparsers) -> None:
     """Register the stop subcommand."""
     parser_stop = add_subcommand_parser(
         subparsers,
@@ -74,7 +74,7 @@ def add_stop_subcommand(subparsers) -> None:
     parser_stop.set_defaults(func=lambda _: command_stop())
 
 
-def add_undo_subcommand(subparsers) -> None:
+def add_undo_subcommand(subparsers: Subparsers) -> None:
     """Register the undo subcommand."""
     parser_undo = add_subcommand_parser(
         subparsers,
@@ -90,7 +90,7 @@ def add_undo_subcommand(subparsers) -> None:
     parser_undo.set_defaults(func=lambda args: command_undo(force=args.force))
 
 
-def add_redo_subcommand(subparsers) -> None:
+def add_redo_subcommand(subparsers: Subparsers) -> None:
     """Register the redo subcommand."""
     parser_redo = add_subcommand_parser(
         subparsers,
@@ -106,7 +106,7 @@ def add_redo_subcommand(subparsers) -> None:
     parser_redo.set_defaults(func=lambda args: command_redo(force=args.force))
 
 
-def add_abort_subcommand(subparsers) -> None:
+def add_abort_subcommand(subparsers: Subparsers) -> None:
     """Register the abort subcommand."""
     parser_abort = add_subcommand_parser(
         subparsers,
@@ -116,7 +116,7 @@ def add_abort_subcommand(subparsers) -> None:
     parser_abort.set_defaults(func=lambda _: command_abort())
 
 
-def add_status_subcommand(subparsers) -> None:
+def add_status_subcommand(subparsers: Subparsers) -> None:
     """Register the status subcommand."""
     parser_status = add_subcommand_parser(
         subparsers,

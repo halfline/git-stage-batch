@@ -17,6 +17,16 @@ SOURCE_ROOT = REPOSITORY_ROOT / "src" / "git_stage_batch"
 # third-party APIs, or provide generic JSON/pickle transport. Keeping the
 # allowlist symbol-specific prevents a whole module from becoming an Any sink.
 ALLOWED_EXPLICIT_ANY = frozenset({
+    "src/git_stage_batch/cli/git_help.py::"
+    "GitHelpArgumentParser.__init__::param:args",
+    "src/git_stage_batch/cli/git_help.py::"
+    "GitHelpArgumentParser.__init__::param:kwargs",
+    "src/git_stage_batch/cli/git_help.py::"
+    "GitHelpArgumentParser.print_help::cast",
+    "src/git_stage_batch/cli/subcommand_parser.py::"
+    "Subparsers.add_parser::param:kwargs",
+    "src/git_stage_batch/cli/subcommand_parser.py::"
+    "add_subcommand_parser::param:kwargs",
 })
 
 

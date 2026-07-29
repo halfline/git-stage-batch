@@ -12,6 +12,7 @@ from ..core.models import (
     RenameChange,
     TextFileDeletionChange,
 )
+from .status_types import ChangeSummary
 from ..utils.file_io import (
     append_lines_to_file,
     count_nonblank_text_file_lines,
@@ -61,7 +62,7 @@ def record_hunk_skipped(line_changes: LineLevelChange, hunk_hash: str) -> None:
             first_changed_line = entry.old_line_number or entry.new_line_number
             break
 
-    metadata = {
+    metadata: ChangeSummary = {
         "hash": hunk_hash,
         "file": line_changes.path,
         "line": first_changed_line or 0,
@@ -73,7 +74,7 @@ def record_hunk_skipped(line_changes: LineLevelChange, hunk_hash: str) -> None:
 def record_binary_hunk_skipped(binary_change: BinaryFileChange, hunk_hash: str) -> None:
     """Record that a binary change was skipped with file-level metadata."""
     file_path = binary_change.path()
-    metadata = {
+    metadata: ChangeSummary = {
         "hash": hunk_hash,
         "file": file_path,
         "line": None,
@@ -100,7 +101,7 @@ def record_mode_change_skipped(mode_change: FileModeChange, hunk_hash: str) -> N
 
 def record_gitlink_hunk_skipped(gitlink_change: GitlinkChange, hunk_hash: str) -> None:
     """Record that a gitlink change was skipped with file-level metadata."""
-    metadata = {
+    metadata: ChangeSummary = {
         "hash": hunk_hash,
         "file": gitlink_change.path(),
         "line": None,
@@ -115,7 +116,7 @@ def record_gitlink_hunk_skipped(gitlink_change: GitlinkChange, hunk_hash: str) -
 
 def record_rename_hunk_skipped(rename_change: RenameChange, hunk_hash: str) -> None:
     """Record that a rename change was skipped with file-level metadata."""
-    metadata = {
+    metadata: ChangeSummary = {
         "hash": hunk_hash,
         "file": rename_change.new_path,
         "line": None,
@@ -132,7 +133,7 @@ def record_text_deletion_hunk_skipped(
     hunk_hash: str,
 ) -> None:
     """Record that a whole-text-file deletion was skipped with file-level metadata."""
-    metadata = {
+    metadata: ChangeSummary = {
         "hash": hunk_hash,
         "file": deletion_change.path(),
         "line": None,
@@ -143,7 +144,7 @@ def record_text_deletion_hunk_skipped(
     _append_skipped_hunk_metadata(metadata)
 
 
-def _append_skipped_hunk_metadata(metadata: dict) -> None:
+def _append_skipped_hunk_metadata(metadata: ChangeSummary) -> None:
     jsonl_path = get_skipped_hunks_jsonl_file_path()
     append_lines_to_file(jsonl_path, [json.dumps(metadata)])
 

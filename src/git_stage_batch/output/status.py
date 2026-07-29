@@ -4,10 +4,15 @@ from __future__ import annotations
 
 from ..data.progress import format_id_range
 from ..data.selected_change.store import SelectedChangeKind
+from ..data.status_types import (
+    ChangeSummary,
+    FileReviewSummary,
+    StatusSummary,
+)
 from ..i18n import _
 
 
-def print_status_summary(summary: dict) -> None:
+def print_status_summary(summary: StatusSummary) -> None:
     """Print a human-readable status summary."""
     iteration = summary["session"]["iteration"]
     status_value = summary["session"]["status"]
@@ -56,7 +61,7 @@ def _selected_kind_label(selected_kind: str | None) -> str:
     return labels.get(selected_kind or SelectedChangeKind.HUNK.value, _("Current selection:"))
 
 
-def _print_selected_change(selected_summary: dict) -> None:
+def _print_selected_change(selected_summary: ChangeSummary) -> None:
     ids_str = format_id_range(selected_summary["ids"])
     print(_selected_kind_label(selected_summary.get("kind")))
     if selected_summary.get("line") is None:
@@ -75,7 +80,7 @@ def _print_selected_change(selected_summary: dict) -> None:
     print()
 
 
-def _print_file_review(file_review_summary: dict) -> None:
+def _print_file_review(file_review_summary: FileReviewSummary) -> None:
     print(_("Last file review:"))
     source = file_review_summary["source"]
     if file_review_summary["batch_name"]:
@@ -94,7 +99,7 @@ def _print_file_review(file_review_summary: dict) -> None:
     print()
 
 
-def _print_skipped_hunk(hunk: dict) -> None:
+def _print_skipped_hunk(hunk: ChangeSummary) -> None:
     ids_str = format_id_range(hunk.get("ids", []))
     if hunk.get("line") is None:
         print(_("  {file}").format(file=hunk["file"]))

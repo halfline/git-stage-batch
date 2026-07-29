@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from string import Formatter
+from typing import TypedDict
 
 from ..data.progress import format_id_range
+from ..data.status_types import StatusSummary
 from ..exceptions import CommandError
 from ..i18n import _
 
@@ -38,6 +40,32 @@ _PROMPT_FIELDS = frozenset(
 _LIGHT_PROMPT_FIELDS = frozenset({"active"})
 
 
+class _PromptValues(TypedDict, total=False):
+    """Values exposed to status prompt format strings."""
+
+    active: bool
+    change_type: str
+    discarded: int
+    file_review_batch: str
+    file_review_fresh: bool | str
+    file_review_source: str
+    included: int
+    in_progress: bool
+    iteration: int
+    processed: int
+    progress_label: str
+    progress_status: str
+    remaining: int
+    selected_file: str
+    selected_ids: str
+    selected_kind: str
+    selected_line: int | str
+    skipped: int
+    status: str
+    status_label: str
+    total: int
+
+
 def prompt_needs_status_summary(prompt_format: str) -> bool:
     """Return whether rendering a prompt format requires session state."""
     return bool(_prompt_field_names(prompt_format) - _LIGHT_PROMPT_FIELDS)
@@ -68,15 +96,17 @@ def _prompt_field_names(prompt_format: str) -> set[str]:
     return fields
 
 
-def _prompt_values(summary: dict | None = None) -> dict:
+def _prompt_values(
+    summary: StatusSummary | None = None,
+) -> _PromptValues:
     """Return values available to `status --for-prompt` format strings."""
     if summary is None:
         return {"active": True}
 
     session = summary["session"]
     progress = summary["progress"]
-    selected = summary["selected_change"] or {}
-    file_review = summary["file_review"] or {}
+    selected = summary["selected_change"]
+    file_review = summary["file_review"]
     progress_status = session["status"]
     progress_label = _("in progress") if progress_status == "in_progress" else _("complete")
     processed = progress["included"] + progress["skipped"] + progress["discarded"]
@@ -85,11 +115,27 @@ def _prompt_values(summary: dict | None = None) -> dict:
 
     return {
         "active": session["active"],
-        "change_type": selected.get("change_type") or "",
+        "change_type": (
+            selected.get("change_type") or ""
+            if selected is not None
+            else ""
+        ),
         "discarded": progress["discarded"],
-        "file_review_batch": file_review.get("batch_name") or "",
-        "file_review_fresh": file_review.get("fresh", ""),
-        "file_review_source": file_review.get("source") or "",
+        "file_review_batch": (
+            file_review.get("batch_name") or ""
+            if file_review is not None
+            else ""
+        ),
+        "file_review_fresh": (
+            file_review.get("fresh", "")
+            if file_review is not None
+            else ""
+        ),
+        "file_review_source": (
+            file_review.get("source") or ""
+            if file_review is not None
+            else ""
+        ),
         "included": progress["included"],
         "in_progress": session["in_progress"],
         "iteration": session["iteration"],
@@ -97,10 +143,26 @@ def _prompt_values(summary: dict | None = None) -> dict:
         "progress_label": progress_label,
         "progress_status": progress_status,
         "remaining": progress["remaining"],
-        "selected_file": selected.get("file") or "",
-        "selected_ids": format_id_range(selected.get("ids") or []),
-        "selected_kind": selected.get("kind") or "",
-        "selected_line": selected.get("line") or "",
+        "selected_file": (
+            selected.get("file") or ""
+            if selected is not None
+            else ""
+        ),
+        "selected_ids": format_id_range(
+            selected.get("ids") or []
+            if selected is not None
+            else []
+        ),
+        "selected_kind": (
+            selected.get("kind") or ""
+            if selected is not None
+            else ""
+        ),
+        "selected_line": (
+            selected.get("line") or ""
+            if selected is not None
+            else ""
+        ),
         "skipped": progress["skipped"],
         "status": status,
         "status_label": status,
@@ -108,7 +170,10 @@ def _prompt_values(summary: dict | None = None) -> dict:
     }
 
 
-def render_prompt_status(prompt_format: str, summary: dict | None = None) -> str:
+def render_prompt_status(
+    prompt_format: str,
+    summary: StatusSummary | None = None,
+) -> str:
     """Render a prompt status segment for an active session."""
     fields = _prompt_field_names(prompt_format)
     values = _prompt_values(summary if fields - _LIGHT_PROMPT_FIELDS else None)

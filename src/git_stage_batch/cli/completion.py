@@ -9,6 +9,7 @@ from pathlib import PurePosixPath
 from ..batch.state.query import list_batch_files
 from ..exceptions import CommandError
 from ..utils.file_patterns import list_changed_files
+from .subcommand_parser import Subparsers
 
 
 _WILDMATCH_META = frozenset({"*", "?", "["})
@@ -113,7 +114,7 @@ def command_complete_files(current_token: str, *, from_batch: str | None = None)
         print(candidate)
 
 
-def add_completion_subcommand(subparsers) -> None:
+def add_completion_subcommand(subparsers: Subparsers) -> None:
     """Register the hidden file-completion subcommand."""
     parser_complete_files = subparsers.add_parser(
         "__complete-files",

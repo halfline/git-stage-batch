@@ -12,10 +12,10 @@ from ..i18n import _
 from .apply_dispatch import dispatch_apply_command
 from .file_arguments import add_file_argument
 from .reset_dispatch import dispatch_reset_command
-from .subcommand_parser import add_subcommand_parser
+from .subcommand_parser import Subparsers, add_subcommand_parser
 
 
-def add_new_subcommand(subparsers) -> None:
+def add_new_subcommand(subparsers: Subparsers) -> None:
     """Register the new subcommand."""
     parser_new = add_subcommand_parser(
         subparsers,

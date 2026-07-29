@@ -10,10 +10,10 @@ from ..i18n import _
 from ..utils.git_repository import require_git_repository
 
 
-def command_new_batch(batch_name: str, note: str = "") -> None:
+def command_new_batch(batch_name: str, note: str | None = None) -> None:
     """Create a new batch."""
     require_git_repository()
     batch_name = require_plain_batch_name(batch_name, "new")
     with undo_checkpoint(f"new {batch_name}", worktree_paths=[]):
-        create_batch(batch_name, note)
+        create_batch(batch_name, note or "")
     print(_("✓ Created batch '{name}'").format(name=batch_name), file=sys.stderr)

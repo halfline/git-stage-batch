@@ -344,14 +344,18 @@ line and every absence claim:
   baseline position
 
 [`batch/merge/validation.py`](src/git_stage_batch/batch/merge/validation.py)
-owns structural validation. Helpers called by `merge.py` separate three kinds
-of exact fallback work:
+owns structural validation. The merge helpers separate these structural and
+exact-coordinate responsibilities:
 
 - [`batch/merge/baseline_anchor_matching.py`](src/git_stage_batch/batch/merge/baseline_anchor_matching.py)
   proves recorded boundaries identify the intended live-target positions and
   supplies safe deletion anchors to structural matching.
+- [`batch/merge/baseline_replacement_edits.py`](src/git_stage_batch/batch/merge/baseline_replacement_edits.py)
+  plans replacement edits at verified baseline positions and records which
+  source ranges supply their new content.
 - [`batch/merge/baseline_edits.py`](src/git_stage_batch/batch/merge/baseline_edits.py)
-  plans and streams exact-coordinate replacement, removal, and insertion edits.
+  coordinates exact-coordinate replacement, removal, and insertion planning
+  and opens the resulting edit stream.
 - [`batch/merge/absence_constraints.py`](src/git_stage_batch/batch/merge/absence_constraints.py)
   resolves which matching baseline bytes an absence claim may suppress.
 - [`batch/merge/presence_constraints.py`](src/git_stage_batch/batch/merge/presence_constraints.py)

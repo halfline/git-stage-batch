@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import cast
 
 from ...core.hashing import (
     compute_binary_file_hash,
@@ -41,9 +42,12 @@ from .store import (
     write_selected_change_kind,
 )
 from .snapshots import write_snapshots_for_selected_file_path
+from .metadata_types import (
+    SelectedBinaryData,
+)
 
 
-def read_selected_binary_data() -> dict | None:
+def read_selected_binary_data() -> SelectedBinaryData | None:
     """Read cached binary selection data, if structurally valid."""
     binary_path = get_selected_binary_file_json_path()
     if not binary_path.exists():
@@ -52,7 +56,7 @@ def read_selected_binary_data() -> dict | None:
         binary_data = json.loads(read_text_file_contents(binary_path))
     except json.JSONDecodeError:
         return None
-    return binary_data if isinstance(binary_data, dict) else None
+    return cast(SelectedBinaryData, binary_data) if isinstance(binary_data, dict) else None
 
 
 def load_selected_binary_file() -> BinaryFileChange | None:

@@ -296,6 +296,11 @@ def main() -> int:
             f"dynamic boundary ({use.identity}; {use.annotation})",
             file=sys.stderr,
         )
+    for identity in stale:
+        print(
+            f"stale explicit-Any allowlist entry: {identity}",
+            file=sys.stderr,
+        )
     return 1
 
 

@@ -6,6 +6,7 @@ import os
 import stat
 import tempfile
 import uuid
+from collections.abc import Generator
 from dataclasses import dataclass, replace
 
 from ...core.buffer import LineBuffer
@@ -136,7 +137,7 @@ def create_batch_source_commits(file_paths: list[str]) -> dict[str, BatchSourceC
             buffer_len = buffer.byte_count
             content_sizes[file_path] = buffer_len
             if journal_enabled():
-                fields = {
+                fields: dict[str, object] = {
                     "file_path": file_path,
                     "baseline_commit": baseline_commit,
                     "file_existed_at_session_start": file_path in files_existing_at_session_start,
@@ -155,7 +156,7 @@ def create_batch_source_commits(file_paths: list[str]) -> dict[str, BatchSourceC
         blob_mark_start = 1
         commit_mark_start = blob_mark_start + len(unique_file_paths)
 
-        def fast_import_chunks():
+        def fast_import_chunks() -> Generator[bytes, None, None]:
             for index, file_path in enumerate(unique_file_paths):
                 blob_mark = blob_mark_start + index
                 buffer = file_buffers[file_path]
@@ -299,7 +300,7 @@ def create_batch_source_commit(
 
         content_len = file_buffer.byte_count
         if journal_enabled():
-            fields = {
+            fields: dict[str, object] = {
                 "file_path": file_path,
                 "baseline_commit": baseline_commit,
                 "file_existed_at_session_start": file_existed_at_session_start,

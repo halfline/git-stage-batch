@@ -17,6 +17,7 @@ from ...batch.ownership.model import BatchOwnership
 from ...batch.ownership.absence_claims import AbsenceClaim
 from ...batch.ownership.metadata_loading import acquire_ownership_for_metadata_dict
 from ...batch.realized_file_content import build_realized_buffer_from_lines
+from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.buffer import (
     LineBuffer,
     buffer_byte_count,
@@ -88,7 +89,7 @@ SiftedFileResult = SiftedBinaryFileResult | SiftedTextFileResult | SiftedModeFil
 
 def compute_sifted_mode_file(
     file_path: str,
-    file_meta: dict,
+    file_meta: BatchFileMetadataDict,
     repo_root: Path,
     *,
     captured_worktree_mode: str | None = None,
@@ -107,7 +108,7 @@ def compute_sifted_mode_file(
 
 def compute_sifted_binary_file(
     file_path: str,
-    file_meta: dict,
+    file_meta: BatchFileMetadataDict,
     repo_root: Path,
     *,
     working_tree_artifact_path: str | Path | None = None,
@@ -120,6 +121,7 @@ def compute_sifted_binary_file(
     batch_source_buffer = read_git_object_buffer_or_empty(
         f"{batch_source_commit}:{file_path}"
     )
+    close_batch_source_buffer = True
 
     full_path = repo_root / file_path
     working_exists = (
@@ -145,7 +147,7 @@ def compute_sifted_binary_file(
             if working_exists and buffer_matches(working_buffer, batch_source_buffer):
                 return None
             target_buffer = batch_source_buffer
-            batch_source_buffer = None
+            close_batch_source_buffer = False
 
         old_path = file_path if change_type != "added" else "/dev/null"
         new_path = file_path if change_type != "deleted" else "/dev/null"
@@ -162,7 +164,7 @@ def compute_sifted_binary_file(
             target_buffer = None
         return result
     finally:
-        if batch_source_buffer is not None:
+        if close_batch_source_buffer:
             batch_source_buffer.close()
         working_buffer.close()
         if target_buffer is not None:

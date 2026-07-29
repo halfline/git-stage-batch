@@ -54,7 +54,7 @@ def git_update_index(
     force_remove: bool = False,
     check: bool = True,
     env: dict[str, str] | None = None,
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str]:
     """Update one index entry from a blob, or force-remove it."""
     if force_remove:
         if mode is not None or blob_sha is not None:
@@ -73,7 +73,7 @@ def git_update_index(
     )
 
 
-def git_refresh_index(*, check: bool = True) -> subprocess.CompletedProcess:
+def git_refresh_index(*, check: bool = True) -> subprocess.CompletedProcess[str]:
     """Refresh cached index stat information from the working tree."""
     return run_git_command(
         ["update-index", "--refresh"],
@@ -89,7 +89,7 @@ def git_update_gitlink(
     remove: bool = False,
     check: bool = True,
     env: dict[str, str] | None = None,
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str]:
     """Update one index entry that stores a submodule commit pointer."""
     if remove:
         if oid is not None:
@@ -186,7 +186,7 @@ def git_apply_to_index(
     patch_chunks: Iterable[bytes],
     *,
     check: bool = True,
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str]:
     """Apply patch chunks to the index."""
     return run_git_command(
         ["apply", "--cached", "--whitespace=nowarn"],
@@ -201,7 +201,7 @@ def git_add_paths(
     *,
     intent_to_add: bool = False,
     check: bool = True,
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str]:
     """Stage paths, optionally as intent-to-add entries."""
     arguments = ["add"]
     if intent_to_add:
@@ -220,7 +220,7 @@ def git_add_paths_from_stdin(
     *,
     intent_to_add: bool = False,
     check: bool = True,
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str]:
     """Add arbitrarily many NUL-delimited paths without an argv-sized list."""
     unique_paths = list(dict.fromkeys(paths))
     if not unique_paths:
@@ -248,7 +248,7 @@ def git_reset_paths(
     paths: Sequence[str],
     *,
     check: bool = True,
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str]:
     """Reset paths in the index from HEAD."""
     return run_git_command(
         ["reset", "--", *paths],

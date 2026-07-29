@@ -5,6 +5,7 @@ from __future__ import annotations
 import subprocess
 import time
 from collections.abc import Iterable, Iterator
+from typing import Literal, overload
 
 from . import command_events, git_index_lock
 from .command import run_command, stream_command
@@ -41,14 +42,18 @@ def _index_lock_error_text(stream: str | bytes | None) -> str:
     return stream
 
 
-def _is_git_index_lock_error(result: subprocess.CompletedProcess) -> bool:
+def _is_git_index_lock_error(
+    result: subprocess.CompletedProcess[str] | subprocess.CompletedProcess[bytes],
+) -> bool:
     stderr_text = _index_lock_error_text(result.stderr).lower()
     return "index.lock" in stderr_text and (
         "file exists" in stderr_text or "unable to create" in stderr_text
     )
 
 
-def _raise_git_command_error(result: subprocess.CompletedProcess) -> None:
+def _raise_git_command_error(
+    result: subprocess.CompletedProcess[str] | subprocess.CompletedProcess[bytes],
+) -> None:
     raise subprocess.CalledProcessError(
         result.returncode,
         result.args,
@@ -213,6 +218,39 @@ def stream_git_diff(
     )
 
 
+@overload
+def run_git_command(
+    arguments: list[str],
+    check: bool = True,
+    text_output: Literal[True] = True,
+    *,
+    stdin_chunks: Iterable[bytes] | None = None,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+    capture_stdout: bool = True,
+    capture_stderr: bool = True,
+    requires_index_lock: bool = True,
+    literal_pathspecs: bool = False,
+) -> subprocess.CompletedProcess[str]: ...
+
+
+@overload
+def run_git_command(
+    arguments: list[str],
+    check: bool = True,
+    text_output: Literal[False] = False,
+    *,
+    stdin_chunks: Iterable[bytes] | None = None,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+    capture_stdout: bool = True,
+    capture_stderr: bool = True,
+    requires_index_lock: bool = True,
+    literal_pathspecs: bool = False,
+) -> subprocess.CompletedProcess[bytes]: ...
+
+
+@overload
 def run_git_command(
     arguments: list[str],
     check: bool = True,
@@ -225,7 +263,22 @@ def run_git_command(
     capture_stderr: bool = True,
     requires_index_lock: bool = True,
     literal_pathspecs: bool = False,
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str] | subprocess.CompletedProcess[bytes]: ...
+
+
+def run_git_command(
+    arguments: list[str],
+    check: bool = True,
+    text_output: bool = True,
+    *,
+    stdin_chunks: Iterable[bytes] | None = None,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+    capture_stdout: bool = True,
+    capture_stderr: bool = True,
+    requires_index_lock: bool = True,
+    literal_pathspecs: bool = False,
+) -> subprocess.CompletedProcess[str] | subprocess.CompletedProcess[bytes]:
     """Execute a git command with error handling.
 
     Args:

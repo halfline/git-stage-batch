@@ -15,7 +15,8 @@ from collections import Counter
 from datetime import datetime, timezone
 from enum import IntEnum
 from pathlib import Path
-from typing import Any
+from types import FrameType
+from typing import TypeAlias, TypedDict
 
 from .git_repository import get_git_common_directory_path
 
@@ -33,6 +34,11 @@ MAX_ROTATED_FILES = 3
 BUFFER_FLUSH_BYTES = 64 * 1024
 MAX_CONTENT_FIELD_BYTES = 4 * 1024
 
+JournalScalar: TypeAlias = None | bool | int | float | str
+JournalValue: TypeAlias = (
+    JournalScalar | list["JournalValue"] | dict[str, "JournalValue"]
+)
+
 
 class JournalLevel(IntEnum):
     """Amount of diagnostic information retained by the journal."""
@@ -41,6 +47,21 @@ class JournalLevel(IntEnum):
     METADATA_ONLY = 1
     VERBOSE = 2
     CONTENT_DEBUG = 3
+
+
+class JournalSummary(TypedDict):
+    """Content-free statistics returned by the journal inspector."""
+
+    enabled: bool
+    level: str
+    path: str
+    exists: bool
+    file_count: int
+    total_bytes: int
+    entry_count: int
+    oldest_timestamp: str | None
+    newest_timestamp: str | None
+    operations: dict[str, int]
 
 
 _LEVEL_NAMES = {
@@ -150,7 +171,7 @@ def _positive_int_environment(name: str, default: int) -> int:
     return value if value > 0 else default
 
 
-def _byte_count(value: Any) -> int | None:
+def _byte_count(value: object) -> int | None:
     if isinstance(value, bytes):
         return len(value)
     if isinstance(value, str):
@@ -158,8 +179,8 @@ def _byte_count(value: Any) -> int | None:
     return None
 
 
-def _redacted_content(value: Any) -> dict[str, Any]:
-    result: dict[str, Any] = {"redacted": True}
+def _redacted_content(value: object) -> dict[str, JournalValue]:
+    result: dict[str, JournalValue] = {"redacted": True}
     byte_count = _byte_count(value)
     if byte_count is not None:
         result["byte_count"] = byte_count
@@ -168,7 +189,7 @@ def _redacted_content(value: Any) -> dict[str, Any]:
     return result
 
 
-def _path_identifier(value: str | bytes) -> dict[str, str]:
+def _path_identifier(value: str | bytes) -> dict[str, JournalValue]:
     if isinstance(value, bytes):
         raw = value
     else:
@@ -176,7 +197,7 @@ def _path_identifier(value: str | bytes) -> dict[str, str]:
     return {"path_id": hashlib.sha256(raw).hexdigest()[:16]}
 
 
-def _redact_paths(value: Any) -> Any:
+def _redact_paths(value: object) -> JournalValue:
     if isinstance(value, (str, bytes)):
         return _path_identifier(value)
     if isinstance(value, (list, tuple, set)):
@@ -189,7 +210,7 @@ def _redact_paths(value: Any) -> Any:
     return _json_safe(value, include_content=False)
 
 
-def _json_safe(value: Any, *, include_content: bool) -> Any:
+def _json_safe(value: object, *, include_content: bool) -> JournalValue:
     if value is None or isinstance(value, (bool, int, float, str)):
         return value
     if isinstance(value, bytes):
@@ -206,7 +227,10 @@ def _json_safe(value: Any, *, include_content: bool) -> Any:
     return {"type": type(value).__name__}
 
 
-def _sanitize_fields(fields: dict[str, Any], level: JournalLevel) -> dict[str, Any]:
+def _sanitize_fields(
+    fields: dict[str, object],
+    level: JournalLevel,
+) -> dict[str, JournalValue]:
     include_content = level >= JournalLevel.CONTENT_DEBUG
     return {
         key: _sanitize_value(key, value, include_content=include_content)
@@ -214,7 +238,12 @@ def _sanitize_fields(fields: dict[str, Any], level: JournalLevel) -> dict[str, A
     }
 
 
-def _sanitize_value(key: str, value: Any, *, include_content: bool) -> Any:
+def _sanitize_value(
+    key: str,
+    value: object,
+    *,
+    include_content: bool,
+) -> JournalValue:
     is_preview = key.endswith("preview") or key.endswith("_preview")
     is_content = key in _CONTENT_FIELDS or is_preview
     is_path = (
@@ -246,11 +275,11 @@ def _sanitize_value(key: str, value: Any, *, include_content: bool) -> Any:
     return _json_safe(value, include_content=include_content)
 
 
-def _bounded_content(value: Any) -> Any:
+def _bounded_content(value: object) -> JournalValue:
     """Encode explicitly enabled content without allowing one huge entry."""
     if isinstance(value, bytes):
         content = value[:MAX_CONTENT_FIELD_BYTES]
-        result: dict[str, Any] = {
+        result: dict[str, JournalValue] = {
             "encoding": "base64",
             "data": base64.b64encode(content).decode("ascii"),
         }
@@ -273,21 +302,21 @@ def _bounded_content(value: Any) -> Any:
     return _json_safe(value, include_content=True)
 
 
-def _source_identifier(frame) -> str:
+def _source_identifier(frame: FrameType) -> str:
     module = frame.f_globals.get("__name__", "unknown")
     return f"{module}:{frame.f_code.co_name}"
 
 
-def _bounded_stack() -> list[dict[str, Any]]:
+def _bounded_stack() -> list[JournalValue]:
     frames = traceback.extract_stack(limit=10)[:-2]
-    return [
-        {
+    result: list[JournalValue] = []
+    for item in frames[-6:]:
+        result.append({
             "source": Path(item.filename).name,
             "line": item.lineno,
             "function": item.name,
-        }
-        for item in frames
-    ][-6:]
+        })
+    return result
 
 
 def _is_error_operation(operation: str) -> bool:
@@ -399,14 +428,14 @@ def _writer(path: Path) -> _JournalWriter:
         return writer
 
 
-def log_journal(operation: str, **fields: Any) -> None:
+def log_journal(operation: str, **fields: object) -> None:
     """Queue a structured diagnostic event when journaling is enabled."""
     level = get_journal_level()
     if level == JournalLevel.DISABLED:
         return
     try:
         caller = sys._getframe(1)
-        entry: dict[str, Any] = {
+        entry: dict[str, JournalValue] = {
             "timestamp": (
                 datetime.now(tz=timezone.utc)
                 .isoformat()
@@ -453,7 +482,7 @@ def _journal_files(path: Path) -> list[Path]:
     ]
 
 
-def summarize_journal() -> dict[str, Any]:
+def summarize_journal() -> JournalSummary:
     """Return content-free statistics for the current repository journal."""
     flush_journal()
     path = get_journal_path()

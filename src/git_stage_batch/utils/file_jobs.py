@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 import importlib
@@ -31,6 +31,7 @@ from .file_job_transport import (
 
 if TYPE_CHECKING:
     from multiprocessing.connection import Connection
+    from multiprocessing.context import ForkServerContext
 
 
 JobT = TypeVar("JobT")
@@ -96,7 +97,7 @@ class _ProcessFileJobSupervisor(_ProcessSupervisor[JobT, ResultT]):
 
 
 def select_file_job_execution(
-    jobs: Sequence[OrderedFileJob[object]],
+    jobs: Sequence[OrderedFileJob[JobT]],
     *,
     requested_jobs: str | None,
     platform: str,
@@ -363,7 +364,7 @@ def _run_process_file_jobs(
 
 def _has_pending_lower_ordinal(
     pending_ordinals: set[int],
-    failures_by_ordinal: dict[int, _WorkerResponse[object]],
+    failures_by_ordinal: Mapping[int, _WorkerResponse[ResultT]],
 ) -> bool:
     failure_ordinal = min(failures_by_ordinal)
     return any(ordinal < failure_ordinal for ordinal in pending_ordinals)
@@ -433,7 +434,7 @@ def _file_job_worker(
             pass
 
 
-def _get_process_context():
+def _get_process_context() -> ForkServerContext:
     import multiprocessing
 
     return multiprocessing.get_context("forkserver")
@@ -524,11 +525,11 @@ def _invalid_jobs_value() -> CommandError:
 
 
 def _lowest_failure_ordinal(
-    jobs: Sequence[OrderedFileJob[object]],
+    jobs: Sequence[OrderedFileJob[JobT]],
     *,
-    failures_by_ordinal: dict[int, _WorkerResponse[object]],
+    failures_by_ordinal: Mapping[int, _WorkerResponse[ResultT]],
     supervisor_ordinal: int | None,
-    results_by_ordinal: dict[int, object],
+    results_by_ordinal: Mapping[int, object],
 ) -> int:
     candidates = list(failures_by_ordinal)
     if supervisor_ordinal is not None:
@@ -543,8 +544,8 @@ def _lowest_failure_ordinal(
 
 
 def _raise_worker_failure(
-    jobs: Sequence[OrderedFileJob[object]],
-    response: _WorkerResponse[object],
+    jobs: Sequence[OrderedFileJob[JobT]],
+    response: _WorkerResponse[ResultT],
 ) -> None:
     job = next(job for job in jobs if job.ordinal == response.ordinal)
     message = response.error_type or "worker task failed"
@@ -558,7 +559,7 @@ def _raise_worker_failure(
 
 
 def _job_error(
-    job: OrderedFileJob[object],
+    job: OrderedFileJob[JobT],
     error: BaseException,
 ) -> FileJobError:
     message = _bounded_error_message(error)

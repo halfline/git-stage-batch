@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import fcntl
 import os
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import TextIO
 
 from .paths import ensure_common_state_directory_exists, get_session_lock_file_path
 
 _LOCK_DEPTH = 0
-_LOCK_HANDLE = None
+_LOCK_HANDLE: TextIO | None = None
 _LOCK_GENERATION: int | None = None
 
 
@@ -18,7 +20,7 @@ class SessionLockChangedDuringPrompt(RuntimeError):
     """Another process acquired the session lock while a prompt was open."""
 
 
-def _read_lock_generation(lock_handle) -> int:
+def _read_lock_generation(lock_handle: TextIO) -> int:
     """Return the generation stored in an acquired lock file."""
     lock_handle.seek(0)
     try:
@@ -27,7 +29,7 @@ def _read_lock_generation(lock_handle) -> int:
         return 0
 
 
-def _advance_lock_generation(lock_handle) -> int:
+def _advance_lock_generation(lock_handle: TextIO) -> int:
     """Advance and durably publish the acquired lock generation."""
     generation = _read_lock_generation(lock_handle) + 1
     lock_handle.seek(0)
@@ -39,7 +41,7 @@ def _advance_lock_generation(lock_handle) -> int:
 
 
 @contextmanager
-def acquire_session_lock():
+def acquire_session_lock() -> Iterator[None]:
     """Hold an advisory lock covering the shared session-state directory.
 
     The lock is process-reentrant so nested dispatches in interactive mode do
@@ -78,7 +80,7 @@ def acquire_session_lock():
 
 
 @contextmanager
-def temporarily_release_session_lock():
+def temporarily_release_session_lock() -> Iterator[None]:
     """Release an acquired session lock while waiting for user input.
 
     Interactive actions run under the repository lock, but prompts must not

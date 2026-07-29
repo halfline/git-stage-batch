@@ -5,24 +5,27 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Generic, Protocol, TypeVar
+from typing import TYPE_CHECKING, Generic, Protocol, TypeVar, cast
 
 
 if TYPE_CHECKING:
-    from multiprocessing import Process
     from multiprocessing.connection import Connection
-    from multiprocessing.context import BaseContext
+    from multiprocessing.context import ForkServerContext, ForkServerProcess
 
 
 JobT = TypeVar("JobT")
+JobT_co = TypeVar("JobT_co", covariant=True)
 ResultT = TypeVar("ResultT")
 _PENDING_JOBS_PER_WORKER = 2
 _WORKER_EXIT_TIMEOUT_SECONDS = 5.0
 
 
-class _OrderedJob(Protocol[JobT]):
-    ordinal: int
-    payload: JobT
+class _OrderedJob(Protocol[JobT_co]):
+    @property
+    def ordinal(self) -> int: ...
+
+    @property
+    def payload(self) -> JobT_co: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,9 +57,9 @@ class _ProcessFileJobSupervisor(Generic[JobT, ResultT]):
         max_workers: int,
         repository_root: Path,
         worker_target: Callable[..., None],
-        context_factory: Callable[[], BaseContext],
+        context_factory: Callable[[], ForkServerContext],
     ) -> None:
-        self._workers: list[Process] = []
+        self._workers: list[ForkServerProcess] = []
         self._connections: list[Connection] = []
         self._pending_ordinals: list[list[int]] = []
         self._closed = False
@@ -125,7 +128,7 @@ class _ProcessFileJobSupervisor(Generic[JobT, ResultT]):
             ]
             ready_connections = wait(pending_connections, timeout=0.05)
             if ready_connections:
-                connection = ready_connections[0]
+                connection = cast("Connection", ready_connections[0])
                 worker_index = self._connections.index(connection)
                 expected_ordinal = self._pending_ordinals[worker_index].pop(0)
                 try:
@@ -209,7 +212,7 @@ class _ProcessFileJobSupervisor(Generic[JobT, ResultT]):
 
     def _start_worker(
         self,
-        context: BaseContext,
+        context: ForkServerContext,
         worker_target: Callable[..., None],
         compute: Callable[[JobT], ResultT],
         repository_root: Path,
@@ -217,7 +220,7 @@ class _ProcessFileJobSupervisor(Generic[JobT, ResultT]):
     ) -> None:
         parent_connection: Connection | None = None
         child_connection: Connection | None = None
-        process: Process | None = None
+        process: ForkServerProcess | None = None
         try:
             parent_connection, child_connection = context.Pipe(duplex=True)
             process = context.Process(
@@ -246,7 +249,10 @@ class _ProcessFileJobSupervisor(Generic[JobT, ResultT]):
         self._connections.append(parent_connection)
         self._pending_ordinals.append([])
 
-    def _stop_partially_started_worker(self, process: Process | None) -> None:
+    def _stop_partially_started_worker(
+        self,
+        process: ForkServerProcess | None,
+    ) -> None:
         if process is None:
             return
         try:

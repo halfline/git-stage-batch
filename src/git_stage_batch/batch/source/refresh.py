@@ -48,7 +48,7 @@ class RefreshedBatchSelection:
     ownership: BatchOwnership | None
     """Existing ownership, possibly remapped to new source space."""
 
-    selected_lines: list
+    selected_lines: list[LineEntry]
     """Selected lines, possibly re-annotated for new source."""
 
     source_was_advanced: bool
@@ -60,7 +60,7 @@ def ensure_batch_source_current_for_selection(
     file_path: str,
     current_batch_source_commit: str | None,
     existing_ownership: BatchOwnership | None,
-    selected_lines: list,
+    selected_lines: list[LineEntry],
     *,
     coordinate_lines: Sequence[LineEntry] | None = None,
 ) -> RefreshedBatchSelection:
@@ -188,10 +188,10 @@ def _cache_session_source(file_path: str, batch_source_commit: str) -> None:
 
 def _create_current_working_source_for_selection(
     file_path: str,
-    selected_lines: list,
+    selected_lines: list[LineEntry],
     *,
     coordinate_lines: Sequence[LineEntry] | None = None,
-) -> tuple[str, list]:
+) -> tuple[str, list[LineEntry]]:
     with load_working_tree_file_as_buffer(file_path) as working_lines:
         batch_source_commit = create_batch_source_commit(
             file_path,
@@ -209,11 +209,11 @@ def _create_current_working_source_for_selection(
 
 def _selection_mapped_to_source(
     file_path: str,
-    selected_lines: list,
+    selected_lines: list[LineEntry],
     source_lines: Sequence[bytes],
     *,
     coordinate_lines: Sequence[LineEntry] | None = None,
-) -> list | None:
+) -> list[LineEntry] | None:
     """Return selection coordinates verified against one saved source."""
     has_deletion_lines = any(line.kind == "-" for line in selected_lines)
     if (
@@ -236,10 +236,10 @@ def _selection_mapped_to_source(
 
 def _prepare_initial_cached_source_for_selection(
     file_path: str,
-    selected_lines: list,
+    selected_lines: list[LineEntry],
     *,
     coordinate_lines: Sequence[LineEntry] | None = None,
-) -> tuple[str, list, bool] | None:
+) -> tuple[str, list[LineEntry], bool] | None:
     batch_source_commit = load_session_batch_sources().get(file_path)
     if not batch_source_commit:
         return None
@@ -252,14 +252,14 @@ def _prepare_initial_cached_source_for_selection(
         )
 
     with source_buffer as source_lines:
-        prepared_selected_lines = _selection_mapped_to_source(
+        mapped_selected_lines = _selection_mapped_to_source(
             file_path,
             selected_lines,
             source_lines,
             coordinate_lines=coordinate_lines,
         )
-        if prepared_selected_lines is not None:
-            return batch_source_commit, prepared_selected_lines, False
+        if mapped_selected_lines is not None:
+            return batch_source_commit, mapped_selected_lines, False
 
     new_batch_source_commit, reannotated_lines = (
         _create_current_working_source_for_selection(
@@ -273,10 +273,10 @@ def _prepare_initial_cached_source_for_selection(
 
 def prepare_initial_batch_source_for_selection(
     file_path: str,
-    selected_lines: list,
+    selected_lines: list[LineEntry],
     *,
     coordinate_lines: Sequence[LineEntry] | None = None,
-) -> tuple[str, list]:
+) -> tuple[str, list[LineEntry]]:
     """Create the first source and map selected lines into its coordinates."""
     cached_source_result = _prepare_initial_cached_source_for_selection(
         file_path,
@@ -301,14 +301,14 @@ def prepare_initial_batch_source_for_selection(
         )
 
     with source_buffer as source_lines:
-        prepared_selected_lines = _selection_mapped_to_source(
+        mapped_selected_lines = _selection_mapped_to_source(
             file_path,
             selected_lines,
             source_lines,
             coordinate_lines=coordinate_lines,
         )
-        if prepared_selected_lines is not None:
-            return batch_source_commit, prepared_selected_lines
+        if mapped_selected_lines is not None:
+            return batch_source_commit, mapped_selected_lines
 
     new_batch_source_commit, reannotated_lines = (
         _create_current_working_source_for_selection(

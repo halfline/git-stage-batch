@@ -201,11 +201,18 @@ def load_line_changes_from_state() -> LineLevelChange | None:
         lines=lines,
     )
 
-def compute_remaining_changed_line_ids() -> list[int]:
-    """Compute which changed line IDs haven't been processed yet."""
+
+def require_line_changes_from_state() -> LineLevelChange:
+    """Return the selected line changes or raise a user-facing state error."""
     line_changes = load_line_changes_from_state()
     if line_changes is None:
         raise CommandError(_("No selected hunk. Run 'start' first."))
+    return line_changes
+
+
+def compute_remaining_changed_line_ids() -> list[int]:
+    """Compute which changed line IDs haven't been processed yet."""
+    line_changes = require_line_changes_from_state()
     all_changed_ids = set(line_changes.changed_line_ids())
     included_ids = set(read_line_ids_file(get_processed_include_ids_file_path()))
     skipped_ids = set(read_line_ids_file(get_processed_skip_ids_file_path()))

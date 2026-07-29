@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from types import TracebackType
 
 from ...core.buffer import LineBuffer
 from .snapshots import create_batch_source_commit
@@ -34,7 +35,12 @@ class SourceContentWithLineProvenance:
     def __enter__(self) -> SourceContentWithLineProvenance:
         return self
 
-    def __exit__(self, exc_type, exc, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()
 
 
@@ -55,7 +61,12 @@ class BatchSourceAdvanceResult:
     def __enter__(self) -> BatchSourceAdvanceResult:
         return self
 
-    def __exit__(self, exc_type, exc, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()
 
 

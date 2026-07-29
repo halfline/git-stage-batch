@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 
 from ...data.file_review.action_scope import finish_review_scoped_line_action
+from ...data.file_review.records import FileReviewState
 from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.undo.checkpoints import undo_checkpoint
 from ...i18n import _
@@ -16,7 +17,7 @@ def discard_live_line_selection(
     line_id_specification: str,
     file: str | None = None,
     *,
-    review_state,
+    review_state: FileReviewState | None,
     auto_advance: bool | None = None,
 ) -> None:
     """Discard selected lines from the live working-tree view."""

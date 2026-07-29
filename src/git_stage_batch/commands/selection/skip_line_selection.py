@@ -11,6 +11,7 @@ from ...core.line_selection import parse_line_selection
 from ...data.file_hunk_display import render_unstaged_file_as_single_hunk
 from ...data.selected_change.file_hunk_cache import cache_unstaged_file_as_single_hunk
 from ...data.file_review.action_scope import finish_review_scoped_line_action
+from ...data.file_review.records import FileReviewState
 from ...data.file_tracking import auto_add_untracked_files
 from ...data.line_id_files import read_line_ids_file, write_line_ids_file
 from ...data.line_state import (
@@ -51,22 +52,23 @@ def skip_line_selection(
     line_id_specification: str,
     *,
     file: str | None = None,
-    review_state=None,
+    review_state: FileReviewState | None = None,
     auto_advance: bool | None = None,
 ) -> None:
     """Mark selected line IDs as skipped."""
-    target_file = None
     reuse_selected_file_view = False
     if file is None:
         require_selected_hunk()
         target_file = get_selected_change_file_path()
+        assert target_file is not None
     else:
         if file == "":
-            target_file = get_selected_change_file_path()
-            if target_file is None:
+            selected_file = get_selected_change_file_path()
+            if selected_file is None:
                 exit_with_error(
                     _("No selected hunk. Run 'show' first or specify file path.")
                 )
+            target_file = selected_file
         else:
             target_file = file
         auto_add_untracked_files([target_file])

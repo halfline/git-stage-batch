@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass
 
 from ...batch.source.annotation import annotate_with_batch_source
 from ...batch.selection import require_line_selection_in_view
 from ...core.buffer import LineBuffer
 from ...core.line_selection import format_line_ids, parse_line_selection
+from ...core.models import LineEntry, LineLevelChange
 from ...core.replacement import ReplacementPayload, coerce_replacement_payload
 from ...data.file_hunk_display import render_unstaged_file_as_single_hunk
 from ...data.selected_change.file_hunk_cache import cache_unstaged_file_as_single_hunk
-from ...data.line_state import load_line_changes_from_state
+from ...data.line_state import (
+    load_line_changes_from_state,
+    require_line_changes_from_state,
+)
 from ...utils.repository_buffers import (
     read_git_object_buffer_or_empty,
     load_working_tree_file_as_buffer,
@@ -21,6 +26,7 @@ from ...data.selected_change.loading import require_selected_hunk
 from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.selected_change.store import (
     SelectedChangeKind,
+    SelectedChangeStateSnapshot,
     read_selected_change_kind,
     snapshot_selected_change_state,
 )
@@ -43,8 +49,8 @@ from . import replacement_selection
 class IncludeLineReplacementSelection:
     """Prepared pathless include replacement selection."""
 
-    display_line_changes: object
-    replacement_line_changes: object
+    display_line_changes: LineLevelChange
+    replacement_line_changes: LineLevelChange
     line_id_specification: str
     base_buffer: LineBuffer
     source_buffer: LineBuffer
@@ -55,15 +61,15 @@ class IncludeLineReplacementFileSelection:
     """Prepared file-scoped include replacement selection."""
 
     target_file: str
-    line_changes: object
+    line_changes: LineLevelChange
     base_buffer: LineBuffer
     source_buffer: LineBuffer
     preserve_selected_state: bool = False
-    saved_selected_state: object | None = None
+    saved_selected_state: SelectedChangeStateSnapshot | None = None
 
 
 def apply_include_line_replacement(
-    line_changes,
+    line_changes: LineLevelChange,
     *,
     line_id_specification: str,
     replacement_text: str | ReplacementPayload,
@@ -129,7 +135,7 @@ def prepare_pathless_include_line_replacement(
 ) -> IncludeLineReplacementSelection:
     """Prepare replacement context for include --line --as."""
     require_selected_hunk()
-    line_changes = load_line_changes_from_state()
+    line_changes = require_line_changes_from_state()
     replacement_line_changes = line_changes
     replacement_line_id_specification = line_id_specification
     replacement_base_buffer = None
@@ -173,7 +179,7 @@ def prepare_pathless_include_line_replacement(
 
 def prepare_file_include_line_replacement(
     file: str,
-    selected_state_stack,
+    selected_state_stack: ExitStack,
 ) -> IncludeLineReplacementFileSelection:
     """Prepare replacement context for include --line --as --file."""
     preserve_selected_state = False
@@ -217,7 +223,9 @@ def prepare_file_include_line_replacement(
     )
 
 
-def _line_identity_for_live_replacement(line) -> tuple[str, int | None, bytes, bool]:
+def _line_identity_for_live_replacement(
+    line: LineEntry,
+) -> tuple[str, int | None, bytes, bool]:
     """Return a stable identity for a changed line in a live file view."""
     return (
         line.kind,
@@ -228,9 +236,9 @@ def _line_identity_for_live_replacement(line) -> tuple[str, int | None, bytes, b
 
 
 def translate_file_view_replacement_to_unstaged_diff(
-    line_changes,
+    line_changes: LineLevelChange,
     requested_ids: set[int],
-):
+) -> tuple[LineLevelChange, set[int]] | None:
     """Map file-vs-HEAD review IDs to the current unstaged diff, if possible."""
     effective_ids = replacement_selection.expand_replacement_selection_ids(
         line_changes,
@@ -254,9 +262,6 @@ def translate_file_view_replacement_to_unstaged_diff(
             unstaged_line_changes
         )
     )
-    if annotated_selected_changes is None or annotated_unstaged_changes is None:
-        return None
-
     unstaged_ids_by_identity: dict[tuple[str, int | None, bytes, bool], list[int]] = {}
     for line in annotated_unstaged_changes.lines:
         if line.id is None:

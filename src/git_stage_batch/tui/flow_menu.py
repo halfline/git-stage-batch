@@ -19,7 +19,7 @@ def handle_from_menu(flow_state: FlowState) -> None:
     print(_("Pull changes from:"))
     print()
 
-    options = []
+    options: list[tuple[str, FlowLocation]] = []
     selected_marker = _(" (selected)")
 
     is_selected = flow_state.source.role is LocationRole.WORKING_TREE
@@ -78,7 +78,7 @@ def handle_to_menu(flow_state: FlowState) -> None:
     print(_("Push changes to:"))
     print()
 
-    options = []
+    options: list[tuple[str, FlowLocation | None]] = []
     selected_marker = _(" (selected)")
 
     is_selected = flow_state.target.role is LocationRole.STAGING_AREA
@@ -134,7 +134,9 @@ def handle_to_menu(flow_state: FlowState) -> None:
             command_new_batch(batch_name=batch_id, note=note if note else None)
             flow_state.target = FlowLocation.for_batch(batch_id)
         elif 0 <= idx < len(options) - 1:
-            flow_state.target = options[idx][1]
+            selected_location = options[idx][1]
+            assert selected_location is not None
+            flow_state.target = selected_location
 
         if (
             flow_state.target.role is LocationRole.BATCH

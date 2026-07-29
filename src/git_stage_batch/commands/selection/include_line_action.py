@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from contextlib import ExitStack
 import sys
 
@@ -9,6 +10,7 @@ from ...batch.selection import require_line_selection_in_view
 from ...core.buffer import LineBuffer, buffer_matches
 from ...core.line_selection import parse_line_selection
 from ...data.file_review.action_scope import finish_review_scoped_line_action
+from ...data.file_review.records import FileReviewState
 from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.line_id_files import read_line_ids_file, write_line_ids_file
 from ...utils.repository_buffers import (
@@ -35,7 +37,9 @@ from . import replacement_selection
 from .selected_hunk_refresh import refresh_selected_hunk_after_line_action
 
 
-def _selection_uses_only_bare_cr_line_breaks(*line_sequences) -> bool:
+def _selection_uses_only_bare_cr_line_breaks(
+    *line_sequences: Sequence[bytes],
+) -> bool:
     """Return whether nonempty line breaks use bare CR and never LF."""
     saw_bare_carriage_return = False
     for lines in line_sequences:
@@ -52,7 +56,7 @@ def include_live_line_selection(
     line_id_specification: str,
     file: str | None = None,
     *,
-    review_state,
+    review_state: FileReviewState | None,
     auto_advance: bool | None = None,
     quiet: bool = False,
     operation: str | None = None,

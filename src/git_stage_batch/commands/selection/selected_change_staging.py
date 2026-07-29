@@ -17,7 +17,7 @@ from ...core.models import (
 from ...data.hunk_tracking import fetch_next_change
 from ...data.index_entries import read_index_entry
 from ...data.progress import record_hunk_included
-from ...data.selected_change.loading import load_selected_change
+from ...data.selected_change.loading import SelectedChange, load_selected_change
 from ...data.selected_change.paths import worktree_paths_for_selected_change
 from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import NoMoreHunks, exit_with_error
@@ -58,15 +58,16 @@ def include_selected_change(
         "include",
         worktree_paths=worktree_paths_for_selected_change(item),
     ):
-        return _include_loaded_selected_change(
+        _include_loaded_selected_change(
             item,
             quiet=quiet,
             auto_advance=auto_advance,
         )
+        return None
 
 
 def _include_loaded_selected_change(
-    item,
+    item: SelectedChange,
     *,
     quiet: bool,
     auto_advance: bool | None,
@@ -214,7 +215,9 @@ def stage_file_mode_change(item: FileModeChange) -> None:
         exit_with_error(_("Failed to stage executable mode change."))
 
 
-def stage_gitlink_change(gitlink_change: GitlinkChange) -> subprocess.CompletedProcess:
+def stage_gitlink_change(
+    gitlink_change: GitlinkChange,
+) -> subprocess.CompletedProcess[str]:
     """Stage a submodule pointer change in the index."""
     file_path = gitlink_change.path()
     if gitlink_change.is_deleted_file():

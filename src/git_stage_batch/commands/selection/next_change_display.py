@@ -9,6 +9,7 @@ from ...core.models import (
     FileModeChange,
     GitlinkChange,
     RenameChange,
+    SingleHunkPatch,
     TextFileDeletionChange,
 )
 from ...data.file_review.state import clear_last_file_review_state
@@ -52,6 +53,7 @@ def _cache_candidate(candidate: EligibleLiveChange) -> None:
     elif isinstance(change, BinaryFileChange):
         cache_binary_file_change(change)
     else:
+        assert isinstance(candidate.raw_patch, SingleHunkPatch)
         cache_hunk_change(
             candidate.raw_patch.lines,
             candidate.stable_hash,

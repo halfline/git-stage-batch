@@ -9,6 +9,8 @@ from git_stage_batch.data.selected_change.lifecycle import (
     clear_selected_change_state_files,
 )
 from git_stage_batch.utils.paths import (
+    ensure_processed_state_directory_exists,
+    ensure_selected_state_directory_exists,
     ensure_state_directory_exists,
     get_index_snapshot_file_path,
     get_line_changes_json_file_path,
@@ -60,6 +62,8 @@ class TestClearSelectedChangeStateFiles:
 
     def test_clears_per_selection_state_files(self, temp_git_repo):
         """Selected-change cleanup should leave global batch state intact."""
+        ensure_selected_state_directory_exists()
+        ensure_processed_state_directory_exists()
         get_selected_hunk_patch_file_path().write_text("patch")
         get_selected_hunk_hash_file_path().write_text("hash")
         get_line_changes_json_file_path().write_text("{}")

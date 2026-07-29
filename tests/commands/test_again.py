@@ -23,6 +23,7 @@ from git_stage_batch.commands.start import command_start
 from git_stage_batch.batch.state.lifecycle import create_batch
 from git_stage_batch.utils.file_io import read_text_file_contents, write_text_file_contents
 from git_stage_batch.utils.paths import (
+    ensure_progress_state_directory_exists,
     get_abort_head_file_path,
     get_abort_snapshot_list_file_path,
     get_abort_snapshots_directory_path,
@@ -68,6 +69,7 @@ class TestCommandAgain:
         state_dir = get_state_directory_path()
 
         # Create iteration-specific files
+        ensure_progress_state_directory_exists()
         blocklist = get_block_list_file_path()
         blocklist.write_text("test")
 
@@ -328,6 +330,7 @@ class TestCommandAgain:
 
         # Create iteration-specific file to verify it was cleared
         state_dir = get_state_directory_path()
+        ensure_progress_state_directory_exists()
         blocklist = get_block_list_file_path()
         blocklist.write_text("test")
 

@@ -15,6 +15,8 @@ from git_stage_batch.data.line_state import (
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.file_io import write_text_file_contents
 from git_stage_batch.utils.paths import (
+    ensure_processed_state_directory_exists,
+    ensure_selected_state_directory_exists,
     ensure_state_directory_exists,
     get_selected_hunk_patch_file_path,
     get_line_changes_json_file_path,
@@ -41,6 +43,8 @@ def temp_git_repo(tmp_path, monkeypatch):
 
     # Ensure state directory exists
     ensure_state_directory_exists()
+    ensure_selected_state_directory_exists()
+    ensure_processed_state_directory_exists()
 
     return repo
 

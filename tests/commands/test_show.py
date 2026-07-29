@@ -3,7 +3,8 @@
 from git_stage_batch.core.hashing import compute_stable_hunk_hash_from_lines
 from tests.diff_parser_helpers import collect_unified_diff
 from git_stage_batch.utils.git_command import stream_git_command
-from git_stage_batch.utils.paths import get_block_list_file_path, get_context_lines
+from git_stage_batch.utils.context_lines import get_context_lines
+from git_stage_batch.utils.paths import get_block_list_file_path
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.utils.paths import ensure_state_directory_exists
 from git_stage_batch.utils.paths import (
@@ -154,6 +155,7 @@ class TestCommandShow:
         first_patch_hash = compute_stable_hunk_hash_from_lines(patches[0].lines)
 
         blocklist_path = get_block_list_file_path()
+        blocklist_path.parent.mkdir(parents=True, exist_ok=True)
         blocklist_path.write_text(f"{first_patch_hash}\n")
 
         command_show()
@@ -181,6 +183,7 @@ class TestCommandShow:
         patch_hash = compute_stable_hunk_hash_from_lines(patches[0].lines)
 
         blocklist_path = get_block_list_file_path()
+        blocklist_path.parent.mkdir(parents=True, exist_ok=True)
         blocklist_path.write_text(f"{patch_hash}\n")
 
         command_show()
@@ -310,6 +313,7 @@ class TestCommandShow:
         patch_hash = compute_stable_hunk_hash_from_lines(patches[0].lines)
 
         blocklist_path = get_block_list_file_path()
+        blocklist_path.parent.mkdir(parents=True, exist_ok=True)
         blocklist_path.write_text(f"{patch_hash}\n")
 
         # Should exit with code 1

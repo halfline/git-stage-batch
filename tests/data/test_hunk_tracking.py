@@ -21,6 +21,8 @@ from git_stage_batch.data.hunk_tracking import (
 )
 from git_stage_batch.utils.file_io import append_lines_to_file
 from git_stage_batch.utils.paths import (
+    ensure_processed_state_directory_exists,
+    ensure_selected_state_directory_exists,
     ensure_state_directory_exists,
     get_block_list_file_path,
     get_selected_hunk_hash_file_path,
@@ -48,6 +50,8 @@ def temp_git_repo(tmp_path, monkeypatch):
     subprocess.run(["git", "commit", "-m", "Initial commit"], check=True, cwd=repo, capture_output=True)
 
     ensure_state_directory_exists()
+    ensure_selected_state_directory_exists()
+    ensure_processed_state_directory_exists()
 
     return repo
 

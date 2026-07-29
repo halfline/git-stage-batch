@@ -65,8 +65,18 @@ def _helper(
     check: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     """Run the bundled message-refinement helper."""
+    return _helper_at(repo, CODEX_HELPER, *args, check=check)
+
+
+def _helper_at(
+    repo: Path,
+    helper: Path,
+    *args: str,
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    """Run one installed copy of the message-refinement helper."""
     result = subprocess.run(
-        [sys.executable, str(CODEX_HELPER), *args],
+        [sys.executable, str(helper), *args],
         cwd=repo,
         text=True,
         capture_output=True,
@@ -111,6 +121,89 @@ def _final_message() -> str:
     )
 
 
+def _start_single_reword(
+    repo: Path,
+    base: str,
+    replacement: str,
+    *,
+    helper: Path = CODEX_HELPER,
+) -> Path:
+    """Start a one-commit checkpoint with one validated replacement."""
+    return _start_reword_plan(
+        repo,
+        base,
+        {1: replacement},
+        helper=helper,
+    )
+
+
+def _start_reword_plan(
+    repo: Path,
+    base: str,
+    replacements: dict[int, str],
+    *,
+    helper: Path = CODEX_HELPER,
+) -> Path:
+    """Start a checkpoint with validated replacements by series position."""
+    _helper_at(repo, helper, "start", "--base", base)
+    _helper_at(repo, helper, "scan", "--base", base)
+    state_dir = repo / ".git-stage-batch" / "refine-commit-messages"
+    scan = json.loads((state_dir / "scan.json").read_text(encoding="utf-8"))
+    entries = []
+    for position, entry in enumerate(scan["commits"], start=1):
+        reword = position in replacements
+        audit_entry = {
+            "sha": entry["sha"],
+            "subject": entry["subject"],
+            "signals": entry["signals"],
+            "verdict": "REWORD" if reword else "KEEP",
+            "reason": "The message is checked against its patch and position.",
+            "patch_fidelity": "The proposal describes the complete test patch.",
+        }
+        if len(scan["commits"]) > 1:
+            audit_entry["series_transition"] = (
+                "The message matches its position in the test series."
+            )
+        if reword:
+            audit_entry["proposed_message"] = replacements[position]
+        entries.append(audit_entry)
+    audit = {
+        "schema": 1,
+        "mode": "refine",
+        "base": scan["base"],
+        "head": scan["head"],
+        "conventions": {
+            "sources": ["fallback message guidelines"],
+            "summary": "Position-aware body paragraphs for the test series.",
+        },
+        "commits": entries,
+    }
+    (state_dir / "audit.json").write_text(json.dumps(audit), encoding="utf-8")
+    return state_dir
+
+
+def _enable_fake_signing(repo: Path) -> None:
+    """Configure a deterministic signer that emits a syntactically valid block."""
+    git_dir = Path(
+        _git(repo, "rev-parse", "--absolute-git-dir").stdout.strip()
+    )
+    signer = git_dir / "fake-gpg"
+    signer.write_text(
+        "#!/bin/sh\n"
+        "cat >/dev/null\n"
+        "printf '%s\\n' "
+        "'[GNUPG:] SIG_CREATED D 1 10 00 0 0 0 0 0' >&2\n"
+        "printf '%s\\n' "
+        "'-----BEGIN PGP SIGNATURE-----' "
+        "'dGVzdC1zaWduYXR1cmU=' "
+        "'-----END PGP SIGNATURE-----'\n",
+        encoding="utf-8",
+    )
+    signer.chmod(0o755)
+    _git(repo, "config", "gpg.program", str(signer))
+    _git(repo, "config", "user.signingkey", "test-key")
+
+
 @pytest.fixture
 def git_repo(tmp_path: Path) -> Path:
     """Create a repository with one base commit."""
@@ -143,6 +236,25 @@ def test_public_audit_mode_uses_a_positional_keyword() -> None:
     )
 
 
+def test_skill_applies_one_indexed_audit_in_a_single_rebase() -> None:
+    """Message refinement should not restart a whole-series audit per reword."""
+    codex_skill = CODEX_SKILL.read_text(encoding="utf-8")
+    claude_skill = CLAUDE_SKILL.read_text(encoding="utf-8")
+
+    for skill in (codex_skill, claude_skill):
+        prose = " ".join(skill.split())
+        assert "apply-audit --base" in skill
+        assert "one initial semantic audit" in prose
+        assert "never repeat semantic drafting once per reworded commit" in prose
+        assert "Do not resend the full index" in prose
+        assert "Do not copy the whole prefix of earlier entries" in prose
+        assert "Persist the index as `series-index.json`" in prose
+        assert "--format='%H%n%B%n---'" not in skill
+        assert "validate-audit --allow-reword" not in skill
+        assert "Do not run a separate validation pass first" in prose
+        assert "rebuild the complete audit from the beginning" not in skill
+
+
 def test_message_guidance_requires_low_context_prose() -> None:
     """Drafters should explain repository terms instead of inventing shorthand."""
     for path in (CODEX_GUIDELINES, CLAUDE_GUIDELINES):
@@ -155,6 +267,7 @@ def test_message_guidance_requires_low_context_prose() -> None:
 
     for path in (CODEX_DRAFTER, CLAUDE_DRAFTER):
         drafter = " ".join(path.read_text(encoding="utf-8").split())
+        assert "Do not reread the complete raw series" in drafter
         assert "Write for a reader who has never seen the repository" in drafter
 
 
@@ -496,6 +609,427 @@ def test_begin_reword_neutralizes_history_changing_rebase_config(
     assert len(subjects) == 3
     assert subjects[1].startswith("fixup!")
     assert _git(git_repo, "rev-parse", "side-draft").stdout.strip() == second
+
+
+def test_apply_audit_migrates_an_active_legacy_reword_checkpoint(
+    git_repo: Path,
+) -> None:
+    """Aborting an older per-commit stop should preserve its audit and recovery."""
+    base = _git(git_repo, "rev-parse", "HEAD").stdout.strip()
+    source = _commit(git_repo, "Bad message\n")
+    replacement = _message(
+        "core: Expose message inspection",
+        "The project provides a stable message representation.",
+        "Reviewers cannot inspect that representation as a report.",
+        "This commit exposes inspection through a report command.",
+    )
+    state_dir = _start_single_reword(git_repo, base, replacement)
+    checkpoint_before = json.loads(
+        (state_dir / "checkpoint.json").read_text(encoding="utf-8")
+    )
+    _helper(
+        git_repo,
+        "begin-reword",
+        "--base",
+        base,
+        "--position",
+        "1",
+        "--target",
+        source,
+    )
+
+    _git(git_repo, "rebase", "--abort")
+    _helper(git_repo, "validate-audit", "--allow-reword", "--base", base)
+    _helper(git_repo, "apply-audit", "--base", base)
+
+    checkpoint_after = json.loads(
+        (state_dir / "checkpoint.json").read_text(encoding="utf-8")
+    )
+    assert checkpoint_after["recovery_ref"] == checkpoint_before["recovery_ref"]
+    assert [event["event"] for event in checkpoint_after["events"]].count("start") == 1
+    assert (
+        _git(git_repo, "log", "-1", "--format=%B").stdout.rstrip("\n")
+        == replacement.rstrip("\n")
+    )
+    _helper(git_repo, "complete", "--base", base)
+
+
+def test_apply_audit_rewords_the_series_in_one_validated_pass(
+    git_repo: Path,
+) -> None:
+    """One rewrite plan should replace every REWORD without repeated audits."""
+    base = _git(git_repo, "rev-parse", "HEAD").stdout.strip()
+    (git_repo / "opening.txt").write_text("opening\n", encoding="utf-8")
+    _git(git_repo, "add", "opening.txt")
+    _commit(git_repo, "Bad opening message\n")
+    middle_message = _message(
+        "core: classify message requests",
+        "The project provides an interface for message processing.",
+        "Callers still cannot classify requests before executing them.",
+        "This commit continues the workflow by classifying each request.",
+        "The final commit will connect the classified requests.",
+    )
+    (git_repo / "middle.txt").write_text("middle\n", encoding="utf-8")
+    _git(git_repo, "add", "middle.txt")
+    middle = _commit(git_repo, middle_message)
+    (git_repo / "final.txt").write_text("final\n", encoding="utf-8")
+    _git(git_repo, "add", "final.txt")
+    _commit(git_repo, "Bad final message\n")
+    _git(git_repo, "branch", "side-draft", middle)
+    _git(git_repo, "config", "rebase.autoSquash", "true")
+    _git(git_repo, "config", "rebase.updateRefs", "true")
+    _helper(git_repo, "start", "--base", base)
+    _helper(git_repo, "scan", "--base", base)
+
+    state_dir = git_repo / ".git-stage-batch" / "refine-commit-messages"
+    scan = json.loads((state_dir / "scan.json").read_text(encoding="utf-8"))
+    replacements = {1: _opening_message(), 3: _final_message()}
+    audit_entries = []
+    for position, entry in enumerate(scan["commits"], start=1):
+        audit_entry = {
+            "sha": entry["sha"],
+            "subject": entry["subject"],
+            "signals": entry["signals"],
+            "verdict": "REWORD" if position in replacements else "KEEP",
+            "reason": "The message is checked against its exact patch and position.",
+            "patch_fidelity": "The message describes the complete test patch.",
+            "series_transition": "The message matches its role in this three-step series.",
+        }
+        if position in replacements:
+            audit_entry["proposed_message"] = replacements[position]
+        audit_entries.append(audit_entry)
+    audit = {
+        "schema": 1,
+        "mode": "refine",
+        "base": scan["base"],
+        "head": scan["head"],
+        "conventions": {
+            "sources": ["fallback message guidelines"],
+            "summary": "Four body paragraphs with position-aware transitions.",
+        },
+        "commits": audit_entries,
+    }
+    (state_dir / "audit.json").write_text(json.dumps(audit), encoding="utf-8")
+    pre_trees = [entry["tree"] for entry in scan["commits"]]
+    pre_authors = [entry["author"] for entry in scan["commits"]]
+
+    _helper(git_repo, "validate-audit", "--allow-reword", "--base", base)
+    result = _helper(git_repo, "apply-audit", "--base", base)
+
+    current = json.loads((state_dir / "scan.json").read_text(encoding="utf-8"))
+    final_audit = json.loads((state_dir / "audit.json").read_text(encoding="utf-8"))
+    checkpoint = json.loads(
+        (state_dir / "checkpoint.json").read_text(encoding="utf-8")
+    )
+    messages = _git(
+        git_repo,
+        "log",
+        "--reverse",
+        "--format=%B%x00",
+        f"{base}..HEAD",
+    ).stdout.rstrip("\x00\n").split("\x00\n")
+
+    assert "2 replacement messages" in result.stdout
+    assert [message.rstrip("\n") for message in messages] == [
+        _opening_message().rstrip("\n"),
+        middle_message.rstrip("\n"),
+        _final_message().rstrip("\n"),
+    ]
+    assert [entry["tree"] for entry in current["commits"]] == pre_trees
+    assert len(set(pre_trees)) == 3
+    assert [entry["author"] for entry in current["commits"]] == pre_authors
+    assert [entry["verdict"] for entry in final_audit["commits"]] == [
+        "KEEP",
+        "KEEP",
+        "KEEP",
+    ]
+    assert all("proposed_message" not in entry for entry in final_audit["commits"])
+    assert checkpoint["phase"] == "rewritten"
+    assert checkpoint["rewrite_source_head"] == scan["head"]
+    assert checkpoint["rewrite_positions"] == [1, 3]
+    assert Path(checkpoint["rewrite_helper"]).is_file()
+    assert [event["event"] for event in checkpoint["events"]].count(
+        "apply-audit"
+    ) == 1
+    assert (state_dir / "rewrite-entry-1.json").is_file()
+    assert (state_dir / "rewrite-entry-2.json").is_file()
+    assert (state_dir / "rewrite-entry-3.json").is_file()
+    assert _git(git_repo, "rev-parse", "side-draft").stdout.strip() == middle
+    _helper(git_repo, "complete", "--base", base)
+
+
+def test_apply_audit_preserves_mixed_signature_presence(
+    git_repo: Path,
+) -> None:
+    """Each replayed position should restore its own signed or unsigned state."""
+    base = _git(git_repo, "rev-parse", "HEAD").stdout.strip()
+    _enable_fake_signing(git_repo)
+    _git(
+        git_repo,
+        "commit",
+        "--allow-empty",
+        "-q",
+        "--gpg-sign",
+        "-F",
+        "-",
+        input_text=_opening_message(),
+    )
+    _commit(git_repo, "Bad unsigned message\n")
+    state_dir = _start_reword_plan(
+        git_repo,
+        base,
+        {2: _final_message()},
+    )
+    initial_scan = json.loads(
+        (state_dir / "scan.json").read_text(encoding="utf-8")
+    )
+    assert [entry["signed"] for entry in initial_scan["commits"]] == [True, False]
+    _git(git_repo, "config", "commit.gpgSign", "true")
+
+    _helper(git_repo, "apply-audit", "--base", base)
+
+    final_scan = json.loads(
+        (state_dir / "scan.json").read_text(encoding="utf-8")
+    )
+    assert [entry["signed"] for entry in final_scan["commits"]] == [True, False]
+    assert [entry["message"] for entry in final_scan["commits"]] == [
+        _opening_message().rstrip("\n"),
+        _final_message().rstrip("\n"),
+    ]
+    _helper(git_repo, "complete", "--base", base)
+
+
+def test_apply_audit_uses_a_helper_outside_the_rewritten_tree(
+    git_repo: Path,
+) -> None:
+    """Historical checkouts must not replace internal rebase callback code."""
+    base = _git(git_repo, "rev-parse", "HEAD").stdout.strip()
+    installed_helper = (
+        git_repo
+        / ".agents"
+        / "skills"
+        / "refine-commit-messages"
+        / "scripts"
+        / "refine-commit-messages-checkpoint.py"
+    )
+    installed_helper.parent.mkdir(parents=True)
+    installed_helper.write_text(
+        "raise SystemExit('historical helper executed')\n",
+        encoding="utf-8",
+    )
+    _git(git_repo, "add", str(installed_helper.relative_to(git_repo)))
+    _commit(git_repo, "Bad historical-helper message\n")
+    installed_helper.write_bytes(CODEX_HELPER.read_bytes())
+    _git(git_repo, "add", str(installed_helper.relative_to(git_repo)))
+    current_message = _final_message()
+    _commit(git_repo, current_message)
+    replacement = _opening_message()
+    state_dir = _start_reword_plan(
+        git_repo,
+        base,
+        {1: replacement},
+        helper=installed_helper,
+    )
+
+    _helper_at(git_repo, installed_helper, "apply-audit", "--base", base)
+
+    checkpoint = json.loads(
+        (state_dir / "checkpoint.json").read_text(encoding="utf-8")
+    )
+    git_dir = Path(
+        _git(git_repo, "rev-parse", "--absolute-git-dir").stdout.strip()
+    )
+    rewrite_helper = Path(checkpoint["rewrite_helper"])
+    assert rewrite_helper.is_file()
+    assert rewrite_helper.is_relative_to(git_dir)
+    assert rewrite_helper != installed_helper
+    final_scan = json.loads(
+        (state_dir / "scan.json").read_text(encoding="utf-8")
+    )
+    assert [entry["message"] for entry in final_scan["commits"]] == [
+        replacement.rstrip("\n"),
+        current_message.rstrip("\n"),
+    ]
+    _helper_at(git_repo, installed_helper, "complete", "--base", base)
+
+
+def test_apply_audit_handles_a_source_subject_larger_than_one_read_block(
+    git_repo: Path,
+) -> None:
+    """Finding the active pick should not depend on a bounded log-file tail."""
+    base = _git(git_repo, "rev-parse", "HEAD").stdout.strip()
+    _commit(git_repo, "x" * 9000 + "\n")
+    replacement = _message(
+        "core: Expose message inspection",
+        "The project provides a stable message representation.",
+        "Reviewers cannot inspect that representation as a report.",
+        "This commit exposes inspection through a report command.",
+    )
+    _start_single_reword(git_repo, base, replacement)
+
+    _helper(git_repo, "apply-audit", "--base", base)
+
+    assert (
+        _git(git_repo, "log", "-1", "--format=%B").stdout.rstrip("\n")
+        == replacement.rstrip("\n")
+    )
+    _helper(git_repo, "complete", "--base", base)
+
+
+def test_apply_audit_can_retry_when_a_pre_rebase_hook_blocks_start(
+    git_repo: Path,
+) -> None:
+    """A failed rebase preflight should remain retryable from the checkpoint."""
+    base = _git(git_repo, "rev-parse", "HEAD").stdout.strip()
+    source_head = _commit(git_repo, "Bad message\n")
+    replacement = _message(
+        "core: Expose message inspection",
+        "The project provides a stable message representation.",
+        "Reviewers cannot inspect that representation as a report.",
+        "This commit exposes inspection through a report command.",
+    )
+    _start_single_reword(git_repo, base, replacement)
+    git_dir = Path(
+        _git(git_repo, "rev-parse", "--absolute-git-dir").stdout.strip()
+    )
+    hook = git_dir / "hooks" / "pre-rebase"
+    hook.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    hook.chmod(0o755)
+
+    stopped = _helper(git_repo, "apply-audit", "--base", base, check=False)
+
+    assert stopped.returncode != 0
+    assert "one-pass message rewrite did not start" in stopped.stderr
+    assert not (git_dir / "rebase-merge").exists()
+    assert _git(git_repo, "rev-parse", "HEAD").stdout.strip() == source_head
+    hook.unlink()
+
+    _helper(git_repo, "apply-audit", "--base", base)
+
+    assert (
+        _git(git_repo, "log", "-1", "--format=%B").stdout.rstrip("\n")
+        == replacement.rstrip("\n")
+    )
+    _helper(git_repo, "complete", "--base", base)
+
+
+def test_apply_message_rejects_an_entry_from_another_rewrite_attempt(
+    git_repo: Path,
+) -> None:
+    """Each per-position callback record must stay bound to its checkpoint."""
+    base = _git(git_repo, "rev-parse", "HEAD").stdout.strip()
+    _commit(git_repo, "Bad message\n")
+    replacement = _message(
+        "core: Expose message inspection",
+        "The project provides a stable message representation.",
+        "Reviewers cannot inspect that representation as a report.",
+        "This commit exposes inspection through a report command.",
+    )
+    state_dir = _start_single_reword(git_repo, base, replacement)
+    git_dir = Path(
+        _git(git_repo, "rev-parse", "--absolute-git-dir").stdout.strip()
+    )
+    marker = git_dir / "fail-commit-message-once"
+    marker.write_text("fail\n", encoding="utf-8")
+    hook = git_dir / "hooks" / "commit-msg"
+    hook.write_text(
+        "#!/bin/sh\n"
+        'git_dir=$(git rev-parse --absolute-git-dir)\n'
+        'if test -f "$git_dir/fail-commit-message-once"; then\n'
+        '  rm "$git_dir/fail-commit-message-once"\n'
+        "  exit 1\n"
+        "fi\n",
+        encoding="utf-8",
+    )
+    hook.chmod(0o755)
+    stopped = _helper(git_repo, "apply-audit", "--base", base, check=False)
+    assert stopped.returncode != 0
+
+    entry_path = state_dir / "rewrite-entry-1.json"
+    entry = json.loads(entry_path.read_text(encoding="utf-8"))
+    entry["source_head"] = "0" * 40
+    entry_path.write_text(json.dumps(entry), encoding="utf-8")
+
+    continued = _git(git_repo, "rebase", "--continue", check=False)
+
+    assert continued.returncode != 0
+    assert (
+        "rewrite entry does not match the active checkpoint attempt"
+        in continued.stderr
+    )
+    _git(git_repo, "rebase", "--abort")
+
+
+def test_apply_audit_resumes_after_a_transient_hook_failure(
+    git_repo: Path,
+) -> None:
+    """A rescheduled amendment should finish from the frozen position record."""
+    base = _git(git_repo, "rev-parse", "HEAD").stdout.strip()
+    _commit(git_repo, "Bad message\n")
+    _helper(git_repo, "start", "--base", base)
+    _helper(git_repo, "scan", "--base", base)
+    state_dir = git_repo / ".git-stage-batch" / "refine-commit-messages"
+    scan = json.loads((state_dir / "scan.json").read_text(encoding="utf-8"))
+    entry = scan["commits"][0]
+    replacement = _message(
+        "core: expose message inspection",
+        "The project provides a stable message representation.",
+        "Reviewers cannot inspect that representation as a report.",
+        "This commit exposes inspection through a report command.",
+    )
+    audit = {
+        "schema": 1,
+        "mode": "refine",
+        "base": scan["base"],
+        "head": scan["head"],
+        "conventions": {
+            "sources": ["fallback message guidelines"],
+            "summary": "Three body paragraphs for a standalone commit.",
+        },
+        "commits": [
+            {
+                "sha": entry["sha"],
+                "subject": entry["subject"],
+                "signals": entry["signals"],
+                "verdict": "REWORD",
+                "reason": "The existing message lacks the required narrative.",
+                "patch_fidelity": "The proposal describes the complete test patch.",
+                "proposed_message": replacement,
+            }
+        ],
+    }
+    (state_dir / "audit.json").write_text(json.dumps(audit), encoding="utf-8")
+
+    git_dir = Path(
+        _git(git_repo, "rev-parse", "--absolute-git-dir").stdout.strip()
+    )
+    marker = git_dir / "fail-commit-message-once"
+    marker.write_text("fail\n", encoding="utf-8")
+    hook = git_dir / "hooks" / "commit-msg"
+    hook.write_text(
+        "#!/bin/sh\n"
+        'git_dir=$(git rev-parse --absolute-git-dir)\n'
+        'if test -f "$git_dir/fail-commit-message-once"; then\n'
+        '  rm "$git_dir/fail-commit-message-once"\n'
+        "  exit 1\n"
+        "fi\n",
+        encoding="utf-8",
+    )
+    hook.chmod(0o755)
+
+    stopped = _helper(git_repo, "apply-audit", "--base", base, check=False)
+
+    assert stopped.returncode != 0
+    assert "one-pass message rewrite stopped" in stopped.stderr
+    assert (git_dir / "rebase-merge").is_dir()
+    _git(git_repo, "rebase", "--continue")
+    finalized = _helper(git_repo, "finalize-apply", "--base", base)
+    assert "1 replacement messages" in finalized.stdout
+    assert (
+        _git(git_repo, "log", "-1", "--format=%B").stdout.rstrip("\n")
+        == replacement.rstrip("\n")
+    )
+    _helper(git_repo, "complete", "--base", base)
 
 
 def test_checkpoint_rejects_changes_to_out_of_scope_local_branches(

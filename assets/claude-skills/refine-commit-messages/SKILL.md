@@ -52,9 +52,27 @@ checkpoint to resume.
 Before either mode, read repository guidance, representative recent messages,
 and the commit-message hook. Repository-specific rules override the bundled
 fallback rules. Use `Agent(commit-message-drafter)` in its historical-commit
-mode when installed. Give it the target SHA, parent state, patch, complete
-ordered series, position, and discovered rules; never ask it to inspect the
-clean staged index for an already-committed patch.
+mode when installed.
+
+Build one compact series index before drafting. Record the base, source head,
+and overall goal once. For each position, record its SHA, subject, narrative
+role, one plain-language sentence describing the patch outcome, and only the
+prior capabilities needed to understand that change. Do not copy the whole
+prefix of earlier entries into each new entry. Inspect each patch once in
+order and update the index with that commit's state change.
+
+For an individual draft, provide the target SHA, relevant parent state, patch,
+overall goal, target index entry, adjacent entries, and discovered rules. Do
+not resend the full index or reread the complete raw series for every commit,
+and never ask the drafter to inspect the clean staged index for an
+already-committed patch.
+
+Persist the index as `series-index.json`, bound to the canonical base and
+source head. In audit mode, keep it under the external audit temporary
+directory. In default mode, write it under
+`$REFINE_MESSAGES_STATE_DIR` after `start`. Reuse a matching index after
+context compaction or `resume`; never repeat the range-wide semantic read just
+to reconstruct lost working context.
 
 ## Audit mode
 
@@ -72,10 +90,10 @@ REFINE_MESSAGES_HELPER=.claude/skills/refine-commit-messages/scripts/refine-comm
 BASE_SHA=$(python3 "$REFINE_MESSAGES_HELPER" check-range --audit-only --base "$BASE_SHA")
 AUDIT_TMP=$(mktemp -d)
 python3 "$REFINE_MESSAGES_HELPER" inspect --base "$BASE_SHA" > "$AUDIT_TMP/scan.json"
-git --no-optional-locks log --reverse --format='%H%n%B%n---' "$BASE_SHA"..HEAD
 ```
 
-Inspect every patch as well as every message:
+`scan.json` contains every message and its mechanical signals. Inspect the
+patches once:
 
 ```bash
 git --no-optional-locks log --reverse --stat --patch --find-renames "$BASE_SHA"..HEAD
@@ -128,8 +146,9 @@ python3 "$REFINE_MESSAGES_HELPER" status --json
 
 Do not read or reuse artifacts from an older run before `start`.
 If the range contains signed commits, ensure the configured signing mechanism
-can re-sign replacements. `verify-head` rejects a rewrite that strips or adds
-signature presence.
+can re-sign them. The one-pass callbacks explicitly re-sign originally signed
+positions and keep originally unsigned positions unsigned; a signing failure
+stops the rebase.
 
 ## Resume
 
@@ -146,11 +165,35 @@ RECOVERY_REF=$(python3 "$REFINE_MESSAGES_HELPER" recovery-ref)
 git --no-optional-locks show-ref --verify "$RECOVERY_REF"
 ```
 
-If a rebase is active, inspect `git status`, its todo/done files, and the last
-checkpoint event. Continue only when they identify the same message edit and
-series position. Aborting that rebase is safe; never abort and then call
-`start`. Outside a rebase, `check-resume` requires the exact original tree
-sequence and author metadata to remain intact.
+Use the checkpoint phase reported by `status`. For the current `applying`
+phase, inspect `git status`, the rebase todo/done files, and the last checkpoint
+event. Continue only when they identify the same rewrite plan and series
+position. After resolving a transient hook failure or other understood stop,
+run:
+
+```bash
+git --no-optional-locks -c commit.gpgSign=false rebase --continue
+python3 "$REFINE_MESSAGES_HELPER" finalize-apply --base "$BASE_SHA"
+```
+
+If no rebase is active while the phase is `applying`, compare `HEAD` with the
+checkpoint's `rewrite_source_head`. An equal value means the rebase never
+started or was aborted; fix the cause and rerun `apply-audit`. A different
+value means the rebase changed history, so run only `finalize-apply` and let it
+verify the result. Aborting the rebase is safe; never abort and then call
+`start`. If a message itself fails the commit hook, abort the controlled
+rebase, correct that proposal in `audit.json`, and rerun `apply-audit` from the
+existing checkpoint. Outside a rebase,
+`check-resume` requires the exact original tree sequence and author metadata
+to remain intact.
+
+A checkpoint in the older `rewriting` phase predates the one-pass workflow. If
+its rebase is active, abort that rebase to return to the saved pre-step state,
+then run `apply-audit`, which validates the existing audit; do not call
+`start`.
+If no rebase is active, first run `verify` and `scan`, update the audit's
+position-bound SHAs and mechanical signals, and recheck only the message that
+already landed and its neighbors before using `apply-audit`.
 
 ## Audit and rewrite
 
@@ -160,7 +203,8 @@ Generate the current mechanical scan:
 python3 "$REFINE_MESSAGES_HELPER" scan --base "$BASE_SHA"
 ```
 
-Inspect every commit's body and patch. Write
+Use the series index to inspect every commit's body and patch exactly once.
+Write
 `$REFINE_MESSAGES_STATE_DIR/audit.json` with this shape:
 
 ```json
@@ -171,7 +215,7 @@ Inspect every commit's body and patch. Write
   "head": "FULL_CURRENT_HEAD_SHA",
   "conventions": {
     "sources": ["CONTRIBUTING.md", "fallback message guidelines"],
-    "summary": "Concrete paragraph, prefix, tense, and wrapping rules applied"
+    "summary": "Concrete structure, plain-language, term, and wrapping rules"
   },
   "commits": [
     {
@@ -201,49 +245,49 @@ mechanically signaled message because of an explicit repository override, add:
 ]
 ```
 
-Cover every commit exactly once in order. Validate the working audit:
+For a `REWORD`, write `patch_fidelity` and `series_transition` about the
+proposed replacement; the helper carries those findings into the final audit.
+Cover every commit exactly once in order.
+
+If every verdict is `KEEP`, proceed directly to the completion gate. Otherwise
+apply every replacement in one controlled rebase:
 
 ```bash
-python3 "$REFINE_MESSAGES_HELPER" validate-audit --allow-reword --base "$BASE_SHA"
+python3 "$REFINE_MESSAGES_HELPER" apply-audit --base "$BASE_SHA"
 ```
 
-Reword the earliest `REWORD` only. Save its proposed message under the state
-directory, then let the helper create a controlled stop at that exact commit:
-
-```bash
-POSITION=PUT_ONE_BASED_POSITION_HERE
-TARGET_SHA=PUT_CURRENT_FULL_SHA_HERE
-MESSAGE_FILE="$REFINE_MESSAGES_STATE_DIR/message-$POSITION.txt"
-python3 "$REFINE_MESSAGES_HELPER" begin-reword --base "$BASE_SHA" --position "$POSITION" --target "$TARGET_SHA"
-git --no-optional-locks show --stat --patch --find-renames HEAD
-git commit --amend -F "$MESSAGE_FILE"
-python3 "$REFINE_MESSAGES_HELPER" verify-head --position "$POSITION"
-git rebase --continue
-python3 "$REFINE_MESSAGES_HELPER" verify --base "$BASE_SHA"
-```
+`apply-audit` validates `scan.json` and the complete audit before creating a
+rebase. Do not run a separate validation pass first.
 
 Do not stage, edit, reset, split, squash, reorder, or drop content. If a hook
 changes the index or tree, stop and restore from the recovery ref. If a patch
 does not match one coherent message, report that `refine-history` is needed
 instead of changing its boundary here.
 
-`begin-reword` uses a portable sequence editor and command-scoped Git settings
-that disable abbreviated todo commands, autosquash, update-refs, rebase-merges,
-and autostash. Do not replace it with an ad hoc interactive-rebase recipe.
+`apply-audit` freezes the validated audit by series position and adds one
+constant-size verification callback after every pick in a portable rebase
+todo. Each callback restores that position's expected message and signature
+presence while verifying its tree and author. The callbacks run from a frozen
+copy inside the worktree's Git directory, so historical checkouts cannot
+replace the helper. The rebase disables abbreviated todo commands, autosquash,
+update-refs, rebase-merges, and autostash. Afterward, the helper performs one
+linear whole-series check, regenerates `scan.json`, and converts the audit to
+current all-`KEEP` entries.
 
-After each reword, regenerate `scan.json` and rebuild the complete audit from
-the beginning because all descendant SHAs changed. Continue until every entry
-is `KEEP`. Vary fourth-paragraph phrasing while preserving the required series
-position: future work for earlier commits, the singular final commit for the
-penultimate commit, and a conclusion for the final commit.
+Do not rebuild the complete audit merely because rewritten ancestors changed
+descendant SHAs. Reinspect only a message that differs from the validated
+plan, its adjacent transitions, or evidence affected by a changed repository
+rule. If boundaries, order, or patches changed, stop rather than trying to
+repair the audit. Ordinary successful application needs one initial semantic
+audit. Later checks are linear mechanical verification and never repeat
+semantic drafting once per reworded commit.
 
 ## Completion gate
 
-Validate the final all-`KEEP` audit, then complete:
+Reconfirm publication safety, then let the helper validate the final
+all-`KEEP` audit and complete:
 
 ```bash
-python3 "$REFINE_MESSAGES_HELPER" validate-audit --base "$BASE_SHA"
-python3 "$REFINE_MESSAGES_HELPER" verify --base "$BASE_SHA"
 git --no-optional-locks status --short
 git --no-optional-locks branch -a --contains HEAD
 git --no-optional-locks remote -v

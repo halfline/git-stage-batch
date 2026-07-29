@@ -29,6 +29,8 @@ Expect the caller to provide:
 - for historical mode, the target commit's full SHA and series position
 - whether this is a single commit or part of a series
 - the current commit's one-clause purpose
+- for a series, its overall goal, the selected state at this position, and the
+  immediately preceding and following index entries
 - whether this is the final commit in the series
 - whether this is the penultimate commit in the series, when known
 - any repository-specific commit rules already discovered
@@ -57,11 +59,17 @@ Prefer the smallest number of commands that gives a confident answer.
 For historical mode, leave the index and worktree out of the analysis:
 
 1. `git show --stat --patch --find-renames TARGET_SHA` for the exact patch
-2. `git show TARGET_SHA^:<path>` for representative parent-state paths
-3. `git log --reverse --format='%H%n%B%n---' BASE_SHA..SERIES_HEAD` for the
-   cumulative narrative and adjacent fourth-paragraph transitions
+2. the caller's series goal, selected-state summary, and adjacent index entries
+   for cumulative narrative and fourth-paragraph transitions
+3. `git show TARGET_SHA^:<path>` only when representative parent-state content
+   is needed to verify that summary
 4. representative path history, repository guidance, and the commit hook as
    needed
+
+Do not reread the complete raw series when the caller supplied an indexed
+summary. Inspect an adjacent commit directly only when its supplied transition
+is ambiguous. Fall back to a range-wide log only when essential series context
+is missing and cannot be recovered from the target and its neighbors.
 
 If historical mode lacks an exact target SHA, report the missing input instead
 of falling back to `git diff --cached`.

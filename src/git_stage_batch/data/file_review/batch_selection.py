@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from ...batch.file_display import render_batch_file_display
 from ...batch.selection import require_single_file_context_for_line_selection_ranges
+from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...batch.submodule_pointer import (
     is_batch_submodule_pointer,
     refuse_batch_submodule_pointer_lines,
@@ -131,7 +132,7 @@ def translate_batch_file_gutter_ids_to_selection_ids(
 
 def translate_reset_batch_file_gutter_ids_to_selection_ranges(
     batch_name: str,
-    all_files: dict[str, dict],
+    all_files: dict[str, BatchFileMetadataDict],
     file: str | None,
     patterns: list[str] | None,
     line_id_specification: str,

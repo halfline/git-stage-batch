@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import TYPE_CHECKING
+from collections.abc import Callable, Sequence
+from typing import TYPE_CHECKING, cast
 
 from ...core.line_selection import LineSelection
 from ...exceptions import MergeError as _MergeError
@@ -210,6 +210,8 @@ def _check_unbounded_trailing_context(
         )
 
         if before_target_line is not None and after_target_line is not None:
+            assert before_source_line is not None
+            assert after_source_line is not None
             target_span = after_target_line - before_target_line - 1
             source_span_outside_run = (
                 after_source_line - before_source_line - 1
@@ -242,5 +244,5 @@ def _check_unbounded_trailing_context(
 def _first_selected_line(lines: LineSelection) -> int | None:
     first = getattr(lines, "first", None)
     if first is not None:
-        return first()
+        return cast(Callable[[], int | None], first)()
     return min(lines) if lines else None

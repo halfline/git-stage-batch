@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from types import TracebackType
 
 from ..core.line_selection import format_line_ids
 from ..core.replacement import (
@@ -38,7 +39,12 @@ class ReplacementBatchView:
     def __enter__(self) -> ReplacementBatchView:
         return self
 
-    def __exit__(self, exc_type, exc, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()
 
 
@@ -79,6 +85,7 @@ def _build_replacement_batch_view(
 ) -> ReplacementBatchView:
     """Build a replacement view while its replacement line sequence is open."""
     claimed_source_lines = sorted(ownership.presence_line_set())
+    new_claimed_lines: list[int]
 
     if claimed_source_lines:
         expected_claimed = list(range(claimed_source_lines[0], claimed_source_lines[-1] + 1))
@@ -143,7 +150,7 @@ def _build_replacement_batch_view(
     added_count = len(replacement_lines)
 
     if added_count == 0:
-        new_claimed_lines: list[int] = []
+        new_claimed_lines = []
     elif anchor_line is None:
         new_claimed_lines = list(range(1, added_count + 1))
     else:

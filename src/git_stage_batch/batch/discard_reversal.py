@@ -140,11 +140,14 @@ def reverse_presence_constraints(
         return result
 
     for index in range(len(entries)):
-        source_line = realized_entry_source_line_at(entries, index)
-        if source_line is not None and source_line in presence_line_set:
+        entry_source_line = realized_entry_source_line_at(entries, index)
+        if (
+            entry_source_line is not None
+            and entry_source_line in presence_line_set
+        ):
             flush_copy(copy_start, index)
             copy_start = None
-            restore_source_line(source_line)
+            restore_source_line(entry_source_line)
             copy_start = index + 1
         else:
             if copy_start is None:

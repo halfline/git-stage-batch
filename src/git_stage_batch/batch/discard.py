@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from .merge.baseline_correspondence import (
     build_baseline_correspondence as _build_discard_baseline_correspondence,
@@ -28,6 +28,7 @@ from ..core.buffer import (
     LineBuffer,
     buffer_has_data,
 )
+from ..core.line_selection import LineRanges
 from ..editor.line_endings import (
     choose_line_ending,
     restore_line_endings_in_chunks,
@@ -89,10 +90,10 @@ def discard_batch_from_line_sequences_as_buffer(
 
 
 def _discard_batch_line_chunks(
-    source_lines: AcquirableLineSequence[Any],
+    source_lines: AcquirableLineSequence[bytes],
     ownership: 'BatchOwnership',
-    working_lines: AcquirableLineSequence[Any],
-    baseline_lines: AcquirableLineSequence[Any],
+    working_lines: AcquirableLineSequence[bytes],
+    baseline_lines: AcquirableLineSequence[bytes],
 ) -> Iterator[bytes]:
     """Discard ownership from normalized byte-line sequences."""
     with (
@@ -167,7 +168,7 @@ def _build_realized_entries_for_discard(
         working_to_source,
         0,
         len(working_lines),
-        set(),
+        LineRanges.empty(),
     )
 
     return result

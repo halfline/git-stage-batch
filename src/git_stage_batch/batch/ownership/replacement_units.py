@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from ...core.line_selection import LineRanges
 from .claims import (
     format_ownership_line_set,
     parse_ownership_line_ranges,
+)
+from .metadata_types import (
+    ReplacementUnitMetadata,
+    ReplacementUnitOriginMetadata,
 )
 from .references import BaselineReference
 
@@ -33,9 +38,9 @@ class ReplacementUnitOrigin:
         """Return the number of baseline lines covered by the original unit."""
         return self.old_end - self.old_start + 1
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> ReplacementUnitOriginMetadata:
         """Serialize to metadata dictionary."""
-        data = {
+        data: ReplacementUnitOriginMetadata = {
             "old_start": self.old_start,
             "old_end": self.old_end,
             "new_start": self.new_start,
@@ -48,7 +53,7 @@ class ReplacementUnitOrigin:
     @classmethod
     def from_dict(
         cls,
-        data: dict,
+        data: ReplacementUnitOriginMetadata,
         blob_contents: dict[str, bytes] | None = None,
     ) -> ReplacementUnitOrigin:
         """Deserialize from metadata dictionary."""
@@ -73,14 +78,14 @@ class ReplacementUnit:
     canonical deletion constraint is stored only once in metadata.
     """
 
-    presence_lines: list[str | int]
+    presence_lines: Sequence[str | int]
     deletion_indices: list[int]
     origin: ReplacementUnitOrigin | None = field(default=None, compare=False)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> ReplacementUnitMetadata:
         """Serialize to metadata dictionary."""
-        data = {
-            "presence_lines": self.presence_lines,
+        data: ReplacementUnitMetadata = {
+            "presence_lines": list(self.presence_lines),
             "deletion_indices": self.deletion_indices,
         }
         if self.origin is not None:
@@ -90,7 +95,7 @@ class ReplacementUnit:
     @classmethod
     def from_dict(
         cls,
-        data: dict,
+        data: ReplacementUnitMetadata,
         blob_contents: dict[str, bytes] | None = None,
     ) -> ReplacementUnit:
         """Deserialize from metadata dictionary."""

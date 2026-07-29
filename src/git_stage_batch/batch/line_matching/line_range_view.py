@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import overload
 
 
 class LineRangeView(Sequence[bytes]):
@@ -22,6 +23,12 @@ class LineRangeView(Sequence[bytes]):
 
     def __len__(self) -> int:
         return self._end - self._start
+
+    @overload
+    def __getitem__(self, index: int) -> bytes: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> Sequence[bytes]: ...
 
     def __getitem__(self, index: int | slice) -> bytes | Sequence[bytes]:
         if isinstance(index, slice):

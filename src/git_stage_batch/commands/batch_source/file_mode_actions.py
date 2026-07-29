@@ -4,24 +4,25 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...data.file_modes import apply_git_file_mode
 from ...exceptions import CommandError
 from ...utils.git_command import run_git_command
 from ...utils.git_repository import get_git_repository_root_path
 
 
-def is_file_mode_action(file_meta: dict) -> bool:
+def is_file_mode_action(file_meta: BatchFileMetadataDict) -> bool:
     return file_meta.get("file_type") == "mode"
 
 
-def _mode(file_meta: dict, field: str) -> str:
+def _mode(file_meta: BatchFileMetadataDict, field: str) -> str:
     mode = file_meta.get(field)
     if mode not in {"100644", "100755"}:
         raise CommandError(f"Invalid batch file mode: {mode}")
     return mode
 
 
-def stage_file_mode(file_path: str, file_meta: dict) -> None:
+def stage_file_mode(file_path: str, file_meta: BatchFileMetadataDict) -> None:
     mode = _mode(file_meta, "new_mode")
     chmod = "+x" if mode == "100755" else "-x"
     result = run_git_command(
@@ -32,11 +33,11 @@ def stage_file_mode(file_path: str, file_meta: dict) -> None:
         raise CommandError(f"Failed to stage file mode for {file_path}")
 
 
-def apply_new_file_mode(file_path: str, file_meta: dict) -> None:
+def apply_new_file_mode(file_path: str, file_meta: BatchFileMetadataDict) -> None:
     _apply(file_path, _mode(file_meta, "new_mode"))
 
 
-def apply_old_file_mode(file_path: str, file_meta: dict) -> None:
+def apply_old_file_mode(file_path: str, file_meta: BatchFileMetadataDict) -> None:
     _apply(file_path, _mode(file_meta, "old_mode"))
 
 

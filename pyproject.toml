@@ -38,6 +38,7 @@ dev = [
     "pytest>=8.0.0",
     "meson-python>=0.17.0",
     "meson>=1.10.0",
+    "mypy==2.3.0",
     "ninja>=1.11.0",
     "pytest-xdist>=3.8.0",
     "ruff==0.12.2",

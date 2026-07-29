@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+from .metadata_types import (
+    AbsenceClaimMetadata,
+    BaselineReferenceMetadata,
+    PresenceClaimMetadata,
+    ReplacementUnitMetadata,
+)
 
 def read_metadata_blob(
     blob_sha: str | None,
@@ -15,19 +21,25 @@ def read_metadata_blob(
     return blob_contents[blob_sha]
 
 
-def baseline_reference_blob_ids(reference_metadata: dict) -> list[str]:
+def baseline_reference_blob_ids(
+    reference_metadata: BaselineReferenceMetadata,
+) -> list[str]:
     """Return blob IDs referenced by one baseline-reference metadata value."""
     if not isinstance(reference_metadata, dict):
         return []
     blob_ids: list[str] = []
-    for key in ("after_blob", "before_blob"):
-        blob_sha = reference_metadata.get(key)
+    for blob_sha in (
+        reference_metadata.get("after_blob"),
+        reference_metadata.get("before_blob"),
+    ):
         if blob_sha:
             blob_ids.append(blob_sha)
     return blob_ids
 
 
-def baseline_references_blob_ids(references_metadata: dict) -> list[str]:
+def baseline_references_blob_ids(
+    references_metadata: dict[str, BaselineReferenceMetadata],
+) -> list[str]:
     """Return blob IDs referenced by baseline references keyed by line."""
     blob_ids: list[str] = []
     for value in references_metadata.values():
@@ -35,7 +47,9 @@ def baseline_references_blob_ids(references_metadata: dict) -> list[str]:
     return blob_ids
 
 
-def presence_claim_reference_blob_ids(presence_metadata: list[dict]) -> list[str]:
+def presence_claim_reference_blob_ids(
+    presence_metadata: list[PresenceClaimMetadata],
+) -> list[str]:
     """Return blob IDs for baseline references in presence-claim metadata."""
     blob_ids: list[str] = []
     for claim in presence_metadata:
@@ -47,7 +61,9 @@ def presence_claim_reference_blob_ids(presence_metadata: list[dict]) -> list[str
     return blob_ids
 
 
-def deletion_content_blob_ids(deletion_metadata: list[dict]) -> list[str]:
+def deletion_content_blob_ids(
+    deletion_metadata: list[AbsenceClaimMetadata],
+) -> list[str]:
     """Return blob IDs for deletion content in ownership metadata."""
     return [
         metadata["blob"]
@@ -56,7 +72,9 @@ def deletion_content_blob_ids(deletion_metadata: list[dict]) -> list[str]:
     ]
 
 
-def deletion_reference_blob_ids(deletion_metadata: list[dict]) -> list[str]:
+def deletion_reference_blob_ids(
+    deletion_metadata: list[AbsenceClaimMetadata],
+) -> list[str]:
     """Return blob IDs for deletion baseline references in metadata."""
     return [
         blob_id
@@ -68,7 +86,7 @@ def deletion_reference_blob_ids(deletion_metadata: list[dict]) -> list[str]:
 
 
 def replacement_origin_reference_blob_ids(
-    replacement_metadata: list[dict],
+    replacement_metadata: list[ReplacementUnitMetadata],
 ) -> list[str]:
     """Return blob IDs for replacement-origin baseline references."""
     blob_ids: list[str] = []

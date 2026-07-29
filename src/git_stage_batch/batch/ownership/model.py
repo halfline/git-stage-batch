@@ -14,6 +14,7 @@ from .claims import (
     presence_claims_from_source_lines as _claim_presence_claims_from_source_lines,
 )
 from .references import BaselineReference as _BaselineReference
+from .metadata_types import BatchOwnershipMetadata
 from .replacement_units import (
     ReplacementUnit as _ReplacementUnit,
     normalize_replacement_units as _replacement_normalize_units,
@@ -85,9 +86,9 @@ class BatchOwnership:
                 return claim.baseline_references[source_line]
         return None
 
-    def to_metadata_dict(self) -> dict:
+    def to_metadata_dict(self) -> BatchOwnershipMetadata:
         """Convert to metadata dictionary format for storage."""
-        data = {
+        data: BatchOwnershipMetadata = {
             "presence_claims": [claim.to_dict() for claim in self.presence_claims],
             "deletions": [claim.to_dict() for claim in self.deletions]
         }

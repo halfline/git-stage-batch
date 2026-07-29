@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import cast
 
 from ...core.hashing import (
     compute_binary_file_hash,
@@ -41,9 +42,16 @@ from .store import (
     write_selected_change_kind,
 )
 from .snapshots import write_snapshots_for_selected_file_path
+from .metadata_types import (
+    SelectedBinaryData,
+    SelectedGitlinkData,
+    SelectedModeData,
+    SelectedRenameData,
+    SelectedTextDeletionData,
+)
 
 
-def read_selected_binary_data() -> dict | None:
+def read_selected_binary_data() -> SelectedBinaryData | None:
     """Read cached binary selection data, if structurally valid."""
     binary_path = get_selected_binary_file_json_path()
     if not binary_path.exists():
@@ -52,7 +60,7 @@ def read_selected_binary_data() -> dict | None:
         binary_data = json.loads(read_text_file_contents(binary_path))
     except json.JSONDecodeError:
         return None
-    return binary_data if isinstance(binary_data, dict) else None
+    return cast(SelectedBinaryData, binary_data) if isinstance(binary_data, dict) else None
 
 
 def load_selected_binary_file() -> BinaryFileChange | None:
@@ -78,7 +86,7 @@ def load_selected_binary_file() -> BinaryFileChange | None:
         return None
 
 
-def read_selected_gitlink_data() -> dict | None:
+def read_selected_gitlink_data() -> SelectedGitlinkData | None:
     """Read cached gitlink selection data, if structurally valid."""
     gitlink_path = get_selected_gitlink_file_json_path()
     if not gitlink_path.exists():
@@ -87,7 +95,7 @@ def read_selected_gitlink_data() -> dict | None:
         gitlink_data = json.loads(read_text_file_contents(gitlink_path))
     except json.JSONDecodeError:
         return None
-    return gitlink_data if isinstance(gitlink_data, dict) else None
+    return cast(SelectedGitlinkData, gitlink_data) if isinstance(gitlink_data, dict) else None
 
 
 def load_selected_gitlink_change() -> GitlinkChange | None:
@@ -134,16 +142,16 @@ def load_selected_mode_change() -> FileModeChange | None:
         return None
 
 
-def read_selected_mode_data() -> dict | None:
+def read_selected_mode_data() -> SelectedModeData | None:
     """Read cached mode selection data, if structurally valid."""
     try:
         data = json.loads(read_text_file_contents(get_selected_mode_change_json_path()))
     except (FileNotFoundError, json.JSONDecodeError):
         return None
-    return data if isinstance(data, dict) else None
+    return cast(SelectedModeData, data) if isinstance(data, dict) else None
 
 
-def read_selected_rename_data() -> dict | None:
+def read_selected_rename_data() -> SelectedRenameData | None:
     """Read cached rename selection data, if structurally valid."""
     rename_path = get_selected_rename_file_json_path()
     if not rename_path.exists():
@@ -152,7 +160,7 @@ def read_selected_rename_data() -> dict | None:
         rename_data = json.loads(read_text_file_contents(rename_path))
     except json.JSONDecodeError:
         return None
-    return rename_data if isinstance(rename_data, dict) else None
+    return cast(SelectedRenameData, rename_data) if isinstance(rename_data, dict) else None
 
 
 def load_selected_rename_change() -> RenameChange | None:
@@ -173,7 +181,7 @@ def load_selected_rename_change() -> RenameChange | None:
         return None
 
 
-def read_selected_text_deletion_data() -> dict | None:
+def read_selected_text_deletion_data() -> SelectedTextDeletionData | None:
     """Read cached text deletion selection data, if structurally valid."""
     deletion_path = get_selected_text_deletion_file_json_path()
     if not deletion_path.exists():
@@ -182,7 +190,11 @@ def read_selected_text_deletion_data() -> dict | None:
         deletion_data = json.loads(read_text_file_contents(deletion_path))
     except json.JSONDecodeError:
         return None
-    return deletion_data if isinstance(deletion_data, dict) else None
+    return (
+        cast(SelectedTextDeletionData, deletion_data)
+        if isinstance(deletion_data, dict)
+        else None
+    )
 
 
 def load_selected_text_deletion_change() -> TextFileDeletionChange | None:

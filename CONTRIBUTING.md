@@ -27,11 +27,16 @@ uv sync
 
 # Run tests
 uv run pytest -n auto
+uv run python scripts/check_type_hygiene.py
 ```
 
 Use the xdist form (`-n auto`) for full-suite runs. The suite is large enough
 that serial `uv run pytest` is mainly useful for focused debugging or when
 reproducing ordering-sensitive failures.
+
+`dict`, `list`, or `tuple` annotations. The type-hygiene check also prevents
+explicit `Any` from spreading beyond the small set of reviewed serialization,
+reflection, and third-party API boundaries.
 
 ## Find the Code for a Change
 

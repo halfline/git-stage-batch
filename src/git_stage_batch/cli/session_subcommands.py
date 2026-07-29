@@ -13,10 +13,10 @@ from ..commands.undo import command_undo
 from ..i18n import _
 from ..output.status_prompt import DEFAULT_PROMPT_FORMAT
 from .auto_advance_options import add_auto_advance_arguments
-from .subcommand_parser import add_subcommand_parser
+from .subcommand_parser import Subparsers, add_subcommand_parser
 
 
-def add_check_unstaged_subcommand(subparsers) -> None:
+def add_check_unstaged_subcommand(subparsers: Subparsers) -> None:
     """Register the check-unstaged subcommand."""
     parser_check_unstaged = add_subcommand_parser(
         subparsers,

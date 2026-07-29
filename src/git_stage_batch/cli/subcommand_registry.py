@@ -37,9 +37,10 @@ from .session_subcommands import (
     add_undo_subcommand,
 )
 from .tui_subcommands import add_interactive_subcommand
+from .subcommand_parser import Subparsers
 
 
-def add_cli_subcommands(subparsers) -> None:
+def add_cli_subcommands(subparsers: Subparsers) -> None:
     """Register all public and hidden CLI subcommands in display order."""
     add_check_unstaged_subcommand(subparsers)
     add_start_subcommand(subparsers)

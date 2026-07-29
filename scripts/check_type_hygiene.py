@@ -23,6 +23,10 @@ ALLOWED_EXPLICIT_ANY = frozenset({
     "GitHelpArgumentParser.__init__::param:kwargs",
     "src/git_stage_batch/cli/git_help.py::"
     "GitHelpArgumentParser.print_help::cast",
+    "src/git_stage_batch/cli/subcommand_parser.py::"
+    "Subparsers.add_parser::param:kwargs",
+    "src/git_stage_batch/cli/subcommand_parser.py::"
+    "add_subcommand_parser::param:kwargs",
 })
 
 

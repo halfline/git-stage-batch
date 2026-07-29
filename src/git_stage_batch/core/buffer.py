@@ -6,13 +6,22 @@ from collections.abc import Iterable, Sequence
 from contextlib import nullcontext
 import mmap
 from pathlib import Path
-from typing import Any, BinaryIO, Generic, Iterator, TypeVar, overload
+from types import TracebackType
+from typing import (
+    BinaryIO,
+    ContextManager,
+    Generic,
+    Iterator,
+    TypeVar,
+    overload,
+)
 
 from .mapped_storage import (
     ChunkedMappedRecordVector,
     byte_storage_from_chunks,
     byte_storage_from_path,
 )
+from .text_lines import AcquirableLineSequence
 
 
 _DEFAULT_CHUNK_SIZE = 1024 * 1024
@@ -229,7 +238,12 @@ class LineBuffer(Sequence[bytes]):
         self._require_open()
         return self
 
-    def __exit__(self, exc_type, exc, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()
 
     def acquire_line(self, index: int) -> _AcquiredBufferLineContext:
@@ -350,13 +364,13 @@ class _BufferLineView:
     def __getitem__(self, index: int | slice) -> int | bytes:
         view = self._memoryview()
         try:
-            result = view[index]
             if isinstance(index, slice):
+                result = view[index]
                 try:
                     return bytes(result)
                 finally:
                     result.release()
-            return result
+            return view[index]
         finally:
             view.release()
 
@@ -456,7 +470,12 @@ class _AcquiredBufferLineSequence(Sequence[_BufferLineView]):
         self._active = True
         return self
 
-    def __exit__(self, exc_type, exc, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self._active = False
 
     def __len__(self) -> int:
@@ -506,7 +525,12 @@ class _AcquiredBufferLineContext:
         lines = self._lines_context.__enter__()
         return lines[self._index]
 
-    def __exit__(self, exc_type, exc, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self._lines_context.__exit__(exc_type, exc, traceback)
 
 
@@ -526,12 +550,14 @@ class _BufferLineSliceSequence(Sequence[_LineT], Generic[_LineT]):
     def __len__(self) -> int:
         return len(range(*self._resolved_range()))
 
-    def acquire_lines(self) -> Any:
+    def acquire_lines(self) -> ContextManager[Sequence[_LineT]]:
         """Return a context manager for acquired lines from this slice."""
-        acquire_lines = getattr(self._parent, "acquire_lines", None)
-        if acquire_lines is None:
-            return nullcontext(self)
-        return _AcquiredBufferLineSliceContext(acquire_lines(), self._slice)
+        if isinstance(self._parent, AcquirableLineSequence):
+            return _AcquiredBufferLineSliceContext(
+                self._parent.acquire_lines(),
+                self._slice,
+            )
+        return nullcontext(self)
 
     @overload
     def __getitem__(self, index: int) -> _LineT: ...
@@ -588,20 +614,29 @@ class _BufferLineSliceSequence(Sequence[_LineT], Generic[_LineT]):
         return self._slice.indices(len(self._parent))
 
 
-class _AcquiredBufferLineSliceContext:
+class _AcquiredBufferLineSliceContext(Generic[_LineT]):
     """Context manager for acquired line views from a slice sequence."""
 
-    def __init__(self, parent_context: Any, line_slice: slice) -> None:
+    def __init__(
+        self,
+        parent_context: ContextManager[Sequence[_LineT]],
+        line_slice: slice,
+    ) -> None:
         self._parent_context = parent_context
         self._slice = line_slice
-        self._lines: Sequence[Any] | None = None
+        self._lines: Sequence[_LineT] | None = None
 
-    def __enter__(self) -> Sequence[Any]:
+    def __enter__(self) -> Sequence[_LineT]:
         parent = self._parent_context.__enter__()
         self._lines = _BufferLineSliceSequence(parent, self._slice)
         return self._lines
 
-    def __exit__(self, exc_type, exc, traceback) -> Any:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> bool | None:
         self._lines = None
         return self._parent_context.__exit__(exc_type, exc, traceback)
 

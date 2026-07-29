@@ -46,6 +46,11 @@ class SelectedRenameData(TypedDict, total=False):
     """Cached rename selection metadata."""
 
     old_path: str
+    new_path: str
 
 
+class SelectedTextDeletionData(TypedDict, total=False):
+    """Cached whole-text-file deletion metadata."""
+
+    old_path: str
     new_path: str

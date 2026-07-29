@@ -47,6 +47,7 @@ from .metadata_types import (
     SelectedGitlinkData,
     SelectedModeData,
     SelectedRenameData,
+    SelectedTextDeletionData,
 )
 
 
@@ -180,7 +181,7 @@ def load_selected_rename_change() -> RenameChange | None:
         return None
 
 
-def read_selected_text_deletion_data() -> dict | None:
+def read_selected_text_deletion_data() -> SelectedTextDeletionData | None:
     """Read cached text deletion selection data, if structurally valid."""
     deletion_path = get_selected_text_deletion_file_json_path()
     if not deletion_path.exists():
@@ -189,7 +190,11 @@ def read_selected_text_deletion_data() -> dict | None:
         deletion_data = json.loads(read_text_file_contents(deletion_path))
     except json.JSONDecodeError:
         return None
-    return deletion_data if isinstance(deletion_data, dict) else None
+    return (
+        cast(SelectedTextDeletionData, deletion_data)
+        if isinstance(deletion_data, dict)
+        else None
+    )
 
 
 def load_selected_text_deletion_change() -> TextFileDeletionChange | None:

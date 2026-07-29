@@ -106,7 +106,7 @@ def add_redo_subcommand(subparsers) -> None:
     parser_redo.set_defaults(func=lambda args: command_redo(force=args.force))
 
 
-def add_abort_subcommand(subparsers) -> None:
+def add_abort_subcommand(subparsers: Subparsers) -> None:
     """Register the abort subcommand."""
     parser_abort = add_subcommand_parser(
         subparsers,

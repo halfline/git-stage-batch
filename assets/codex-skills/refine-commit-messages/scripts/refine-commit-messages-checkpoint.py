@@ -96,6 +96,7 @@ CHECKPOINT_PATH = STATE_DIR / "checkpoint.json"
 PRE_COMMITS_PATH = STATE_DIR / "pre-commits.json"
 SCAN_PATH = STATE_DIR / "scan.json"
 AUDIT_PATH = STATE_DIR / "audit.json"
+REWRITE_PLAN_PATH = STATE_DIR / "rewrite-plan.json"
 
 
 def now() -> str:
@@ -214,6 +215,48 @@ def git_dir() -> Path:
     return Path(git_output("rev-parse", "--absolute-git-dir"))
 
 
+def rewrite_helper_snapshot_path() -> Path:
+    """Return the Git-private path for the active rebase helper copy."""
+    return (
+        git_dir()
+        / "git-stage-batch"
+        / "refine-commit-messages"
+        / "rewrite-helper.py"
+    )
+
+
+def snapshot_rewrite_helper() -> Path:
+    """Freeze this helper outside the tree that the rebase will check out."""
+    target = rewrite_helper_snapshot_path()
+    for directory in (target.parent.parent, target.parent):
+        if directory.is_symlink() or (
+            directory.exists() and not directory.is_dir()
+        ):
+            raise SystemExit(
+                f"refusing to use unsafe rewrite-helper directory: {directory}"
+            )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.is_symlink() or (target.exists() and not target.is_file()):
+        raise SystemExit(f"refusing to replace unsafe rewrite helper: {target}")
+
+    temporary_name: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "wb",
+            dir=target.parent,
+            prefix=f".{target.name}.",
+            delete=False,
+        ) as temporary:
+            temporary_name = temporary.name
+            temporary.write(Path(__file__).resolve(strict=True).read_bytes())
+        os.chmod(temporary_name, 0o600)
+        os.replace(temporary_name, target)
+    finally:
+        if temporary_name is not None:
+            Path(temporary_name).unlink(missing_ok=True)
+    return target.resolve(strict=True)
+
+
 def current_branch_ref() -> str | None:
     """Return the current symbolic branch ref."""
     result = git_run("symbolic-ref", "-q", "HEAD", check=False)
@@ -231,6 +274,39 @@ def active_rebase() -> tuple[bool, str | None]:
             return True, None
         return True, head_name.read_text(encoding="utf-8").strip() or None
     return False, None
+
+
+def latest_rebase_pick() -> str | None:
+    """Return the most recent original commit named in the active rebase log."""
+    for directory_name in ("rebase-merge", "rebase-apply"):
+        done_path = git_dir() / directory_name / "done"
+        if not done_path.is_file() or done_path.is_symlink():
+            continue
+        with done_path.open("rb") as done_file:
+            remaining = done_path.stat().st_size
+            partial = b""
+            while remaining:
+                block_size = min(8192, remaining)
+                remaining -= block_size
+                done_file.seek(remaining)
+                lines = (done_file.read(block_size) + partial).split(b"\n")
+                partial = lines[0]
+                for raw_line in reversed(lines[1:]):
+                    stripped = raw_line.lstrip()
+                    if stripped.startswith(b"pick "):
+                        commit = stripped.split(maxsplit=2)[1].decode(
+                            "ascii",
+                            errors="strict",
+                        )
+                        return canonical_base(commit)
+            stripped = partial.lstrip()
+            if stripped.startswith(b"pick "):
+                commit = stripped.split(maxsplit=2)[1].decode(
+                    "ascii",
+                    errors="strict",
+                )
+                return canonical_base(commit)
+    return None
 
 
 def reject_non_rebase_operations() -> None:
@@ -286,17 +362,16 @@ def remote_refs_containing(commit: str) -> list[str]:
 
 
 def reject_shared_commits(commits: list[str]) -> None:
-    """Reject rewriting any commit visible through a remote-tracking ref."""
-    shared = []
-    for commit in commits:
-        refs = remote_refs_containing(commit)
-        if refs:
-            shared.append((commit, refs))
-    if not shared:
+    """Reject one oldest-first linear chain visible through a remote ref."""
+    if not commits:
         return
-    details = "\n".join(f"  {commit}: {', '.join(refs)}" for commit, refs in shared)
+    oldest = commits[0]
+    refs = remote_refs_containing(oldest)
+    if not refs:
+        return
     raise SystemExit(
-        "refusing to rewrite commits contained in remote-tracking refs:\n" + details
+        "refusing to rewrite a commit range contained in remote-tracking refs:\n"
+        f"  {oldest}: {', '.join(refs)}"
     )
 
 
@@ -543,6 +618,8 @@ def original_document(base: str, recovery_ref: str) -> dict[str, Any]:
 def compare_invariants(
     originals: list[dict[str, Any]],
     current: list[dict[str, Any]],
+    *,
+    include_signature: bool = True,
 ) -> list[str]:
     """Compare a current range to its message-only invariants."""
     errors: list[str] = []
@@ -552,7 +629,8 @@ def compare_invariants(
         ]
     for original, candidate in zip(originals, current, strict=True):
         position = original["position"]
-        for field in ("tree", "author", "signed"):
+        fields = ("tree", "author", "signed") if include_signature else ("tree", "author")
+        for field in fields:
             if candidate.get(field) != original.get(field):
                 errors.append(
                     f"position {position}: {field} changed during message refinement"
@@ -634,7 +712,9 @@ def validate_checkpoint(
         )
     original_shas = [record["sha"] for record in originals if "sha" in record]
     current_shas = range_commits(base, allow_empty=True)
-    reject_shared_commits(list(dict.fromkeys([*original_shas, *current_shas])))
+    reject_shared_commits(original_shas)
+    if current_shas != original_shas:
+        reject_shared_commits(current_shas)
     if require_current and not rebase_active:
         current = records_for(base)
         errors.extend(compare_invariants(originals, current))
@@ -832,6 +912,198 @@ def validate_audit_document(
         raise SystemExit("refine-commit-messages audit failed:\n" + "\n".join(errors))
 
 
+def build_rewrite_plan(
+    audit: dict[str, Any],
+    scan: dict[str, Any],
+) -> dict[str, Any]:
+    """Freeze one validated audit as a position-indexed rewrite plan."""
+    reword_positions = [
+        position
+        for position, entry in enumerate(audit["commits"], start=1)
+        if entry["verdict"] == "REWORD"
+    ]
+    return {
+        "schema": 1,
+        "base": scan["base"],
+        "source_head": scan["head"],
+        "scan": scan,
+        "audit": audit,
+        "reword_positions": reword_positions,
+    }
+
+
+def load_rewrite_plan() -> dict[str, Any]:
+    """Load and validate the frozen audit used by the one-pass rewrite."""
+    plan = load_json(REWRITE_PLAN_PATH)
+    scan = plan.get("scan")
+    audit = plan.get("audit")
+    positions = plan.get("reword_positions")
+    if (
+        plan.get("schema") != 1
+        or not isinstance(scan, dict)
+        or not isinstance(audit, dict)
+        or not isinstance(positions, list)
+        or not all(isinstance(position, int) for position in positions)
+    ):
+        raise SystemExit("invalid refine-commit-messages rewrite plan")
+    if (
+        plan.get("base") != scan.get("base")
+        or plan.get("source_head") != scan.get("head")
+        or scan.get("mode") != "refine"
+    ):
+        raise SystemExit("rewrite plan does not match its source scan")
+    validate_audit_document(
+        audit,
+        scan,
+        allow_reword=True,
+        expected_mode="refine",
+    )
+    expected_positions = [
+        position
+        for position, entry in enumerate(audit["commits"], start=1)
+        if entry["verdict"] == "REWORD"
+    ]
+    if positions != expected_positions or not positions:
+        raise SystemExit("rewrite plan must contain every REWORD position in order")
+    return plan
+
+
+def validate_rewrite_plan_binding(
+    plan: dict[str, Any],
+    checkpoint: dict[str, Any],
+    checkpoint_base: str,
+) -> None:
+    """Require the frozen plan to match the active checkpoint attempt."""
+    if (
+        plan["base"] != checkpoint_base
+        or checkpoint.get("rewrite_source_head") != plan["source_head"]
+        or checkpoint.get("rewrite_positions") != plan["reword_positions"]
+    ):
+        raise SystemExit("rewrite plan does not match the active checkpoint attempt")
+
+
+def require_rewrite_helper(checkpoint: dict[str, Any]) -> None:
+    """Require an internal rebase callback to use the frozen helper copy."""
+    configured = checkpoint.get("rewrite_helper")
+    try:
+        expected = rewrite_helper_snapshot_path().resolve(strict=True)
+        current = Path(__file__).resolve(strict=True)
+    except OSError as error:
+        raise SystemExit(
+            "cannot resolve the checkpoint rewrite-helper snapshot"
+        ) from error
+    if configured != str(expected) or current != expected:
+        raise SystemExit(
+            "rewrite callback is not running from the checkpoint helper snapshot"
+        )
+
+
+def rewrite_entry_path(position: int) -> Path:
+    """Return the state path for one constant-size rewrite entry."""
+    return STATE_DIR / f"rewrite-entry-{position}.json"
+
+
+def write_rewrite_entries(plan: dict[str, Any]) -> None:
+    """Write one independently verifiable record for each rebase position."""
+    for position, (source, audit_entry) in enumerate(
+        zip(
+            plan["scan"]["commits"],
+            plan["audit"]["commits"],
+            strict=True,
+        ),
+        start=1,
+    ):
+        reword = audit_entry["verdict"] == "REWORD"
+        write_json(
+            rewrite_entry_path(position),
+            {
+                "schema": 1,
+                "base": plan["base"],
+                "source_head": plan["source_head"],
+                "position": position,
+                "source_sha": source["sha"],
+                "tree": source["tree"],
+                "author": source["author"],
+                "signed": source["signed"],
+                "reword": reword,
+                "source_message": source["message"],
+                "expected_message": (
+                    audit_entry["proposed_message"].rstrip("\n")
+                    if reword
+                    else source["message"]
+                ),
+            },
+        )
+
+
+def load_rewrite_entry(position: int) -> dict[str, Any]:
+    """Load one frozen position record without rereading the complete plan."""
+    entry = load_json(rewrite_entry_path(position))
+    required_strings = (
+        "base",
+        "source_head",
+        "source_sha",
+        "tree",
+        "author",
+        "expected_message",
+    )
+    if (
+        entry.get("schema") != 1
+        or entry.get("position") != position
+        or not all(nonempty_string(entry.get(field)) for field in required_strings)
+        or not isinstance(entry.get("source_message"), str)
+        or not isinstance(entry.get("signed"), bool)
+        or not isinstance(entry.get("reword"), bool)
+    ):
+        raise SystemExit(f"invalid rewrite entry for position {position}")
+    return entry
+
+
+def finalized_audit(
+    plan: dict[str, Any],
+    scan: dict[str, Any],
+) -> dict[str, Any]:
+    """Translate a successfully applied rewrite plan into an all-KEEP audit."""
+    source_audit = plan["audit"]
+    entries: list[dict[str, Any]] = []
+    for source_entry, current in zip(
+        source_audit["commits"],
+        scan["commits"],
+        strict=True,
+    ):
+        reworded = source_entry["verdict"] == "REWORD"
+        entry: dict[str, Any] = {
+            "sha": current["sha"],
+            "subject": current["subject"],
+            "signals": current["signals"],
+            "verdict": "KEEP",
+            "reason": (
+                "The replacement now matches the audited patch and series position."
+                if reworded
+                else source_entry["reason"]
+            ),
+            "patch_fidelity": source_entry["patch_fidelity"],
+        }
+        if "series_transition" in source_entry:
+            entry["series_transition"] = source_entry["series_transition"]
+        false_positives = source_entry.get(
+            "proposed_signal_false_positives"
+            if reworded
+            else "signal_false_positives"
+        )
+        if false_positives:
+            entry["signal_false_positives"] = false_positives
+        entries.append(entry)
+    return {
+        "schema": 1,
+        "mode": "refine",
+        "base": scan["base"],
+        "head": scan["head"],
+        "conventions": source_audit["conventions"],
+        "commits": entries,
+    }
+
+
 def cmd_state_dir(_: argparse.Namespace) -> None:
     """Print the state directory."""
     print(STATE_DIR)
@@ -996,9 +1268,8 @@ def cmd_validate_audit(args: argparse.Namespace) -> None:
     print(f"audit valid for {scan['commit_count']} commits")
 
 
-def cmd_edit_first(args: argparse.Namespace) -> None:
-    """Turn the first actionable rebase todo command from pick into edit."""
-    supplied_path = args.todo_file
+def checked_todo_path(supplied_path: Path) -> Path:
+    """Resolve a rebase todo only inside the current worktree's Git directory."""
     if supplied_path.is_symlink():
         raise SystemExit(f"refusing to edit a symlinked rebase todo: {supplied_path}")
     try:
@@ -1018,23 +1289,11 @@ def cmd_edit_first(args: argparse.Namespace) -> None:
         or todo_path not in expected_paths
     ):
         raise SystemExit(f"refusing to edit an unsafe rebase todo: {todo_path}")
+    return todo_path
 
-    lines = todo_path.read_text(encoding="utf-8").splitlines(keepends=True)
-    for index, line in enumerate(lines):
-        stripped = line.lstrip()
-        if not stripped.strip() or stripped.startswith("#"):
-            continue
-        if not stripped.startswith("pick "):
-            command = stripped.split(maxsplit=1)[0]
-            raise SystemExit(
-                f"expected the first rebase command to be 'pick', found {command!r}"
-            )
-        indentation = line[: len(line) - len(stripped)]
-        lines[index] = indentation + "edit " + stripped.removeprefix("pick ")
-        break
-    else:
-        raise SystemExit("rebase todo has no actionable command")
 
+def replace_todo(todo_path: Path, lines: list[str]) -> None:
+    """Atomically replace one validated rebase todo."""
     mode = todo_path.stat().st_mode & 0o777
     temporary_name: str | None = None
     try:
@@ -1052,6 +1311,81 @@ def cmd_edit_first(args: argparse.Namespace) -> None:
     finally:
         if temporary_name is not None:
             Path(temporary_name).unlink(missing_ok=True)
+
+
+def cmd_edit_first(args: argparse.Namespace) -> None:
+    """Turn the first actionable rebase todo command from pick into edit."""
+    todo_path = checked_todo_path(args.todo_file)
+    lines = todo_path.read_text(encoding="utf-8").splitlines(keepends=True)
+    for index, line in enumerate(lines):
+        stripped = line.lstrip()
+        if not stripped.strip() or stripped.startswith("#"):
+            continue
+        if not stripped.startswith("pick "):
+            command = stripped.split(maxsplit=1)[0]
+            raise SystemExit(
+                f"expected the first rebase command to be 'pick', found {command!r}"
+            )
+        indentation = line[: len(line) - len(stripped)]
+        lines[index] = indentation + "edit " + stripped.removeprefix("pick ")
+        break
+    else:
+        raise SystemExit("rebase todo has no actionable command")
+    replace_todo(todo_path, lines)
+
+
+def cmd_prepare_todo(args: argparse.Namespace) -> None:
+    """Attach one invariant-normalizing callback to every rebase position."""
+    data, checkpoint_base, rebase_active, _ = validate_checkpoint(
+        require_current=False
+    )
+    if data.get("phase") != "applying" or not rebase_active:
+        raise SystemExit("rewrite-plan sequence editor requires the applying phase")
+    require_rewrite_helper(data)
+    plan = load_rewrite_plan()
+    validate_rewrite_plan_binding(plan, data, checkpoint_base)
+    todo_path = checked_todo_path(args.todo_file)
+    source_commits = plan["scan"]["commits"]
+    output: list[str] = []
+    position = 0
+    for line in todo_path.read_text(encoding="utf-8").splitlines(keepends=True):
+        stripped = line.lstrip()
+        if not stripped.strip() or stripped.startswith("#"):
+            output.append(line)
+            continue
+        parts = stripped.split(maxsplit=2)
+        command = parts[0]
+        if command != "pick" or len(parts) < 2:
+            raise SystemExit(
+                "rewrite-plan rebase expected only pick commands, "
+                f"found {command!r}"
+            )
+        position += 1
+        if position > len(source_commits):
+            raise SystemExit("rewrite-plan rebase contains unexpected commits")
+        commit = canonical_base(parts[1])
+        expected = source_commits[position - 1]["sha"]
+        if commit != expected:
+            raise SystemExit(
+                f"rewrite-plan position {position} is {commit}, expected {expected}"
+            )
+        output.append(line)
+        command_line = shlex.join(
+            [
+                sys.executable,
+                str(Path(__file__).resolve()),
+                "apply-message",
+                "--position",
+                str(position),
+            ]
+        )
+        output.append(f"exec {command_line}\n")
+    if position != len(source_commits):
+        raise SystemExit(
+            "rewrite-plan rebase commit count changed: "
+            f"expected {len(source_commits)}, found {position}"
+        )
+    replace_todo(todo_path, output)
 
 
 def cmd_begin_reword(args: argparse.Namespace) -> None:
@@ -1151,6 +1485,285 @@ def cmd_begin_reword(args: argparse.Namespace) -> None:
     print(f"stopped at position {args.position} for message-only amendment")
 
 
+def cmd_apply_message(args: argparse.Namespace) -> None:
+    """Restore one frozen position's expected message and signature state."""
+    data = load_checkpoint()
+    reject_non_rebase_operations()
+    rebase_active, rebase_branch = active_rebase()
+    branch_ref = data.get("branch_ref")
+    checkpoint_base = data.get("base")
+    original_count = data.get("original_count")
+    rewrite_source_head = data.get("rewrite_source_head")
+    rewrite_positions = data.get("rewrite_positions")
+    if (
+        data.get("schema") != 1
+        or data.get("phase") != "applying"
+        or not rebase_active
+        or not nonempty_string(branch_ref)
+        or rebase_branch != branch_ref
+        or not nonempty_string(checkpoint_base)
+        or not isinstance(original_count, int)
+        or not nonempty_string(rewrite_source_head)
+        or not isinstance(rewrite_positions, list)
+        or not all(isinstance(position, int) for position in rewrite_positions)
+        or not 1 <= args.position <= original_count
+    ):
+        raise SystemExit("apply-message requires the active rewrite-plan rebase")
+    require_rewrite_helper(data)
+    assert isinstance(checkpoint_base, str)
+    assert isinstance(rewrite_source_head, str)
+    entry = load_rewrite_entry(args.position)
+    if (
+        entry["base"] != checkpoint_base
+        or entry["source_head"] != rewrite_source_head
+        or entry["reword"] != (args.position in rewrite_positions)
+    ):
+        raise SystemExit("rewrite entry does not match the active checkpoint attempt")
+    if latest_rebase_pick() != entry["source_sha"]:
+        raise SystemExit(
+            f"apply-message position {args.position} does not match "
+            "the active rebase command"
+        )
+    expected_message = entry["expected_message"]
+    current = commit_record("HEAD", args.position, original_count)
+    errors = compare_invariants(
+        [entry],
+        [{**current, "position": args.position}],
+        include_signature=False,
+    )
+    if errors:
+        raise SystemExit(
+            "rewrite callback changed commit content:\n" + "\n".join(errors)
+        )
+
+    if current["message"] not in {
+        entry["source_message"],
+        expected_message,
+    }:
+        raise SystemExit(
+            f"position {args.position} matches neither its source nor "
+            "its expected message"
+        )
+
+    amended = (
+        current["message"] != expected_message
+        or current["signed"] != entry["signed"]
+    )
+    if amended:
+        signing_option = "--gpg-sign" if entry["signed"] else "--no-gpg-sign"
+        result = subprocess.run(
+            [
+                "git",
+                "--no-optional-locks",
+                "commit",
+                "--amend",
+                "--allow-empty",
+                signing_option,
+                "-F",
+                "-",
+            ],
+            text=True,
+            input=expected_message + "\n",
+            check=False,
+        )
+        if result.returncode:
+            raise SystemExit(
+                f"message or signature amendment failed at position "
+                f"{args.position}; inspect the Git and hook output before resuming"
+            )
+        amended = True
+
+    revised = commit_record("HEAD", args.position, original_count)
+    errors = compare_invariants(
+        [entry],
+        [{**revised, "position": args.position}],
+    )
+    if revised["message"] != expected_message:
+        errors.append(f"position {args.position}: expected message was not applied")
+    if errors:
+        raise SystemExit(
+            "message/signature amendment verification failed:\n"
+            + "\n".join(errors)
+        )
+    action = "verified" if not amended else "normalized"
+    print(f"{action} message and signature at position {args.position}")
+
+
+def finalize_rewrite_plan(base: str) -> None:
+    """Verify one completed rebase and refresh the audit without rereading patches."""
+    data, checkpoint_base, rebase_active, originals = validate_checkpoint(
+        require_current=True
+    )
+    if base != checkpoint_base:
+        raise SystemExit("rewrite plan base does not match the checkpoint")
+    if rebase_active:
+        raise SystemExit("cannot finalize the rewrite plan during a rebase")
+    if data.get("phase") not in {"applying", "rewritten"}:
+        raise SystemExit("no applied rewrite plan is ready to finalize")
+    require_clean_worktree()
+    plan = load_rewrite_plan()
+    validate_rewrite_plan_binding(plan, data, checkpoint_base)
+
+    scan = scan_document(base, mode="refine")
+    errors = compare_invariants(originals, scan["commits"])
+    if len(scan["commits"]) == len(plan["scan"]["commits"]):
+        for position, (source, audit_entry, current) in enumerate(
+            zip(
+                plan["scan"]["commits"],
+                plan["audit"]["commits"],
+                scan["commits"],
+                strict=True,
+            ),
+            start=1,
+        ):
+            expected_message = (
+                audit_entry["proposed_message"].rstrip("\n")
+                if audit_entry["verdict"] == "REWORD"
+                else source["message"]
+            )
+            if current["message"] != expected_message:
+                errors.append(
+                    f"position {position}: current message does not match "
+                    "the validated rewrite plan"
+                )
+    if errors:
+        raise SystemExit(
+            "one-pass message rewrite verification failed:\n" + "\n".join(errors)
+        )
+
+    audit = finalized_audit(plan, scan)
+    validate_audit_document(
+        audit,
+        scan,
+        allow_reword=False,
+        expected_mode="refine",
+    )
+    write_json(SCAN_PATH, scan)
+    write_json(AUDIT_PATH, audit)
+    if data.get("phase") != "rewritten":
+        data["phase"] = "rewritten"
+        data.setdefault("events", []).append(
+            {
+                "at": now(),
+                "event": "finalize-apply",
+                "head": scan["head"],
+                "reword_positions": plan["reword_positions"],
+            }
+        )
+        save_checkpoint(data)
+    print(
+        "one-pass rewrite verified for "
+        f"{len(scan['commits'])} commits and "
+        f"{len(plan['reword_positions'])} replacement messages"
+    )
+
+
+def cmd_apply_audit(args: argparse.Namespace) -> None:
+    """Apply every validated REWORD in one controlled interactive rebase."""
+    data, checkpoint_base, rebase_active, _ = validate_checkpoint(
+        require_current=True
+    )
+    if data.get("phase") == "complete":
+        raise SystemExit(
+            "refine-commit-messages is already complete; start a fresh run "
+            "before applying another audit"
+        )
+    base = canonical_base(args.base)
+    if base != checkpoint_base:
+        raise SystemExit("rewrite base does not match the checkpoint")
+    if rebase_active:
+        raise SystemExit("a checkpoint rebase is already active")
+    require_clean_worktree()
+    scan = scan_document(base, mode="refine")
+    if load_json(SCAN_PATH) != scan:
+        raise SystemExit("scan.json is stale; run scan again")
+    audit = load_json(AUDIT_PATH)
+    validate_audit_document(
+        audit,
+        scan,
+        allow_reword=True,
+        expected_mode="refine",
+    )
+    plan = build_rewrite_plan(audit, scan)
+    if not plan["reword_positions"]:
+        raise SystemExit("audit has no REWORD entries; proceed to completion")
+    write_json(REWRITE_PLAN_PATH, plan)
+    write_rewrite_entries(plan)
+    rewrite_helper = snapshot_rewrite_helper()
+
+    data["phase"] = "applying"
+    data["rewrite_helper"] = str(rewrite_helper)
+    data["rewrite_source_head"] = plan["source_head"]
+    data["rewrite_positions"] = plan["reword_positions"]
+    data.setdefault("events", []).append(
+        {
+            "at": now(),
+            "event": "apply-audit",
+            "source_head": scan["head"],
+            "reword_positions": plan["reword_positions"],
+        }
+    )
+    save_checkpoint(data)
+
+    environment = os.environ.copy()
+    environment["GIT_SEQUENCE_EDITOR"] = shlex.join(
+        [
+            sys.executable,
+            str(rewrite_helper),
+            "prepare-todo",
+        ]
+    )
+    result = subprocess.run(
+        [
+            "git",
+            "--no-optional-locks",
+            "-c",
+            "rebase.abbreviateCommands=false",
+            "-c",
+            "rebase.autoSquash=false",
+            "-c",
+            "rebase.updateRefs=false",
+            "-c",
+            "rebase.rebaseMerges=false",
+            "-c",
+            "rebase.autoStash=false",
+            "-c",
+            "rebase.rescheduleFailedExec=true",
+            "-c",
+            "commit.gpgSign=false",
+            "rebase",
+            "--keep-empty",
+            "-i",
+            base,
+        ],
+        text=True,
+        env=environment,
+        check=False,
+    )
+    if result.returncode:
+        active_after, _ = active_rebase()
+        if not active_after and git_output("rev-parse", "HEAD") == scan["head"]:
+            raise SystemExit(
+                "one-pass message rewrite did not start; inspect the rebase "
+                "error, then rerun apply-audit from the existing checkpoint"
+            )
+        if not active_after:
+            raise SystemExit(
+                "one-pass message rewrite ended after HEAD changed; run "
+                "finalize-apply to verify the result or use the recovery ref"
+            )
+        raise SystemExit(
+            "one-pass message rewrite stopped; inspect the active rebase, "
+            "then continue it and run finalize-apply"
+        )
+    finalize_rewrite_plan(base)
+
+
+def cmd_finalize_apply(args: argparse.Namespace) -> None:
+    """Finalize an applied rewrite plan after an interrupted caller resumes it."""
+    finalize_rewrite_plan(canonical_base(args.base))
+
+
 def load_external_json(path: Path) -> dict[str, Any]:
     """Load a caller-selected audit-only JSON file."""
     if path.is_symlink() or not path.is_file():
@@ -1223,7 +1836,7 @@ def cmd_complete(args: argparse.Namespace) -> None:
         allow_reword=False,
         expected_mode="refine",
     )
-    current = records_for(base)
+    current = scan["commits"]
     errors = compare_invariants(originals, current)
     if errors:
         raise SystemExit("message-only completion failed:\n" + "\n".join(errors))
@@ -1298,11 +1911,27 @@ def build_parser() -> argparse.ArgumentParser:
     edit_first.add_argument("todo_file", type=Path)
     edit_first.set_defaults(func=cmd_edit_first)
 
+    prepare_todo = commands.add_parser("prepare-todo")
+    prepare_todo.add_argument("todo_file", type=Path)
+    prepare_todo.set_defaults(func=cmd_prepare_todo)
+
     begin_reword = commands.add_parser("begin-reword")
     begin_reword.add_argument("--base", required=True)
     begin_reword.add_argument("--position", required=True, type=int)
     begin_reword.add_argument("--target", required=True)
     begin_reword.set_defaults(func=cmd_begin_reword)
+
+    apply_message = commands.add_parser("apply-message")
+    apply_message.add_argument("--position", required=True, type=int)
+    apply_message.set_defaults(func=cmd_apply_message)
+
+    apply_audit = commands.add_parser("apply-audit")
+    apply_audit.add_argument("--base", required=True)
+    apply_audit.set_defaults(func=cmd_apply_audit)
+
+    finalize_apply = commands.add_parser("finalize-apply")
+    finalize_apply.add_argument("--base", required=True)
+    finalize_apply.set_defaults(func=cmd_finalize_apply)
 
     verify_head = commands.add_parser("verify-head")
     verify_head.add_argument("--position", required=True, type=int)

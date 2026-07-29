@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+
+from ...editor.piece_table import LineLike
 
 
 @dataclass(slots=True)
@@ -14,7 +15,7 @@ class RealizedEntry:
     exact anchored boundary resolution for absence constraints.
     """
 
-    content: Any  # Line content with newline
+    content: LineLike  # Line content with newline
     source_line: int | None  # Batch-source line number, or None for extras
     target_line: int | None = None  # Working-tree line number, when known
     is_claimed: bool = False  # True if from a claimed source line

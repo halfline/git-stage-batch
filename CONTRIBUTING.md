@@ -27,13 +27,20 @@ uv sync
 
 # Run tests
 uv run pytest -n auto
+
+# Run lint and strict type checks
+uv run ruff check src tests
 uv run python scripts/check_type_hygiene.py
+uv run mypy
 ```
 
 Use the xdist form (`-n auto`) for full-suite runs. The suite is large enough
 that serial `uv run pytest` is mainly useful for focused debugging or when
 reproducing ordering-sensitive failures.
 
+The type checker targets the oldest supported Python version and checks the
+entire `git_stage_batch` package in strict mode. Keep persisted mappings and
+other structured containers concrete rather than falling back to bare
 `dict`, `list`, or `tuple` annotations. The type-hygiene check also prevents
 explicit `Any` from spreading beyond the small set of reviewed serialization,
 reflection, and third-party API boundaries.

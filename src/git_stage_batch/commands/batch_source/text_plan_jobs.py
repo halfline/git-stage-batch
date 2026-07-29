@@ -6,10 +6,13 @@ from dataclasses import dataclass
 import pickle
 from pathlib import Path
 from typing import Literal
+from typing import Literal, TypedDict, cast
 
 from . import candidate_preview_counts as _candidate_preview_counts
 from . import text_plan_builders as _text_plan_builders
 from ...core.replacement import ReplacementPayload
+from ...core.buffer import LineBuffer
+from ...core.text_lifecycle import normalized_text_change_type
 from ...data.file_target_identity import IndexIdentity, WorktreeIdentity
 from ...exceptions import AtomicUnitError, CommandError, MergeError
 from ...utils.buffer_io import write_buffer_to_path
@@ -593,7 +596,7 @@ def _include_result(
 
 def _write_plan_output(
     path: str,
-    buffer,
+    buffer: LineBuffer | None,
     change_type: str,
 ) -> str | None:
     if buffer is None or change_type == "deleted":
@@ -627,9 +630,9 @@ def _optional_int_set(value: object) -> set[int] | None:
     return set(value)
 
 
-def _read_pickle(path: str | Path):
+def _read_pickle(path: str | Path) -> object:
     with Path(path).open("rb") as source:
-        return pickle.load(source)
+        return cast(object, pickle.load(source))
 
 
 def _write_pickle(path: str | Path, value: object) -> None:

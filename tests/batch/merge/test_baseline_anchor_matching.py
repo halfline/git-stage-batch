@@ -4,8 +4,8 @@ from contextlib import nullcontext
 
 import pytest
 
-import git_stage_batch.batch.merge.baseline_edits as baseline_edits
-from git_stage_batch.batch.merge.baseline_edits import (
+from git_stage_batch.batch.merge import baseline_anchor_matching
+from git_stage_batch.batch.merge.baseline_anchor_matching import (
     acquire_deletion_anchor_pairs_for_target,
 )
 from git_stage_batch.batch.line_matching.match_workspace import MatcherWorkspace
@@ -405,11 +405,13 @@ def test_live_target_rejects_repeated_replacement_parent_boundary():
 
     with MatcherWorkspace() as workspace:
         occurrence_index = LinePayloadOccurrenceIndex(workspace, target)
-        is_unique = baseline_edits._live_replacement_origin_boundary_is_unique(
-            origin,
-            target,
-            1,
-            occurrence_index,
+        is_unique = (
+            baseline_anchor_matching._live_replacement_origin_boundary_is_unique(
+                origin,
+                target,
+                1,
+                occurrence_index,
+            )
         )
 
     assert is_unique is False
@@ -433,7 +435,9 @@ def test_live_target_checks_indexed_boundary_candidates(monkeypatch):
         for index in range(1, 1001)
     ]
     identity_checks = 0
-    original_check = baseline_edits._removal_boundary_identity_matches_at
+    original_check = (
+        baseline_anchor_matching._removal_boundary_identity_matches_at
+    )
 
     def count_identity_checks(*args, **kwargs):
         nonlocal identity_checks
@@ -441,7 +445,7 @@ def test_live_target_checks_indexed_boundary_candidates(monkeypatch):
         return original_check(*args, **kwargs)
 
     monkeypatch.setattr(
-        baseline_edits,
+        baseline_anchor_matching,
         "_removal_boundary_identity_matches_at",
         count_identity_checks,
     )

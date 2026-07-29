@@ -6,6 +6,7 @@ from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from . import baseline_anchor_matching as _baseline_anchor_matching
 from . import baseline_edits as _baseline_edits
 from . import presence_constraints as _presence_constraints
 from .candidate_enumeration import (
@@ -158,7 +159,7 @@ def _build_structural_realized_entries(
     owned_mapping: LineMapping | None = None
     mapping = source_to_working_mapping
     try:
-        with _baseline_edits.acquire_deletion_anchor_pairs_for_target(
+        with _baseline_anchor_matching.acquire_deletion_anchor_pairs_for_target(
             source_lines,
             working_lines,
             deletion_claims,

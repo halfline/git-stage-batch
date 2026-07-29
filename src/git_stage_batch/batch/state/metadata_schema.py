@@ -11,7 +11,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import Enum
 from types import MappingProxyType
-from typing import Any, TypeAlias, cast
+from typing import Any, NoReturn, TypeAlias, cast
 
 from ...exceptions import BatchMetadataError
 from ...utils.git_repository import object_id_hex_length
@@ -222,7 +222,7 @@ def encode_batch_metadata(metadata: BatchMetadata) -> str:
 
 def metadata_from_application_dict(
     batch_name: str,
-    data: Mapping[str, Any],
+    data: BatchMetadataDict,
     *,
     content_ref: str | None = None,
     content_commit: str | None = None,
@@ -549,7 +549,7 @@ def _freeze_mapping(values: Mapping[str, Any], batch_name: str) -> Mapping[str, 
 
 def _freeze_json_value(value: Any, batch_name: str, field: str) -> JsonValue:
     if value is None or type(value) in (bool, int, str):
-        return value
+        return cast(JsonScalar, value)
     if isinstance(value, list):
         return tuple(_freeze_json_value(item, batch_name, field) for item in value)
     if isinstance(value, dict):
@@ -598,14 +598,14 @@ def _optional_string(data: Mapping[str, Any], key: str, batch_name: str) -> str 
 def _required_object_id(data: Mapping[str, Any], key: str, batch_name: str) -> str:
     value = data[key]
     _validate_object_id(value, batch_name, key)
-    return value
+    return cast(str, value)
 
 
 def _optional_object_id(data: Mapping[str, Any], key: str, batch_name: str) -> str | None:
     value = data[key]
     if value is not None:
         _validate_object_id(value, batch_name, key)
-    return value
+    return cast(str | None, value)
 
 
 def _validate_object_id(value: Any, batch_name: str, field: str) -> None:
@@ -632,5 +632,5 @@ def _field_list(fields: set[str] | frozenset[str]) -> str:
     return ", ".join(repr(field) for field in sorted(fields))
 
 
-def _invalid(batch_name: str, detail: str) -> None:
+def _invalid(batch_name: str, detail: str) -> NoReturn:
     raise BatchMetadataError(f"Batch '{batch_name}' metadata is invalid: {detail}.")

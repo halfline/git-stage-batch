@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ..core.models import LineEntry, LineLevelChange
+from ..batch.state.metadata_types import BatchFileMetadataDict
 from .consumed_selections import read_consumed_file_metadata
 
 
@@ -20,7 +21,7 @@ def filter_consumed_replacement_masks(
 def filter_consumed_replacement_masks_with_metadata(
     line_changes: LineLevelChange,
     *,
-    file_metadata: dict | None,
+    file_metadata: BatchFileMetadataDict | None,
 ) -> LineLevelChange | None:
     """Hide replacement runs using caller-supplied consumed metadata."""
     replacement_masks = (

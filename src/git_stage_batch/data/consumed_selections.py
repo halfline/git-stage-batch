@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import cast
 
+from ..batch.state.metadata_types import BatchFileMetadataDict, BatchMetadataDict
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_io import read_text_file_contents, write_text_file_contents
 from ..utils.paths import get_session_consumed_selections_file_path
 
 
-def load_consumed_selections_metadata() -> dict[str, Any]:
+def load_consumed_selections_metadata() -> BatchMetadataDict:
     """Load hidden consumed-selection metadata."""
     path = get_session_consumed_selections_file_path()
     if not path.exists():
@@ -43,10 +44,12 @@ def load_consumed_selections_metadata() -> dict[str, Any]:
                     "{path}. Abort the session to recover safely."
                 ).format(file=file_path, path=path)
             )
-    return {"files": files}
+    return {"files": cast(dict[str, BatchFileMetadataDict], files)}
 
 
-def read_consumed_file_metadata(file_path: str) -> dict[str, Any] | None:
+def read_consumed_file_metadata(
+    file_path: str,
+) -> BatchFileMetadataDict | None:
     """Return hidden consumed-selection metadata for one file."""
     metadata = load_consumed_selections_metadata()
     file_metadata = metadata.get("files", {}).get(file_path)
@@ -55,7 +58,7 @@ def read_consumed_file_metadata(file_path: str) -> dict[str, Any] | None:
 
 def write_consumed_file_metadata(
     file_path: str,
-    file_metadata: dict[str, Any],
+    file_metadata: BatchFileMetadataDict,
 ) -> None:
     """Persist hidden consumed-selection metadata for one file."""
     metadata = load_consumed_selections_metadata()

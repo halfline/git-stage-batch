@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+from ..batch.state.metadata_types import BatchFileMetadataDict
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.file_patterns import resolve_gitignore_style_patterns
@@ -21,10 +22,10 @@ from .selected_change.file_changes import load_selected_mode_change, read_select
 
 def resolve_batch_file_scope(
     batch_name: str,
-    all_files: dict[str, dict],
+    all_files: dict[str, BatchFileMetadataDict],
     file: Optional[str] = None,
     patterns: Optional[list[str]] = None,
-) -> dict[str, dict]:
+) -> dict[str, BatchFileMetadataDict]:
     """Resolve which files from a batch to operate on.
 
     Args:
@@ -73,7 +74,7 @@ def resolve_batch_file_scope(
 
 def resolve_current_batch_atomic_file_scope(
     batch_name: str,
-    all_files: dict[str, dict],
+    all_files: dict[str, BatchFileMetadataDict],
     file: Optional[str] = None,
     patterns: Optional[list[str]] = None,
     line_ids: Optional[str] = None,
@@ -117,7 +118,7 @@ def resolve_current_batch_atomic_file_scope(
 
 def _get_batch_file_for_line_operation(
     batch_name: str,
-    all_files: dict[str, dict],
+    all_files: dict[str, BatchFileMetadataDict],
     file: str | None,
 ) -> str:
     """Determine which file in batch to operate on."""

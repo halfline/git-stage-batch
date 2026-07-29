@@ -11,10 +11,10 @@ from .file_arguments import add_file_argument
 from .include_dispatch import dispatch_include_command
 from .show_dispatch import dispatch_show_command
 from .skip_dispatch import dispatch_skip_command
-from .subcommand_parser import add_subcommand_parser
+from .subcommand_parser import Subparsers, add_subcommand_parser
 
 
-def add_show_subcommand(subparsers) -> None:
+def add_show_subcommand(subparsers: Subparsers) -> None:
     """Register the show subcommand."""
     parser_show = add_subcommand_parser(
         subparsers,

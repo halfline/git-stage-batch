@@ -8,7 +8,6 @@ import shutil
 import tarfile
 import tempfile
 from pathlib import Path
-from typing import Any
 
 from ...utils.buffer_io import write_buffer_to_working_tree_path
 from ...utils.repository_buffers import load_git_blob_as_buffer
@@ -28,11 +27,17 @@ from ...utils.git_repository import (
     get_git_repository_root_path,
     is_git_repository_root_path,
 )
+from ..recovery_types import CheckpointState, is_checkpoint_state
 
 
-def _read_json_blob(blob_sha: str) -> dict[str, Any]:
+def _read_json_blob(blob_sha: str) -> CheckpointState:
     with load_git_blob_as_buffer(blob_sha) as buffer:
-        return json.loads(buffer.to_bytes().decode("utf-8"))
+        value: object = json.loads(buffer.to_bytes().decode("utf-8"))
+    if not is_checkpoint_state(value):
+        raise CommandError(
+            _("Undo checkpoint JSON contains invalid state metadata.")
+        )
+    return value
 
 
 def _write_blob_to_worktree_path(
@@ -74,7 +79,7 @@ def _tree_entries(commit: str, prefix: str) -> list[tuple[str, str, str]]:
     return entries
 
 
-def read_json_from_commit(commit: str, path: str) -> dict[str, Any]:
+def read_json_from_commit(commit: str, path: str) -> CheckpointState:
     """Read a JSON blob from an undo snapshot commit."""
     entries = _tree_entries(commit, path)
     if not entries:
@@ -154,7 +159,7 @@ def restore_refs(
     )
 
 
-def restore_worktree(commit: str, manifest: dict[str, Any]) -> None:
+def restore_worktree(commit: str, manifest: CheckpointState) -> None:
     """Restore worktree paths recorded in an undo checkpoint manifest."""
     repo_root = get_git_repository_root_path()
     worktree_blobs = {

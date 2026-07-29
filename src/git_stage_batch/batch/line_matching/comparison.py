@@ -104,17 +104,16 @@ def _trusted_matched_pairs(
     spool_dir: str | Path | None = None,
 ) -> Iterator[tuple[int, int]]:
     """Yield bidirectionally trusted source/target line pairs."""
-    match_options = {} if spool_dir is None else {"spool_dir": spool_dir}
     with (
         match_lines(
             source_lines=source_lines,
             target_lines=target_lines,
-            **match_options,
+            spool_dir=spool_dir,
         ) as alignment,
         match_lines(
             source_lines=target_lines,
             target_lines=source_lines,
-            **match_options,
+            spool_dir=spool_dir,
         ) as reverse_alignment,
     ):
         for source_line, target_line in alignment.mapped_line_pairs():

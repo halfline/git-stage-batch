@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ...core.line_selection import LineRanges, LineSelection, coerce_line_ranges
 from ...core.mapped_storage import MappedRecordVector, sort_mapped_records
@@ -133,13 +133,14 @@ def acquire_deletion_anchor_pairs_for_target(
         previous_source = 0
         previous_target = 0
         anchor_count = 0
-        for pair in anchor_pairs:
+        for pair_record in anchor_pairs:
+            source_line, target_line = pair_record
+            pair = (source_line, target_line)
             if pair == previous_pair:
                 continue
-            source_line, target_line = pair
             if source_line <= previous_source or target_line <= previous_target:
                 anchor_pairs.truncate(0)
-                yield anchor_pairs
+                yield cast(Sequence[tuple[int, int]], anchor_pairs)
                 return
             anchor_pairs[anchor_count] = pair
             anchor_count += 1
@@ -148,7 +149,7 @@ def acquire_deletion_anchor_pairs_for_target(
             previous_target = target_line
 
         anchor_pairs.truncate(anchor_count)
-        yield anchor_pairs
+        yield cast(Sequence[tuple[int, int]], anchor_pairs)
 
 
 def _removal_boundary_is_fixed_to_file_edge(claim: AbsenceClaim) -> bool:
@@ -322,15 +323,15 @@ def _insertion_boundary_identity_matches_at(
     position: int,
 ) -> bool:
     """Return whether one insertion position has the reference's full identity."""
-    if reference is None or not getattr(reference, "has_after_line", False):
+    if reference is None or not reference.has_after_line:
         return False
 
-    after_line = getattr(reference, "after_line", None)
+    after_line = reference.after_line
     if after_line is None:
         if position != 0:
             return False
     else:
-        after_content = getattr(reference, "after_content", None)
+        after_content = reference.after_content
         if (
             position == 0
             or after_content is None
@@ -339,11 +340,11 @@ def _insertion_boundary_identity_matches_at(
         ):
             return False
 
-    if getattr(reference, "has_before_line", False):
-        before_line = getattr(reference, "before_line", None)
+    if reference.has_before_line:
+        before_line = reference.before_line
         if before_line is None:
             return position == len(target_lines)
-        before_content = getattr(reference, "before_content", None)
+        before_content = reference.before_content
         return (
             position < len(target_lines)
             and before_content is not None
@@ -368,10 +369,11 @@ def _live_insertion_boundary_is_unique(
     ):
         return False
 
-    after_line = getattr(reference, "after_line", None)
-    before_line = getattr(reference, "before_line", None)
+    assert reference is not None
+    after_line = reference.after_line
+    before_line = reference.before_line
     if after_line is None or (
-        getattr(reference, "has_before_line", False)
+        reference.has_before_line
         and before_line is None
     ):
         return True
@@ -381,15 +383,15 @@ def _live_insertion_boundary_is_unique(
         expected_position,
         len(target_lines),
         after_content=(
-            getattr(reference, "after_content", None)
+            reference.after_content
             if after_line is not None
             else None
         ),
         span_contents=(),
         before_content=(
-            getattr(reference, "before_content", None)
+            reference.before_content
             if (
-                getattr(reference, "has_before_line", False) and before_line is not None
+                reference.has_before_line and before_line is not None
             )
             else None
         ),
@@ -408,24 +410,25 @@ def _replacement_origin_boundary_identity_matches_at(
     position: int,
 ) -> bool:
     """Return whether one target span has the replacement parent's identity."""
-    reference = getattr(origin, "baseline_reference", None)
-    old_line_count = getattr(origin, "old_line_count", None)
+    if origin is None:
+        return False
+    reference = origin.baseline_reference
+    old_line_count = origin.old_line_count
     if (
         reference is None
-        or not getattr(reference, "has_after_line", False)
-        or type(old_line_count) is not int
+        or not reference.has_after_line
         or old_line_count <= 0
         or position < 0
         or position + old_line_count > len(target_lines)
     ):
         return False
 
-    after_line = getattr(reference, "after_line", None)
+    after_line = reference.after_line
     if after_line is None:
         if position != 0:
             return False
     else:
-        after_content = getattr(reference, "after_content", None)
+        after_content = reference.after_content
         if (
             position == 0
             or after_content is None
@@ -434,14 +437,14 @@ def _replacement_origin_boundary_identity_matches_at(
         ):
             return False
 
-    if not getattr(reference, "has_before_line", False):
+    if not reference.has_before_line:
         return True
 
-    before_line = getattr(reference, "before_line", None)
+    before_line = reference.before_line
     before_position = position + old_line_count
     if before_line is None:
         return before_position == len(target_lines)
-    before_content = getattr(reference, "before_content", None)
+    before_content = reference.before_content
     return (
         before_position < len(target_lines)
         and before_content is not None
@@ -465,6 +468,8 @@ def _live_replacement_origin_boundary_is_unique(
         return False
 
     reference = origin.baseline_reference
+    if reference is None:
+        return False
     after_line = reference.after_line
     before_line = reference.before_line
     if after_line is None or (
@@ -631,10 +636,10 @@ def _replacement_origin_absence_bounds(
     working_lines: Sequence[bytes],
 ) -> tuple[int, int] | None:
     """Return the target bounds of an original replacement parent, if provable."""
-    if origin is None or getattr(origin, "baseline_reference", None) is None:
+    if origin is None or origin.baseline_reference is None:
         return None
-    old_line_count = getattr(origin, "old_line_count", None)
-    if type(old_line_count) is not int or old_line_count <= 0:
+    old_line_count = origin.old_line_count
+    if old_line_count <= 0:
         return None
 
     position = _find_baseline_absence_position(
@@ -681,14 +686,11 @@ def _replacement_edit_from_parent_offset(
     if origin is None or not claim.content_lines:
         return None
 
-    old_line_count = getattr(origin, "old_line_count", None)
-    new_start = getattr(origin, "new_start", None)
-    new_end = getattr(origin, "new_end", None)
+    old_line_count = origin.old_line_count
+    new_start = origin.new_start
+    new_end = origin.new_end
     if (
-        type(old_line_count) is not int
-        or type(new_start) is not int
-        or type(new_end) is not int
-        or old_line_count <= 0
+        old_line_count <= 0
         or new_end < new_start
     ):
         return None
@@ -712,16 +714,16 @@ def _replacement_edit_from_parent_offset(
         return None
 
     claim_reference = claim.baseline_reference
-    origin_reference = getattr(origin, "baseline_reference", None)
+    origin_reference = origin.baseline_reference
     if (
         claim_reference is not None
-        and getattr(claim_reference, "has_after_line", False)
+        and claim_reference.has_after_line
         and origin_reference is not None
-        and getattr(origin_reference, "has_after_line", False)
+        and origin_reference.has_after_line
     ):
         relative_offset = (
-            (getattr(claim_reference, "after_line", None) or 0)
-            - (getattr(origin_reference, "after_line", None) or 0)
+            (claim_reference.after_line or 0)
+            - (origin_reference.after_line or 0)
         )
     else:
         relative_offset = first_claimed_line - new_start

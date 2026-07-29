@@ -213,6 +213,7 @@ def _analyze_presence_runs(
     analyses: list[_PresenceRunAnalysis] = []
 
     for run_start, run_end in missing.ranges():
+        gap_index: int | None
         mapped_before = _nearest_mapped_before(mapping, run_start)
         mapped_after = _nearest_mapped_after(mapping, run_end, len(source_lines))
         leading_gap = (

@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
-from typing import Any
+from types import TracebackType
+from typing import overload
 
 from ...editor.line_editor import LineEditor
+from ...editor.piece_table import LineLike
 from ..line_matching.line_range_view import LineRangeView as _LineRangeView
 from .entries import RealizedEntry as _RealizedEntry
 from .provenance import (
@@ -51,6 +53,12 @@ class RealizedEntries(Sequence[_RealizedEntry]):
         self._require_open()
         return self._line_count
 
+    @overload
+    def __getitem__(self, index: int) -> _RealizedEntry: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> RealizedEntries: ...
+
     def __getitem__(self, index: int | slice) -> _RealizedEntry | RealizedEntries:
         self._require_open()
         if isinstance(index, slice):
@@ -73,7 +81,7 @@ class RealizedEntries(Sequence[_RealizedEntry]):
 
     def append(
         self,
-        content: Any,
+        content: LineLike,
         *,
         source_line: int | None = None,
         target_line: int | None = None,
@@ -90,7 +98,7 @@ class RealizedEntries(Sequence[_RealizedEntry]):
 
     def append_line_range_from(
         self,
-        lines: Sequence[Any],
+        lines: Sequence[LineLike],
         start: int,
         end: int,
         *,
@@ -122,7 +130,7 @@ class RealizedEntries(Sequence[_RealizedEntry]):
 
     def append_line_from(
         self,
-        lines: Sequence[Any],
+        lines: Sequence[LineLike],
         index: int,
         *,
         source_line: int | None = None,
@@ -209,7 +217,7 @@ class RealizedEntries(Sequence[_RealizedEntry]):
         self._require_open()
         return self._provenance.flushed_run_count
 
-    def content_at(self, index: int) -> Any:
+    def content_at(self, index: int) -> LineLike:
         self._require_open()
         return self._editor[self._normalize_index(index)]
 
@@ -285,7 +293,12 @@ class RealizedEntries(Sequence[_RealizedEntry]):
         self._require_open()
         return self
 
-    def __exit__(self, exc_type, exc, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()
 
     def __del__(self) -> None:
@@ -333,7 +346,10 @@ def as_realized_entries(
     return RealizedEntries(entries, spool_dir=spool_dir)
 
 
-def realized_entry_content_at(entries: Sequence[_RealizedEntry], index: int) -> Any:
+def realized_entry_content_at(
+    entries: Sequence[_RealizedEntry],
+    index: int,
+) -> LineLike:
     if isinstance(entries, RealizedEntries):
         return entries.content_at(index)
     return entries[index].content
@@ -375,6 +391,12 @@ class RealizedEntryContentSequence(Sequence[bytes]):
     def __len__(self) -> int:
         return len(self._entries)
 
+    @overload
+    def __getitem__(self, index: int) -> bytes: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> Sequence[bytes]: ...
+
     def __getitem__(self, index: int | slice) -> bytes | Sequence[bytes]:
         if isinstance(index, slice):
             start, stop, step = index.indices(len(self))
@@ -389,10 +411,10 @@ class RealizedEntryContentSequence(Sequence[bytes]):
             index += len(self)
         if index < 0 or index >= len(self):
             raise IndexError(index)
-        return realized_entry_content_at(self._entries, index)
+        return bytes(realized_entry_content_at(self._entries, index))
 
 
-def backing_content_sequence(lines: Sequence[bytes]) -> Sequence[Any]:
+def backing_content_sequence(lines: Sequence[bytes]) -> Sequence[LineLike]:
     if (
         isinstance(lines, RealizedEntryContentSequence)
         and isinstance(lines._entries, RealizedEntries)

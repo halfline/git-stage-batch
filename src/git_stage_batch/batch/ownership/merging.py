@@ -127,7 +127,7 @@ def merge_batch_ownership(existing: BatchOwnership, new: BatchOwnership) -> Batc
         **new.presence_baseline_references(),
     }
 
-    combined_deletions = []
+    combined_deletions: list[AbsenceClaim] = []
     deletion_index_by_signature: dict[_AbsenceSignature, int] = {}
     existing_deletion_index_map: dict[int, int] = {}
     new_deletion_index_map: dict[int, int] = {}

@@ -11,6 +11,7 @@ from .entry_storage import (
     realized_entry_is_claimed_at,
     realized_entry_source_line_at,
 )
+from ...editor.piece_table import LineLike
 from ...exceptions import (
     AmbiguousAnchorError as _AmbiguousAnchorError,
     MissingAnchorError as _MissingAnchorError,
@@ -19,7 +20,7 @@ from ...i18n import _
 from ...core.text_lines import normalize_line_endings as _normalize_line_endings
 
 
-def _normalize_line_content(content: object) -> bytes:
+def _normalize_line_content(content: LineLike) -> bytes:
     return _normalize_line_endings(bytes(content))
 
 
@@ -151,7 +152,7 @@ def boundary_choices_after_source_line(
 def sequence_present_at_boundary(
     entries: Sequence[_RealizedEntry],
     boundary: int,
-    sequence: list[bytes],
+    sequence: Sequence[bytes],
 ) -> bool:
     """Return whether a byte sequence is present at an exact boundary."""
     if boundary + len(sequence) > len(entries):

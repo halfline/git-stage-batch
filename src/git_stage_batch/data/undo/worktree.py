@@ -7,7 +7,6 @@ import stat
 import tarfile
 import tempfile
 from pathlib import Path
-from typing import Any
 
 from ...core.buffer import LineBuffer
 from ...utils.git_command import run_git_command
@@ -18,6 +17,7 @@ from ...utils.git_repository import (
 )
 from ...utils.git_object_io import create_git_blob, create_git_blobs_from_paths
 from ...git_paths import decode_path, nul_records
+from ..recovery_types import WorktreePathState
 
 
 def changed_worktree_paths() -> list[str]:
@@ -140,12 +140,12 @@ def _snapshot_gitlink_path(
     *,
     index_oid: str | None,
     head_oid: str | None,
-) -> dict[str, Any]:
+) -> WorktreePathState:
     full_path = get_git_repository_root_path() / path
     worktree_exists = os.path.lexists(full_path)
     worktree_oid = _worktree_commit_oid(path)
     dirty = _worktree_is_dirty(path) if worktree_oid is not None else False
-    entry = {
+    entry: WorktreePathState = {
         "path": path,
         "kind": "gitlink",
         "exists": worktree_exists,
@@ -168,7 +168,7 @@ def _snapshot_gitlink_path(
     return entry
 
 
-def _snapshot_embedded_repo_path(path: str) -> dict[str, Any]:
+def _snapshot_embedded_repo_path(path: str) -> WorktreePathState:
     full_path = get_git_repository_root_path() / path
     worktree_oid = _worktree_commit_oid(path)
     return {
@@ -198,7 +198,7 @@ def _create_directory_archive_blob(path: Path) -> str:
             return create_git_blob(archive_buffer.byte_chunks())
 
 
-def snapshot_worktree_paths(paths: list[str]) -> list[dict[str, Any]]:
+def snapshot_worktree_paths(paths: list[str]) -> list[WorktreePathState]:
     """Return before-image entries for repository-relative worktree paths."""
     repo_root = get_git_repository_root_path()
     unique_paths = sorted(set(paths))
@@ -219,7 +219,7 @@ def snapshot_worktree_paths(paths: list[str]) -> list[dict[str, Any]]:
                 normal_paths.append(full_path)
     normal_blobs = create_git_blobs_from_paths(normal_paths)
 
-    worktree_paths: list[dict[str, Any]] = []
+    worktree_paths: list[WorktreePathState] = []
     for file_path in unique_paths:
         full_path = repo_root / file_path
         index_oid = index_gitlinks.get(file_path)

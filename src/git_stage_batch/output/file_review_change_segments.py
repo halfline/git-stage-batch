@@ -88,7 +88,7 @@ def build_file_review_change_segments(
             for line in changed_run:
                 group = (
                     actionable_group_by_selection_id.get(line.id)
-                    if changed_run_displayable else
+                    if changed_run_displayable and line.id is not None else
                     None
                 )
                 if current_chunk and group != current_group:

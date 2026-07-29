@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from typing import Any
 
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.git_command import run_git_command
 from ..utils.git_refs import update_git_refs
+from .recovery_types import CheckpointState
 
 
 RECOVERY_ANCHOR_REF_PREFIX = "refs/git-stage-batch/session/anchors/"
@@ -23,21 +23,23 @@ def _existing_object_names(object_names: Iterable[str | None]) -> set[str]:
     return {name for name in object_names if isinstance(name, str) and name}
 
 
-def state_recovery_objects(state: Mapping[str, Any]) -> set[str]:
+def state_recovery_objects(state: CheckpointState) -> set[str]:
     """Collect object IDs serialized in one undo state mapping."""
     object_names = _existing_object_names(
         [state.get("head"), state.get("index_tree"), *state.get("refs", {}).values()]
     )
-    for entry in state.get("index_entries", {}).values():
-        if isinstance(entry, Mapping) and entry.get("mode") != "160000":
-            object_names.update(_existing_object_names([entry.get("object_id")]))
-    for entry in state.get("worktree_paths", []):
-        if not isinstance(entry, Mapping):
-            continue
+    for index_entry in state.get("index_entries", {}).values():
+        if index_entry.get("mode") != "160000":
+            object_names.update(
+                _existing_object_names([index_entry.get("object_id")])
+            )
+    for worktree_entry in state.get("worktree_paths", []):
         # A gitlink's worktree_oid belongs to the nested repository, not this
         # repository's object database, and cannot be the target of a
         # superproject ref. Blob IDs are owned by the current repository.
-        object_names.update(_existing_object_names([entry.get("blob")]))
+        object_names.update(
+            _existing_object_names([worktree_entry.get("blob")])
+        )
     return object_names
 
 
@@ -51,7 +53,7 @@ def anchor_recovery_objects(object_names: Iterable[str | None]) -> dict[str, str
     return anchors
 
 
-def anchor_recovery_state(state: Mapping[str, Any]) -> dict[str, str]:
+def anchor_recovery_state(state: CheckpointState) -> dict[str, str]:
     """Anchor every object serialized by an undo/redo state mapping."""
     return anchor_recovery_objects(state_recovery_objects(state))
 
@@ -93,7 +95,7 @@ def validate_recovery_objects(
             )
 
 
-def validate_recovery_state(state: Mapping[str, Any]) -> None:
+def validate_recovery_state(state: CheckpointState) -> None:
     """Validate a current or legacy state mapping before restoring it."""
     validate_recovery_objects(
         state_recovery_objects(state),

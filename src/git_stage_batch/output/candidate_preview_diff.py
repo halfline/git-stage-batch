@@ -8,6 +8,7 @@ from itertools import chain
 
 from ..core.buffer import LineBuffer
 from ..core.diff_parser import build_line_changes_from_patch_lines
+from ..core.models import LineEntry, LineLevelChange
 from . import candidate_preview_snippets
 from .colors import Colors
 
@@ -123,14 +124,14 @@ def _candidate_diff_hunks(
         yield chain(headers, diff_lines[current_hunk_start:])
 
 
-def _candidate_line_number(line) -> int | None:
+def _candidate_line_number(line: LineEntry) -> int | None:
     if line.kind == "+":
         return line.new_line_number
     return line.old_line_number if line.old_line_number is not None else line.new_line_number
 
 
 def _print_candidate_line_changes(
-    line_changes,
+    line_changes: LineLevelChange,
     *,
     ambiguity_target_line_range: tuple[int, int] | None,
 ) -> None:

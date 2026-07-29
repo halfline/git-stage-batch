@@ -7,12 +7,13 @@ import shutil
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Literal
 
 from . import restore as _undo_restore
 from . import snapshots as _undo_snapshots
 from . import state as _undo_state
 from . import worktree as _undo_worktree
+from ..recovery_types import CheckpointState, worktree_metadata_without_blob
 from .refs import (
     SESSION_REDO_STACK_REF,
     SESSION_UNDO_STACK_REF,
@@ -120,7 +121,7 @@ def _validate_nested_checkpoint(
 
 def _checkpoint_worktree_scope(
     worktree_paths: list[str],
-) -> tuple[str, list[str]]:
+) -> tuple[Literal["explicit"], list[str]]:
     """Return checkpoint scope metadata and paths to snapshot."""
     return _undo_state.EXPLICIT_WORKTREE_SCOPE, sorted(set(worktree_paths))
 
@@ -152,14 +153,14 @@ def _create_undo_checkpoint(
     )
     recovery_anchors = anchor_recovery_state(before)
 
-    manifest = {
+    manifest: CheckpointState = {
         "operation": operation,
         "head": current_head_commit(),
         "index_entries": before["index_entries"],
         "intent_to_add_paths": before["intent_to_add_paths"],
         "refs": before["refs"],
         "worktree_paths": [
-            {key: value for key, value in entry.items() if key != "blob"}
+            worktree_metadata_without_blob(entry)
             for entry in before["worktree_paths"]
         ],
         "tracked_worktree_paths": tracked_worktree_paths,
@@ -307,8 +308,8 @@ def undo_checkpoint(
         raise
     else:
         if checkpoint is not None:
-            nested_error = _PENDING_CHECKPOINT_ROLLBACK_CAUSE
-            if nested_error is not None:
+            pending_nested_error = _PENDING_CHECKPOINT_ROLLBACK_CAUSE
+            if pending_nested_error is not None:
                 try:
                     _rollback_failed_checkpoint(
                         checkpoint,
@@ -322,16 +323,16 @@ def undo_checkpoint(
                             "Operation error: {operation_error}\n"
                             "Rollback error: {rollback_error}"
                         ).format(
-                            operation_error=nested_error,
+                            operation_error=pending_nested_error,
                             rollback_error=rollback_error,
                         )
-                    ) from nested_error
+                    ) from pending_nested_error
                 raise CommandError(
                     _(
                         "A nested transactional operation failed, so the "
                         "enclosing operation was rolled back: {error}"
-                    ).format(error=nested_error)
-                ) from nested_error
+                    ).format(error=pending_nested_error)
+                ) from pending_nested_error
             finalize_pending_checkpoint()
 
 
@@ -390,10 +391,10 @@ def finalize_pending_checkpoint() -> None:
             )
         ) from error
 
-    paths = set(manifest.get("tracked_worktree_paths", []))
+    tracked_paths = set(manifest.get("tracked_worktree_paths", []))
     if not _undo_state.uses_explicit_worktree_scope(manifest):
-        paths.update(_undo_worktree.changed_worktree_paths())
-    paths = sorted(paths)
+        tracked_paths.update(_undo_worktree.changed_worktree_paths())
+    snapshot_paths = sorted(tracked_paths)
     index_paths = sorted(
         set(
             manifest.get(
@@ -401,19 +402,20 @@ def finalize_pending_checkpoint() -> None:
             )
         )
     )
-    manifest["after"] = _undo_snapshots.snapshot_current_state(
-        paths,
+    after = _undo_snapshots.snapshot_current_state(
+        snapshot_paths,
         index_paths=index_paths,
     )
-    manifest["after"]["tracked_index_paths"] = index_paths
+    manifest["after"] = after
+    after["tracked_index_paths"] = index_paths
     repository_paths = list(manifest.get("tracked_repository_paths", []))
-    manifest["after"]["tracked_repository_paths"] = repository_paths
-    manifest["after"]["repository_files"] = _undo_snapshots.filesystem_directory_state(
+    after["tracked_repository_paths"] = repository_paths
+    after["repository_files"] = _undo_snapshots.filesystem_directory_state(
         get_git_directory_path(),
         relative_paths=repository_paths,
     )
     before_refs = manifest.get("refs", {})
-    after_refs = manifest["after"].get("refs", {})
+    after_refs = after.get("refs", {})
     tracked_refs = sorted(
         ref_name
         for ref_name in set(before_refs) | set(after_refs)
@@ -425,8 +427,8 @@ def finalize_pending_checkpoint() -> None:
         for ref_name in tracked_refs
         if ref_name in before_refs
     }
-    manifest["after"]["tracked_refs"] = tracked_refs
-    manifest["after"]["refs"] = {
+    after["tracked_refs"] = tracked_refs
+    after["refs"] = {
         ref_name: after_refs[ref_name]
         for ref_name in tracked_refs
         if ref_name in after_refs
@@ -439,30 +441,35 @@ def finalize_pending_checkpoint() -> None:
     for prefix, source_dir in metadata_scopes:
         before_files = _undo_restore.tree_prefix_state(checkpoint, prefix)
         after_files = _undo_snapshots.filesystem_directory_state(source_dir)
-        tracked_paths = sorted(
+        metadata_tracked_paths = sorted(
             relative_path
             for relative_path in set(before_files) | set(after_files)
             if before_files.get(relative_path) != after_files.get(relative_path)
         )
-        manifest[f"tracked_{prefix}_paths"] = tracked_paths
-        manifest["after"][f"tracked_{prefix}_paths"] = tracked_paths
-        manifest["after"][f"{prefix}_files"] = {
+        metadata_files = {
             relative_path: after_files[relative_path]
-            for relative_path in tracked_paths
+            for relative_path in metadata_tracked_paths
             if relative_path in after_files
         }
+        if prefix == "session":
+            manifest["tracked_session_paths"] = metadata_tracked_paths
+            after["tracked_session_paths"] = metadata_tracked_paths
+            after["session_files"] = metadata_files
+        else:
+            manifest["tracked_batches_paths"] = metadata_tracked_paths
+            after["tracked_batches_paths"] = metadata_tracked_paths
+            after["batches_files"] = metadata_files
         tree_removals.extend(
             GitIndexEntryUpdate(
                 file_path=f"{prefix}/{relative_path}",
                 force_remove=True,
             )
             for relative_path in before_files
-            if relative_path not in tracked_paths
+            if relative_path not in metadata_tracked_paths
         )
-    manifest["after"]["worktree_paths"] = manifest["after"]["worktree_paths"]
-    manifest["recovery_anchors"].update(anchor_recovery_state(manifest["after"]))
+    manifest["recovery_anchors"].update(anchor_recovery_state(after))
     retained_objects = state_recovery_objects(manifest)
-    retained_objects.update(state_recovery_objects(manifest["after"]))
+    retained_objects.update(state_recovery_objects(after))
     manifest["recovery_anchors"] = {
         ref_name: object_name
         for ref_name, object_name in manifest["recovery_anchors"].items()
@@ -498,7 +505,7 @@ def undo_last_checkpoint(*, force: bool = False) -> str:
     manifest = _undo_restore.read_json_from_commit(checkpoint, "manifest.json")
     validate_recovery_state(manifest)
     after = manifest.get("after")
-    if isinstance(after, dict):
+    if after is not None:
         validate_recovery_state(after)
     conflicts = _undo_state.detect_undo_conflicts(manifest)
     if conflicts and not force:
@@ -608,7 +615,7 @@ def redo_last_checkpoint(*, force: bool = False) -> str:
     manifest = _undo_restore.read_json_from_commit(redo_node, "manifest.json")
     validate_recovery_state(manifest)
     after_undo = manifest.get("after_undo")
-    if isinstance(after_undo, dict):
+    if after_undo is not None:
         validate_recovery_state(after_undo)
     conflicts = _undo_state.detect_redo_conflicts(manifest)
     if conflicts and not force:

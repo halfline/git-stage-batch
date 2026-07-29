@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+from os import terminal_size
 
 
 DEFAULT_NON_TTY_REVIEW_LINES = 80
@@ -23,7 +24,7 @@ def body_budget() -> int:
     return max(MINIMUM_BODY_LINES, size.lines - reserved_lines)
 
 
-def review_terminal_size():
+def review_terminal_size() -> terminal_size:
     """Return the terminal size used for file-review layout."""
     return shutil.get_terminal_size(
         fallback=(DEFAULT_REVIEW_WIDTH, DEFAULT_NON_TTY_REVIEW_LINES)

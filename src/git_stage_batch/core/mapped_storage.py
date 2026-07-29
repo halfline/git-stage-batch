@@ -8,7 +8,8 @@ import mmap
 import struct
 import tempfile
 from pathlib import Path
-from typing import BinaryIO
+from types import TracebackType
+from typing import BinaryIO, Protocol, TypeVar, cast, overload
 
 
 _UINT32_MAX = (1 << 32) - 1
@@ -18,6 +19,16 @@ MAPPED_STORAGE_OFFLOAD_SIZE_THRESHOLD = mmap.PAGESIZE
 _BytesLike = bytes | bytearray | memoryview
 _ByteStorage = bytes | mmap.mmap
 _StorageBuffer = bytearray | mmap.mmap
+_MappedResourceT = TypeVar("_MappedResourceT", bound="_MappedResource")
+
+
+class _MappedResource(Protocol):
+    """Storage resource managed by :class:`ManagedMappedResources`."""
+
+    @property
+    def byte_count(self) -> int: ...
+
+    def close(self) -> None: ...
 
 
 def should_use_mapped_storage(byte_count: int) -> bool:
@@ -106,9 +117,9 @@ def _byte_storage_from_chunk_prefix_and_remainder(
         for chunk in pending_chunks:
             file_handle.write(chunk)
         file_handle.write(threshold_chunk)
-        for chunk in remaining_chunks:
-            chunk = _validate_byte_chunk(chunk)
-            file_handle.write(chunk)
+        for remaining_chunk in remaining_chunks:
+            remaining_chunk = _validate_byte_chunk(remaining_chunk)
+            file_handle.write(remaining_chunk)
         file_handle.flush()
         return (
             mmap.mmap(file_handle.fileno(), 0, access=mmap.ACCESS_READ),
@@ -235,6 +246,12 @@ class MappedIntVector(Sequence[int]):
         self._require_open()
         return self._length
 
+    @overload
+    def __getitem__(self, index: int) -> int: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> list[int]: ...
+
     def __getitem__(self, index: int | slice) -> int | list[int]:
         self._require_open()
         if isinstance(index, slice):
@@ -242,7 +259,7 @@ class MappedIntVector(Sequence[int]):
 
         index = self._normalize_index(index)
         data = self._require_storage()
-        return self._format.unpack_from(data, index * self._width)[0]
+        return cast(int, self._format.unpack_from(data, index * self._width)[0])
 
     def __setitem__(self, index: int, value: int) -> None:
         self._require_open()
@@ -286,7 +303,12 @@ class MappedIntVector(Sequence[int]):
         self._require_open()
         return self
 
-    def __exit__(self, exc_type, exc, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()
 
     def __del__(self) -> None:
@@ -368,14 +390,26 @@ class MappedRecordVector(Sequence[tuple[int, ...]]):
         self._require_open()
         return self._length
 
-    def __getitem__(self, index: int | slice) -> tuple[int, ...] | list[tuple[int, ...]]:
+    @overload
+    def __getitem__(self, index: int) -> tuple[int, ...]: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> list[tuple[int, ...]]: ...
+
+    def __getitem__(
+        self,
+        index: int | slice,
+    ) -> tuple[int, ...] | list[tuple[int, ...]]:
         self._require_open()
         if isinstance(index, slice):
             return [self[item] for item in range(*index.indices(self._length))]
 
         index = self._normalize_index(index)
         data = self._require_storage()
-        return self._struct.unpack_from(data, index * self._struct.size)
+        return cast(
+            tuple[int, ...],
+            self._struct.unpack_from(data, index * self._struct.size),
+        )
 
     def __setitem__(self, index: int, record: Sequence[int]) -> None:
         self._require_open()
@@ -420,7 +454,12 @@ class MappedRecordVector(Sequence[tuple[int, ...]]):
         self._require_open()
         return self
 
-    def __exit__(self, exc_type, exc, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()
 
     def __del__(self) -> None:
@@ -521,7 +560,16 @@ class ChunkedMappedRecordVector(Sequence[tuple[int, ...]]):
         self._require_open()
         return self._length
 
-    def __getitem__(self, index: int | slice) -> tuple[int, ...] | list[tuple[int, ...]]:
+    @overload
+    def __getitem__(self, index: int) -> tuple[int, ...]: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> list[tuple[int, ...]]: ...
+
+    def __getitem__(
+        self,
+        index: int | slice,
+    ) -> tuple[int, ...] | list[tuple[int, ...]]:
         self._require_open()
         if isinstance(index, slice):
             return [self[item] for item in range(*index.indices(self._length))]
@@ -580,7 +628,12 @@ class ChunkedMappedRecordVector(Sequence[tuple[int, ...]]):
         self._require_open()
         return self
 
-    def __exit__(self, exc_type, exc, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()
 
     def __del__(self) -> None:
@@ -605,7 +658,7 @@ class ManagedMappedResources:
     """Track storage resources and byte high-water use."""
 
     def __init__(self) -> None:
-        self._resources: list[object] = []
+        self._resources: list[_MappedResource] = []
         self._current_bytes = 0
         self._high_water_bytes = 0
         self._total_allocated_bytes = 0
@@ -626,7 +679,7 @@ class ManagedMappedResources:
         """Return total bytes ever allocated through this manager."""
         return self._total_allocated_bytes
 
-    def track(self, resource: object) -> object:
+    def track(self, resource: _MappedResourceT) -> _MappedResourceT:
         """Track a storage resource for deterministic cleanup."""
         self._require_open()
         self._resources.append(resource)
@@ -636,7 +689,7 @@ class ManagedMappedResources:
         self._high_water_bytes = max(self._high_water_bytes, self._current_bytes)
         return resource
 
-    def close_resource(self, resource: object) -> None:
+    def close_resource(self, resource: _MappedResource) -> None:
         """Close one tracked resource and update current byte accounting."""
         if resource not in self._resources:
             _close_resource(resource)
@@ -662,7 +715,12 @@ class ManagedMappedResources:
         self._require_open()
         return self
 
-    def __exit__(self, exc_type, exc, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()
 
     def _require_open(self) -> None:
@@ -670,14 +728,9 @@ class ManagedMappedResources:
             raise ValueError("mapped resource manager is closed")
 
 
-def _resource_byte_count(resource: object) -> int:
-    byte_count = getattr(resource, "byte_count", 0)
-    if isinstance(byte_count, int):
-        return byte_count
-    return 0
+def _resource_byte_count(resource: _MappedResource) -> int:
+    return resource.byte_count
 
 
-def _close_resource(resource: object) -> None:
-    close = getattr(resource, "close", None)
-    if close is not None:
-        close()
+def _close_resource(resource: _MappedResource) -> None:
+    resource.close()

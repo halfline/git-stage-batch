@@ -6,9 +6,14 @@ import json
 import os
 import shutil
 from pathlib import Path
-from typing import Any
 
 from . import worktree as _undo_worktree
+from ..recovery_types import (
+    CheckpointState,
+    FilesystemState,
+    WorktreePathState,
+    worktree_metadata_without_blob,
+)
 from ..index_entries import read_index_entries
 from ..recovery_anchors import (
     anchor_recovery_objects,
@@ -38,7 +43,7 @@ def snapshot_current_state(
     *,
     index_paths: list[str] | None = None,
     ref_names: list[str] | None = None,
-) -> dict[str, Any]:
+) -> CheckpointState:
     """Capture the checkpoint-managed portion of current repository state."""
     if index_paths is None:
         index_paths = worktree_paths
@@ -103,7 +108,7 @@ def filesystem_directory_state(
     source_dir: Path,
     *,
     relative_paths: list[str] | None = None,
-) -> dict[str, dict[str, str]]:
+) -> FilesystemState:
     """Return content identities for application-state files."""
     if not source_dir.exists():
         return {}
@@ -118,7 +123,7 @@ def filesystem_directory_state(
     normal_file_blobs = create_git_blobs_from_paths(
         path for path in file_paths if not path.is_symlink()
     )
-    state: dict[str, dict[str, str]] = {}
+    state: FilesystemState = {}
     for file_path in file_paths:
         relative_path = file_path.relative_to(source_dir).as_posix()
         mode = _undo_worktree.file_mode_for_path(file_path)
@@ -137,11 +142,11 @@ def write_snapshot_commit(
     *,
     ref_name: str,
     message: str,
-    manifest: dict[str, Any],
+    manifest: CheckpointState,
     session_dir: Path,
     batches_dir: Path,
     repository_dir: Path,
-    worktree_entries: list[dict[str, Any]],
+    worktree_entries: list[WorktreePathState],
     parent: str | None,
     session_paths: list[str] | None = None,
     batch_paths: list[str] | None = None,
@@ -226,12 +231,12 @@ def push_redo_node(
     *,
     operation: str,
     undo_checkpoint: str,
-    target: dict[str, Any],
+    target: CheckpointState,
     target_session_dir: Path,
     target_batches_dir: Path,
     target_repository_dir: Path,
-    after_undo: dict[str, Any],
-    worktree_entries: list[dict[str, Any]],
+    after_undo: CheckpointState,
+    worktree_entries: list[WorktreePathState],
     session_paths: list[str],
     batch_paths: list[str],
     repository_paths: list[str],
@@ -240,7 +245,7 @@ def push_redo_node(
     recovery_objects = state_recovery_objects(target)
     recovery_objects.update(state_recovery_objects(after_undo))
     recovery_objects.add(undo_checkpoint)
-    manifest = {
+    manifest: CheckpointState = {
         "operation": operation,
         "undo_checkpoint": undo_checkpoint,
         "head": target.get(
@@ -256,7 +261,7 @@ def push_redo_node(
         "tracked_batches_paths": batch_paths,
         "tracked_repository_paths": repository_paths,
         "worktree_paths": [
-            {key: value for key, value in entry.items() if key != "blob"}
+            worktree_metadata_without_blob(entry)
             for entry in worktree_entries
         ],
         "after_undo": after_undo,

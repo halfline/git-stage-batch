@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 import hashlib
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from ...exceptions import (
     MergeError as _MergeError,
@@ -13,6 +13,7 @@ from ...exceptions import (
 )
 from ...i18n import _
 from ...core.text_lines import normalize_line_endings
+from ...editor.piece_table import LineLike
 from .candidates import MergeResolution as _MergeResolution
 from ..realization.boundaries import (
     boundary_choices_after_source_line as _boundary_choices_for_source_line,
@@ -242,7 +243,7 @@ def _suppress_absence_with_resolution(
     raise _MergeError(_("Selected merge resolution is no longer valid"))
 
 
-def _normalize_line_content(content: Any) -> bytes:
+def _normalize_line_content(content: LineLike) -> bytes:
     return normalize_line_endings(bytes(content))
 
 

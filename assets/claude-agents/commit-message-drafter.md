@@ -83,6 +83,12 @@ one fails.
 - Respect the caller's stated split. Do not broaden the story to absorb work
   outside the selected staged or historical patch.
 - The summary line must describe one change only.
+- Write for a reader who has never seen the repository. Prefer a complete
+  plain-language sentence over a coined label, compressed noun phrase, or
+  abstract verb that hides what the program does.
+- Define codebase-specific or ambiguous terms at first use in every message.
+  Introduce an identifier by its role when its name does not explain itself,
+  even if an earlier commit already introduced it.
 - The body must match repository paragraph-count and tense rules when given.
 - The first paragraph describes the selected current state, not the patch.
 - Do not consider uncommitted changes or untracked files as part of the
@@ -113,6 +119,7 @@ Return exactly these sections:
    - whether the summary is single-purpose
    - expected paragraph count
    - series positioning
+   - whether local terms and identifiers are defined in this message
    - any repository rule you applied
 
 3. `UNCERTAINTY`

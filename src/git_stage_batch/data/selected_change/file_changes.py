@@ -45,6 +45,7 @@ from .snapshots import write_snapshots_for_selected_file_path
 from .metadata_types import (
     SelectedBinaryData,
     SelectedGitlinkData,
+    SelectedModeData,
 )
 
 
@@ -139,13 +140,13 @@ def load_selected_mode_change() -> FileModeChange | None:
         return None
 
 
-def read_selected_mode_data() -> dict | None:
+def read_selected_mode_data() -> SelectedModeData | None:
     """Read cached mode selection data, if structurally valid."""
     try:
         data = json.loads(read_text_file_contents(get_selected_mode_change_json_path()))
     except (FileNotFoundError, json.JSONDecodeError):
         return None
-    return data if isinstance(data, dict) else None
+    return cast(SelectedModeData, data) if isinstance(data, dict) else None
 
 
 def read_selected_rename_data() -> dict | None:

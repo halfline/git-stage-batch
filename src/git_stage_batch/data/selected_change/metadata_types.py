@@ -27,3 +27,10 @@ class SelectedGitlinkData(TypedDict, total=False):
     batch_name: str | None
     batch_gitlink_fingerprint: str | None
     comparison_base: str | None
+class SelectedModeData(TypedDict, total=False):
+    """Cached executable-mode selection metadata."""
+
+    file_path: str
+    old_mode: str
+    new_mode: str
+    batch_name: str | None

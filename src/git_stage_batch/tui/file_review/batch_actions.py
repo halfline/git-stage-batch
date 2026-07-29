@@ -51,7 +51,7 @@ def apply_batch_replacement_action(
     from ...commands.include_from import command_include_from_batch
 
     command_include_from_batch(
-        state.flow_state.source.batch_name,
+        state.flow_state.source.require_batch_name(),
         line_ids=line_ids,
         file=state.file_path,
         replacement_text=replacement_text,

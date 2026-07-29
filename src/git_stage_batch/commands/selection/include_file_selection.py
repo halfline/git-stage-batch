@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ...data.file_change_display import render_gitlink_change
+from ...core.models import LineLevelChange
 from ...data.selected_change.file_hunk_cache import cache_unstaged_file_as_single_hunk
 from ...data.line_state import load_line_changes_from_state
 from ...exceptions import exit_with_error
@@ -13,7 +14,7 @@ from .include_line_selection import (
 )
 
 
-def load_explicit_file_selection(file_path: str):
+def load_explicit_file_selection(file_path: str) -> LineLevelChange:
     """Return the active file-scoped view for an explicit include target."""
     if render_gitlink_change(file_path) is not None:
         exit_with_error(

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import sys
 
 from ...data.suggest_fixup_state import (
+    SuggestFixupState,
     clear_suggest_fixup_state,
     read_suggest_fixup_state,
 )
@@ -17,7 +18,7 @@ class SuggestFixupIterationContext:
     """Resolved suggest-fixup state for one command invocation."""
 
     effective_boundary: str
-    state: dict | None
+    state: SuggestFixupState | None
 
 
 def prepare_suggest_fixup_iteration(

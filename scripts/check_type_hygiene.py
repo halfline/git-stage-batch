@@ -17,6 +17,54 @@ SOURCE_ROOT = REPOSITORY_ROOT / "src" / "git_stage_batch"
 # third-party APIs, or provide generic JSON/pickle transport. Keeping the
 # allowlist symbol-specific prevents a whole module from becoming an Any sink.
 ALLOWED_EXPLICIT_ANY = frozenset({
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "decode_batch_metadata::param:payload",
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "_load_json_object::param:payload",
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "_load_json_object::return",
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "_migrate_v0_to_v1::param:data",
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "_migrate_v0_to_v1::return",
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "_decode_v1::param:data",
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "_decode_file_metadata::param:path",
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "_decode_file_metadata::param:values",
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "_validate_claims::param:values",
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "_validate_baseline_reference::param:reference",
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "_validate_replacement_origin::param:origin",
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "_reject_unknown_keys::param:data",
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "_validate_line_ranges::param:values",
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "_freeze_mapping::param:values",
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "_freeze_json_value::param:value",
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "_validate_json_value::param:value",
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "_thaw_mapping::return",
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "_thaw_json_value::return",
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "_required_string::param:data",
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "_optional_string::param:data",
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "_required_object_id::param:data",
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "_optional_object_id::param:data",
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "_validate_object_id::param:value",
+    "src/git_stage_batch/batch/state/metadata_schema.py::"
+    "_validate_hex_object_id::param:value",
     "src/git_stage_batch/cli/git_help.py::"
     "GitHelpArgumentParser.__init__::param:args",
     "src/git_stage_batch/cli/git_help.py::"

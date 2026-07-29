@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ...data.suggest_fixup_state import (
+    SuggestFixupState,
     clear_suggest_fixup_state,
     write_suggest_fixup_state,
 )
@@ -24,12 +25,12 @@ class SuggestFixupCandidate:
 
 def advance_suggest_fixup_candidate(
     *,
-    state: dict | None,
+    state: SuggestFixupState | None,
     target: SuggestFixupSearchTarget,
 ) -> SuggestFixupCandidate:
     """Find, persist, and return the next suggest-fixup candidate."""
-    last_shown = state["last_shown_commit"] if state else None
-    iteration = state["iteration"] + 1 if state else 1
+    last_shown = state.get("last_shown_commit") if state else None
+    iteration = state.get("iteration", 0) + 1 if state else 1
 
     candidate_commit = find_next_fixup_candidate(
         target.file_path,

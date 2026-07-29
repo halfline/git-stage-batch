@@ -7,7 +7,7 @@ import io
 import os
 import sys
 from contextlib import contextmanager
-from typing import Iterator
+from typing import Iterator, TextIO, cast
 
 from ..utils.command import start_command
 from ..utils.git_command import run_git_command
@@ -70,10 +70,10 @@ def _build_pager_environment() -> dict[str, str]:
     return env
 
 
-class _PagerStdout(io.TextIOBase):
+class _PagerStdout:
     """Text stream proxy that preserves tty detection while writing to a pager."""
 
-    def __init__(self, stream: io.TextIOBase, original_stdout: io.TextIOBase) -> None:
+    def __init__(self, stream: TextIO, original_stdout: TextIO) -> None:
         self._stream = stream
         self._original_stdout = original_stdout
         self._broken_pipe = False
@@ -158,7 +158,7 @@ def pager_output() -> Iterator[None]:
         write_through=True,
     )
     proxy = _PagerStdout(writer, original_stdout)
-    sys.stdout = proxy
+    sys.stdout = cast(TextIO, proxy)
     try:
         yield
     finally:

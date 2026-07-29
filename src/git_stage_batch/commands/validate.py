@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from collections.abc import Mapping
-from typing import Any
+from typing import Literal, TypeAlias, TypedDict
 
 from ..batch.state.metadata_schema import (
     CURRENT_BATCH_METADATA_SCHEMA_VERSION,
@@ -35,7 +35,49 @@ from ..utils.git_repository import require_git_repository
 from ..utils.paths import get_batch_metadata_file_path
 
 
-def inspect_batch_metadata() -> list[dict[str, Any]]:
+_ResidueClass: TypeAlias = Literal[
+    "invalid_residue",
+    "unverifiable_residue",
+    "redundant_residue",
+    "stale_attempted_update",
+    "concurrent_conflicting_residue",
+    "legacy_compatibility_state",
+    "orphaned_create",
+]
+
+
+_CompatibilityResidueReport = TypedDict(
+    "_CompatibilityResidueReport",
+    {
+        "class": _ResidueClass,
+        "path": str,
+        "file_revision": str,
+        "authoritative_revision": str,
+        "safe_automatic_repair": bool,
+    },
+    total=False,
+)
+
+
+class _RequiredBatchValidationReport(TypedDict):
+    """Fields present for every batch validation result."""
+
+    batch: str
+    status: Literal["ok", "error"]
+    schema_version: int | None
+    migration_required: bool
+    errors: list[str]
+
+
+class _BatchValidationReport(_RequiredBatchValidationReport, total=False):
+    """Machine-readable validation result for one batch."""
+
+    source: Literal["state-ref", "legacy-file"]
+    revision: str
+    residue: _CompatibilityResidueReport | None
+
+
+def inspect_batch_metadata() -> list[_BatchValidationReport]:
     """Return diagnostics for every discoverable batch without writing state."""
     ref_batch_names = list_batch_names(validate_legacy_metadata=False)
     ref_batch_name_set = set(ref_batch_names)
@@ -45,10 +87,10 @@ def inspect_batch_metadata() -> list[dict[str, Any]]:
     batch_names = sorted(
         ref_batch_name_set | set(invalid_file_names)
     )
-    reports = []
+    reports: list[_BatchValidationReport] = []
     validated_names = []
     for batch_name in batch_names:
-        report: dict[str, Any] = {
+        report: _BatchValidationReport = {
             "batch": batch_name,
             "status": "ok",
             "schema_version": None,
@@ -99,7 +141,7 @@ def inspect_batch_metadata() -> list[dict[str, Any]]:
         and object_info.object_type == "blob"
     )
 
-    decoded_models: list[tuple[dict[str, Any], BatchMetadata]] = []
+    decoded_models: list[tuple[_BatchValidationReport, BatchMetadata]] = []
     reports_by_name = {report["batch"]: report for report in reports}
     for batch_name in validated_names:
         report = reports_by_name[batch_name]
@@ -113,6 +155,7 @@ def inspect_batch_metadata() -> list[dict[str, Any]]:
             else None
         )
         state_read_error = None
+        source: Literal["state-ref", "legacy-file"]
         if state_ref_object is not None:
             payload: str | bytes = (
                 authoritative_payload
@@ -156,9 +199,16 @@ def inspect_batch_metadata() -> list[dict[str, Any]]:
             continue
 
         try:
-            raw = json.loads(payload)
+            raw: object = json.loads(payload)
+            raw_schema_version: object = (
+                raw.get("schema_version", 0)
+                if isinstance(raw, dict)
+                else None
+            )
             report["schema_version"] = (
-                raw.get("schema_version", 0) if isinstance(raw, dict) else None
+                raw_schema_version
+                if type(raw_schema_version) is int
+                else None
             )
             report["migration_required"] = report["schema_version"] == 0
             model = decode_batch_metadata(payload, expected_batch=batch_name)
@@ -200,7 +250,7 @@ def inspect_batch_metadata() -> list[dict[str, Any]]:
 
 def _classify_compatibility_residue(
     batch_name: str,
-    report: dict[str, Any],
+    report: _BatchValidationReport,
     *,
     authoritative_payload: str | bytes | None,
     authoritative_state_exists: bool,
@@ -248,6 +298,7 @@ def _classify_compatibility_residue(
                 "safe_automatic_repair": False,
             }
             return
+        residue_class: _ResidueClass
         if file_model.to_application_dict() == state_model.to_application_dict():
             residue_class = "redundant_residue"
             safe_repair = True
@@ -292,7 +343,10 @@ def _metadata_object_fields(model: BatchMetadata) -> list[tuple[str, str]]:
             object_fields.append(
                 (f"files[{entry.path!r}].batch_source_commit", source_commit)
             )
-        for index, deletion in enumerate(entry.values.get("deletions", ())):
+        deletions = entry.values.get("deletions", ())
+        if not isinstance(deletions, tuple):
+            continue
+        for index, deletion in enumerate(deletions):
             blob = deletion.get("blob") if isinstance(deletion, Mapping) else None
             if isinstance(blob, str):
                 object_fields.append(

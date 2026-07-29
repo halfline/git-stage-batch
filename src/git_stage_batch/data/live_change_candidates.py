@@ -171,7 +171,7 @@ def text_hunk_block_reason(
 
 
 def prepare_atomic_live_change(
-    item: object,
+    item: UnifiedDiffItem,
     context: LiveChangeScanContext,
 ) -> tuple[EligibleLiveChange | None, SkipReason | None]:
     """Apply shared eligibility policy to one non-text live diff item."""

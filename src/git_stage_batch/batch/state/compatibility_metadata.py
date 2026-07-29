@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
-from typing import Any
 
 from .metadata_schema import (
     BatchMetadata,
@@ -12,6 +10,7 @@ from .metadata_schema import (
     encode_batch_metadata,
     metadata_from_application_dict,
 )
+from .metadata_types import BatchMetadataDict
 from ...utils.file_io import read_text_file_contents, write_text_file_contents
 from ...utils.paths import get_batch_metadata_file_path
 
@@ -29,7 +28,7 @@ def read_file_backed_batch_metadata_model(batch_name: str) -> BatchMetadata | No
 
 def write_file_backed_batch_metadata(
     batch_name: str,
-    metadata: Mapping[str, Any],
+    metadata: BatchMetadataDict,
 ) -> BatchMetadata:
     """Validate and atomically write current-schema compatibility metadata."""
     metadata_path = get_batch_metadata_file_path(batch_name)

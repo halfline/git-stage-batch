@@ -37,7 +37,7 @@ def add_new_subcommand(subparsers: Subparsers) -> None:
     )
 
 
-def add_list_subcommand(subparsers) -> None:
+def add_list_subcommand(subparsers: Subparsers) -> None:
     """Register the list subcommand."""
     parser_list = add_subcommand_parser(
         subparsers,
@@ -47,7 +47,7 @@ def add_list_subcommand(subparsers) -> None:
     parser_list.set_defaults(func=lambda _: command_list_batches())
 
 
-def add_validate_subcommand(subparsers) -> None:
+def add_validate_subcommand(subparsers: Subparsers) -> None:
     """Register the non-mutating batch metadata diagnostic command."""
     parser_validate = add_subcommand_parser(
         subparsers,
@@ -64,7 +64,7 @@ def add_validate_subcommand(subparsers) -> None:
     )
 
 
-def add_drop_subcommand(subparsers) -> None:
+def add_drop_subcommand(subparsers: Subparsers) -> None:
     """Register the drop subcommand."""
     parser_drop = add_subcommand_parser(
         subparsers,
@@ -78,7 +78,7 @@ def add_drop_subcommand(subparsers) -> None:
     parser_drop.set_defaults(func=lambda args: command_drop_batch(args.batch_name))
 
 
-def add_annotate_subcommand(subparsers) -> None:
+def add_annotate_subcommand(subparsers: Subparsers) -> None:
     """Register the annotate subcommand."""
     parser_annotate = add_subcommand_parser(
         subparsers,
@@ -124,7 +124,7 @@ def add_sift_subcommand(subparsers: Subparsers) -> None:
     )
 
 
-def add_apply_subcommand(subparsers) -> None:
+def add_apply_subcommand(subparsers: Subparsers) -> None:
     """Register the apply subcommand."""
     parser_apply = add_subcommand_parser(
         subparsers,
@@ -156,7 +156,7 @@ def add_apply_subcommand(subparsers) -> None:
     parser_apply.set_defaults(func=dispatch_apply_command)
 
 
-def add_reset_subcommand(subparsers) -> None:
+def add_reset_subcommand(subparsers: Subparsers) -> None:
     """Register the reset subcommand."""
     parser_reset = add_subcommand_parser(
         subparsers,

@@ -66,7 +66,7 @@ def _has_complete_baseline_references(
     return bool(presence_line_set or deletion_claims)
 
 
-def try_apply_baseline_replacement_units(
+def try_apply_baseline_coordinate_edits(
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
     ownership: BatchOwnership,
@@ -139,6 +139,32 @@ def try_apply_baseline_replacement_units(
     except BaseException:
         workspace.close()
         raise
+
+
+def try_apply_baseline_replacement_units(
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    ownership: BatchOwnership,
+    presence_line_set: LineSelection,
+    deletion_claims: list[AbsenceClaim],
+    *,
+    resolution: _MergeResolution | None = None,
+    max_resolution_choices: int = _DEFAULT_RESOLUTION_CHOICE_LIMIT,
+    trust_baseline_coordinates: bool = False,
+    spool_dir: str | Path | None = None,
+) -> Iterator[bytes] | None:
+    """Call the saved-position edit function under its former name."""
+    return try_apply_baseline_coordinate_edits(
+        source_lines,
+        working_lines,
+        ownership,
+        presence_line_set,
+        deletion_claims,
+        resolution=resolution,
+        max_resolution_choices=max_resolution_choices,
+        trust_baseline_coordinates=trust_baseline_coordinates,
+        spool_dir=spool_dir,
+    )
 
 
 def _build_baseline_edit_plan(

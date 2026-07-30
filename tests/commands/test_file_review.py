@@ -13,6 +13,7 @@ from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership.replacement_units import ReplacementUnit
 from git_stage_batch.batch.state.query import read_batch_metadata
 from git_stage_batch.batch.text_file_storage import add_file_to_batch
+from git_stage_batch.cli.argument_parser import parse_command_line
 from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.commands.discard_from import command_discard_from_batch
 from git_stage_batch.commands.discard import command_discard, command_discard_file, command_discard_file_as, command_discard_line, command_discard_line_as_to_batch, command_discard_to_batch
@@ -940,6 +941,35 @@ def test_pathless_include_line_accepts_complete_shown_change_and_keeps_partial_r
     assert read_last_file_review_state() is not None
 
 
+@pytest.mark.parametrize(
+    "file_arguments",
+    [
+        ["--file", "file.txt", "--file"],
+    ],
+)
+def test_repeated_file_marker_include_line_uses_partial_review_scope(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+    file_arguments,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    line_spec = format_line_ids(list(state.selections[0].display_ids))
+    args = parse_command_line(
+        ["include", "--line", line_spec, *file_arguments],
+        quiet=True,
+    )
+    assert args is not None
+
+    args.func(args)
+
+    captured = capsys.readouterr()
+    assert f"Included line(s): {line_spec}" in captured.err
+    assert read_last_file_review_state() is not None
 def test_pathless_include_line_as_keeps_partial_review_guard_for_bare_action(
     paged_file_repo,
     monkeypatch,

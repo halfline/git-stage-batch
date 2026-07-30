@@ -960,6 +960,16 @@ def test_parse_command_line_include_empty_line_stays_a_line_action(monkeypatch):
         "command_include_file",
     )
 
+
+def test_parse_command_line_discard_empty_line_stays_a_line_action(monkeypatch):
+    _assert_empty_line_selection_stays_a_line_action(
+        monkeypatch,
+        "discard",
+        discard_dispatch,
+        "command_discard_line",
+        "command_discard_file",
+    )
+
 @pytest.mark.parametrize(
     "file_arguments",
     [

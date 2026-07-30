@@ -142,10 +142,6 @@ def _normalize_width(width: int) -> int:
     return width
 
 
-def _typecode_for_width(width: int) -> str:
-    return "I" if width == 4 else "Q"
-
-
 def _format_for_width(width: int) -> str:
     return "<I" if width == 4 else "<Q"
 
@@ -226,11 +222,6 @@ class MappedIntVector(Sequence[int]):
         )
         if self._data is not None and fill != 0:
             self.fill(fill)
-
-    @property
-    def typecode(self) -> str:
-        """Return an array-compatible unsigned integer type code."""
-        return _typecode_for_width(self._width)
 
     @property
     def byte_count(self) -> int:
@@ -370,11 +361,6 @@ class MappedRecordVector(Sequence[tuple[int, ...]]):
         """Return the maximum record count."""
         self._require_open()
         return self._capacity
-
-    @property
-    def record_size(self) -> int:
-        """Return bytes per record."""
-        return self._struct.size
 
     @property
     def byte_count(self) -> int:
@@ -661,23 +647,7 @@ class ManagedMappedResources:
         self._resources: list[_MappedResource] = []
         self._current_bytes = 0
         self._high_water_bytes = 0
-        self._total_allocated_bytes = 0
         self._closed = False
-
-    @property
-    def current_bytes(self) -> int:
-        """Return bytes currently owned by open tracked resources."""
-        return self._current_bytes
-
-    @property
-    def high_water_bytes(self) -> int:
-        """Return the highest simultaneously tracked byte count."""
-        return self._high_water_bytes
-
-    @property
-    def total_allocated_bytes(self) -> int:
-        """Return total bytes ever allocated through this manager."""
-        return self._total_allocated_bytes
 
     def track(self, resource: _MappedResourceT) -> _MappedResourceT:
         """Track a storage resource for deterministic cleanup."""
@@ -685,7 +655,6 @@ class ManagedMappedResources:
         self._resources.append(resource)
         byte_count = _resource_byte_count(resource)
         self._current_bytes += byte_count
-        self._total_allocated_bytes += byte_count
         self._high_water_bytes = max(self._high_water_bytes, self._current_bytes)
         return resource
 

@@ -30,6 +30,7 @@ from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.git_command import run_git_command
 from git_stage_batch.utils.paths import ensure_state_directory_exists
+from tests.buffer_helpers import uses_mapped_storage
 
 
 _RUNNING_UNDER_XDIST = "PYTEST_XDIST_WORKER" in os.environ
@@ -786,7 +787,7 @@ class TestCommandIncludeFromBatch:
         )
 
         def record_stage(file_path, buffer, file_mode, change_type):
-            mapped_outputs.append(buffer.uses_mapped_storage)
+            mapped_outputs.append(uses_mapped_storage(buffer))
             return original_stage(
                 file_path,
                 buffer,
@@ -795,7 +796,7 @@ class TestCommandIncludeFromBatch:
             )
 
         def record_write(file_path, buffer, file_mode, change_type):
-            mapped_outputs.append(buffer.uses_mapped_storage)
+            mapped_outputs.append(uses_mapped_storage(buffer))
             return original_write(
                 file_path,
                 buffer,

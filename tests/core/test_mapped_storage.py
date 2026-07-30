@@ -107,7 +107,6 @@ def test_mapped_int_vector_get_set_fill_and_close():
     """Mapped integer vectors expose fixed-width unsigned slots."""
     vector = MappedIntVector(4, width=4, fill=7)
 
-    assert vector.typecode == "I"
     assert list(vector) == [7, 7, 7, 7]
 
     vector[1] = 9
@@ -170,7 +169,6 @@ def test_mapped_int_vector_uses_64_bit_slots():
     value = (1 << 40) + 3
 
     with MappedIntVector(1, width=8) as vector:
-        assert vector.typecode == "Q"
         vector[0] = value
         assert vector[0] == value
 

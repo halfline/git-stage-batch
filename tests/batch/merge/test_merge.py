@@ -584,8 +584,6 @@ class TestMatchLines:
 
         mapping = match_lines(source, target)
 
-        assert mapping.source_to_target.typecode in {"I", "Q"}
-        assert mapping.target_to_source.typecode in {"I", "Q"}
         assert list(mapping.source_to_target) == [1, 0, 2]
         assert list(mapping.target_to_source) == [1, 3]
         assert mapping.get_target_line_from_source_line(2) is None

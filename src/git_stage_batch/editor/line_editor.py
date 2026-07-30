@@ -1,49 +1,25 @@
-"""Line editor mutation helpers."""
+"""Indexed line-range storage with shared-source lifetime tracking."""
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator, Sequence
-from dataclasses import dataclass
+from collections.abc import Iterator, Sequence
 from types import TracebackType
 from typing import Generic, TypeVar, cast, overload
 
-from ..core.buffer import LineBuffer
-from ..core.text_lines import normalize_line_ending
-from .line_endings import detect_line_ending, restore_line_endings_in_chunks
-from .line_export import line_body, line_body_chunks
-from .piece_table import LineLike, LineOwner, LinePieceTable, LineRange, SOURCE_RUN
+from .piece_table import LineLike, LineOwner, LinePieceTable, LineRange
 
 
-class LineCursor:
-    """An opaque position in editor lines."""
-
-    __slots__ = ("_editor", "_id")
-
-    def __init__(self, editor: LineEditor, cursor_id: int) -> None:
-        self._editor = editor
-        self._id = cursor_id
-
-
-_BytesLike = bytes | bytearray | memoryview
 _LineLike = LineLike
 
-_TransformResult = _BytesLike | Iterable[_LineLike]
-_Selection = tuple[int, int | None]
 _SliceLineT = TypeVar("_SliceLineT")
 
 
 class LineEditor(Sequence[_LineLike]):
-    """Stateful line editor for indexed lines."""
+    """Append indexed line ranges while preserving shared storage."""
 
     def __init__(self, source: Sequence[_LineLike]) -> None:
-        self._source = source
         self._pieces = LinePieceTable(source, self)
         self._line_count: int | None = None
-        self._position = 0
-        self._selection: _Selection | None = None
-        self._cursor_positions: dict[int, int] = {}
-        self._next_cursor_id = 0
-        self._owned_buffers: list[LineBuffer] = []
         self._incoming_editor_leases: dict[LineEditor, _LineEditorLease] = {}
         self._outgoing_editor_leases: set[_LineEditorLease] = set()
         self._closed = False
@@ -59,66 +35,6 @@ class LineEditor(Sequence[_LineLike]):
         traceback: TracebackType | None,
     ) -> None:
         self.close()
-
-    @property
-    def position(self) -> int:
-        """Return the current 0-based destination line boundary."""
-        self._require_open()
-        return self._position
-
-    @property
-    def at_end(self) -> bool:
-        """Return whether the editor is positioned at end of its lines."""
-        self._require_open()
-        return self._position == self._current_line_count()
-
-    def cursor_at(self, line: int) -> LineCursor:
-        """Return a cursor at a 0-based destination line boundary."""
-        self._require_open()
-        position = self._validated_position(line)
-        cursor_id = self._next_cursor_id
-        self._next_cursor_id += 1
-        self._cursor_positions[cursor_id] = position
-        return LineCursor(self, cursor_id)
-
-    def cursor_at_source_line(self, line: int) -> LineCursor:
-        """Return a cursor at a 0-based source line boundary."""
-        self._require_open()
-        if line < 0:
-            raise ValueError("source line is out of range")
-
-        destination_position = self._destination_position_for_source_line(line)
-        if destination_position is None:
-            raise ValueError("source line is not present in edited lines")
-
-        return self.cursor_at(destination_position)
-
-    def move_to(self, target: LineCursor | int) -> None:
-        """Move to a cursor or destination line boundary."""
-        self._require_open()
-        self._selection = None
-        self._position = self._resolve_position(target)
-
-    def select_lines(self, count: int) -> None:
-        """Select count lines from the current position."""
-        self._require_open()
-        if count < 0:
-            raise ValueError("line count must be non-negative")
-
-        selection_end = self._position + count
-        self._validated_position(selection_end)
-
-        self._selection = (self._position, selection_end)
-
-    def select_to(self, target: LineCursor | int) -> None:
-        """Select lines from the current position to the target."""
-        self._require_open()
-        self._selection = (self._position, self._resolve_position(target))
-
-    def select_all(self) -> None:
-        """Select all lines from the start."""
-        self._require_open()
-        self._selection = (0, None)
 
     @overload
     def __getitem__(self, index: int) -> _LineLike: ...
@@ -151,41 +67,6 @@ class LineEditor(Sequence[_LineLike]):
         for line in self._lines():
             yield bytes(line)
 
-    def add_line(self, payload: _LineLike) -> None:
-        """Insert or replace with one line."""
-        self.add_lines((payload,))
-
-    def add_lines(
-        self,
-        lines: Iterable[_LineLike],
-        *,
-        start: int | None = None,
-        end: int | None = None,
-    ) -> None:
-        """Insert or replace with generated lines or an indexed range."""
-        self._require_open()
-        range_requested = start is not None or end is not None
-        range_start, range_end = _line_range_bounds(start, end)
-        if range_requested and isinstance(lines, Sequence):
-            validate_end = range_end is not None
-            self._add_line_range(
-                lines,
-                range_start,
-                len(lines) if range_end is None else range_end,
-                validate_end=validate_end,
-            )
-            return
-
-        inserted_lines = _spool_inserted_lines(
-            lines,
-            start=range_start,
-            end=range_end,
-            owner=self,
-        )
-        if inserted_lines.owned_buffer is not None:
-            self._owned_buffers.append(inserted_lines.owned_buffer)
-        self._commit_edit(inserted_lines)
-
     def append_line_range(
         self,
         lines: Sequence[_LineLike],
@@ -204,12 +85,6 @@ class LineEditor(Sequence[_LineLike]):
         )
         self._append_line_ranges((line_range,))
 
-    def append_line_ranges(self, ranges: Iterable[object]) -> None:
-        """Append indexed line ranges without selection replacement."""
-        self._require_open()
-        line_ranges = _coerce_line_ranges(ranges, default_owner=self)
-        self._append_line_ranges(line_ranges)
-
     def append_line_ranges_from_editor(
         self,
         editor: LineEditor,
@@ -226,76 +101,15 @@ class LineEditor(Sequence[_LineLike]):
 
         self._append_line_ranges(tuple(editor._line_sources(start, end)))
 
-    def add_lines_from_editor(
-        self,
-        editor: LineEditor,
-        start: int,
-        end: int,
-    ) -> None:
-        """Insert or replace with a range from another editor."""
-        self.add_line_ranges_from_editor(editor, start, end)
-
-    def add_line_ranges_from_editor(
-        self,
-        editor: LineEditor,
-        start: int,
-        end: int,
-    ) -> None:
-        """Insert or replace with ranges from another editor in one edit."""
-        self._require_open()
-        editor._require_open()
-        if start < 0 or end < start:
-            raise ValueError("invalid line range")
-        if end > len(editor):
-            raise ValueError("invalid line range")
-
-        self.replace_selection_with_ranges(editor._line_sources(start, end))
-
-    def replace_selection_with_ranges(self, ranges: Iterable[object]) -> None:
-        """Replace the current selection with indexed line ranges."""
-        self._require_open()
-        line_ranges = _coerce_line_ranges(ranges, default_owner=self)
-        self._commit_edit(
-            _InsertedLines(
-                ranges=line_ranges,
-                line_count=_line_ranges_line_count(line_ranges),
-            )
-        )
-
-    def _add_line_range(
-        self,
-        lines: Sequence[_LineLike],
-        start: int,
-        end: int,
-        *,
-        owner: LineEditor | None = None,
-        validate_end: bool = True,
-    ) -> None:
-        _validate_line_range(lines, start, end, validate_end=validate_end)
-
-        self._commit_edit(
-            _InsertedLines(
-                ranges=(
-                    LineRange(lines, start, end, owner or self),
-                ),
-                line_count=end - start,
-            )
-        )
-
     def _append_line_ranges(self, ranges: Sequence[LineRange]) -> None:
         self._require_range_owners_open(ranges)
         line_count = _line_ranges_line_count(ranges)
         if line_count == 0:
-            self._position = self._current_line_count()
-            self._selection = None
             return
 
         append_position = self._current_line_count()
         self._pieces.append_line_ranges(ranges)
-        self._shift_cursors(append_position, append_position, line_count)
         self._line_count = append_position + line_count
-        self._position = self._line_count
-        self._selection = None
         self._sync_editor_leases()
 
     def _require_range_owners_open(self, ranges: Sequence[LineRange]) -> None:
@@ -304,178 +118,14 @@ class LineEditor(Sequence[_LineLike]):
             if owner is not None and owner is not self:
                 owner._require_open()
 
-    def add_bytes(self, data: bytes) -> None:
-        """Insert raw bytes split on line endings."""
-        self._require_open()
-        if not isinstance(data, bytes):
-            raise TypeError(f"expected bytes object, got {type(data).__name__}")
-
-        buffer = LineBuffer.from_bytes(data)
-        line_count = _count_lines_in_bytes(data)
-        self._owned_buffers.append(buffer)
-        self._commit_edit(
-            _InsertedLines(
-                ranges=(
-                    LineRange(
-                        buffer,
-                        0,
-                        line_count,
-                        self,
-                    ),
-                ),
-                line_count=line_count,
-            )
-        )
-
-    def remove(self) -> None:
-        """Remove the pending selection."""
-        self._require_open()
-        if self._selection is None:
-            raise ValueError("no line selection")
-
-        self._commit_edit(None)
-
-    def transform(
-        self,
-        handler: Callable[[Sequence[bytes]], _TransformResult],
-    ) -> None:
-        """Replace the current selection with transformed lines."""
-        self._require_open()
-        selection_start, selection_end = self._selected_range()
-        result = handler(
-            _SelectedLineSequence(
-                self,
-                selection_start,
-                selection_end,
-            )
-        )
-
-        if isinstance(result, (bytes, bytearray, memoryview)):
-            self.add_bytes(bytes(result))
-        else:
-            self.add_lines(result)
-
-    def export(
-        self,
-        *,
-        has_trailing_newline: bool = True,
-        add_trailing_newline_when_nonempty: bool = False,
-        line_endings_from: Sequence[bytes] | None = None,
-    ) -> LineBuffer:
-        """Materialize final buffer and freeze the editor."""
-        self._require_open()
-        self._require_no_editor_borrowers()
-        try:
-            chunks = line_body_chunks(
-                self._line_bodies(),
-                has_trailing_newline=has_trailing_newline,
-                add_trailing_newline_when_nonempty=(
-                    add_trailing_newline_when_nonempty
-                ),
-            )
-            if line_endings_from is not None:
-                chunks = restore_line_endings_in_chunks(
-                    chunks,
-                    detect_line_ending(line_endings_from),
-                )
-            return LineBuffer.from_chunks(
-                chunks
-            )
-        finally:
-            self.close()
-
     def close(self) -> None:
-        """Close generated buffers held by the editor."""
+        """Release shared-range leases held by this collection."""
         if self._closed:
             return
 
         self._require_no_editor_borrowers()
         self._release_editor_leases()
-        for buffer in self._owned_buffers:
-            buffer.close()
         self._closed = True
-
-    def _commit_edit(self, inserted_lines: _InsertedLines | None) -> None:
-        selection_start, selection_end = self._selected_range()
-        inserted_line_count = (
-            inserted_lines.line_count
-            if inserted_lines is not None
-            else 0
-        )
-        inserted_ranges = (
-            inserted_lines.ranges
-            if inserted_lines is not None and inserted_lines.line_count > 0
-            else ()
-        )
-        self._require_range_owners_open(inserted_ranges)
-
-        self._replace_selected_range(
-            selection_start,
-            selection_end,
-            inserted_ranges,
-        )
-        self._shift_cursors(
-            selection_start,
-            selection_end,
-            inserted_line_count,
-        )
-        if selection_end is None and selection_start == 0:
-            self._line_count = inserted_line_count
-        elif self._line_count is not None:
-            resolved_selection_end = self._resolve_selection_end(selection_end)
-            self._line_count += inserted_line_count - (
-                resolved_selection_end - selection_start
-            )
-        self._position = selection_start + inserted_line_count
-        self._selection = None
-        self._sync_editor_leases()
-
-    def _selected_range(self) -> _Selection:
-        if self._selection is None:
-            return self._position, self._position
-
-        selection_start, selection_end = self._selection
-        if selection_end is None:
-            return selection_start, None
-        return min(selection_start, selection_end), max(selection_start, selection_end)
-
-    def _replace_selected_range(
-        self,
-        selection_start: int,
-        selection_end: int | None,
-        inserted_ranges: Sequence[LineRange],
-    ) -> None:
-        self._pieces.replace_range(selection_start, selection_end, inserted_ranges)
-
-    def _shift_cursors(
-        self,
-        selection_start: int,
-        selection_end: int | None,
-        inserted_line_count: int,
-    ) -> None:
-        if selection_end is None:
-            for cursor_id, position in self._cursor_positions.items():
-                if position >= selection_start:
-                    self._cursor_positions[cursor_id] = (
-                        selection_start + inserted_line_count
-                    )
-            return
-
-        line_delta = inserted_line_count - (selection_end - selection_start)
-
-        for cursor_id, position in self._cursor_positions.items():
-            if position < selection_start:
-                continue
-            if position <= selection_end:
-                self._cursor_positions[cursor_id] = (
-                    selection_start + inserted_line_count
-                )
-            else:
-                self._cursor_positions[cursor_id] = position + line_delta
-
-    def _line_bodies(self) -> Iterator[bytes]:
-        for line in self._lines():
-            yield line_body(line)
 
     def _lines(self) -> Iterator[_LineLike]:
         for run_index in range(len(self._pieces)):
@@ -549,81 +199,6 @@ class LineEditor(Sequence[_LineLike]):
             )
             destination_position = segment_end
 
-    def _destination_position_for_source_line(self, line: int) -> int | None:
-        destination_position = 0
-
-        for run_index in range(len(self._pieces)):
-            kind, _lines, start, end, _owner = self._pieces.run(run_index)
-            if end is None:
-                if (
-                    kind == SOURCE_RUN
-                    and line >= start
-                    and self._source_boundary_exists(line)
-                ):
-                    return destination_position + (line - start)
-                return None
-
-            segment_line_count = end - start
-            if kind == SOURCE_RUN and start <= line <= end:
-                return destination_position + (line - start)
-            destination_position += segment_line_count
-
-        return None
-
-    def _resolve_position(self, target: LineCursor | int) -> int:
-        if isinstance(target, LineCursor):
-            if target._editor is not self:
-                raise ValueError("cursor does not belong to this editor")
-            try:
-                return self._cursor_positions[target._id]
-            except KeyError as exc:
-                raise ValueError("cursor is no longer valid") from exc
-
-        return self._validated_position(target)
-
-    def _validated_position(self, line: int) -> int:
-        if line < 0:
-            raise ValueError("destination line is out of range")
-        if self._line_count is not None:
-            if line > self._line_count:
-                raise ValueError("destination line is out of range")
-            return line
-
-        destination_position = 0
-        for run_index in range(len(self._pieces)):
-            _kind, _lines, start, end, _owner = self._pieces.run(run_index)
-            if end is None:
-                source_line = start + (line - destination_position)
-                if line >= destination_position and self._source_boundary_exists(
-                    source_line
-                ):
-                    return line
-                raise ValueError("destination line is out of range")
-
-            segment_line_count = end - start
-            if line <= destination_position + segment_line_count:
-                return line
-            destination_position += segment_line_count
-
-        raise ValueError("destination line is out of range")
-
-    def _resolve_selection_end(self, selection_end: int | None) -> int:
-        if selection_end is not None:
-            return selection_end
-        return self._current_line_count()
-
-    def _source_boundary_exists(self, line: int) -> bool:
-        if line < 0:
-            return False
-        if line == 0:
-            return True
-
-        try:
-            self._source[line - 1]
-        except IndexError:
-            return False
-        return True
-
     def _current_line_count(self) -> int:
         if self._line_count is not None:
             return self._line_count
@@ -678,13 +253,6 @@ class LineEditor(Sequence[_LineLike]):
             lease.release()
 
 
-@dataclass(slots=True)
-class _InsertedLines:
-    ranges: Sequence[LineRange]
-    line_count: int
-    owned_buffer: LineBuffer | None = None
-
-
 class _LineEditorLease:
     """Borrow relationship between editors sharing line segments."""
 
@@ -701,48 +269,6 @@ class _LineEditorLease:
         if self._target._incoming_editor_leases.get(self._source) is self:
             del self._target._incoming_editor_leases[self._source]
         self._source._outgoing_editor_leases.discard(self)
-
-
-class _SelectedLineSequence(Sequence[bytes]):
-    """Selected editor lines passed to transform handlers."""
-
-    def __init__(
-        self,
-        editor: LineEditor,
-        selection_start: int,
-        selection_end: int | None,
-    ) -> None:
-        self._editor = editor
-        self._selection_start = selection_start
-        self._selection_end = selection_end
-
-    def __len__(self) -> int:
-        selection_end = self._editor._resolve_selection_end(self._selection_end)
-        return selection_end - self._selection_start
-
-    @overload
-    def __getitem__(self, index: int) -> bytes: ...
-
-    @overload
-    def __getitem__(self, index: slice) -> Sequence[bytes]: ...
-
-    def __getitem__(self, index: int | slice) -> bytes | Sequence[bytes]:
-        if isinstance(index, slice):
-            return _SelectedLineSliceSequence(self, index)
-
-        if index < 0:
-            index += len(self)
-        if index < 0:
-            raise IndexError(index)
-        if self._selection_end is not None and index >= len(self):
-            raise IndexError(index)
-
-        try:
-            return normalize_line_ending(
-                bytes(self._editor._line_at_position(self._selection_start + index))
-            )
-        except IndexError as exc:
-            raise IndexError(index) from exc
 
 
 class _SelectedLineSliceSequence(Sequence[_SliceLineT], Generic[_SliceLineT]):
@@ -807,49 +333,6 @@ class _SelectedLineSliceSequence(Sequence[_SliceLineT], Generic[_SliceLineT]):
         return self._slice.indices(len(self._parent))
 
 
-def edit_lines_as_buffer(
-    source_lines: Sequence[_LineLike],
-    edited_lines: Iterable[_LineLike],
-    *,
-    selection_start: int,
-    selection_end: int,
-    has_trailing_newline: bool,
-    add_trailing_newline_when_nonempty: bool = False,
-) -> LineBuffer:
-    """Apply edited lines to an indexed selection and return a buffer."""
-    if selection_start < 0 or selection_end < selection_start:
-        raise ValueError("invalid line selection")
-
-    try:
-        with LineEditor(source_lines) as editor:
-            editor.move_to(selection_start)
-            editor.select_to(selection_end)
-            editor.add_lines(edited_lines)
-            return editor.export(
-                has_trailing_newline=has_trailing_newline,
-                add_trailing_newline_when_nonempty=(
-                    add_trailing_newline_when_nonempty
-                ),
-            )
-    except ValueError as exc:
-        if str(exc) in {
-            "destination line is out of range",
-            "line selection is out of range",
-        }:
-            raise ValueError("invalid line selection") from exc
-        raise
-
-
-def _line_range_bounds(
-    start: int | None,
-    end: int | None,
-) -> tuple[int, int | None]:
-    range_start = 0 if start is None else start
-    if range_start < 0 or (end is not None and end < range_start):
-        raise ValueError("invalid line range")
-    return range_start, end
-
-
 def _validate_line_range(
     lines: Sequence[_LineLike],
     start: int,
@@ -881,107 +364,8 @@ def _validated_line_range(
     return LineRange(lines, start, end, owner)
 
 
-def _coerce_line_ranges(
-    ranges: Iterable[object],
-    *,
-    default_owner: LineEditor,
-) -> tuple[LineRange, ...]:
-    return tuple(_coerce_line_range(item, default_owner) for item in ranges)
-
-
-def _coerce_line_range(
-    line_range: object,
-    default_owner: LineEditor,
-) -> LineRange:
-    if isinstance(line_range, LineRange):
-        owner = line_range.owner or default_owner
-        return _validated_line_range(
-            line_range.lines,
-            line_range.start,
-            line_range.end,
-            owner=owner,
-            validate_end=False,
-        )
-
-    if not isinstance(line_range, Iterable):
-        raise TypeError("expected line range tuple")
-    values = tuple(line_range)
-
-    if len(values) == 3:
-        lines, start, end = values
-        owner = default_owner
-    elif len(values) == 4:
-        lines, start, end, owner = values
-        owner = owner or default_owner
-    else:
-        raise TypeError("expected line range tuple")
-
-    if not isinstance(lines, Sequence):
-        raise TypeError("expected line sequence in range")
-    if not isinstance(start, int) or not isinstance(end, int):
-        raise TypeError("expected integer line range bounds")
-    if owner is not None and not isinstance(owner, LineEditor):
-        raise TypeError("expected editor owner")
-
-    return _validated_line_range(
-        cast(Sequence[_LineLike], lines),
-        start,
-        end,
-        owner=owner,
-    )
-
-
 def _line_ranges_line_count(ranges: Sequence[LineRange]) -> int:
     return sum(line_range.end - line_range.start for line_range in ranges)
-
-
-def _spool_inserted_lines(
-    lines: Iterable[_LineLike],
-    *,
-    start: int = 0,
-    end: int | None = None,
-    owner: LineEditor | None = None,
-) -> _InsertedLines:
-    if start < 0 or (end is not None and end < start):
-        raise ValueError("invalid line range")
-
-    line_count = 0
-
-    def chunks() -> Iterator[bytes]:
-        nonlocal line_count
-        for index, line in enumerate(lines):
-            if index < start:
-                continue
-            if end is not None and index >= end:
-                break
-            line_count += 1
-            yield line_body(line) + b"\n"
-
-    buffer = LineBuffer.from_chunks(chunks())
-    return _InsertedLines(
-        ranges=(
-            LineRange(buffer, 0, line_count, owner),
-        ),
-        line_count=line_count,
-        owned_buffer=buffer,
-    )
-
-
-def _count_lines_in_bytes(data: bytes) -> int:
-    if not data:
-        return 0
-
-    line_count = 0
-    line_start = 0
-    for index, byte in enumerate(data):
-        if byte == 10:
-            line_count += 1
-            line_start = index + 1
-
-    if line_start < len(data):
-        line_count += 1
-
-    return line_count
 
 
 def _slice_uses_negative_bounds(line_slice: slice) -> bool:

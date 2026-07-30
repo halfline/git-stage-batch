@@ -192,11 +192,6 @@ class LineBuffer(Sequence[bytes]):
         )
 
     @property
-    def uses_mapped_storage(self) -> bool:
-        """Return whether this buffer uses mapped storage."""
-        return isinstance(self._data, mmap.mmap) and not self._closed
-
-    @property
     def byte_count(self) -> int:
         """Return the number of bytes in the buffer."""
         self._require_open()
@@ -245,10 +240,6 @@ class LineBuffer(Sequence[bytes]):
         traceback: TracebackType | None,
     ) -> None:
         self.close()
-
-    def acquire_line(self, index: int) -> _AcquiredBufferLineContext:
-        """Return a context manager for a scoped no-copy line view."""
-        return _AcquiredBufferLineContext(self, index)
 
     def acquire_lines(self) -> _AcquiredBufferLineSequence:
         """Return a context manager for scoped no-copy line views."""
@@ -512,26 +503,6 @@ class _AcquiredBufferLineSequence(Sequence[_BufferLineView]):
         if not self._active:
             raise ValueError("line view is closed")
         self._buffer._require_open()
-
-
-class _AcquiredBufferLineContext:
-    """Context manager for a single scoped editor line view."""
-
-    def __init__(self, buffer: LineBuffer, index: int) -> None:
-        self._lines_context = _AcquiredBufferLineSequence(buffer)
-        self._index = index
-
-    def __enter__(self) -> _BufferLineView:
-        lines = self._lines_context.__enter__()
-        return lines[self._index]
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None:
-        self._lines_context.__exit__(exc_type, exc, traceback)
 
 
 class _BufferLineSliceSequence(Sequence[_LineT], Generic[_LineT]):

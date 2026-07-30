@@ -51,13 +51,6 @@ def choose_line_ending(*buffers: Sequence[bytes]) -> bytes | None:
     return None
 
 
-def restore_line_endings(data: bytes, line_ending: bytes | None) -> bytes:
-    """Restore normalized LF output to a chosen line ending."""
-    if line_ending in (None, b"\n"):
-        return data
-    return data.replace(b"\n", line_ending)
-
-
 def restore_line_endings_in_chunks(
     chunks: Iterable[bytes],
     line_ending: bytes | None,

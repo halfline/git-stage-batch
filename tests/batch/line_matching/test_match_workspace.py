@@ -18,16 +18,16 @@ def test_matcher_workspace_tracks_and_closes_resources():
     records = workspace.record_vector(1, "QQ")
     records.append((2, 3))
 
-    assert workspace.current_bytes == vector.byte_count + records.byte_count
-    assert workspace.high_water_bytes == workspace.current_bytes
+    assert workspace._current_bytes == vector.byte_count + records.byte_count
+    assert workspace._high_water_bytes == workspace._current_bytes
 
     workspace.close_resource(vector)
     assert vector.closed
-    assert workspace.current_bytes == records.byte_count
+    assert workspace._current_bytes == records.byte_count
 
     workspace.close()
     assert records.closed
-    assert workspace.current_bytes == 0
+    assert workspace._current_bytes == 0
 
 
 def test_match_lines_routes_mapped_storage_to_requested_spool(

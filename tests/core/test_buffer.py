@@ -24,6 +24,7 @@ from git_stage_batch.utils.buffer_io import (
     write_buffer_to_path,
     write_buffer_to_working_tree_path,
 )
+from tests.buffer_helpers import uses_mapped_storage
 
 
 class _CopyFailingBytearray(bytearray):
@@ -90,14 +91,6 @@ def test_line_buffer_acquires_scoped_line_views():
             assert list(lines[0:2]) == [b"alpha\n", b"beta\r\n"]
 
 
-def test_line_buffer_acquires_single_scoped_line_view():
-    """Single-line acquisition supports negative indexes."""
-    with LineBuffer.from_bytes(b"alpha\nbeta\n") as buffer:
-        with buffer.acquire_line(-1) as line:
-            assert not isinstance(line, bytes)
-            assert line == b"beta\n"
-
-
 def test_line_buffer_slices_acquire_scoped_line_views():
     """Buffer slices forward scoped line acquisition to their parent."""
     with LineBuffer.from_bytes(b"zero\none\ntwo\nthree\n") as buffer:
@@ -115,36 +108,6 @@ def test_line_buffer_slices_acquire_scoped_line_views():
 
         with pytest.raises(ValueError, match="line view is closed"):
             bytes(first)
-
-
-def test_line_buffer_line_views_use_acquisition_lifetime():
-    """Line views reject access after their acquisition scope closes."""
-    with LineBuffer.from_bytes(b"alpha\n") as buffer:
-        with buffer.acquire_line(0) as line:
-            assert bytes(line) == b"alpha\n"
-
-        with pytest.raises(ValueError, match="line view is closed"):
-            bytes(line)
-        with pytest.raises(ValueError, match="line view is closed"):
-            len(line)
-        with pytest.raises(ValueError, match="line view is closed"):
-            hash(line)
-
-
-def test_line_buffer_acquired_line_views_do_not_hold_mmap_exports(tmp_path):
-    """Acquired line views release temporary memoryviews before scope exit."""
-    file_path = tmp_path / "buffer.txt"
-    file_path.write_bytes(b"alpha\nbeta\n")
-    buffer = LineBuffer.from_path(file_path)
-
-    with buffer.acquire_line(0) as line:
-        assert line == b"alpha\n"
-        assert hash(line) == hash(b"alpha\n")
-
-    buffer.close()
-
-    with pytest.raises(ValueError, match="line view is closed"):
-        bytes(line)
 
 
 def test_line_buffer_slice_uses_parent_lifetime():
@@ -378,7 +341,7 @@ def test_line_buffer_uses_heap_for_files_smaller_than_memory_page(tmp_path):
     file_path.write_bytes(b"alpha\nbeta\n")
 
     with LineBuffer.from_path(file_path) as buffer:
-        assert buffer.uses_mapped_storage is False
+        assert uses_mapped_storage(buffer) is False
         assert buffer.byte_count == len(b"alpha\nbeta\n")
         assert list(buffer.byte_chunks(5)) == [b"alpha", b"\nbeta", b"\n"]
         assert buffer.to_bytes() == b"alpha\nbeta\n"
@@ -393,7 +356,7 @@ def test_line_buffer_uses_mapped_storage_for_page_sized_files(tmp_path):
     file_path.write_bytes(data)
 
     with LineBuffer.from_path(file_path) as buffer:
-        assert buffer.uses_mapped_storage is True
+        assert uses_mapped_storage(buffer) is True
         assert buffer.byte_count == mmap.PAGESIZE
         assert buffer[0] == b"alpha\n"
         assert buffer[1] == b"x" * (mmap.PAGESIZE - len(b"alpha\n"))
@@ -529,7 +492,7 @@ def test_line_buffer_skips_mapped_storage_for_empty_files(tmp_path):
     file_path.write_bytes(b"")
 
     with LineBuffer.from_path(file_path) as buffer:
-        assert buffer.uses_mapped_storage is False
+        assert uses_mapped_storage(buffer) is False
         assert len(buffer) == 0
 
 
@@ -538,7 +501,7 @@ def test_line_buffer_uses_heap_for_generated_chunks_smaller_than_page():
     chunks = iter([b"alpha\nbe", b"ta\n", memoryview(b"gamma")])
 
     with LineBuffer.from_chunks(chunks) as buffer:
-        assert buffer.uses_mapped_storage is False
+        assert uses_mapped_storage(buffer) is False
         assert len(buffer) == 3
         assert buffer[0] == b"alpha\n"
         assert buffer[1] == b"beta\n"
@@ -564,7 +527,7 @@ def test_line_buffer_spools_page_sized_generated_chunks_to_mapped_storage():
     ])
 
     with LineBuffer.from_chunks(chunks) as buffer:
-        assert buffer.uses_mapped_storage is True
+        assert uses_mapped_storage(buffer) is True
         assert buffer.byte_count == mmap.PAGESIZE
         assert buffer[0] == b"alpha\n"
         assert buffer[1] == b"beta\n"
@@ -579,7 +542,7 @@ def test_line_buffer_streams_threshold_chunk_without_copying():
     )
 
     with LineBuffer.from_chunks([prefix, threshold_chunk]) as buffer:
-        assert buffer.uses_mapped_storage is True
+        assert uses_mapped_storage(buffer) is True
         assert buffer.byte_count == mmap.PAGESIZE
         assert buffer[0] == prefix
         assert buffer[1] == bytes(bytearray(threshold_chunk))
@@ -591,7 +554,7 @@ def test_line_buffer_streams_remaining_large_chunks_without_copying():
     remaining_chunk = _CopyFailingBytearray(b"omega\n")
 
     with LineBuffer.from_chunks([threshold_chunk, remaining_chunk]) as buffer:
-        assert buffer.uses_mapped_storage is True
+        assert uses_mapped_storage(buffer) is True
         assert buffer.byte_count == mmap.PAGESIZE + len(remaining_chunk)
         assert buffer[0] == threshold_chunk + b"omega\n"
 
@@ -599,7 +562,7 @@ def test_line_buffer_streams_remaining_large_chunks_without_copying():
 def test_line_buffer_handles_empty_generated_chunks():
     """Empty generated buffers have no byte lines."""
     with LineBuffer.from_chunks([]) as buffer:
-        assert buffer.uses_mapped_storage is False
+        assert uses_mapped_storage(buffer) is False
         assert len(buffer) == 0
 
 

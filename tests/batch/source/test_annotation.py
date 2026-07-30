@@ -336,6 +336,80 @@ def test_annotate_with_batch_source_loads_indexed_buffers(monkeypatch, tmp_path)
     assert [line.source_line for line in annotated.lines] == [1, None, 2]
 
 
+def test_annotate_with_batch_source_maps_dangling_symlink(
+    monkeypatch,
+    tmp_path,
+):
+    """A dangling symlink should be mapped against its existing batch source."""
+    line_changes = LineLevelChange(
+        path="link",
+        header=HunkHeader(old_start=1, old_len=2, new_start=1, new_len=3),
+        lines=[
+            LineEntry(
+                id=None,
+                kind=" ",
+                old_line_number=1,
+                new_line_number=1,
+                text_bytes=b"line 1\n",
+            ),
+            LineEntry(
+                id=1,
+                kind="+",
+                old_line_number=None,
+                new_line_number=2,
+                text_bytes=b"inserted\n",
+            ),
+            LineEntry(
+                id=None,
+                kind=" ",
+                old_line_number=2,
+                new_line_number=3,
+                text_bytes=b"line 2\n",
+            ),
+        ],
+    )
+    (tmp_path / "link").symlink_to("missing-target")
+    loaded_paths: list[str] = []
+
+    monkeypatch.setattr(
+        source_annotation_module,
+        "get_git_repository_root_path",
+        lambda: tmp_path,
+    )
+    monkeypatch.setattr(
+        source_annotation_module,
+        "get_batch_source_for_file",
+        lambda _path: "source-commit",
+    )
+    monkeypatch.setattr(
+        source_annotation_module,
+        "read_git_object_buffer_or_none",
+        lambda _revision, **_kwargs: LineBuffer.from_chunks(
+            [b"line 1\n", b"line 2\n"]
+        ),
+    )
+
+    def load_working_tree_file(path: str) -> LineBuffer:
+        loaded_paths.append(path)
+        return LineBuffer.from_chunks(
+            [b"line 1\n", b"inserted\n", b"line 2\n"]
+        )
+
+    monkeypatch.setattr(
+        source_annotation_module,
+        "load_working_tree_file_as_buffer",
+        load_working_tree_file,
+    )
+
+    annotated = source_annotation_module.annotate_with_batch_source(
+        "link",
+        line_changes,
+    )
+
+    assert loaded_paths == ["link"]
+    assert [line.source_line for line in annotated.lines] == [1, None, 2]
+
+
 def test_acquired_mapping_annotates_multiple_hunks_with_one_match(monkeypatch):
     """One file-scoped mapping should be reusable across several hunks."""
     line_changes = LineLevelChange(

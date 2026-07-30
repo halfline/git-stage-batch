@@ -8,7 +8,6 @@ from ..git_paths import decode_path, quoted_token_end, unquote_path_token
 DIFF_GIT_PREFIX = b"diff --git "
 OLD_PATH_PREFIX = b"a/"
 NEW_PATH_PREFIX = b"b/"
-NEW_PATH_MARKER = b" b/"
 
 
 def line_is_diff_git_header(line: bytes) -> bool:

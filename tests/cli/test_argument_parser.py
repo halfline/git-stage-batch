@@ -252,6 +252,12 @@ def test_resolve_batch_file_scope_combines_explicit_and_selected_files(monkeypat
 
 def test_resolve_batch_line_file_scope_preserves_selected_marker(monkeypatch):
     _mock_batch_files(monkeypatch, ["selected.py"])
+    whole_file_scope_guard = Mock()
+    monkeypatch.setattr(
+        file_scope,
+        "resolve_batch_source_action_scope",
+        whole_file_scope_guard,
+    )
     monkeypatch.setattr(
         file_scope,
         "get_selected_change_file_path",
@@ -270,6 +276,7 @@ def test_resolve_batch_line_file_scope_preserves_selected_marker(monkeypatch):
     assert scope.files == ("selected.py",)
     assert scope.optional_file() == "selected.py"
     assert scope.optional_line_file() == ""
+    whole_file_scope_guard.assert_not_called()
 
 
 def test_resolve_batch_file_scope_refuses_foreign_batch_selection(monkeypatch):

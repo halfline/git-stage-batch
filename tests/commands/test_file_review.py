@@ -971,6 +971,35 @@ def test_repeated_file_marker_include_line_uses_partial_review_scope(
     captured = capsys.readouterr()
     assert f"Included line(s): {line_spec}" in captured.err
     assert read_last_file_review_state() is not None
+
+
+def test_repeated_file_marker_include_line_rejects_unshown_change(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    unshown_spec = format_line_ids(list(state.selections[1].display_ids))
+    args = parse_command_line(
+        [
+            "include",
+            "--line",
+            unshown_spec,
+            "--file",
+            "file.txt",
+            "--file",
+        ],
+        quiet=True,
+    )
+    assert args is not None
+
+    with pytest.raises(CommandError, match="not valid from the current file review"):
+        args.func(args)
+
 def test_pathless_include_line_as_keeps_partial_review_guard_for_bare_action(
     paged_file_repo,
     monkeypatch,

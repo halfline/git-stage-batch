@@ -156,7 +156,8 @@ def test_workspace_metadata_reads_reject_external_symlink_alias(tmp_path):
 def test_workspace_metadata_reads_reject_internal_symlink_alias(tmp_path):
     """Even in-workspace aliases should not substitute worker output."""
     with FileJobWorkspace(parent_directory=tmp_path) as workspace:
-        artifact = workspace.write_json(0, "input.json", {"content": True})
+        artifact = workspace.artifact_path(0, "input.json")
+        artifact.write_text('{"content":true}\n', encoding="utf-8")
         output = workspace.output_path(0, "result.json")
         output.symlink_to(artifact)
 
@@ -164,51 +165,18 @@ def test_workspace_metadata_reads_reject_internal_symlink_alias(tmp_path):
             workspace.read_json(output)
 
 
-def test_workspace_supports_private_metadata_formats(tmp_path):
-    """JSON, JSONL, and pickle metadata should round trip inside the workspace."""
+def test_workspace_supports_private_pickle_metadata(tmp_path):
+    """Pickle metadata should round trip inside the workspace."""
     with FileJobWorkspace(parent_directory=tmp_path) as workspace:
-        json_path = workspace.write_json(1, "metadata.json", {"name": "one"})
-        jsonl_path = workspace.write_jsonl(
-            1,
-            "records.jsonl",
-            ({"ordinal": ordinal} for ordinal in range(3)),
-        )
         pickle_path = workspace.write_pickle(
             1,
             "metadata.pickle",
             {"paths": (Path("one"), Path("two"))},
         )
 
-        assert workspace.read_json(json_path) == {"name": "one"}
-        assert list(workspace.stream_jsonl(jsonl_path)) == [
-            {"ordinal": 0},
-            {"ordinal": 1},
-            {"ordinal": 2},
-        ]
         assert workspace.read_pickle(pickle_path) == {
             "paths": (Path("one"), Path("two"))
         }
-
-
-def test_workspace_json_formats_preserve_surrogateescaped_paths(tmp_path):
-    """Private JSON metadata should support arbitrary Git path bytes."""
-    file_path = "invalid-\udcff.txt"
-    with FileJobWorkspace(parent_directory=tmp_path) as workspace:
-        json_path = workspace.write_json(
-            1,
-            "metadata.json",
-            {"file_path": file_path},
-        )
-        jsonl_path = workspace.write_jsonl(
-            1,
-            "records.jsonl",
-            ({"file_path": file_path},),
-        )
-
-        assert workspace.read_json(json_path) == {"file_path": file_path}
-        assert list(workspace.stream_jsonl(jsonl_path)) == [
-            {"file_path": file_path}
-        ]
 
 
 def test_workspace_pickle_rejects_content_and_resource_graphs(tmp_path):
@@ -365,7 +333,10 @@ def test_workspace_cleanup_runs_after_keyboard_interrupt(tmp_path):
     with pytest.raises(KeyboardInterrupt):
         with FileJobWorkspace(parent_directory=tmp_path) as workspace:
             root = workspace.root
-            workspace.write_json(0, "metadata.json", {"ready": True})
+            workspace.artifact_path(0, "metadata.json").write_text(
+                '{"ready":true}\n',
+                encoding="utf-8",
+            )
             raise KeyboardInterrupt
 
     assert not root.exists()

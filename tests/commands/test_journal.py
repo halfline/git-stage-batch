@@ -9,8 +9,8 @@ import pytest
 
 from git_stage_batch.commands.journal import command_journal
 from git_stage_batch.exceptions import CommandError
-from git_stage_batch.utils import journal
 from git_stage_batch.utils.journal import JOURNAL_LEVEL_ENV, JOURNAL_PATH_ENV, flush_journal, log_journal
+from tests.journal_helpers import reset_journal_state
 
 
 @pytest.fixture
@@ -19,9 +19,9 @@ def temp_git_repo(tmp_path, monkeypatch):
     subprocess.run(["git", "init"], check=True, capture_output=True)
     monkeypatch.setenv(JOURNAL_PATH_ENV, str(tmp_path / "state" / "journal.jsonl"))
     monkeypatch.setenv(JOURNAL_LEVEL_ENV, "metadata-only")
-    journal._reset_journal_state_for_tests()
+    reset_journal_state()
     yield tmp_path
-    journal._reset_journal_state_for_tests()
+    reset_journal_state()
 
 
 def test_journal_command_reports_json_summary(temp_git_repo, capsys):

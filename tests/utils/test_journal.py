@@ -27,6 +27,7 @@ from git_stage_batch.utils.journal import (
     purge_journal,
     summarize_journal,
 )
+from tests.journal_helpers import reset_journal_state
 
 
 @pytest.fixture
@@ -40,9 +41,9 @@ def temp_git_repo(tmp_path, monkeypatch):
     subprocess.run(["git", "add", "README.md"], check=True)
     subprocess.run(["git", "commit", "-m", "initial"], check=True, capture_output=True)
     monkeypatch.setenv(JOURNAL_PATH_ENV, str(tmp_path / "private" / "journal.jsonl"))
-    journal._reset_journal_state_for_tests()
+    reset_journal_state()
     yield tmp_path
-    journal._reset_journal_state_for_tests()
+    reset_journal_state()
 
 
 def _entries(path: Path) -> list[dict]:

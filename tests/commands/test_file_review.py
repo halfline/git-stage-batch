@@ -1088,6 +1088,40 @@ def test_repeated_file_marker_include_to_line_uses_partial_review_scope(
 
     metadata = read_batch_metadata("later")
     assert set(metadata.get("files", {})) == {"file.txt"}
+
+
+def test_repeated_file_marker_include_from_line_uses_partial_review_scope(
+    paged_batch_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show_from_batch("cleanup", file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    line_spec = format_line_ids(list(state.selections[0].display_ids))
+    args = parse_command_line(
+        [
+            "include",
+            "--from",
+            "cleanup",
+            "--line",
+            line_spec,
+            "--file",
+            "file.txt",
+            "--file",
+        ],
+        quiet=True,
+    )
+    assert args is not None
+
+    args.func(args)
+
+    captured = capsys.readouterr()
+    assert "Staged selected lines from batch 'cleanup'" in captured.err
+    assert read_last_file_review_state() is not None
+
 def test_pathless_include_line_as_keeps_partial_review_guard_for_bare_action(
     paged_file_repo,
     monkeypatch,

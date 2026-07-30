@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable
 from contextlib import AbstractContextManager
 from dataclasses import fields, is_dataclass
 from enum import Enum
@@ -112,50 +112,11 @@ class FileJobWorkspace(AbstractContextManager["FileJobWorkspace"]):
             spool_dir=spool_dir,
         )
 
-    def write_json(
-        self,
-        ordinal: int,
-        name: str,
-        value: Any,
-    ) -> Path:
-        """Write small JSON metadata to a unique private artifact."""
-        path = self.artifact_path(ordinal, name)
-        with path.open("x", encoding="utf-8") as output:
-            json.dump(value, output, ensure_ascii=True, separators=(",", ":"))
-            output.write("\n")
-        return path
-
     def read_json(self, path: str | Path) -> Any:
         """Read small JSON metadata from a workspace artifact."""
         artifact_path = self._require_regular_workspace_file(path)
         with artifact_path.open(encoding="utf-8") as source:
             return json.load(source)
-
-    def write_jsonl(
-        self,
-        ordinal: int,
-        name: str,
-        values: Iterable[Any],
-    ) -> Path:
-        """Stream JSON records to a unique private JSONL artifact."""
-        path = self.artifact_path(ordinal, name)
-        with path.open("x", encoding="utf-8") as output:
-            for value in values:
-                json.dump(
-                    value,
-                    output,
-                    ensure_ascii=True,
-                    separators=(",", ":"),
-                )
-                output.write("\n")
-        return path
-
-    def stream_jsonl(self, path: str | Path) -> Iterator[Any]:
-        """Yield JSON records from a workspace artifact."""
-        artifact_path = self._require_regular_workspace_file(path)
-        with artifact_path.open(encoding="utf-8") as source:
-            for line in source:
-                yield json.loads(line)
 
     def write_pickle(
         self,

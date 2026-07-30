@@ -554,12 +554,4 @@ def purge_journal(*, all_repositories: bool = False) -> int:
     return removed
 
 
-def _reset_journal_state_for_tests() -> None:
-    """Discard process-global writers after environment changes in tests."""
-    global _WRITERS, _REPOSITORY_IDS
-    with _WRITERS_LOCK:
-        _WRITERS = {}
-        _REPOSITORY_IDS = {}
-
-
 atexit.register(flush_journal)

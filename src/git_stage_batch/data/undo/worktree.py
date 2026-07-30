@@ -10,7 +10,6 @@ from pathlib import Path
 
 from ...core.buffer import LineBuffer
 from ...utils.git_command import run_git_command
-from ...utils.git_index import GitIndexEntryUpdate
 from ...utils.git_repository import (
     get_git_repository_root_path,
     is_git_repository_root_path,
@@ -273,20 +272,6 @@ def create_blob_from_worktree_path(path: Path, *, mode: str) -> str:
     if mode == "120000":
         return create_git_blob([os.readlink(os.fsencode(path))])
     return _create_blob_from_path(path)
-
-
-def index_update_from_path(
-    *,
-    index_path: str,
-    source_path: Path,
-    mode: str,
-) -> GitIndexEntryUpdate:
-    """Return an index update for a worktree path."""
-    return GitIndexEntryUpdate(
-        file_path=index_path,
-        mode=mode,
-        blob_sha=create_blob_from_worktree_path(source_path, mode=mode),
-    )
 
 
 def file_mode_for_path(path: Path) -> str:

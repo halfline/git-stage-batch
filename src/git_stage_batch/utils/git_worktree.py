@@ -32,21 +32,6 @@ def git_apply_to_worktree(
     )
 
 
-def git_checkout_paths(
-    treeish: str,
-    paths: Sequence[str],
-    *,
-    check: bool = True,
-) -> subprocess.CompletedProcess[str]:
-    """Check out paths from a treeish into the index and working tree."""
-    return run_git_command(
-        ["checkout", treeish, "--", *paths],
-        check=check,
-        requires_index_lock=True,
-        literal_pathspecs=True,
-    )
-
-
 def git_checkout_index_paths(
     paths: Sequence[str],
     *,

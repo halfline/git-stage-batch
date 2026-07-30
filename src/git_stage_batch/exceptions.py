@@ -19,10 +19,6 @@ class RepositoryReadError(Exception):
     """Base class for failures while reading repository state."""
 
 
-class RepositoryObjectMissing(RepositoryReadError):
-    """Raised when a requested Git object or path is absent."""
-
-
 class RepositoryPathMissing(RepositoryReadError):
     """Raised when a requested working-tree path is absent."""
 

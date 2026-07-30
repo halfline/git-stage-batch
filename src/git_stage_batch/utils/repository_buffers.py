@@ -23,7 +23,6 @@ from ..utils.git_object_io import (
 from ..exceptions import (
     GitOperationFailed,
     RepositoryDataInvalid,
-    RepositoryObjectMissing,
     RepositoryPathInaccessible,
     RepositoryPathMissing,
 )
@@ -211,21 +210,6 @@ def read_git_object_buffer_or_none(
         raise GitOperationFailed(
             f"Could not read Git object {revision_path!r}"
         ) from error
-
-
-def read_git_object_buffer(
-    revision_path: str,
-    *,
-    spool_dir: str | Path | None = None,
-) -> LineBuffer:
-    """Load a Git blob or raise a typed missing/failure exception."""
-    buffer = read_git_object_buffer_or_none(
-        revision_path,
-        spool_dir=spool_dir,
-    )
-    if buffer is None:
-        raise RepositoryObjectMissing(revision_path)
-    return buffer
 
 
 def read_git_object_buffer_or_empty(

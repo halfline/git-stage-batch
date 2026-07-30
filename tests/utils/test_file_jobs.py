@@ -154,10 +154,16 @@ def _current_directory(_value: int) -> str:
 
 
 def _has_open_descriptor_for_path(path: Path) -> bool:
-    expected_path = path.resolve()
-    for descriptor_path in Path("/proc/self/fd").iterdir():
+    expected_stat = path.stat()
+    for descriptor_name in os.listdir("/dev/fd"):
+        if not descriptor_name.isdigit():
+            continue
         try:
-            if descriptor_path.resolve() == expected_path:
+            descriptor_stat = os.fstat(int(descriptor_name))
+            if (
+                descriptor_stat.st_dev == expected_stat.st_dev
+                and descriptor_stat.st_ino == expected_stat.st_ino
+            ):
                 return True
         except OSError:
             continue

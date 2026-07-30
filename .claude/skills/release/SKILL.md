@@ -6,7 +6,8 @@ allowed-tools: Bash(git *), Bash(gh *), Bash(uv run pytest *), Bash(uv build), B
 user-invocable: true
 ---
 
-Cut a release only from the canonical repository.
+Cut a release only from the canonical repository. Treat publication of the
+GitHub release as the irreversible action that starts PyPI publication.
 
 ## Safety rules
 
@@ -17,6 +18,9 @@ Cut a release only from the canonical repository.
 - Never run `uv publish` or upload locally built distributions.
 - Never bypass branch protection, use an administrative merge, or force-push.
 - Never move or replace an existing release tag.
+- After publication starts, never delete or replace the tag or GitHub release,
+  create another release for the same version, or rerun a failed workflow
+  without first checking whether PyPI received any files.
 
 ## 1. Establish the release inputs
 
@@ -215,7 +219,9 @@ If the run fails, inspect it with:
 gh run view <RUN_ID> --log-failed
 ```
 
-Stop and report the failure instead of publishing the locally built files.
+Report the failure and inspect PyPI before proposing recovery. Do not publish
+manually or automatically rerun the workflow; a publish job can fail after
+uploading only some files.
 
 ## 7. Verify and report
 
@@ -226,8 +232,9 @@ curl --fail --silent --show-error \
   https://pypi.org/pypi/git-stage-batch/<VERSION>/json
 ```
 
-Confirm that the requested version page contains a wheel and source
-distribution.
+Require `info.version` to equal the requested version and the `urls` entries to
+include both `bdist_wheel` and `sdist` package types. Retry briefly for PyPI
+indexing delay, but distinguish a persistent 404 from a transport failure.
 
 Report:
 

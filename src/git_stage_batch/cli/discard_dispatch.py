@@ -101,6 +101,7 @@ def dispatch_discard_command(args: argparse.Namespace) -> None:
             args.file_patterns,
             selected_action=FileReviewAction.DISCARD_FROM_BATCH,
             command_name="discard",
+            line_ids=args.line_ids,
         )
         run_for_each_resolved_file(
             resolved_batch_scope,

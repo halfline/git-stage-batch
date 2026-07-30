@@ -1,4 +1,4 @@
-"""Tests for ordered inline and forkserver file-job execution."""
+"""Tests for ordered inline and process file-job execution."""
 
 from __future__ import annotations
 
@@ -38,13 +38,18 @@ _RUNNING_UNDER_XDIST = "PYTEST_XDIST_WORKER" in os.environ
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPOSITORY_ROOT))
+_SUPPORTED_PROCESS_PLATFORMS = frozenset(("darwin", "linux"))
 _PROCESS_TEST = pytest.mark.skipif(
-    sys.platform != "linux" or _RUNNING_UNDER_XDIST,
-    reason="forced forkserver coverage runs on Linux with pytest -n 0",
+    sys.platform not in _SUPPORTED_PROCESS_PLATFORMS or _RUNNING_UNDER_XDIST,
+    reason="forced process coverage runs on Linux and macOS with pytest -n 0",
 )
-_LINUX_PROCESS_TEST = pytest.mark.skipif(
+_SUPPORTED_PROCESS_TEST = pytest.mark.skipif(
+    sys.platform not in _SUPPORTED_PROCESS_PLATFORMS,
+    reason="process file-job execution is supported on Linux and macOS",
+)
+_LINUX_TEST = pytest.mark.skipif(
     sys.platform != "linux",
-    reason="process file-job execution is supported on Linux only",
+    reason="CPU affinity coverage requires Linux",
 )
 _PARENT_COMPUTE_CALLS = 0
 
@@ -154,10 +159,16 @@ def _current_directory(_value: int) -> str:
 
 
 def _has_open_descriptor_for_path(path: Path) -> bool:
-    expected_path = path.resolve()
-    for descriptor_path in Path("/proc/self/fd").iterdir():
+    expected_stat = path.stat()
+    for descriptor_name in os.listdir("/dev/fd"):
+        if not descriptor_name.isdigit():
+            continue
         try:
-            if descriptor_path.resolve() == expected_path:
+            descriptor_stat = os.fstat(int(descriptor_name))
+            if (
+                descriptor_stat.st_dev == expected_stat.st_dev
+                and descriptor_stat.st_ino == expected_stat.st_ino
+            ):
                 return True
         except OSError:
             continue
@@ -369,7 +380,7 @@ def test_validated_runner_rejects_an_unexpected_result_count(
 
 
 @_PROCESS_TEST
-def test_forkserver_worker_does_not_inherit_the_parent_session_lock(
+def test_process_worker_does_not_inherit_the_parent_session_lock(
     tmp_path,
     monkeypatch,
 ):
@@ -415,7 +426,7 @@ def test_compute_keyboard_interrupt_propagates_across_process_transport(
     assert not root.exists()
 
 
-@_LINUX_PROCESS_TEST
+@_SUPPORTED_PROCESS_TEST
 def test_process_scheduler_submits_largest_first_with_bounded_pending(
     tmp_path,
     monkeypatch,
@@ -481,7 +492,7 @@ def test_process_scheduler_submits_largest_first_with_bounded_pending(
     assert lifecycle == {"closed": True, "terminated": False}
 
 
-@_LINUX_PROCESS_TEST
+@_SUPPORTED_PROCESS_TEST
 def test_process_scheduler_stops_admission_after_task_failure(
     tmp_path,
     monkeypatch,
@@ -552,7 +563,7 @@ def test_process_scheduler_stops_admission_after_task_failure(
     assert lifecycle == {"closed": False, "terminated": True}
 
 
-@_LINUX_PROCESS_TEST
+@_SUPPORTED_PROCESS_TEST
 def test_process_failure_waits_only_for_pending_lower_ordinals(
     tmp_path,
     monkeypatch,
@@ -671,7 +682,7 @@ def test_lowest_ordinal_failure_wins(tmp_path):
     assert "one" in error.value.original_message
 
 
-@_LINUX_PROCESS_TEST
+@_SUPPORTED_PROCESS_TEST
 def test_process_construction_failure_does_not_compute_inline(
     tmp_path,
     monkeypatch,
@@ -683,10 +694,10 @@ def test_process_construction_failure_does_not_compute_inline(
     monkeypatch.setattr(
         file_jobs_module,
         "_get_process_context",
-        lambda *_args: (_ for _ in ()).throw(OSError("cannot start forkserver")),
+        lambda *_args: (_ for _ in ()).throw(OSError("cannot start process context")),
     )
 
-    with pytest.raises(FileJobError, match="cannot start forkserver"):
+    with pytest.raises(FileJobError, match="cannot start process context"):
         run_file_jobs(
             [OrderedFileJob(0, "file.txt", 1, 7)],
             _record_parent_call,
@@ -697,7 +708,7 @@ def test_process_construction_failure_does_not_compute_inline(
     assert _PARENT_COMPUTE_CALLS == 0
 
 
-@_LINUX_PROCESS_TEST
+@_SUPPORTED_PROCESS_TEST
 def test_partially_started_worker_is_killed_and_connections_are_closed(
     tmp_path,
     monkeypatch,
@@ -821,7 +832,7 @@ def test_worker_death_does_not_retry_inline(tmp_path):
     assert _PARENT_COMPUTE_CALLS == 0
 
 
-@_LINUX_PROCESS_TEST
+@_SUPPORTED_PROCESS_TEST
 def test_keyboard_interrupt_terminates_workers_before_workspace_cleanup(
     tmp_path,
     monkeypatch,
@@ -889,12 +900,12 @@ def test_invalid_requested_job_values_raise_deterministic_error(requested_jobs):
 
 
 @pytest.mark.parametrize("requested_jobs", (None, "auto", "1"))
-def test_non_linux_inline_selection_never_creates_context(
+def test_unsupported_platform_inline_selection_never_creates_context(
     tmp_path,
     monkeypatch,
     requested_jobs,
 ):
-    """Darwin auto and inline controls must not touch multiprocessing."""
+    """Unsupported-platform auto and inline controls must remain inline."""
     monkeypatch.setattr(
         file_jobs_module,
         "_get_process_context",
@@ -906,7 +917,7 @@ def test_non_linux_inline_selection_never_creates_context(
     execution = select_file_job_execution(
         jobs,
         requested_jobs=requested_jobs,
-        platform="darwin",
+        platform="win32",
         cpu_count=8,
     )
 
@@ -919,35 +930,38 @@ def test_non_linux_inline_selection_never_creates_context(
     ) == [5]
 
 
-def test_non_linux_forced_process_selection_fails_before_execution():
-    """Darwin must reject a forced process count instead of falling back."""
+def test_unsupported_platform_forced_process_selection_fails_before_execution():
+    """An unsupported platform must reject forced processes before execution."""
     with pytest.raises(
         CommandError,
-        match="requires Linux",
+        match="requires Linux or macOS",
     ):
         select_file_job_execution(
             [OrderedFileJob(0, "file.txt", 1, None)],
             requested_jobs="2",
-            platform="darwin",
+            platform="win32",
             cpu_count=8,
         )
 
 
-def test_non_linux_forced_process_selection_fails_without_jobs():
-    """A forced non-Linux process request should fail even with no work."""
+def test_unsupported_platform_forced_process_selection_fails_without_jobs():
+    """A forced unsupported process request should fail even with no work."""
     with pytest.raises(
         CommandError,
-        match="requires Linux",
+        match="requires Linux or macOS",
     ):
         select_file_job_execution(
             [],
             requested_jobs="2",
-            platform="darwin",
+            platform="win32",
             cpu_count=8,
         )
 
 
-def test_linux_auto_keeps_work_just_below_the_round_heuristic_inline():
+@pytest.mark.parametrize("platform", ("darwin", "linux"))
+def test_supported_platform_auto_keeps_work_below_the_heuristic_inline(
+    platform,
+):
     """Automatic execution should avoid process startup below 256 KiB."""
     jobs = [
         OrderedFileJob(0, "a.txt", 128 * 1024 - 1, None),
@@ -957,7 +971,7 @@ def test_linux_auto_keeps_work_just_below_the_round_heuristic_inline():
     execution = select_file_job_execution(
         jobs,
         requested_jobs="auto",
-        platform="linux",
+        platform=platform,
         cpu_count=8,
     )
 
@@ -966,7 +980,10 @@ def test_linux_auto_keeps_work_just_below_the_round_heuristic_inline():
     assert "below the" in execution.reason
 
 
-def test_linux_auto_selects_processes_at_the_round_heuristic():
+@pytest.mark.parametrize("platform", ("darwin", "linux"))
+def test_supported_platform_auto_selects_processes_at_the_heuristic(
+    platform,
+):
     """The 256 KiB heuristic should be inclusive."""
     jobs = [
         OrderedFileJob(0, "a.txt", 128 * 1024, None),
@@ -976,7 +993,7 @@ def test_linux_auto_selects_processes_at_the_round_heuristic():
     execution = select_file_job_execution(
         jobs,
         requested_jobs="auto",
-        platform="linux",
+        platform=platform,
         cpu_count=8,
     )
 
@@ -985,7 +1002,10 @@ def test_linux_auto_selects_processes_at_the_round_heuristic():
     assert "262144 estimated bytes" in execution.reason
 
 
-def test_linux_auto_selects_bounded_processes_above_the_heuristic():
+@pytest.mark.parametrize("platform", ("darwin", "linux"))
+def test_supported_platform_auto_selects_bounded_processes_above_the_heuristic(
+    platform,
+):
     """Automatic execution should admit measured multi-file CPU wins."""
     jobs = [
         OrderedFileJob(ordinal, f"{ordinal}.txt", 125_000, None) for ordinal in range(5)
@@ -994,7 +1014,7 @@ def test_linux_auto_selects_bounded_processes_above_the_heuristic():
     execution = select_file_job_execution(
         jobs,
         requested_jobs=None,
-        platform="linux",
+        platform=platform,
         cpu_count=8,
     )
 
@@ -1003,7 +1023,8 @@ def test_linux_auto_selects_bounded_processes_above_the_heuristic():
     assert "625000 estimated bytes" in execution.reason
 
 
-def test_linux_auto_respects_cpu_availability():
+@pytest.mark.parametrize("platform", ("darwin", "linux"))
+def test_supported_platform_auto_respects_cpu_availability(platform):
     """Automatic worker selection should not exceed available CPUs."""
     jobs = [
         OrderedFileJob(ordinal, f"{ordinal}.txt", 250_000, None) for ordinal in range(2)
@@ -1013,7 +1034,7 @@ def test_linux_auto_respects_cpu_availability():
         select_file_job_execution(
             jobs,
             requested_jobs="auto",
-            platform="linux",
+            platform=platform,
             cpu_count=1,
         ).transport
         == "inline"
@@ -1022,14 +1043,14 @@ def test_linux_auto_respects_cpu_availability():
         select_file_job_execution(
             jobs,
             requested_jobs="auto",
-            platform="linux",
+            platform=platform,
             cpu_count=2,
         ).max_workers
         == 2
     )
 
 
-@_LINUX_PROCESS_TEST
+@_LINUX_TEST
 def test_linux_auto_uses_process_affinity_when_cpu_count_is_unspecified(
     monkeypatch,
 ):
@@ -1054,14 +1075,37 @@ def test_linux_auto_uses_process_affinity_when_cpu_count_is_unspecified(
     assert execution.max_workers == 2
 
 
-def test_forced_process_selection_respects_job_cpu_and_worker_caps():
+def test_macos_auto_uses_cpu_count_when_affinity_is_unavailable(
+    monkeypatch,
+):
+    """Darwin should use the portable CPU count fallback."""
+    jobs = [
+        OrderedFileJob(ordinal, f"{ordinal}.txt", 125_000, None)
+        for ordinal in range(4)
+    ]
+    monkeypatch.delattr(file_jobs_module.os, "sched_getaffinity", raising=False)
+    monkeypatch.setattr(file_jobs_module.os, "cpu_count", lambda: 3)
+
+    execution = select_file_job_execution(
+        jobs,
+        requested_jobs="auto",
+        platform="darwin",
+        cpu_count=None,
+    )
+
+    assert execution.transport == "process"
+    assert execution.max_workers == 3
+
+
+@pytest.mark.parametrize("platform", ("darwin", "linux"))
+def test_forced_process_selection_respects_job_cpu_and_worker_caps(platform):
     """Forced worker counts should remain bounded by every execution limit."""
     jobs = [OrderedFileJob(ordinal, f"{ordinal}.txt", 1, None) for ordinal in range(10)]
 
     assert select_file_job_execution(
         jobs,
         requested_jobs="9",
-        platform="linux",
+        platform=platform,
         cpu_count=3,
     ) == FileJobExecution(
         "process",
@@ -1070,7 +1114,34 @@ def test_forced_process_selection_respects_job_cpu_and_worker_caps():
     )
 
 
-@_LINUX_PROCESS_TEST
+@pytest.mark.parametrize(
+    ("platform", "expected_start_method"),
+    (("darwin", "spawn"), ("linux", "forkserver")),
+)
+def test_process_context_uses_platform_start_method(
+    monkeypatch,
+    platform,
+    expected_start_method,
+):
+    """Each supported platform should use its safe explicit start method."""
+    import multiprocessing
+
+    context = object()
+    observed_start_methods = []
+    monkeypatch.setattr(file_jobs_module.sys, "platform", platform)
+    monkeypatch.setattr(
+        multiprocessing,
+        "get_context",
+        lambda start_method: (
+            observed_start_methods.append(start_method) or context
+        ),
+    )
+
+    assert file_jobs_module._get_process_context() is context
+    assert observed_start_methods == [expected_start_method]
+
+
+@_SUPPORTED_PROCESS_TEST
 def test_process_execution_enforces_the_hard_worker_cap(
     tmp_path,
     monkeypatch,
@@ -1127,7 +1198,7 @@ def test_process_execution_enforces_the_hard_worker_cap(
     assert observed_max_workers == [file_jobs_module._MAX_FILE_JOB_WORKERS]
 
 
-@_LINUX_PROCESS_TEST
+@_SUPPORTED_PROCESS_TEST
 def test_collected_lower_ordinal_failure_wins_over_worker_failure(
     tmp_path,
     monkeypatch,
@@ -1192,7 +1263,7 @@ def test_collected_lower_ordinal_failure_wins_over_worker_failure(
     assert "one failed" in error.value.original_message
 
 
-@_LINUX_PROCESS_TEST
+@_SUPPORTED_PROCESS_TEST
 def test_worker_failure_reports_its_job_instead_of_an_unrelated_ordinal(
     tmp_path,
     monkeypatch,
@@ -1396,7 +1467,7 @@ def test_main_module_compute_function_is_rejected_before_execution(
     tmp_path,
     monkeypatch,
 ):
-    """Forkserver callables cannot depend on the launching main module."""
+    """Process callables cannot depend on the launching main module."""
     monkeypatch.setattr(_identity, "__module__", "__main__")
 
     with pytest.raises(TypeError, match="top-level importable"):
@@ -1409,7 +1480,7 @@ def test_main_module_compute_function_is_rejected_before_execution(
 
 
 def test_non_importable_transport_dataclass_is_rejected():
-    """IPC dataclass types must be reconstructable in a forkserver child."""
+    """IPC dataclass types must be reconstructable in a process child."""
 
     @dataclass(frozen=True)
     class LocalPayload:
@@ -1440,14 +1511,14 @@ def test_invalid_transport_is_rejected_even_without_jobs(tmp_path):
         )
 
 
-def test_process_transport_is_rejected_outside_linux(
+def test_process_transport_is_rejected_outside_supported_platforms(
     tmp_path,
     monkeypatch,
 ):
     """A manually constructed execution policy cannot bypass platform scope."""
-    monkeypatch.setattr(file_jobs_module.sys, "platform", "darwin")
+    monkeypatch.setattr(file_jobs_module.sys, "platform", "win32")
 
-    with pytest.raises(ValueError, match="requires Linux"):
+    with pytest.raises(ValueError, match="requires Linux or macOS"):
         run_file_jobs(
             [],
             _identity,

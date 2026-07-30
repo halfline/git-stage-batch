@@ -56,8 +56,8 @@ _REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPOSITORY_ROOT))
 _PROCESS_TEST = pytest.mark.skipif(
-    sys.platform != "linux" or _RUNNING_UNDER_XDIST,
-    reason="forced forkserver coverage runs on Linux with pytest -n 0",
+    sys.platform not in {"darwin", "linux"} or _RUNNING_UNDER_XDIST,
+    reason="forced process coverage runs on Linux and macOS with pytest -n 0",
 )
 
 

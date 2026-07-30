@@ -183,6 +183,12 @@ jobs:
       - name: Run tests on macOS
         run: uv run pytest -n auto
 
+      - name: Smoke test process file jobs on macOS
+        run: >-
+          uv run pytest -n 0
+          tests/utils/test_file_jobs.py::test_inline_and_forced_process_runs_return_identical_ordered_results
+          tests/utils/test_file_jobs.py::test_process_worker_does_not_inherit_the_parent_session_lock
+
   build:
     runs-on: ubuntu-latest
 

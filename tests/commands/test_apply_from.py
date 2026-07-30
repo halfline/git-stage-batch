@@ -26,8 +26,8 @@ from tests.buffer_helpers import uses_mapped_storage
 
 _RUNNING_UNDER_XDIST = "PYTEST_XDIST_WORKER" in os.environ
 _PROCESS_TEST = pytest.mark.skipif(
-    sys.platform != "linux" or _RUNNING_UNDER_XDIST,
-    reason="forced forkserver coverage runs on Linux with pytest -n 0",
+    sys.platform not in {"darwin", "linux"} or _RUNNING_UNDER_XDIST,
+    reason="forced process coverage runs on Linux and macOS with pytest -n 0",
 )
 
 

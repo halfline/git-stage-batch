@@ -10,7 +10,10 @@ from typing import TYPE_CHECKING, Generic, Protocol, TypeVar, cast
 
 if TYPE_CHECKING:
     from multiprocessing.connection import Connection
-    from multiprocessing.context import ForkServerContext, ForkServerProcess
+    from multiprocessing.context import ForkServerContext, SpawnContext
+    from multiprocessing.process import BaseProcess
+
+    _ProcessContext = ForkServerContext | SpawnContext
 
 
 JobT = TypeVar("JobT")
@@ -48,7 +51,7 @@ class _FileJobSupervisorError(Exception):
 
 
 class _ProcessFileJobSupervisor(Generic[JobT, ResultT]):
-    """Small forkserver supervisor with explicit public worker termination."""
+    """Small process supervisor with explicit public worker termination."""
 
     def __init__(
         self,
@@ -57,9 +60,9 @@ class _ProcessFileJobSupervisor(Generic[JobT, ResultT]):
         max_workers: int,
         repository_root: Path,
         worker_target: Callable[..., None],
-        context_factory: Callable[[], ForkServerContext],
+        context_factory: Callable[[], _ProcessContext],
     ) -> None:
-        self._workers: list[ForkServerProcess] = []
+        self._workers: list[BaseProcess] = []
         self._connections: list[Connection] = []
         self._pending_ordinals: list[list[int]] = []
         self._closed = False
@@ -212,7 +215,7 @@ class _ProcessFileJobSupervisor(Generic[JobT, ResultT]):
 
     def _start_worker(
         self,
-        context: ForkServerContext,
+        context: _ProcessContext,
         worker_target: Callable[..., None],
         compute: Callable[[JobT], ResultT],
         repository_root: Path,
@@ -220,7 +223,7 @@ class _ProcessFileJobSupervisor(Generic[JobT, ResultT]):
     ) -> None:
         parent_connection: Connection | None = None
         child_connection: Connection | None = None
-        process: ForkServerProcess | None = None
+        process: BaseProcess | None = None
         try:
             parent_connection, child_connection = context.Pipe(duplex=True)
             process = context.Process(
@@ -251,7 +254,7 @@ class _ProcessFileJobSupervisor(Generic[JobT, ResultT]):
 
     def _stop_partially_started_worker(
         self,
-        process: ForkServerProcess | None,
+        process: BaseProcess | None,
     ) -> None:
         if process is None:
             return

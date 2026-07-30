@@ -1,4 +1,4 @@
-"""Ordered inline and forkserver execution for compact file-scoped jobs."""
+"""Ordered inline and process execution for compact file-scoped jobs."""
 
 from __future__ import annotations
 
@@ -31,7 +31,8 @@ from .file_job_transport import (
 
 if TYPE_CHECKING:
     from multiprocessing.connection import Connection
-    from multiprocessing.context import ForkServerContext
+
+    from .file_job_process import _ProcessContext
 
 
 JobT = TypeVar("JobT")
@@ -39,6 +40,7 @@ ResultT = TypeVar("ResultT")
 _MAX_FILE_JOB_WORKERS = 4
 _AUTO_PROCESS_MINIMUM_ESTIMATED_BYTES = 256 * 1024
 _MAX_ERROR_MESSAGE_CHARACTERS = 4 * 1024
+_PROCESS_FILE_JOB_PLATFORMS = frozenset(("darwin", "linux"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,14 +105,14 @@ def select_file_job_execution(
     platform: str,
     cpu_count: int | None,
 ) -> FileJobExecution:
-    """Select inline or bounded Linux process execution."""
+    """Select inline or bounded supported-platform process execution."""
     job_count = len(jobs)
     requested_value = "auto" if requested_jobs is None else requested_jobs
     if requested_value == "":
         raise _invalid_jobs_value()
 
     if requested_value == "auto":
-        if platform != "linux":
+        if platform not in _PROCESS_FILE_JOB_PLATFORMS:
             return FileJobExecution(
                 "inline",
                 1,
@@ -130,9 +132,10 @@ def select_file_job_execution(
                 "automatic process execution requires at least 2 CPUs",
             )
         total_estimated_bytes = sum(job.estimated_bytes for job in jobs)
-        # A 2026-07-16 whole-prompt benchmark measured a 20 percent gain near
-        # 242 KiB and larger gains above it. Use a round 256 KiB heuristic to
-        # amortize process startup without implying a precise crossover.
+        # A 2026-07-16 Linux whole-prompt benchmark measured a 20 percent gain
+        # near 242 KiB and larger gains above it. A spawn proxy crossed over
+        # below the same point. Use a conservative shared 256 KiB threshold
+        # until native platform measurements justify separate values.
         if total_estimated_bytes < _AUTO_PROCESS_MINIMUM_ESTIMATED_BYTES:
             return FileJobExecution(
                 "inline",
@@ -164,8 +167,10 @@ def select_file_job_execution(
     if requested_count == 1:
         reason = "GIT_STAGE_BATCH_JOBS requests inline execution"
         return FileJobExecution("inline", 1, reason)
-    if platform != "linux":
-        raise CommandError("GIT_STAGE_BATCH_JOBS greater than 1 requires Linux.")
+    if platform not in _PROCESS_FILE_JOB_PLATFORMS:
+        raise CommandError(
+            "GIT_STAGE_BATCH_JOBS greater than 1 requires Linux or macOS."
+        )
     if job_count == 0:
         return FileJobExecution("inline", 1, "no eligible file jobs")
 
@@ -196,8 +201,11 @@ def run_file_jobs(
         raise ValueError(f"unsupported file-job transport: {execution.transport}")
     if type(execution.max_workers) is not int or execution.max_workers <= 0:
         raise ValueError("file-job execution requires a positive worker count")
-    if execution.transport == "process" and sys.platform != "linux":
-        raise ValueError("process file-job execution requires Linux")
+    if (
+        execution.transport == "process"
+        and sys.platform not in _PROCESS_FILE_JOB_PLATFORMS
+    ):
+        raise ValueError("process file-job execution requires Linux or macOS")
     if not ordered_jobs:
         return []
     repository_root = repository_root.resolve()
@@ -434,10 +442,14 @@ def _file_job_worker(
             pass
 
 
-def _get_process_context() -> ForkServerContext:
+def _get_process_context() -> _ProcessContext:
     import multiprocessing
 
-    return multiprocessing.get_context("forkserver")
+    if sys.platform == "darwin":
+        return multiprocessing.get_context("spawn")
+    if sys.platform == "linux":
+        return multiprocessing.get_context("forkserver")
+    raise RuntimeError(f"process file jobs are unavailable on {sys.platform}")
 
 
 def _initialize_file_job_worker(repository_root: Path) -> None:

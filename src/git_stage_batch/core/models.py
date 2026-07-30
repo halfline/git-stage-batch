@@ -84,10 +84,6 @@ class BinaryFileChange:
         """Check if this is a deleted binary file."""
         return self.change_type == "deleted"
 
-    def is_modified_file(self) -> bool:
-        """Check if this is a modified binary file."""
-        return self.change_type == "modified"
-
     def path(self) -> str:
         """Return the repository path that identifies this binary change."""
         return self.new_path if self.new_path != "/dev/null" else self.old_path
@@ -153,10 +149,6 @@ class GitlinkChange:
     def is_deleted_file(self) -> bool:
         """Check if this is a deleted gitlink."""
         return self.change_type == "deleted"
-
-    def is_modified_file(self) -> bool:
-        """Check if this is a modified gitlink."""
-        return self.change_type == "modified"
 
 
 @dataclass(init=False, slots=True)

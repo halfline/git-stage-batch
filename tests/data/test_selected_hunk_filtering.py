@@ -9,7 +9,6 @@ import pytest
 import git_stage_batch.data.selected_change.hunk_filtering as hunk_filtering_module
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.hunk_tracking import fetch_next_change
-from git_stage_batch.data.line_id_files import write_line_ids_file
 from git_stage_batch.data.selected_change.hunk_filtering import (
     apply_line_level_batch_filter_to_cached_hunk,
     filter_line_level_change_with_attribution,
@@ -18,7 +17,6 @@ from git_stage_batch.batch.attribution import FileAttribution
 from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,
-    get_processed_batch_ids_file_path,
 )
 
 
@@ -79,7 +77,6 @@ def test_apply_line_level_batch_filter_returns_false_without_batched_ids(
 
     command_start()
     fetch_next_change()
-    write_line_ids_file(get_processed_batch_ids_file_path(), set())
     journal_entries = []
     monkeypatch.setattr(
         hunk_filtering_module,

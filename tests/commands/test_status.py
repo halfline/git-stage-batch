@@ -10,9 +10,9 @@ from git_stage_batch.commands.show import command_show, command_show_file_list
 from git_stage_batch.commands.show_from import command_show_from_batch
 from git_stage_batch.data.selected_change.store import SelectedChangeKind, read_selected_change_kind
 from git_stage_batch.data.session import initialize_abort_state
+from git_stage_batch.utils.file_io import write_text_file_contents
 from git_stage_batch.utils.paths import get_iteration_count_file_path
 from git_stage_batch.utils.paths import (
-    ensure_config_state_directory_exists,
     ensure_state_directory_exists,
     get_state_directory_path,
 )
@@ -198,8 +198,7 @@ class TestCommandStatus:
         # Set iteration count to 2 to test iteration display
         ensure_state_directory_exists()
         initialize_abort_state()
-        ensure_config_state_directory_exists()
-        get_iteration_count_file_path().write_text("2")
+        write_text_file_contents(get_iteration_count_file_path(), "2")
 
         # Cache selected hunk with show
         command_show()

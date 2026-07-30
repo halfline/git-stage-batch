@@ -21,11 +21,6 @@ from git_stage_batch.utils.paths import get_batches_directory_path
 from git_stage_batch.utils.paths import get_batch_directory_path
 from git_stage_batch.utils.paths import get_batch_metadata_file_path
 from git_stage_batch.utils.paths import get_batch_refs_snapshot_file_path
-from git_stage_batch.utils.paths import get_batch_claimed_hunks_file_path
-from git_stage_batch.utils.paths import get_batch_claimed_line_ids_file_path
-from git_stage_batch.utils.paths import get_processed_batch_ids_file_path
-from git_stage_batch.utils.paths import get_batched_hunks_file_path
-from git_stage_batch.utils.paths import get_start_batch_refs_file_path
 
 import inspect
 import subprocess
@@ -100,40 +95,8 @@ def test_path_getters_do_not_create_state(temp_git_repo, name, getter):
             path_utils.get_state_directory_path,
         ),
         (
-            path_utils.ensure_session_directory_exists,
-            path_utils.get_session_directory_path,
-        ),
-        (
-            path_utils.ensure_selected_state_directory_exists,
-            path_utils.get_selected_state_directory_path,
-        ),
-        (
-            path_utils.ensure_progress_state_directory_exists,
-            path_utils.get_progress_state_directory_path,
-        ),
-        (
-            path_utils.ensure_processed_state_directory_exists,
-            path_utils.get_processed_state_directory_path,
-        ),
-        (
-            path_utils.ensure_config_state_directory_exists,
-            path_utils.get_config_state_directory_path,
-        ),
-        (
-            path_utils.ensure_abort_state_directory_exists,
-            path_utils.get_abort_state_directory_path,
-        ),
-        (
             path_utils.ensure_abort_snapshots_directory_exists,
             path_utils.get_abort_snapshots_directory_path,
-        ),
-        (
-            path_utils.ensure_fixup_state_directory_exists,
-            path_utils.get_fixup_state_directory_path,
-        ),
-        (
-            path_utils.ensure_candidate_state_directory_exists,
-            path_utils.get_candidate_state_directory_path,
         ),
     ],
 )
@@ -406,33 +369,3 @@ class TestBatchMetadataPaths:
 
         snapshot_file = get_batch_refs_snapshot_file_path()
         assert snapshot_file == temp_git_repo / ".git" / "git-stage-batch" / "session" / "abort" / "batch-refs.json"
-
-    def test_get_batch_claimed_hunks_file_path(self, temp_git_repo):
-        """Test getting a batch's claimed hunks file path."""
-
-        claimed_hunks_file = get_batch_claimed_hunks_file_path("my-batch")
-        assert claimed_hunks_file == temp_git_repo / ".git" / "git-stage-batch" / "batches" / "my-batch" / "claimed_hunks"
-
-    def test_get_batch_claimed_line_ids_file_path(self, temp_git_repo):
-        """Test getting a batch's claimed line IDs file path."""
-
-        claimed_line_ids_file = get_batch_claimed_line_ids_file_path("my-batch")
-        assert claimed_line_ids_file == temp_git_repo / ".git" / "git-stage-batch" / "batches" / "my-batch" / "claimed_line_ids"
-
-    def test_get_processed_batch_ids_file_path(self, temp_git_repo):
-        """Test getting the processed batch IDs file path."""
-
-        batch_ids_file = get_processed_batch_ids_file_path()
-        assert batch_ids_file == temp_git_repo / ".git" / "git-stage-batch" / "session" / "processed" / "batched-lines.json"
-
-    def test_get_batched_hunks_file_path(self, temp_git_repo):
-        """Test getting the batched hunks file path."""
-
-        batched_hunks_file = get_batched_hunks_file_path()
-        assert batched_hunks_file == temp_git_repo / ".git" / "git-stage-batch" / "session" / "progress" / "batched-hunks.txt"
-
-    def test_get_start_batch_refs_file_path(self, temp_git_repo):
-        """Test getting the start batch refs file path."""
-
-        start_batch_refs_file = get_start_batch_refs_file_path()
-        assert start_batch_refs_file == temp_git_repo / ".git" / "git-stage-batch" / "session" / "start-batch-refs.json"

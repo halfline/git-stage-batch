@@ -1,7 +1,7 @@
 """Tests for again command."""
 
-import json
-from git_stage_batch.core.line_selection import parse_line_selection
+from git_stage_batch.batch.state.batch_names import batch_exists
+from git_stage_batch.batch.state.query import read_batch_metadata
 from git_stage_batch.commands.discard import command_discard_to_batch
 from git_stage_batch.commands.include import command_include
 from git_stage_batch.commands.show import command_show, command_show_file_list
@@ -24,14 +24,11 @@ from git_stage_batch.commands.start import command_start
 from git_stage_batch.batch.state.lifecycle import create_batch
 from git_stage_batch.utils.file_io import read_text_file_contents, write_text_file_contents
 from git_stage_batch.utils.paths import (
-    ensure_progress_state_directory_exists,
     get_abort_head_file_path,
     get_abort_snapshot_list_file_path,
     get_abort_snapshots_directory_path,
     get_abort_stash_file_path,
     get_block_list_file_path,
-    get_batch_claimed_hunks_file_path,
-    get_batch_directory_path,
     get_batches_directory_path,
     get_selected_change_clear_reason_file_path,
     get_session_batch_sources_file_path,
@@ -82,9 +79,8 @@ class TestCommandAgain:
         state_dir = get_state_directory_path()
 
         # Create iteration-specific files
-        ensure_progress_state_directory_exists()
         blocklist = get_block_list_file_path()
-        blocklist.write_text("test")
+        write_text_file_contents(blocklist, "test")
 
         # Create permanent files
         journal = state_dir / "journal.jsonl"
@@ -184,54 +180,21 @@ class TestCommandAgain:
         # State directory should still exist
         assert state_dir.exists()
 
-    def test_again_preserves_batch_directories(self, temp_git_repo):
-        """Test that again preserves batch directories across state wipe."""
+    def test_again_preserves_batch_state(self, temp_git_repo):
+        """Again should preserve authoritative batch metadata."""
 
         # Create changes and start session
         (temp_git_repo / "README.md").write_text("# Test\nmodified\n")
         command_start()
 
-        # Create a batch with claim files
+        # Create a current batch.
         create_batch("my-batch", "Test batch")
-        batch_dir = get_batch_directory_path("my-batch")
-
-        # Add claimed hunks
-        claimed_hunks_path = get_batch_claimed_hunks_file_path("my-batch")
-        write_text_file_contents(claimed_hunks_path, "hash1\nhash2\n")
-
-        # Add claimed lines to metadata (JSON format)
-        metadata_path = batch_dir / "metadata.json"
-        metadata = {"note": "Test batch", "created_at": "", "baseline": None}
-        metadata["files"] = {
-            "README.md": {
-                "batch_source_commit": "dummy",
-                "presence_claims": [{"source_lines": ["1-3"]}],
-                "deletions": [],
-                "mode": "100644"
-            }
-        }
-        write_text_file_contents(metadata_path, json.dumps(metadata, indent=2))
 
         # Run again
         command_again()
 
-        # Batch directory should still exist
-        assert batch_dir.exists()
-
-        # Claim files should be preserved
-        assert claimed_hunks_path.exists()
-        content = read_text_file_contents(claimed_hunks_path)
-        assert content == "hash1\nhash2\n"
-
-        # Metadata should be preserved
-        assert metadata_path.exists()
-        metadata_after = json.loads(read_text_file_contents(metadata_path))
-        file_data = metadata_after["files"]["README.md"]
-        line_ids = set()
-        for claim in file_data.get("presence_claims", []):
-            for range_str in claim.get("source_lines", []):
-                line_ids.update(parse_line_selection(range_str))
-        assert line_ids == {1, 2, 3}
+        assert batch_exists("my-batch")
+        assert read_batch_metadata("my-batch")["note"] == "Test batch"
 
     def test_again_preserves_multiple_batches(self, temp_git_repo):
         """Test that again preserves multiple batches correctly."""
@@ -243,19 +206,16 @@ class TestCommandAgain:
         create_batch("batch1", "First")
         create_batch("batch2", "Second")
 
-        write_text_file_contents(get_batch_claimed_hunks_file_path("batch1"), "hash1\n")
-        write_text_file_contents(get_batch_claimed_hunks_file_path("batch2"), "hash2\n")
-
         # Run again
         command_again()
 
-        # Both batches should exist
-        assert get_batch_directory_path("batch1").exists()
-        assert get_batch_directory_path("batch2").exists()
-
-        # Claims should be preserved
-        assert read_text_file_contents(get_batch_claimed_hunks_file_path("batch1")) == "hash1\n"
-        assert read_text_file_contents(get_batch_claimed_hunks_file_path("batch2")) == "hash2\n"
+        # Both batches and their current metadata should be preserved.
+        assert batch_exists("batch1")
+        assert batch_exists("batch2")
+        batch1 = read_batch_metadata("batch1")
+        batch2 = read_batch_metadata("batch2")
+        assert batch1["note"] == "First"
+        assert batch2["note"] == "Second"
 
     def test_again_preserves_abort_head(self, temp_git_repo):
         """Test that again preserves abort-head file."""
@@ -343,9 +303,8 @@ class TestCommandAgain:
 
         # Create iteration-specific file to verify it was cleared
         state_dir = get_state_directory_path()
-        ensure_progress_state_directory_exists()
         blocklist = get_block_list_file_path()
-        blocklist.write_text("test")
+        write_text_file_contents(blocklist, "test")
 
         # Run again (no batches exist)
         command_again()

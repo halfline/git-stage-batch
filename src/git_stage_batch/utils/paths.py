@@ -50,19 +50,9 @@ def get_session_directory_path() -> Path:
     return get_state_directory_path() / "session"
 
 
-def ensure_session_directory_exists() -> None:
-    """Create the active session scratch directory if it does not exist."""
-    get_session_directory_path().mkdir(parents=True, exist_ok=True)
-
-
 def get_selected_state_directory_path() -> Path:
     """Get the directory containing the selected change cache."""
     return get_session_directory_path() / "selected"
-
-
-def ensure_selected_state_directory_exists() -> None:
-    """Create the selected change cache directory if it does not exist."""
-    get_selected_state_directory_path().mkdir(parents=True, exist_ok=True)
 
 
 def get_progress_state_directory_path() -> Path:
@@ -70,29 +60,14 @@ def get_progress_state_directory_path() -> Path:
     return get_session_directory_path() / "progress"
 
 
-def ensure_progress_state_directory_exists() -> None:
-    """Create the hunk progress directory if it does not exist."""
-    get_progress_state_directory_path().mkdir(parents=True, exist_ok=True)
-
-
 def get_processed_state_directory_path() -> Path:
     """Get the directory containing processed line-id state."""
     return get_session_directory_path() / "processed"
 
 
-def ensure_processed_state_directory_exists() -> None:
-    """Create the processed line-id directory if it does not exist."""
-    get_processed_state_directory_path().mkdir(parents=True, exist_ok=True)
-
-
 def get_config_state_directory_path() -> Path:
     """Get the directory containing session configuration state."""
     return get_session_directory_path() / "config"
-
-
-def ensure_config_state_directory_exists() -> None:
-    """Create the session configuration directory if it does not exist."""
-    get_config_state_directory_path().mkdir(parents=True, exist_ok=True)
 
 
 def get_auto_advance_config_file_path() -> Path:
@@ -105,29 +80,14 @@ def get_abort_state_directory_path() -> Path:
     return get_session_directory_path() / "abort"
 
 
-def ensure_abort_state_directory_exists() -> None:
-    """Create the abort recovery directory if it does not exist."""
-    get_abort_state_directory_path().mkdir(parents=True, exist_ok=True)
-
-
 def get_fixup_state_directory_path() -> Path:
     """Get the directory containing suggest-fixup state."""
     return get_session_directory_path() / "fixup"
 
 
-def ensure_fixup_state_directory_exists() -> None:
-    """Create the suggest-fixup state directory if it does not exist."""
-    get_fixup_state_directory_path().mkdir(parents=True, exist_ok=True)
-
-
 def get_candidate_state_directory_path() -> Path:
     """Get the directory containing batch candidate iteration state."""
     return get_session_directory_path() / "candidates"
-
-
-def ensure_candidate_state_directory_exists() -> None:
-    """Create the batch candidate state directory if it does not exist."""
-    get_candidate_state_directory_path().mkdir(parents=True, exist_ok=True)
 
 
 def get_batch_candidate_state_file_path() -> Path:
@@ -151,15 +111,6 @@ def get_processed_skip_ids_file_path() -> Path:
         Path to processed skip IDs file
     """
     return get_processed_state_directory_path() / "skipped-lines.json"
-
-
-def get_processed_batch_ids_file_path() -> Path:
-    """Get the path to the processed batch IDs file.
-
-    Returns:
-        Path to processed batch IDs file
-    """
-    return get_processed_state_directory_path() / "batched-lines.json"
 
 
 def get_line_changes_json_file_path() -> Path:
@@ -382,15 +333,6 @@ def get_start_index_tree_file_path() -> Path:
     return get_session_directory_path() / "start-index-tree.txt"
 
 
-def get_start_batch_refs_file_path() -> Path:
-    """Get the path to file storing batch refs at session start.
-
-    Returns:
-        Path to start batch refs file (JSON format: {batch_name: commit_sha})
-    """
-    return get_session_directory_path() / "start-batch-refs.json"
-
-
 def get_context_lines_file_path() -> Path:
     """Get the path to the context lines configuration file.
 
@@ -436,15 +378,6 @@ def get_discarded_hunks_file_path() -> Path:
     return get_progress_state_directory_path() / "discarded-hunks.txt"
 
 
-def get_batched_hunks_file_path() -> Path:
-    """Get the path to the batched hunks file.
-
-    Returns:
-        Path to batched hunks file
-    """
-    return get_progress_state_directory_path() / "batched-hunks.txt"
-
-
 def get_batches_directory_path() -> Path:
     """Get the directory containing batch metadata.
 
@@ -476,30 +409,6 @@ def get_batch_metadata_file_path(batch_name: str) -> Path:
         Path to batch metadata JSON file
     """
     return get_batch_directory_path(batch_name) / "metadata.json"
-
-
-def get_batch_claimed_hunks_file_path(batch_name: str) -> Path:
-    """Get the claimed hunks file path for a specific batch.
-
-    Args:
-        batch_name: Name of the batch
-
-    Returns:
-        Path to batch's claimed hunks file
-    """
-    return get_batch_directory_path(batch_name) / "claimed_hunks"
-
-
-def get_batch_claimed_line_ids_file_path(batch_name: str) -> Path:
-    """Get the claimed line IDs file path for a specific batch.
-
-    Args:
-        batch_name: Name of the batch
-
-    Returns:
-        Path to batch's claimed line IDs file
-    """
-    return get_batch_directory_path(batch_name) / "claimed_line_ids"
 
 
 def get_batch_refs_snapshot_file_path() -> Path:

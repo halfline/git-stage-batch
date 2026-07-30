@@ -36,14 +36,10 @@ from ..utils.paths import (
     get_abort_snapshots_directory_path,
     get_abort_stash_file_path,
     get_abort_recovery_anchors_file_path,
-    get_auto_added_files_file_path,
     get_iteration_count_file_path,
     get_state_directory_path,
 )
 
-
-# Permanent state that must NEVER be deleted
-PERMANENT_DIRS = frozenset({"batches", "batch-sources"})
 
 # Iteration-specific state (cleared by again, stop, abort)
 ITERATION_STATE_FILES = [
@@ -121,15 +117,6 @@ def intent_to_add_files(file_paths: list[str] | None = None) -> list[str]:
         return intent_paths
     selected = set(file_paths)
     return [file_path for file_path in intent_paths if file_path in selected]
-
-
-def auto_added_files(file_paths: list[str] | None = None) -> list[str]:
-    """Return session-tracked auto-added paths, optionally within a scope."""
-    paths = read_file_paths_file(get_auto_added_files_file_path())
-    if file_paths is None:
-        return paths
-    selected = set(file_paths)
-    return [file_path for file_path in paths if file_path in selected]
 
 
 def path_is_intent_to_add(file_path: str) -> bool:

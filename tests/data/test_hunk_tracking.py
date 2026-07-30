@@ -1,6 +1,5 @@
 """Tests for hunk navigation, state management, and staleness detection."""
 
-import json
 from git_stage_batch.core.hashing import compute_stable_hunk_hash_from_lines
 from tests.diff_parser_helpers import collect_unified_diff
 from git_stage_batch.utils.paths import get_blocked_files_file_path
@@ -12,23 +11,20 @@ import subprocess
 
 import pytest
 
-import git_stage_batch.data.hunk_tracking as hunk_tracking
 from git_stage_batch.commands.again import command_again
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.hunk_tracking import (
     advance_to_next_change,
     fetch_next_change,
 )
-from git_stage_batch.utils.file_io import append_lines_to_file
+from git_stage_batch.utils.file_io import append_lines_to_file, write_text_file_contents
 from git_stage_batch.utils.paths import (
-    ensure_processed_state_directory_exists,
-    ensure_selected_state_directory_exists,
     ensure_state_directory_exists,
     get_block_list_file_path,
+    get_context_lines_file_path,
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
     get_line_changes_json_file_path,
-    get_processed_batch_ids_file_path,
     get_processed_include_ids_file_path,
 )
 
@@ -50,60 +46,8 @@ def temp_git_repo(tmp_path, monkeypatch):
     subprocess.run(["git", "commit", "-m", "Initial commit"], check=True, cwd=repo, capture_output=True)
 
     ensure_state_directory_exists()
-    ensure_selected_state_directory_exists()
-    ensure_processed_state_directory_exists()
 
     return repo
-
-
-def test_batch_metadata_snapshot_loads_once(monkeypatch):
-    """One hunk scan should reuse a single batch metadata snapshot."""
-    calls = []
-
-    monkeypatch.setattr(hunk_tracking, "list_batch_names", lambda: ["batch-a"])
-
-    def fake_read_batch_metadata_for_batches(batch_names):
-        calls.append(tuple(batch_names))
-        return {"batch-a": {"files": {}}}
-
-    monkeypatch.setattr(
-        hunk_tracking,
-        "read_batch_metadata_for_batches",
-        fake_read_batch_metadata_for_batches,
-    )
-
-    snapshot = hunk_tracking._BatchMetadataSnapshot()
-
-    first = snapshot.metadata_by_name()
-    second = snapshot.metadata_by_name()
-
-    assert first == {"batch-a": {"files": {}}}
-    assert second is first
-    assert calls == [("batch-a",)]
-
-
-def test_batch_metadata_snapshot_indexes_claims_by_path(monkeypatch):
-    """Files without claims should skip traversal across unrelated batches."""
-    monkeypatch.setattr(
-        hunk_tracking,
-        "list_batch_names",
-        lambda: ["first", "second", "third"],
-    )
-    monkeypatch.setattr(
-        hunk_tracking,
-        "read_batch_metadata_for_batches",
-        lambda _names: {
-            "first": {"files": {"one.txt": {}}},
-            "second": {"files": {"two.txt": {}}},
-            "third": {"files": {"one.txt": {}, "three.txt": {}}},
-        },
-    )
-
-    snapshot = hunk_tracking._BatchMetadataSnapshot()
-
-    assert list(snapshot.metadata_for_path("one.txt")) == ["first", "third"]
-    assert list(snapshot.metadata_for_path("two.txt")) == ["second"]
-    assert snapshot.metadata_for_path("missing.txt") == {}
 
 
 class TestFindAndCacheNextUnblockedHunk:
@@ -285,19 +229,19 @@ class TestAdvanceToNextHunk:
         file2.write_text("modified 2\n")
 
         # Cache first hunk
-        get_selected_hunk_patch_file_path().write_text("old patch")
-        get_selected_hunk_hash_file_path().write_text("old hash")
-        get_processed_include_ids_file_path().write_text("1\n")
-        # processed.batch uses JSON format now and is global state (persists across hunks)
-        get_processed_batch_ids_file_path().write_text(json.dumps({"file1.txt": {"presence_claims": [{"source_lines": ["2"]}]}}))
+        write_text_file_contents(get_selected_hunk_patch_file_path(), "old patch")
+        write_text_file_contents(get_selected_hunk_hash_file_path(), "old hash")
+        write_text_file_contents(get_processed_include_ids_file_path(), "1\n")
+        session_config_path = get_context_lines_file_path()
+        write_text_file_contents(session_config_path, "7")
 
         # Advance to next hunk
         advance_to_next_change()
 
         # Old per-hunk processed IDs should be cleared
         assert not get_processed_include_ids_file_path().exists()
-        # processed.batch is global state - should still exist
-        assert get_processed_batch_ids_file_path().exists()
+        # Session-wide configuration should remain across selected changes.
+        assert session_config_path.read_text() == "7"
 
         # New hunk should be cached
         assert get_selected_hunk_patch_file_path().exists()

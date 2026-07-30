@@ -8,20 +8,16 @@ import pytest
 
 from git_stage_batch.core.models import LineLevelChange, HunkHeader, LineEntry
 from git_stage_batch.data.line_state import (
-    compute_remaining_changed_line_ids,
     convert_line_changes_to_serializable_dict,
     load_line_changes_from_state,
 )
-from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.file_io import write_text_file_contents
 from git_stage_batch.utils.paths import (
-    ensure_processed_state_directory_exists,
-    ensure_selected_state_directory_exists,
     ensure_state_directory_exists,
+    get_processed_state_directory_path,
+    get_selected_state_directory_path,
     get_selected_hunk_patch_file_path,
     get_line_changes_json_file_path,
-    get_processed_include_ids_file_path,
-    get_processed_skip_ids_file_path,
 )
 
 
@@ -43,8 +39,8 @@ def temp_git_repo(tmp_path, monkeypatch):
 
     # Ensure state directory exists
     ensure_state_directory_exists()
-    ensure_selected_state_directory_exists()
-    ensure_processed_state_directory_exists()
+    get_selected_state_directory_path().mkdir(parents=True)
+    get_processed_state_directory_path().mkdir(parents=True)
 
     return repo
 
@@ -193,114 +189,3 @@ class TestLoadLineLevelChangeFromState:
         assert result is not None
         assert result.lines[0].text_bytes == b"unchanged line"
         assert result.lines[0].display_text() == "unchanged line"
-
-
-class TestComputeRemainingChangedLineIds:
-    """Tests for compute_remaining_changed_line_ids()."""
-
-    def test_errors_when_no_selected_hunk(self, temp_git_repo):
-        """Test that an error is raised when no selected hunk exists."""
-        with pytest.raises(CommandError) as exc_info:
-            compute_remaining_changed_line_ids()
-        assert "No selected hunk" in str(exc_info.value.message)
-
-    def test_returns_all_changed_ids_when_none_processed(self, temp_git_repo, sample_line_changes):
-        """Test that all changed line IDs are returned when nothing has been processed."""
-        # Set up state with no processed lines
-        patch_path = get_selected_hunk_patch_file_path()
-        json_path = get_line_changes_json_file_path()
-
-        patch_path.write_text("dummy patch")
-        serialized = convert_line_changes_to_serializable_dict(sample_line_changes)
-        write_text_file_contents(json_path, json.dumps(serialized))
-
-        # Create empty processed files
-        get_processed_include_ids_file_path().write_text("")
-        get_processed_skip_ids_file_path().write_text("")
-
-        result = compute_remaining_changed_line_ids()
-        # Changed lines are id 1 (removed) and id 2 (added)
-        assert result == [1, 2]
-
-    def test_excludes_included_lines(self, temp_git_repo, sample_line_changes):
-        """Test that included lines are excluded from remaining IDs."""
-        # Set up state
-        patch_path = get_selected_hunk_patch_file_path()
-        json_path = get_line_changes_json_file_path()
-
-        patch_path.write_text("dummy patch")
-        serialized = convert_line_changes_to_serializable_dict(sample_line_changes)
-        write_text_file_contents(json_path, json.dumps(serialized))
-
-        # Mark line 1 as included
-        get_processed_include_ids_file_path().write_text("1\n")
-        get_processed_skip_ids_file_path().write_text("")
-
-        result = compute_remaining_changed_line_ids()
-        # Only line 2 should remain
-        assert result == [2]
-
-    def test_excludes_skipped_lines(self, temp_git_repo, sample_line_changes):
-        """Test that skipped lines are excluded from remaining IDs."""
-        # Set up state
-        patch_path = get_selected_hunk_patch_file_path()
-        json_path = get_line_changes_json_file_path()
-
-        patch_path.write_text("dummy patch")
-        serialized = convert_line_changes_to_serializable_dict(sample_line_changes)
-        write_text_file_contents(json_path, json.dumps(serialized))
-
-        # Mark line 2 as skipped
-        get_processed_include_ids_file_path().write_text("")
-        get_processed_skip_ids_file_path().write_text("2\n")
-
-        result = compute_remaining_changed_line_ids()
-        # Only line 1 should remain
-        assert result == [1]
-
-    def test_excludes_both_included_and_skipped_lines(self, temp_git_repo, sample_line_changes):
-        """Test that both included and skipped lines are excluded."""
-        # Set up state
-        patch_path = get_selected_hunk_patch_file_path()
-        json_path = get_line_changes_json_file_path()
-
-        patch_path.write_text("dummy patch")
-        serialized = convert_line_changes_to_serializable_dict(sample_line_changes)
-        write_text_file_contents(json_path, json.dumps(serialized))
-
-        # Mark line 1 as included, line 2 as skipped
-        get_processed_include_ids_file_path().write_text("1\n")
-        get_processed_skip_ids_file_path().write_text("2\n")
-
-        result = compute_remaining_changed_line_ids()
-        # No lines should remain
-        assert result == []
-
-    def test_returns_sorted_ids(self, temp_git_repo):
-        """Test that remaining IDs are returned in sorted order."""
-        # Create a hunk with multiple changed lines
-        header = HunkHeader(old_start=1, old_len=5, new_start=1, new_len=5)
-        lines = [
-            LineEntry(id=1, kind="+", old_line_number=None, new_line_number=1, text_bytes=b"added 1", text="added 1"),
-            LineEntry(id=2, kind="-", old_line_number=1, new_line_number=None, text_bytes=b"removed 1", text="removed 1"),
-            LineEntry(id=3, kind="+", old_line_number=None, new_line_number=2, text_bytes=b"added 2", text="added 2"),
-            LineEntry(id=4, kind="-", old_line_number=2, new_line_number=None, text_bytes=b"removed 2", text="removed 2"),
-            LineEntry(id=None, kind=" ", old_line_number=3, new_line_number=3, text_bytes=b"unchanged", text="unchanged"),
-        ]
-        line_changes = LineLevelChange(path="test.py", header=header, lines=lines)
-
-        # Set up state
-        patch_path = get_selected_hunk_patch_file_path()
-        json_path = get_line_changes_json_file_path()
-
-        patch_path.write_text("dummy patch")
-        serialized = convert_line_changes_to_serializable_dict(line_changes)
-        write_text_file_contents(json_path, json.dumps(serialized))
-
-        # Mark some as processed (not in order)
-        get_processed_include_ids_file_path().write_text("3\n")
-        get_processed_skip_ids_file_path().write_text("1\n")
-
-        result = compute_remaining_changed_line_ids()
-        # Should return [2, 4] in sorted order
-        assert result == [2, 4]

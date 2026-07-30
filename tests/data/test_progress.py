@@ -5,7 +5,6 @@ import subprocess
 import pytest
 
 from git_stage_batch.data.progress import (
-    get_file_progress,
     get_hunk_counts,
     record_hunk_discarded,
     record_hunk_included,
@@ -13,7 +12,6 @@ from git_stage_batch.data.progress import (
 from git_stage_batch.utils.file_io import write_text_file_contents
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,
-    get_line_changes_json_file_path,
     get_discarded_hunks_file_path,
     get_included_hunks_file_path,
     get_skipped_hunks_jsonl_file_path,
@@ -127,81 +125,3 @@ class TestHunkCounts:
 
         counts = get_hunk_counts()
         assert counts["included"] == 2
-
-
-class TestFileProgress:
-    """Tests for get_file_progress function."""
-
-    def test_get_file_progress_no_line_changes(self, temp_git_repo):
-        """Test getting file progress when no selected lines cached."""
-        ensure_state_directory_exists()
-        file_index, total = get_file_progress()
-        assert file_index == 0
-        assert total == 0
-
-    def test_get_file_progress_invalid_json(self, temp_git_repo):
-        """Test getting file progress with invalid JSON."""
-        ensure_state_directory_exists()
-        line_changes_file = get_line_changes_json_file_path()
-        write_text_file_contents(line_changes_file, "not valid json")
-
-        file_index, total = get_file_progress()
-        assert file_index == 0
-        assert total == 0
-
-    def test_get_file_progress_with_selected_file(self, temp_git_repo):
-        """Test getting file progress with a selected file."""
-        ensure_state_directory_exists()
-
-        # Create and commit some files first
-        (temp_git_repo / "file1.txt").write_text("original1\n")
-        (temp_git_repo / "file2.txt").write_text("original2\n")
-        (temp_git_repo / "file3.txt").write_text("original3\n")
-        subprocess.run(
-            ["git", "add", "file1.txt", "file2.txt", "file3.txt"],
-            check=True,
-            cwd=temp_git_repo,
-            capture_output=True,
-        )
-        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        # Now modify them to create diff
-        (temp_git_repo / "file1.txt").write_text("change1\n")
-        (temp_git_repo / "file2.txt").write_text("change2\n")
-        (temp_git_repo / "file3.txt").write_text("change3\n")
-
-        # Set selected file to file2.txt
-        line_changes_file = get_line_changes_json_file_path()
-        write_text_file_contents(line_changes_file, '{"path": "file2.txt"}')
-
-        file_index, total = get_file_progress()
-        assert total == 3  # Three files changed
-        assert file_index == 2  # file2.txt is second in sorted order
-
-    def test_get_file_progress_file_not_in_diff(self, temp_git_repo):
-        """Test getting file progress when cached file is not in diff."""
-        ensure_state_directory_exists()
-
-        # Create and commit a file, then modify it
-        (temp_git_repo / "file1.txt").write_text("original\n")
-        subprocess.run(["git", "add", "file1.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file1"], check=True, cwd=temp_git_repo, capture_output=True)
-        (temp_git_repo / "file1.txt").write_text("change\n")
-
-        # Set selected file to a different file
-        line_changes_file = get_line_changes_json_file_path()
-        write_text_file_contents(line_changes_file, '{"path": "nonexistent.txt"}')
-
-        file_index, total = get_file_progress()
-        assert total == 1
-        assert file_index == 0  # File not found in diff
-
-    def test_get_file_progress_empty_path(self, temp_git_repo):
-        """Test getting file progress with empty path in cached data."""
-        ensure_state_directory_exists()
-        line_changes_file = get_line_changes_json_file_path()
-        write_text_file_contents(line_changes_file, '{"path": ""}')
-
-        file_index, total = get_file_progress()
-        assert file_index == 0
-        assert total == 0

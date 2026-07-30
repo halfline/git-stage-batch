@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from git_stage_batch.commands.start import command_start
+from git_stage_batch.data.session import get_iteration_count
 from git_stage_batch.data.session_marker import session_is_active
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.file_io import read_text_file_contents
@@ -61,6 +62,7 @@ class TestCommandStart:
 
         state_dir = get_state_directory_path()
         assert state_dir.exists()
+        assert get_iteration_count() == 2
 
     def test_start_initializes_abort_state(self, temp_git_repo):
         """Test that start initializes abort state files."""

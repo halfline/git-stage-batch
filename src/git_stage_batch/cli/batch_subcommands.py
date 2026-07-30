@@ -16,7 +16,6 @@ from .command_policy import (
     PagerPolicy,
     RepositoryPolicy,
     SessionOwnershipPolicy,
-    StateChangePolicy,
 )
 from .file_arguments import add_file_argument
 from .reset_dispatch import dispatch_reset_command
@@ -33,7 +32,6 @@ def add_new_subcommand(subparsers: Subparsers) -> None:
             locking=LockingPolicy.SESSION,
             repository=RepositoryPolicy.REQUIRED,
             pager=PagerPolicy.NEVER,
-            state_changes=StateChangePolicy.DURABLE,
         ),
         help=_("Create a new batch"),
     )
@@ -62,7 +60,6 @@ def add_list_subcommand(subparsers: Subparsers) -> None:
             locking=LockingPolicy.SESSION,
             repository=RepositoryPolicy.REQUIRED,
             pager=PagerPolicy.ELIGIBLE,
-            state_changes=StateChangePolicy.NONE,
         ),
         help=_("List all batches"),
     )
@@ -79,7 +76,6 @@ def add_validate_subcommand(subparsers: Subparsers) -> None:
             locking=LockingPolicy.SESSION,
             repository=RepositoryPolicy.REQUIRED,
             pager=PagerPolicy.NEVER,
-            state_changes=StateChangePolicy.NONE,
         ),
         help=_("Validate persisted batch metadata"),
     )
@@ -103,7 +99,6 @@ def add_drop_subcommand(subparsers: Subparsers) -> None:
             locking=LockingPolicy.SESSION,
             repository=RepositoryPolicy.REQUIRED,
             pager=PagerPolicy.NEVER,
-            state_changes=StateChangePolicy.DURABLE,
         ),
         help=_("Delete a batch"),
     )
@@ -124,7 +119,6 @@ def add_annotate_subcommand(subparsers: Subparsers) -> None:
             locking=LockingPolicy.SESSION,
             repository=RepositoryPolicy.REQUIRED,
             pager=PagerPolicy.NEVER,
-            state_changes=StateChangePolicy.DURABLE,
         ),
         help=_("Add or update batch description"),
     )
@@ -151,7 +145,6 @@ def add_sift_subcommand(subparsers: Subparsers) -> None:
             locking=LockingPolicy.SESSION,
             repository=RepositoryPolicy.REQUIRED,
             pager=PagerPolicy.NEVER,
-            state_changes=StateChangePolicy.DURABLE,
         ),
         help=_("Remove already-present portions from a batch"),
     )
@@ -184,7 +177,6 @@ def add_apply_subcommand(subparsers: Subparsers) -> None:
             locking=LockingPolicy.SESSION,
             repository=RepositoryPolicy.REQUIRED,
             pager=PagerPolicy.NEVER,
-            state_changes=StateChangePolicy.DURABLE,
         ),
         help=_("Apply batch changes to working tree"),
     )
@@ -223,7 +215,6 @@ def add_reset_subcommand(subparsers: Subparsers) -> None:
             locking=LockingPolicy.SESSION,
             repository=RepositoryPolicy.REQUIRED,
             pager=PagerPolicy.NEVER,
-            state_changes=StateChangePolicy.DURABLE,
         ),
         help=_("Remove claims from batch"),
     )

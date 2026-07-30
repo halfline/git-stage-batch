@@ -37,14 +37,6 @@ class PagerPolicy(Enum):
     NEVER = "never"
 
 
-class StateChangePolicy(Enum):
-    """The most persistent application or repository state a command may change."""
-
-    NONE = "none"
-    SCRATCH = "scratch"
-    DURABLE = "durable"
-
-
 @dataclass(frozen=True)
 class CommandPolicy:
     """Complete runtime contract attached to one registered CLI command."""
@@ -53,7 +45,6 @@ class CommandPolicy:
     locking: LockingPolicy
     repository: RepositoryPolicy
     pager: PagerPolicy
-    state_changes: StateChangePolicy
 
 
 CONSERVATIVE_COMMAND_POLICY = CommandPolicy(
@@ -61,7 +52,6 @@ CONSERVATIVE_COMMAND_POLICY = CommandPolicy(
     locking=LockingPolicy.SESSION,
     repository=RepositoryPolicy.REQUIRED,
     pager=PagerPolicy.NEVER,
-    state_changes=StateChangePolicy.DURABLE,
 )
 
 IMPLICIT_SHOW_POLICY = CommandPolicy(
@@ -69,7 +59,6 @@ IMPLICIT_SHOW_POLICY = CommandPolicy(
     locking=LockingPolicy.SESSION,
     repository=RepositoryPolicy.REQUIRED,
     pager=PagerPolicy.ELIGIBLE,
-    state_changes=StateChangePolicy.SCRATCH,
 )
 
 INTERACTIVE_POLICY = CommandPolicy(
@@ -77,7 +66,6 @@ INTERACTIVE_POLICY = CommandPolicy(
     locking=LockingPolicy.NONE,
     repository=RepositoryPolicy.REQUIRED,
     pager=PagerPolicy.NEVER,
-    state_changes=StateChangePolicy.DURABLE,
 )
 
 

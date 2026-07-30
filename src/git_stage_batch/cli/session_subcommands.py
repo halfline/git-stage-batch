@@ -19,7 +19,6 @@ from .command_policy import (
     PagerPolicy,
     RepositoryPolicy,
     SessionOwnershipPolicy,
-    StateChangePolicy,
 )
 from .subcommand_parser import Subparsers, add_subcommand_parser
 
@@ -34,7 +33,6 @@ def add_check_unstaged_subcommand(subparsers: Subparsers) -> None:
             locking=LockingPolicy.SESSION,
             repository=RepositoryPolicy.REQUIRED,
             pager=PagerPolicy.NEVER,
-            state_changes=StateChangePolicy.NONE,
         ),
         help=_("Check whether the index fits an unstaged-only workflow"),
     )
@@ -51,7 +49,6 @@ def add_start_subcommand(subparsers: Subparsers) -> None:
             locking=LockingPolicy.SESSION,
             repository=RepositoryPolicy.REQUIRED,
             pager=PagerPolicy.ELIGIBLE,
-            state_changes=StateChangePolicy.DURABLE,
         ),
         help=_("Start a new batch staging session"),
     )
@@ -82,7 +79,6 @@ def add_again_subcommand(subparsers: Subparsers) -> None:
             locking=LockingPolicy.SESSION,
             repository=RepositoryPolicy.REQUIRED,
             pager=PagerPolicy.ELIGIBLE,
-            state_changes=StateChangePolicy.DURABLE,
         ),
         aliases=["a"],
         help=_("Clear state and start a fresh pass"),
@@ -103,7 +99,6 @@ def add_stop_subcommand(subparsers: Subparsers) -> None:
             locking=LockingPolicy.SESSION,
             repository=RepositoryPolicy.REQUIRED,
             pager=PagerPolicy.NEVER,
-            state_changes=StateChangePolicy.DURABLE,
         ),
         help=_("Stop the selected session and clear state"),
     )
@@ -120,7 +115,6 @@ def add_undo_subcommand(subparsers: Subparsers) -> None:
             locking=LockingPolicy.SESSION,
             repository=RepositoryPolicy.REQUIRED,
             pager=PagerPolicy.NEVER,
-            state_changes=StateChangePolicy.DURABLE,
         ),
         aliases=["u", "back"],
         help=_("Undo the most recent undoable session operation"),
@@ -143,7 +137,6 @@ def add_redo_subcommand(subparsers: Subparsers) -> None:
             locking=LockingPolicy.SESSION,
             repository=RepositoryPolicy.REQUIRED,
             pager=PagerPolicy.NEVER,
-            state_changes=StateChangePolicy.DURABLE,
         ),
         aliases=["forward"],
         help=_("Redo the most recently undone session operation"),
@@ -166,7 +159,6 @@ def add_abort_subcommand(subparsers: Subparsers) -> None:
             locking=LockingPolicy.SESSION,
             repository=RepositoryPolicy.REQUIRED,
             pager=PagerPolicy.NEVER,
-            state_changes=StateChangePolicy.DURABLE,
         ),
         help=_("Restore repository to pre-session state"),
     )
@@ -183,7 +175,6 @@ def add_status_subcommand(subparsers: Subparsers) -> None:
             locking=LockingPolicy.SESSION_EXCEPT_PROMPT,
             repository=RepositoryPolicy.OPTIONAL_FOR_PROMPT,
             pager=PagerPolicy.ELIGIBLE,
-            state_changes=StateChangePolicy.NONE,
         ),
         aliases=["st"],
         help=_("Show selected session status"),

@@ -4,18 +4,6 @@ from __future__ import annotations
 
 from ..core.models import LineEntry, LineLevelChange
 from ..batch.state.metadata_types import BatchFileMetadataDict
-from .consumed_selections import read_consumed_file_metadata
-
-
-def filter_consumed_replacement_masks(
-    line_changes: LineLevelChange,
-) -> LineLevelChange | None:
-    """Hide synthetic replacement runs created by `include --line --as`."""
-    file_metadata = read_consumed_file_metadata(line_changes.path)
-    return filter_consumed_replacement_masks_with_metadata(
-        line_changes,
-        file_metadata=file_metadata,
-    )
 
 
 def filter_consumed_replacement_masks_with_metadata(

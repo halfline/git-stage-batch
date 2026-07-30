@@ -9,13 +9,10 @@ from typing import TypedDict, cast
 from ..core.models import LineLevelChange, HunkHeader, LineEntry
 from ..exceptions import CommandError
 from ..i18n import _
-from .line_id_files import read_line_ids_file
 from ..utils.file_io import read_text_file_contents
 from ..utils.paths import (
     get_selected_hunk_patch_file_path,
     get_line_changes_json_file_path,
-    get_processed_include_ids_file_path,
-    get_processed_skip_ids_file_path,
 )
 
 
@@ -208,14 +205,3 @@ def require_line_changes_from_state() -> LineLevelChange:
     if line_changes is None:
         raise CommandError(_("No selected hunk. Run 'start' first."))
     return line_changes
-
-
-def compute_remaining_changed_line_ids() -> list[int]:
-    """Compute which changed line IDs haven't been processed yet."""
-    line_changes = require_line_changes_from_state()
-    all_changed_ids = set(line_changes.changed_line_ids())
-    included_ids = set(read_line_ids_file(get_processed_include_ids_file_path()))
-    skipped_ids = set(read_line_ids_file(get_processed_skip_ids_file_path()))
-    processed_ids = included_ids | skipped_ids
-    remaining_ids = all_changed_ids - processed_ids
-    return sorted(remaining_ids)

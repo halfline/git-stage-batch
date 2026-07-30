@@ -217,17 +217,6 @@ def staged_changes_are_only_normalizable_start_time_changes() -> bool:
     )
 
 
-def staged_changes_are_only_normalizable_renames() -> bool:
-    """Return whether all staged changes are renames start can normalize."""
-    records = list_staged_change_records()
-    if not records:
-        return False
-    rename_records = [record for record in records if record.status.startswith("R") and len(record.paths) == 2]
-    if len(rename_records) != len(records):
-        return False
-    return len(list_normalizable_staged_renames()) == len(rename_records)
-
-
 def _serialize_renames(renames: list[StagedRename]) -> str:
     return json.dumps(
         [

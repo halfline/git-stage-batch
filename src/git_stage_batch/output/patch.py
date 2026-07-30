@@ -10,26 +10,6 @@ if TYPE_CHECKING:
     from ..core.models import BinaryFileChange, FileModeChange, GitlinkChange, RenameChange, TextFileDeletionChange
 
 
-def print_colored_patch(patch_text: str) -> None:
-    """Print a patch with colored diff lines."""
-    use_color = Colors.enabled()
-
-    for line in patch_text.splitlines(keepends=True):
-        if use_color:
-            if line.startswith('+++') or line.startswith('---'):
-                print(f"{Colors.BOLD}{line}{Colors.RESET}", end="")
-            elif line.startswith('@@'):
-                print(f"{Colors.CYAN}{line}{Colors.RESET}", end="")
-            elif line.startswith('+'):
-                print(f"{Colors.GREEN}{line}{Colors.RESET}", end="")
-            elif line.startswith('-'):
-                print(f"{Colors.RED}{line}{Colors.RESET}", end="")
-            else:
-                print(line, end="")
-        else:
-            print(line, end="")
-
-
 def print_binary_file_change(binary_change: BinaryFileChange) -> None:
     """Print a binary file change with colored output.
 

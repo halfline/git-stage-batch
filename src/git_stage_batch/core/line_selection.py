@@ -284,9 +284,6 @@ class LineRanges:
             return None
         return self._ranges[0][0]
 
-    def to_set(self) -> set[int]:
-        return set(self)
-
     def to_line_spec(self) -> str:
         return ",".join(
             str(start) if start == end else f"{start}-{end}"

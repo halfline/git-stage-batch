@@ -257,14 +257,6 @@ class RealizedEntries(Sequence[_RealizedEntry]):
         result.copy_slice_from(self, position, len(self))
         return result
 
-    def _append_range_from(
-        self,
-        entries: Sequence[_RealizedEntry],
-        start: int,
-        stop: int,
-    ) -> None:
-        self.copy_slice_from(entries, start, stop)
-
     def close(self) -> None:
         if self._closed:
             return
@@ -352,15 +344,6 @@ def realized_entry_source_line_at(
     if isinstance(entries, RealizedEntries):
         return entries.source_line_at(index)
     return entries[index].source_line
-
-
-def realized_entry_target_line_at(
-    entries: Sequence[_RealizedEntry],
-    index: int,
-) -> int | None:
-    if isinstance(entries, RealizedEntries):
-        return entries.target_line_at(index)
-    return entries[index].target_line
 
 
 def realized_entry_is_claimed_at(

@@ -65,16 +65,3 @@ def format_hotkey(text: str, hotkey: str, color: str = "") -> str:
             return f"{color}[{hotkey}]{Colors.RESET} {text}"
         else:
             return f"[{hotkey}] {text}"
-
-
-def format_option_list(options: list[tuple[str, str, str]]) -> str:
-    """Format a list of options with hotkeys.
-
-    Args:
-        options: List of (text, hotkey, color) tuples
-
-    Returns:
-        Comma-separated formatted string like "[a]ll, [l]ines, [f]ile"
-    """
-    formatted = [format_hotkey(text, hotkey, color) for text, hotkey, color in options]
-    return ", ".join(formatted)

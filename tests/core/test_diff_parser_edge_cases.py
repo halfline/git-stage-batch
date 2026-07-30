@@ -222,7 +222,6 @@ Binary files /dev/null and b/new_image.jpg differ
         assert patches[0].change_type == "added"
         assert patches[0].is_new_file() is True
         assert patches[0].is_deleted_file() is False
-        assert patches[0].is_modified_file() is False
 
     def test_binary_file_deleted(self):
         """Test parsing deleted binary file."""
@@ -242,7 +241,6 @@ Binary files a/old_image.png and /dev/null differ
         assert patches[0].change_type == "deleted"
         assert patches[0].is_new_file() is False
         assert patches[0].is_deleted_file() is True
-        assert patches[0].is_modified_file() is False
 
 
 class TestGitlinkFiles:

@@ -6,7 +6,6 @@ from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.editor.line_endings import (
     choose_line_ending,
     detect_line_ending,
-    restore_line_endings,
     restore_line_endings_in_chunks,
 )
 
@@ -30,13 +29,6 @@ def test_choose_line_ending_uses_first_buffer_with_an_ending():
         LineBuffer.from_bytes(b"beta\ngamma\n") as second,
     ):
         assert choose_line_ending(first, second) == b"\n"
-
-
-def test_restore_line_endings_rewrites_normalized_output():
-    """Normalized LF output can be written with the selected line ending."""
-    assert restore_line_endings(b"one\ntwo\n", b"\r\n") == b"one\r\ntwo\r\n"
-    assert restore_line_endings(b"one\ntwo\n", b"\n") == b"one\ntwo\n"
-    assert restore_line_endings(b"one\ntwo\n", None) == b"one\ntwo\n"
 
 
 def test_restore_line_endings_in_chunks_rewrites_each_chunk():

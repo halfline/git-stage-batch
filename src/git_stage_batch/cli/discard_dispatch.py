@@ -140,7 +140,7 @@ def dispatch_discard_command(args: argparse.Namespace) -> None:
                 undo_operation=f"discard --to {shlex.quote(args.to_batch)}",
                 worktree_paths=resolved_live_scope.files,
             )
-    elif args.line_ids:
+    elif args.line_ids is not None:
         resolved_live_scope = resolve_live_file_scope(
             args.file,
             args.file_patterns,

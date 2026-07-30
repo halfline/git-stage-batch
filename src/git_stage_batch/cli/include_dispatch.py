@@ -55,7 +55,7 @@ def _dispatch_include_replacement(args: argparse.Namespace) -> None:
             replacement_text=replacement_text,
         )
         return
-    if args.line_ids and not args.from_batch and not args.to_batch:
+    if args.line_ids is not None and not args.from_batch and not args.to_batch:
         resolved_live_scope = resolve_live_file_scope(
             args.file,
             args.file_patterns,

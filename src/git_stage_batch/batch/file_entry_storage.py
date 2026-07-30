@@ -3,15 +3,11 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Optional
-
 from ..utils.repository_buffers import read_git_object_buffer_or_none
-from ..utils.git_command import run_git_command
 from ..utils.git_object_io import create_git_blob
 from .state import content_commits as _content_commits
 from .state.query import get_batch_commit_sha, read_batch_metadata
 from .state.compatibility_metadata import write_file_backed_batch_metadata
-from .state.batch_names import validate_batch_name
 
 
 def remove_file_from_batch(batch_name: str, file_path: str) -> None:
@@ -98,26 +94,3 @@ def copy_file_from_batch_to_batch(
             file_path,
             metadata=metadata_model,
         )
-
-
-def read_file_from_batch(batch_name: str, file_path: str) -> Optional[str]:
-    """
-    Read a file's content from a batch.
-
-    Returns None if the batch doesn't exist or the file is not in the batch.
-    """
-    validate_batch_name(batch_name)
-
-    commit_sha = get_batch_commit_sha(batch_name)
-    if not commit_sha:
-        return None
-
-    result = run_git_command(
-        ["show", f"{commit_sha}:{file_path}"],
-        check=False,
-        requires_index_lock=False,
-    )
-    if result.returncode != 0:
-        return None
-
-    return result.stdout

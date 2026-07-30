@@ -1,7 +1,6 @@
 """Tests for batch metadata sanity checking and validation."""
 
 import json
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -12,10 +11,8 @@ from git_stage_batch.batch.state.validation import (
     get_validated_baseline_commit,
     load_and_validate_batch_metadata,
     read_validated_batch_metadata,
-    require_batch_metadata_sane,
     validate_batch_metadata_file_exists,
     validate_batch_metadata_structure,
-    validate_state_directory_exists,
 )
 from git_stage_batch.batch.state.lifecycle import create_batch
 from git_stage_batch.batch.state.query import read_batch_metadata
@@ -26,7 +23,6 @@ from git_stage_batch.utils.git_command import run_git_command
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,
     get_batch_metadata_file_path,
-    get_state_directory_path,
 )
 
 
@@ -90,46 +86,6 @@ def temp_git_repo(tmp_path, monkeypatch):
     initialize_abort_state()
 
     return tmp_path
-
-
-def test_validate_state_directory_exists_success(temp_git_repo):
-    """State directory validation succeeds when directory exists."""
-    # State directory should be created by test setup
-    validate_state_directory_exists()  # Should not raise
-
-
-def test_validate_state_directory_missing(temp_git_repo):
-    """State directory validation fails with clear error when missing."""
-    state_dir = get_state_directory_path()
-
-    # Remove state directory
-    if state_dir.exists():
-        shutil.rmtree(state_dir)
-
-    with pytest.raises(BatchMetadataError) as exc_info:
-        validate_state_directory_exists()
-
-    error_msg = str(exc_info.value)
-    assert "git-stage-batch metadata directory is missing" in error_msg
-    assert str(state_dir) in error_msg
-
-
-def test_validate_state_directory_is_file(temp_git_repo):
-    """State directory validation fails when path is a file."""
-    state_dir = get_state_directory_path()
-
-    # Remove directory and create file in its place
-    if state_dir.exists():
-        shutil.rmtree(state_dir)
-    state_dir.parent.mkdir(parents=True, exist_ok=True)
-    state_dir.write_text("not a directory")
-
-    with pytest.raises(BatchMetadataError) as exc_info:
-        validate_state_directory_exists()
-
-    error_msg = str(exc_info.value)
-    assert "not a directory" in error_msg
-    assert str(state_dir) in error_msg
 
 
 def test_load_and_validate_without_batch_ref(temp_git_repo):
@@ -458,25 +414,6 @@ def test_read_validated_batch_metadata_corrupted(temp_git_repo):
 
     error_msg = str(exc_info.value)
     assert "failed to read batch metadata" in error_msg.lower()
-
-
-def test_require_batch_metadata_sane_success(temp_git_repo):
-    """Requiring sane metadata succeeds for valid batch."""
-    create_batch("test-batch", "Test note")
-
-    # Should not raise
-    require_batch_metadata_sane("test-batch")
-
-
-def test_require_batch_metadata_sane_corrupted(temp_git_repo):
-    """Requiring sane metadata fails for legacy ref missing metadata."""
-    run_git_command(["update-ref", "refs/batches/test-batch", "HEAD"])
-
-    with pytest.raises(BatchMetadataError) as exc_info:
-        require_batch_metadata_sane("test-batch")
-
-    error_msg = str(exc_info.value)
-    assert "missing or corrupted" in error_msg
 
 
 def test_validate_batch_metadata_structure_valid_structure(temp_git_repo):

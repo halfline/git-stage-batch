@@ -16,34 +16,7 @@ from ...i18n import _
 from ...utils.git_command import run_git_command
 from ...utils.git_object_io import GitObjectInfo, resolve_git_objects
 from ...utils.repository_buffers import git_object_name_is_batch_protocol_safe
-from ...utils.paths import (
-    get_batch_metadata_file_path,
-    get_state_directory_path,
-)
-
-
-def validate_state_directory_exists() -> None:
-    """Verify that the batch system state directory exists.
-
-    Raises:
-        BatchMetadataError: If .git/git-stage-batch is missing or inaccessible
-    """
-    state_dir = get_state_directory_path()
-    if not state_dir.exists():
-        raise BatchMetadataError(
-            _("The git-stage-batch metadata directory is missing.\n"
-              "Expected directory: {dir}\n"
-              "This may indicate the batch session was not initialized properly.").format(
-                dir=str(state_dir)
-            )
-        )
-
-    if not state_dir.is_dir():
-        raise BatchMetadataError(
-            _("The git-stage-batch metadata path exists but is not a directory: {dir}").format(
-                dir=str(state_dir)
-            )
-        )
+from ...utils.paths import get_batch_metadata_file_path
 
 
 def validate_batch_metadata_file_exists(batch_name: str) -> None:
@@ -273,21 +246,6 @@ def load_and_validate_batch_metadata(batch_name: str) -> BatchMetadataDict:
         "baseline": metadata.get("baseline", None),
         "files": metadata.get("files", {})
     }
-
-
-def require_batch_metadata_sane(batch_name: str) -> None:
-    """Require that batch metadata exists and is structurally valid.
-
-    This is a lighter-weight check for commands that don't need the full metadata
-    but want to fail early with a clear error if metadata is corrupted.
-
-    Args:
-        batch_name: Name of the batch
-
-    Raises:
-        BatchMetadataError: If metadata is missing or corrupted
-    """
-    load_and_validate_batch_metadata(batch_name)
 
 
 def get_validated_baseline_commit(batch_name: str) -> str:

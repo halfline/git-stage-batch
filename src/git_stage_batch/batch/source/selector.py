@@ -26,10 +26,6 @@ class BatchSourceSelector:
     candidate_operation: CandidateOperation | None = None
     candidate_ordinal: int | None = None
 
-    @property
-    def is_candidate_selector(self) -> bool:
-        return self.candidate_operation is not None
-
 
 def _invalid_selector(value: str) -> CommandError:
     return CommandError(

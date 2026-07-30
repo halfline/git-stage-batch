@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING, TypedDict, cast
 
 from ..utils.file_io import write_text_file_contents
@@ -22,7 +21,6 @@ class CandidatePreviewState(TypedDict):
     candidate_id: str
     target_fingerprints: dict[str, str]
     target_result_fingerprints: dict[str, str]
-    shown_at: str
 
 
 class CandidateScopeState(TypedDict):
@@ -145,7 +143,6 @@ def save_candidate_preview_state(preview: OperationCandidatePreview) -> None:
         "candidate_id": preview.candidate_id,
         "target_fingerprints": preview.target_fingerprints,
         "target_result_fingerprints": preview.target_result_fingerprints,
-        "shown_at": datetime.now(timezone.utc).isoformat(),
     }
     _save_state(data)
 

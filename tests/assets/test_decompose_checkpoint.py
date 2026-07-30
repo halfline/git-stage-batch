@@ -130,7 +130,7 @@ def test_resume_start_preserves_checkpoint_progress_and_base(
         ("current_batch", ""),
     ],
 )
-def test_resume_rejects_invalid_checkpoint_structure(
+def test_resume_and_status_reject_invalid_checkpoint_structure(
     git_repo: Path,
     field: str,
     value: object,
@@ -155,9 +155,12 @@ def test_resume_rejects_invalid_checkpoint_structure(
         "resume",
         check=False,
     )
+    status = _helper(git_repo, "status", "--json", check=False)
 
     assert resume.returncode != 0
+    assert status.returncode != 0
     assert "invalid decompose checkpoint" in resume.stderr
+    assert "invalid decompose checkpoint" in status.stderr
     assert checkpoint_path.read_bytes() == saved
 
 
@@ -186,6 +189,31 @@ def test_fresh_start_validates_base_before_clearing_state(
     assert "invalid decompose base revision" in result.stderr
     assert checkpoint_path.read_bytes() == saved_checkpoint
     assert plan_path.read_text(encoding="utf-8") == "{}\n"
+
+
+def test_mark_validates_commit_before_replacing_checkpoint(
+    git_repo: Path,
+) -> None:
+    """A mark must not record a revision that does not identify a commit."""
+    _helper(git_repo, "start", "--mode", "full", "--base", "HEAD")
+    checkpoint_path = (
+        git_repo / ".git-stage-batch" / "decompose-checkpoint.json"
+    )
+    saved = checkpoint_path.read_bytes()
+
+    result = _helper(
+        git_repo,
+        "mark",
+        "--phase",
+        "phase3-running",
+        "--commit",
+        "missing-commit",
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "invalid decompose commit revision" in result.stderr
+    assert checkpoint_path.read_bytes() == saved
 
 
 def test_start_refuses_symlinked_state_directory(
@@ -264,6 +292,63 @@ def test_fresh_start_clears_only_decompose_state(git_repo: Path) -> None:
     assert not (state_dir / "decompose-narrative.md").exists()
     assert not (state_dir / "decompose-refinement.md").exists()
     assert not list(state_dir.glob(".decompose-checkpoint.json.*.tmp"))
+
+
+@pytest.mark.parametrize("contents", [None, "", "{broken", "[]"])
+def test_mark_requires_valid_existing_checkpoint(
+    git_repo: Path,
+    contents: str | None,
+) -> None:
+    """Mark must not invent recovery state when its checkpoint is unavailable."""
+    checkpoint_path = (
+        git_repo / ".git-stage-batch" / "decompose-checkpoint.json"
+    )
+    if contents is not None:
+        checkpoint_path.parent.mkdir()
+        checkpoint_path.write_text(contents, encoding="utf-8")
+
+    result = _helper(
+        git_repo,
+        "mark",
+        "--phase",
+        "phase1-candidate",
+        check=False,
+    )
+    status = _helper(git_repo, "status", "--json", check=False)
+
+    assert result.returncode != 0
+    if contents is None:
+        assert "no decompose checkpoint" in result.stderr
+        assert not checkpoint_path.exists()
+        assert status.returncode == 0
+    else:
+        assert "invalid decompose checkpoint" in result.stderr
+        assert status.returncode != 0
+        assert "invalid decompose checkpoint" in status.stderr
+        assert checkpoint_path.read_text(encoding="utf-8") == contents
+
+
+def test_status_does_not_resume_orphaned_artifacts(git_repo: Path) -> None:
+    """Artifacts without a checkpoint cannot establish a recovery base."""
+    state_dir = git_repo / ".git-stage-batch"
+    state_dir.mkdir()
+    (state_dir / "decompose-plan.candidate.json").write_text(
+        "{}\n",
+        encoding="utf-8",
+    )
+    (state_dir / "decompose-narrative.md").write_text(
+        "Draft\n",
+        encoding="utf-8",
+    )
+
+    status = json.loads(
+        _helper(git_repo, "status", "--json").stdout
+    )
+
+    assert status["checkpoint_exists"] is False
+    assert status["candidate_exists"] is True
+    assert status["narrative_exists"] is True
+    assert status["resume_target"] == "fresh"
 
 
 def test_failed_atomic_replace_preserves_checkpoint(

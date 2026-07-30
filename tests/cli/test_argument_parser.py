@@ -250,6 +250,28 @@ def test_resolve_batch_file_scope_combines_explicit_and_selected_files(monkeypat
     assert scope.includes_selected_file_marker is True
 
 
+def test_resolve_batch_line_file_scope_preserves_selected_marker(monkeypatch):
+    _mock_batch_files(monkeypatch, ["selected.py"])
+    monkeypatch.setattr(
+        file_scope,
+        "get_selected_change_file_path",
+        lambda: "selected.py",
+    )
+
+    scope = file_scope.resolve_batch_file_scope(
+        "batch",
+        ["selected.py", ""],
+        None,
+        selected_action=FileReviewAction.INCLUDE_FROM_BATCH,
+        command_name="include",
+        line_ids="1",
+    )
+
+    assert scope.files == ("selected.py",)
+    assert scope.optional_file() == "selected.py"
+    assert scope.optional_line_file() == ""
+
+
 def test_resolve_batch_file_scope_refuses_foreign_batch_selection(monkeypatch):
     _mock_batch_files(monkeypatch, ["src/parser.py", "notes.txt"])
     monkeypatch.setattr(

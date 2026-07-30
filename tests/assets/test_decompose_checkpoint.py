@@ -188,6 +188,84 @@ def test_fresh_start_validates_base_before_clearing_state(
     assert plan_path.read_text(encoding="utf-8") == "{}\n"
 
 
+def test_start_refuses_symlinked_state_directory(
+    git_repo: Path,
+    tmp_path: Path,
+) -> None:
+    """Fresh cleanup must not follow a workflow-state directory symlink."""
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "keep.txt"
+    sentinel.write_text("keep\n", encoding="utf-8")
+    (git_repo / ".git-stage-batch").symlink_to(
+        outside,
+        target_is_directory=True,
+    )
+
+    state_dir_result = _helper(
+        git_repo,
+        "state-dir",
+        check=False,
+    )
+    result = _helper(
+        git_repo,
+        "start",
+        "--mode",
+        "full",
+        "--base",
+        "HEAD",
+        check=False,
+    )
+
+    assert state_dir_result.returncode != 0
+    assert result.returncode != 0
+    assert (
+        "refusing to use symlinked state path"
+        in state_dir_result.stderr
+    )
+    assert "refusing to use symlinked state path" in result.stderr
+    assert sentinel.read_text(encoding="utf-8") == "keep\n"
+
+
+def test_fresh_start_clears_only_decompose_state(git_repo: Path) -> None:
+    """Fresh decompose state must not delete sibling workflow recovery."""
+    state_dir = git_repo / ".git-stage-batch"
+    refine_history = state_dir / "refine-history"
+    refine_messages = state_dir / "refine-commit-messages"
+    refine_history.mkdir(parents=True)
+    refine_messages.mkdir()
+    (refine_history / "checkpoint.json").write_text(
+        "{}\n",
+        encoding="utf-8",
+    )
+    (refine_messages / "checkpoint.json").write_text(
+        "{}\n",
+        encoding="utf-8",
+    )
+    unrelated = state_dir / "keep.txt"
+    unrelated.write_text("keep\n", encoding="utf-8")
+    for name in (
+        "decompose-plan.json",
+        "decompose-plan.candidate.json",
+        "decompose-narrative.md",
+        "decompose-refinement.md",
+        ".decompose-checkpoint.json.abandoned.tmp",
+    ):
+        (state_dir / name).write_text("stale\n", encoding="utf-8")
+
+    _helper(git_repo, "start", "--mode", "full", "--base", "HEAD")
+
+    assert refine_history.is_dir()
+    assert refine_messages.is_dir()
+    assert unrelated.read_text(encoding="utf-8") == "keep\n"
+    assert (state_dir / "decompose-checkpoint.json").is_file()
+    assert not (state_dir / "decompose-plan.json").exists()
+    assert not (state_dir / "decompose-plan.candidate.json").exists()
+    assert not (state_dir / "decompose-narrative.md").exists()
+    assert not (state_dir / "decompose-refinement.md").exists()
+    assert not list(state_dir.glob(".decompose-checkpoint.json.*.tmp"))
+
+
 def test_failed_atomic_replace_preserves_checkpoint(
     git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -102,21 +102,8 @@ directory as stale output from another attempt. Phase 1 must not read them as
 input. Remove any old candidate and narrative files before analysis; the
 final plan is overwritten only after the candidate passes Gate 1:
 
-```bash
-python - <<'PY'
-import subprocess
-from pathlib import Path
-state_dir = Path(subprocess.check_output(
-    ["python", ".agents/skills/decompose-and-commit-unstaged-changes/scripts/decompose-checkpoint.py", "state-dir"],
-    text=True,
-).strip())
-state_dir.mkdir(parents=True, exist_ok=True)
-(state_dir / "decompose-plan.candidate.json").unlink(missing_ok=True)
-(state_dir / "decompose-plan.json").unlink(missing_ok=True)
-(state_dir / "decompose-narrative.md").unlink(missing_ok=True)
-(state_dir / "decompose-refinement.md").unlink(missing_ok=True)
-PY
-```
+The fresh `start` command below performs that scoped cleanup. Do not remove
+the workflow state directory or sibling recovery state directly.
 
 For a fresh full or `deconstruct` run, record the new checkpoint immediately
 after recording the base commit:

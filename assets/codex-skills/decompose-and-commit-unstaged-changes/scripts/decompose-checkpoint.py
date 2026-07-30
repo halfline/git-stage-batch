@@ -36,7 +36,14 @@ CHECKPOINT_PATH = STATE_DIR / "decompose-checkpoint.json"
 PLAN_PATH = STATE_DIR / "decompose-plan.json"
 CANDIDATE_PATH = STATE_DIR / "decompose-plan.candidate.json"
 NARRATIVE_PATH = STATE_DIR / "decompose-narrative.md"
-PRESERVE_ON_FRESH_START = {".gitignore"}
+REFINEMENT_PATH = STATE_DIR / "decompose-refinement.md"
+DECOMPOSE_STATE_PATHS = (
+    CHECKPOINT_PATH,
+    PLAN_PATH,
+    CANDIDATE_PATH,
+    NARRATIVE_PATH,
+    REFINEMENT_PATH,
+)
 CHECKPOINT_MODES = {"full", "deconstruct", "reconstruct", "resume"}
 CHECKPOINT_PHASES = {
     "started",
@@ -306,17 +313,26 @@ def save_checkpoint(data: dict[str, Any]) -> None:
 
 
 def clear_state_dir_for_fresh_start() -> list[str]:
+    require_safe_state_dir()
     if not STATE_DIR.exists():
         return []
     removed: list[str] = []
-    for path in STATE_DIR.iterdir():
-        if path.name in PRESERVE_ON_FRESH_START:
-            continue
+    paths = [
+        path
+        for path in DECOMPOSE_STATE_PATHS
+        if path.exists() or path.is_symlink()
+    ]
+    paths.extend(
+        path
+        for path in STATE_DIR.glob(f".{CHECKPOINT_PATH.name}.*.tmp")
+        if path.is_file() or path.is_symlink()
+    )
+    for path in paths:
         removed.append(path.name)
-        if path.is_dir():
-            shutil.rmtree(path)
-        else:
+        if path.is_symlink() or not path.is_dir():
             path.unlink()
+        else:
+            shutil.rmtree(path)
     return sorted(removed)
 
 
@@ -439,12 +455,17 @@ def cmd_status(args: argparse.Namespace) -> None:
             print(f"  {batch}")
 
 
+def cmd_state_dir(_args: argparse.Namespace) -> None:
+    require_safe_state_dir()
+    print(STATE_DIR)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
 
     state_dir = sub.add_parser("state-dir")
-    state_dir.set_defaults(func=lambda args: print(STATE_DIR))
+    state_dir.set_defaults(func=cmd_state_dir)
 
     start = sub.add_parser("start")
     start.add_argument(

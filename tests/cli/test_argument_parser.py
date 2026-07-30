@@ -920,6 +920,44 @@ def test_parse_command_line_include_with_file_and_line_dispatches_file_scope(mon
     )
 
 
+@pytest.mark.parametrize(
+    "file_arguments",
+    [
+        ["--file", "selected.py", "--file"],
+    ],
+)
+def test_parse_command_line_include_line_preserves_selected_marker(
+    monkeypatch,
+    file_arguments,
+):
+    """A deduplicated selected-file marker should stay pathless for line actions."""
+    mock_command = Mock()
+    monkeypatch.setattr(include_dispatch, "command_include_line", mock_command)
+    _mock_live_file_candidates(monkeypatch, ["selected.py"])
+    monkeypatch.setattr(
+        file_scope,
+        "get_selected_change_file_path",
+        lambda: "selected.py",
+    )
+    monkeypatch.setattr(
+        file_scope,
+        "refuse_ambiguous_bare_action_after_partial_file_review",
+        Mock(side_effect=AssertionError("whole-file guard should not run")),
+    )
+
+    args = parse_command_line(
+        ["include", "--line", "2-3", *file_arguments],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "2-3",
+        file="",
+        auto_advance=None,
+    )
+
 def test_parse_command_line_include_with_files_dispatches_per_file(monkeypatch):
     """Include should dispatch once per file resolved from --files."""
     mock_command = Mock()

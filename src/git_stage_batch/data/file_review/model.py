@@ -6,7 +6,6 @@ from dataclasses import dataclass
 
 from ...core.actionable_changes import ActionableSelectionReason
 from ...core.models import HunkHeader, LineEntry, LineLevelChange, ReviewActionGroup
-from .records import ReviewSource
 
 
 @dataclass(frozen=True)
@@ -60,18 +59,3 @@ class FileReviewModel:
     pages: tuple[FileReviewPage, ...]
     display_id_by_selection_id: dict[int, int] | None = None
     review_action_groups: tuple[ReviewActionGroup, ...] = ()
-
-
-@dataclass(frozen=True)
-class FileReviewView:
-    """Selected pages from a file review model."""
-
-    source: ReviewSource
-    path: str
-    page_spec: str
-    shown_pages: tuple[int, ...]
-    page_count: int
-    pages: tuple[FileReviewPage, ...]
-    complete_changes: tuple[ReviewChange, ...]
-    partial_changes: tuple[ReviewChange, ...]
-    entire_file_shown: bool

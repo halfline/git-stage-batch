@@ -6,11 +6,9 @@ import git_stage_batch.batch.line_matching.comparison as comparison_module
 from git_stage_batch.batch.line_matching.comparison import (
     SemanticChangeKind,
     SemanticChangeRun,
-    derive_replacement_display_id_run_sets_from_lines,
     derive_semantic_change_runs,
     stream_semantic_change_runs,
 )
-from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange
 
 
 def test_derive_semantic_change_runs_accepts_non_list_sequences(line_sequence):
@@ -82,8 +80,6 @@ def test_derive_semantic_change_runs_uses_range_records():
     ]
     assert not hasattr(runs[0], "source_run")
     assert not hasattr(runs[0], "target_run")
-    assert runs[0].source_line_numbers() == range(2, 4)
-    assert runs[0].target_line_numbers() == range(2, 4)
 
 
 def test_semantic_change_run_rejects_invalid_ranges():
@@ -150,66 +146,3 @@ def test_derive_semantic_change_runs_uses_ranges_for_one_sided_changes():
             target_end=3,
         )
     ]
-
-
-def test_replacement_display_id_run_sets_accepts_non_list_sequences(line_sequence):
-    """Replacement display grouping accepts indexed byte-line sequences."""
-    line_changes = LineLevelChange(
-        path="module.py",
-        header=HunkHeader(old_start=1, old_len=2, new_start=1, new_len=4),
-        lines=[
-            LineEntry(
-                id=None,
-                kind=" ",
-                old_line_number=1,
-                new_line_number=1,
-                text_bytes=b"keep\n",
-                text="keep\n",
-            ),
-            LineEntry(
-                id=1,
-                kind="-",
-                old_line_number=2,
-                new_line_number=None,
-                text_bytes=b"old value\n",
-                text="old value\n",
-            ),
-            LineEntry(
-                id=2,
-                kind="+",
-                old_line_number=None,
-                new_line_number=2,
-                text_bytes=b"new value 1\n",
-                text="new value 1\n",
-            ),
-            LineEntry(
-                id=3,
-                kind="+",
-                old_line_number=None,
-                new_line_number=3,
-                text_bytes=b"new value 2\n",
-                text="new value 2\n",
-            ),
-            LineEntry(
-                id=4,
-                kind="+",
-                old_line_number=None,
-                new_line_number=4,
-                text_bytes=b"new value 3\n",
-                text="new value 3\n",
-            ),
-        ],
-    )
-
-    run_sets = derive_replacement_display_id_run_sets_from_lines(
-        line_changes,
-        source_lines=line_sequence([b"keep\n", b"old value\n"]),
-        target_lines=line_sequence([
-            b"keep\n",
-            b"new value 1\n",
-            b"new value 2\n",
-            b"new value 3\n",
-        ]),
-    )
-
-    assert run_sets == [{1, 2, 3, 4}]

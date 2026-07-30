@@ -6,9 +6,9 @@ from git_stage_batch.batch.source import annotation as source_annotation_module
 from git_stage_batch.batch.source.annotation import (
     acquire_batch_source_mapping,
     annotate_with_batch_source_mapping,
-    annotate_with_batch_source_lines,
     annotate_with_batch_source_working_lines,
 )
+from git_stage_batch.batch.line_matching.match import match_lines
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange
 
@@ -87,6 +87,16 @@ def _gapped_deletion_changes() -> LineLevelChange:
     )
 
 
+def _annotate_with_batch_source_lines(
+    line_changes: LineLevelChange,
+    *,
+    batch_source_lines,
+    working_lines,
+) -> LineLevelChange:
+    with match_lines(batch_source_lines, working_lines) as mapping:
+        return annotate_with_batch_source_mapping(line_changes, mapping)
+
+
 def test_annotation_keeps_consecutive_leading_deletions_before_line_one():
     """All rows in one leading deletion run share its file-start anchor."""
     annotated = annotate_with_batch_source_mapping(
@@ -99,7 +109,7 @@ def test_annotation_keeps_consecutive_leading_deletions_before_line_one():
 
 def test_mapped_annotation_keeps_leading_deletion_run_anchor():
     """Mapped annotation does not project later leading deletions after line one."""
-    annotated = annotate_with_batch_source_lines(
+    annotated = _annotate_with_batch_source_lines(
         _leading_deletion_changes(),
         batch_source_lines=[b"remaining\n"],
         working_lines=[b"remaining\n"],
@@ -121,7 +131,7 @@ def test_annotation_translates_deletion_anchor_after_synthetic_gap():
     ]
 
     first_source = annotate_with_batch_source_mapping(changes, None)
-    mapped_source = annotate_with_batch_source_lines(
+    mapped_source = _annotate_with_batch_source_lines(
         changes,
         batch_source_lines=working_lines,
         working_lines=working_lines,
@@ -171,7 +181,7 @@ def test_annotate_with_batch_source_lines_accepts_non_list_byte_sequences(
         ],
     )
 
-    annotated = annotate_with_batch_source_lines(
+    annotated = _annotate_with_batch_source_lines(
         line_changes,
         batch_source_lines=line_sequence([b"line 1\n", b"line 2\n"]),
         working_lines=line_sequence([

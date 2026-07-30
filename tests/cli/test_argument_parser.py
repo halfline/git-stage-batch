@@ -924,6 +924,7 @@ def test_parse_command_line_include_with_file_and_line_dispatches_file_scope(mon
     "file_arguments",
     [
         ["--file", "selected.py", "--file"],
+        ["--file", "--file", "selected.py"],
     ],
 )
 def test_parse_command_line_include_line_preserves_selected_marker(

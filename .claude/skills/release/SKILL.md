@@ -18,18 +18,23 @@ Before starting, verify:
 1. The working tree is clean (`git status --short` produces no output).
 2. You are on the `main` branch.
 3. All tests pass (`uv run pytest -n auto`).
-4. `gh repo view` identifies `halfline/git-stage-batch` as the current
+4. The new version follows the project convention and is newer than
+   `VERSION`.
+5. The proposed tag, GitHub release, and PyPI version do not exist. Treat an
+   HTTP 404 from PyPI as absence, but do not mistake a network failure for
+   absence.
+6. `gh repo view` identifies `halfline/git-stage-batch` as the current
    repository.
-5. `docs/releasing.md` and `.github/workflows/release.yml` describe a workflow
+7. `docs/releasing.md` and `.github/workflows/release.yml` describe a workflow
    triggered by a published release, using the `pypi` environment, and
    granting `id-token: write` only to the publish job.
-6. The repository has a `pypi` GitHub environment:
+8. The repository has a `pypi` GitHub environment:
 
    ```
    gh api repos/{owner}/{repo}/environments/pypi
    ```
 
-7. For the first release through Trusted Publishing, PyPI has the publisher
+9. For the first release through Trusted Publishing, PyPI has the publisher
    documented in `docs/releasing.md`. A successful earlier `Release` workflow
    run is sufficient evidence on later releases.
 
@@ -89,6 +94,9 @@ git pull origin main
 
 ### 6. Tag the merge commit
 
+Recheck that the tag, GitHub release, and PyPI version still do not exist in
+case another release raced this one.
+
 Create an annotated `v<VERSION>` tag on the merge commit. Use `v<VERSION>` as
 the first line of the annotation and include the changelog in its body.
 
@@ -103,6 +111,7 @@ git push origin v<VERSION>
 ```
 gh release create v<VERSION> \
   --verify-tag \
+  --fail-on-no-commits \
   --title "v<VERSION>" \
   --notes "<changelog markdown>"
 ```

@@ -1,110 +1,286 @@
 ---
 name: release
-description: Cut a new release — bump VERSION, build, open a PR, merge, tag, push, upload to GitHub and PyPI.
-whenToUse: Use this when the user wants to cut, publish, or ship a new release of the project.
-allowed-tools: Bash(git *), Bash(gh *), Bash(uv run pytest *), Bash(uv build), Bash(uv publish), Bash(cat VERSION), Bash(ls dist/), Bash(rm -rf dist/), Read, Write, Edit
+description: Cut, publish, or ship a project release through an annotated tag, GitHub Actions, and PyPI Trusted Publishing.
+when_to_use: Use only when the user explicitly asks to cut, publish, or ship a new release of this project.
+argument-hint: "[version]"
+disable-model-invocation: true
 user-invocable: true
+allowed-tools:
+  - Bash(git status *)
+  - Bash(git fetch *)
+  - Bash(git pull --ff-only *)
+  - Bash(git rev-parse *)
+  - Bash(git log *)
+  - Bash(git diff *)
+  - Bash(git switch *)
+  - Bash(git checkout *)
+  - Bash(git add VERSION)
+  - Bash(git commit *)
+  - Bash(git tag *)
+  - Bash(git cat-file *)
+  - Bash(git rev-list *)
+  - Bash(git ls-remote *)
+  - Bash(git push -u origin release-v*)
+  - Bash(git push origin v*)
+  - Bash(gh repo view *)
+  - Bash(gh api repos/*/environments/pypi)
+  - Bash(gh pr create *)
+  - Bash(gh pr checks *)
+  - Bash(gh pr merge *)
+  - Bash(gh pr view *)
+  - Bash(gh pr edit *)
+  - Bash(gh release view *)
+  - Bash(gh release create *)
+  - Bash(gh run list *)
+  - Bash(gh run watch *)
+  - Bash(gh run view *)
+  - Bash(uv venv *)
+  - Bash(uv pip install --group dev)
+  - Bash(uv sync --all-groups)
+  - Bash(uv run pytest *)
+  - Bash(uv build *)
+  - Bash(cat VERSION)
+  - Bash(ls *)
+  - Bash(mktemp *)
+  - Bash(curl * https://pypi.org/pypi/git-stage-batch/*/json)
+  - Read
+  - Write
+  - Edit
 ---
 
-Your task is to cut a new release of this project.
+Cut a release only from the canonical repository. Treat publication of the
+GitHub release as the irreversible action that starts PyPI publication.
 
-## Prerequisites
+## Safety rules
 
-Ask the user for the new version number if they have not already provided one. The current version lives in the `VERSION` file at the repository root.
+- Follow the steps in order and verify each result before continuing.
+- Stop on a failed or ambiguous check. Do not skip it or infer success.
+- Finalize one changelog against the exact release commit and reuse it for the
+  PR, annotated tag, and GitHub release.
+- Never run `uv publish` or upload locally built distributions.
+- Never bypass branch protection, use an administrative merge, or force-push.
+- Never move or replace an existing release tag.
+- After publication starts, never delete or replace the tag or GitHub release,
+  create another release for the same version, or rerun a failed workflow
+  without first checking whether PyPI received any files.
 
-Before starting, verify:
-1. The working tree is clean (`git status --short` produces no output).
-2. You are on the `main` branch.
-3. All tests pass (`uv run pytest -n auto`).
+## 1. Establish the release inputs
 
-If any check fails, stop and report the problem.
+Ask for the new version when the user has not supplied it. `VERSION` contains
+the current version without a `v` prefix.
 
-## Release workflow
+Before changing the repository:
 
-Follow these steps in order. Each step depends on the previous one succeeding. Confirm each step succeeded before moving on. If any step fails, stop and report the error — do not skip steps.
+1. Require a clean worktree on `main` and require `gh repo view` to identify
+   `halfline/git-stage-batch` as the current repository.
+2. Fetch branches and tags from `origin`, update `main` with a fast-forward-only
+   pull, and require local `main` and `origin/main` to resolve to the same SHA.
+3. Require the new version to follow the project convention and be newer than
+   `VERSION`.
+4. Require the proposed tag, GitHub release, and PyPI version not to exist.
+   Distinguish PyPI's HTTP 404 response from a network failure.
+5. Read `docs/releasing.md` and `.github/workflows/release.yml`. Require the
+   workflow to run on a published release, publish through the `pypi`
+   environment, and grant `id-token: write` only to its publish job.
+6. Verify that the repository has a `pypi` GitHub environment with:
 
-### 1. Create the release branch
+   ```
+   gh api repos/{owner}/{repo}/environments/pypi
+   ```
+
+7. For the first release through Trusted Publishing, require confirmation that
+   PyPI has the publisher documented in `docs/releasing.md`. A successful
+   earlier `Release` workflow run is sufficient evidence on later releases.
+
+Stop and report any missing one-time setup before creating a release branch.
+
+Generate a draft changelog of user-visible changes from the latest release tag
+through synchronized `main`. Use the `changes-since-last-release` skill output
+when it is already available; otherwise derive it from Git history. Save it
+outside the repository so shell quoting cannot alter it.
+
+## 2. Prepare and validate the release commit
+
+Create `release-v<VERSION>` from the synchronized `main` branch:
 
 ```
-git checkout -b release-v<VERSION>
+git switch -c release-v<VERSION>
 ```
 
-### 2. Bump the version
-
-Write the new version string (without a `v` prefix, without a trailing newline) to the `VERSION` file. Commit with the message format:
+Write the new version to `VERSION` without a `v` prefix or trailing newline,
+then commit it with this summary:
 
 ```
 project: Bump version to <VERSION>
 ```
 
-The commit body should follow the project's three-paragraph commit-message convention (see CONTRIBUTING.md). Describe the current version state, why a bump is needed, and what this commit does.
+Follow the commit-message convention in `CONTRIBUTING.md`.
 
-### 3. Build the wheel
-
-```
-rm -rf dist/
-uv build
-```
-
-Verify a `.whl` and `.tar.gz` appeared in `dist/`.
-
-### 4. Push the branch and open a PR
+Prepare the same development and build environment used by the release
+workflow:
 
 ```
-git push -u origin release-v<VERSION>
+uv venv --allow-existing
+uv pip install --group dev
+uv sync --all-groups
 ```
 
-Open a PR with `gh pr create`. The title should be `Release v<VERSION>`. The body should contain a changelog section summarizing user-visible changes since the previous release tag. Use the `changes-since-last-release` skill output if available in conversation context; otherwise generate a summary from `git log`.
-
-### 5. Merge the PR
+Run the full test suite:
 
 ```
-gh pr merge --merge --delete-branch
+uv run pytest -n auto
 ```
 
-After merging, update the local main branch:
+Build into a new temporary directory rather than the repository's potentially
+stale `dist/` directory:
 
 ```
-git checkout main
-git pull origin main
+release_dist=$(mktemp -d)
+uv build --out-dir "$release_dist"
 ```
 
-### 6. Tag the merge commit
+Require that directory to contain a wheel and source distribution for exactly
+the new version.
 
-The project uses annotated tags on the merge commit (not lightweight tags). Find the merge commit on main and tag it:
+## 3. Open and merge the release PR
+
+Push the branch and open a PR titled `Release v<VERSION>`. Include the
+changelog in its body.
+
+Watch the PR checks and require them to pass:
 
 ```
-git tag -a v<VERSION>
+gh pr checks <PR_NUMBER> --watch --fail-fast
 ```
 
-Use v<VERSION> for the Summary and <changelog markdown> for the message.
+Record the checked PR head SHA. Merge with a merge commit, require that exact
+head SHA, and request remote branch deletion:
 
-### 7. Push the tag
+```
+gh pr merge <PR_NUMBER> --merge --delete-branch \
+  --match-head-commit <PR_HEAD_SHA>
+```
+
+Query the PR afterward. Do not continue unless its state is `MERGED` and
+`mergeCommit.oid` is present; protected branches may leave an auto-merge
+pending even after the merge command returns. Wait for the pending merge or
+stop.
+
+```
+gh pr view <PR_NUMBER> --json state,mergedAt,mergeCommit,url
+```
+
+Record `mergeCommit.oid` as `RELEASE_SHA`. Switch to `main`, pull with
+`--ff-only`, and require all of these conditions:
+
+- `HEAD` equals `RELEASE_SHA`.
+- `origin/main` equals `RELEASE_SHA`.
+- `VERSION` contains the requested version.
+
+Regenerate the changelog from the previous release tag through `RELEASE_SHA`,
+excluding the mechanical version-bump commit. If concurrent merges changed
+the draft, replace it with this final changelog and update the merged PR body
+so all release surfaces describe the exact tagged history.
+
+Find the `CI` workflow run for the push of `RELEASE_SHA`, retrying the lookup
+briefly if event delivery has not created it yet:
+
+```
+gh run list --workflow ci.yml --event push --commit <RELEASE_SHA> \
+  --json databaseId,headSha,status,conclusion,url
+gh run watch <RUN_ID> --exit-status
+```
+
+Require that exact run to conclude successfully before tagging.
+
+## 4. Create and verify the annotated tag
+
+Recheck that the tag, GitHub release, and PyPI version still do not exist in
+case another release raced this one.
+
+Create a tag-message file outside the repository containing `v<VERSION>` as
+its first line, followed by a blank line and the unchanged changelog. Create an
+annotated `v<VERSION>` tag explicitly at `RELEASE_SHA` using that file.
+
+```
+git tag -a --file <TAG_MESSAGE_FILE> v<VERSION> <RELEASE_SHA>
+```
+
+Before pushing, require:
+
+- `git cat-file -t v<VERSION>` prints `tag`.
+- `git rev-list -n 1 v<VERSION>` equals `RELEASE_SHA`.
+
+Push only that tag. Verify that the remote annotated tag dereferences to
+`RELEASE_SHA`.
 
 ```
 git push origin v<VERSION>
+git ls-remote origin 'refs/tags/v<VERSION>^{}'
 ```
 
-### 8. Create the GitHub release
+## 5. Publish the GitHub release
+
+Create a published GitHub release from the existing remote tag:
 
 ```
-gh release create v<VERSION> --title "v<VERSION>" --notes "<changelog markdown>"
+gh release create v<VERSION> \
+  --verify-tag \
+  --fail-on-no-commits \
+  --title "v<VERSION>" \
+  --notes-file <CHANGELOG_FILE>
 ```
 
-The release notes should match the PR body changelog section. Do not attach wheel or sdist artifacts to the GitHub release — those go to PyPI only.
+Do not use `--draft` and do not attach the locally built wheel or source
+distribution. Verify the release is published for the intended tag and record
+its URL and publication time.
 
-### 9. Upload to PyPI
+## 6. Monitor Trusted Publishing
+
+Find the `Release` workflow run created after that publication time. Retry the
+lookup briefly if event delivery has not created it yet, and match both the
+`release` event and `RELEASE_SHA`:
 
 ```
-uv publish
+gh run list --workflow release.yml --event release --commit <RELEASE_SHA> \
+  --json databaseId,headSha,status,conclusion,createdAt,url
 ```
 
-If credentials are not configured or upload fails, report the error and tell the user what command to run manually.
+Select the matching run ID explicitly, then watch it:
 
-## After the release
+```
+gh run watch <RUN_ID> --exit-status
+```
 
-Report the final state:
-- The new version number
-- Links to the GitHub PR (now merged) and release page
-- Whether the PyPI upload succeeded
-- The exact tag and commit SHA
+If the publish job waits for approval of the `pypi` environment, report the
+pending approval and wait for an authorized reviewer. Do not bypass it.
+
+If the run fails, inspect it with:
+
+```
+gh run view <RUN_ID> --log-failed
+```
+
+Report the failure and inspect PyPI before proposing recovery. Do not publish
+manually or automatically rerun the workflow; a publish job can fail after
+uploading only some files.
+
+## 7. Verify and report
+
+After the workflow succeeds, retrieve:
+
+```
+curl --fail --silent --show-error \
+  https://pypi.org/pypi/git-stage-batch/<VERSION>/json
+```
+
+Require `info.version` to equal the requested version and the `urls` entries to
+include both `bdist_wheel` and `sdist` package types. Retry briefly for PyPI
+indexing delay, but distinguish a persistent 404 from a transport failure.
+
+Report:
+
+- The version, tag, and `RELEASE_SHA`.
+- The merged PR and published GitHub release URLs.
+- The exact release workflow URL and successful conclusion.
+- The PyPI version URL and confirmation that both distributions are present.

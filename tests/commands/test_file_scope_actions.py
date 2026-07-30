@@ -6,9 +6,10 @@ from git_stage_batch.exceptions import CommandError
 
 
 class _FileScope:
-    def __init__(self, files=(), optional_file=None):
+    def __init__(self, files=(), optional_file=None, optional_line_file=None):
         self.files = tuple(files)
         self._optional_file = optional_file
+        self._optional_line_file = optional_line_file
 
     @property
     def is_multiple(self):
@@ -16,6 +17,9 @@ class _FileScope:
 
     def optional_file(self):
         return self._optional_file
+
+    def optional_line_file(self):
+        return self._optional_line_file
 
 
 class _Checkpoint:
@@ -245,6 +249,24 @@ def test_run_for_each_resolved_file_dispatches_optional_file(monkeypatch):
 
     assert checkpoint_calls == []
     assert callback_calls == ["alpha.txt"]
+
+
+def test_run_for_each_resolved_file_dispatches_pathless_line_file(monkeypatch):
+    checkpoint_calls = _capture_undo_checkpoints(monkeypatch)
+    callback_calls = []
+
+    multi_file_actions.run_for_each_resolved_file(
+        _FileScope(
+            optional_file="selected.txt",
+            optional_line_file="",
+        ),
+        callback_calls.append,
+        line_ids="1",
+        undo_operation="include --from scratch",
+    )
+
+    assert checkpoint_calls == []
+    assert callback_calls == [""]
 
 
 def test_run_for_each_resolved_file_rejects_line_ids_for_multiple_files():

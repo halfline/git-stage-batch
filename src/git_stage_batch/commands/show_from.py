@@ -9,6 +9,7 @@ from .batch_source import candidate_preview_action as _candidate_preview_action
 from .batch_source import file_display_action as _file_display_action
 from .batch_source import file_list_action as _file_list_action
 from .batch_source import replacement_previews as _replacement_previews
+from ..batch.state.metadata_types import BatchFileMetadataDict
 from ..batch.state.validation import read_validated_batch_metadata
 from ..core.replacement import ReplacementPayload
 from ..batch.selection import require_single_file_context_for_line_selection
@@ -28,11 +29,26 @@ def _batch_source_args(batch_name: str) -> str:
     return f" --from {shlex.quote(batch_name)}"
 
 
+def _resolve_exact_file_paths(
+    batch_name: str,
+    all_files: dict[str, BatchFileMetadataDict],
+    file_paths: list[str],
+) -> dict[str, BatchFileMetadataDict]:
+    """Resolve exact paths through the command's normal missing-file checks."""
+    resolved: dict[str, BatchFileMetadataDict] = {}
+    for file_path in file_paths:
+        resolved.update(
+            resolve_batch_file_scope(batch_name, all_files, file_path)
+        )
+    return resolved
+
+
 def command_show_from_batch(
     batch_name: str,
     line_ids: Optional[str] = None,
     file: Optional[str] = None,
     patterns: Optional[list[str]] = None,
+    file_paths: list[str] | None = None,
     selectable: bool = True,
     page: str | None = None,
     porcelain: bool = False,
@@ -46,6 +62,7 @@ def command_show_from_batch(
         file: Optional file path to show from batch.
               If None, shows all files in batch.
         patterns: Optional gitignore-style file patterns to filter batch files.
+        file_paths: Optional exact file paths already resolved by CLI dispatch.
         selectable: If True, cache the displayed file for later line operations.
         page: Optional file-review page selection.
     """
@@ -69,7 +86,11 @@ def command_show_from_batch(
     all_files = metadata.get("files", {})
 
     # Resolve file scope (for consistent --file handling across commands)
-    files = resolve_batch_file_scope(batch_name, all_files, file, patterns)
+    files = (
+        _resolve_exact_file_paths(batch_name, all_files, file_paths)
+        if file_paths is not None
+        else resolve_batch_file_scope(batch_name, all_files, file, patterns)
+    )
 
     # Parse line selection and enforce single-file context
     selected_ids = require_single_file_context_for_line_selection(

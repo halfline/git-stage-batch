@@ -18,6 +18,7 @@ from .replacement_input import resolve_replacement_text
 
 
 class _ShowFromOptions(TypedDict, total=False):
+    file_paths: list[str]
     patterns: list[str] | None
     selectable: bool
     page: str | None
@@ -90,7 +91,7 @@ def _dispatch_show_from_batch(
             raise CommandError(_("Cannot use --lines with multiple files."))
         if replacement_requested:
             raise CommandError(_("`show --as` requires exactly one resolved file."))
-        options["patterns"] = args.file_patterns
+        options["file_paths"] = list(resolved_file_scope.files)
         command_show_from_batch(args.from_batch, args.line_ids, **options)
     else:
         command_show_from_batch(

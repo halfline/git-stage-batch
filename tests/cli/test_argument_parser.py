@@ -392,6 +392,34 @@ def test_show_from_no_advance_peeks_without_selecting(monkeypatch):
     )
 
 
+def test_show_from_repeated_explicit_files_passes_exact_resolved_scope(monkeypatch):
+    mock_command = Mock()
+    monkeypatch.setattr(show_dispatch, "command_show_from_batch", mock_command)
+    _mock_batch_files(monkeypatch, ["a.py", "selected.py", "other.py"])
+
+    args = parse_command_line(
+        [
+            "show",
+            "--from",
+            "batch",
+            "--file",
+            "a.py",
+            "--file",
+            "selected.py",
+        ],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "batch",
+        None,
+        page=None,
+        file_paths=["a.py", "selected.py"],
+    )
+
+
 def test_show_page_accepts_single_file_pattern_match(monkeypatch):
     mock_command = Mock()
     monkeypatch.setattr(show_dispatch, "command_show", mock_command)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
@@ -160,7 +161,7 @@ def annotate_with_batch_source(
     """
     repo_root = get_git_repository_root_path()
     file_full_path = repo_root / path_value
-    if not file_full_path.exists():
+    if not os.path.lexists(file_full_path):
         return _fill_source_from_working_tree(line_changes)
 
     with load_working_tree_file_as_buffer(path_value) as working_lines:

@@ -173,6 +173,8 @@ Then choose the resume point:
 Do not treat a candidate plan plus narrative as sufficient progress by
 itself. Candidate artifacts are resumable only through Gate 1. A failed Gate 1
 means the prior analysis was not a checkpoint; it was a rejected draft.
+Artifacts without a valid decompose checkpoint have no trusted base and must
+route to a fresh run.
 
 After every successful gate or phase transition, run:
 
@@ -309,8 +311,8 @@ python .claude/skills/decompose-and-commit-unstaged-changes/scripts/decompose-ch
 ```
 
 For a `deconstruct` run, use `--mode deconstruct`. For a `resume` run that
-reruns Phase 1, use `--mode resume` and keep the original checkpoint `base`
-if one exists.
+reruns Phase 1, use `--mode resume`. The helper preserves the original
+checkpoint `base` and refuses an explicit base that does not match it.
 
 Spawn `Agent(decompose-analyzer)` with this prompt:
 

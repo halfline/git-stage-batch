@@ -159,7 +159,7 @@ def dispatch_include_command(args: argparse.Namespace) -> None:
             line_ids=args.line_ids,
             undo_operation=f"include --to {shlex.quote(args.to_batch)}",
         )
-    elif args.line_ids:
+    elif args.line_ids is not None:
         resolved_live_scope = resolve_live_file_scope(
             args.file,
             args.file_patterns,

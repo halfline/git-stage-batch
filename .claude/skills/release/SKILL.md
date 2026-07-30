@@ -1,7 +1,9 @@
 ---
 name: release
 description: Cut, publish, or ship a project release through an annotated tag, GitHub Actions, and PyPI Trusted Publishing.
-whenToUse: Use this when the user wants to cut, publish, or ship a new release of the project.
+when_to_use: Use only when the user explicitly asks to cut, publish, or ship a new release of this project.
+argument-hint: "[version]"
+disable-model-invocation: true
 allowed-tools: Bash(git *), Bash(gh *), Bash(uv run pytest *), Bash(uv build), Bash(uv publish), Bash(cat VERSION), Bash(ls dist/), Bash(rm -rf dist/), Read, Write, Edit
 user-invocable: true
 ---

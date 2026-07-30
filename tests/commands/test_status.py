@@ -219,6 +219,21 @@ class TestCommandStatus:
         assert "Discarded:" in captured.out
         assert "Remaining:" in captured.out
 
+    def test_status_reports_corrupt_iteration_count(self, temp_git_repo):
+        """Corrupt session state should produce a normal command error."""
+        (temp_git_repo / "README.md").write_text("# Test\nmodified\n")
+        command_start(quiet=True)
+        write_text_file_contents(
+            get_iteration_count_file_path(),
+            "not-an-integer",
+        )
+
+        with pytest.raises(
+            CommandError,
+            match="Session iteration count is invalid",
+        ):
+            command_status()
+
     def test_status_porcelain_no_session(self, temp_git_repo, capsys):
         """Test status --porcelain when no session is active."""
         command_status(porcelain=True)

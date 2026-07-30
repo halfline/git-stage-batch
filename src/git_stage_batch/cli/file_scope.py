@@ -43,10 +43,11 @@ class FileScopeKind(str, Enum):
 
 @dataclass(frozen=True)
 class FileScope:
-    """Resolved command file scope with explicit origin and concrete files."""
+    """Resolved command file scope with known paths and marker provenance."""
 
     kind: FileScopeKind
     files: tuple[str, ...] = ()
+    includes_selected_file_marker: bool = False
 
     @classmethod
     def implicit(cls) -> "FileScope":
@@ -57,8 +58,17 @@ class FileScope:
         return cls(FileScopeKind.EXPLICIT, (file_path,))
 
     @classmethod
-    def pattern(cls, files: list[str]) -> "FileScope":
-        return cls(FileScopeKind.PATTERN, tuple(files))
+    def pattern(
+        cls,
+        files: list[str],
+        *,
+        includes_selected_file_marker: bool = False,
+    ) -> "FileScope":
+        return cls(
+            FileScopeKind.PATTERN,
+            tuple(files),
+            includes_selected_file_marker=includes_selected_file_marker,
+        )
 
     @property
     def is_implicit(self) -> bool:
@@ -81,6 +91,20 @@ class FileScope:
         if self.is_multiple:
             raise CommandError(error_message)
         return self.optional_file()
+
+    def optional_line_file(self) -> str | None:
+        """Return a single line-action file while preserving a selected marker."""
+        if self.is_multiple:
+            raise ValueError("multiple file scope cannot be represented by one path")
+        if self.includes_selected_file_marker:
+            return ""
+        return self.optional_file()
+
+    def require_single_line_file(self, error_message: str) -> str | None:
+        """Return a line-action file, or raise for a multi-file scope."""
+        if self.is_multiple:
+            raise CommandError(error_message)
+        return self.optional_line_file()
 
 
 def _resolve_file_patterns(

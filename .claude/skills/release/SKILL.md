@@ -18,9 +18,23 @@ Before starting, verify:
 1. The working tree is clean (`git status --short` produces no output).
 2. You are on the `main` branch.
 3. All tests pass (`uv run pytest -n auto`).
-4. `.github/workflows/release.yml` exists on `main`.
+4. `gh repo view` identifies `halfline/git-stage-batch` as the current
+   repository.
+5. `docs/releasing.md` and `.github/workflows/release.yml` describe a workflow
+   triggered by a published release, using the `pypi` environment, and
+   granting `id-token: write` only to the publish job.
+6. The repository has a `pypi` GitHub environment:
 
-If any check fails, stop and report the problem.
+   ```
+   gh api repos/{owner}/{repo}/environments/pypi
+   ```
+
+7. For the first release through Trusted Publishing, PyPI has the publisher
+   documented in `docs/releasing.md`. A successful earlier `Release` workflow
+   run is sufficient evidence on later releases.
+
+If any check fails, stop and report the problem before creating a release
+branch.
 
 ## Release workflow
 

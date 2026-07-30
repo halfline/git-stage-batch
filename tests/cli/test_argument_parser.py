@@ -959,6 +959,41 @@ def test_parse_command_line_include_line_preserves_selected_marker(
         auto_advance=None,
     )
 
+
+def test_parse_command_line_include_to_line_preserves_selected_marker(monkeypatch):
+    """A selected marker should remain pathless through shared line dispatch."""
+    mock_command = Mock()
+    monkeypatch.setattr(include_dispatch, "command_include_to_batch", mock_command)
+    _mock_live_file_candidates(monkeypatch, ["selected.py"])
+    monkeypatch.setattr(
+        file_scope,
+        "get_selected_change_file_path",
+        lambda: "selected.py",
+    )
+
+    args = parse_command_line(
+        [
+            "include",
+            "--to",
+            "later",
+            "--line",
+            "2-3",
+            "--file",
+            "selected.py",
+            "--file",
+        ],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "later",
+        "2-3",
+        "",
+        auto_advance=None,
+    )
+
 def test_parse_command_line_include_with_files_dispatches_per_file(monkeypatch):
     """Include should dispatch once per file resolved from --files."""
     mock_command = Mock()

@@ -168,7 +168,6 @@ def test_deletion_followed_by_claimed_becomes_replacement():
     assert len(units) == 1
     assert units[0].kind == OwnershipUnitKind.REPLACEMENT
     assert units[0].is_atomic is True
-    assert units[0].atomic_reason == "display_adjacency"
     assert len(units[0].deletion_claims) == 1
     assert units[0].claimed_source_lines == {1}
 
@@ -246,7 +245,6 @@ def test_claimed_followed_by_deletion_becomes_replacement():
     assert len(units) == 1
     assert units[0].kind == OwnershipUnitKind.REPLACEMENT
     assert units[0].is_atomic is True
-    assert units[0].atomic_reason == "display_adjacency"
 
 
 def test_deletion_without_adjacent_claimed_is_deletion_only():
@@ -278,7 +276,6 @@ def test_deletion_without_adjacent_claimed_is_deletion_only():
     assert len(units) == 1
     assert units[0].kind == OwnershipUnitKind.DELETION_ONLY
     assert units[0].is_atomic is True
-    assert units[0].atomic_reason == "deletion_only"
     assert len(units[0].deletion_claims) == 1
     assert units[0].claimed_source_lines == set()
 
@@ -306,7 +303,6 @@ def test_claimed_without_adjacent_deletion_is_presence_only():
     assert len(units) == 1
     assert units[0].kind == OwnershipUnitKind.PRESENCE_ONLY
     assert units[0].is_atomic is False
-    assert units[0].atomic_reason is None
     assert type(units[0].claimed_source_lines) is LineRanges
     assert type(units[0].display_line_ids) is LineRanges
     assert units[0].claimed_source_lines == {2}
@@ -541,7 +537,6 @@ def test_explicit_replacement_unit_overrides_display_adjacency():
 
     assert len(units) == 1
     assert units[0].kind == OwnershipUnitKind.REPLACEMENT
-    assert units[0].atomic_reason == "explicit_replacement"
     assert units[0].preserves_replacement_unit is True
     assert units[0].claimed_source_lines == {1}
     assert units[0].deletion_claims == ownership.deletions

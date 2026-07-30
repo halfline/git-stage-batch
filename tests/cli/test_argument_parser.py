@@ -19,6 +19,8 @@ from git_stage_batch.cli import (
     skip_dispatch,
 )
 from git_stage_batch.cli.argument_parser import parse_command_line
+from git_stage_batch.data import batch_file_scope as stored_batch_file_scope
+from git_stage_batch.data.file_review.records import FileReviewAction
 from git_stage_batch.exceptions import CommandError
 
 
@@ -80,6 +82,55 @@ def test_resolve_live_file_scope_resolves_file_argument_as_pattern(monkeypatch):
     assert scope.optional_file() == "src/parser.py"
 
 
+def test_resolve_live_file_scope_combines_explicit_and_selected_files(monkeypatch):
+    _mock_live_file_candidates(monkeypatch, ["src/parser.py", "notes.txt"])
+    monkeypatch.setattr(
+        file_scope,
+        "get_selected_change_file_path",
+        lambda: "notes.txt",
+    )
+
+    scope = file_scope.resolve_live_file_scope(["src/parser.py", ""], None)
+
+    assert scope.kind is file_scope.FileScopeKind.PATTERN
+    assert scope.files == ("src/parser.py", "notes.txt")
+
+
+def test_resolve_live_file_scope_runs_pathless_action_guards(monkeypatch):
+    _mock_live_file_candidates(monkeypatch, ["src/parser.py", "notes.txt"])
+    live_source_guard = Mock()
+    partial_review_guard = Mock()
+    monkeypatch.setattr(
+        file_scope,
+        "refuse_live_action_for_batch_selection",
+        live_source_guard,
+    )
+    monkeypatch.setattr(
+        file_scope,
+        "refuse_ambiguous_bare_action_after_partial_file_review",
+        partial_review_guard,
+    )
+    monkeypatch.setattr(
+        file_scope,
+        "get_selected_change_file_path",
+        lambda: "notes.txt",
+    )
+
+    file_scope.resolve_live_file_scope(
+        ["src/parser.py", ""],
+        None,
+        selected_action=FileReviewAction.INCLUDE,
+    )
+
+    live_source_guard.assert_called_once_with(FileReviewAction.INCLUDE)
+    partial_review_guard.assert_called_once_with(FileReviewAction.INCLUDE)
+
+
+def test_resolve_live_file_scope_rejects_mixed_pathless_file_and_files(monkeypatch):
+    with pytest.raises(CommandError, match="Cannot use --file together with --files"):
+        file_scope.resolve_live_file_scope(["src/parser.py", ""], ["*.txt"])
+
+
 def test_resolve_live_file_scope_keeps_single_pattern_scope_kind(monkeypatch):
     monkeypatch.setattr(file_scope, "list_changed_files", lambda: ["src/parser.py", "notes.txt"])
     monkeypatch.setattr(file_scope, "list_untracked_files", lambda: [])
@@ -125,6 +176,69 @@ def test_resolve_batch_file_scope_resolves_file_argument_as_pattern(monkeypatch)
     assert scope.kind is file_scope.FileScopeKind.PATTERN
     assert scope.files == ("src/parser.py",)
     assert scope.optional_file() == "src/parser.py"
+
+
+def test_resolve_batch_file_scope_combines_explicit_and_selected_files(monkeypatch):
+    _mock_batch_files(monkeypatch, ["src/parser.py", "notes.txt"])
+    monkeypatch.setattr(
+        stored_batch_file_scope,
+        "get_selected_change_file_path",
+        lambda: "notes.txt",
+    )
+
+    scope = file_scope.resolve_batch_file_scope(
+        "batch",
+        ["src/parser.py", ""],
+        None,
+    )
+
+    assert scope.kind is file_scope.FileScopeKind.PATTERN
+    assert scope.files == ("src/parser.py", "notes.txt")
+
+
+def test_resolve_batch_file_scope_refuses_foreign_batch_selection(monkeypatch):
+    _mock_batch_files(monkeypatch, ["src/parser.py", "notes.txt"])
+    monkeypatch.setattr(
+        stored_batch_file_scope,
+        "selected_batch_change_matches_batch",
+        lambda batch_name: False,
+    )
+
+    with pytest.raises(CommandError, match="came from a different batch"):
+        file_scope.resolve_batch_file_scope(
+            "batch",
+            ["src/parser.py", ""],
+            None,
+            selected_action=FileReviewAction.INCLUDE_FROM_BATCH,
+            command_name="include",
+        )
+
+
+def test_resolve_batch_file_scope_revalidates_atomic_selection(monkeypatch):
+    _mock_batch_files(monkeypatch, ["src/parser.py", "notes.txt"])
+    monkeypatch.setattr(
+        file_scope,
+        "resolve_batch_source_action_scope",
+        lambda *args, **kwargs: Mock(file=""),
+    )
+
+    def refuse_stale_selection(*args, **kwargs):
+        raise CommandError("selected batch binary no longer matches")
+
+    monkeypatch.setattr(
+        file_scope,
+        "resolve_current_batch_atomic_file_scope",
+        refuse_stale_selection,
+    )
+
+    with pytest.raises(CommandError, match="no longer matches"):
+        file_scope.resolve_batch_file_scope(
+            "batch",
+            ["src/parser.py", ""],
+            None,
+            selected_action=FileReviewAction.INCLUDE_FROM_BATCH,
+            command_name="include",
+        )
 
 
 def test_resolve_batch_file_scope_keeps_pattern_scope_kind(monkeypatch):

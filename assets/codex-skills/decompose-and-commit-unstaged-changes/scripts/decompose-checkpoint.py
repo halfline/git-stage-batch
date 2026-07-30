@@ -37,6 +37,18 @@ PLAN_PATH = STATE_DIR / "decompose-plan.json"
 CANDIDATE_PATH = STATE_DIR / "decompose-plan.candidate.json"
 NARRATIVE_PATH = STATE_DIR / "decompose-narrative.md"
 PRESERVE_ON_FRESH_START = {".gitignore"}
+CHECKPOINT_MODES = {"full", "deconstruct", "reconstruct", "resume"}
+CHECKPOINT_PHASES = {
+    "started",
+    "phase1-running",
+    "phase1-candidate",
+    "phase1-complete",
+    "phase2-running",
+    "phase2-complete",
+    "phase3-running",
+    "refine-history-running",
+    "phase3-complete",
+}
 
 
 def now() -> str:
@@ -58,6 +70,11 @@ def current_head() -> str:
     return git_output("rev-parse", "HEAD")
 
 
+def resolve_commit(revision: str) -> str:
+    """Resolve one revision to its full commit object name."""
+    return git_output("rev-parse", "--verify", f"{revision}^{{commit}}")
+
+
 def file_digest(path: Path) -> str | None:
     if not path.exists() or not path.is_file():
         return None
@@ -66,6 +83,12 @@ def file_digest(path: Path) -> str | None:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def require_safe_state_dir() -> None:
+    """Refuse to read or mutate workflow state through a directory symlink."""
+    if STATE_DIR.is_symlink():
+        raise SystemExit(f"refusing to use symlinked state path: {STATE_DIR}")
 
 
 def fsync_directory(path: Path) -> None:
@@ -88,13 +111,96 @@ def fsync_directory(path: Path) -> None:
 
 
 def load_checkpoint() -> dict[str, Any]:
-    if not CHECKPOINT_PATH.exists():
+    require_safe_state_dir()
+    if not os.path.lexists(CHECKPOINT_PATH):
         return {}
+    if CHECKPOINT_PATH.is_symlink():
+        return {"checkpoint_error": "checkpoint path is a symlink"}
     try:
         data = json.loads(CHECKPOINT_PATH.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return {"checkpoint_error": "invalid json"}
-    return data if isinstance(data, dict) else {}
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        return {"checkpoint_error": str(error)}
+    if not isinstance(data, dict):
+        return {"checkpoint_error": "checkpoint must be a JSON object"}
+    return data
+
+
+def _nonempty_string(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def checkpoint_validation_error(data: dict[str, Any]) -> str | None:
+    """Return why checkpoint state is unsafe to update, if applicable."""
+    parse_error = data.get("checkpoint_error")
+    if parse_error:
+        return str(parse_error)
+    if type(data.get("schema")) is not int or data["schema"] != 1:
+        return "unsupported or missing schema"
+    base = data.get("base")
+    if not _nonempty_string(base):
+        return "missing base"
+    assert isinstance(base, str)
+    resolved_base = resolve_commit(base)
+    if not resolved_base:
+        return "base does not name a commit"
+    if resolved_base != base:
+        return "base is not a full commit object name"
+    if data.get("mode") not in CHECKPOINT_MODES:
+        return "invalid mode"
+    if data.get("phase") not in CHECKPOINT_PHASES:
+        return "invalid phase"
+
+    events = data.get("events")
+    if not isinstance(events, list):
+        return "events must be a list"
+    for index, event in enumerate(events):
+        if not isinstance(event, dict):
+            return f"event {index} must be an object"
+        if not _nonempty_string(event.get("at")):
+            return f"event {index} has no valid timestamp"
+        if not _nonempty_string(event.get("event")):
+            return f"event {index} has no valid kind"
+
+    completed_batches = data.get("completed_batches")
+    if not isinstance(completed_batches, list):
+        return "completed batches must be a list"
+    for index, batch_name in enumerate(completed_batches):
+        if not _nonempty_string(batch_name):
+            return f"completed batch {index} must be a nonempty string"
+
+    commits = data.get("commits")
+    if not isinstance(commits, list):
+        return "commits must be a list"
+    for index, commit in enumerate(commits):
+        if not isinstance(commit, dict):
+            return f"commit {index} must be an object"
+        commit_sha = commit.get("sha")
+        if not _nonempty_string(commit_sha):
+            return f"commit {index} has no valid object name"
+        assert isinstance(commit_sha, str)
+        if resolve_commit(commit_sha) != commit_sha:
+            return f"commit {index} does not name a full commit object"
+        if not isinstance(commit.get("subject"), str):
+            return f"commit {index} has no valid subject"
+
+    if "current_batch" in data and not _nonempty_string(
+        data["current_batch"]
+    ):
+        return "current batch must be a nonempty string"
+    return None
+
+
+def require_checkpoint() -> dict[str, Any]:
+    """Load checkpoint state that is safe to update or resume."""
+    if not os.path.lexists(CHECKPOINT_PATH):
+        raise SystemExit("no decompose checkpoint; run start first")
+    data = load_checkpoint()
+    validation_error = checkpoint_validation_error(data)
+    if validation_error is not None:
+        raise SystemExit(
+            f"invalid decompose checkpoint: {validation_error}"
+        )
+    return data
 
 
 def list_batch_refs() -> list[str]:
@@ -144,9 +250,13 @@ def artifact_state(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def infer_resume_target(state: dict[str, Any]) -> str:
+    if not state["checkpoint_exists"]:
+        return "fresh"
     phase = state["phase"]
     if phase == "phase3-complete":
         return "complete"
+    if phase == "phase1-running":
+        return "phase1"
     if phase in {"phase3-running", "refine-history-running"}:
         if state["batch_count"]:
             return "phase3-after-gate2"
@@ -171,6 +281,7 @@ def infer_resume_target(state: dict[str, Any]) -> str:
 
 
 def save_checkpoint(data: dict[str, Any]) -> None:
+    require_safe_state_dir()
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     data["updated_at"] = now()
     data["artifacts"] = artifact_state(data)
@@ -210,8 +321,39 @@ def clear_state_dir_for_fresh_start() -> list[str]:
 
 
 def cmd_start(args: argparse.Namespace) -> None:
-    removed = [] if args.mode == "resume" else clear_state_dir_for_fresh_start()
-    base = args.base or current_head()
+    if args.mode == "resume":
+        data = require_checkpoint()
+        base = data["base"]
+        if (
+            args.base is not None
+            and resolve_commit(args.base) != base
+        ):
+            raise SystemExit(
+                "resume base does not match the decompose checkpoint"
+            )
+        previous_phase = data.get("phase")
+        data["phase"] = "phase1-running"
+        data["events"].append(
+            {
+                "at": now(),
+                "event": "start",
+                "mode": "resume",
+                "base": base,
+                "previous_phase": previous_phase,
+                "cleared_state_files": [],
+            }
+        )
+        save_checkpoint(data)
+        print(str(CHECKPOINT_PATH))
+        return
+
+    base_revision = args.base or "HEAD"
+    base = resolve_commit(base_revision)
+    if not base:
+        raise SystemExit(
+            f"invalid decompose base revision: {base_revision}"
+        )
+    removed = clear_state_dir_for_fresh_start()
     data: dict[str, Any] = {
         "schema": 1,
         "created_at": now(),

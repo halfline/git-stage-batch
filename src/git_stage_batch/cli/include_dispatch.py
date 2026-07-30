@@ -28,7 +28,7 @@ from .replacement_input import require_replacement_text
 def _dispatch_include_replacement(args: argparse.Namespace) -> None:
     if args.as_text is not None and args.as_stdin:
         raise CommandError(_("Cannot use `--as` and `--as-stdin` together."))
-    if args.line_ids and args.from_batch and not args.to_batch:
+    if args.line_ids is not None and args.from_batch and not args.to_batch:
         if args.no_edge_overlap:
             raise CommandError(
                 _(

@@ -394,17 +394,7 @@ def cmd_start(args: argparse.Namespace) -> None:
 
 
 def cmd_mark(args: argparse.Namespace) -> None:
-    data = load_checkpoint()
-    if not data:
-        data = {
-            "schema": 1,
-            "created_at": now(),
-            "mode": "unknown",
-            "base": current_head(),
-            "events": [],
-            "completed_batches": [],
-            "commits": [],
-        }
+    data = require_checkpoint()
     if args.phase:
         data["phase"] = args.phase
     if args.current_batch:
@@ -415,9 +405,11 @@ def cmd_mark(args: argparse.Namespace) -> None:
     if args.completed_batch and data.get("current_batch") == args.completed_batch:
         data.pop("current_batch", None)
     if args.commit:
-        commit = args.commit
-        if commit == "HEAD":
-            commit = current_head()
+        commit = resolve_commit(args.commit)
+        if not commit:
+            raise SystemExit(
+                f"invalid decompose commit revision: {args.commit}"
+            )
         subject = git_output("log", "-1", "--format=%s", commit)
         commits = data.setdefault("commits", [])
         if not any(item.get("sha") == commit for item in commits if isinstance(item, dict)):
@@ -434,6 +426,12 @@ def cmd_mark(args: argparse.Namespace) -> None:
 
 def cmd_status(args: argparse.Namespace) -> None:
     data = load_checkpoint()
+    if os.path.lexists(CHECKPOINT_PATH):
+        validation_error = checkpoint_validation_error(data)
+        if validation_error is not None:
+            raise SystemExit(
+                f"invalid decompose checkpoint: {validation_error}"
+            )
     state = artifact_state(data)
     state["resume_target"] = infer_resume_target(state)
     state["events"] = data.get("events", [])[-10:]
@@ -477,7 +475,10 @@ def build_parser() -> argparse.ArgumentParser:
     start.set_defaults(func=cmd_start)
 
     mark = sub.add_parser("mark")
-    mark.add_argument("--phase")
+    mark.add_argument(
+        "--phase",
+        choices=sorted(CHECKPOINT_PHASES - {"started"}),
+    )
     mark.add_argument("--current-batch")
     mark.add_argument("--completed-batch")
     mark.add_argument("--commit")

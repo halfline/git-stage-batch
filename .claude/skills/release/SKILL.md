@@ -15,8 +15,11 @@ The current version lives in the `VERSION` file at the repository root.
 
 Before starting, verify:
 
-1. The working tree is clean (`git status --short` produces no output).
-2. You are on the `main` branch.
+1. The working tree is clean (`git status --short` produces no output) and
+   checked out on `main`.
+2. Branches and tags have been fetched from `origin`, `main` has been updated
+   with a fast-forward-only pull, and local `main` and `origin/main` resolve
+   to the same SHA.
 3. All tests pass (`uv run pytest -n auto`).
 4. The new version follows the project convention and is newer than
    `VERSION`.
@@ -49,8 +52,10 @@ report the error.
 
 ### 1. Create the release branch
 
+Create the branch from the synchronized `main`:
+
 ```
-git checkout -b release-v<VERSION>
+git switch -c release-v<VERSION>
 ```
 
 ### 2. Bump the version
@@ -88,8 +93,8 @@ otherwise generate the changelog from Git history.
 
 ```
 gh pr merge --merge --delete-branch
-git checkout main
-git pull origin main
+git switch main
+git pull --ff-only origin main
 ```
 
 ### 6. Tag the merge commit

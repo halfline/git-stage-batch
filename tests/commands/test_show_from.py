@@ -70,6 +70,31 @@ class TestCommandShowFromBatch:
         assert "content" in captured.out
         assert "[#1]" in captured.out  # Check for line ID annotation
 
+    def test_show_from_exact_file_paths_filters_batch_list(self, temp_git_repo, capsys):
+        """Resolved file paths should not expand back to the full batch."""
+        for file_name in ("first.txt", "second.txt", "omitted.txt"):
+            (temp_git_repo / file_name).write_text(f"{file_name}\n")
+
+        command_start()
+        for file_name in ("first.txt", "second.txt", "omitted.txt"):
+            command_include_to_batch(
+                "test-batch",
+                file=file_name,
+                quiet=True,
+            )
+        capsys.readouterr()
+
+        command_show_from_batch(
+            "test-batch",
+            file_paths=["first.txt", "second.txt"],
+            selectable=False,
+        )
+
+        captured = capsys.readouterr()
+        assert "first.txt" in captured.out
+        assert "second.txt" in captured.out
+        assert "omitted.txt" not in captured.out
+
     def test_show_from_empty_added_text_file_is_visible(self, temp_git_repo, capsys):
         """Empty text lifecycle entries should not look like missing batch changes."""
         (temp_git_repo / "empty.txt").write_bytes(b"")

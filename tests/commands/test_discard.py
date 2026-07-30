@@ -8,7 +8,7 @@ from git_stage_batch.utils.paths import get_abort_snapshots_directory_path
 from git_stage_batch.utils.paths import get_state_directory_path
 from git_stage_batch.batch.state.lifecycle import create_batch
 from git_stage_batch.batch.state.query import list_batch_files, read_batch_metadata
-from git_stage_batch.batch.file_entry_storage import read_file_from_batch
+from tests.batch_file_helpers import read_file_from_batch
 from git_stage_batch.commands.discard import command_discard_to_batch
 from git_stage_batch.batch.state.batch_names import batch_exists
 from git_stage_batch.commands.apply_from import command_apply_from_batch

@@ -28,7 +28,7 @@ from git_stage_batch.commands.sift import (
 from git_stage_batch.batch.state.query import list_batch_names, read_batch_metadata
 from git_stage_batch.batch.state.query import get_batch_tree_sha
 from git_stage_batch.batch.binary_file_storage import add_binary_file_to_batch
-from git_stage_batch.batch.file_entry_storage import read_file_from_batch
+from tests.batch_file_helpers import read_file_from_batch
 from git_stage_batch.core.models import BinaryFileChange
 from git_stage_batch.data.hunk_tracking import fetch_next_change
 from git_stage_batch.exceptions import CommandError, MergeError

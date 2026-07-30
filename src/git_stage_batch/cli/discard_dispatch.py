@@ -19,6 +19,7 @@ from ..commands.file_scope.multi_file_actions import (
     discard_to_batch_each_resolved_file,
     run_for_each_resolved_file,
 )
+from ..data.file_review.records import FileReviewAction
 from ..exceptions import CommandError
 from ..i18n import _
 from .file_scope import resolve_batch_file_scope, resolve_live_file_scope
@@ -29,7 +30,11 @@ def _dispatch_discard_replacement(args: argparse.Namespace) -> None:
     if args.as_text is not None and args.as_stdin:
         raise CommandError(_("Cannot use `--as` and `--as-stdin` together."))
     if args.to_batch and args.line_ids and not args.from_batch:
-        resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
+        resolved_live_scope = resolve_live_file_scope(
+            args.file,
+            args.file_patterns,
+            selected_action=FileReviewAction.DISCARD_TO_BATCH,
+        )
         resolved_file = resolved_live_scope.require_single_file(
             _("Cannot use --lines with multiple files.")
         )
@@ -48,7 +53,11 @@ def _dispatch_discard_replacement(args: argparse.Namespace) -> None:
         and args.from_batch is None
         and args.line_ids is None
     ):
-        resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
+        resolved_live_scope = resolve_live_file_scope(
+            args.file,
+            args.file_patterns,
+            selected_action=FileReviewAction.DISCARD,
+        )
         if resolved_live_scope.is_implicit:
             raise CommandError(
                 _(
@@ -89,6 +98,8 @@ def dispatch_discard_command(args: argparse.Namespace) -> None:
             args.from_batch,
             args.file,
             args.file_patterns,
+            selected_action=FileReviewAction.DISCARD_FROM_BATCH,
+            command_name="discard",
         )
         run_for_each_resolved_file(
             resolved_batch_scope,
@@ -102,7 +113,11 @@ def dispatch_discard_command(args: argparse.Namespace) -> None:
             worktree_paths=resolved_batch_scope.files,
         )
     elif args.to_batch:
-        resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
+        resolved_live_scope = resolve_live_file_scope(
+            args.file,
+            args.file_patterns,
+            selected_action=FileReviewAction.DISCARD_TO_BATCH,
+        )
         if resolved_live_scope.is_multiple and args.line_ids is None:
             discard_to_batch_each_resolved_file(
                 args.to_batch,
@@ -123,7 +138,11 @@ def dispatch_discard_command(args: argparse.Namespace) -> None:
                 worktree_paths=resolved_live_scope.files,
             )
     elif args.line_ids:
-        resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
+        resolved_live_scope = resolve_live_file_scope(
+            args.file,
+            args.file_patterns,
+            selected_action=FileReviewAction.DISCARD,
+        )
         resolved_file = resolved_live_scope.require_single_file(
             _("Cannot use --lines with multiple files.")
         )
@@ -133,7 +152,11 @@ def dispatch_discard_command(args: argparse.Namespace) -> None:
             auto_advance=args.auto_advance,
         )
     else:
-        resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
+        resolved_live_scope = resolve_live_file_scope(
+            args.file,
+            args.file_patterns,
+            selected_action=FileReviewAction.DISCARD,
+        )
         if not resolved_live_scope.is_implicit:
             if resolved_live_scope.is_multiple:
                 discard_each_resolved_file(

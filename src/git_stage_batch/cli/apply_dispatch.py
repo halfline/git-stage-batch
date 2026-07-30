@@ -7,6 +7,7 @@ import shlex
 
 from ..commands.apply_from import command_apply_from_batch
 from ..commands.file_scope.multi_file_actions import run_for_each_resolved_file
+from ..data.file_review.records import FileReviewAction
 from .file_scope import resolve_batch_file_scope
 
 
@@ -16,6 +17,8 @@ def dispatch_apply_command(args: argparse.Namespace) -> None:
         args.from_batch,
         args.file,
         args.file_patterns,
+        selected_action=FileReviewAction.APPLY_FROM_BATCH,
+        command_name="apply",
     )
     line_ids = args.line_ids if hasattr(args, "line_ids") else None
     run_for_each_resolved_file(

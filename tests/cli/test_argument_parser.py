@@ -858,6 +858,93 @@ def test_parse_command_line_include_with_files_dispatches_per_file(monkeypatch):
     )
 
 
+def test_parse_command_line_include_combines_explicit_and_selected_files(monkeypatch):
+    """A pathless repeated --file should add the selected file."""
+    mock_command = Mock()
+    monkeypatch.setattr(
+        include_dispatch,
+        "include_each_resolved_file",
+        mock_command,
+    )
+    _mock_live_file_candidates(monkeypatch, ["a.py", "selected.py"])
+    monkeypatch.setattr(
+        file_scope,
+        "get_selected_change_file_path",
+        lambda: "selected.py",
+    )
+
+    args = parse_command_line(
+        ["include", "--file", "a.py", "--file"],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(
+        ["a.py", "selected.py"],
+        auto_advance=None,
+    )
+
+
+def test_parse_command_line_include_preserves_pathless_action_refusal(monkeypatch):
+    mock_command = Mock()
+    monkeypatch.setattr(
+        include_dispatch,
+        "include_each_resolved_file",
+        mock_command,
+    )
+    _mock_live_file_candidates(monkeypatch, ["a.py", "selected.py"])
+    monkeypatch.setattr(
+        file_scope,
+        "get_selected_change_file_path",
+        lambda: "selected.py",
+    )
+
+    def refuse_batch_selection(action):
+        raise CommandError("selected file came from a batch")
+
+    monkeypatch.setattr(
+        file_scope,
+        "refuse_live_action_for_batch_selection",
+        refuse_batch_selection,
+    )
+
+    args = parse_command_line(
+        ["include", "--file", "a.py", "--file"],
+        quiet=True,
+    )
+
+    assert args is not None
+    with pytest.raises(CommandError, match="came from a batch"):
+        args.func(args)
+    mock_command.assert_not_called()
+
+
+def test_parse_command_line_include_from_refuses_foreign_selected_batch(monkeypatch):
+    mock_command = Mock()
+    monkeypatch.setattr(
+        include_dispatch,
+        "command_include_from_batch",
+        mock_command,
+    )
+    _mock_batch_files(monkeypatch, ["a.py", "selected.py"])
+    monkeypatch.setattr(
+        stored_batch_file_scope,
+        "selected_batch_change_matches_batch",
+        lambda batch_name: False,
+    )
+
+    args = parse_command_line(
+        ["include", "--from", "batch", "--file", "a.py", "--file"],
+        quiet=True,
+    )
+
+    assert args is not None
+    with pytest.raises(CommandError, match="came from a different batch"):
+        args.func(args)
+    mock_command.assert_not_called()
+
+
 def test_parse_command_line_include_rejects_files_without_patterns():
     """--files should still require at least one pattern."""
     assert parse_command_line(["include", "--files"], quiet=True) is None
@@ -1087,18 +1174,18 @@ def test_parse_command_line_skip_with_file_path():
     assert callable(args.func)
 
 
-def test_parse_command_line_skip_repeated_file_uses_argument_bearing_value():
-    """Repeated --file should not make an earlier pathless use conflict."""
+def test_parse_command_line_skip_repeated_file_keeps_selected_marker_first():
+    """An earlier pathless --file should contribute the selected file."""
     args = parse_command_line(["skip", "--file", "--file", "src/debug.py"], quiet=True)
     assert args is not None
-    assert args.file == "src/debug.py"
+    assert args.file == ["", "src/debug.py"]
 
 
-def test_parse_command_line_skip_repeated_file_keeps_final_pathless_value():
-    """A final pathless --file should keep selected-file behavior."""
+def test_parse_command_line_skip_repeated_file_keeps_selected_marker_last():
+    """A final pathless --file should add the selected file to explicit paths."""
     args = parse_command_line(["skip", "--file", "src/debug.py", "--file"], quiet=True)
     assert args is not None
-    assert args.file == ""
+    assert args.file == ["src/debug.py", ""]
 
 
 def test_parse_command_line_skip_with_line():

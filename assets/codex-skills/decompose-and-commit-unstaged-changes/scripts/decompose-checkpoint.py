@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import errno
 import hashlib
 import json
 import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -64,6 +66,25 @@ def file_digest(path: Path) -> str | None:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def fsync_directory(path: Path) -> None:
+    """Durably publish directory-entry changes where the platform permits."""
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as error:
+        if os.name == "nt" or error.errno in (errno.EINVAL, errno.ENOTSUP):
+            return
+        raise
+    try:
+        try:
+            os.fsync(descriptor)
+        except OSError as error:
+            if error.errno not in (errno.EBADF, errno.EINVAL, errno.ENOTSUP):
+                raise
+    finally:
+        os.close(descriptor)
 
 
 def load_checkpoint() -> dict[str, Any]:
@@ -152,12 +173,25 @@ def infer_resume_target(state: dict[str, Any]) -> str:
 def save_checkpoint(data: dict[str, Any]) -> None:
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     data["updated_at"] = now()
-    CHECKPOINT_PATH.touch(exist_ok=True)
     data["artifacts"] = artifact_state(data)
-    CHECKPOINT_PATH.write_text(
-        json.dumps(data, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
+    data["artifacts"]["checkpoint_exists"] = True
+    payload = json.dumps(data, indent=2, sort_keys=True) + "\n"
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=STATE_DIR,
+        prefix=f".{CHECKPOINT_PATH.name}.",
+        suffix=".tmp",
     )
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, CHECKPOINT_PATH)
+        fsync_directory(STATE_DIR)
+    except BaseException:
+        temporary_path.unlink(missing_ok=True)
+        raise
 
 
 def clear_state_dir_for_fresh_start() -> list[str]:

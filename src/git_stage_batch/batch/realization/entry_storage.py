@@ -346,15 +346,6 @@ def realized_entry_source_line_at(
     return entries[index].source_line
 
 
-def realized_entry_target_line_at(
-    entries: Sequence[_RealizedEntry],
-    index: int,
-) -> int | None:
-    if isinstance(entries, RealizedEntries):
-        return entries.target_line_at(index)
-    return entries[index].target_line
-
-
 def realized_entry_is_claimed_at(
     entries: Sequence[_RealizedEntry],
     index: int,

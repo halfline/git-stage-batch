@@ -142,10 +142,6 @@ def _normalize_width(width: int) -> int:
     return width
 
 
-def _typecode_for_width(width: int) -> str:
-    return "I" if width == 4 else "Q"
-
-
 def _format_for_width(width: int) -> str:
     return "<I" if width == 4 else "<Q"
 
@@ -226,11 +222,6 @@ class MappedIntVector(Sequence[int]):
         )
         if self._data is not None and fill != 0:
             self.fill(fill)
-
-    @property
-    def typecode(self) -> str:
-        """Return an array-compatible unsigned integer type code."""
-        return _typecode_for_width(self._width)
 
     @property
     def byte_count(self) -> int:

@@ -56,14 +56,6 @@ def line_changes_display_ids(line_changes: 'LineLevelChange') -> set[int]:
     }
 
 
-def missing_requested_display_ids(
-    line_changes: 'LineLevelChange',
-    requested_ids: set[int],
-) -> set[int]:
-    """Return requested display IDs that do not exist in the line view."""
-    return requested_ids - line_changes_display_ids(line_changes)
-
-
 def require_display_ids_available(
     requested_ids: LineSelection | Iterable[int],
     available_ids: LineSelection | Iterable[int],

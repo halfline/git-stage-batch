@@ -595,12 +595,6 @@ def _optional_string(data: Mapping[str, Any], key: str, batch_name: str) -> str 
     return value
 
 
-def _required_object_id(data: Mapping[str, Any], key: str, batch_name: str) -> str:
-    value = data[key]
-    _validate_object_id(value, batch_name, key)
-    return cast(str, value)
-
-
 def _optional_object_id(data: Mapping[str, Any], key: str, batch_name: str) -> str | None:
     value = data[key]
     if value is not None:

@@ -11,7 +11,6 @@ from .command_policy import (
     PagerPolicy,
     RepositoryPolicy,
     SessionOwnershipPolicy,
-    StateChangePolicy,
 )
 from .subcommand_parser import Subparsers, add_subcommand_parser
 
@@ -26,7 +25,6 @@ def add_block_file_subcommand(subparsers: Subparsers) -> None:
             locking=LockingPolicy.SESSION,
             repository=RepositoryPolicy.REQUIRED,
             pager=PagerPolicy.ELIGIBLE,
-            state_changes=StateChangePolicy.DURABLE,
         ),
         aliases=["bf"],
         help=_("Permanently exclude a file (adds to .gitignore)"),
@@ -61,7 +59,6 @@ def add_unblock_file_subcommand(subparsers: Subparsers) -> None:
             locking=LockingPolicy.SESSION,
             repository=RepositoryPolicy.REQUIRED,
             pager=PagerPolicy.ELIGIBLE,
-            state_changes=StateChangePolicy.DURABLE,
         ),
         aliases=["ubf"],
         help=_("Remove a file from the blocked list"),

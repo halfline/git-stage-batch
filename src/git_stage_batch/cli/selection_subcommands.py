@@ -12,7 +12,6 @@ from .command_policy import (
     PagerPolicy,
     RepositoryPolicy,
     SessionOwnershipPolicy,
-    StateChangePolicy,
 )
 from .discard_dispatch import dispatch_discard_command
 from .file_arguments import add_file_argument
@@ -32,7 +31,6 @@ def add_show_subcommand(subparsers: Subparsers) -> None:
             locking=LockingPolicy.SESSION,
             repository=RepositoryPolicy.REQUIRED,
             pager=PagerPolicy.ELIGIBLE,
-            state_changes=StateChangePolicy.SCRATCH,
         ),
         help=_("Show the selected hunk"),
     )
@@ -110,7 +108,6 @@ def add_include_subcommand(subparsers: Subparsers) -> None:
             locking=LockingPolicy.SESSION,
             repository=RepositoryPolicy.REQUIRED,
             pager=PagerPolicy.ELIGIBLE,
-            state_changes=StateChangePolicy.DURABLE,
         ),
         aliases=["i"],
         help=_("Stage the selected hunk"),
@@ -190,7 +187,6 @@ def add_skip_subcommand(subparsers: Subparsers) -> None:
             locking=LockingPolicy.SESSION,
             repository=RepositoryPolicy.REQUIRED,
             pager=PagerPolicy.ELIGIBLE,
-            state_changes=StateChangePolicy.SCRATCH,
         ),
         aliases=["s"],
         help=_("Skip the selected hunk without staging"),
@@ -224,7 +220,6 @@ def add_discard_subcommand(subparsers: Subparsers) -> None:
             locking=LockingPolicy.SESSION,
             repository=RepositoryPolicy.REQUIRED,
             pager=PagerPolicy.ELIGIBLE,
-            state_changes=StateChangePolicy.DURABLE,
         ),
         aliases=["d"],
         help=_("Remove the selected hunk from working tree"),

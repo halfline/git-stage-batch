@@ -15,7 +15,6 @@ from .command_policy import (
     PagerPolicy,
     RepositoryPolicy,
     SessionOwnershipPolicy,
-    StateChangePolicy,
 )
 from .subcommand_parser import Subparsers, add_subcommand_parser
 
@@ -49,7 +48,6 @@ def add_suggest_fixup_subcommand(subparsers: Subparsers) -> None:
             locking=LockingPolicy.SESSION,
             repository=RepositoryPolicy.REQUIRED,
             pager=PagerPolicy.NEVER,
-            state_changes=StateChangePolicy.SCRATCH,
         ),
         aliases=["x"],
         help=_("Suggest which commit the selected hunk should be fixed up to"),

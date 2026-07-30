@@ -10,7 +10,6 @@ from git_stage_batch.cli.command_policy import (
     PagerPolicy,
     RepositoryPolicy,
     SessionOwnershipPolicy,
-    StateChangePolicy,
 )
 from git_stage_batch.cli.root_parser import build_root_parser
 
@@ -45,11 +44,10 @@ def test_every_registered_command_declares_complete_policy():
         assert isinstance(policy.locking, LockingPolicy), names
         assert isinstance(policy.repository, RepositoryPolicy), names
         assert isinstance(policy.pager, PagerPolicy), names
-        assert isinstance(policy.state_changes, StateChangePolicy), names
 
 
-def test_show_declares_scratch_changes_and_foreign_owner_access():
-    """Show may cache selections without claiming literal read-only behavior."""
+def test_show_declares_foreign_owner_access():
+    """Show may inspect another worktree's active session."""
     parser_by_name = {
         name: parser
         for names, parser in _registered_subcommand_parsers()
@@ -58,19 +56,4 @@ def test_show_declares_scratch_changes_and_foreign_owner_access():
 
     policy = parser_by_name["show"]._defaults["command_policy"]
 
-    assert policy.state_changes is StateChangePolicy.SCRATCH
-    assert policy.session_ownership is SessionOwnershipPolicy.ALLOW_FOREIGN
-
-
-def test_state_changes_do_not_imply_session_ownership_policy():
-    """Journal purge is durable but independent of active session ownership."""
-    parser_by_name = {
-        name: parser
-        for names, parser in _registered_subcommand_parsers()
-        for name in names
-    }
-
-    policy = parser_by_name["journal"]._defaults["command_policy"]
-
-    assert policy.state_changes is StateChangePolicy.DURABLE
     assert policy.session_ownership is SessionOwnershipPolicy.ALLOW_FOREIGN

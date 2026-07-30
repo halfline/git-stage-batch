@@ -15,7 +15,6 @@ from .command_policy import (
     PagerPolicy,
     RepositoryPolicy,
     SessionOwnershipPolicy,
-    StateChangePolicy,
 )
 from .subcommand_parser import Subparsers, add_subcommand_parser
 
@@ -132,7 +131,6 @@ def add_completion_subcommand(subparsers: Subparsers) -> None:
             locking=LockingPolicy.SESSION,
             repository=RepositoryPolicy.REQUIRED,
             pager=PagerPolicy.ELIGIBLE,
-            state_changes=StateChangePolicy.NONE,
         ),
         help_topic="stage-batch",
         help=argparse.SUPPRESS,

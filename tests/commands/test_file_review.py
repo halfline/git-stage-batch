@@ -945,6 +945,7 @@ def test_pathless_include_line_accepts_complete_shown_change_and_keeps_partial_r
     "file_arguments",
     [
         ["--file", "file.txt", "--file"],
+        ["--file", "--file", "file.txt"],
     ],
 )
 def test_repeated_file_marker_include_line_uses_partial_review_scope(

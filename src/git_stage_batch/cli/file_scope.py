@@ -84,6 +84,8 @@ class FileScope:
             return None
         if self.is_multiple:
             raise ValueError("multiple file scope cannot be represented by one path")
+        if not self.files:
+            raise ValueError("file scope does not have a concrete path")
         return self.files[0]
 
     def require_single_file(self, error_message: str) -> str | None:
@@ -156,8 +158,15 @@ def _resolve_file_argument_patterns(
     file_patterns: list[str] | None,
     *,
     selected_file: str | None = None,
+    defer_selected_marker_validation: bool = False,
 ) -> tuple[list[str], list[str]]:
-    """Resolve --file/--files values against candidates with exact --file fallback."""
+    """Resolve file arguments while optionally deferring marker validation.
+
+    Line actions must pass a selected-file marker to their command-level
+    review validator even when its cached path is absent or unavailable.
+    Known marker paths are still retained here for duplicate and multi-file
+    detection.
+    """
     file_values = _file_arg_values(file_arg)
     candidate_by_path = {
         _normalize_file_argument_path(candidate): candidate
@@ -169,13 +178,23 @@ def _resolve_file_argument_patterns(
     display_patterns: list[str] = []
     for raw_value in file_values:
         value = raw_value
-        if value == "":
+        is_selected_marker = value == ""
+        if is_selected_marker:
             if selected_file is None:
+                if defer_selected_marker_validation:
+                    continue
                 raise CommandError(
                     _("No selected hunk. Run 'show' first or specify file path.")
                 )
             value = selected_file
-            if _normalize_file_argument_path(value) not in candidate_by_path:
+            selected_candidate = candidate_by_path.get(
+                _normalize_file_argument_path(value)
+            )
+            if selected_candidate is None:
+                if defer_selected_marker_validation:
+                    exact_files.append(value)
+                    display_patterns.append(value)
+                    continue
                 raise CommandError(
                     _("Selected file is not available in this file scope: {file}").format(
                         file=value,
@@ -206,9 +225,10 @@ def _has_pathless_file_marker(file_arg: FileArgument) -> bool:
 
 def _resolve_live_selected_file(
     action: FileReviewAction | None,
+    line_ids: str | None,
 ) -> str | None:
-    """Resolve a selected live file without bypassing pathless-action guards."""
-    if action is not None:
+    """Resolve a selected live file with guards appropriate to the action scope."""
+    if action is not None and line_ids is None:
         refuse_live_action_for_batch_selection(action)
         refuse_ambiguous_bare_action_after_partial_file_review(action)
     return get_selected_change_file_path()
@@ -257,19 +277,25 @@ def resolve_live_file_scope(
     *,
     include_staged: bool = False,
     selected_action: FileReviewAction | None = None,
+    line_ids: str | None = None,
 ) -> FileScope:
     """Resolve single-file or pattern-based live file scope."""
     resolved_patterns = _resolve_file_patterns(file_arg, file_patterns)
     if resolved_patterns is None:
         return FileScope.implicit() if file_arg is None else FileScope.explicit("")
 
+    includes_selected_file_marker = _has_pathless_file_marker(file_arg)
+    defer_selected_marker_validation = (
+        includes_selected_file_marker
+        and line_ids is not None
+    )
     candidate_files = [*list_changed_files(), *list_untracked_files()]
     if include_staged:
         candidate_files.extend(list_staged_files())
     candidate_files = list(dict.fromkeys(candidate_files))
     selected_file = (
-        _resolve_live_selected_file(selected_action)
-        if _has_pathless_file_marker(file_arg)
+        _resolve_live_selected_file(selected_action, line_ids)
+        if includes_selected_file_marker
         else None
     )
     resolved_files, display_patterns = _resolve_file_argument_patterns(
@@ -277,14 +303,18 @@ def resolve_live_file_scope(
         file_arg,
         file_patterns,
         selected_file=selected_file,
+        defer_selected_marker_validation=defer_selected_marker_validation,
     )
-    if not resolved_files:
+    if not resolved_files and not defer_selected_marker_validation:
         raise CommandError(
             _("No changed files matched: {patterns}").format(
                 patterns=", ".join(display_patterns),
             )
         )
-    return FileScope.pattern(resolved_files)
+    return FileScope.pattern(
+        resolved_files,
+        includes_selected_file_marker=includes_selected_file_marker,
+    )
 
 
 def resolve_batch_file_scope(

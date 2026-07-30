@@ -84,7 +84,7 @@ def test_show_git_stage_batch_help_uses_packaged_page_first(monkeypatch, tmp_pat
         def __enter__(self):
             return self.path
 
-        def __exit__(self, exc_type, exc, tb):
+        def __exit__(self, exc_type, exc, _traceback):
             return False
 
     monkeypatch.setattr(git_help.resources, "as_file", lambda path: _AsFile(path))
@@ -124,7 +124,7 @@ def test_show_git_stage_batch_help_uses_packaged_command_page(monkeypatch, tmp_p
         def __enter__(self):
             return self.path
 
-        def __exit__(self, exc_type, exc, tb):
+        def __exit__(self, exc_type, exc, _traceback):
             return False
 
     monkeypatch.setattr(git_help.resources, "as_file", lambda path: _AsFile(path))
@@ -168,7 +168,7 @@ def test_show_git_stage_batch_help_materializes_editable_manpage(
         def __enter__(self):
             return self.path
 
-        def __exit__(self, exc_type, exc, tb):
+        def __exit__(self, exc_type, exc, _traceback):
             return False
 
     monkeypatch.setattr(git_help.resources, "as_file", lambda path: _AsFile(path))

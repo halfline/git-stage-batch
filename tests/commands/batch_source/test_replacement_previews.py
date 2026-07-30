@@ -19,7 +19,7 @@ class _OwnershipContext(AbstractContextManager):
     def __enter__(self) -> object:
         return self.ownership
 
-    def __exit__(self, exc_type, exc_value, traceback) -> None:
+    def __exit__(self, exc_type, _exc_value, traceback) -> None:
         return None
 
 
@@ -31,7 +31,7 @@ class _ReplacementView(AbstractContextManager):
     def __enter__(self) -> "_ReplacementView":
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback) -> None:
+    def __exit__(self, exc_type, _exc_value, traceback) -> None:
         self.source_buffer.close()
         return None
 

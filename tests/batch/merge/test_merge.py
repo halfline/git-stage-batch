@@ -285,8 +285,8 @@ def test_candidate_enumeration_propagates_atomic_unit_errors(monkeypatch):
     """Candidate discovery must not reinterpret atomic selection failures."""
 
     def refuse_atomic_selection(*_args, **_kwargs):
+        yield from ()
         raise AtomicUnitError("select the complete replacement")
-        yield
 
     monkeypatch.setattr(
         merge_module,

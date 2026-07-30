@@ -257,14 +257,6 @@ class RealizedEntries(Sequence[_RealizedEntry]):
         result.copy_slice_from(self, position, len(self))
         return result
 
-    def _append_range_from(
-        self,
-        entries: Sequence[_RealizedEntry],
-        start: int,
-        stop: int,
-    ) -> None:
-        self.copy_slice_from(entries, start, stop)
-
     def close(self) -> None:
         if self._closed:
             return

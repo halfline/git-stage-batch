@@ -11,13 +11,40 @@ from ..utils.file_patterns import resolve_gitignore_style_patterns
 from .batch_selected_changes import (
     require_current_selected_batch_binary_file_for_batch,
     require_current_selected_batch_gitlink_file_for_batch,
+    selected_batch_binary_matches_batch,
+    selected_batch_gitlink_matches_batch,
 )
+from .file_review.records import ReviewSource
+from .file_review.state import read_last_file_review_state
 from .selected_change.paths import get_selected_change_file_path
 from .selected_change.store import (
     SelectedChangeKind,
     read_selected_change_kind,
 )
 from .selected_change.file_changes import load_selected_mode_change, read_selected_mode_data
+
+
+def selected_batch_change_matches_batch(batch_name: str) -> bool:
+    """Return whether a selected batch change came from the requested batch."""
+    selected_kind = read_selected_change_kind()
+    if selected_kind == SelectedChangeKind.BATCH_FILE:
+        review_state = read_last_file_review_state()
+        return (
+            review_state is not None
+            and review_state.source == ReviewSource.BATCH
+            and review_state.batch_name == batch_name
+        )
+    if selected_kind == SelectedChangeKind.BATCH_BINARY:
+        return selected_batch_binary_matches_batch(batch_name)
+    if selected_kind == SelectedChangeKind.BATCH_GITLINK:
+        return selected_batch_gitlink_matches_batch(batch_name)
+    if selected_kind == SelectedChangeKind.BATCH_MODE:
+        mode_data = read_selected_mode_data()
+        return (
+            mode_data is not None
+            and mode_data.get("batch_name") == batch_name
+        )
+    return True
 
 
 def resolve_batch_file_scope(
@@ -45,6 +72,14 @@ def resolve_batch_file_scope(
     """
     if file is not None:
         if file == "":
+            if not selected_batch_change_matches_batch(batch_name):
+                raise CommandError(
+                    _(
+                        "The selected file came from a different batch.\n"
+                        "Show a file from batch '{name}' before using a "
+                        "pathless --file."
+                    ).format(name=batch_name)
+                )
             file_to_use = get_selected_change_file_path()
             if file_to_use is None:
                 raise CommandError(

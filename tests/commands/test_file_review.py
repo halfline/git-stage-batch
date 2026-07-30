@@ -2132,6 +2132,22 @@ def test_pathless_include_from_other_batch_after_full_batch_review_refuses(paged
         command_include_from_batch("other-batch", line_ids=line_spec)
 
 
+def test_pathless_file_include_from_other_batch_after_review_refuses(
+    paged_batch_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_apply_from_batch("cleanup", file="file.txt")
+    command_include_to_batch("other-batch", file="file.txt", quiet=True)
+    capsys.readouterr()
+    command_show_from_batch("cleanup", file="file.txt", page="all")
+    capsys.readouterr()
+
+    with pytest.raises(CommandError, match="came from a different batch"):
+        command_include_from_batch("other-batch", file="")
+
+
 def test_show_from_batch_file_defaults_to_page_review_and_persists_state(paged_batch_repo, monkeypatch, capsys):
     _force_one_change_per_page(monkeypatch)
 

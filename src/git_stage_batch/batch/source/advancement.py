@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 from types import TracebackType
@@ -128,7 +129,7 @@ def advance_batch_source_for_file_with_provenance(
     """Advance batch source and expose provenance for re-annotation."""
     repo_root = get_git_repository_root_path()
     working_file_path = repo_root / file_path
-    if not working_file_path.exists():
+    if not os.path.lexists(working_file_path):
         raise ValueError(
             f"Cannot advance batch source for {file_path}: "
             f"file does not exist in working tree"

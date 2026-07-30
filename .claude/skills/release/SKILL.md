@@ -4,8 +4,48 @@ description: Cut, publish, or ship a project release through an annotated tag, G
 when_to_use: Use only when the user explicitly asks to cut, publish, or ship a new release of this project.
 argument-hint: "[version]"
 disable-model-invocation: true
-allowed-tools: Bash(git *), Bash(gh *), Bash(uv run pytest *), Bash(uv build), Bash(uv publish), Bash(cat VERSION), Bash(ls dist/), Bash(rm -rf dist/), Read, Write, Edit
 user-invocable: true
+allowed-tools:
+  - Bash(git status *)
+  - Bash(git fetch *)
+  - Bash(git pull --ff-only *)
+  - Bash(git rev-parse *)
+  - Bash(git log *)
+  - Bash(git diff *)
+  - Bash(git switch *)
+  - Bash(git checkout *)
+  - Bash(git add VERSION)
+  - Bash(git commit *)
+  - Bash(git tag *)
+  - Bash(git cat-file *)
+  - Bash(git rev-list *)
+  - Bash(git ls-remote *)
+  - Bash(git push -u origin release-v*)
+  - Bash(git push origin v*)
+  - Bash(gh repo view *)
+  - Bash(gh api repos/*/environments/pypi)
+  - Bash(gh pr create *)
+  - Bash(gh pr checks *)
+  - Bash(gh pr merge *)
+  - Bash(gh pr view *)
+  - Bash(gh pr edit *)
+  - Bash(gh release view *)
+  - Bash(gh release create *)
+  - Bash(gh run list *)
+  - Bash(gh run watch *)
+  - Bash(gh run view *)
+  - Bash(uv venv *)
+  - Bash(uv pip install --group dev)
+  - Bash(uv sync --all-groups)
+  - Bash(uv run pytest *)
+  - Bash(uv build *)
+  - Bash(cat VERSION)
+  - Bash(ls *)
+  - Bash(mktemp *)
+  - Bash(curl * https://pypi.org/pypi/git-stage-batch/*/json)
+  - Read
+  - Write
+  - Edit
 ---
 
 Cut a release only from the canonical repository. Treat publication of the

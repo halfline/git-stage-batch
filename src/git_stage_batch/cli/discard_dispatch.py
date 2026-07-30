@@ -145,8 +145,9 @@ def dispatch_discard_command(args: argparse.Namespace) -> None:
             args.file,
             args.file_patterns,
             selected_action=FileReviewAction.DISCARD,
+            line_ids=args.line_ids,
         )
-        resolved_file = resolved_live_scope.require_single_file(
+        resolved_file = resolved_live_scope.require_single_line_file(
             _("Cannot use --lines with multiple files.")
         )
         command_discard_line(

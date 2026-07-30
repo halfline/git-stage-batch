@@ -1024,6 +1024,39 @@ def test_repeated_file_marker_line_action_preserves_file_list_refusal(
     with pytest.raises(CommandError, match="last command only showed files"):
         args.func(args)
 
+
+def test_repeated_file_marker_line_action_preserves_stale_review_refusal(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    line_spec = format_line_ids(list(state.selections[0].display_ids))
+    subprocess.run(
+        ["git", "restore", "file.txt"],
+        check=True,
+        capture_output=True,
+    )
+    args = parse_command_line(
+        [
+            "include",
+            "--line",
+            line_spec,
+            "--file",
+            "file.txt",
+            "--file",
+        ],
+        quiet=True,
+    )
+    assert args is not None
+
+    with pytest.raises(CommandError, match="no longer matches"):
+        args.func(args)
+
 def test_pathless_include_line_as_keeps_partial_review_guard_for_bare_action(
     paged_file_repo,
     monkeypatch,

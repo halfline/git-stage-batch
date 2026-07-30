@@ -21,6 +21,7 @@ from git_stage_batch.commands.undo import command_undo
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import ensure_state_directory_exists
+from tests.buffer_helpers import uses_mapped_storage
 
 
 _RUNNING_UNDER_XDIST = "PYTEST_XDIST_WORKER" in os.environ
@@ -487,7 +488,7 @@ class TestCommandApplyFromBatch:
         original_write = apply_action._text_file_actions.write_text_file_to_worktree
 
         def record_mapped_output(file_path, buffer, file_mode, change_type):
-            mapped_outputs.append(buffer.uses_mapped_storage)
+            mapped_outputs.append(uses_mapped_storage(buffer))
             return original_write(
                 file_path,
                 buffer,

@@ -25,6 +25,7 @@ from git_stage_batch.utils.git_object_io import (
     GitObjectInfo,
     GitTreeBlob,
 )
+from tests.buffer_helpers import uses_mapped_storage
 
 
 def test_load_git_blob_as_buffer_loads_streamed_blob(monkeypatch):
@@ -39,7 +40,7 @@ def test_load_git_blob_as_buffer_loads_streamed_blob(monkeypatch):
 
     with load_git_blob_as_buffer("abc123") as buffer:
         assert calls == ["abc123"]
-        assert buffer.uses_mapped_storage is False
+        assert uses_mapped_storage(buffer) is False
         assert buffer[1] == b"beta\n"
 
 
@@ -96,13 +97,13 @@ def test_stream_git_blob_buffers_spools_and_closes_each_source(
         spool_dir=spool_dir,
     )
     first = next(buffers)
-    assert first.buffer.uses_mapped_storage is True
+    assert uses_mapped_storage(first.buffer) is True
     assert first.buffer[0] == b"line\n"
 
     second = next(buffers)
     with pytest.raises(ValueError, match="closed"):
         len(first.buffer)
-    assert second.buffer.uses_mapped_storage is True
+    assert uses_mapped_storage(second.buffer) is True
 
     buffers.close()
     with pytest.raises(ValueError, match="closed"):
@@ -185,7 +186,7 @@ def test_read_git_object_buffer_or_none_loads_streamed_output(monkeypatch):
 
     with read_git_object_buffer_or_none("HEAD:file.txt") as buffer:
         assert calls == ["abc123"]
-        assert buffer.uses_mapped_storage is False
+        assert uses_mapped_storage(buffer) is False
         assert buffer[1] == b"beta\n"
 
 
@@ -246,7 +247,7 @@ def test_load_working_tree_file_as_buffer_uses_repository_root(monkeypatch, tmp_
     )
 
     with load_working_tree_file_as_buffer("dir/file.txt") as buffer:
-        assert buffer.uses_mapped_storage is False
+        assert uses_mapped_storage(buffer) is False
         assert buffer[0] == b"alpha\n"
         assert buffer[1] == b"beta\n"
 

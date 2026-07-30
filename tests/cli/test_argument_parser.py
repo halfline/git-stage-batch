@@ -94,6 +94,7 @@ def test_resolve_live_file_scope_combines_explicit_and_selected_files(monkeypatc
 
     assert scope.kind is file_scope.FileScopeKind.PATTERN
     assert scope.files == ("src/parser.py", "notes.txt")
+    assert scope.includes_selected_file_marker is True
 
 
 def test_resolve_live_file_scope_runs_pathless_action_guards(monkeypatch):

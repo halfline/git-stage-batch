@@ -147,6 +147,38 @@ def test_resolve_live_file_scope_runs_pathless_action_guards(monkeypatch):
     partial_review_guard.assert_called_once_with(FileReviewAction.INCLUDE)
 
 
+def test_resolve_live_line_file_scope_defers_pathless_action_guards(monkeypatch):
+    _mock_live_file_candidates(monkeypatch, ["selected.py"])
+    live_source_guard = Mock()
+    partial_review_guard = Mock()
+    monkeypatch.setattr(
+        file_scope,
+        "refuse_live_action_for_batch_selection",
+        live_source_guard,
+    )
+    monkeypatch.setattr(
+        file_scope,
+        "refuse_ambiguous_bare_action_after_partial_file_review",
+        partial_review_guard,
+    )
+    monkeypatch.setattr(
+        file_scope,
+        "get_selected_change_file_path",
+        lambda: "selected.py",
+    )
+
+    scope = file_scope.resolve_live_file_scope(
+        ["", "selected.py"],
+        None,
+        selected_action=FileReviewAction.INCLUDE,
+        line_ids="1",
+    )
+
+    assert scope.optional_line_file() == ""
+    live_source_guard.assert_not_called()
+    partial_review_guard.assert_not_called()
+
+
 def test_resolve_live_file_scope_rejects_mixed_pathless_file_and_files(monkeypatch):
     with pytest.raises(CommandError, match="Cannot use --file together with --files"):
         file_scope.resolve_live_file_scope(["src/parser.py", ""], ["*.txt"])

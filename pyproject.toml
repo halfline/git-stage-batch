@@ -44,6 +44,7 @@ dev = [
     "ninja>=1.11.0",
     "pytest-xdist>=3.8.0",
     "ruff==0.12.2",
+    "vulture==2.16",
 ]
 docs = [
     "mkdocs-material>=9.7.4",

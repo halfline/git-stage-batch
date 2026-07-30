@@ -58,8 +58,6 @@ ALLOWED_EXPLICIT_ANY = frozenset({
     "src/git_stage_batch/batch/state/metadata_schema.py::"
     "_optional_string::param:data",
     "src/git_stage_batch/batch/state/metadata_schema.py::"
-    "_required_object_id::param:data",
-    "src/git_stage_batch/batch/state/metadata_schema.py::"
     "_optional_object_id::param:data",
     "src/git_stage_batch/batch/state/metadata_schema.py::"
     "_validate_object_id::param:value",
@@ -80,13 +78,7 @@ ALLOWED_EXPLICIT_ANY = frozenset({
     "src/git_stage_batch/utils/file_job_transport.py::"
     "_assert_transport_dataclass_shape::cast",
     "src/git_stage_batch/utils/file_job_workspace.py::"
-    "FileJobWorkspace.write_json::param:value",
-    "src/git_stage_batch/utils/file_job_workspace.py::"
     "FileJobWorkspace.read_json::return",
-    "src/git_stage_batch/utils/file_job_workspace.py::"
-    "FileJobWorkspace.write_jsonl::param:values",
-    "src/git_stage_batch/utils/file_job_workspace.py::"
-    "FileJobWorkspace.stream_jsonl::return",
     "src/git_stage_batch/utils/file_job_workspace.py::"
     "FileJobWorkspace.write_pickle::param:value",
     "src/git_stage_batch/utils/file_job_workspace.py::"

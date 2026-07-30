@@ -109,7 +109,7 @@ def _with_real_manpath_root(manpage_path: Path) -> AbstractContextManager[Path]:
             self,
             exc_type: type[BaseException] | None,
             exc: BaseException | None,
-            tb: TracebackType | None,
+            _traceback: TracebackType | None,
         ) -> None:
             self._temp_dir.cleanup()
 

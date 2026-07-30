@@ -219,12 +219,12 @@ def test_main_handles_git_failure_before_dispatch_without_traceback(capsys):
 
     @contextmanager
     def failing_lock():
+        yield from ()
         raise subprocess.CalledProcessError(
             128,
             ["git", "rev-parse", "--absolute-git-dir"],
             stderr="fatal: not a git repository\n",
         )
-        yield
 
     args = Namespace(working_directory=None)
 

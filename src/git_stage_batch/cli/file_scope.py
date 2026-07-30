@@ -88,12 +88,6 @@ class FileScope:
             raise ValueError("file scope does not have a concrete path")
         return self.files[0]
 
-    def require_single_file(self, error_message: str) -> str | None:
-        """Return an optional single file path, or raise for a multi-file scope."""
-        if self.is_multiple:
-            raise CommandError(error_message)
-        return self.optional_file()
-
     def optional_line_file(self) -> str | None:
         """Return a single line-action file while preserving a selected marker."""
         if self.is_multiple:

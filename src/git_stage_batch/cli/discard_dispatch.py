@@ -29,7 +29,11 @@ from .replacement_input import require_replacement_text
 def _dispatch_discard_replacement(args: argparse.Namespace) -> None:
     if args.as_text is not None and args.as_stdin:
         raise CommandError(_("Cannot use `--as` and `--as-stdin` together."))
-    if args.to_batch and args.line_ids and not args.from_batch:
+    if (
+        args.to_batch
+        and args.line_ids is not None
+        and not args.from_batch
+    ):
         resolved_live_scope = resolve_live_file_scope(
             args.file,
             args.file_patterns,

@@ -239,8 +239,12 @@ def _resolve_batch_selected_file(
     all_files: dict[str, BatchFileMetadataDict],
     action: FileReviewAction | None,
     command_name: str | None,
+    line_ids: str | None,
 ) -> str | None:
-    """Resolve a selected batch file through the existing pathless guards."""
+    """Resolve a selected batch file with guards appropriate to the action scope."""
+    if line_ids is not None:
+        return get_selected_change_file_path()
+
     selected_file: str | None = ""
     if action is not None:
         if command_name is None:
@@ -261,7 +265,7 @@ def _resolve_batch_selected_file(
         all_files,
         selected_file,
         None,
-        None,
+        line_ids,
     )
     resolved_files = resolve_stored_batch_file_scope(
         batch_name,
@@ -324,6 +328,7 @@ def resolve_batch_file_scope(
     *,
     selected_action: FileReviewAction | None = None,
     command_name: str | None = None,
+    line_ids: str | None = None,
 ) -> FileScope:
     """Resolve single-file or pattern-based batch file scope."""
     lookup_batch_name = batch_name_for_source_lookup(batch_name)
@@ -333,6 +338,11 @@ def resolve_batch_file_scope(
     if not batch_exists(lookup_batch_name):
         raise CommandError(_("Batch '{name}' does not exist").format(name=lookup_batch_name))
 
+    includes_selected_file_marker = _has_pathless_file_marker(file_arg)
+    defer_selected_marker_validation = (
+        includes_selected_file_marker
+        and line_ids is not None
+    )
     metadata = read_batch_metadata(lookup_batch_name)
     all_files = metadata.get("files", {})
     selected_file = (
@@ -341,8 +351,9 @@ def resolve_batch_file_scope(
             all_files,
             selected_action,
             command_name,
+            line_ids,
         )
-        if _has_pathless_file_marker(file_arg)
+        if includes_selected_file_marker
         else None
     )
     resolved_files, display_patterns = _resolve_file_argument_patterns(
@@ -350,12 +361,16 @@ def resolve_batch_file_scope(
         file_arg,
         file_patterns,
         selected_file=selected_file,
+        defer_selected_marker_validation=defer_selected_marker_validation,
     )
-    if not resolved_files:
+    if not resolved_files and not defer_selected_marker_validation:
         raise CommandError(
             _("No files in batch '{name}' matched: {patterns}").format(
                 name=lookup_batch_name,
                 patterns=", ".join(display_patterns),
             )
         )
-    return FileScope.pattern(resolved_files)
+    return FileScope.pattern(
+        resolved_files,
+        includes_selected_file_marker=includes_selected_file_marker,
+    )

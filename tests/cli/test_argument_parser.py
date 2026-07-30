@@ -920,6 +920,46 @@ def test_parse_command_line_include_with_file_and_line_dispatches_file_scope(mon
     )
 
 
+def _assert_empty_line_selection_stays_a_line_action(
+    monkeypatch,
+    command_name,
+    dispatch_module,
+    line_command_name,
+    file_command_name,
+):
+    """An empty --line value must not fall through to a whole-file action."""
+    line_command = Mock()
+    file_command = Mock(
+        side_effect=AssertionError("whole-file command should not run"),
+    )
+    monkeypatch.setattr(dispatch_module, line_command_name, line_command)
+    monkeypatch.setattr(dispatch_module, file_command_name, file_command)
+    _mock_live_file_candidates(monkeypatch, ["path.txt"])
+
+    args = parse_command_line(
+        [command_name, "--file", "path.txt", "--line", ""],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    line_command.assert_called_once_with(
+        "",
+        file="path.txt",
+        auto_advance=None,
+    )
+    file_command.assert_not_called()
+
+
+def test_parse_command_line_include_empty_line_stays_a_line_action(monkeypatch):
+    _assert_empty_line_selection_stays_a_line_action(
+        monkeypatch,
+        "include",
+        include_dispatch,
+        "command_include_line",
+        "command_include_file",
+    )
+
 @pytest.mark.parametrize(
     "file_arguments",
     [

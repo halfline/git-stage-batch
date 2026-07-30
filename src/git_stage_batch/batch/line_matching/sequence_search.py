@@ -17,38 +17,6 @@ class TargetGap:
     target_before_line: int | None
 
 
-def iter_exact_sequence_occurrences(
-    lines: Sequence[bytes],
-    sequence: Sequence[bytes],
-    *,
-    start: int = 0,
-    end: int | None = None,
-    max_results: int | None = None,
-) -> Iterator[int]:
-    """Yield exact sequence start offsets in ascending order."""
-    if end is None:
-        end = len(lines)
-    start = max(start, 0)
-    end = min(end, len(lines))
-    if not sequence:
-        return
-    if start > end:
-        return
-
-    result_count = 0
-    sequence_length = len(sequence)
-    last_start = end - sequence_length
-    for index in range(start, last_start + 1):
-        if all(
-            lines[index + offset] == sequence[offset]
-            for offset in range(sequence_length)
-        ):
-            yield index
-            result_count += 1
-            if max_results is not None and result_count >= max_results:
-                return
-
-
 def iter_exact_context_gaps(
     target_lines: Sequence[bytes],
     *,

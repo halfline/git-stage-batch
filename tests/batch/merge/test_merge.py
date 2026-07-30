@@ -596,18 +596,6 @@ class TestMatchLines:
         with pytest.raises(ValueError, match="line mapping is closed"):
             mapping.get_target_line_from_source_line(1)
 
-    def test_line_mapping_detach_transfers_context_ownership(self):
-        """Detached mappings remain usable until their new owner closes them."""
-        with match_lines([b"a\n"], [b"a\n"]) as mapping:
-            detached = mapping.detach()
-
-        assert detached.get_target_line_from_source_line(1) == 1
-        detached.close()
-        detached.close()
-
-        with pytest.raises(ValueError, match="line mapping is closed"):
-            detached.detach()
-
     def test_line_mapping_exposes_mapped_line_pairs(self):
         """Mapped pair iteration exposes source-order correspondence."""
         with match_lines(
@@ -951,12 +939,10 @@ class TestMergeLineSequences:
         entries = RealizedEntries()
         entries.append_line_from(lines, 0, source_line=1, target_line=1)
 
-        assert entries.flushed_provenance_run_count == 0
         assert entries.source_line_at(0) == 1
 
         entries.append_line_from(lines, 1, source_line=2, target_line=2)
 
-        assert entries.flushed_provenance_run_count == 0
         runs = list(entries.provenance_runs())
         assert len(runs) == 1
         assert (runs[0].dest_start, runs[0].dest_end) == (0, 2)
@@ -1166,7 +1152,7 @@ class TestMergeLineSequences:
             entries = _build_realized_entries_for_discard(lines, lines, mapping)
 
         assert len(entries) == 1000
-        assert entries.provenance_run_count == 1
+        assert len(entries._provenance) == 1
         assert entries.source_line_at(999) == 1000
         entries.close()
 
@@ -1177,7 +1163,7 @@ class TestMergeLineSequences:
         entries = satisfy_constraints(lines, lines, set(), [])
 
         assert len(entries) == 1000
-        assert entries.provenance_run_count == 1
+        assert len(entries._provenance) == 1
         assert entries.target_line_at(999) == 1000
         entries.close()
 

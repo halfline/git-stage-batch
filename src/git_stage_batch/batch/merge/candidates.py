@@ -13,7 +13,6 @@ class MergeResolutionDecision:
 
     ambiguity_key: str
     choice_index: int
-    choice_label: str
 
 
 @dataclass(frozen=True)

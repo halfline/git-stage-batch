@@ -218,7 +218,7 @@ def test_refresh_deletion_anchor_uses_source_lineage_without_prior_context():
         text_bytes=b"delete me",
         source_line=1,
     )
-    with BatchSourceLineage.from_runs(
+    with BatchSourceLineage(
         source_runs=[LineageRun(old_start=1, old_end=1, new_start=2)],
         working_runs=[LineageRun(old_start=2, old_end=2, new_start=3)],
     ) as lineage:

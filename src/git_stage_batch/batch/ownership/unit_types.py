@@ -37,7 +37,6 @@ class OwnershipUnit:
         deletion_claims: Absence claims that are part of this unit
         display_line_ids: Display line IDs that map to this unit (from reconstructed display)
         is_atomic: If True, partial removal is not allowed
-        atomic_reason: Explanation for why unit is atomic (for debugging/errors)
         preserves_replacement_unit: True when this unit came from persisted replacement metadata
         replacement_origin: Original parent replacement context, when known
     """
@@ -47,6 +46,5 @@ class OwnershipUnit:
     display_line_ids: LineRanges
     baseline_references: dict[int, BaselineReference] = field(default_factory=dict)
     is_atomic: bool = False
-    atomic_reason: str | None = None
     preserves_replacement_unit: bool = False
     replacement_origin: ReplacementUnitOrigin | None = None

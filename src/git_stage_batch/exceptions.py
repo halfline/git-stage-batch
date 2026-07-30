@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
-from typing import Literal, NoReturn
+from typing import NoReturn
 
 
 class CommandError(Exception):
@@ -61,50 +60,6 @@ class MergeError(Exception):
     """Raised when batch merge fails due to structural ambiguity."""
 
     pass
-
-
-@dataclass(frozen=True)
-class MergeAmbiguityChoice:
-    """One concrete merge ambiguity choice."""
-
-    choice_index: int
-    target_after_line: int | None
-    target_before_line: int | None
-    explanation: str
-
-
-@dataclass(frozen=True)
-class MergeAmbiguity:
-    """An enumerable merge ambiguity."""
-
-    key: str
-    kind: Literal[
-        "missing_claimed_run_placement",
-        "ambiguous_absence_boundary",
-        "replacement_region_placement",
-    ]
-    source_line_range: tuple[int, int] | None
-    choices: tuple[MergeAmbiguityChoice, ...]
-
-
-@dataclass(frozen=True)
-class MergeAmbiguitySet:
-    """A collection of merge ambiguities for one target."""
-
-    file_path: str | None
-    source_line_count: int
-    target_line_count: int
-    ambiguities: tuple[MergeAmbiguity, ...]
-
-
-class MergeAmbiguityError(MergeError):
-    """Raised when a merge refusal has enumerable candidate choices."""
-
-    def __init__(self, ambiguity: MergeAmbiguitySet):
-        self.ambiguity = ambiguity
-        super().__init__("Merge has enumerable ambiguity")
-
-
 class MissingAnchorError(MergeError):
     """Raised when an anchor line is not present in realized content.
 

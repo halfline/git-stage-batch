@@ -53,14 +53,6 @@ class SemanticChangeRun:
         _validate_range_pair(self.source_start, self.source_end, "source")
         _validate_range_pair(self.target_start, self.target_end, "target")
 
-    def source_line_numbers(self) -> range:
-        """Return source line numbers in this run without materializing them."""
-        return _line_range(self.source_start, self.source_end)
-
-    def target_line_numbers(self) -> range:
-        """Return target line numbers in this run without materializing them."""
-        return _line_range(self.target_start, self.target_end)
-
     def has_source_line(self, line_number: int | None) -> bool:
         if (
             line_number is None
@@ -78,12 +70,6 @@ class SemanticChangeRun:
         ):
             return False
         return self.target_start <= line_number <= self.target_end
-
-
-def _line_range(start: int | None, end: int | None) -> range:
-    if start is None or end is None:
-        return range(0)
-    return range(start, end + 1)
 
 
 def _validate_range_pair(
@@ -229,21 +215,6 @@ def derive_display_id_run_sets_from_lines(
     semantic_runs = derive_semantic_change_runs(
         source_lines,
         target_lines,
-    )
-    return _display_id_run_sets_from_semantic_runs(line_changes, semantic_runs)
-
-
-def derive_replacement_display_id_run_sets_from_lines(
-    line_changes: LineLevelChange,
-    *,
-    source_lines: Sequence[bytes],
-    target_lines: Sequence[bytes],
-) -> list[set[int]]:
-    """Map replacement runs from byte-line sequences onto display IDs."""
-    semantic_runs = (
-        run
-        for run in derive_semantic_change_runs(source_lines, target_lines)
-        if run.kind == SemanticChangeKind.REPLACEMENT
     )
     return _display_id_run_sets_from_semantic_runs(line_changes, semantic_runs)
 

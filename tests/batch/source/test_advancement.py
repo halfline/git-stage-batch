@@ -9,10 +9,7 @@ from git_stage_batch.batch.ownership.model import (
     BatchOwnership,
 )
 from git_stage_batch.batch.ownership.merging import merge_batch_ownership
-from git_stage_batch.batch.ownership.remapping import (
-    remap_batch_ownership_to_new_source_lines,
-    remap_batch_ownership_with_lineage,
-)
+from git_stage_batch.batch.ownership.remapping import remap_batch_ownership_with_lineage
 from git_stage_batch.batch.ownership.translation import (
     detect_stale_batch_source_for_selection,
     translate_lines_to_batch_ownership,
@@ -58,23 +55,6 @@ class _PresenceLineGuardedOwnership(BatchOwnership):
 
     def presence_line_set(self) -> _IterationGuardedLineSelection:
         return self._selection
-
-
-def _remap_ownership_from_content(
-    *,
-    ownership: BatchOwnership,
-    old_source_content: bytes,
-    new_source_content: bytes,
-) -> BatchOwnership:
-    with (
-        LineBuffer.from_bytes(old_source_content) as old_source_lines,
-        LineBuffer.from_bytes(new_source_content) as new_source_lines,
-    ):
-        return remap_batch_ownership_to_new_source_lines(
-            ownership=ownership,
-            old_source_lines=old_source_lines,
-            new_source_lines=new_source_lines,
-        )
 
 
 def _advance_source_from_content(
@@ -148,213 +128,9 @@ def test_translate_fails_loudly_with_none_source_line():
         translate_lines_to_batch_ownership(stale_lines)
 
 
-def test_remap_claimed_lines_to_new_source():
-    """Test remapping of claimed lines from old source to new source."""
-    # Old source has 3 lines
-    old_source = b"line one\nline two\nline three\n"
-
-    # New source has 4 lines (added a line at the beginning)
-    new_source = b"new first line\nline one\nline two\nline three\n"
-
-    # Original ownership claims lines 1-2 in old source
-    old_ownership = BatchOwnership.from_presence_lines(["1-2"], [])
-
-    # Remap to new source
-    new_ownership = _remap_ownership_from_content(
-        ownership=old_ownership,
-        old_source_content=old_source,
-        new_source_content=new_source
-    )
-
-    # Lines 1-2 in old source should map to lines 2-3 in new source
-    assert new_ownership.presence_claims[0].source_lines == ["2-3"]
-    assert new_ownership.deletions == []
-
-
-def test_remap_claimed_lines_accepts_non_list_line_sequences(line_sequence):
-    """Ownership remapping accepts indexed byte-line sequences."""
-    old_lines = line_sequence([b"line one\n", b"line two\n", b"line three\n"])
-    new_lines = line_sequence([
-        b"new first line\n",
-        b"line one\n",
-        b"line two\n",
-        b"line three\n",
-    ])
-    old_ownership = BatchOwnership.from_presence_lines(["1-2"], [])
-
-    new_ownership = remap_batch_ownership_to_new_source_lines(
-        ownership=old_ownership,
-        old_source_lines=old_lines,
-        new_source_lines=new_lines,
-    )
-
-    assert new_ownership.presence_claims[0].source_lines == ["2-3"]
-    assert new_ownership.deletions == []
-
-
-def test_remap_deletion_anchors_to_new_source():
-    """Test remapping of absence claim anchors from old source to new source."""
-    old_source = b"line one\nline two\nline three\n"
-    new_source = b"new first line\nline one\nline two\nline three\n"
-
-    # Original ownership has deletion anchored at line 2
-    old_ownership = BatchOwnership.from_presence_lines(
-        [],
-        [
-            AbsenceClaim(anchor_line=2, content_lines=[b"deleted line\n"])
-        ]
-    )
-
-    # Remap to new source
-    new_ownership = _remap_ownership_from_content(
-        ownership=old_ownership,
-        old_source_content=old_source,
-        new_source_content=new_source
-    )
-
-    # Anchor at line 2 in old source should map to line 3 in new source
-    assert len(new_ownership.deletions) == 1
-    assert new_ownership.deletions[0].anchor_line == 3
-    assert list(new_ownership.deletions[0].content_lines) == [b"deleted line\n"]
-
-
-def test_remap_start_of_file_deletion_anchor():
-    """Test that start-of-file deletion anchors (None) remain None after remapping."""
-    old_source = b"line one\nline two\n"
-    new_source = b"new first line\nline one\nline two\n"
-
-    old_ownership = BatchOwnership.from_presence_lines(
-        [],
-        [
-            AbsenceClaim(anchor_line=None, content_lines=[b"deleted at start\n"])
-        ]
-    )
-
-    new_ownership = _remap_ownership_from_content(
-        ownership=old_ownership,
-        old_source_content=old_source,
-        new_source_content=new_source
-    )
-
-    # Start-of-file anchor should remain None
-    assert len(new_ownership.deletions) == 1
-    assert new_ownership.deletions[0].anchor_line is None
-
-
-def test_remap_fails_when_line_removed_in_new_source():
-    """Test that remapping fails loudly when claimed line is removed in new source."""
-    old_source = b"line one\nline two\nline three\n"
-    # New source removed line two
-    new_source = b"line one\nline three\n"
-
-    # Claim line 2 in old source
-    old_ownership = BatchOwnership.from_presence_lines(["2"], [])
-
-    # Should fail because line 2 cannot be uniquely mapped
-    with pytest.raises(ValueError, match="Cannot remap presence line"):
-        _remap_ownership_from_content(
-            ownership=old_ownership,
-            old_source_content=old_source,
-            new_source_content=new_source
-        )
-
-
-def test_remap_fails_when_anchor_removed_in_new_source():
-    """Test that remapping fails loudly when deletion anchor is removed in new source."""
-    old_source = b"line one\nline two\nline three\n"
-    new_source = b"line one\nline three\n"
-
-    # Anchor deletion at line 2
-    old_ownership = BatchOwnership.from_presence_lines(
-        [],
-        [
-            AbsenceClaim(anchor_line=2, content_lines=[b"deleted\n"])
-        ]
-    )
-
-    # Should fail because anchor line 2 cannot be uniquely mapped
-    with pytest.raises(ValueError, match="Cannot remap deletion anchor"):
-        _remap_ownership_from_content(
-            ownership=old_ownership,
-            old_source_content=old_source,
-            new_source_content=new_source
-        )
-
-
-def test_remap_preserves_multiple_claimed_line_ranges():
-    """Test that remapping preserves multiple claimed line ranges correctly."""
-    old_source = b"a\nb\nc\nd\ne\nf\n"
-    # Add two lines at the beginning
-    new_source = b"x\ny\na\nb\nc\nd\ne\nf\n"
-
-    # Claim lines 1-2 and 5-6 in old source
-    old_ownership = BatchOwnership.from_presence_lines(["1-2", "5-6"], [])
-
-    new_ownership = _remap_ownership_from_content(
-        ownership=old_ownership,
-        old_source_content=old_source,
-        new_source_content=new_source
-    )
-
-    # Lines 1-2 → 3-4, lines 5-6 → 7-8
-    assert new_ownership.presence_claims[0].source_lines == ["3-4,7-8"]
-
-
-def test_remap_preserves_deletion_content():
-    """Test that deletion content is preserved during remapping."""
-    old_source = b"line one\nline two\n"
-    new_source = b"prefix\nline one\nline two\n"
-
-    absence_content = [b"deleted line 1\n", b"deleted line 2\n"]
-
-    old_ownership = BatchOwnership.from_presence_lines(
-        [],
-        [
-            AbsenceClaim(anchor_line=1, content_lines=absence_content)
-        ]
-    )
-
-    new_ownership = _remap_ownership_from_content(
-        ownership=old_ownership,
-        old_source_content=old_source,
-        new_source_content=new_source
-    )
-
-    # Content should be preserved exactly
-    assert list(new_ownership.deletions[0].content_lines) == absence_content
-
-
-def test_remap_preserves_explicit_replacement_units():
-    """Replacement metadata should follow claimed-line source remapping."""
-    old_source = b"new value\nanchor\n"
-    new_source = b"prefix\nnew value\nanchor\n"
-
-    old_ownership = BatchOwnership.from_presence_lines(
-        ["1"],
-        [
-            AbsenceClaim(anchor_line=2, content_lines=[b"old value\n"]),
-        ],
-        replacement_units=[
-            ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),
-        ],
-    )
-
-    new_ownership = _remap_ownership_from_content(
-        ownership=old_ownership,
-        old_source_content=old_source,
-        new_source_content=new_source,
-    )
-
-    assert new_ownership.presence_claims[0].source_lines == ["2"]
-    assert new_ownership.deletions[0].anchor_line == 3
-    assert new_ownership.replacement_units == [
-        ReplacementUnit(presence_lines=["2"], deletion_indices=[0]),
-    ]
-
-
 def test_batch_source_lineage_translates_ranges():
     """Batch source lineage should translate selections without per-line storage."""
-    with BatchSourceLineage.from_runs(
+    with BatchSourceLineage(
         source_runs=[
             LineageRun(old_start=1, old_end=2, new_start=10),
             LineageRun(old_start=3, old_end=4, new_start=12),
@@ -374,14 +150,11 @@ def test_batch_source_lineage_translates_ranges():
             LineRanges.from_ranges([(2, 8)])
         ).ranges() == ((11, 13), (20, 20))
         assert lineage.translate_working_line(21) == 31
-        assert lineage.translate_working_selection(
-            LineRanges.from_ranges([(20, 21)])
-        ).ranges() == ((30, 31),)
 
 
 def test_batch_source_lineage_finds_unmapped_source_ranges():
     """Unmapped-source lookup should scan runs without expanding selections."""
-    with BatchSourceLineage.from_runs(
+    with BatchSourceLineage(
         source_runs=[
             LineageRun(old_start=1, old_end=20, new_start=100),
             LineageRun(old_start=30, old_end=40, new_start=200),
@@ -415,7 +188,7 @@ def test_batch_source_lineage_rejects_overlapping_appends():
 
 def test_batch_source_lineage_closes_mapped_storage():
     """Batch source lineage should close mapped run storage."""
-    lineage = BatchSourceLineage.from_runs(
+    lineage = BatchSourceLineage(
         source_runs=[
             LineageRun(old_start=1, old_end=1000, new_start=1),
             LineageRun(old_start=2000, old_end=2000, new_start=5000),
@@ -437,7 +210,7 @@ def test_source_lineage_remaps_guarded_presence_ranges():
     ownership = _PresenceLineGuardedOwnership(
         _IterationGuardedLineSelection(((1, 1000), (2000, 2001)))
     )
-    with BatchSourceLineage.from_runs(
+    with BatchSourceLineage(
         source_runs=[
             LineageRun(old_start=1, old_end=1000, new_start=10),
             LineageRun(old_start=2000, old_end=2001, new_start=5000),

@@ -177,7 +177,6 @@ def build_ownership_units_from_display_lines(
                         LineRanges.from_lines([claimed_source_line]),
                     ),
                     is_atomic=False,
-                    atomic_reason=None
                 ))
         else:
             # Unknown type - skip
@@ -258,7 +257,6 @@ def _build_explicit_replacement_units_from_display_lines(
                 claimed_source_lines,
             ),
             is_atomic=True,
-            atomic_reason="explicit_replacement",
             preserves_replacement_unit=True,
             replacement_origin=replacement_unit.origin,
         ))
@@ -397,7 +395,6 @@ def _build_replacement_unit(
             claimed_source_lines,
         ),
         is_atomic=True,
-        atomic_reason="display_adjacency"
     )
 
 
@@ -425,7 +422,6 @@ def _build_deletion_only_unit(
         deletion_claims=deletion_claims,
         display_line_ids=LineRanges.from_lines(deletion_run["display_ids"]),
         is_atomic=True,
-        atomic_reason="deletion_only"
     )
 
 

@@ -9,10 +9,15 @@ from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.session import get_iteration_count
 from git_stage_batch.data.session_marker import session_is_active
 from git_stage_batch.exceptions import CommandError
-from git_stage_batch.utils.file_io import read_text_file_contents
+from git_stage_batch.utils.file_io import (
+    read_text_file_contents,
+    write_text_file_contents,
+)
 from git_stage_batch.utils.paths import (
     get_abort_head_file_path,
     get_abort_stash_file_path,
+    get_auto_advance_config_file_path,
+    get_iteration_count_file_path,
     get_state_directory_path,
 )
 
@@ -63,6 +68,37 @@ class TestCommandStart:
         state_dir = get_state_directory_path()
         assert state_dir.exists()
         assert get_iteration_count() == 2
+
+    def test_active_start_rejects_corrupt_iteration_before_changes(
+        self,
+        temp_git_repo,
+    ):
+        """An active start should validate its counter before restarting."""
+        (temp_git_repo / "README.md").write_text("# Test\nmodified\n")
+        command_start(quiet=True)
+        progress_sentinel = (
+            get_state_directory_path()
+            / "session"
+            / "progress"
+            / "sentinel"
+        )
+        progress_sentinel.parent.mkdir(parents=True, exist_ok=True)
+        progress_sentinel.write_text("keep\n", encoding="utf-8")
+        auto_advance_path = get_auto_advance_config_file_path()
+        original_auto_advance = auto_advance_path.read_bytes()
+        write_text_file_contents(
+            get_iteration_count_file_path(),
+            "not-an-integer",
+        )
+
+        with pytest.raises(
+            CommandError,
+            match="Session iteration count is invalid",
+        ):
+            command_start(quiet=True, auto_advance=False)
+
+        assert progress_sentinel.read_text(encoding="utf-8") == "keep\n"
+        assert auto_advance_path.read_bytes() == original_auto_advance
 
     def test_start_initializes_abort_state(self, temp_git_repo):
         """Test that start initializes abort state files."""

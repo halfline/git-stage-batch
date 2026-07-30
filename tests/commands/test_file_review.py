@@ -1000,6 +1000,30 @@ def test_repeated_file_marker_include_line_rejects_unshown_change(
     with pytest.raises(CommandError, match="not valid from the current file review"):
         args.func(args)
 
+
+def test_repeated_file_marker_line_action_preserves_file_list_refusal(
+    paged_file_repo,
+    capsys,
+):
+    _add_second_changed_file(paged_file_repo)
+    command_show_file_list(["file.txt", "other.txt"])
+    capsys.readouterr()
+    args = parse_command_line(
+        [
+            "include",
+            "--line",
+            "1",
+            "--file",
+            "file.txt",
+            "--file",
+        ],
+        quiet=True,
+    )
+    assert args is not None
+
+    with pytest.raises(CommandError, match="last command only showed files"):
+        args.func(args)
+
 def test_pathless_include_line_as_keeps_partial_review_guard_for_bare_action(
     paged_file_repo,
     monkeypatch,

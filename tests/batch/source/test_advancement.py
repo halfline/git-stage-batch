@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from git_stage_batch.batch.source import advancement as advancement_module
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership.model import (
     BatchOwnership,
@@ -17,6 +18,7 @@ from git_stage_batch.batch.ownership.translation import (
 from git_stage_batch.batch.ownership.references import BaselineReference
 from git_stage_batch.batch.ownership.replacement_units import ReplacementUnit
 from git_stage_batch.batch.source.advancement import (
+    advance_batch_source_for_file_with_provenance,
     advance_source_lines_preserving_existing_presence,
 )
 from git_stage_batch.batch.line_matching.lineage import BatchSourceLineage, LineageRun
@@ -322,6 +324,51 @@ def test_merge_presence_claims_keeps_strongest_baseline_reference_sides():
         before_content=b"before\n",
         has_before_line=True,
     )
+
+
+def test_advance_batch_source_reads_dangling_symlink(
+    monkeypatch,
+    tmp_path,
+):
+    """A dangling symlink remains a readable Git worktree object."""
+    (tmp_path / "link").symlink_to("missing-new-target")
+    loaded_paths: list[str] = []
+    monkeypatch.setattr(
+        advancement_module,
+        "get_git_repository_root_path",
+        lambda: tmp_path,
+    )
+    monkeypatch.setattr(
+        advancement_module,
+        "read_git_object_buffer_or_none",
+        lambda _revision: LineBuffer.from_bytes(b"missing-old-target"),
+    )
+
+    def load_working_tree_file(path: str) -> LineBuffer:
+        loaded_paths.append(path)
+        return LineBuffer.from_bytes(b"missing-new-target")
+
+    monkeypatch.setattr(
+        advancement_module,
+        "load_working_tree_file_as_buffer",
+        load_working_tree_file,
+    )
+    monkeypatch.setattr(
+        advancement_module,
+        "create_batch_source_commit",
+        lambda _path, *, file_buffer_override: "new-source",
+    )
+
+    with advance_batch_source_for_file_with_provenance(
+        "batch",
+        "link",
+        "old-source",
+        BatchOwnership.from_presence_lines([]),
+    ) as result:
+        assert result.batch_source_commit == "new-source"
+        assert result.source_buffer.to_bytes() == b"missing-new-target"
+
+    assert loaded_paths == ["link"]
 
 
 def test_merge_ignores_boolean_replacement_unit_deletion_indices():

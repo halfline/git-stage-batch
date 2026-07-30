@@ -10,10 +10,14 @@ from ...i18n import _
 from ..selection.selected_change_display import show_selected_change
 
 
-def restart_iteration_pass(*, quiet: bool = False) -> None:
+def restart_iteration_pass(
+    *,
+    current_iteration: int,
+    quiet: bool = False,
+) -> None:
     """Clear iteration state and select the first available change."""
     clear_iteration_state()
-    increment_iteration_count()
+    increment_iteration_count(current_iteration)
     auto_add_untracked_files(show_progress=not quiet)
 
     try:

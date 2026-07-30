@@ -13,7 +13,7 @@ from git_stage_batch.data.selected_change.store import (
     read_selected_change_kind,
 )
 from git_stage_batch.data.selected_change.paths import get_selected_change_file_path
-from git_stage_batch.exceptions import NoMoreHunks
+from git_stage_batch.exceptions import CommandError, NoMoreHunks
 
 import subprocess
 
@@ -28,8 +28,10 @@ from git_stage_batch.utils.paths import (
     get_abort_snapshot_list_file_path,
     get_abort_snapshots_directory_path,
     get_abort_stash_file_path,
+    get_auto_advance_config_file_path,
     get_block_list_file_path,
     get_batches_directory_path,
+    get_iteration_count_file_path,
     get_selected_change_clear_reason_file_path,
     get_session_batch_sources_file_path,
     get_state_directory_path,
@@ -69,6 +71,34 @@ class TestCommandAgain:
 
         command_again(quiet=True)
         assert get_iteration_count() == 3
+
+    def test_again_reports_corrupt_iteration_count(self, temp_git_repo):
+        """Again should reject a corrupt counter before changing session state."""
+        (temp_git_repo / "README.md").write_text("# Test\nmodified\n")
+        command_start(quiet=True)
+        progress_sentinel = (
+            get_state_directory_path()
+            / "session"
+            / "progress"
+            / "sentinel"
+        )
+        progress_sentinel.parent.mkdir(parents=True, exist_ok=True)
+        progress_sentinel.write_text("keep\n", encoding="utf-8")
+        auto_advance_path = get_auto_advance_config_file_path()
+        original_auto_advance = auto_advance_path.read_bytes()
+        write_text_file_contents(
+            get_iteration_count_file_path(),
+            "not-an-integer",
+        )
+
+        with pytest.raises(
+            CommandError,
+            match="Session iteration count is invalid",
+        ):
+            command_again(quiet=True, auto_advance=False)
+
+        assert progress_sentinel.read_text(encoding="utf-8") == "keep\n"
+        assert auto_advance_path.read_bytes() == original_auto_advance
 
     def test_again_clears_iteration_state(self, temp_git_repo):
         """Test that again clears iteration-specific state but preserves permanent state."""

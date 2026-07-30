@@ -8,7 +8,11 @@ from ..data.auto_advance import DEFAULT_AUTO_ADVANCE, write_auto_advance_default
 from ..data.hunk_tracking import fetch_next_change
 from ..data.selected_change.lifecycle import clear_selected_change_state_files
 from ..data.file_tracking import auto_add_untracked_files
-from ..data.session import clear_session_state, initialize_abort_state
+from ..data.session import (
+    clear_session_state,
+    get_iteration_count,
+    initialize_abort_state,
+)
 from ..data.session_marker import session_is_active
 from ..data.session_ownership import (
     claim_session_ownership,
@@ -46,10 +50,14 @@ def command_start(
 
     # If session already exists, run again logic instead
     if session_is_active():
+        current_iteration = get_iteration_count()
         claim_session_ownership()
         if auto_advance is not None:
             write_auto_advance_default(auto_advance)
-        restart_iteration_pass(quiet=quiet)
+        restart_iteration_pass(
+            current_iteration=current_iteration,
+            quiet=quiet,
+        )
         return
 
     # Batch reviews may be shown outside an active session. A new session must

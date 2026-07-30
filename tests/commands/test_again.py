@@ -7,6 +7,7 @@ from git_stage_batch.commands.include import command_include
 from git_stage_batch.commands.show import command_show, command_show_file_list
 from git_stage_batch.data.file_review.state import read_last_file_review_state
 from git_stage_batch.data.hunk_tracking import fetch_next_change
+from git_stage_batch.data.session import get_iteration_count
 from git_stage_batch.data.selected_change.store import (
     SelectedChangeKind,
     read_selected_change_kind,
@@ -59,6 +60,18 @@ def temp_git_repo(tmp_path, monkeypatch):
 
 class TestCommandAgain:
     """Tests for again command."""
+    def test_again_advances_session_iteration(self, temp_git_repo):
+        """Again should report each fresh pass as the next iteration."""
+        (temp_git_repo / "README.md").write_text("# Test\nmodified\n")
+
+        command_start(quiet=True)
+        assert get_iteration_count() == 1
+
+        command_again(quiet=True)
+        assert get_iteration_count() == 2
+
+        command_again(quiet=True)
+        assert get_iteration_count() == 3
 
     def test_again_clears_iteration_state(self, temp_git_repo):
         """Test that again clears iteration-specific state but preserves permanent state."""

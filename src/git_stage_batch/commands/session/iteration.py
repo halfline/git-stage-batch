@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ...data.file_tracking import auto_add_untracked_files
 from ...data.hunk_tracking import fetch_next_change
-from ...data.session import clear_iteration_state
+from ...data.session import clear_iteration_state, increment_iteration_count
 from ...exceptions import NoMoreHunks
 from ...i18n import _
 from ..selection.selected_change_display import show_selected_change
@@ -13,6 +13,7 @@ from ..selection.selected_change_display import show_selected_change
 def restart_iteration_pass(*, quiet: bool = False) -> None:
     """Clear iteration state and select the first available change."""
     clear_iteration_state()
+    increment_iteration_count()
     auto_add_untracked_files(show_progress=not quiet)
 
     try:

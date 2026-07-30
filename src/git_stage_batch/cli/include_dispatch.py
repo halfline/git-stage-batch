@@ -18,6 +18,7 @@ from ..commands.include import (
     command_include_to_batch,
 )
 from ..commands.include_from import command_include_from_batch
+from ..data.file_review.records import FileReviewAction
 from ..exceptions import CommandError
 from ..i18n import _
 from .file_scope import resolve_batch_file_scope, resolve_live_file_scope
@@ -39,6 +40,8 @@ def _dispatch_include_replacement(args: argparse.Namespace) -> None:
             args.from_batch,
             args.file,
             args.file_patterns,
+            selected_action=FileReviewAction.INCLUDE_FROM_BATCH,
+            command_name="include",
         )
         resolved_file = resolved_batch_scope.require_single_file(
             _("Cannot use --lines with multiple files.")
@@ -52,7 +55,11 @@ def _dispatch_include_replacement(args: argparse.Namespace) -> None:
         )
         return
     if args.line_ids and not args.from_batch and not args.to_batch:
-        resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
+        resolved_live_scope = resolve_live_file_scope(
+            args.file,
+            args.file_patterns,
+            selected_action=FileReviewAction.INCLUDE,
+        )
         resolved_file = resolved_live_scope.require_single_file(
             _("Cannot use --lines with multiple files.")
         )
@@ -74,6 +81,7 @@ def _dispatch_include_replacement(args: argparse.Namespace) -> None:
             args.file,
             args.file_patterns,
             include_staged=True,
+            selected_action=FileReviewAction.INCLUDE,
         )
         if resolved_live_scope.is_implicit:
             raise CommandError(
@@ -116,6 +124,8 @@ def dispatch_include_command(args: argparse.Namespace) -> None:
             args.from_batch,
             args.file,
             args.file_patterns,
+            selected_action=FileReviewAction.INCLUDE_FROM_BATCH,
+            command_name="include",
         )
         run_for_each_resolved_file(
             resolved_batch_scope,
@@ -129,7 +139,11 @@ def dispatch_include_command(args: argparse.Namespace) -> None:
             worktree_paths=resolved_batch_scope.files,
         )
     elif args.to_batch:
-        resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
+        resolved_live_scope = resolve_live_file_scope(
+            args.file,
+            args.file_patterns,
+            selected_action=FileReviewAction.INCLUDE_TO_BATCH,
+        )
         run_for_each_resolved_file(
             resolved_live_scope,
             lambda file: command_include_to_batch(
@@ -142,7 +156,11 @@ def dispatch_include_command(args: argparse.Namespace) -> None:
             undo_operation=f"include --to {shlex.quote(args.to_batch)}",
         )
     elif args.line_ids:
-        resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
+        resolved_live_scope = resolve_live_file_scope(
+            args.file,
+            args.file_patterns,
+            selected_action=FileReviewAction.INCLUDE,
+        )
         resolved_file = resolved_live_scope.require_single_file(
             _("Cannot use --lines with multiple files.")
         )
@@ -152,7 +170,11 @@ def dispatch_include_command(args: argparse.Namespace) -> None:
             auto_advance=args.auto_advance,
         )
     else:
-        resolved_live_scope = resolve_live_file_scope(args.file, args.file_patterns)
+        resolved_live_scope = resolve_live_file_scope(
+            args.file,
+            args.file_patterns,
+            selected_action=FileReviewAction.INCLUDE,
+        )
         if resolved_live_scope.is_multiple:
             include_each_resolved_file(
                 list(resolved_live_scope.files),

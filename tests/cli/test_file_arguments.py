@@ -24,8 +24,16 @@ def test_normalize_parsed_file_arguments_preserves_absent_file_patterns():
     assert args.file_patterns is None
 
 
-def test_normalize_parsed_file_arguments_marks_pathless_file_argument():
+def test_normalize_parsed_file_arguments_preserves_pathless_and_explicit_groups():
     args = argparse.Namespace(file=[["src/parser.py"], []], file_patterns=None)
+
+    normalize_parsed_file_arguments(args)
+
+    assert args.file == ["src/parser.py", ""]
+
+
+def test_normalize_parsed_file_arguments_collapses_only_pathless_groups():
+    args = argparse.Namespace(file=[[], []], file_patterns=None)
 
     normalize_parsed_file_arguments(args)
 

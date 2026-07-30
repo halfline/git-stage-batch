@@ -6,13 +6,18 @@ import argparse
 
 from ..commands.file_scope.multi_file_actions import skip_each_resolved_file
 from ..commands.skip import command_skip, command_skip_file, command_skip_line
+from ..data.file_review.records import FileReviewAction
 from ..i18n import _
 from .file_scope import resolve_live_file_scope
 
 
 def dispatch_skip_command(args: argparse.Namespace) -> None:
     """Dispatch parsed skip arguments."""
-    resolved_file_scope = resolve_live_file_scope(args.file, args.file_patterns)
+    resolved_file_scope = resolve_live_file_scope(
+        args.file,
+        args.file_patterns,
+        selected_action=FileReviewAction.SKIP,
+    )
     if args.line_ids:
         resolved_file = resolved_file_scope.require_single_file(
             _("Cannot use --lines with multiple files.")

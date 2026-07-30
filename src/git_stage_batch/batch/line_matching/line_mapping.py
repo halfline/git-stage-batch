@@ -25,11 +25,9 @@ class LineMapping:
     source_to_target: IntVector
     target_to_source: IntVector
     _closed: bool = field(default=False, init=False, repr=False)
-    _close_on_exit: bool = field(default=True, init=False, repr=False)
 
     def __enter__(self) -> LineMapping:
         self._require_open()
-        self._close_on_exit = True
         return self
 
     def __exit__(
@@ -38,14 +36,7 @@ class LineMapping:
         exc: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        if self._close_on_exit:
-            self.close()
-
-    def detach(self) -> LineMapping:
-        """Transfer ownership out of the current context manager."""
-        self._require_open()
-        self._close_on_exit = False
-        return self
+        self.close()
 
     def close(self) -> None:
         """Close owned vector storage."""

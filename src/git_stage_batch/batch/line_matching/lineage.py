@@ -283,16 +283,6 @@ class BatchSourceLineage:
         )
         self._closed = False
 
-    @classmethod
-    def from_runs(
-        cls,
-        *,
-        source_runs: Iterable[LineageRun] = (),
-        working_runs: Iterable[LineageRun] = (),
-        spool_dir: str | Path | None = None,
-    ) -> BatchSourceLineage:
-        return cls(source_runs, working_runs, spool_dir=spool_dir)
-
     @property
     def byte_count(self) -> int:
         if self._closed:
@@ -340,13 +330,6 @@ class BatchSourceLineage:
     def translate_working_line(self, line_number: int) -> int | None:
         self._require_open()
         return self._working_runs.translate_line(line_number)
-
-    def translate_working_selection(
-        self,
-        selection: LineSelection | Iterable[int],
-    ) -> LineRanges:
-        self._require_open()
-        return self._working_runs.translate_selection(selection)
 
     def close(self) -> None:
         if self._closed:

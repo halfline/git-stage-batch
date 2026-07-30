@@ -187,19 +187,3 @@ def annotate_with_batch_source_working_lines(
         spool_dir=spool_dir,
     ) as mapping:
         return annotate_with_batch_source_mapping(line_changes, mapping)
-
-
-def annotate_with_batch_source_lines(
-    line_changes: LineLevelChange,
-    *,
-    batch_source_lines: Sequence[bytes],
-    working_lines: Sequence[bytes],
-    spool_dir: str | Path | None = None,
-) -> LineLevelChange:
-    """Annotate LineLevelChange from indexed batch-source and working lines."""
-    with match_lines(
-        batch_source_lines,
-        working_lines,
-        spool_dir=spool_dir,
-    ) as mapping:
-        return annotate_with_batch_source_mapping(line_changes, mapping)

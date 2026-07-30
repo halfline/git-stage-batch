@@ -20,24 +20,23 @@ Before starting, verify:
 2. Branches and tags have been fetched from `origin`, `main` has been updated
    with a fast-forward-only pull, and local `main` and `origin/main` resolve
    to the same SHA.
-3. All tests pass (`uv run pytest -n auto`).
-4. The new version follows the project convention and is newer than
+3. The new version follows the project convention and is newer than
    `VERSION`.
-5. The proposed tag, GitHub release, and PyPI version do not exist. Treat an
+4. The proposed tag, GitHub release, and PyPI version do not exist. Treat an
    HTTP 404 from PyPI as absence, but do not mistake a network failure for
    absence.
-6. `gh repo view` identifies `halfline/git-stage-batch` as the current
+5. `gh repo view` identifies `halfline/git-stage-batch` as the current
    repository.
-7. `docs/releasing.md` and `.github/workflows/release.yml` describe a workflow
+6. `docs/releasing.md` and `.github/workflows/release.yml` describe a workflow
    triggered by a published release, using the `pypi` environment, and
    granting `id-token: write` only to the publish job.
-8. The repository has a `pypi` GitHub environment:
+7. The repository has a `pypi` GitHub environment:
 
    ```
    gh api repos/{owner}/{repo}/environments/pypi
    ```
 
-9. For the first release through Trusted Publishing, PyPI has the publisher
+8. For the first release through Trusted Publishing, PyPI has the publisher
    documented in `docs/releasing.md`. A successful earlier `Release` workflow
    run is sufficient evidence on later releases.
 
@@ -71,12 +70,31 @@ Follow the commit-message convention in `CONTRIBUTING.md`.
 
 ### 3. Build the distributions
 
+Prepare the same development and build environment used by the release
+workflow:
+
 ```
-rm -rf dist/
-uv build
+uv venv --allow-existing
+uv pip install --group dev
+uv sync --all-groups
 ```
 
-Verify that a `.whl` and `.tar.gz` appeared in `dist/`.
+Run the full test suite:
+
+```
+uv run pytest -n auto
+```
+
+Build into a new temporary directory rather than the repository's potentially
+stale `dist/` directory:
+
+```
+release_dist=$(mktemp -d)
+uv build --out-dir "$release_dist"
+```
+
+Require that directory to contain a wheel and source distribution for exactly
+the new version.
 
 ### 4. Push the branch and open a PR
 

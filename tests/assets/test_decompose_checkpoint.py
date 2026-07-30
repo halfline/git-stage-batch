@@ -20,6 +20,14 @@ CODEX_HELPER = (
     / "scripts"
     / "decompose-checkpoint.py"
 )
+CLAUDE_HELPER = (
+    PROJECT_ROOT
+    / "assets"
+    / "claude-skills"
+    / "decompose-and-commit-unstaged-changes"
+    / "scripts"
+    / "decompose-checkpoint.py"
+)
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -61,6 +69,11 @@ def git_repo(tmp_path: Path) -> Path:
     _git(repo, "config", "user.email", "test@example.com")
     _git(repo, "commit", "--allow-empty", "-m", "Base")
     return repo
+
+
+def test_codex_and_claude_decompose_helpers_match() -> None:
+    """Assistant variants should enforce identical checkpoint behavior."""
+    assert CODEX_HELPER.read_bytes() == CLAUDE_HELPER.read_bytes()
 
 
 def test_resume_start_preserves_checkpoint_progress_and_base(

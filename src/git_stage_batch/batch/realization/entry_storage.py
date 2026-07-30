@@ -207,16 +207,6 @@ class RealizedEntries(Sequence[_RealizedEntry]):
         start, stop = self._validated_range(start, stop)
         yield from self._provenance.runs(start, stop)
 
-    @property
-    def provenance_run_count(self) -> int:
-        self._require_open()
-        return len(self._provenance)
-
-    @property
-    def flushed_provenance_run_count(self) -> int:
-        self._require_open()
-        return self._provenance.flushed_run_count
-
     def content_at(self, index: int) -> LineLike:
         self._require_open()
         return self._editor[self._normalize_index(index)]

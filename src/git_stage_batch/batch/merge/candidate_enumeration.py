@@ -95,7 +95,6 @@ def _coordinate_strategy_candidate_set(
                     _MergeResolutionDecision(
                         ambiguity_key=_COORDINATE_STRATEGY_AMBIGUITY_KEY,
                         choice_index=choice_index.value,
-                        choice_label=summary,
                     ),
                 ),
                 summary=summary,
@@ -301,7 +300,6 @@ def _replacement_origin_candidate_set(
                     _MergeResolutionDecision(
                         ambiguity_key=key,
                         choice_index=choice.choice_index,
-                        choice_label=summary,
                     ),
                 ),
                 summary=summary,
@@ -391,7 +389,6 @@ def _presence_candidate_set(
                     _MergeResolutionDecision(
                         ambiguity_key=presence_key,
                         choice_index=choice.choice_index,
-                        choice_label=summary,
                     ),
                 ),
                 summary=summary,
@@ -508,7 +505,6 @@ def _absence_candidate_set(
                         _MergeResolutionDecision(
                             ambiguity_key=ambiguity_key,
                             choice_index=choice.choice_index,
-                            choice_label=summary,
                         ),
                     ),
                     summary=summary,

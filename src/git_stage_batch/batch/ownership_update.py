@@ -35,9 +35,6 @@ class PreparedBatchUpdate:
     batch_source_commit: str | None
     """The batch source commit to use for this file."""
 
-    ownership_before: BatchOwnership | None
-    """Ownership before applying this update, possibly remapped to new source."""
-
     ownership_after: BatchOwnership
     """Ownership after merging new selection with existing ownership."""
 
@@ -134,40 +131,6 @@ def _ownership_has_replacement_origin_references(
     return False
 
 
-def prepare_batch_ownership_update_for_selection(
-    batch_name: str,
-    file_path: str,
-    current_batch_source_commit: str | None,
-    existing_ownership: BatchOwnership | None,
-    selected_lines: list[LineEntry],
-    *,
-    hunk_lines: Sequence[LineEntry] | None = None,
-    replacement_line_runs: Iterable[ReplacementLineRun] | None = None,
-    replacement_origin_line_runs: Iterable[ReplacementLineRun] | None = None,
-    reference_source_lines: Sequence[bytes] | None = None,
-    reference_target_lines: Sequence[bytes] | None = None,
-    replacement_origin_source_lines: Sequence[bytes] | None = None,
-) -> PreparedBatchUpdate:
-    """Prepare complete ownership update after stale-source handling."""
-    refreshed = ensure_batch_source_current_for_selection(
-        batch_name=batch_name,
-        file_path=file_path,
-        current_batch_source_commit=current_batch_source_commit,
-        existing_ownership=existing_ownership,
-        selected_lines=selected_lines,
-        coordinate_lines=hunk_lines,
-    )
-    return _prepare_batch_ownership_update_from_refreshed_selection(
-        refreshed,
-        hunk_lines=hunk_lines,
-        replacement_line_runs=replacement_line_runs,
-        replacement_origin_line_runs=replacement_origin_line_runs,
-        reference_source_lines=reference_source_lines,
-        reference_target_lines=reference_target_lines,
-        replacement_origin_source_lines=replacement_origin_source_lines,
-    )
-
-
 def _prepare_batch_ownership_update_from_refreshed_selection(
     refreshed: RefreshedBatchSelection,
     *,
@@ -227,7 +190,6 @@ def _prepare_batch_ownership_update_from_refreshed_selection(
 
     return PreparedBatchUpdate(
         batch_source_commit=refreshed.batch_source_commit,
-        ownership_before=refreshed.ownership,
         ownership_after=merged_ownership
     )
 

@@ -129,11 +129,6 @@ class ProvenanceRunTable:
         return self._closed
 
     @property
-    def flushed_run_count(self) -> int:
-        self._require_open()
-        return len(self._runs)
-
-    @property
     def pending_run_count(self) -> int:
         self._require_open()
         return 1 if self._pending_run is not None else 0

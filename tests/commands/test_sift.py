@@ -1,5 +1,6 @@
 """Tests for sift command."""
 
+import os
 from pathlib import Path
 
 from git_stage_batch.batch.merge.merge import merge_batch_from_line_sequences_as_buffer
@@ -38,6 +39,14 @@ from git_stage_batch.utils.file_job_workspace import FileJobWorkspace
 from tests.batch.ownership.metadata_helpers import (
     acquire_ownership_for_metadata,
     reject_materialized_ownership_metadata as _reject_materialized_ownership_metadata,
+)
+
+
+_RUNNING_UNDER_XDIST = "PYTEST_XDIST_WORKER" in os.environ
+_PROCESS_SIFT_TEST = pytest.mark.skipif(
+    sys.platform not in {"darwin", "linux"}
+    or (sys.platform == "darwin" and _RUNNING_UNDER_XDIST),
+    reason="macOS process sift coverage requires pytest -n 0",
 )
 
 
@@ -1228,10 +1237,7 @@ class TestSiftFileJobs:
         assert not batch_exists("empty-destination")
         assert read_batch_metadata("empty-source")["note"] == "changed after snapshot"
 
-    @pytest.mark.skipif(
-        sys.platform != "linux",
-        reason="process sift execution is supported on Linux only",
-    )
+    @_PROCESS_SIFT_TEST
     def test_forced_process_matches_inline_publication(
         self,
         temp_git_repo,
@@ -1448,10 +1454,7 @@ class TestSiftFileJobs:
         assert read_batch_metadata("raced-destination")["files"] == {}
         assert not any(name.startswith("sift-tmp-") for name in list_batch_names())
 
-    @pytest.mark.skipif(
-        sys.platform != "linux",
-        reason="process sift execution is supported on Linux only",
-    )
+    @_PROCESS_SIFT_TEST
     def test_process_sift_preserves_added_text_boundaries(
         self,
         temp_git_repo,
@@ -1487,10 +1490,7 @@ class TestSiftFileJobs:
             for file_path in expected_content
         } == expected_content
 
-    @pytest.mark.skipif(
-        sys.platform != "linux",
-        reason="process sift execution is supported on Linux only",
-    )
+    @_PROCESS_SIFT_TEST
     def test_process_sift_preserves_text_deletions(
         self,
         temp_git_repo,

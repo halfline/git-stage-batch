@@ -288,6 +288,42 @@ def test_merge_deduplicated_deletions_keeps_stronger_baseline_reference():
     ]
 
 
+def test_merge_presence_claims_keeps_strongest_baseline_reference_sides():
+    """Overlapping presence claims should retain both useful boundaries."""
+    existing_reference = BaselineReference(
+        after_line=7,
+        after_content=b"after\n",
+        before_line=None,
+        has_before_line=False,
+    )
+    new_reference = BaselineReference(
+        after_line=None,
+        after_content=None,
+        has_after_line=False,
+        before_line=11,
+        before_content=b"before\n",
+        has_before_line=True,
+    )
+    existing = BatchOwnership.from_presence_lines(
+        ["1"],
+        baseline_references={1: existing_reference},
+    )
+    new = BatchOwnership.from_presence_lines(
+        ["1"],
+        baseline_references={1: new_reference},
+    )
+
+    merged = merge_batch_ownership(existing, new)
+
+    assert merged.presence_baseline_reference(1) == BaselineReference(
+        after_line=7,
+        after_content=b"after\n",
+        before_line=11,
+        before_content=b"before\n",
+        has_before_line=True,
+    )
+
+
 def test_merge_ignores_boolean_replacement_unit_deletion_indices():
     """JSON booleans should not be accepted as deletion indexes."""
     new = BatchOwnership.from_presence_lines(

@@ -122,10 +122,16 @@ def merge_batch_ownership(existing: BatchOwnership, new: BatchOwnership) -> Batc
     existing_claimed = existing.presence_line_set()
     new_claimed = new.presence_line_set()
     combined_claimed = existing_claimed.union(new_claimed)
-    combined_presence_references = {
-        **existing.presence_baseline_references(),
-        **new.presence_baseline_references(),
-    }
+    combined_presence_references = existing.presence_baseline_references()
+    for source_line, new_reference in (
+        new.presence_baseline_references().items()
+    ):
+        merged_reference = _merge_baseline_references(
+            combined_presence_references.get(source_line),
+            new_reference,
+        )
+        if merged_reference is not None:
+            combined_presence_references[source_line] = merged_reference
 
     combined_deletions: list[AbsenceClaim] = []
     deletion_index_by_signature: dict[_AbsenceSignature, int] = {}

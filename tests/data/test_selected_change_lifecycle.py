@@ -1,6 +1,5 @@
 """Tests for selected-change lifecycle state cleanup."""
 
-import json
 import subprocess
 
 import pytest
@@ -8,13 +7,12 @@ import pytest
 from git_stage_batch.data.selected_change.lifecycle import (
     clear_selected_change_state_files,
 )
+from git_stage_batch.utils.file_io import write_text_file_contents
 from git_stage_batch.utils.paths import (
-    ensure_processed_state_directory_exists,
-    ensure_selected_state_directory_exists,
     ensure_state_directory_exists,
+    get_batch_metadata_file_path,
     get_index_snapshot_file_path,
     get_line_changes_json_file_path,
-    get_processed_batch_ids_file_path,
     get_processed_include_ids_file_path,
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
@@ -62,25 +60,14 @@ class TestClearSelectedChangeStateFiles:
 
     def test_clears_per_selection_state_files(self, temp_git_repo):
         """Selected-change cleanup should leave global batch state intact."""
-        ensure_selected_state_directory_exists()
-        ensure_processed_state_directory_exists()
-        get_selected_hunk_patch_file_path().write_text("patch")
-        get_selected_hunk_hash_file_path().write_text("hash")
-        get_line_changes_json_file_path().write_text("{}")
-        get_index_snapshot_file_path().write_text("index")
-        get_working_tree_snapshot_file_path().write_text("tree")
-        get_processed_include_ids_file_path().write_text("1\n2\n")
-        get_processed_batch_ids_file_path().write_text(
-            json.dumps(
-                {
-                    "test.py": {
-                        "presence_claims": [
-                            {"source_lines": ["1", "2"]},
-                        ],
-                    },
-                }
-            )
-        )
+        write_text_file_contents(get_selected_hunk_patch_file_path(), "patch")
+        write_text_file_contents(get_selected_hunk_hash_file_path(), "hash")
+        write_text_file_contents(get_line_changes_json_file_path(), "{}")
+        write_text_file_contents(get_index_snapshot_file_path(), "index")
+        write_text_file_contents(get_working_tree_snapshot_file_path(), "tree")
+        write_text_file_contents(get_processed_include_ids_file_path(), "1\n2\n")
+        batch_metadata_path = get_batch_metadata_file_path("test-batch")
+        write_text_file_contents(batch_metadata_path, "{}")
 
         clear_selected_change_state_files()
 
@@ -90,7 +77,7 @@ class TestClearSelectedChangeStateFiles:
         assert not get_index_snapshot_file_path().exists()
         assert not get_working_tree_snapshot_file_path().exists()
         assert not get_processed_include_ids_file_path().exists()
-        assert get_processed_batch_ids_file_path().exists()
+        assert batch_metadata_path.exists()
 
     def test_handles_missing_files(self, temp_git_repo):
         """Selected-change cleanup should tolerate already-missing files."""

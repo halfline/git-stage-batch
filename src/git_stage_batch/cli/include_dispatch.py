@@ -127,6 +127,7 @@ def dispatch_include_command(args: argparse.Namespace) -> None:
             args.file_patterns,
             selected_action=FileReviewAction.INCLUDE_FROM_BATCH,
             command_name="include",
+            line_ids=args.line_ids,
         )
         run_for_each_resolved_file(
             resolved_batch_scope,

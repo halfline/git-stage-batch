@@ -50,14 +50,14 @@ def normalize_parsed_file_arguments(args: argparse.Namespace) -> None:
         return
 
     file_groups = args.file
-    if file_groups and not file_groups[-1]:
+    if all(not group for group in file_groups):
         args.file = ""
         return
 
     file_values = [
         value
         for group in file_groups
-        for value in group
+        for value in (group or [""])
     ]
 
     if len(file_values) == 1:

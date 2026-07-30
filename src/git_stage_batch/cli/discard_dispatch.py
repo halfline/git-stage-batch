@@ -119,6 +119,7 @@ def dispatch_discard_command(args: argparse.Namespace) -> None:
             args.file,
             args.file_patterns,
             selected_action=FileReviewAction.DISCARD_TO_BATCH,
+            line_ids=args.line_ids,
         )
         if resolved_live_scope.is_multiple and args.line_ids is None:
             discard_to_batch_each_resolved_file(

@@ -467,15 +467,32 @@ def get_iteration_count() -> int:
     count_path = get_iteration_count_file_path()
     if not count_path.exists():
         return 1
-    return int(read_text_file_contents(count_path).strip())
+    try:
+        count = int(read_text_file_contents(count_path).strip())
+    except ValueError as error:
+        raise CommandError(
+            _("Session iteration count is invalid: {path}").format(
+                path=count_path,
+            )
+        ) from error
+    if count < 1:
+        raise CommandError(
+            _("Session iteration count is invalid: {path}").format(
+                path=count_path,
+            )
+        )
+    return count
 
 
-def increment_iteration_count() -> None:
+def increment_iteration_count(current_count: int | None = None) -> None:
     """Increment the iteration counter.
 
     Called when the user runs 'again' to restart from the beginning.
+
+    Args:
+        current_count: A count validated before iteration state was cleared.
     """
-    selected = get_iteration_count()
+    selected = get_iteration_count() if current_count is None else current_count
     write_text_file_contents(get_iteration_count_file_path(), str(selected + 1))
 
 

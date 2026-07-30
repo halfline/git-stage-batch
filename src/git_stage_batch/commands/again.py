@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ..data.auto_advance import write_auto_advance_default
-from ..data.session import require_session_started
+from ..data.session import get_iteration_count, require_session_started
 from ..utils.git_repository import require_git_repository
 from ..utils.paths import ensure_state_directory_exists
 from .session.iteration import restart_iteration_pass
@@ -21,7 +21,12 @@ def command_again(*, quiet: bool = False, auto_advance: bool | None = None) -> N
     require_session_started()
     ensure_state_directory_exists()
 
+    current_iteration = get_iteration_count()
+
     if auto_advance is not None:
         write_auto_advance_default(auto_advance)
 
-    restart_iteration_pass(quiet=quiet)
+    restart_iteration_pass(
+        current_iteration=current_iteration,
+        quiet=quiet,
+    )

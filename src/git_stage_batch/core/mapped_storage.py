@@ -372,11 +372,6 @@ class MappedRecordVector(Sequence[tuple[int, ...]]):
         return self._capacity
 
     @property
-    def record_size(self) -> int:
-        """Return bytes per record."""
-        return self._struct.size
-
-    @property
     def byte_count(self) -> int:
         """Return allocated storage bytes."""
         return 0 if self._closed else self._byte_count
@@ -661,23 +656,7 @@ class ManagedMappedResources:
         self._resources: list[_MappedResource] = []
         self._current_bytes = 0
         self._high_water_bytes = 0
-        self._total_allocated_bytes = 0
         self._closed = False
-
-    @property
-    def current_bytes(self) -> int:
-        """Return bytes currently owned by open tracked resources."""
-        return self._current_bytes
-
-    @property
-    def high_water_bytes(self) -> int:
-        """Return the highest simultaneously tracked byte count."""
-        return self._high_water_bytes
-
-    @property
-    def total_allocated_bytes(self) -> int:
-        """Return total bytes ever allocated through this manager."""
-        return self._total_allocated_bytes
 
     def track(self, resource: _MappedResourceT) -> _MappedResourceT:
         """Track a storage resource for deterministic cleanup."""
@@ -685,7 +664,6 @@ class ManagedMappedResources:
         self._resources.append(resource)
         byte_count = _resource_byte_count(resource)
         self._current_bytes += byte_count
-        self._total_allocated_bytes += byte_count
         self._high_water_bytes = max(self._high_water_bytes, self._current_bytes)
         return resource
 

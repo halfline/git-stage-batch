@@ -14,6 +14,7 @@ import gc
 import hashlib
 import json
 import math
+import mmap
 import os
 from pathlib import Path
 import platform
@@ -491,8 +492,8 @@ def _measure_buffer_loading(state: _BufferLoadingState) -> dict[str, Any]:
         "source_lines": len(state.source),
         "target_bytes": state.target.byte_count,
         "target_lines": len(state.target),
-        "uses_mapped_storage": state.source.uses_mapped_storage
-        or state.target.uses_mapped_storage,
+        "uses_mapped_storage": isinstance(state.source._data, mmap.mmap)
+        or isinstance(state.target._data, mmap.mmap),
     }
 
 

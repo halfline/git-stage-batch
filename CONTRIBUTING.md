@@ -30,7 +30,8 @@ uv sync
 uv run pytest -n auto
 
 # Run lint and strict type checks
-uv run ruff check src tests
+uv run ruff check src tests scripts
+uv run python scripts/check_dead_code.py
 uv run python scripts/check_type_hygiene.py
 uv run mypy
 ```
@@ -45,6 +46,10 @@ other structured containers concrete rather than falling back to bare
 `dict`, `list`, or `tuple` annotations. The type-hygiene check also prevents
 explicit `Any` from spreading beyond the small set of reviewed serialization,
 reflection, and third-party API boundaries.
+
+The dead-code check analyzes the production package without treating tests as
+callers. It rejects stale exceptions when an indirectly used schema field or
+protocol method no longer needs one.
 
 ## Find the Code for a Change
 

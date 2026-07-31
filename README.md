@@ -76,13 +76,13 @@ claude "/commit-unstaged-changes"
 
 Omit `--filter` when installing Claude skills if you also want the larger
 `/decompose-and-commit-unstaged-changes` workflow and the standalone
-`/refine-history BASE_SHA` and `/refine-commit-messages BASE_SHA` workflows.
-The latter rewrites noncompliant messages by default while preserving every
-patch and boundary; use `audit BASE_SHA` for a report without history changes.
-Selecting `refine-history` installs its message-refinement dependency, and
-selecting decomposition installs both. Mutating refinement accepts only a
-clean, linear, unpublished range; use the corresponding `resume` form to
-continue an interrupted run.
+`/refine-history BASE_SHA`, `/refine-commit-messages BASE_SHA`, and
+`/publish-unpushed-commits` workflows. Publication creates ready-for-review
+GitHub pull requests or GitLab merge requests by default, supports explicit
+`draft` and `audit` modes, handles forks and provider-native stacks, and never
+merges. Selecting publication or decomposition installs both refinement
+dependencies. Mutating refinement and publication accept only a clean, linear,
+unpublished range and provide a `resume` form for interruption.
 
 ## Example Workflow
 

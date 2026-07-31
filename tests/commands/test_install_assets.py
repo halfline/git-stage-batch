@@ -81,6 +81,13 @@ class TestCommandInstallAssets:
         claude_refine = (
             temp_git_repo / ".claude" / "skills" / "refine-history" / "SKILL.md"
         )
+        claude_publish = (
+            temp_git_repo
+            / ".claude"
+            / "skills"
+            / "publish-unpushed-commits"
+            / "SKILL.md"
+        )
         codex_internal_drafter = (
             temp_git_repo / ".agents" / "internal" / "commit-message-drafter.md"
         )
@@ -115,6 +122,7 @@ class TestCommandInstallAssets:
         assert claude_decompose.exists()
         assert claude_messages.exists()
         assert claude_refine.exists()
+        assert claude_publish.exists()
         assert codex_internal_drafter.exists()
         assert codex_unstaged.exists()
         assert codex_staged.exists()
@@ -131,8 +139,8 @@ class TestCommandInstallAssets:
         ) in captured.err
         assert (
             "Installed Claude skills: commit-staged-changes, commit-unstaged-changes, "
-            "decompose-and-commit-unstaged-changes, refine-commit-messages, "
-            "refine-history"
+            "decompose-and-commit-unstaged-changes, publish-unpushed-commits, "
+            "refine-commit-messages, refine-history"
         ) in captured.err
         assert (
             "Installed Codex skills: commit-staged-changes, commit-unstaged-changes, "
@@ -199,6 +207,13 @@ class TestCommandInstallAssets:
         refine_skill = (
             temp_git_repo / ".claude" / "skills" / "refine-history" / "SKILL.md"
         )
+        publish_skill = (
+            temp_git_repo
+            / ".claude"
+            / "skills"
+            / "publish-unpushed-commits"
+            / "SKILL.md"
+        )
         decompose_agent = (
             temp_git_repo / ".claude" / "agents" / "decompose-batch-peeler.md"
         )
@@ -208,6 +223,7 @@ class TestCommandInstallAssets:
         assert decompose_skill.exists()
         assert message_skill.exists()
         assert refine_skill.exists()
+        assert publish_skill.exists()
         assert decompose_agent.exists()
         assert "name: commit-staged-changes" in staged_skill.read_text(encoding="utf-8")
         assert "name: commit-unstaged-changes" in unstaged_skill.read_text(
@@ -221,8 +237,8 @@ class TestCommandInstallAssets:
         captured = capsys.readouterr()
         assert (
             "Installed Claude skills: commit-staged-changes, commit-unstaged-changes, "
-            "decompose-and-commit-unstaged-changes, refine-commit-messages, "
-            "refine-history"
+            "decompose-and-commit-unstaged-changes, publish-unpushed-commits, "
+            "refine-commit-messages, refine-history"
         ) in captured.err
 
     def test_install_single_skill(self, temp_git_repo):

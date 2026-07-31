@@ -53,6 +53,9 @@ class ResolvedFileScope(Protocol):
     def optional_file(self) -> str | None:
         """Return the optional single-file path for command callbacks."""
 
+    def optional_line_file(self) -> str | None:
+        """Return the single-file path while preserving selected-marker scope."""
+
 
 @dataclass(frozen=True, slots=True)
 class _LiveActionTargetSnapshot:
@@ -107,7 +110,11 @@ def run_for_each_resolved_file(
             for file_path in file_scope.files:
                 callback(file_path)
         return
-    callback(file_scope.optional_file())
+    callback(
+        file_scope.optional_line_file()
+        if line_ids is not None
+        else file_scope.optional_file()
+    )
 
 
 def discard_each_resolved_file(

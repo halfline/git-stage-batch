@@ -94,6 +94,27 @@ def test_resolve_live_file_scope_combines_explicit_and_selected_files(monkeypatc
 
     assert scope.kind is file_scope.FileScopeKind.PATTERN
     assert scope.files == ("src/parser.py", "notes.txt")
+    assert scope.includes_selected_file_marker is True
+
+
+def test_resolve_live_line_file_scope_preserves_selected_marker(monkeypatch):
+    _mock_live_file_candidates(monkeypatch, ["selected.py"])
+    monkeypatch.setattr(
+        file_scope,
+        "get_selected_change_file_path",
+        lambda: "selected.py",
+    )
+
+    scope = file_scope.resolve_live_file_scope(
+        ["selected.py", ""],
+        None,
+        selected_action=FileReviewAction.INCLUDE,
+        line_ids="1",
+    )
+
+    assert scope.files == ("selected.py",)
+    assert scope.optional_file() == "selected.py"
+    assert scope.optional_line_file() == ""
 
 
 def test_resolve_live_file_scope_runs_pathless_action_guards(monkeypatch):
@@ -124,6 +145,38 @@ def test_resolve_live_file_scope_runs_pathless_action_guards(monkeypatch):
 
     live_source_guard.assert_called_once_with(FileReviewAction.INCLUDE)
     partial_review_guard.assert_called_once_with(FileReviewAction.INCLUDE)
+
+
+def test_resolve_live_line_file_scope_defers_pathless_action_guards(monkeypatch):
+    _mock_live_file_candidates(monkeypatch, ["selected.py"])
+    live_source_guard = Mock()
+    partial_review_guard = Mock()
+    monkeypatch.setattr(
+        file_scope,
+        "refuse_live_action_for_batch_selection",
+        live_source_guard,
+    )
+    monkeypatch.setattr(
+        file_scope,
+        "refuse_ambiguous_bare_action_after_partial_file_review",
+        partial_review_guard,
+    )
+    monkeypatch.setattr(
+        file_scope,
+        "get_selected_change_file_path",
+        lambda: "selected.py",
+    )
+
+    scope = file_scope.resolve_live_file_scope(
+        ["", "selected.py"],
+        None,
+        selected_action=FileReviewAction.INCLUDE,
+        line_ids="1",
+    )
+
+    assert scope.optional_line_file() == ""
+    live_source_guard.assert_not_called()
+    partial_review_guard.assert_not_called()
 
 
 def test_resolve_live_file_scope_rejects_mixed_pathless_file_and_files(monkeypatch):
@@ -194,6 +247,36 @@ def test_resolve_batch_file_scope_combines_explicit_and_selected_files(monkeypat
 
     assert scope.kind is file_scope.FileScopeKind.PATTERN
     assert scope.files == ("src/parser.py", "notes.txt")
+    assert scope.includes_selected_file_marker is True
+
+
+def test_resolve_batch_line_file_scope_preserves_selected_marker(monkeypatch):
+    _mock_batch_files(monkeypatch, ["selected.py"])
+    whole_file_scope_guard = Mock()
+    monkeypatch.setattr(
+        file_scope,
+        "resolve_batch_source_action_scope",
+        whole_file_scope_guard,
+    )
+    monkeypatch.setattr(
+        file_scope,
+        "get_selected_change_file_path",
+        lambda: "selected.py",
+    )
+
+    scope = file_scope.resolve_batch_file_scope(
+        "batch",
+        ["selected.py", ""],
+        None,
+        selected_action=FileReviewAction.INCLUDE_FROM_BATCH,
+        command_name="include",
+        line_ids="1",
+    )
+
+    assert scope.files == ("selected.py",)
+    assert scope.optional_file() == "selected.py"
+    assert scope.optional_line_file() == ""
+    whole_file_scope_guard.assert_not_called()
 
 
 def test_resolve_batch_file_scope_refuses_foreign_batch_selection(monkeypatch):
@@ -834,6 +917,180 @@ def test_parse_command_line_include_with_file_and_line_dispatches_file_scope(mon
         "2-3",
         file="path.txt",
         auto_advance=None,
+    )
+
+
+def _assert_empty_line_selection_stays_a_line_action(
+    monkeypatch,
+    command_name,
+    dispatch_module,
+    line_command_name,
+    file_command_name,
+):
+    """An empty --line value must not fall through to a whole-file action."""
+    line_command = Mock()
+    file_command = Mock(
+        side_effect=AssertionError("whole-file command should not run"),
+    )
+    monkeypatch.setattr(dispatch_module, line_command_name, line_command)
+    monkeypatch.setattr(dispatch_module, file_command_name, file_command)
+    _mock_live_file_candidates(monkeypatch, ["path.txt"])
+
+    args = parse_command_line(
+        [command_name, "--file", "path.txt", "--line", ""],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    line_command.assert_called_once_with(
+        "",
+        file="path.txt",
+        auto_advance=None,
+    )
+    file_command.assert_not_called()
+
+
+def test_parse_command_line_include_empty_line_stays_a_line_action(monkeypatch):
+    _assert_empty_line_selection_stays_a_line_action(
+        monkeypatch,
+        "include",
+        include_dispatch,
+        "command_include_line",
+        "command_include_file",
+    )
+
+
+def test_parse_command_line_discard_empty_line_stays_a_line_action(monkeypatch):
+    _assert_empty_line_selection_stays_a_line_action(
+        monkeypatch,
+        "discard",
+        discard_dispatch,
+        "command_discard_line",
+        "command_discard_file",
+    )
+
+
+def test_parse_command_line_skip_empty_line_stays_a_line_action(monkeypatch):
+    _assert_empty_line_selection_stays_a_line_action(
+        monkeypatch,
+        "skip",
+        skip_dispatch,
+        "command_skip_line",
+        "command_skip_file",
+    )
+
+
+@pytest.mark.parametrize(
+    "file_arguments",
+    [
+        ["--file", "selected.py", "--file"],
+        ["--file", "--file", "selected.py"],
+    ],
+)
+def test_parse_command_line_include_line_preserves_selected_marker(
+    monkeypatch,
+    file_arguments,
+):
+    """A deduplicated selected-file marker should stay pathless for line actions."""
+    mock_command = Mock()
+    monkeypatch.setattr(include_dispatch, "command_include_line", mock_command)
+    _mock_live_file_candidates(monkeypatch, ["selected.py"])
+    monkeypatch.setattr(
+        file_scope,
+        "get_selected_change_file_path",
+        lambda: "selected.py",
+    )
+    monkeypatch.setattr(
+        file_scope,
+        "refuse_ambiguous_bare_action_after_partial_file_review",
+        Mock(side_effect=AssertionError("whole-file guard should not run")),
+    )
+
+    args = parse_command_line(
+        ["include", "--line", "2-3", *file_arguments],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "2-3",
+        file="",
+        auto_advance=None,
+    )
+
+
+def test_parse_command_line_include_to_line_preserves_selected_marker(monkeypatch):
+    """A selected marker should remain pathless through shared line dispatch."""
+    mock_command = Mock()
+    monkeypatch.setattr(include_dispatch, "command_include_to_batch", mock_command)
+    _mock_live_file_candidates(monkeypatch, ["selected.py"])
+    monkeypatch.setattr(
+        file_scope,
+        "get_selected_change_file_path",
+        lambda: "selected.py",
+    )
+
+    args = parse_command_line(
+        [
+            "include",
+            "--to",
+            "later",
+            "--line",
+            "2-3",
+            "--file",
+            "selected.py",
+            "--file",
+        ],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "later",
+        "2-3",
+        "",
+        auto_advance=None,
+    )
+
+
+def test_parse_command_line_include_from_line_preserves_selected_marker(monkeypatch):
+    """A selected batch marker should remain pathless through shared line dispatch."""
+    mock_command = Mock()
+    monkeypatch.setattr(
+        include_dispatch,
+        "command_include_from_batch",
+        mock_command,
+    )
+    _mock_batch_files(monkeypatch, ["selected.py"])
+    monkeypatch.setattr(
+        file_scope,
+        "get_selected_change_file_path",
+        lambda: "selected.py",
+    )
+
+    args = parse_command_line(
+        [
+            "include",
+            "--from",
+            "cleanup",
+            "--line",
+            "2-3",
+            "--file",
+            "selected.py",
+            "--file",
+        ],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "cleanup",
+        "2-3",
+        "",
     )
 
 

@@ -29,13 +29,18 @@ from .replacement_input import require_replacement_text
 def _dispatch_discard_replacement(args: argparse.Namespace) -> None:
     if args.as_text is not None and args.as_stdin:
         raise CommandError(_("Cannot use `--as` and `--as-stdin` together."))
-    if args.to_batch and args.line_ids and not args.from_batch:
+    if (
+        args.to_batch
+        and args.line_ids is not None
+        and not args.from_batch
+    ):
         resolved_live_scope = resolve_live_file_scope(
             args.file,
             args.file_patterns,
             selected_action=FileReviewAction.DISCARD_TO_BATCH,
+            line_ids=args.line_ids,
         )
-        resolved_file = resolved_live_scope.require_single_file(
+        resolved_file = resolved_live_scope.require_single_line_file(
             _("Cannot use --lines with multiple files.")
         )
         replacement_text = require_replacement_text(args)
@@ -100,6 +105,7 @@ def dispatch_discard_command(args: argparse.Namespace) -> None:
             args.file_patterns,
             selected_action=FileReviewAction.DISCARD_FROM_BATCH,
             command_name="discard",
+            line_ids=args.line_ids,
         )
         run_for_each_resolved_file(
             resolved_batch_scope,
@@ -117,6 +123,7 @@ def dispatch_discard_command(args: argparse.Namespace) -> None:
             args.file,
             args.file_patterns,
             selected_action=FileReviewAction.DISCARD_TO_BATCH,
+            line_ids=args.line_ids,
         )
         if resolved_live_scope.is_multiple and args.line_ids is None:
             discard_to_batch_each_resolved_file(
@@ -137,13 +144,14 @@ def dispatch_discard_command(args: argparse.Namespace) -> None:
                 undo_operation=f"discard --to {shlex.quote(args.to_batch)}",
                 worktree_paths=resolved_live_scope.files,
             )
-    elif args.line_ids:
+    elif args.line_ids is not None:
         resolved_live_scope = resolve_live_file_scope(
             args.file,
             args.file_patterns,
             selected_action=FileReviewAction.DISCARD,
+            line_ids=args.line_ids,
         )
-        resolved_file = resolved_live_scope.require_single_file(
+        resolved_file = resolved_live_scope.require_single_line_file(
             _("Cannot use --lines with multiple files.")
         )
         command_discard_line(

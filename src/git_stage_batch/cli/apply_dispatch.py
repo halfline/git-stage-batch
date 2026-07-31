@@ -13,14 +13,15 @@ from .file_scope import resolve_batch_file_scope
 
 def dispatch_apply_command(args: argparse.Namespace) -> None:
     """Dispatch parsed apply arguments."""
+    line_ids = args.line_ids if hasattr(args, "line_ids") else None
     resolved_file_scope = resolve_batch_file_scope(
         args.from_batch,
         args.file,
         args.file_patterns,
         selected_action=FileReviewAction.APPLY_FROM_BATCH,
         command_name="apply",
+        line_ids=line_ids,
     )
-    line_ids = args.line_ids if hasattr(args, "line_ids") else None
     run_for_each_resolved_file(
         resolved_file_scope,
         lambda file: command_apply_from_batch(

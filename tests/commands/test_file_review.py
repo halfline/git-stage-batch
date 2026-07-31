@@ -13,6 +13,7 @@ from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership.replacement_units import ReplacementUnit
 from git_stage_batch.batch.state.query import read_batch_metadata
 from git_stage_batch.batch.text_file_storage import add_file_to_batch
+from git_stage_batch.cli.argument_parser import parse_command_line
 from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.commands.discard_from import command_discard_from_batch
 from git_stage_batch.commands.discard import command_discard, command_discard_file, command_discard_file_as, command_discard_line, command_discard_line_as_to_batch, command_discard_to_batch
@@ -938,6 +939,221 @@ def test_pathless_include_line_accepts_complete_shown_change_and_keeps_partial_r
     captured = capsys.readouterr()
     assert f"Included line(s): {line_spec}" in captured.err
     assert read_last_file_review_state() is not None
+
+
+@pytest.mark.parametrize(
+    "file_arguments",
+    [
+        ["--file", "file.txt", "--file"],
+        ["--file", "--file", "file.txt"],
+    ],
+)
+def test_repeated_file_marker_include_line_uses_partial_review_scope(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+    file_arguments,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    line_spec = format_line_ids(list(state.selections[0].display_ids))
+    args = parse_command_line(
+        ["include", "--line", line_spec, *file_arguments],
+        quiet=True,
+    )
+    assert args is not None
+
+    args.func(args)
+
+    captured = capsys.readouterr()
+    assert f"Included line(s): {line_spec}" in captured.err
+    assert read_last_file_review_state() is not None
+
+
+def test_repeated_file_marker_include_line_rejects_unshown_change(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    unshown_spec = format_line_ids(list(state.selections[1].display_ids))
+    args = parse_command_line(
+        [
+            "include",
+            "--line",
+            unshown_spec,
+            "--file",
+            "file.txt",
+            "--file",
+        ],
+        quiet=True,
+    )
+    assert args is not None
+
+    with pytest.raises(CommandError, match="not valid from the current file review"):
+        args.func(args)
+
+
+def test_repeated_file_marker_line_action_preserves_file_list_refusal(
+    paged_file_repo,
+    capsys,
+):
+    _add_second_changed_file(paged_file_repo)
+    command_show_file_list(["file.txt", "other.txt"])
+    capsys.readouterr()
+    args = parse_command_line(
+        [
+            "include",
+            "--line",
+            "1",
+            "--file",
+            "file.txt",
+            "--file",
+        ],
+        quiet=True,
+    )
+    assert args is not None
+
+    with pytest.raises(CommandError, match="last command only showed files"):
+        args.func(args)
+
+
+def test_repeated_file_marker_line_action_preserves_stale_review_refusal(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    line_spec = format_line_ids(list(state.selections[0].display_ids))
+    subprocess.run(
+        ["git", "restore", "file.txt"],
+        check=True,
+        capture_output=True,
+    )
+    args = parse_command_line(
+        [
+            "include",
+            "--line",
+            line_spec,
+            "--file",
+            "file.txt",
+            "--file",
+        ],
+        quiet=True,
+    )
+    assert args is not None
+
+    with pytest.raises(CommandError, match="no longer matches"):
+        args.func(args)
+
+
+def test_repeated_file_marker_include_to_line_uses_partial_review_scope(
+    paged_file_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show(file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    line_spec = format_line_ids(list(state.selections[0].display_ids))
+    args = parse_command_line(
+        [
+            "include",
+            "--to",
+            "later",
+            "--line",
+            line_spec,
+            "--file",
+            "file.txt",
+            "--file",
+        ],
+        quiet=True,
+    )
+    assert args is not None
+
+    args.func(args)
+
+    metadata = read_batch_metadata("later")
+    assert set(metadata.get("files", {})) == {"file.txt"}
+
+
+def test_repeated_file_marker_include_from_line_uses_partial_review_scope(
+    paged_batch_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_show_from_batch("cleanup", file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    line_spec = format_line_ids(list(state.selections[0].display_ids))
+    args = parse_command_line(
+        [
+            "include",
+            "--from",
+            "cleanup",
+            "--line",
+            line_spec,
+            "--file",
+            "file.txt",
+            "--file",
+        ],
+        quiet=True,
+    )
+    assert args is not None
+
+    args.func(args)
+
+    captured = capsys.readouterr()
+    assert "Staged selected lines from batch 'cleanup'" in captured.err
+    assert read_last_file_review_state() is not None
+
+
+def test_repeated_file_marker_batch_line_action_preserves_review_source_refusal(
+    paged_batch_repo,
+    monkeypatch,
+    capsys,
+):
+    _force_one_change_per_page(monkeypatch)
+    command_apply_from_batch("cleanup", file="file.txt")
+    command_include_to_batch("other-batch", file="file.txt", quiet=True)
+    capsys.readouterr()
+    command_show_from_batch("cleanup", file="file.txt", page="1")
+    capsys.readouterr()
+    state = read_last_file_review_state()
+    assert state is not None
+    line_spec = format_line_ids(list(state.selections[0].display_ids))
+    args = parse_command_line(
+        [
+            "include",
+            "--from",
+            "other-batch",
+            "--line",
+            line_spec,
+            "--file",
+            "file.txt",
+            "--file",
+        ],
+        quiet=True,
+    )
+    assert args is not None
+
+    with pytest.raises(CommandError, match="no longer matches"):
+        args.func(args)
 
 
 def test_pathless_include_line_as_keeps_partial_review_guard_for_bare_action(

@@ -17,9 +17,10 @@ def dispatch_skip_command(args: argparse.Namespace) -> None:
         args.file,
         args.file_patterns,
         selected_action=FileReviewAction.SKIP,
+        line_ids=args.line_ids,
     )
-    if args.line_ids:
-        resolved_file = resolved_file_scope.require_single_file(
+    if args.line_ids is not None:
+        resolved_file = resolved_file_scope.require_single_line_file(
             _("Cannot use --lines with multiple files.")
         )
         command_skip_line(

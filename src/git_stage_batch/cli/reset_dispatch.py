@@ -19,6 +19,7 @@ def dispatch_reset_command(args: argparse.Namespace) -> None:
         args.file_patterns,
         selected_action=FileReviewAction.RESET_FROM_BATCH,
         command_name="reset",
+        line_ids=args.line_ids,
     )
     command_parts = ["reset", "--from", shlex.quote(args.from_batch)]
     if args.to_batch is not None:

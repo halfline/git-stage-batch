@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Reject unreviewed Vulture findings and stale finding exceptions."""
+"""Report unreviewed Vulture findings and stale finding exceptions."""
 
 from __future__ import annotations
 
+import argparse
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 import sys
@@ -350,7 +352,58 @@ def find_unused_code() -> list[Finding]:
     ]
 
 
-def main() -> int:
+def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--advisory",
+        action="store_true",
+        help=(
+            "emit GitHub warning annotations and succeed when dead-code "
+            "policy findings are present"
+        ),
+    )
+    return parser.parse_args(argv)
+
+
+def _workflow_command_data(value: str) -> str:
+    """Escape message data used in a GitHub workflow command."""
+    return (
+        value.replace("%", "%25")
+        .replace("\r", "%0D")
+        .replace("\n", "%0A")
+    )
+
+
+def _workflow_command_property(value: str) -> str:
+    """Escape a property used in a GitHub workflow command."""
+    return (
+        _workflow_command_data(value)
+        .replace(":", "%3A")
+        .replace(",", "%2C")
+    )
+
+
+def _emit_warning(
+    *,
+    path: str,
+    line: int | None,
+    title: str,
+    message: str,
+) -> None:
+    properties = [
+        f"file={_workflow_command_property(path)}",
+        f"title={_workflow_command_property(title)}",
+    ]
+    if line is not None:
+        properties.append(f"line={line}")
+    print(
+        f"::warning {','.join(properties)}::"
+        f"{_workflow_command_data(message)}"
+    )
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _parse_args(argv)
     findings = find_unused_code()
     allowed = _allowed_findings_by_identity()
     counts = Counter(finding.identity for finding in findings)
@@ -371,21 +424,38 @@ def main() -> int:
         return 0
 
     for finding in unexpected:
+        message = f"{finding.message} ({finding.confidence}% confidence)"
         print(
-            f"{finding.identity.path}:{finding.line}: {finding.message} "
-            f"({finding.confidence}% confidence)",
+            f"{finding.identity.path}:{finding.line}: {message}",
             file=sys.stderr,
         )
+        if args.advisory:
+            _emit_warning(
+                path=finding.identity.path,
+                line=finding.line,
+                title="Dead code in intermediate stack layer",
+                message=message,
+            )
     for allowed_finding, actual_count in count_mismatches:
         identity = allowed_finding.identity
-        print(
-            f"{identity.path}: stale or changed dead-code exception for "
+        message = (
+            "stale or changed dead-code exception for "
             f"{identity.kind} {identity.name!r}: expected "
             f"{allowed_finding.expected_count}, found {actual_count}; "
-            f"{allowed_finding.reason}",
+            f"{allowed_finding.reason}"
+        )
+        print(
+            f"{identity.path}: {message}",
             file=sys.stderr,
         )
-    return 1
+        if args.advisory:
+            _emit_warning(
+                path=identity.path,
+                line=None,
+                title="Dead-code exception in intermediate stack layer",
+                message=message,
+            )
+    return 0 if args.advisory else 1
 
 
 if __name__ == "__main__":

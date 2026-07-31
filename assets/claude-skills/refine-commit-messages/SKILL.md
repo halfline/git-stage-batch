@@ -166,10 +166,10 @@ git --no-optional-locks show-ref --verify "$RECOVERY_REF"
 ```
 
 Use the checkpoint phase reported by `status`. For the current `applying`
-phase, inspect `git status`, the rebase todo/done files, and the last checkpoint
-event. Continue only when they identify the same rewrite plan and series
-position. After resolving a transient hook failure or other understood stop,
-run:
+phase, inspect `git --no-optional-locks status`, the rebase todo/done files, and
+the last checkpoint event. Continue only when they identify the same rewrite
+plan and series position. After resolving a transient hook failure or other
+understood stop, run:
 
 ```bash
 git --no-optional-locks -c commit.gpgSign=false rebase --continue

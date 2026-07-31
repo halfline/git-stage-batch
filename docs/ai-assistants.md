@@ -238,6 +238,9 @@ The bundled Codex skills currently include:
 - `commit-unstaged-changes` for splitting unstaged work into one or more commits
 - `decompose-and-commit-unstaged-changes` for peeling larger unstaged work into
   concern batches and rebuilding a fine-grained commit series
+- `publish-unpushed-commits` for turning a clean unpublished commit range into
+  ready-for-review GitHub pull requests or GitLab merge requests, including
+  provider-native same-repository stacks and cross-fork publication
 - `refine-commit-messages` for auditing and rewording messages in an existing
   series without changing any patch or commit boundary
 - `refine-history` for splitting, rewording, and integrating commits in an
@@ -253,8 +256,16 @@ Message refinement verifies that every patch and boundary is unchanged; full
 history refinement additionally verifies every commit snapshot and the final
 tree.
 
-Selecting `decompose-and-commit-unstaged-changes` automatically installs its
-two refinement dependencies. Selecting `refine-history` automatically installs
+Invoke `$publish-unpushed-commits` to publish ready-for-review pull requests or
+merge requests, or add `draft`, `audit`, or `resume`. The skill chooses a native
+GitHub stack relationship or GitLab's recognized target-branch chain only when a
+dependent group and repository support it; singletons, unavailable stacks, and
+forks use ordinary review requests with explicit dependency prose. Publication
+never includes merging.
+
+Selecting `decompose-and-commit-unstaged-changes` or
+`publish-unpushed-commits` automatically installs both refinement
+dependencies. Selecting `refine-history` automatically installs
 `refine-commit-messages`.
 
 Installing `codex-skills` also writes a shared internal drafter brief to

@@ -45,6 +45,26 @@ def test_ci_install_checks_both_distribution_formats():
     assert "dist/*.tar.gz" in workflow
 
 
+def test_ci_enforces_dead_code_for_complete_pull_request_stacks():
+    """Intermediate pull requests in a stack should warn.
+
+    Complete trees should retain strict dead-code enforcement.
+    """
+    workflow = _read_project_file(".github/workflows/ci.yml")
+
+    assert "github.event.pull_request.stack == null" in workflow
+    assert (
+        "github.event.pull_request.stack.position == "
+        "github.event.pull_request.stack.size"
+    ) in workflow
+    assert "Check for dead code (advisory)" in workflow
+    assert "scripts/check_dead_code.py --advisory" in workflow
+    assert (
+        "github.event.pull_request.stack.position < "
+        "github.event.pull_request.stack.size"
+    ) in workflow
+
+
 def test_release_uses_trusted_publishing():
     """The PyPI job should use OIDC without a stored publishing token."""
     workflow = _read_project_file(".github/workflows/release.yml")

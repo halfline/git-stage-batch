@@ -149,6 +149,22 @@ class TestWheelContents:
             for f in files
         ), "Missing bundled refine-commit-messages Claude skill asset"
 
+    def test_wheel_contains_claude_publish_skill_asset(self, build_wheel):
+        """Test that the wheel contains the Claude publication helper."""
+        with zipfile.ZipFile(build_wheel, "r") as whl:
+            files = whl.namelist()
+
+        assert any(
+            "git_stage_batch/assets/claude-skills/publish-unpushed-commits/"
+            "scripts/publish-checkpoint.py" in f
+            for f in files
+        ), "Missing bundled publish-unpushed-commits Claude skill asset"
+        assert any(
+            "git_stage_batch/assets/claude-skills/publish-unpushed-commits/"
+            "references/gitlab-publication.md" in f
+            for f in files
+        ), "Missing bundled GitLab publication reference"
+
     def test_wheel_contains_claude_agent_asset(self, build_wheel):
         """Test that wheel contains the bundled Claude agent asset."""
         with zipfile.ZipFile(build_wheel, "r") as whl:
@@ -231,6 +247,17 @@ class TestWheelContents:
             "agents/openai.yaml" in f
             for f in files
         ), "Missing bundled refine-commit-messages Codex skill asset"
+
+    def test_wheel_contains_codex_publish_skill_asset(self, build_wheel):
+        """Test that the wheel contains the Codex publication metadata."""
+        with zipfile.ZipFile(build_wheel, "r") as whl:
+            files = whl.namelist()
+
+        assert any(
+            "git_stage_batch/assets/codex-skills/publish-unpushed-commits/"
+            "agents/openai.yaml" in f
+            for f in files
+        ), "Missing bundled publish-unpushed-commits Codex skill asset"
 
     def test_wheel_contains_codex_staged_openai_yaml_asset(self, build_wheel):
         """Test that wheel contains the staged Codex UI metadata asset."""

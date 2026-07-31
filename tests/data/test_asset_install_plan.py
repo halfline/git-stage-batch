@@ -92,6 +92,33 @@ def test_plan_refine_commit_messages_as_standalone_skill(tmp_path):
     ]
 
 
+@pytest.mark.parametrize(
+    ("group_name", "skill_root"),
+    (
+        ("claude-skills", ".claude/skills"),
+        ("codex-skills", ".agents/skills"),
+    ),
+)
+def test_plan_publisher_adds_refinement_dependencies(
+    tmp_path,
+    group_name,
+    skill_root,
+):
+    """Publishing should install both history-refinement dependencies."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    selected = select_asset_entries(group_name, ["publish-unpushed-commits"])
+
+    destinations = _relative_destinations(
+        repo_root,
+        plan_asset_installs(selected, repo_root),
+    )
+
+    assert f"{skill_root}/publish-unpushed-commits" in destinations
+    assert f"{skill_root}/refine-history" in destinations
+    assert f"{skill_root}/refine-commit-messages" in destinations
+
+
 def test_plan_deduplicates_selected_dependency(tmp_path):
     """Selecting all skills should plan a shared dependency only once."""
     repo_root = tmp_path / "repo"

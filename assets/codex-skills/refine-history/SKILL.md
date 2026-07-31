@@ -122,11 +122,11 @@ git --no-optional-locks show-ref --verify "$RECOVERY_REF"
 `check-resume` requires the checkpoint, recovery ref, original range,
 `pre-tree.txt`, `pre-count.txt`, and `pre-series.txt` to agree and rechecks
 local remote-tracking containment. It does not refresh remotes or determine
-branch policy. If a rebase is active, inspect `git status`, the rebase todo/done
-files, the last checkpoint event, and the relevant rewrite procedure. Continue
-only when they identify the same interrupted refinement step. It is also safe
-to use `git rebase --abort` to return to that step's pre-rebase state; never
-abort and then call `start`.
+branch policy. If a rebase is active, inspect `git --no-optional-locks status`,
+the rebase todo/done files, the last checkpoint event, and the relevant rewrite
+procedure. Continue only when they identify the same interrupted refinement
+step. It is also safe to use `git rebase --abort` to return to that step's
+pre-rebase state; never abort and then call `start`.
 
 If no Git operation is active, require a clean tree and no batch/session before
 starting another rewrite. When an active batch or dirty tree cannot be tied

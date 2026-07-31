@@ -42,6 +42,9 @@ The bundled Claude skills currently include:
 - `commit-unstaged-changes` for splitting unstaged work into one or more commits
 - `decompose-and-commit-unstaged-changes` for peeling larger unstaged work into
   concern batches and rebuilding a fine-grained commit series
+- `publish-unpushed-commits` for turning a clean unpublished commit range into
+  ready-for-review GitHub pull requests or GitLab merge requests, including
+  provider-native same-repository stacks and cross-fork publication
 - `refine-commit-messages` for auditing and rewording messages in an existing
   series without changing any patch or commit boundary
 - `refine-history` for splitting, rewording, and integrating commits in an
@@ -50,7 +53,8 @@ The bundled Claude skills currently include:
 The regular commit skills stage the current working tree into new commits.
 The decomposition skill hands its rebuilt series to `refine-history` for the
 final boundary rewrite, and `refine-history` delegates its final prose pass to
-`refine-commit-messages`. You can also invoke either skill directly:
+`refine-commit-messages`. You can invoke the refinement and publication
+workflows directly:
 
 ```bash
 claude "/refine-commit-messages BASE_SHA"
@@ -58,6 +62,10 @@ claude "/refine-commit-messages audit BASE_SHA"
 claude "/refine-commit-messages resume"
 claude "/refine-history BASE_SHA"
 claude "/refine-history resume"
+claude "/publish-unpushed-commits"
+claude "/publish-unpushed-commits draft"
+claude "/publish-unpushed-commits audit"
+claude "/publish-unpushed-commits resume"
 ```
 
 The default forms of both refinement skills require a clean, non-empty, linear
@@ -68,12 +76,39 @@ unchanged. Its `audit BASE_SHA` form may inspect shared history because it does
 not update refs or commits. The `resume` forms continue each skill's checkpoint
 on its original branch.
 
-Selecting the decomposition skill installs both refinement dependencies, and
-selecting `refine-history` installs `refine-commit-messages`:
+Publication is ready for review by default. The explicit `draft` form keeps all
+new review requests in draft status, `audit` plans without publishing, and
+`resume` continues the strict publication checkpoint. The skill uses GitHub's
+native stack relationship or GitLab's recognized target-branch chain for
+eligible dependent branches in one repository. It uses ordinary review
+requests for a singleton, when native stacks are unavailable, and when head
+branches live in a fork. It stops after verified publication and never merges.
+
+For eligible groups, the skill probes GitHub's Stacked Pull Requests REST API
+and creates the relationship directly after the pull requests exist. It falls
+back to ordinary pull requests when that API is unavailable; no GitHub CLI
+extension is required. See GitHub's
+[Stacked Pull Requests API documentation](https://docs.github.com/en/pull-requests/reference/stacked-pull-requests-rest-and-graphql-apis)
+for repository availability and endpoint details.
+
+GitLab recognizes same-project stacked merge requests from their target-branch
+chain on GitLab 19.1 and newer. Publication creates and verifies that chain with
+host-pinned `glab api` calls rather than adopting `glab stack`, whose
+experimental workflow also owns commit and branch construction. GitLab
+publication requires an authenticated `glab` CLI for the selected root-hosted
+GitLab URL and records numeric source and target project identities. See the
+[GitLab stacked merge request documentation](https://docs.gitlab.com/user/project/merge_requests/reviews/stacked_merge_requests/)
+for the server-side relationship and limits.
+
+Selecting the decomposition or publication skill installs both refinement
+dependencies, and selecting `refine-history` installs
+`refine-commit-messages`:
 
 ```bash
 git-stage-batch install-assets claude-skills \
   --filter decompose-and-commit-unstaged-changes
+git-stage-batch install-assets claude-skills \
+  --filter publish-unpushed-commits
 ```
 
 Create or update `CLAUDE.md` in your repository root:
@@ -203,6 +238,9 @@ The bundled Codex skills currently include:
 - `commit-unstaged-changes` for splitting unstaged work into one or more commits
 - `decompose-and-commit-unstaged-changes` for peeling larger unstaged work into
   concern batches and rebuilding a fine-grained commit series
+- `publish-unpushed-commits` for turning a clean unpublished commit range into
+  ready-for-review GitHub pull requests or GitLab merge requests, including
+  provider-native same-repository stacks and cross-fork publication
 - `refine-commit-messages` for auditing and rewording messages in an existing
   series without changing any patch or commit boundary
 - `refine-history` for splitting, rewording, and integrating commits in an
@@ -218,8 +256,16 @@ Message refinement verifies that every patch and boundary is unchanged; full
 history refinement additionally verifies every commit snapshot and the final
 tree.
 
-Selecting `decompose-and-commit-unstaged-changes` automatically installs its
-two refinement dependencies. Selecting `refine-history` automatically installs
+Invoke `$publish-unpushed-commits` to publish ready-for-review pull requests or
+merge requests, or add `draft`, `audit`, or `resume`. The skill chooses a native
+GitHub stack relationship or GitLab's recognized target-branch chain only when a
+dependent group and repository support it; singletons, unavailable stacks, and
+forks use ordinary review requests with explicit dependency prose. Publication
+never includes merging.
+
+Selecting `decompose-and-commit-unstaged-changes` or
+`publish-unpushed-commits` automatically installs both refinement
+dependencies. Selecting `refine-history` automatically installs
 `refine-commit-messages`.
 
 Installing `codex-skills` also writes a shared internal drafter brief to

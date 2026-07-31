@@ -859,7 +859,8 @@ assistant can discover them automatically.
 ❯ git-stage-batch install-assets claude-skills --filter refine-commit-messages
 ❯ git-stage-batch install-assets claude-skills --filter refine-history
 ❯ git-stage-batch install-assets claude-skills --filter decompose-and-commit-unstaged-changes
-❯ git-stage-batch install-assets codex-skills --filter 'commit-*' refine-commit-messages refine-history
+❯ git-stage-batch install-assets claude-skills --filter publish-unpushed-commits
+❯ git-stage-batch install-assets codex-skills --filter 'commit-*' publish-unpushed-commits
 ```
 
 **Options:**
@@ -872,11 +873,14 @@ assistant can discover them automatically.
 Bundled assets currently include the Claude agent
 `commit-message-drafter`, Claude decomposition agents, the Claude skills
 `commit-staged-changes`, `commit-unstaged-changes`,
-`decompose-and-commit-unstaged-changes`, `refine-commit-messages`, and
-`refine-history`, plus the Codex versions of those five skills.
+`decompose-and-commit-unstaged-changes`, `publish-unpushed-commits`,
+`refine-commit-messages`, and `refine-history`, plus the Codex versions of
+those six skills.
 
 Selecting `decompose-and-commit-unstaged-changes` also installs its
 `refine-history` and `refine-commit-messages` dependencies automatically.
+Selecting `publish-unpushed-commits` installs the same two refinement
+dependencies.
 Selecting `refine-history` also installs `refine-commit-messages`.
 
 `refine-commit-messages BASE_SHA` audits a linear series and rewords
@@ -889,6 +893,27 @@ proposed replacements without updating refs or commits.
 late repair commits before delegating its message pass. Its `resume` form
 continues the skill-owned checkpoint on its original branch after
 interruption. Mutating modes accept only clean, unpublished draft history.
+
+`publish-unpushed-commits` maps a clean unpublished range onto reviewable
+GitHub pull requests or GitLab merge requests. It publishes ready for review by
+default, supports an explicit `draft` mode, and uses provider-native stacks for
+eligible same-repository dependent groups. Singletons, unavailable stacks, and
+cross-fork publication use ordinary review requests. Its `audit` mode plans
+without mutation, its `resume` mode continues strict recovery state, and no
+mode merges.
+
+For eligible same-repository groups, the skill probes GitHub's Stacked Pull
+Requests REST API and creates the relationship directly; no GitHub CLI
+extension is required. When the target repository does not offer Stacked Pull
+Requests, publication continues through ordinary pull requests.
+
+On GitLab 19.1 and newer, a same-project target-branch chain is recognized as a
+stack without a separate linking mutation. The skill does not adopt the
+experimental `glab stack` commit-and-branch workflow because refinement and
+recovery state remain owned by the skill. GitLab publication requires an
+authenticated `glab` CLI for the selected root-hosted GitLab URL. It uses
+host-pinned API calls and numeric project identities, including for fork merge
+requests, without changing local Git remotes.
 
 Installing `codex-skills` also writes the shared internal drafter brief at
 `.agents/internal/commit-message-drafter.md`.

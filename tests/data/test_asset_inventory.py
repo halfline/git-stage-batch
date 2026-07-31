@@ -36,6 +36,7 @@ def test_list_asset_group_entries_requires_marker_file():
         "commit-staged-changes",
         "commit-unstaged-changes",
         "decompose-and-commit-unstaged-changes",
+        "publish-unpushed-commits",
         "refine-commit-messages",
         "refine-history",
     ]
@@ -82,6 +83,14 @@ def test_get_entry_companion_assets_returns_entry_specific_assets():
     ]
 
     for group_name in ("claude-skills", "codex-skills"):
+        publisher_companions = get_entry_companion_assets(
+            ASSET_GROUPS[group_name],
+            "publish-unpushed-commits",
+        )
+        assert [
+            companion.source_segments[-1] for companion in publisher_companions
+        ] == ["refine-history", "refine-commit-messages"]
+
         companions = get_entry_companion_assets(
             ASSET_GROUPS[group_name],
             "refine-history",

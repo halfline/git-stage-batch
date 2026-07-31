@@ -240,13 +240,14 @@ Then ask Claude Code to split and commit the current unstaged work:
 
 Omit `--filter` when installing Claude skills if you also want the larger
 `/decompose-and-commit-unstaged-changes` workflow and the standalone
-`/refine-history BASE_SHA` and `/refine-commit-messages BASE_SHA` workflows.
-Message refinement rewrites by default; its explicit `audit BASE_SHA` mode
-only reports findings and proposed replacements. Selecting `refine-history`
-installs its message-refinement dependency, and selecting decomposition
-installs both. Mutating refinement accepts only a clean, linear, unpublished
-range. See the [AI assistant guide](ai-assistants.md) for resume behavior,
-Codex setup, and fuller assistant configuration.
+`/refine-history BASE_SHA`, `/refine-commit-messages BASE_SHA`, and
+`/publish-unpushed-commits` workflows. Publication creates ready-for-review
+GitHub pull requests or GitLab merge requests by default, supports explicit
+`draft` and `audit` modes, handles forks and provider-native stacks, and never
+merges. Selecting publication or decomposition installs both refinement
+dependencies. Mutating workflows accept only clean, linear, unpublished ranges
+and provide a `resume` form. See the
+[AI assistant guide](ai-assistants.md) for Codex setup and fuller behavior.
 
 ## Example Workflow
 

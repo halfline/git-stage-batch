@@ -207,6 +207,29 @@ ASSET_GROUPS: dict[str, AssetGroup] = {
         ),
         entry_companion_assets=(
             (
+                "publish-unpushed-commits",
+                (
+                    CompanionAsset(
+                        source_segments=("assets", "codex-skills", "refine-history"),
+                        target_segments=(".agents", "skills", "refine-history"),
+                        display_name="Codex skill",
+                    ),
+                    CompanionAsset(
+                        source_segments=(
+                            "assets",
+                            "codex-skills",
+                            "refine-commit-messages",
+                        ),
+                        target_segments=(
+                            ".agents",
+                            "skills",
+                            "refine-commit-messages",
+                        ),
+                        display_name="Codex skill",
+                    ),
+                ),
+            ),
+            (
                 "decompose-and-commit-unstaged-changes",
                 (
                     CompanionAsset(

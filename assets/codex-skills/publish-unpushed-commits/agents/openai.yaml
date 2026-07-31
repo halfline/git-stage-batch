@@ -1,0 +1,4 @@
+interface:
+  display_name: "Publish Unpushed Commits"
+  short_description: "Publish commits for review on GitHub or GitLab"
+  default_prompt: "Use $publish-unpushed-commits to turn my local unpublished commits into ready-for-review pull requests or merge requests."

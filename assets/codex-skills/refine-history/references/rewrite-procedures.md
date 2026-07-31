@@ -111,8 +111,8 @@ For a one-target repair, save its patch, edit the target, and drop the repair:
 
 ```bash
 TARGET_SHA=PUT_COMMIT_THAT_SHOULD_HAVE_CONTAINED_THE_HUNK
-TARGET_SHORT=$(git rev-parse --short=7 "$TARGET_SHA")
-REPAIR_SHORT=$(git rev-parse --short=7 "$REPAIR_SHA")
+TARGET_SHORT=$(git --no-optional-locks rev-parse --short=7 "$TARGET_SHA")
+REPAIR_SHORT=$(git --no-optional-locks rev-parse --short=7 "$REPAIR_SHA")
 git --no-optional-locks show --format= --binary "$REPAIR_SHA" > "$REFINE_HISTORY_STATE_DIR/repair-$REPAIR_SHORT.patch"
 python3 "$REFINE_HISTORY_HELPER" mark --phase rewriting --note "integrate $REPAIR_SHA into $TARGET_SHA"
 GIT_SEQUENCE_EDITOR="sed -i -E -e 's/^pick (${TARGET_SHORT}[0-9a-f]*) /edit \\1 /' -e 's/^pick (${REPAIR_SHORT}[0-9a-f]*) /drop \\1 /'" git rebase -i "$BASE_SHA"
@@ -123,7 +123,7 @@ check fails, reconstruct the same hunks manually and verify the resulting
 working diff against the saved patch. Never suppress an apply failure:
 
 ```bash
-git apply --check "$REFINE_HISTORY_STATE_DIR/repair-$REPAIR_SHORT.patch"
+git --no-optional-locks apply --check "$REFINE_HISTORY_STATE_DIR/repair-$REPAIR_SHORT.patch"
 git apply "$REFINE_HISTORY_STATE_DIR/repair-$REPAIR_SHORT.patch"
 git-stage-batch start
 git-stage-batch show

@@ -248,6 +248,17 @@ class TestWheelContents:
             for f in files
         ), "Missing bundled refine-commit-messages Codex skill asset"
 
+    def test_wheel_contains_codex_publish_skill_asset(self, build_wheel):
+        """Test that the wheel contains the Codex publication metadata."""
+        with zipfile.ZipFile(build_wheel, "r") as whl:
+            files = whl.namelist()
+
+        assert any(
+            "git_stage_batch/assets/codex-skills/publish-unpushed-commits/"
+            "agents/openai.yaml" in f
+            for f in files
+        ), "Missing bundled publish-unpushed-commits Codex skill asset"
+
     def test_wheel_contains_codex_staged_openai_yaml_asset(self, build_wheel):
         """Test that wheel contains the staged Codex UI metadata asset."""
         with zipfile.ZipFile(build_wheel, "r") as whl:

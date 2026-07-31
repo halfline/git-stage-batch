@@ -114,6 +114,13 @@ class TestCommandInstallAssets:
         codex_refine = (
             temp_git_repo / ".agents" / "skills" / "refine-history" / "SKILL.md"
         )
+        codex_publish = (
+            temp_git_repo
+            / ".agents"
+            / "skills"
+            / "publish-unpushed-commits"
+            / "SKILL.md"
+        )
         codex_config = temp_git_repo / ".codex" / "config.toml"
         assert claude_agent.exists()
         assert claude_decompose_agent.exists()
@@ -129,6 +136,7 @@ class TestCommandInstallAssets:
         assert codex_decompose.exists()
         assert codex_messages.exists()
         assert codex_refine.exists()
+        assert codex_publish.exists()
         assert codex_config.exists()
         assert not (temp_git_repo / "skills").exists()
 
@@ -144,8 +152,8 @@ class TestCommandInstallAssets:
         ) in captured.err
         assert (
             "Installed Codex skills: commit-staged-changes, commit-unstaged-changes, "
-            "decompose-and-commit-unstaged-changes, refine-commit-messages, "
-            "refine-history"
+            "decompose-and-commit-unstaged-changes, publish-unpushed-commits, "
+            "refine-commit-messages, refine-history"
         ) in captured.err
 
     def test_install_all_claude_agents(self, temp_git_repo, capsys):
@@ -311,6 +319,13 @@ class TestCommandInstallAssets:
         refine_skill = (
             temp_git_repo / ".agents" / "skills" / "refine-history" / "SKILL.md"
         )
+        publish_skill = (
+            temp_git_repo
+            / ".agents"
+            / "skills"
+            / "publish-unpushed-commits"
+            / "SKILL.md"
+        )
         codex_config = temp_git_repo / ".codex" / "config.toml"
         staged_openai_yaml = (
             temp_git_repo
@@ -350,6 +365,7 @@ class TestCommandInstallAssets:
         assert decompose_skill.exists()
         assert message_skill.exists()
         assert refine_skill.exists()
+        assert publish_skill.exists()
         assert codex_config.exists()
         assert staged_openai_yaml.exists()
         assert unstaged_openai_yaml.exists()
@@ -373,8 +389,8 @@ class TestCommandInstallAssets:
         captured = capsys.readouterr()
         assert (
             "Installed Codex skills: commit-staged-changes, commit-unstaged-changes, "
-            "decompose-and-commit-unstaged-changes, refine-commit-messages, "
-            "refine-history"
+            "decompose-and-commit-unstaged-changes, publish-unpushed-commits, "
+            "refine-commit-messages, refine-history"
         ) in captured.err
 
     def test_install_single_refine_history_skills(self, temp_git_repo):
@@ -427,6 +443,25 @@ class TestCommandInstallAssets:
         assert "mode: `staged` or `historical`" in codex_drafter
         assert "--git-path hooks/commit-msg" in claude_drafter
         assert "--git-path hooks/commit-msg" in codex_drafter
+
+    def test_install_publish_skills_with_recovery_assets(self, temp_git_repo):
+        """Publication should install its helper, reference, and refiners."""
+        command_install_assets("claude-skills", ["publish-unpushed-commits"])
+        command_install_assets("codex-skills", ["publish-unpushed-commits"])
+
+        claude_root = temp_git_repo / ".claude" / "skills"
+        codex_root = temp_git_repo / ".agents" / "skills"
+        for skill_root in (claude_root, codex_root):
+            publisher = skill_root / "publish-unpushed-commits"
+            assert (publisher / "SKILL.md").exists()
+            assert (publisher / "scripts" / "publish-checkpoint.py").exists()
+            assert (publisher / "references" / "github-publication.md").exists()
+            assert (publisher / "references" / "gitlab-publication.md").exists()
+            assert (skill_root / "refine-history" / "SKILL.md").exists()
+            assert (skill_root / "refine-commit-messages" / "SKILL.md").exists()
+        assert (
+            codex_root / "publish-unpushed-commits" / "agents" / "openai.yaml"
+        ).exists()
 
     def test_install_single_codex_skill(self, temp_git_repo):
         """Selecting one Codex skill should install only that skill."""

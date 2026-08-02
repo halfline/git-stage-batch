@@ -16,7 +16,8 @@ from git_stage_batch.batch.line_matching.comparison import (
 from git_stage_batch.batch.line_matching.match import match_lines
 
 
-_LINE_SCALE_HEAP_LIMIT = 256 * 1024
+_LINE_SCALE_TEST_COUNTS = (1024, 8192)
+_LINE_SCALE_HEAP_GROWTH_LIMIT = 32 * 1024
 
 
 def test_derive_semantic_change_runs_accepts_non_list_sequences(line_sequence):
@@ -125,23 +126,27 @@ def test_trusted_matching_fast_path_matches_bidirectional_reference():
 
 def test_large_unmapped_disjoint_gaps_avoid_line_scale_python_heap():
     """Large reciprocal checks should index gaps in mapped storage."""
-    line_count = 8192
-    midpoint = line_count // 2
-    source = [f"old-{index}\n".encode() for index in range(line_count)]
-    target = [f"new-{index}\n".encode() for index in range(line_count)]
-    source.insert(midpoint, b"shared anchor\n")
-    target.insert(midpoint, b"shared anchor\n")
+    heap_peaks = []
+    for line_count in _LINE_SCALE_TEST_COUNTS:
+        midpoint = line_count // 2
+        source = [f"old-{index}\n".encode() for index in range(line_count)]
+        target = [f"new-{index}\n".encode() for index in range(line_count)]
+        source.insert(midpoint, b"shared anchor\n")
+        target.insert(midpoint, b"shared anchor\n")
 
-    gc.collect()
-    tracemalloc.start()
-    try:
-        runs = derive_semantic_change_runs(source, target)
-        _current_heap, peak_heap = tracemalloc.get_traced_memory()
-    finally:
-        tracemalloc.stop()
+        gc.collect()
+        tracemalloc.start()
+        try:
+            runs = derive_semantic_change_runs(source, target)
+            _current_heap, peak_heap = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
 
-    assert len(runs) == 2
-    assert peak_heap < _LINE_SCALE_HEAP_LIMIT
+        assert len(runs) == 2
+        heap_peaks.append(peak_heap)
+
+    small_peak, large_peak = heap_peaks
+    assert large_peak < small_peak + _LINE_SCALE_HEAP_GROWTH_LIMIT
 
 
 def test_stream_semantic_change_runs_closes_matching_pairs(monkeypatch):

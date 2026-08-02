@@ -14,7 +14,8 @@ from git_stage_batch.batch.line_matching.match_workspace import MatcherWorkspace
 from git_stage_batch.core.mapped_storage import MAPPED_STORAGE_OFFLOAD_SIZE_THRESHOLD
 
 
-_LINE_SCALE_HEAP_LIMIT = 256 * 1024
+_LINE_SCALE_TEST_COUNTS = (1024, 8192)
+_LINE_SCALE_HEAP_GROWTH_LIMIT = 32 * 1024
 
 
 def test_matcher_workspace_tracks_and_closes_resources():
@@ -104,40 +105,44 @@ def test_match_lines_closes_first_mapping_if_second_allocation_fails(
 @pytest.mark.parametrize("target_stride", [1, 9])
 def test_lis_target_ranking_does_not_use_line_scale_python_heap(target_stride):
     """LIS target ranks should stay in mapped storage for large alignments."""
-    line_count = 8192
-    target_end = line_count * target_stride
+    heap_peaks = []
+    for line_count in _LINE_SCALE_TEST_COUNTS:
+        target_end = line_count * target_stride
 
-    with MatcherWorkspace() as workspace:
-        pairs = workspace.record_vector(line_count, "QQ")
-        for source_index in range(line_count):
-            pairs.append(
-                (
-                    source_index,
-                    (line_count - source_index - 1) * target_stride,
+        with MatcherWorkspace() as workspace:
+            pairs = workspace.record_vector(line_count, "QQ")
+            for source_index in range(line_count):
+                pairs.append(
+                    (
+                        source_index,
+                        (line_count - source_index - 1) * target_stride,
+                    )
                 )
-            )
 
-        gc.collect()
-        tracemalloc.start()
-        try:
-            anchors = match_module._longest_increasing_subsequence_records(
-                pairs,
-                0,
-                target_end,
-                workspace,
-            )
-            _current_heap, peak_heap = tracemalloc.get_traced_memory()
-        finally:
-            tracemalloc.stop()
+            gc.collect()
+            tracemalloc.start()
+            try:
+                anchors = match_module._longest_increasing_subsequence_records(
+                    pairs,
+                    0,
+                    target_end,
+                    workspace,
+                )
+                _current_heap, peak_heap = tracemalloc.get_traced_memory()
+            finally:
+                tracemalloc.stop()
 
-        try:
-            assert tuple(anchors) == (
-                (0, (line_count - 1) * target_stride),
-            )
-        finally:
-            workspace.close_resource(anchors)
+            try:
+                assert tuple(anchors) == (
+                    (0, (line_count - 1) * target_stride),
+                )
+            finally:
+                workspace.close_resource(anchors)
 
-    assert peak_heap < _LINE_SCALE_HEAP_LIMIT
+        heap_peaks.append(peak_heap)
+
+    small_peak, large_peak = heap_peaks
+    assert large_peak < small_peak + _LINE_SCALE_HEAP_GROWTH_LIMIT
 
 
 def test_dense_lis_target_ranking_does_not_sort_candidates(monkeypatch):

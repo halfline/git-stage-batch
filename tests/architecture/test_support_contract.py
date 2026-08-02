@@ -25,7 +25,7 @@ def test_ci_exercises_minimum_git():
     """CI should cover the minimum supported Git release."""
     workflow = _read_project_file(".github/workflows/ci.yml")
 
-    assert 'GIT_VERSION: "2.31.0"' in workflow
+    assert 'GIT_VERSION: "2.39.0"' in workflow
     assert 'repository: git/git' in workflow
     assert 'run: test "$(git version)" = "git version ${GIT_VERSION}"' in workflow
 

@@ -35,7 +35,8 @@ from git_stage_batch.core.models import LineEntry
 from git_stage_batch.core.buffer import LineBuffer
 
 
-_LINE_SCALE_HEAP_LIMIT = 256 * 1024
+_LINE_SCALE_TEST_COUNTS = (1024, 8192)
+_LINE_SCALE_HEAP_GROWTH_LIMIT = 32 * 1024
 
 
 class _IterationGuardedLineSelection:
@@ -188,38 +189,42 @@ def test_batch_source_lineage_expands_complete_owned_replacements():
 
 def test_fragmented_source_lineage_translation_avoids_line_scale_python_heap():
     """Fragmented provenance should coalesce before entering heap storage."""
-    line_count = 8192
-    selection = LineRanges.from_ranges(((1, line_count),))
+    heap_peaks = []
+    for line_count in _LINE_SCALE_TEST_COUNTS:
+        selection = LineRanges.from_ranges(((1, line_count),))
 
-    with BatchSourceLineage() as lineage:
-        for source_line in range(1, line_count + 1):
-            new_start = source_line * 2 - 1
-            lineage.append_source_run(
-                LineageRun(
-                    old_start=source_line,
-                    old_end=source_line,
-                    new_start=new_start,
+        with BatchSourceLineage() as lineage:
+            for source_line in range(1, line_count + 1):
+                new_start = source_line * 2 - 1
+                lineage.append_source_run(
+                    LineageRun(
+                        old_start=source_line,
+                        old_end=source_line,
+                        new_start=new_start,
+                    )
                 )
-            )
-            lineage.append_source_expansion(
-                SourceSelectionExpansion(
-                    source_start=source_line,
-                    source_end=source_line,
-                    new_start=new_start,
-                    new_end=new_start + 1,
+                lineage.append_source_expansion(
+                    SourceSelectionExpansion(
+                        source_start=source_line,
+                        source_end=source_line,
+                        new_start=new_start,
+                        new_end=new_start + 1,
+                    )
                 )
-            )
 
-        gc.collect()
-        tracemalloc.start()
-        try:
-            translated = lineage.translate_source_selection(selection)
-            _current_heap, peak_heap = tracemalloc.get_traced_memory()
-        finally:
-            tracemalloc.stop()
+            gc.collect()
+            tracemalloc.start()
+            try:
+                translated = lineage.translate_source_selection(selection)
+                _current_heap, peak_heap = tracemalloc.get_traced_memory()
+            finally:
+                tracemalloc.stop()
 
-    assert translated.ranges() == ((1, line_count * 2),)
-    assert peak_heap < _LINE_SCALE_HEAP_LIMIT
+        assert translated.ranges() == ((1, line_count * 2),)
+        heap_peaks.append(peak_heap)
+
+    small_peak, large_peak = heap_peaks
+    assert large_peak < small_peak + _LINE_SCALE_HEAP_GROWTH_LIMIT
 
 
 def test_batch_source_lineage_finds_unmapped_source_ranges():
@@ -622,34 +627,40 @@ def test_advance_source_tracks_contiguous_lineage_as_runs():
 
 def test_advance_source_avoids_line_scale_python_heap():
     """Required source coordinates should remain range- and storage-backed."""
-    line_count = 8192
-    source_content = b"".join(
-        f"line-{line_index:08d}\n".encode()
-        for line_index in range(line_count)
-    )
-    ownership = BatchOwnership.from_presence_lines([f"1-{line_count}"], [])
+    heap_peaks = []
+    for line_count in _LINE_SCALE_TEST_COUNTS:
+        source_content = b"".join(
+            f"line-{line_index:08d}\n".encode()
+            for line_index in range(line_count)
+        )
+        ownership = BatchOwnership.from_presence_lines([f"1-{line_count}"], [])
 
-    with (
-        LineBuffer.from_bytes(source_content) as old_lines,
-        LineBuffer.from_bytes(source_content) as working_lines,
-    ):
-        assert len(old_lines) == line_count
-        assert len(working_lines) == line_count
-        gc.collect()
-        tracemalloc.start()
-        try:
-            with advance_source_lines_preserving_existing_presence(
-                old_lines,
-                working_lines,
-                ownership,
-            ) as source_with_provenance:
-                result_byte_count = source_with_provenance.source_buffer.byte_count
-            _current_heap, peak_heap = tracemalloc.get_traced_memory()
-        finally:
-            tracemalloc.stop()
+        with (
+            LineBuffer.from_bytes(source_content) as old_lines,
+            LineBuffer.from_bytes(source_content) as working_lines,
+        ):
+            assert len(old_lines) == line_count
+            assert len(working_lines) == line_count
+            gc.collect()
+            tracemalloc.start()
+            try:
+                with advance_source_lines_preserving_existing_presence(
+                    old_lines,
+                    working_lines,
+                    ownership,
+                ) as source_with_provenance:
+                    result_byte_count = (
+                        source_with_provenance.source_buffer.byte_count
+                    )
+                _current_heap, peak_heap = tracemalloc.get_traced_memory()
+            finally:
+                tracemalloc.stop()
 
-    assert result_byte_count == len(source_content)
-    assert peak_heap < _LINE_SCALE_HEAP_LIMIT
+        assert result_byte_count == len(source_content)
+        heap_peaks.append(peak_heap)
+
+    small_peak, large_peak = heap_peaks
+    assert large_peak < small_peak + _LINE_SCALE_HEAP_GROWTH_LIMIT
 
 
 def test_advance_source_context_closes_lineage():

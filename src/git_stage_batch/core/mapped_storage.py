@@ -478,6 +478,18 @@ class MappedRecordVector(Sequence[tuple[int, ...]]):
 def sort_mapped_records(records: MappedRecordVector) -> None:
     """Sort fixed-width records in place without materializing a Python list."""
     record_count = len(records)
+    if record_count < 2:
+        return
+
+    previous = records[0]
+    for record_index in range(1, record_count):
+        current = records[record_index]
+        if previous > current:
+            break
+        previous = current
+    else:
+        return
+
     for start in range(record_count // 2 - 1, -1, -1):
         _sift_mapped_record(records, start, record_count)
     for end in range(record_count - 1, 0, -1):

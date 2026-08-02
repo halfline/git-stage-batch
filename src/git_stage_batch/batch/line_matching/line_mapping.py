@@ -24,6 +24,7 @@ class LineMapping:
 
     source_to_target: IntVector
     target_to_source: IntVector
+    may_have_unmapped_equal_lines: bool = field(default=True, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
 
     def __enter__(self) -> LineMapping:

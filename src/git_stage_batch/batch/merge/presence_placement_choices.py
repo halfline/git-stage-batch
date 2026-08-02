@@ -5,9 +5,11 @@ from __future__ import annotations
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 import hashlib
+from pathlib import Path
 
 from ...core.line_selection import LineSelection
 from ..line_matching.line_mapping import LineMapping
+from ..line_matching.line_range_view import LineRangeView
 from ..line_matching.sequence_equality import line_slice_equals as _line_slice_matches
 from ..line_matching.sequence_search import iter_exact_context_gaps
 from .presence_context import (
@@ -36,13 +38,16 @@ def presence_choices_for_missing_claimed_run(
     *,
     max_results: int,
     trusted_source_lines: Collection[int] = (),
+    require_distinctive_context: bool = False,
+    distinctive_context_lines: LineSelection | None = None,
+    spool_dir: str | Path | None = None,
 ) -> tuple[str | None, tuple["PresenceChoice", ...]]:
     missing_claimed = _mapped_missing_source_lines(
         presence_line_set,
         len(source_lines),
         mapping,
     )
-    ranges = list(missing_claimed.ranges())
+    ranges = missing_claimed.ranges()
     if len(ranges) != 1:
         return None, ()
 
@@ -67,6 +72,9 @@ def presence_choices_for_missing_claimed_run(
         run_end=run_end,
         max_results=max_results,
         trusted_source_lines=trusted_source_lines,
+        require_distinctive_context=require_distinctive_context,
+        distinctive_context_lines=distinctive_context_lines,
+        spool_dir=spool_dir,
     )
 
 
@@ -93,7 +101,7 @@ def _adjacent_context_choices(
 
     left_context = (bytes(source_lines[before_source_line - 1]),)
     right_context = (bytes(source_lines[after_source_line - 1]),)
-    claimed_run = source_lines[run_start - 1:run_end]
+    claimed_run = LineRangeView(source_lines, run_start - 1, run_end)
     key = presence_ambiguity_key(
         run_start,
         run_end,
@@ -135,6 +143,9 @@ def _contextual_choices(
     run_end: int,
     max_results: int,
     trusted_source_lines: Collection[int],
+    require_distinctive_context: bool,
+    distinctive_context_lines: LineSelection | None,
+    spool_dir: str | Path | None,
 ) -> tuple[str | None, tuple[PresenceChoice, ...]]:
     """Return reviewed gaps bounded by distinctive contextual anchors."""
     ambiguities = _contextual_presence_ambiguities(
@@ -143,6 +154,9 @@ def _contextual_choices(
         presence_line_set,
         mapping,
         trusted_source_lines=trusted_source_lines,
+        require_distinctive_context=require_distinctive_context,
+        distinctive_context_lines=distinctive_context_lines,
+        spool_dir=spool_dir,
     )
     if len(ambiguities) != 1:
         return None, ()
@@ -151,7 +165,7 @@ def _contextual_choices(
     if ambiguity.run_start != run_start or ambiguity.run_end != run_end:
         return None, ()
 
-    claimed_run = source_lines[run_start - 1:run_end]
+    claimed_run = LineRangeView(source_lines, run_start - 1, run_end)
     before_source_line = ambiguity.before_source_line or 0
     after_source_line = ambiguity.after_source_line or len(source_lines) + 1
     key = presence_ambiguity_key(

@@ -1,5 +1,6 @@
 """Tests for structural batch merge algorithm."""
 
+import gc
 from itertools import repeat
 import tracemalloc
 
@@ -36,12 +37,16 @@ from git_stage_batch.batch.merge.merge import (
     merge_batch_from_line_sequences_as_buffer,
 )
 from git_stage_batch.batch.merge.presence_constraints import satisfy_constraints
+from git_stage_batch.batch.merge.presence_context import (
+    contextual_presence_placements,
+)
 from git_stage_batch.batch.realization.entries import RealizedEntry
 from git_stage_batch.batch.realization.entry_storage import (
     RealizedEntries,
     realized_entry_content_chunks,
 )
 from git_stage_batch.core.buffer import LineBuffer
+from git_stage_batch.core.line_selection import LineRanges
 from git_stage_batch.exceptions import AtomicUnitError, MergeError
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership.model import (
@@ -53,6 +58,9 @@ from git_stage_batch.batch.ownership.replacement_units import (
     ReplacementUnitOrigin,
 )
 from git_stage_batch.core.text_lines import normalize_line_sequence_endings
+
+
+_LINE_SCALE_HEAP_LIMIT = 256 * 1024
 
 
 class _IndexGuardedLineBuffer(LineBuffer):
@@ -153,6 +161,47 @@ def test_candidate_comparison_does_not_copy_large_chunk_remainders():
 
     assert yielded_count == 512
     assert peak_heap < 64 * 1024
+
+
+def test_distinctive_presence_context_avoids_line_scale_python_heap():
+    """Strict contextual indexing should retain records in mapped storage."""
+    line_count = 8192
+    changed_index = line_count // 2
+    source_content = b"".join(
+        f"line-{line_index:08d}\n".encode()
+        for line_index in range(line_count)
+    )
+    target_content = b"".join(
+        (
+            b"target-only\n"
+            if line_index == changed_index
+            else f"line-{line_index:08d}\n".encode()
+        )
+        for line_index in range(line_count)
+    )
+    selected = LineRanges.from_ranges(((changed_index + 1, changed_index + 1),))
+
+    with (
+        LineBuffer.from_bytes(source_content) as source_lines,
+        LineBuffer.from_bytes(target_content) as target_lines,
+        match_lines(source_lines, target_lines) as mapping,
+    ):
+        gc.collect()
+        tracemalloc.start()
+        try:
+            with pytest.raises(MergeError):
+                contextual_presence_placements(
+                    source_lines,
+                    target_lines,
+                    selected,
+                    mapping,
+                    require_distinctive_context=True,
+                )
+            _current_heap, peak_heap = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+
+    assert peak_heap < _LINE_SCALE_HEAP_LIMIT
 
 
 @pytest.mark.parametrize("candidates_match", [True, False])
@@ -353,6 +402,32 @@ def test_large_merge_without_coordinates_plans_baseline_once(monkeypatch):
         assert len(merged) == len(source)
 
     assert planning_modes == [False]
+
+
+def test_unanchored_presence_reuses_fallback_line_mapping(monkeypatch):
+    """Baseline probing and structural placement should share one mapping."""
+    source = [f"line {index}\n".encode() for index in range(1000)]
+    missing_index = len(source) // 2
+    target = source[:missing_index] + source[missing_index + 1:]
+    ownership = BatchOwnership.from_presence_lines([str(missing_index + 1)], [])
+    mapping_calls = 0
+    real_match_lines = merge_module.match_lines
+
+    def count_mapping(*args, **kwargs):
+        nonlocal mapping_calls
+        mapping_calls += 1
+        return real_match_lines(*args, **kwargs)
+
+    monkeypatch.setattr(merge_module, "match_lines", count_mapping)
+
+    with merge_batch_from_line_sequences_as_buffer(
+        source,
+        ownership,
+        target,
+    ) as merged:
+        assert merged.to_bytes() == b"".join(source)
+
+    assert mapping_calls == 1
 
 
 def test_coordinate_candidate_discovery_reuses_initial_comparison(monkeypatch):

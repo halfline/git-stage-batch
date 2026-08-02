@@ -417,6 +417,40 @@ def test_live_target_rejects_repeated_replacement_parent_boundary():
     assert is_unique is False
 
 
+def test_occurrence_index_can_preserve_exact_line_identity():
+    """Distinctive context should retain line terminators in identity checks."""
+    lines = [b"same\n", b"same"]
+
+    with MatcherWorkspace() as workspace:
+        normalized_index = LinePayloadOccurrenceIndex(workspace, lines)
+        exact_index = LinePayloadOccurrenceIndex(
+            workspace,
+            lines,
+            normalize_payloads=False,
+        )
+
+        assert normalized_index.occurrence_count(b"same\n") == 2
+        assert exact_index.occurrence_count(b"same\n") == 1
+        assert exact_index.occurrence_count(b"same") == 1
+
+
+def test_occurrence_index_can_filter_target_indexes():
+    """Filtered indexes should retain only requested target positions."""
+    lines = [b"keep\n", b"skip\n", b"keep\n", b"other\n"]
+
+    with MatcherWorkspace() as workspace:
+        occurrence_index = LinePayloadOccurrenceIndex(
+            workspace,
+            lines,
+            normalize_payloads=False,
+            target_indexes=(0, 3),
+        )
+
+        assert occurrence_index.occurrence_count(b"keep\n") == 1
+        assert occurrence_index.occurrence_count(b"skip\n") == 0
+        assert tuple(occurrence_index.matching_line_indexes(b"other\n")) == (3,)
+
+
 def test_live_target_checks_indexed_boundary_candidates(monkeypatch):
     """Many unique claims must not rescan every target boundary."""
     target = [f"line-{index}\n".encode() for index in range(1002)]

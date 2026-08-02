@@ -47,6 +47,9 @@ def apply_presence_constraints(
     source_to_working_mapping: LineMapping | None = None,
     resolution: _MergeResolution | None = None,
     trusted_source_lines: Collection[int] = (),
+    require_distinctive_context: bool = False,
+    distinctive_context_lines: LineSelection | None = None,
+    contextual_placements: Sequence[_PresenceRunPlacement] | None = None,
     spool_dir: str | Path | None = None,
 ) -> RealizedEntries:
     """Apply presence constraints: ensure all claimed lines exist in result.
@@ -81,6 +84,9 @@ def apply_presence_constraints(
             mapping,
             resolution=resolution,
             trusted_source_lines=trusted_source_lines,
+            require_distinctive_context=require_distinctive_context,
+            distinctive_context_lines=distinctive_context_lines,
+            contextual_placements=contextual_placements,
             spool_dir=spool_dir,
         )
     finally:
@@ -96,6 +102,9 @@ def _apply_presence_constraints_with_mapping(
     *,
     resolution: _MergeResolution | None = None,
     trusted_source_lines: Collection[int] = (),
+    require_distinctive_context: bool = False,
+    distinctive_context_lines: LineSelection | None = None,
+    contextual_placements: Sequence[_PresenceRunPlacement] | None = None,
     spool_dir: str | Path | None = None,
 ) -> RealizedEntries:
     """Apply presence constraints using an existing source-to-working mapping."""
@@ -139,6 +148,9 @@ def _apply_presence_constraints_with_mapping(
                 mapping,
                 max_results=_PRESENCE_CANDIDATE_CAP + 1,
                 trusted_source_lines=trusted_source_lines,
+                require_distinctive_context=require_distinctive_context,
+                distinctive_context_lines=distinctive_context_lines,
+                spool_dir=spool_dir,
             )
         )
         if presence_key is not None and presence_key in resolution.decisions:
@@ -176,13 +188,23 @@ def _apply_presence_constraints_with_mapping(
         mapping.is_source_line_present(source_line)
         for source_line in trusted_source_lines
     ):
-        missing_claimed, placements = _contextual_presence_placements(
-            source_lines,
-            working_lines,
-            presence_line_set,
-            mapping,
-            trusted_source_lines=trusted_source_lines,
-        )
+        placements: Sequence[_PresenceRunPlacement]
+        if contextual_placements is None:
+            missing_claimed, computed_placements = (
+                _contextual_presence_placements(
+                    source_lines,
+                    working_lines,
+                    presence_line_set,
+                    mapping,
+                    trusted_source_lines=trusted_source_lines,
+                    require_distinctive_context=require_distinctive_context,
+                    distinctive_context_lines=distinctive_context_lines,
+                    spool_dir=spool_dir,
+                )
+            )
+            placements = computed_placements
+        else:
+            placements = contextual_placements
         if placements:
             return _realize_contextual_placements(
                 source_lines,
@@ -336,6 +358,9 @@ def satisfy_constraints(
     strict: bool = True,
     source_to_working_mapping: LineMapping | None = None,
     resolution: _MergeResolution | None = None,
+    require_distinctive_context: bool = False,
+    distinctive_context_lines: LineSelection | None = None,
+    contextual_placements: Sequence[_PresenceRunPlacement] | None = None,
     spool_dir: str | Path | None = None,
 ) -> RealizedEntries:
     """Apply presence and absence constraints until claimed lines survive."""
@@ -351,6 +376,9 @@ def satisfy_constraints(
         source_to_working_mapping=source_to_working_mapping,
         resolution=resolution,
         trusted_source_lines=trusted_source_lines,
+        require_distinctive_context=require_distinctive_context,
+        distinctive_context_lines=distinctive_context_lines,
+        contextual_placements=contextual_placements,
         spool_dir=spool_dir,
     )
 
@@ -377,6 +405,8 @@ def satisfy_constraints(
                 presence_line_set,
                 resolution=resolution,
                 trusted_source_lines=trusted_source_lines,
+                require_distinctive_context=require_distinctive_context,
+                distinctive_context_lines=distinctive_context_lines,
                 spool_dir=spool_dir,
             )
         finally:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from bisect import bisect_left
 from collections.abc import Hashable, Iterable, Sequence
 from pathlib import Path
 from typing import TypeVar
@@ -21,6 +20,8 @@ LineContent = TypeVar("LineContent", bound=Hashable)
 _MAX_UINT32 = (1 << 32) - 1
 _MAX_UINT64 = (1 << 64) - 1
 _LINE_PAIR_RECORD_FORMAT = "QQ"
+_LINE_INDEX_RECORD_FORMAT = "Q"
+_DIRECT_TARGET_RANK_SPAN_FACTOR = 8
 _OCCURRENCE_RECORD_FORMAT = "QQQQQQ"
 _OCCURRENCE_HASH = 0
 _OCCURRENCE_SOURCE_INDEX = 1
@@ -73,7 +74,13 @@ class _LineOccurrenceTable:
             source_length,
             _OCCURRENCE_RECORD_FORMAT,
         )
+        self._has_common_lines = False
         self._closed = False
+
+    @property
+    def has_common_lines(self) -> bool:
+        """Return whether target scanning found source-equal content."""
+        return self._has_common_lines
 
     def scan_source(self, start: int, end: int) -> None:
         """Record source-side occurrence counts."""
@@ -118,6 +125,7 @@ class _LineOccurrenceTable:
             if record_index is None:
                 continue
 
+            self._has_common_lines = True
             record = self._records[record_index]
             target_count = record[_OCCURRENCE_TARGET_COUNT]
             if target_count == 0:
@@ -234,12 +242,19 @@ def _longest_increasing_subsequence_records(
     if pair_count == 0 or target_end <= target_start:
         return workspace.record_vector(0, _LINE_PAIR_RECORD_FORMAT)
 
-    target_indices = sorted({
-        pairs[pair_index][1]
-        for pair_index in range(pair_count)
-    })
-    best_lengths = workspace.int_vector(len(target_indices) + 1, width=8, fill=0)
-    best_indexes = workspace.int_vector(len(target_indices) + 1, width=8, fill=0)
+    target_indices = None
+    target_span = target_end - target_start
+    use_direct_target_ranks = (
+        target_span <= pair_count * _DIRECT_TARGET_RANK_SPAN_FACTOR
+    )
+    if use_direct_target_ranks:
+        target_rank_count = target_span
+    else:
+        target_indices = _sorted_unique_target_indices(pairs, workspace)
+        target_rank_count = len(target_indices)
+
+    best_lengths = workspace.int_vector(target_rank_count + 1, width=8, fill=0)
+    best_indexes = workspace.int_vector(target_rank_count + 1, width=8, fill=0)
     predecessors = workspace.int_vector(pair_count, width=8, fill=0)
     result_indexes = None
 
@@ -249,7 +264,15 @@ def _longest_increasing_subsequence_records(
 
         for pair_index in range(pair_count):
             _, target_index = pairs[pair_index]
-            target_rank = bisect_left(target_indices, target_index) + 1
+            if use_direct_target_ranks:
+                target_rank = target_index - target_start + 1
+                if target_rank < 1 or target_rank > target_span:
+                    raise ValueError(
+                        "LIS candidate target index is outside its segment"
+                    )
+            else:
+                assert target_indices is not None
+                target_rank = _mapped_target_rank(target_indices, target_index) + 1
             predecessor_length, predecessor_index_number = (
                 _query_best_record_by_target_rank(
                     best_lengths,
@@ -298,6 +321,50 @@ def _longest_increasing_subsequence_records(
         workspace.close_resource(predecessors)
         workspace.close_resource(best_indexes)
         workspace.close_resource(best_lengths)
+        if target_indices is not None:
+            workspace.close_resource(target_indices)
+
+
+def _sorted_unique_target_indices(
+    pairs: MappedRecordVector,
+    workspace: MatcherWorkspace,
+) -> MappedRecordVector:
+    """Return storage-backed sorted target coordinates from candidate pairs."""
+    target_indices = workspace.record_vector(
+        len(pairs),
+        _LINE_INDEX_RECORD_FORMAT,
+    )
+    for pair_index in range(len(pairs)):
+        target_indices.append((pairs[pair_index][1],))
+    sort_mapped_records(target_indices)
+
+    unique_count = 0
+    previous_target_index: int | None = None
+    for read_index in range(len(target_indices)):
+        target_index = target_indices[read_index][0]
+        if target_index == previous_target_index:
+            continue
+        target_indices[unique_count] = (target_index,)
+        unique_count += 1
+        previous_target_index = target_index
+    target_indices.truncate(unique_count)
+    return target_indices
+
+
+def _mapped_target_rank(
+    target_indices: MappedRecordVector,
+    target_index: int,
+) -> int:
+    """Return the zero-based insertion rank in mapped sorted coordinates."""
+    low = 0
+    high = len(target_indices)
+    while low < high:
+        middle = (low + high) // 2
+        if target_indices[middle][0] < target_index:
+            low = middle + 1
+        else:
+            high = middle
+    return low
 
 
 def _query_best_record_by_target_rank(
@@ -422,7 +489,7 @@ def _align_segment(
     source_to_target: _IntVector,
     target_to_source: _IntVector,
     workspace: MatcherWorkspace,
-) -> None:
+) -> bool:
     """Conservatively align one source/target segment.
 
     Strategy:
@@ -466,7 +533,7 @@ def _align_segment(
     )
 
     if source_start >= source_end or target_start >= target_end:
-        return
+        return False
 
     occurrence_table = _LineOccurrenceTable(
         workspace,
@@ -482,6 +549,7 @@ def _align_segment(
             source_start,
             source_end,
         )
+        has_common_lines = occurrence_table.has_common_lines
     finally:
         occurrence_table.close()
 
@@ -497,7 +565,7 @@ def _align_segment(
 
     if not anchors:
         workspace.close_resource(anchors)
-        return
+        return has_common_lines
 
     previous_source = source_start
     previous_target = target_start
@@ -535,6 +603,7 @@ def _align_segment(
         )
     finally:
         workspace.close_resource(anchors)
+    return has_common_lines
 
 
 def _validated_anchor_pairs(
@@ -597,15 +666,16 @@ def _align_segments_around_anchors(
     source_to_target: _IntVector,
     target_to_source: _IntVector,
     workspace: MatcherWorkspace,
-) -> None:
+) -> bool:
     """Align independent segments separated by trusted equal-line anchors."""
     source_start = 0
     target_start = 0
+    may_have_unmapped_equal_lines = False
 
     for source_line, target_line in anchor_pairs:
         source_index = source_line - 1
         target_index = target_line - 1
-        _align_segment(
+        may_have_unmapped_equal_lines |= _align_segment(
             source_lines,
             target_lines,
             source_start,
@@ -621,7 +691,7 @@ def _align_segments_around_anchors(
         source_start = source_index + 1
         target_start = target_index + 1
 
-    _align_segment(
+    may_have_unmapped_equal_lines |= _align_segment(
         source_lines,
         target_lines,
         source_start,
@@ -632,6 +702,7 @@ def _align_segments_around_anchors(
         target_to_source,
         workspace,
     )
+    return may_have_unmapped_equal_lines
 
 
 def match_acquirable_lines(
@@ -694,7 +765,7 @@ def match_acquirable_lines(
                 anchor_pairs,
                 workspace,
             )
-            _align_segments_around_anchors(
+            may_have_unmapped_equal_lines = _align_segments_around_anchors(
                 acquired_source_lines,
                 acquired_target_lines,
                 (
@@ -708,7 +779,8 @@ def match_acquirable_lines(
 
         return _LineMapping(
             source_to_target=source_to_target,
-            target_to_source=target_to_source
+            target_to_source=target_to_source,
+            may_have_unmapped_equal_lines=may_have_unmapped_equal_lines,
         )
     except BaseException:
         if source_to_target is not None:

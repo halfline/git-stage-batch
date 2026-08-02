@@ -1,5 +1,9 @@
 """Tests for batch comparison helpers."""
 
+import gc
+from itertools import product
+import tracemalloc
+
 import pytest
 
 import git_stage_batch.batch.line_matching.comparison as comparison_module
@@ -9,6 +13,10 @@ from git_stage_batch.batch.line_matching.comparison import (
     derive_semantic_change_runs,
     stream_semantic_change_runs,
 )
+from git_stage_batch.batch.line_matching.match import match_lines
+
+
+_LINE_SCALE_HEAP_LIMIT = 256 * 1024
 
 
 def test_derive_semantic_change_runs_accepts_non_list_sequences(line_sequence):
@@ -23,6 +31,117 @@ def test_derive_semantic_change_runs_accepts_non_list_sequences(line_sequence):
     assert (runs[0].source_start, runs[0].source_end) == (2, 2)
     assert (runs[0].target_start, runs[0].target_end) == (2, 2)
     assert runs[0].target_anchor == 1
+
+
+def test_trusted_matching_skips_reciprocal_pass_for_disjoint_gaps(monkeypatch):
+    """A forward alignment is final when its gaps share no equal content."""
+    calls = 0
+    real_match_lines = comparison_module.match_lines
+
+    def count_match(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return real_match_lines(*args, **kwargs)
+
+    monkeypatch.setattr(comparison_module, "match_lines", count_match)
+
+    runs = derive_semantic_change_runs(
+        [b"head\n", b"old\n", b"tail\n"],
+        [b"head\n", b"new\n", b"tail\n"],
+    )
+
+    assert calls == 1
+    assert runs == [
+        SemanticChangeRun(
+            kind=SemanticChangeKind.REPLACEMENT,
+            source_start=2,
+            source_end=2,
+            target_start=2,
+            target_end=2,
+            target_anchor=1,
+        )
+    ]
+
+
+def test_trusted_matching_keeps_reciprocal_pass_for_crossed_lines(monkeypatch):
+    """Direction-dependent crossed matches must still be rejected."""
+    calls = 0
+    real_match_lines = comparison_module.match_lines
+
+    def count_match(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return real_match_lines(*args, **kwargs)
+
+    monkeypatch.setattr(comparison_module, "match_lines", count_match)
+
+    runs = derive_semantic_change_runs(
+        [b"first\n", b"second\n"],
+        [b"second\n", b"first\n"],
+    )
+
+    assert calls == 2
+    assert runs == [
+        SemanticChangeRun(
+            kind=SemanticChangeKind.REPLACEMENT,
+            source_start=1,
+            source_end=2,
+            target_start=1,
+            target_end=2,
+        )
+    ]
+
+
+def test_trusted_matching_fast_path_matches_bidirectional_reference():
+    """Fast-path trust must equal an explicit reciprocal intersection."""
+    alphabet = (b"a\n", b"b\n")
+    sequences = [
+        values
+        for length in range(4)
+        for values in product(alphabet, repeat=length)
+    ]
+
+    for source in sequences:
+        for target in sequences:
+            with (
+                match_lines(source, target) as forward,
+                match_lines(target, source) as reverse,
+            ):
+                reverse_pairs = {
+                    (source_line, target_line)
+                    for target_line, source_line in reverse.mapped_line_pairs()
+                }
+                expected = tuple(
+                    pair
+                    for pair in forward.mapped_line_pairs()
+                    if pair in reverse_pairs
+                )
+
+            assert tuple(comparison_module._trusted_matched_pairs(
+                source,
+                target,
+            )) == expected
+
+
+def test_large_unmapped_disjoint_gaps_avoid_line_scale_python_heap():
+    """Large reciprocal checks should index gaps in mapped storage."""
+    line_count = 8192
+    midpoint = line_count // 2
+    source = [f"old-{index}\n".encode() for index in range(line_count)]
+    target = [f"new-{index}\n".encode() for index in range(line_count)]
+    source.insert(midpoint, b"shared anchor\n")
+    target.insert(midpoint, b"shared anchor\n")
+
+    gc.collect()
+    tracemalloc.start()
+    try:
+        runs = derive_semantic_change_runs(source, target)
+        _current_heap, peak_heap = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert len(runs) == 2
+    assert peak_heap < _LINE_SCALE_HEAP_LIMIT
 
 
 def test_stream_semantic_change_runs_closes_matching_pairs(monkeypatch):

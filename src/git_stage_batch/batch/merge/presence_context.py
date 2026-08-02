@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from collections import Counter
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 from ..line_matching.line_mapping import LineMapping
+from ..line_matching.match_workspace import MatcherWorkspace
+from ..line_matching.occurrence_index import LinePayloadOccurrenceIndex
 from .presence_missing_claims import mapped_missing_source_lines
 from ...core.line_selection import LineRanges, LineSelection
 from ...exceptions import MergeError
@@ -14,6 +16,7 @@ from ...i18n import _
 
 
 _CONTEXTUAL_LEADING_GAP = 3
+_DIRECT_DISTINCTIVE_CONTEXT_CHECK_LIMIT = 8
 
 
 @dataclass(frozen=True)
@@ -50,59 +53,192 @@ class _PresenceRunAnalysis:
     gap_index: int | None
 
 
-def _distinctive_mapped_source_lines(
-    source_lines: Sequence[bytes],
-    target_lines: Sequence[bytes],
-    mapping: LineMapping,
-    trusted_source_lines: Collection[int],
-) -> list[tuple[int, int]]:
-    """Return mapped pairs whose line identity is safe as a boundary.
+class _DistinctiveContextResolver:
+    """Find nearby globally distinctive mappings with bounded heap state."""
 
-    A raw alignment can map repeated punctuation through an equal prefix or
-    suffix.  Such a mapping is useful for preserving content, but it does not
-    identify which structural occurrence owns an insertion boundary.  A line
-    is therefore a contextual boundary only when it is unique in both file
-    versions, or when another constraint explicitly anchors that source line.
-    """
-    source_counts = Counter(source_lines)
-    target_counts = Counter(target_lines)
-    trusted = set(trusted_source_lines)
-    pairs: list[tuple[int, int]] = []
+    def __init__(
+        self,
+        source_lines: Sequence[bytes],
+        target_lines: Sequence[bytes],
+        mapping: LineMapping,
+        trusted_source_lines: Collection[int],
+        *,
+        spool_dir: str | Path | None,
+    ) -> None:
+        self._source_lines = source_lines
+        self._target_lines = target_lines
+        self._mapping = mapping
+        self._trusted_source_lines = trusted_source_lines
+        self._spool_dir = spool_dir
+        self._direct_check_count = 0
+        self._direct_results: dict[int, bool] = {}
+        self._workspace: MatcherWorkspace | None = None
+        self._source_occurrences: LinePayloadOccurrenceIndex | None = None
+        self._target_occurrences: LinePayloadOccurrenceIndex | None = None
 
-    for source_line, target_line in mapping.mapped_line_pairs():
-        content = source_lines[source_line - 1]
-        if (
-            source_line in trusted
-            or (
-                source_counts[content] == 1
-                and target_counts[content] == 1
+    def close(self) -> None:
+        """Release lazily allocated occurrence indexes."""
+        if self._workspace is not None:
+            self._workspace.close()
+            self._workspace = None
+            self._source_occurrences = None
+            self._target_occurrences = None
+
+    def nearest_before(self, run_start: int) -> tuple[int, int] | None:
+        """Return the nearest distinctive mapped line before a source run."""
+        for source_line in range(run_start - 1, 0, -1):
+            target_line = self._mapping.get_target_line_from_source_line(
+                source_line
             )
+            if target_line is not None and self._is_distinctive(source_line):
+                return source_line, target_line
+        return None
+
+    def nearest_after(self, run_end: int) -> tuple[int, int] | None:
+        """Return the nearest distinctive mapped line after a source run."""
+        for source_line in range(
+            run_end + 1,
+            len(self._source_lines) + 1,
         ):
-            pairs.append((source_line, target_line))
+            target_line = self._mapping.get_target_line_from_source_line(
+                source_line
+            )
+            if target_line is not None and self._is_distinctive(source_line):
+                return source_line, target_line
+        return None
 
-    return pairs
+    def nearest_around(
+        self,
+        run_start: int,
+        run_end: int,
+    ) -> tuple[tuple[int, int] | None, tuple[int, int] | None]:
+        """Return nearest distinctive mappings around a source run."""
+        before = _nearest_mapped_before(self._mapping, run_start)
+        after = _nearest_mapped_after(
+            self._mapping,
+            run_end,
+            len(self._source_lines),
+        )
+        candidates = tuple(
+            pair[0]
+            for pair in (before, after)
+            if pair is not None
+        )
+        distinctive = self._distinctive_results(candidates)
+
+        if before is not None and not distinctive[0]:
+            before = self.nearest_before(run_start)
+        if after is not None and not distinctive[-1]:
+            after = self.nearest_after(run_end)
+        return before, after
+
+    def _is_distinctive(self, source_line: int) -> bool:
+        return self._distinctive_results((source_line,))[0]
+
+    def _distinctive_results(
+        self,
+        source_lines: Sequence[int],
+    ) -> tuple[bool, ...]:
+        results: list[bool | None] = []
+        unchecked_lines: list[int] = []
+        for source_line in source_lines:
+            if source_line in self._trusted_source_lines:
+                results.append(True)
+            elif source_line in self._direct_results:
+                results.append(self._direct_results[source_line])
+            else:
+                results.append(None)
+                unchecked_lines.append(source_line)
+
+        if not unchecked_lines:
+            return tuple(result is True for result in results)
+
+        if (
+            self._source_occurrences is None
+            and self._direct_check_count + len(unchecked_lines)
+            <= _DIRECT_DISTINCTIVE_CONTEXT_CHECK_LIMIT
+        ):
+            contents = [
+                self._source_lines[source_line - 1]
+                for source_line in unchecked_lines
+            ]
+            source_counts = _line_occurrence_counts(
+                self._source_lines,
+                contents,
+            )
+            target_counts = _line_occurrence_counts(
+                self._target_lines,
+                contents,
+            )
+            for source_line, source_count, target_count in zip(
+                unchecked_lines,
+                source_counts,
+                target_counts,
+                strict=True,
+            ):
+                self._direct_results[source_line] = (
+                    source_count == 1 and target_count == 1
+                )
+            self._direct_check_count += len(unchecked_lines)
+        else:
+            if self._source_occurrences is None:
+                self._build_occurrence_indexes()
+            assert self._source_occurrences is not None
+            assert self._target_occurrences is not None
+            for result_index, (source_line, result) in enumerate(
+                zip(source_lines, results, strict=True)
+            ):
+                if result is not None:
+                    continue
+                content = self._source_lines[source_line - 1]
+                results[result_index] = (
+                    self._source_occurrences.occurrence_count(content) == 1
+                    and self._target_occurrences.occurrence_count(content) == 1
+                )
+
+        for result_index, (source_line, result) in enumerate(
+            zip(source_lines, results, strict=True)
+        ):
+            if result is None:
+                results[result_index] = self._direct_results[source_line]
+        return tuple(result is True for result in results)
+
+    def _build_occurrence_indexes(self) -> None:
+        self._workspace = MatcherWorkspace(spool_dir=self._spool_dir)
+        try:
+            self._source_occurrences = LinePayloadOccurrenceIndex(
+                self._workspace,
+                self._source_lines,
+                normalize_payloads=False,
+            )
+            self._target_occurrences = LinePayloadOccurrenceIndex(
+                self._workspace,
+                self._target_lines,
+                normalize_payloads=False,
+            )
+        except BaseException:
+            self.close()
+            raise
 
 
-def _nearest_context_before(
-    pairs: Sequence[tuple[int, int]],
-    run_start: int,
-) -> tuple[int, int] | None:
-    nearest = None
-    for source_line, target_line in pairs:
-        if source_line >= run_start:
-            break
-        nearest = (source_line, target_line)
-    return nearest
-
-
-def _nearest_context_after(
-    pairs: Sequence[tuple[int, int]],
-    run_end: int,
-) -> tuple[int, int] | None:
-    for source_line, target_line in pairs:
-        if source_line > run_end:
-            return source_line, target_line
-    return None
+def _line_occurrence_counts(
+    lines: Sequence[bytes],
+    contents: Sequence[bytes],
+) -> tuple[int, ...]:
+    """Count a bounded set of exact lines, capping each count at two."""
+    counts = [0] * len(contents)
+    content_hashes = tuple(hash(content) for content in contents)
+    for line_index in range(len(lines)):
+        line = lines[line_index]
+        line_hash = hash(line)
+        for content_index, content in enumerate(contents):
+            if (
+                counts[content_index] < 2
+                and line_hash == content_hashes[content_index]
+                and line == content
+            ):
+                counts[content_index] += 1
+    return tuple(counts)
 
 
 def _nearest_mapped_before(
@@ -203,55 +339,80 @@ def _analyze_presence_runs(
     source_selection: LineSelection,
     mapping: LineMapping,
     trusted_source_lines: Collection[int],
+    *,
+    require_distinctive_context: bool = False,
+    distinctive_context_lines: LineSelection | None = None,
+    spool_dir: str | Path | None = None,
 ) -> tuple[LineRanges, tuple[_PresenceRunAnalysis, ...]]:
     missing = mapped_missing_source_lines(
         source_selection,
         len(source_lines),
         mapping,
     )
-    distinctive_pairs = None
+    distinctive_context: _DistinctiveContextResolver | None = None
     analyses: list[_PresenceRunAnalysis] = []
 
-    for run_start, run_end in missing.ranges():
-        gap_index: int | None
-        mapped_before = _nearest_mapped_before(mapping, run_start)
-        mapped_after = _nearest_mapped_after(mapping, run_end, len(source_lines))
-        leading_gap = (
-            run_start - mapped_before[0] - 1
-            if mapped_before is not None
-            else 0
-        )
-
-        if leading_gap < _CONTEXTUAL_LEADING_GAP:
-            before = mapped_before
-            after = mapped_after
-            gap_index = before[1] if before is not None else 0
-        else:
-            if distinctive_pairs is None:
-                distinctive_pairs = _distinctive_mapped_source_lines(
-                    source_lines,
-                    target_lines,
-                    mapping,
-                    trusted_source_lines,
+    try:
+        for run_start, run_end in missing.ranges():
+            gap_index: int | None
+            mapped_before = _nearest_mapped_before(mapping, run_start)
+            mapped_after = _nearest_mapped_after(
+                mapping,
+                run_end,
+                len(source_lines),
+            )
+            leading_gap = (
+                run_start - mapped_before[0] - 1
+                if mapped_before is not None
+                else 0
+            )
+            run_requires_distinctive_context = (
+                require_distinctive_context
+                or (
+                    distinctive_context_lines is not None
+                    and distinctive_context_lines.count(run_start, run_end) > 0
                 )
-            before = _nearest_context_before(distinctive_pairs, run_start)
-            after = _nearest_context_after(distinctive_pairs, run_end)
-            gap_index = _choose_insertion_gap(
-                run_start=run_start,
-                run_end=run_end,
-                source_line_count=len(source_lines),
-                target_line_count=len(target_lines),
-                before=before,
-                after=after,
             )
 
-        analyses.append(_PresenceRunAnalysis(
-            run_start=run_start,
-            run_end=run_end,
-            before=before,
-            after=after,
-            gap_index=gap_index,
-        ))
+            if (
+                not run_requires_distinctive_context
+                and leading_gap < _CONTEXTUAL_LEADING_GAP
+            ):
+                before = mapped_before
+                after = mapped_after
+                gap_index = before[1] if before is not None else 0
+            else:
+                if distinctive_context is None:
+                    distinctive_context = _DistinctiveContextResolver(
+                        source_lines,
+                        target_lines,
+                        mapping,
+                        trusted_source_lines,
+                        spool_dir=spool_dir,
+                    )
+                before, after = distinctive_context.nearest_around(
+                    run_start,
+                    run_end,
+                )
+                gap_index = _choose_insertion_gap(
+                    run_start=run_start,
+                    run_end=run_end,
+                    source_line_count=len(source_lines),
+                    target_line_count=len(target_lines),
+                    before=before,
+                    after=after,
+                )
+
+            analyses.append(_PresenceRunAnalysis(
+                run_start=run_start,
+                run_end=run_end,
+                before=before,
+                after=after,
+                gap_index=gap_index,
+            ))
+    finally:
+        if distinctive_context is not None:
+            distinctive_context.close()
 
     return missing, tuple(analyses)
 
@@ -263,6 +424,9 @@ def contextual_presence_ambiguities(
     mapping: LineMapping,
     *,
     trusted_source_lines: Collection[int] = (),
+    require_distinctive_context: bool = False,
+    distinctive_context_lines: LineSelection | None = None,
+    spool_dir: str | Path | None = None,
 ) -> tuple[ContextualPresenceAmbiguity, ...]:
     """Return bounded placement ambiguities for suspicious missing runs."""
     _, analyses = _analyze_presence_runs(
@@ -271,6 +435,9 @@ def contextual_presence_ambiguities(
         source_selection,
         mapping,
         trusted_source_lines,
+        require_distinctive_context=require_distinctive_context,
+        distinctive_context_lines=distinctive_context_lines,
+        spool_dir=spool_dir,
     )
     ambiguities: list[ContextualPresenceAmbiguity] = []
 
@@ -295,6 +462,9 @@ def contextual_presence_placements(
     mapping: LineMapping,
     *,
     trusted_source_lines: Collection[int] = (),
+    require_distinctive_context: bool = False,
+    distinctive_context_lines: LineSelection | None = None,
+    spool_dir: str | Path | None = None,
 ) -> tuple[LineRanges, tuple[PresenceRunPlacement, ...]]:
     """Return missing claims and their context-supported insertion gaps.
 
@@ -311,6 +481,9 @@ def contextual_presence_placements(
         source_selection,
         mapping,
         trusted_source_lines,
+        require_distinctive_context=require_distinctive_context,
+        distinctive_context_lines=distinctive_context_lines,
+        spool_dir=spool_dir,
     )
     if not missing:
         return missing, ()

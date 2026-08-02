@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import json
 import subprocess
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
 
 from git_stage_batch.commands.journal import command_journal
 import git_stage_batch.commands.apply_from as apply_from
+from git_stage_batch.commands.selection import discard_line_batching
+from git_stage_batch.commands.selection import discard_to_batch_action
+from git_stage_batch.data.undo.checkpoints import UndoCheckpointStatus
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.journal import JOURNAL_LEVEL_ENV, JOURNAL_PATH_ENV, flush_journal, log_journal
 from tests.journal_helpers import reset_journal_state
@@ -180,3 +184,104 @@ def test_apply_failure_logs_stage_and_rollback_outcome(monkeypatch):
     assert events[1][1]["stage"] == "publication"
     assert events[1][1]["rollback"] == "completed"
     assert events[1][1]["error_type"] == "CommandError"
+
+
+def test_discard_line_failure_has_terminal_journal_event(
+    temp_git_repo,
+    monkeypatch,
+):
+    """A failed line discard must not leave an unmatched start event."""
+    monkeypatch.setattr(
+        discard_line_batching,
+        "require_selected_hunk",
+        lambda: (_ for _ in ()).throw(RuntimeError("selection failed")),
+    )
+
+    with pytest.raises(RuntimeError, match="selection failed"):
+        discard_line_batching.discard_selected_lines_to_batch(
+            "saved",
+            "1",
+            quiet=True,
+        )
+
+    flush_journal()
+    journal_path = temp_git_repo / "state" / "journal.jsonl"
+    entries = [json.loads(line) for line in journal_path.read_text().splitlines()]
+    operations = [entry["operation"] for entry in entries]
+
+    assert operations == [
+        "discard_lines_to_batch_start",
+        "discard_lines_to_batch_failed",
+    ]
+    assert entries[-1]["fields"]["stage"] == "selection"
+    assert entries[-1]["fields"]["rollback"] == "not-started"
+
+
+def test_discard_line_terminal_event_waits_for_transaction_rollback(
+    monkeypatch,
+):
+    """Command-level failure logging must observe the completed rollback."""
+    events = []
+
+    @contextmanager
+    def transactional_checkpoint(*_args, **_kwargs):
+        status = UndoCheckpointStatus(rollback="pending")
+        try:
+            yield status
+        except BaseException:
+            status.rollback = "completed"
+            raise
+
+    def fail_discard(*_args, journal_state, **_kwargs):
+        journal_state.stage = "worktree-publication"
+        raise OSError("injected write failure")
+
+    monkeypatch.setattr(
+        discard_to_batch_action,
+        "validate_batch_name",
+        lambda _name: None,
+    )
+    monkeypatch.setattr(
+        discard_to_batch_action,
+        "load_selected_change",
+        lambda: SimpleNamespace(),
+    )
+    monkeypatch.setattr(
+        discard_to_batch_action,
+        "checkpoint_paths_for_file_scope",
+        lambda *_args: [],
+    )
+    monkeypatch.setattr(
+        discard_to_batch_action,
+        "undo_checkpoint",
+        transactional_checkpoint,
+    )
+    monkeypatch.setattr(
+        discard_line_batching,
+        "discard_selected_lines_to_batch",
+        fail_discard,
+    )
+    monkeypatch.setattr(
+        discard_line_batching,
+        "log_journal",
+        lambda operation, **fields: events.append((operation, fields)),
+    )
+
+    with pytest.raises(OSError, match="injected write failure"):
+        discard_to_batch_action.execute_discard_to_batch_action(
+            batch_name="saved",
+            line_ids="1",
+            file=None,
+            original_file_scope=None,
+            review_state=None,
+            quiet=True,
+            advance=True,
+            auto_advance=None,
+        )
+
+    assert [operation for operation, _fields in events] == [
+        "discard_lines_to_batch_start",
+        "discard_lines_to_batch_failed",
+    ]
+    assert events[1][1]["stage"] == "worktree-publication"
+    assert events[1][1]["rollback"] == "completed"

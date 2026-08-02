@@ -219,6 +219,35 @@ def test_mapped_record_vector_can_start_presized():
         assert list(records) == [(10, 20), (30, 40)]
 
 
+def test_sort_mapped_records_returns_early_for_ordered_records(monkeypatch):
+    """Already ordered mapped records should need only a linear scan."""
+    with MappedRecordVector(3, "QQ") as records:
+        records.append((1, 2))
+        records.append((1, 3))
+        records.append((2, 1))
+        monkeypatch.setattr(
+            mapped_storage_module,
+            "_sift_mapped_record",
+            lambda *_args: pytest.fail("ordered records must not build a heap"),
+        )
+
+        mapped_storage_module.sort_mapped_records(records)
+
+        assert list(records) == [(1, 2), (1, 3), (2, 1)]
+
+
+def test_sort_mapped_records_still_orders_unsorted_records():
+    """The ordered fast path must retain bounded in-place sorting fallback."""
+    with MappedRecordVector(3, "QQ") as records:
+        records.append((2, 1))
+        records.append((1, 3))
+        records.append((1, 2))
+
+        mapped_storage_module.sort_mapped_records(records)
+
+        assert list(records) == [(1, 2), (1, 3), (2, 1)]
+
+
 def test_chunked_mapped_record_vector_grows_from_small_chunks():
     """Chunked vectors should avoid allocating the full chunk up front."""
     records = ChunkedMappedRecordVector(

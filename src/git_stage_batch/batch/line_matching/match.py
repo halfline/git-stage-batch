@@ -74,7 +74,13 @@ class _LineOccurrenceTable:
             source_length,
             _OCCURRENCE_RECORD_FORMAT,
         )
+        self._has_common_lines = False
         self._closed = False
+
+    @property
+    def has_common_lines(self) -> bool:
+        """Return whether target scanning found source-equal content."""
+        return self._has_common_lines
 
     def scan_source(self, start: int, end: int) -> None:
         """Record source-side occurrence counts."""
@@ -119,6 +125,7 @@ class _LineOccurrenceTable:
             if record_index is None:
                 continue
 
+            self._has_common_lines = True
             record = self._records[record_index]
             target_count = record[_OCCURRENCE_TARGET_COUNT]
             if target_count == 0:
@@ -482,7 +489,7 @@ def _align_segment(
     source_to_target: _IntVector,
     target_to_source: _IntVector,
     workspace: MatcherWorkspace,
-) -> None:
+) -> bool:
     """Conservatively align one source/target segment.
 
     Strategy:
@@ -526,7 +533,7 @@ def _align_segment(
     )
 
     if source_start >= source_end or target_start >= target_end:
-        return
+        return False
 
     occurrence_table = _LineOccurrenceTable(
         workspace,
@@ -542,6 +549,7 @@ def _align_segment(
             source_start,
             source_end,
         )
+        has_common_lines = occurrence_table.has_common_lines
     finally:
         occurrence_table.close()
 
@@ -557,7 +565,7 @@ def _align_segment(
 
     if not anchors:
         workspace.close_resource(anchors)
-        return
+        return has_common_lines
 
     previous_source = source_start
     previous_target = target_start
@@ -595,6 +603,7 @@ def _align_segment(
         )
     finally:
         workspace.close_resource(anchors)
+    return has_common_lines
 
 
 def _validated_anchor_pairs(
@@ -657,15 +666,16 @@ def _align_segments_around_anchors(
     source_to_target: _IntVector,
     target_to_source: _IntVector,
     workspace: MatcherWorkspace,
-) -> None:
+) -> bool:
     """Align independent segments separated by trusted equal-line anchors."""
     source_start = 0
     target_start = 0
+    may_have_unmapped_equal_lines = False
 
     for source_line, target_line in anchor_pairs:
         source_index = source_line - 1
         target_index = target_line - 1
-        _align_segment(
+        may_have_unmapped_equal_lines |= _align_segment(
             source_lines,
             target_lines,
             source_start,
@@ -681,7 +691,7 @@ def _align_segments_around_anchors(
         source_start = source_index + 1
         target_start = target_index + 1
 
-    _align_segment(
+    may_have_unmapped_equal_lines |= _align_segment(
         source_lines,
         target_lines,
         source_start,
@@ -692,6 +702,7 @@ def _align_segments_around_anchors(
         target_to_source,
         workspace,
     )
+    return may_have_unmapped_equal_lines
 
 
 def match_acquirable_lines(
@@ -754,7 +765,7 @@ def match_acquirable_lines(
                 anchor_pairs,
                 workspace,
             )
-            _align_segments_around_anchors(
+            may_have_unmapped_equal_lines = _align_segments_around_anchors(
                 acquired_source_lines,
                 acquired_target_lines,
                 (
@@ -768,7 +779,8 @@ def match_acquirable_lines(
 
         return _LineMapping(
             source_to_target=source_to_target,
-            target_to_source=target_to_source
+            target_to_source=target_to_source,
+            may_have_unmapped_equal_lines=may_have_unmapped_equal_lines,
         )
     except BaseException:
         if source_to_target is not None:

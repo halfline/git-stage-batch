@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 
 from ...core.text_lines import normalize_line_endings
 from .match_workspace import MatcherWorkspace
@@ -29,14 +29,18 @@ def normalized_line_payload(content: bytes) -> bytes:
 
 
 class LinePayloadOccurrenceIndex:
-    """Index target positions by normalized line payload using mapped storage."""
+    """Index target positions by line payload using mapped storage."""
 
     def __init__(
         self,
         workspace: MatcherWorkspace,
         target_lines: Sequence[bytes],
+        *,
+        normalize_payloads: bool = True,
+        target_indexes: Iterable[int] | None = None,
     ) -> None:
         self._target_lines = target_lines
+        self._normalize_payloads = normalize_payloads
         self._bucket_count = _bucket_capacity(len(target_lines))
         self._buckets = workspace.int_vector(
             self._bucket_count,
@@ -51,11 +55,11 @@ class LinePayloadOccurrenceIndex:
             len(target_lines),
             _POSITION_RECORD_FORMAT,
         )
-        self._build()
+        self._build(target_indexes)
 
     def occurrence_count(self, content: bytes) -> int:
-        """Return the number of target lines with this normalized payload."""
-        payload = normalized_line_payload(content)
+        """Return the number of target lines with this configured payload."""
+        payload = self._payload(content)
         record_index = self._find_content_record(
             payload,
             _payload_hash(payload),
@@ -65,8 +69,8 @@ class LinePayloadOccurrenceIndex:
         return self._contents[record_index][_CONTENT_COUNT]
 
     def matching_line_indexes(self, content: bytes) -> Iterator[int]:
-        """Yield zero-based target indexes having this normalized payload."""
-        payload = normalized_line_payload(content)
+        """Yield zero-based target indexes having this configured payload."""
+        payload = self._payload(content)
         record_index = self._find_content_record(
             payload,
             _payload_hash(payload),
@@ -82,9 +86,16 @@ class LinePayloadOccurrenceIndex:
             yield position[_POSITION_TARGET_INDEX]
             position_number = position[_POSITION_NEXT]
 
-    def _build(self) -> None:
-        for target_index in range(len(self._target_lines)):
-            payload = normalized_line_payload(self._target_lines[target_index])
+    def _build(self, target_indexes: Iterable[int] | None) -> None:
+        indexes = (
+            range(len(self._target_lines))
+            if target_indexes is None
+            else target_indexes
+        )
+        for target_index in indexes:
+            if target_index < 0 or target_index >= len(self._target_lines):
+                raise ValueError("target line index is out of range")
+            payload = self._payload(self._target_lines[target_index])
             payload_hash = _payload_hash(payload)
             content_record_index = self._find_content_record(
                 payload,
@@ -129,7 +140,7 @@ class LinePayloadOccurrenceIndex:
             record = self._contents[record_index]
             if (
                 record[_CONTENT_HASH] == payload_hash
-                and normalized_line_payload(
+                and self._payload(
                     self._target_lines[
                         record[_CONTENT_REPRESENTATIVE_INDEX]
                     ]
@@ -143,6 +154,11 @@ class LinePayloadOccurrenceIndex:
 
     def _bucket_index(self, payload_hash: int) -> int:
         return payload_hash & (self._bucket_count - 1)
+
+    def _payload(self, content: bytes) -> bytes:
+        if self._normalize_payloads:
+            return normalized_line_payload(content)
+        return bytes(content)
 
 
 def _bucket_capacity(line_count: int) -> int:

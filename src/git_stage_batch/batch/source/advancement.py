@@ -3,22 +3,49 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from types import TracebackType
 
 from ...core.buffer import LineBuffer
+from ...core.line_selection import LineRanges, coerce_line_ranges
+from ...core.mapped_storage import MappedRecordVector, sort_mapped_records
 from .snapshots import create_batch_source_commit
 from ...utils.repository_buffers import (
     read_git_object_buffer_or_none,
     load_working_tree_file_as_buffer,
 )
 from ...utils.git_repository import get_git_repository_root_path
-from ..line_matching.lineage import BatchSourceLineage, LineageRun
-from ..merge.presence_constraints import apply_presence_constraints
-from ..realization.entry_storage import realized_entry_content_chunks
+from ..line_matching.comparison import (
+    SemanticChangeKind,
+    SemanticChangeRun,
+    stream_semantic_change_runs,
+)
+from ..line_matching.lineage import (
+    BatchSourceLineage,
+    LineageRun,
+    SourceSelectionExpansion,
+)
+from ..line_matching.match_workspace import MatcherWorkspace
+from ..line_matching.sequence_equality import line_slice_equals
+from ..merge.baseline_replacement_ranges import collect_replacement_source_ranges
 from ..ownership.model import BatchOwnership
 from ..ownership.remapping import remap_batch_ownership_with_lineage
+
+
+_SOURCE_RANGE_RECORD_FORMAT = "QQ"
+
+
+class BatchSourceAdvanceError(ValueError):
+    """Expected refusal while reconciling a stale batch source."""
+
+
+@dataclass(frozen=True, slots=True)
+class _SavedReplacementTargetSpan:
+    """Unique live span suppressed by an authoritative replacement unit."""
+
+    start: int
+    end: int
 
 
 @dataclass
@@ -30,8 +57,10 @@ class SourceContentWithLineProvenance:
 
     def close(self) -> None:
         """Release the synthesized buffer and line lineage."""
-        self.source_buffer.close()
-        self.lineage.close()
+        try:
+            self.source_buffer.close()
+        finally:
+            self.lineage.close()
 
     def __enter__(self) -> SourceContentWithLineProvenance:
         return self
@@ -56,8 +85,10 @@ class BatchSourceAdvanceResult:
 
     def close(self) -> None:
         """Release the refreshed source buffer and line lineage."""
-        self.source_buffer.close()
-        self.lineage.close()
+        try:
+            self.source_buffer.close()
+        finally:
+            self.lineage.close()
 
     def __enter__(self) -> BatchSourceAdvanceResult:
         return self
@@ -76,48 +107,397 @@ def advance_source_lines_preserving_existing_presence(
     working_lines: Sequence[bytes],
     ownership: BatchOwnership,
 ) -> SourceContentWithLineProvenance:
-    """Build source content with provenance from line sequences."""
-    presence_lines = ownership.presence_line_set()
+    """Reconcile source content with the worktree and retain owned provenance.
 
-    entries = apply_presence_constraints(
-        old_lines,
-        working_lines,
-        presence_lines,
-    )
-
+    Owned source lines in a changed semantic run are advanced to the live
+    variant when the complete source side is owned.  Partial ownership remains
+    conservative: required old lines are retained beside the live variant so
+    unrelated ownership is never silently absorbed.  Source-only runs that
+    contain required lines are retained whole because their unowned lines may
+    be shared structural boundaries.  An explicit saved replacement remains
+    authoritative when the live run is the baseline variant it suppresses.
+    """
+    presence_lines = coerce_line_ranges(ownership.presence_line_set())
     lineage = BatchSourceLineage()
     try:
-        for run in entries.provenance_runs():
-            line_count = run.dest_end - run.dest_start
-            new_start = run.dest_start + 1
-            if run.source_start != 0:
-                lineage.append_source_run(
-                    LineageRun(
-                        old_start=run.source_start,
-                        old_end=run.source_start + line_count - 1,
-                        new_start=new_start,
-                    )
-                )
-            if run.target_start != 0:
-                lineage.append_working_run(
-                    LineageRun(
-                        old_start=run.target_start,
-                        old_end=run.target_start + line_count - 1,
-                        new_start=new_start,
-                    )
-                )
-
         return SourceContentWithLineProvenance(
             source_buffer=LineBuffer.from_chunks(
-                realized_entry_content_chunks(entries)
+                _advanced_source_chunks(
+                    old_lines,
+                    working_lines,
+                    presence_lines,
+                    ownership,
+                    lineage,
+                )
             ),
             lineage=lineage,
         )
-    except Exception:
+    except BaseException:
         lineage.close()
         raise
+
+
+def _required_source_ranges(
+    workspace: MatcherWorkspace,
+    ownership: BatchOwnership,
+    presence_lines: LineRanges,
+) -> MappedRecordVector:
+    """Return storage-backed ranges whose old-source lineage is required."""
+    required = workspace.record_vector(
+        len(presence_lines.ranges()) + len(ownership.deletions),
+        _SOURCE_RANGE_RECORD_FORMAT,
+    )
+    for source_start, source_end in presence_lines.ranges():
+        required.append((source_start, source_end))
+    for deletion in ownership.deletions:
+        if deletion.anchor_line is not None:
+            required.append((deletion.anchor_line, deletion.anchor_line))
+
+    if len(required) > 1:
+        sort_mapped_records(required)
+        _compact_source_ranges(required)
+    return required
+
+
+def _compact_source_ranges(source_ranges: MappedRecordVector) -> None:
+    """Coalesce ordered overlapping or adjacent mapped source ranges."""
+    retained_count = 0
+    for source_start, source_end in source_ranges:
+        if retained_count:
+            previous_start, previous_end = source_ranges[retained_count - 1]
+            if source_start <= previous_end + 1:
+                source_ranges[retained_count - 1] = (
+                    previous_start,
+                    max(previous_end, source_end),
+                )
+                continue
+        source_ranges[retained_count] = (source_start, source_end)
+        retained_count += 1
+    source_ranges.truncate(retained_count)
+
+
+def _required_ranges_in(
+    required_ranges: Sequence[tuple[int, ...]],
+    source_start: int,
+    source_end: int,
+) -> Iterator[tuple[int, int]]:
+    """Yield required-range intersections with one source interval."""
+    low = 0
+    high = len(required_ranges)
+    while low < high:
+        middle = (low + high) // 2
+        if required_ranges[middle][1] < source_start:
+            low = middle + 1
+        else:
+            high = middle
+
+    for range_index in range(low, len(required_ranges)):
+        required_start, required_end = required_ranges[range_index]
+        if required_start > source_end:
+            return
+        yield max(required_start, source_start), min(required_end, source_end)
+
+
+def _line_chunks(
+    lines: Sequence[bytes],
+    start: int,
+    end: int,
+) -> Iterator[bytes]:
+    """Yield one-based inclusive line ranges without materializing a slice."""
+    for line_number in range(start, end + 1):
+        yield bytes(lines[line_number - 1])
+
+
+def _advanced_source_chunks(
+    old_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    presence_lines: LineRanges,
+    ownership: BatchOwnership,
+    lineage: BatchSourceLineage,
+) -> Iterator[bytes]:
+    """Yield reconciled source chunks while recording source and live lineage."""
+    source_cursor = 1
+    working_cursor = 1
+    new_cursor = 1
+    workspace = MatcherWorkspace()
+    semantic_runs: Iterator[SemanticChangeRun] | None = None
+
+    def emit_unchanged(line_count: int) -> Iterator[bytes]:
+        nonlocal source_cursor, working_cursor, new_cursor
+        if line_count <= 0:
+            return
+        source_end = source_cursor + line_count - 1
+        working_end = working_cursor + line_count - 1
+        lineage.append_source_run(LineageRun(
+            old_start=source_cursor,
+            old_end=source_end,
+            new_start=new_cursor,
+        ))
+        lineage.append_working_run(LineageRun(
+            old_start=working_cursor,
+            old_end=working_end,
+            new_start=new_cursor,
+        ))
+        new_cursor += line_count
+        yield from _line_chunks(working_lines, working_cursor, working_end)
+        source_cursor = source_end + 1
+        working_cursor = working_end + 1
+
+    def emit_source(start: int, end: int) -> Iterator[bytes]:
+        nonlocal new_cursor
+        lineage.append_source_run(LineageRun(
+            old_start=start,
+            old_end=end,
+            new_start=new_cursor,
+        ))
+        new_cursor += end - start + 1
+        yield from _line_chunks(old_lines, start, end)
+
+    def emit_working(
+        start: int,
+        end: int,
+        *,
+        source_start: int | None = None,
+        source_end: int | None = None,
+    ) -> Iterator[bytes]:
+        nonlocal new_cursor
+        if source_start is not None and source_end is not None:
+            lineage.append_source_run(LineageRun(
+                old_start=source_start,
+                old_end=source_end,
+                new_start=new_cursor,
+            ))
+            source_count = source_end - source_start + 1
+            working_count = end - start + 1
+            if working_count > source_count:
+                lineage.append_source_expansion(SourceSelectionExpansion(
+                    source_start=source_start,
+                    source_end=source_end,
+                    new_start=new_cursor,
+                    new_end=new_cursor + working_count - 1,
+                ))
+        lineage.append_working_run(LineageRun(
+            old_start=start,
+            old_end=end,
+            new_start=new_cursor,
+        ))
+        new_cursor += end - start + 1
+        yield from _line_chunks(working_lines, start, end)
+
+    try:
+        required_source_ranges = _required_source_ranges(
+            workspace,
+            ownership,
+            presence_lines,
+        )
+        semantic_runs = stream_semantic_change_runs(old_lines, working_lines)
+        for run in semantic_runs:
+            unchanged_count = _unchanged_line_count_before_run(
+                run,
+                source_cursor=source_cursor,
+                working_cursor=working_cursor,
+            )
+            yield from emit_unchanged(unchanged_count)
+
+            if run.kind is SemanticChangeKind.PRESENCE:
+                assert run.target_start is not None
+                assert run.target_end is not None
+                yield from emit_working(run.target_start, run.target_end)
+                working_cursor = run.target_end + 1
+                continue
+
+            assert run.source_start is not None
+            assert run.source_end is not None
+            if run.kind is SemanticChangeKind.DELETION:
+                if next(_required_ranges_in(
+                    required_source_ranges,
+                    run.source_start,
+                    run.source_end,
+                ), None) is not None:
+                    yield from emit_source(run.source_start, run.source_end)
+                source_cursor = run.source_end + 1
+                continue
+
+            assert run.kind is SemanticChangeKind.REPLACEMENT
+            assert run.target_start is not None
+            assert run.target_end is not None
+            source_count = run.source_end - run.source_start + 1
+            target_count = run.target_end - run.target_start + 1
+            fully_owned = (
+                presence_lines.count(run.source_start, run.source_end)
+                == source_count
+            )
+
+            saved_replacement_span = _saved_replacement_target_span(
+                run,
+                working_lines,
+                ownership,
+                workspace,
+            )
+            if saved_replacement_span is not None:
+                if run.target_start < saved_replacement_span.start:
+                    yield from emit_working(
+                        run.target_start,
+                        saved_replacement_span.start - 1,
+                    )
+                yield from emit_source(run.source_start, run.source_end)
+                if saved_replacement_span.end < run.target_end:
+                    yield from emit_working(
+                        saved_replacement_span.end + 1,
+                        run.target_end,
+                    )
+            elif fully_owned:
+                if source_count > target_count:
+                    raise BatchSourceAdvanceError(
+                        "Cannot advance a fully owned source replacement that "
+                        "contracts multiple owned lines: source lineage would "
+                        "not be unique."
+                    )
+                yield from emit_working(
+                    run.target_start,
+                    run.target_end,
+                    source_start=run.source_start,
+                    source_end=run.source_end,
+                )
+            else:
+                for required_start, required_end in (
+                    _required_ranges_in(
+                        required_source_ranges,
+                        run.source_start,
+                        run.source_end,
+                    )
+                ):
+                    yield from emit_source(required_start, required_end)
+                yield from emit_working(run.target_start, run.target_end)
+
+            source_cursor = run.source_end + 1
+            working_cursor = run.target_end + 1
+
+        source_remaining = len(old_lines) - source_cursor + 1
+        working_remaining = len(working_lines) - working_cursor + 1
+        if source_remaining != working_remaining:
+            raise ValueError("Semantic source comparison left unequal trailing spans")
+        yield from emit_unchanged(source_remaining)
     finally:
-        entries.close()
+        try:
+            if semantic_runs is not None:
+                close = getattr(semantic_runs, "close", None)
+                if close is not None:
+                    close()
+        finally:
+            workspace.close()
+
+
+def _unchanged_line_count_before_run(
+    run: SemanticChangeRun,
+    *,
+    source_cursor: int,
+    working_cursor: int,
+) -> int:
+    """Return the matched span immediately preceding one semantic run."""
+    if run.source_start is not None:
+        source_count = run.source_start - source_cursor
+    else:
+        source_count = None
+    if run.target_start is not None:
+        working_count = run.target_start - working_cursor
+    else:
+        working_count = None
+
+    if source_count is not None and working_count is not None:
+        if source_count != working_count:
+            raise ValueError("Semantic source comparison produced unequal matched spans")
+        return source_count
+    if source_count is not None:
+        return source_count
+    if working_count is not None:
+        return working_count
+    raise ValueError("Semantic change run has no source or target range")
+
+
+def _saved_replacement_target_span(
+    run: SemanticChangeRun,
+    working_lines: Sequence[bytes],
+    ownership: BatchOwnership,
+    workspace: MatcherWorkspace,
+) -> _SavedReplacementTargetSpan | None:
+    """Return the unique live subrange suppressed by a saved replacement.
+
+    A semantic matcher may group the suppressed baseline variant with adjacent
+    live-only edits.  Locate the exact suppressed subrange so those neighboring
+    edits remain in place while the authoritative saved replacement is kept.
+    Refuse ambiguous baseline occurrences.  If no suppressed baseline text is
+    present, the fully owned live run is a newer replacement revision and the
+    ordinary advancement path may adopt it.
+    """
+    assert run.source_start is not None
+    assert run.source_end is not None
+    assert run.target_start is not None
+    assert run.target_end is not None
+    source_count = run.source_end - run.source_start + 1
+    matched_span: _SavedReplacementTargetSpan | None = None
+
+    for unit in ownership.replacement_units:
+        replacement_ranges = collect_replacement_source_ranges(
+            workspace,
+            unit.presence_lines,
+        )
+        if replacement_ranges is None:
+            continue
+        try:
+            covered_source_count = sum(
+                min(source_end, run.source_end)
+                - max(source_start, run.source_start)
+                + 1
+                for source_start, source_end in replacement_ranges
+                if (
+                    source_start <= run.source_end
+                    and source_end >= run.source_start
+                )
+            )
+        finally:
+            workspace.close_resource(replacement_ranges)
+        if covered_source_count != source_count:
+            continue
+
+        for deletion_index in unit.deletion_indices:
+            if (
+                type(deletion_index) is not int
+                or deletion_index < 0
+                or deletion_index >= len(ownership.deletions)
+            ):
+                continue
+            suppressed_variant = ownership.deletions[
+                deletion_index
+            ].content_lines
+            variant_count = len(suppressed_variant)
+            if variant_count == 0:
+                continue
+            first_target_index = run.target_start - 1
+            final_target_index = run.target_end - variant_count
+            for target_index in range(
+                first_target_index,
+                final_target_index + 1,
+            ):
+                if not line_slice_equals(
+                    working_lines,
+                    target_index,
+                    suppressed_variant,
+                ):
+                    continue
+                candidate_span = _SavedReplacementTargetSpan(
+                    start=target_index + 1,
+                    end=target_index + variant_count,
+                )
+                if matched_span is None:
+                    matched_span = candidate_span
+                elif matched_span != candidate_span:
+                    raise BatchSourceAdvanceError(
+                        "Cannot advance an authoritative replacement with "
+                        "multiple matching live baseline spans."
+                    )
+
+    return matched_span
 
 
 def advance_batch_source_for_file_with_provenance(
@@ -171,7 +551,7 @@ def advance_batch_source_for_file_with_provenance(
             source_buffer=source_with_provenance.source_buffer,
             lineage=source_with_provenance.lineage,
         )
-    except Exception:
+    except BaseException:
         if source_with_provenance is not None:
             source_with_provenance.close()
         raise

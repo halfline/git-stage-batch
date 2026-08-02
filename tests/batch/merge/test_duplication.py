@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import pytest
+
 
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.merge.merge import merge_batch_from_line_sequences_as_buffer
 from git_stage_batch.core.buffer import LineBuffer
+from git_stage_batch.exceptions import MergeError
 
 
 def merge_batch(
@@ -96,6 +99,135 @@ def test_merge_batch_claimed_line_missing_from_working_tree():
 
     # Should insert X
     assert result == b"A\nX\nB\n", f"Expected X to be inserted, got: {repr(result)}"
+
+
+def test_merge_refuses_overlapping_return_statement_variants_without_baseline_anchor():
+    """An unanchored saved return must not be inserted beside its replacement."""
+    batch_source_content = (
+        b"function f() {\n"
+        b"    return oldValue ||\n"
+        b"        newValue;\n"
+        b"}\n"
+    )
+    ownership = BatchOwnership.from_presence_lines(["2-3"], [])
+    working_content = b"function f() {\n    return oldValue;\n}\n"
+
+    with pytest.raises(MergeError):
+        merge_batch(batch_source_content, ownership, working_content)
+
+
+def test_merge_refuses_overlapping_method_variants_without_baseline_anchor():
+    """A saved method must not be nested inside a different method signature."""
+    batch_source_content = (
+        b"class X {\n"
+        b"    method({newArg}) {\n"
+        b"        act();\n"
+        b"    }\n"
+        b"}\n"
+    )
+    ownership = BatchOwnership.from_presence_lines(["2-4"], [])
+    working_content = (
+        b"class X {\n"
+        b"    method(oldArg) {\n"
+        b"        act();\n"
+        b"    }\n"
+        b"}\n"
+    )
+
+    with pytest.raises(MergeError):
+        merge_batch(batch_source_content, ownership, working_content)
+
+
+def test_merge_refuses_method_placement_at_unterminated_repeated_brace_boundary():
+    """A method must not be placed inside an unmatched preceding method."""
+    batch_source_content = (
+        b"class Dialog {\n"
+        b"    constructor() {\n"
+        b"        initialize();\n"
+        b"    }\n"
+        b"\n"
+        b"    inserted() {\n"
+        b"        added();\n"
+        b"    }\n"
+        b"\n"
+        b"    last() {\n"
+        b"        finish();\n"
+        b"    }\n"
+        b"}\n"
+    )
+    ownership = BatchOwnership.from_presence_lines(["6-8"], [])
+    working_content = (
+        b"class Dialog {\n"
+        b"    constructor() {\n"
+        b"        initialize();\n"
+        b"\n"
+        b"    last() {\n"
+        b"        finish();\n"
+        b"    }\n"
+        b"}\n"
+    )
+
+    with pytest.raises(MergeError):
+        merge_batch(batch_source_content, ownership, working_content)
+
+
+def test_merge_refuses_object_member_placement_after_competing_delimiter():
+    """A saved object member must not be appended beyond an extra object close."""
+    batch_source_content = (
+        b"const handlers = {\n"
+        b"    [Role.PASSWORD]: {\n"
+        b"        action: passwordAction,\n"
+        b"    },\n"
+        b"    [Role.WEB_LOGIN]: {\n"
+        b"        action: webLoginAction,\n"
+        b"    },\n"
+        b"};\n"
+    )
+    ownership = BatchOwnership.from_presence_lines(["5-7"], [])
+    working_content = (
+        b"const handlers = {\n"
+        b"    [Role.PASSWORD]: {\n"
+        b"        action: passwordAction,\n"
+        b"    },\n"
+        b"    },\n"
+        b"};\n"
+    )
+
+    with pytest.raises(MergeError):
+        merge_batch(batch_source_content, ownership, working_content)
+
+
+def test_merge_refuses_competing_callback_and_direct_call_variants():
+    """Apply must not preserve both side-effecting variants of the same call."""
+    batch_source_content = (
+        b"function answer() {\n"
+        b"    completePendingCallback(() => {\n"
+        b"        verifier.answerQuery(service, answer);\n"
+        b"    });\n"
+        b"}\n"
+    )
+    ownership = BatchOwnership.from_presence_lines(["2-4"], [])
+    working_content = (
+        b"function answer() {\n"
+        b"    verifier.answerQuery(service, answer);\n"
+        b"}\n"
+    )
+
+    with pytest.raises(MergeError):
+        merge_batch(batch_source_content, ownership, working_content)
+
+
+def test_unrelated_deletion_does_not_allow_competing_presence_variants():
+    """An independent deletion must not disable strict insertion context."""
+    batch_source_content = b"head\nsaved variant\ntail\nanchor\n"
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [AbsenceClaim(anchor_line=4, content_lines=[b"unwanted\n"])],
+    )
+    working_content = b"head\nlive variant\ntail\nanchor\n"
+
+    with pytest.raises(MergeError):
+        merge_batch(batch_source_content, ownership, working_content)
 
 
 def test_merge_batch_with_deletion_suppresses_content():

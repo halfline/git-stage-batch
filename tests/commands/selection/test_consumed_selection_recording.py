@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import subprocess
 
 import pytest
@@ -9,6 +10,9 @@ import pytest
 from git_stage_batch.commands.selection.consumed_selection_recording import (
     record_consumed_selection,
 )
+from git_stage_batch.commands.selection import consumed_selection_recording
+from git_stage_batch.batch.ownership.model import BatchOwnership
+from git_stage_batch.batch.source.advancement import BatchSourceAdvanceError
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.core.models import LineEntry
 from git_stage_batch.data.consumed_selections import (
@@ -163,6 +167,47 @@ def test_corrupt_consumed_file_entry_fails_closed(temp_git_repo):
 
     with pytest.raises(CommandError, match="invalid entry for tracked.txt"):
         load_consumed_selections_metadata()
+
+
+def test_expected_source_advance_refusal_is_a_command_error(monkeypatch):
+    """Consumed-selection advancement refusals should not escape as internals."""
+
+    @contextmanager
+    def acquired_ownership(_metadata):
+        yield BatchOwnership([], [])
+
+    monkeypatch.setattr(
+        consumed_selection_recording,
+        "read_consumed_file_metadata",
+        lambda _file_path: {"batch_source_commit": "old-source"},
+    )
+    monkeypatch.setattr(
+        consumed_selection_recording,
+        "acquire_ownership_for_metadata_dict",
+        acquired_ownership,
+    )
+    monkeypatch.setattr(
+        consumed_selection_recording,
+        "detect_stale_batch_source_for_selection",
+        lambda _selected_lines: True,
+    )
+    monkeypatch.setattr(
+        consumed_selection_recording,
+        "advance_batch_source_for_file_with_provenance",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            BatchSourceAdvanceError("ambiguous replacement")
+        ),
+    )
+
+    with (
+        LineBuffer.from_bytes(b"content\n") as source_buffer,
+        pytest.raises(CommandError, match="saved source cannot be advanced"),
+    ):
+        record_consumed_selection(
+            "file.txt",
+            source_buffer=source_buffer,
+            selected_lines=[],
+        )
 
 
 def test_record_consumed_selection_accepts_buffer(temp_git_repo):

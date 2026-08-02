@@ -16,7 +16,10 @@ from ...batch.state.metadata_types import (
     ReplacementMaskMetadata,
     add_ownership_metadata,
 )
-from ...batch.source.advancement import advance_batch_source_for_file_with_provenance
+from ...batch.source.advancement import (
+    BatchSourceAdvanceError,
+    advance_batch_source_for_file_with_provenance,
+)
 from ...batch.source.selected_line_refresh import (
     refresh_selected_lines_against_new_source,
     refresh_selected_lines_against_source_lines,
@@ -28,6 +31,8 @@ from ...data.consumed_selections import (
     read_consumed_file_metadata,
     write_consumed_file_metadata,
 )
+from ...exceptions import CommandError
+from ...i18n import _
 
 
 def record_consumed_selection(
@@ -69,21 +74,31 @@ def record_consumed_selection(
         ) as existing_ownership:
             batch_source_commit = existing_file_metadata["batch_source_commit"]
             if detect_stale_batch_source_for_selection(selected_lines):
-                with advance_batch_source_for_file_with_provenance(
-                    batch_name="consumed-selections",
-                    file_path=file_path,
-                    old_batch_source_commit=batch_source_commit,
-                    existing_ownership=existing_ownership,
-                ) as advance_result:
-                    batch_source_commit = advance_result.batch_source_commit
-                    existing_ownership = advance_result.ownership
-                    selected_lines = refresh_selected_lines_against_source_lines(
-                        selected_lines,
-                        source_lines=advance_result.source_buffer,
-                        working_lines=(),
-                        lineage=advance_result.lineage,
-                        coordinate_lines=coordinate_lines,
-                    )
+                try:
+                    with advance_batch_source_for_file_with_provenance(
+                        batch_name="consumed-selections",
+                        file_path=file_path,
+                        old_batch_source_commit=batch_source_commit,
+                        existing_ownership=existing_ownership,
+                    ) as advance_result:
+                        batch_source_commit = advance_result.batch_source_commit
+                        existing_ownership = advance_result.ownership
+                        selected_lines = refresh_selected_lines_against_source_lines(
+                            selected_lines,
+                            source_lines=advance_result.source_buffer,
+                            working_lines=(),
+                            lineage=advance_result.lineage,
+                            coordinate_lines=coordinate_lines,
+                        )
+                except BatchSourceAdvanceError as error:
+                    raise CommandError(
+                        _(
+                            "Cannot record the included replacement because "
+                            "its saved source cannot be advanced.\n"
+                            "File: {file}\n"
+                            "Error: {error}"
+                        ).format(file=file_path, error=error)
+                    ) from error
             new_ownership = translate_lines_to_batch_ownership(selected_lines)
             persist_selection(
                 batch_source_commit=batch_source_commit,

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import sys
+from typing import Callable
 
 from . import action_completion as _action_completion
 from . import action_context as _action_context
@@ -33,7 +34,7 @@ from ...data.file_target_identity import (
     capture_worktree_identities,
     capture_worktree_identity,
 )
-from ...data.undo.checkpoints import undo_checkpoint
+from ...data.undo.checkpoints import UndoCheckpointStatus, undo_checkpoint
 from ...exceptions import (
     AtomicUnitError,
     CommandError,
@@ -102,14 +103,17 @@ def execute_apply_action(
     batch_name: str,
     context: _action_context.BatchSourceActionContext,
     selection: _action_selection.BatchSourceActionSelection,
+    journal_progress: Callable[[str, str], None] | None = None,
 ) -> None:
     """Apply selected batch-source changes to the working tree."""
+    report_progress = journal_progress or (lambda _stage, _rollback: None)
     files = selection.files
     selected_ids = selection.selected_ids
     selection_ids_to_apply = selection.selection_ids
     rendered = selection.rendered
     operation_parts = list(selection.operation_parts)
     repository_root = get_git_repository_root_path()
+    report_progress("planning", "not-started")
     with FileJobWorkspace() as workspace:
         (
             apply_plans,
@@ -128,12 +132,20 @@ def execute_apply_action(
             _require_unchanged_worktree_targets(
                 expected_worktree_identities,
             )
+            publication_started = False
+            checkpoint_status: UndoCheckpointStatus | None = None
+            report_progress("checkpoint", "not-started")
             try:
                 with undo_checkpoint(
                     " ".join(operation_parts),
                     worktree_paths=list(files),
                     rollback_on_error=True,
-                ):
+                ) as checkpoint_status:
+                    publication_started = True
+                    report_progress(
+                        "publication",
+                        checkpoint_status.rollback,
+                    )
                     for plan in apply_plans:
                         snapshot_file_if_untracked(plan.file_path)
                         if isinstance(plan, _action_plans.ApplyTextFileActionPlan):
@@ -168,17 +180,33 @@ def execute_apply_action(
                             raise TypeError("unsupported apply action plan")
                     for file_path, file_meta in mode_actions:
                         _file_mode_actions.apply_new_file_mode(file_path, file_meta)
-            except CommandError:
-                raise
-            except Exception as error:
+            except BaseException as error:
+                if publication_started:
+                    report_progress(
+                        "publication",
+                        (
+                            checkpoint_status.rollback
+                            if checkpoint_status is not None
+                            else "unavailable"
+                        ),
+                    )
+                if isinstance(error, CommandError):
+                    raise
+                if not isinstance(error, Exception):
+                    raise
                 _worktree_refusals.refuse_incompatible_worktree_action(
                     batch_name=batch_name,
                     file_paths=files,
                     error=error,
                 )
+            else:
+                assert checkpoint_status is not None
+                report_progress("publication", checkpoint_status.rollback)
         finally:
             _action_plans.close_action_plans(apply_plans)
 
+    assert checkpoint_status is not None
+    report_progress("completion", checkpoint_status.rollback)
     _action_completion.finish_batch_source_action_review(context, files)
 
 

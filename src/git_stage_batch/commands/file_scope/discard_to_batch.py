@@ -412,36 +412,49 @@ def discard_files_to_batch(
 
         for file_path in files:
             log_journal(
-                "discard_file_to_batch_start",
+                "discard_files_to_batch_file_start",
                 batch_name=batch_name,
                 file_path=file_path,
                 quiet=quiet,
             )
-            discard_input = collected_discards.inputs_by_file.get(file_path)
-            if (
-                discard_input is None
-                and file_path in collected_discards.files_with_text_patches
-            ):
-                continue
+            outcome = "failed"
+            try:
+                discard_input = collected_discards.inputs_by_file.get(file_path)
+                if (
+                    discard_input is None
+                    and file_path in collected_discards.files_with_text_patches
+                ):
+                    outcome = "skipped"
+                    continue
 
-            if discard_input is None or not session.prepare_text_file(discard_input):
-                session.flush()
-                discarded_hunks = discard_file_to_batch(
-                    batch_name,
-                    file_path,
-                    quiet=True,
-                    advance=False,
-                    auto_advance=auto_advance,
+                if (
+                    discard_input is None
+                    or not session.prepare_text_file(discard_input)
+                ):
+                    session.flush()
+                    discarded_hunks = discard_file_to_batch(
+                        batch_name,
+                        file_path,
+                        quiet=True,
+                        advance=False,
+                        auto_advance=auto_advance,
+                    )
+                    if session.record_single_file_discard(
+                        file_path,
+                        discarded_hunks,
+                    ):
+                        blocked_hashes = read_text_file_line_set(blocklist_path)
+                    outcome = "fallback"
+                    continue
+
+                outcome = "prepared"
+            finally:
+                log_journal(
+                    "discard_files_to_batch_file_end",
+                    batch_name=batch_name,
+                    file_path=file_path,
+                    outcome=outcome,
                 )
-                if session.record_single_file_discard(file_path, discarded_hunks):
-                    blocked_hashes = read_text_file_line_set(blocklist_path)
-                continue
-
-            log_journal(
-                "discard_file_to_batch_end",
-                batch_name=batch_name,
-                file_path=file_path,
-            )
 
         session.flush()
     finally:

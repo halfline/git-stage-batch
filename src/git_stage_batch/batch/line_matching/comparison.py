@@ -13,8 +13,14 @@ from enum import Enum, auto
 from itertools import chain
 from pathlib import Path
 
+from .line_mapping import IntVector, LineMapping
 from .match import match_lines
+from .match_workspace import MatcherWorkspace
+from .occurrence_index import LinePayloadOccurrenceIndex
 from ...core.models import LineLevelChange
+
+
+_SMALL_UNMAPPED_LINE_COUNT = 64
 
 
 class SemanticChangeKind(Enum):
@@ -90,24 +96,161 @@ def _trusted_matched_pairs(
     spool_dir: str | Path | None = None,
 ) -> Iterator[tuple[int, int]]:
     """Yield bidirectionally trusted source/target line pairs."""
-    with (
-        match_lines(
-            source_lines=source_lines,
-            target_lines=target_lines,
-            spool_dir=spool_dir,
-        ) as alignment,
-        match_lines(
+    with match_lines(
+        source_lines=source_lines,
+        target_lines=target_lines,
+        spool_dir=spool_dir,
+    ) as alignment:
+        if (
+            not alignment.may_have_unmapped_equal_lines
+            or not _unmapped_lines_share_content(
+                alignment,
+                source_lines=source_lines,
+                target_lines=target_lines,
+                spool_dir=spool_dir,
+            )
+        ):
+            yield from alignment.mapped_line_pairs()
+            return
+
+        with match_lines(
             source_lines=target_lines,
             target_lines=source_lines,
             spool_dir=spool_dir,
-        ) as reverse_alignment,
-    ):
-        for source_line, target_line in alignment.mapped_line_pairs():
-            reverse_source_line = reverse_alignment.get_target_line_from_source_line(
-                target_line
+        ) as reverse_alignment:
+            for source_line, target_line in alignment.mapped_line_pairs():
+                reverse_source_line = (
+                    reverse_alignment.get_target_line_from_source_line(
+                        target_line
+                    )
+                )
+                if reverse_source_line == source_line:
+                    yield source_line, target_line
+
+
+def _unmapped_lines_share_content(
+    alignment: LineMapping,
+    *,
+    source_lines: Sequence[bytes],
+    target_lines: Sequence[bytes],
+    spool_dir: str | Path | None,
+) -> bool:
+    """Return whether the two unmapped sides contain an equal line.
+
+    A direction-dependent alternative alignment necessarily leaves equal
+    content unmapped on both sides of the forward alignment.  When no such
+    content exists, every forward pair is already reciprocal and the reverse
+    matcher cannot reject one.
+    """
+    source_unmapped_count, bounded_source_indexes = (
+        _bounded_unmapped_indexes(alignment.source_to_target)
+    )
+    target_unmapped_count, bounded_target_indexes = (
+        _bounded_unmapped_indexes(alignment.target_to_source)
+    )
+    smaller_count = min(source_unmapped_count, target_unmapped_count)
+    if smaller_count == 0:
+        return False
+
+    if smaller_count <= _SMALL_UNMAPPED_LINE_COUNT:
+        return _small_unmapped_lines_share_content(
+            alignment,
+            source_lines=source_lines,
+            target_lines=target_lines,
+            source_unmapped_count=source_unmapped_count,
+            target_unmapped_count=target_unmapped_count,
+            bounded_source_indexes=bounded_source_indexes,
+            bounded_target_indexes=bounded_target_indexes,
+        )
+
+    with MatcherWorkspace(spool_dir=spool_dir) as workspace:
+        if source_unmapped_count <= target_unmapped_count:
+            occurrence_index = LinePayloadOccurrenceIndex(
+                workspace,
+                source_lines,
+                normalize_payloads=False,
+                target_indexes=_unmapped_indexes(alignment.source_to_target),
             )
-            if reverse_source_line == source_line:
-                yield source_line, target_line
+            return any(
+                occurrence_index.occurrence_count(target_lines[target_index])
+                for target_index in _unmapped_indexes(
+                    alignment.target_to_source
+                )
+            )
+
+        occurrence_index = LinePayloadOccurrenceIndex(
+            workspace,
+            target_lines,
+            normalize_payloads=False,
+            target_indexes=_unmapped_indexes(alignment.target_to_source),
+        )
+        return any(
+            occurrence_index.occurrence_count(source_lines[source_index])
+            for source_index in _unmapped_indexes(alignment.source_to_target)
+        )
+
+
+def _small_unmapped_lines_share_content(
+    alignment: LineMapping,
+    *,
+    source_lines: Sequence[bytes],
+    target_lines: Sequence[bytes],
+    source_unmapped_count: int,
+    target_unmapped_count: int,
+    bounded_source_indexes: Sequence[int],
+    bounded_target_indexes: Sequence[int],
+) -> bool:
+    """Check a bounded number of unmapped lines without an index."""
+    if source_unmapped_count <= target_unmapped_count:
+        smaller_lines = [
+            source_lines[source_index]
+            for source_index in bounded_source_indexes
+        ]
+        target_indexes: Iterable[int] = bounded_target_indexes
+        if target_unmapped_count > _SMALL_UNMAPPED_LINE_COUNT:
+            target_indexes = _unmapped_indexes(alignment.target_to_source)
+        return any(
+            any(
+                target_lines[target_index] == source_line
+                for source_line in smaller_lines
+            )
+            for target_index in target_indexes
+        )
+
+    smaller_lines = [
+        target_lines[target_index]
+        for target_index in bounded_target_indexes
+    ]
+    source_indexes: Iterable[int] = bounded_source_indexes
+    if source_unmapped_count > _SMALL_UNMAPPED_LINE_COUNT:
+        source_indexes = _unmapped_indexes(alignment.source_to_target)
+    return any(
+        any(
+            source_lines[source_index] == target_line
+            for target_line in smaller_lines
+        )
+        for source_index in source_indexes
+    )
+
+
+def _bounded_unmapped_indexes(mapping: IntVector) -> tuple[int, list[int]]:
+    """Count zero entries and retain at most a fixed number of indexes."""
+    count = 0
+    indexes: list[int] = []
+    for index in range(len(mapping)):
+        if mapping[index] != 0:
+            continue
+        count += 1
+        if len(indexes) < _SMALL_UNMAPPED_LINE_COUNT:
+            indexes.append(index)
+    return count, indexes
+
+
+def _unmapped_indexes(mapping: IntVector) -> Iterator[int]:
+    """Yield zero-based indexes absent from a line-mapping vector."""
+    for index in range(len(mapping)):
+        if mapping[index] == 0:
+            yield index
 
 
 def derive_semantic_change_runs(

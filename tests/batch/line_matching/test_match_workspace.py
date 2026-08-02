@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import gc
+import tracemalloc
+
 import pytest
 
 import git_stage_batch.batch.line_matching.match as match_module
@@ -9,6 +12,9 @@ import git_stage_batch.core.mapped_storage as mapped_storage_module
 from git_stage_batch.batch.line_matching.match import match_lines
 from git_stage_batch.batch.line_matching.match_workspace import MatcherWorkspace
 from git_stage_batch.core.mapped_storage import MAPPED_STORAGE_OFFLOAD_SIZE_THRESHOLD
+
+
+_LINE_SCALE_HEAP_LIMIT = 256 * 1024
 
 
 def test_matcher_workspace_tracks_and_closes_resources():
@@ -93,3 +99,68 @@ def test_match_lines_closes_first_mapping_if_second_allocation_fails(
         match_lines([b"line\n"], [b"line\n"])
 
     assert source_mapping.closed is True
+
+
+@pytest.mark.parametrize("target_stride", [1, 9])
+def test_lis_target_ranking_does_not_use_line_scale_python_heap(target_stride):
+    """LIS target ranks should stay in mapped storage for large alignments."""
+    line_count = 8192
+    target_end = line_count * target_stride
+
+    with MatcherWorkspace() as workspace:
+        pairs = workspace.record_vector(line_count, "QQ")
+        for source_index in range(line_count):
+            pairs.append(
+                (
+                    source_index,
+                    (line_count - source_index - 1) * target_stride,
+                )
+            )
+
+        gc.collect()
+        tracemalloc.start()
+        try:
+            anchors = match_module._longest_increasing_subsequence_records(
+                pairs,
+                0,
+                target_end,
+                workspace,
+            )
+            _current_heap, peak_heap = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+
+        try:
+            assert tuple(anchors) == (
+                (0, (line_count - 1) * target_stride),
+            )
+        finally:
+            workspace.close_resource(anchors)
+
+    assert peak_heap < _LINE_SCALE_HEAP_LIMIT
+
+
+def test_dense_lis_target_ranking_does_not_sort_candidates(monkeypatch):
+    """Dense target coordinates should use the direct mapped rank index."""
+    line_count = 128
+
+    def reject_sort(_records):
+        raise AssertionError("dense target ranks should not be sorted")
+
+    monkeypatch.setattr(match_module, "sort_mapped_records", reject_sort)
+
+    with MatcherWorkspace() as workspace:
+        pairs = workspace.record_vector(line_count, "QQ")
+        for source_index in range(line_count):
+            pairs.append((source_index, line_count - source_index - 1))
+
+        anchors = match_module._longest_increasing_subsequence_records(
+            pairs,
+            0,
+            line_count,
+            workspace,
+        )
+        try:
+            assert tuple(anchors) == ((0, line_count - 1),)
+        finally:
+            workspace.close_resource(anchors)

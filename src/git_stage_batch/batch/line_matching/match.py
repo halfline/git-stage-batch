@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from bisect import bisect_left
 from collections.abc import Hashable, Iterable, Sequence
 from pathlib import Path
 from typing import TypeVar
@@ -21,6 +20,8 @@ LineContent = TypeVar("LineContent", bound=Hashable)
 _MAX_UINT32 = (1 << 32) - 1
 _MAX_UINT64 = (1 << 64) - 1
 _LINE_PAIR_RECORD_FORMAT = "QQ"
+_LINE_INDEX_RECORD_FORMAT = "Q"
+_DIRECT_TARGET_RANK_SPAN_FACTOR = 8
 _OCCURRENCE_RECORD_FORMAT = "QQQQQQ"
 _OCCURRENCE_HASH = 0
 _OCCURRENCE_SOURCE_INDEX = 1
@@ -234,12 +235,19 @@ def _longest_increasing_subsequence_records(
     if pair_count == 0 or target_end <= target_start:
         return workspace.record_vector(0, _LINE_PAIR_RECORD_FORMAT)
 
-    target_indices = sorted({
-        pairs[pair_index][1]
-        for pair_index in range(pair_count)
-    })
-    best_lengths = workspace.int_vector(len(target_indices) + 1, width=8, fill=0)
-    best_indexes = workspace.int_vector(len(target_indices) + 1, width=8, fill=0)
+    target_indices = None
+    target_span = target_end - target_start
+    use_direct_target_ranks = (
+        target_span <= pair_count * _DIRECT_TARGET_RANK_SPAN_FACTOR
+    )
+    if use_direct_target_ranks:
+        target_rank_count = target_span
+    else:
+        target_indices = _sorted_unique_target_indices(pairs, workspace)
+        target_rank_count = len(target_indices)
+
+    best_lengths = workspace.int_vector(target_rank_count + 1, width=8, fill=0)
+    best_indexes = workspace.int_vector(target_rank_count + 1, width=8, fill=0)
     predecessors = workspace.int_vector(pair_count, width=8, fill=0)
     result_indexes = None
 
@@ -249,7 +257,15 @@ def _longest_increasing_subsequence_records(
 
         for pair_index in range(pair_count):
             _, target_index = pairs[pair_index]
-            target_rank = bisect_left(target_indices, target_index) + 1
+            if use_direct_target_ranks:
+                target_rank = target_index - target_start + 1
+                if target_rank < 1 or target_rank > target_span:
+                    raise ValueError(
+                        "LIS candidate target index is outside its segment"
+                    )
+            else:
+                assert target_indices is not None
+                target_rank = _mapped_target_rank(target_indices, target_index) + 1
             predecessor_length, predecessor_index_number = (
                 _query_best_record_by_target_rank(
                     best_lengths,
@@ -298,6 +314,50 @@ def _longest_increasing_subsequence_records(
         workspace.close_resource(predecessors)
         workspace.close_resource(best_indexes)
         workspace.close_resource(best_lengths)
+        if target_indices is not None:
+            workspace.close_resource(target_indices)
+
+
+def _sorted_unique_target_indices(
+    pairs: MappedRecordVector,
+    workspace: MatcherWorkspace,
+) -> MappedRecordVector:
+    """Return storage-backed sorted target coordinates from candidate pairs."""
+    target_indices = workspace.record_vector(
+        len(pairs),
+        _LINE_INDEX_RECORD_FORMAT,
+    )
+    for pair_index in range(len(pairs)):
+        target_indices.append((pairs[pair_index][1],))
+    sort_mapped_records(target_indices)
+
+    unique_count = 0
+    previous_target_index: int | None = None
+    for read_index in range(len(target_indices)):
+        target_index = target_indices[read_index][0]
+        if target_index == previous_target_index:
+            continue
+        target_indices[unique_count] = (target_index,)
+        unique_count += 1
+        previous_target_index = target_index
+    target_indices.truncate(unique_count)
+    return target_indices
+
+
+def _mapped_target_rank(
+    target_indices: MappedRecordVector,
+    target_index: int,
+) -> int:
+    """Return the zero-based insertion rank in mapped sorted coordinates."""
+    low = 0
+    high = len(target_indices)
+    while low < high:
+        middle = (low + high) // 2
+        if target_indices[middle][0] < target_index:
+            low = middle + 1
+        else:
+            high = middle
+    return low
 
 
 def _query_best_record_by_target_rank(

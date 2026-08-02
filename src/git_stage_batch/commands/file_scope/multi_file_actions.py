@@ -75,7 +75,7 @@ def _multi_file_undo_checkpoint(
     files: Sequence[str],
     *,
     worktree_paths: Sequence[str] | None = None,
-) -> AbstractContextManager[None]:
+) -> AbstractContextManager[object]:
     """Create one undo checkpoint for a resolved multi-file command."""
     paths = list(worktree_paths) if worktree_paths is not None else list(files)
     return undo_checkpoint(

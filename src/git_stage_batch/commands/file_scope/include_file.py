@@ -91,7 +91,7 @@ def include_file_changes(
     else:
         target_file = file
 
-    checkpoint: AbstractContextManager[None]
+    checkpoint: AbstractContextManager[object]
     patch_context: AbstractContextManager[Iterator[UnifiedDiffItem]]
     rollback_context: AbstractContextManager[None]
     if _prepared_changes is None:

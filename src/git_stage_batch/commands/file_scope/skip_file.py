@@ -66,7 +66,7 @@ def skip_file_changes(
     else:
         target_file = file
 
-    checkpoint: AbstractContextManager[None]
+    checkpoint: AbstractContextManager[object]
     patch_context: AbstractContextManager[Iterator[UnifiedDiffItem]]
     if _prepared_changes is None:
         auto_add_untracked_files([target_file])

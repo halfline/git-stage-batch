@@ -6,6 +6,7 @@ import json
 import shutil
 import tempfile
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, Literal
 
@@ -52,6 +53,26 @@ _PENDING_CHECKPOINT: str | None = None
 _PENDING_CHECKPOINT_REPOSITORY: Path | None = None
 _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR: bool | None = None
 _PENDING_CHECKPOINT_ROLLBACK_CAUSE: BaseException | None = None
+
+
+@dataclass(slots=True)
+class UndoCheckpointStatus:
+    """Observable rollback state for one checkpoint context.
+
+    A delegated rollback belongs to an enclosing transactional checkpoint;
+    the nested context cannot report that enclosing rollback's final outcome.
+    """
+
+    rollback: Literal[
+        "unavailable",
+        "not-requested",
+        "pending",
+        "delegated",
+        "completed",
+        "failed",
+        "not-needed",
+        "not-attempted",
+    ] = "not-requested"
 
 
 def _clear_pending_checkpoint() -> None:
@@ -232,7 +253,7 @@ def undo_checkpoint(
     index_paths: list[str] | None = None,
     repository_paths: list[str] | None = None,
     rollback_on_error: bool = False,
-) -> Iterator[None]:
+) -> Iterator[UndoCheckpointStatus]:
     """Bracket an undoable operation with before and after snapshots.
 
     When rollback_on_error is true, restore the before-image and discard the
@@ -241,6 +262,7 @@ def undo_checkpoint(
     """
     global _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR
     global _PENDING_CHECKPOINT_ROLLBACK_CAUSE
+    status = UndoCheckpointStatus()
 
     if _PENDING_CHECKPOINT is not None:
         current_repository = get_git_directory_path()
@@ -257,8 +279,13 @@ def undo_checkpoint(
                 repository_paths=repository_paths,
                 rollback_on_error=rollback_on_error,
             )
+            if rollback_on_error:
+                # The enclosing transaction owns the shared before-image and
+                # will decide whether rollback succeeds.  Do not report this
+                # nested operation as independently pending or completed.
+                status.rollback = "delegated"
             try:
-                yield
+                yield status
             except BaseException as nested_error:
                 if rollback_on_error:
                     _PENDING_CHECKPOINT_ROLLBACK_CAUSE = nested_error
@@ -282,8 +309,12 @@ def undo_checkpoint(
     )
     if checkpoint is not None:
         _PENDING_CHECKPOINT_ROLLBACK_ON_ERROR = rollback_on_error
+        if rollback_on_error:
+            status.rollback = "pending"
+    elif rollback_on_error:
+        status.rollback = "unavailable"
     try:
-        yield
+        yield status
     except BaseException as operation_error:
         if checkpoint is not None and rollback_on_error:
             try:
@@ -291,7 +322,10 @@ def undo_checkpoint(
                     checkpoint,
                     previous_redo=previous_redo,
                 )
-            except Exception as rollback_error:
+            except BaseException as rollback_error:
+                status.rollback = "failed"
+                if not isinstance(rollback_error, Exception):
+                    raise
                 raise CommandError(
                     _(
                         "Operation failed and its automatic rollback also failed. "
@@ -303,6 +337,7 @@ def undo_checkpoint(
                         rollback_error=rollback_error,
                     )
                 ) from operation_error
+            status.rollback = "completed"
         elif checkpoint is not None:
             finalize_pending_checkpoint()
         raise
@@ -315,7 +350,10 @@ def undo_checkpoint(
                         checkpoint,
                         previous_redo=previous_redo,
                     )
-                except Exception as rollback_error:
+                except BaseException as rollback_error:
+                    status.rollback = "failed"
+                    if not isinstance(rollback_error, Exception):
+                        raise
                     raise CommandError(
                         _(
                             "Operation failed and its automatic rollback also failed. "
@@ -327,13 +365,20 @@ def undo_checkpoint(
                             rollback_error=rollback_error,
                         )
                     ) from pending_nested_error
+                status.rollback = "completed"
                 raise CommandError(
                     _(
                         "A nested transactional operation failed, so the "
                         "enclosing operation was rolled back: {error}"
                     ).format(error=pending_nested_error)
                 ) from pending_nested_error
-            finalize_pending_checkpoint()
+            try:
+                finalize_pending_checkpoint()
+            except BaseException:
+                status.rollback = "not-attempted"
+                raise
+            if rollback_on_error:
+                status.rollback = "not-needed"
 
 
 def _rollback_failed_checkpoint(

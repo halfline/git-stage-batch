@@ -1,11 +1,20 @@
 """Tests for coordinate-versus-structural merge strategy decisions."""
 
+import gc
+import tracemalloc
+
 from git_stage_batch.batch.merge.coordinate_strategy import (
     has_recorded_baseline_coordinates,
+    presence_lines_requiring_distinctive_context,
 )
+from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.references import BaselineReference
+from git_stage_batch.batch.ownership.replacement_units import ReplacementUnit
 from git_stage_batch.core.line_selection import LineRanges
+
+
+_LINE_SCALE_HEAP_LIMIT = 256 * 1024
 
 
 class _IterationGuardedSelection(LineRanges):
@@ -38,3 +47,102 @@ def test_coordinate_detection_scans_references_not_selected_lines() -> None:
         _IterationGuardedSelection.from_ranges(((line_count, line_count),)),
         [],
     )
+
+
+def test_unrelated_deletion_does_not_anchor_presence_context() -> None:
+    """An independent absence claim cannot make an insertion structurally safe."""
+    deletion = AbsenceClaim(anchor_line=3, content_lines=[b"unwanted\n"])
+    ownership = BatchOwnership.from_presence_lines(["2"], [deletion])
+
+    assert presence_lines_requiring_distinctive_context(
+        ownership,
+        ownership.presence_line_set(),
+        ownership.deletions,
+    )
+
+
+def test_replacement_unit_covers_its_presence_context() -> None:
+    """A valid deletion-coupled replacement retains its structural anchoring."""
+    deletion = AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [deletion],
+        replacement_units=[
+            ReplacementUnit(presence_lines=["2"], deletion_indices=[0]),
+        ],
+    )
+
+    assert not presence_lines_requiring_distinctive_context(
+        ownership,
+        ownership.presence_line_set(),
+        ownership.deletions,
+    )
+
+
+def test_legacy_adjacent_deletion_covers_replacement_presence_context() -> None:
+    """Legacy replacement metadata retains adjacency-based coupling."""
+    deletion = AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])
+    ownership = BatchOwnership.from_presence_lines(["2-3"], [deletion])
+
+    assert not presence_lines_requiring_distinctive_context(
+        ownership,
+        ownership.presence_line_set(),
+        ownership.deletions,
+    )
+
+
+def test_legacy_replacement_covers_tail_of_spanning_presence_range() -> None:
+    """Adjacent legacy coverage starts inside a normalized presence range."""
+    deletion = AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])
+    ownership = BatchOwnership.from_presence_lines(["1-3"], [deletion])
+
+    strict_lines = presence_lines_requiring_distinctive_context(
+        ownership,
+        ownership.presence_line_set(),
+        ownership.deletions,
+    )
+
+    assert strict_lines.ranges() == ((1, 1),)
+
+
+def test_only_unanchored_presence_requires_distinctive_context() -> None:
+    """Replacement adjacency must not exempt an independent presence run."""
+    deletion = AbsenceClaim(anchor_line=3, content_lines=[b"old\n"])
+    ownership = BatchOwnership.from_presence_lines(["2", "4"], [deletion])
+
+    strict_lines = presence_lines_requiring_distinctive_context(
+        ownership,
+        ownership.presence_line_set(),
+        ownership.deletions,
+    )
+
+    assert strict_lines.ranges() == ((2, 2),)
+
+
+def test_coordinate_coverage_avoids_line_scale_python_heap() -> None:
+    """Per-line coordinate coverage should stay in mapped storage."""
+    line_count = 8192
+    reference = BaselineReference(after_line=None)
+    ownership = BatchOwnership.from_presence_lines(
+        [f"1-{line_count}"],
+        baseline_references={
+            line_number: reference
+            for line_number in range(1, line_count + 1)
+        },
+    )
+    selection = ownership.presence_line_set()
+
+    gc.collect()
+    tracemalloc.start()
+    try:
+        requires_context = bool(presence_lines_requiring_distinctive_context(
+            ownership,
+            selection,
+            ownership.deletions,
+        ))
+        _current_heap, peak_heap = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert requires_context is False
+    assert peak_heap < _LINE_SCALE_HEAP_LIMIT

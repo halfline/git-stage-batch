@@ -36,6 +36,7 @@ from ..line_matching.match_workspace import MatcherWorkspace
 from .candidates import MergeResolution as _MergeResolution
 
 if TYPE_CHECKING:
+    from ..line_matching.line_mapping import LineMapping
     from ..ownership.model import BatchOwnership
     from ..ownership.absence_claims import AbsenceClaim
 
@@ -76,6 +77,7 @@ def try_apply_baseline_coordinate_edits(
     resolution: _MergeResolution | None = None,
     max_resolution_choices: int = _DEFAULT_RESOLUTION_CHOICE_LIMIT,
     trust_baseline_coordinates: bool = False,
+    source_to_working_mapping: LineMapping | None = None,
     spool_dir: str | Path | None = None,
 ) -> Iterator[bytes] | None:
     """Return content edited at recorded baseline coordinates, if safe.
@@ -125,6 +127,7 @@ def try_apply_baseline_coordinate_edits(
             resolution=resolution,
             max_resolution_choices=max_resolution_choices,
             trust_baseline_coordinates=trust_baseline_coordinates,
+            source_to_working_mapping=source_to_working_mapping,
             spool_dir=spool_dir,
         )
         if plan is None:
@@ -159,6 +162,7 @@ def _build_baseline_edit_plan(
     resolution: _MergeResolution | None,
     max_resolution_choices: int,
     trust_baseline_coordinates: bool,
+    source_to_working_mapping: LineMapping | None,
     spool_dir: str | Path | None,
 ) -> _BaselineEditPlan | None:
     """Build and validate one storage-backed exact-coordinate edit plan."""
@@ -218,6 +222,7 @@ def _build_baseline_edit_plan(
         presence_lines,
         replacement_source_ranges,
         trust_baseline_coordinates=trust_baseline_coordinates,
+        source_to_working_mapping=source_to_working_mapping,
         spool_dir=spool_dir,
     )
     if positioned_insertion_lines is None:

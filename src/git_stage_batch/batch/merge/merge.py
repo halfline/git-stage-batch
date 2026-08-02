@@ -20,6 +20,7 @@ from .coordinate_strategy import (
     AMBIGUITY_KEY as _COORDINATE_STRATEGY_AMBIGUITY_KEY,
     CoordinateStrategyChoice as _CoordinateStrategyChoice,
     has_recorded_baseline_coordinates as _has_recorded_baseline_coordinates,
+    presence_lines_requiring_distinctive_context as _distinctive_context_lines,
 )
 from .validation import (
     check_structural_validity as _check_merge_structural_validity,
@@ -159,6 +160,7 @@ def _build_structural_realized_entries(
 ) -> "RealizedEntries":
     """Build the structural candidate while owning any derived mapping."""
     owned_mapping: LineMapping | None = None
+    contextual_placements = None
     mapping = source_to_working_mapping
     try:
         with _baseline_anchor_matching.acquire_deletion_anchor_pairs_for_target(
@@ -190,13 +192,24 @@ def _build_structural_realized_entries(
                 )
             )
 
+        distinctive_presence_context_lines = _distinctive_context_lines(
+            ownership,
+            presence_line_set,
+            deletion_claims,
+            spool_dir=spool_dir,
+        )
+
         try:
-            _check_merge_structural_validity(
+            contextual_placements = _check_merge_structural_validity(
                 mapping,
                 presence_line_set,
                 deletion_claims,
                 source_lines,
                 working_lines,
+                distinctive_presence_context_lines=(
+                    distinctive_presence_context_lines
+                ),
+                spool_dir=spool_dir,
             )
         except _MergeError:
             if resolution is None:
@@ -209,6 +222,8 @@ def _build_structural_realized_entries(
             deletion_claims,
             source_to_working_mapping=mapping,
             resolution=resolution,
+            distinctive_context_lines=distinctive_presence_context_lines,
+            contextual_placements=contextual_placements,
             spool_dir=spool_dir,
         )
     finally:
@@ -390,35 +405,28 @@ def _merge_batch_acquired_line_chunks(
             _close_candidate(selected_coordinate_candidate)
         return
 
-    if strategy_choice is None:
-        fallback_chunks = _baseline_edits.try_apply_baseline_coordinate_edits(
-            source_lines,
-            working_lines,
-            ownership,
-            presence_line_set,
-            deletion_claims,
-            resolution=effective_resolution,
-            max_resolution_choices=_MERGE_CANDIDATE_CAP + 1,
-            spool_dir=spool_dir,
-        )
-        if fallback_chunks is not None:
-            try:
-                yield from fallback_chunks
-            finally:
-                _close_candidate(fallback_chunks)
-            return
-
-    coordinate_candidate = None
+    owned_shared_mapping = None
+    shared_mapping = source_to_working_mapping
     if (
-        resolution is None
-        and _has_recorded_baseline_coordinates(
+        strategy_choice is None
+        and shared_mapping is None
+        and presence_line_set
+        and not _has_recorded_baseline_coordinates(
             ownership,
             presence_line_set,
             deletion_claims,
         )
     ):
-        coordinate_candidate = (
-            _baseline_edits.try_apply_baseline_coordinate_edits(
+        owned_shared_mapping = match_lines(
+            source_lines,
+            working_lines,
+            spool_dir=spool_dir,
+        )
+        shared_mapping = owned_shared_mapping
+
+    try:
+        if strategy_choice is None:
+            fallback_chunks = _baseline_edits.try_apply_baseline_coordinate_edits(
                 source_lines,
                 working_lines,
                 ownership,
@@ -426,34 +434,68 @@ def _merge_batch_acquired_line_chunks(
                 deletion_claims,
                 resolution=effective_resolution,
                 max_resolution_choices=_MERGE_CANDIDATE_CAP + 1,
-                trust_baseline_coordinates=True,
+                source_to_working_mapping=shared_mapping,
                 spool_dir=spool_dir,
             )
-        )
-    try:
-        realized_entries = _build_structural_realized_entries(
-            source_lines,
-            ownership,
-            working_lines,
-            presence_line_set,
-            deletion_claims,
-            source_to_working_mapping=source_to_working_mapping,
-            resolution=effective_resolution,
-            spool_dir=spool_dir,
-        )
-        try:
-            structural_chunks = _realized_entry_content_chunks(realized_entries)
-            if coordinate_candidate is None:
-                yield from structural_chunks
-            else:
-                yield from _yield_identical_candidate_chunks(
-                    coordinate_candidate,
-                    structural_chunks,
+            if fallback_chunks is not None:
+                try:
+                    yield from fallback_chunks
+                finally:
+                    _close_candidate(fallback_chunks)
+                return
+
+        coordinate_candidate = None
+        if (
+            resolution is None
+            and _has_recorded_baseline_coordinates(
+                ownership,
+                presence_line_set,
+                deletion_claims,
+            )
+        ):
+            coordinate_candidate = (
+                _baseline_edits.try_apply_baseline_coordinate_edits(
+                    source_lines,
+                    working_lines,
+                    ownership,
+                    presence_line_set,
+                    deletion_claims,
+                    resolution=effective_resolution,
+                    max_resolution_choices=_MERGE_CANDIDATE_CAP + 1,
+                    trust_baseline_coordinates=True,
+                    source_to_working_mapping=shared_mapping,
+                    spool_dir=spool_dir,
                 )
+            )
+        try:
+            realized_entries = _build_structural_realized_entries(
+                source_lines,
+                ownership,
+                working_lines,
+                presence_line_set,
+                deletion_claims,
+                source_to_working_mapping=shared_mapping,
+                resolution=effective_resolution,
+                spool_dir=spool_dir,
+            )
+            try:
+                structural_chunks = _realized_entry_content_chunks(
+                    realized_entries
+                )
+                if coordinate_candidate is None:
+                    yield from structural_chunks
+                else:
+                    yield from _yield_identical_candidate_chunks(
+                        coordinate_candidate,
+                        structural_chunks,
+                    )
+            finally:
+                realized_entries.close()
         finally:
-            realized_entries.close()
+            _close_candidate(coordinate_candidate)
     finally:
-        _close_candidate(coordinate_candidate)
+        if owned_shared_mapping is not None:
+            owned_shared_mapping.close()
 
 
 def enumerate_merge_batch_candidates_from_line_sequences(

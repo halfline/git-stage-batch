@@ -32,6 +32,7 @@ from .candidates import (
 from .coordinate_strategy import (
     AMBIGUITY_KEY as _COORDINATE_STRATEGY_AMBIGUITY_KEY,
     CoordinateStrategyChoice as _CoordinateStrategyChoice,
+    presence_lines_requiring_distinctive_context as _distinctive_context_lines,
 )
 from .validation import (
     check_structural_validity as _check_merge_structural_validity,
@@ -318,6 +319,7 @@ def _replacement_origin_candidate_set(
 
 def _presence_candidate_set(
     source_lines: Sequence[bytes],
+    ownership: "BatchOwnership",
     working_lines: Sequence[bytes],
     presence_line_set: LineSelection,
     deletion_claims: list["AbsenceClaim"],
@@ -326,6 +328,12 @@ def _presence_candidate_set(
     max_candidates: int,
     spool_dir: str | Path | None,
 ) -> _MergeCandidateSet:
+    distinctive_context_lines = _distinctive_context_lines(
+        ownership,
+        presence_line_set,
+        deletion_claims,
+        spool_dir=spool_dir,
+    )
     presence_mapping = match_lines(
         source_lines,
         working_lines,
@@ -344,6 +352,8 @@ def _presence_candidate_set(
                     for deletion in deletion_claims
                     if deletion.anchor_line is not None
                 },
+                distinctive_context_lines=distinctive_context_lines,
+                spool_dir=spool_dir,
             )
         )
     finally:
@@ -421,24 +431,35 @@ def _absence_candidate_set(
     if len([claim for claim in deletion_claims if claim.content_lines]) != 1:
         raise _MergeError(_("Batch was created from a different version of the file"))
 
+    distinctive_context_lines = _distinctive_context_lines(
+        ownership,
+        presence_line_set,
+        deletion_claims,
+        spool_dir=spool_dir,
+    )
+
     owned_mapping = match_lines(
         source_lines,
         working_lines,
         spool_dir=spool_dir,
     )
     try:
-        _check_merge_structural_validity(
+        contextual_placements = _check_merge_structural_validity(
             owned_mapping,
             presence_line_set,
             deletion_claims,
             source_lines,
             working_lines,
+            distinctive_presence_context_lines=distinctive_context_lines,
+            spool_dir=spool_dir,
         )
         realized_entries = _presence_constraints.apply_presence_constraints(
             source_lines,
             working_lines,
             presence_line_set,
             source_to_working_mapping=owned_mapping,
+            distinctive_context_lines=distinctive_context_lines,
+            contextual_placements=contextual_placements,
             spool_dir=spool_dir,
         )
     finally:
@@ -563,6 +584,7 @@ def enumerate_merge_batch_candidates_for_lines(
 
     presence_candidates = _presence_candidate_set(
         source_lines,
+        ownership,
         working_lines,
         presence_line_set,
         deletion_claims,

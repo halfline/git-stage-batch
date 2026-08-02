@@ -12,6 +12,7 @@ from .baseline_edit_plan import BaselineEditPlan
 from .baseline_reference_positions import (
     baseline_reference_insertion_position as _find_baseline_insertion_position,
 )
+from ..line_matching.line_mapping import LineMapping
 from ..line_matching.match import match_lines as _match_lines
 from ..line_matching.match_workspace import MatcherWorkspace
 
@@ -112,6 +113,7 @@ def _mapping_preserves_unpositioned_presence(
     working_lines: Sequence[bytes],
     unmapped_lines: MappedRecordVector,
     *,
+    source_to_working_mapping: LineMapping | None,
     spool_dir: str | Path | None,
 ) -> bool:
     """Return whether mapped unpositioned lines survive planned removals."""
@@ -123,11 +125,16 @@ def _mapping_preserves_unpositioned_presence(
 
     target_lines_are_ordered = True
     previous_target_line: int | None = None
-    with _match_lines(
-        source_lines,
-        working_lines,
-        spool_dir=spool_dir,
-    ) as mapping:
+    owned_mapping = None
+    mapping = source_to_working_mapping
+    if mapping is None:
+        owned_mapping = _match_lines(
+            source_lines,
+            working_lines,
+            spool_dir=spool_dir,
+        )
+        mapping = owned_mapping
+    try:
         for record_index in range(len(unmapped_lines)):
             claimed_line = unmapped_lines[record_index][0]
             target_line = mapping.get_target_line_from_source_line(claimed_line)
@@ -138,6 +145,9 @@ def _mapping_preserves_unpositioned_presence(
                 target_lines_are_ordered = False
             unmapped_lines[record_index] = (target_index,)
             previous_target_line = target_index
+    finally:
+        if owned_mapping is not None:
+            owned_mapping.close()
 
     if not target_lines_are_ordered:
         sort_mapped_records(unmapped_lines)
@@ -235,6 +245,7 @@ def plan_presence_insertions(
     replacement_source_ranges: Sequence[tuple[int, ...]],
     *,
     trust_baseline_coordinates: bool,
+    source_to_working_mapping: LineMapping | None,
     spool_dir: str | Path | None,
 ) -> MappedRecordVector | None:
     """Plan explicit insertions and validate presence resolved by matching."""
@@ -257,6 +268,7 @@ def plan_presence_insertions(
         source_lines,
         working_lines,
         unmapped_lines,
+        source_to_working_mapping=source_to_working_mapping,
         spool_dir=spool_dir,
     ):
         return None

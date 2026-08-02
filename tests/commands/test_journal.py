@@ -11,6 +11,7 @@ import pytest
 
 from git_stage_batch.commands.journal import command_journal
 import git_stage_batch.commands.apply_from as apply_from
+from git_stage_batch.commands.file_scope import discard_to_batch
 from git_stage_batch.commands.selection import discard_line_batching
 from git_stage_batch.commands.selection import discard_to_batch_action
 from git_stage_batch.data.undo.checkpoints import UndoCheckpointStatus
@@ -285,3 +286,50 @@ def test_discard_line_terminal_event_waits_for_transaction_rollback(
     ]
     assert events[1][1]["stage"] == "worktree-publication"
     assert events[1][1]["rollback"] == "completed"
+
+
+def test_multi_file_discard_distinguishes_collection_and_single_file_events(
+    temp_git_repo,
+    monkeypatch,
+):
+    """Nested whole-file discards need distinct reconstructable event names."""
+    operations = []
+    monkeypatch.setattr(discard_to_batch, "require_git_repository", lambda: None)
+    monkeypatch.setattr(discard_to_batch, "ensure_state_directory_exists", lambda: None)
+    monkeypatch.setattr(discard_to_batch, "auto_add_untracked_files", lambda _files: None)
+    monkeypatch.setattr(discard_to_batch, "batch_exists", lambda _name: True)
+    monkeypatch.setattr(discard_to_batch, "read_batch_metadata", lambda _name: {})
+    monkeypatch.setattr(discard_to_batch, "read_text_file_line_set", lambda _path: set())
+    monkeypatch.setattr(
+        discard_to_batch,
+        "_collect_text_file_discard_inputs",
+        lambda *_args, **_kwargs: discard_to_batch._CollectedTextFileDiscards(
+            inputs_by_file={},
+            files_with_text_patches=set(),
+        ),
+    )
+    monkeypatch.setattr(
+        discard_to_batch,
+        "log_journal",
+        lambda operation, **_fields: operations.append(operation),
+    )
+
+    def discard_one(*_args, **_kwargs):
+        operations.append("discard_file_to_batch_start")
+        operations.append("discard_file_to_batch_end")
+        return 0
+
+    monkeypatch.setattr(discard_to_batch, "discard_file_to_batch", discard_one)
+
+    discard_to_batch.discard_files_to_batch(
+        "saved",
+        ["fallback.dat"],
+        advance=False,
+    )
+
+    assert operations == [
+        "discard_files_to_batch_file_start",
+        "discard_file_to_batch_start",
+        "discard_file_to_batch_end",
+        "discard_files_to_batch_file_end",
+    ]

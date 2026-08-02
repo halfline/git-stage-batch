@@ -109,7 +109,7 @@ jobs:
   minimum-git:
     runs-on: ubuntu-latest
     env:
-      GIT_VERSION: "2.31.0"
+      GIT_VERSION: "2.39.0"
 
     steps:
       - uses: actions/checkout@v4

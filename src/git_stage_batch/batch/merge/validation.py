@@ -16,6 +16,7 @@ from .baseline_replacement_ranges import (
     selected_replacement_source_ranges as _selected_replacement_source_ranges,
 )
 from .presence_context import (
+    PresenceRunPlacement,
     contextual_presence_placements as _contextual_presence_placements,
 )
 from .presence_missing_claims import (
@@ -71,7 +72,11 @@ def check_structural_validity(
     deletions: list[AbsenceClaim],
     source_lines: Sequence[bytes],
     target_lines: Sequence[bytes],
-) -> None:
+    *,
+    require_distinctive_presence_context: bool = False,
+    distinctive_presence_context_lines: LineSelection | None = None,
+    spool_dir: str | Path | None = None,
+) -> tuple[PresenceRunPlacement, ...] | None:
     """Validate that batch can be safely applied given structural alignment.
 
     Checks:
@@ -101,7 +106,7 @@ def check_structural_validity(
     )
 
     if len(target_lines) == 0:
-        return
+        return None
 
     if present_count == 0 and len(target_lines) > 0:
         if claimed_lines:
@@ -176,18 +181,23 @@ def check_structural_validity(
     # Let absence realization report its more precise missing-anchor error once
     # nearby mapped context has allowed an unmapped deletion anchor through.
     if has_unmapped_deletion_anchor:
-        return
+        return None
 
-    _contextual_presence_placements(
-        source_lines,
-        target_lines,
-        claimed_lines,
-        line_mapping,
-        trusted_source_lines={
-            deletion.anchor_line
-            for deletion in deletions
-            if deletion.anchor_line is not None
-        },
+    _missing_presence_lines, presence_placements = (
+        _contextual_presence_placements(
+            source_lines,
+            target_lines,
+            claimed_lines,
+            line_mapping,
+            trusted_source_lines={
+                deletion.anchor_line
+                for deletion in deletions
+                if deletion.anchor_line is not None
+            },
+            require_distinctive_context=require_distinctive_presence_context,
+            distinctive_context_lines=distinctive_presence_context_lines,
+            spool_dir=spool_dir,
+        )
     )
     _check_unbounded_trailing_context(
         line_mapping,
@@ -196,6 +206,7 @@ def check_structural_validity(
         source_lines,
         target_lines,
     )
+    return presence_placements
 
 
 def _check_unbounded_trailing_context(

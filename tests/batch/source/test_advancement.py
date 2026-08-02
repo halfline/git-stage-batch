@@ -21,6 +21,7 @@ from git_stage_batch.batch.ownership.translation import (
 from git_stage_batch.batch.ownership.references import BaselineReference
 from git_stage_batch.batch.ownership.replacement_units import ReplacementUnit
 from git_stage_batch.batch.source.advancement import (
+    BatchSourceAdvanceError,
     advance_batch_source_for_file_with_provenance,
     advance_source_lines_preserving_existing_presence,
 )
@@ -504,6 +505,100 @@ def test_advance_source_tracks_working_line_provenance_for_ambiguous_duplicates(
         )
 
 
+def test_advance_source_does_not_duplicate_changed_method_signature():
+    """Refreshing a fully owned file should not concatenate method versions."""
+    old_source = (
+        b"class Prompt {\n"
+        b"    show({message, type}) {\n"
+        b"        return message ?? type;\n"
+        b"    }\n"
+        b"}\n"
+    )
+    working_tree = (
+        b"class Prompt {\n"
+        b"    show(serviceName, message, type) {\n"
+        b"        return message ?? type;\n"
+        b"    }\n"
+        b"}\n"
+    )
+    ownership = BatchOwnership.from_presence_lines(["1-5"], [])
+
+    with _advance_source_from_content(
+        old_source_buffer=old_source,
+        working_buffer=working_tree,
+        ownership=ownership,
+    ) as source_with_provenance:
+        assert source_with_provenance.source_buffer.to_bytes() == working_tree
+
+
+def test_advance_source_does_not_nest_superseded_guard():
+    """Refreshing an extended guard should not retain its old first line."""
+    old_source = (
+        b"function stop(serviceName) {\n"
+        b"    if (serviceName !== selectedService)\n"
+        b"        return;\n"
+        b"}\n"
+    )
+    working_tree = (
+        b"function stop(serviceName) {\n"
+        b"    if (serviceName !== selectedService &&\n"
+        b"        serviceName !== fingerprintService)\n"
+        b"        return;\n"
+        b"}\n"
+    )
+    ownership = BatchOwnership.from_presence_lines(["1-4"], [])
+
+    with _advance_source_from_content(
+        old_source_buffer=old_source,
+        working_buffer=working_tree,
+        ownership=ownership,
+    ) as source_with_provenance:
+        assert source_with_provenance.source_buffer.to_bytes() == working_tree
+        remapped = remap_batch_ownership_with_lineage(
+            ownership,
+            source_with_provenance.lineage,
+        )
+
+    assert remapped.presence_line_set().ranges() == ((1, 5),)
+
+
+def test_advance_source_does_not_duplicate_changed_return_statement():
+    """Refreshing an extended return should keep one executable statement."""
+    old_source = (
+        b"function canStart(serviceName) {\n"
+        b"    return serviceName === selectedService;\n"
+        b"}\n"
+    )
+    working_tree = (
+        b"function canStart(serviceName) {\n"
+        b"    return serviceName === selectedService ||\n"
+        b"        serviceName === fingerprintService;\n"
+        b"}\n"
+    )
+    ownership = BatchOwnership.from_presence_lines(["1-3"], [])
+
+    with _advance_source_from_content(
+        old_source_buffer=old_source,
+        working_buffer=working_tree,
+        ownership=ownership,
+    ) as source_with_provenance:
+        assert source_with_provenance.source_buffer.to_bytes() == working_tree
+        remapped = remap_batch_ownership_with_lineage(
+            ownership,
+            source_with_provenance.lineage,
+        )
+        assert tuple(source_with_provenance.lineage.source_expansions()) == (
+            SourceSelectionExpansion(
+                source_start=2,
+                source_end=2,
+                new_start=2,
+                new_end=3,
+            ),
+        )
+
+    assert remapped.presence_line_set().ranges() == ((1, 4),)
+
+
 def test_advance_source_tracks_contiguous_lineage_as_runs():
     """Large contiguous source refreshes should keep one source-line run."""
     source_lines = b"".join(
@@ -525,6 +620,38 @@ def test_advance_source_tracks_contiguous_lineage_as_runs():
         )
 
 
+def test_advance_source_avoids_line_scale_python_heap():
+    """Required source coordinates should remain range- and storage-backed."""
+    line_count = 8192
+    source_content = b"".join(
+        f"line-{line_index:08d}\n".encode()
+        for line_index in range(line_count)
+    )
+    ownership = BatchOwnership.from_presence_lines([f"1-{line_count}"], [])
+
+    with (
+        LineBuffer.from_bytes(source_content) as old_lines,
+        LineBuffer.from_bytes(source_content) as working_lines,
+    ):
+        assert len(old_lines) == line_count
+        assert len(working_lines) == line_count
+        gc.collect()
+        tracemalloc.start()
+        try:
+            with advance_source_lines_preserving_existing_presence(
+                old_lines,
+                working_lines,
+                ownership,
+            ) as source_with_provenance:
+                result_byte_count = source_with_provenance.source_buffer.byte_count
+            _current_heap, peak_heap = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+
+    assert result_byte_count == len(source_content)
+    assert peak_heap < _LINE_SCALE_HEAP_LIMIT
+
+
 def test_advance_source_context_closes_lineage():
     """Source advancement context should release lineage resources."""
     ownership = BatchOwnership.from_presence_lines(["1"], [])
@@ -540,6 +667,133 @@ def test_advance_source_context_closes_lineage():
     assert lineage.closed is True
     with pytest.raises(ValueError, match="batch source lineage is closed"):
         lineage.translate_source_line(1)
+
+
+def test_advance_source_preserves_shared_method_boundary_for_partial_ownership():
+    """Refreshing an owned method body must retain its shared closing brace."""
+    old_source = (
+        b"class S {\n"
+        b"    static {\n"
+        b"        register();\n"
+        b"    }\n"
+        b"\n"
+        b"    static enabled() {\n"
+        b"        return true;\n"
+        b"    }\n"
+        b"\n"
+        b"    constructor() {\n"
+        b"    }\n"
+        b"}\n"
+    )
+    working_tree = (
+        b"class S {\n"
+        b"    static {\n"
+        b"        register();\n"
+        b"    }\n"
+        b"\n"
+        b"    constructor() {\n"
+        b"    }\n"
+        b"}\n"
+    )
+    ownership = BatchOwnership.from_presence_lines(["2-7"], [])
+
+    with _advance_source_from_content(
+        old_source_buffer=old_source,
+        working_buffer=working_tree,
+        ownership=ownership,
+    ) as source_with_provenance:
+        assert source_with_provenance.source_buffer.to_bytes() == old_source
+
+
+@pytest.mark.parametrize(
+    ("working_tree", "expected_source", "expected_presence", "working_extra"),
+    [
+        (
+            b"head\nold\nextra\ntail\n",
+            b"head\nnew\nextra\ntail\n",
+            ((2, 2),),
+            (3, 3),
+        ),
+        (
+            b"head\nextra\nold\ntail\n",
+            b"head\nextra\nnew\ntail\n",
+            ((3, 3),),
+            (2, 2),
+        ),
+    ],
+)
+def test_advance_source_replaces_suppressed_span_without_losing_live_neighbors(
+    working_tree,
+    expected_source,
+    expected_presence,
+    working_extra,
+):
+    """Saved replacements stay authoritative inside a larger semantic run."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])],
+        replacement_units=[
+            ReplacementUnit(presence_lines=["2"], deletion_indices=[0]),
+        ],
+    )
+
+    with _advance_source_from_content(
+        old_source_buffer=b"head\nnew\ntail\n",
+        working_buffer=working_tree,
+        ownership=ownership,
+    ) as source_with_provenance:
+        remapped = remap_batch_ownership_with_lineage(
+            ownership,
+            source_with_provenance.lineage,
+        )
+
+        assert source_with_provenance.source_buffer.to_bytes() == expected_source
+        assert source_with_provenance.lineage.translate_working_line(
+            working_extra[0]
+        ) == working_extra[1]
+
+    assert remapped.presence_line_set().ranges() == expected_presence
+    assert remapped.replacement_units[0].presence_lines == [
+        str(expected_presence[0][0])
+    ]
+
+
+def test_advance_source_refuses_ambiguous_saved_replacement_baseline_spans():
+    """Repeated live baseline variants must not replace saved ownership."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])],
+        replacement_units=[
+            ReplacementUnit(presence_lines=["2"], deletion_indices=[0]),
+        ],
+    )
+
+    with pytest.raises(
+        BatchSourceAdvanceError,
+        match="multiple matching live baseline",
+    ):
+        with _advance_source_from_content(
+            old_source_buffer=b"head\nnew\ntail\n",
+            working_buffer=b"head\nold\nold\ntail\n",
+            ownership=ownership,
+        ):
+            pass
+
+
+def test_advance_source_refuses_owned_replacement_contraction() -> None:
+    """A contracted owned range cannot retain unique source-line lineage."""
+    ownership = BatchOwnership.from_presence_lines(["2-3"])
+
+    with pytest.raises(
+        BatchSourceAdvanceError,
+        match="contracts multiple owned lines",
+    ):
+        with _advance_source_from_content(
+            old_source_buffer=b"head\none\ntwo\ntail\n",
+            working_buffer=b"head\ncombined\ntail\n",
+            ownership=ownership,
+        ):
+            pass
 
 
 def test_advance_source_lines_accepts_non_list_line_sequences(line_sequence):

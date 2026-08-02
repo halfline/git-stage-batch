@@ -597,6 +597,44 @@ class TestComplexBatchWorkflows:
             if result.returncode == 0:
                 assert result.stdout
 
+    def test_split_new_file_reconstructs_exact_content(self, functional_repo):
+        """Applying batches split from a new file must reproduce it exactly."""
+        test_file = functional_repo / "new-service.js"
+        expected = (
+            "class Service {\n"
+            "    start() {\n"
+            "        return oldValue ||\n"
+            "            newValue;\n"
+            "    }\n"
+            "}\n"
+        )
+        test_file.write_text(expected)
+
+        git_stage_batch("new", "new-file-structure")
+        git_stage_batch("new", "new-file-behavior")
+        git_stage_batch("start")
+
+        git_stage_batch(
+            "discard",
+            "--to",
+            "new-file-structure",
+            "--line",
+            "1,2,5,6",
+        )
+        git_stage_batch(
+            "discard",
+            "--to",
+            "new-file-behavior",
+            "--file",
+        )
+
+        assert not test_file.exists()
+
+        git_stage_batch("apply", "--from", "new-file-structure")
+        git_stage_batch("apply", "--from", "new-file-behavior")
+
+        assert test_file.read_text() == expected
+
     def test_batch_accumulation_workflow(self, repo_with_changes):
         """Test accumulating changes to a batch over multiple sessions."""
         git_stage_batch("new", "accumulated")

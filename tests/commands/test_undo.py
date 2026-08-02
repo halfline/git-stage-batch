@@ -319,12 +319,13 @@ def test_atomic_failed_operation_rolls_back_before_propagating(temp_git_repo):
     get_session_directory_path().mkdir(parents=True, exist_ok=True)
     previous_checkpoint = current_undo_commit()
 
+    status = None
     with pytest.raises(RuntimeError, match="operation failed"):
         with undo_checkpoint(
             "change target",
             worktree_paths=["target.txt"],
             rollback_on_error=True,
-        ):
+        ) as status:
             target.write_text("partial mutation\n")
             subprocess.run(
                 ["git", "add", "target.txt"],
@@ -337,6 +338,41 @@ def test_atomic_failed_operation_rolls_back_before_propagating(temp_git_repo):
     assert target.read_text() == "before\n"
     assert _show_index_path(temp_git_repo, "target.txt") == b"before\n"
     assert current_undo_commit() == previous_checkpoint
+    assert status is not None
+    assert status.rollback == "completed"
+
+
+def test_transaction_status_preserves_unavailable_without_active_session(
+    temp_git_repo,
+):
+    """A missing checkpoint store must not be reported as an unused rollback."""
+    with undo_checkpoint(
+        "change target",
+        worktree_paths=["target.txt"],
+        rollback_on_error=True,
+    ) as status:
+        pass
+
+    assert status.rollback == "unavailable"
+
+    with undo_checkpoint("ordinary change", worktree_paths=[]) as ordinary_status:
+        pass
+
+    assert ordinary_status.rollback == "not-requested"
+
+
+def test_nontransactional_checkpoint_status_remains_not_requested(
+    temp_git_repo,
+):
+    """Successful ordinary and nested checkpoints must not imply rollback."""
+    get_session_directory_path().mkdir(parents=True, exist_ok=True)
+
+    with undo_checkpoint("outer", worktree_paths=[]) as outer_status:
+        with undo_checkpoint("inner", worktree_paths=[]) as inner_status:
+            pass
+
+    assert inner_status.rollback == "not-requested"
+    assert outer_status.rollback == "not-requested"
 
 
 @pytest.mark.parametrize(
@@ -400,13 +436,16 @@ def test_nested_transaction_uses_compatible_outer_checkpoint(temp_git_repo):
         "outer",
         worktree_paths=["target.txt"],
         rollback_on_error=True,
-    ):
+    ) as outer_status:
         with undo_checkpoint(
             "inner",
             worktree_paths=["target.txt"],
             rollback_on_error=True,
-        ):
+        ) as inner_status:
             target.write_text("after\n")
+
+    assert inner_status.rollback == "delegated"
+    assert outer_status.rollback == "not-needed"
 
     undo_last_checkpoint()
 
@@ -419,6 +458,7 @@ def test_caught_nested_transaction_error_rolls_back_outer_checkpoint(temp_git_re
     get_session_directory_path().mkdir(parents=True, exist_ok=True)
     previous_checkpoint = current_undo_commit()
 
+    inner_status = None
     with pytest.raises(CommandError, match="enclosing operation was rolled back"):
         with undo_checkpoint(
             "outer",
@@ -431,7 +471,7 @@ def test_caught_nested_transaction_error_rolls_back_outer_checkpoint(temp_git_re
                     "inner",
                     worktree_paths=["target.txt"],
                     rollback_on_error=True,
-                ):
+                ) as inner_status:
                     target.write_text("inner mutation\n")
                     raise RuntimeError("inner failed")
             except RuntimeError:
@@ -439,6 +479,8 @@ def test_caught_nested_transaction_error_rolls_back_outer_checkpoint(temp_git_re
 
     assert target.read_text() == "before\n"
     assert current_undo_commit() == previous_checkpoint
+    assert inner_status is not None
+    assert inner_status.rollback == "delegated"
 
 
 def test_failed_checkpoint_finalization_requires_force(temp_git_repo, monkeypatch):

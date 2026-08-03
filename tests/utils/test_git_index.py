@@ -12,7 +12,6 @@ from git_stage_batch.utils.git_index import (
     git_add_paths_from_stdin,
     git_commit_tree,
     git_read_tree,
-    git_restore_intent_to_add_path,
     git_restore_intent_to_add_paths,
     git_update_index,
     git_update_index_entries,
@@ -140,7 +139,7 @@ class TestGitIndexPlumbing:
             blob_sha=empty_blob,
         )
 
-        git_restore_intent_to_add_path("intent.txt")
+        git_restore_intent_to_add_paths(["intent.txt"])
 
         stage_entry = run_git_command(
             ["ls-files", "--stage", "--", "intent.txt"]
@@ -166,7 +165,7 @@ class TestGitIndexPlumbing:
             blob_sha=empty_blob,
         )
 
-        git_restore_intent_to_add_path("link")
+        git_restore_intent_to_add_paths(["link"])
 
         stage_entry = run_git_command(
             ["ls-files", "--stage", "--", "link"]
@@ -188,7 +187,7 @@ class TestGitIndexPlumbing:
             blob_sha=empty_blob,
         )
 
-        git_restore_intent_to_add_path("outside/new.txt")
+        git_restore_intent_to_add_paths(["outside/new.txt"])
 
         stage_entry = run_git_command(
             ["ls-files", "--stage", "--", "outside/new.txt"]
@@ -265,7 +264,7 @@ class TestGitIndexPlumbing:
             str(temp_git_repo / ".git" / "index"),
         )
 
-        git_restore_intent_to_add_path("nested")
+        git_restore_intent_to_add_paths(["nested"])
 
         stage_entry = run_git_command(
             ["ls-files", "--stage", "--", "nested"]
@@ -305,7 +304,7 @@ class TestGitIndexPlumbing:
         )
 
         with pytest.raises(subprocess.CalledProcessError):
-            git_restore_intent_to_add_path("intent.txt")
+            git_restore_intent_to_add_paths(["intent.txt"])
 
         assert run_git_command(
             ["ls-files", "--stage", "--", "intent.txt"]

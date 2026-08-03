@@ -8,7 +8,6 @@ from ...batch.ownership.model import BatchOwnership
 from ...batch.ownership.metadata_loading import acquire_ownership_for_metadata_dict
 from ...batch.ownership.merging import merge_batch_ownership
 from ...batch.ownership.translation import (
-    detect_stale_batch_source_for_selection,
     translate_lines_to_batch_ownership,
 )
 from ...batch.state.metadata_types import (
@@ -24,9 +23,11 @@ from ...batch.source.selected_line_refresh import (
     refresh_selected_lines_against_new_source,
     refresh_selected_lines_against_source_lines,
 )
+from ...batch.source.refresh import map_selection_to_source
 from ...core.buffer import LineBuffer
 from ...core.models import LineEntry
 from ...batch.source.snapshots import create_batch_source_commit
+from ...utils.repository_buffers import read_git_object_buffer_or_none
 from ...data.consumed_selections import (
     read_consumed_file_metadata,
     write_consumed_file_metadata,
@@ -73,7 +74,25 @@ def record_consumed_selection(
             existing_file_metadata
         ) as existing_ownership:
             batch_source_commit = existing_file_metadata["batch_source_commit"]
-            if detect_stale_batch_source_for_selection(selected_lines):
+            saved_source_buffer = read_git_object_buffer_or_none(
+                f"{batch_source_commit}:{file_path}"
+            )
+            if saved_source_buffer is None:
+                raise CommandError(
+                    _(
+                        "Cannot record the included replacement because "
+                        "its saved source is unavailable.\n"
+                        "File: {file}"
+                    ).format(file=file_path)
+                )
+            with saved_source_buffer as saved_source_lines:
+                mapped_selected_lines = map_selection_to_source(
+                    selected_lines,
+                    source_lines=saved_source_lines,
+                    working_lines=source_buffer,
+                    coordinate_lines=coordinate_lines,
+                )
+            if mapped_selected_lines is None:
                 try:
                     with advance_batch_source_for_file_with_provenance(
                         batch_name="consumed-selections",
@@ -99,6 +118,8 @@ def record_consumed_selection(
                             "Error: {error}"
                         ).format(file=file_path, error=error)
                     ) from error
+            else:
+                selected_lines = mapped_selected_lines
             new_ownership = translate_lines_to_batch_ownership(selected_lines)
             persist_selection(
                 batch_source_commit=batch_source_commit,
@@ -106,11 +127,19 @@ def record_consumed_selection(
             )
             return
     else:
-        if detect_stale_batch_source_for_selection(selected_lines):
+        mapped_selected_lines = map_selection_to_source(
+            selected_lines,
+            source_lines=source_buffer,
+            working_lines=source_buffer,
+            coordinate_lines=coordinate_lines,
+        )
+        if mapped_selected_lines is None:
             selected_lines = refresh_selected_lines_against_new_source(
                 selected_lines,
                 coordinate_lines=coordinate_lines,
             )
+        else:
+            selected_lines = mapped_selected_lines
         merged_ownership = translate_lines_to_batch_ownership(selected_lines)
         batch_source_commit = create_batch_source_commit(
             file_path,

@@ -650,6 +650,29 @@ class TestBuildTargetIndexContent:
 
         assert result == b"keep\nstaged value\n"
 
+    def test_replace_selection_uses_display_positions_after_id_remapping(self):
+        """Preserved ID holes must not make adjacent replacement rows invalid."""
+        line_changes = LineLevelChange(
+            path="test.txt",
+            header=HunkHeader(1, 1, 1, 2),
+            lines=[
+                LineEntry(1, "-", 1, None, text_bytes=b"old"),
+                LineEntry(4, "+", None, 1, text_bytes=b"new-a"),
+                LineEntry(5, "+", None, 2, text_bytes=b"new-b"),
+            ],
+        )
+
+        with LineBuffer.from_bytes(b"old\n") as base_lines:
+            result = _build_target_index_replacement_bytes(
+                line_changes,
+                {1, 4, 5},
+                "replacement",
+                base_lines,
+                base_has_trailing_newline=True,
+            )
+
+        assert result == b"replacement\n"
+
     def test_replace_selection_honors_old_line_numbers_after_gap_markers(self):
         """File-scoped replacement staging should stay anchored after omitted regions."""
         header = HunkHeader(2, 12, 2, 12)

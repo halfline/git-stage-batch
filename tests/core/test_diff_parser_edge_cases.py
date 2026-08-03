@@ -458,6 +458,30 @@ index abc1234..def5678 100644
         assert patches[0].new_path == "new_name.txt"
         assert patches[1].new_path == "other.txt"
 
+    def test_renamed_file_with_mode_change_without_content_changes(self):
+        """A metadata-only rename must retain its accompanying mode change."""
+        diff = b"""\
+diff --git a/old_name.txt b/new_name.txt
+old mode 100644
+new mode 100755
+similarity index 100%
+rename from old_name.txt
+rename to new_name.txt
+"""
+
+        patches = list(collect_unified_diff(diff.splitlines(keepends=True)))
+
+        assert patches == [
+            RenameChange(old_path="old_name.txt", new_path="new_name.txt"),
+            FileModeChange(
+                file_path="new_name.txt",
+                old_mode="100644",
+                new_mode="100755",
+                index_path="old_name.txt",
+            ),
+        ]
+        assert patches[1].index_path == "old_name.txt"
+
     def test_renamed_file_with_changes(self):
         """Renamed file with content changes."""
         diff = b"""\

@@ -280,21 +280,22 @@ class TestGitIndexPlumbing:
         temp_git_repo,
         monkeypatch,
     ):
-        """A failed alternate-worktree add must not remove the saved entry."""
+        """A failed alternate-worktree add must restore the intent flag."""
         empty_blob = create_git_blob([b""])
         git_update_index(
             file_path="intent.txt",
             mode="100644",
             blob_sha=empty_blob,
         )
-        original_entry = run_git_command(
-            ["ls-files", "--stage", "--", "intent.txt"]
-        ).stdout
         real_run_git_command = git_index_module.run_git_command
+        intent_publications = 0
 
         def fail_intent_publication(arguments, *args, **kwargs):
+            nonlocal intent_publications
             if "add" in arguments and "-N" in arguments:
-                raise subprocess.CalledProcessError(1, ["git", *arguments])
+                intent_publications += 1
+                if intent_publications == 1:
+                    raise subprocess.CalledProcessError(1, ["git", *arguments])
             return real_run_git_command(arguments, *args, **kwargs)
 
         monkeypatch.setattr(
@@ -304,11 +305,56 @@ class TestGitIndexPlumbing:
         )
 
         with pytest.raises(subprocess.CalledProcessError):
-            git_restore_intent_to_add_paths(["intent.txt"])
+            git_restore_intent_to_add_paths(
+                ["intent.txt"],
+                saved_entries={"intent.txt": ("100644", empty_blob)},
+            )
+
+        stage_entry = run_git_command(
+            ["ls-files", "--stage", "--", "intent.txt"]
+        ).stdout
+        debug_entry = run_git_command(
+            ["ls-files", "--debug", "--", "intent.txt"]
+        ).stdout
+        assert intent_publications == 2
+        assert stage_entry.startswith(f"100644 {empty_blob} 0\t")
+        assert "flags: 20004000" in debug_entry
+
+    def test_restore_intent_fails_closed_when_rollback_publication_fails(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """Persistent publication failure must not leave a normal entry."""
+        empty_blob = create_git_blob([b""])
+        git_update_index(
+            file_path="intent.txt",
+            mode="100644",
+            blob_sha=empty_blob,
+        )
+
+        real_run_git_command = git_index_module.run_git_command
+
+        def fail_with_real_fallback(arguments, *args, **kwargs):
+            if "add" in arguments and "-N" in arguments:
+                raise subprocess.CalledProcessError(1, ["git", *arguments])
+            return real_run_git_command(arguments, *args, **kwargs)
+
+        monkeypatch.setattr(
+            git_index_module,
+            "run_git_command",
+            fail_with_real_fallback,
+        )
+
+        with pytest.raises(subprocess.CalledProcessError):
+            git_restore_intent_to_add_paths(
+                ["intent.txt"],
+                saved_entries={"intent.txt": ("100644", empty_blob)},
+            )
 
         assert run_git_command(
             ["ls-files", "--stage", "--", "intent.txt"]
-        ).stdout == original_entry
+        ).stdout == ""
 
     def test_add_paths_from_stdin_preserves_nul_safe_names(self, temp_git_repo):
         """Bulk intent-to-add should support Unicode and newline path names."""

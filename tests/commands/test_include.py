@@ -28,12 +28,16 @@ from git_stage_batch.data.hunk_tracking import (
 )
 from git_stage_batch.data.selected_change.loading import load_selected_change
 from git_stage_batch.data.line_state import load_line_changes_from_state
+from git_stage_batch.data.line_id_files import write_line_ids_file
 from git_stage_batch.data.selected_change.store import write_line_changes_state
 from git_stage_batch.data.selected_change.clear_reasons import (
     selected_change_was_cleared_by_auto_advance_disabled,
 )
 from git_stage_batch.exceptions import CommandError, MergeError, NoMoreHunks
-from git_stage_batch.utils.paths import get_state_directory_path
+from git_stage_batch.utils.paths import (
+    get_processed_skip_ids_file_path,
+    get_state_directory_path,
+)
 from git_stage_batch.commands.again import command_again
 from tests.batch.ownership.metadata_helpers import (
     reject_materialized_ownership_metadata as _reject_materialized_ownership_metadata,
@@ -214,6 +218,32 @@ class TestCommandInclude:
 
         assert _show_index_file(temp_git_repo, "new.txt") == "include me\n"
         assert new_file.read_text() == "skip me\ninclude me\n"
+
+    def test_bare_include_does_not_stage_when_all_lines_are_skipped(
+        self,
+        temp_git_repo,
+    ):
+        """Bare include should be a no-op when skips cover the whole hunk."""
+        new_file = temp_git_repo / "new.txt"
+        new_file.write_text("skip one\nskip two\n")
+
+        command_start(quiet=True)
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+        write_line_ids_file(
+            get_processed_skip_ids_file_path(),
+            line_changes.changed_line_ids(),
+        )
+        command_include(quiet=True, auto_advance=False)
+
+        assert subprocess.run(
+            ["git", "diff", "--cached", "--", "new.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        ).stdout == ""
+        assert new_file.read_text() == "skip one\nskip two\n"
 
     def test_include_stages_contentful_file_deletion(self, temp_git_repo, capsys):
         """Bare include should stage a deletion rather than an empty blob."""

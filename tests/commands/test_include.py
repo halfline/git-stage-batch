@@ -28,6 +28,7 @@ from git_stage_batch.data.hunk_tracking import (
 )
 from git_stage_batch.data.selected_change.loading import load_selected_change
 from git_stage_batch.data.line_state import load_line_changes_from_state
+from git_stage_batch.data.selected_change.store import write_line_changes_state
 from git_stage_batch.data.selected_change.clear_reasons import (
     selected_change_was_cleared_by_auto_advance_disabled,
 )
@@ -203,7 +204,12 @@ class TestCommandInclude:
         new_file.write_text("skip me\ninclude me\n")
 
         command_start(quiet=True)
+        unmasked_line_changes = load_line_changes_from_state()
+        assert unmasked_line_changes is not None
         command_skip_line("1", auto_advance=False)
+        # A refreshed view can still expose the original ID while the durable
+        # skip record remains authoritative.
+        write_line_changes_state(unmasked_line_changes)
         command_include(quiet=True, auto_advance=False)
 
         assert _show_index_file(temp_git_repo, "new.txt") == "include me\n"

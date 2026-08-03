@@ -84,11 +84,19 @@ def executable_mode_change(
 def file_type_change(metadata_lines: list[bytes]) -> tuple[str, str] | None:
     """Return a non-executable file-type transition, if present."""
     old_mode = next(
-        (line[len(OLD_MODE_PREFIX):].decode("ascii") for line in metadata_lines if line.startswith(OLD_MODE_PREFIX)),
+        (
+            line[len(OLD_MODE_PREFIX):].decode("ascii", errors="replace")
+            for line in metadata_lines
+            if line.startswith(OLD_MODE_PREFIX)
+        ),
         None,
     )
     new_mode = next(
-        (line[len(NEW_MODE_PREFIX):].decode("ascii") for line in metadata_lines if line.startswith(NEW_MODE_PREFIX)),
+        (
+            line[len(NEW_MODE_PREFIX):].decode("ascii", errors="replace")
+            for line in metadata_lines
+            if line.startswith(NEW_MODE_PREFIX)
+        ),
         None,
     )
     if old_mode is None or new_mode is None:

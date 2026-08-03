@@ -31,8 +31,7 @@ def require_contiguous_display_selection(selected_ids: set[int]) -> None:
     if not selected_ids:
         return
 
-    selected_range = list(range(min(selected_ids), max(selected_ids) + 1))
-    if sorted(selected_ids) != selected_range:
+    if len(selected_ids) != max(selected_ids) - min(selected_ids) + 1:
         exit_with_error(_("Replacement selection must be one contiguous line range."))
 
 
@@ -115,9 +114,7 @@ def build_partial_structural_run_selection_error(
     if len(selected_ids) <= 1:
         return None
 
-    sorted_ids = sorted(selected_ids)
-    expected_ids = list(range(sorted_ids[0], sorted_ids[-1] + 1))
-    if sorted_ids != expected_ids:
+    if len(selected_ids) != max(selected_ids) - min(selected_ids) + 1:
         return None
 
     run_sets = derive_display_id_run_sets_from_lines(

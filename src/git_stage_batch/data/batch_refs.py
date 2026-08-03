@@ -145,15 +145,15 @@ def _validate_snapshot_object_id(
                 field=field,
             )
         )
-    try:
-        int(value, 16)
-    except ValueError as error:
+    if any(
+        character not in "0123456789abcdefABCDEF"
+        for character in value
+    ):
         _invalid_snapshot(
             _("invalid: batch {batch!r} field {field!r} is not hexadecimal").format(
                 batch=batch_name,
                 field=field,
             ),
-            cause=error,
         )
     return value
 

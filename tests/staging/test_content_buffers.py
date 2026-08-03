@@ -1,7 +1,11 @@
 """Tests for line-level staging content buffers."""
 
+import gc
+import tracemalloc
+
 import pytest
 
+from git_stage_batch.staging import content_buffers as content_buffers_module
 from git_stage_batch.core.models import LineLevelChange, HunkHeader, LineEntry
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.core.replacement import ReplacementPayload
@@ -672,6 +676,45 @@ class TestBuildTargetIndexContent:
             )
 
         assert result == b"replacement\n"
+
+    def test_replace_selection_validation_avoids_line_scale_python_heap(self):
+        """Position validation must scan changed rows without materializing them."""
+        heap_peaks = []
+        for line_count in (1024, 8192):
+            line_changes = LineLevelChange(
+                path="test.txt",
+                header=HunkHeader(1, 0, 1, line_count),
+                lines=[
+                    LineEntry(
+                        line_id,
+                        "+",
+                        None,
+                        line_id,
+                        text_bytes=b"changed",
+                    )
+                    for line_id in range(1, line_count + 1)
+                ],
+            )
+            replace_ids = set(range(1, line_count + 1))
+
+            gc.collect()
+            tracemalloc.start()
+            try:
+                span = (
+                    content_buffers_module._replacement_selection_span_indices(
+                        line_changes,
+                        replace_ids,
+                    )
+                )
+                _current_heap, peak_heap = tracemalloc.get_traced_memory()
+            finally:
+                tracemalloc.stop()
+
+            assert span == (0, line_count - 1)
+            heap_peaks.append(peak_heap)
+
+        small_peak, large_peak = heap_peaks
+        assert large_peak < small_peak + 16 * 1024
 
     def test_replace_selection_honors_old_line_numbers_after_gap_markers(self):
         """File-scoped replacement staging should stay anchored after omitted regions."""

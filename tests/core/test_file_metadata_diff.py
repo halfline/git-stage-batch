@@ -47,3 +47,13 @@ def test_executable_mode_change_accepts_only_regular_file_transitions():
     assert file_metadata_diff.executable_mode_change(
         [b"old mode 100644", b"new mode 120000"]
     ) is None
+
+
+def test_file_type_change_replaces_malformed_mode_bytes():
+    """Malformed metadata should remain diagnosable instead of failing decode."""
+    assert file_metadata_diff.file_type_change(
+        [b"old mode 10\xff644", b"new mode 120000"]
+    ) == ("10\ufffd644", "120000")
+    assert file_metadata_diff.file_type_change(
+        [b"old mode 100644", b"new mode 12\xff000"]
+    ) == ("100644", "12\ufffd000")

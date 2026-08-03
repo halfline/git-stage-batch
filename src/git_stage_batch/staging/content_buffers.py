@@ -168,6 +168,45 @@ def _is_synthetic_gap_line(line_entry: LineEntry) -> bool:
     )
 
 
+def _replacement_selection_span_indices(
+    line_changes: LineLevelChange,
+    replace_ids: set[int],
+) -> tuple[int, int]:
+    """Return the display span for one contiguous run of changed rows."""
+    selected_count = 0
+    span_start_index: int | None = None
+    span_end_index: int | None = None
+    selection_started = False
+    selection_ended = False
+    selection_is_discontiguous = False
+
+    for display_index, line in enumerate(line_changes.lines):
+        if line.kind not in ("+", "-"):
+            continue
+
+        if line.id is not None and line.id in replace_ids:
+            if selection_ended:
+                selection_is_discontiguous = True
+            if span_start_index is None:
+                span_start_index = display_index
+            span_end_index = display_index
+            selection_started = True
+            selected_count += 1
+        elif selection_started:
+            selection_ended = True
+
+    if selected_count != len(replace_ids):
+        raise ValueError(
+            "Replacement selection contains line IDs outside the current hunk"
+        )
+    if selection_is_discontiguous:
+        raise ValueError("Replacement selection must be one contiguous line range")
+
+    assert span_start_index is not None
+    assert span_end_index is not None
+    return span_start_index, span_end_index
+
+
 def _old_index_for_new_anchor(
     line_changes: LineLevelChange,
     new_anchor: int,
@@ -360,23 +399,11 @@ def _build_target_index_buffer_with_replaced_lines(
             has_trailing_newline=base_has_trailing_newline,
         )
 
-    changed_ids = sorted(line_changes.changed_line_ids())
-    selected_ids = sorted(replace_ids)
-    if any(line_id not in changed_ids for line_id in selected_ids):
-        raise ValueError("Replacement selection contains line IDs outside the current hunk")
-
-    expected_range = list(range(selected_ids[0], selected_ids[-1] + 1))
-    if selected_ids != expected_range:
-        raise ValueError("Replacement selection must be one contiguous line range")
-
     base_line_count = len(base_lines)
-    selected_indices = [
-        index
-        for index, line in enumerate(line_changes.lines)
-        if line.id in replace_ids
-    ]
-    span_start_index = min(selected_indices)
-    span_end_index = max(selected_indices)
+    span_start_index, span_end_index = _replacement_selection_span_indices(
+        line_changes,
+        replace_ids,
+    )
 
     def find_next_old_line_number(start_index: int) -> int | None:
         for line_entry in line_changes.lines[start_index:]:
@@ -632,23 +659,11 @@ def _build_target_working_tree_buffer_with_replaced_lines(
             has_trailing_newline=working_has_trailing_newline,
         )
 
-    changed_ids = sorted(line_changes.changed_line_ids())
-    selected_ids = sorted(replace_ids)
-    if any(line_id not in changed_ids for line_id in selected_ids):
-        raise ValueError("Replacement selection contains line IDs outside the current hunk")
-
-    expected_range = list(range(selected_ids[0], selected_ids[-1] + 1))
-    if selected_ids != expected_range:
-        raise ValueError("Replacement selection must be one contiguous line range")
-
     working_line_count = len(working_lines)
-    selected_indices = [
-        index
-        for index, line in enumerate(line_changes.lines)
-        if line.id in replace_ids
-    ]
-    span_start_index = min(selected_indices)
-    span_end_index = max(selected_indices)
+    span_start_index, span_end_index = _replacement_selection_span_indices(
+        line_changes,
+        replace_ids,
+    )
 
     def find_next_new_line_number(start_index: int) -> int | None:
         for line_entry in line_changes.lines[start_index:]:

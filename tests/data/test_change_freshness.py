@@ -1,6 +1,28 @@
 """Tests for cached change freshness helpers."""
 
 import git_stage_batch.data.change_freshness as change_freshness
+from git_stage_batch.core.models import FileModeChange
+
+
+def test_mode_freshness_detects_changed_rename_pairing(monkeypatch):
+    """Equal mode bits do not make stale source-index topology current."""
+    cached = FileModeChange(
+        "new.sh",
+        "100644",
+        "100755",
+        index_path="old.sh",
+    )
+    monkeypatch.setattr(
+        change_freshness,
+        "render_mode_change",
+        lambda *_args, **_kwargs: FileModeChange(
+            "new.sh",
+            "100644",
+            "100755",
+        ),
+    )
+
+    assert change_freshness.file_mode_change_is_stale(cached)
 
 
 def test_empty_text_lifecycle_batched_uses_bulk_metadata(monkeypatch):

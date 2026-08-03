@@ -173,6 +173,55 @@ def _replacement_selection_span_indices(
     replace_ids: set[int],
 ) -> tuple[int, int]:
     """Return the display span for one contiguous run of changed rows."""
+    line_index = 0
+    while line_index < len(line_changes.lines):
+        if line_changes.lines[line_index].kind not in ("+", "-"):
+            line_index += 1
+            continue
+
+        run_start = line_index
+        first_addition: int | None = None
+        first_selected_index: int | None = None
+        malformed_run = False
+        while (
+            line_index < len(line_changes.lines)
+            and line_changes.lines[line_index].kind in ("+", "-")
+        ):
+            line = line_changes.lines[line_index]
+            if line.id in replace_ids and first_selected_index is None:
+                first_selected_index = line_index
+            if line.kind == "+":
+                if first_addition is None:
+                    first_addition = line_index
+            elif first_addition is not None:
+                malformed_run = True
+            line_index += 1
+
+        if (
+            malformed_run
+            or first_addition is None
+            or first_addition == run_start
+        ):
+            continue
+        replacement_stop = first_addition + min(
+            first_addition - run_start,
+            line_index - first_addition,
+        )
+        if (
+            first_selected_index is None
+            or first_selected_index >= replacement_stop
+        ):
+            continue
+        if any(
+            line_changes.lines[run_index].id is None
+            or line_changes.lines[run_index].id not in replace_ids
+            for run_index in range(run_start, replacement_stop)
+        ):
+            raise ValueError(
+                "Replacement selection must include one complete replacement "
+                "run; another changed line is unavailable or unselected"
+            )
+
     selected_count = 0
     span_start_index: int | None = None
     span_end_index: int | None = None

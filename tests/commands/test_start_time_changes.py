@@ -6,12 +6,19 @@ import pytest
 
 from git_stage_batch.commands.abort import command_abort
 from git_stage_batch.commands.check_unstaged import command_check_unstaged
-from git_stage_batch.commands.include import command_include
+from git_stage_batch.commands.include import (
+    command_include,
+    command_include_file,
+    command_include_to_batch,
+)
+from git_stage_batch.commands.skip import command_skip
 from git_stage_batch.commands.discard import command_discard
 from git_stage_batch.commands.selection.selected_change_display import show_selected_change
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.stop import command_stop
-from git_stage_batch.core.models import LineLevelChange, RenameChange
+from git_stage_batch.commands.undo import command_undo
+from git_stage_batch.core.models import FileModeChange, LineLevelChange, RenameChange
+from git_stage_batch.batch.state.batch_names import batch_exists
 from git_stage_batch.data.selected_change.loading import load_selected_change
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import get_staged_deletions_file_path, get_staged_renames_file_path
@@ -153,6 +160,114 @@ def test_include_selected_rename_stages_rename_only_and_leaves_edits_unstaged(re
     assert _cached_name_status(rename_repo).strip() == "R100\told.txt\tnew.txt"
     assert _index_content(rename_repo, "new.txt") == "line 1\nline 2\n"
     assert _uncached_name_status(rename_repo).strip() == "M\tnew.txt"
+
+
+def test_include_rename_then_mode_change_targets_destination(rename_repo):
+    """The mode action following a rename must operate on the renamed path."""
+    _rename_without_staging(rename_repo)
+    (rename_repo / "new.txt").chmod(0o755)
+
+    command_start(quiet=True)
+    assert isinstance(load_selected_change(), RenameChange)
+
+    command_include(quiet=True)
+    selected_change = load_selected_change()
+    assert selected_change == FileModeChange(
+        "new.txt",
+        "100644",
+        "100755",
+    )
+
+    command_include(quiet=True)
+
+    index_entry = subprocess.run(
+        ["git", "ls-files", "--stage", "--", "new.txt"],
+        check=True,
+        cwd=rename_repo,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert index_entry.startswith("100755 ")
+
+
+def test_include_mode_after_skipped_rename_targets_source_index_path(rename_repo):
+    """A mode-only include must work while the paired rename stays unstaged."""
+    _rename_without_staging(rename_repo)
+    (rename_repo / "new.txt").chmod(0o755)
+
+    command_start(quiet=True)
+    command_skip(quiet=True)
+    selected_change = load_selected_change()
+    assert selected_change == FileModeChange(
+        "new.txt",
+        "100644",
+        "100755",
+        index_path="old.txt",
+    )
+    original_index_entries = subprocess.run(
+        ["git", "ls-files", "--stage", "--", "old.txt", "new.txt"],
+        check=True,
+        cwd=rename_repo,
+        capture_output=True,
+        text=True,
+    ).stdout
+
+    command_include(quiet=True)
+
+    index_entry = subprocess.run(
+        ["git", "ls-files", "--stage", "--", "old.txt", "new.txt"],
+        check=True,
+        cwd=rename_repo,
+        capture_output=True,
+        text=True,
+    ).stdout
+    old_index_entry = next(
+        line for line in index_entry.splitlines() if line.endswith("\told.txt")
+    )
+    assert old_index_entry.startswith("100755 ")
+
+    command_undo(force=True)
+    restored_entry = subprocess.run(
+        ["git", "ls-files", "--stage", "--", "old.txt", "new.txt"],
+        check=True,
+        cwd=rename_repo,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert restored_entry == original_index_entries
+
+
+def test_include_rename_source_file_also_stages_paired_mode(rename_repo):
+    """The source spelling of a whole-file rename still covers its mode action."""
+    _rename_without_staging(rename_repo)
+    (rename_repo / "new.txt").chmod(0o755)
+
+    command_start(quiet=True)
+    command_include_file("old.txt", quiet=True, auto_advance=False)
+
+    index_entry = subprocess.run(
+        ["git", "ls-files", "--stage", "--", "new.txt"],
+        check=True,
+        cwd=rename_repo,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert index_entry.startswith("100755 ")
+
+
+def test_mode_after_unstaged_rename_cannot_be_saved_as_standalone_batch(rename_repo):
+    """Mode-only batch metadata cannot faithfully carry a pending rename."""
+    _rename_without_staging(rename_repo)
+    (rename_repo / "new.txt").chmod(0o755)
+
+    command_start(quiet=True)
+    command_skip(quiet=True)
+    assert isinstance(load_selected_change(), FileModeChange)
+
+    with pytest.raises(CommandError, match="rename from 'old.txt' is unstaged"):
+        command_include_to_batch("mode-only", quiet=True)
+
+    assert not batch_exists("mode-only")
 
 
 def test_stop_restores_untouched_start_time_staged_rename(rename_repo):

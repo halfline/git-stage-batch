@@ -207,6 +207,8 @@ def ensure_batch_source_current_for_selection(
 
 def _cache_session_source(file_path: str, batch_source_commit: str) -> None:
     batch_sources = load_session_batch_sources()
+    if batch_sources.get(file_path) == batch_source_commit:
+        return
     batch_sources[file_path] = batch_source_commit
     save_session_batch_sources(batch_sources)
 

@@ -1469,6 +1469,25 @@ class TestMergeBatch:
 
         assert result == source
 
+    def test_stale_baseline_reference_does_not_silence_presence_ambiguity(self):
+        """An unresolved coordinate cannot permit a silent variant interleave."""
+        source = b"head\nsaved variant\ntail\n"
+        working = b"head\nlive variant\ntail\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["2"],
+            baseline_references={
+                2: BaselineReference(
+                    after_line=1,
+                    after_content=b"stale-head",
+                    before_line=3,
+                    before_content=b"tail",
+                    has_before_line=True,
+                )
+            },
+        )
+
+        with pytest.raises(MergeError):
+            merge_batch(source, ownership, working)
     def test_baseline_referenced_noncontiguous_presence_is_noop_when_source_matches(self):
         """Already-satisfied additions may be interleaved with unclaimed source lines."""
         source = b"line1\nline2\nline3\nline4\n"

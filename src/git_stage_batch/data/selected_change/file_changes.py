@@ -132,14 +132,23 @@ def load_selected_mode_change() -> FileModeChange | None:
     data = read_selected_mode_data()
     if data is None:
         return None
-    try:
-        return FileModeChange(
-            file_path=data["file_path"],
-            old_mode=data["old_mode"],
-            new_mode=data["new_mode"],
-        )
-    except (KeyError, TypeError):
+    file_path = data.get("file_path")
+    old_mode = data.get("old_mode")
+    new_mode = data.get("new_mode")
+    index_path = data.get("index_path")
+    if (
+        not isinstance(file_path, str)
+        or old_mode not in {"100644", "100755"}
+        or new_mode not in {"100644", "100755"}
+        or (index_path is not None and not isinstance(index_path, str))
+    ):
         return None
+    return FileModeChange(
+        file_path=file_path,
+        old_mode=old_mode,
+        new_mode=new_mode,
+        index_path=index_path,
+    )
 
 
 def read_selected_mode_data() -> SelectedModeData | None:
@@ -299,18 +308,17 @@ def cache_mode_change(
 ) -> None:
     """Cache an executable-mode change as the current selected change."""
     _clear_selected_line_payload_files()
+    mode_data: SelectedModeData = {
+        "file_path": mode_change.file_path,
+        "old_mode": mode_change.old_mode,
+        "new_mode": mode_change.new_mode,
+        "batch_name": batch_name,
+    }
+    if mode_change.index_path is not None:
+        mode_data["index_path"] = mode_change.index_path
     write_text_file_contents(
         get_selected_mode_change_json_path(),
-        json.dumps(
-            {
-                "file_path": mode_change.file_path,
-                "old_mode": mode_change.old_mode,
-                "new_mode": mode_change.new_mode,
-                "batch_name": batch_name,
-            },
-            ensure_ascii=False,
-            indent=0,
-        ),
+        json.dumps(mode_data, ensure_ascii=False, indent=0),
     )
     write_text_file_contents(
         get_selected_hunk_hash_file_path(),

@@ -149,6 +149,8 @@ def check_structural_validity(
 
     has_unmapped_deletion_anchor = False
     for deletion in deletions:
+        if not deletion.content_lines:
+            continue
         after_line = deletion.anchor_line
 
         if after_line is not None:
@@ -192,7 +194,7 @@ def check_structural_validity(
             trusted_source_lines={
                 deletion.anchor_line
                 for deletion in deletions
-                if deletion.anchor_line is not None
+                if deletion.anchor_line is not None and deletion.content_lines
             },
             require_distinctive_context=require_distinctive_presence_context,
             distinctive_context_lines=distinctive_presence_context_lines,

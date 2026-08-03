@@ -133,9 +133,10 @@ def compute_file_mode_change_hash(mode_change: FileModeChange) -> str:
     parts = [
         "file-mode",
         mode_change.file_path,
-        mode_change.old_mode,
-        mode_change.new_mode,
     ]
+    if mode_change.index_path is not None:
+        parts.extend(["index-path", mode_change.index_path])
+    parts.extend([mode_change.old_mode, mode_change.new_mode])
     return hashlib.sha256(
         "\0".join(parts).encode("utf-8", errors="surrogateescape")
     ).hexdigest()

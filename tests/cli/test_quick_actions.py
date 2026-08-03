@@ -37,3 +37,21 @@ def test_expand_quick_actions_expands_tokens_in_place():
         "--line",
         "1-3",
     ]
+
+
+def test_expand_quick_actions_preserves_shortcut_shaped_command_arguments():
+    """Batch names and other values must not be interpreted as commands."""
+    assert expand_quick_actions(["include", "--to", "if"]) == [
+        "include",
+        "--to",
+        "if",
+    ]
+
+
+def test_expand_quick_actions_supports_attached_working_directory_option():
+    assert expand_quick_actions(["-Crepo", "dl", "2"]) == [
+        "-Crepo",
+        "discard",
+        "--line",
+        "2",
+    ]

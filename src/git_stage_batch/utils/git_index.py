@@ -322,6 +322,38 @@ def _worktree_intent_mode(path: Path) -> str | None:
     return None
 
 
+def _publish_intent_to_add_paths(
+    file_paths: Sequence[str],
+    *,
+    temporary_worktree: str,
+    repo_root: Path,
+) -> None:
+    """Publish intent-to-add entries from an isolated worktree."""
+    payload: list[bytes] = []
+    for file_path in file_paths:
+        payload.extend((encode_path(file_path), b"\0"))
+    run_git_command(
+        [
+            "--literal-pathspecs",
+            f"--work-tree={temporary_worktree}",
+            "-c",
+            "advice.addEmbeddedRepo=false",
+            "-c",
+            "core.fileMode=true",
+            "-c",
+            "core.symlinks=true",
+            "add",
+            "-N",
+            "--force",
+            "--sparse",
+            "--pathspec-from-file=-",
+            "--pathspec-file-nul",
+        ],
+        stdin_chunks=payload,
+        cwd=str(repo_root),
+    )
+
+
 def git_restore_intent_to_add_paths(
     file_paths: Sequence[str],
     *,
@@ -331,7 +363,8 @@ def git_restore_intent_to_add_paths(
 
     ``saved_entries`` supplies the exact pre-normalization index entries when
     the current index no longer contains enough information to infer a path's
-    mode. If publication fails, those entries are also the rollback target.
+    mode. If publication fails, restoration is retried through ``git add -N``
+    so rollback cannot publish ordinary staged entries without intent flags.
     """
     unique_paths = list(dict.fromkeys(file_paths))
     if not unique_paths:
@@ -358,7 +391,6 @@ def git_restore_intent_to_add_paths(
         current_entries = _stage_zero_index_entries(unique_paths)
 
     repo_root = get_git_repository_root_path()
-    restoration_entries: dict[str, tuple[str, str] | None] = {}
     saved_modes: dict[str, str] = {}
     for file_path in unique_paths:
         saved_entry = (
@@ -377,7 +409,6 @@ def git_restore_intent_to_add_paths(
             )
         if saved_mode not in {"100644", "100755", "120000", "160000"}:
             raise ValueError(f"Cannot restore intent-to-add mode {saved_mode!r}")
-        restoration_entries[file_path] = saved_entry
         saved_modes[file_path] = saved_mode
 
     with tempfile.TemporaryDirectory(
@@ -397,44 +428,25 @@ def git_restore_intent_to_add_paths(
             ]
         )
         try:
-            payload: list[bytes] = []
-            for file_path in unique_paths:
-                payload.extend((encode_path(file_path), b"\0"))
-            run_git_command(
-                [
-                    "--literal-pathspecs",
-                    f"--work-tree={temporary_worktree}",
-                    "-c",
-                    "advice.addEmbeddedRepo=false",
-                    "-c",
-                    "core.fileMode=true",
-                    "-c",
-                    "core.symlinks=true",
-                    "add",
-                    "-N",
-                    "--force",
-                    "--sparse",
-                    "--pathspec-from-file=-",
-                    "--pathspec-file-nul",
-                ],
-                stdin_chunks=payload,
-                cwd=str(repo_root),
+            _publish_intent_to_add_paths(
+                unique_paths,
+                temporary_worktree=temporary_worktree,
+                repo_root=repo_root,
             )
         except BaseException:
-            rollback_updates = [
+            removals = [
                 GitIndexEntryUpdate(file_path=file_path, force_remove=True)
                 for file_path in unique_paths
             ]
-            rollback_updates.extend(
-                GitIndexEntryUpdate(
-                    file_path=file_path,
-                    mode=entry[0],
-                    blob_sha=entry[1],
+            git_update_index_entries(removals)
+            try:
+                _publish_intent_to_add_paths(
+                    unique_paths,
+                    temporary_worktree=temporary_worktree,
+                    repo_root=repo_root,
                 )
-                for file_path, entry in restoration_entries.items()
-                if entry is not None
-            )
-            git_update_index_entries(rollback_updates)
+            except BaseException:
+                git_update_index_entries(removals)
             raise
 
 

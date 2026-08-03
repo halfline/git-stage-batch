@@ -1500,6 +1500,20 @@ class TestMergeBatch:
 
         with pytest.raises(MergeError):
             merge_batch(source, ownership, working)
+
+    def test_empty_absence_is_not_trusted_during_constraint_realization(self):
+        """Direct realization must apply the same empty-anchor filtering."""
+        selected = LineRanges.from_specs(["2"])
+
+        with pytest.raises(MergeError):
+            satisfy_constraints(
+                [b"head\n", b"saved variant\n", b"tail\n"],
+                [b"head\n", b"live variant\n", b"tail\n"],
+                selected,
+                [AbsenceClaim(anchor_line=2, content_lines=[])],
+                require_distinctive_context=True,
+                distinctive_context_lines=selected,
+            )
     def test_baseline_referenced_noncontiguous_presence_is_noop_when_source_matches(self):
         """Already-satisfied additions may be interleaved with unclaimed source lines."""
         source = b"line1\nline2\nline3\nline4\n"

@@ -112,8 +112,33 @@ def ensure_batch_source_current_for_selection(
                 source_was_advanced=source_was_advanced,
             )
 
-    # Detect if source is stale.
-    is_stale = detect_stale_batch_source_for_selection(selected_lines)
+    # Display annotations come from a path-scoped session cache and may have
+    # been produced for another batch. Verify them against this batch's durable
+    # source before deciding that their coordinates are current.
+    if current_batch_source_commit is not None:
+        source_buffer = read_git_object_buffer_or_none(
+            f"{current_batch_source_commit}:{file_path}"
+        )
+        if source_buffer is None:
+            raise ValueError(
+                f"Cannot read batch source for {file_path} at "
+                f"{current_batch_source_commit}"
+            )
+        with source_buffer as source_lines:
+            mapped_selected_lines = _selection_mapped_to_source(
+                file_path,
+                selected_lines,
+                source_lines,
+                coordinate_lines=coordinate_lines,
+            )
+        if mapped_selected_lines is None:
+            is_stale = True
+        else:
+            _cache_session_source(file_path, current_batch_source_commit)
+            selected_lines = mapped_selected_lines
+            is_stale = False
+    else:
+        is_stale = detect_stale_batch_source_for_selection(selected_lines)
 
     if is_stale and current_batch_source_commit and existing_ownership:
         # Batch source is stale - advance it and remap existing ownership

@@ -90,6 +90,10 @@ class _PagerStdout:
     def writable(self) -> bool:
         return True
 
+    @property
+    def closed(self) -> bool:
+        return self._stream.closed
+
     def close(self) -> None:
         if self._stream.closed:
             return

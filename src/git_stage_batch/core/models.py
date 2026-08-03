@@ -107,6 +107,7 @@ class FileModeChange:
     file_path: str
     old_mode: str
     new_mode: str
+    index_path: str | None = None
 
     def path(self) -> str:
         """Return the repository path affected by this mode change."""

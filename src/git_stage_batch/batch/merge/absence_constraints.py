@@ -207,7 +207,7 @@ def absence_choices_for_claim(
         before_line = (
             None
             if position + len(forbidden_sequence) >= len(entries)
-            else position + 1
+            else position + len(forbidden_sequence) + 1
         )
         choices.append(
             AbsenceChoice(

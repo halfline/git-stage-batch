@@ -282,10 +282,14 @@ def _prepare_initial_cached_source_for_selection(
 
     source_buffer = read_git_object_buffer_or_none(f"{batch_source_commit}:{file_path}")
     if source_buffer is None:
-        raise ValueError(
-            f"Cannot read cached batch source for {file_path} at "
-            f"{batch_source_commit}"
+        new_batch_source_commit, reannotated_lines = (
+            _create_current_working_source_for_selection(
+                file_path,
+                selected_lines,
+                coordinate_lines=coordinate_lines,
+            )
         )
+        return new_batch_source_commit, reannotated_lines, True
 
     with source_buffer as source_lines:
         mapped_selected_lines = _selection_mapped_to_source(

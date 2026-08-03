@@ -11,6 +11,7 @@ from .baseline_replacement_ranges import (
     collect_replacement_source_ranges,
     replacement_source_range_capacity,
 )
+from .baseline_reference_positions import baseline_reference_insertion_position
 from ..line_matching.match_workspace import MatcherWorkspace
 from ...core.line_selection import LineRanges, LineSelection, coerce_line_ranges
 from ...core.mapped_storage import MappedRecordVector, sort_mapped_records
@@ -69,6 +70,7 @@ def presence_lines_requiring_distinctive_context(
     presence_line_set: LineSelection,
     deletion_claims: Sequence[AbsenceClaim],
     *,
+    target_lines: Sequence[bytes] | None = None,
     spool_dir: str | Path | None = None,
 ) -> LineRanges:
     """Return presence lines lacking coordinate or replacement anchoring."""
@@ -98,6 +100,13 @@ def presence_lines_requiring_distinctive_context(
                     type(claimed_line) is int
                     and claimed_line > 0
                     and reference.has_after_line
+                    and (
+                        target_lines is None
+                        or baseline_reference_insertion_position(
+                            reference,
+                            target_lines,
+                        ) is not None
+                    )
                 ):
                     covered_ranges.append((claimed_line, claimed_line))
 

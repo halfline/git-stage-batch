@@ -339,7 +339,25 @@ def undo_checkpoint(
                 ) from operation_error
             status.rollback = "completed"
         elif checkpoint is not None:
-            finalize_pending_checkpoint()
+            try:
+                finalize_pending_checkpoint()
+            except BaseException as finalization_error:
+                status.rollback = "not-attempted"
+                if not isinstance(finalization_error, Exception):
+                    raise
+                if not isinstance(operation_error, Exception):
+                    raise operation_error from finalization_error
+                raise CommandError(
+                    _(
+                        "Operation failed and its undo checkpoint could not be "
+                        "finalized.\n"
+                        "Operation error: {operation_error}\n"
+                        "Finalization error: {finalization_error}"
+                    ).format(
+                        operation_error=operation_error,
+                        finalization_error=finalization_error,
+                    )
+                ) from operation_error
         raise
     else:
         if checkpoint is not None:

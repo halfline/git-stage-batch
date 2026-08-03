@@ -134,6 +134,12 @@ def live_change_paths(item: UnifiedDiffItem) -> tuple[str, ...]:
     """Return every repository path covered by one parsed live change."""
     if isinstance(item, RenameChange):
         return item.old_path, item.new_path
+    if (
+        isinstance(item, FileModeChange)
+        and item.index_path is not None
+        and item.index_path != item.file_path
+    ):
+        return item.file_path, item.index_path
     if isinstance(item, SingleHunkPatch) and item.old_path != item.new_path:
         return item.old_path, item.new_path
     return (item.path(),)

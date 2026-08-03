@@ -769,6 +769,41 @@ def test_advance_source_replaces_suppressed_span_without_losing_live_neighbors(
     ]
 
 
+@pytest.mark.parametrize(
+    ("working_tree", "expected_source"),
+    [
+        (
+            b"head\nold-a\nold-b\ntail\n",
+            b"head\nnew\ntail\n",
+        ),
+        (
+            b"head\nold-a\nlive extra\nold-b\ntail\n",
+            b"head\nnew\nlive extra\ntail\n",
+        ),
+    ],
+)
+def test_advance_source_replaces_all_suppressed_spans_for_one_unit(
+    working_tree,
+    expected_source,
+):
+    """A replacement unit may own several distinct deletion-side runs."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            AbsenceClaim(anchor_line=1, content_lines=[b"old-a\n"]),
+            AbsenceClaim(anchor_line=1, content_lines=[b"old-b\n"]),
+        ],
+        replacement_units=[
+            ReplacementUnit(presence_lines=["2"], deletion_indices=[0, 1]),
+        ],
+    )
+
+    with _advance_source_from_content(
+        old_source_buffer=b"head\nnew\ntail\n",
+        working_buffer=working_tree,
+        ownership=ownership,
+    ) as source_with_provenance:
+        assert source_with_provenance.source_buffer.to_bytes() == expected_source
 def test_advance_source_refuses_ambiguous_saved_replacement_baseline_spans():
     """Repeated live baseline variants must not replace saved ownership."""
     ownership = BatchOwnership.from_presence_lines(

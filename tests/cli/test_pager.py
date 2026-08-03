@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 from contextlib import contextmanager
 from importlib import import_module
 
@@ -105,6 +106,16 @@ def test_build_pager_environment_preserves_user_overrides(monkeypatch):
 
     assert env["LESS"] == "SX"
     assert env["LV"] == "-abc"
+
+
+def test_pager_stdout_exposes_underlying_closed_state():
+    """The pager proxy should satisfy callers that inspect TextIO.closed."""
+    stream = io.StringIO()
+    proxy = pager_module._PagerStdout(stream, stream)
+
+    assert proxy.closed is False
+    proxy.close()
+    assert proxy.closed is True
 
 
 def test_pager_output_starts_pager_with_git_compatible_environment(monkeypatch):

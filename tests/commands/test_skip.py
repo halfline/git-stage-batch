@@ -147,6 +147,36 @@ class TestCommandSkip:
         with pytest.raises(CommandError, match="automatic advancement is disabled"):
             command_skip(quiet=True)
 
+    def test_quiet_skip_forwards_to_atomic_file_scope(
+        self,
+        temp_git_repo,
+        capsys,
+    ):
+        """Bare quiet skip should suppress output for a file-level selection."""
+        deleted = temp_git_repo / "deleted.txt"
+        deleted.write_text("content\n")
+        subprocess.run(
+            ["git", "add", "deleted.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add deleted file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        deleted.unlink()
+
+        command_start(quiet=True)
+        capsys.readouterr()
+        command_skip(quiet=True, auto_advance=False)
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""
+
 
 class TestCommandSkipLine:
     """Tests for skip --line command."""

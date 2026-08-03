@@ -614,12 +614,13 @@ def _validate_hex_object_id(
 ) -> None:
     if not isinstance(value, str) or len(value) not in lengths:
         _invalid(batch_name, f"'{field}' must be a hexadecimal object ID")
-    try:
-        int(value, 16)
-    except ValueError as error:
+    if any(
+        character not in "0123456789abcdefABCDEF"
+        for character in value
+    ):
         raise BatchMetadataError(
             f"Batch '{batch_name}' metadata field '{field}' is not hexadecimal"
-        ) from error
+        )
 
 
 def _field_list(fields: set[str] | frozenset[str]) -> str:

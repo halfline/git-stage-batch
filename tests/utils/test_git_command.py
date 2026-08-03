@@ -385,6 +385,22 @@ class TestStreamGitDiff:
         assert lines
         assert not any(b"\x1b[" in line for line in lines)
 
+    def test_stream_git_diff_allows_color_when_requested(self, temp_git_repo):
+        """The no_color option should not silently override an explicit False."""
+        run_git_command(["config", "color.ui", "always"])
+        test_file = temp_git_repo / "color.txt"
+        test_file.write_text("color line\n")
+        subprocess.run(
+            ["git", "add", "color.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+
+        lines = list(stream_git_diff(cached=True, no_color=False))
+
+        assert any(b"\x1b[" in line for line in lines)
+
     def test_stream_git_diff_overrides_format_changing_configuration(
         self,
         temp_git_repo,

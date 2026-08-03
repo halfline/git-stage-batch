@@ -49,7 +49,7 @@ def command_skip(
     refuse_bare_action_after_auto_advance_disabled("skip")
 
     if read_selected_change_kind() == SelectedChangeKind.FILE:
-        command_skip_file("", auto_advance=auto_advance)
+        command_skip_file("", quiet=quiet, auto_advance=auto_advance)
         return
 
     _selected_change_skipping.skip_selected_change(

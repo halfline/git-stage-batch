@@ -121,6 +121,18 @@ class TestRestoreBatchRefs:
         with pytest.raises(CommandError, match="recovery snapshot is invalid"):
             load_batch_refs_snapshot()
 
+    def test_load_rejects_signed_object_id(self, temp_git_repo):
+        """Recovery refs require hexadecimal digits, not Python int syntax."""
+        create_batch("test-batch", "Test note")
+        snapshot_batch_refs()
+        snapshot_path = get_batch_refs_snapshot_file_path()
+        snapshot = json.loads(read_text_file_contents(snapshot_path))
+        snapshot["batches"]["test-batch"]["commit_sha"] = "-" + "0" * 39
+        write_text_file_contents(snapshot_path, json.dumps(snapshot))
+
+        with pytest.raises(CommandError, match="is not hexadecimal"):
+            load_batch_refs_snapshot()
+
     def test_restore_drops_new_batches(self, temp_git_repo):
         """Test that batches created after snapshot are dropped."""
         # Create empty snapshot

@@ -64,6 +64,15 @@ def test_v1_round_trip_is_deterministic_and_immutable():
         model.files[0].values["mode"] = "100755"  # type: ignore[index]
 
 
+def test_object_id_rejects_signed_hexadecimal_text():
+    """A sign character is not part of a full Git object ID."""
+    metadata = _v1_metadata()
+    metadata["baseline"] = "-" + "0" * 39
+
+    with pytest.raises(BatchMetadataError, match="not hexadecimal"):
+        decode_batch_metadata(metadata, expected_batch="feature")
+
+
 def test_publication_derives_a_new_immutable_model():
     model = decode_batch_metadata(_v1_metadata(), expected_batch="feature")
 

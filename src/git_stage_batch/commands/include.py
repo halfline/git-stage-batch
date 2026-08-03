@@ -63,23 +63,28 @@ def command_include(
     refuse_bare_action_after_auto_advance_disabled("include")
 
     if read_selected_change_kind() == SelectedChangeKind.FILE:
-        command_include_file("", auto_advance=auto_advance)
+        command_include_file("", quiet=quiet, auto_advance=auto_advance)
         return
 
     if read_selected_change_kind() == SelectedChangeKind.HUNK:
         skipped_ids = read_line_ids_file(get_processed_skip_ids_file_path())
         line_changes = load_line_changes_from_state()
         if skipped_ids and line_changes is not None:
-            remaining_ids = line_changes.changed_line_ids()
-            if remaining_ids:
+            remaining_selection = ",".join(
+                str(line.id)
+                for line in line_changes.lines
+                if line.id is not None and line.id not in skipped_ids
+            )
+            if remaining_selection:
                 _include_line_action.include_live_line_selection(
-                    ",".join(str(line_id) for line_id in remaining_ids),
+                    remaining_selection,
                     review_state=None,
                     auto_advance=auto_advance,
                     quiet=quiet,
                     operation="include",
                 )
                 return
+            return
 
     _selected_change_staging.include_selected_change(
         quiet=quiet,

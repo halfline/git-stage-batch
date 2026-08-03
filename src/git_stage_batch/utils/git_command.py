@@ -177,8 +177,9 @@ def stream_git_diff(
         "--no-textconv",
         "--src-prefix=a/",
         "--dst-prefix=b/",
-        "--no-color",
     ]
+    if no_color:
+        arguments.append("--no-color")
     if ignore_submodules is not None:
         config_arguments.extend(["-c", f"diff.ignoreSubmodules={ignore_submodules}"])
         arguments.append(f"--ignore-submodules={ignore_submodules}")

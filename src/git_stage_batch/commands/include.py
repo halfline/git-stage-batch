@@ -70,10 +70,14 @@ def command_include(
         skipped_ids = read_line_ids_file(get_processed_skip_ids_file_path())
         line_changes = load_line_changes_from_state()
         if skipped_ids and line_changes is not None:
-            remaining_ids = line_changes.changed_line_ids()
-            if remaining_ids:
+            remaining_selection = ",".join(
+                str(line.id)
+                for line in line_changes.lines
+                if line.id is not None and line.id not in skipped_ids
+            )
+            if remaining_selection:
                 _include_line_action.include_live_line_selection(
-                    ",".join(str(line_id) for line_id in remaining_ids),
+                    remaining_selection,
                     review_state=None,
                     auto_advance=auto_advance,
                     quiet=quiet,

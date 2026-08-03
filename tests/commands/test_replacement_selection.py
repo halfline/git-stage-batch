@@ -64,3 +64,18 @@ def test_replacement_selection_leaves_surplus_additions_outside_core():
 
     assert expand_replacement_selection_ids(line_changes, {2}) == {1, 2}
     assert expand_replacement_selection_ids(line_changes, {3}) == {3}
+
+
+def test_replacement_selection_refuses_unavailable_opposite_side():
+    """A skipped row cannot be silently omitted from a selected replacement."""
+    line_changes = LineLevelChange(
+        path="test.txt",
+        header=HunkHeader(1, 1, 1, 1),
+        lines=[
+            LineEntry(None, "-", 1, None, text_bytes=b"skipped-old"),
+            LineEntry(2, "+", None, 1, text_bytes=b"selected-new"),
+        ],
+    )
+
+    with pytest.raises(CommandError, match="changed line in the run is unavailable"):
+        expand_replacement_selection_ids(line_changes, {2})

@@ -196,6 +196,7 @@ def _build_structural_realized_entries(
             ownership,
             presence_line_set,
             deletion_claims,
+            target_lines=working_lines,
             spool_dir=spool_dir,
         )
 

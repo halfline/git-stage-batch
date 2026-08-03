@@ -123,7 +123,7 @@ def include_file_changes(
         with rollback_context, patch_context as patches:
             for patch in patches:
                 if isinstance(patch, FileModeChange):
-                    if patch.path() != target_file:
+                    if target_file not in (patch.path(), patch.index_path):
                         continue
                     _selected_change_staging.stage_file_mode_change(patch)
                     included_hashes.append(compute_file_mode_change_hash(patch))

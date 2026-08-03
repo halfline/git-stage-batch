@@ -50,3 +50,21 @@ def test_paths_for_live_changes_includes_both_rename_partners():
     rename = RenameChange("old.txt", "new.txt")
 
     assert live_diff.paths_for_live_changes([rename]) == ("old.txt", "new.txt")
+
+
+def test_paired_mode_change_uses_requested_source_and_reports_both_paths():
+    mode = FileModeChange(
+        "new.txt",
+        "100644",
+        "100755",
+        index_path="old.txt",
+    )
+
+    assert live_diff.group_live_diff_by_file(
+        ["old.txt"],
+        [mode],
+    ) == {"old.txt": (mode,)}
+    assert live_diff.paths_for_live_changes([mode]) == (
+        "new.txt",
+        "old.txt",
+    )

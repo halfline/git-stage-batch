@@ -120,6 +120,18 @@ def test_file_mode_change_path():
     assert change.path() == "script.sh"
 
 
+def test_file_mode_change_identity_includes_paired_index_path():
+    standalone = FileModeChange("new.sh", "100644", "100755")
+    paired_rename = FileModeChange(
+        "new.sh",
+        "100644",
+        "100755",
+        index_path="old.sh",
+    )
+
+    assert standalone != paired_rename
+
+
 class TestSingleHunkPatch:
     """Tests for SingleHunkPatch dataclass."""
 

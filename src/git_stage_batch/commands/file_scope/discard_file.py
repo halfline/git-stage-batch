@@ -168,7 +168,7 @@ def discard_file_changes(
                     gitlink_change = patch
                     patch_hash = compute_gitlink_change_hash(patch)
                 elif isinstance(patch, FileModeChange):
-                    if patch.path() != target_file:
+                    if target_file not in (patch.path(), patch.index_path):
                         continue
                     patch_hash = compute_file_mode_change_hash(patch)
                 else:

@@ -94,7 +94,7 @@ def skip_file_changes(
         with patch_context as patches:
             for patch in patches:
                 if isinstance(patch, FileModeChange):
-                    if patch.path() != target_file:
+                    if target_file not in (patch.path(), patch.index_path):
                         continue
                     patch_hash = compute_file_mode_change_hash(patch)
                     if patch_hash in blocked_hashes:

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from ..core.buffer import LineBuffer
 from ..core.models import FileModeChange
+from ..exceptions import CommandError
+from ..i18n import _
 from ..utils.git_object_io import create_git_blob
 from ..utils.git_repository import get_git_repository_root_path
 from .state import content_commits as _content_commits
@@ -17,6 +19,14 @@ from .state.batch_names import batch_exists, validate_batch_name
 def add_file_mode_to_batch(batch_name: str, change: FileModeChange) -> None:
     """Store a mode action without claiming any file content."""
     validate_batch_name(batch_name)
+    if change.index_path is not None and change.index_path != change.file_path:
+        raise CommandError(
+            _(
+                "Cannot save file mode for '{new}' to a batch while its "
+                "rename from '{old}' is unstaged. Stage or discard the rename "
+                "first."
+            ).format(new=change.file_path, old=change.index_path)
+        )
     if not batch_exists(batch_name):
         create_batch(batch_name, "Auto-created")
 

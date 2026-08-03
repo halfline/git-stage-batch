@@ -7,7 +7,7 @@ from contextlib import contextmanager
 
 from ..core.buffer import LineBuffer
 from ..core.diff_parser import UnifiedDiffItem, acquire_unified_diff
-from ..core.models import SingleHunkPatch
+from ..core.models import FileModeChange, SingleHunkPatch
 from ..utils.git_command import stream_git_diff
 
 
@@ -118,6 +118,13 @@ def group_live_diff_by_file(
         if preferred_path in requested_files:
             grouped[preferred_path].append(change)
             continue
+        if (
+            isinstance(change, FileModeChange)
+            and change.index_path in requested_files
+        ):
+            assert change.index_path is not None
+            grouped[change.index_path].append(change)
+            continue
         change_paths = (
             getattr(change, "old_path", None),
             getattr(change, "new_path", None),
@@ -137,6 +144,14 @@ def paths_for_live_changes(
     """Return every repository path touched by prepared live changes."""
     paths: list[str] = []
     for change in changes:
+        if isinstance(change, FileModeChange):
+            paths.append(change.file_path)
+            if (
+                change.index_path is not None
+                and change.index_path != change.file_path
+            ):
+                paths.append(change.index_path)
+            continue
         old_path = getattr(change, "old_path", None)
         new_path = getattr(change, "new_path", None)
         paths.extend(

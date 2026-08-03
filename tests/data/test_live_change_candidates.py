@@ -9,9 +9,10 @@ import git_stage_batch.data.hunk_tracking as hunk_tracking_module
 import git_stage_batch.data.live_change_candidates as candidates_module
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.core.diff_parser import build_line_changes_from_patch_lines
-from git_stage_batch.core.models import SingleHunkPatch
+from git_stage_batch.core.models import FileModeChange, SingleHunkPatch
 from git_stage_batch.data.live_change_candidates import (
     EligibleLiveChange,
+    SkipReason,
     prepare_live_change,
 )
 
@@ -81,6 +82,25 @@ def test_prepare_does_not_call_tuple_or_list_on_patch_lines(monkeypatch):
     )
 
     candidate.close()
+
+
+def test_paired_rename_mode_honors_blocking_on_source_path():
+    """A mode action that mutates the source index entry owns both paths."""
+    context = _ScanContext()
+    context.blocked_paths = {"old.sh"}
+
+    candidate, reason = prepare_live_change(
+        FileModeChange(
+            "new.sh",
+            "100644",
+            "100755",
+            index_path="old.sh",
+        ),
+        context,
+    )
+
+    assert candidate is None
+    assert reason is SkipReason.BLOCKED_PATH
 
 
 def _candidate_with_owned_patch() -> EligibleLiveChange:

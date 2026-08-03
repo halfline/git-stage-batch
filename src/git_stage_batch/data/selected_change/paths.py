@@ -36,6 +36,12 @@ def worktree_paths_for_selected_change(change: SelectedChange) -> list[str]:
     """Return worktree paths that can be affected by a selected-change action."""
     if isinstance(change, RenameChange):
         return [change.old_path, change.new_path]
+    if (
+        isinstance(change, FileModeChange)
+        and change.index_path is not None
+        and change.index_path != change.file_path
+    ):
+        return [change.file_path, change.index_path]
     return [file_path_for_selected_change(change)]
 
 

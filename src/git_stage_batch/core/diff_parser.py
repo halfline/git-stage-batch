@@ -300,7 +300,11 @@ class _UnifiedDiffParserBuildContext:
                             )
                         )
                     mode_change = (
-                        FileModeChange(old_path, *mode_transition)
+                        FileModeChange(
+                            new_path,
+                            *mode_transition,
+                            index_path=old_path if is_rename else None,
+                        )
                         if mode_transition is not None
                         else None
                     )
@@ -351,6 +355,8 @@ class _UnifiedDiffParserBuildContext:
                             continue
 
                         if is_rename:
+                            if mode_change is not None:
+                                yield mode_change
                             continue
 
                         if is_deleted_file:

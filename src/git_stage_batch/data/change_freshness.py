@@ -47,7 +47,18 @@ def binary_file_change_is_stale(
 
 def file_mode_change_is_stale(mode_change: FileModeChange) -> bool:
     """Return whether a cached executable-mode action changed."""
-    return render_mode_change(mode_change.path()) != mode_change
+    current_change = render_mode_change(
+        mode_change.path(),
+        paired_path=mode_change.index_path,
+    )
+    if current_change is None:
+        return True
+    return (
+        current_change.file_path != mode_change.file_path
+        or current_change.old_mode != mode_change.old_mode
+        or current_change.new_mode != mode_change.new_mode
+        or current_change.index_path != mode_change.index_path
+    )
 
 
 def gitlink_change_is_stale(

@@ -7,9 +7,17 @@ import subprocess
 import pytest
 
 from git_stage_batch.data.hunk_tracking import fetch_next_change
+from git_stage_batch.data.selected_change.file_changes import load_selected_mode_change
 from git_stage_batch.data.selected_change.loading import require_selected_hunk
+from git_stage_batch.data.selected_change.store import (
+    SelectedChangeKind,
+    write_selected_change_kind,
+)
 from git_stage_batch.exceptions import CommandError
-from git_stage_batch.utils.paths import ensure_state_directory_exists
+from git_stage_batch.utils.paths import (
+    ensure_state_directory_exists,
+    get_selected_mode_change_json_path,
+)
 
 
 @pytest.fixture
@@ -91,3 +99,14 @@ def test_require_selected_hunk_succeeds_when_hunk_is_fresh(temp_git_repo):
     fetch_next_change()
 
     require_selected_hunk()
+
+
+def test_load_selected_mode_rejects_non_string_paired_path(temp_git_repo):
+    """Corrupt rename-pair metadata must not escape into path operations."""
+    write_selected_change_kind(SelectedChangeKind.MODE)
+    get_selected_mode_change_json_path().write_text(
+        '{"file_path":"new.sh","old_mode":"100644",'
+        '"new_mode":"100755","index_path":7}'
+    )
+
+    assert load_selected_mode_change() is None

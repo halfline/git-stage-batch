@@ -39,6 +39,7 @@ class SelectedModeData(TypedDict, total=False):
     file_path: str
     old_mode: str
     new_mode: str
+    index_path: str
     batch_name: str | None
 
 

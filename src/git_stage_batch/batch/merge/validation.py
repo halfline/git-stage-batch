@@ -148,6 +148,7 @@ def check_structural_validity(
                 )
 
     has_unmapped_deletion_anchor = False
+    has_unmapped_claimed_deletion_anchor = False
     for deletion in deletions:
         if not deletion.content_lines:
             continue
@@ -161,6 +162,8 @@ def check_structural_validity(
 
             if not line_mapping.is_source_line_present(after_line):
                 has_unmapped_deletion_anchor = True
+                if after_line in claimed_lines:
+                    has_unmapped_claimed_deletion_anchor = True
                 has_context = False
                 for check_line in range(
                     max(1, after_line - 3),
@@ -180,9 +183,14 @@ def check_structural_validity(
                         )
                     )
 
-    # Let absence realization report its more precise missing-anchor error once
-    # nearby mapped context has allowed an unmapped deletion anchor through.
-    if has_unmapped_deletion_anchor:
+    # An unclaimed missing deletion anchor will remain absent after presence
+    # realization, so let absence handling report its precise anchor error.
+    # A claimed anchor can be reintroduced by that realization; validate its
+    # placement first so the deletion cannot mask a silent variant interleave.
+    if (
+        has_unmapped_deletion_anchor
+        and not has_unmapped_claimed_deletion_anchor
+    ):
         return None
 
     _missing_presence_lines, presence_placements = (
@@ -201,6 +209,12 @@ def check_structural_validity(
             spool_dir=spool_dir,
         )
     )
+    # Let absence realization report its more precise missing-anchor error once
+    # nearby mapped context has allowed an unmapped deletion anchor through.
+    # Presence placement still has to run first: an unrelated missing anchor
+    # must not disable ambiguity refusal for every claimed line in the file.
+    if has_unmapped_deletion_anchor:
+        return presence_placements
     _check_unbounded_trailing_context(
         line_mapping,
         claimed_lines,

@@ -1407,3 +1407,23 @@ class TestBuildTargetWorkingTreeContent:
         result = _build_target_working_tree_content_text(line_changes, {1}, working_text)
 
         assert result.endswith("\n")
+    def test_discard_selected_lines_refuses_drifted_worktree_content(self):
+        """Classic worktree discard must fail instead of consuming stale rows."""
+        line_changes = LineLevelChange(
+            path="test.txt",
+            header=HunkHeader(1, 3, 1, 3),
+            lines=[
+                LineEntry(None, " ", 1, 1, text_bytes=b"keep"),
+                LineEntry(1, "-", 2, None, text_bytes=b"old"),
+                LineEntry(2, "+", None, 2, text_bytes=b"new"),
+                LineEntry(None, " ", 3, 3, text_bytes=b"tail"),
+            ],
+        )
+
+        with LineBuffer.from_bytes(b"keep\ndrifted\ntail\n") as working_lines:
+            with pytest.raises(ValueError, match="no longer matches"):
+                _build_target_working_tree_content_bytes(
+                    line_changes,
+                    {1, 2},
+                    working_lines,
+                )

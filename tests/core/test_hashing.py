@@ -3,10 +3,11 @@
 
 from git_stage_batch.core.hashing import (
     compute_binary_file_hash,
+    compute_file_mode_change_hash,
     compute_gitlink_change_hash,
     compute_stable_hunk_hash_from_lines,
 )
-from git_stage_batch.core.models import BinaryFileChange, GitlinkChange
+from git_stage_batch.core.models import BinaryFileChange, FileModeChange, GitlinkChange
 
 
 class TestComputeStableHunkHash:
@@ -183,3 +184,18 @@ class TestComputeGitlinkChangeHash:
         )
 
         assert compute_gitlink_change_hash(first) != compute_gitlink_change_hash(second)
+
+
+def test_file_mode_hash_includes_paired_index_path():
+    """Rename topology is part of an executable-mode change's identity."""
+    standalone = FileModeChange("new.sh", "100644", "100755")
+    paired_rename = FileModeChange(
+        "new.sh",
+        "100644",
+        "100755",
+        index_path="old.sh",
+    )
+
+    assert compute_file_mode_change_hash(standalone) != compute_file_mode_change_hash(
+        paired_rename
+    )

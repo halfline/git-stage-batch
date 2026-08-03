@@ -31,8 +31,7 @@ def require_contiguous_display_selection(selected_ids: set[int]) -> None:
     if not selected_ids:
         return
 
-    selected_range = list(range(min(selected_ids), max(selected_ids) + 1))
-    if sorted(selected_ids) != selected_range:
+    if len(selected_ids) != max(selected_ids) - min(selected_ids) + 1:
         exit_with_error(_("Replacement selection must be one contiguous line range."))
 
 
@@ -115,9 +114,7 @@ def build_partial_structural_run_selection_error(
     if len(selected_ids) <= 1:
         return None
 
-    sorted_ids = sorted(selected_ids)
-    expected_ids = list(range(sorted_ids[0], sorted_ids[-1] + 1))
-    if sorted_ids != expected_ids:
+    if len(selected_ids) != max(selected_ids) - min(selected_ids) + 1:
         return None
 
     run_sets = derive_display_id_run_sets_from_lines(
@@ -147,50 +144,68 @@ def expand_replacement_selection_ids(
     line_changes: LineLevelChange,
     requested_ids: set[int],
 ) -> set[int]:
-    """Expand a selection to the smallest adjacent mixed replacement run."""
-    selected_indices = [
-        index
-        for index, line in enumerate(line_changes.lines)
-        if line.id in requested_ids
-    ]
-    if not selected_indices:
-        return requested_ids
+    """Expand selected rows to every adjacent mixed replacement core."""
+    expanded_ids: set[int] | None = None
+    line_index = 0
+    while line_index < len(line_changes.lines):
+        if line_changes.lines[line_index].kind not in ("+", "-"):
+            line_index += 1
+            continue
 
-    run_start = min(selected_indices)
-    run_end = max(selected_indices)
-
-    run_entries = line_changes.lines[run_start:run_end + 1]
-    run_kinds = {line.kind for line in run_entries if line.kind in ("+", "-")}
-
-    if run_kinds != {"+", "-"}:
-        selected_kind = next(iter(run_kinds), None)
-        opposite_kind = "-" if selected_kind == "+" else "+"
-
-        left_index = run_start - 1
-        while left_index >= 0 and line_changes.lines[left_index].kind == selected_kind:
-            left_index -= 1
-        if left_index >= 0 and line_changes.lines[left_index].kind == opposite_kind:
-            run_start = left_index
-
-        right_index = run_end + 1
+        run_start = line_index
+        first_addition: int | None = None
+        first_requested_index: int | None = None
+        malformed_run = False
         while (
-            right_index < len(line_changes.lines)
-            and line_changes.lines[right_index].kind == selected_kind
+            line_index < len(line_changes.lines)
+            and line_changes.lines[line_index].kind in ("+", "-")
         ):
-            right_index += 1
+            line = line_changes.lines[line_index]
+            if line.id in requested_ids and first_requested_index is None:
+                first_requested_index = line_index
+            if line.kind == "+":
+                if first_addition is None:
+                    first_addition = line_index
+            elif first_addition is not None:
+                malformed_run = True
+            line_index += 1
+        run_stop = line_index
+
         if (
-            right_index < len(line_changes.lines)
-            and line_changes.lines[right_index].kind == opposite_kind
+            malformed_run
+            or first_addition is None
+            or first_addition == run_start
         ):
-            run_end = right_index
+            continue
 
-        run_entries = line_changes.lines[run_start:run_end + 1]
-        run_kinds = {line.kind for line in run_entries if line.kind in ("+", "-")}
-        if run_kinds != {"+", "-"}:
-            return requested_ids
+        deletion_count = first_addition - run_start
+        addition_count = run_stop - first_addition
+        replacement_stop = first_addition + min(
+            deletion_count,
+            addition_count,
+        )
+        if (
+            first_requested_index is None
+            or first_requested_index >= replacement_stop
+        ):
+            continue
 
-    return {
-        line.id
-        for line in run_entries
-        if line.id is not None
-    }
+        if any(
+            line_changes.lines[run_index].id is None
+            for run_index in range(run_start, replacement_stop)
+        ):
+            exit_with_error(
+                _(
+                    "Cannot replace a partial replacement run because another "
+                    "changed line in the run is unavailable."
+                )
+            )
+
+        if expanded_ids is None:
+            expanded_ids = set(requested_ids)
+        for run_index in range(run_start, replacement_stop):
+            line_id = line_changes.lines[run_index].id
+            if line_id is not None:
+                expanded_ids.add(line_id)
+
+    return requested_ids if expanded_ids is None else expanded_ids

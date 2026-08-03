@@ -1,7 +1,11 @@
 """Tests for line-level staging content buffers."""
 
+import gc
+import tracemalloc
+
 import pytest
 
+from git_stage_batch.staging import content_buffers as content_buffers_module
 from git_stage_batch.core.models import LineLevelChange, HunkHeader, LineEntry
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.core.replacement import ReplacementPayload
@@ -649,6 +653,103 @@ class TestBuildTargetIndexContent:
             )
 
         assert result == b"keep\nstaged value\n"
+
+    def test_replace_selection_uses_display_positions_after_id_remapping(self):
+        """Preserved ID holes must not make adjacent replacement rows invalid."""
+        line_changes = LineLevelChange(
+            path="test.txt",
+            header=HunkHeader(1, 1, 1, 2),
+            lines=[
+                LineEntry(1, "-", 1, None, text_bytes=b"old"),
+                LineEntry(4, "+", None, 1, text_bytes=b"new-a"),
+                LineEntry(5, "+", None, 2, text_bytes=b"new-b"),
+            ],
+        )
+
+        with LineBuffer.from_bytes(b"old\n") as base_lines:
+            result = _build_target_index_replacement_bytes(
+                line_changes,
+                {1, 4, 5},
+                "replacement",
+                base_lines,
+                base_has_trailing_newline=True,
+            )
+
+        assert result == b"replacement\n"
+
+    def test_replace_selection_cannot_cross_changed_row_without_id(self):
+        """A skipped changed row must remain a replacement-selection boundary."""
+        line_changes = LineLevelChange(
+            path="test.txt",
+            header=HunkHeader(1, 1, 1, 2),
+            lines=[
+                LineEntry(1, "-", 1, None, text_bytes=b"old"),
+                LineEntry(None, "+", None, 1, text_bytes=b"skipped"),
+                LineEntry(5, "+", None, 2, text_bytes=b"selected"),
+            ],
+        )
+
+        with pytest.raises(ValueError, match="one complete replacement run"):
+            content_buffers_module._replacement_selection_span_indices(
+                line_changes,
+                {1, 5},
+            )
+
+    def test_replace_selection_requires_unavailable_replacement_core_row(self):
+        """Low-level callers cannot replace only one selectable side of a run."""
+        line_changes = LineLevelChange(
+            path="test.txt",
+            header=HunkHeader(1, 1, 1, 1),
+            lines=[
+                LineEntry(None, "-", 1, None, text_bytes=b"skipped-old"),
+                LineEntry(2, "+", None, 1, text_bytes=b"selected-new"),
+            ],
+        )
+
+        with pytest.raises(ValueError, match="one complete replacement run"):
+            content_buffers_module._replacement_selection_span_indices(
+                line_changes,
+                {2},
+            )
+
+    def test_replace_selection_validation_avoids_line_scale_python_heap(self):
+        """Position validation must scan changed rows without materializing them."""
+        heap_peaks = []
+        for line_count in (1024, 8192):
+            line_changes = LineLevelChange(
+                path="test.txt",
+                header=HunkHeader(1, 0, 1, line_count),
+                lines=[
+                    LineEntry(
+                        line_id,
+                        "+",
+                        None,
+                        line_id,
+                        text_bytes=b"changed",
+                    )
+                    for line_id in range(1, line_count + 1)
+                ],
+            )
+            replace_ids = set(range(1, line_count + 1))
+
+            gc.collect()
+            tracemalloc.start()
+            try:
+                span = (
+                    content_buffers_module._replacement_selection_span_indices(
+                        line_changes,
+                        replace_ids,
+                    )
+                )
+                _current_heap, peak_heap = tracemalloc.get_traced_memory()
+            finally:
+                tracemalloc.stop()
+
+            assert span == (0, line_count - 1)
+            heap_peaks.append(peak_heap)
+
+        small_peak, large_peak = heap_peaks
+        assert large_peak < small_peak + 16 * 1024
 
     def test_replace_selection_honors_old_line_numbers_after_gap_markers(self):
         """File-scoped replacement staging should stay anchored after omitted regions."""

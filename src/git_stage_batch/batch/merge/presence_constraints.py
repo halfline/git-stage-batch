@@ -367,7 +367,7 @@ def satisfy_constraints(
     trusted_source_lines = {
         deletion.anchor_line
         for deletion in deletion_claims
-        if deletion.anchor_line is not None
+        if deletion.anchor_line is not None and deletion.content_lines
     }
     realized_entries = apply_presence_constraints(
         source_lines,

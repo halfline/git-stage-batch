@@ -677,6 +677,24 @@ class TestBuildTargetIndexContent:
 
         assert result == b"replacement\n"
 
+    def test_replace_selection_cannot_cross_changed_row_without_id(self):
+        """A skipped changed row must remain a replacement-selection boundary."""
+        line_changes = LineLevelChange(
+            path="test.txt",
+            header=HunkHeader(1, 1, 1, 2),
+            lines=[
+                LineEntry(1, "-", 1, None, text_bytes=b"old"),
+                LineEntry(None, "+", None, 1, text_bytes=b"skipped"),
+                LineEntry(5, "+", None, 2, text_bytes=b"selected"),
+            ],
+        )
+
+        with pytest.raises(ValueError, match="one complete replacement run"):
+            content_buffers_module._replacement_selection_span_indices(
+                line_changes,
+                {1, 5},
+            )
+
     def test_replace_selection_validation_avoids_line_scale_python_heap(self):
         """Position validation must scan changed rows without materializing them."""
         heap_peaks = []

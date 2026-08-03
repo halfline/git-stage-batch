@@ -695,6 +695,23 @@ class TestBuildTargetIndexContent:
                 {1, 5},
             )
 
+    def test_replace_selection_requires_unavailable_replacement_core_row(self):
+        """Low-level callers cannot replace only one selectable side of a run."""
+        line_changes = LineLevelChange(
+            path="test.txt",
+            header=HunkHeader(1, 1, 1, 1),
+            lines=[
+                LineEntry(None, "-", 1, None, text_bytes=b"skipped-old"),
+                LineEntry(2, "+", None, 1, text_bytes=b"selected-new"),
+            ],
+        )
+
+        with pytest.raises(ValueError, match="one complete replacement run"):
+            content_buffers_module._replacement_selection_span_indices(
+                line_changes,
+                {2},
+            )
+
     def test_replace_selection_validation_avoids_line_scale_python_heap(self):
         """Position validation must scan changed rows without materializing them."""
         heap_peaks = []

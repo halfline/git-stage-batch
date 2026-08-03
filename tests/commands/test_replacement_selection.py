@@ -79,3 +79,29 @@ def test_replacement_selection_refuses_unavailable_opposite_side():
 
     with pytest.raises(CommandError, match="changed line in the run is unavailable"):
         expand_replacement_selection_ids(line_changes, {2})
+
+
+def test_replacement_selection_expands_each_selected_disjoint_run():
+    """File-scoped selections may cross context and still expand each replacement."""
+    line_changes = LineLevelChange(
+        path="test.txt",
+        header=HunkHeader(1, 4, 1, 4),
+        lines=[
+            LineEntry(1, "-", 1, None, text_bytes=b"old-a"),
+            LineEntry(2, "+", None, 1, text_bytes=b"new-a"),
+            LineEntry(None, " ", 2, 2, text_bytes=b"context"),
+            LineEntry(3, "-", 3, None, text_bytes=b"old-b"),
+            LineEntry(4, "-", 4, None, text_bytes=b"old-c"),
+            LineEntry(5, "+", None, 3, text_bytes=b"new-b"),
+            LineEntry(6, "+", None, 4, text_bytes=b"new-c"),
+        ],
+    )
+
+    assert expand_replacement_selection_ids(line_changes, {2, 5}) == {
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+    }

@@ -463,25 +463,66 @@ def test_restore_directory_archive_error_keeps_repository_path(tmp_path):
         )
 
 
-def test_restore_intent_to_add_entries_checks_git_failures(tmp_path, monkeypatch):
-    """intent-to-add restoration does not silently accept failed index commands."""
+def test_restore_intent_to_add_entries_delegates_saved_paths_in_one_batch(
+    tmp_path,
+    monkeypatch,
+):
+    """Intent-to-add restoration delegates the checkpoint paths in one batch."""
     monkeypatch.chdir(tmp_path)
     subprocess.run(["git", "init"], check=True, capture_output=True)
-    (tmp_path / "new.txt").write_text("content\n")
-    update_calls = []
-    add_calls = []
+    restore_calls = []
     monkeypatch.setattr(
         undo_restore,
-        "git_update_index",
-        lambda **kwargs: update_calls.append(kwargs),
-    )
-    monkeypatch.setattr(
-        undo_restore,
-        "git_add_paths",
-        lambda paths, **kwargs: add_calls.append((paths, kwargs)),
+        "git_restore_intent_to_add_paths",
+        lambda file_paths: restore_calls.append(file_paths),
     )
 
-    undo_restore.restore_intent_to_add_entries(["new.txt"])
+    undo_restore.restore_intent_to_add_entries(["one.txt", "two.txt"])
 
-    assert update_calls == [{"file_path": "new.txt", "force_remove": True}]
-    assert add_calls == [(["new.txt"], {"intent_to_add": True})]
+    assert restore_calls == [["one.txt", "two.txt"]]
+
+
+def test_restore_intent_to_add_entries_when_worktree_path_is_missing(
+    tmp_path,
+    monkeypatch,
+):
+    """A missing worktree file can still carry an intent-to-add index entry."""
+    monkeypatch.chdir(tmp_path)
+    subprocess.run(["git", "init"], check=True, capture_output=True)
+    empty_oid = subprocess.run(
+        ["git", "hash-object", "-w", "--stdin"],
+        check=True,
+        input=b"",
+        capture_output=True,
+    ).stdout.decode().strip()
+    subprocess.run(
+        [
+            "git",
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            "100644",
+            empty_oid,
+            "missing.txt",
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+    undo_restore.restore_intent_to_add_entries(["missing.txt"])
+
+    assert not (tmp_path / "missing.txt").exists()
+    stage_entry = subprocess.run(
+        ["git", "ls-files", "--stage", "--", "missing.txt"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    debug_entry = subprocess.run(
+        ["git", "ls-files", "--debug", "--", "missing.txt"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert stage_entry.startswith(f"100644 {empty_oid} 0\t")
+    assert "flags: 20004000" in debug_entry

@@ -1501,6 +1501,18 @@ class TestMergeBatch:
         with pytest.raises(MergeError):
             merge_batch(source, ownership, working)
 
+    def test_unmapped_unrelated_absence_does_not_silence_presence_ambiguity(self):
+        """A missing deletion anchor must not bypass presence placement checks."""
+        source = b"head\nsaved variant\ntail\n"
+        working = b"head\nlive variant\ntail\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["2"],
+            [AbsenceClaim(anchor_line=2, content_lines=[b"unrelated\n"])],
+        )
+
+        with pytest.raises(MergeError):
+            merge_batch(source, ownership, working)
+
     def test_empty_absence_is_not_trusted_during_constraint_realization(self):
         """Direct realization must apply the same empty-anchor filtering."""
         selected = LineRanges.from_specs(["2"])
@@ -1514,6 +1526,7 @@ class TestMergeBatch:
                 require_distinctive_context=True,
                 distinctive_context_lines=selected,
             )
+
     def test_baseline_referenced_noncontiguous_presence_is_noop_when_source_matches(self):
         """Already-satisfied additions may be interleaved with unclaimed source lines."""
         source = b"line1\nline2\nline3\nline4\n"

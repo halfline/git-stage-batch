@@ -327,6 +327,55 @@ def test_prepare_initial_cached_source_remaps_deletion_anchor(monkeypatch):
     assert prepared_lines[0].source_line == 3
 
 
+def test_missing_session_source_cache_is_rebuilt(monkeypatch):
+    """An ephemeral cache entry must not make first-time batch capture fail."""
+    selected_lines = [
+        LineEntry(
+            id=1,
+            kind="+",
+            old_line_number=None,
+            new_line_number=2,
+            text_bytes=b"selected",
+            source_line=99,
+        ),
+    ]
+    cached_sources = _capture_session_sources(
+        monkeypatch,
+        {"test.py": "missing-source", "other.py": "other-source"},
+    )
+    monkeypatch.setattr(
+        source_refresh,
+        "read_git_object_buffer_or_none",
+        lambda _object_name: None,
+    )
+    monkeypatch.setattr(
+        source_refresh,
+        "load_working_tree_file_as_buffer",
+        lambda _file_path: LineBuffer.from_bytes(b"prefix\nselected\n"),
+    )
+    monkeypatch.setattr(
+        source_refresh,
+        "create_batch_source_commit",
+        lambda *_args, **_kwargs: "rebuilt-source",
+    )
+
+    result = ensure_batch_source_current_for_selection(
+        batch_name="test-batch",
+        file_path="test.py",
+        current_batch_source_commit=None,
+        existing_ownership=None,
+        selected_lines=selected_lines,
+    )
+
+    assert result.batch_source_commit == "rebuilt-source"
+    assert result.selected_lines[0].source_line == 2
+    assert result.source_was_advanced is True
+    assert cached_sources == {
+        "test.py": "rebuilt-source",
+        "other.py": "other-source",
+    }
+
+
 def test_refresh_deletion_anchor_uses_source_lineage_without_prior_context():
     """A hunk-leading deletion retains its old batch-source identity."""
     selected_line = LineEntry(

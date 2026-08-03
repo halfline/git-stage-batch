@@ -1469,6 +1469,64 @@ class TestMergeBatch:
 
         assert result == source
 
+    def test_stale_baseline_reference_does_not_silence_presence_ambiguity(self):
+        """An unresolved coordinate cannot permit a silent variant interleave."""
+        source = b"head\nsaved variant\ntail\n"
+        working = b"head\nlive variant\ntail\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["2"],
+            baseline_references={
+                2: BaselineReference(
+                    after_line=1,
+                    after_content=b"stale-head",
+                    before_line=3,
+                    before_content=b"tail",
+                    has_before_line=True,
+                )
+            },
+        )
+
+        with pytest.raises(MergeError):
+            merge_batch(source, ownership, working)
+
+    def test_empty_absence_does_not_silence_presence_ambiguity(self):
+        """A no-op deletion must not become an unmapped trusted anchor."""
+        source = b"head\nsaved variant\ntail\n"
+        working = b"head\nlive variant\ntail\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["2"],
+            [AbsenceClaim(anchor_line=2, content_lines=[])],
+        )
+
+        with pytest.raises(MergeError):
+            merge_batch(source, ownership, working)
+
+    def test_unmapped_unrelated_absence_does_not_silence_presence_ambiguity(self):
+        """A missing deletion anchor must not bypass presence placement checks."""
+        source = b"head\nsaved variant\ntail\n"
+        working = b"head\nlive variant\ntail\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["2"],
+            [AbsenceClaim(anchor_line=2, content_lines=[b"unrelated\n"])],
+        )
+
+        with pytest.raises(MergeError):
+            merge_batch(source, ownership, working)
+
+    def test_empty_absence_is_not_trusted_during_constraint_realization(self):
+        """Direct realization must apply the same empty-anchor filtering."""
+        selected = LineRanges.from_specs(["2"])
+
+        with pytest.raises(MergeError):
+            satisfy_constraints(
+                [b"head\n", b"saved variant\n", b"tail\n"],
+                [b"head\n", b"live variant\n", b"tail\n"],
+                selected,
+                [AbsenceClaim(anchor_line=2, content_lines=[])],
+                require_distinctive_context=True,
+                distinctive_context_lines=selected,
+            )
+
     def test_baseline_referenced_noncontiguous_presence_is_noop_when_source_matches(self):
         """Already-satisfied additions may be interleaved with unclaimed source lines."""
         source = b"line1\nline2\nline3\nline4\n"

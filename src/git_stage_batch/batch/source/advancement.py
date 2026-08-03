@@ -40,14 +40,6 @@ class BatchSourceAdvanceError(ValueError):
     """Expected refusal while reconciling a stale batch source."""
 
 
-@dataclass(frozen=True, slots=True)
-class _SavedReplacementTargetSpan:
-    """Unique live span suppressed by an authoritative replacement unit."""
-
-    start: int
-    end: int
-
-
 @dataclass
 class SourceContentWithLineProvenance:
     """Synthesized source buffer with line provenance from its inputs."""
@@ -328,47 +320,56 @@ def _advanced_source_chunks(
                 == source_count
             )
 
-            saved_replacement_span = _saved_replacement_target_span(
+            saved_replacement_spans = _saved_replacement_target_spans(
                 run,
                 working_lines,
                 ownership,
                 workspace,
             )
-            if saved_replacement_span is not None:
-                if run.target_start < saved_replacement_span.start:
+            try:
+                if saved_replacement_spans:
+                    target_cursor = run.target_start
+                    source_emitted = False
+                    for span_start, span_end in saved_replacement_spans:
+                        if target_cursor < span_start:
+                            yield from emit_working(
+                                target_cursor,
+                                span_start - 1,
+                            )
+                        if not source_emitted:
+                            yield from emit_source(run.source_start, run.source_end)
+                            source_emitted = True
+                        target_cursor = span_end + 1
+                    if target_cursor <= run.target_end:
+                        yield from emit_working(
+                            target_cursor,
+                            run.target_end,
+                        )
+                elif fully_owned:
+                    if source_count > target_count:
+                        raise BatchSourceAdvanceError(
+                            "Cannot advance a fully owned source replacement that "
+                            "contracts multiple owned lines: source lineage would "
+                            "not be unique."
+                        )
                     yield from emit_working(
                         run.target_start,
-                        saved_replacement_span.start - 1,
-                    )
-                yield from emit_source(run.source_start, run.source_end)
-                if saved_replacement_span.end < run.target_end:
-                    yield from emit_working(
-                        saved_replacement_span.end + 1,
                         run.target_end,
+                        source_start=run.source_start,
+                        source_end=run.source_end,
                     )
-            elif fully_owned:
-                if source_count > target_count:
-                    raise BatchSourceAdvanceError(
-                        "Cannot advance a fully owned source replacement that "
-                        "contracts multiple owned lines: source lineage would "
-                        "not be unique."
-                    )
-                yield from emit_working(
-                    run.target_start,
-                    run.target_end,
-                    source_start=run.source_start,
-                    source_end=run.source_end,
-                )
-            else:
-                for required_start, required_end in (
-                    _required_ranges_in(
-                        required_source_ranges,
-                        run.source_start,
-                        run.source_end,
-                    )
-                ):
-                    yield from emit_source(required_start, required_end)
-                yield from emit_working(run.target_start, run.target_end)
+                else:
+                    for required_start, required_end in (
+                        _required_ranges_in(
+                            required_source_ranges,
+                            run.source_start,
+                            run.source_end,
+                        )
+                    ):
+                        yield from emit_source(required_start, required_end)
+                    yield from emit_working(run.target_start, run.target_end)
+            finally:
+                workspace.close_resource(saved_replacement_spans)
 
             source_cursor = run.source_end + 1
             working_cursor = run.target_end + 1
@@ -415,13 +416,13 @@ def _unchanged_line_count_before_run(
     raise ValueError("Semantic change run has no source or target range")
 
 
-def _saved_replacement_target_span(
+def _saved_replacement_target_spans(
     run: SemanticChangeRun,
     working_lines: Sequence[bytes],
     ownership: BatchOwnership,
     workspace: MatcherWorkspace,
-) -> _SavedReplacementTargetSpan | None:
-    """Return the unique live subrange suppressed by a saved replacement.
+) -> MappedRecordVector:
+    """Return unique live subranges suppressed by a saved replacement.
 
     A semantic matcher may group the suppressed baseline variant with adjacent
     live-only edits.  Locate the exact suppressed subrange so those neighboring
@@ -435,7 +436,7 @@ def _saved_replacement_target_span(
     assert run.target_start is not None
     assert run.target_end is not None
     source_count = run.source_end - run.source_start + 1
-    matched_span: _SavedReplacementTargetSpan | None = None
+    matched_unit_spans: MappedRecordVector | None = None
 
     for unit in ownership.replacement_units:
         replacement_ranges = collect_replacement_source_ranges(
@@ -460,44 +461,86 @@ def _saved_replacement_target_span(
         if covered_source_count != source_count:
             continue
 
-        for deletion_index in unit.deletion_indices:
-            if (
-                type(deletion_index) is not int
-                or deletion_index < 0
-                or deletion_index >= len(ownership.deletions)
-            ):
-                continue
-            suppressed_variant = ownership.deletions[
-                deletion_index
-            ].content_lines
-            variant_count = len(suppressed_variant)
-            if variant_count == 0:
-                continue
-            first_target_index = run.target_start - 1
-            final_target_index = run.target_end - variant_count
-            for target_index in range(
-                first_target_index,
-                final_target_index + 1,
-            ):
-                if not line_slice_equals(
-                    working_lines,
-                    target_index,
-                    suppressed_variant,
+        unit_spans = workspace.record_vector(
+            len(unit.deletion_indices),
+            _SOURCE_RANGE_RECORD_FORMAT,
+        )
+        try:
+            for deletion_index in unit.deletion_indices:
+                if (
+                    type(deletion_index) is not int
+                    or deletion_index < 0
+                    or deletion_index >= len(ownership.deletions)
                 ):
                     continue
-                candidate_span = _SavedReplacementTargetSpan(
-                    start=target_index + 1,
-                    end=target_index + variant_count,
-                )
-                if matched_span is None:
-                    matched_span = candidate_span
-                elif matched_span != candidate_span:
-                    raise BatchSourceAdvanceError(
-                        "Cannot advance an authoritative replacement with "
-                        "multiple matching live baseline spans."
-                    )
+                suppressed_variant = ownership.deletions[
+                    deletion_index
+                ].content_lines
+                variant_count = len(suppressed_variant)
+                if variant_count == 0:
+                    continue
+                first_target_index = run.target_start - 1
+                final_target_index = run.target_end - variant_count
+                matched_start: int | None = None
+                for target_index in range(
+                    first_target_index,
+                    final_target_index + 1,
+                ):
+                    if not line_slice_equals(
+                        working_lines,
+                        target_index,
+                        suppressed_variant,
+                    ):
+                        continue
+                    if matched_start is not None:
+                        raise BatchSourceAdvanceError(
+                            "Cannot advance an authoritative replacement with "
+                            "multiple matching live baseline spans."
+                        )
+                    matched_start = target_index + 1
+                if matched_start is not None:
+                    unit_spans.append((
+                        matched_start,
+                        matched_start + variant_count - 1,
+                    ))
 
-    return matched_span
+            if len(unit_spans) > 1:
+                sort_mapped_records(unit_spans)
+                previous_end = unit_spans[0][1]
+                for span_index in range(1, len(unit_spans)):
+                    span_start, span_end = unit_spans[span_index]
+                    if span_start <= previous_end:
+                        raise BatchSourceAdvanceError(
+                            "Cannot advance an authoritative replacement with "
+                            "overlapping live baseline spans."
+                        )
+                    previous_end = span_end
+            if not unit_spans:
+                continue
+            if matched_unit_spans is None:
+                matched_unit_spans = workspace.record_vector(
+                    len(unit_spans),
+                    _SOURCE_RANGE_RECORD_FORMAT,
+                )
+                for span in unit_spans:
+                    matched_unit_spans.append(span)
+            elif (
+                len(matched_unit_spans) != len(unit_spans)
+                or any(
+                    matched_unit_spans[index] != unit_spans[index]
+                    for index in range(len(unit_spans))
+                )
+            ):
+                raise BatchSourceAdvanceError(
+                    "Cannot advance an authoritative replacement with "
+                    "multiple matching live baseline spans."
+                )
+        finally:
+            workspace.close_resource(unit_spans)
+
+    if matched_unit_spans is None:
+        return workspace.record_vector(0, _SOURCE_RANGE_RECORD_FORMAT)
+    return matched_unit_spans
 
 
 def advance_batch_source_for_file_with_provenance(

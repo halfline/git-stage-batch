@@ -188,8 +188,13 @@ def test_expected_source_advance_refusal_is_a_command_error(monkeypatch):
     )
     monkeypatch.setattr(
         consumed_selection_recording,
-        "detect_stale_batch_source_for_selection",
-        lambda _selected_lines: True,
+        "read_git_object_buffer_or_none",
+        lambda _object_name: LineBuffer.from_bytes(b"old\n"),
+    )
+    monkeypatch.setattr(
+        consumed_selection_recording,
+        "map_selection_to_source",
+        lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
         consumed_selection_recording,
@@ -208,6 +213,104 @@ def test_expected_source_advance_refusal_is_a_command_error(monkeypatch):
             source_buffer=source_buffer,
             selected_lines=[],
         )
+
+
+def test_existing_consumed_source_replaces_wrong_cached_coordinates(temp_git_repo):
+    """Consumed ownership is persisted in its own durable source space."""
+    test_file = temp_git_repo / "test.txt"
+    test_file.write_text("prefix\n")
+    subprocess.run(
+        ["git", "add", "test.txt"],
+        check=True,
+        cwd=temp_git_repo,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Add file"],
+        check=True,
+        cwd=temp_git_repo,
+        capture_output=True,
+    )
+    test_file.write_text("prefix\nselected\n")
+    command_start(quiet=True)
+
+    with LineBuffer.from_bytes(b"prefix\nselected\n") as source_buffer:
+        record_consumed_selection(
+            "test.txt",
+            source_buffer=source_buffer,
+            selected_lines=[
+                LineEntry(
+                    id=1,
+                    kind="+",
+                    old_line_number=None,
+                    new_line_number=2,
+                    text_bytes=b"selected",
+                    source_line=2,
+                )
+            ],
+        )
+    with LineBuffer.from_bytes(b"prefix\nselected\n") as source_buffer:
+        record_consumed_selection(
+            "test.txt",
+            source_buffer=source_buffer,
+            selected_lines=[
+                LineEntry(
+                    id=1,
+                    kind="+",
+                    old_line_number=None,
+                    new_line_number=2,
+                    text_bytes=b"selected",
+                    source_line=1,
+                )
+            ],
+        )
+
+    metadata = read_consumed_file_metadata("test.txt")
+    assert metadata is not None
+    assert metadata["presence_claims"] == [{"source_lines": ["2"]}]
+
+
+def test_initial_consumed_source_remaps_equal_content_at_wrong_coordinate(
+    temp_git_repo,
+):
+    """The first consumed source must also ignore foreign cached coordinates."""
+    test_file = temp_git_repo / "test.txt"
+    test_file.write_text("base\n")
+    subprocess.run(
+        ["git", "add", "test.txt"],
+        check=True,
+        cwd=temp_git_repo,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Add file"],
+        check=True,
+        cwd=temp_git_repo,
+        capture_output=True,
+    )
+    source_content = b"same\nmiddle\nsame\n"
+    test_file.write_bytes(source_content)
+    command_start(quiet=True)
+
+    with LineBuffer.from_bytes(source_content) as source_buffer:
+        record_consumed_selection(
+            "test.txt",
+            source_buffer=source_buffer,
+            selected_lines=[
+                LineEntry(
+                    id=1,
+                    kind="+",
+                    old_line_number=None,
+                    new_line_number=3,
+                    text_bytes=b"same",
+                    source_line=1,
+                )
+            ],
+        )
+
+    metadata = read_consumed_file_metadata("test.txt")
+    assert metadata is not None
+    assert metadata["presence_claims"] == [{"source_lines": ["3"]}]
 
 
 def test_record_consumed_selection_accepts_buffer(temp_git_repo):

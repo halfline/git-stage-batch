@@ -112,8 +112,33 @@ def ensure_batch_source_current_for_selection(
                 source_was_advanced=source_was_advanced,
             )
 
-    # Detect if source is stale.
-    is_stale = detect_stale_batch_source_for_selection(selected_lines)
+    # Display annotations come from a path-scoped session cache and may have
+    # been produced for another batch. Verify them against this batch's durable
+    # source before deciding that their coordinates are current.
+    if current_batch_source_commit is not None:
+        source_buffer = read_git_object_buffer_or_none(
+            f"{current_batch_source_commit}:{file_path}"
+        )
+        if source_buffer is None:
+            raise ValueError(
+                f"Cannot read batch source for {file_path} at "
+                f"{current_batch_source_commit}"
+            )
+        with source_buffer as source_lines:
+            mapped_selected_lines = _selection_mapped_to_source(
+                file_path,
+                selected_lines,
+                source_lines,
+                coordinate_lines=coordinate_lines,
+            )
+        if mapped_selected_lines is None:
+            is_stale = True
+        else:
+            _cache_session_source(file_path, current_batch_source_commit)
+            selected_lines = mapped_selected_lines
+            is_stale = False
+    else:
+        is_stale = detect_stale_batch_source_for_selection(selected_lines)
 
     if is_stale and current_batch_source_commit and existing_ownership:
         # Batch source is stale - advance it and remap existing ownership
@@ -182,6 +207,8 @@ def ensure_batch_source_current_for_selection(
 
 def _cache_session_source(file_path: str, batch_source_commit: str) -> None:
     batch_sources = load_session_batch_sources()
+    if batch_sources.get(file_path) == batch_source_commit:
+        return
     batch_sources[file_path] = batch_source_commit
     save_session_batch_sources(batch_sources)
 
@@ -215,20 +242,29 @@ def _selection_mapped_to_source(
     coordinate_lines: Sequence[LineEntry] | None = None,
 ) -> list[LineEntry] | None:
     """Return selection coordinates verified against one saved source."""
-    has_deletion_lines = any(line.kind == "-" for line in selected_lines)
-    if (
-        not has_deletion_lines
-        and _selection_matches_source(selected_lines, source_lines)
-    ):
-        return selected_lines
-
     with load_working_tree_file_as_buffer(file_path) as working_lines:
-        prepared_selected_lines = _refresh_lines_against_source(
+        return map_selection_to_source(
             selected_lines,
             source_lines=source_lines,
             working_lines=working_lines,
             coordinate_lines=coordinate_lines,
         )
+
+
+def map_selection_to_source(
+    selected_lines: list[LineEntry],
+    *,
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    coordinate_lines: Sequence[LineEntry] | None = None,
+) -> list[LineEntry] | None:
+    """Return selection coordinates proven against explicit source content."""
+    prepared_selected_lines = _refresh_lines_against_source(
+        selected_lines,
+        source_lines=source_lines,
+        working_lines=working_lines,
+        coordinate_lines=coordinate_lines,
+    )
     if _selection_matches_source(prepared_selected_lines, source_lines):
         return prepared_selected_lines
     return None
@@ -246,10 +282,14 @@ def _prepare_initial_cached_source_for_selection(
 
     source_buffer = read_git_object_buffer_or_none(f"{batch_source_commit}:{file_path}")
     if source_buffer is None:
-        raise ValueError(
-            f"Cannot read cached batch source for {file_path} at "
-            f"{batch_source_commit}"
+        new_batch_source_commit, reannotated_lines = (
+            _create_current_working_source_for_selection(
+                file_path,
+                selected_lines,
+                coordinate_lines=coordinate_lines,
+            )
         )
+        return new_batch_source_commit, reannotated_lines, True
 
     with source_buffer as source_lines:
         mapped_selected_lines = _selection_mapped_to_source(

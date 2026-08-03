@@ -25,6 +25,11 @@ from git_stage_batch.batch.source.advancement import (
     advance_batch_source_for_file_with_provenance,
     advance_source_lines_preserving_existing_presence,
 )
+from git_stage_batch.batch.line_matching.comparison import (
+    SemanticChangeKind,
+    SemanticChangeRun,
+)
+from git_stage_batch.batch.line_matching.match_workspace import MatcherWorkspace
 from git_stage_batch.batch.line_matching.lineage import (
     BatchSourceLineage,
     LineageRun,
@@ -769,6 +774,43 @@ def test_advance_source_replaces_suppressed_span_without_losing_live_neighbors(
     ]
 
 
+@pytest.mark.parametrize(
+    ("working_tree", "expected_source"),
+    [
+        (
+            b"head\nold-a\nold-b\ntail\n",
+            b"head\nnew\ntail\n",
+        ),
+        (
+            b"head\nold-a\nlive extra\nold-b\ntail\n",
+            b"head\nnew\nlive extra\ntail\n",
+        ),
+    ],
+)
+def test_advance_source_replaces_all_suppressed_spans_for_one_unit(
+    working_tree,
+    expected_source,
+):
+    """A replacement unit may own several distinct deletion-side runs."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            AbsenceClaim(anchor_line=1, content_lines=[b"old-a\n"]),
+            AbsenceClaim(anchor_line=1, content_lines=[b"old-b\n"]),
+        ],
+        replacement_units=[
+            ReplacementUnit(presence_lines=["2"], deletion_indices=[0, 1]),
+        ],
+    )
+
+    with _advance_source_from_content(
+        old_source_buffer=b"head\nnew\ntail\n",
+        working_buffer=working_tree,
+        ownership=ownership,
+    ) as source_with_provenance:
+        assert source_with_provenance.source_buffer.to_bytes() == expected_source
+
+
 def test_advance_source_refuses_ambiguous_saved_replacement_baseline_spans():
     """Repeated live baseline variants must not replace saved ownership."""
     ownership = BatchOwnership.from_presence_lines(
@@ -789,6 +831,76 @@ def test_advance_source_refuses_ambiguous_saved_replacement_baseline_spans():
             ownership=ownership,
         ):
             pass
+
+
+def test_advance_source_refuses_two_deletions_claiming_same_live_span():
+    """Distinct deletion claims cannot both consume one baseline occurrence."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            AbsenceClaim(anchor_line=1, content_lines=[b"old\n"]),
+            AbsenceClaim(anchor_line=1, content_lines=[b"old\n"]),
+        ],
+        replacement_units=[
+            ReplacementUnit(presence_lines=["2"], deletion_indices=[0, 1]),
+        ],
+    )
+
+    with pytest.raises(
+        BatchSourceAdvanceError,
+        match="overlapping live baseline spans",
+    ):
+        with _advance_source_from_content(
+            old_source_buffer=b"head\nnew\ntail\n",
+            working_buffer=b"head\nold\ntail\n",
+            ownership=ownership,
+        ):
+            pass
+
+
+def test_ambiguous_replacement_span_scan_avoids_line_scale_python_heap():
+    """Repeated baseline matches should be refused with bounded scan state."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["1"],
+        [AbsenceClaim(anchor_line=None, content_lines=[b"old\n"])],
+        replacement_units=[
+            ReplacementUnit(presence_lines=["1"], deletion_indices=[0]),
+        ],
+    )
+    heap_peaks = []
+    for line_count in _LINE_SCALE_TEST_COUNTS:
+        working_lines = [b"old\n"] * line_count
+        run = SemanticChangeRun(
+            SemanticChangeKind.REPLACEMENT,
+            source_start=1,
+            source_end=1,
+            target_start=1,
+            target_end=line_count,
+        )
+
+        gc.collect()
+        tracemalloc.start()
+        try:
+            with (
+                MatcherWorkspace() as workspace,
+                pytest.raises(
+                    BatchSourceAdvanceError,
+                    match="multiple matching live baseline",
+                ),
+            ):
+                advancement_module._saved_replacement_target_spans(
+                    run,
+                    working_lines,
+                    ownership,
+                    workspace,
+                )
+            _current_heap, peak_heap = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+        heap_peaks.append(peak_heap)
+
+    small_peak, large_peak = heap_peaks
+    assert large_peak < small_peak + _LINE_SCALE_HEAP_GROWTH_LIMIT
 
 
 def test_advance_source_refuses_owned_replacement_contraction() -> None:

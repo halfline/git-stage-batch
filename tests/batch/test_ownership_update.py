@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 
 import git_stage_batch.batch.ownership_update as ownership_update_module
+import git_stage_batch.batch.source.refresh as source_refresh
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership_update import (
     PreparedBatchUpdate,
@@ -14,6 +15,7 @@ from git_stage_batch.commands.selection import (
     selected_change_batch_discarding,
     selected_change_batch_staging,
 )
+from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.core.models import LineEntry
 
 
@@ -55,14 +57,35 @@ def test_acquire_batch_ownership_update_uses_metadata_acquisition(monkeypatch):
         "acquire_ownership_for_metadata_dict",
         acquire_for_metadata_dict,
     )
+    monkeypatch.setattr(
+        source_refresh,
+        "read_git_object_buffer_or_none",
+        lambda _object_name: LineBuffer.from_bytes(b"line1\nline2\n"),
+    )
+    monkeypatch.setattr(
+        source_refresh,
+        "load_working_tree_file_as_buffer",
+        lambda _file_path: LineBuffer.from_bytes(b"line1\nline2\n"),
+    )
+    cached_sources = {}
+    monkeypatch.setattr(
+        source_refresh,
+        "load_session_batch_sources",
+        lambda: dict(cached_sources),
+    )
+    monkeypatch.setattr(
+        source_refresh,
+        "save_session_batch_sources",
+        lambda sources: cached_sources.update(sources),
+    )
     lines = [
         LineEntry(
             id=2,
             kind="+",
             old_line_number=None,
             new_line_number=2,
-            text_bytes=b"line2\n",
-            text="line2\n",
+            text_bytes=b"line2",
+            text="line2",
             source_line=2,
         ),
     ]
@@ -79,6 +102,7 @@ def test_acquire_batch_ownership_update_uses_metadata_acquisition(monkeypatch):
         assert result.ownership_after.presence_line_set() == {1, 2}
 
     assert exited is True
+    assert cached_sources == {"test.py": "source123"}
 
 
 def test_both_commands_use_same_helper_interface():

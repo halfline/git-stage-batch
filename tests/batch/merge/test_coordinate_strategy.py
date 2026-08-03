@@ -119,14 +119,44 @@ def test_only_unanchored_presence_requires_distinctive_context() -> None:
     assert strict_lines.ranges() == ((2, 2),)
 
 
+def test_stale_presence_reference_does_not_cover_distinctive_context() -> None:
+    """Recorded coordinates only anchor presence while their payloads resolve."""
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"stale-head",
+        before_line=3,
+        before_content=b"tail",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        baseline_references={2: reference},
+    )
+
+    strict_lines = presence_lines_requiring_distinctive_context(
+        ownership,
+        ownership.presence_line_set(),
+        ownership.deletions,
+        target_lines=[b"head\n", b"live variant\n", b"tail\n"],
+    )
+
+    assert strict_lines.ranges() == ((2, 2),)
+
+
 def test_coordinate_coverage_avoids_line_scale_python_heap() -> None:
     """Per-line coordinate coverage should stay in mapped storage."""
     line_count = 8192
-    reference = BaselineReference(after_line=None)
+    target_lines = [b"anchor\n"] * line_count
     ownership = BatchOwnership.from_presence_lines(
         [f"1-{line_count}"],
         baseline_references={
-            line_number: reference
+            line_number: BaselineReference(
+                after_line=line_number - 1 if line_number > 1 else None,
+                after_content=b"anchor" if line_number > 1 else None,
+                before_line=line_number,
+                before_content=b"anchor",
+                has_before_line=True,
+            )
             for line_number in range(1, line_count + 1)
         },
     )
@@ -139,6 +169,7 @@ def test_coordinate_coverage_avoids_line_scale_python_heap() -> None:
             ownership,
             selection,
             ownership.deletions,
+            target_lines=target_lines,
         ))
         _current_heap, peak_heap = tracemalloc.get_traced_memory()
     finally:

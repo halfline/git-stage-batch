@@ -332,6 +332,7 @@ def _presence_candidate_set(
         ownership,
         presence_line_set,
         deletion_claims,
+        target_lines=working_lines,
         spool_dir=spool_dir,
     )
     presence_mapping = match_lines(
@@ -350,7 +351,7 @@ def _presence_candidate_set(
                 trusted_source_lines={
                     deletion.anchor_line
                     for deletion in deletion_claims
-                    if deletion.anchor_line is not None
+                    if deletion.anchor_line is not None and deletion.content_lines
                 },
                 distinctive_context_lines=distinctive_context_lines,
                 spool_dir=spool_dir,
@@ -435,6 +436,7 @@ def _absence_candidate_set(
         ownership,
         presence_line_set,
         deletion_claims,
+        target_lines=working_lines,
         spool_dir=spool_dir,
     )
 

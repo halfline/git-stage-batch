@@ -42,6 +42,28 @@ def _advance_source_from_content(
         )
 
 
+def _capture_session_sources(monkeypatch, initial=None):
+    """Install an in-memory session source cache and return its live state."""
+    cached_sources = dict(initial or {})
+
+    monkeypatch.setattr(
+        source_refresh,
+        "load_session_batch_sources",
+        lambda: dict(cached_sources),
+    )
+
+    def save_sources(sources):
+        cached_sources.clear()
+        cached_sources.update(sources)
+
+    monkeypatch.setattr(
+        source_refresh,
+        "save_session_batch_sources",
+        save_sources,
+    )
+    return cached_sources
+
+
 def test_refreshed_batch_selection_dataclass():
     """Test RefreshedBatchSelection dataclass construction."""
     refresh = RefreshedBatchSelection(
@@ -57,7 +79,7 @@ def test_refreshed_batch_selection_dataclass():
     assert refresh.source_was_advanced is False
 
 
-def test_ensure_batch_source_current_non_stale_source():
+def test_ensure_batch_source_current_non_stale_source(monkeypatch):
     """Test ensure_batch_source_current_for_selection with non-stale source."""
     # Lines with valid source_line values (not stale)
     lines = [
@@ -68,6 +90,17 @@ def test_ensure_batch_source_current_non_stale_source():
     ]
 
     ownership = BatchOwnership.from_presence_lines(["1"], [])
+    monkeypatch.setattr(
+        source_refresh,
+        "read_git_object_buffer_or_none",
+        lambda _object_name: LineBuffer.from_bytes(b"new line\n"),
+    )
+    monkeypatch.setattr(
+        source_refresh,
+        "load_working_tree_file_as_buffer",
+        lambda _file_path: LineBuffer.from_bytes(b"new line\n"),
+    )
+    cached_sources = _capture_session_sources(monkeypatch)
 
     # Should return original values unchanged
     result = ensure_batch_source_current_for_selection(
@@ -82,6 +115,7 @@ def test_ensure_batch_source_current_non_stale_source():
     assert result.ownership == ownership
     assert result.selected_lines == lines
     assert result.source_was_advanced is False
+    assert cached_sources == {"test.py": "old_source"}
 
 
 def test_ensure_batch_source_current_first_time_stale():

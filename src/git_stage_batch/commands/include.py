@@ -84,6 +84,7 @@ def command_include(
                     operation="include",
                 )
                 return
+            return
 
     _selected_change_staging.include_selected_change(
         quiet=quiet,

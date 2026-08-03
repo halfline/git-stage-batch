@@ -18,14 +18,26 @@ from .binary_identity import attach_live_binary_fingerprint
 from .live_diff import stream_live_git_diff
 
 
-def render_mode_change(file_path: str) -> Optional[FileModeChange]:
+def render_mode_change(
+    file_path: str,
+    *,
+    paired_path: str | None = None,
+) -> Optional[FileModeChange]:
     """Render one executable-mode action without caching state."""
+    paths = [file_path]
+    if paired_path is not None and paired_path != file_path:
+        paths.append(paired_path)
     try:
         with acquire_unified_diff(
-            stream_live_git_diff(full_index=True, paths=[file_path])
+            stream_live_git_diff(full_index=True, paths=paths)
         ) as patches:
             return next(
-                (item for item in patches if isinstance(item, FileModeChange)),
+                (
+                    item
+                    for item in patches
+                    if isinstance(item, FileModeChange)
+                    and item.path() == file_path
+                ),
                 None,
             )
     except subprocess.CalledProcessError:

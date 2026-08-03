@@ -17,6 +17,7 @@ from ...core.models import (
 from ...data.hunk_tracking import fetch_next_change
 from ...data.index_entries import read_index_entry
 from ...data.progress import record_hunk_included
+from ...data.session import path_is_intent_to_add
 from ...data.selected_change.loading import SelectedChange, load_selected_change
 from ...data.selected_change.paths import worktree_paths_for_selected_change
 from ...data.undo.checkpoints import undo_checkpoint
@@ -206,6 +207,26 @@ def _include_loaded_selected_change(
 
 def stage_file_mode_change(item: FileModeChange) -> None:
     """Stage one executable-mode transition in the index."""
+    destination_entry = read_index_entry(item.path())
+    destination_is_placeholder = (
+        destination_entry is not None
+        and path_is_intent_to_add(item.path())
+    )
+    if item.index_path is not None and (
+        destination_entry is None or destination_is_placeholder
+    ):
+        index_entry = read_index_entry(item.index_path)
+        if index_entry is not None:
+            result = git_update_index(
+                file_path=item.index_path,
+                mode=item.new_mode,
+                blob_sha=index_entry.object_id,
+                check=False,
+            )
+            if result.returncode != 0:
+                exit_with_error(_("Failed to stage executable mode change."))
+            return
+
     chmod = "+x" if item.new_mode == "100755" else "-x"
     result = run_git_command(
         ["update-index", f"--chmod={chmod}", "--", item.path()],

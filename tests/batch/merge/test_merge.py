@@ -1488,6 +1488,18 @@ class TestMergeBatch:
 
         with pytest.raises(MergeError):
             merge_batch(source, ownership, working)
+
+    def test_empty_absence_does_not_silence_presence_ambiguity(self):
+        """A no-op deletion must not become an unmapped trusted anchor."""
+        source = b"head\nsaved variant\ntail\n"
+        working = b"head\nlive variant\ntail\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["2"],
+            [AbsenceClaim(anchor_line=2, content_lines=[])],
+        )
+
+        with pytest.raises(MergeError):
+            merge_batch(source, ownership, working)
     def test_baseline_referenced_noncontiguous_presence_is_noop_when_source_matches(self):
         """Already-satisfied additions may be interleaved with unclaimed source lines."""
         source = b"line1\nline2\nline3\nline4\n"

@@ -14,6 +14,9 @@ from git_stage_batch.commands.include import (
 from git_stage_batch.commands.skip import command_skip
 from git_stage_batch.commands.discard import command_discard
 from git_stage_batch.commands.selection.selected_change_display import show_selected_change
+from git_stage_batch.commands.selection.selected_change_staging import (
+    stage_file_mode_change,
+)
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.stop import command_stop
 from git_stage_batch.commands.undo import command_undo
@@ -235,6 +238,105 @@ def test_include_mode_after_skipped_rename_targets_source_index_path(rename_repo
         text=True,
     ).stdout
     assert restored_entry == original_index_entries
+
+
+def test_stage_mode_after_skipped_rename_preserves_source_index_flags(
+    rename_repo,
+):
+    """A paired mode update must retain intent on the source index entry."""
+    _rename_without_staging(rename_repo)
+    (rename_repo / "new.txt").chmod(0o755)
+
+    command_start(quiet=True)
+    command_skip(quiet=True)
+    selected_change = load_selected_change()
+    assert isinstance(selected_change, FileModeChange)
+    subprocess.run(
+        ["git", "update-index", "--force-remove", "--", "old.txt"],
+        check=True,
+        cwd=rename_repo,
+        capture_output=True,
+    )
+    alternate_worktree = rename_repo.parent / "alternate-worktree"
+    alternate_worktree.mkdir()
+    (alternate_worktree / "old.txt").write_text("intent placeholder\n")
+    subprocess.run(
+        [
+            "git",
+            f"--work-tree={alternate_worktree}",
+            "add",
+            "-N",
+            "--",
+            "old.txt",
+        ],
+        check=True,
+        cwd=rename_repo,
+        capture_output=True,
+    )
+    assert "flags: 20004000" in subprocess.run(
+        ["git", "ls-files", "--debug", "--", "old.txt"],
+        check=True,
+        cwd=rename_repo,
+        capture_output=True,
+        text=True,
+    ).stdout
+
+    stage_file_mode_change(selected_change)
+
+    source_entry = subprocess.run(
+        ["git", "ls-files", "--stage", "--", "old.txt"],
+        check=True,
+        cwd=rename_repo,
+        capture_output=True,
+        text=True,
+    ).stdout
+    source_debug = subprocess.run(
+        ["git", "ls-files", "--debug", "--", "old.txt"],
+        check=True,
+        cwd=rename_repo,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert source_entry.startswith("100755 ")
+    assert "flags: 20004000" in source_debug
+
+
+def test_stage_mode_after_skipped_rename_preserves_assume_unchanged(
+    rename_repo,
+):
+    """A paired mode update must retain ordinary source index flags."""
+    _rename_without_staging(rename_repo)
+    (rename_repo / "new.txt").chmod(0o755)
+
+    command_start(quiet=True)
+    command_skip(quiet=True)
+    selected_change = load_selected_change()
+    assert isinstance(selected_change, FileModeChange)
+    subprocess.run(
+        ["git", "update-index", "--assume-unchanged", "--", "old.txt"],
+        check=True,
+        cwd=rename_repo,
+        capture_output=True,
+    )
+
+    stage_file_mode_change(selected_change)
+
+    source_entry = subprocess.run(
+        ["git", "ls-files", "--stage", "--", "old.txt"],
+        check=True,
+        cwd=rename_repo,
+        capture_output=True,
+        text=True,
+    ).stdout
+    source_flags = subprocess.run(
+        ["git", "ls-files", "-v", "--", "old.txt"],
+        check=True,
+        cwd=rename_repo,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert source_entry.startswith("100755 ")
+    assert source_flags == "h old.txt\n"
 
 
 def test_include_rename_source_file_also_stages_paired_mode(rename_repo):

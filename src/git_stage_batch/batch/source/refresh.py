@@ -215,20 +215,29 @@ def _selection_mapped_to_source(
     coordinate_lines: Sequence[LineEntry] | None = None,
 ) -> list[LineEntry] | None:
     """Return selection coordinates verified against one saved source."""
-    has_deletion_lines = any(line.kind == "-" for line in selected_lines)
-    if (
-        not has_deletion_lines
-        and _selection_matches_source(selected_lines, source_lines)
-    ):
-        return selected_lines
-
     with load_working_tree_file_as_buffer(file_path) as working_lines:
-        prepared_selected_lines = _refresh_lines_against_source(
+        return map_selection_to_source(
             selected_lines,
             source_lines=source_lines,
             working_lines=working_lines,
             coordinate_lines=coordinate_lines,
         )
+
+
+def map_selection_to_source(
+    selected_lines: list[LineEntry],
+    *,
+    source_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    coordinate_lines: Sequence[LineEntry] | None = None,
+) -> list[LineEntry] | None:
+    """Return selection coordinates proven against explicit source content."""
+    prepared_selected_lines = _refresh_lines_against_source(
+        selected_lines,
+        source_lines=source_lines,
+        working_lines=working_lines,
+        coordinate_lines=coordinate_lines,
+    )
     if _selection_matches_source(prepared_selected_lines, source_lines):
         return prepared_selected_lines
     return None

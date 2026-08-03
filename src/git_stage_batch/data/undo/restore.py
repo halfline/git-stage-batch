@@ -22,7 +22,7 @@ from ...utils.git_refs import (
     update_git_refs,
 )
 from ...utils.git_worktree import git_checkout_detached, git_submodule_update_checkout
-from ...utils.git_index import git_add_paths, git_update_index
+from ...utils.git_index import git_restore_intent_to_add_paths
 from ...utils.git_repository import (
     get_git_repository_root_path,
     is_git_repository_root_path,
@@ -347,9 +347,4 @@ def _extract_directory_archive(
 
 def restore_intent_to_add_entries(file_paths: list[str]) -> None:
     """Restore the exact intent-to-add markers saved by one checkpoint."""
-    repo_root = get_git_repository_root_path()
-    for file_path in file_paths:
-        full_path = repo_root / file_path
-        if os.path.lexists(full_path):
-            git_update_index(file_path=file_path, force_remove=True)
-            git_add_paths([file_path], intent_to_add=True)
+    git_restore_intent_to_add_paths(file_paths)

@@ -25,13 +25,14 @@ from ..utils.file_io import (
 from ..utils.git_command import run_git_command
 from ..git_paths import decode_path, nul_records
 from ..utils.git_worktree import git_remove_paths
-from ..utils.git_index import git_add_paths_from_stdin
+from ..utils.git_index import git_restore_intent_to_add_paths
 from ..utils.git_repository import get_git_repository_root_path
 from ..utils.journal import journal_enabled, log_journal
 from .index_entries import IndexEntry, read_index_entries
 from ..utils.paths import (
     ensure_abort_snapshots_directory_exists,
     get_abort_head_file_path,
+    get_abort_intent_to_add_entries_file_path,
     get_abort_snapshot_list_file_path,
     get_abort_snapshots_directory_path,
     get_abort_stash_file_path,
@@ -72,27 +73,35 @@ def _journal_index_entries(
     ]
 
 
-def _diff_index_name_status(*, intent_to_add_visible: bool) -> dict[str, str]:
+def _diff_index_name_status(
+    *,
+    intent_to_add_visible: bool,
+    file_paths: list[str] | None = None,
+) -> dict[str, str]:
     """Return cached path statuses under one intent-to-add interpretation."""
     visibility_option = (
         "--ita-visible-in-index"
         if intent_to_add_visible
         else "--ita-invisible-in-index"
     )
+    arguments = [
+        "diff-index",
+        "--cached",
+        "--name-status",
+        "-z",
+        "--no-renames",
+        visibility_option,
+        session_comparison_base(),
+        "--",
+    ]
+    if file_paths is not None:
+        arguments.extend(file_paths)
     result = run_git_command(
-        [
-            "diff-index",
-            "--cached",
-            "--name-status",
-            "-z",
-            "--no-renames",
-            visibility_option,
-            session_comparison_base(),
-            "--",
-        ],
+        arguments,
         check=True,
         text_output=False,
         requires_index_lock=False,
+        literal_pathspecs=file_paths is not None,
     )
     fields = nul_records(result.stdout)
     if len(fields) % 2 != 0:
@@ -103,20 +112,34 @@ def _diff_index_name_status(*, intent_to_add_visible: bool) -> dict[str, str]:
     }
 
 
+def _intent_to_add_statuses(
+    file_paths: list[str] | None = None,
+) -> dict[str, str]:
+    """Return visible cached statuses for paths carrying the intent flag."""
+    selected_paths = None if file_paths is None else list(dict.fromkeys(file_paths))
+    if selected_paths == []:
+        return {}
+    visible_statuses = _diff_index_name_status(
+        intent_to_add_visible=True,
+        file_paths=selected_paths,
+    )
+    invisible_statuses = _diff_index_name_status(
+        intent_to_add_visible=False,
+        file_paths=selected_paths,
+    )
+    candidate_paths = visible_statuses.keys() | invisible_statuses.keys()
+    selected = None if selected_paths is None else set(selected_paths)
+    return {
+        file_path: visible_statuses.get(file_path, "")
+        for file_path in sorted(candidate_paths)
+        if visible_statuses.get(file_path) != invisible_statuses.get(file_path)
+        and (selected is None or file_path in selected)
+    }
+
+
 def intent_to_add_files(file_paths: list[str] | None = None) -> list[str]:
     """Return paths whose cached status changes with Git's intent visibility."""
-    visible_statuses = _diff_index_name_status(intent_to_add_visible=True)
-    invisible_statuses = _diff_index_name_status(intent_to_add_visible=False)
-    candidate_paths = visible_statuses.keys() | invisible_statuses.keys()
-    intent_paths = sorted(
-        file_path
-        for file_path in candidate_paths
-        if visible_statuses.get(file_path) != invisible_statuses.get(file_path)
-    )
-    if file_paths is None:
-        return intent_paths
-    selected = set(file_paths)
-    return [file_path for file_path in intent_paths if file_path in selected]
+    return list(_intent_to_add_statuses(file_paths))
 
 
 def path_is_intent_to_add(file_path: str) -> bool:
@@ -124,7 +147,11 @@ def path_is_intent_to_add(file_path: str) -> bool:
     return bool(intent_to_add_files([file_path]))
 
 
-def _snapshot_intent_to_add_files() -> tuple[list[str], list[str]]:
+def _snapshot_intent_to_add_files() -> tuple[
+    list[str],
+    list[str],
+    dict[str, IndexEntry],
+]:
     """Snapshot all intent-to-add files so they survive git reset --hard on abort.
 
     Intent-to-add files (added with git add -N) won't be captured by git stash.
@@ -132,24 +159,38 @@ def _snapshot_intent_to_add_files() -> tuple[list[str], list[str]]:
     and record them so we can restore their status.
 
     Returns:
-        Tuple of (all_intent_to_add_files, new_intent_to_add_files)
+        Tuple of (all paths, new paths, exact stage-zero entries)
         - all_intent_to_add_files: All files with intent-to-add
         - new_intent_to_add_files: Only files absent from HEAD
     """
-    all_intent_to_add_files = intent_to_add_files()
-    new_intent_to_add_files = []
-
-    for file_path in all_intent_to_add_files:
-        snapshot_file_if_untracked(file_path, intent_to_add=True)
-
-        # Only new files absent from HEAD are safe to git rm --cached.
-        head_check = run_git_command(
-            ["cat-file", "-e", f"HEAD:{file_path}"],
-            check=False,
-            requires_index_lock=False,
+    intent_to_add_statuses = _intent_to_add_statuses()
+    all_intent_to_add_files = list(intent_to_add_statuses)
+    intent_to_add_entries = read_index_entries(all_intent_to_add_files)
+    missing_entries = [
+        file_path
+        for file_path in all_intent_to_add_files
+        if file_path not in intent_to_add_entries
+    ]
+    if missing_entries:
+        raise CommandError(
+            _(
+                "Could not capture intent-to-add index entries for: {paths}"
+            ).format(paths=", ".join(missing_entries))
         )
-        if head_check.returncode != 0:
-            new_intent_to_add_files.append(file_path)
+    # With rename detection disabled, an ITA absent from HEAD is reported as
+    # added in the visible view. A tracked path normalized through rm --cached
+    # and add -N is instead reported as deleted. Reuse that bulk classification
+    # rather than starting one cat-file process per path.
+    new_intent_to_add_files = [
+        file_path
+        for file_path, status in intent_to_add_statuses.items()
+        if status == "A"
+    ]
+
+    snapshot_files_if_untracked(
+        all_intent_to_add_files,
+        intent_to_add=True,
+    )
 
     # Save list of intent-to-add files for abort restoration
     if all_intent_to_add_files:
@@ -157,8 +198,26 @@ def _snapshot_intent_to_add_files() -> tuple[list[str], list[str]]:
             get_state_directory_path() / "session" / "abort" / "intent-to-add-files.txt"
         )
         write_file_paths_file(intent_to_add_file, all_intent_to_add_files)
+        write_text_file_contents(
+            get_abort_intent_to_add_entries_file_path(),
+            json.dumps(
+                {
+                    file_path: {
+                        "mode": intent_to_add_entries[file_path].mode,
+                        "object_id": intent_to_add_entries[file_path].object_id,
+                    }
+                    for file_path in all_intent_to_add_files
+                },
+                indent=2,
+                sort_keys=True,
+            ),
+        )
 
-    return (all_intent_to_add_files, new_intent_to_add_files)
+    return (
+        all_intent_to_add_files,
+        new_intent_to_add_files,
+        intent_to_add_entries,
+    )
 
 
 def initialize_abort_state() -> None:
@@ -190,7 +249,11 @@ def _initialize_abort_state() -> None:
     # Snapshot all intent-to-add files upfront
     # These files won't survive git reset --hard but aren't in the stash
     # We need to snapshot them now so they can be restored on abort
-    all_intent_to_add_files, new_intent_to_add_files = _snapshot_intent_to_add_files()
+    (
+        all_intent_to_add_files,
+        new_intent_to_add_files,
+        intent_to_add_entries,
+    ) = _snapshot_intent_to_add_files()
     tracked_intent_to_add_files = sorted(
         set(all_intent_to_add_files) - set(new_intent_to_add_files)
     )
@@ -256,18 +319,15 @@ def _initialize_abort_state() -> None:
                 "session_re_adding_intent_to_add_files",
                 files=all_intent_to_add_files,
             )
-            git_remove_paths(
-                all_intent_to_add_files,
-                cached=True,
-                quiet=True,
-                ignore_unmatch=True,
-            )
             index_before = (
                 read_index_entries(all_intent_to_add_files) if journal_enabled() else {}
             )
-            git_add_paths_from_stdin(
+            git_restore_intent_to_add_paths(
                 all_intent_to_add_files,
-                intent_to_add=True,
+                saved_entries={
+                    file_path: (entry.mode, entry.object_id)
+                    for file_path, entry in intent_to_add_entries.items()
+                },
             )
             if journal_enabled():
                 log_journal(
@@ -399,35 +459,40 @@ def snapshot_file_if_untracked(
     append_file_path_to_file(get_abort_snapshot_list_file_path(), file_path)
 
 
-def snapshot_files_if_untracked(file_paths: list[str]) -> None:
+def snapshot_files_if_untracked(
+    file_paths: list[str],
+    *,
+    intent_to_add: bool = False,
+) -> None:
     """Snapshot untracked files before modifying several paths."""
     unique_file_paths = list(dict.fromkeys(file_paths))
     if not unique_file_paths:
         return
 
-    intent_to_add_paths = set(intent_to_add_files(unique_file_paths))
-    stage_result = run_git_command(
-        ["ls-files", "--stage", "-z", "--", *unique_file_paths],
-        check=False,
-        text_output=False,
-        requires_index_lock=False,
-        literal_pathspecs=True,
-    )
-
     tracked_real_content: set[str] = set()
-    for record in nul_records(stage_result.stdout):
-        if not record:
-            continue
-        try:
-            metadata, path_bytes = record.split(b"\t", 1)
-        except ValueError:
-            continue
-        parts = metadata.split()
-        if len(parts) < 2:
-            continue
-        file_path = decode_path(path_bytes)
-        if file_path not in intent_to_add_paths:
-            tracked_real_content.add(file_path)
+    if not intent_to_add:
+        intent_to_add_paths = set(intent_to_add_files(unique_file_paths))
+        stage_result = run_git_command(
+            ["ls-files", "--stage", "-z", "--", *unique_file_paths],
+            check=False,
+            text_output=False,
+            requires_index_lock=False,
+            literal_pathspecs=True,
+        )
+
+        for record in nul_records(stage_result.stdout):
+            if not record:
+                continue
+            try:
+                metadata, path_bytes = record.split(b"\t", 1)
+            except ValueError:
+                continue
+            parts = metadata.split()
+            if len(parts) < 2:
+                continue
+            file_path = decode_path(path_bytes)
+            if file_path not in intent_to_add_paths:
+                tracked_real_content.add(file_path)
 
     snapshotted_files = set(read_file_paths_file(get_abort_snapshot_list_file_path()))
     repo_root = get_git_repository_root_path()

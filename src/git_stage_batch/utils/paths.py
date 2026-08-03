@@ -260,6 +260,11 @@ def get_abort_snapshot_list_file_path() -> Path:
     return get_abort_state_directory_path() / "untracked-paths.txt"
 
 
+def get_abort_intent_to_add_entries_file_path() -> Path:
+    """Get the path to exact pre-session intent-to-add index metadata."""
+    return get_abort_state_directory_path() / "intent-to-add-entries.json"
+
+
 def get_staged_renames_file_path() -> Path:
     """Get the path to start-time staged rename metadata."""
     return get_abort_state_directory_path() / "staged-renames.json"

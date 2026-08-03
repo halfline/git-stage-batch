@@ -4,6 +4,7 @@ import subprocess
 
 import pytest
 
+from git_stage_batch.data import session as session_module
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.utils.paths import ensure_state_directory_exists
 
@@ -177,3 +178,81 @@ class TestIntentToAddHandling:
             text=True
         )
         assert "D  newfile.py" not in status_result.stdout
+
+    def test_missing_intent_to_add_worktree_path_survives_initialization(
+        self,
+        temp_git_repo,
+    ):
+        """Session normalization must not require an ITA worktree path to exist."""
+        test_file = temp_git_repo / "missing.py"
+        test_file.write_text("content that was moved aside\n")
+        subprocess.run(
+            ["git", "add", "-N", test_file.name],
+            cwd=temp_git_repo,
+            check=True,
+            capture_output=True,
+        )
+        test_file.unlink()
+        original_entry = subprocess.run(
+            ["git", "ls-files", "--stage", "--", test_file.name],
+            cwd=temp_git_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+
+        initialize_abort_state()
+
+        restored_entry = subprocess.run(
+            ["git", "ls-files", "--stage", "--", test_file.name],
+            cwd=temp_git_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        debug_entry = subprocess.run(
+            ["git", "ls-files", "--debug", "--", test_file.name],
+            cwd=temp_git_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        assert not test_file.exists()
+        assert restored_entry == original_entry
+        assert "flags: 20004000" in debug_entry
+
+    def test_intent_snapshot_avoids_per_path_git_queries(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """ITA classification and snapshotting should stay bulk at path scale."""
+        for file_name in ("one.py", "two.py"):
+            (temp_git_repo / file_name).write_text(f"{file_name}\n")
+        subprocess.run(
+            ["git", "add", "-N", "one.py", "two.py"],
+            cwd=temp_git_repo,
+            check=True,
+            capture_output=True,
+        )
+        real_run_git_command = session_module.run_git_command
+        per_path_queries: list[list[str]] = []
+
+        def record_git_commands(arguments, *args, **kwargs):
+            if (
+                arguments[:2] == ["cat-file", "-e"]
+                and len(arguments) > 2
+                and arguments[2].startswith("HEAD:")
+            ) or arguments[:3] == ["ls-files", "--stage", "--"]:
+                per_path_queries.append(arguments)
+            return real_run_git_command(arguments, *args, **kwargs)
+
+        monkeypatch.setattr(
+            session_module,
+            "run_git_command",
+            record_git_commands,
+        )
+
+        initialize_abort_state()
+
+        assert per_path_queries == []

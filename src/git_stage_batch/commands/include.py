@@ -63,7 +63,7 @@ def command_include(
     refuse_bare_action_after_auto_advance_disabled("include")
 
     if read_selected_change_kind() == SelectedChangeKind.FILE:
-        command_include_file("", auto_advance=auto_advance)
+        command_include_file("", quiet=quiet, auto_advance=auto_advance)
         return
 
     if read_selected_change_kind() == SelectedChangeKind.HUNK:

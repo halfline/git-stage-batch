@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import tempfile
+from pathlib import Path
 
 from ...core.buffer import LineBuffer
 from ...core.diff_parser import patch_is_file_deletion
@@ -207,6 +209,9 @@ def _include_loaded_selected_change(
 
 def stage_file_mode_change(item: FileModeChange) -> None:
     """Stage one executable-mode transition in the index."""
+    index_path = item.path()
+    use_alternate_worktree = False
+    source_is_intent_to_add = False
     destination_entry = read_index_entry(item.path())
     destination_is_placeholder = (
         destination_entry is not None
@@ -215,23 +220,58 @@ def stage_file_mode_change(item: FileModeChange) -> None:
     if item.index_path is not None and (
         destination_entry is None or destination_is_placeholder
     ):
-        index_entry = read_index_entry(item.index_path)
-        if index_entry is not None:
-            result = git_update_index(
-                file_path=item.index_path,
-                mode=item.new_mode,
-                blob_sha=index_entry.object_id,
-                check=False,
-            )
-            if result.returncode != 0:
-                exit_with_error(_("Failed to stage executable mode change."))
-            return
+        if read_index_entry(item.index_path) is not None:
+            index_path = item.index_path
+            use_alternate_worktree = True
+            source_is_intent_to_add = path_is_intent_to_add(item.index_path)
 
     chmod = "+x" if item.new_mode == "100755" else "-x"
-    result = run_git_command(
-        ["update-index", f"--chmod={chmod}", "--", item.path()],
-        check=False,
-    )
+    if use_alternate_worktree:
+        with tempfile.TemporaryDirectory(
+            prefix="git-stage-batch-mode-change-"
+        ) as temporary_worktree:
+            placeholder = Path(temporary_worktree) / index_path
+            placeholder.parent.mkdir(parents=True, exist_ok=True)
+            placeholder.touch()
+            placeholder.chmod(0o755 if item.new_mode == "100755" else 0o644)
+            if source_is_intent_to_add:
+                result = git_update_index(
+                    file_path=index_path,
+                    force_remove=True,
+                    check=False,
+                )
+                if result.returncode == 0:
+                    result = run_git_command(
+                        [
+                            "--literal-pathspecs",
+                            f"--work-tree={temporary_worktree}",
+                            "-c",
+                            "core.fileMode=true",
+                            "add",
+                            "-N",
+                            "--force",
+                            "--sparse",
+                            "--",
+                            index_path,
+                        ],
+                        check=False,
+                    )
+            else:
+                result = run_git_command(
+                    [
+                        f"--work-tree={temporary_worktree}",
+                        "update-index",
+                        f"--chmod={chmod}",
+                        "--",
+                        index_path,
+                    ],
+                    check=False,
+                )
+    else:
+        result = run_git_command(
+            ["update-index", f"--chmod={chmod}", "--", index_path],
+            check=False,
+        )
     if result.returncode != 0:
         exit_with_error(_("Failed to stage executable mode change."))
 

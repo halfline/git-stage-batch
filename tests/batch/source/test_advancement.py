@@ -826,6 +826,29 @@ def test_advance_source_refuses_ambiguous_saved_replacement_baseline_spans():
             pass
 
 
+def test_advance_source_refuses_two_deletions_claiming_same_live_span():
+    """Distinct deletion claims cannot both consume one baseline occurrence."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            AbsenceClaim(anchor_line=1, content_lines=[b"old\n"]),
+            AbsenceClaim(anchor_line=1, content_lines=[b"old\n"]),
+        ],
+        replacement_units=[
+            ReplacementUnit(presence_lines=["2"], deletion_indices=[0, 1]),
+        ],
+    )
+
+    with pytest.raises(
+        BatchSourceAdvanceError,
+        match="overlapping live baseline spans",
+    ):
+        with _advance_source_from_content(
+            old_source_buffer=b"head\nnew\ntail\n",
+            working_buffer=b"head\nold\ntail\n",
+            ownership=ownership,
+        ):
+            pass
 def test_advance_source_refuses_owned_replacement_contraction() -> None:
     """A contracted owned range cannot retain unique source-line lineage."""
     ownership = BatchOwnership.from_presence_lines(["2-3"])

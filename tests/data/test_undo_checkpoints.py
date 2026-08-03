@@ -127,3 +127,35 @@ def test_checkpoint_finalization_fails_when_stack_reference_moved(monkeypatch):
 
     assert undo_checkpoints._PENDING_CHECKPOINT is None
     assert undo_checkpoints._PENDING_CHECKPOINT_REPOSITORY is None
+
+
+def test_failed_operation_reports_checkpoint_finalization_failure(monkeypatch):
+    """A finalization failure must retain the operation error as its cause."""
+    monkeypatch.setattr(undo_checkpoints, "current_redo_commit", lambda: None)
+
+    def create_checkpoint(*_args, **_kwargs):
+        undo_checkpoints._PENDING_CHECKPOINT = "checkpoint"
+        undo_checkpoints._PENDING_CHECKPOINT_REPOSITORY = Path("/repo/.git")
+        return "checkpoint"
+
+    monkeypatch.setattr(
+        undo_checkpoints,
+        "_create_undo_checkpoint",
+        create_checkpoint,
+    )
+    monkeypatch.setattr(undo_checkpoints, "current_undo_commit", lambda: "moved")
+
+    with pytest.raises(
+        CommandError,
+        match="Operation failed and its undo checkpoint could not be finalized",
+    ) as exc_info:
+        with undo_checkpoints.undo_checkpoint("operation", worktree_paths=[]) as status:
+            raise ValueError("operation failed")
+
+    assert isinstance(exc_info.value.__cause__, ValueError)
+    assert "Operation error: operation failed" in exc_info.value.message
+    assert "Finalization error:" in exc_info.value.message
+    assert "stack reference moved" in exc_info.value.message
+    assert status.rollback == "not-attempted"
+    assert undo_checkpoints._PENDING_CHECKPOINT is None
+    assert undo_checkpoints._PENDING_CHECKPOINT_REPOSITORY is None

@@ -438,11 +438,6 @@ def git_restore_intent_to_add_paths(
             raise
 
 
-def git_restore_intent_to_add_path(file_path: str) -> None:
-    """Restore one intent-to-add flag, including for an absent worktree path."""
-    git_restore_intent_to_add_paths([file_path])
-
-
 def git_add_paths_from_stdin(
     paths: Sequence[str],
     *,

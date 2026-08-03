@@ -106,7 +106,7 @@ def live_to_batch_action_command(
     line_ids: str | None,
 ) -> str:
     """Return a live-to-batch command for a reviewed action."""
-    parts = [command_name, "--to", batch_name]
+    parts = [command_name, "--to", shlex.quote(batch_name)]
     if file_scope:
         parts.append("--file")
     if line_ids is not None:

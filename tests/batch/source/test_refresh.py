@@ -118,7 +118,91 @@ def test_ensure_batch_source_current_non_stale_source(monkeypatch):
     assert cached_sources == {"test.py": "old_source"}
 
 
-def test_ensure_batch_source_current_first_time_stale():
+def test_existing_batch_source_replaces_wrong_cached_coordinates(monkeypatch):
+    """Persistence should map through the target batch source, not session cache IDs."""
+    lines = [
+        LineEntry(
+            id=1,
+            kind="+",
+            old_line_number=None,
+            new_line_number=2,
+            text_bytes=b"selected",
+            source_line=1,
+        ),
+    ]
+    ownership = BatchOwnership.from_presence_lines(["2"], [])
+    monkeypatch.setattr(
+        source_refresh,
+        "read_git_object_buffer_or_none",
+        lambda _object_name: LineBuffer.from_bytes(b"prefix\nselected\n"),
+    )
+    monkeypatch.setattr(
+        source_refresh,
+        "load_working_tree_file_as_buffer",
+        lambda _file_path: LineBuffer.from_bytes(b"prefix\nselected\n"),
+    )
+    cached_sources = _capture_session_sources(
+        monkeypatch,
+        {"test.py": "wrong-session-source"},
+    )
+
+    result = ensure_batch_source_current_for_selection(
+        batch_name="test-batch",
+        file_path="test.py",
+        current_batch_source_commit="target-source",
+        existing_ownership=ownership,
+        selected_lines=lines,
+    )
+
+    assert result.batch_source_commit == "target-source"
+    assert result.selected_lines[0].source_line == 2
+    assert result.source_was_advanced is False
+    assert cached_sources == {"test.py": "target-source"}
+
+
+def test_existing_batch_source_remaps_equal_content_at_wrong_coordinate(monkeypatch):
+    """Duplicate payloads cannot validate a coordinate from another source space."""
+    lines = [
+        LineEntry(
+            id=1,
+            kind="+",
+            old_line_number=None,
+            new_line_number=3,
+            text_bytes=b"same",
+            source_line=1,
+        ),
+    ]
+    ownership = BatchOwnership.from_presence_lines(["1"], [])
+    source_content = b"same\nmiddle\nsame\n"
+    monkeypatch.setattr(
+        source_refresh,
+        "read_git_object_buffer_or_none",
+        lambda _object_name: LineBuffer.from_bytes(source_content),
+    )
+    monkeypatch.setattr(
+        source_refresh,
+        "load_working_tree_file_as_buffer",
+        lambda _file_path: LineBuffer.from_bytes(source_content),
+    )
+    cached_sources = _capture_session_sources(
+        monkeypatch,
+        {"test.py": "wrong-session-source"},
+    )
+
+    result = ensure_batch_source_current_for_selection(
+        batch_name="test-batch",
+        file_path="test.py",
+        current_batch_source_commit="target-source",
+        existing_ownership=ownership,
+        selected_lines=lines,
+    )
+
+    assert result.selected_lines[0].source_line == 3
+    assert result.source_was_advanced is False
+    assert cached_sources == {"test.py": "target-source"}
+
+
+def test_ensure_batch_source_current_first_time_stale(monkeypatch):
     """Test ensure_batch_source_current_for_selection for first-time discard."""
     # Lines with source_line=None (stale) but no existing ownership
     lines = [
@@ -127,6 +211,7 @@ def test_ensure_batch_source_current_first_time_stale():
             text_bytes=b"new line", text="new line", source_line=None
         ),
     ]
+    _capture_session_sources(monkeypatch)
 
     # First time - stale is normal, but ownership translation still needs
     # source-space line numbers before add_file_to_batch creates the source.

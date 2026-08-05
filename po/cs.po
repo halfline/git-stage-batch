@@ -302,16 +302,6 @@ msgstr[0] "Nejednoznačná kotva: zdrojový řádek {line} je nárokován {count
 msgstr[1] "Nejednoznačná kotva: zdrojový řádek {line} je nárokován {count}krát"
 msgstr[2] "Nejednoznačná kotva: zdrojový řádek {line} je nárokován {count}krát"
 
-#: src/git_stage_batch/batch/replacement.py:98
-msgid "Replacement selection must resolve to one contiguous batch-source line range."
-msgstr ""
-"Výběr nahrazení musí odpovídat jednomu souvislému rozsahu řádků ve zdroji "
-"dávky."
-
-#: src/git_stage_batch/batch/replacement.py:155
-msgid "Replacement selection must resolve to one contiguous batch-source region."
-msgstr "Výběr nahrazení musí odpovídat jedné souvislé oblasti ve zdroji dávky."
-
 #: src/git_stage_batch/batch/selection.py:45
 #, python-brace-format
 msgid ""

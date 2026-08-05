@@ -266,14 +266,6 @@ msgid "Anchor ambiguity: source line {line} claimed {count} time"
 msgid_plural "Anchor ambiguity: source line {line} claimed {count} times"
 msgstr[0] "앵커가 모호합니다: 소스 {line}행의 소유권이 {count}번 주장되었습니다"
 
-#: src/git_stage_batch/batch/replacement.py:98
-msgid "Replacement selection must resolve to one contiguous batch-source line range."
-msgstr "교체 선택은 배치 소스의 하나의 연속된 줄 범위로 해석되어야 합니다."
-
-#: src/git_stage_batch/batch/replacement.py:155
-msgid "Replacement selection must resolve to one contiguous batch-source region."
-msgstr "교체 선택은 배치 소스의 연속된 단일 영역으로 해석되어야 합니다."
-
 #: src/git_stage_batch/batch/selection.py:45
 #, python-brace-format
 msgid ""

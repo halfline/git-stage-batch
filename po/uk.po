@@ -307,16 +307,6 @@ msgstr[0] "Неоднозначна прив’язка: рядок джерел
 msgstr[1] "Неоднозначна прив’язка: рядок джерела {line} заявлено {count} рази"
 msgstr[2] "Неоднозначна прив’язка: рядок джерела {line} заявлено {count} разів"
 
-#: src/git_stage_batch/batch/replacement.py:98
-msgid "Replacement selection must resolve to one contiguous batch-source line range."
-msgstr ""
-"Вибір заміни має відповідати одному неперервному діапазону рядків джерела "
-"пакета."
-
-#: src/git_stage_batch/batch/replacement.py:155
-msgid "Replacement selection must resolve to one contiguous batch-source region."
-msgstr "Вибір заміни має відповідати одній неперервній області джерела пакета."
-
 #: src/git_stage_batch/batch/selection.py:45
 #, python-brace-format
 msgid ""

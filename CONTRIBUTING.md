@@ -11,13 +11,14 @@ This project uses [uv](https://docs.astral.sh/uv/) for development workflow and 
 - Git 2.39 or newer
 - uv (for development)
 - meson and ninja-build (install via your system package manager)
+- gettext (for building and checking translation catalogs)
 
 ```bash
 # Install uv if you haven't already
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Install meson and ninja (example for Fedora or Red Hat Enterprise Linux)
-sudo dnf install meson ninja-build
+# Install build tools (example for Fedora or Red Hat Enterprise Linux)
+sudo dnf install gettext meson ninja-build
 
 # Clone the repository
 git clone https://github.com/halfline/git-stage-batch.git
@@ -31,6 +32,7 @@ uv run pytest -n auto
 
 # Run lint and strict type checks
 uv run ruff check src tests scripts
+uv run python scripts/check_translations.py
 uv run python scripts/check_dead_code.py
 uv run python scripts/check_type_hygiene.py
 uv run mypy

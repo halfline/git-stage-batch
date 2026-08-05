@@ -308,18 +308,6 @@ msgid_plural "Anchor ambiguity: source line {line} claimed {count} times"
 msgstr[0] "Anker is ambigu: bronregel {line} is {count} keer geclaimd"
 msgstr[1] "Anker is ambigu: bronregel {line} is {count} keer geclaimd"
 
-#: src/git_stage_batch/batch/replacement.py:98
-msgid "Replacement selection must resolve to one contiguous batch-source line range."
-msgstr ""
-"De vervangingsselectie moet overeenkomen met één aaneengesloten regelbereik "
-"in de batchbron."
-
-#: src/git_stage_batch/batch/replacement.py:155
-msgid "Replacement selection must resolve to one contiguous batch-source region."
-msgstr ""
-"De vervangingsselectie moet overeenkomen met één aaneengesloten gebied in de"
-" batchbron."
-
 #: src/git_stage_batch/batch/selection.py:45
 #, python-brace-format
 msgid ""

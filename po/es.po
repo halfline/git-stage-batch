@@ -314,18 +314,6 @@ msgid_plural "Anchor ambiguity: source line {line} claimed {count} times"
 msgstr[0] "Ambigüedad del ancla: la línea de origen {line} se reclamó {count} vez"
 msgstr[1] "Ambigüedad del ancla: la línea de origen {line} se reclamó {count} veces"
 
-#: src/git_stage_batch/batch/replacement.py:98
-msgid "Replacement selection must resolve to one contiguous batch-source line range."
-msgstr ""
-"La selección de reemplazo debe corresponder a un único intervalo contiguo de"
-" líneas del origen del lote."
-
-#: src/git_stage_batch/batch/replacement.py:155
-msgid "Replacement selection must resolve to one contiguous batch-source region."
-msgstr ""
-"La selección de reemplazo debe corresponder a una única región contigua del "
-"origen del lote."
-
 #: src/git_stage_batch/batch/selection.py:45
 #, python-brace-format
 msgid ""

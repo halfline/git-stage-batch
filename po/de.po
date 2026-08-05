@@ -312,18 +312,6 @@ msgid_plural "Anchor ambiguity: source line {line} claimed {count} times"
 msgstr[0] "Mehrdeutiger Anker: Quellzeile {line} wird {count}-mal beansprucht"
 msgstr[1] "Mehrdeutiger Anker: Quellzeile {line} wird {count}-mal beansprucht"
 
-#: src/git_stage_batch/batch/replacement.py:98
-msgid "Replacement selection must resolve to one contiguous batch-source line range."
-msgstr ""
-"Die Ersetzungsauswahl muss genau einem zusammenhängenden Zeilenbereich der "
-"Stapelquelle entsprechen."
-
-#: src/git_stage_batch/batch/replacement.py:155
-msgid "Replacement selection must resolve to one contiguous batch-source region."
-msgstr ""
-"Die Ersetzungsauswahl muss genau einem zusammenhängenden Bereich der "
-"Stapelquelle entsprechen."
-
 #: src/git_stage_batch/batch/selection.py:45
 #, python-brace-format
 msgid ""

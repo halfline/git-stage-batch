@@ -313,18 +313,6 @@ msgstr[0] "Неоднозначная привязка: строка источ�
 msgstr[1] "Неоднозначная привязка: строка источника {line} заявлена {count} раза"
 msgstr[2] "Неоднозначная привязка: строка источника {line} заявлена {count} раз"
 
-#: src/git_stage_batch/batch/replacement.py:98
-msgid "Replacement selection must resolve to one contiguous batch-source line range."
-msgstr ""
-"Выбор замены должен соответствовать одному непрерывному диапазону строк "
-"источника пакета."
-
-#: src/git_stage_batch/batch/replacement.py:155
-msgid "Replacement selection must resolve to one contiguous batch-source region."
-msgstr ""
-"Выбор замены должен соответствовать одной непрерывной области источника "
-"пакета."
-
 #: src/git_stage_batch/batch/selection.py:45
 #, python-brace-format
 msgid ""

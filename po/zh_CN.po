@@ -263,14 +263,6 @@ msgid "Anchor ambiguity: source line {line} claimed {count} time"
 msgid_plural "Anchor ambiguity: source line {line} claimed {count} times"
 msgstr[0] "锚点不明确：源代码第 {line} 行被声明 {count} 次"
 
-#: src/git_stage_batch/batch/replacement.py:98
-msgid "Replacement selection must resolve to one contiguous batch-source line range."
-msgstr "替换选择必须解析为批次源中一个连续的行范围。"
-
-#: src/git_stage_batch/batch/replacement.py:155
-msgid "Replacement selection must resolve to one contiguous batch-source region."
-msgstr "替换选择必须解析为批次源中一个连续区域。"
-
 #: src/git_stage_batch/batch/selection.py:45
 #, python-brace-format
 msgid ""

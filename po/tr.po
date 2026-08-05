@@ -311,18 +311,6 @@ msgstr[1] ""
 "Belirsiz sabitleme: {line}. kaynak satır üzerinde {count} kez hak iddia "
 "edilmiş"
 
-#: src/git_stage_batch/batch/replacement.py:98
-msgid "Replacement selection must resolve to one contiguous batch-source line range."
-msgstr ""
-"Değiştirme seçimi, grup kaynağında tek bir bitişik satır aralığına karşılık "
-"gelmelidir."
-
-#: src/git_stage_batch/batch/replacement.py:155
-msgid "Replacement selection must resolve to one contiguous batch-source region."
-msgstr ""
-"Değiştirme seçimi, grup kaynağında tek bir bitişik bölgeye karşılık "
-"gelmelidir."
-
 #: src/git_stage_batch/batch/selection.py:45
 #, python-brace-format
 msgid ""

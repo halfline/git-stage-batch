@@ -325,16 +325,6 @@ msgstr[0] "Niejednoznaczna kotwica: wiersz źródłowy {line} zadeklarowano {cou
 msgstr[1] "Niejednoznaczna kotwica: wiersz źródłowy {line} zadeklarowano {count} razy"
 msgstr[2] "Niejednoznaczna kotwica: wiersz źródłowy {line} zadeklarowano {count} razy"
 
-#: src/git_stage_batch/batch/replacement.py:98
-msgid "Replacement selection must resolve to one contiguous batch-source line range."
-msgstr ""
-"Wybór zastąpienia musi odpowiadać jednemu ciągłemu zakresowi wierszy w "
-"źródle partii."
-
-#: src/git_stage_batch/batch/replacement.py:155
-msgid "Replacement selection must resolve to one contiguous batch-source region."
-msgstr "Wybór zastąpienia musi odpowiadać jednemu ciągłemu obszarowi w źródle partii."
-
 #: src/git_stage_batch/batch/selection.py:45
 #, python-brace-format
 msgid ""

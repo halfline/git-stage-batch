@@ -322,14 +322,6 @@ msgstr[3] "غموض المرساة: طُولب بسطر المصدر {line} {cou
 msgstr[4] "غموض المرساة: طُولب بسطر المصدر {line} {count} مرةً"
 msgstr[5] "غموض المرساة: طُولب بسطر المصدر {line} {count} مرة"
 
-#: src/git_stage_batch/batch/replacement.py:98
-msgid "Replacement selection must resolve to one contiguous batch-source line range."
-msgstr "يجب أن يشير تحديد الاستبدال إلى نطاق واحد متصل من أسطر مصدر الدفعة."
-
-#: src/git_stage_batch/batch/replacement.py:155
-msgid "Replacement selection must resolve to one contiguous batch-source region."
-msgstr "يجب أن يشير تحديد الاستبدال إلى منطقة واحدة متصلة في مصدر الدفعة."
-
 #: src/git_stage_batch/batch/selection.py:45
 #, python-brace-format
 msgid ""

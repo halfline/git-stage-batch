@@ -315,18 +315,6 @@ msgstr[1] ""
 "Ambiguidade da âncora: a linha de origem {line} foi reivindicada {count} "
 "vezes"
 
-#: src/git_stage_batch/batch/replacement.py:98
-msgid "Replacement selection must resolve to one contiguous batch-source line range."
-msgstr ""
-"A seleção de substituição deve corresponder a um único intervalo contíguo de"
-" linhas da origem do lote."
-
-#: src/git_stage_batch/batch/replacement.py:155
-msgid "Replacement selection must resolve to one contiguous batch-source region."
-msgstr ""
-"A seleção de substituição deve corresponder a uma única região contígua da "
-"origem do lote."
-
 #: src/git_stage_batch/batch/selection.py:45
 #, python-brace-format
 msgid ""

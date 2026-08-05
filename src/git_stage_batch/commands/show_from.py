@@ -21,7 +21,7 @@ from ..exceptions import (
     exit_with_error,
     BatchMetadataError,
 )
-from ..i18n import _
+from ..i18n import _, pgettext
 from ..utils.git_repository import require_git_repository
 
 
@@ -94,7 +94,10 @@ def command_show_from_batch(
 
     # Parse line selection and enforce single-file context
     selected_ids = require_single_file_context_for_line_selection(
-        batch_name, files, line_ids, "show"
+        batch_name,
+        files,
+        line_ids,
+        pgettext("line-level operation noun", "show"),
     )
 
     if selector.candidate_operation is not None:

@@ -6,6 +6,7 @@ import re
 
 from .models import HunkHeader
 from ..exceptions import CommandError
+from ..i18n import _
 
 
 HUNK_HEADER_PATTERN = re.compile(
@@ -24,7 +25,9 @@ def parse_hunk_header_line(line: bytes) -> HunkHeader:
     captured_header_line = line.decode("utf-8", errors="replace")
     header_match = HUNK_HEADER_PATTERN.match(captured_header_line)
     if not header_match:
-        raise CommandError(f"Bad hunk header: {captured_header_line}")
+        raise CommandError(
+            _("Bad hunk header: {header}").format(header=captured_header_line)
+        )
 
     old_start = int(header_match.group(1))
     old_length = int(header_match.group(2) or "1")

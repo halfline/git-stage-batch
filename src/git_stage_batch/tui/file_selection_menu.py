@@ -12,6 +12,7 @@ from ..commands.skip import command_skip_file
 from ..data.line_state import load_line_changes_from_state
 from ..i18n import _
 from ..output.colors import Colors, format_hotkey
+from .action_prompt_choices import normalize_change_action_choice
 from .flow import FlowState, LocationRole
 from .prompts import confirm_destructive_operation, unlocked_input, wrap_prompt_for_readline
 
@@ -27,50 +28,61 @@ def handle_file_selection_menu(flow_state: FlowState) -> None:
     filename = line_changes.path
 
     if flow_state.source.role is LocationRole.BATCH:
-        available_actions = ["include", "discard"]
-        action_prompt = _(
-            "Action for all hunks in {filename} - [i]nclude, [d]iscard? "
-        )
+        available_actions = {"i", "d"}
     else:
-        available_actions = ["include", "skip", "discard"]
-        action_prompt = _(
-            "Action for all hunks in {filename} - [i]nclude, [s]kip, [d]iscard? "
-        )
+        available_actions = {"i", "s", "d"}
 
     print()
     try:
-        if use_color:
-            if "s" in available_actions:
-                prompt_text = _(
-                    "Action for all hunks in {filename} - "
-                    "{include}, {skip}, {discard}? "
-                ).format(
-                    filename=f"{Colors.BOLD}{filename}{Colors.RESET}",
-                    include=format_hotkey("include", "i", Colors.GREEN),
-                    skip=format_hotkey("skip", "s", ""),
-                    discard=format_hotkey("discard", "d", Colors.RED),
-                )
-            else:
-                prompt_text = _(
-                    "Action for all hunks in {filename} - {include}, {discard}? "
-                ).format(
-                    filename=f"{Colors.BOLD}{filename}{Colors.RESET}",
-                    include=format_hotkey("include", "i", Colors.GREEN),
-                    discard=format_hotkey("discard", "d", Colors.RED),
+        displayed_filename = (
+            f"{Colors.BOLD}{filename}{Colors.RESET}" if use_color else filename
+        )
+        if "s" in available_actions:
+            prompt_text = _(
+                "Action for all hunks in {filename} - "
+                "{include}, {skip}, {discard}? "
+            ).format(
+                filename=displayed_filename,
+                include=format_hotkey(
+                    _("include"),
+                    "i",
+                    Colors.GREEN if use_color else "",
+                ),
+                skip=format_hotkey(_("skip"), "s"),
+                discard=format_hotkey(
+                    _("discard"),
+                    "d",
+                    Colors.RED if use_color else "",
+                ),
             )
-            action_input = unlocked_input(wrap_prompt_for_readline(prompt_text)).strip().lower()
         else:
-            action_input = (
-                unlocked_input(action_prompt.format(filename=filename)).strip().lower()
+            prompt_text = _(
+                "Action for all hunks in {filename} - {include}, {discard}? "
+            ).format(
+                filename=displayed_filename,
+                include=format_hotkey(
+                    _("include"),
+                    "i",
+                    Colors.GREEN if use_color else "",
+                ),
+                discard=format_hotkey(
+                    _("discard"),
+                    "d",
+                    Colors.RED if use_color else "",
+                ),
             )
+        action_input = unlocked_input(
+            wrap_prompt_for_readline(prompt_text)
+        ).strip()
     except (KeyboardInterrupt, EOFError):
         return
 
-    if action_input in ("i", "include"):
+    action = normalize_change_action_choice(action_input)
+    if action == "i":
         _handle_file_include(flow_state)
-    elif action_input in ("s", "skip"):
+    elif action == "s":
         _handle_file_skip(flow_state)
-    elif action_input in ("d", "discard"):
+    elif action == "d":
         _handle_file_discard(flow_state, filename)
     else:
         print(_("\nUnknown action: '{action}'").format(action=action_input))

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from ..batch.operation_candidate_labels import candidate_operation_label
 from ..batch.operation_candidate_types import OperationCandidatePreview
+from ..git_paths import display_path
+from ..i18n import _, bidi_isolate, ngettext
 from ..utils.context_lines import get_context_lines
-from ..i18n import _
 from . import candidate_preview_snippets
 from . import candidate_preview_summary
 from .candidate_preview_commands import (
@@ -21,9 +23,11 @@ _CANDIDATE_OVERVIEW_MAX_CANDIDATES = 10
 
 
 def _candidate_choice_count(count: int) -> str:
-    if count == 1:
-        return _("1 choice")
-    return _("{count} choices").format(count=count)
+    return ngettext(
+        "{count} choice",
+        "{count} choices",
+        count,
+    ).format(count=count)
 
 
 def _candidate_operation_past_tense(operation: str) -> str:
@@ -47,7 +51,13 @@ def _print_candidate_header(status: str, *, note: str | None) -> None:
         print(status)
     if note:
         if Colors.enabled():
-            print(f"{Colors.GRAY}{_('Note: {note}').format(note=note)}{Colors.RESET}")
+            print(
+                "{}{}{}".format(
+                    Colors.GRAY,
+                    _("Note: {note}").format(note=note),
+                    Colors.RESET,
+                )
+            )
         else:
             print(_("Note: {note}").format(note=note))
     _print_candidate_rule()
@@ -60,9 +70,11 @@ def _print_candidate_overview_header(
 ) -> None:
     status = "  ·  ".join(
         (
-            first.file_path,
-            first.batch_name,
-            _("{operation} candidates").format(operation=first.operation),
+            bidi_isolate(display_path(first.file_path)),
+            bidi_isolate(first.batch_name),
+            _("{operation} candidates").format(
+                operation=candidate_operation_label(first.operation)
+            ),
             _candidate_choice_count(first.count),
         )
     )
@@ -76,10 +88,10 @@ def _print_candidate_detail_header(
 ) -> None:
     status = "  ·  ".join(
         (
-            preview.file_path,
-            preview.batch_name,
+            bidi_isolate(display_path(preview.file_path)),
+            bidi_isolate(preview.batch_name),
             _("{operation} candidate {ordinal}/{count}").format(
-                operation=preview.operation,
+                operation=candidate_operation_label(preview.operation),
                 ordinal=preview.ordinal,
                 count=preview.count,
             ),
@@ -171,15 +183,20 @@ def render_operation_candidate_overview(
         )
         return previews
 
-    targets, verb = candidate_preview_summary.candidate_overview_subject(previews)
+    targets, target_count = candidate_preview_summary.candidate_overview_subject(
+        previews
+    )
     _print_candidate_overview_header(
         first,
         note=note,
     )
     print(
-        _("The {targets} {verb} changed in an ambiguous way since this batch was created.").format(
+        ngettext(
+            "The {targets} has changed in an ambiguous way since this batch was created.",
+            "The {targets} have changed in an ambiguous way since this batch was created.",
+            target_count,
+        ).format(
             targets=targets,
-            verb=verb,
         )
     )
     print(
@@ -202,31 +219,47 @@ def render_operation_candidate_overview(
             for target_index, (target, summary) in enumerate(zip(preview.targets, summaries))
             if target_index not in common_target_indexes
         ]
-        candidate_header = _("Candidate {ordinal}/{count}").format(
-            ordinal=preview.ordinal,
-            count=preview.count,
-        )
         if len(visible_summaries) == 1:
             _target, summary = visible_summaries[0]
-            print(f"{candidate_header}   {summary.title}")
+            print(
+                _("Candidate {ordinal}/{count}   {summary}").format(
+                    ordinal=preview.ordinal,
+                    count=preview.count,
+                    summary=summary.title,
+                )
+            )
             _print_candidate_summary_block(summary, indent="   ")
         else:
-            print(candidate_header)
+            print(
+                _("Candidate {ordinal}/{count}").format(
+                    ordinal=preview.ordinal,
+                    count=preview.count,
+                )
+            )
             for target, summary in visible_summaries:
                 label = candidate_preview_summary.candidate_target_label(target.target)
-                print(f"   {label}: {summary.title}")
+                print(
+                    _("   {label} update: {summary}").format(
+                        label=label,
+                        summary=summary.title,
+                    )
+                )
                 _print_candidate_summary_block(summary, indent="      ")
         action = _("Apply") if preview.operation == "apply" else _("Include")
-        print(f"   {_('Preview this candidate:')}")
+        print("   {}".format(_("Preview this candidate:")))
         print(f"     {show_candidate_command(preview, preview.ordinal)}")
-        print(f"   {_('{action} this candidate:').format(action=action)}")
+        print("   {}".format(_("{action} this candidate:").format(action=action)))
         print(f"     {execute_candidate_command(preview)}")
         print()
 
     if len(previews) > len(shown_previews):
         remaining = len(previews) - len(shown_previews)
         print(
-            _("... {count} more candidates. Preview another candidate with {selector}:N.").format(
+            ngettext(
+                "... {count} more candidate. Preview it with {selector}:N.",
+                "... {count} more candidates. Preview another candidate with {selector}:N.",
+                remaining,
+            ).format(
                 count=remaining,
                 selector=candidate_selector_text(
                     first.batch_name,

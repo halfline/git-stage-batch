@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, cast
 
 from ...core.line_selection import LineSelection, coerce_line_ranges
 from ...exceptions import MergeError as _MergeError
-from ...i18n import _
+from ...i18n import _, ngettext
 from ..line_matching.line_mapping import LineMapping
 from ..line_matching.match_workspace import MatcherWorkspace
 from .baseline_replacement_ranges import (
@@ -120,10 +120,13 @@ def check_structural_validity(
     for claimed_line in claimed_lines:
         if claimed_line < 1 or claimed_line > len(source_lines):
             raise _MergeError(
-                _("Claimed line {line} is out of range (batch source has {count} lines)").format(
-                    line=claimed_line,
-                    count=len(source_lines)
-                )
+                ngettext(
+                    "Claimed line {line} is out of range "
+                    "(batch source has {count} line)",
+                    "Claimed line {line} is out of range "
+                    "(batch source has {count} lines)",
+                    len(source_lines),
+                ).format(line=claimed_line, count=len(source_lines))
             )
 
         if not line_mapping.is_source_line_present(claimed_line):

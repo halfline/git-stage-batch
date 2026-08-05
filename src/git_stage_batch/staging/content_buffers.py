@@ -15,6 +15,7 @@ from ..core.buffer import (
 )
 from ..editor.line_endings import detect_line_ending
 from ..editor.line_export import ensure_line_chunk_boundaries
+from ..i18n import _
 
 
 def _line_payload(line: bytes) -> bytes:
@@ -95,7 +96,7 @@ def _edit_lines_preserving_source_endings_as_buffer(
         or selection_end < selection_start
         or selection_end > source_line_count
     ):
-        raise ValueError("invalid line selection")
+        raise ValueError(_("invalid line selection"))
 
     edited_line_count = len(edited_lines)
     output_line_count = (
@@ -218,8 +219,10 @@ def _replacement_selection_span_indices(
             for run_index in range(run_start, replacement_stop)
         ):
             raise ValueError(
-                "Replacement selection must include one complete replacement "
-                "run; another changed line is unavailable or unselected"
+                _(
+                    "Replacement selection must include one complete replacement "
+                    "run; another changed line is unavailable or unselected"
+                )
             )
 
     selected_count = 0
@@ -246,10 +249,14 @@ def _replacement_selection_span_indices(
 
     if selected_count != len(replace_ids):
         raise ValueError(
-            "Replacement selection contains line IDs outside the current hunk"
+            _(
+                "Replacement selection contains line IDs outside the current hunk"
+            )
         )
     if selection_is_discontiguous:
-        raise ValueError("Replacement selection must be one contiguous line range")
+        raise ValueError(
+            _("Replacement selection must be one contiguous line range")
+        )
 
     assert span_start_index is not None
     assert span_end_index is not None
@@ -334,14 +341,18 @@ def _target_index_line_contents(
             yield from copy_unchanged_lines_before(line_entry.old_line_number)
             yield from flush_pending_additions()
             if not base_line_matches(line_entry):
-                raise ValueError("Index content no longer matches the selected line view")
+                raise ValueError(
+                    _("Index content no longer matches the selected line view")
+                )
             yield _line_content_at(base_lines, base_pointer)
             base_pointer += 1
         elif line_entry.kind == "-":
             yield from copy_unchanged_lines_before(line_entry.old_line_number)
             yield from flush_pending_additions()
             if not base_line_matches(line_entry):
-                raise ValueError("Index content no longer matches the selected line view")
+                raise ValueError(
+                    _("Index content no longer matches the selected line view")
+                )
             if line_entry.id in include_ids:
                 base_pointer += 1
             else:
@@ -520,16 +531,22 @@ def _build_target_index_buffer_with_replaced_lines(
 
         if longest_prefix_context_match(replacement_lines, before_context) >= 2:
             raise ValueError(
-                "Replacement text still includes unchanged anchor lines before the selected span. "
-                "Provide replacement text only for the selected span, use --file --as for a full-file replacement, "
-                "or pass --no-edge-overlap to keep the edge-overlap text."
+                _(
+                    "Replacement text still includes unchanged anchor lines before "
+                    "the selected span. Provide replacement text only for the "
+                    "selected span, use --file --as for a full-file replacement, "
+                    "or pass --no-edge-overlap to keep the edge-overlap text."
+                )
             )
 
         if longest_suffix_context_match(replacement_lines, after_context) >= 2:
             raise ValueError(
-                "Replacement text still includes unchanged anchor lines after the selected span. "
-                "Provide replacement text only for the selected span, use --file --as for a full-file replacement, "
-                "or pass --no-edge-overlap to keep the edge-overlap text."
+                _(
+                    "Replacement text still includes unchanged anchor lines after "
+                    "the selected span. Provide replacement text only for the "
+                    "selected span, use --file --as for a full-file replacement, "
+                    "or pass --no-edge-overlap to keep the edge-overlap text."
+                )
             )
 
     if replacement_payload.exact:
@@ -607,7 +624,9 @@ def _target_working_tree_line_contents(
             yield from copy_unchanged_lines_before(line_entry.new_line_number)
             if not working_line_matches(line_entry):
                 raise ValueError(
-                    "Working tree content no longer matches the selected line view"
+                    _(
+                        "Working tree content no longer matches the selected line view"
+                    )
                 )
             yield _working_tree_line_content_at(working_lines, working_pointer)
             working_pointer += 1
@@ -619,7 +638,9 @@ def _target_working_tree_line_contents(
             yield from copy_unchanged_lines_before(line_entry.new_line_number)
             if not working_line_matches(line_entry):
                 raise ValueError(
-                    "Working tree content no longer matches the selected line view"
+                    _(
+                        "Working tree content no longer matches the selected line view"
+                    )
                 )
             if line_entry.id in discard_ids:
                 working_pointer += 1
@@ -793,16 +814,22 @@ def _build_target_working_tree_buffer_with_replaced_lines(
 
         if longest_prefix_context_match(replacement_lines, before_context) >= 2:
             raise ValueError(
-                "Replacement text still includes unchanged anchor lines before the selected span. "
-                "Provide replacement text only for the selected span, use --file --as for a full-file replacement, "
-                "or pass --no-edge-overlap to keep the edge-overlap text."
+                _(
+                    "Replacement text still includes unchanged anchor lines before "
+                    "the selected span. Provide replacement text only for the "
+                    "selected span, use --file --as for a full-file replacement, "
+                    "or pass --no-edge-overlap to keep the edge-overlap text."
+                )
             )
 
         if longest_suffix_context_match(replacement_lines, after_context) >= 2:
             raise ValueError(
-                "Replacement text still includes unchanged anchor lines after the selected span. "
-                "Provide replacement text only for the selected span, use --file --as for a full-file replacement, "
-                "or pass --no-edge-overlap to keep the edge-overlap text."
+                _(
+                    "Replacement text still includes unchanged anchor lines after "
+                    "the selected span. Provide replacement text only for the "
+                    "selected span, use --file --as for a full-file replacement, "
+                    "or pass --no-edge-overlap to keep the edge-overlap text."
+                )
             )
 
     if replacement_payload.exact:

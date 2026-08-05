@@ -2,9 +2,99 @@
 
 from __future__ import annotations
 
+from functools import cache
+
 from ...i18n import _
+from ..action_prompt_choices import (
+    localized_word_aliases,
+    normalize_localized_choice,
+)
 from ..flow import FlowState, LocationRole
 from ..prompts import unlocked_input, wrap_prompt_for_readline
+
+
+_STABLE_REVIEW_ACTIONS = frozenset(
+    {
+        "i",
+        "s",
+        "d",
+        "r",
+        "I",
+        "S",
+        "D",
+        "B",
+        "U",
+        "x",
+        "c",
+        "n",
+        "p",
+        "g",
+        "o",
+        "q",
+        "?",
+    }
+)
+_LEGACY_REVIEW_WORDS = {
+    "include": "i",
+    "skip": "s",
+    "discard": "d",
+    "replace": "r",
+    "include-file": "I",
+    "include file": "I",
+    "skip-file": "S",
+    "skip file": "S",
+    "discard-file": "D",
+    "discard file": "D",
+    "block": "B",
+    "block-file": "B",
+    "block file": "B",
+    "unblock": "U",
+    "unblock-file": "U",
+    "unblock file": "U",
+    "fixup": "x",
+    "fixup-lines": "x",
+    "fixup lines": "x",
+    "candidates": "c",
+    "candidate": "c",
+    "next": "n",
+    "prev": "p",
+    "previous": "p",
+    "page": "g",
+    "goto": "g",
+    "open": "o",
+    "files": "o",
+    "back": "q",
+    "quit": "q",
+    "help": "?",
+}
+
+
+@cache
+def _localized_review_words() -> dict[str, str]:
+    """Return translated file-review labels mapped to stable actions."""
+    return localized_word_aliases(
+        (
+            (str(_("include")), "i"),
+            (str(_("skip")), "s"),
+            (str(_("discard")), "d"),
+            (str(_("replace")), "r"),
+            (str(_("include file")), "I"),
+            (str(_("skip file")), "S"),
+            (str(_("discard file")), "D"),
+            (str(_("block")), "B"),
+            (str(_("unblock")), "U"),
+            (str(_("fixup")), "x"),
+            (str(_("candidates")), "c"),
+            (str(_("candidate")), "c"),
+            (str(_("next")), "n"),
+            (str(_("previous")), "p"),
+            (str(_("page")), "g"),
+            (str(_("open")), "o"),
+            (str(_("back")), "q"),
+            (str(_("quit")), "q"),
+            (str(_("help")), "?"),
+        )
+    )
 
 
 def prompt_review_action(flow_state: FlowState) -> str:
@@ -37,44 +127,12 @@ def prompt_review_action(flow_state: FlowState) -> str:
 
 def normalize_review_action(action: str) -> str:
     """Return the canonical action key for a file-review action."""
-    if action in {"I", "S", "D", "B", "U"}:
-        return action
-
-    lowered = action.lower()
-    word_to_action = {
-        "include": "i",
-        "skip": "s",
-        "discard": "d",
-        "replace": "r",
-        "include-file": "I",
-        "include file": "I",
-        "skip-file": "S",
-        "skip file": "S",
-        "discard-file": "D",
-        "discard file": "D",
-        "block": "B",
-        "block-file": "B",
-        "block file": "B",
-        "unblock": "U",
-        "unblock-file": "U",
-        "unblock file": "U",
-        "fixup": "x",
-        "fixup-lines": "x",
-        "fixup lines": "x",
-        "candidates": "c",
-        "candidate": "c",
-        "next": "n",
-        "prev": "p",
-        "previous": "p",
-        "page": "g",
-        "goto": "g",
-        "open": "o",
-        "files": "o",
-        "back": "q",
-        "quit": "q",
-        "help": "?",
-    }
-    return word_to_action.get(lowered, lowered)
+    return normalize_localized_choice(
+        action,
+        stable_codes=_STABLE_REVIEW_ACTIONS,
+        legacy_words=_LEGACY_REVIEW_WORDS,
+        localized_words=_localized_review_words(),
+    )
 
 
 def print_review_help(flow_state: FlowState) -> None:

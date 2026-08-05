@@ -784,7 +784,7 @@ class TestCommandIncludeLine:
         assert result.stdout == "line1\nline2\nline4\n"
 
         captured = capsys.readouterr()
-        assert "Included line(s): 1,3" in captured.err
+        assert "Included selection 1,3 from test.txt" in captured.err
 
     def test_include_line_with_range(self, temp_git_repo):
         """Test including a range of lines."""
@@ -1019,7 +1019,7 @@ class TestCommandIncludeLine:
             lambda event, **fields: journal_entries.append((event, fields)),
         )
 
-        with pytest.raises(CommandError, match="Cannot safely include line"):
+        with pytest.raises(CommandError, match="Cannot safely include selection"):
             command_include_line("1")
 
         assert subprocess.run(

@@ -13,7 +13,7 @@ def prompt_page_spec() -> str | None:
     """Prompt for an explicit file-review page specification."""
     try:
         value = unlocked_input(
-            wrap_prompt_for_readline(_("Page(s), for example 1, 2-4, all: "))
+            wrap_prompt_for_readline(_("Page or pages, for example 1, 2-4, all: "))
         ).strip()
     except (KeyboardInterrupt, EOFError):
         return None

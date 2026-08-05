@@ -45,7 +45,7 @@ from ..data.file_target_identity import (
 )
 from ..data.file_modes import detect_file_mode_from_root
 from ..exceptions import BatchMetadataError, exit_with_error
-from ..i18n import _
+from ..i18n import _, ngettext
 from ..utils.git_repository import (
     get_git_repository_root_path,
     require_git_repository,
@@ -217,8 +217,12 @@ def _print_sift_summary(
     else:
         if in_place:
             print(
-                _(
-                    "✓ Sifted batch '{name}' in-place: {retained} of {total} files still need changes"
+                ngettext(
+                    "✓ Sifted batch '{name}' in-place: {retained} file out of "
+                    "{total} still needs changes",
+                    "✓ Sifted batch '{name}' in-place: {retained} files out of "
+                    "{total} still need changes",
+                    retained_count,
                 ).format(
                     name=source_batch,
                     retained=retained_count,
@@ -228,8 +232,12 @@ def _print_sift_summary(
             )
         else:
             print(
-                _(
-                    "✓ Sifted batch '{source}' to '{dest}': {retained} of {total} files still need changes"
+                ngettext(
+                    "✓ Sifted batch '{source}' to '{dest}': {retained} file out of "
+                    "{total} still needs changes",
+                    "✓ Sifted batch '{source}' to '{dest}': {retained} files out of "
+                    "{total} still need changes",
+                    retained_count,
                 ).format(
                     source=source_batch,
                     dest=dest_batch,
@@ -463,7 +471,7 @@ def _reduce_sift_results(
                 job = execution.jobs_by_ordinal[ordinal]
                 job_result = execution.results_by_ordinal[ordinal]
                 if job_result.outcome == "merge_error":
-                    raise MergeError(job_result.error_message or "sift failed")
+                    raise MergeError(job_result.error_message or _("sift failed"))
                 sifted_result = (
                     None
                     if job_result.outcome == "removed"
@@ -525,8 +533,10 @@ def _read_source_batch_snapshot(batch_name: str) -> _SourceBatchSnapshot:
     final_ref_identities = _capture_source_batch_ref_identities(batch_name)
     if final_ref_identities != initial_ref_identities:
         raise BatchMetadataError(
-            f"Batch '{batch_name}' changed while its sift inputs were read. "
-            "Retry the operation against the latest batch state."
+            _(
+                "Batch '{name}' changed while its sift inputs were read. "
+                "Retry the operation against the latest batch state."
+            ).format(name=batch_name)
         )
     return _SourceBatchSnapshot(
         metadata=metadata,

@@ -8,6 +8,7 @@ from collections.abc import Sequence
 
 from ..i18n import _
 from ..output.colors import Colors, format_hotkey
+from ..output.terminal_width import terminal_cell_width
 
 
 ANSI_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
@@ -15,7 +16,7 @@ ANSI_PATTERN = re.compile(r"\x1b\[[0-9;]*m")
 
 def _visible_len(text: str) -> int:
     """Return display length without ANSI color sequences."""
-    return len(ANSI_PATTERN.sub("", text))
+    return terminal_cell_width(ANSI_PATTERN.sub("", text))
 
 
 def format_menu_section_lines(
@@ -32,7 +33,12 @@ def format_menu_section_lines(
 
     if use_color and Colors.enabled():
         rendered_label = f"{Colors.GRAY}{label}{Colors.RESET}"
-        rendered_prefix = f"{rendered_label}: {Colors.CYAN}"
+        rendered_prefix = (
+            _("{label}: ").format(
+                label=rendered_label,
+            )
+            + Colors.CYAN
+        )
         rendered_suffix = Colors.RESET
     else:
         rendered_prefix = _("{label}: ").format(label=label)

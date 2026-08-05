@@ -119,7 +119,7 @@ def skip_line_selection(
         if not visible_changed_ids:
             if read_selected_change_kind() == SelectedChangeKind.FILE:
                 print(
-                    _("✓ Skipped line(s): {lines}").format(
+                    _("✓ Skipped selection: {lines}").format(
                         lines=line_id_specification
                     ),
                     file=sys.stderr,
@@ -138,7 +138,7 @@ def skip_line_selection(
             append_lines_to_file(blocklist_path, [patch_hash])
             record_hunk_skipped(line_changes, patch_hash)
             print(
-                _("✓ Skipped line(s): {lines}").format(lines=line_id_specification),
+                _("✓ Skipped selection: {lines}").format(lines=line_id_specification),
                 file=sys.stderr,
             )
             finish_review_scoped_line_action(review_state)
@@ -165,7 +165,7 @@ def skip_line_selection(
         )
 
     print(
-        _("✓ Skipped line(s): {lines}").format(lines=line_id_specification),
+        _("✓ Skipped selection: {lines}").format(lines=line_id_specification),
         file=sys.stderr,
     )
     print_remaining_line_changes_header(filtered_line_changes.path)

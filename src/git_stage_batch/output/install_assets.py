@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Collection
 import sys
 
-from ..data.asset_catalog import AssetGroup
+from ..data.asset_catalog import AssetGroup, asset_group_display_name
 from ..i18n import _
 
 
@@ -18,7 +18,7 @@ def print_group_install_summary(
     if len(installed_entry_names) == 1:
         print(
             _("✓ Installed {kind} '{name}'").format(
-                kind=group.display_name_singular,
+                kind=asset_group_display_name(group, 1),
                 name=next(iter(installed_entry_names)),
             ),
             file=sys.stderr,
@@ -26,7 +26,7 @@ def print_group_install_summary(
         return
     print(
         _("✓ Installed {kind}: {names}").format(
-            kind=group.display_name_plural,
+            kind=asset_group_display_name(group, len(installed_entry_names)),
             names=installed_names,
         ),
         file=sys.stderr,

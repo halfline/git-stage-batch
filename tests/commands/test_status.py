@@ -152,7 +152,7 @@ class TestCommandStatus:
         command_status()
 
         captured = capsys.readouterr()
-        assert "Skipped:   1 hunks" in captured.out
+        assert "Skipped:   1 hunk" in captured.out
         assert "multi.txt:1 [#1-4]" in captured.out
 
     def test_status_shows_line_range_when_cached(self, temp_git_repo, capsys):

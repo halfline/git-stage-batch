@@ -40,7 +40,7 @@ from ...exceptions import (
     CommandError,
     exit_with_error,
 )
-from ...i18n import _
+from ...i18n import _, pgettext
 from ...utils.file_job_workspace import FileJobWorkspace
 from ...utils.file_jobs import (
     OrderedFileJob,
@@ -522,7 +522,7 @@ def _reduce_apply_action_plans(
                 _atomic_unit_refusals.translate_atomic_unit_error_to_gutter_ids(
                     atomic_error,
                     rendered,
-                    "apply",
+                    pgettext("batch failure operation", "apply"),
                     batch_name,
                 )
             exit_with_error(

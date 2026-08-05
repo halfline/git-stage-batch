@@ -43,8 +43,10 @@ def advance_suggest_fixup_candidate(
     if not candidate_commit:
         if iteration == 1:
             exit_with_error(
-                f"No commits in range {target.boundary}..HEAD modified these lines.\n"
-                + "The changes may be fixing code from before the boundary."
+                _(
+                    "No commits in range {boundary}..HEAD modified these lines.\n"
+                    "The changes may be fixing code from before the boundary."
+                ).format(boundary=target.boundary)
             )
 
         clear_suggest_fixup_state()

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import sys
 
+from ..i18n import bidi_isolate
+
 
 class Colors:
     """ANSI color codes for terminal output."""
@@ -37,17 +39,22 @@ def format_hotkey(text: str, hotkey: str, color: str = "") -> str:
     in brackets. Otherwise, the hotkey is prepended: "[!] run"
     """
     use_color = Colors.enabled() and color
-    lower_text = text.lower()
-    lower_hotkey = hotkey.lower()
-
     # Find hotkey in text. Uppercase hotkeys are distinct from lowercase
     # hotkeys, so only inline them when the text contains that exact case.
-    if hotkey.isupper() and hotkey not in text:
+    if len(hotkey) != 1:
         hotkey_index = -1
-    elif lower_hotkey in lower_text and len(lower_hotkey) == 1:
-        hotkey_index = lower_text.index(lower_hotkey)
+    elif hotkey.isupper():
+        hotkey_index = text.find(hotkey)
     else:
-        hotkey_index = -1
+        folded_hotkey = hotkey.casefold()
+        hotkey_index = next(
+            (
+                index
+                for index, character in enumerate(text)
+                if character.casefold() == folded_hotkey
+            ),
+            -1,
+        )
 
     if hotkey_index >= 0:
         # Find the position (preserve original case)
@@ -55,13 +62,15 @@ def format_hotkey(text: str, hotkey: str, color: str = "") -> str:
         key_char = text[hotkey_index]
         after = text[hotkey_index + 1:]
 
+        rendered_hotkey = bidi_isolate(f"[{key_char}]")
         if use_color:
-            return f"{before}{color}[{key_char}]{Colors.RESET}{after}"
+            return f"{before}{color}{rendered_hotkey}{Colors.RESET}{after}"
         else:
-            return f"{before}[{key_char}]{after}"
+            return f"{before}{rendered_hotkey}{after}"
     else:
         # Prepend with brackets
+        rendered_hotkey = bidi_isolate(f"[{hotkey}]")
         if use_color:
-            return f"{color}[{hotkey}]{Colors.RESET} {text}"
+            return f"{color}{rendered_hotkey}{Colors.RESET} {text}"
         else:
-            return f"[{hotkey}] {text}"
+            return f"{rendered_hotkey} {text}"

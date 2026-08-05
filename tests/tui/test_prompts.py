@@ -407,6 +407,53 @@ class TestPromptQuitSession:
 
         assert result == "keep"
 
+    @pytest.mark.parametrize(
+        ("response", "expected"),
+        (("ن", "keep"), ("نعم", "keep"), ("ل", "undo"), ("لا", "undo")),
+    )
+    def test_prompt_quit_normalizes_localized_responses(
+        self,
+        response,
+        expected,
+    ):
+        """Localized keys and words map back to canonical outcomes."""
+        words = {"yes": "نعم", "no": "لا"}
+        hotkeys = {"yes hotkey": "ن", "no hotkey": "ل"}
+        with (
+            patch(
+                "git_stage_batch.tui.prompts._",
+                side_effect=lambda message: words.get(message, message),
+            ),
+            patch(
+                "git_stage_batch.tui.prompts.pgettext",
+                side_effect=lambda context, _message: hotkeys[context],
+            ),
+            patch("builtins.input", return_value=response),
+        ):
+            assert prompt_quit_session() == expected
+
+    @pytest.mark.parametrize(("response", "expected"), (("y", "keep"), ("n", "undo")))
+    def test_prompt_quit_keeps_stable_keys_with_localized_hotkeys(
+        self,
+        response,
+        expected,
+    ):
+        """Localized labels do not replace the stable input keys."""
+        words = {"yes": "نعم", "no": "لا"}
+        hotkeys = {"yes hotkey": "ن", "no hotkey": "ل"}
+        with (
+            patch(
+                "git_stage_batch.tui.prompts._",
+                side_effect=lambda message: words.get(message, message),
+            ),
+            patch(
+                "git_stage_batch.tui.prompts.pgettext",
+                side_effect=lambda context, _message: hotkeys[context],
+            ),
+            patch("builtins.input", return_value=response),
+        ):
+            assert prompt_quit_session() == expected
+
 
 class TestPromptShellCommand:
     """Tests for prompt_shell_command function."""
@@ -529,3 +576,72 @@ class TestPromptFixupAction:
 
         with patch("builtins.input", return_value="NEXT"):
             assert prompt_fixup_action(use_color=False) == "n"
+
+    @pytest.mark.parametrize(
+        ("response", "expected"),
+        (
+            ("ن", "y"),
+            ("نعم", "y"),
+            ("ت", "n"),
+            ("التالي", "n"),
+            ("ض", "r"),
+            ("إعادة الضبط", "r"),
+        ),
+    )
+    def test_prompt_fixup_action_normalizes_localized_responses(
+        self,
+        response,
+        expected,
+    ):
+        """Localized submenu responses map back to canonical actions."""
+        words = {
+            "yes": "نعم",
+            "next": "التالي",
+            "reset": "إعادة الضبط",
+        }
+        hotkeys = {
+            "yes hotkey": "ن",
+            "next hotkey": "ت",
+            "reset hotkey": "ض",
+        }
+        with (
+            patch(
+                "git_stage_batch.tui.prompts._",
+                side_effect=lambda message: words.get(message, message),
+            ),
+            patch(
+                "git_stage_batch.tui.prompts.pgettext",
+                side_effect=lambda context, _message: hotkeys[context],
+            ),
+            patch("builtins.input", return_value=response),
+        ):
+            assert prompt_fixup_action(use_color=False) == expected
+
+    @pytest.mark.parametrize("response", ("y", "n", "r"))
+    def test_prompt_fixup_keeps_stable_keys_with_localized_hotkeys(
+        self,
+        response,
+    ):
+        """Localized labels do not replace the stable submenu keys."""
+        words = {
+            "yes": "نعم",
+            "next": "التالي",
+            "reset": "إعادة الضبط",
+        }
+        hotkeys = {
+            "yes hotkey": "ن",
+            "next hotkey": "ت",
+            "reset hotkey": "ض",
+        }
+        with (
+            patch(
+                "git_stage_batch.tui.prompts._",
+                side_effect=lambda message: words.get(message, message),
+            ),
+            patch(
+                "git_stage_batch.tui.prompts.pgettext",
+                side_effect=lambda context, _message: hotkeys[context],
+            ),
+            patch("builtins.input", return_value=response),
+        ):
+            assert prompt_fixup_action(use_color=False) == response

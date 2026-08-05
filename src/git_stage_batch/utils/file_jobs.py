@@ -13,6 +13,7 @@ import sys
 from typing import TYPE_CHECKING, Generic, Literal, TypeVar
 
 from ..exceptions import CommandError
+from ..i18n import _
 from .file_job_process import (
     _FileJobSupervisorError,
     _ProcessFileJobSupervisor as _ProcessSupervisor,
@@ -169,7 +170,7 @@ def select_file_job_execution(
         return FileJobExecution("inline", 1, reason)
     if platform not in _PROCESS_FILE_JOB_PLATFORMS:
         raise CommandError(
-            "GIT_STAGE_BATCH_JOBS greater than 1 requires Linux or macOS."
+            _("GIT_STAGE_BATCH_JOBS greater than 1 requires Linux or macOS.")
         )
     if job_count == 0:
         return FileJobExecution("inline", 1, "no eligible file jobs")
@@ -533,7 +534,9 @@ def _normalize_cpu_count(cpu_count: int | None) -> int:
 
 
 def _invalid_jobs_value() -> CommandError:
-    return CommandError("GIT_STAGE_BATCH_JOBS must be 'auto' or a positive integer.")
+    return CommandError(
+        _("GIT_STAGE_BATCH_JOBS must be 'auto' or a positive integer.")
+    )
 
 
 def _lowest_failure_ordinal(

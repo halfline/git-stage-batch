@@ -4,10 +4,21 @@ from __future__ import annotations
 
 from ..batch.state.query import list_batch_names, read_batch_metadata
 from ..commands.new import command_new_batch
-from ..i18n import _
+from ..i18n import _, bidi_isolate
 from ..output.colors import Colors
 from .flow import FlowLocation, FlowState, LocationRole
 from .prompts import unlocked_input
+
+
+def _batch_option_text(name: str, note: str, marker: str) -> str:
+    """Return one localized batch option without an intermediate note copy."""
+    if note:
+        return _("batch: {name} - {note}{marker}").format(
+            name=name,
+            note=note,
+            marker=marker,
+        )
+    return _("batch: {name}{marker}").format(name=name, marker=marker)
 
 
 def handle_from_menu(flow_state: FlowState) -> None:
@@ -26,9 +37,9 @@ def handle_from_menu(flow_state: FlowState) -> None:
     marker = selected_marker if is_selected else ""
     text = _("Working tree{marker}").format(marker=marker)
     if use_color and is_selected:
-        print(f"  [1] {Colors.BOLD}{text}{Colors.RESET}")
+        print(f"  {bidi_isolate('[1]')} {Colors.BOLD}{text}{Colors.RESET}")
     else:
-        print(f"  [1] {text}")
+        print(f"  {bidi_isolate('[1]')} {text}")
     options.append(("working tree", FlowLocation.WORKING_TREE))
 
     for idx, name in enumerate(batches, 2):
@@ -39,16 +50,14 @@ def handle_from_menu(flow_state: FlowState) -> None:
             and flow_state.source.batch_name == name
         )
         marker = selected_marker if is_selected else ""
-        note_display = f" - {note}" if note else ""
-        text = _("batch: {name}{note}{marker}").format(
-            name=name,
-            note=note_display,
-            marker=marker,
-        )
+        text = _batch_option_text(name, note, marker)
         if use_color and is_selected:
-            print(f"  [{idx}] {Colors.BOLD}{text}{Colors.RESET}")
+            print(
+                f"  {bidi_isolate(f'[{idx}]')} "
+                f"{Colors.BOLD}{text}{Colors.RESET}"
+            )
         else:
-            print(f"  [{idx}] {text}")
+            print(f"  {bidi_isolate(f'[{idx}]')} {text}")
         options.append((name, FlowLocation.for_batch(name)))
 
     print()
@@ -85,9 +94,9 @@ def handle_to_menu(flow_state: FlowState) -> None:
     marker = selected_marker if is_selected else ""
     text = _("Staging for commit{marker}").format(marker=marker)
     if use_color and is_selected:
-        print(f"  [1] {Colors.BOLD}{text}{Colors.RESET}")
+        print(f"  {bidi_isolate('[1]')} {Colors.BOLD}{text}{Colors.RESET}")
     else:
-        print(f"  [1] {text}")
+        print(f"  {bidi_isolate('[1]')} {text}")
     options.append(("staging", FlowLocation.STAGING_AREA))
 
     for idx, name in enumerate(batches, 2):
@@ -98,20 +107,23 @@ def handle_to_menu(flow_state: FlowState) -> None:
             and flow_state.target.batch_name == name
         )
         marker = selected_marker if is_selected else ""
-        note_display = f" - {note}" if note else ""
-        text = _("batch: {name}{note}{marker}").format(
-            name=name,
-            note=note_display,
-            marker=marker,
-        )
+        text = _batch_option_text(name, note, marker)
         if use_color and is_selected:
-            print(f"  [{idx}] {Colors.BOLD}{text}{Colors.RESET}")
+            print(
+                f"  {bidi_isolate(f'[{idx}]')} "
+                f"{Colors.BOLD}{text}{Colors.RESET}"
+            )
         else:
-            print(f"  [{idx}] {text}")
+            print(f"  {bidi_isolate(f'[{idx}]')} {text}")
         options.append((name, FlowLocation.for_batch(name)))
 
     new_batch_idx = len(batches) + 2
-    print(f"  [{new_batch_idx}] {_('New Batch...')}")
+    print(
+        "  {} {}".format(
+            bidi_isolate(f"[{new_batch_idx}]"),
+            _("New Batch..."),
+        )
+    )
     options.append(("new", None))
 
     print()

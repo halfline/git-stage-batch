@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .state.metadata_types import BatchFileMetadataDict
 from ..exceptions import CommandError
-from ..i18n import _
+from ..i18n import _, pgettext
 from ..utils.git_command import run_git_command
 from ..utils.git_worktree import (
     git_checkout_detached,
@@ -28,11 +28,12 @@ def is_batch_submodule_pointer(file_meta: BatchFileMetadataDict) -> bool:
     return file_meta.get("file_type") == "gitlink"
 
 
-def refuse_batch_submodule_pointer_lines(action: str) -> None:
+def refuse_batch_submodule_pointer_lines() -> None:
     """Reject line selection for an atomic submodule pointer batch entry."""
     raise CommandError(
-        _("Cannot use --lines with submodule pointers. {action} the whole pointer instead.").format(
-            action=action,
+        _(
+            "Cannot use --lines with submodule pointers. "
+            "Select the whole pointer instead."
         )
     )
 
@@ -50,7 +51,7 @@ def _submodule_pointer_oid(
         raise CommandError(
             _(
                 "Cannot {action} submodule pointer for {file}: missing stored commit id."
-            ).format(action=action.lower(), file=file_path)
+            ).format(action=action, file=file_path)
         )
     return oid
 
@@ -66,7 +67,7 @@ def _change_type(
         raise CommandError(
             _(
                 "Cannot {action} submodule pointer for {file}: invalid stored change type."
-            ).format(action=action.lower(), file=file_path)
+            ).format(action=action, file=file_path)
         )
     return change_type
 
@@ -83,7 +84,7 @@ def _require_submodule_worktree(file_path: str, action: str) -> Path:
             _(
                 "Cannot {action} submodule pointer for {file}: "
                 "the path is not a standalone Git repository."
-            ).format(action=action.lower(), file=file_path)
+            ).format(action=action, file=file_path)
         )
     return full_path
 
@@ -206,15 +207,16 @@ def apply_submodule_pointer_from_batch(
     file_meta: BatchFileMetadataDict,
 ) -> None:
     """Apply a stored submodule pointer to the worktree."""
-    change_type = _change_type(file_path, file_meta, "Apply")
+    action = pgettext("submodule action verb", "apply")
+    change_type = _change_type(file_path, file_meta, action)
     if change_type == "deleted":
-        _remove_submodule_worktree(file_path, "apply")
+        _remove_submodule_worktree(file_path, action)
         return
 
-    new_oid = _submodule_pointer_oid(file_path, file_meta, "new_oid", action="Apply")
-    _ensure_submodule_worktree(file_path, new_oid, "apply")
+    new_oid = _submodule_pointer_oid(file_path, file_meta, "new_oid", action=action)
+    _ensure_submodule_worktree(file_path, new_oid, action)
     if change_type == "added":
-        _mark_submodule_pointer_intent_to_add(file_path, "apply")
+        _mark_submodule_pointer_intent_to_add(file_path, action)
 
 
 def stage_submodule_pointer_from_batch(
@@ -222,14 +224,15 @@ def stage_submodule_pointer_from_batch(
     file_meta: BatchFileMetadataDict,
 ) -> None:
     """Apply a stored submodule pointer to the worktree and index."""
-    change_type = _change_type(file_path, file_meta, "Stage")
+    action = pgettext("submodule action verb", "stage")
+    change_type = _change_type(file_path, file_meta, action)
     if change_type == "deleted":
-        _remove_submodule_worktree(file_path, "stage")
-        _remove_submodule_pointer_from_index(file_path, "stage")
+        _remove_submodule_worktree(file_path, action)
+        _remove_submodule_pointer_from_index(file_path, action)
         return
 
-    new_oid = _submodule_pointer_oid(file_path, file_meta, "new_oid", action="Stage")
-    _ensure_submodule_worktree(file_path, new_oid, "stage")
+    new_oid = _submodule_pointer_oid(file_path, file_meta, "new_oid", action=action)
+    _ensure_submodule_worktree(file_path, new_oid, action)
     index_result = git_update_gitlink(
         file_path=file_path,
         oid=new_oid,
@@ -248,11 +251,12 @@ def discard_submodule_pointer_from_batch(
     file_meta: BatchFileMetadataDict,
 ) -> None:
     """Restore the baseline state for a stored submodule pointer."""
-    change_type = _change_type(file_path, file_meta, "Discard")
+    action = pgettext("submodule action verb", "discard")
+    change_type = _change_type(file_path, file_meta, action)
     if change_type == "added":
-        _remove_submodule_worktree(file_path, "discard")
-        _remove_submodule_pointer_from_index(file_path, "discard")
+        _remove_submodule_worktree(file_path, action)
+        _remove_submodule_pointer_from_index(file_path, action)
         return
 
-    old_oid = _submodule_pointer_oid(file_path, file_meta, "old_oid", action="Discard")
-    _ensure_submodule_worktree(file_path, old_oid, "discard")
+    old_oid = _submodule_pointer_oid(file_path, file_meta, "old_oid", action=action)
+    _ensure_submodule_worktree(file_path, old_oid, action)

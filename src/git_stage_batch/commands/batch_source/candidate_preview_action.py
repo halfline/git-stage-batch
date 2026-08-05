@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ...batch.operation_candidate_state import save_candidate_preview_state
+from ...batch.operation_candidate_labels import candidate_operation_label
 from ...batch.source.selector import BatchSourceSelector
 from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.replacement import ReplacementPayload
@@ -57,7 +58,7 @@ def show_batch_source_candidate_preview(
         exit_with_error(
             _("Batch '{batch}' has no {operation} candidates for {file}.").format(
                 batch=batch_name,
-                operation=operation,
+                operation=candidate_operation_label(operation),
                 file=file_path,
             )
         )

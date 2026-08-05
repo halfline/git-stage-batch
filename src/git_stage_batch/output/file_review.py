@@ -6,7 +6,7 @@ from ..data.file_review.action_selections import shown_line_action_selections
 from ..data.file_review.display_ids import display_ids_for_rows
 from ..data.file_review.model import FileReviewModel
 from ..data.file_review.records import ReviewSource
-from ..i18n import _
+from ..i18n import _, bidi_isolate, bidi_isolation_fragments, ngettext
 from .colors import Colors
 from .file_review_footer import print_file_review_footer
 from .file_review_rows import (
@@ -14,7 +14,7 @@ from .file_review_rows import (
     print_file_review_rows,
 )
 from .file_review_summary import (
-    change_spec_for_fragments,
+    change_spec_and_count_for_fragments,
     change_summary,
     line_spec_for_display_ids,
     page_summary,
@@ -41,13 +41,6 @@ def print_file_review(
         for page in shown_pages
         for fragment in model.pages[page - 1].changes
     ]
-    shown_changes = []
-    seen_change_indexes: set[int] = set()
-    for fragment in shown_fragments:
-        if fragment.change.index in seen_change_indexes:
-            continue
-        shown_changes.append(fragment.change)
-        seen_change_indexes.add(fragment.change.index)
     shown_display_ids = []
     seen_display_ids: set[int] = set()
     for fragment in shown_fragments:
@@ -60,7 +53,9 @@ def print_file_review(
             shown_display_ids.append(display_id)
             seen_display_ids.add(display_id)
     shown_line_spec = line_spec_for_display_ids(tuple(shown_display_ids))
-    shown_change_spec = change_spec_for_fragments(shown_fragments)
+    shown_change_spec, shown_change_count = change_spec_and_count_for_fragments(
+        shown_fragments
+    )
     complete_line_action_selections = shown_line_action_selections(
         model,
         shown_pages,
@@ -76,6 +71,7 @@ def print_file_review(
         shown_pages=shown_pages,
         page_count=page_count,
         shown_change_spec=shown_change_spec,
+        shown_change_count=shown_change_count,
         shown_line_spec=shown_line_spec,
         total_changes=len(model.changes),
         opened_near_selected_hunk=opened_near_selected_hunk,
@@ -85,7 +81,13 @@ def print_file_review(
     for page in shown_pages:
         if multi_page:
             print()
-            print(f"── page {page}/{page_count} " + "─" * 48)
+            print(
+                _("── page {page}/{page_count} ").format(
+                    page=page,
+                    page_count=page_count,
+                )
+                + "─" * 48
+            )
         for fragment in model.pages[page - 1].changes:
             change = fragment.change
             print()
@@ -99,14 +101,23 @@ def print_file_review(
                 change.select_as or "-"
             )
             if change.display_ids:
-                line_count = len(fragment_display_ids) if fragment_display_ids else len(change.display_ids)
-                size_label = (
-                    _("1-line change")
-                    if line_count == 1 else
-                    _("{count}-line partial group").format(count=line_count)
-                    if not fragment.is_first_fragment or not fragment.is_last_fragment else
-                    _("{count}-line group").format(count=line_count)
+                line_count = (
+                    len(fragment_display_ids)
+                    if fragment_display_ids
+                    else len(change.display_ids)
                 )
+                if not fragment.is_first_fragment or not fragment.is_last_fragment:
+                    size_label = ngettext(
+                        "{count}-line partial group",
+                        "{count}-line partial group",
+                        line_count,
+                    ).format(count=line_count)
+                else:
+                    size_label = ngettext(
+                        "{count}-line change",
+                        "{count}-line group",
+                        line_count,
+                    ).format(count=line_count)
                 print(
                     _("Change {index}/{total}   lines {lines}   {size}").format(
                         index=change.index,
@@ -135,6 +146,7 @@ def print_file_review(
         shown_pages=shown_pages,
         page_count=page_count,
         shown_change_spec=shown_change_spec,
+        shown_change_count=shown_change_count,
         shown_line_spec=shown_line_spec,
         complete_line_action_selections=complete_line_action_selections,
         total_changes=len(model.changes),
@@ -154,6 +166,7 @@ def _print_header(
     shown_pages: tuple[int, ...],
     page_count: int,
     shown_change_spec: str,
+    shown_change_count: int,
     shown_line_spec: str,
     total_changes: int,
     opened_near_selected_hunk: bool,
@@ -161,10 +174,10 @@ def _print_header(
     use_color = Colors.enabled()
     status = "  ·  ".join(
         (
-            path,
+            bidi_isolate(path),
             review_source_summary(source, batch_name, source_label),
             page_summary(shown_pages, page_count),
-            change_summary(shown_change_spec, total_changes),
+            change_summary(shown_change_spec, shown_change_count, total_changes),
             _("lines {lines}").format(lines=shown_line_spec),
         )
     )
@@ -184,6 +197,6 @@ def _print_header(
             note_label = _("Note:")
             print(f"{Colors.GRAY}{note_label}{Colors.RESET}" if use_color else note_label)
             for line in note_lines:
-                print(f"    {line}")
+                print("    ", *bidi_isolation_fragments(line), sep="")
     rule = "─" * 78
     print(f"{Colors.GRAY}{rule}{Colors.RESET}" if use_color else rule)

@@ -135,10 +135,12 @@ def command_unblock_file(file_path_arg: str) -> None:
             append_file_path_to_file(get_auto_added_files_file_path(), file_path)
 
     if removed_from_gitignore or removed_from_local_exclude:
-        print(f"Unblocked file: {file_path}", file=sys.stderr)
+        print(_("Unblocked file: {file}").format(file=file_path), file=sys.stderr)
     else:
         print(
-            f"Removed from blocked list: {file_path} (was not in .gitignore)",
+            _(
+                "Removed from blocked list: {file} (was not in .gitignore)"
+            ).format(file=file_path),
             file=sys.stderr,
         )
 

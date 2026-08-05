@@ -20,6 +20,7 @@ from .metadata_schema import (
 from .metadata_types import BatchMetadataDict
 from .batch_names import validate_batch_name
 from ...exceptions import BatchMetadataError
+from ...i18n import _
 from ...core.buffer import LineBuffer
 from ...utils.repository_buffers import read_git_object_buffer_or_none
 from ...utils.git_command import (
@@ -243,8 +244,10 @@ def sync_batch_state_refs(
         if metadata.revision != existing_state_model.revision:
             remove_file_backed_batch_metadata(batch_name)
             raise BatchMetadataError(
-                f"Batch '{batch_name}' changed after its metadata was read. "
-                "Retry the operation against the latest batch state."
+                _(
+                    "Batch '{name}' changed after its metadata was read. Retry the "
+                    "operation against the latest batch state."
+                ).format(name=batch_name)
             )
 
     source_buffers = source_buffers or {}
@@ -328,7 +331,9 @@ def sync_batch_state_refs(
     except subprocess.CalledProcessError as error:
         remove_file_backed_batch_metadata(batch_name)
         raise BatchMetadataError(
-            f"Batch '{batch_name}' changed while its metadata was being published. "
-            "Retry the operation against the latest batch state."
+            _(
+                "Batch '{name}' changed while its metadata was being published. "
+                "Retry the operation against the latest batch state."
+            ).format(name=batch_name)
         ) from error
     remove_file_backed_batch_metadata(batch_name)

@@ -11,6 +11,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from ...core.models import LineEntry
+from ...i18n import _
 from .cache import (
     load_session_batch_sources,
     save_session_batch_sources,
@@ -121,8 +122,10 @@ def ensure_batch_source_current_for_selection(
         )
         if source_buffer is None:
             raise ValueError(
-                f"Cannot read batch source for {file_path} at "
-                f"{current_batch_source_commit}"
+                _("Cannot read batch source for {file} at {commit}").format(
+                    file=file_path,
+                    commit=current_batch_source_commit,
+                )
             )
         with source_buffer as source_lines:
             mapped_selected_lines = _selection_mapped_to_source(
@@ -175,8 +178,10 @@ def ensure_batch_source_current_for_selection(
         # Inconsistent state: batch source exists but no ownership
         # This should not happen in normal operation
         raise ValueError(
-            f"Batch source exists for {file_path} in batch {batch_name} "
-            f"but no ownership found. This indicates corrupted batch state."
+            _(
+                "Batch source exists for {file} in batch {batch} but no "
+                "ownership found. This indicates corrupted batch state."
+            ).format(file=file_path, batch=batch_name)
         )
 
     elif is_stale and not current_batch_source_commit:
@@ -336,8 +341,10 @@ def prepare_initial_batch_source_for_selection(
     )
     if source_buffer is None:
         raise ValueError(
-            f"Cannot read initial batch source for {file_path} at "
-            f"{batch_source_commit}"
+            _("Cannot read initial batch source for {file} at {commit}").format(
+                file=file_path,
+                commit=batch_source_commit,
+            )
         )
 
     with source_buffer as source_lines:

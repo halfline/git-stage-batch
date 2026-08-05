@@ -8,10 +8,11 @@ import sys
 
 from ..core.actionable_changes import ActionableSelection
 from ..data.file_review.records import ReviewSource
-from ..i18n import _
+from ..i18n import _, bidi_isolate
 from .colors import Colors
 from . import file_review_footer_hints
 from .file_review_summary import change_summary, page_summary
+from .terminal_width import pad_to_terminal_width, terminal_cell_width
 
 
 def _style_footer_command(command: str) -> str:
@@ -58,6 +59,7 @@ def print_file_review_footer(
     shown_pages: tuple[int, ...],
     page_count: int,
     shown_change_spec: str,
+    shown_change_count: int,
     shown_line_spec: str,
     complete_line_action_selections: list[ActionableSelection],
     total_changes: int,
@@ -84,9 +86,9 @@ def print_file_review_footer(
     print(f"{Colors.GRAY}{rule}{Colors.RESET}" if use_color else rule)
     status = "  ·  ".join(
         (
-            path,
+            bidi_isolate(path),
             page_summary(shown_pages, page_count),
-            change_summary(shown_change_spec, total_changes),
+            change_summary(shown_change_spec, shown_change_count, total_changes),
             _("lines {lines}").format(lines=shown_line_spec),
         )
     )
@@ -95,13 +97,15 @@ def print_file_review_footer(
     else:
         print(status)
     print()
-    action_width = max(len(hint.action) for hint in hints if hint.command)
+    action_width = max(
+        terminal_cell_width(hint.action) for hint in hints if hint.command
+    )
     for hint in hints:
         if not hint.command:
             print(hint.action)
             continue
         display_command = _display_footer_command(hint.command)
-        action_text = hint.action.ljust(action_width)
+        action_text = pad_to_terminal_width(hint.action, action_width)
         if use_color:
             print(
                 f"{Colors.CYAN}{action_text}{Colors.RESET}  "

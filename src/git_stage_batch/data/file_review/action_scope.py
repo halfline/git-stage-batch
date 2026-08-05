@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shlex
 
+from ...core.line_selection import parse_line_selection_ranges
 from . import records as _records
 from .action_commands import (
     batch_source_action_command as _batch_source_action_command,
@@ -273,6 +274,11 @@ def resolve_live_line_action_scope(
         refuse_bare_action_after_auto_advance_disabled,
         refuse_bare_action_after_file_list,
     )
+
+    try:
+        parse_line_selection_ranges(line_id_specification)
+    except ValueError as error:
+        raise CommandError(str(error)) from error
 
     if file not in (None, ""):
         return _records.ActionScopeResolution(file=file)

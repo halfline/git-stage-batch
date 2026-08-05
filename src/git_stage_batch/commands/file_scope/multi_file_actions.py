@@ -28,7 +28,7 @@ from ...core.diff_parser import UnifiedDiffItem
 from ...data.session import require_session_started
 from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import CommandError
-from ...i18n import _, ngettext
+from ...i18n import _, ngettext, npgettext, pgettext
 from ...utils.git_repository import require_git_repository
 from ...utils.paths import ensure_state_directory_exists
 from . import discard_file as _discard_file
@@ -187,7 +187,8 @@ def _format_file_summary(files: Sequence[str]) -> str:
     """Return a single path or plural file count for command output."""
     if len(files) == 1:
         return files[0]
-    return ngettext(
+    return npgettext(
+        "multi-file action file count",
         "{count} file",
         "{count} files",
         len(files),
@@ -215,9 +216,12 @@ def _require_prepared_change_paths_covered(
     missing_paths = sorted(set(prepared_paths) - set(checkpoint_paths))
     if missing_paths:
         raise CommandError(
-            _(
+            ngettext(
                 "The matched files changed while the undo checkpoint was being "
-                "prepared. Review them again and retry. Uncaptured path(s): {paths}"
+                "prepared. Review them again and retry. Uncaptured path: {paths}",
+                "The matched files changed while the undo checkpoint was being "
+                "prepared. Review them again and retry. Uncaptured paths: {paths}",
+                len(missing_paths),
             ).format(paths=", ".join(missing_paths))
         )
 
@@ -272,13 +276,17 @@ def _live_action_target_changed_error(
     target: str,
 ) -> CommandError:
     label = _("Index") if target == "index" else _("Working tree file")
+    operation_label = {
+        "include": pgettext("multi-file operation noun", "include"),
+        "discard": pgettext("multi-file operation noun", "discard"),
+    }.get(operation, operation)
     return CommandError(
         _(
             "{label} changed while multi-file {operation} was being prepared: "
             "{path}. Review the current changes and retry."
         ).format(
             label=label,
-            operation=operation,
+            operation=operation_label,
             path=path,
         )
     )

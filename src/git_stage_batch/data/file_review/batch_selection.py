@@ -15,7 +15,7 @@ from ...batch.submodule_pointer import (
 )
 from ...core.line_selection import LineRanges
 from ...exceptions import CommandError
-from ...i18n import _
+from ...i18n import _, pgettext
 from ..batch_file_scope import resolve_batch_file_scope
 from .batch_selection_freshness import fresh_batch_review_selections_for_action
 from .records import FileReviewAction
@@ -149,7 +149,7 @@ def translate_reset_batch_file_gutter_ids_to_selection_ranges(
         batch_name,
         files,
         line_id_specification,
-        "reset",
+        pgettext("line-level operation noun", "reset"),
     )
     if selected_ids is None:
         return LineRanges.empty()
@@ -160,7 +160,7 @@ def translate_reset_batch_file_gutter_ids_to_selection_ranges(
     if files[file_path].get("file_type") == "mode":
         raise CommandError(_("Cannot use --lines with file mode actions."))
     if is_batch_submodule_pointer(files[file_path]):
-        refuse_batch_submodule_pointer_lines(_("Reset"))
+        refuse_batch_submodule_pointer_lines()
 
     review_selections = fresh_batch_review_selections_for_action(
         batch_name,

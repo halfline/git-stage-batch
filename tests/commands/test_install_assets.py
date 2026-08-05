@@ -618,7 +618,7 @@ class TestCommandInstallAssets:
 
         with pytest.raises(
             CommandError,
-            match="Refusing to overwrite existing claude skill 'commit-unstaged-changes'",
+            match="Refusing to overwrite existing Claude skill 'commit-unstaged-changes'",
         ):
             command_install_assets("claude-skills", ["commit-unstaged-changes"])
 
@@ -632,7 +632,7 @@ class TestCommandInstallAssets:
 
         with pytest.raises(
             CommandError,
-            match="Refusing to overwrite existing claude agent '\\.claude/agents/commit-message-drafter.md'",
+            match="Refusing to overwrite existing Claude agent '\\.claude/agents/commit-message-drafter.md'",
         ):
             command_install_assets("claude-skills", ["commit-unstaged-changes"])
 
@@ -648,7 +648,7 @@ class TestCommandInstallAssets:
 
         with pytest.raises(
             CommandError,
-            match=r"Refusing to overwrite existing claude agent '\.claude/agents/decompose-analyzer.md'",
+            match=r"Refusing to overwrite existing Claude agent '\.claude/agents/decompose-analyzer.md'",
         ):
             command_install_assets(
                 "claude-skills", ["decompose-and-commit-unstaged-changes"]
@@ -664,7 +664,7 @@ class TestCommandInstallAssets:
 
         with pytest.raises(
             CommandError,
-            match="Refusing to overwrite existing claude agent 'commit-message-drafter'",
+            match="Refusing to overwrite existing Claude agent 'commit-message-drafter'",
         ):
             command_install_assets("claude-agents", ["commit-message-drafter"])
 
@@ -728,7 +728,7 @@ class TestCommandInstallAssets:
 
         with pytest.raises(
             CommandError,
-            match="Refusing to overwrite existing codex skill 'commit-unstaged-changes'",
+            match="Refusing to overwrite existing Codex skill 'commit-unstaged-changes'",
         ):
             command_install_assets("codex-skills", ["commit-unstaged-changes"])
 
@@ -742,7 +742,7 @@ class TestCommandInstallAssets:
 
         with pytest.raises(
             CommandError,
-            match=r"Refusing to overwrite existing codex config '\.codex/config.toml'",
+            match=r"Refusing to overwrite existing Codex config '\.codex/config.toml'",
         ):
             command_install_assets("codex-skills", ["commit-unstaged-changes"])
 

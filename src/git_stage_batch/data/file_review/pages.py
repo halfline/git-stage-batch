@@ -27,6 +27,7 @@ def parse_page_selection(
         pages = parse_positive_selection(
             normalized_spec,
             item_name=_("Page"),
+            item_name_plural=_("Pages"),
             reject_empty_items=True,
         )
     except ValueError as error:

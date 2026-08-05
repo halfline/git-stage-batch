@@ -72,7 +72,7 @@ def include_live_line_replacement(
 
             write_line_ids_file(get_processed_include_ids_file_path(), set())
             print(
-                _("✓ Included line(s) as replacement: {lines} from {file}").format(
+                _("✓ Included selection as replacement: {lines} from {file}").format(
                     lines=line_id_specification,
                     file=line_changes.path,
                 ),
@@ -111,7 +111,9 @@ def include_live_line_replacement(
             else:
                 write_line_ids_file(get_processed_include_ids_file_path(), set())
                 print(
-                    _("✓ Included line(s) as replacement: {lines} from {file}").format(
+                    _(
+                        "✓ Included selection as replacement: {lines} from {file}"
+                    ).format(
                         lines=line_id_specification,
                         file=replacement_file_context.target_file,
                     ),
@@ -131,7 +133,7 @@ def include_live_line_replacement(
         and replacement_file_context.preserve_selected_state
     ):
         print(
-            _("✓ Included line(s) as replacement: {lines} from {file}").format(
+            _("✓ Included selection as replacement: {lines} from {file}").format(
                 lines=line_id_specification,
                 file=replacement_file_context.target_file,
             ),

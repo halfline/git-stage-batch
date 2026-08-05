@@ -423,7 +423,7 @@ def transient_include_failure_message(
         TransientIncludeFailureReason.WORKING_TREE_WOULD_CHANGE,
     ):
         return _(
-            "Cannot safely include line(s) {lines} from {file} because applying "
+            "Cannot safely include selection {lines} from {file} because applying "
             "that selection would also change the working tree.\n"
             "Run 'git-stage-batch show --file {file}' and choose line IDs from "
             "the current file view."
@@ -431,14 +431,14 @@ def transient_include_failure_message(
 
     if reason == TransientIncludeFailureReason.INDEX_MERGE_FAILED:
         return _(
-            "Cannot safely include line(s) {lines} from {file} because the "
+            "Cannot safely include selection {lines} from {file} because the "
             "selection no longer fits the current staged content.\n"
             "Run 'git-stage-batch show --file {file}' and choose line IDs from "
             "the current file view."
         ).format(lines=line_id_specification, file=file_path)
 
     return _(
-        "Cannot safely include line(s) {lines} from {file}.\n"
+        "Cannot safely include selection {lines} from {file}.\n"
         "Run 'git-stage-batch show --file {file}' and choose line IDs from "
         "the current file view."
     ).format(lines=line_id_specification, file=file_path)

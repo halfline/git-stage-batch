@@ -5,7 +5,7 @@ from __future__ import annotations
 from ..core.line_selection import format_line_ids
 from ..data.file_review.model import ReviewChangeFragment
 from ..data.file_review.records import ReviewSource
-from ..i18n import _
+from ..i18n import _, bidi_isolate, ngettext
 
 
 def display_line_spec(line_spec: str) -> str:
@@ -20,8 +20,10 @@ def line_spec_for_display_ids(display_ids: tuple[int, ...]) -> str:
     return display_line_spec(format_line_ids(list(display_ids)))
 
 
-def change_spec_for_fragments(fragments: list[ReviewChangeFragment]) -> str:
-    """Return a summary spec for the unique changes in shown fragments."""
+def change_spec_and_count_for_fragments(
+    fragments: list[ReviewChangeFragment],
+) -> tuple[str, int]:
+    """Return a summary spec and count for unique changes in shown fragments."""
     change_ids: list[int] = []
     seen: set[int] = set()
     for fragment in fragments:
@@ -31,29 +33,33 @@ def change_spec_for_fragments(fragments: list[ReviewChangeFragment]) -> str:
         change_ids.append(change_id)
         seen.add(change_id)
     if not change_ids:
-        return "-"
-    return display_line_spec(format_line_ids(change_ids))
+        return "-", 0
+    return display_line_spec(format_line_ids(change_ids)), len(change_ids)
 
 
 def page_summary(shown_pages: tuple[int, ...], page_count: int) -> str:
     """Return a concise shown-page summary."""
-    page_word = _("page") if len(shown_pages) == 1 else _("pages")
-    return _("{page_word} {pages}/{page_count}").format(
-        page_word=page_word,
+    return ngettext(
+        "page {pages}/{page_count}",
+        "pages {pages}/{page_count}",
+        len(shown_pages),
+    ).format(
         pages=display_line_spec(format_line_ids(list(shown_pages))),
         page_count=page_count,
     )
 
 
-def change_summary(change_spec: str, total_changes: int) -> str:
+def change_summary(
+    change_spec: str,
+    shown_change_count: int,
+    total_changes: int,
+) -> str:
     """Return a concise shown-change summary."""
-    change_word = (
-        _("change")
-        if "," not in change_spec and "–" not in change_spec else
-        _("changes")
-    )
-    return _("{change_word} {changes}/{total}").format(
-        change_word=change_word,
+    return ngettext(
+        "change {changes}/{total}",
+        "changes {changes}/{total}",
+        shown_change_count,
+    ).format(
         changes=change_spec,
         total=total_changes,
     )
@@ -66,7 +72,7 @@ def review_source_summary(
 ) -> str:
     """Return the source label used in file-review status lines."""
     if source == ReviewSource.BATCH and batch_name:
-        return batch_name
+        return bidi_isolate(batch_name)
     prefix = _("Changes: ")
     if source_label.startswith(prefix):
         return source_label[len(prefix):]

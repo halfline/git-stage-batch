@@ -6,7 +6,12 @@ import sys
 
 from ...exceptions import CommandError
 from ...i18n import _
+from ...output.colors import format_hotkey
 from .session import FileReviewSessionState
+from ..action_prompt_choices import (
+    localized_word_aliases,
+    normalize_localized_choice,
+)
 from ..flow import LocationRole
 from ..prompts import unlocked_input, wrap_prompt_for_readline
 
@@ -55,20 +60,42 @@ def browse_candidates(state: FileReviewSessionState) -> None:
 
 
 def _prompt_candidate_operation() -> str | None:
+    options = (
+        (_("include"), "i"),
+        (_("apply"), "a"),
+        (_("quit"), "q"),
+    )
     try:
         choice = unlocked_input(
             wrap_prompt_for_readline(
-                _("Candidate operation [i]nclude, [a]pply, or q: ")
+                _("Candidate operation {include}, {apply}, or {quit}: ").format(
+                    include=format_hotkey(options[0][0], "i"),
+                    apply=format_hotkey(options[1][0], "a"),
+                    quit=format_hotkey(options[2][0], "q"),
+                )
             )
-        ).strip().lower()
+        ).strip()
     except (KeyboardInterrupt, EOFError):
         return None
 
-    if choice in {"q", "quit", "cancel"}:
+    normalized = normalize_localized_choice(
+        choice,
+        stable_codes=frozenset({"i", "a", "q"}),
+        legacy_words={
+            "include": "i",
+            "apply": "a",
+            "quit": "q",
+            "cancel": "q",
+        },
+        localized_words=localized_word_aliases(
+            (str(word), action) for word, action in options
+        ),
+    )
+    if normalized == "q":
         return None
-    if choice in {"i", "include"}:
+    if normalized == "i":
         return "include"
-    if choice in {"a", "apply"}:
+    if normalized == "a":
         return "apply"
 
     print(_("Invalid candidate operation."), file=sys.stderr)
@@ -81,13 +108,21 @@ def _prompt_candidate_action() -> str | None:
             wrap_prompt_for_readline(
                 _("Candidate number to preview, e N to execute, or q: ")
             )
-        ).strip().lower()
+        ).strip()
     except (KeyboardInterrupt, EOFError):
         return None
 
-    if choice in {"q", "quit", "back"}:
+    normalized = normalize_localized_choice(
+        choice,
+        stable_codes=frozenset({"q"}),
+        legacy_words={"quit": "q", "back": "q"},
+        localized_words=localized_word_aliases(
+            ((str(_("quit")), "q"), (str(_("back")), "q"))
+        ),
+    )
+    if normalized == "q":
         return None
-    return choice
+    return normalized
 
 
 def _preview_candidate(

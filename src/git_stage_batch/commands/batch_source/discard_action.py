@@ -24,7 +24,7 @@ from ...exceptions import (
     MergeError,
     exit_with_error,
 )
-from ...i18n import _
+from ...i18n import _, pgettext
 
 
 def _print_binary_discard_result(
@@ -109,7 +109,7 @@ def execute_discard_action(
                         _atomic_unit_refusals.translate_atomic_unit_error_to_gutter_ids(
                             e,
                             rendered,
-                            "discard from",
+                            pgettext("batch failure operation", "discard from"),
                             batch_name,
                         )
                     exit_with_error(

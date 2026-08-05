@@ -16,7 +16,7 @@ from .references import (
 from .compatibility_metadata import read_file_backed_batch_metadata_model
 from .batch_names import invalid_file_backed_batch_names, validate_batch_name
 from ...exceptions import CommandError
-from ...i18n import _
+from ...i18n import ngettext
 from ...utils.git_command import run_git_command
 from ...git_paths import decode_path, nul_records
 
@@ -123,10 +123,15 @@ def list_batch_names(*, validate_legacy_metadata: bool = True) -> list[str]:
     if invalid_legacy_names:
         formatted_names = ", ".join(repr(name) for name in invalid_legacy_names)
         raise CommandError(
-            _(
-                "Legacy batch metadata has invalid batch name(s): {names}. "
+            ngettext(
+                "Legacy batch metadata has an invalid batch name: {names}. "
+                "Move this entry out of the batch metadata directory or rename it "
+                "and its corresponding refs/batches ref to a valid, unused name.",
+                "Legacy batch metadata has invalid batch names: {names}. "
                 "Move these entries out of the batch metadata directory or rename "
-                "them and any corresponding refs/batches refs to valid, unused names."
+                "them and their corresponding refs/batches refs to valid, unused "
+                "names.",
+                len(invalid_legacy_names),
             ).format(names=formatted_names)
         )
 

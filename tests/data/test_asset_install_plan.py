@@ -180,7 +180,7 @@ def test_plan_decompose_rejects_existing_refine_dependency(tmp_path):
 
     with pytest.raises(
         CommandError,
-        match=r"Refusing to overwrite existing claude skill '\.claude/skills/refine-history'",
+        match=r"Refusing to overwrite existing Claude skill '\.claude/skills/refine-history'",
     ):
         plan_asset_installs(selected, repo_root)
 
@@ -195,7 +195,7 @@ def test_plan_asset_installs_rejects_existing_entry_without_force(tmp_path):
 
     with pytest.raises(
         CommandError,
-        match="Refusing to overwrite existing claude skill 'commit-unstaged-changes'",
+        match="Refusing to overwrite existing Claude skill 'commit-unstaged-changes'",
     ):
         plan_asset_installs(selected, repo_root)
 
@@ -211,7 +211,7 @@ def test_plan_asset_installs_rejects_existing_companion_without_force(tmp_path):
 
     with pytest.raises(
         CommandError,
-        match=r"Refusing to overwrite existing codex config '\.codex/config.toml'",
+        match=r"Refusing to overwrite existing Codex config '\.codex/config.toml'",
     ):
         plan_asset_installs(selected, repo_root)
 

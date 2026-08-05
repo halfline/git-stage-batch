@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ..output.colors import Colors
-from ..i18n import _
+from ..i18n import _, pgettext
 
 if TYPE_CHECKING:
     from .flow import FlowState
@@ -29,12 +29,15 @@ def print_status_bar(stats: dict[str, int], flow_state: FlowState) -> None:
 
     # Build flow line with bold labels, gray arrow
     if use_color:
+        source_label = _("Source:")
+        arrow = pgettext("flow direction arrow", "→")
+        target_label = _("Target:")
         flow_line = _("{source_label}{source} {arrow} {target_label}{target}").format(
-            source_label=f"{Colors.BOLD}Source:{Colors.RESET} ",
+            source_label=f"{Colors.BOLD}{source_label}{Colors.RESET} ",
             source=flow_state.source.get_display_label(),
-            arrow=f"{Colors.GRAY}→{Colors.RESET}",
-            target_label=f"{Colors.BOLD}Target:{Colors.RESET} ",
-            target=flow_state.target.get_display_label()
+            arrow=f"{Colors.GRAY}{arrow}{Colors.RESET}",
+            target_label=f"{Colors.BOLD}{target_label}{Colors.RESET} ",
+            target=flow_state.target.get_display_label(),
         )
     else:
         flow_line = _("Source: {source} → Target: {target}").format(
@@ -44,10 +47,17 @@ def print_status_bar(stats: dict[str, int], flow_state: FlowState) -> None:
 
     # Build stats line with bold labels
     if use_color:
+        included_text = _("Included: {count}").format(
+            count=stats.get("included", 0)
+        )
+        skipped_text = _("Skipped: {count}").format(count=stats.get("skipped", 0))
+        discarded_text = _("Discarded: {count}").format(
+            count=stats.get("discarded", 0)
+        )
         stats_parts = [
-            f"{Colors.BOLD}Included:{Colors.RESET} {stats.get('included', 0)}",
-            f"{Colors.BOLD}Skipped:{Colors.RESET} {stats.get('skipped', 0)}",
-            f"{Colors.BOLD}Discarded:{Colors.RESET} {stats.get('discarded', 0)}",
+            f"{Colors.BOLD}{included_text}{Colors.RESET}",
+            f"{Colors.BOLD}{skipped_text}{Colors.RESET}",
+            f"{Colors.BOLD}{discarded_text}{Colors.RESET}",
         ]
     else:
         stats_parts = [

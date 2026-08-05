@@ -8,6 +8,7 @@ from ...batch.source.selector import (
     parse_batch_source_selector,
     require_candidate_operation,
 )
+from ...batch.operation_candidate_labels import candidate_operation_label
 from ...exceptions import exit_with_error
 from ...i18n import _
 
@@ -30,15 +31,17 @@ def resolve_batch_source_action_selector(
         selector.candidate_operation == expected_operation
         and selector.candidate_ordinal is None
     ):
+        operation_label = candidate_operation_label(expected_operation)
         exit_with_error(
             _(
-                "'{selector}' names the {operation} candidate preview set.\n"
+                "'{selector}' names the {operation_label} candidate preview set.\n"
                 "Use 'git-stage-batch show --from {selector}' to preview candidates, "
-                "or use '{batch}:{operation}:N' to {operation} a candidate."
+                "or use '{batch}:{operation}:N' to execute a candidate."
             ).format(
                 selector=raw_selector,
                 batch=selector.batch_name,
                 operation=expected_operation,
+                operation_label=operation_label,
             )
         )
     if selector.candidate_ordinal is not None and file is None:

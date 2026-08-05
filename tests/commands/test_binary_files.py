@@ -828,7 +828,7 @@ def test_show_from_batch_displays_binary_entries(
     command_show_from_batch("mixed-batch")
     captured = capsys.readouterr()
     assert "image.png" in captured.out
-    assert "binary modified" in captured.out
+    assert "binary file modified" in captured.out
     assert "README.md" in captured.out
 
 

@@ -15,7 +15,7 @@ from .realization.entry_storage import (
 )
 from ..core.line_selection import LineRanges, LineSelection, coerce_line_ranges
 from ..exceptions import MergeError as _MergeError
-from ..i18n import _
+from ..i18n import _, ngettext
 
 
 def _count_lines_in_range(
@@ -84,10 +84,14 @@ def reverse_presence_constraints(
 
                 if claimed_line_count != total_lines_in_region:
                     raise _MergeError(
-                        _(
+                        ngettext(
                             "Cannot discard partial ownership of by-hunk "
                             "replace region (source lines {start}-{end}): "
-                            "batch owns {owned} of {total} lines"
+                            "batch owns {owned} of {total} line",
+                            "Cannot discard partial ownership of by-hunk "
+                            "replace region (source lines {start}-{end}): "
+                            "batch owns {owned} of {total} lines",
+                            total_lines_in_region,
                         ).format(
                             start=region.source_start_line,
                             end=region.source_end_line,

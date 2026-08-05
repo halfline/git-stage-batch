@@ -9,6 +9,7 @@ from types import TracebackType
 
 from ...core.buffer import LineBuffer
 from ...core.line_selection import LineRanges, coerce_line_ranges
+from ...i18n import _
 from ...core.mapped_storage import MappedRecordVector, sort_mapped_records
 from .snapshots import create_batch_source_commit
 from ...utils.repository_buffers import (
@@ -348,9 +349,11 @@ def _advanced_source_chunks(
                 elif fully_owned:
                     if source_count > target_count:
                         raise BatchSourceAdvanceError(
-                            "Cannot advance a fully owned source replacement that "
-                            "contracts multiple owned lines: source lineage would "
-                            "not be unique."
+                            _(
+                                "Cannot advance a fully owned source replacement that "
+                                "contracts multiple owned lines: source lineage would "
+                                "not be unique."
+                            )
                         )
                     yield from emit_working(
                         run.target_start,
@@ -494,8 +497,10 @@ def _saved_replacement_target_spans(
                         continue
                     if matched_start is not None:
                         raise BatchSourceAdvanceError(
-                            "Cannot advance an authoritative replacement with "
-                            "multiple matching live baseline spans."
+                            _(
+                                "Cannot advance an authoritative replacement with "
+                                "multiple matching live baseline spans."
+                            )
                         )
                     matched_start = target_index + 1
                 if matched_start is not None:
@@ -511,8 +516,10 @@ def _saved_replacement_target_spans(
                     span_start, span_end = unit_spans[span_index]
                     if span_start <= previous_end:
                         raise BatchSourceAdvanceError(
-                            "Cannot advance an authoritative replacement with "
-                            "overlapping live baseline spans."
+                            _(
+                                "Cannot advance an authoritative replacement with "
+                                "overlapping live baseline spans."
+                            )
                         )
                     previous_end = span_end
             if not unit_spans:
@@ -532,8 +539,10 @@ def _saved_replacement_target_spans(
                 )
             ):
                 raise BatchSourceAdvanceError(
-                    "Cannot advance an authoritative replacement with "
-                    "multiple matching live baseline spans."
+                    _(
+                        "Cannot advance an authoritative replacement with multiple "
+                        "matching live baseline spans."
+                    )
                 )
         finally:
             workspace.close_resource(unit_spans)
@@ -554,8 +563,10 @@ def advance_batch_source_for_file_with_provenance(
     working_file_path = repo_root / file_path
     if not os.path.lexists(working_file_path):
         raise ValueError(
-            f"Cannot advance batch source for {file_path}: "
-            f"file does not exist in working tree"
+            _(
+                "Cannot advance batch source for {file}: "
+                "file does not exist in working tree"
+            ).format(file=file_path)
         )
 
     old_source_buffer = read_git_object_buffer_or_none(
@@ -563,7 +574,10 @@ def advance_batch_source_for_file_with_provenance(
     )
     if old_source_buffer is None:
         raise ValueError(
-            f"Cannot read old batch source for {file_path} at {old_batch_source_commit}"
+            _("Cannot read old batch source for {file} at {commit}").format(
+                file=file_path,
+                commit=old_batch_source_commit,
+            )
         )
 
     source_with_provenance: SourceContentWithLineProvenance | None = None

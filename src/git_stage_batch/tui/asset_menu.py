@@ -19,14 +19,16 @@ from .prompts import unlocked_input
 def handle_asset_menu() -> None:
     """Prompt for assistant asset install options and run the installer."""
     group_names = list(ASSET_GROUPS)
+    group_labels = {
+        group_name: asset_group_menu_label(ASSET_GROUPS[group_name])
+        for group_name in group_names
+    }
 
     print()
     print(_("Install bundled assistant assets:"))
     print("  {} {}".format(bidi_isolate("[1]"), _("all asset groups")))
     for idx, group_name in enumerate(group_names, 2):
-        group = ASSET_GROUPS[group_name]
-        display_name = asset_group_menu_label(group)
-        print(f"  {bidi_isolate(f'[{idx}]')} {display_name}")
+        print(f"  {bidi_isolate(f'[{idx}]')} {group_labels[group_name]}")
 
     try:
         choice = unlocked_input(_("Group (empty to cancel): ")).strip()
@@ -42,7 +44,10 @@ def handle_asset_menu() -> None:
         stable_codes=frozenset({"1"}),
         legacy_words={"all": "1", "all asset groups": "1"},
         localized_words=localized_word_aliases(
-            ((str(_("all asset groups")), "1"),)
+            (
+                (str(_("all asset groups")), "1"),
+                *((label, group_name) for group_name, label in group_labels.items()),
+            )
         ),
     )
     if normalized_group == "1":
@@ -54,8 +59,8 @@ def handle_asset_menu() -> None:
         else:
             print(_("\nInvalid selection."), file=sys.stderr)
             return
-    elif choice in group_names:
-        asset_group_name = choice
+    elif normalized_group in group_names:
+        asset_group_name = normalized_group
     else:
         print(_("\nInvalid selection."), file=sys.stderr)
         return

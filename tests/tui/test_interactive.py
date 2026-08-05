@@ -286,6 +286,28 @@ class TestActionHandlers:
         captured = capsys.readouterr()
         assert "Invalid filter syntax" in captured.err
 
+    def test_handle_install_assets_accepts_displayed_group_label(self, capsys):
+        """The localized label printed by the menu should remain selectable."""
+        def localized_group_label(group):
+            return f"localized {group.display_name_plural}"
+
+        with patch(
+            "git_stage_batch.tui.asset_menu.asset_group_menu_label",
+            side_effect=localized_group_label,
+        ):
+            with patch(
+                "builtins.input",
+                side_effect=["localized Claude agents", "", "no"],
+            ):
+                with patch(
+                    "git_stage_batch.tui.asset_menu.command_install_assets"
+                ) as mock_install:
+                    handle_asset_menu()
+
+        mock_install.assert_called_once_with("claude-agents", None, force=False)
+        captured = capsys.readouterr()
+        assert "localized Claude agents" in captured.out
+
 
 class TestHandleQuit:
     """Tests for handle_quit function."""

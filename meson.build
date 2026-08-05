@@ -8,6 +8,22 @@ python = import('python').find_installation('python3', pure: true)
 i18n = import('i18n')
 package_dir = python.get_install_dir() / 'git_stage_batch'
 
+python_cache_directory_script = files(
+  'scripts/list_python_cache_directories.py',
+)
+package_python_cache_directories = run_command(
+  python,
+  python_cache_directory_script,
+  meson.project_source_root() / 'src' / 'git_stage_batch',
+  check: true,
+).stdout().strip().split('\n')
+asset_python_cache_directories = run_command(
+  python,
+  python_cache_directory_script,
+  meson.project_source_root() / 'assets',
+  check: true,
+).stdout().strip().split('\n')
+
 # Generate POTFILES.in by scanning for translatable strings
 run_command(
   python,
@@ -21,6 +37,7 @@ subdir('po')
 install_subdir(
   'assets',
   install_dir: package_dir,
+  exclude_directories: asset_python_cache_directories,
   install_tag: 'python-runtime',
 )
 

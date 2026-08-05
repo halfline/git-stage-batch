@@ -10,6 +10,7 @@ configure_file(
 install_subdir(
   '.',
   install_dir: package_dir,
+  exclude_directories: package_python_cache_directories,
   exclude_files: [
     '_version.py.in',
     'meson.build',

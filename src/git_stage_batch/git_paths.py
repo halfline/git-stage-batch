@@ -6,6 +6,7 @@ import json
 import os
 
 from .exceptions import CommandError
+from .i18n import _
 
 
 _C_ESCAPES = {
@@ -41,7 +42,15 @@ def display_path(path: str) -> str:
 
     if decoded_path and all(character.isprintable() for character in decoded_path):
         return decoded_path
-    return json.dumps(decoded_path, ensure_ascii=False)
+    # JSON leaves most non-ASCII format controls literal when ensure_ascii is
+    # disabled. Escape those controls so a quoted pathname cannot alter the
+    # terminal's bidirectional state or hide characters, while keeping ordinary
+    # printable Unicode readable beside C0 escapes such as ``\n``.
+    has_non_ascii_control = any(
+        ord(character) >= 0x20 and not character.isprintable()
+        for character in decoded_path
+    )
+    return json.dumps(decoded_path, ensure_ascii=has_non_ascii_control)
 
 
 def nul_records(output: bytes) -> list[bytes]:
@@ -85,7 +94,7 @@ def unquote_path_token(token: bytes) -> bytes:
     if not token.startswith(b'"'):
         return token
     if len(token) < 2 or not token.endswith(b'"'):
-        raise CommandError("Unterminated quoted Git pathname")
+        raise CommandError(_("Unterminated quoted Git pathname"))
 
     result = bytearray()
     index = 1
@@ -99,7 +108,7 @@ def unquote_path_token(token: bytes) -> bytes:
 
         index += 1
         if index >= end:
-            raise CommandError("Incomplete escape in Git pathname")
+            raise CommandError(_("Incomplete escape in Git pathname"))
         escaped = token[index]
         if escaped in _C_ESCAPES:
             result.extend(_C_ESCAPES[escaped])
@@ -114,11 +123,13 @@ def unquote_path_token(token: bytes) -> bytes:
                 octal_end += 1
             octal_value = int(token[index:octal_end], 8)
             if octal_value > 0xFF:
-                raise CommandError("Octal escape is outside byte range in Git pathname")
+                raise CommandError(
+                    _("Octal escape is outside byte range in Git pathname")
+                )
             result.append(octal_value)
             index = octal_end
             continue
-        raise CommandError("Invalid escape in Git pathname")
+        raise CommandError(_("Invalid escape in Git pathname"))
 
     return bytes(result)
 
@@ -126,7 +137,7 @@ def unquote_path_token(token: bytes) -> bytes:
 def quoted_token_end(data: bytes, start: int = 0) -> int:
     """Return the exclusive end of a C-quoted token in *data*."""
     if start >= len(data) or data[start] != ord('"'):
-        raise CommandError("Expected quoted Git pathname")
+        raise CommandError(_("Expected quoted Git pathname"))
     index = start + 1
     while index < len(data):
         if data[index] == ord("\\"):
@@ -135,4 +146,4 @@ def quoted_token_end(data: bytes, start: int = 0) -> int:
         if data[index] == ord('"'):
             return index + 1
         index += 1
-    raise CommandError("Unterminated quoted Git pathname")
+    raise CommandError(_("Unterminated quoted Git pathname"))

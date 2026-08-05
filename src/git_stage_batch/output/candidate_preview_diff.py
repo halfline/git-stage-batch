@@ -9,6 +9,8 @@ from itertools import chain
 from ..core.buffer import LineBuffer
 from ..core.diff_parser import build_line_changes_from_patch_lines
 from ..core.models import LineEntry, LineLevelChange
+from ..git_paths import display_path, encode_path, quote_path_token
+from ..i18n import bidi_isolate
 from . import candidate_preview_snippets
 from .colors import Colors
 
@@ -51,8 +53,12 @@ def _candidate_buffer_diff(
         _unified_diff_lines(
             before_buffer,
             after_buffer,
-            fromfile=f"{label_before}/{file_path}".encode(),
-            tofile=f"{label_after}/{file_path}".encode(),
+            fromfile=quote_path_token(
+                label_before.encode("utf-8") + b"/" + encode_path(file_path)
+            ),
+            tofile=quote_path_token(
+                label_after.encode("utf-8") + b"/" + encode_path(file_path)
+            ),
             context_lines=context_lines,
         )
     )
@@ -137,11 +143,18 @@ def _print_candidate_line_changes(
 ) -> None:
     use_color = Colors.enabled()
     header = line_changes.header
-    header_part = f"@@ -{header.old_start},{header.old_len} +{header.new_start},{header.new_len} @@"
+    rendered_path = bidi_isolate(display_path(line_changes.path))
+    header_part = bidi_isolate(
+        f"@@ -{header.old_start},{header.old_len} "
+        f"+{header.new_start},{header.new_len} @@"
+    )
     if use_color:
-        print(f"{Colors.BOLD}{line_changes.path}{Colors.RESET} :: {Colors.CYAN}{header_part}{Colors.RESET}")
+        print(
+            f"{Colors.BOLD}{rendered_path}{Colors.RESET} :: "
+            f"{Colors.CYAN}{header_part}{Colors.RESET}"
+        )
     else:
-        print(f"{line_changes.path} :: {header_part}")
+        print(f"{rendered_path} :: {header_part}")
 
     line_numbers = [
         line_number

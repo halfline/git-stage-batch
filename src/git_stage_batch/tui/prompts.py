@@ -123,7 +123,7 @@ def prompt_action(use_color: bool = True, show_question: bool = True, has_hunk: 
 
         print()
     try:
-        prompt_text = _("Action: ")
+        prompt_text: str = _("Action: ")
         if use_color and Colors.enabled():
             # Remove trailing space, add color, add space after reset
             prompt_text = f"{Colors.BOLD}{prompt_text.rstrip()}{Colors.RESET} "

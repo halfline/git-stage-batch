@@ -10,8 +10,10 @@ def has_translatable_strings(file_path):
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
-            # Look for _() or _( or ngettext() calls
-            return bool(re.search(r'\b_\s*\(|ngettext\s*\(', content))
+            # Keep every supported gettext entry point in the extraction list.
+            return bool(
+                re.search(r"\b(?:_|ngettext|pgettext|npgettext)\s*\(", content)
+            )
     except (OSError, UnicodeDecodeError):
         return False
 

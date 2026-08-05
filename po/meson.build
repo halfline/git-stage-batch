@@ -1,6 +1,10 @@
 if get_option('python_wheel')
   gettext_result = i18n.gettext(
     'git-stage-batch',
+    args : [
+      '--keyword=pgettext:1c,2',
+      '--keyword=npgettext:1c,2,3',
+    ],
     install : false,
   )
   message_objects = gettext_result[0]
@@ -27,5 +31,11 @@ if get_option('python_wheel')
     )
   endforeach
 else
-  i18n.gettext('git-stage-batch')
+  i18n.gettext(
+    'git-stage-batch',
+    args : [
+      '--keyword=pgettext:1c,2',
+      '--keyword=npgettext:1c,2,3',
+    ],
+  )
 endif

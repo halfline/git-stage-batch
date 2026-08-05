@@ -1,5 +1,7 @@
 """Tests for byte-safe Git pathname helpers."""
 
+import json
+
 import pytest
 
 from git_stage_batch.exceptions import CommandError
@@ -25,6 +27,15 @@ def test_display_path_keeps_printable_unicode_readable():
 
 def test_display_path_quotes_control_characters_without_escaping_unicode():
     assert display_path("café\n.txt") == '"café\\n.txt"'
+
+
+def test_display_path_escapes_bidirectional_controls() -> None:
+    path = "before\u202eafter\u2069.txt"
+
+    displayed = display_path(path)
+
+    assert displayed == '"before\\u202eafter\\u2069.txt"'
+    assert json.loads(displayed) == path
 
 
 def test_nul_records_preserve_newlines_and_empty_path_components():

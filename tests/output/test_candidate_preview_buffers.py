@@ -62,6 +62,34 @@ def test_candidate_diff_printing_consumes_buffered_hunks(capsys):
     assert "+new" in output
 
 
+def test_candidate_diff_quotes_non_utf8_and_control_characters(capsys):
+    file_path = "before\u202eafter\n\udcff.txt"
+    with (
+        _guarded_buffer(b"old\n") as before,
+        _guarded_buffer(b"new\n") as after,
+    ):
+        rendered = render_candidate_buffer_diff(
+            file_path,
+            before,
+            after,
+            label_before="a",
+            label_after="b",
+            context_lines=3,
+        )
+        assert print_candidate_buffer_diff(
+            file_path,
+            before,
+            after,
+            context_lines=3,
+            ambiguity_target_line_range=None,
+        ) is True
+
+    assert '--- "a/before\\342\\200\\256after\\n\\377.txt"' in rendered
+    output = capsys.readouterr().out
+    assert '"before\\342\\200\\256after\\n\\377.txt" ::' in output
+    assert "\u202e" not in output
+
+
 def test_candidate_summary_matches_through_acquired_line_views():
     with (
         _guarded_buffer(b"old\n") as before,

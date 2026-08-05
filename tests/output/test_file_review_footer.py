@@ -22,6 +22,7 @@ def test_file_review_footer_aligns_actions_by_terminal_width(monkeypatch, capsys
         shown_pages=(1,),
         page_count=1,
         shown_change_spec="1",
+        shown_change_count=1,
         shown_line_spec="1",
         complete_line_action_selections=[],
         total_changes=1,

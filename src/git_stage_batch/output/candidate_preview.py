@@ -51,7 +51,13 @@ def _print_candidate_header(status: str, *, note: str | None) -> None:
         print(status)
     if note:
         if Colors.enabled():
-            print(f"{Colors.GRAY}{_('Note: {note}').format(note=note)}{Colors.RESET}")
+            print(
+                "{}{}{}".format(
+                    Colors.GRAY,
+                    _("Note: {note}").format(note=note),
+                    Colors.RESET,
+                )
+            )
         else:
             print(_("Note: {note}").format(note=note))
     _print_candidate_rule()
@@ -240,9 +246,9 @@ def render_operation_candidate_overview(
                 )
                 _print_candidate_summary_block(summary, indent="      ")
         action = _("Apply") if preview.operation == "apply" else _("Include")
-        print(f"   {_('Preview this candidate:')}")
+        print("   {}".format(_("Preview this candidate:")))
         print(f"     {show_candidate_command(preview, preview.ordinal)}")
-        print(f"   {_('{action} this candidate:').format(action=action)}")
+        print("   {}".format(_("{action} this candidate:").format(action=action)))
         print(f"     {execute_candidate_command(preview)}")
         print()
 

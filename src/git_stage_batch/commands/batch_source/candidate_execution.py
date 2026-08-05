@@ -49,7 +49,7 @@ def execute_apply_candidate(
             file=sys.stderr,
         )
         print(
-            f"  {bidi_isolate(file_path)}: {_('Working tree')}",
+            "  {}: {}".format(bidi_isolate(file_path), _("Working tree")),
             file=sys.stderr,
         )
         operation_parts = ["apply", "--from", raw_selector, "--file", file_path]
@@ -138,8 +138,8 @@ def execute_include_candidate(
             file=sys.stderr,
         )
         print(f"  {bidi_isolate(file_path)}:", file=sys.stderr)
-        print(f"    {_('Index')}", file=sys.stderr)
-        print(f"    {_('Working tree')}", file=sys.stderr)
+        print("    {}".format(_("Index")), file=sys.stderr)
+        print("    {}".format(_("Working tree")), file=sys.stderr)
         operation_parts = ["include", "--from", raw_selector, "--file", file_path]
         with undo_checkpoint(" ".join(operation_parts), worktree_paths=[file_path]):
             snapshot_file_if_untracked(file_path)

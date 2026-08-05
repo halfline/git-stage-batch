@@ -6,8 +6,13 @@ import shlex
 import sys
 
 from ..commands.install_assets import command_install_assets
-from ..data.asset_catalog import ASSET_GROUPS
-from ..i18n import _
+from ..data.asset_catalog import ASSET_GROUPS, asset_group_menu_label
+from ..i18n import _, bidi_isolate, pgettext
+from ..output.colors import format_hotkey
+from .action_prompt_choices import (
+    localized_word_aliases,
+    normalize_localized_choice,
+)
 from .prompts import unlocked_input
 
 
@@ -17,9 +22,11 @@ def handle_asset_menu() -> None:
 
     print()
     print(_("Install bundled assistant assets:"))
-    print(f"  [1] {_('all asset groups')}")
+    print("  {} {}".format(bidi_isolate("[1]"), _("all asset groups")))
     for idx, group_name in enumerate(group_names, 2):
-        print(f"  [{idx}] {group_name}")
+        group = ASSET_GROUPS[group_name]
+        display_name = asset_group_menu_label(group)
+        print(f"  {bidi_isolate(f'[{idx}]')} {display_name}")
 
     try:
         choice = unlocked_input(_("Group (empty to cancel): ")).strip()
@@ -30,7 +37,15 @@ def handle_asset_menu() -> None:
         return
 
     asset_group_name: str | None
-    if choice == "1" or choice.lower() in ("all", _("all asset groups")):
+    normalized_group = normalize_localized_choice(
+        choice,
+        stable_codes=frozenset({"1"}),
+        legacy_words={"all": "1", "all asset groups": "1"},
+        localized_words=localized_word_aliases(
+            ((str(_("all asset groups")), "1"),)
+        ),
+    )
+    if normalized_group == "1":
         asset_group_name = None
     elif choice.isdigit():
         group_idx = int(choice) - 2
@@ -62,11 +77,33 @@ def handle_asset_menu() -> None:
     else:
         filters = None
 
+    yes_key = pgettext("yes hotkey", "y")
+    no_key = pgettext("no hotkey", "n")
+    yes_text = _("yes")
+    no_text = _("no")
     try:
-        force_text = unlocked_input(_("Overwrite existing assets? [y/N]: ")).strip().lower()
+        force_text = unlocked_input(
+            _("Overwrite existing assets? {yes} / {no}: ").format(
+                yes=format_hotkey(yes_text, yes_key),
+                no=format_hotkey(no_text, no_key),
+            )
+        ).strip()
     except (KeyboardInterrupt, EOFError):
         return
 
-    force = force_text in ("y", "yes")
+    force_choice = normalize_localized_choice(
+        force_text,
+        stable_codes=frozenset({"y", "n"}),
+        legacy_words={"yes": "y", "no": "n"},
+        localized_words=localized_word_aliases(
+            (
+                (str(yes_key), "y"),
+                (str(no_key), "n"),
+                (str(yes_text), "y"),
+                (str(no_text), "n"),
+            )
+        ),
+    )
+    force = force_choice == "y"
     command_install_assets(asset_group_name, filters, force=force)
     print(_("\nAsset installation complete."))

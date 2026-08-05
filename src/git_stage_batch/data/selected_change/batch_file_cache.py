@@ -10,6 +10,7 @@ from ...batch.state.metadata_types import BatchMetadataDict
 from ...core.hashing import compute_stable_hunk_hash_from_lines
 from ...core.models import RenderedBatchDisplay
 from ...exceptions import CommandError
+from ...i18n import _
 from ...utils.file_io import write_text_file_contents
 from ...git_paths import encode_path, quote_path_token
 from ...utils.paths import (
@@ -51,7 +52,12 @@ def cache_batch_as_single_hunk(
     if file_path is None:
         file_path = sorted(files.keys())[0]
     elif file_path not in files:
-        raise CommandError(f"File '{file_path}' not found in batch '{batch_name}'")
+        raise CommandError(
+            _("File '{file}' not found in batch '{name}'").format(
+                file=file_path,
+                name=batch_name,
+            )
+        )
 
     rendered = render_batch_file_display(batch_name, file_path, metadata=metadata)
     if rendered is None:

@@ -13,7 +13,7 @@ from ..utils.git_index import git_add_paths_from_stdin
 from ..utils.git_repository import get_git_repository_root_path
 from ..utils.journal import log_journal
 from ..utils.paths import get_auto_added_files_file_path
-from ..i18n import _
+from ..i18n import ngettext
 
 
 UNTRACKED_PROGRESS_THRESHOLD = 1_000
@@ -76,9 +76,11 @@ def auto_add_untracked_files(
     )
     if show_progress and len(index_paths) >= UNTRACKED_PROGRESS_THRESHOLD:
         print(
-            _("Preparing {count} untracked paths for review...").format(
-                count=len(index_paths),
-            ),
+            ngettext(
+                "Preparing {count} untracked path for review...",
+                "Preparing {count} untracked paths for review...",
+                len(index_paths),
+            ).format(count=len(index_paths)),
             file=sys.stderr,
         )
     auto_added_path = get_auto_added_files_file_path()

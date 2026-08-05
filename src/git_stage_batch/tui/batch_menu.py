@@ -10,8 +10,12 @@ from ..commands.apply_from import command_apply_from_batch
 from ..commands.drop import command_drop_batch
 from ..commands.new import command_new_batch
 from ..commands.sift import command_sift_batch
-from ..i18n import _
+from ..i18n import _, bidi_isolate, pgettext
 from ..output.colors import Colors, format_hotkey
+from .action_prompt_choices import (
+    localized_word_aliases,
+    normalize_localized_choice,
+)
 from .prompts import unlocked_input
 
 
@@ -46,41 +50,56 @@ def handle_batch_menu() -> None:
                     print(_("  {name} - {note}").format(name=name, note=note))
             else:
                 if use_color:
-                    print(f"  {Colors.CYAN}{name}{Colors.RESET}")
+                    print(f"  {Colors.CYAN}{bidi_isolate(name)}{Colors.RESET}")
                 else:
-                    print(f"  {name}")
+                    print(f"  {bidi_isolate(name)}")
         print()
 
         print(_("Batch operations:"))
-        operations = [
+        operations = (
             (_("create"), "c", Colors.GREEN if use_color else ""),
             (_("edit"), "e", ""),
             (_("drop"), "d", Colors.RED if use_color else ""),
             (_("apply"), "a", ""),
             (_("sift"), "s", ""),
-        ]
+        )
         for text, hotkey, color in operations:
             formatted = format_hotkey(text, hotkey, color)
             print(f"  {formatted}")
         print()
 
         try:
-            action = unlocked_input(_("Select: ")).strip().lower()
+            raw_action = unlocked_input(_("Select: ")).strip()
         except (KeyboardInterrupt, EOFError):
             return
 
-        if not action:
+        if not raw_action:
             return
 
-        if action in ("c", "create"):
+        action = normalize_localized_choice(
+            raw_action,
+            stable_codes=frozenset({"c", "e", "d", "a", "s"}),
+            legacy_words={
+                "create": "c",
+                "edit": "e",
+                "drop": "d",
+                "apply": "a",
+                "sift": "s",
+            },
+            localized_words=localized_word_aliases(
+                (str(text), hotkey) for text, hotkey, _color in operations
+            ),
+        )
+
+        if action == "c":
             _batch_create()
-        elif action in ("e", "edit"):
+        elif action == "e":
             _batch_edit()
-        elif action in ("d", "drop"):
+        elif action == "d":
             _batch_drop()
-        elif action in ("a", "apply"):
+        elif action == "a":
             _batch_apply()
-        elif action in ("s", "sift"):
+        elif action == "s":
             _batch_sift()
         else:
             print(_("\nUnknown action: '{action}'").format(action=action))
@@ -104,7 +123,10 @@ def _batch_create() -> bool:
 
 def _batch_edit() -> None:
     """Prompt to select a batch and edit its note."""
-    batch_name = _prompt_select_batch(purpose=_("edit"), skip_if_single=True)
+    batch_name = _prompt_select_batch(
+        purpose=pgettext("batch selection purpose", "edit"),
+        skip_if_single=True,
+    )
     if not batch_name:
         return
 
@@ -119,7 +141,10 @@ def _batch_edit() -> None:
 
 def _batch_drop() -> None:
     """Prompt to select a batch and drop it."""
-    batch_name = _prompt_select_batch(purpose=_("drop"), skip_if_single=True)
+    batch_name = _prompt_select_batch(
+        purpose=pgettext("batch selection purpose", "drop"),
+        skip_if_single=True,
+    )
     if not batch_name:
         return
 
@@ -129,7 +154,10 @@ def _batch_drop() -> None:
 
 def _batch_apply() -> None:
     """Prompt to select a batch and apply it."""
-    batch_name = _prompt_select_batch(purpose=_("apply"), skip_if_single=False)
+    batch_name = _prompt_select_batch(
+        purpose=pgettext("batch selection purpose", "apply"),
+        skip_if_single=False,
+    )
     if not batch_name:
         return
 
@@ -139,7 +167,10 @@ def _batch_apply() -> None:
 
 def _batch_sift() -> None:
     """Prompt to select a batch and sift it."""
-    source_batch = _prompt_select_batch(purpose=_("sift"), skip_if_single=True)
+    source_batch = _prompt_select_batch(
+        purpose=pgettext("batch selection purpose", "sift"),
+        skip_if_single=True,
+    )
     if not source_batch:
         return
 
@@ -176,8 +207,16 @@ def _prompt_select_batch(purpose: str, skip_if_single: bool = False) -> str:
     for idx, name in enumerate(batch_names, 1):
         metadata = read_batch_metadata(name)
         note = metadata.get("note", "")
-        note_display = f" - {note}" if note else ""
-        print(f"  [{idx}] {name}{note_display}")
+        if note:
+            print(
+                _("  {number} {name} - {note}").format(
+                    number=f"[{idx}]",
+                    name=name,
+                    note=note,
+                )
+            )
+        else:
+            print(_("  {number} {name}").format(number=f"[{idx}]", name=name))
 
     print()
     try:

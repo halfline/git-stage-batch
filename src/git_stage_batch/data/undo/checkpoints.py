@@ -29,7 +29,7 @@ from ..recovery_anchors import (
 )
 from ...utils.session_start_point import current_head_commit
 from ...exceptions import CommandError
-from ...i18n import _
+from ...i18n import _, ngettext
 from ...utils.git_refs import (
     update_git_refs,
 )
@@ -122,9 +122,12 @@ def _validate_nested_checkpoint(
         missing_paths = sorted(requested_paths - tracked_paths)
         if missing_paths:
             raise CommandError(
-                _(
+                ngettext(
                     "Cannot start nested undoable operation because the outer "
-                    "checkpoint does not cover {scope} path(s): {paths}"
+                    "checkpoint does not cover this {scope} path: {paths}",
+                    "Cannot start nested undoable operation because the outer "
+                    "checkpoint does not cover these {scope} paths: {paths}",
+                    len(missing_paths),
                 ).format(
                     scope=scope_name,
                     paths=", ".join(missing_paths),
@@ -574,9 +577,12 @@ def undo_last_checkpoint(*, force: bool = False) -> str:
     if conflicts and not force:
         preview = ", ".join(conflicts[:5])
         if len(conflicts) > 5:
-            preview = _("{preview}, and {count} more").format(
-                preview=preview, count=len(conflicts) - 5
-            )
+            remaining = len(conflicts) - 5
+            preview = ngettext(
+                "{preview}, and {count} more conflict",
+                "{preview}, and {count} more conflicts",
+                remaining,
+            ).format(preview=preview, count=remaining)
         raise CommandError(
             _(
                 "Cannot undo because current state has changed since the checkpoint: {items}.\n"
@@ -684,9 +690,12 @@ def redo_last_checkpoint(*, force: bool = False) -> str:
     if conflicts and not force:
         preview = ", ".join(conflicts[:5])
         if len(conflicts) > 5:
-            preview = _("{preview}, and {count} more").format(
-                preview=preview, count=len(conflicts) - 5
-            )
+            remaining = len(conflicts) - 5
+            preview = ngettext(
+                "{preview}, and {count} more conflict",
+                "{preview}, and {count} more conflicts",
+                remaining,
+            ).format(preview=preview, count=remaining)
         raise CommandError(
             _(
                 "Cannot redo because current state has changed since the undo: {items}.\n"

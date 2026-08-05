@@ -221,7 +221,7 @@ def include_live_line_selection(
             )
             if not quiet:
                 print(
-                    _("✓ Included line(s): {lines} from {file}").format(
+                    _("✓ Included selection {lines} from {file}").format(
                         lines=line_id_specification,
                         file=line_changes.path,
                     ),
@@ -234,7 +234,7 @@ def include_live_line_selection(
         finish_review_scoped_line_action(review_state, file_path=line_changes.path)
     if selection_context.preserve_selected_state and not quiet:
         print(
-            _("✓ Included line(s): {lines} from {file}").format(
+            _("✓ Included selection {lines} from {file}").format(
                 lines=line_id_specification,
                 file=line_changes.path,
             ),

@@ -200,8 +200,8 @@ def prompt_quit_session() -> str:
 
     print()
     try:
-        y_text = _("y")
-        n_text = _("n")
+        y_text = pgettext("yes hotkey", "y")
+        n_text = pgettext("no hotkey", "n")
         yes_text = _("yes")
         no_text = _("no")
 
@@ -212,20 +212,36 @@ def prompt_quit_session() -> str:
             y_label = y_text
             n_label = n_text
 
-        prompt_text = _("Keep staged changes? [{y}]es / [{n}]o: ").format(
-            y=y_label,
-            n=n_label,
+        prompt_text = _(
+            "Keep staged changes? [{yes_key}] {yes} / [{no_key}] {no}: "
+        ).format(
+            yes_key=y_label,
+            yes=yes_text,
+            no_key=n_label,
+            no=no_text,
         )
-        response = unlocked_input(wrap_prompt_for_readline(prompt_text)).strip().lower()
+        response = unlocked_input(wrap_prompt_for_readline(prompt_text)).strip()
     except (KeyboardInterrupt, EOFError):
         return "cancel"
 
-    if response in (y_text.lower(), yes_text.lower()):
+    normalized = action_prompt_choices.normalize_localized_choice(
+        response,
+        stable_codes=frozenset({"y", "n"}),
+        legacy_words={"yes": "y", "no": "n"},
+        localized_words=action_prompt_choices.localized_word_aliases(
+            (
+                (str(y_text), "y"),
+                (str(n_text), "n"),
+                (str(yes_text), "y"),
+                (str(no_text), "n"),
+            )
+        ),
+    )
+    if normalized == "y":
         return "keep"
-    elif response in (n_text.lower(), no_text.lower()):
+    if normalized == "n":
         return "undo"
-    else:
-        return "cancel"
+    return "cancel"
 
 
 def prompt_shell_command() -> str:
@@ -282,9 +298,12 @@ def prompt_fixup_action(use_color: bool = True) -> str:
         Normalized choice ('y', 'n', 'r', or other input)
     """
     try:
-        y_text = _("y")
-        n_text = _("n")
-        r_text = _("r")
+        y_text = pgettext("yes hotkey", "y")
+        n_text = pgettext("next hotkey", "n")
+        r_text = pgettext("reset hotkey", "r")
+        yes_text = _("yes")
+        next_text = _("next")
+        reset_text = _("reset")
 
         if use_color and Colors.enabled():
             y_label = f"{Colors.GREEN}{y_text}{Colors.RESET}"
@@ -295,22 +314,40 @@ def prompt_fixup_action(use_color: bool = True) -> str:
             n_label = n_text
             r_label = r_text
 
-        prompt_text = _("[{y}]es / [{n}]ext / [{r}]eset: ").format(
-            y=y_label,
-            n=n_label,
-            r=r_label,
+        prompt_text = _(
+            "[{yes_key}] {yes} / [{next_key}] {next} / [{reset_key}] {reset}: "
+        ).format(
+            yes_key=y_label,
+            yes=yes_text,
+            next_key=n_label,
+            next=next_text,
+            reset_key=r_label,
+            reset=reset_text,
         )
-        choice = unlocked_input(wrap_prompt_for_readline(prompt_text)).strip().lower()
+        choice = unlocked_input(wrap_prompt_for_readline(prompt_text)).strip()
     except (KeyboardInterrupt, EOFError):
         return "q"  # Ctrl-C or Ctrl-D cancels
 
-    # Normalize full words to single letters
-    word_to_letter = {
-        "yes": "y",
-        "next": "n",
-        "reset": "r",
-        "cancel": "q",
-        "quit": "q",
-    }
-
-    return word_to_letter.get(choice, choice)
+    return action_prompt_choices.normalize_localized_choice(
+        choice,
+        stable_codes=frozenset({"y", "n", "r", "q"}),
+        legacy_words={
+            "yes": "y",
+            "next": "n",
+            "reset": "r",
+            "cancel": "q",
+            "quit": "q",
+        },
+        localized_words=action_prompt_choices.localized_word_aliases(
+            (
+                (str(y_text), "y"),
+                (str(yes_text), "y"),
+                (str(n_text), "n"),
+                (str(next_text), "n"),
+                (str(r_text), "r"),
+                (str(reset_text), "r"),
+                (str(_("cancel")), "q"),
+                (str(_("quit")), "q"),
+            )
+        ),
+    )

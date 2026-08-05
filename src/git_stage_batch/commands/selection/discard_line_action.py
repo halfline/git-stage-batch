@@ -36,7 +36,7 @@ def discard_live_line_selection(
             file=file,
         )
         print(
-            _("✓ Discarded line(s): {lines} from {file}").format(
+            _("✓ Discarded selection {lines} from {file}").format(
                 lines=line_id_specification,
                 file=file_path,
             ),

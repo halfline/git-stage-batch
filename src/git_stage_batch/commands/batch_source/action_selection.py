@@ -23,7 +23,7 @@ from ...data.batch_file_scope import (
 )
 from ...data.file_review.records import FileReviewAction
 from ...exceptions import exit_with_error
-from ...i18n import _
+from ...i18n import _, pgettext
 from ..selection import replacement_selection
 from .action_context import BatchSourceActionContext
 
@@ -60,7 +60,6 @@ def resolve_apply_action_selection(
         files,
         selected_ids,
         binary_message=_("Cannot use --lines with binary files. Apply the whole file instead."),
-        submodule_action=_("Apply"),
     )
     selection_ids, rendered = _translate_selected_ids(
         context.batch_name,
@@ -103,7 +102,6 @@ def resolve_include_action_selection(
         files,
         selected_ids,
         binary_message=_("Cannot use --lines with binary files. Include the whole file instead."),
-        submodule_action=_("Include"),
     )
     if selected_ids and replacement_payload is not None:
         replacement_selection.require_contiguous_display_selection(selected_ids)
@@ -148,7 +146,6 @@ def resolve_discard_action_selection(
         binary_message=_(
             "Cannot use --lines with binary files. Discard the whole file instead."
         ),
-        submodule_action=_("Discard"),
     )
     selection_ids, rendered = _translate_selected_ids(
         context.batch_name,
@@ -199,7 +196,11 @@ def _resolve_batch_source_action_files(
         context.batch_name,
         files,
         line_ids,
-        command_name,
+        {
+            "apply": pgettext("line-level operation noun", "apply"),
+            "include": pgettext("line-level operation noun", "include"),
+            "discard": pgettext("line-level operation noun", "discard"),
+        }.get(command_name, command_name),
     )
     return file, files, selected_ids
 
@@ -209,7 +210,6 @@ def _refuse_line_selection_for_atomic_files(
     selected_ids: set[int] | None,
     *,
     binary_message: str,
-    submodule_action: str,
 ) -> None:
     if not selected_ids:
         return
@@ -222,7 +222,7 @@ def _refuse_line_selection_for_atomic_files(
             _("Cannot use --lines with file mode actions. Use the whole action instead.")
         )
     if is_batch_submodule_pointer(file_meta):
-        refuse_batch_submodule_pointer_lines(submodule_action)
+        refuse_batch_submodule_pointer_lines()
 
 
 def _translate_selected_ids(

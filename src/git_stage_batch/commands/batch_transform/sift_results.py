@@ -34,6 +34,7 @@ from ...core.text_lifecycle import (
 from ...utils.repository_buffers import read_git_object_buffer_or_empty
 from ...utils.repository_buffers import load_git_blob_as_buffer
 from ...exceptions import MergeError
+from ...i18n import _, ngettext
 from ...core.text_lines import normalize_line_sequence_endings
 
 
@@ -415,8 +416,13 @@ def validate_sifted_text_file_result_from_lines(
     for claimed_line in resolved.presence_line_set:
         if claimed_line < 1 or claimed_line > len(target_lines):
             raise MergeError(
-                f"Sift validation failed: claimed line {claimed_line} is out of bounds "
-                f"(target content has {len(target_lines)} lines)"
+                ngettext(
+                    "Sift validation failed: claimed line {line} is out of bounds "
+                    "(target content has {count} line)",
+                    "Sift validation failed: claimed line {line} is out of bounds "
+                    "(target content has {count} lines)",
+                    len(target_lines),
+                ).format(line=claimed_line, count=len(target_lines))
             )
 
     for deletion_claim in resolved.deletion_claims:
@@ -426,11 +432,21 @@ def validate_sifted_text_file_result_from_lines(
                 or deletion_claim.anchor_line > len(target_lines)
             ):
                 raise MergeError(
-                    f"Sift validation failed: deletion anchor {deletion_claim.anchor_line} "
-                    f"is out of bounds (target content has {len(target_lines)} lines)"
+                    ngettext(
+                        "Sift validation failed: deletion anchor {anchor} is out of "
+                        "bounds (target content has {count} line)",
+                        "Sift validation failed: deletion anchor {anchor} is out of "
+                        "bounds (target content has {count} lines)",
+                        len(target_lines),
+                    ).format(
+                        anchor=deletion_claim.anchor_line,
+                        count=len(target_lines),
+                    )
                 )
         if not deletion_claim.content_lines:
-            raise MergeError("Sift validation failed: absence claim has empty content")
+            raise MergeError(
+                _("Sift validation failed: absence claim has empty content")
+            )
 
     try:
         reconstructed_buffer = merge_batch_from_line_sequences_as_buffer(
@@ -439,16 +455,31 @@ def validate_sifted_text_file_result_from_lines(
             working_lines,
             spool_dir=spool_dir,
         )
-    except MergeError as e:
+    except MergeError as error:
         raise MergeError(
-            f"Sift validation failed: destination representation cannot be merged: {e}"
-        ) from e
+            _(
+                "Sift validation failed: destination representation cannot be "
+                "merged: {error}"
+            ).format(error=error)
+        ) from error
 
     with reconstructed_buffer as reconstructed:
         if not buffer_matches(reconstructed, target_lines):
             target_byte_count = buffer_byte_count(target_lines)
+            expected_size = ngettext(
+                "{count} byte",
+                "{count} bytes",
+                target_byte_count,
+            ).format(count=target_byte_count)
+            actual_size = ngettext(
+                "{count} byte",
+                "{count} bytes",
+                reconstructed.byte_count,
+            ).format(count=reconstructed.byte_count)
             raise MergeError(
-                f"Sift validation failed: applying destination representation does not produce "
-                f"the expected target content. Expected {target_byte_count} bytes, got "
-                f"{reconstructed.byte_count} bytes."
+                _(
+                    "Sift validation failed: applying destination representation does "
+                    "not produce the expected target content. Expected {expected}, "
+                    "got {actual}."
+                ).format(expected=expected_size, actual=actual_size)
             )

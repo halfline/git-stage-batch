@@ -13,6 +13,7 @@ from ...utils.file_patterns import list_changed_files, resolve_gitignore_style_p
 from . import block_actions
 from .batch_actions import apply_batch_file_action
 from .live_actions import apply_live_file_action
+from .prompts import normalize_review_action
 from .session import FileReviewSessionState
 from ..flow import FlowState, LocationRole
 from ..prompts import confirm_destructive_operation, unlocked_input, wrap_prompt_for_readline
@@ -77,7 +78,14 @@ def choose_review_file(
         for index, entry in enumerate(entries, start=1):
             marker = " *" if entry.path == selected_path else ""
             mark = "*" if entry.path in marked_paths else " "
-            print(f"  [{index}] [{mark}] {entry.path}{marker}")
+            print(
+                _("  {number} {mark} {path}{marker}").format(
+                    number=f"[{index}]",
+                    mark=f"[{mark}]",
+                    path=entry.path,
+                    marker=marker,
+                )
+            )
 
         print()
         try:
@@ -89,7 +97,8 @@ def choose_review_file(
         except (KeyboardInterrupt, EOFError):
             return None
 
-        if choice in {"q", "quit", "back"}:
+        normalized_choice = normalize_review_action(choice)
+        if normalized_choice == "q":
             return None
         if choice.startswith("/"):
             pattern = choice[1:] or None
@@ -100,8 +109,12 @@ def choose_review_file(
         if choice.startswith("u "):
             _unmark_file_choice(choice[2:], entries, marked_paths)
             continue
-        if choice in {"i", "include", "s", "skip", "d", "discard", "B", "block"}:
-            _apply_marked_file_action(flow_state, marked_paths, choice)
+        if normalized_choice in {"i", "s", "d", "B"}:
+            _apply_marked_file_action(
+                flow_state,
+                marked_paths,
+                normalized_choice,
+            )
             marked_paths.clear()
             continue
         if choice.isdigit():
@@ -203,14 +216,13 @@ def _apply_marked_file_action(
 
 
 def _normalize_marked_file_action(raw_action: str) -> str | None:
-    action = raw_action.strip()
-    if action in {"B", "block"}:
+    action = normalize_review_action(raw_action.strip())
+    if action == "B":
         return "B"
-    lowered = action.lower()
-    if lowered in {"i", "include"}:
+    if action == "i":
         return "I"
-    if lowered in {"s", "skip"}:
+    if action == "s":
         return "S"
-    if lowered in {"d", "discard"}:
+    if action == "d":
         return "D"
     return None

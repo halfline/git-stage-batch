@@ -4,10 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 
-from ...batch.operation_candidate_types import OperationCandidatePreview
+from ...batch.operation_candidate_types import (
+    CandidateOperation,
+    OperationCandidatePreview,
+)
+from ...batch.operation_candidate_labels import candidate_operation_label
 from ...batch.operation_candidate_state import load_candidate_preview_state
 from ...exceptions import CommandError
-from ...i18n import _
+from ...i18n import _, ngettext
 
 
 def candidate_preview_for_ordinal(
@@ -25,7 +29,7 @@ def require_candidate_preview_for_ordinal(
     ordinal: int,
     *,
     batch_name: str,
-    operation: str,
+    operation: CandidateOperation,
     file_path: str,
 ) -> OperationCandidatePreview:
     """Return the preview for a one-based ordinal or raise a command error."""
@@ -35,10 +39,16 @@ def require_candidate_preview_for_ordinal(
     if ordinal < 1:
         raise CommandError(_("Candidate ordinal must be at least 1."))
     raise CommandError(
-        _("Batch '{batch}' has {count} {operation} candidates for {file}; candidate {ordinal} does not exist.").format(
+        ngettext(
+            "Batch '{batch}' has {count} {operation} candidate for {file}; "
+            "candidate {ordinal} does not exist.",
+            "Batch '{batch}' has {count} {operation} candidates for {file}; "
+            "candidate {ordinal} does not exist.",
+            len(previews),
+        ).format(
             batch=batch_name,
             count=len(previews),
-            operation=operation,
+            operation=candidate_operation_label(operation),
             file=file_path,
             ordinal=ordinal,
         )

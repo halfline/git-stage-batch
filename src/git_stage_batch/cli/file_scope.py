@@ -203,11 +203,14 @@ def _resolve_file_argument_patterns(
 
     display_patterns.extend(file_patterns or [])
     pattern_values.extend(file_patterns or [])
-    resolved_patterns = (
-        resolve_gitignore_style_patterns(candidates, pattern_values)
-        if pattern_values else
-        []
-    )
+    try:
+        resolved_patterns = (
+            resolve_gitignore_style_patterns(candidates, pattern_values)
+            if pattern_values
+            else []
+        )
+    except ValueError as error:
+        raise CommandError(str(error)) from error
     resolved_files = list(dict.fromkeys([*exact_files, *resolved_patterns]))
     return resolved_files, display_patterns
 

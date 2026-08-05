@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from itertools import chain
 from typing import Iterable, Iterator, Protocol
 
+from ..i18n import _
+
 
 class LineSelection(Protocol):
     """Positive 1-based line selection with cheap range operations."""
@@ -46,9 +48,17 @@ def _normalize_line_ranges(
 
     for start, end in sorted_ranges:
         if start <= 0 or end <= 0:
-            raise ValueError(f"Line IDs must be positive: {start}-{end}")
+            raise ValueError(
+                _("Line IDs must be positive: {value}").format(
+                    value=f"{start}-{end}"
+                )
+            )
         if start > end:
-            raise ValueError(f"Range start must be <= end: {start}-{end}")
+            raise ValueError(
+                _("Range start must be <= end: {value}").format(
+                    value=f"{start}-{end}"
+                )
+            )
 
         if current_start is None or current_end is None:
             current_start = start
@@ -106,19 +116,35 @@ def scan_line_range_specs(
                     try:
                         start = end = int(item)
                     except ValueError as error:
-                        raise ValueError(f"Invalid line ID: {item}") from error
+                        raise ValueError(
+                            _("Invalid line ID: {value}").format(value=item)
+                        ) from error
                     if start <= 0:
-                        raise ValueError(f"Line ID must be positive: {item}")
+                        raise ValueError(
+                            _("Line ID must be positive: {value}").format(
+                                value=item
+                            )
+                        )
                 else:
                     try:
                         start = int(item[:range_separator].strip())
                         end = int(item[range_separator + 1 :].strip())
                     except ValueError as error:
-                        raise ValueError(f"Invalid range: {item}") from error
+                        raise ValueError(
+                            _("Invalid range: {value}").format(value=item)
+                        ) from error
                     if start <= 0 or end <= 0:
-                        raise ValueError(f"Line IDs must be positive: {item}")
+                        raise ValueError(
+                            _("Line IDs must be positive: {value}").format(
+                                value=item
+                            )
+                        )
                 if start > end:
-                    raise ValueError(f"Range start must be <= end: {item}")
+                    raise ValueError(
+                        _("Range start must be <= end: {value}").format(
+                            value=item
+                        )
+                    )
                 yield start, end
 
             if separator < 0:
@@ -164,7 +190,7 @@ class LineRanges:
             try:
                 second_spec = next(remaining_specs)
             except StopIteration as error:
-                raise ValueError("Selection string cannot be empty") from error
+                raise ValueError(_("Selection string cannot be empty")) from error
             specs = chain((first_spec, second_spec), remaining_specs)
         else:
             specs = chain((first_spec,), remaining_specs)
@@ -298,7 +324,8 @@ class LineRanges:
 def parse_positive_selection(
     selection: str,
     *,
-    item_name: str = "Line ID",
+    item_name: str | None = None,
+    item_name_plural: str | None = None,
     reject_empty_items: bool = False,
 ) -> list[int]:
     """Parse a positive integer selection string into sorted unique IDs.
@@ -319,18 +346,27 @@ def parse_positive_selection(
     Raises:
         ValueError: If the selection string is invalid
     """
+    invalid_item_name: str
+    if item_name is None:
+        item_name = _("Line ID")
+        invalid_item_name = _("line ID")
+        item_name_plural = _("Line IDs")
+    else:
+        invalid_item_name = item_name
+        if item_name_plural is None:
+            item_name_plural = item_name
+
     if not selection or not selection.strip():
-        raise ValueError("Selection string cannot be empty")
+        raise ValueError(_("Selection string cannot be empty"))
 
     selected_ids: set[int] = set()
     parts = selection.split(",")
-    invalid_item_name = "line ID" if item_name == "Line ID" else item_name
 
     for part in parts:
         part = part.strip()
         if not part:
             if reject_empty_items:
-                raise ValueError("Selection contains an empty item")
+                raise ValueError(_("Selection contains an empty item"))
             continue
 
         # Check if this looks like a range (contains "-" that's not at the start)
@@ -346,13 +382,22 @@ def parse_positive_selection(
                 start = int(start_str.strip())
                 end = int(end_str.strip())
             except ValueError as e:
-                raise ValueError(f"Invalid range: {part}") from e
+                raise ValueError(
+                    _("Invalid range: {value}").format(value=part)
+                ) from e
 
             if start <= 0 or end <= 0:
-                raise ValueError(f"{item_name}s must be positive: {part}")
+                raise ValueError(
+                    _("{items} must be positive: {value}").format(
+                        items=item_name_plural,
+                        value=part,
+                    )
+                )
 
             if start > end:
-                raise ValueError(f"Range start must be <= end: {part}")
+                raise ValueError(
+                    _("Range start must be <= end: {value}").format(value=part)
+                )
 
             selected_ids.update(range(start, end + 1))
         else:
@@ -360,10 +405,20 @@ def parse_positive_selection(
             try:
                 selected_id = int(part)
             except ValueError as e:
-                raise ValueError(f"Invalid {invalid_item_name}: {part}") from e
+                raise ValueError(
+                    _("Invalid {item}: {value}").format(
+                        item=invalid_item_name,
+                        value=part,
+                    )
+                ) from e
 
             if selected_id <= 0:
-                raise ValueError(f"{item_name} must be positive: {part}")
+                raise ValueError(
+                    _("{item} must be positive: {value}").format(
+                        item=item_name,
+                        value=part,
+                    )
+                )
 
             selected_ids.add(selected_id)
 
@@ -372,13 +427,13 @@ def parse_positive_selection(
 
 def parse_line_selection(selection: str) -> list[int]:
     """Parse a line selection string into a list of line IDs."""
-    return parse_positive_selection(selection, item_name="Line ID")
+    return parse_positive_selection(selection)
 
 
 def parse_line_selection_ranges(selection: str) -> LineRanges:
     """Parse a line selection string into normalized line ranges."""
     if not selection or not selection.strip():
-        raise ValueError("Selection string cannot be empty")
+        raise ValueError(_("Selection string cannot be empty"))
     return LineRanges.from_ranges(scan_line_range_specs((selection,)))
 
 

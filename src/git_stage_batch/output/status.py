@@ -9,7 +9,7 @@ from ..data.status_types import (
     FileReviewSummary,
     StatusSummary,
 )
-from ..i18n import _
+from ..i18n import _, ngettext
 
 
 def print_status_summary(summary: StatusSummary) -> None:
@@ -34,10 +34,34 @@ def print_status_summary(summary: StatusSummary) -> None:
         _print_file_review(file_review_summary)
 
     print(_("Progress this iteration:"))
-    print(_("  Included:  {count} hunks").format(count=progress["included"]))
-    print(_("  Skipped:   {count} hunks").format(count=len(skipped_hunks)))
-    print(_("  Discarded: {count} hunks").format(count=progress["discarded"]))
-    print(_("  Remaining: ~{count} hunks").format(count=progress["remaining"]))
+    print(
+        ngettext(
+            "  Included:  {count} hunk",
+            "  Included:  {count} hunks",
+            progress["included"],
+        ).format(count=progress["included"])
+    )
+    print(
+        ngettext(
+            "  Skipped:   {count} hunk",
+            "  Skipped:   {count} hunks",
+            len(skipped_hunks),
+        ).format(count=len(skipped_hunks))
+    )
+    print(
+        ngettext(
+            "  Discarded: {count} hunk",
+            "  Discarded: {count} hunks",
+            progress["discarded"],
+        ).format(count=progress["discarded"])
+    )
+    print(
+        ngettext(
+            "  Remaining: ~{count} hunk",
+            "  Remaining: ~{count} hunks",
+            progress["remaining"],
+        ).format(count=progress["remaining"])
+    )
 
     if skipped_hunks:
         print()
@@ -74,15 +98,27 @@ def _print_selected_change(selected_summary: ChangeSummary) -> None:
     if ids_str:
         print(_("  [#{ids}]").format(ids=ids_str))
     if selected_summary.get("change_type"):
+        change_type = selected_summary["change_type"]
+        change_type_label = {
+            "added": _("added"),
+            "deleted": _("deleted"),
+            "modified": _("modified"),
+            "renamed": _("renamed"),
+        }.get(change_type, change_type)
         print(_("  {change_type}").format(
-            change_type=selected_summary["change_type"],
+            change_type=change_type_label,
         ))
     print()
 
 
 def _print_file_review(file_review_summary: FileReviewSummary) -> None:
     print(_("Last file review:"))
-    source = file_review_summary["source"]
+    source_value = file_review_summary["source"]
+    source = {
+        "file-vs-head": _("working tree versus HEAD"),
+        "unstaged": _("unstaged changes"),
+        "batch": _("batch"),
+    }.get(source_value, source_value)
     if file_review_summary["batch_name"]:
         source = _("batch {name}").format(name=file_review_summary["batch_name"])
     print(_("  source: {source}").format(source=source))

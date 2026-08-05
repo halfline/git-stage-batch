@@ -5,9 +5,17 @@ from __future__ import annotations
 import shlex
 from dataclasses import dataclass
 
-from ..core.models import BinaryFileChange, FileModeChange, GitlinkChange, LineLevelChange, RenameChange, TextFileDeletionChange
-from ..i18n import _
+from ..core.models import (
+    BinaryFileChange,
+    FileModeChange,
+    GitlinkChange,
+    LineLevelChange,
+    RenameChange,
+    TextFileDeletionChange,
+)
+from ..i18n import _, ngettext, npgettext
 from .file_review_model_builder import build_file_review_model
+from .terminal_width import pad_to_terminal_width, terminal_cell_width
 
 
 @dataclass(frozen=True)
@@ -26,6 +34,15 @@ class FileReviewListEntry:
     mode_change: bool = False
     rename_old_path: str | None = None
     rename_new_path: str | None = None
+
+
+def _change_type_label(change_type: str) -> str:
+    """Return a localized atomic-file change type."""
+    return {
+        "added": _("added"),
+        "deleted": _("deleted"),
+        "modified": _("modified"),
+    }.get(change_type, change_type)
 
 
 def make_file_review_list_entry(
@@ -126,69 +143,97 @@ def print_file_review_list(
     command_source_args: str = "",
 ) -> None:
     """Print a navigational file list for multiple file reviews."""
-    print("── matched files " + "─" * 55)
+    print(_("── matched files ") + "─" * 55)
     print(source_label)
     total_changes = sum(entry.change_count for entry in entries)
     total_lines = sum(entry.changed_line_count for entry in entries)
+    file_summary = npgettext(
+        "file review file count",
+        "{count} file",
+        "{count} files",
+        len(entries),
+    ).format(count=len(entries))
+    change_summary = ngettext(
+        "{count} change",
+        "{count} changes",
+        total_changes,
+    ).format(count=total_changes)
+    line_summary = ngettext(
+        "{count} changed line",
+        "{count} changed lines",
+        total_lines,
+    ).format(count=total_lines)
     print(
-        _("Matched: {files} files · {changes} changes · {lines} changed lines").format(
-            files=len(entries),
-            changes=total_changes,
-            lines=total_lines,
+        _("Matched: {files} · {changes} · {lines}").format(
+            files=file_summary,
+            changes=change_summary,
+            lines=line_summary,
         )
     )
     print()
-    path_width = max((len(entry.path) for entry in entries), default=4)
+    path_width = max(
+        (terminal_cell_width(entry.path) for entry in entries),
+        default=4,
+    )
     for index, entry in enumerate(entries, start=1):
-        change_word = _("change") if entry.change_count == 1 else _("changes")
-        page_word = _("page") if entry.page_count == 1 else _("pages")
+        padded_path = pad_to_terminal_width(entry.path, path_width)
+        entry_changes = ngettext(
+            "{count} change",
+            "{count} changes",
+            entry.change_count,
+        ).format(count=entry.change_count)
+        entry_pages = ngettext(
+            "{count} page",
+            "{count} pages",
+            entry.page_count,
+        ).format(count=entry.page_count)
         if entry.gitlink_change_type is not None:
-            print(
-                f"{index}. {entry.path.ljust(path_width)}  "
-                f"{entry.change_count} {change_word} · "
-                f"submodule pointer {entry.gitlink_change_type} · "
-                f"{entry.page_count} {page_word}"
+            detail = _("submodule pointer {change_type}").format(
+                change_type=_change_type_label(entry.gitlink_change_type),
             )
         elif entry.text_deletion:
-            print(
-                f"{index}. {entry.path.ljust(path_width)}  "
-                f"{entry.change_count} {change_word} · "
-                f"text file deleted · "
-                f"{entry.page_count} {page_word}"
-            )
+            detail = _("text file deleted")
         elif entry.mode_change:
-            print(
-                f"{index}. {entry.path.ljust(path_width)}  "
-                f"{entry.change_count} {change_word} · executable mode · "
-                f"{entry.page_count} {page_word}"
-            )
+            detail = _("executable mode")
         elif entry.rename_old_path is not None and entry.rename_new_path is not None:
-            print(
-                f"{index}. {entry.path.ljust(path_width)}  "
-                f"{entry.change_count} {change_word} · "
-                f"rename {entry.rename_old_path} -> {entry.rename_new_path} · "
-                f"{entry.page_count} {page_word}"
+            detail = _("rename {old} -> {new}").format(
+                old=entry.rename_old_path,
+                new=entry.rename_new_path,
             )
         elif entry.binary_change_type is not None:
-            print(
-                f"{index}. {entry.path.ljust(path_width)}  "
-                f"{entry.change_count} {change_word} · "
-                f"binary {entry.binary_change_type} · "
-                f"{entry.page_count} {page_word}"
+            detail = _("binary file {change_type}").format(
+                change_type=_change_type_label(entry.binary_change_type),
             )
         else:
-            print(
-                f"{index}. {entry.path.ljust(path_width)}  "
-                f"{entry.change_count} {change_word} · "
-                f"+{entry.addition_count}/-{entry.deletion_count} · "
-                f"{entry.page_count} {page_word}"
+            detail = "+{additions}/-{deletions}".format(
+                additions=entry.addition_count,
+                deletions=entry.deletion_count,
             )
+        print(
+            _("{index}. {path}  {changes} · {detail} · {pages}").format(
+                index=index,
+                path=padded_path,
+                changes=entry_changes,
+                detail=detail,
+                pages=entry_pages,
+            )
+        )
 
     if entries:
         print()
         print(_("Open:"))
         for entry in entries[:5]:
-            print(f"  git-stage-batch show{command_source_args} --file {shlex.quote(entry.path)}")
+            command = (
+                f"git-stage-batch show{command_source_args} "
+                f"--file {shlex.quote(entry.path)}"
+            )
+            print(_("  {command}").format(command=command))
         if len(entries) > 5:
             remaining = len(entries) - 5
-            print(_("  ... {count} more files matched").format(count=remaining))
+            print(
+                ngettext(
+                    "  ... {count} more file matched",
+                    "  ... {count} more files matched",
+                    remaining,
+                ).format(count=remaining)
+            )

@@ -47,6 +47,8 @@ def select_asset_entries(
                 selected_names = resolve_gitignore_style_patterns(available_entries, filters)
             except subprocess.CalledProcessError:
                 selected_names = []
+            except ValueError as error:
+                raise CommandError(str(error)) from error
             if not selected_names:
                 continue
             selected_entries = {

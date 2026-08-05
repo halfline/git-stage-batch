@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from .asset_catalog import Traversable
+from .asset_catalog import Traversable, asset_group_display_name
 from .asset_installation import validate_asset_destination_path
 from .asset_inventory import (
     get_companion_asset_source,
@@ -39,7 +39,7 @@ def _validate_overwrite(
     if destination.exists() and not force:
         raise CommandError(
             _("Refusing to overwrite existing {kind} '{name}'. Use --force to replace it.").format(
-                kind=display_kind.lower(),
+                kind=display_kind,
                 name=display_name,
             )
         )
@@ -98,7 +98,7 @@ def plan_asset_installs(
                 entry,
                 destination,
                 source_key=(*group.source_segments, entry.name),
-                display_kind=group.display_name_singular,
+                display_kind=asset_group_display_name(group, 1),
                 display_name=entry_name,
             )
             for companion in get_entry_companion_assets(group, entry_name):

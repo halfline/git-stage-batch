@@ -173,7 +173,7 @@ def reset_line_claims_for_file(
             _("Cannot use --lines with file modes. Reset the whole mode action instead.")
         )
     if is_batch_submodule_pointer(file_meta):
-        refuse_batch_submodule_pointer_lines(_("Reset"))
+        refuse_batch_submodule_pointer_lines()
 
     batch_source_commit = file_meta["batch_source_commit"]
     batch_source_buffer = read_git_object_buffer_or_none(
@@ -356,7 +356,7 @@ def _acquire_line_ownership_for_file(
             _("Cannot use --lines with file modes. Reset the whole mode action instead.")
         )
     if is_batch_submodule_pointer(file_meta):
-        refuse_batch_submodule_pointer_lines(_("Reset"))
+        refuse_batch_submodule_pointer_lines()
 
     batch_source_commit = file_meta["batch_source_commit"]
     batch_source_buffer = read_git_object_buffer_or_none(

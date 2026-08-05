@@ -56,7 +56,9 @@ def include_file_lines_to_batch(
 
     if not quiet:
         print(
-            _("Included line(s) from file '{file}' to batch '{batch}': {lines}").format(
+            _(
+                "Included selection from file '{file}' to batch '{batch}': {lines}"
+            ).format(
                 file=file_path,
                 batch=batch_name,
                 lines=line_id_specification,
@@ -101,7 +103,7 @@ def include_selected_lines_to_batch(
 
     if not quiet:
         print(
-            _("✓ Included line(s) to batch '{name}': {lines}").format(
+            _("✓ Included selection to batch '{name}': {lines}").format(
                 name=batch_name,
                 lines=line_id_specification,
             ),

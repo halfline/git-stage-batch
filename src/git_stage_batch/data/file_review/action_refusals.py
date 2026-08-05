@@ -6,7 +6,7 @@ import shlex
 
 from ...core.line_selection import format_line_ids
 from ...exceptions import CommandError
-from ...i18n import _
+from ...i18n import _, ngettext
 from . import records as _records
 from .action_commands import (
     line_action_command as _line_action_command,
@@ -152,7 +152,11 @@ def refuse_ambiguous_bare_action_after_partial_file_review(
     ]
 
     lines = [
-        _("Only pages {shown} of {count} of {file} were shown.").format(
+        ngettext(
+            "Only page {shown} of {count} of {file} was shown.",
+            "Only pages {shown} of {count} of {file} were shown.",
+            len(shown),
+        ).format(
             shown=_format_pages(shown),
             count=review_state.page_count,
             file=review_state.file_path,
@@ -160,7 +164,11 @@ def refuse_ambiguous_bare_action_after_partial_file_review(
     ]
     if missing:
         lines.append(
-            _("Pages {pages} were not shown.").format(pages=_format_pages(missing))
+            ngettext(
+                "Page {pages} was not shown.",
+                "Pages {pages} were not shown.",
+                len(missing),
+            ).format(pages=_format_pages(missing))
         )
     if selection_specs:
         line_command = _line_action_command(

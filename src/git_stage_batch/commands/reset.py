@@ -80,8 +80,12 @@ def command_reset_from_batch(
     )
 
     if to_batch is not None and line_ids:
-        print(_("✓ Moved line(s) {lines} from batch '{source}' to '{dest}'").format(
-            lines=line_ids, source=batch_name, dest=to_batch), file=sys.stderr)
+        print(
+            _("✓ Moved selection {lines} from batch '{source}' to '{dest}'").format(
+                lines=line_ids, source=batch_name, dest=to_batch
+            ),
+            file=sys.stderr,
+        )
     elif to_batch is not None and file is not None:
         print(_("✓ Moved file from batch '{source}' to '{dest}'").format(
             source=batch_name, dest=to_batch), file=sys.stderr)
@@ -89,8 +93,12 @@ def command_reset_from_batch(
         print(_("✓ Moved all claims from batch '{source}' to '{dest}'").format(
             source=batch_name, dest=to_batch), file=sys.stderr)
     elif line_ids:
-        print(_("✓ Reset line(s) {lines} from batch '{name}'").format(
-            lines=line_ids, name=batch_name), file=sys.stderr)
+        print(
+            _("✓ Reset selection {lines} from batch '{name}'").format(
+                lines=line_ids, name=batch_name
+            ),
+            file=sys.stderr,
+        )
     elif file is not None:
         print(_("✓ Reset file from batch '{name}'").format(name=batch_name), file=sys.stderr)
     else:

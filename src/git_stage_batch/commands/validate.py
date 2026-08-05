@@ -154,7 +154,7 @@ def inspect_batch_metadata() -> list[_BatchValidationReport]:
             if state_object is not None and state_object.object_type == "blob"
             else None
         )
-        state_read_error = None
+        state_read_error: str | None = None
         source: Literal["state-ref", "legacy-file"]
         if state_ref_object is not None:
             payload: str | bytes = (
@@ -164,16 +164,18 @@ def inspect_batch_metadata() -> list[_BatchValidationReport]:
             )
             source = "state-ref"
             if state_object is None:
-                state_read_error = (
+                state_read_error = _(
                     "authoritative batch state is missing path 'batch.json'"
                 )
             elif state_object.object_type != "blob":
-                state_read_error = (
-                    "authoritative batch state path 'batch.json' is "
-                    f"{state_object.object_type}, not a blob"
+                state_read_error = _(
+                    "authoritative batch state path 'batch.json' is {type}, "
+                    "not a blob"
+                ).format(
+                    type=state_object.object_type,
                 )
             elif authoritative_payload is None:
-                state_read_error = (
+                state_read_error = _(
                     "authoritative batch state object could not be read"
                 )
         else:
@@ -216,7 +218,10 @@ def inspect_batch_metadata() -> list[_BatchValidationReport]:
             decoded_models.append((report, model))
         except UnicodeDecodeError as error:
             report["errors"].append(
-                f"Batch '{batch_name}' metadata is not valid JSON: {error}"
+                _("Batch '{name}' metadata is not valid JSON: {error}").format(
+                    name=batch_name,
+                    error=error,
+                )
             )
         except (BatchMetadataError, json.JSONDecodeError) as error:
             report["errors"].append(str(error))
@@ -272,7 +277,11 @@ def _classify_compatibility_residue(
             "path": str(metadata_path),
             "safe_automatic_repair": False,
         }
-        report["errors"].append(f"invalid compatibility metadata residue: {error}")
+        report["errors"].append(
+            _("invalid compatibility metadata residue: {error}").format(
+                error=error
+            )
+        )
         return
 
     if authoritative_state_exists and authoritative_payload is None:
@@ -316,9 +325,16 @@ def _classify_compatibility_residue(
             "safe_automatic_repair": safe_repair,
         }
         if not safe_repair:
-            report["errors"].append(
-                f"batch compatibility metadata has {residue_class.replace('_', ' ')}"
-            )
+            residue_error = {
+                "stale_attempted_update": _(
+                    "batch compatibility metadata has a stale attempted update"
+                ),
+                "concurrent_conflicting_residue": _(
+                    "batch compatibility metadata has concurrent conflicting residue"
+                ),
+            }.get(residue_class)
+            if residue_error is not None:
+                report["errors"].append(residue_error)
         return
 
     report["residue"] = {
@@ -330,7 +346,9 @@ def _classify_compatibility_residue(
         "safe_automatic_repair": False,
     }
     if not related_ref_exists:
-        report["errors"].append("orphaned batch metadata has no related refs")
+        report["errors"].append(
+            _("orphaned batch metadata has no related refs")
+        )
 
 
 def _metadata_object_fields(model: BatchMetadata) -> list[tuple[str, str]]:
@@ -365,15 +383,23 @@ def _referential_errors(
     expected_ref = format_batch_content_ref_name(model.batch)
     if model.content_ref is not None and model.content_ref != expected_ref:
         errors.append(
-            f"content_ref is {model.content_ref!r}; expected {expected_ref!r}"
+            _("content_ref is {actual!r}; expected {expected!r}").format(
+                actual=model.content_ref,
+                expected=expected_ref,
+            )
         )
     if model.content_commit is not None and model.content_commit != actual_commit:
         errors.append(
-            "content_commit does not match the authoritative batch content ref"
+            _("content_commit does not match the authoritative batch content ref")
         )
     for field, object_id in _metadata_object_fields(model):
         if object_id not in object_info_by_name:
-            errors.append(f"{field} names missing object {object_id}")
+            errors.append(
+                _("{field} names missing object {object_id}").format(
+                    field=field,
+                    object_id=object_id,
+                )
+            )
     return errors
 
 
@@ -403,10 +429,18 @@ def command_validate_batches(*, porcelain: bool = False) -> None:
                     if report["migration_required"]
                     else ""
                 )
-                print(f"✓ {report['batch']}: metadata valid{suffix}")
+                print(
+                    _("✓ {batch}: metadata valid{suffix}").format(
+                        batch=report["batch"],
+                        suffix=suffix,
+                    )
+                )
             else:
-                print(f"✗ {report['batch']}:", file=sys.stderr)
+                print(
+                    _("✗ {batch}:").format(batch=report["batch"]),
+                    file=sys.stderr,
+                )
                 for error in report["errors"]:
-                    print(f"  {error}", file=sys.stderr)
+                    print(_("  {error}").format(error=error), file=sys.stderr)
     if any(report["status"] == "error" for report in reports):
         raise CommandError("", exit_code=1)

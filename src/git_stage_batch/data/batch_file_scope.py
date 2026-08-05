@@ -160,12 +160,17 @@ def _get_batch_file_for_line_operation(
     files = sorted(all_files.keys())
 
     if not files:
-        raise CommandError(f"Batch '{batch_name}' is empty")
+        raise CommandError(_("Batch '{name}' is empty").format(name=batch_name))
 
     if file is None:
         return files[0]
 
     if file not in all_files:
-        raise CommandError(f"File '{file}' not found in batch '{batch_name}'")
+        raise CommandError(
+            _("File '{file}' not found in batch '{name}'").format(
+                file=file,
+                name=batch_name,
+            )
+        )
 
     return file

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 from ..exceptions import CommandError
-from ..i18n import _
+from ..i18n import _, ngettext
 from ..utils.journal import (
     JournalLevel,
     get_journal_level,
@@ -40,9 +40,11 @@ def command_journal(
             print(json.dumps({"removed_file_count": removed}, sort_keys=True))
         else:
             print(
-                _("Removed {count} diagnostic journal file(s).").format(
-                    count=removed
-                )
+                ngettext(
+                    "Removed {count} diagnostic journal file.",
+                    "Removed {count} diagnostic journal files.",
+                    removed,
+                ).format(count=removed)
             )
         return
 
@@ -52,11 +54,39 @@ def command_journal(
         return
 
     print(_("Diagnostic journal"))
-    print(_("  Level: {level}").format(level=summary["level"]))
+    level_labels = {
+        "disabled": _("disabled"),
+        "metadata-only": _("metadata only"),
+        "verbose": _("verbose"),
+        "content-debug": _("content debug"),
+    }
+    print(
+        _("  Level: {level}").format(
+            level=level_labels.get(summary["level"], summary["level"])
+        )
+    )
     print(_("  Path: {path}").format(path=summary["path"]))
-    print(_("  Files: {count}").format(count=summary["file_count"]))
-    print(_("  Entries: {count}").format(count=summary["entry_count"]))
-    print(_("  Size: {count} bytes").format(count=summary["total_bytes"]))
+    print(
+        ngettext(
+            "  File: {count}",
+            "  Files: {count}",
+            summary["file_count"],
+        ).format(count=summary["file_count"])
+    )
+    print(
+        ngettext(
+            "  Entry: {count}",
+            "  Entries: {count}",
+            summary["entry_count"],
+        ).format(count=summary["entry_count"])
+    )
+    print(
+        ngettext(
+            "  Size: {count} byte",
+            "  Size: {count} bytes",
+            summary["total_bytes"],
+        ).format(count=summary["total_bytes"])
+    )
     if get_journal_level() == JournalLevel.CONTENT_DEBUG:
         print(
             _(

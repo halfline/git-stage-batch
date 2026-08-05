@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ..core.models import LineLevelChange
 from ..git_paths import display_path
-from ..i18n import _
+from ..i18n import _, bidi_isolate
 from .colors import Colors
 
 
@@ -38,14 +38,19 @@ def print_line_level_changes(line_changes: LineLevelChange, *, gutter_to_selecti
     use_color = Colors.enabled()
 
     header = line_changes.header
-    rendered_path = display_path(line_changes.path)
-    header_line = f"{rendered_path} :: @@ -{header.old_start},{header.old_len} +{header.new_start},{header.new_len} @@"
+    rendered_path = bidi_isolate(display_path(line_changes.path))
+    header_part = bidi_isolate(
+        f"@@ -{header.old_start},{header.old_len} "
+        f"+{header.new_start},{header.new_len} @@"
+    )
+    header_line = f"{rendered_path} :: {header_part}"
 
     if use_color:
         # Color the file path in bold and the @@ header in cyan
-        path_part = rendered_path
-        header_part = f"@@ -{header.old_start},{header.old_len} +{header.new_start},{header.new_len} @@"
-        print(f"{Colors.BOLD}{path_part}{Colors.RESET} :: {Colors.CYAN}{header_part}{Colors.RESET}")
+        print(
+            f"{Colors.BOLD}{rendered_path}{Colors.RESET} :: "
+            f"{Colors.CYAN}{header_part}{Colors.RESET}"
+        )
     else:
         print(header_line)
 

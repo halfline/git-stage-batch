@@ -14,6 +14,7 @@ from types import MappingProxyType
 from typing import Any, NoReturn, TypeAlias, cast
 
 from ...exceptions import BatchMetadataError
+from ...i18n import _, ngettext
 from ...utils.git_repository import object_id_hex_length
 from .metadata_types import (
     BatchFileMetadataDict,
@@ -152,7 +153,7 @@ class BatchMetadata:
     ) -> BatchMetadata:
         """Derive a new canonical state-ref model from validated metadata."""
         if not content_ref:
-            _invalid(self.batch, "'content_ref' must be a non-empty string")
+            _invalid(self.batch, _("'content_ref' must be a non-empty string"))
         _validate_object_id(content_commit, self.batch, "content_commit")
 
         source_path_set = frozenset(source_paths)
@@ -161,8 +162,11 @@ class BatchMetadata:
         if unknown_source_paths:
             _invalid(
                 self.batch,
-                "source snapshots reference unknown file(s): "
-                f"{_field_list(unknown_source_paths)}",
+                ngettext(
+                    "source snapshot references an unknown file: {files}",
+                    "source snapshots reference unknown files: {files}",
+                    len(unknown_source_paths),
+                ).format(files=_field_list(unknown_source_paths)),
             )
 
         return replace(
@@ -193,21 +197,32 @@ def decode_batch_metadata(
     data = _load_json_object(payload, expected_batch)
     version = data.get("schema_version", 0)
     if type(version) is not int:
-        _invalid(expected_batch, "'schema_version' must be an integer")
+        _invalid(expected_batch, _("'schema_version' must be an integer"))
     if version > CURRENT_BATCH_METADATA_SCHEMA_VERSION:
         raise BatchMetadataError(
-            f"Batch '{expected_batch}' uses metadata schema version {version}, but "
-            f"this version of git-stage-batch supports through version "
-            f"{CURRENT_BATCH_METADATA_SCHEMA_VERSION}. Upgrade git-stage-batch "
-            "or use a compatible version; the metadata was not modified."
+            _(
+                "Batch '{name}' uses metadata schema version {version}, but this "
+                "version of git-stage-batch supports through version {supported}. "
+                "Upgrade git-stage-batch or use a compatible version; the metadata "
+                "was not modified."
+            ).format(
+                name=expected_batch,
+                version=version,
+                supported=CURRENT_BATCH_METADATA_SCHEMA_VERSION,
+            )
         )
     if version < 0:
-        _invalid(expected_batch, "'schema_version' cannot be negative")
+        _invalid(expected_batch, _("'schema_version' cannot be negative"))
     migrated_from_v0 = version == 0
     if migrated_from_v0:
         data = _migrate_v0_to_v1(data, expected_batch)
     elif version != CURRENT_BATCH_METADATA_SCHEMA_VERSION:
-        _invalid(expected_batch, f"unsupported metadata schema version {version}")
+        _invalid(
+            expected_batch,
+            _("unsupported metadata schema version {version}").format(
+                version=version
+            ),
+        )
     return _decode_v1(data, expected_batch, allow_legacy=migrated_from_v0)
 
 
@@ -257,10 +272,13 @@ def _load_json_object(
             data = json.loads(payload)
         except (json.JSONDecodeError, UnicodeDecodeError) as error:
             raise BatchMetadataError(
-                f"Batch '{batch_name}' metadata is not valid JSON: {error}"
+                _("Batch '{name}' metadata is not valid JSON: {error}").format(
+                    name=batch_name,
+                    error=error,
+                )
             ) from error
     if not isinstance(data, dict):
-        _invalid(batch_name, "top-level metadata must be an object")
+        _invalid(batch_name, _("top-level metadata must be an object"))
     return data
 
 
@@ -292,16 +310,36 @@ def _decode_v1(
     unknown_keys = set(data) - _TOP_LEVEL_KEYS
     missing_keys = _TOP_LEVEL_KEYS - set(data)
     if unknown_keys:
-        _invalid(expected_batch, f"unknown top-level field(s): {_field_list(unknown_keys)}")
+        _invalid(
+            expected_batch,
+            ngettext(
+                "unknown top-level field: {fields}",
+                "unknown top-level fields: {fields}",
+                len(unknown_keys),
+            ).format(fields=_field_list(unknown_keys)),
+        )
     if missing_keys:
-        _invalid(expected_batch, f"missing required field(s): {_field_list(missing_keys)}")
+        _invalid(
+            expected_batch,
+            ngettext(
+                "missing required field: {fields}",
+                "missing required fields: {fields}",
+                len(missing_keys),
+            ).format(fields=_field_list(missing_keys)),
+        )
     if data["schema_version"] != CURRENT_BATCH_METADATA_SCHEMA_VERSION:
-        _invalid(expected_batch, "metadata was not migrated to the current schema")
+        _invalid(
+            expected_batch,
+            _("metadata was not migrated to the current schema"),
+        )
 
     revision = _required_string(data, "revision", expected_batch)
     batch = _required_string(data, "batch", expected_batch)
     if batch != expected_batch:
-        _invalid(expected_batch, f"metadata identifies batch '{batch}'")
+        _invalid(
+            expected_batch,
+            _("metadata identifies batch '{name}'").format(name=batch),
+        )
     note = _required_string(data, "note", expected_batch, allow_empty=True)
     created_at = _required_string(data, "created_at", expected_batch, allow_empty=True)
     if created_at:
@@ -311,8 +349,10 @@ def _decode_v1(
             )
         except ValueError as error:
             raise BatchMetadataError(
-                f"Batch '{expected_batch}' metadata field 'created_at' is not an "
-                "ISO-8601 timestamp"
+                _(
+                    "Batch '{name}' metadata field 'created_at' is not an ISO-8601 "
+                    "timestamp"
+                ).format(name=expected_batch)
             ) from error
 
     baseline = _optional_object_id(data, "baseline", expected_batch)
@@ -320,7 +360,7 @@ def _decode_v1(
     content_commit = _optional_object_id(data, "content_commit", expected_batch)
     files_data = data["files"]
     if not isinstance(files_data, dict):
-        _invalid(expected_batch, "'files' must be an object")
+        _invalid(expected_batch, _("'files' must be an object"))
 
     files = tuple(
         _decode_file_metadata(path, values, expected_batch, allow_legacy=allow_legacy)
@@ -346,29 +386,56 @@ def _decode_file_metadata(
     allow_legacy: bool,
 ) -> BatchFileMetadata:
     if not isinstance(path, str) or not path or "\x00" in path:
-        _invalid(batch_name, "file metadata path must be a non-empty string without NUL")
+        _invalid(
+            batch_name,
+            _("file metadata path must be a non-empty string without NUL"),
+        )
     path_parts = path.split("/")
     if path.startswith("/") or any(part in ("", ".", "..") for part in path_parts):
-        _invalid(batch_name, f"file metadata path is not repository-relative: {path!r}")
+        _invalid(
+            batch_name,
+            _("file metadata path is not repository-relative: {path!r}").format(
+                path=path
+            ),
+        )
     if not isinstance(values, dict):
-        _invalid(batch_name, f"file entry for {path!r} must be an object")
+        _invalid(
+            batch_name,
+            _("file entry for {path!r} must be an object").format(path=path),
+        )
     unknown_keys = set(values) - _FILE_METADATA_KEYS
     if unknown_keys:
         _invalid(
             batch_name,
-            f"file entry for {path!r} has unknown field(s): {_field_list(unknown_keys)}",
+            ngettext(
+                "file entry for {path!r} has an unknown field: {fields}",
+                "file entry for {path!r} has unknown fields: {fields}",
+                len(unknown_keys),
+            ).format(path=path, fields=_field_list(unknown_keys)),
         )
 
     file_type = values.get("file_type")
     if file_type is not None and file_type not in {item.value for item in BatchFileType}:
-        _invalid(batch_name, f"file entry for {path!r} has invalid file_type")
+        _invalid(
+            batch_name,
+            _("file entry for {path!r} has invalid file_type").format(path=path),
+        )
     change_type = values.get("change_type")
     if change_type is not None and change_type not in {item.value for item in BatchChangeType}:
-        _invalid(batch_name, f"file entry for {path!r} has invalid change_type")
+        _invalid(
+            batch_name,
+            _("file entry for {path!r} has invalid change_type").format(path=path),
+        )
     for key in ("mode", "old_mode", "new_mode"):
         value = values.get(key)
         if value is not None and value not in _GIT_FILE_MODES:
-            _invalid(batch_name, f"file entry for {path!r} has invalid {key}")
+            _invalid(
+                batch_name,
+                _("file entry for {path!r} has invalid {field}").format(
+                    path=path,
+                    field=key,
+                ),
+            )
     for key in ("batch_source_commit",):
         if key in values:
             _validate_object_id(values[key], batch_name, f"files[{path!r}].{key}")
@@ -377,21 +444,46 @@ def _decode_file_metadata(
         if value is not None:
             _validate_hex_object_id(value, batch_name, f"files[{path!r}].{key}", (40, 64))
     if "source_path" in values and values["source_path"] != f"sources/{path}":
-        _invalid(batch_name, f"file entry for {path!r} has inconsistent source_path")
+        _invalid(
+            batch_name,
+            _("file entry for {path!r} has inconsistent source_path").format(
+                path=path
+            ),
+        )
     if file_type in (None, BatchFileType.BINARY.value, BatchFileType.MODE.value):
         if "batch_source_commit" not in values:
             if not allow_legacy or file_type not in {
                 BatchFileType.BINARY.value,
                 BatchFileType.GITLINK.value,
             }:
-                _invalid(batch_name, f"file entry for {path!r} is missing 'batch_source_commit'")
+                _invalid(
+                    batch_name,
+                    _(
+                        "file entry for {path!r} is missing 'batch_source_commit'"
+                    ).format(path=path),
+                )
     if file_type == BatchFileType.GITLINK.value and values.get("mode") != "160000":
-        _invalid(batch_name, f"gitlink entry for {path!r} must use mode 160000")
+        _invalid(
+            batch_name,
+            _("gitlink entry for {path!r} must use mode 160000").format(
+                path=path
+            ),
+        )
     if file_type == BatchFileType.MODE.value:
         if not {"old_mode", "new_mode", "mode"} <= set(values):
-            _invalid(batch_name, f"mode entry for {path!r} is missing mode fields")
+            _invalid(
+                batch_name,
+                _("mode entry for {path!r} is missing mode fields").format(
+                    path=path
+                ),
+            )
         if values["mode"] != values["new_mode"] or values["old_mode"] == values["new_mode"]:
-            _invalid(batch_name, f"mode entry for {path!r} has inconsistent transition")
+            _invalid(
+                batch_name,
+                _("mode entry for {path!r} has inconsistent transition").format(
+                    path=path
+                ),
+            )
 
     _validate_claims(values, path, batch_name)
     return BatchFileMetadata(path=path, values=_freeze_mapping(values, batch_name))
@@ -400,11 +492,22 @@ def _decode_file_metadata(
 def _validate_claims(values: dict[str, Any], path: str, batch_name: str) -> None:
     for key in ("presence_claims", "deletions", "replacement_units", "claimed_lines"):
         if key in values and not isinstance(values[key], list):
-            _invalid(batch_name, f"files[{path!r}].{key} must be an array")
+            _invalid(
+                batch_name,
+                _("files[{path!r}].{field} must be an array").format(
+                    path=path,
+                    field=key,
+                ),
+            )
     seen_presence: set[tuple[str, ...]] = set()
     for claim in values.get("presence_claims", []):
         if not isinstance(claim, dict) or not isinstance(claim.get("source_lines"), list):
-            _invalid(batch_name, f"files[{path!r}].presence_claims has an invalid claim")
+            _invalid(
+                batch_name,
+                _(
+                    "files[{path!r}].presence_claims has an invalid claim"
+                ).format(path=path),
+            )
         _reject_unknown_keys(
             claim,
             {"source_lines", "baseline_references"},
@@ -414,18 +517,38 @@ def _validate_claims(values: dict[str, Any], path: str, batch_name: str) -> None
         ranges = tuple(claim["source_lines"])
         _validate_line_ranges(ranges, batch_name, f"files[{path!r}].presence_claims")
         if ranges in seen_presence:
-            _invalid(batch_name, f"files[{path!r}] has duplicate presence claims")
+            _invalid(
+                batch_name,
+                _("files[{path!r}] has duplicate presence claims").format(
+                    path=path
+                ),
+            )
         seen_presence.add(ranges)
         references = claim.get("baseline_references", {})
         if not isinstance(references, dict):
-            _invalid(batch_name, f"files[{path!r}] has invalid baseline_references")
+            _invalid(
+                batch_name,
+                _("files[{path!r}] has invalid baseline_references").format(
+                    path=path
+                ),
+            )
         for line, reference in references.items():
             if not isinstance(line, str) or not line.isdigit() or int(line) < 1:
-                _invalid(batch_name, f"files[{path!r}] has invalid baseline reference line")
+                _invalid(
+                    batch_name,
+                    _(
+                        "files[{path!r}] has invalid baseline reference line"
+                    ).format(path=path),
+                )
             _validate_baseline_reference(reference, batch_name, path)
     for deletion in values.get("deletions", []):
         if not isinstance(deletion, dict):
-            _invalid(batch_name, f"files[{path!r}].deletions has a non-object entry")
+            _invalid(
+                batch_name,
+                _(
+                    "files[{path!r}].deletions has a non-object entry"
+                ).format(path=path),
+            )
         _reject_unknown_keys(
             deletion,
             {"after_source_line", "blob", "baseline_reference"},
@@ -434,14 +557,24 @@ def _validate_claims(values: dict[str, Any], path: str, batch_name: str) -> None
         )
         anchor = deletion.get("after_source_line")
         if anchor is not None and (type(anchor) is not int or anchor < 1):
-            _invalid(batch_name, f"files[{path!r}] has an invalid deletion anchor")
+            _invalid(
+                batch_name,
+                _("files[{path!r}] has an invalid deletion anchor").format(
+                    path=path
+                ),
+            )
         _validate_object_id(deletion.get("blob"), batch_name, f"files[{path!r}].deletions.blob")
         if "baseline_reference" in deletion:
             _validate_baseline_reference(deletion["baseline_reference"], batch_name, path)
     deletion_count = len(values.get("deletions", []))
     for replacement in values.get("replacement_units", []):
         if not isinstance(replacement, dict):
-            _invalid(batch_name, f"files[{path!r}].replacement_units has a non-object entry")
+            _invalid(
+                batch_name,
+                _(
+                    "files[{path!r}].replacement_units has a non-object entry"
+                ).format(path=path),
+            )
         _reject_unknown_keys(
             replacement,
             {"presence_lines", "claimed_lines", "deletion_indices", "original_unit"},
@@ -451,7 +584,12 @@ def _validate_claims(values: dict[str, Any], path: str, batch_name: str) -> None
         presence_lines = replacement.get("presence_lines", replacement.get("claimed_lines"))
         deletion_indices = replacement.get("deletion_indices")
         if not isinstance(presence_lines, list) or not isinstance(deletion_indices, list):
-            _invalid(batch_name, f"files[{path!r}] has an invalid replacement unit")
+            _invalid(
+                batch_name,
+                _("files[{path!r}] has an invalid replacement unit").format(
+                    path=path
+                ),
+            )
         _validate_line_ranges(
             tuple(presence_lines),
             batch_name,
@@ -461,7 +599,12 @@ def _validate_claims(values: dict[str, Any], path: str, batch_name: str) -> None
             any(type(index) is not int or not 0 <= index < deletion_count for index in deletion_indices)
             or len(set(deletion_indices)) != len(deletion_indices)
         ):
-            _invalid(batch_name, f"files[{path!r}] has invalid replacement deletion indices")
+            _invalid(
+                batch_name,
+                _(
+                    "files[{path!r}] has invalid replacement deletion indices"
+                ).format(path=path),
+            )
         if "original_unit" in replacement:
             _validate_replacement_origin(replacement["original_unit"], batch_name, path)
     if "claimed_lines" in values:
@@ -475,7 +618,12 @@ def _validate_claims(values: dict[str, Any], path: str, batch_name: str) -> None
 
 def _validate_baseline_reference(reference: Any, batch_name: str, path: str) -> None:
     if not isinstance(reference, dict):
-        _invalid(batch_name, f"files[{path!r}] has a non-object baseline reference")
+        _invalid(
+            batch_name,
+            _("files[{path!r}] has a non-object baseline reference").format(
+                path=path
+            ),
+        )
     _reject_unknown_keys(
         reference,
         {"after_line", "after_blob", "before_line", "before_blob"},
@@ -485,7 +633,13 @@ def _validate_baseline_reference(reference: Any, batch_name: str, path: str) -> 
     for key in ("after_line", "before_line"):
         value = reference.get(key)
         if value is not None and (type(value) is not int or value < 1):
-            _invalid(batch_name, f"files[{path!r}] has invalid {key}")
+            _invalid(
+                batch_name,
+                _("files[{path!r}] has invalid {field}").format(
+                    path=path,
+                    field=key,
+                ),
+            )
     for key in ("after_blob", "before_blob"):
         if key in reference:
             _validate_object_id(reference[key], batch_name, f"files[{path!r}].{key}")
@@ -493,7 +647,12 @@ def _validate_baseline_reference(reference: Any, batch_name: str, path: str) -> 
 
 def _validate_replacement_origin(origin: Any, batch_name: str, path: str) -> None:
     if not isinstance(origin, dict):
-        _invalid(batch_name, f"files[{path!r}] has a non-object replacement origin")
+        _invalid(
+            batch_name,
+            _("files[{path!r}] has a non-object replacement origin").format(
+                path=path
+            ),
+        )
     required = {"old_start", "old_end", "new_start", "new_end"}
     _reject_unknown_keys(
         origin,
@@ -502,12 +661,28 @@ def _validate_replacement_origin(origin: Any, batch_name: str, path: str) -> Non
         f"files[{path!r}].replacement_units.original_unit",
     )
     if not required <= set(origin):
-        _invalid(batch_name, f"files[{path!r}] has an incomplete replacement origin")
+        _invalid(
+            batch_name,
+            _("files[{path!r}] has an incomplete replacement origin").format(
+                path=path
+            ),
+        )
     for key in required:
         if type(origin[key]) is not int or origin[key] < 1:
-            _invalid(batch_name, f"files[{path!r}] has invalid replacement {key}")
+            _invalid(
+                batch_name,
+                _("files[{path!r}] has invalid replacement {field}").format(
+                    path=path,
+                    field=key,
+                ),
+            )
     if origin["old_end"] < origin["old_start"] or origin["new_end"] < origin["new_start"]:
-        _invalid(batch_name, f"files[{path!r}] has descending replacement coordinates")
+        _invalid(
+            batch_name,
+            _("files[{path!r}] has descending replacement coordinates").format(
+                path=path
+            ),
+        )
     if "baseline_reference" in origin:
         _validate_baseline_reference(origin["baseline_reference"], batch_name, path)
 
@@ -520,24 +695,49 @@ def _reject_unknown_keys(
 ) -> None:
     unknown = set(data) - allowed
     if unknown:
-        _invalid(batch_name, f"{field} has unknown field(s): {_field_list(unknown)}")
+        _invalid(
+            batch_name,
+            ngettext(
+                "{field} has an unknown field: {fields}",
+                "{field} has unknown fields: {fields}",
+                len(unknown),
+            ).format(field=field, fields=_field_list(unknown)),
+        )
 
 
 def _validate_line_ranges(values: tuple[Any, ...], batch_name: str, field: str) -> None:
     for value in values:
         if type(value) is int:
             if value < 1:
-                _invalid(batch_name, f"{field} contains a non-positive line")
+                _invalid(
+                    batch_name,
+                    _("{field} contains a non-positive line").format(field=field),
+                )
             continue
         if not isinstance(value, str):
-            _invalid(batch_name, f"{field} contains a non-string range")
+            _invalid(
+                batch_name,
+                _("{field} contains a non-string range").format(field=field),
+            )
         for segment in value.split(","):
             match = _LINE_RANGE_RE.fullmatch(segment)
             if match is None:
-                _invalid(batch_name, f"{field} contains invalid range {value!r}")
+                _invalid(
+                    batch_name,
+                    _("{field} contains invalid range {value!r}").format(
+                        field=field,
+                        value=value,
+                    ),
+                )
             end = match.group("end")
             if end is not None and int(end) < int(match.group("start")):
-                _invalid(batch_name, f"{field} contains descending range {value!r}")
+                _invalid(
+                    batch_name,
+                    _("{field} contains descending range {value!r}").format(
+                        field=field,
+                        value=value,
+                    ),
+                )
 
 
 def _freeze_mapping(values: Mapping[str, Any], batch_name: str) -> Mapping[str, JsonValue]:
@@ -554,9 +754,18 @@ def _freeze_json_value(value: Any, batch_name: str, field: str) -> JsonValue:
         return tuple(_freeze_json_value(item, batch_name, field) for item in value)
     if isinstance(value, dict):
         if not all(isinstance(key, str) for key in value):
-            _invalid(batch_name, f"{field} contains a non-string object key")
+            _invalid(
+                batch_name,
+                _("{field} contains a non-string object key").format(field=field),
+            )
         return _freeze_mapping(value, batch_name)
-    _invalid(batch_name, f"{field} contains unsupported value type {type(value).__name__}")
+    _invalid(
+        batch_name,
+        _("{field} contains unsupported value type {type}").format(
+            field=field,
+            type=type(value).__name__,
+        ),
+    )
 
 
 def _validate_json_value(value: Any, batch_name: str, field: str) -> None:
@@ -584,14 +793,22 @@ def _required_string(
 ) -> str:
     value = data[key]
     if not isinstance(value, str) or (not allow_empty and not value):
-        _invalid(batch_name, f"'{key}' must be a {'possibly empty ' if allow_empty else ''}string")
+        detail = (
+            _("'{field}' must be a possibly empty string")
+            if allow_empty
+            else _("'{field}' must be a non-empty string")
+        )
+        _invalid(batch_name, detail.format(field=key))
     return value
 
 
 def _optional_string(data: Mapping[str, Any], key: str, batch_name: str) -> str | None:
     value = data[key]
     if value is not None and not isinstance(value, str):
-        _invalid(batch_name, f"'{key}' must be a string or null")
+        _invalid(
+            batch_name,
+            _("'{field}' must be a string or null").format(field=key),
+        )
     return value
 
 
@@ -613,13 +830,18 @@ def _validate_hex_object_id(
     lengths: tuple[int, ...],
 ) -> None:
     if not isinstance(value, str) or len(value) not in lengths:
-        _invalid(batch_name, f"'{field}' must be a hexadecimal object ID")
+        _invalid(
+            batch_name,
+            _("'{field}' must be a hexadecimal object ID").format(field=field),
+        )
     if any(
         character not in "0123456789abcdefABCDEF"
         for character in value
     ):
         raise BatchMetadataError(
-            f"Batch '{batch_name}' metadata field '{field}' is not hexadecimal"
+            _(
+                "Batch '{name}' metadata field '{field}' is not hexadecimal"
+            ).format(name=batch_name, field=field)
         )
 
 
@@ -628,4 +850,9 @@ def _field_list(fields: set[str] | frozenset[str]) -> str:
 
 
 def _invalid(batch_name: str, detail: str) -> NoReturn:
-    raise BatchMetadataError(f"Batch '{batch_name}' metadata is invalid: {detail}.")
+    raise BatchMetadataError(
+        _("Batch '{name}' metadata is invalid: {detail}.").format(
+            name=batch_name,
+            detail=detail,
+        )
+    )

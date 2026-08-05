@@ -146,7 +146,7 @@ def discard_lines_as_to_batch(
 
     if not quiet:
         print(
-            _("✓ Discarded line(s) as replacement to batch '{name}': {lines}").format(
+            _("✓ Discarded selection as replacement to batch '{name}': {lines}").format(
                 name=batch_name,
                 lines=line_id_specification,
             ),
@@ -218,7 +218,9 @@ def discard_file_lines_to_batch(
 
     if not quiet:
         print(
-            _("Discarded line(s) from file '{file}' to batch '{batch}': {lines}").format(
+            _(
+                "Discarded selection from file '{file}' to batch '{batch}': {lines}"
+            ).format(
                 file=file_path,
                 batch=batch_name,
                 lines=line_id_specification,
@@ -329,9 +331,7 @@ def discard_selected_lines_to_batch(
 
         if not quiet:
             print(
-                _(
-                    "✓ Discarded line(s) to batch '{name}': {lines}"
-                ).format(
+                _("✓ Discarded selection to batch '{name}': {lines}").format(
                     name=batch_name,
                     lines=line_id_specification,
                 ),

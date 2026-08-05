@@ -11,7 +11,7 @@ from ..batch.operation_candidate_types import (
     OperationCandidatePreview,
     TargetCandidatePreview,
 )
-from ..i18n import _
+from ..i18n import _, ngettext
 from . import candidate_preview_snippets
 
 _CANDIDATE_OVERVIEW_CONTEXT_LINES = 2
@@ -43,7 +43,7 @@ class AmbiguityBlockContext:
 
 def candidate_overview_subject(
     previews: tuple[OperationCandidatePreview, ...],
-) -> tuple[str, str]:
+) -> tuple[str, int]:
     ambiguous_targets: list[str] = []
     for target_name in ("worktree", "index"):
         for preview in previews:
@@ -71,13 +71,13 @@ def candidate_overview_subject(
         for target_name in ambiguous_targets
     ]
     if len(labels) == 1:
-        return labels[0], _("has")
+        return labels[0], 1
     if len(labels) == 2:
         return _("{first} and {second}").format(
             first=labels[0],
             second=labels[1],
-        ), _("have")
-    return _("target files"), _("have")
+        ), 2
+    return _("target files"), 2
 
 
 def candidate_target_label(target_name: str) -> str:
@@ -122,7 +122,11 @@ def summarize_ambiguity_block(
     )
     if first and last:
         return f'"{first} … {last}"'
-    return _("{count} lines").format(count=len(lines))
+    return ngettext(
+        "{count} line",
+        "{count} lines",
+        len(lines),
+    ).format(count=len(lines))
 
 
 def candidate_target_summary(
@@ -247,7 +251,11 @@ def _summarize_overview_lines(lines: Sequence[_CandidateLine]) -> str:
         if text:
             return f'"{text}"'
         return _("an empty line")
-    return _("{count} lines").format(count=len(lines))
+    return ngettext(
+        "{count} line",
+        "{count} lines",
+        len(lines),
+    ).format(count=len(lines))
 
 
 def _delete_ambiguity_block_context(

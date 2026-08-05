@@ -12,6 +12,7 @@ from ..core.text_lifecycle import (
     selected_text_target_change_type,
 )
 from ..exceptions import MergeError
+from ..i18n import _
 from .merge.merge import (
     enumerate_merge_batch_candidates_from_line_sequences,
     merge_batch_from_line_sequences_as_buffer,
@@ -59,7 +60,7 @@ def _merge_candidates_or_unambiguous(
         is MergeCandidateSetOutcome.ORDINARY_MERGE_SUCCEEDED
     ):
         return None
-    raise MergeError("Batch was created from a different version of the file")
+    raise MergeError(_("Batch was created from a different version of the file"))
 
 
 def _materialize_target_candidate(
@@ -277,7 +278,7 @@ def build_include_candidate_previews(
     product_count = len(index_choices) * len(worktree_choices)
     if product_count > _MAX_OPERATION_CANDIDATES:
         raise _CandidateEnumerationLimitError(
-            "too many include candidates to preview safely"
+            _("too many include candidates to preview safely")
         )
 
     batch_fingerprint = _fingerprint_batch(

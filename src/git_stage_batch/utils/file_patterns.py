@@ -10,6 +10,7 @@ from pathlib import Path
 from .file_io import write_text_file_contents
 from .git_command import run_git_command
 from ..git_paths import decode_path, encode_path, nul_records
+from ..i18n import _
 
 
 def _normalize_path(path: str) -> str:
@@ -25,7 +26,7 @@ def _validate_patterns(patterns: Iterable[str]) -> list[str]:
     normalized_patterns = [_normalize_path(pattern) for pattern in patterns]
     for pattern in normalized_patterns:
         if not pattern:
-            raise ValueError("Pattern cannot be empty")
+            raise ValueError(_("Pattern cannot be empty"))
     return normalized_patterns
 
 
@@ -96,7 +97,7 @@ def _paths_from_name_status_z(output: bytes) -> list[str]:
 
         status = status_bytes.decode("ascii", errors="replace")
         path_count = 2 if status.startswith(("R", "C")) else 1
-        for _ in range(path_count):
+        for _path_index in range(path_count):
             if index >= len(fields):
                 break
             path = fields[index]

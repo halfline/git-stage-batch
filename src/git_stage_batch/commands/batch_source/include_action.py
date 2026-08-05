@@ -38,7 +38,7 @@ from ...data.index_entries import read_index_entries
 from ...data.session import snapshot_file_if_untracked
 from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import AtomicUnitError, CommandError, exit_with_error
-from ...i18n import _
+from ...i18n import _, pgettext
 from ...utils.file_job_workspace import FileJobWorkspace
 from ...utils.file_jobs import (
     OrderedFileJob,
@@ -585,7 +585,7 @@ def _reduce_include_action_plans(
                 _atomic_unit_refusals.translate_atomic_unit_error_to_gutter_ids(
                     atomic_error,
                     rendered,
-                    "include from",
+                    pgettext("batch failure operation", "include from"),
                     batch_name,
                 )
             exit_with_error(

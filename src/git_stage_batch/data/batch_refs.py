@@ -20,7 +20,7 @@ from ..batch.state.references import (
     sync_batch_state_refs,
 )
 from ..exceptions import BatchMetadataError, CommandError
-from ..i18n import _
+from ..i18n import _, ngettext
 from ..utils.file_io import (
     read_required_text_file_contents,
     write_text_file_contents,
@@ -174,9 +174,21 @@ def _decode_batch_ref_snapshot(payload: str) -> BatchRefSnapshot:
         unknown = sorted(snapshot_keys - _SNAPSHOT_KEYS)
         details = []
         if missing:
-            details.append(_("missing field(s) {fields}").format(fields=missing))
+            details.append(
+                ngettext(
+                    "missing field: {fields}",
+                    "missing fields: {fields}",
+                    len(missing),
+                ).format(fields=missing)
+            )
         if unknown:
-            details.append(_("unknown field(s) {fields}").format(fields=unknown))
+            details.append(
+                ngettext(
+                    "unknown field: {fields}",
+                    "unknown fields: {fields}",
+                    len(unknown),
+                ).format(fields=unknown)
+            )
         _invalid_snapshot(_("invalid: {details}").format(details=", ".join(details)))
 
     schema_version = value["schema_version"]

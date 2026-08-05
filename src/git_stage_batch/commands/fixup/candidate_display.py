@@ -22,8 +22,10 @@ def show_last_suggest_fixup_candidate(
     """Display the last persisted suggest-fixup candidate."""
     if not state or not state.get("last_shown_commit"):
         exit_with_error(
-            "No previous candidate to show.\n"
-            + "Run suggest-fixup without --last to find a candidate."
+            _(
+                "No previous candidate to show.\n"
+                "Run suggest-fixup without --last to find a candidate."
+            )
         )
 
     display_suggest_fixup_candidate(

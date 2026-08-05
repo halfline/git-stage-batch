@@ -16,7 +16,7 @@ from ...exceptions import (
     AmbiguousAnchorError as _AmbiguousAnchorError,
     MissingAnchorError as _MissingAnchorError,
 )
-from ...i18n import _
+from ...i18n import _, ngettext
 from ...core.text_lines import normalize_line_endings as _normalize_line_endings
 
 
@@ -101,13 +101,20 @@ def find_boundary_after_source_line(
             return claimed_indices[0] + 1
         if len(claimed_indices) == 0:
             raise _AmbiguousAnchorError(
-                _(
+                ngettext(
+                    "Anchor ambiguity: source line {line} appears {count} time "
+                    "in realized content but is not claimed",
                     "Anchor ambiguity: source line {line} appears {count} times "
-                    "in realized content but none are claimed"
+                    "in realized content but none are claimed",
+                    len(matching_indices),
                 ).format(line=source_line, count=len(matching_indices))
             )
         raise _AmbiguousAnchorError(
-            _("Anchor ambiguity: source line {line} claimed {count} times").format(
+            ngettext(
+                "Anchor ambiguity: source line {line} claimed {count} time",
+                "Anchor ambiguity: source line {line} claimed {count} times",
+                len(claimed_indices),
+            ).format(
                 line=source_line,
                 count=len(claimed_indices),
             )

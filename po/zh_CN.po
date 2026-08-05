@@ -6094,3 +6094,11 @@ msgstr "会话起点元数据缺失。"
 #: src/git_stage_batch/utils/session_start_point.py:127
 msgid "This command requires at least one commit; HEAD is still unborn."
 msgstr "此命令至少需要一个提交；HEAD 尚未创建。"
+
+#: src/git_stage_batch/batch/replacement.py:36
+msgid "Replacement selection must resolve to one contiguous batch-source line range."
+msgstr "替换选择必须对应批次源中一个连续的行范围。"
+
+#: src/git_stage_batch/batch/replacement.py:44
+msgid "Replacement selection must resolve to one contiguous batch-source region."
+msgstr "替换选择必须对应批次源中一个连续区域。"

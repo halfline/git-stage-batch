@@ -6125,3 +6125,11 @@ msgstr "セッション開始点のメタデータがありません。"
 #: src/git_stage_batch/utils/session_start_point.py:127
 msgid "This command requires at least one commit; HEAD is still unborn."
 msgstr "このコマンドには少なくとも 1 つのコミットが必要です。HEAD はまだ作成されていません。"
+
+#: src/git_stage_batch/batch/replacement.py:36
+msgid "Replacement selection must resolve to one contiguous batch-source line range."
+msgstr "置換対象の選択範囲は、バッチソース内の連続した 1 つの行範囲に収まる必要があります。"
+
+#: src/git_stage_batch/batch/replacement.py:44
+msgid "Replacement selection must resolve to one contiguous batch-source region."
+msgstr "置換対象の選択範囲は、バッチソース内の連続した 1 つの領域に収まる必要があります。"

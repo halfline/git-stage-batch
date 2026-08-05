@@ -6730,3 +6730,11 @@ msgid "This command requires at least one commit; HEAD is still unborn."
 msgstr ""
 "Dieser Befehl benötigt mindestens einen Commit; HEAD wurde noch nicht "
 "erstellt."
+
+#: src/git_stage_batch/batch/replacement.py:36
+msgid "Replacement selection must resolve to one contiguous batch-source line range."
+msgstr "Die Ersetzungsauswahl muss genau einem zusammenhängenden Zeilenbereich der Stapelquelle entsprechen."
+
+#: src/git_stage_batch/batch/replacement.py:44
+msgid "Replacement selection must resolve to one contiguous batch-source region."
+msgstr "Die Ersetzungsauswahl muss genau einem zusammenhängenden Bereich der Stapelquelle entsprechen."

@@ -6665,3 +6665,11 @@ msgstr "Faltan los metadatos del punto de inicio de la sesión."
 #: src/git_stage_batch/utils/session_start_point.py:127
 msgid "This command requires at least one commit; HEAD is still unborn."
 msgstr "Este comando requiere al menos un commit; HEAD aún no ha nacido."
+
+#: src/git_stage_batch/batch/replacement.py:36
+msgid "Replacement selection must resolve to one contiguous batch-source line range."
+msgstr "La selección de reemplazo debe corresponder a un único intervalo contiguo de líneas del origen del lote."
+
+#: src/git_stage_batch/batch/replacement.py:44
+msgid "Replacement selection must resolve to one contiguous batch-source region."
+msgstr "La selección de reemplazo debe corresponder a una única región contigua del origen del lote."

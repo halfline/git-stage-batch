@@ -6693,3 +6693,11 @@ msgid "This command requires at least one commit; HEAD is still unborn."
 msgstr ""
 "To polecenie wymaga co najmniej jednego zatwierdzenia; gałąź HEAD jeszcze "
 "nie istnieje."
+
+#: src/git_stage_batch/batch/replacement.py:36
+msgid "Replacement selection must resolve to one contiguous batch-source line range."
+msgstr "Wybór zastąpienia musi odpowiadać jednemu ciągłemu zakresowi wierszy w źródle partii."
+
+#: src/git_stage_batch/batch/replacement.py:44
+msgid "Replacement selection must resolve to one contiguous batch-source region."
+msgstr "Wybór zastąpienia musi odpowiadać jednemu ciągłemu obszarowi w źródle partii."

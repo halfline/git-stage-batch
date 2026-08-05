@@ -6542,3 +6542,11 @@ msgstr "Oturum başlangıç noktası üst verisi eksik."
 #: src/git_stage_batch/utils/session_start_point.py:127
 msgid "This command requires at least one commit; HEAD is still unborn."
 msgstr "Bu komut en az bir commit gerektirir; HEAD henüz doğmamış."
+
+#: src/git_stage_batch/batch/replacement.py:36
+msgid "Replacement selection must resolve to one contiguous batch-source line range."
+msgstr "Değiştirme seçimi, grup kaynağında tek bir kesintisiz satır aralığına karşılık gelmelidir."
+
+#: src/git_stage_batch/batch/replacement.py:44
+msgid "Replacement selection must resolve to one contiguous batch-source region."
+msgstr "Değiştirme seçimi, grup kaynağında tek bir kesintisiz bölgeye karşılık gelmelidir."

@@ -13,6 +13,7 @@ from ..core.replacement import (
     replacement_line_chunks,
 )
 from ..core.buffer import LineBuffer
+from ..i18n import _
 from .ownership.model import BatchOwnership
 from .ownership.absence_claims import AbsenceClaim
 from .ownership.replacement_units import ReplacementUnit
@@ -22,6 +23,27 @@ __all__ = [
     "ReplacementBatchView",
     "build_replacement_batch_view_from_lines",
 ]
+
+
+def _localized_selection_error(message: str) -> str | None:
+    """Translate the replacement-selection errors exposed by this module."""
+    if message == (
+        "Replacement selection must resolve to one contiguous "
+        "batch-source line range."
+    ):
+        return _(
+            "Replacement selection must resolve to one contiguous "
+            "batch-source line range."
+        )
+    if message == (
+        "Replacement selection must resolve to one contiguous "
+        "batch-source region."
+    ):
+        return _(
+            "Replacement selection must resolve to one contiguous "
+            "batch-source region."
+        )
+    return None
 
 
 @dataclass(slots=True)
@@ -72,12 +94,18 @@ def build_replacement_batch_view_from_lines(
         payload,
         spool_dir=spool_dir,
     ) as replacement_lines:
-        return _build_replacement_batch_view(
-            source_lines,
-            ownership,
-            replacement_lines,
-            spool_dir=spool_dir,
-        )
+        try:
+            return _build_replacement_batch_view(
+                source_lines,
+                ownership,
+                replacement_lines,
+                spool_dir=spool_dir,
+            )
+        except ValueError as error:
+            localized_error = _localized_selection_error(str(error))
+            if localized_error is None:
+                raise
+            raise ValueError(localized_error) from error
 
 
 def _build_replacement_batch_view(

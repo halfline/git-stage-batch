@@ -6136,3 +6136,11 @@ msgstr "세션 시작점 메타데이터가 없습니다."
 #: src/git_stage_batch/utils/session_start_point.py:127
 msgid "This command requires at least one commit; HEAD is still unborn."
 msgstr "이 명령에는 커밋이 하나 이상 필요합니다. HEAD가 아직 생성되지 않았습니다."
+
+#: src/git_stage_batch/batch/replacement.py:36
+msgid "Replacement selection must resolve to one contiguous batch-source line range."
+msgstr "교체 선택 영역은 배치 소스의 연속된 단일 줄 범위여야 합니다."
+
+#: src/git_stage_batch/batch/replacement.py:44
+msgid "Replacement selection must resolve to one contiguous batch-source region."
+msgstr "교체 선택 영역은 배치 소스의 연속된 단일 영역이어야 합니다."

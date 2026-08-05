@@ -6649,3 +6649,11 @@ msgstr "Metadata van het beginpunt van de sessie ontbreekt."
 #: src/git_stage_batch/utils/session_start_point.py:127
 msgid "This command requires at least one commit; HEAD is still unborn."
 msgstr "Deze opdracht vereist minstens één commit; HEAD is nog niet aangemaakt."
+
+#: src/git_stage_batch/batch/replacement.py:36
+msgid "Replacement selection must resolve to one contiguous batch-source line range."
+msgstr "De vervangingsselectie moet overeenkomen met één aaneengesloten regelbereik in de batchbron."
+
+#: src/git_stage_batch/batch/replacement.py:44
+msgid "Replacement selection must resolve to one contiguous batch-source region."
+msgstr "De vervangingsselectie moet overeenkomen met één aaneengesloten gebied in de batchbron."

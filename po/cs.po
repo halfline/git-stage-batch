@@ -6578,3 +6578,11 @@ msgstr "Metadata počátečního bodu relace chybí."
 #: src/git_stage_batch/utils/session_start_point.py:127
 msgid "This command requires at least one commit; HEAD is still unborn."
 msgstr "Tento příkaz vyžaduje alespoň jeden commit; HEAD dosud nebyl vytvořen."
+
+#: src/git_stage_batch/batch/replacement.py:36
+msgid "Replacement selection must resolve to one contiguous batch-source line range."
+msgstr "Výběr nahrazení musí odpovídat jednomu souvislému rozsahu řádků ve zdroji dávky."
+
+#: src/git_stage_batch/batch/replacement.py:44
+msgid "Replacement selection must resolve to one contiguous batch-source region."
+msgstr "Výběr nahrazení musí odpovídat jedné souvislé oblasti ve zdroji dávky."

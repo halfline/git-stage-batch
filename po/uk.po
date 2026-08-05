@@ -6642,3 +6642,11 @@ msgstr "Метадані початкової точки сеансу відсу
 #: src/git_stage_batch/utils/session_start_point.py:127
 msgid "This command requires at least one commit; HEAD is still unborn."
 msgstr "Для цієї команди потрібен хоча б один коміт; HEAD ще не створено."
+
+#: src/git_stage_batch/batch/replacement.py:36
+msgid "Replacement selection must resolve to one contiguous batch-source line range."
+msgstr "Вибір заміни має відповідати одному безперервному діапазону рядків у джерелі пакета."
+
+#: src/git_stage_batch/batch/replacement.py:44
+msgid "Replacement selection must resolve to one contiguous batch-source region."
+msgstr "Вибір заміни має відповідати одній безперервній області у джерелі пакета."

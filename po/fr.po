@@ -6724,3 +6724,11 @@ msgstr "Les métadonnées du point de départ de la session sont absentes."
 #: src/git_stage_batch/utils/session_start_point.py:127
 msgid "This command requires at least one commit; HEAD is still unborn."
 msgstr "Cette commande exige au moins un commit ; HEAD n'est pas encore créé."
+
+#: src/git_stage_batch/batch/replacement.py:36
+msgid "Replacement selection must resolve to one contiguous batch-source line range."
+msgstr "La sélection de remplacement doit correspondre à une seule plage contiguë de lignes de la source du lot."
+
+#: src/git_stage_batch/batch/replacement.py:44
+msgid "Replacement selection must resolve to one contiguous batch-source region."
+msgstr "La sélection de remplacement doit correspondre à une seule zone contiguë de la source du lot."

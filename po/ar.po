@@ -6786,3 +6786,11 @@ msgstr "البيانات الوصفية لنقطة بدء الجلسة مفقو�
 #: src/git_stage_batch/utils/session_start_point.py:127
 msgid "This command requires at least one commit; HEAD is still unborn."
 msgstr "يتطلب هذا الأمر إيداعًا واحدًا على الأقل؛ ما زال ⁦HEAD⁩ بلا أي إيداع."
+
+#: src/git_stage_batch/batch/replacement.py:36
+msgid "Replacement selection must resolve to one contiguous batch-source line range."
+msgstr "يجب أن تشكّل الأسطر المحددة للاستبدال نطاقًا واحدًا متصلًا في مصدر الدفعة."
+
+#: src/git_stage_batch/batch/replacement.py:44
+msgid "Replacement selection must resolve to one contiguous batch-source region."
+msgstr "يجب أن يشكّل الجزء المحدد للاستبدال منطقة واحدة متصلة في مصدر الدفعة."

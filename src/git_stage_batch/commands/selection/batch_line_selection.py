@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from ...batch.selection import require_line_selection_in_view
 from ...core.line_selection import parse_line_selection
 from ...core.models import LineEntry, LineLevelChange
+from ...exceptions import CommandError
 
 
 @dataclass(frozen=True)
@@ -22,7 +23,10 @@ def select_lines_for_batch_action(
     line_id_specification: str,
 ) -> BatchLineSelection:
     """Validate line IDs against a view and return matching changed lines."""
-    requested_ids = set(parse_line_selection(line_id_specification))
+    try:
+        requested_ids = set(parse_line_selection(line_id_specification))
+    except ValueError as error:
+        raise CommandError(str(error)) from error
     require_line_selection_in_view(
         line_changes,
         requested_ids,

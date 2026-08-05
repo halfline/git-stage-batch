@@ -15,6 +15,31 @@ from pathlib import Path
 import pytest
 
 
+def test_cache_directory_listing_covers_nested_directories(tmp_path):
+    """The Meson exclusion list should cover caches created after setup."""
+    source_root = tmp_path / "source"
+    (source_root / "package" / "nested").mkdir(parents=True)
+    (source_root / "package" / "__pycache__").mkdir()
+    project_root = Path(__file__).parent.parent
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            project_root / "scripts" / "list_python_cache_directories.py",
+            source_root,
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.stdout.splitlines() == [
+        "__pycache__",
+        "package/__pycache__",
+        "package/nested/__pycache__",
+    ]
+
+
 @pytest.fixture(scope="session")
 def build_wheel(tmp_path_factory):
     """Build the wheel once per worker for all tests in this module."""
@@ -52,6 +77,20 @@ def build_wheel(tmp_path_factory):
 
 class TestWheelContents:
     """Test that the wheel package contains expected files."""
+
+    def test_wheel_excludes_python_cache_artifacts(self, build_wheel):
+        """Test that build-time Python caches do not leak into the wheel."""
+        with zipfile.ZipFile(build_wheel, "r") as whl:
+            files = whl.namelist()
+
+        cache_artifacts = [
+            file
+            for file in files
+            if "__pycache__" in Path(file).parts
+            or file.endswith((".pyc", ".pyo"))
+        ]
+
+        assert cache_artifacts == []
 
     def test_wheel_contains_all_source_files(self, build_wheel):
         """Test that wheel contains all Python source files."""

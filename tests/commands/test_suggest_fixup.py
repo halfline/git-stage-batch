@@ -9,6 +9,7 @@ import subprocess
 
 import pytest
 
+from git_stage_batch.commands.fixup import search_targets
 from git_stage_batch.commands.fixup.history import find_next_fixup_candidate
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.suggest_fixup_state import write_suggest_fixup_state
@@ -202,6 +203,21 @@ class TestCommandSuggestFixup:
 
 class TestCommandSuggestFixupLine:
     """Tests for suggest-fixup --line command."""
+
+    def test_suggest_fixup_line_rejects_malformed_selection(self, monkeypatch):
+        """Malformed line syntax should remain inside the command boundary."""
+        monkeypatch.setattr(
+            search_targets,
+            "_load_line_target_source",
+            lambda _file: (object(), "hunk-hash"),
+        )
+
+        with pytest.raises(CommandError, match="Invalid line ID: abc"):
+            search_targets.require_suggest_fixup_line_target(
+                "abc",
+                boundary="HEAD",
+                file=None,
+            )
 
     def test_suggest_fixup_line_requires_selected_hunk(self, temp_git_repo):
         """Test that suggest-fixup --line requires an active hunk."""

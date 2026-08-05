@@ -20,7 +20,10 @@ from ...batch.merge.baseline_reference_translation import (
 )
 from ...batch.state.query import read_batch_metadata
 from ...batch.state.metadata_types import BatchFileMetadataDict
-from ...batch.selection import require_line_selection_in_view
+from ...batch.selection import (
+    parse_command_line_selection,
+    require_line_selection_in_view,
+)
 from ...batch.source.advancement import (
     advance_source_lines_preserving_existing_presence,
 )
@@ -30,7 +33,6 @@ from ...batch.source.selected_line_refresh import (
 from ...batch.text_file_storage import add_file_to_batch
 from ...batch.state.batch_names import batch_exists
 from ...core.buffer import LineBuffer, buffer_ends_with_lf
-from ...core.line_selection import parse_line_selection
 from ...core.models import LineEntry, LineLevelChange
 from ...core.replacement import ReplacementPayload, coerce_replacement_payload
 from ...batch.ownership.model import BatchOwnership
@@ -82,7 +84,7 @@ def prepare_discard_line_replacement_selection(
     line_changes = load_line_changes_from_state()
     if line_changes is None:
         exit_with_error(_("No selected hunk. Run 'start' first."))
-    requested_ids = set(parse_line_selection(line_id_specification))
+    requested_ids = set(parse_command_line_selection(line_id_specification))
     require_line_selection_in_view(
         line_changes,
         requested_ids,

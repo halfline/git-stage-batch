@@ -7,9 +7,12 @@ from contextlib import ExitStack
 from dataclasses import dataclass
 
 from ...batch.source.annotation import annotate_with_batch_source
-from ...batch.selection import require_line_selection_in_view
+from ...batch.selection import (
+    parse_command_line_selection,
+    require_line_selection_in_view,
+)
 from ...core.buffer import LineBuffer
-from ...core.line_selection import format_line_ids, parse_line_selection
+from ...core.line_selection import format_line_ids
 from ...core.models import LineEntry, LineLevelChange
 from ...core.replacement import ReplacementPayload, coerce_replacement_payload
 from ...data.file_hunk_display import render_unstaged_file_as_single_hunk
@@ -78,7 +81,7 @@ def apply_include_line_replacement(
     trim_unchanged_edge_anchors: bool,
 ) -> None:
     """Stage replacement text for selected lines and record session masking."""
-    requested_ids = set(parse_line_selection(line_id_specification))
+    requested_ids = set(parse_command_line_selection(line_id_specification))
     require_line_selection_in_view(
         line_changes,
         requested_ids,
@@ -141,7 +144,7 @@ def prepare_pathless_include_line_replacement(
     replacement_base_buffer = None
     replacement_source_buffer = None
     selected_change_kind = read_selected_change_kind()
-    requested_ids = set(parse_line_selection(line_id_specification))
+    requested_ids = set(parse_command_line_selection(line_id_specification))
     if selected_change_kind == SelectedChangeKind.FILE:
         require_line_selection_in_view(
             line_changes,

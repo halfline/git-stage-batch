@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
+import shlex
 from typing import TYPE_CHECKING, Optional
 
 from .ownership.model import BatchOwnership
@@ -29,8 +30,22 @@ if TYPE_CHECKING:
     from ..core.models import LineLevelChange
 
 
+def _double_quote_shell_argument(value: str) -> str:
+    """Shell-quote an argument, preferring visible double quotes."""
+    if "!" in value:
+        return shlex.quote(value)
+    escaped = (
+        value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("$", "\\$")
+        .replace("`", "\\`")
+    )
+    return f'"{escaped}"'
+
+
 def _default_live_file_review_command(file_path: str) -> str:
-    return f"git-stage-batch show --file {file_path}"
+    quoted_file_path = _double_quote_shell_argument(file_path)
+    return f"git-stage-batch show --file {quoted_file_path}"
 
 
 def line_selection_not_valid_message(
@@ -134,7 +149,7 @@ def require_single_file_context_for_line_selection(
         return None
 
     assert line_ids is not None
-    return set(parse_line_selection(line_ids))
+    return set(parse_command_line_selection(line_ids))
 
 
 def require_single_file_context_for_line_selection_ranges(
@@ -153,7 +168,18 @@ def require_single_file_context_for_line_selection_ranges(
         return None
 
     assert line_ids is not None
-    return parse_line_selection_ranges(line_ids)
+    try:
+        return parse_line_selection_ranges(line_ids)
+    except ValueError as error:
+        raise CommandError(str(error)) from error
+
+
+def parse_command_line_selection(line_ids: str) -> list[int]:
+    """Parse command-line line IDs without exposing parser tracebacks."""
+    try:
+        return parse_line_selection(line_ids)
+    except ValueError as error:
+        raise CommandError(str(error)) from error
 
 
 def _line_selection_has_single_file_context(

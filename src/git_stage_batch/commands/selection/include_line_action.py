@@ -8,7 +8,7 @@ import sys
 
 from ...batch.selection import require_line_selection_in_view
 from ...core.buffer import LineBuffer, buffer_matches
-from ...core.line_selection import parse_line_selection
+from ...batch.selection import parse_command_line_selection
 from ...data.file_review.action_scope import finish_review_scoped_line_action
 from ...data.file_review.records import FileReviewState
 from ...data.selected_change.paths import get_selected_change_file_path
@@ -80,7 +80,7 @@ def include_live_line_selection(
         )
         line_changes = selection_context.line_changes
 
-        requested_ids = parse_line_selection(line_id_specification)
+        requested_ids = parse_command_line_selection(line_id_specification)
         require_line_selection_in_view(
             line_changes,
             set(requested_ids),

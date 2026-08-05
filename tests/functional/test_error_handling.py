@@ -19,6 +19,8 @@ class TestInvalidInput:
         # Invalid format
         result = git_stage_batch("include", "--line", "abc", check=False)
         assert result.returncode != 0
+        assert "Invalid line ID: abc" in result.stderr
+        assert "Traceback" not in result.stderr
 
     def test_invalid_batch_name(self, repo_with_changes):
         """Test invalid batch names with path traversal."""

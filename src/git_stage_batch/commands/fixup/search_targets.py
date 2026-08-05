@@ -72,7 +72,10 @@ def require_suggest_fixup_line_target(
 ) -> SuggestFixupResolvedTarget:
     """Return the line-scoped suggest-fixup search target."""
     line_changes, hunk_hash = _load_line_target_source(file)
-    requested_ids = parse_line_selection(line_id_specification)
+    try:
+        requested_ids = parse_line_selection(line_id_specification)
+    except ValueError as error:
+        exit_with_error(str(error))
     requested_ids_sorted = sorted(requested_ids)
     line_range = require_selected_old_line_range(line_changes, requested_ids)
 

@@ -407,7 +407,7 @@ def test_nested_checkpoint_rejects_paths_outside_outer_scope(
     with undo_checkpoint("outer", **outer_scope):
         with pytest.raises(
             CommandError,
-            match=rf"does not cover {scope_name} path.*inner",
+            match=rf"does not cover this {scope_name} path.*inner",
         ):
             with undo_checkpoint("inner", **inner_scope):
                 raise AssertionError("nested operation should not run")

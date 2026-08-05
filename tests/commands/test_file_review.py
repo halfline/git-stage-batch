@@ -301,7 +301,7 @@ def test_non_selectable_live_preview_preserves_partial_review_guard(
     preserved_state = read_last_file_review_state()
     assert preserved_state is not None
     assert preserved_state.file_path == "file.txt"
-    with pytest.raises(CommandError, match="Only pages 1 of 3"):
+    with pytest.raises(CommandError, match="Only page 1 of 3"):
         command_include(quiet=True)
 
 
@@ -341,7 +341,7 @@ def test_non_selectable_batch_preview_preserves_partial_review_guard(
     preserved_state = read_last_file_review_state()
     assert preserved_state is not None
     assert preserved_state.file_path == "file.txt"
-    with pytest.raises(CommandError, match="Only pages 1 of 3"):
+    with pytest.raises(CommandError, match="Only page 1 of 3"):
         command_include_from_batch("cleanup")
 
 
@@ -362,7 +362,7 @@ def test_show_file_and_file_list_tolerate_binary_changes(paged_file_repo, capsys
 
     captured = capsys.readouterr()
     assert "asset.bin" in captured.out
-    assert "binary modified" in captured.out
+    assert "binary file modified" in captured.out
 
 
 def test_show_text_file_after_binary_file_drops_stale_binary_selection(paged_file_repo, capsys):
@@ -445,7 +445,7 @@ def test_bare_include_refuses_after_partial_file_review(paged_file_repo, monkeyp
     with pytest.raises(CommandError) as exc_info:
         command_include()
 
-    assert "Only pages 1 of 3 of file.txt were shown" in exc_info.value.message
+    assert "Only page 1 of 3 of file.txt was shown" in exc_info.value.message
     assert "git-stage-batch include --file file.txt" in exc_info.value.message
 
 
@@ -473,7 +473,7 @@ def test_show_unchanged_file_preserves_partial_file_review_guard(
     assert preserved_state is not None
     assert preserved_state.file_path == "file.txt"
     assert preserved_state.shown_pages == (1,)
-    with pytest.raises(CommandError, match="Only pages 1 of 3"):
+    with pytest.raises(CommandError, match="Only page 1 of 3"):
         command_include(quiet=True)
 
 
@@ -497,7 +497,7 @@ def test_show_file_list_without_entries_preserves_partial_file_review_guard(
     capsys.readouterr()
 
     assert read_last_file_review_state() == state
-    with pytest.raises(CommandError, match="Only pages 1 of 3"):
+    with pytest.raises(CommandError, match="Only page 1 of 3"):
         command_include(quiet=True)
 
 
@@ -517,7 +517,7 @@ def test_show_from_empty_batch_preserves_partial_batch_review_guard(
     capsys.readouterr()
 
     assert read_last_file_review_state() == state
-    with pytest.raises(CommandError, match="Only pages 1 of 3"):
+    with pytest.raises(CommandError, match="Only page 1 of 3"):
         command_include_from_batch("cleanup")
 
 
@@ -538,7 +538,7 @@ def test_plain_show_without_unblocked_hunk_preserves_partial_file_review_guard(
     capsys.readouterr()
 
     assert read_last_file_review_state() == state
-    with pytest.raises(CommandError, match="Only pages 1 of 3"):
+    with pytest.raises(CommandError, match="Only page 1 of 3"):
         command_include(quiet=True)
 
 
@@ -567,7 +567,7 @@ def test_plain_show_with_only_batch_filtered_hunks_preserves_partial_file_review
     assert read_last_file_review_state() == state
     assert read_selected_change_kind() == SelectedChangeKind.FILE
     assert get_selected_change_file_path() == "file.txt"
-    with pytest.raises(CommandError, match="Only pages 1 of 3"):
+    with pytest.raises(CommandError, match="Only page 1 of 3"):
         command_include(quiet=True)
 
 
@@ -579,7 +579,7 @@ def test_bare_include_to_batch_refuses_after_partial_file_review(paged_file_repo
     with pytest.raises(CommandError) as exc_info:
         command_include_to_batch("later")
 
-    assert "Only pages 2 of 3 of file.txt were shown" in exc_info.value.message
+    assert "Only page 2 of 3 of file.txt was shown" in exc_info.value.message
     assert "git-stage-batch show --file file.txt --page all" in exc_info.value.message
 
 
@@ -604,7 +604,7 @@ def test_default_to_batch_file_actions_refuse_after_partial_file_review(
     with pytest.raises(CommandError) as exc_info:
         to_batch_action()
 
-    assert "Only pages 1 of 3 of file.txt were shown" in exc_info.value.message
+    assert "Only page 1 of 3 of file.txt was shown" in exc_info.value.message
     assert (paged_file_repo / "file.txt").read_text() == original_content
 
 
@@ -763,7 +763,7 @@ def test_bare_discard_to_batch_refuses_after_partial_file_review(paged_file_repo
     with pytest.raises(CommandError) as exc_info:
         command_discard_to_batch("later")
 
-    assert "Only pages 2 of 3 of file.txt were shown" in exc_info.value.message
+    assert "Only page 2 of 3 of file.txt was shown" in exc_info.value.message
     assert "line 12 changed" in (paged_file_repo / "file.txt").read_text()
 
 
@@ -937,7 +937,7 @@ def test_pathless_include_line_accepts_complete_shown_change_and_keeps_partial_r
     command_include_line(line_spec)
 
     captured = capsys.readouterr()
-    assert f"Included line(s): {line_spec}" in captured.err
+    assert f"Included selection {line_spec} from file.txt" in captured.err
     assert read_last_file_review_state() is not None
 
 
@@ -969,7 +969,7 @@ def test_repeated_file_marker_include_line_uses_partial_review_scope(
     args.func(args)
 
     captured = capsys.readouterr()
-    assert f"Included line(s): {line_spec}" in captured.err
+    assert f"Included selection {line_spec} from file.txt" in captured.err
     assert read_last_file_review_state() is not None
 
 
@@ -1829,7 +1829,7 @@ def test_bare_include_from_batch_after_filtered_file_show_does_not_widen_to_whol
     with pytest.raises(CommandError) as exc_info:
         command_include_from_batch("cleanup")
 
-    assert "Only pages 1 of 3 of file.txt were shown" in exc_info.value.message
+    assert "Only page 1 of 3 of file.txt was shown" in exc_info.value.message
     staged_files = subprocess.run(
         ["git", "diff", "--cached", "--name-only"],
         check=True,
@@ -1876,7 +1876,7 @@ def test_default_file_actions_refuse_after_partial_live_file_review(
     with pytest.raises(CommandError) as exc_info:
         file_command("")
 
-    assert "Only pages 1 of 3 of file.txt were shown" in exc_info.value.message
+    assert "Only page 1 of 3 of file.txt was shown" in exc_info.value.message
     assert (paged_file_repo / "file.txt").read_text() == original_content
 
 
@@ -1901,7 +1901,7 @@ def test_default_file_as_actions_refuse_after_partial_live_file_review(
     with pytest.raises(CommandError) as exc_info:
         as_command()
 
-    assert "Only pages 1 of 3 of file.txt were shown" in exc_info.value.message
+    assert "Only page 1 of 3 of file.txt was shown" in exc_info.value.message
     assert (paged_file_repo / "file.txt").read_text() == original_content
 
 
@@ -1981,7 +1981,7 @@ def test_bare_include_from_batch_refuses_after_partial_batch_review(
     with pytest.raises(CommandError) as exc_info:
         command_include_from_batch("cleanup")
 
-    assert "Only pages 1 of 3 of file.txt were shown" in exc_info.value.message
+    assert "Only page 1 of 3 of file.txt was shown" in exc_info.value.message
     assert "git-stage-batch include --from cleanup --file file.txt" in exc_info.value.message
     result = subprocess.run(["git", "diff", "--cached", "--quiet"], check=False)
     assert result.returncode == 0
@@ -2000,7 +2000,7 @@ def test_bare_discard_from_batch_refuses_after_partial_batch_review(
     with pytest.raises(CommandError) as exc_info:
         command_discard_from_batch("cleanup")
 
-    assert "Only pages 1 of 3 of file.txt were shown" in exc_info.value.message
+    assert "Only page 1 of 3 of file.txt was shown" in exc_info.value.message
     assert "git-stage-batch discard --from cleanup --file file.txt" in exc_info.value.message
     assert (paged_batch_repo / "file.txt").read_text() == original_content
 
@@ -2028,7 +2028,7 @@ def test_default_batch_file_actions_refuse_after_partial_batch_review(
     with pytest.raises(CommandError) as exc_info:
         batch_file_action()
 
-    assert "Only pages 1 of 3 of file.txt were shown" in exc_info.value.message
+    assert "Only page 1 of 3 of file.txt was shown" in exc_info.value.message
     assert (paged_batch_repo / "file.txt").read_text() == original_content
     assert "file.txt" in read_batch_metadata("cleanup").get("files", {})
 
@@ -2250,7 +2250,7 @@ def test_pathless_reset_from_batch_uses_reviewed_file_in_multi_file_batch(
     command_reset_from_batch("cleanup", line_ids=line_spec)
 
     captured = capsys.readouterr()
-    assert f"Reset line(s) {line_spec} from batch 'cleanup'" in captured.err
+    assert f"Reset selection {line_spec} from batch 'cleanup'" in captured.err
     metadata = read_batch_metadata("cleanup")
     assert set(metadata.get("files", {})) == {"file.txt", "other.txt"}
 
@@ -2412,7 +2412,7 @@ def test_start_clears_batch_review_state_left_outside_session(paged_batch_repo, 
     command_include_line("1")
 
     captured = capsys.readouterr()
-    assert "Included line(s): 1" in captured.err
+    assert "Included selection 1 from live.txt" in captured.err
 
 
 def test_batch_review_model_keeps_unselectable_changed_rows(capsys):

@@ -8,6 +8,7 @@ import pytest
 from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange
 from git_stage_batch.exceptions import BypassRefresh
 from git_stage_batch.tui.file_review.file_browser import ReviewFileEntry
+from git_stage_batch.tui.file_review import prompts as review_prompts
 from git_stage_batch.tui.file_review.browser import handle_file_browser
 from git_stage_batch.tui.file_review.browser import handle_current_file_review
 from git_stage_batch.tui.file_review.file_browser import list_review_file_entries
@@ -17,6 +18,22 @@ from git_stage_batch.tui.file_review.live_actions import (
 )
 from git_stage_batch.tui.file_review.session import FileReviewSessionState
 from git_stage_batch.tui.flow import FlowLocation, FlowState
+
+
+def test_review_actions_accept_localized_words_without_optional_marks(
+    monkeypatch,
+):
+    translations = {"include": "ضمّ"}
+    monkeypatch.setattr(
+        review_prompts,
+        "_",
+        lambda message: translations.get(message, message),
+    )
+    review_prompts._localized_review_words.cache_clear()
+    try:
+        assert review_prompts.normalize_review_action("ضم") == "i"
+    finally:
+        review_prompts._localized_review_words.cache_clear()
 
 
 def _line_changes(path: str = "test.txt") -> LineLevelChange:

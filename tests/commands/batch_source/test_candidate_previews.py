@@ -100,7 +100,7 @@ def test_require_candidate_preview_for_ordinal_reports_missing_ordinal():
         )
 
     assert (
-        "Batch 'cleanup' has 1 include candidates for notes.txt; "
+        "Batch 'cleanup' has 1 include candidate for notes.txt; "
         "candidate 2 does not exist."
     ) in exc_info.value.message
 

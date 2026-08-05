@@ -8,6 +8,7 @@ from git_stage_batch.core.line_selection import (
     format_line_ids,
     parse_line_selection,
     parse_line_selection_ranges,
+    parse_positive_selection,
     scan_line_range_specs,
 )
 
@@ -258,6 +259,14 @@ class TestLineRanges:
     ):
         with pytest.raises(ValueError, match=message):
             LineRanges.from_specs([specification])
+
+    def test_positive_selection_uses_explicit_plural_item_label(self):
+        with pytest.raises(ValueError, match="Pages must be positive: 0-2"):
+            parse_positive_selection(
+                "0-2",
+                item_name="Page",
+                item_name_plural="Pages",
+            )
 
     def test_from_specs_streams_into_range_scanner(self, monkeypatch):
         scanned_specs = []

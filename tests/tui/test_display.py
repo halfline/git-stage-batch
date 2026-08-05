@@ -33,6 +33,43 @@ class TestPrintStatusBar:
         assert Colors.BOLD in output
         assert Colors.GRAY in output  # Arrow should be gray
 
+    def test_colored_status_bar_translates_labels_and_arrow(self):
+        """Color styling does not bypass translated flow/status text."""
+        translations = {
+            "Source:": "المصدر:",
+            "Target:": "الهدف:",
+            "Included: {count}": "المضمّن: {count}",
+            "Skipped: {count}": "المتخطّى: {count}",
+            "Discarded: {count}": "المُتجاهَل: {count}",
+        }
+        with (
+            patch("sys.stdout", new=StringIO()) as fake_out,
+            patch("sys.stdout.isatty", return_value=True),
+            patch(
+                "git_stage_batch.tui.display._",
+                side_effect=lambda message: translations.get(message, message),
+            ),
+            patch(
+                "git_stage_batch.tui.display.pgettext",
+                return_value="←",
+            ),
+        ):
+            print_status_bar(
+                {"included": 5, "skipped": 2, "discarded": 1},
+                FlowState(
+                    source=FlowLocation.WORKING_TREE,
+                    target=FlowLocation.STAGING_AREA,
+                ),
+            )
+
+        output = fake_out.getvalue()
+        assert "المصدر:" in output
+        assert "الهدف:" in output
+        assert "المضمّن: 5" in output
+        assert "المتخطّى: 2" in output
+        assert "المُتجاهَل: 1" in output
+        assert f"{Colors.GRAY}←{Colors.RESET}" in output
+
     def test_status_bar_without_colors(self):
         """Test status bar without colors."""
         with patch("sys.stdout", new=StringIO()) as fake_out:

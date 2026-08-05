@@ -50,6 +50,36 @@ _PROCESS_SIFT_TEST = pytest.mark.skipif(
 )
 
 
+@pytest.mark.parametrize(
+    ("retained_count", "expected_noun"),
+    ((1, "file"), (2, "files")),
+)
+def test_sift_summary_pluralizes_the_retained_file_count(
+    retained_count,
+    expected_noun,
+    monkeypatch,
+    capsys,
+):
+    selected_counts = []
+
+    def record_ngettext(singular, plural, count):
+        selected_counts.append(count)
+        return singular if count == 1 else plural
+
+    monkeypatch.setattr(sift_command, "ngettext", record_ngettext)
+
+    sift_command._print_sift_summary(
+        source_batch="source",
+        dest_batch="source",
+        retained_count=retained_count,
+        total_count=3,
+    )
+
+    captured = capsys.readouterr()
+    assert selected_counts == [retained_count]
+    assert f"{retained_count} {expected_noun} out of 3" in captured.err
+
+
 def merge_batch(
     batch_source_content: bytes,
     ownership: BatchOwnership,

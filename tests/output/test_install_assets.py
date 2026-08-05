@@ -35,3 +35,30 @@ def test_print_group_install_summary_renders_multiple_entries(capsys):
 
     assert captured.out == ""
     assert "Installed Example assets: alpha, beta" in captured.err
+
+
+def test_print_group_install_summary_uses_locale_plural_selector(monkeypatch, capsys):
+    """The actual installed count selects the localized asset-name form."""
+    selected_counts = []
+
+    def fake_npgettext(context, singular, plural, count):
+        assert context == "asset group kind"
+        selected_counts.append(count)
+        return singular if count == 1 else plural
+
+    monkeypatch.setattr(
+        "git_stage_batch.data.asset_catalog.npgettext",
+        fake_npgettext,
+    )
+
+    group = AssetGroup(
+        source_segments=(),
+        target_segments=(),
+        display_name_singular="Claude skill",
+        display_name_plural="Claude skills",
+        required_entry="",
+    )
+    print_group_install_summary(group, ("alpha", "beta", "gamma"))
+
+    assert selected_counts == [3]
+    assert "Installed Claude skills: alpha, beta, gamma" in capsys.readouterr().err

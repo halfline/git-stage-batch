@@ -383,7 +383,7 @@ def test_candidate_overview_subject_names_only_ambiguous_targets():
     )
     assert candidate_preview_summary.candidate_overview_subject((preview,)) == (
         "working tree",
-        "has",
+        1,
     )
 
     preview = SimpleNamespace(
@@ -394,7 +394,7 @@ def test_candidate_overview_subject_names_only_ambiguous_targets():
     )
     assert candidate_preview_summary.candidate_overview_subject((preview,)) == (
         "index",
-        "has",
+        1,
     )
 
     preview = SimpleNamespace(
@@ -405,7 +405,7 @@ def test_candidate_overview_subject_names_only_ambiguous_targets():
     )
     assert candidate_preview_summary.candidate_overview_subject((preview,)) == (
         "working tree and index",
-        "have",
+        2,
     )
 
 

@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
 
-from ..core.line_selection import format_line_ids
 from ..core.replacement import (
     ReplacementPayload,
     coerce_replacement_payload,
@@ -48,11 +47,16 @@ class ReplacementBatchView:
         self.close()
 
 
-def _format_presence_lines(line_numbers: list[int]) -> list[str]:
-    """Format presence source line numbers as normalized range strings."""
-    if not line_numbers:
+def _format_presence_range(start_line: int, line_count: int) -> list[str]:
+    """Format one contiguous presence range without expanding its line IDs."""
+    if line_count <= 0:
         return []
-    return [format_line_ids(line_numbers)]
+    end_line = start_line + line_count - 1
+    return [
+        str(start_line)
+        if start_line == end_line
+        else f"{start_line}-{end_line}"
+    ]
 
 
 def build_replacement_batch_view_from_lines(
@@ -84,20 +88,20 @@ def _build_replacement_batch_view(
     spool_dir: str | Path | None = None,
 ) -> ReplacementBatchView:
     """Build a replacement view while its replacement line sequence is open."""
-    claimed_source_lines = sorted(ownership.presence_line_set())
-    new_claimed_lines: list[int]
+    claimed_source_ranges = ownership.presence_line_set().ranges()
 
-    if claimed_source_lines:
-        expected_claimed = list(range(claimed_source_lines[0], claimed_source_lines[-1] + 1))
-        if claimed_source_lines != expected_claimed:
-            raise ValueError("Replacement selection must resolve to one contiguous batch-source line range.")
+    if claimed_source_ranges:
+        if len(claimed_source_ranges) != 1:
+            raise ValueError(
+                "Replacement selection must resolve to one contiguous "
+                "batch-source line range."
+            )
 
-        start_line = claimed_source_lines[0]
-        end_line = claimed_source_lines[-1]
+        start_line, end_line = claimed_source_ranges[0]
         removed_count = end_line - start_line + 1
         added_count = len(replacement_lines)
 
-        new_claimed_lines = list(range(start_line, start_line + added_count))
+        new_presence_lines = _format_presence_range(start_line, added_count)
         new_deletions = []
         for deletion in ownership.deletions:
             anchor = deletion.anchor_line
@@ -130,31 +134,30 @@ def _build_replacement_batch_view(
                 spool_dir=spool_dir,
             ),
             ownership=BatchOwnership.from_presence_lines(
-                _format_presence_lines(new_claimed_lines),
+                new_presence_lines,
                 new_deletions,
                 replacement_units=[
                     ReplacementUnit(
-                        presence_lines=_format_presence_lines(new_claimed_lines),
+                        presence_lines=new_presence_lines,
                         deletion_indices=list(range(len(new_deletions))),
                     )
-                ] if new_claimed_lines and new_deletions else [],
+                ] if new_presence_lines and new_deletions else [],
             ),
         )
 
     distinct_anchors = {deletion.anchor_line for deletion in ownership.deletions}
     if len(distinct_anchors) > 1:
-        raise ValueError("Replacement selection must resolve to one contiguous batch-source region.")
+        raise ValueError(
+            "Replacement selection must resolve to one contiguous "
+            "batch-source region."
+        )
 
     anchor_line = next(iter(distinct_anchors), None)
     insert_at = 0 if anchor_line is None else anchor_line
     added_count = len(replacement_lines)
 
-    if added_count == 0:
-        new_claimed_lines = []
-    elif anchor_line is None:
-        new_claimed_lines = list(range(1, added_count + 1))
-    else:
-        new_claimed_lines = list(range(anchor_line + 1, anchor_line + added_count + 1))
+    new_start_line = 1 if anchor_line is None else anchor_line + 1
+    new_presence_lines = _format_presence_range(new_start_line, added_count)
 
     new_deletions = []
     for deletion in ownership.deletions:
@@ -183,14 +186,14 @@ def _build_replacement_batch_view(
             spool_dir=spool_dir,
         ),
         ownership=BatchOwnership.from_presence_lines(
-            _format_presence_lines(new_claimed_lines),
+            new_presence_lines,
             new_deletions,
             replacement_units=[
                 ReplacementUnit(
-                    presence_lines=_format_presence_lines(new_claimed_lines),
+                    presence_lines=new_presence_lines,
                     deletion_indices=list(range(len(new_deletions))),
                 )
-            ] if new_claimed_lines and new_deletions else [],
+            ] if new_presence_lines and new_deletions else [],
         ),
     )
 

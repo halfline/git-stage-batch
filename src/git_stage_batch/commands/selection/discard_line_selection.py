@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 from ...batch.selection import require_line_selection_in_view
-from ...core.line_selection import parse_line_selection
+from ...batch.selection import parse_command_line_selection
 from ...data.line_state import require_line_changes_from_state
 from ...utils.repository_buffers import load_working_tree_file_as_buffer
 from ...data.selected_change.loading import require_selected_hunk
@@ -41,7 +41,7 @@ def discard_worktree_line_selection(
             target_file
         )
 
-    requested_ids = parse_line_selection(line_id_specification)
+    requested_ids = parse_command_line_selection(line_id_specification)
     require_line_selection_in_view(
         line_changes,
         set(requested_ids),

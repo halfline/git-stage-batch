@@ -7,7 +7,7 @@ import json
 import sys
 
 from ...batch.selection import require_line_selection_in_view
-from ...core.line_selection import parse_line_selection
+from ...batch.selection import parse_command_line_selection
 from ...data.file_hunk_display import render_unstaged_file_as_single_hunk
 from ...data.selected_change.file_hunk_cache import cache_unstaged_file_as_single_hunk
 from ...data.file_review.action_scope import finish_review_scoped_line_action
@@ -80,7 +80,7 @@ def skip_line_selection(
         ):
             exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
 
-    requested_ids = parse_line_selection(line_id_specification)
+    requested_ids = parse_command_line_selection(line_id_specification)
     operation_parts = ["skip", "--line", line_id_specification]
     if file is not None:
         operation_parts.extend(["--file", file])

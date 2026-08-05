@@ -12,6 +12,7 @@ from ..i18n import _
 from .colors import Colors
 from . import file_review_footer_hints
 from .file_review_summary import change_summary, page_summary
+from .terminal_width import pad_to_terminal_width, terminal_cell_width
 
 
 def _style_footer_command(command: str) -> str:
@@ -95,13 +96,15 @@ def print_file_review_footer(
     else:
         print(status)
     print()
-    action_width = max(len(hint.action) for hint in hints if hint.command)
+    action_width = max(
+        terminal_cell_width(hint.action) for hint in hints if hint.command
+    )
     for hint in hints:
         if not hint.command:
             print(hint.action)
             continue
         display_command = _display_footer_command(hint.command)
-        action_text = hint.action.ljust(action_width)
+        action_text = pad_to_terminal_width(hint.action, action_width)
         if use_color:
             print(
                 f"{Colors.CYAN}{action_text}{Colors.RESET}  "

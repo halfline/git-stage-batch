@@ -8,6 +8,7 @@ import os
 from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.buffer import LineBuffer
 from ...data.file_modes import detect_file_mode_in_commit
+from ...git_paths import display_path
 from ...utils.buffer_io import write_buffer_to_working_tree_path
 from ...utils.repository_buffers import read_git_object_buffer_or_none
 from ...utils.git_index import git_update_index
@@ -69,7 +70,8 @@ def write_binary_file_to_worktree(
     if buffer is None:
         if missing_content_message is None:
             missing_content_message = (
-                f"Binary file not found in batch commit: {file_path}"
+                "Binary file not found in batch commit: "
+                f"{display_path(file_path)}"
             )
         raise RuntimeError(missing_content_message)
 
@@ -95,12 +97,16 @@ def stage_binary_file_to_index(
         result = git_update_index(file_path=file_path, force_remove=True, check=False)
         if result.returncode != 0:
             raise RuntimeError(
-                f"Failed to stage binary deletion for {file_path}: {result.stderr}"
+                "Failed to stage binary deletion for "
+                f"{display_path(file_path)}: {result.stderr}"
             )
         return
 
     if buffer is None:
-        raise RuntimeError(f"Binary file not found in batch commit: {file_path}")
+        raise RuntimeError(
+            "Binary file not found in batch commit: "
+            f"{display_path(file_path)}"
+        )
 
     blob_hash = create_git_blob(buffer.byte_chunks())
     file_mode = file_meta.get("mode", "100644")

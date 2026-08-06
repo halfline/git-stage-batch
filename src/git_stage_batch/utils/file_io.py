@@ -14,7 +14,7 @@ from .atomic_write import (
     write_chunks_atomically,
 )
 from ..exceptions import CommandError
-from ..git_paths import decode_path, encode_path, nul_records
+from ..git_paths import decode_path, display_path, encode_path, nul_records
 from ..i18n import _
 
 
@@ -129,7 +129,7 @@ def _existing_file_metadata(path: Path) -> os.stat_result | None:
             _(
                 "Refusing to replace symlink '{path}' with a regular file. "
                 "Remove the symlink or update its target explicitly."
-            ).format(path=path)
+            ).format(path=display_path(str(path)))
         )
     return metadata
 

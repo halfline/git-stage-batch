@@ -406,7 +406,7 @@ def _head_changed_since_session_start(paths: list[str]) -> bool:
         requires_index_lock=False,
         literal_pathspecs=True,
     )
-    return result.returncode == 1
+    return git_diff_reports_changes(result)
 
 
 def restore_unstaged_start_time_renames() -> list[StagedRename]:

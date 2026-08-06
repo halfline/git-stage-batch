@@ -140,6 +140,31 @@ def _edit_lines_preserving_source_endings_as_buffer(
     return LineBuffer.from_chunks(output_chunks())
 
 
+def _replacement_result_has_trailing_newline(
+    source_has_trailing_newline: bool,
+    source_line_count: int,
+    selection_start: int,
+    selection_end: int,
+    replacement_payload: ReplacementPayload,
+    replacement_line_count: int,
+) -> bool:
+    """Return the target EOF state without altering surviving source lines."""
+    if not replacement_payload.exact:
+        return (
+            replacement_payload.has_trailing_lf
+            or source_has_trailing_newline
+        )
+    if selection_end != source_line_count:
+        return source_has_trailing_newline
+    if replacement_line_count:
+        return replacement_payload.has_trailing_lf
+    if selection_start < selection_end:
+        # An empty replacement removed source lines at EOF. Any surviving
+        # predecessor was not the source's final line, so retain its ending.
+        return selection_start > 0
+    return source_has_trailing_newline
+
+
 def _line_content_at(lines: Sequence[bytes], index: int) -> bytes:
     """Return exact index bytes so untouched lines retain their endings."""
     return lines[index]
@@ -549,14 +574,14 @@ def _build_target_index_buffer_with_replaced_lines(
                 )
             )
 
-    if replacement_payload.exact:
-        trailing_newline = (
-            replacement_payload.has_trailing_lf
-            if replace_end == base_line_count
-            else base_has_trailing_newline
-        )
-    else:
-        trailing_newline = replacement_payload.has_trailing_lf or base_has_trailing_newline
+    trailing_newline = _replacement_result_has_trailing_newline(
+        base_has_trailing_newline,
+        base_line_count,
+        replace_start,
+        replace_end,
+        replacement_payload,
+        len(replacement_lines),
+    )
     return _edit_lines_preserving_source_endings_as_buffer(
         base_lines,
         replacement_lines,
@@ -832,14 +857,14 @@ def _build_target_working_tree_buffer_with_replaced_lines(
                 )
             )
 
-    if replacement_payload.exact:
-        trailing_newline = (
-            replacement_payload.has_trailing_lf
-            if replace_end == working_line_count
-            else working_has_trailing_newline
-        )
-    else:
-        trailing_newline = replacement_payload.has_trailing_lf or working_has_trailing_newline
+    trailing_newline = _replacement_result_has_trailing_newline(
+        working_has_trailing_newline,
+        working_line_count,
+        replace_start,
+        replace_end,
+        replacement_payload,
+        len(replacement_lines),
+    )
     return _edit_lines_preserving_source_endings_as_buffer(
         working_lines,
         replacement_lines,

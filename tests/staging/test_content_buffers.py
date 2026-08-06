@@ -67,7 +67,7 @@ def _build_target_index_content_bytes(
 def _build_target_index_replacement_bytes(
     line_changes: LineLevelChange,
     replace_ids: set[int],
-    replacement_text: str,
+    replacement_text: str | ReplacementPayload,
     base_lines,
     *,
     base_has_trailing_newline: bool,
@@ -100,7 +100,7 @@ def _build_target_working_tree_content_bytes(
 def _build_target_working_tree_replacement_bytes(
     line_changes: LineLevelChange,
     replace_ids: set[int],
-    replacement_text: str,
+    replacement_text: str | ReplacementPayload,
     working_lines,
     *,
     working_has_trailing_newline: bool,
@@ -1034,6 +1034,32 @@ class TestBuildTargetIndexContent:
         ):
             assert result.to_bytes() == b"keep\r\nfirst\r\nsecond\r\ntail\r\n"
 
+    @pytest.mark.parametrize("line_ending", [b"\n", b"\r\n"])
+    def test_exact_empty_index_replacement_preserves_preceding_ending(
+        self,
+        line_ending,
+    ):
+        """Deleting the selected EOF line must not alter its predecessor."""
+        header = HunkHeader(1, 2, 1, 2)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"keep", text="keep"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old", text="old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"working", text="working"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        base_content = line_ending.join([b"keep", b"old", b""])
+
+        with LineBuffer.from_bytes(base_content) as base_lines:
+            result = _build_target_index_replacement_bytes(
+                line_changes,
+                {1, 2},
+                ReplacementPayload(b""),
+                base_lines,
+                base_has_trailing_newline=True,
+            )
+
+        assert result == b"keep" + line_ending
+
     def test_replace_selection_keeps_matching_edge_anchors_with_no_edge_overlap(self):
         """Replacement staging should preserve duplicated anchors when requested."""
         header = HunkHeader(1, 4, 1, 4)
@@ -1170,6 +1196,32 @@ class TestBuildTargetIndexContent:
             )
 
         assert result == b"keep\nnew"
+
+    @pytest.mark.parametrize("line_ending", [b"\n", b"\r\n"])
+    def test_exact_empty_worktree_replacement_preserves_preceding_ending(
+        self,
+        line_ending,
+    ):
+        """Deleting the selected worktree EOF line must retain prior bytes."""
+        header = HunkHeader(1, 2, 1, 2)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"keep", text="keep"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old", text="old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"working", text="working"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        working_content = line_ending.join([b"keep", b"working", b""])
+
+        with LineBuffer.from_bytes(working_content) as working_lines:
+            result = _build_target_working_tree_replacement_bytes(
+                line_changes,
+                {1, 2},
+                ReplacementPayload(b""),
+                working_lines,
+                working_has_trailing_newline=True,
+            )
+
+        assert result == b"keep" + line_ending
 
     def test_working_tree_replacement_can_return_buffer(self, line_sequence):
         """Working-tree replacement can return a buffer for streaming callers."""

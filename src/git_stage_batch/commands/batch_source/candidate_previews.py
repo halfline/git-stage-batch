@@ -11,6 +11,7 @@ from ...batch.operation_candidate_types import (
 from ...batch.operation_candidate_labels import candidate_operation_label
 from ...batch.operation_candidate_state import load_candidate_preview_state
 from ...exceptions import CommandError
+from ...git_paths import display_path, terminal_safe_shell_quote
 from ...i18n import _, ngettext
 
 
@@ -49,7 +50,7 @@ def require_candidate_preview_for_ordinal(
             batch=batch_name,
             count=len(previews),
             operation=candidate_operation_label(operation),
-            file=file_path,
+            file=display_path(file_path),
             ordinal=ordinal,
         )
     )
@@ -81,14 +82,22 @@ def require_candidate_preview_state(
     """Raise a command error when the stored preview state is stale or missing."""
     if candidate_preview_state_matches(preview, ordinal):
         return
-    raise CommandError(
-        _(
+    displayed_selector = display_path(selector)
+    displayed_file = display_path(file_path)
+    message = _(
             "Candidate selector '{selector}' has not been previewed for {file}.\n"
             "No changes applied.\n\n"
             "Preview it first with:\n"
             "  git-stage-batch show --from {selector} --file {file}"
-        ).format(selector=selector, file=file_path)
+    ).format(selector=displayed_selector, file=displayed_file)
+    message = message.replace(
+        "git-stage-batch show --from "
+        f"{displayed_selector} --file {displayed_file}",
+        "git-stage-batch show --from "
+        f"{terminal_safe_shell_quote(selector)} --file "
+        f"{terminal_safe_shell_quote(file_path)}",
     )
+    raise CommandError(message)
 
 
 def close_candidate_previews(

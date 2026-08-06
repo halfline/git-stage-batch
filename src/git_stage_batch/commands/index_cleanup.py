@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ..exceptions import exit_with_error
+from ..git_paths import display_path
 from ..i18n import _
 from ..utils.git_index import git_update_index
 
@@ -17,7 +18,7 @@ def remove_path_from_index(file_path: str) -> None:
     if result.returncode != 0:
         exit_with_error(
             _("Failed to remove {file} from the index: {error}").format(
-                file=file_path,
+                file=display_path(file_path),
                 error=result.stderr,
             )
         )

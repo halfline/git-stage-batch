@@ -154,7 +154,7 @@ def test_multi_file_include_rejects_index_drift_before_later_file(
     def include_then_drift(file_path, **kwargs):
         result = original_include(file_path, **kwargs)
         if file_path == "alpha.txt":
-            subprocess.run(["git", "add", "beta.txt"], check=True)
+            run_git_command(["add", "beta.txt"])
         return result
 
     monkeypatch.setattr(

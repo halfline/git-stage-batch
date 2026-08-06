@@ -198,6 +198,19 @@ class TestWaitForGitIndexLock:
 
         assert sleep_calls == []
 
+    def test_git_directory_path_preserves_trailing_whitespace(self, tmp_path):
+        """Lock discovery must remove only Git's terminating newline."""
+        repository = tmp_path / "repo "
+        repository.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+
+        lock_path = git_index_lock._git_index_lock_path(
+            cwd=str(repository),
+            env=None,
+        )
+
+        assert lock_path == repository / ".git" / "index.lock"
+
     def test_polls_until_lock_disappears(self, tmp_path, monkeypatch):
         """A transient index lock should delay a locking command until it disappears."""
         index_lock = tmp_path / "index.lock"

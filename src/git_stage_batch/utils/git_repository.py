@@ -55,7 +55,7 @@ def get_git_repository_root_path() -> Path:
     output = run_git_command(
         ["rev-parse", "--show-toplevel"],
         requires_index_lock=False,
-    ).stdout.strip()
+    ).stdout.removesuffix("\n")
     path = Path(output)
     _GIT_REPOSITORY_ROOT_CACHE[cwd] = path
     return path
@@ -84,7 +84,7 @@ def is_git_repository_root_path(path: Path) -> bool:
         if path.is_symlink():
             return False
         requested_root = path.resolve()
-        reported_root = Path(result.stdout.strip()).resolve()
+        reported_root = Path(result.stdout.removesuffix("\n")).resolve()
     except OSError:
         return False
     return reported_root == requested_root
@@ -100,7 +100,7 @@ def get_git_directory_path() -> Path:
     output = run_git_command(
         ["rev-parse", "--absolute-git-dir"],
         requires_index_lock=False,
-    ).stdout.strip()
+    ).stdout.removesuffix("\n")
     path = Path(output)
     _GIT_DIRECTORY_CACHE[cwd] = path
     return path
@@ -120,7 +120,7 @@ def get_git_common_directory_path() -> Path:
     output = run_git_command(
         ["rev-parse", "--path-format=absolute", "--git-common-dir"],
         requires_index_lock=False,
-    ).stdout.strip()
+    ).stdout.removesuffix("\n")
     path = Path(output)
     _GIT_COMMON_DIRECTORY_CACHE[cwd] = path
     return path

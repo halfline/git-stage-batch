@@ -30,6 +30,7 @@ from ...data.live_diff import stream_live_git_diff
 from ...utils.session_start_point import session_comparison_base
 from ...data.session import snapshot_file_if_untracked
 from ...exceptions import exit_with_error
+from ...git_paths import display_path
 from ...i18n import _
 from ...utils.repository_buffers import read_git_object_buffer_or_empty
 from ..selection import whole_file_batch_staging as _whole_file_batch_staging
@@ -131,7 +132,7 @@ def include_file_to_batch(
             if not quiet:
                 print(
                     _("Included file '{file}' to batch '{batch}'").format(
-                        file=file_path,
+                        file=display_path(file_path),
                         batch=batch_name,
                     ),
                     file=sys.stderr,
@@ -141,7 +142,9 @@ def include_file_to_batch(
 
         if not quiet:
             print(
-                _("No changes in file '{file}' to include.").format(file=file_path),
+                _("No changes in file '{file}' to include.").format(
+                    file=display_path(file_path)
+                ),
                 file=sys.stderr,
             )
         return
@@ -171,7 +174,7 @@ def include_file_to_batch(
             exit_with_error(
                 _("Cannot include file to batch: batch source is stale and remapping failed.\n"
                   "File: {file}\nBatch: {batch}\nError: {error}").format(
-                    file=file_path,
+                    file=display_path(file_path),
                     batch=batch_name,
                     error=str(error),
                 )
@@ -189,7 +192,7 @@ def include_file_to_batch(
     if not quiet:
         print(
             _("Included file '{file}' to batch '{batch}'").format(
-                file=file_path,
+                file=display_path(file_path),
                 batch=batch_name,
             ),
             file=sys.stderr,

@@ -16,6 +16,7 @@ from ...data.selected_change.store import (
 from ...data.session import snapshot_file_if_untracked
 from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import exit_with_error
+from ...git_paths import display_path, terminal_safe_shell_join
 from ...i18n import _
 from ...utils.buffer_io import write_buffer_to_working_tree_path
 from ...utils.git_repository import get_git_repository_root_path
@@ -41,7 +42,7 @@ def discard_file_as_replacement(
 
     with (
         undo_checkpoint(
-            " ".join(operation_parts),
+            terminal_safe_shell_join(operation_parts),
             worktree_paths=[target_file],
             rollback_on_error=True,
         ),
@@ -74,4 +75,9 @@ def discard_file_as_replacement(
             )
         clear_last_file_review_state_if_file_matches(target_file)
 
-    print(_("✓ Discarded file as replacement: {file}").format(file=target_file), file=sys.stderr)
+    print(
+        _("✓ Discarded file as replacement: {file}").format(
+            file=display_path(target_file)
+        ),
+        file=sys.stderr,
+    )

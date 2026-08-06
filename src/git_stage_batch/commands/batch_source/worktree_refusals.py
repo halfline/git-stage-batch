@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from ...exceptions import exit_with_error
+from ...git_paths import display_path
 from ...i18n import _
 
 
@@ -31,7 +32,7 @@ def refuse_incompatible_worktree_action(
                 "{error_suffix}"
             ).format(
                 batch=batch_name,
-                file=file_path,
+                file=display_path(file_path),
                 error_suffix=error_suffix,
             )
         )

@@ -22,6 +22,7 @@ from ...utils.repository_buffers import (
     load_working_tree_file_as_buffer,
 )
 from ...exceptions import exit_with_error
+from ...git_paths import display_path
 from ...i18n import _
 
 
@@ -60,7 +61,9 @@ def build_batch_source_candidate_previews(
     batch_source_buffer = read_git_object_buffer_or_none(batch_source_ref.object_spec)
     if batch_source_buffer is None:
         exit_with_error(
-            _("Batch source content is missing for {file}.").format(file=file_path)
+            _("Batch source content is missing for {file}.").format(
+                file=display_path(file_path)
+            )
         )
 
     worktree_target = _candidate_inputs.candidate_worktree_text_target(

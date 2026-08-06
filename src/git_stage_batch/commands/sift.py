@@ -25,6 +25,7 @@ import stat
 import sys
 
 from ..exceptions import MergeError
+from ..git_paths import display_path
 from ..batch.state.validation import read_validated_batch_metadata
 from ..batch.state.metadata_types import BatchFileMetadataDict, BatchMetadataDict
 from ..batch.state.reference_names import (
@@ -597,7 +598,7 @@ def _require_unchanged_sift_inputs(
                     "Cannot sift batch '{source}' because working-tree file "
                     "'{file}' changed while sift was running. Retry against "
                     "the current working tree."
-                ).format(source=source_batch, file=file_path)
+                ).format(source=source_batch, file=display_path(file_path))
             )
 
     for file_path, expected_mode in expected_worktree_modes.items():
@@ -612,7 +613,7 @@ def _require_unchanged_sift_inputs(
                     "Cannot sift batch '{source}' because the file mode for "
                     "'{file}' changed while sift was running. Retry against "
                     "the current working tree."
-                ).format(source=source_batch, file=file_path)
+                ).format(source=source_batch, file=display_path(file_path))
             )
 
     publication_ref_identities = _capture_source_batch_ref_identities(

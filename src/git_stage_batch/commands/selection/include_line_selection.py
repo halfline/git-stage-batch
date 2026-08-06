@@ -176,7 +176,11 @@ def load_include_line_selection_context(
 
         cached_line_changes = cache_unstaged_file_as_single_hunk(target_file)
         if cached_line_changes is None:
-            exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
+            exit_with_error(
+                _("No changes in file '{file}'.").format(
+                    file=display_path(target_file)
+                )
+            )
         line_changes = cached_line_changes
 
     return IncludeLineSelectionContext(

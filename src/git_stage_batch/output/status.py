@@ -9,6 +9,7 @@ from ..data.status_types import (
     FileReviewSummary,
     StatusSummary,
 )
+from ..git_paths import display_path
 from ..i18n import _, ngettext
 
 
@@ -89,10 +90,10 @@ def _print_selected_change(selected_summary: ChangeSummary) -> None:
     ids_str = format_id_range(selected_summary["ids"])
     print(_selected_kind_label(selected_summary.get("kind")))
     if selected_summary.get("line") is None:
-        print(_("  {file}").format(file=selected_summary["file"]))
+        print(_("  {file}").format(file=display_path(selected_summary["file"])))
     else:
         print(_("  {file}:{line}").format(
-            file=selected_summary["file"],
+            file=display_path(selected_summary["file"]),
             line=selected_summary["line"],
         ))
     if ids_str:
@@ -138,12 +139,17 @@ def _print_file_review(file_review_summary: FileReviewSummary) -> None:
 def _print_skipped_hunk(hunk: ChangeSummary) -> None:
     ids_str = format_id_range(hunk.get("ids", []))
     if hunk.get("line") is None:
-        print(_("  {file}").format(file=hunk["file"]))
+        print(_("  {file}").format(file=display_path(hunk["file"])))
     elif ids_str:
         print(_("  {file}:{line} [#{ids}]").format(
-            file=hunk["file"],
+            file=display_path(hunk["file"]),
             line=hunk["line"],
             ids=ids_str,
         ))
     else:
-        print(_("  {file}:{line}").format(file=hunk["file"], line=hunk["line"]))
+        print(
+            _("  {file}:{line}").format(
+                file=display_path(hunk["file"]),
+                line=hunk["line"],
+            )
+        )

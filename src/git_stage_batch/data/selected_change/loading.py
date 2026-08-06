@@ -14,6 +14,7 @@ from ...core.models import (
     TextFileDeletionChange,
 )
 from ...exceptions import CommandError
+from ...git_paths import display_path
 from ...i18n import _
 from ...utils.file_io import read_text_file_contents
 from ...utils.paths import (
@@ -55,7 +56,7 @@ def load_selected_change() -> Optional[SelectedChange]:
                 _(
                     "Selected file mode no longer matches the working tree: {file}.\n"
                     "Run 'show' again before using a pathless action."
-                ).format(file=mode_change.path())
+                ).format(file=display_path(mode_change.path()))
             )
         return mode_change
     rename_change = _selected_file_changes.load_selected_rename_change()
@@ -68,7 +69,10 @@ def load_selected_change() -> Optional[SelectedChange]:
                 _(
                     "Selected rename no longer matches the working tree: {old} -> {new}.\n"
                     "Run 'show' again before using a pathless action."
-                ).format(old=rename_change.old_path, new=rename_change.new_path)
+                ).format(
+                    old=display_path(rename_change.old_path),
+                    new=display_path(rename_change.new_path),
+                )
             )
         return rename_change
 
@@ -82,7 +86,7 @@ def load_selected_change() -> Optional[SelectedChange]:
                 _(
                     "Selected text file deletion no longer matches the working tree: {file}.\n"
                     "Run 'show' again before using a pathless action."
-                ).format(file=deletion_change.path())
+                ).format(file=display_path(deletion_change.path()))
             )
         return deletion_change
 
@@ -100,7 +104,7 @@ def load_selected_change() -> Optional[SelectedChange]:
                 _(
                     "Selected submodule pointer no longer matches the working tree: {file}.\n"
                     "Run 'show' again before using a pathless action."
-                ).format(file=gitlink_change.path())
+                ).format(file=display_path(gitlink_change.path()))
             )
         return gitlink_change
 
@@ -119,7 +123,7 @@ def load_selected_change() -> Optional[SelectedChange]:
                 _(
                     "Selected binary file no longer matches the working tree: {file}.\n"
                     "Run 'show' again before using a pathless action."
-                ).format(file=file_path)
+                ).format(file=display_path(file_path))
             )
         return binary_file
 

@@ -11,6 +11,7 @@ from git_stage_batch.git_paths import (
     encode_path,
     nul_records,
     quote_path_token,
+    terminal_safe_shell_join,
     terminal_safe_shell_quote,
     unquote_path_token,
 )
@@ -53,6 +54,15 @@ def test_terminal_safe_shell_quote_escapes_control_and_non_utf8_bytes():
     assert quoted == r"$'evil\e[2Jname\nbyte-\377.txt'"
     assert "\x1b" not in quoted
     assert "\n" not in quoted
+
+
+def test_terminal_safe_shell_join_quotes_each_argument_safely():
+    value = decode_path(b"line\nbyte-\xff")
+
+    command = terminal_safe_shell_join(["include", "--file", value])
+
+    assert command == r"include --file $'line\nbyte-\377'"
+    assert "\n" not in command
 
 
 def test_nul_records_preserve_newlines_and_empty_path_components():

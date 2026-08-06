@@ -23,6 +23,7 @@ from ..data.file_review.action_scope import resolve_batch_source_action_scope
 from ..data.file_review.records import FileReviewAction
 from ..data.selected_change.paths import get_selected_change_file_path
 from ..exceptions import CommandError
+from ..git_paths import display_path
 from ..i18n import _
 from ..utils.file_patterns import (
     list_changed_files,
@@ -191,7 +192,7 @@ def _resolve_file_argument_patterns(
                     continue
                 raise CommandError(
                     _("Selected file is not available in this file scope: {file}").format(
-                        file=value,
+                        file=display_path(value),
                     )
                 )
         display_patterns.append(value)

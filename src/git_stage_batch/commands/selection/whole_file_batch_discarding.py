@@ -17,6 +17,7 @@ from ...data.file_modes import apply_git_file_mode
 from ...data.progress import record_hunk_discarded
 from ...data.session import snapshot_file_if_untracked
 from ...exceptions import exit_with_error
+from ...git_paths import display_path
 from ...i18n import _
 from ...utils.file_io import append_lines_to_file
 from ...utils.git_worktree import (
@@ -71,7 +72,7 @@ def discard_binary_to_batch(
     if not quiet:
         print(
             _("Discarded binary file '{file}' to batch '{batch}'").format(
-                file=file_path,
+                file=display_path(file_path),
                 batch=batch_name,
             ),
             file=sys.stderr,
@@ -101,7 +102,7 @@ def discard_mode_to_batch(
     if not quiet:
         print(
             _("Discarded file mode '{file}' to batch '{batch}'").format(
-                file=mode_change.path(), batch=batch_name
+                file=display_path(mode_change.path()), batch=batch_name
             ),
             file=sys.stderr,
         )
@@ -137,7 +138,7 @@ def discard_text_deletion_to_batch(
     if not quiet:
         print(
             _("Discarded text file deletion '{file}' to batch '{batch}'").format(
-                file=file_path,
+                file=display_path(file_path),
                 batch=batch_name,
             ),
             file=sys.stderr,

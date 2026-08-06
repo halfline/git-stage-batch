@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
 from contextlib import AbstractContextManager, nullcontext
-import shlex
 import sys
 
 from ...core.diff_parser import UnifiedDiffItem, acquire_unified_diff
@@ -32,6 +31,11 @@ from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.session import path_is_intent_to_add, snapshot_file_if_untracked
 from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import exit_with_error
+from ...git_paths import (
+    display_path,
+    terminal_safe_shell_join,
+    terminal_safe_shell_quote,
+)
 from ...i18n import _
 from ...utils.file_io import append_lines_to_file, read_text_file_line_set
 from ...utils.git_command import run_git_command
@@ -76,12 +80,12 @@ def _discard_worktree_path_to_index(file_path: str) -> None:
 
 def _print_discard_file_result(file_path: str) -> None:
     """Explain the non-deleting whole-file discard contract."""
-    removal_command = shlex.join(["git", "rm", "--", file_path])
+    removal_command = terminal_safe_shell_join(["git", "rm", "--", file_path])
     print(
         _(
             "✓ Unstaged changes discarded from {file}. "
             "To remove the file, use `{command}`."
-        ).format(file=file_path, command=removal_command),
+        ).format(file=display_path(file_path), command=removal_command),
         file=sys.stderr,
     )
 
@@ -122,8 +126,13 @@ def discard_file_changes(
     if _prepared_changes is None:
         auto_add_untracked_files([target_file])
         checkpoint_paths = checkpoint_paths_for_live_file(target_file)
+        operation = (
+            "discard --file"
+            if not file
+            else f"discard --file {terminal_safe_shell_quote(file)}"
+        )
         checkpoint = undo_checkpoint(
-            f"discard --file {file}".rstrip(),
+            operation,
             worktree_paths=checkpoint_paths,
             rollback_on_error=True,
         )
@@ -189,7 +198,7 @@ def discard_file_changes(
             if not quiet:
                 print(
                     _("No unstaged changes in file '{file}' to discard.").format(
-                        file=target_file,
+                        file=display_path(target_file),
                     ),
                     file=sys.stderr,
                 )

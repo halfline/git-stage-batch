@@ -27,6 +27,7 @@ from ...data.selected_change.store import (
 )
 from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import NoMoreHunks, exit_with_error
+from ...git_paths import display_path, terminal_safe_shell_join
 from ...i18n import _
 from ...output.hunk import (
     print_line_level_changes,
@@ -78,18 +79,27 @@ def skip_line_selection(
             not reuse_selected_file_view
             and render_unstaged_file_as_single_hunk(target_file) is None
         ):
-            exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
+            exit_with_error(
+                _("No changes in file '{file}'.").format(
+                    file=display_path(target_file)
+                )
+            )
 
     requested_ids = parse_command_line_selection(line_id_specification)
     operation_parts = ["skip", "--line", line_id_specification]
     if file is not None:
         operation_parts.extend(["--file", file])
-    with undo_checkpoint(" ".join(operation_parts), worktree_paths=[target_file]):
+    with undo_checkpoint(
+        terminal_safe_shell_join(operation_parts),
+        worktree_paths=[target_file],
+    ):
         if file is not None:
             if not reuse_selected_file_view:
                 if cache_unstaged_file_as_single_hunk(target_file) is None:
                     exit_with_error(
-                        _("No changes in file '{file}'.").format(file=target_file)
+                        _("No changes in file '{file}'.").format(
+                            file=display_path(target_file)
+                        )
                     )
             require_selected_hunk()
 

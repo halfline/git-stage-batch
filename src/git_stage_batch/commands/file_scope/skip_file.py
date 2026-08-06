@@ -39,6 +39,7 @@ from ...data.progress import (
 )
 from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.undo.checkpoints import undo_checkpoint
+from ...git_paths import display_path, terminal_safe_shell_quote
 from ...i18n import _, ngettext
 from ...utils.file_io import append_lines_to_file, read_text_file_line_set
 from ...utils.paths import get_block_list_file_path
@@ -70,8 +71,13 @@ def skip_file_changes(
     patch_context: AbstractContextManager[Iterator[UnifiedDiffItem]]
     if _prepared_changes is None:
         auto_add_untracked_files([target_file])
+        operation = (
+            "skip --file"
+            if not file
+            else f"skip --file {terminal_safe_shell_quote(file)}"
+        )
         checkpoint = undo_checkpoint(
-            f"skip --file {file}".rstrip(),
+            operation,
             worktree_paths=[target_file],
         )
         patch_context = acquire_unified_diff(
@@ -191,7 +197,7 @@ def skip_file_changes(
             "✓ Skipped {count} hunk from {file}",
             "✓ Skipped {count} hunks from {file}",
             hunks_skipped,
-        ).format(count=hunks_skipped, file=target_file)
+        ).format(count=hunks_skipped, file=display_path(target_file))
         print(msg, file=sys.stderr)
 
         if advance:

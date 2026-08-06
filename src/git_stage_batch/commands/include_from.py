@@ -14,6 +14,7 @@ from ..core.replacement import (
     coerce_replacement_payload,
 )
 from ..data.file_review.records import FileReviewAction
+from ..git_paths import display_path
 from ..i18n import _
 from ..utils.git_index import git_refresh_index
 from ..utils.git_repository import require_git_repository
@@ -95,6 +96,12 @@ def command_include_from_batch(
     elif line_ids:
         print(_("✓ Staged selected lines from batch '{name}'").format(name=batch_name), file=sys.stderr)
     elif file is not None:
-        print(_("✓ Staged changes for {file} from batch '{name}'").format(file=list(files.keys())[0], name=batch_name), file=sys.stderr)
+        print(
+            _("✓ Staged changes for {file} from batch '{name}'").format(
+                file=display_path(next(iter(files))),
+                name=batch_name,
+            ),
+            file=sys.stderr,
+        )
     else:
         print(_("✓ Staged changes from batch '{name}'").format(name=batch_name), file=sys.stderr)

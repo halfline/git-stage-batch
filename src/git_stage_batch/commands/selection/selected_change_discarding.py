@@ -29,6 +29,7 @@ from ...data.session import (
 from ...data.file_modes import apply_git_file_mode
 from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import NoMoreHunks, exit_with_error
+from ...git_paths import display_path
 from ...i18n import _
 from ...utils.file_io import append_lines_to_file, path_is_empty, read_text_file_contents
 from ...utils.git_worktree import (
@@ -88,7 +89,12 @@ def _discard_loaded_selected_change(
         append_lines_to_file(get_block_list_file_path(), [patch_hash])
         record_hunk_discarded(patch_hash)
         if not quiet:
-            print(_("✓ File mode discarded: {file}").format(file=item.path()), file=sys.stderr)
+            print(
+                _("✓ File mode discarded: {file}").format(
+                    file=display_path(item.path())
+                ),
+                file=sys.stderr,
+            )
         finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
         return
     if isinstance(item, RenameChange):
@@ -99,8 +105,8 @@ def _discard_loaded_selected_change(
         if not quiet:
             print(
                 _("✓ Rename discarded: {old} -> {new}").format(
-                    old=item.old_path,
-                    new=item.new_path,
+                    old=display_path(item.old_path),
+                    new=display_path(item.new_path),
                 ),
                 file=sys.stderr,
             )
@@ -119,7 +125,7 @@ def _discard_loaded_selected_change(
         if not quiet:
             print(
                 _("✓ Text file deletion discarded: {file}").format(
-                    file=item.path(),
+                    file=display_path(item.path()),
                 ),
                 file=sys.stderr,
             )
@@ -137,7 +143,9 @@ def _discard_loaded_selected_change(
 
         if not quiet:
             print(
-                _("✓ Submodule pointer restored: {file}").format(file=item.path()),
+                _("✓ Submodule pointer restored: {file}").format(
+                    file=display_path(item.path())
+                ),
                 file=sys.stderr,
             )
 
@@ -216,7 +224,7 @@ def _discard_binary_change(
         print(
             _("✓ Binary file {desc} discarded: {file}").format(
                 desc=change_desc,
-                file=file_path,
+                file=display_path(file_path),
             ),
             file=sys.stderr,
         )
@@ -289,7 +297,10 @@ def _discard_text_hunk(
     log_journal("command_discard_success", filename=file_path, patch_hash=patch_hash)
 
     if not quiet:
-        print(_("✓ Hunk discarded from {file}").format(file=file_path), file=sys.stderr)
+        print(
+            _("✓ Hunk discarded from {file}").format(file=display_path(file_path)),
+            file=sys.stderr,
+        )
 
     finish_selected_change_action(
         quiet=quiet,
@@ -328,7 +339,7 @@ def discard_rename_change(rename_change: RenameChange) -> None:
         if remove_result.returncode != 0:
             exit_with_error(
                 _("Failed to remove rename marker {file}: {error}").format(
-                    file=rename_change.new_path,
+                    file=display_path(rename_change.new_path),
                     error=remove_result.stderr,
                 )
             )
@@ -337,7 +348,7 @@ def discard_rename_change(rename_change: RenameChange) -> None:
     if restore_result.returncode != 0:
         exit_with_error(
             _("Failed to restore renamed source {file}: {error}").format(
-                file=rename_change.old_path,
+                file=display_path(rename_change.old_path),
                 error=restore_result.stderr,
             )
         )
@@ -352,7 +363,7 @@ def discard_text_deletion_change(deletion_change: TextFileDeletionChange) -> Non
     if restore_result.returncode != 0:
         exit_with_error(
             _("Failed to restore deleted file {file}: {error}").format(
-                file=file_path,
+                file=display_path(file_path),
                 error=restore_result.stderr,
             )
         )
@@ -388,7 +399,7 @@ def _drop_intent_to_add_entry(file_path: str) -> None:
     if result.returncode != 0:
         exit_with_error(
             _("Failed to remove intent-to-add entry for {file}: {error}").format(
-                file=file_path,
+                file=display_path(file_path),
                 error=result.stderr,
             )
         )

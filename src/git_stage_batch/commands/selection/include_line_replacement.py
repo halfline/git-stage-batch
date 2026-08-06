@@ -34,6 +34,7 @@ from ...data.selected_change.store import (
     snapshot_selected_change_state,
 )
 from ...exceptions import exit_with_error
+from ...git_paths import display_path
 from ...i18n import _
 from ...staging.index_update import update_index_with_blob_buffer
 from ...staging.content_buffers import (
@@ -204,7 +205,11 @@ def prepare_file_include_line_replacement(
     if reuse_selected_file_view:
         cached_lines = load_line_changes_from_state()
         if cached_lines is None:
-            exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
+            exit_with_error(
+                _("No changes in file '{file}'.").format(
+                    file=display_path(target_file)
+                )
+            )
     else:
         if file != "" and not selected_file_view_targets_file:
             preserve_selected_state = True
@@ -214,7 +219,11 @@ def prepare_file_include_line_replacement(
 
         cached_lines = cache_unstaged_file_as_single_hunk(target_file)
         if cached_lines is None:
-            exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
+            exit_with_error(
+                _("No changes in file '{file}'.").format(
+                    file=display_path(target_file)
+                )
+            )
 
     return IncludeLineReplacementFileSelection(
         target_file=target_file,

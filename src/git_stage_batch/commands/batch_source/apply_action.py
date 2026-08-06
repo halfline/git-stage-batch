@@ -40,6 +40,7 @@ from ...exceptions import (
     CommandError,
     exit_with_error,
 )
+from ...git_paths import display_path, terminal_safe_shell_join
 from ...i18n import _, pgettext
 from ...utils.file_job_workspace import FileJobWorkspace
 from ...utils.file_jobs import (
@@ -84,16 +85,23 @@ def _print_binary_worktree_result(
 
     if action is _binary_file_actions.BinaryWorktreeAction.DELETED:
         print(
-            _("✓ Deleted binary file: {file}").format(file=file_path), file=sys.stderr
+            _("✓ Deleted binary file: {file}").format(
+                file=display_path(file_path)
+            ),
+            file=sys.stderr,
         )
     elif action is _binary_file_actions.BinaryWorktreeAction.ADDED:
         print(
-            _("✓ Applied new binary file: {file}").format(file=file_path),
+            _("✓ Applied new binary file: {file}").format(
+                file=display_path(file_path)
+            ),
             file=sys.stderr,
         )
     else:
         print(
-            _("✓ Replaced binary file: {file}").format(file=file_path),
+            _("✓ Replaced binary file: {file}").format(
+                file=display_path(file_path)
+            ),
             file=sys.stderr,
         )
 
@@ -137,7 +145,7 @@ def execute_apply_action(
             report_progress("checkpoint", "not-started")
             try:
                 with undo_checkpoint(
-                    " ".join(operation_parts),
+                    terminal_safe_shell_join(operation_parts),
                     worktree_paths=list(files),
                     rollback_on_error=True,
                 ) as checkpoint_status:
@@ -453,7 +461,7 @@ def _reduce_apply_action_plans(
         if unexpected_error is not None:
             print(
                 _("Error applying {file}: {error}").format(
-                    file=file_path,
+                    file=display_path(file_path),
                     error=unexpected_error,
                 ),
                 file=sys.stderr,
@@ -478,7 +486,7 @@ def _reduce_apply_action_plans(
             except Exception as error:
                 print(
                     _("Error applying {file}: {error}").format(
-                        file=file_path,
+                        file=display_path(file_path),
                         error=str(error),
                     ),
                     file=sys.stderr,
@@ -539,7 +547,7 @@ def _reduce_apply_action_plans(
         elif result.outcome == "unexpected_error":
             print(
                 _("Error applying {file}: {error}").format(
-                    file=result.file_path,
+                    file=display_path(result.file_path),
                     error=details["message"],
                 ),
                 file=sys.stderr,
@@ -616,7 +624,7 @@ def _worktree_target_changed_error(file_path: str) -> CommandError:
         _(
             "Working tree file changed while apply was being calculated: "
             "{file}. Retry the apply command."
-        ).format(file=file_path)
+        ).format(file=display_path(file_path))
     )
 
 

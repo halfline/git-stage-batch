@@ -13,6 +13,7 @@ from ..data.ignore_files import (
     add_file_to_gitignore,
 )
 from ..exceptions import NoMoreHunks, exit_with_error
+from ..git_paths import display_path, terminal_safe_shell_quote
 from ..i18n import _
 from ..utils.file_io import append_file_path_to_file, remove_file_path_from_file
 from ..utils.git_command import run_git_command
@@ -71,7 +72,7 @@ def command_block_file(file_path_arg: str = "", local_only: bool = False) -> Non
     checkpoint_paths = [] if local_only else [".gitignore"]
     checkpoint = (
         undo_checkpoint(
-            f"block-file {file_path}",
+            f"block-file {terminal_safe_shell_quote(file_path)}",
             worktree_paths=checkpoint_paths,
             index_paths=[file_path] if not file_path.endswith("/") else [],
             repository_paths=["info/exclude"] if local_only else [],
@@ -104,7 +105,7 @@ def command_block_file(file_path_arg: str = "", local_only: bool = False) -> Non
         # Add to blocked-files state
         append_file_path_to_file(get_blocked_files_file_path(), file_path)
 
-    print(_("Blocked file: {}").format(file_path), file=sys.stderr)
+    print(_("Blocked file: {}").format(display_path(file_path)), file=sys.stderr)
 
     if session_active:
         try:

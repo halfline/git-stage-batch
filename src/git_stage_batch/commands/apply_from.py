@@ -12,6 +12,7 @@ from .batch_source import action_selection as _action_selection
 from .batch_source import apply_action as _apply_action
 from .batch_source import candidate_execution as _candidate_execution
 from ..data.file_review.records import FileReviewAction
+from ..git_paths import display_path
 from ..i18n import _
 from ..utils.git_repository import require_git_repository
 from ..utils.journal import log_journal
@@ -130,6 +131,14 @@ def command_apply_from_batch(
     if line_ids:
         print(_("✓ Applied selected lines from batch '{name}' to working tree").format(name=batch_name), file=sys.stderr)
     elif file is not None:
-        print(_("✓ Applied changes for {file} from batch '{name}' to working tree").format(file=list(files.keys())[0], name=batch_name), file=sys.stderr)
+        print(
+            _(
+                "✓ Applied changes for {file} from batch '{name}' to working tree"
+            ).format(
+                file=display_path(next(iter(files))),
+                name=batch_name,
+            ),
+            file=sys.stderr,
+        )
     else:
         print(_("✓ Applied changes from batch '{name}' to working tree").format(name=batch_name), file=sys.stderr)

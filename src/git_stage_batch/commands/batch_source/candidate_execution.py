@@ -12,7 +12,7 @@ from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.replacement import ReplacementPayload
 from ...data.session import snapshot_file_if_untracked
 from ...data.undo.checkpoints import UndoCheckpointStatus, undo_checkpoint
-from ...git_paths import display_path
+from ...git_paths import display_path, terminal_safe_shell_join
 from ...i18n import _, bidi_isolate
 
 
@@ -62,7 +62,7 @@ def execute_apply_candidate(
         publication_started = False
         try:
             with undo_checkpoint(
-                " ".join(operation_parts),
+                terminal_safe_shell_join(operation_parts),
                 worktree_paths=[file_path],
                 rollback_on_error=True,
             ) as checkpoint_status:
@@ -145,7 +145,10 @@ def execute_include_candidate(
         print("    {}".format(_("Index")), file=sys.stderr)
         print("    {}".format(_("Working tree")), file=sys.stderr)
         operation_parts = ["include", "--from", raw_selector, "--file", file_path]
-        with undo_checkpoint(" ".join(operation_parts), worktree_paths=[file_path]):
+        with undo_checkpoint(
+            terminal_safe_shell_join(operation_parts),
+            worktree_paths=[file_path],
+        ):
             snapshot_file_if_untracked(file_path)
             _text_file_actions.stage_text_file_to_index(
                 file_path,

@@ -25,6 +25,7 @@ from ..data.recovery_anchors import validate_recovery_objects
 from ..utils.session_start_point import load_session_start_point
 from ..data.start_time_changes import read_staged_renames
 from ..exceptions import CommandError, exit_with_error
+from ..git_paths import display_path
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file, read_text_file_contents
 from ..utils.git_command import run_git_command
@@ -62,7 +63,7 @@ def _recovery_relative_path(file_path: str) -> Path:
             _(
                 "Abort recovery metadata contains an invalid repository path: "
                 "{file!r}. The session remains active."
-            ).format(file=file_path)
+            ).format(file=display_path(file_path))
         )
 
     components = file_path.split("/")
@@ -73,7 +74,7 @@ def _recovery_relative_path(file_path: str) -> Path:
             _(
                 "Abort recovery metadata contains an invalid repository path: "
                 "{file!r}. The session remains active."
-            ).format(file=file_path)
+            ).format(file=display_path(file_path))
         )
     return Path(*components)
 
@@ -94,7 +95,7 @@ def _load_abort_snapshot_paths() -> list[str]:
                     "Could not restore untracked path {file}: "
                     "its abort snapshot is unavailable. "
                     "The session remains active."
-                ).format(file=file_path)
+                ).format(file=display_path(file_path))
             )
     return file_paths
 
@@ -180,7 +181,7 @@ def _require_safe_restore_parent(repo_root: Path, file_path: str) -> Path:
                 _(
                     "Could not safely restore untracked path {file}: "
                     "a parent path cannot be inspected. The session remains active."
-                ).format(file=file_path)
+                ).format(file=display_path(file_path))
             ) from error
         if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
             raise CommandError(
@@ -188,7 +189,7 @@ def _require_safe_restore_parent(repo_root: Path, file_path: str) -> Path:
                     "Could not safely restore untracked path {file}: "
                     "a parent path is not a real directory. "
                     "The session remains active."
-                ).format(file=file_path)
+                ).format(file=display_path(file_path))
             )
     return relative_path
 
@@ -402,7 +403,7 @@ def command_abort(*, quiet: bool = False) -> None:
                         "Could not restore untracked path {file}: "
                         "its abort snapshot is unavailable. "
                         "The session remains active."
-                    ).format(file=file_path)
+                    ).format(file=display_path(file_path))
                 )
             target_path = repo_root / relative_path
             snapshot_is_directory = (
@@ -421,7 +422,7 @@ def command_abort(*, quiet: bool = False) -> None:
                     _(
                         "Could not restore untracked directory {file}: "
                         "the path already exists. The session remains active."
-                    ).format(file=file_path)
+                    ).format(file=display_path(file_path))
                 )
             if not snapshot_is_directory and target_is_directory:
                 snapshot_kind = (
@@ -431,7 +432,7 @@ def command_abort(*, quiet: bool = False) -> None:
                     _(
                         "Could not restore untracked {kind} {file}: "
                         "the path is now a directory. The session remains active."
-                    ).format(kind=snapshot_kind, file=file_path)
+                    ).format(kind=snapshot_kind, file=display_path(file_path))
                 )
 
         for file_path in snapshotted_files:
@@ -448,7 +449,7 @@ def command_abort(*, quiet: bool = False) -> None:
                         _(
                             "Could not restore untracked symlink {file}: "
                             "the path is now a directory. The session remains active."
-                        ).format(file=file_path)
+                        ).format(file=display_path(file_path))
                     )
                 _restore_snapshot_leaf(snapshot_path, target_path)
             else:
@@ -457,11 +458,14 @@ def command_abort(*, quiet: bool = False) -> None:
                         _(
                             "Could not restore untracked file {file}: "
                             "the path is now a directory. The session remains active."
-                        ).format(file=file_path)
+                        ).format(file=display_path(file_path))
                     )
                 _restore_snapshot_leaf(snapshot_path, target_path)
             if not quiet:
-                print(_("Restored: {}").format(file_path), file=sys.stderr)
+                print(
+                    _("Restored: {}").format(display_path(file_path)),
+                    file=sys.stderr,
+                )
 
     # Restore intent-to-add status for files that had it before session
     if intent_to_add_files:

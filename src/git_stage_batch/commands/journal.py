@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 from ..exceptions import CommandError
+from ..git_paths import display_path
 from ..i18n import _, ngettext
 from ..utils.journal import (
     JournalLevel,
@@ -65,7 +66,7 @@ def command_journal(
             level=level_labels.get(summary["level"], summary["level"])
         )
     )
-    print(_("  Path: {path}").format(path=summary["path"]))
+    print(_("  Path: {path}").format(path=display_path(summary["path"])))
     print(
         ngettext(
             "  File: {count}",

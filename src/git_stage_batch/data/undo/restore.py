@@ -17,7 +17,7 @@ from ...i18n import _
 from ...utils.git_command import (
     run_git_command,
 )
-from ...git_paths import decode_path
+from ...git_paths import decode_path, display_path
 from ...utils.git_refs import (
     update_git_refs,
 )
@@ -213,7 +213,7 @@ def restore_worktree(commit: str, manifest: CheckpointState) -> None:
         if blob_info is None:
             raise CommandError(
                 _("Undo checkpoint is missing worktree content for {file}").format(
-                    file=file_path,
+                    file=display_path(file_path),
                 )
             )
         mode, blob_sha = blob_info
@@ -246,7 +246,7 @@ def _checkout_gitlink_worktree(
             _(
                 "Cannot restore submodule pointer for {file}: "
                 "the path is not a standalone Git repository."
-            ).format(file=file_path)
+            ).format(file=display_path(file_path))
         )
     result = git_checkout_detached(
         worktree_oid,
@@ -257,7 +257,7 @@ def _checkout_gitlink_worktree(
     if result.returncode != 0:
         raise CommandError(
             _("Failed to restore submodule pointer for {file}: {error}").format(
-                file=file_path,
+                file=display_path(file_path),
                 error=result.stderr,
             )
         )
@@ -308,7 +308,7 @@ def _require_directory_archive(
     if blob_info is None:
         raise CommandError(
             _("Undo checkpoint is missing nested repository content for {file}").format(
-                file=file_path,
+                file=display_path(file_path),
             )
         )
     return blob_info

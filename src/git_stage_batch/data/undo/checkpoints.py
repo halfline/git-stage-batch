@@ -29,6 +29,7 @@ from ..recovery_anchors import (
 )
 from ...utils.session_start_point import current_head_commit
 from ...exceptions import CommandError
+from ...git_paths import display_path
 from ...i18n import _, ngettext
 from ...utils.git_refs import (
     update_git_refs,
@@ -130,7 +131,7 @@ def _validate_nested_checkpoint(
                     len(missing_paths),
                 ).format(
                     scope=scope_name,
-                    paths=", ".join(missing_paths),
+                    paths=", ".join(display_path(path) for path in missing_paths),
                 )
             )
 
@@ -158,6 +159,7 @@ def _create_undo_checkpoint(
     repository_paths: list[str] | None = None,
 ) -> str | None:
     """Create a before-image checkpoint for an undoable operation."""
+    operation = display_path(operation)
     session_dir = get_state_directory_path() / "session"
     if not session_dir.exists():
         return None

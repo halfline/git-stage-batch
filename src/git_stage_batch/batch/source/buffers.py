@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ...core.buffer import LineBuffer
 from ...exceptions import CommandError
+from ...git_paths import display_path
 from ...i18n import _
 from ...utils.file_io import read_file_paths_file, read_text_file_contents
 from ...utils.git_object_io import list_git_tree_blobs
@@ -57,7 +58,9 @@ def load_saved_session_file_as_buffer(file_path: str) -> LineBuffer:
                 return _load_snapshot_as_buffer(snapshot_path)
             else:
                 raise CommandError(
-                    _("Snapshot for untracked file not found: {file}").format(file=file_path)
+                    _("Snapshot for untracked file not found: {file}").format(
+                        file=display_path(file_path)
+                    )
                 )
 
     # File was tracked - extract from stash if it exists, otherwise from baseline
@@ -114,7 +117,9 @@ def read_session_file_buffers(
                     buffers[file_path] = _load_snapshot_as_buffer(snapshot_path)
                     continue
                 raise CommandError(
-                    _("Snapshot for untracked file not found: {file}").format(file=file_path)
+                    _("Snapshot for untracked file not found: {file}").format(
+                        file=display_path(file_path)
+                    )
                 )
             remaining_paths.append(file_path)
 

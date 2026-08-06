@@ -6,6 +6,7 @@ import sys
 
 from ..data.session import require_session_started
 from ..data.undo.checkpoints import undo_last_checkpoint
+from ..git_paths import display_path
 from ..i18n import _
 from ..utils.git_repository import require_git_repository
 
@@ -16,4 +17,7 @@ def command_undo(*, force: bool = False) -> None:
     require_session_started()
 
     operation = undo_last_checkpoint(force=force)
-    print(_("✓ Undid: {operation}").format(operation=operation), file=sys.stderr)
+    print(
+        _("✓ Undid: {operation}").format(operation=display_path(operation)),
+        file=sys.stderr,
+    )

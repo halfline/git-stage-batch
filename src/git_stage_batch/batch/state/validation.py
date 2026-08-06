@@ -12,6 +12,7 @@ from .query import read_batch_metadata
 from .metadata_types import BatchMetadataDict
 from .references import get_batch_state_ref_name, get_legacy_batch_ref_name
 from ...exceptions import BatchMetadataError
+from ...git_paths import display_path
 from ...i18n import _
 from ...utils.git_command import run_git_command
 from ...utils.git_object_io import GitObjectInfo, resolve_git_objects
@@ -54,7 +55,7 @@ def validate_batch_metadata_file_exists(batch_name: str) -> None:
               "Expected metadata file: {file}\n"
               "The batch may not be recoverable automatically.").format(
                 name=batch_name,
-                file=str(metadata_path)
+                file=display_path(str(metadata_path))
             )
         )
 
@@ -113,7 +114,7 @@ def validate_batch_metadata_structure(
                     _("Batch metadata for '{name}' has invalid file entry for '{file}'.\n"
                       "The metadata file may be corrupted.").format(
                         name=batch_name,
-                        file=file_path
+                        file=display_path(file_path)
                     )
                 )
 
@@ -126,7 +127,7 @@ def validate_batch_metadata_structure(
                         _("Batch metadata for '{name}' is missing 'batch_source_commit' for file '{file}'.\n"
                           "The metadata file may be corrupted.").format(
                             name=batch_name,
-                            file=file_path
+                            file=display_path(file_path)
                         )
                     )
 
@@ -162,7 +163,7 @@ def validate_batch_metadata_structure(
                   "The batch source commit does not exist in the repository.\n"
                   "The batch metadata may be corrupted.").format(
                     name=batch_name,
-                    file=file_path,
+                    file=display_path(file_path),
                     commit=batch_source_commit
                 )
             )

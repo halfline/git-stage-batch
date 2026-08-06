@@ -23,6 +23,7 @@ from ...data.selected_change.store import (
 )
 from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import exit_with_error
+from ...git_paths import display_path, terminal_safe_shell_join
 from ...i18n import _
 from ...staging.index_update import update_index_with_blob_buffer
 from ...utils.paths import get_processed_include_ids_file_path
@@ -45,7 +46,7 @@ def include_file_as_replacement(
     target_file = file if file not in (None, "") else get_selected_change_file_path()
     with (
         undo_checkpoint(
-            " ".join(operation_parts),
+            terminal_safe_shell_join(operation_parts),
             worktree_paths=[target_file] if target_file is not None else [],
         ),
         ExitStack() as selected_state_stack,
@@ -68,15 +69,27 @@ def include_file_as_replacement(
         if preserve_selected_state:
             line_changes = cache_unstaged_file_as_single_hunk(target_file)
             if line_changes is None and not file_has_staged_changes(target_file):
-                exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
+                exit_with_error(
+                    _("No changes in file '{file}'.").format(
+                        file=display_path(target_file)
+                    )
+                )
         else:
             if not file_has_unstaged_changes(target_file):
-                exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
+                exit_with_error(
+                    _("No changes in file '{file}'.").format(
+                        file=display_path(target_file)
+                    )
+                )
             line_changes = load_line_changes_from_state()
             if line_changes is None or line_changes.path != target_file:
                 line_changes = cache_unstaged_file_as_single_hunk(target_file)
                 if line_changes is None:
-                    exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
+                    exit_with_error(
+                        _("No changes in file '{file}'.").format(
+                            file=display_path(target_file)
+                        )
+                    )
 
         with LineBuffer.from_bytes(replacement_payload.data) as replacement_buffer:
             update_index_with_blob_buffer(target_file, replacement_buffer)
@@ -92,4 +105,9 @@ def include_file_as_replacement(
             )
         clear_last_file_review_state_if_file_matches(target_file)
 
-    print(_("✓ Included file as replacement: {file}").format(file=target_file), file=sys.stderr)
+    print(
+        _("✓ Included file as replacement: {file}").format(
+            file=display_path(target_file)
+        ),
+        file=sys.stderr,
+    )

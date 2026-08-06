@@ -9,6 +9,7 @@ from ...batch.ownership import insertion_references as _insertion_references
 from ...data.line_state import require_line_changes_from_state
 from ...data.selected_change.loading import require_selected_hunk
 from ...exceptions import exit_with_error
+from ...git_paths import display_path
 from ...i18n import _
 from . import batch_line_selection as _batch_line_selection
 from . import batch_line_updates as _batch_line_updates
@@ -39,7 +40,7 @@ def include_file_lines_to_batch(
         if not quiet:
             print(
                 _("No lines match the specified IDs in file '{file}'.").format(
-                    file=file_path,
+                    file=display_path(file_path),
                 ),
                 file=sys.stderr,
             )
@@ -59,7 +60,7 @@ def include_file_lines_to_batch(
             _(
                 "Included selection from file '{file}' to batch '{batch}': {lines}"
             ).format(
-                file=file_path,
+                file=display_path(file_path),
                 batch=batch_name,
                 lines=line_id_specification,
             ),

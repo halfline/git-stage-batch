@@ -24,6 +24,7 @@ from ...exceptions import (
     MergeError,
     exit_with_error,
 )
+from ...git_paths import display_path, terminal_safe_shell_join
 from ...i18n import _, pgettext
 
 
@@ -35,14 +36,14 @@ def _print_binary_discard_result(
     if action is _binary_file_actions.BinaryWorktreeAction.REPLACED:
         print(
             _("✓ Restored binary file to baseline: {file}").format(
-                file=file_path,
+                file=display_path(file_path),
             ),
             file=sys.stderr,
         )
     elif action is _binary_file_actions.BinaryWorktreeAction.DELETED:
         print(
             _("✓ Removed binary file (not in baseline): {file}").format(
-                file=file_path,
+                file=display_path(file_path),
             ),
             file=sys.stderr,
         )
@@ -66,7 +67,7 @@ def execute_discard_action(
     operation_parts = list(selection.operation_parts)
 
     with undo_checkpoint(
-        " ".join(operation_parts),
+        terminal_safe_shell_join(operation_parts),
         worktree_paths=list(files),
         rollback_on_error=True,
     ):
@@ -140,7 +141,7 @@ def execute_discard_action(
             except MergeError as e:
                 print(
                     _("Error discarding {file}: {error}").format(
-                        file=file_path,
+                        file=display_path(file_path),
                         error=str(e),
                     ),
                     file=sys.stderr,
@@ -149,7 +150,7 @@ def execute_discard_action(
             except Exception as e:
                 print(
                     _("Error discarding {file}: {error}").format(
-                        file=file_path,
+                        file=display_path(file_path),
                         error=str(e),
                     ),
                     file=sys.stderr,
@@ -159,6 +160,6 @@ def execute_discard_action(
         if failed_files:
             exit_with_error(
                 _("Failed to discard changes for some files: {files}").format(
-                    files=", ".join(failed_files),
+                    files=", ".join(display_path(path) for path in failed_files),
                 )
             )

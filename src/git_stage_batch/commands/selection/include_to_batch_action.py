@@ -19,6 +19,7 @@ from ...data.selected_change.store import (
 from ...data.undo.checkpoints import undo_checkpoint
 from ...batch.state.batch_names import validate_batch_name
 from ...exceptions import exit_with_error
+from ...git_paths import display_path, terminal_safe_shell_join
 from ...i18n import _
 from ..file_scope import include_file_to_batch as _file_scope_include_file_to_batch
 from ..file_scope.target_path import (
@@ -50,7 +51,10 @@ def execute_include_to_batch_action(
 
     selected_change = load_selected_change() if file is None else None
     worktree_paths = checkpoint_paths_for_file_scope(file, selected_change)
-    with undo_checkpoint(" ".join(operation_parts), worktree_paths=worktree_paths):
+    with undo_checkpoint(
+        terminal_safe_shell_join(operation_parts),
+        worktree_paths=worktree_paths,
+    ):
         if (
             file is None
             and line_ids is None
@@ -78,8 +82,8 @@ def execute_include_to_batch_action(
                         "Cannot include rename '{old} -> {new}' to a batch yet. "
                         "Stage, skip, or discard the rename first."
                     ).format(
-                        old=selected_change.old_path,
-                        new=selected_change.new_path,
+                        old=display_path(selected_change.old_path),
+                        new=display_path(selected_change.new_path),
                     )
                 )
 

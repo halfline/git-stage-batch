@@ -11,6 +11,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from ...core.models import LineEntry
+from ...git_paths import display_path
 from ...i18n import _
 from .cache import (
     load_session_batch_sources,
@@ -123,7 +124,7 @@ def ensure_batch_source_current_for_selection(
         if source_buffer is None:
             raise ValueError(
                 _("Cannot read batch source for {file} at {commit}").format(
-                    file=file_path,
+                    file=display_path(file_path),
                     commit=current_batch_source_commit,
                 )
             )
@@ -181,7 +182,7 @@ def ensure_batch_source_current_for_selection(
             _(
                 "Batch source exists for {file} in batch {batch} but no "
                 "ownership found. This indicates corrupted batch state."
-            ).format(file=file_path, batch=batch_name)
+            ).format(file=display_path(file_path), batch=batch_name)
         )
 
     elif is_stale and not current_batch_source_commit:
@@ -342,7 +343,7 @@ def prepare_initial_batch_source_for_selection(
     if source_buffer is None:
         raise ValueError(
             _("Cannot read initial batch source for {file} at {commit}").format(
-                file=file_path,
+                file=display_path(file_path),
                 commit=batch_source_commit,
             )
         )

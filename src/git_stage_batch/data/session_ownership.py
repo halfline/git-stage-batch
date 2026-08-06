@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..exceptions import CommandError
+from ..git_paths import display_path
 from ..i18n import _
 from ..utils.file_io import read_text_file_contents, write_text_file_contents
 from ..utils.git_repository import get_git_directory_path
@@ -56,7 +57,7 @@ def _load_owner() -> SessionOwner | None:
             _(
                 "The repository's active-session ownership record is invalid: {path}. "
                 "Inspect or remove it only after confirming no worktree has an active session."
-            ).format(path=owner_path)
+            ).format(path=display_path(str(owner_path)))
         ) from error
 
 

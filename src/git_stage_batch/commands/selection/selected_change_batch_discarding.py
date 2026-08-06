@@ -39,6 +39,7 @@ from ...data.selected_change.snapshots import (
 )
 from ...data.session import snapshot_file_if_untracked
 from ...exceptions import NoMoreHunks, exit_with_error
+from ...git_paths import display_path
 from ...i18n import _, ngettext
 from ...utils.file_io import (
     append_lines_to_file,
@@ -91,7 +92,10 @@ def discard_selected_change_to_batch(
             _(
                 "Cannot discard rename '{old} -> {new}' to a batch yet. "
                 "Discard, skip, or stage the rename first."
-            ).format(old=selected_item.old_path, new=selected_item.new_path)
+            ).format(
+                old=display_path(selected_item.old_path),
+                new=display_path(selected_item.new_path),
+            )
         )
     if isinstance(selected_item, GitlinkChange):
         exit_with_error(_("Discarding submodule pointer changes to a batch is not supported yet."))
@@ -208,7 +212,11 @@ def _discard_text_hunk_to_batch(
                     _("Cannot discard to batch: batch source is stale and remapping failed.\n"
                       "File: {file}\n"
                       "Batch: {batch}\n"
-                      "Error: {error}").format(file=file_path, batch=batch_name, error=str(e))
+                      "Error: {error}").format(
+                          file=display_path(file_path),
+                          batch=batch_name,
+                          error=str(e),
+                      )
                 )
 
             snapshot_file_if_untracked(file_path)
@@ -306,7 +314,11 @@ def _discard_text_hunk_to_batch(
                     "✓ {count} hunk from {file} saved to batch '{name}' and discarded",
                     "✓ {count} hunks from {file} saved to batch '{name}' and discarded",
                     len(patches_to_discard)
-                ).format(count=len(patches_to_discard), file=file_path, name=batch_name)
+                ).format(
+                    count=len(patches_to_discard),
+                    file=display_path(file_path),
+                    name=batch_name,
+                )
                 print(msg, file=sys.stderr)
             else:
                 print(

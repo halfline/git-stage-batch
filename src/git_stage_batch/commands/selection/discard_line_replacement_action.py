@@ -12,6 +12,7 @@ from ...data.selected_change.store import (
     snapshot_selected_change_state,
 )
 from ...data.undo.checkpoints import undo_checkpoint
+from ...git_paths import terminal_safe_shell_join
 from ..file_scope.target_path import require_file_scope_target_path
 from . import discard_file_selection as _discard_file_selection
 from . import discard_line_batching as _discard_line_batching
@@ -47,7 +48,7 @@ def discard_live_line_replacement_to_batch(
     target_file = file if file not in (None, "") else get_selected_change_file_path()
     with (
         undo_checkpoint(
-            " ".join(operation_parts),
+            terminal_safe_shell_join(operation_parts),
             worktree_paths=[target_file] if target_file is not None else [],
             rollback_on_error=True,
         ),

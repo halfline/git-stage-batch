@@ -38,6 +38,7 @@ from ...data.selected_change.file_changes import (
 from ...data.selected_change.lifecycle import clear_selected_change_state_files
 from ...data.selected_change.store import SelectedChangeKind
 from ...exceptions import exit_with_error
+from ...git_paths import display_path
 from ...i18n import _
 from ...output.file_review import print_file_review
 from ...output.file_review_model_builder import build_file_review_model
@@ -158,7 +159,7 @@ def show_batch_source_file_display(
     if rendered is None:
         print(
             _("No changes for file '{file}' in batch '{name}'.").format(
-                file=file_path,
+                file=display_path(file_path),
                 name=batch_name,
             ),
             file=sys.stderr,

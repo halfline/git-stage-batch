@@ -33,6 +33,7 @@ from ...data.file_modes import detect_file_mode
 from ...data.live_diff import stream_live_git_diff
 from ...data.progress import record_hunk_skipped
 from ...exceptions import exit_with_error
+from ...git_paths import display_path
 from ...i18n import _
 from ...utils.file_io import append_lines_to_file, read_text_file_line_set
 from ...utils.paths import get_block_list_file_path
@@ -157,7 +158,7 @@ def include_selected_change_to_batch(
         exit_with_error(
             _("Cannot include to batch: batch source is stale and remapping failed.\n"
               "File: {file}\nBatch: {batch}\nError: {error}").format(
-                file=file_path,
+                file=display_path(file_path),
                 batch=batch_name,
                 error=str(error),
             )

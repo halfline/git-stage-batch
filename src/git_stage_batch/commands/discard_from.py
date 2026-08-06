@@ -9,6 +9,7 @@ from .batch_source import action_context as _action_context
 from .batch_source import action_selection as _action_selection
 from .batch_source import discard_action as _discard_action
 from ..data.file_review.records import FileReviewAction
+from ..git_paths import display_path
 from ..i18n import _
 from ..utils.git_repository import require_git_repository
 
@@ -56,7 +57,13 @@ def command_discard_from_batch(
     if line_ids:
         print(_("✓ Discarded selected lines from batch '{name}'").format(name=batch_name), file=sys.stderr)
     elif file is not None:
-        print(_("✓ Discarded changes for {file} from batch '{name}'").format(file=list(files.keys())[0], name=batch_name), file=sys.stderr)
+        print(
+            _("✓ Discarded changes for {file} from batch '{name}'").format(
+                file=display_path(next(iter(files))),
+                name=batch_name,
+            ),
+            file=sys.stderr,
+        )
     else:
         print(_("✓ Discarded changes from batch '{name}'").format(name=batch_name), file=sys.stderr)
 

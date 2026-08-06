@@ -18,6 +18,7 @@ from ...data.file_review.batch_selection import (
 from ...data.file_review.records import FileReviewAction
 from ...utils.repository_buffers import read_git_object_buffer_or_none
 from ...exceptions import exit_with_error
+from ...git_paths import display_path
 from ...i18n import _
 from ...output.candidate_preview_diff import render_candidate_buffer_diff
 
@@ -53,7 +54,9 @@ def print_batch_source_replacement_preview(
     )
     if batch_source_buffer is None:
         exit_with_error(
-            _("Batch source content is missing for {file}.").format(file=file_path)
+            _("Batch source content is missing for {file}.").format(
+                file=display_path(file_path)
+            )
         )
 
     with batch_source_buffer as batch_source_lines:

@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
-import shlex
 import sys
 from typing import Protocol
 
@@ -28,6 +27,7 @@ from ...core.diff_parser import UnifiedDiffItem
 from ...data.session import require_session_started
 from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import CommandError
+from ...git_paths import display_path, terminal_safe_shell_quote
 from ...i18n import _, ngettext, npgettext, pgettext
 from ...utils.git_repository import require_git_repository
 from ...utils.paths import ensure_state_directory_exists
@@ -67,7 +67,10 @@ class _LiveActionTargetSnapshot:
 
 def _format_multi_file_operation(command: str, files: Sequence[str]) -> str:
     """Return a readable undo operation for a resolved multi-file command."""
-    return f"{command} --files {' '.join(shlex.quote(file) for file in files)}"
+    return (
+        f"{command} --files "
+        f"{' '.join(terminal_safe_shell_quote(file) for file in files)}"
+    )
 
 
 def _multi_file_undo_checkpoint(
@@ -186,7 +189,7 @@ def discard_each_resolved_file(
 def _format_file_summary(files: Sequence[str]) -> str:
     """Return a single path or plural file count for command output."""
     if len(files) == 1:
-        return files[0]
+        return display_path(files[0])
     return npgettext(
         "multi-file action file count",
         "{count} file",
@@ -222,7 +225,9 @@ def _require_prepared_change_paths_covered(
                 "The matched files changed while the undo checkpoint was being "
                 "prepared. Review them again and retry. Uncaptured paths: {paths}",
                 len(missing_paths),
-            ).format(paths=", ".join(missing_paths))
+            ).format(
+                paths=", ".join(display_path(path) for path in missing_paths)
+            )
         )
 
 
@@ -287,7 +292,7 @@ def _live_action_target_changed_error(
         ).format(
             label=label,
             operation=operation_label,
-            path=path,
+            path=display_path(path),
         )
     )
 
@@ -418,7 +423,7 @@ def discard_to_batch_each_resolved_file(
     auto_advance: bool | None = None,
 ) -> None:
     """Save a multi-file live scope to a batch and report one aggregate summary."""
-    operation = f"discard --to {shlex.quote(batch_name)}"
+    operation = f"discard --to {terminal_safe_shell_quote(batch_name)}"
     checkpoint_paths = checkpoint_paths_for_live_files(list(files))
     with _multi_file_undo_checkpoint(
         operation,

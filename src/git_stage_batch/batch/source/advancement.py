@@ -9,6 +9,7 @@ from types import TracebackType
 
 from ...core.buffer import LineBuffer
 from ...core.line_selection import LineRanges, coerce_line_ranges
+from ...git_paths import display_path
 from ...i18n import _
 from ...core.mapped_storage import MappedRecordVector, sort_mapped_records
 from .snapshots import create_batch_source_commit
@@ -566,7 +567,7 @@ def advance_batch_source_for_file_with_provenance(
             _(
                 "Cannot advance batch source for {file}: "
                 "file does not exist in working tree"
-            ).format(file=file_path)
+            ).format(file=display_path(file_path))
         )
 
     old_source_buffer = read_git_object_buffer_or_none(
@@ -575,7 +576,7 @@ def advance_batch_source_for_file_with_provenance(
     if old_source_buffer is None:
         raise ValueError(
             _("Cannot read old batch source for {file} at {commit}").format(
-                file=file_path,
+                file=display_path(file_path),
                 commit=old_batch_source_commit,
             )
         )

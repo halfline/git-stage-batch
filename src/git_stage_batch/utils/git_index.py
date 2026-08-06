@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .git_command import run_git_command
-from ..git_paths import decode_path, encode_path
+from ..git_paths import decode_path, display_path, encode_path
 from .git_repository import (
     get_git_object_format,
     get_git_repository_root_path,
@@ -405,7 +405,8 @@ def git_restore_intent_to_add_paths(
         )
         if saved_mode is None:
             raise ValueError(
-                f"Cannot restore intent-to-add mode for path {file_path!r}"
+                "Cannot restore intent-to-add mode for path "
+                f"{display_path(file_path)!r}"
             )
         if saved_mode not in {"100644", "100755", "120000", "160000"}:
             raise ValueError(f"Cannot restore intent-to-add mode {saved_mode!r}")

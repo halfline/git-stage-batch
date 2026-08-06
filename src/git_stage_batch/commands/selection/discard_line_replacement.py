@@ -51,6 +51,7 @@ from ...utils.repository_buffers import (
 )
 from ...data.session import snapshot_file_if_untracked
 from ...exceptions import exit_with_error
+from ...git_paths import display_path
 from ...i18n import _
 from ...staging.content_buffers import (
     build_target_working_tree_buffer_from_lines,
@@ -106,7 +107,9 @@ def prepare_discard_line_replacement_selection(
     working_file_path = get_git_repository_root_path() / line_changes.path
     if not os.path.lexists(working_file_path):
         exit_with_error(
-            _("File not found in working tree: {file}").format(file=line_changes.path)
+            _("File not found in working tree: {file}").format(
+                file=display_path(line_changes.path)
+            )
         )
 
     replacement_payload = coerce_replacement_payload(replacement_text)
@@ -132,7 +135,9 @@ def prepare_discard_line_replacement_selection(
         )
         if rewritten_cached_lines is None:
             exit_with_error(
-                _("No changes in file '{file}'.").format(file=line_changes.path)
+                _("No changes in file '{file}'.").format(
+                    file=display_path(line_changes.path)
+                )
             )
         rewritten_line_changes = annotate_with_batch_source_working_lines(
             line_changes.path,
@@ -231,7 +236,11 @@ def add_discard_line_replacement_to_batch(
                     "File: {file}\n"
                     "Batch: {batch}\n"
                     "Error: {error}"
-                ).format(file=selection.file_path, batch=batch_name, error=str(e))
+                ).format(
+                    file=display_path(selection.file_path),
+                    batch=batch_name,
+                    error=str(e),
+                )
             )
 
         snapshot_file_if_untracked(selection.file_path)
@@ -265,7 +274,7 @@ def _merge_replacement_with_batch(
         exit_with_error(
             _(
                 "Cannot discard lines to batch: failed to read batch source for '{file}'."
-            ).format(file=selection.file_path)
+            ).format(file=display_path(selection.file_path))
         )
 
     with (

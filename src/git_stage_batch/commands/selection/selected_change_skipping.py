@@ -24,6 +24,7 @@ from ...data.selected_change.loading import SelectedChange, load_selected_change
 from ...data.selected_change.paths import worktree_paths_for_selected_change
 from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import NoMoreHunks
+from ...git_paths import display_path
 from ...i18n import _
 from ...utils.file_io import append_lines_to_file, read_text_file_contents
 from ...utils.paths import (
@@ -73,7 +74,12 @@ def _skip_loaded_selected_change(
         append_lines_to_file(blocklist_path, [patch_hash])
         record_mode_change_skipped(item, patch_hash)
         if not quiet:
-            print(_("✓ File mode skipped: {file}").format(file=item.path()), file=sys.stderr)
+            print(
+                _("✓ File mode skipped: {file}").format(
+                    file=display_path(item.path())
+                ),
+                file=sys.stderr,
+            )
         finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
         return
 
@@ -84,8 +90,8 @@ def _skip_loaded_selected_change(
         if not quiet:
             print(
                 _("✓ Rename skipped: {old} -> {new}").format(
-                    old=item.old_path,
-                    new=item.new_path,
+                    old=display_path(item.old_path),
+                    new=display_path(item.new_path),
                 ),
                 file=sys.stderr,
             )
@@ -102,7 +108,9 @@ def _skip_loaded_selected_change(
 
         if not quiet:
             print(
-                _("✓ Text file deletion skipped: {file}").format(file=item.path()),
+                _("✓ Text file deletion skipped: {file}").format(
+                    file=display_path(item.path())
+                ),
                 file=sys.stderr,
             )
 
@@ -120,7 +128,7 @@ def _skip_loaded_selected_change(
             print(
                 _("✓ Submodule pointer {desc} skipped: {file}").format(
                     desc=item.change_type,
-                    file=item.path(),
+                    file=display_path(item.path()),
                 ),
                 file=sys.stderr,
             )
@@ -147,7 +155,7 @@ def _skip_loaded_selected_change(
             print(
                 _("✓ Binary file {desc} skipped: {file}").format(
                     desc=change_desc,
-                    file=file_path,
+                    file=display_path(file_path),
                 ),
                 file=sys.stderr,
             )
@@ -164,7 +172,10 @@ def _skip_loaded_selected_change(
     record_hunk_skipped(item, patch_hash)
 
     if not quiet:
-        print(_("✓ Hunk skipped from {file}").format(file=file_path), file=sys.stderr)
+        print(
+            _("✓ Hunk skipped from {file}").format(file=display_path(file_path)),
+            file=sys.stderr,
+        )
 
     finish_selected_change_action(
         quiet=quiet,

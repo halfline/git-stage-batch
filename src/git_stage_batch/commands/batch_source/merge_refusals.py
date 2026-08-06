@@ -6,6 +6,7 @@ from collections.abc import Sequence
 
 from ...batch.file_display import render_batch_file_display
 from ...exceptions import exit_with_error
+from ...git_paths import display_path
 from ...i18n import _
 
 
@@ -28,13 +29,13 @@ def refuse_batch_source_merge_failures(
                 "incompatible with the current working tree. "
                 "Use 'git-stage-batch show --from {batch}' to review the batch, "
                 "or use '--lines' to apply only specific changes."
-            ).format(batch=batch_name, file=file_path)
+            ).format(batch=batch_name, file=display_path(file_path))
         else:
             error_msg = _(
                 "Batch '{batch}' contains changes to {file} that are "
                 "incompatible with the current working tree. "
                 "Use 'git-stage-batch show --from {batch}' to review the batch."
-            ).format(batch=batch_name, file=file_path)
+            ).format(batch=batch_name, file=display_path(file_path))
         exit_with_error(error_msg)
 
     exit_with_error(
@@ -46,6 +47,6 @@ def refuse_batch_source_merge_failures(
             "or use '--lines' to apply only specific changes."
         ).format(
             batch=batch_name,
-            files=", ".join(failed_files),
+            files=", ".join(display_path(file_path) for file_path in failed_files),
         )
     )

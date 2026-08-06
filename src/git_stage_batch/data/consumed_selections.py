@@ -7,6 +7,7 @@ from typing import cast
 
 from ..batch.state.metadata_types import BatchFileMetadataDict, BatchMetadataDict
 from ..exceptions import CommandError
+from ..git_paths import display_path
 from ..i18n import _
 from ..utils.file_io import read_text_file_contents, write_text_file_contents
 from ..utils.paths import get_session_consumed_selections_file_path
@@ -25,7 +26,7 @@ def load_consumed_selections_metadata() -> BatchMetadataDict:
             _(
                 "Consumed-selection state is corrupt: {path}. "
                 "Abort the session to recover safely."
-            ).format(path=path)
+            ).format(path=display_path(str(path)))
         ) from exc
 
     if not isinstance(data, dict) or not isinstance(data.get("files", {}), dict):
@@ -33,7 +34,7 @@ def load_consumed_selections_metadata() -> BatchMetadataDict:
             _(
                 "Consumed-selection state has an invalid structure: {path}. "
                 "Abort the session to recover safely."
-            ).format(path=path)
+            ).format(path=display_path(str(path)))
         )
     files = data.get("files", {})
     for file_path, file_metadata in files.items():
@@ -42,7 +43,10 @@ def load_consumed_selections_metadata() -> BatchMetadataDict:
                 _(
                     "Consumed-selection state has an invalid entry for {file}: "
                     "{path}. Abort the session to recover safely."
-                ).format(file=file_path, path=path)
+                ).format(
+                    file=display_path(file_path),
+                    path=display_path(str(path)),
+                )
             )
     return {"files": cast(dict[str, BatchFileMetadataDict], files)}
 

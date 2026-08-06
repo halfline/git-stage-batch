@@ -11,6 +11,7 @@ from ...utils.repository_buffers import load_working_tree_file_as_buffer
 from ...data.selected_change.loading import require_selected_hunk
 from ...data.selected_change.paths import get_selected_change_file_path
 from ...exceptions import exit_with_error
+from ...git_paths import display_path
 from ...i18n import _
 from ...staging.content_buffers import build_target_working_tree_buffer_from_lines
 from ...utils.git_repository import get_git_repository_root_path
@@ -52,7 +53,7 @@ def discard_worktree_line_selection(
     if not os.path.lexists(working_file_path):
         exit_with_error(
             _("File not found in working tree: {file}").format(
-                file=line_changes.path
+                file=display_path(line_changes.path)
             )
         )
 

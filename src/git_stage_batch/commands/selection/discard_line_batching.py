@@ -14,6 +14,7 @@ from ...core.replacement import ReplacementPayload
 from ...data.line_state import require_line_changes_from_state
 from ...data.selected_change.loading import require_selected_hunk
 from ...exceptions import exit_with_error
+from ...git_paths import display_path
 from ...i18n import _
 from ...staging.content_buffers import build_target_working_tree_buffer_from_lines
 from ...utils.git_repository import get_git_repository_root_path
@@ -180,7 +181,7 @@ def discard_file_lines_to_batch(
         if not quiet:
             print(
                 _("No lines match the specified IDs in file '{file}'.").format(
-                    file=file_path,
+                    file=display_path(file_path),
                 ),
                 file=sys.stderr,
             )
@@ -200,7 +201,11 @@ def discard_file_lines_to_batch(
 
     working_file_path = get_git_repository_root_path() / file_path
     if not os.path.lexists(working_file_path):
-        exit_with_error(_("File not found in working tree: {file}").format(file=file_path))
+        exit_with_error(
+            _("File not found in working tree: {file}").format(
+                file=display_path(file_path)
+            )
+        )
 
     with load_working_tree_file_as_buffer(file_path) as working_lines:
         target_working_buffer = build_target_working_tree_buffer_from_lines(
@@ -221,7 +226,7 @@ def discard_file_lines_to_batch(
             _(
                 "Discarded selection from file '{file}' to batch '{batch}': {lines}"
             ).format(
-                file=file_path,
+                file=display_path(file_path),
                 batch=batch_name,
                 lines=line_id_specification,
             ),
@@ -301,7 +306,7 @@ def discard_selected_lines_to_batch(
         if not os.path.lexists(working_file_path):
             exit_with_error(
                 _("File not found in working tree: {file}").format(
-                    file=line_changes.path,
+                    file=display_path(line_changes.path),
                 )
             )
 

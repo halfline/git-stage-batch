@@ -20,6 +20,7 @@ from ...data.selected_change.snapshots import (
     load_selected_file_comparison_base_buffer,
 )
 from ...exceptions import exit_with_error
+from ...git_paths import display_path
 from ...i18n import _
 from ...core.models import LineEntry
 from ...utils.repository_buffers import (
@@ -117,7 +118,7 @@ def add_selected_lines_to_batch(
                     "Error: {error}"
                 ).format(
                     action=stale_source_action,
-                    file=file_path,
+                    file=display_path(file_path),
                     batch=batch_name,
                     error=str(e),
                 )

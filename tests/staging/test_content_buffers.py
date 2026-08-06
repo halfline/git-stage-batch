@@ -215,6 +215,45 @@ class TestBuildTargetIndexContent:
 
         assert result == "add1\ncontext\nadd3\n"
 
+    def test_addition_staging_avoids_line_scale_python_heap(self):
+        """Selected additions stream without a second line-proportional list."""
+        heap_peaks = []
+        for line_count in (1024, 8192):
+            line_changes = LineLevelChange(
+                path="test.txt",
+                header=HunkHeader(0, 0, 1, line_count),
+                lines=[
+                    LineEntry(
+                        line_id,
+                        "+",
+                        None,
+                        line_id,
+                        text_bytes=b"changed",
+                    )
+                    for line_id in range(1, line_count + 1)
+                ],
+            )
+            include_ids = set(range(1, line_count + 1))
+
+            gc.collect()
+            tracemalloc.start()
+            try:
+                with build_target_index_buffer_from_lines(
+                    line_changes,
+                    include_ids,
+                    (),
+                    base_has_trailing_newline=False,
+                ) as result:
+                    assert result.byte_count == line_count * len(b"changed\n")
+                _current_heap, peak_heap = tracemalloc.get_traced_memory()
+            finally:
+                tracemalloc.stop()
+
+            heap_peaks.append(peak_heap)
+
+        small_peak, large_peak = heap_peaks
+        assert large_peak < small_peak + 16 * 1024
+
     def test_multiple_deletions(self):
         """Test including multiple deletions."""
         header = HunkHeader(1, 4, 1, 1)

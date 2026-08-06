@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from enum import Enum
@@ -46,7 +46,9 @@ from ...exceptions import MergeError, exit_with_error
 from ...git_paths import display_path, terminal_safe_shell_quote
 from ...i18n import _
 from ...staging.index_update import update_index_with_blob_buffer
+from ...staging.content_buffers import build_target_index_buffer_from_lines
 from ...utils.file_io import write_file_bytes
+from ...utils.git_command import run_git_command
 from ...utils.git_index import git_write_tree
 from ...utils.paths import get_session_batch_sources_file_path
 from . import replacement_selection
@@ -72,10 +74,16 @@ class TransientIncludeResult:
     buffer: LineBuffer | None
     failure_reason: TransientIncludeFailureReason | None = None
     failure_detail: str | None = None
+    content_is_worktree: bool = False
 
     @classmethod
-    def success(cls, buffer: LineBuffer) -> TransientIncludeResult:
-        return cls(buffer=buffer)
+    def success(
+        cls,
+        buffer: LineBuffer,
+        *,
+        content_is_worktree: bool = False,
+    ) -> TransientIncludeResult:
+        return cls(buffer=buffer, content_is_worktree=content_is_worktree)
 
     @classmethod
     def failure(
@@ -197,6 +205,44 @@ def line_sequence_ends_with_lf(lines: Sequence[bytes]) -> bool:
     return line_count > 0 and lines[line_count - 1].endswith(b"\n")
 
 
+def _path_has_line_transforming_attributes(file_path: str) -> bool:
+    """Return whether Git may change line bytes before storing one path."""
+    result = run_git_command(
+        [
+            "check-attr",
+            "-z",
+            "text",
+            "eol",
+            "ident",
+            "filter",
+            "working-tree-encoding",
+            "crlf",
+            "--",
+            file_path,
+        ],
+        text_output=False,
+        requires_index_lock=False,
+        literal_pathspecs=True,
+    )
+    fields = result.stdout.split(b"\0")
+    values = fields[2::3]
+    if any(value not in (b"", b"unspecified", b"unset") for value in values):
+        return True
+
+    autocrlf = run_git_command(
+        ["config", "--get", "core.autocrlf"],
+        check=False,
+        requires_index_lock=False,
+    )
+    return autocrlf.returncode == 0 and autocrlf.stdout.strip().lower() in {
+        "1",
+        "on",
+        "yes",
+        "true",
+        "input",
+    }
+
+
 def annotate_line_changes_with_working_tree_source(
     line_changes: LineLevelChange,
 ) -> LineLevelChange:
@@ -248,16 +294,46 @@ def try_build_index_content_via_transient_batch(
     hunk_source_lines: Sequence[bytes],
 ) -> TransientIncludeResult:
     """Try staging live lines through transient batch ownership."""
-    selected_lines = [
-        line for line in line_changes.lines if line.id in selected_display_ids
-    ]
-    if not selected_lines:
+    def line_is_selected(line: LineEntry) -> bool:
+        return line.id in selected_display_ids
+
+    if not any(line_is_selected(line) for line in line_changes.lines):
         return TransientIncludeResult.failure(
             TransientIncludeFailureReason.NO_SELECTED_LINES
         )
 
-    if not current_index_lines and all(line.kind == "+" for line in line_changes.lines):
-        if any(line.source_line is None for line in selected_lines):
+    if _path_has_line_transforming_attributes(line_changes.path):
+        with load_working_tree_file_as_buffer(line_changes.path) as working_lines:
+            if not buffer_matches(working_lines, hunk_source_lines):
+                return TransientIncludeResult.failure(
+                    TransientIncludeFailureReason.WORKING_TREE_WOULD_CHANGE,
+                    detail="working tree changed after transformed-file snapshot",
+                )
+        try:
+            return TransientIncludeResult.success(
+                build_target_index_buffer_from_lines(
+                    line_changes,
+                    selected_display_ids,
+                    current_index_lines,
+                    base_has_trailing_newline=line_sequence_ends_with_lf(
+                        current_index_lines
+                    ),
+                )
+            )
+        except ValueError as error:
+            return TransientIncludeResult.failure(
+                TransientIncludeFailureReason.INDEX_MERGE_FAILED,
+                detail=str(error),
+            )
+
+    if not current_index_lines and all(
+        line.kind == "+" for line in line_changes.lines
+    ):
+        if any(
+            line.source_line is None
+            for line in line_changes.lines
+            if line_is_selected(line)
+        ):
             return TransientIncludeResult.failure(
                 TransientIncludeFailureReason.PREPARATION_FAILED,
                 detail="missing source line for new-file selection",
@@ -268,12 +344,16 @@ def try_build_index_content_via_transient_batch(
                     TransientIncludeFailureReason.WORKING_TREE_WOULD_CHANGE,
                     detail="working tree changed after new-file snapshot",
                 )
-        selected_source_lines: list[bytes] = []
-        for line in selected_lines:
-            assert line.source_line is not None
-            selected_source_lines.append(hunk_source_lines[line.source_line - 1])
+        def selected_source_chunks() -> Iterator[bytes]:
+            for line in line_changes.lines:
+                if not line_is_selected(line):
+                    continue
+                assert line.source_line is not None
+                yield hunk_source_lines[line.source_line - 1]
+
         return TransientIncludeResult.success(
-            LineBuffer.from_chunks(selected_source_lines)
+            LineBuffer.from_chunks(selected_source_chunks()),
+            content_is_worktree=True,
         )
 
     batch_name = f"include-line-{uuid.uuid4().hex}"
@@ -402,9 +482,18 @@ def try_build_index_content_via_transient_batch(
         )
 
 
-def stage_live_line_target_buffer(file_path: str, target_buffer: LineBuffer) -> None:
+def stage_live_line_target_buffer(
+    file_path: str,
+    target_buffer: LineBuffer,
+    *,
+    content_is_worktree: bool,
+) -> None:
     """Stage the result of live line-level include."""
-    update_index_with_blob_buffer(file_path, target_buffer)
+    update_index_with_blob_buffer(
+        file_path,
+        target_buffer,
+        apply_worktree_conversion=content_is_worktree,
+    )
 
 
 def _format_transient_include_failure(

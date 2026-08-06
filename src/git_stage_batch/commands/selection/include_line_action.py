@@ -212,6 +212,7 @@ def include_live_line_selection(
             _include_line_selection.stage_live_line_target_buffer(
                 line_changes.path,
                 target_index_buffer,
+                content_is_worktree=transient_result.content_is_worktree,
             )
 
         if selection_context.preserve_selected_state:

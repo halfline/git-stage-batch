@@ -35,9 +35,18 @@ def temp_git_repo(tmp_path, monkeypatch):
     return repo
 
 
-def _update_index_with_bytes(path: str, data: bytes) -> None:
+def _update_index_with_bytes(
+    path: str,
+    data: bytes,
+    *,
+    apply_worktree_conversion: bool = False,
+) -> None:
     with LineBuffer.from_bytes(data) as buffer:
-        update_index_with_blob_buffer(path, buffer)
+        update_index_with_blob_buffer(
+            path,
+            buffer,
+            apply_worktree_conversion=apply_worktree_conversion,
+        )
 
 
 class TestUpdateIndexWithBlobContent:
@@ -214,6 +223,104 @@ class TestUpdateIndexWithBlobContent:
             text=True,
         )
         assert result.stdout == "generated\ncontent\n"
+
+    def test_new_file_applies_clean_filter(self, temp_git_repo):
+        """New worktree content is cleaned before its blob enters the index."""
+        (temp_git_repo / ".gitattributes").write_text("*.txt filter=token\n")
+        subprocess.run(
+            ["git", "config", "filter.token.clean", "sed s/worktree/index/g"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "filter.token.smudge", "cat"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+
+        _update_index_with_bytes(
+            "new.txt",
+            b"worktree content\n",
+            apply_worktree_conversion=True,
+        )
+
+        assert subprocess.run(
+            ["git", "show", ":new.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        ).stdout == b"index content\n"
+
+    def test_new_file_applies_working_tree_encoding(self, temp_git_repo):
+        """New encoded worktree content is stored in Git's UTF-8 form."""
+        (temp_git_repo / ".gitattributes").write_text(
+            "*.ps1 text working-tree-encoding=UTF-16LE eol=lf\n"
+        )
+
+        _update_index_with_bytes(
+            "new.ps1",
+            "Write-Output 'hello'\n".encode("utf-16-le"),
+            apply_worktree_conversion=True,
+        )
+
+        assert subprocess.run(
+            ["git", "show", ":new.ps1"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        ).stdout == b"Write-Output 'hello'\n"
+
+    def test_new_canonical_content_does_not_infer_worktree_conversion(
+        self,
+        temp_git_repo,
+    ):
+        """A missing index entry does not make canonical bytes look like UTF-16."""
+        (temp_git_repo / ".gitattributes").write_text(
+            "*.ps1 text working-tree-encoding=UTF-16LE eol=lf\n"
+        )
+
+        _update_index_with_bytes("new.ps1", b"canonical content\n")
+
+        assert subprocess.run(
+            ["git", "show", ":new.ps1"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        ).stdout == b"canonical content\n"
+
+    def test_existing_file_does_not_reapply_clean_filter(self, temp_git_repo):
+        """Generated index-form content for tracked files is not cleaned twice."""
+        (temp_git_repo / ".gitattributes").write_text("*.txt filter=token\n")
+        subprocess.run(
+            ["git", "config", "filter.token.clean", "sed s/index/double/g"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        (temp_git_repo / "tracked.txt").write_text("original\n")
+        subprocess.run(
+            ["git", "add", ".gitattributes", "tracked.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add filtered file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+
+        _update_index_with_bytes("tracked.txt", b"index content\n")
+
+        assert subprocess.run(
+            ["git", "show", ":tracked.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        ).stdout == b"index content\n"
 
     def test_missing_index_entry_uses_executable_worktree_mode(self, temp_git_repo):
         """Generated content retains an executable worktree path's mode."""

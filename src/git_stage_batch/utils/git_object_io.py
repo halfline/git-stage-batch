@@ -121,11 +121,16 @@ class _GitBatchOutputReader:
             ) from error
 
 
-def create_git_blob(content_chunks: Iterable[bytes]) -> str:
+def create_git_blob(
+    content_chunks: Iterable[bytes],
+    *,
+    path: str | None = None,
+) -> str:
     """Create a git blob object from streaming content.
 
     Args:
         content_chunks: Iterable yielding binary content chunks to store
+        path: Worktree path whose Git clean conversion should be applied
 
     Returns:
         Repository-native object ID of the created blob object
@@ -135,8 +140,12 @@ def create_git_blob(content_chunks: Iterable[bytes]) -> str:
     """
     stdout_chunks = []
     try:
+        arguments = ["hash-object", "-w"]
+        if path is not None:
+            arguments.append(f"--path={path}")
+        arguments.append("--stdin")
         for line in stream_git_command(
-            ["hash-object", "-w", "--stdin"],
+            arguments,
             content_chunks,
             requires_index_lock=False,
         ):

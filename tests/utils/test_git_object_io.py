@@ -15,6 +15,7 @@ from git_stage_batch.utils.git_object_io import (
     resolve_git_objects,
     stream_git_blobs,
 )
+from git_stage_batch.utils import git_object_io
 
 
 @pytest.fixture
@@ -82,6 +83,38 @@ def test_create_git_blobs_from_paths_hashes_path_bytes(temp_git_repo):
             requires_index_lock=False,
         )
         assert result.stdout == file_path.read_bytes()
+
+
+def test_create_git_blob_streams_path_filtered_input(monkeypatch):
+    """Supplying a clean-filter path does not materialize the input chunks."""
+    chunks = iter([b"first\n", b"second\n"])
+    observed = {}
+
+    def fake_stream_git_command(arguments, stdin_chunks, **kwargs):
+        observed["arguments"] = arguments
+        observed["same_iterator"] = stdin_chunks is chunks
+        observed["content"] = b"".join(stdin_chunks)
+        yield b"abc123\n"
+
+    monkeypatch.setattr(
+        git_object_io,
+        "stream_git_command",
+        fake_stream_git_command,
+    )
+
+    blob = create_git_blob(chunks, path="new file.txt")
+
+    assert blob == "abc123"
+    assert observed == {
+        "arguments": [
+            "hash-object",
+            "-w",
+            "--path=new file.txt",
+            "--stdin",
+        ],
+        "same_iterator": True,
+        "content": b"first\nsecond\n",
+    }
 
 
 def test_read_git_blobs_as_bytes_accepts_revision_paths(temp_git_repo):

@@ -329,14 +329,19 @@ def _target_index_line_contents(
     base_lines: Sequence[bytes],
     base_line_count: int,
 ) -> Iterator[bytes]:
-    pending_additions: list[bytes] = []
+    pending_addition_start: int | None = None
 
     base_pointer = line_changes.header.old_prefix_line_count()
 
-    def flush_pending_additions() -> Iterator[bytes]:
-        if pending_additions:
-            yield from pending_additions
-            pending_additions.clear()
+    def flush_pending_additions(before_index: int) -> Iterator[bytes]:
+        nonlocal pending_addition_start
+        if pending_addition_start is None:
+            return
+        for pending_index in range(pending_addition_start, before_index):
+            pending_line = line_changes.lines[pending_index]
+            if pending_line.kind == "+" and pending_line.id in include_ids:
+                yield _line_entry_content(pending_line)
+        pending_addition_start = None
 
     def base_line_matches(line_entry: LineEntry) -> bool:
         return (
@@ -357,14 +362,14 @@ def _target_index_line_contents(
     for index in range(0, min(base_pointer, base_line_count)):
         yield _line_content_at(base_lines, index)
 
-    for line_entry in line_changes.lines:
+    for line_index, line_entry in enumerate(line_changes.lines):
         if _is_synthetic_gap_line(line_entry):
-            yield from flush_pending_additions()
+            yield from flush_pending_additions(line_index)
             continue
 
         if line_entry.kind == " ":
             yield from copy_unchanged_lines_before(line_entry.old_line_number)
-            yield from flush_pending_additions()
+            yield from flush_pending_additions(line_index)
             if not base_line_matches(line_entry):
                 raise ValueError(
                     _("Index content no longer matches the selected line view")
@@ -373,7 +378,7 @@ def _target_index_line_contents(
             base_pointer += 1
         elif line_entry.kind == "-":
             yield from copy_unchanged_lines_before(line_entry.old_line_number)
-            yield from flush_pending_additions()
+            yield from flush_pending_additions(line_index)
             if not base_line_matches(line_entry):
                 raise ValueError(
                     _("Index content no longer matches the selected line view")
@@ -384,10 +389,10 @@ def _target_index_line_contents(
                 yield _line_content_at(base_lines, base_pointer)
                 base_pointer += 1
         elif line_entry.kind == "+":
-            if line_entry.id in include_ids:
-                pending_additions.append(_line_entry_content(line_entry))
+            if line_entry.id in include_ids and pending_addition_start is None:
+                pending_addition_start = line_index
 
-    yield from flush_pending_additions()
+    yield from flush_pending_additions(len(line_changes.lines))
     while 0 <= base_pointer < base_line_count:
         yield _line_content_at(base_lines, base_pointer)
         base_pointer += 1

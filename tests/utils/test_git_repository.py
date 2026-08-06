@@ -7,6 +7,8 @@ import pytest
 
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.git_repository import (
+    get_git_common_directory_path,
+    get_git_directory_path,
     get_git_repository_root_path,
     is_git_repository_root_path,
     require_git_repository,
@@ -84,6 +86,25 @@ class TestGetGitRepositoryRootPath:
         root = get_git_repository_root_path()
 
         assert root == temp_git_repo
+
+    def test_preserves_trailing_whitespace_in_repository_paths(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """Only Git's output newline may be removed from discovered paths."""
+        repository = tmp_path / "repo "
+        sibling = tmp_path / "repo"
+        repository.mkdir()
+        sibling.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+        subprocess.run(["git", "init", "-q"], cwd=sibling, check=True)
+        monkeypatch.chdir(repository)
+
+        assert get_git_repository_root_path() == repository
+        assert get_git_directory_path() == repository / ".git"
+        assert get_git_common_directory_path() == repository / ".git"
+        assert is_git_repository_root_path(repository)
 
 
 class TestIsGitRepositoryRootPath:

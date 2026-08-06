@@ -17,6 +17,7 @@ from ..data.ignore_files import (
     remove_file_from_local_exclude,
 )
 from ..exceptions import NoMoreHunks, exit_with_error
+from ..git_paths import display_path, terminal_safe_shell_quote
 from ..i18n import _
 from ..utils.file_io import (
     append_file_path_to_file,
@@ -77,7 +78,7 @@ def command_unblock_file(file_path_arg: str) -> None:
     session_active = session_is_active()
     checkpoint = (
         undo_checkpoint(
-            f"unblock-file {file_path}",
+            f"unblock-file {terminal_safe_shell_quote(file_path)}",
             worktree_paths=[".gitignore"],
             index_paths=[file_path] if not file_path.endswith("/") else [],
             repository_paths=["info/exclude"],
@@ -135,12 +136,15 @@ def command_unblock_file(file_path_arg: str) -> None:
             append_file_path_to_file(get_auto_added_files_file_path(), file_path)
 
     if removed_from_gitignore or removed_from_local_exclude:
-        print(_("Unblocked file: {file}").format(file=file_path), file=sys.stderr)
+        print(
+            _("Unblocked file: {file}").format(file=display_path(file_path)),
+            file=sys.stderr,
+        )
     else:
         print(
             _(
                 "Removed from blocked list: {file} (was not in .gitignore)"
-            ).format(file=file_path),
+            ).format(file=display_path(file_path)),
             file=sys.stderr,
         )
 

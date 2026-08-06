@@ -24,6 +24,7 @@ from git_stage_batch.core.line_selection import LineRanges
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.exceptions import RepositoryDataInvalid
+from git_stage_batch.git_paths import display_path, terminal_safe_shell_quote
 from git_stage_batch.utils.git_object_io import GitObjectInfo
 from git_stage_batch.utils.paths import ensure_state_directory_exists
 from tests.batch.ownership.metadata_helpers import reject_materialized_ownership_metadata
@@ -498,7 +499,7 @@ class TestCommandShowFromBatch:
         temp_git_repo,
         capsys,
     ):
-        """Bulk source reads should retain the argv-safe unusual-path fallback."""
+        """Bulk source reads should safely display unusual resolved paths."""
         unusual_path = "unusual\npath.txt"
         (temp_git_repo / unusual_path).write_text("before unusual\n")
         (temp_git_repo / "normal.txt").write_text("before normal\n")
@@ -535,7 +536,9 @@ class TestCommandShowFromBatch:
 
         output = capsys.readouterr().out
         assert "Matched: 2 files" in output
-        assert unusual_path in output
+        assert unusual_path not in output
+        assert display_path(unusual_path) in output
+        assert terminal_safe_shell_quote(unusual_path) in output
         assert "normal.txt" in output
 
     def test_show_from_multi_file_list_rejects_non_blob_source(

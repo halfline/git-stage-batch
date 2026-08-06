@@ -5,6 +5,7 @@ from __future__ import annotations
 from ..core.buffer import LineBuffer
 from ..core.models import FileModeChange
 from ..exceptions import CommandError
+from ..git_paths import display_path
 from ..i18n import _
 from ..utils.git_object_io import create_git_blob
 from ..utils.git_repository import get_git_repository_root_path
@@ -25,7 +26,10 @@ def add_file_mode_to_batch(batch_name: str, change: FileModeChange) -> None:
                 "Cannot save file mode for '{new}' to a batch while its "
                 "rename from '{old}' is unstaged. Stage or discard the rename "
                 "first."
-            ).format(new=change.file_path, old=change.index_path)
+            ).format(
+                new=display_path(change.file_path),
+                old=display_path(change.index_path),
+            )
         )
     if not batch_exists(batch_name):
         create_batch(batch_name, "Auto-created")

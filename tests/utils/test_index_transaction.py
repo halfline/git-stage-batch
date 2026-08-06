@@ -9,8 +9,10 @@ import subprocess
 
 import pytest
 
+from git_stage_batch.utils import index_transaction
 from git_stage_batch.utils.git_command import run_git_command
 from git_stage_batch.utils.index_transaction import (
+    _acquire_index_lock,
     active_git_index_path,
     isolated_index_transaction,
 )
@@ -285,3 +287,92 @@ def test_transaction_uses_linked_worktree_index(tmp_path):
 
     assert _cached_paths(linked) == {b"target.txt"}
     assert main_index.read_bytes() == before_main
+
+
+def test_failed_transaction_blocks_concurrent_real_index_update(tmp_path):
+    """Failure must retain the real-index lock while private writes run."""
+    repo = tmp_path / "repo"
+    _initialize_repository(repo)
+    (repo / "target.txt").write_text("transaction\n")
+    (repo / "concurrent.txt").write_text("external\n")
+
+    with pytest.raises(ExpectedFailure):
+        with isolated_index_transaction(cwd=str(repo)):
+            _transaction_git(repo, "add", "target.txt")
+            with pytest.raises(subprocess.CalledProcessError) as error:
+                _git(repo, "add", "concurrent.txt")
+            assert b"index.lock" in error.value.stderr
+            raise ExpectedFailure
+
+    assert _cached_paths(repo) == set()
+
+
+def test_successful_transaction_blocks_concurrent_real_index_update(tmp_path):
+    """Success must publish after retaining the real-index lock throughout."""
+    repo = tmp_path / "repo"
+    _initialize_repository(repo)
+    (repo / "target.txt").write_text("transaction\n")
+    (repo / "concurrent.txt").write_text("external\n")
+
+    with isolated_index_transaction(cwd=str(repo)):
+        _transaction_git(repo, "add", "target.txt")
+        with pytest.raises(subprocess.CalledProcessError) as error:
+            _git(repo, "add", "concurrent.txt")
+
+    assert b"index.lock" in error.value.stderr
+    assert _cached_paths(repo) == {b"target.txt"}
+
+
+def test_transaction_refuses_index_replacement_that_bypasses_lock(tmp_path):
+    """Publication must fail closed when a writer ignores Git's index lock."""
+    repo = tmp_path / "repo"
+    _initialize_repository(repo)
+    (repo / "target.txt").write_text("transaction\n")
+    (repo / "concurrent.txt").write_text("external\n")
+    index_path = active_git_index_path(cwd=str(repo))
+    external_index_path = repo / "external-index"
+    external_environment = os.environ.copy()
+    external_environment["GIT_INDEX_FILE"] = str(external_index_path)
+    _git(repo, "read-tree", "HEAD", env=external_environment)
+    _git(repo, "add", "concurrent.txt", env=external_environment)
+
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        with isolated_index_transaction(cwd=str(repo)):
+            _transaction_git(repo, "add", "target.txt")
+            os.replace(external_index_path, index_path)
+
+    assert "Git index changed" in error.value.stderr
+    assert _cached_paths(repo) == {b"concurrent.txt"}
+
+
+def test_index_lock_cleanup_does_not_remove_successor_lock(tmp_path):
+    """Publishing the acquired lock must not make its successor look owned."""
+    index_path = tmp_path / "index"
+    lock_path = Path(f"{index_path}.lock")
+
+    with _acquire_index_lock(index_path) as (_file_descriptor, acquired_path):
+        os.replace(acquired_path, index_path)
+        successor_descriptor = os.open(
+            lock_path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        os.close(successor_descriptor)
+
+    assert lock_path.exists()
+
+
+def test_index_lock_timeout_raises_cli_handled_git_error(tmp_path, monkeypatch):
+    """A persistent index lock wait must not escape as a traceback error."""
+    index_path = tmp_path / "index"
+    lock_path = Path(f"{index_path}.lock")
+    lock_path.write_bytes(b"successor")
+    monkeypatch.setattr(index_transaction, "DEFAULT_INDEX_LOCK_WAIT_SECONDS", 0.0)
+
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        with _acquire_index_lock(index_path):
+            raise AssertionError("the persistent lock must prevent entry")
+
+    assert error.value.returncode == 128
+    assert "Unable to create" in error.value.stderr
+    assert lock_path.read_bytes() == b"successor"

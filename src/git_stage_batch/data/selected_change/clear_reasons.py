@@ -6,6 +6,7 @@ import json
 from enum import Enum
 
 from ...exceptions import CommandError
+from ...git_paths import display_path
 from ...i18n import _
 from ...utils.file_io import read_text_file_contents, write_text_file_contents
 from ...utils.paths import get_selected_change_clear_reason_file_path
@@ -164,7 +165,11 @@ def refuse_bare_action_after_stale_batch_selection(
             "  git-stage-batch show --from {batch} --file PATH\n"
             "before running:\n"
             "  git-stage-batch {action}"
-        ).format(file=file_path, batch=batch_name, action=action_command)
+        ).format(
+            file=display_path(file_path),
+            batch=batch_name,
+            action=action_command,
+        )
     )
 
 

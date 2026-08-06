@@ -15,6 +15,7 @@ from ...core.buffer import LineBuffer
 from ...core.text_lifecycle import normalized_text_change_type
 from ...data.file_target_identity import IndexIdentity, WorktreeIdentity
 from ...exceptions import AtomicUnitError, CommandError, MergeError
+from ...git_paths import display_path
 from ...utils.buffer_io import write_buffer_to_path
 
 
@@ -414,7 +415,7 @@ def validate_apply_text_plan_job_result(
     if result.ordinal != job.ordinal or result.file_path != job.file_path:
         raise ValueError(
             f"apply text-plan worker returned a mismatched result for "
-            f"{job.file_path}"
+            f"{display_path(job.file_path)}"
         )
     if result.file_mode is not None and not isinstance(result.file_mode, str):
         raise TypeError("apply text-plan result file mode must be text")
@@ -441,7 +442,7 @@ def validate_apply_text_plan_job_result(
         if result.output_path != expected_output_path:
             raise ValueError(
                 f"apply text-plan worker returned an invalid output path for "
-                f"{job.file_path}"
+                f"{display_path(job.file_path)}"
             )
         return
 
@@ -449,18 +450,18 @@ def validate_apply_text_plan_job_result(
         if result.details_artifact_path != job.details_artifact_path:
             raise ValueError(
                 f"apply text-plan worker returned an invalid details path for "
-                f"{job.file_path}"
+                f"{display_path(job.file_path)}"
             )
     elif result.outcome in _EMPTY_OUTCOMES:
         if result.details_artifact_path is not None:
             raise ValueError(
                 f"apply text-plan worker returned unexpected details for "
-                f"{job.file_path}"
+                f"{display_path(job.file_path)}"
             )
     else:
         raise ValueError(
             f"apply text-plan worker returned an unknown outcome for "
-            f"{job.file_path}"
+            f"{display_path(job.file_path)}"
         )
 
     if (
@@ -470,7 +471,7 @@ def validate_apply_text_plan_job_result(
     ):
         raise ValueError(
             f"apply text-plan worker returned plan fields for "
-            f"{job.file_path} without a plan"
+            f"{display_path(job.file_path)} without a plan"
         )
 
 
@@ -484,7 +485,7 @@ def validate_include_text_plan_job_result(
     if result.ordinal != job.ordinal or result.file_path != job.file_path:
         raise ValueError(
             f"include text-plan worker returned a mismatched result for "
-            f"{job.file_path}"
+            f"{display_path(job.file_path)}"
         )
     scalar_fields = (
         ("index file mode", result.index_file_mode),
@@ -524,7 +525,7 @@ def validate_include_text_plan_job_result(
             if output_path != required_path:
                 raise ValueError(
                     f"include text-plan worker returned an invalid "
-                    f"{target} output path for {job.file_path}"
+                    f"{target} output path for {display_path(job.file_path)}"
                 )
         return
 
@@ -532,18 +533,18 @@ def validate_include_text_plan_job_result(
         if result.details_artifact_path != job.details_artifact_path:
             raise ValueError(
                 f"include text-plan worker returned an invalid details path "
-                f"for {job.file_path}"
+                f"for {display_path(job.file_path)}"
             )
     elif result.outcome in _EMPTY_OUTCOMES:
         if result.details_artifact_path is not None:
             raise ValueError(
                 f"include text-plan worker returned unexpected details for "
-                f"{job.file_path}"
+                f"{display_path(job.file_path)}"
             )
     else:
         raise ValueError(
             f"include text-plan worker returned an unknown outcome for "
-            f"{job.file_path}"
+            f"{display_path(job.file_path)}"
         )
     if any(
         value is not None
@@ -558,7 +559,7 @@ def validate_include_text_plan_job_result(
     ):
         raise ValueError(
             f"include text-plan worker returned plan fields for "
-            f"{job.file_path} without a plan"
+            f"{display_path(job.file_path)} without a plan"
         )
 
 

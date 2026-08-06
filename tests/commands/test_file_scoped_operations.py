@@ -177,6 +177,52 @@ def test_multi_file_include_rejects_index_drift_before_later_file(
     assert "beta2-modified" in (multi_file_repo / "beta.txt").read_text()
 
 
+def test_multi_file_include_blocks_concurrent_index_writer(
+    multi_file_repo,
+    monkeypatch,
+):
+    """One real-index lock must cover every file in a prepared include."""
+    command_start(quiet=True, auto_advance=False)
+    original_include = multi_file_actions._include_file.include_file_changes
+    concurrent_result = None
+
+    def include_then_attempt_external_write(file_path, **kwargs):
+        nonlocal concurrent_result
+        result = original_include(file_path, **kwargs)
+        if file_path == "alpha.txt":
+            concurrent_result = subprocess.run(
+                ["git", "add", "beta.txt"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        return result
+
+    monkeypatch.setattr(
+        multi_file_actions._include_file,
+        "include_file_changes",
+        include_then_attempt_external_write,
+    )
+
+    multi_file_actions.include_each_resolved_file(
+        ["alpha.txt", "beta.txt"],
+        auto_advance=False,
+    )
+
+    assert concurrent_result is not None
+    assert concurrent_result.returncode == 128
+    assert "index.lock" in concurrent_result.stderr
+    staged_paths = subprocess.run(
+        ["git", "diff", "--cached", "--name-only"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    assert set(staged_paths) == {"alpha.txt", "beta.txt"}
+    assert "alpha2-modified" in (multi_file_repo / "alpha.txt").read_text()
+    assert "beta2-modified" in (multi_file_repo / "beta.txt").read_text()
+
+
 def test_multi_file_discard_rejects_worktree_drift_before_later_file(
     multi_file_repo,
     monkeypatch,

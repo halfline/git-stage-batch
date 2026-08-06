@@ -25,7 +25,7 @@ def _git_directory_for_prompt() -> Path | None:
         return None
     if result.returncode != 0:
         return None
-    git_dir = result.stdout.strip()
+    git_dir = result.stdout.removesuffix("\n")
     return Path(git_dir) if git_dir else None
 
 

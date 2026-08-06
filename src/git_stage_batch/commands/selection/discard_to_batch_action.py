@@ -13,6 +13,7 @@ from ...data.selected_change.store import (
 from ...data.undo.checkpoints import UndoCheckpointStatus, undo_checkpoint
 from ...batch.state.batch_names import validate_batch_name
 from ...exceptions import exit_with_error
+from ...git_paths import display_path, terminal_safe_shell_join
 from ...i18n import _
 from ..file_scope import discard_file_to_batch as _file_scope_discard_file_to_batch
 from ..file_scope.target_path import (
@@ -57,7 +58,7 @@ def execute_discard_to_batch_action(
     checkpoint_status: UndoCheckpointStatus | None = None
     try:
         with undo_checkpoint(
-            " ".join(operation_parts),
+            terminal_safe_shell_join(operation_parts),
             worktree_paths=worktree_paths,
             rollback_on_error=True,
         ) as checkpoint_status:
@@ -90,8 +91,8 @@ def execute_discard_to_batch_action(
                             "Cannot discard rename '{old} -> {new}' to a batch yet. "
                             "Discard, skip, or stage the rename first."
                         ).format(
-                            old=selected_change.old_path,
-                            new=selected_change.new_path,
+                            old=display_path(selected_change.old_path),
+                            new=display_path(selected_change.new_path),
                         )
                     )
 

@@ -11,6 +11,7 @@ from pathlib import Path
 import stat
 
 from ..exceptions import CommandError
+from ..git_paths import display_path
 from ..i18n import _
 from .git_repository import get_git_repository_root_path
 
@@ -37,7 +38,9 @@ def normalize_repository_path(value: str) -> RepositoryPath:
         inside = False
     if not inside:
         raise CommandError(
-            _("Path is outside the repository worktree: {path}").format(path=value)
+            _("Path is outside the repository worktree: {path}").format(
+                path=display_path(value)
+            )
         )
     relative = os.path.relpath(candidate, repo_root)
     if relative == ".":

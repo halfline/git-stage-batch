@@ -12,7 +12,7 @@ from ...core.models import RenderedBatchDisplay
 from ...exceptions import CommandError
 from ...i18n import _
 from ...utils.file_io import write_text_file_contents
-from ...git_paths import encode_path, quote_path_token
+from ...git_paths import display_path, encode_path, quote_path_token
 from ...utils.paths import (
     get_index_snapshot_file_path,
     get_line_changes_json_file_path,
@@ -54,7 +54,7 @@ def cache_batch_as_single_hunk(
     elif file_path not in files:
         raise CommandError(
             _("File '{file}' not found in batch '{name}'").format(
-                file=file_path,
+                file=display_path(file_path),
                 name=batch_name,
             )
         )

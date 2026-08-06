@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import shlex
-
+from ...git_paths import terminal_safe_shell_quote
 from . import records as _records
 
 
 def _quote(value: str) -> str:
-    return shlex.quote(value)
+    return terminal_safe_shell_quote(value)
 
 
 def batch_source_action_command(
@@ -20,7 +19,7 @@ def batch_source_action_command(
     extra_action_parts: tuple[str, ...] = (),
 ) -> str:
     """Return a batch-source command for a reviewed action."""
-    parts = [command_name, "--from", shlex.quote(batch_name)]
+    parts = [command_name, "--from", _quote(batch_name)]
     if file_scope:
         parts.append("--file")
     parts.extend(extra_action_parts)
@@ -106,7 +105,7 @@ def live_to_batch_action_command(
     line_ids: str | None,
 ) -> str:
     """Return a live-to-batch command for a reviewed action."""
-    parts = [command_name, "--to", shlex.quote(batch_name)]
+    parts = [command_name, "--to", _quote(batch_name)]
     if file_scope:
         parts.append("--file")
     if line_ids is not None:

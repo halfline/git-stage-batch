@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from ...batch.state.query import read_batch_metadata
 from ...data.file_tracking import list_untracked_files
 from ...exceptions import CommandError
+from ...git_paths import display_path
 from ...i18n import _
 from ...utils.file_patterns import list_changed_files, resolve_gitignore_style_patterns
 from . import block_actions
@@ -82,7 +83,7 @@ def choose_review_file(
                 _("  {number} {mark} {path}{marker}").format(
                     number=f"[{index}]",
                     mark=f"[{mark}]",
-                    path=entry.path,
+                    path=display_path(entry.path),
                     marker=marker,
                 )
             )

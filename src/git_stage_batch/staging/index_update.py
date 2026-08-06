@@ -36,12 +36,14 @@ def update_index_with_blob_buffer(
     buffer: LineBuffer,
     *,
     mode: str | None = None,
+    apply_worktree_conversion: bool = False,
 ) -> None:
     """
     Update the git index with a new buffer for a file.
 
     Creates a temporary blob, hashes it, and updates the index entry.
     Preserves the file mode from the existing index entry if available.
+    Applies Git's path-based worktree conversion only when explicitly requested.
     """
     index_before = read_index_entry(path)
 
@@ -59,7 +61,14 @@ def update_index_with_blob_buffer(
             file_mode = "100644"
             mode_source = "default"
 
-    blob_hash = create_git_blob(buffer.byte_chunks())
+    blob_hash = create_git_blob(
+        buffer.byte_chunks(),
+        path=(
+            path
+            if apply_worktree_conversion and file_mode in {"100644", "100755"}
+            else None
+        ),
+    )
 
     git_update_index(mode=file_mode, blob_sha=blob_hash, file_path=path)
 

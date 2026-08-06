@@ -47,7 +47,7 @@ def list_untracked_files(paths: Iterable[str] | None = None) -> list[str]:
         literal_pathspecs=paths is not None,
     )
     if result.returncode != 0:
-        return []
+        result.check_returncode()
 
     return [decode_path(path) for path in nul_records(result.stdout)]
 

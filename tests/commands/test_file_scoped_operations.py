@@ -5,12 +5,14 @@ If tests fail, they expose gaps in the implementation.
 """
 
 from git_stage_batch.data.session import initialize_abort_state
+from git_stage_batch.data.undo.refs import current_undo_commit
 from git_stage_batch.utils.paths import ensure_state_directory_exists
 from git_stage_batch.batch.state.query import read_batch_metadata
 from git_stage_batch.commands.show_from import command_show_from_batch
 from git_stage_batch.data.line_state import load_line_changes_from_state
 from git_stage_batch.core.hashing import compute_stable_hunk_hash_from_lines
 from git_stage_batch.utils.paths import (
+    get_included_hunks_file_path,
     get_line_changes_json_file_path,
     get_selected_hunk_hash_file_path,
     get_selected_hunk_patch_file_path,
@@ -20,6 +22,7 @@ from git_stage_batch.data.file_hunk_display import render_unstaged_file_as_singl
 from git_stage_batch.commands.skip import command_skip, command_skip_line
 from git_stage_batch.cli.argument_parser import parse_command_line
 
+import os
 import subprocess
 
 import pytest
@@ -27,6 +30,7 @@ import git_stage_batch.commands.file_scope.include_file as include_file_module
 import git_stage_batch.commands.file_scope.multi_file_actions as multi_file_actions
 import git_stage_batch.data.live_diff as live_diff
 import git_stage_batch.utils.git_command as git_command_module
+import git_stage_batch.utils.index_transaction as index_transaction
 
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.again import command_again
@@ -45,6 +49,7 @@ from git_stage_batch.commands.discard_from import command_discard_from_batch
 from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.git_command import run_git_command
+from git_stage_batch.utils.index_transaction import active_git_index_path
 
 
 def test_discard_file_as_replaces_symlink_without_writing_referent(
@@ -221,6 +226,68 @@ def test_multi_file_include_blocks_concurrent_index_writer(
     assert set(staged_paths) == {"alpha.txt", "beta.txt"}
     assert "alpha2-modified" in (multi_file_repo / "alpha.txt").read_text()
     assert "beta2-modified" in (multi_file_repo / "beta.txt").read_text()
+
+
+def test_multi_file_include_rolls_back_when_index_publication_fails(
+    multi_file_repo,
+    monkeypatch,
+):
+    """A late compare-and-publish failure must roll back session state."""
+    command_start(quiet=True, auto_advance=False)
+    included_hunks_path = get_included_hunks_file_path()
+    included_hunks_before = (
+        included_hunks_path.read_bytes() if included_hunks_path.exists() else None
+    )
+    undo_before = current_undo_commit()
+
+    real_index_path = active_git_index_path()
+    external_index_path = multi_file_repo / "external-index"
+    external_environment = os.environ.copy()
+    external_environment["GIT_INDEX_FILE"] = str(external_index_path)
+    subprocess.run(
+        ["git", "read-tree", "HEAD"],
+        env=external_environment,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "add", "gamma.txt"],
+        env=external_environment,
+        check=True,
+        capture_output=True,
+    )
+
+    original_publish = index_transaction._publish_transaction_index
+
+    def replace_real_index_then_publish(*args, **kwargs):
+        os.replace(external_index_path, real_index_path)
+        return original_publish(*args, **kwargs)
+
+    monkeypatch.setattr(
+        index_transaction,
+        "_publish_transaction_index",
+        replace_real_index_then_publish,
+    )
+
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        multi_file_actions.include_each_resolved_file(
+            ["alpha.txt", "beta.txt"],
+            auto_advance=False,
+        )
+
+    assert "Git index changed" in error.value.stderr
+    staged_paths = subprocess.run(
+        ["git", "diff", "--cached", "--name-only"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    assert staged_paths == ["gamma.txt"]
+    assert current_undo_commit() == undo_before
+    included_hunks_after = (
+        included_hunks_path.read_bytes() if included_hunks_path.exists() else None
+    )
+    assert included_hunks_after == included_hunks_before
 
 
 def test_multi_file_discard_rejects_worktree_drift_before_later_file(

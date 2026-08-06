@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 import subprocess
 
+import pytest
+
 from git_stage_batch.utils.index_transaction import active_git_index_path
 
 from .conftest import git_stage_batch
@@ -29,8 +31,10 @@ def _index_state(repo: Path) -> tuple[bytes, bytes]:
     return index_bytes, debug_state
 
 
+@pytest.mark.parametrize("scope_option", ("--file", "--files"))
 def test_failed_whole_file_include_preserves_exact_unrelated_index_state(
     functional_repo,
+    scope_option,
 ):
     """A failed clean filter must preserve flags and intent-to-add entries."""
     (functional_repo / ".gitattributes").write_text("target.txt filter=fail\n")
@@ -59,7 +63,7 @@ def test_failed_whole_file_include_preserves_exact_unrelated_index_state(
     _git(functional_repo, "config", "filter.fail.clean", "false")
     before = _index_state(functional_repo)
 
-    result = git_stage_batch("include", "--file", "target.txt", check=False)
+    result = git_stage_batch("include", scope_option, "target.txt", check=False)
 
     assert result.returncode != 0
     assert "filter 'fail' failed" in result.stderr

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..utils.git_command import run_git_command
+from ..utils.git_command import git_diff_reports_changes, run_git_command
 
 
 def file_has_staged_changes(file_path: str) -> bool:
@@ -20,7 +20,7 @@ def file_has_staged_changes(file_path: str) -> bool:
         requires_index_lock=False,
         literal_pathspecs=True,
     )
-    return result.returncode == 1
+    return git_diff_reports_changes(result)
 
 
 def file_has_unstaged_changes(file_path: str) -> bool:
@@ -37,4 +37,4 @@ def file_has_unstaged_changes(file_path: str) -> bool:
         requires_index_lock=False,
         literal_pathspecs=True,
     )
-    return result.returncode == 1
+    return git_diff_reports_changes(result)

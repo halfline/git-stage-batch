@@ -33,6 +33,7 @@ from ...data.progress import record_hunk_included
 from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import exit_with_error
+from ...git_paths import display_path, terminal_safe_shell_quote
 from ...i18n import _, ngettext
 from ...utils.git_command import run_git_command
 from ...utils.git_index import (
@@ -97,8 +98,13 @@ def include_file_changes(
     if _prepared_changes is None:
         auto_add_untracked_files([target_file])
         checkpoint_paths = checkpoint_paths_for_live_file(target_file)
+        operation = (
+            "include --file"
+            if not file
+            else f"include --file {terminal_safe_shell_quote(file)}"
+        )
         checkpoint = undo_checkpoint(
-            f"include --file {file}".rstrip(),
+            operation,
             worktree_paths=checkpoint_paths,
         )
         patch_context = acquire_unified_diff(
@@ -235,7 +241,9 @@ def include_file_changes(
     if hunks_staged == 0:
         if not quiet:
             print(
-                _("No hunks staged from {file}").format(file=target_file),
+                _("No hunks staged from {file}").format(
+                    file=display_path(target_file)
+                ),
                 file=sys.stderr,
             )
         return 0
@@ -250,19 +258,19 @@ def include_file_changes(
             "✓ Staged {count} rename from {file}",
             "✓ Staged {count} renames from {file}",
             hunks_staged,
-        ).format(count=hunks_staged, file=target_file)
+        ).format(count=hunks_staged, file=display_path(target_file))
     elif submodule_pointers_staged == hunks_staged:
         msg = ngettext(
             "✓ Staged {count} submodule pointer from {file}",
             "✓ Staged {count} submodule pointers from {file}",
             hunks_staged,
-        ).format(count=hunks_staged, file=target_file)
+        ).format(count=hunks_staged, file=display_path(target_file))
     else:
         msg = ngettext(
             "✓ Staged {count} hunk from {file}",
             "✓ Staged {count} hunks from {file}",
             hunks_staged,
-        ).format(count=hunks_staged, file=target_file)
+        ).format(count=hunks_staged, file=display_path(target_file))
     print(msg, file=sys.stderr)
 
     if advance:

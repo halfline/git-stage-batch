@@ -15,6 +15,7 @@ from ...batch.submodule_pointer import (
 )
 from ...core.line_selection import LineRanges
 from ...exceptions import CommandError
+from ...git_paths import display_path
 from ...i18n import _, pgettext
 from ..batch_file_scope import resolve_batch_file_scope
 from .batch_selection_freshness import fresh_batch_review_selections_for_action
@@ -175,7 +176,7 @@ def translate_reset_batch_file_gutter_ids_to_selection_ranges(
     if rendered is None:
         raise CommandError(
             _("No changes for file '{file}' in batch '{name}'.").format(
-                file=file_path,
+                file=display_path(file_path),
                 name=batch_name,
             )
         )

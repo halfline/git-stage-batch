@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import shlex
-
 from ...exceptions import CommandError
+from ...git_paths import display_path, terminal_safe_shell_quote
 from ...i18n import _
 from . import records as _records
 from .freshness import review_state_matches_action as _review_state_matches_action
@@ -33,16 +32,19 @@ def fresh_batch_review_selections_for_action(
     except Exception:
         review_is_fresh = False
     if not review_is_fresh:
-        raise CommandError(
-            _(
+        displayed_file = display_path(file_path)
+        message = _(
                 "The file review for {file} no longer matches batch '{batch}'.\n"
                 "Line IDs may no longer match.\n\n"
                 "Run:\n"
                 "  git-stage-batch show --from {batch} --file {file}"
-            ).format(
-                batch=shlex.quote(batch_name),
-                file=shlex.quote(file_path),
-            )
+        ).format(batch=batch_name, file=displayed_file)
+        message = message.replace(
+            f"git-stage-batch show --from {batch_name} --file {displayed_file}",
+            "git-stage-batch show --from "
+            f"{terminal_safe_shell_quote(batch_name)} --file "
+            f"{terminal_safe_shell_quote(file_path)}",
         )
+        raise CommandError(message)
 
     return _shown_review_selections_for_action(review_state, action)

@@ -62,7 +62,12 @@ def validate_batch_name_constraints(name: str) -> None:
     if name.startswith('.'):
         raise CommandError(_("Batch name cannot start with '.'"))
 
-    if len(name.encode("utf-8")) > MAX_BATCH_NAME_BYTES:
+    try:
+        encoded_name = name.encode("utf-8")
+    except UnicodeEncodeError:
+        raise CommandError(_("Batch name must be valid UTF-8")) from None
+
+    if len(encoded_name) > MAX_BATCH_NAME_BYTES:
         raise CommandError(
             _("Batch name cannot exceed {limit} UTF-8 bytes").format(
                 limit=MAX_BATCH_NAME_BYTES

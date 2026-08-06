@@ -399,7 +399,11 @@ msgstr "배치 이름에는 다음 문자를 포함할 수 없습니다: {char}"
 msgid "Batch name cannot start with '.'"
 msgstr "배치 이름은 '.'으로 시작할 수 없습니다"
 
-#: src/git_stage_batch/batch/state/batch_names.py:67
+#: src/git_stage_batch/batch/state/batch_names.py:68
+msgid "Batch name must be valid UTF-8"
+msgstr "배치 이름은 유효한 UTF-8이어야 합니다"
+
+#: src/git_stage_batch/batch/state/batch_names.py:72
 #, python-brace-format
 msgid "Batch name cannot exceed {limit} UTF-8 bytes"
 msgstr "배치 이름은 UTF-8 {limit}바이트를 초과할 수 없습니다"

@@ -465,7 +465,11 @@ msgstr "Der Stapelname darf Folgendes nicht enthalten: {char}"
 msgid "Batch name cannot start with '.'"
 msgstr "Der Stapelname darf nicht mit '.' beginnen"
 
-#: src/git_stage_batch/batch/state/batch_names.py:67
+#: src/git_stage_batch/batch/state/batch_names.py:68
+msgid "Batch name must be valid UTF-8"
+msgstr "Der Stapelname muss gültiges UTF-8 sein"
+
+#: src/git_stage_batch/batch/state/batch_names.py:72
 #, python-brace-format
 msgid "Batch name cannot exceed {limit} UTF-8 bytes"
 msgstr "Der Stapelname darf {limit} UTF-8-Bytes nicht überschreiten"

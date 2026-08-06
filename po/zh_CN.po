@@ -396,7 +396,11 @@ msgstr "批次名称不能包含：{char}"
 msgid "Batch name cannot start with '.'"
 msgstr "批次名称不能以 '.' 开头"
 
-#: src/git_stage_batch/batch/state/batch_names.py:67
+#: src/git_stage_batch/batch/state/batch_names.py:68
+msgid "Batch name must be valid UTF-8"
+msgstr "批次名称必须是有效的 UTF-8"
+
+#: src/git_stage_batch/batch/state/batch_names.py:72
 #, python-brace-format
 msgid "Batch name cannot exceed {limit} UTF-8 bytes"
 msgstr "批次名称不能超过 {limit} 个 UTF-8 字节"

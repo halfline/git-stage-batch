@@ -397,7 +397,11 @@ msgstr "バッチ名に次の文字は使用できません: {char}"
 msgid "Batch name cannot start with '.'"
 msgstr "バッチ名を '.' で始めることはできません"
 
-#: src/git_stage_batch/batch/state/batch_names.py:67
+#: src/git_stage_batch/batch/state/batch_names.py:68
+msgid "Batch name must be valid UTF-8"
+msgstr "バッチ名は有効な UTF-8 である必要があります"
+
+#: src/git_stage_batch/batch/state/batch_names.py:72
 #, python-brace-format
 msgid "Batch name cannot exceed {limit} UTF-8 bytes"
 msgstr "バッチ名は UTF-8 で {limit} バイト以内にする必要があります"

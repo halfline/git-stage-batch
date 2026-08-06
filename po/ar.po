@@ -460,7 +460,11 @@ msgstr "لا يمكن أن يحتوي اسم الدفعة على: {char}"
 msgid "Batch name cannot start with '.'"
 msgstr "لا يمكن أن يبدأ اسم الدفعة بـ '.'"
 
-#: src/git_stage_batch/batch/state/batch_names.py:67
+#: src/git_stage_batch/batch/state/batch_names.py:68
+msgid "Batch name must be valid UTF-8"
+msgstr "يجب أن يكون اسم الدفعة بترميز ⁦UTF-8⁩ صالح"
+
+#: src/git_stage_batch/batch/state/batch_names.py:72
 #, python-brace-format
 msgid "Batch name cannot exceed {limit} UTF-8 bytes"
 msgstr "لا يمكن أن يتجاوز اسم الدفعة {limit} بايتًا بترميز ⁦UTF-8⁩"

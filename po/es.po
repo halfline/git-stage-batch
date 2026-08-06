@@ -461,7 +461,11 @@ msgstr "El nombre del lote no puede contener: {char}"
 msgid "Batch name cannot start with '.'"
 msgstr "El nombre del lote no puede comenzar con '.'"
 
-#: src/git_stage_batch/batch/state/batch_names.py:67
+#: src/git_stage_batch/batch/state/batch_names.py:68
+msgid "Batch name must be valid UTF-8"
+msgstr "El nombre del lote debe ser UTF-8 válido"
+
+#: src/git_stage_batch/batch/state/batch_names.py:72
 #, python-brace-format
 msgid "Batch name cannot exceed {limit} UTF-8 bytes"
 msgstr "El nombre del lote no puede superar {limit} bytes UTF-8"

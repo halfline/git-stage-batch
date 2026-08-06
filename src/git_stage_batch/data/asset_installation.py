@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .asset_catalog import Traversable
 from ..exceptions import CommandError
+from ..git_paths import display_path
 from ..i18n import _
 from ..utils.file_io import (
     AtomicWriteModePolicy,
@@ -50,7 +51,7 @@ def validate_asset_destination_path(
         if not parent.is_dir():
             raise CommandError(
                 _("Cannot install bundled assets because '{path}' is not a directory.").format(
-                    path=str(parent.relative_to(repo_root)),
+                    path=display_path(str(parent.relative_to(repo_root))),
                 )
             )
 
@@ -60,12 +61,12 @@ def validate_asset_destination_path(
     if source.is_dir() and not destination.is_dir():
         raise CommandError(
             _("Cannot install bundled assets because '{path}' is not a directory.").format(
-                path=str(destination.relative_to(repo_root)),
+                path=display_path(str(destination.relative_to(repo_root))),
             )
         )
     if source.is_file() and destination.is_dir():
         raise CommandError(
             _("Cannot install bundled assets because '{path}' is a directory.").format(
-                path=str(destination.relative_to(repo_root)),
+                path=display_path(str(destination.relative_to(repo_root))),
             )
         )

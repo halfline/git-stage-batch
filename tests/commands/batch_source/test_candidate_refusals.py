@@ -7,6 +7,7 @@ import pytest
 from git_stage_batch.batch.operation_candidate_types import CandidatePreviewCount
 import git_stage_batch.commands.batch_source.candidate_refusals as candidate_refusals
 from git_stage_batch.exceptions import CommandError
+from git_stage_batch.git_paths import display_path, terminal_safe_shell_quote
 
 
 def _refusal_message(
@@ -106,6 +107,22 @@ def test_refuse_candidate_conflicts_reports_single_ambiguous_file():
         in message
     )
     assert "Include a reviewed candidate:" in message
+
+
+def test_refuse_candidate_conflicts_quotes_control_path_commands():
+    """Ambiguous-candidate help must safely separate prose from commands."""
+    file_path = "evil\x1b[2Jname\nnext file.txt"
+    message = _refusal_message(
+        operation="apply",
+        failed_files=[file_path],
+        candidate_counts={file_path: CandidatePreviewCount(count=2)},
+    )
+
+    assert file_path not in message
+    assert "\x1b" not in message
+    assert "\nnext file.txt" not in message
+    assert display_path(file_path) in message
+    assert terminal_safe_shell_quote(file_path) in message
 
 
 def test_refuse_candidate_conflicts_reports_multiple_ambiguous_files():

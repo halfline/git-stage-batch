@@ -24,6 +24,7 @@ from ...data.selected_change.loading import SelectedChange, load_selected_change
 from ...data.selected_change.paths import worktree_paths_for_selected_change
 from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import NoMoreHunks, exit_with_error
+from ...git_paths import display_path
 from ...i18n import _
 from ...utils.file_io import read_text_file_contents
 from ...utils.git_index import (
@@ -82,7 +83,12 @@ def _include_loaded_selected_change(
         stage_file_mode_change(item)
         record_hunk_included(patch_hash)
         if not quiet:
-            print(_("✓ File mode staged: {file}").format(file=item.path()), file=sys.stderr)
+            print(
+                _("✓ File mode staged: {file}").format(
+                    file=display_path(item.path())
+                ),
+                file=sys.stderr,
+            )
         finish_selected_change_action(quiet=quiet, auto_advance=auto_advance)
         return
     if isinstance(item, RenameChange):
@@ -92,8 +98,8 @@ def _include_loaded_selected_change(
         if not quiet:
             print(
                 _("✓ Rename staged: {old} -> {new}").format(
-                    old=item.old_path,
-                    new=item.new_path,
+                    old=display_path(item.old_path),
+                    new=display_path(item.new_path),
                 ),
                 file=sys.stderr,
             )
@@ -110,7 +116,9 @@ def _include_loaded_selected_change(
 
         if not quiet:
             print(
-                _("✓ Text file deletion staged: {file}").format(file=item.path()),
+                _("✓ Text file deletion staged: {file}").format(
+                    file=display_path(item.path())
+                ),
                 file=sys.stderr,
             )
 
@@ -135,7 +143,7 @@ def _include_loaded_selected_change(
             print(
                 _("✓ Submodule pointer {desc}: {file}").format(
                     desc=item.change_type,
-                    file=item.path(),
+                    file=display_path(item.path()),
                 ),
                 file=sys.stderr,
             )
@@ -168,7 +176,7 @@ def _include_loaded_selected_change(
             print(
                 _("✓ Binary file {desc}: {file}").format(
                     desc=change_desc,
-                    file=file_path,
+                    file=display_path(file_path),
                 ),
                 file=sys.stderr,
             )
@@ -199,7 +207,10 @@ def _include_loaded_selected_change(
     record_hunk_included(patch_hash)
 
     if not quiet:
-        print(_("✓ Hunk staged from {file}").format(file=file_path), file=sys.stderr)
+        print(
+            _("✓ Hunk staged from {file}").format(file=display_path(file_path)),
+            file=sys.stderr,
+        )
 
     finish_selected_change_action(
         quiet=quiet,
@@ -291,7 +302,7 @@ def stage_gitlink_change(
     if gitlink_change.new_oid is None:
         exit_with_error(
             _("Cannot stage submodule pointer for {file}: missing target commit.").format(
-                file=file_path,
+                file=display_path(file_path),
             )
         )
     return git_update_gitlink(
@@ -307,8 +318,8 @@ def stage_rename_change(rename_change: RenameChange) -> None:
     if index_entry is None:
         exit_with_error(
             _("Cannot stage rename {old} -> {new}: missing baseline index entry.").format(
-                old=rename_change.old_path,
-                new=rename_change.new_path,
+                old=display_path(rename_change.old_path),
+                new=display_path(rename_change.new_path),
             )
         )
 
@@ -339,7 +350,7 @@ def stage_text_file_deletion(file_path: str) -> None:
     if result.returncode != 0:
         exit_with_error(
             _("Failed to stage deletion for {file}: {error}").format(
-                file=file_path,
+                file=display_path(file_path),
                 error=result.stderr,
             )
         )

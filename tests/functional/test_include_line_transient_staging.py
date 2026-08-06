@@ -186,6 +186,144 @@ def test_include_line_transient_staging_pure_addition(functional_repo):
     assert _index_content(functional_repo, "file.txt") == "base\nfoo\n"
 
 
+def test_include_line_new_file_applies_clean_filter(functional_repo):
+    """Partial new-file staging stores the same clean form as git add."""
+    (functional_repo / ".gitattributes").write_text("*.txt filter=token\n")
+    subprocess.run(
+        [
+            "git",
+            "config",
+            "filter.token.clean",
+            "sed -e /omit/d -e s/worktree/index/g",
+        ],
+        check=True,
+        cwd=functional_repo,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "filter.token.smudge", "cat"],
+        check=True,
+        cwd=functional_repo,
+        capture_output=True,
+    )
+    (functional_repo / "new.txt").write_text(
+        "omit\nworktree-one\nworktree-two\n"
+    )
+
+    git_stage_batch("start", "-U0", "--no-auto-advance")
+    git_stage_batch(
+        "include",
+        "--file",
+        "new.txt",
+        "--line",
+        "1",
+        "--no-auto-advance",
+    )
+
+    assert _index_bytes(functional_repo, "new.txt") == b"index-one\n"
+
+    git_stage_batch(
+        "include",
+        "--file",
+        "new.txt",
+        "--line",
+        "1",
+        "--no-auto-advance",
+    )
+
+    assert _index_bytes(functional_repo, "new.txt") == (
+        b"index-one\nindex-two\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("attribute_encoding", "python_encoding"),
+    [
+        ("UTF-16LE", "utf-16-le"),
+        ("UTF-16", "utf-16"),
+    ],
+)
+def test_include_line_new_utf16_file_stores_partial_utf8_content(
+    functional_repo,
+    attribute_encoding,
+    python_encoding,
+):
+    """Partial UTF-16 new files retain complete code units and Git encoding."""
+    (functional_repo / ".gitattributes").write_text(
+        "*.ps1 text "
+        f"working-tree-encoding={attribute_encoding} eol=lf\n"
+    )
+    (functional_repo / "new.ps1").write_bytes(
+        "first\nsecond\n".encode(python_encoding)
+    )
+
+    git_stage_batch("start", "-U0", "--no-auto-advance")
+    git_stage_batch(
+        "include",
+        "--file",
+        "new.ps1",
+        "--line",
+        "1",
+        "--no-auto-advance",
+    )
+
+    assert _index_bytes(functional_repo, "new.ps1") == b"first\n"
+
+    git_stage_batch(
+        "include",
+        "--file",
+        "new.ps1",
+        "--line",
+        "1",
+        "--no-auto-advance",
+    )
+
+    assert _index_bytes(functional_repo, "new.ps1") == b"first\nsecond\n"
+
+
+@pytest.mark.parametrize("conversion_source", ["attributes", "autocrlf"])
+def test_include_line_new_crlf_file_stores_sequential_lf_selections(
+    functional_repo,
+    conversion_source,
+):
+    """Sequential new-file selections remain canonical under EOL conversion."""
+    if conversion_source == "attributes":
+        (functional_repo / ".gitattributes").write_text(
+            "*.txt text eol=lf\n"
+        )
+    else:
+        subprocess.run(
+            ["git", "config", "core.autocrlf", "true"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+    (functional_repo / "new.txt").write_bytes(b"first\r\nsecond\r\n")
+
+    git_stage_batch("start", "-U0", "--no-auto-advance")
+    git_stage_batch(
+        "include",
+        "--file",
+        "new.txt",
+        "--line",
+        "1",
+        "--no-auto-advance",
+    )
+
+    assert _index_bytes(functional_repo, "new.txt") == b"first\n"
+
+    git_stage_batch(
+        "include",
+        "--file",
+        "new.txt",
+        "--line",
+        "1",
+        "--no-auto-advance",
+    )
+
+    assert _index_bytes(functional_repo, "new.txt") == b"first\nsecond\n"
+
+
 def _repeated_boundary_insertion_contents() -> tuple[str, str, str]:
     """Return the captured repeated-boundary insertion regression contents."""
     return captured_repeated_boundary_insertion()

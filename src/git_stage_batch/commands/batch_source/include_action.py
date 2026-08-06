@@ -38,6 +38,7 @@ from ...data.index_entries import read_index_entries
 from ...data.session import snapshot_file_if_untracked
 from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import AtomicUnitError, CommandError, exit_with_error
+from ...git_paths import display_path, terminal_safe_shell_join
 from ...i18n import _, pgettext
 from ...utils.file_job_workspace import FileJobWorkspace
 from ...utils.file_jobs import (
@@ -107,7 +108,7 @@ def execute_include_action(
             )
             try:
                 with undo_checkpoint(
-                    " ".join(selection.operation_parts),
+                    terminal_safe_shell_join(selection.operation_parts),
                     worktree_paths=list(files),
                     rollback_on_error=True,
                 ):
@@ -497,7 +498,7 @@ def _reduce_include_action_plans(
         if unexpected_error is not None:
             print(
                 _("Error staging {file}: {error}").format(
-                    file=file_path,
+                    file=display_path(file_path),
                     error=unexpected_error,
                 ),
                 file=sys.stderr,
@@ -512,7 +513,8 @@ def _reduce_include_action_plans(
                     file_path,
                     binary_metadata,
                     missing_content_message=(
-                        f"Binary file not found in batch commit: {file_path}"
+                        "Binary file not found in batch commit: "
+                        f"{display_path(file_path)}"
                     ),
                 )
                 plans_by_ordinal[ordinal] = _action_plans.BinaryFileActionPlan(
@@ -525,7 +527,7 @@ def _reduce_include_action_plans(
             except Exception as error:
                 print(
                     _("Error staging {file}: {error}").format(
-                        file=file_path,
+                        file=display_path(file_path),
                         error=str(error),
                     ),
                     file=sys.stderr,
@@ -604,7 +606,7 @@ def _reduce_include_action_plans(
         elif result.outcome == "unexpected_error":
             print(
                 _("Error staging {file}: {error}").format(
-                    file=result.file_path,
+                    file=display_path(result.file_path),
                     error=details["message"],
                 ),
                 file=sys.stderr,
@@ -686,7 +688,7 @@ def _include_target_changed_error(
         _(
             "{label} changed while include was being calculated: "
             "{file}. Retry the include command."
-        ).format(label=label, file=file_path)
+        ).format(label=label, file=display_path(file_path))
     )
 
 

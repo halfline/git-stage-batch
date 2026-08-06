@@ -857,14 +857,14 @@ def _build_target_working_tree_buffer_with_replaced_lines(
                 )
             )
 
-    if replacement_payload.exact:
-        trailing_newline = (
-            replacement_payload.has_trailing_lf
-            if replace_end == working_line_count
-            else working_has_trailing_newline
-        )
-    else:
-        trailing_newline = replacement_payload.has_trailing_lf or working_has_trailing_newline
+    trailing_newline = _replacement_result_has_trailing_newline(
+        working_has_trailing_newline,
+        working_line_count,
+        replace_start,
+        replace_end,
+        replacement_payload,
+        len(replacement_lines),
+    )
     return _edit_lines_preserving_source_endings_as_buffer(
         working_lines,
         replacement_lines,

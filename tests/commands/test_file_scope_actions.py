@@ -3,6 +3,25 @@ from types import SimpleNamespace
 
 import git_stage_batch.commands.file_scope.multi_file_actions as multi_file_actions
 from git_stage_batch.exceptions import CommandError
+from git_stage_batch.git_paths import display_path, terminal_safe_shell_quote
+
+
+def test_multi_file_descriptions_escape_terminal_control_paths():
+    """Multi-file undo commands and one-file summaries must be terminal-safe."""
+    file_path = "line\n\x1b[31m\u202efile.txt"
+
+    operation = multi_file_actions._format_multi_file_operation(
+        "include",
+        [file_path, "ordinary.txt"],
+    )
+
+    assert terminal_safe_shell_quote(file_path) in operation
+    assert "\n" not in operation
+    assert "\x1b" not in operation
+    assert "\u202e" not in operation
+    assert multi_file_actions._format_file_summary([file_path]) == display_path(
+        file_path
+    )
 
 
 class _FileScope:

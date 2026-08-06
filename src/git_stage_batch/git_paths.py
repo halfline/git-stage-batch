@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+from collections.abc import Iterable
 
 from .exceptions import CommandError
 from .i18n import _
@@ -88,6 +89,11 @@ def terminal_safe_shell_quote(value: str) -> str:
         else:
             escaped.append(f"\\{byte:03o}")
     return "$'" + "".join(escaped) + "'"
+
+
+def terminal_safe_shell_join(arguments: Iterable[str]) -> str:
+    """Render shell arguments without allowing terminal control bytes."""
+    return " ".join(terminal_safe_shell_quote(argument) for argument in arguments)
 
 
 def nul_records(output: bytes) -> list[bytes]:

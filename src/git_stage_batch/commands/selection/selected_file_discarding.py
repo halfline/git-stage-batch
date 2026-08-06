@@ -10,6 +10,7 @@ from ...data.index_entries import read_index_entry
 from ...data.session import path_is_intent_to_add, snapshot_file_if_untracked
 from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import exit_with_error
+from ...git_paths import display_path
 from ...i18n import _
 from ...utils.git_worktree import git_checkout_index_paths
 from ...utils.git_index import git_update_index
@@ -63,5 +64,8 @@ def discard_selected_file(
         if quiet:
             finish_selected_change_action(quiet=True, auto_advance=auto_advance)
         else:
-            print(_("✓ File discarded: {}").format(target_file), file=sys.stderr)
+            print(
+                _("✓ File discarded: {}").format(display_path(target_file)),
+                file=sys.stderr,
+            )
             finish_selected_change_action(quiet=False, auto_advance=auto_advance)

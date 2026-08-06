@@ -28,6 +28,7 @@ import subprocess
 import pytest
 import git_stage_batch.commands.file_scope.include_file as include_file_module
 import git_stage_batch.commands.file_scope.multi_file_actions as multi_file_actions
+import git_stage_batch.data.undo.checkpoints as undo_checkpoints
 import git_stage_batch.data.live_diff as live_diff
 import git_stage_batch.utils.git_command as git_command_module
 import git_stage_batch.utils.index_transaction as index_transaction
@@ -226,6 +227,57 @@ def test_multi_file_include_blocks_concurrent_index_writer(
     assert set(staged_paths) == {"alpha.txt", "beta.txt"}
     assert "alpha2-modified" in (multi_file_repo / "alpha.txt").read_text()
     assert "beta2-modified" in (multi_file_repo / "beta.txt").read_text()
+
+
+def test_single_file_include_finalizes_checkpoint_under_index_lock(
+    multi_file_repo,
+    monkeypatch,
+):
+    """Checkpoint finalization must remain inside the index transaction."""
+    command_start(quiet=True, auto_advance=False)
+    original_finalize = undo_checkpoints.finalize_pending_checkpoint
+    concurrent_result = None
+
+    def finalize_after_attempting_external_write():
+        nonlocal concurrent_result
+        staged_paths = subprocess.run(
+            ["git", "diff", "--cached", "--name-only"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+        assert staged_paths == ["alpha.txt"]
+        concurrent_result = subprocess.run(
+            ["git", "add", "beta.txt"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        original_finalize()
+
+    monkeypatch.setattr(
+        undo_checkpoints,
+        "finalize_pending_checkpoint",
+        finalize_after_attempting_external_write,
+    )
+
+    command_include_file(
+        file="alpha.txt",
+        quiet=True,
+        advance=False,
+        auto_advance=False,
+    )
+
+    assert concurrent_result is not None
+    assert concurrent_result.returncode == 128
+    assert "index.lock" in concurrent_result.stderr
+    staged_paths = subprocess.run(
+        ["git", "diff", "--cached", "--name-only"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    assert staged_paths == ["alpha.txt"]
 
 
 def test_multi_file_include_rolls_back_when_index_publication_fails(

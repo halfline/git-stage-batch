@@ -71,8 +71,10 @@ def test_failed_whole_file_include_preserves_exact_unrelated_index_state(
     assert _index_state(functional_repo) == before
 
 
+@pytest.mark.parametrize("scope_option", ("--file", "--files"))
 def test_failed_whole_file_include_blocks_concurrent_git_update(
     functional_repo,
+    scope_option,
 ):
     """A clean-filter failure must retain the real-index lock throughout."""
     (functional_repo / ".gitattributes").write_text("target.txt filter=fail\n")
@@ -105,7 +107,7 @@ def test_failed_whole_file_include_blocks_concurrent_git_update(
         "printf '%s-%s\\n' \"$lock\" \"$status\" >> filter-result; exit 1",
     )
 
-    result = git_stage_batch("include", "--file", "target.txt", check=False)
+    result = git_stage_batch("include", scope_option, "target.txt", check=False)
 
     assert result.returncode != 0
     assert "clean filter" in result.stderr

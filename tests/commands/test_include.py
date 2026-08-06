@@ -23,6 +23,7 @@ from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.skip import command_skip_line
 from git_stage_batch.commands.show import command_show
 from git_stage_batch.core.models import TextFileDeletionChange
+from git_stage_batch.core.replacement import ReplacementPayload
 from git_stage_batch.data.hunk_tracking import (
     fetch_next_change,
 )
@@ -645,6 +646,38 @@ class TestCommandIncludeLine:
             capture_output=True,
         )
         assert result.stdout == modified
+
+    def test_empty_exact_replacement_at_eof_preserves_preceding_newline(
+        self,
+        temp_git_repo,
+    ):
+        """Empty stdin replacement should delete only the selected final line."""
+        test_file = temp_git_repo / "f.txt"
+        test_file.write_bytes(b"a\nb\n")
+        subprocess.run(
+            ["git", "add", "f.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add f"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+
+        test_file.write_bytes(b"a\nB\n")
+        command_start(quiet=True, auto_advance=False)
+        command_include_line_as("1-2", ReplacementPayload(b""))
+
+        result = subprocess.run(
+            ["git", "show", ":f.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        assert result.stdout == b"a\n"
 
     def test_include_to_batch_line_captures_worktree_executable_mode(self, temp_git_repo):
         """include --to --line should store chmod changes from the working tree."""

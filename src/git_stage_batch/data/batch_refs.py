@@ -20,6 +20,7 @@ from ..batch.state.references import (
     sync_batch_state_refs,
 )
 from ..exceptions import BatchMetadataError, CommandError
+from ..git_paths import display_path
 from ..i18n import _, ngettext
 from ..utils.file_io import (
     read_required_text_file_contents,
@@ -124,7 +125,7 @@ def _invalid_snapshot(detail: str, *, cause: BaseException | None = None) -> NoR
             "The batch-reference recovery snapshot is {detail}: {path}. "
             "The session remains active; repair the snapshot and run "
             "'git-stage-batch abort' again."
-        ).format(detail=detail, path=snapshot_path)
+        ).format(detail=detail, path=display_path(str(snapshot_path)))
     )
     if cause is None:
         raise error

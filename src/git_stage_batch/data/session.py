@@ -23,7 +23,7 @@ from ..utils.file_io import (
     write_text_file_contents,
 )
 from ..utils.git_command import run_git_command
-from ..git_paths import decode_path, nul_records
+from ..git_paths import decode_path, display_path, nul_records
 from ..utils.git_worktree import git_remove_paths
 from ..utils.git_index import git_restore_intent_to_add_paths
 from ..utils.git_repository import get_git_repository_root_path
@@ -175,7 +175,9 @@ def _snapshot_intent_to_add_files() -> tuple[
         raise CommandError(
             _(
                 "Could not capture intent-to-add index entries for: {paths}"
-            ).format(paths=", ".join(missing_entries))
+            ).format(
+                paths=", ".join(display_path(path) for path in missing_entries)
+            )
         )
     # With rename detection disabled, an ITA absent from HEAD is reported as
     # added in the visible view. A tracked path normalized through rm --cached
@@ -537,13 +539,13 @@ def get_iteration_count() -> int:
     except ValueError as error:
         raise CommandError(
             _("Session iteration count is invalid: {path}").format(
-                path=count_path,
+                path=display_path(str(count_path)),
             )
         ) from error
     if count < 1:
         raise CommandError(
             _("Session iteration count is invalid: {path}").format(
-                path=count_path,
+                path=display_path(str(count_path)),
             )
         )
     return count

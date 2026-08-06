@@ -81,7 +81,7 @@ def include_file_changes(
 
     checkpoint: AbstractContextManager[object]
     patch_context: AbstractContextManager[Iterator[UnifiedDiffItem]]
-    index_transaction: AbstractContextManager[None]
+    index_transaction: AbstractContextManager[object]
     if _prepared_changes is None:
         auto_add_untracked_files([target_file])
         checkpoint_paths = checkpoint_paths_for_live_file(target_file)

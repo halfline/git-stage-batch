@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 import os
@@ -358,8 +358,12 @@ def isolated_index_transaction(
     *,
     cwd: str | None = None,
     env: Mapping[str, str] | None = None,
-) -> Iterator[None]:
-    """Run Git commands on an isolated index and publish it only on success."""
+) -> Iterator[Callable[[], None]]:
+    """Run Git commands on an isolated index and yield its publisher.
+
+    Failed split-index publication can leave an unreferenced, content-addressed
+    ``sharedindex.*`` file for Git's normal shared-index expiry to prune.
+    """
     index_path = active_git_index_path(cwd=cwd, env=env)
     worktree_root = _active_worktree_root(cwd=cwd, env=env)
     index_path.parent.mkdir(parents=True, exist_ok=True)
@@ -392,24 +396,34 @@ def isolated_index_transaction(
                         ["update-index", "--no-split-index"],
                         cwd=cwd,
                     )
-                yield
-                if (
-                    baseline.shared_index is not None
-                    and transaction_index_path.exists()
-                ):
-                    run_git_command(
-                        ["update-index", "--split-index"],
-                        cwd=cwd,
+                published = False
+
+                def publish_index() -> None:
+                    nonlocal published
+                    if published:
+                        return
+                    if (
+                        baseline.shared_index is not None
+                        and transaction_index_path.exists()
+                    ):
+                        run_git_command(
+                            ["update-index", "--split-index"],
+                            cwd=cwd,
+                        )
+                    transaction_shared_index = (
+                        _active_shared_index_path(cwd=cwd, env=None)
+                        if transaction_index_path.exists()
+                        else None
                     )
-                transaction_shared_index = (
-                    _active_shared_index_path(cwd=cwd, env=None)
-                    if transaction_index_path.exists()
-                    else None
-                )
-                _publish_transaction_index(
-                    baseline,
-                    transaction_index_path,
-                    transaction_shared_index,
-                    file_descriptor=file_descriptor,
-                    lock_path=lock_path,
-                )
+                    _publish_transaction_index(
+                        baseline,
+                        transaction_index_path,
+                        transaction_shared_index,
+                        file_descriptor=file_descriptor,
+                        lock_path=lock_path,
+                    )
+                    published = True
+
+                yield publish_index
+                if not published:
+                    publish_index()

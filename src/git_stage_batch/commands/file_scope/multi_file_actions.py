@@ -30,6 +30,7 @@ from ...exceptions import CommandError
 from ...git_paths import display_path, terminal_safe_shell_quote
 from ...i18n import _, ngettext, npgettext, pgettext
 from ...utils.git_repository import require_git_repository
+from ...utils.index_transaction import isolated_index_transaction
 from ...utils.paths import ensure_state_directory_exists
 from . import discard_file as _discard_file
 from .discard_to_batch import discard_files_to_batch
@@ -308,10 +309,13 @@ def include_each_resolved_file(
     staged_files: list[str] = []
 
     checkpoint_paths = checkpoint_paths_for_live_files(list(files))
-    with _multi_file_undo_checkpoint(
-        "include",
-        files,
-        worktree_paths=checkpoint_paths,
+    with (
+        isolated_index_transaction() as publish_index,
+        _multi_file_undo_checkpoint(
+            "include",
+            files,
+            worktree_paths=checkpoint_paths,
+        ),
     ):
         auto_add_untracked_files(files)
         target_snapshot = _capture_live_action_targets(checkpoint_paths)
@@ -347,6 +351,7 @@ def include_each_resolved_file(
                 if staged_hunks > 0:
                     total_hunks += staged_hunks
                     staged_files.append(file_path)
+        publish_index()
 
     if total_hunks == 0:
         print(_("No hunks staged from matched files."), file=sys.stderr)

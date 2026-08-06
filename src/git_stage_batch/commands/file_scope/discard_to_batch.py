@@ -34,6 +34,7 @@ from ...data.live_diff import stream_live_git_diff
 from ...data.progress import record_hunks_discarded
 from ...data.session import snapshot_files_if_untracked
 from ...exceptions import exit_with_error
+from ...git_paths import display_path
 from ...i18n import _
 from ...utils.file_io import read_text_file_line_set
 from ...utils.git_worktree import (
@@ -208,7 +209,11 @@ def _prepare_text_file_discard_to_batch(
                 "File: {file}\n"
                 "Batch: {batch}\n"
                 "Error: {error}"
-            ).format(file=file_path, batch=batch_name, error=str(e))
+            ).format(
+                file=display_path(file_path),
+                batch=batch_name,
+                error=str(e),
+            )
         )
 
     return _PreparedTextFileDiscardToBatch(

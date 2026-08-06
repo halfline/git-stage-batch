@@ -258,47 +258,52 @@ def _matches_snapshot(snapshot: _FileSnapshot) -> bool:
     return _files_equal(snapshot.path, snapshot.contents)
 
 
-def _write_transaction_index(
+def _write_publication_index(
     transaction_index_path: Path,
     *,
     file_descriptor: int,
     metadata: os.stat_result,
 ) -> None:
-    """Write an isolated index through the acquired real-index lock."""
-    with os.fdopen(file_descriptor, "wb", closefd=False) as lock_file:
-        _copy_file(transaction_index_path, lock_file)
-        lock_file.flush()
+    """Write an isolated index into a durable publication file."""
+    with os.fdopen(file_descriptor, "wb", closefd=False) as publication_file:
+        _copy_file(transaction_index_path, publication_file)
+        publication_file.flush()
         mode = stat.S_IMODE(metadata.st_mode)
         ownership_preserved = True
         if hasattr(os, "fchown"):
             try:
-                os.fchown(lock_file.fileno(), metadata.st_uid, metadata.st_gid)
+                os.fchown(
+                    publication_file.fileno(),
+                    metadata.st_uid,
+                    metadata.st_gid,
+                )
             except PermissionError:
                 ownership_preserved = False
         if not ownership_preserved:
-            current_metadata = os.fstat(lock_file.fileno())
+            current_metadata = os.fstat(publication_file.fileno())
             group_preserved = current_metadata.st_gid == metadata.st_gid
             if not group_preserved:
                 try:
-                    os.fchown(lock_file.fileno(), -1, metadata.st_gid)
+                    os.fchown(
+                        publication_file.fileno(),
+                        -1,
+                        metadata.st_gid,
+                    )
                 except PermissionError:
                     pass
                 else:
                     group_preserved = True
             mode &= 0o770 if group_preserved else 0o700
-        os.fchmod(lock_file.fileno(), mode)
-        os.fsync(lock_file.fileno())
+        os.fchmod(publication_file.fileno(), mode)
+        os.fsync(publication_file.fileno())
 
 
 def _publish_transaction_index(
     baseline: _IndexBaseline,
     transaction_index_path: Path,
     transaction_shared_index: Path | None,
-    *,
-    file_descriptor: int,
-    lock_path: Path,
 ) -> None:
-    """Publish an isolated index through the caller's real-index lock."""
+    """Publish an isolated index while the caller retains its real-index lock."""
     index_path = baseline.index.path
     if not _matches_snapshot(baseline.index) or (
         baseline.shared_index is not None
@@ -314,8 +319,7 @@ def _publish_transaction_index(
     transaction_metadata = transaction_index_path.stat(follow_symlinks=False)
     if not stat.S_ISREG(transaction_metadata.st_mode):
         raise RuntimeError(
-            "Transaction index path is not a regular file: "
-            f"{transaction_index_path}"
+            f"Transaction index path is not a regular file: {transaction_index_path}"
         )
 
     if transaction_shared_index is not None:
@@ -325,13 +329,25 @@ def _publish_transaction_index(
                 "Transaction shared-index path is not a regular file: "
                 f"{transaction_shared_index}"
             )
-    _write_transaction_index(
-        transaction_index_path,
-        file_descriptor=file_descriptor,
-        metadata=baseline.index.metadata or transaction_metadata,
+    publication_path = transaction_index_path.parent / "published-index"
+    publication_descriptor = os.open(
+        publication_path,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+        0o600,
     )
-    os.replace(lock_path, index_path)
-    fsync_directory(index_path.parent)
+    try:
+        try:
+            _write_publication_index(
+                transaction_index_path,
+                file_descriptor=publication_descriptor,
+                metadata=baseline.index.metadata or transaction_metadata,
+            )
+        finally:
+            os.close(publication_descriptor)
+        os.replace(publication_path, index_path)
+        fsync_directory(index_path.parent)
+    finally:
+        publication_path.unlink(missing_ok=True)
 
 
 def _active_worktree_root(
@@ -367,7 +383,7 @@ def isolated_index_transaction(
     index_path = active_git_index_path(cwd=cwd, env=env)
     worktree_root = _active_worktree_root(cwd=cwd, env=env)
     index_path.parent.mkdir(parents=True, exist_ok=True)
-    with _acquire_index_lock(index_path) as (file_descriptor, lock_path):
+    with _acquire_index_lock(index_path):
         with tempfile.TemporaryDirectory(
             dir=index_path.parent,
             prefix=".git-stage-batch-index-transaction-",
@@ -419,8 +435,6 @@ def isolated_index_transaction(
                         baseline,
                         transaction_index_path,
                         transaction_shared_index,
-                        file_descriptor=file_descriptor,
-                        lock_path=lock_path,
                     )
                     published = True
 

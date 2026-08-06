@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import AbstractContextManager, nullcontext
 import sys
 
@@ -81,7 +81,7 @@ def include_file_changes(
 
     checkpoint: AbstractContextManager[object]
     patch_context: AbstractContextManager[Iterator[UnifiedDiffItem]]
-    index_transaction: AbstractContextManager[object]
+    index_transaction: AbstractContextManager[Callable[[], None] | None]
     if _prepared_changes is None:
         auto_add_untracked_files([target_file])
         checkpoint_paths = checkpoint_paths_for_live_file(target_file)
@@ -105,15 +105,15 @@ def include_file_changes(
     else:
         checkpoint = nullcontext()
         patch_context = nullcontext(iter(_prepared_changes))
-        index_transaction = nullcontext()
+        index_transaction = nullcontext(None)
 
-    with checkpoint:
+    with index_transaction as publish_index, checkpoint:
         hunks_staged = 0
         submodule_pointers_staged = 0
         renames_staged = 0
         included_hashes: list[str] = []
         staged_rename_pairs: set[tuple[str, str]] = set()
-        with index_transaction, patch_context as patches:
+        with patch_context as patches:
             for patch in patches:
                 if isinstance(patch, FileModeChange):
                     if target_file not in (patch.path(), patch.index_path):
@@ -222,15 +222,15 @@ def include_file_changes(
                         )
                     )
 
+        if publish_index is not None:
+            publish_index()
         for patch_hash in included_hashes:
             record_hunk_included(patch_hash)
 
     if hunks_staged == 0:
         if not quiet:
             print(
-                _("No hunks staged from {file}").format(
-                    file=display_path(target_file)
-                ),
+                _("No hunks staged from {file}").format(file=display_path(target_file)),
                 file=sys.stderr,
             )
         return 0

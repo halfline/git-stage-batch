@@ -93,7 +93,11 @@ class TestRunGitCommand:
 
         assert calls[0] == ("wait", "/repo", command_env)
         assert calls[1][0] == "run"
-        assert calls[1][3]["env"] is command_env
+        assert calls[1][3]["env"] == {
+            "CUSTOM": "1",
+            "LC_MESSAGES": "C",
+        }
+        assert command_env == {"CUSTOM": "1"}
 
     def test_retries_transient_index_lock_error(self, monkeypatch):
         """Index-writing commands should retry when Git loses the lock race."""
@@ -158,6 +162,55 @@ class TestRunGitCommand:
             [b"diff --git a/file.txt b/file.txt\n", b"+new line\n"],
             [b"diff --git a/file.txt b/file.txt\n", b"+new line\n"],
         ]
+
+    def test_forces_message_locale_before_parsing_lock_diagnostics(
+        self,
+        monkeypatch,
+    ):
+        """A caller locale cannot translate the lock diagnostic being parsed."""
+        attempts = []
+
+        monkeypatch.setattr(
+            git_index_lock,
+            "wait_for_git_index_lock",
+            lambda **_kwargs: None,
+        )
+
+        def fake_run_command(arguments, stdin_chunks=None, **kwargs):
+            attempts.append(kwargs["env"])
+            if len(attempts) == 1:
+                diagnostic = (
+                    "fatal: Unable to create '/repo/custom-stage.lock': "
+                    "File exists.\n"
+                    if kwargs["env"].get("LC_MESSAGES") == "C"
+                    and "LC_ALL" not in kwargs["env"]
+                    else "fatal: Datei kann nicht erstellt werden.\n"
+                )
+                return subprocess.CompletedProcess(
+                    arguments,
+                    128,
+                    stdout="",
+                    stderr=diagnostic,
+                )
+            return subprocess.CompletedProcess(
+                arguments,
+                0,
+                stdout="ok\n",
+                stderr="",
+            )
+
+        monkeypatch.setattr(git_command_utils, "run_command", fake_run_command)
+
+        result = run_git_command(
+            ["add", "--", "file.txt"],
+            check=False,
+            env={"LC_ALL": "de_DE.UTF-8", "CUSTOM": "1"},
+        )
+
+        assert result.returncode == 0
+        assert len(attempts) == 2
+        assert all(env["LC_MESSAGES"] == "C" for env in attempts)
+        assert all("LC_ALL" not in env for env in attempts)
 
     def test_disables_optional_locks_for_read_only_commands(self, monkeypatch):
         """Read-only commands should opt out of Git's optional index refresh locks."""

@@ -7,6 +7,7 @@ from pathlib import Path
 from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...data.file_modes import apply_git_file_mode
 from ...exceptions import CommandError
+from ...git_paths import display_path
 from ...i18n import _
 from ...utils.git_command import run_git_command
 from ...utils.git_repository import get_git_repository_root_path
@@ -32,7 +33,9 @@ def stage_file_mode(file_path: str, file_meta: BatchFileMetadataDict) -> None:
     )
     if result.returncode != 0:
         raise CommandError(
-            _("Failed to stage file mode for {file}").format(file=file_path)
+            _("Failed to stage file mode for {file}").format(
+                file=display_path(file_path)
+            )
         )
 
 
@@ -48,6 +51,8 @@ def _apply(file_path: str, mode: str) -> None:
     path: Path = get_git_repository_root_path() / file_path
     if not path.exists() or path.is_symlink():
         raise CommandError(
-            _("Cannot apply executable mode to {file}").format(file=file_path)
+            _("Cannot apply executable mode to {file}").format(
+                file=display_path(file_path)
+            )
         )
     apply_git_file_mode(path, mode)

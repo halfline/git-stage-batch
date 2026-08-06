@@ -41,7 +41,7 @@ from ...core.line_selection import LineRanges
 from ...data.batch_file_scope import resolve_batch_file_scope
 from ...utils.repository_buffers import read_git_object_buffer_or_none
 from ...exceptions import MergeError, exit_with_error
-from ...git_paths import terminal_safe_shell_quote
+from ...git_paths import display_path, terminal_safe_shell_quote
 from ...i18n import _
 
 
@@ -88,7 +88,7 @@ def move_claims_between_batches(
             if dest_file_meta is not None:
                 exit_with_error(
                     _("Destination batch already has file '{file}'").format(
-                        file=file_path,
+                        file=display_path(file_path),
                     )
                 )
             copy_file_from_batch_to_batch(source_batch, dest_batch, file_path)
@@ -182,7 +182,7 @@ def reset_line_claims_for_file(
     if batch_source_buffer is None:
         exit_with_error(
             _("Failed to read batch source content for {file}").format(
-                file=file_path,
+                file=display_path(file_path),
             )
         )
 
@@ -320,7 +320,7 @@ def _add_ownership_to_destination(
                     "Destination batch already has a binary version of '{file}', "
                     "so text changes for the same file cannot be moved there."
                 ).format(
-                    file=file_path,
+                    file=display_path(file_path),
                 )
             )
         if dest_file_meta.get("batch_source_commit") != batch_source_commit:
@@ -329,7 +329,7 @@ def _add_ownership_to_destination(
                     "Destination batch already has file '{file}' with a "
                     "different batch source"
                 ).format(
-                    file=file_path,
+                    file=display_path(file_path),
                 )
             )
         with acquire_ownership_for_metadata_dict(dest_file_meta) as existing:
@@ -366,7 +366,7 @@ def _acquire_line_ownership_for_file(
     if batch_source_buffer is None:
         exit_with_error(
             _("Failed to read batch source content for {file}").format(
-                file=file_path,
+                file=display_path(file_path),
             )
         )
 

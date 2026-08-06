@@ -6,6 +6,7 @@ from typing import Optional
 
 from ..batch.state.metadata_types import BatchFileMetadataDict
 from ..exceptions import CommandError
+from ..git_paths import display_path
 from ..i18n import _
 from ..utils.file_patterns import resolve_gitignore_style_patterns
 from .batch_selected_changes import (
@@ -168,7 +169,7 @@ def _get_batch_file_for_line_operation(
     if file not in all_files:
         raise CommandError(
             _("File '{file}' not found in batch '{name}'").format(
-                file=file,
+                file=display_path(file),
                 name=batch_name,
             )
         )

@@ -7,6 +7,7 @@ import os
 import sys
 
 from ..exceptions import CommandError
+from ..git_paths import display_path
 from ..i18n import _
 from ..utils.file_jobs import run_file_jobs, select_file_job_execution
 from ..utils.journal import log_journal
@@ -40,7 +41,7 @@ def estimate_remaining_hunks() -> int:
                 _(
                     "Working tree file changed while status was being "
                     "calculated: {file}. Retry the status command."
-                ).format(file=stale_result.file_path)
+                ).format(file=display_path(stale_result.file_path))
             )
 
         for result in results:

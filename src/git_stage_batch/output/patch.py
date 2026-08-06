@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ..git_paths import display_path
 from ..i18n import _
 from .colors import Colors
 
@@ -39,7 +40,7 @@ def print_binary_file_change(binary_change: BinaryFileChange) -> None:
     description = _("Binary file {change}").format(change=change_desc)
     print(
         _("{path} :: {description}").format(
-            path=f"{bold}{path}{reset}",
+            path=f"{bold}{display_path(path)}{reset}",
             description=f"{color}{description}{reset}",
         )
     )
@@ -53,7 +54,7 @@ def print_file_mode_change(mode_change: FileModeChange) -> None:
     )
     print(
         _("{path} :: {description}").format(
-            path=mode_change.path(),
+            path=display_path(mode_change.path()),
             description=description,
         )
     )
@@ -74,7 +75,7 @@ def print_gitlink_change(gitlink_change: GitlinkChange) -> None:
         )
         print(
             _("{path} :: {description}").format(
-                path=f"{bold}{path}{reset}",
+                path=f"{bold}{display_path(path)}{reset}",
                 description=f"{color}{description}{reset}",
             )
         )
@@ -87,7 +88,7 @@ def print_gitlink_change(gitlink_change: GitlinkChange) -> None:
         )
         print(
             _("{path} :: {description}").format(
-                path=f"{bold}{path}{reset}",
+                path=f"{bold}{display_path(path)}{reset}",
                 description=f"{color}{description}{reset}",
             )
         )
@@ -97,7 +98,7 @@ def print_gitlink_change(gitlink_change: GitlinkChange) -> None:
     description = _("Submodule pointer modified")
     print(
         _("{path} :: {description}").format(
-            path=f"{bold}{path}{reset}",
+            path=f"{bold}{display_path(path)}{reset}",
             description=f"{color}{description}{reset}",
         )
     )
@@ -116,8 +117,8 @@ def print_rename_change(rename_change: RenameChange) -> None:
 
     print(
         _("{old} -> {new} :: {description}").format(
-            old=f"{bold}{rename_change.old_path}{reset}",
-            new=f"{bold}{rename_change.new_path}{reset}",
+            old=f"{bold}{display_path(rename_change.old_path)}{reset}",
+            new=f"{bold}{display_path(rename_change.new_path)}{reset}",
             description=f"{color}{description}{reset}",
         )
     )
@@ -134,7 +135,7 @@ def print_text_file_deletion_change(deletion_change: TextFileDeletionChange) -> 
 
     print(
         _("{path} :: {description}").format(
-            path=f"{bold}{deletion_change.path()}{reset}",
+            path=f"{bold}{display_path(deletion_change.path())}{reset}",
             description=f"{color}{description}{reset}",
         )
     )

@@ -59,7 +59,7 @@ def wait_for_git_index_lock(
         return
 
     deadline = time.monotonic() + timeout_seconds
-    while index_lock_path.exists():
+    while os.path.lexists(index_lock_path):
         remaining_seconds = deadline - time.monotonic()
         if remaining_seconds <= 0:
             return

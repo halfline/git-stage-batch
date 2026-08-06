@@ -241,6 +241,33 @@ def test_main_handles_git_failure_before_dispatch_without_traceback(capsys):
     assert "Traceback" not in captured.err
 
 
+def test_main_decodes_binary_git_failure_stderr(capsys):
+    """Byte diagnostics should be decoded instead of printed as a repr."""
+
+    @contextmanager
+    def failing_lock():
+        yield from ()
+        raise subprocess.CalledProcessError(
+            128,
+            ["git", "rev-parse", "--absolute-git-dir"],
+            stderr=b"fatal: malformed index \xff\n",
+        )
+
+    args = Namespace(working_directory=None)
+
+    with patch.object(sys, "argv", ["git-stage-batch", "start"]):
+        with patch.object(main_module, "parse_command_line", return_value=args):
+            with patch.object(main_module, "should_page_output", return_value=False):
+                with patch.object(main_module, "acquire_session_lock", failing_lock):
+                    with pytest.raises(SystemExit) as exc_info:
+                        main_module.main()
+
+    assert exc_info.value.code == 128
+    captured = capsys.readouterr()
+    assert captured.err == "fatal: malformed index �\n"
+    assert "b'" not in captured.err
+
+
 def test_main_rejects_non_utf8_batch_name_without_traceback(capsys):
     """A surrogateescaped argv batch name should produce one clean CLI error."""
     batch_name = b"batch-\xff".decode("utf-8", errors="surrogateescape")

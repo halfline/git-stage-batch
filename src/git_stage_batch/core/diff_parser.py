@@ -26,7 +26,7 @@ from .models import (
 )
 from ..exceptions import CommandError
 from ..i18n import _
-from ..git_paths import encode_path, quote_path_token
+from ..git_paths import display_path, encode_path, quote_path_token
 
 
 # Type for annotator hooks that enrich LineLevelChange with additional metadata
@@ -294,7 +294,7 @@ class _UnifiedDiffParserBuildContext:
                                 "File type changes are atomic and are not supported yet: "
                                 "{file} ({old} -> {new})"
                             ).format(
-                                file=old_path,
+                                file=display_path(old_path),
                                 old=type_transition[0],
                                 new=type_transition[1],
                             )

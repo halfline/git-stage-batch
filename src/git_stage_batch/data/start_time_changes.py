@@ -93,7 +93,8 @@ def list_staged_change_records() -> list[StagedChangeRecord]:
         requires_index_lock=False,
         literal_pathspecs=True,
     )
-    if result.returncode != 0 or not result.stdout:
+    result.check_returncode()
+    if not result.stdout:
         return []
     return _parse_name_status_z(result.stdout)
 

@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import shlex
 
 from ..core.actionable_changes import ActionableSelection
 from ..core.line_selection import format_line_ids
 from ..data.file_review.action_commands import line_action_command
 from ..data.file_review.records import FileReviewAction, FileReviewState, ReviewSource
 from ..data.selected_change.store import SelectedChangeKind
+from ..git_paths import terminal_safe_shell_quote
 from ..i18n import _
 
 
@@ -20,7 +20,7 @@ class FileReviewFooterHint:
 
 
 def _quote(value: str) -> str:
-    return shlex.quote(value)
+    return terminal_safe_shell_quote(value)
 
 
 def _selection_supports_action(

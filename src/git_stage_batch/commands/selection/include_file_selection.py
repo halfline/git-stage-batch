@@ -7,6 +7,7 @@ from ...core.models import LineLevelChange
 from ...data.selected_change.file_hunk_cache import cache_unstaged_file_as_single_hunk
 from ...data.line_state import load_line_changes_from_state
 from ...exceptions import exit_with_error
+from ...git_paths import display_path
 from ...i18n import _
 from .include_line_selection import (
     selected_file_view_is_fresh_for,
@@ -28,5 +29,7 @@ def load_explicit_file_selection(file_path: str) -> LineLevelChange:
         line_changes = cache_unstaged_file_as_single_hunk(file_path)
 
     if line_changes is None:
-        exit_with_error(_("No changes in file '{file}'.").format(file=file_path))
+        exit_with_error(
+            _("No changes in file '{file}'.").format(file=display_path(file_path))
+        )
     return line_changes

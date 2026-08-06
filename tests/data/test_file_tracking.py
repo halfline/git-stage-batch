@@ -5,6 +5,7 @@ import subprocess
 import pytest
 
 from git_stage_batch.data.file_tracking import auto_add_untracked_files
+from git_stage_batch.data.file_tracking import list_untracked_files
 from git_stage_batch.utils.file_io import read_file_paths_file
 from git_stage_batch.utils.paths import (
     ensure_state_directory_exists,
@@ -12,6 +13,27 @@ from git_stage_batch.utils.paths import (
 )
 
 EMPTY_BLOB_HASH = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+
+
+def test_list_untracked_files_propagates_git_errors(monkeypatch):
+    """Failed discovery must not look like an empty untracked-file list."""
+    from git_stage_batch.data import file_tracking
+
+    monkeypatch.setattr(
+        file_tracking,
+        "run_git_command",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            ["git", "ls-files"],
+            128,
+            stdout=b"",
+            stderr=b"fatal: malformed index",
+        ),
+    )
+
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        list_untracked_files()
+
+    assert error.value.stderr == b"fatal: malformed index"
 
 
 @pytest.fixture

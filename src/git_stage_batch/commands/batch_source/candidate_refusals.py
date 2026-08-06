@@ -10,6 +10,7 @@ from ...batch.operation_candidate_types import (
 )
 from ...batch.operation_candidate_labels import candidate_operation_label
 from ...exceptions import exit_with_error
+from ...git_paths import display_path, terminal_safe_shell_quote
 from ...i18n import _, ngettext
 
 
@@ -39,7 +40,7 @@ def refuse_candidate_conflicts(
             ).format(
                 operation_label=operation_label,
                 batch=batch_name,
-                file=file_path,
+                file=display_path(file_path),
             )
         )
     if len(candidate_limit_files) > 1:
@@ -68,11 +69,15 @@ def refuse_candidate_conflicts(
             _(
                 "Cannot enumerate {operation_label} candidates for {file}: {error}\n"
                 "No changes applied."
-            ).format(operation_label=operation_label, file=file_path, error=error)
+            ).format(
+                operation_label=operation_label,
+                file=display_path(file_path),
+                error=error,
+            )
         )
     if len(candidate_error_files) > 1:
         examples = "\n".join(
-            f"  {file_path}: {candidate_counts[file_path].error}"
+            f"  {display_path(file_path)}: {candidate_counts[file_path].error}"
             for file_path in candidate_error_files[:3]
         )
         exit_with_error(
@@ -92,8 +97,10 @@ def refuse_candidate_conflicts(
         file_path = ambiguous_files[0]
         reviewed_action = _reviewed_action_label(operation)
         count = candidate_counts[file_path].count
-        exit_with_error(
-            ngettext(
+        displayed_file = display_path(file_path)
+        preview_selector = f"{batch_name}:{operation}"
+        execution_selector = f"{preview_selector}:N"
+        message = ngettext(
                 "Cannot {operation_label} batch '{batch}': {file} has {count} "
                 "{operation_label} candidate.\n"
                 "No changes applied.\n\n"
@@ -109,20 +116,33 @@ def refuse_candidate_conflicts(
                 "{reviewed_action} a reviewed candidate:\n"
                 "  git-stage-batch {operation} --from {batch}:{operation}:N --file {file}",
                 count,
-            ).format(
-                operation_label=operation_label,
-                operation=operation,
-                batch=batch_name,
-                file=file_path,
-                count=count,
-                reviewed_action=reviewed_action,
-            )
+        ).format(
+            operation_label=operation_label,
+            operation=operation,
+            batch=batch_name,
+            file=displayed_file,
+            count=count,
+            reviewed_action=reviewed_action,
         )
+        message = message.replace(
+            f"git-stage-batch show --from {preview_selector} --file {displayed_file}",
+            "git-stage-batch show --from "
+            f"{terminal_safe_shell_quote(preview_selector)} --file "
+            f"{terminal_safe_shell_quote(file_path)}",
+        ).replace(
+            "git-stage-batch "
+            f"{operation} --from {execution_selector} --file {displayed_file}",
+            "git-stage-batch "
+            f"{operation} --from {terminal_safe_shell_quote(execution_selector)} "
+            f"--file {terminal_safe_shell_quote(file_path)}",
+        )
+        exit_with_error(message)
     if len(ambiguous_files) > 1:
         examples = "\n".join(
             (
-                f"  git-stage-batch show --from {batch_name}:{operation} "
-                f"--file {file_path}"
+                "  git-stage-batch show --from "
+                f"{terminal_safe_shell_quote(f'{batch_name}:{operation}')} "
+                f"--file {terminal_safe_shell_quote(file_path)}"
             )
             for file_path in ambiguous_files[:3]
         )

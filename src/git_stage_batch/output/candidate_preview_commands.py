@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import shlex
-
 from ..batch.operation_candidate_types import OperationCandidatePreview
+from ..git_paths import terminal_safe_shell_quote
 
 
 def candidate_selector_text(
@@ -24,12 +23,14 @@ def show_candidate_command(
 ) -> str:
     """Return the command that previews one candidate selector."""
     return "git-stage-batch show --from {selector} --file {file}".format(
-        selector=candidate_selector_text(
-            preview.batch_name,
-            preview.operation,
-            ordinal,
+        selector=terminal_safe_shell_quote(
+            candidate_selector_text(
+                preview.batch_name,
+                preview.operation,
+                ordinal,
+            )
         ),
-        file=shlex.quote(preview.file_path),
+        file=terminal_safe_shell_quote(preview.file_path),
     )
 
 
@@ -37,10 +38,12 @@ def execute_candidate_command(preview: OperationCandidatePreview) -> str:
     """Return the command that executes one candidate selector."""
     return "git-stage-batch {command} --from {selector} --file {file}".format(
         command=preview.operation,
-        selector=candidate_selector_text(
-            preview.batch_name,
-            preview.operation,
-            preview.ordinal,
+        selector=terminal_safe_shell_quote(
+            candidate_selector_text(
+                preview.batch_name,
+                preview.operation,
+                preview.ordinal,
+            )
         ),
-        file=shlex.quote(preview.file_path),
+        file=terminal_safe_shell_quote(preview.file_path),
     )

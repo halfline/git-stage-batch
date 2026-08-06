@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 
 from .exceptions import CommandError
 from .i18n import _
@@ -51,6 +52,42 @@ def display_path(path: str) -> str:
         for character in decoded_path
     )
     return json.dumps(decoded_path, ensure_ascii=has_non_ascii_control)
+
+
+def terminal_safe_shell_quote(value: str) -> str:
+    """Quote one shell argument without emitting terminal control bytes.
+
+    Ordinary printable arguments retain POSIX ``shlex.quote`` output. Arguments
+    containing control or undecodable bytes use ANSI-C quoting, which keeps the
+    displayed command on one harmless terminal line while preserving the exact
+    filesystem bytes in shells that support that quoting form.
+    """
+    if all(character.isprintable() for character in value):
+        return shlex.quote(value)
+
+    escaped = []
+    named_escapes = {
+        ord("\a"): r"\a",
+        ord("\b"): r"\b",
+        ord("\t"): r"\t",
+        ord("\n"): r"\n",
+        ord("\v"): r"\v",
+        ord("\f"): r"\f",
+        ord("\r"): r"\r",
+        0x1B: r"\e",
+    }
+    for byte in encode_path(value):
+        if byte in named_escapes:
+            escaped.append(named_escapes[byte])
+        elif byte == ord("'"):
+            escaped.append(r"\'")
+        elif byte == ord("\\"):
+            escaped.append(r"\\")
+        elif 0x20 <= byte < 0x7F:
+            escaped.append(chr(byte))
+        else:
+            escaped.append(f"\\{byte:03o}")
+    return "$'" + "".join(escaped) + "'"
 
 
 def nul_records(output: bytes) -> list[bytes]:

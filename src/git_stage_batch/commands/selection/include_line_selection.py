@@ -43,6 +43,7 @@ from ...data.selected_change.store import (
     snapshot_selected_change_state,
 )
 from ...exceptions import MergeError, exit_with_error
+from ...git_paths import display_path, terminal_safe_shell_quote
 from ...i18n import _
 from ...staging.index_update import update_index_with_blob_buffer
 from ...utils.file_io import write_file_bytes
@@ -402,6 +403,25 @@ def stage_live_line_target_buffer(file_path: str, target_buffer: LineBuffer) -> 
     update_index_with_blob_buffer(file_path, target_buffer)
 
 
+def _format_transient_include_failure(
+    message: str,
+    *,
+    line_id_specification: str,
+    file_path: str,
+) -> str:
+    """Insert a readable path and a terminal-safe recovery command."""
+    displayed_file = display_path(file_path)
+    rendered = message.format(
+        lines=line_id_specification,
+        file=displayed_file,
+    )
+    return rendered.replace(
+        f"git-stage-batch show --file {displayed_file}",
+        "git-stage-batch show --file "
+        f"{terminal_safe_shell_quote(file_path)}",
+    )
+
+
 def transient_include_failure_message(
     *,
     reason: TransientIncludeFailureReason,
@@ -422,23 +442,35 @@ def transient_include_failure_message(
         TransientIncludeFailureReason.WORKING_TREE_MERGE_FAILED,
         TransientIncludeFailureReason.WORKING_TREE_WOULD_CHANGE,
     ):
-        return _(
-            "Cannot safely include selection {lines} from {file} because applying "
-            "that selection would also change the working tree.\n"
-            "Run 'git-stage-batch show --file {file}' and choose line IDs from "
-            "the current file view."
-        ).format(lines=line_id_specification, file=file_path)
+        return _format_transient_include_failure(
+            _(
+                "Cannot safely include selection {lines} from {file} because applying "
+                "that selection would also change the working tree.\n"
+                "Run 'git-stage-batch show --file {file}' and choose line IDs from "
+                "the current file view."
+            ),
+            line_id_specification=line_id_specification,
+            file_path=file_path,
+        )
 
     if reason == TransientIncludeFailureReason.INDEX_MERGE_FAILED:
-        return _(
-            "Cannot safely include selection {lines} from {file} because the "
-            "selection no longer fits the current staged content.\n"
+        return _format_transient_include_failure(
+            _(
+                "Cannot safely include selection {lines} from {file} because the "
+                "selection no longer fits the current staged content.\n"
+                "Run 'git-stage-batch show --file {file}' and choose line IDs from "
+                "the current file view."
+            ),
+            line_id_specification=line_id_specification,
+            file_path=file_path,
+        )
+
+    return _format_transient_include_failure(
+        _(
+            "Cannot safely include selection {lines} from {file}.\n"
             "Run 'git-stage-batch show --file {file}' and choose line IDs from "
             "the current file view."
-        ).format(lines=line_id_specification, file=file_path)
-
-    return _(
-        "Cannot safely include selection {lines} from {file}.\n"
-        "Run 'git-stage-batch show --file {file}' and choose line IDs from "
-        "the current file view."
-    ).format(lines=line_id_specification, file=file_path)
+        ),
+        line_id_specification=line_id_specification,
+        file_path=file_path,
+    )

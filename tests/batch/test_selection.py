@@ -11,6 +11,7 @@ from git_stage_batch.batch.selection import (
 )
 from git_stage_batch.core.line_selection import LineRanges
 from git_stage_batch.exceptions import CommandError
+from git_stage_batch.git_paths import display_path, terminal_safe_shell_quote
 
 
 def test_require_display_ids_available_accepts_range_selections():
@@ -45,6 +46,22 @@ def test_invalid_selection_recovery_command_double_quotes_file_path():
         "Run 'git-stage-batch show --file \"dir/file name.py\"'"
         in message
     )
+
+
+def test_invalid_selection_message_quotes_terminal_control_path():
+    """A rejected line ID must not let its pathname control the terminal."""
+    file_path = "evil\x1b[2Jname\nnext.txt"
+
+    message = line_selection_not_valid_message(
+        line_id_specification="99",
+        file_path=file_path,
+    )
+
+    assert file_path not in message
+    assert "\x1b" not in message
+    assert "\nnext.txt" not in message
+    assert display_path(file_path) in message
+    assert terminal_safe_shell_quote(file_path) in message
 
 
 def test_require_single_file_context_can_parse_line_ranges():

@@ -12,6 +12,7 @@ from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.replacement import ReplacementPayload
 from ...data.session import snapshot_file_if_untracked
 from ...data.undo.checkpoints import UndoCheckpointStatus, undo_checkpoint
+from ...git_paths import display_path
 from ...i18n import _, bidi_isolate
 
 
@@ -49,7 +50,10 @@ def execute_apply_candidate(
             file=sys.stderr,
         )
         print(
-            "  {}: {}".format(bidi_isolate(file_path), _("Working tree")),
+            "  {}: {}".format(
+                bidi_isolate(display_path(file_path)),
+                _("Working tree"),
+            ),
             file=sys.stderr,
         )
         operation_parts = ["apply", "--from", raw_selector, "--file", file_path]
@@ -137,7 +141,7 @@ def execute_include_candidate(
             ),
             file=sys.stderr,
         )
-        print(f"  {bidi_isolate(file_path)}:", file=sys.stderr)
+        print(f"  {bidi_isolate(display_path(file_path))}:", file=sys.stderr)
         print("    {}".format(_("Index")), file=sys.stderr)
         print("    {}".format(_("Working tree")), file=sys.stderr)
         operation_parts = ["include", "--from", raw_selector, "--file", file_path]

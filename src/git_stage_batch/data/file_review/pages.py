@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ...core.line_selection import format_line_ids, parse_positive_selection
 from ...exceptions import CommandError
+from ...git_paths import display_path
 from ...i18n import _
 
 
@@ -48,7 +49,7 @@ def parse_page_selection(
                 "Available pages: 1-{page_count}."
             ).format(
                 page=highest_page,
-                file=file_path,
+                file=display_path(file_path),
                 page_count=page_count,
             )
         )

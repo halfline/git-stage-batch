@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import shlex
-
 from ...core.line_selection import parse_line_selection_ranges
 from ...exceptions import CommandError
+from ...git_paths import display_path, terminal_safe_shell_quote
 from ...i18n import _
 from . import records as _records
 from .action_commands import (
@@ -35,7 +34,10 @@ def raise_stale_or_mismatched_file_review(
             "Line IDs may no longer match.\n\n"
             "Run:\n"
             "  {command}"
-        ).format(file=review_state.file_path, command=show_command)
+        ).format(
+            file=display_path(review_state.file_path),
+            command=show_command,
+        )
     )
 
 
@@ -76,7 +78,7 @@ def validate_pathless_review_line_action(
                 "The selected file view for {file} came from batch '{batch}', "
                 "not the live working tree."
             ).format(
-                file=review_state.file_path,
+                file=display_path(review_state.file_path),
                 batch=review_state.batch_name,
             )
         ]
@@ -96,7 +98,8 @@ def validate_pathless_review_line_action(
                         "If you meant to act on live working-tree changes, "
                         "open a live file review:"
                     ),
-                    f"  git-stage-batch show --file {shlex.quote(review_state.file_path)}",
+                    "  git-stage-batch show --file "
+                    f"{terminal_safe_shell_quote(review_state.file_path)}",
                 ]
             )
         raise CommandError("\n".join(lines))

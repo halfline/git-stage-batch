@@ -11,6 +11,7 @@ from git_stage_batch.git_paths import (
     encode_path,
     nul_records,
     quote_path_token,
+    terminal_safe_shell_quote,
     unquote_path_token,
 )
 
@@ -36,6 +37,22 @@ def test_display_path_escapes_bidirectional_controls() -> None:
 
     assert displayed == '"before\\u202eafter\\u2069.txt"'
     assert json.loads(displayed) == path
+
+
+def test_terminal_safe_shell_quote_preserves_printable_arguments():
+    """Printable values should retain conventional POSIX shell quoting."""
+    assert terminal_safe_shell_quote("file name.txt") == "'file name.txt'"
+
+
+def test_terminal_safe_shell_quote_escapes_control_and_non_utf8_bytes():
+    """Displayed shell arguments must contain no literal terminal controls."""
+    value = decode_path(b"evil\x1b[2Jname\nbyte-\xff.txt")
+
+    quoted = terminal_safe_shell_quote(value)
+
+    assert quoted == r"$'evil\e[2Jname\nbyte-\377.txt'"
+    assert "\x1b" not in quoted
+    assert "\n" not in quoted
 
 
 def test_nul_records_preserve_newlines_and_empty_path_components():

@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import shlex
-
 from ...core.line_selection import format_line_ids
 from ...exceptions import CommandError
+from ...git_paths import display_path, terminal_safe_shell_quote
 from ...i18n import _, ngettext
 from . import records as _records
 from .action_commands import (
@@ -57,7 +56,7 @@ def refuse_live_action_for_batch_selection(action: _records.FileReviewAction | s
                 "The selected file view for {file} came from batch '{batch}', "
                 "not the live working tree."
             ).format(
-                file=review_state.file_path,
+                file=display_path(review_state.file_path),
                 batch=review_state.batch_name,
             )
         ]
@@ -92,22 +91,33 @@ def refuse_live_action_for_batch_selection(action: _records.FileReviewAction | s
                         "If you meant to act on live working-tree changes, "
                         "open a live file review:"
                     ),
-                    f"  git-stage-batch show --file {shlex.quote(review_state.file_path)}",
+                    "  git-stage-batch show --file "
+                    f"{terminal_safe_shell_quote(review_state.file_path)}",
                 ]
             )
         raise CommandError("\n".join(lines))
 
-    file_path = _get_selected_change_file_path() or _("the selected file")
-    raise CommandError(
-        _(
+    selected_file_path = _get_selected_change_file_path()
+    file_path = (
+        display_path(selected_file_path)
+        if selected_file_path is not None
+        else _("the selected file")
+    )
+    message = _(
             "The selected file view for {file} came from a batch, "
             "not the live working tree.\n"
             "Show the batch file again and use `include --from` or "
             "`discard --from`,\n"
             "or open a live file review with:\n"
             "  git-stage-batch show --file {file}"
-        ).format(file=file_path)
-    )
+    ).format(file=file_path)
+    if selected_file_path is not None:
+        message = message.replace(
+            f"git-stage-batch show --file {file_path}",
+            "git-stage-batch show --file "
+            f"{terminal_safe_shell_quote(selected_file_path)}",
+        )
+    raise CommandError(message)
 
 
 def refuse_ambiguous_bare_action_after_partial_file_review(
@@ -159,7 +169,7 @@ def refuse_ambiguous_bare_action_after_partial_file_review(
         ).format(
             shown=_format_pages(shown),
             count=review_state.page_count,
-            file=review_state.file_path,
+            file=display_path(review_state.file_path),
         )
     ]
     if missing:

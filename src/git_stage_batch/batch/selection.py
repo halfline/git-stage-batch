@@ -24,6 +24,7 @@ from ..core.line_selection import (
     parse_line_selection_ranges,
 )
 from ..exceptions import CommandError
+from ..git_paths import display_path, terminal_safe_shell_quote
 from ..i18n import _
 
 if TYPE_CHECKING:
@@ -32,6 +33,8 @@ if TYPE_CHECKING:
 
 def _double_quote_shell_argument(value: str) -> str:
     """Shell-quote an argument, preferring visible double quotes."""
+    if not all(character.isprintable() for character in value):
+        return terminal_safe_shell_quote(value)
     if "!" in value:
         return shlex.quote(value)
     escaped = (
@@ -59,7 +62,11 @@ def line_selection_not_valid_message(
     return _(
         "Line selection {lines} is not valid for {file}.\n"
         "Run '{command}' and choose line IDs from the current file view."
-    ).format(lines=line_id_specification, file=file_path, command=command)
+    ).format(
+        lines=line_id_specification,
+        file=display_path(file_path),
+        command=command,
+    )
 
 
 def line_changes_display_ids(line_changes: 'LineLevelChange') -> set[int]:

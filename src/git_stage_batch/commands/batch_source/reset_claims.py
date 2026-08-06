@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import shlex
 from collections.abc import Sequence
 from contextlib import AbstractContextManager
 
@@ -42,6 +41,7 @@ from ...core.line_selection import LineRanges
 from ...data.batch_file_scope import resolve_batch_file_scope
 from ...utils.repository_buffers import read_git_object_buffer_or_none
 from ...exceptions import MergeError, exit_with_error
+from ...git_paths import terminal_safe_shell_quote
 from ...i18n import _
 
 
@@ -240,7 +240,8 @@ def partition_line_ownership_units(
         file_path=file_path,
         review_command=(
             "git-stage-batch show --from "
-            f"{shlex.quote(batch_name)} --file {shlex.quote(file_path)}"
+            f"{terminal_safe_shell_quote(batch_name)} --file "
+            f"{terminal_safe_shell_quote(file_path)}"
         ),
     )
 

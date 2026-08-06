@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import shlex
 from dataclasses import dataclass
 
 from ..core.models import (
@@ -13,6 +12,7 @@ from ..core.models import (
     RenameChange,
     TextFileDeletionChange,
 )
+from ..git_paths import display_path, terminal_safe_shell_quote
 from ..i18n import _, ngettext, npgettext
 from .file_review_model_builder import build_file_review_model
 from .terminal_width import pad_to_terminal_width, terminal_cell_width
@@ -171,12 +171,16 @@ def print_file_review_list(
         )
     )
     print()
+    rendered_paths = [display_path(entry.path) for entry in entries]
     path_width = max(
-        (terminal_cell_width(entry.path) for entry in entries),
+        (terminal_cell_width(path) for path in rendered_paths),
         default=4,
     )
-    for index, entry in enumerate(entries, start=1):
-        padded_path = pad_to_terminal_width(entry.path, path_width)
+    for index, (entry, rendered_path) in enumerate(
+        zip(entries, rendered_paths),
+        start=1,
+    ):
+        padded_path = pad_to_terminal_width(rendered_path, path_width)
         entry_changes = ngettext(
             "{count} change",
             "{count} changes",
@@ -197,8 +201,8 @@ def print_file_review_list(
             detail = _("executable mode")
         elif entry.rename_old_path is not None and entry.rename_new_path is not None:
             detail = _("rename {old} -> {new}").format(
-                old=entry.rename_old_path,
-                new=entry.rename_new_path,
+                old=display_path(entry.rename_old_path),
+                new=display_path(entry.rename_new_path),
             )
         elif entry.binary_change_type is not None:
             detail = _("binary file {change_type}").format(
@@ -225,7 +229,7 @@ def print_file_review_list(
         for entry in entries[:5]:
             command = (
                 f"git-stage-batch show{command_source_args} "
-                f"--file {shlex.quote(entry.path)}"
+                f"--file {terminal_safe_shell_quote(entry.path)}"
             )
             print(_("  {command}").format(command=command))
         if len(entries) > 5:

@@ -6,6 +6,7 @@ from ..data.file_review.action_selections import shown_line_action_selections
 from ..data.file_review.display_ids import display_ids_for_rows
 from ..data.file_review.model import FileReviewModel
 from ..data.file_review.records import ReviewSource
+from ..git_paths import display_path
 from ..i18n import _, bidi_isolate, bidi_isolation_fragments, ngettext
 from .colors import Colors
 from .file_review_footer import print_file_review_footer
@@ -174,7 +175,7 @@ def _print_header(
     use_color = Colors.enabled()
     status = "  ·  ".join(
         (
-            bidi_isolate(path),
+            bidi_isolate(display_path(path)),
             review_source_summary(source, batch_name, source_label),
             page_summary(shown_pages, page_count),
             change_summary(shown_change_spec, shown_change_count, total_changes),

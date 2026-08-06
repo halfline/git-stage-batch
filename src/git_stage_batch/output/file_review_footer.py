@@ -8,6 +8,7 @@ import sys
 
 from ..core.actionable_changes import ActionableSelection
 from ..data.file_review.records import ReviewSource
+from ..git_paths import display_path, terminal_safe_shell_quote
 from ..i18n import _, bidi_isolate
 from .colors import Colors
 from . import file_review_footer_hints
@@ -15,11 +16,11 @@ from .file_review_summary import change_summary, page_summary
 from .terminal_width import pad_to_terminal_width, terminal_cell_width
 
 
-def _style_footer_command(command: str) -> str:
+def _render_footer_command(command: str, *, use_color: bool) -> str:
     try:
-        tokens = shlex.split(command, posix=False)
+        tokens = shlex.split(command)
     except ValueError:
-        return command
+        return display_path(command)
 
     dynamic_value_options = {"--file", "--from", "--line", "--page", "--to"}
     if tokens[:2] == ["git", "stage-batch"]:
@@ -28,16 +29,23 @@ def _style_footer_command(command: str) -> str:
         action_index = 1
     else:
         action_index = -1
-    styled_tokens: list[str] = []
+    rendered_tokens: list[str] = []
     bold_next = False
     for index, token in enumerate(tokens):
+        rendered_token = terminal_safe_shell_quote(token)
         should_bold = bold_next or index == action_index
-        if should_bold:
-            styled_tokens.append(f"{Colors.BOLD}{token}{Colors.RESET}")
+        if use_color and should_bold:
+            rendered_tokens.append(
+                f"{Colors.BOLD}{rendered_token}{Colors.RESET}"
+            )
         else:
-            styled_tokens.append(token)
+            rendered_tokens.append(rendered_token)
         bold_next = token in dynamic_value_options
-    return " ".join(styled_tokens)
+    return " ".join(rendered_tokens)
+
+
+def _style_footer_command(command: str) -> str:
+    return _render_footer_command(command, use_color=True)
 
 
 def _invoked_command_prefix() -> str:
@@ -86,7 +94,7 @@ def print_file_review_footer(
     print(f"{Colors.GRAY}{rule}{Colors.RESET}" if use_color else rule)
     status = "  ·  ".join(
         (
-            bidi_isolate(path),
+            bidi_isolate(display_path(path)),
             page_summary(shown_pages, page_count),
             change_summary(shown_change_spec, shown_change_count, total_changes),
             _("lines {lines}").format(lines=shown_line_spec),
@@ -112,4 +120,7 @@ def print_file_review_footer(
                 f"{_style_footer_command(display_command)}"
             )
         else:
-            print(f"{action_text}  {display_command}")
+            print(
+                f"{action_text}  "
+                f"{_render_footer_command(display_command, use_color=False)}"
+            )

@@ -11,6 +11,7 @@ from ...data.file_review.batch_selection import (
     translate_batch_file_gutter_ids_to_selection_ids,
 )
 from ...exceptions import MergeError, exit_with_error
+from ...git_paths import display_path
 from ...i18n import _
 from ...output.candidate_preview import (
     render_operation_candidate,
@@ -59,7 +60,7 @@ def show_batch_source_candidate_preview(
             _("Batch '{batch}' has no {operation} candidates for {file}.").format(
                 batch=batch_name,
                 operation=candidate_operation_label(operation),
-                file=file_path,
+                file=display_path(file_path),
             )
         )
 

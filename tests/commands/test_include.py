@@ -34,6 +34,7 @@ from git_stage_batch.data.selected_change.clear_reasons import (
     selected_change_was_cleared_by_auto_advance_disabled,
 )
 from git_stage_batch.exceptions import CommandError, MergeError, NoMoreHunks
+from git_stage_batch.git_paths import display_path, terminal_safe_shell_quote
 from git_stage_batch.utils.paths import (
     get_processed_skip_ids_file_path,
     get_state_directory_path,
@@ -864,6 +865,66 @@ class TestCommandIncludeLine:
         assert "cache" not in exc_info.value.message.lower()
         assert "round" not in exc_info.value.message.lower()
         assert "transient" not in exc_info.value.message.lower()
+
+    def test_include_file_line_error_quotes_terminal_control_path(
+        self,
+        temp_git_repo,
+        capsys,
+    ):
+        """Public file-scoped line errors must render hostile paths safely."""
+        file_path = "evil\x1b[2Jname\nnext.txt"
+        test_file = temp_git_repo / file_path
+        test_file.write_text("base\n")
+        subprocess.run(
+            ["git", "add", "--", file_path],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add unusual path"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        test_file.write_text("base\nselected\n")
+        command_start(quiet=True, auto_advance=False)
+        command_show(file_path)
+        capsys.readouterr()
+
+        with pytest.raises(CommandError) as exc_info:
+            command_include_line("99", file=file_path)
+
+        message = exc_info.value.message
+        assert file_path not in message
+        assert "\x1b" not in message
+        assert "\nnext.txt" not in message
+        assert display_path(file_path) in message
+        assert terminal_safe_shell_quote(file_path) in message
+
+    @pytest.mark.parametrize(
+        "reason",
+        (
+            include_line_selection.TransientIncludeFailureReason.WORKING_TREE_MERGE_FAILED,
+            include_line_selection.TransientIncludeFailureReason.INDEX_MERGE_FAILED,
+            include_line_selection.TransientIncludeFailureReason.PREPARATION_FAILED,
+        ),
+    )
+    def test_transient_include_error_quotes_terminal_control_path(self, reason):
+        """Every transient refusal must keep its review command on one line."""
+        file_path = "evil\x1b[2Jname\nnext.txt"
+
+        message = include_line_selection.transient_include_failure_message(
+            reason=reason,
+            line_id_specification="1",
+            file_path=file_path,
+        )
+
+        assert file_path not in message
+        assert "\x1b" not in message
+        assert "\nnext.txt" not in message
+        assert display_path(file_path) in message
+        assert terminal_safe_shell_quote(file_path) in message
 
     def test_include_line_rejects_mixed_valid_and_invalid_ids(self, temp_git_repo):
         """include --line should reject the whole selection when any ID is stale."""

@@ -6,6 +6,7 @@ import pytest
 
 import git_stage_batch.commands.batch_source.candidate_previews as candidate_previews
 from git_stage_batch.exceptions import CommandError
+from git_stage_batch.git_paths import display_path, terminal_safe_shell_quote
 
 
 class _Preview:
@@ -193,6 +194,32 @@ def test_require_candidate_preview_state_reports_stale_state(monkeypatch):
     assert (
         "Candidate selector 'cleanup:apply:1' has not been previewed for notes.txt."
     ) in exc_info.value.message
+
+
+def test_require_candidate_preview_state_quotes_control_path_command(monkeypatch):
+    """Stale candidate help must not print pathname terminal controls."""
+    preview = _Preview()
+    file_path = "evil\x1b[2Jname\nnext file.txt"
+    monkeypatch.setattr(
+        candidate_previews,
+        "load_candidate_preview_state",
+        lambda _preview: None,
+    )
+
+    with pytest.raises(CommandError) as exc_info:
+        candidate_previews.require_candidate_preview_state(
+            preview,
+            1,
+            selector="cleanup:apply:1",
+            file_path=file_path,
+        )
+
+    message = exc_info.value.message
+    assert file_path not in message
+    assert "\x1b" not in message
+    assert "\nnext file.txt" not in message
+    assert display_path(file_path) in message
+    assert terminal_safe_shell_quote(file_path) in message
 
 
 def test_close_candidate_previews_closes_every_preview():

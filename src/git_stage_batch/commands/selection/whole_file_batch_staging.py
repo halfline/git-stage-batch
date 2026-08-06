@@ -28,6 +28,7 @@ from ...data.progress import (
 )
 from ...data.session import snapshot_file_if_untracked
 from ...data.text_lifecycle_detection import detect_empty_text_lifecycle_change
+from ...git_paths import display_path
 from ...i18n import _
 from ...utils.file_io import append_lines_to_file
 from ...utils.paths import get_block_list_file_path
@@ -79,7 +80,7 @@ def include_text_deletion_to_batch(
     if not quiet:
         print(
             _("Included text file deletion '{file}' to batch '{batch}'").format(
-                file=file_path,
+                file=display_path(file_path),
                 batch=batch_name,
             ),
             file=sys.stderr,
@@ -110,7 +111,7 @@ def include_binary_to_batch(
     if not quiet:
         print(
             _("Included binary file '{file}' to batch '{batch}'").format(
-                file=file_path,
+                file=display_path(file_path),
                 batch=batch_name,
             ),
             file=sys.stderr,
@@ -134,7 +135,7 @@ def include_mode_to_batch(
     if not quiet:
         print(
             _("Included file mode '{file}' to batch '{batch}'").format(
-                file=mode_change.path(), batch=batch_name
+                file=display_path(mode_change.path()), batch=batch_name
             ),
             file=sys.stderr,
         )
@@ -159,7 +160,7 @@ def include_gitlink_to_batch(
     if not quiet:
         print(
             _("Included submodule pointer '{file}' to batch '{batch}'").format(
-                file=file_path,
+                file=display_path(file_path),
                 batch=batch_name,
             ),
             file=sys.stderr,

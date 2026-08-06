@@ -12,6 +12,7 @@ from ...data.selected_change.paths import get_selected_change_file_path
 from ...data.line_id_files import write_line_ids_file
 from ...data.selected_change.store import restore_selected_change_state
 from ...data.undo.checkpoints import undo_checkpoint
+from ...git_paths import display_path, terminal_safe_shell_join
 from ...i18n import _
 from ...utils.paths import get_processed_include_ids_file_path
 from . import include_line_replacement as _include_line_replacement
@@ -45,7 +46,7 @@ def include_live_line_replacement(
     target_file = file if file not in (None, "") else get_selected_change_file_path()
     with (
         undo_checkpoint(
-            " ".join(operation_parts),
+            terminal_safe_shell_join(operation_parts),
             worktree_paths=[target_file] if target_file is not None else [],
         ),
         ExitStack() as selected_state_stack,
@@ -74,7 +75,7 @@ def include_live_line_replacement(
             print(
                 _("✓ Included selection as replacement: {lines} from {file}").format(
                     lines=line_id_specification,
-                    file=line_changes.path,
+                    file=display_path(line_changes.path),
                 ),
                 file=sys.stderr,
             )
@@ -115,7 +116,7 @@ def include_live_line_replacement(
                         "✓ Included selection as replacement: {lines} from {file}"
                     ).format(
                         lines=line_id_specification,
-                        file=replacement_file_context.target_file,
+                        file=display_path(replacement_file_context.target_file),
                     ),
                     file=sys.stderr,
                 )
@@ -135,7 +136,7 @@ def include_live_line_replacement(
         print(
             _("✓ Included selection as replacement: {lines} from {file}").format(
                 lines=line_id_specification,
-                file=replacement_file_context.target_file,
+                file=display_path(replacement_file_context.target_file),
             ),
             file=sys.stderr,
         )

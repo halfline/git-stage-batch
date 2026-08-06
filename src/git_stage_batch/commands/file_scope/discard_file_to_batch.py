@@ -33,6 +33,7 @@ from ...data.progress import record_hunk_discarded
 from ...data.session import snapshot_file_if_untracked
 from ...data.text_lifecycle_detection import detect_empty_text_lifecycle_change
 from ...exceptions import exit_with_error
+from ...git_paths import display_path
 from ...i18n import _
 from ...utils.file_io import read_text_file_line_set
 from ...utils.git_worktree import (
@@ -177,7 +178,7 @@ def discard_file_to_batch(
                 if not quiet:
                     print(
                         _("Discarded file '{file}' to batch '{batch}'").format(
-                            file=file_path,
+                            file=display_path(file_path),
                             batch=batch_name,
                         ),
                         file=sys.stderr,
@@ -187,7 +188,12 @@ def discard_file_to_batch(
                 return 1
 
             if not quiet:
-                print(_("No changes in file '{file}' to discard.").format(file=file_path), file=sys.stderr)
+                print(
+                    _("No changes in file '{file}' to discard.").format(
+                        file=display_path(file_path)
+                    ),
+                    file=sys.stderr,
+                )
             return 0
 
         metadata = read_batch_metadata(batch_name)
@@ -216,7 +222,11 @@ def discard_file_to_batch(
                     _("Cannot discard file to batch: batch source is stale and remapping failed.\n"
                       "File: {file}\n"
                       "Batch: {batch}\n"
-                      "Error: {error}").format(file=file_path, batch=batch_name, error=str(e))
+                      "Error: {error}").format(
+                          file=display_path(file_path),
+                          batch=batch_name,
+                          error=str(e),
+                      )
                 )
 
             snapshot_file_if_untracked(file_path)
@@ -266,7 +276,7 @@ def discard_file_to_batch(
         if not quiet:
             print(
                 _("Discarded file '{file}' to batch '{batch}'").format(
-                    file=file_path,
+                    file=display_path(file_path),
                     batch=batch_name,
                 ),
                 file=sys.stderr,

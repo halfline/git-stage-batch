@@ -33,6 +33,7 @@ from ...data.consumed_selections import (
     write_consumed_file_metadata,
 )
 from ...exceptions import CommandError
+from ...git_paths import display_path
 from ...i18n import _
 
 
@@ -83,7 +84,7 @@ def record_consumed_selection(
                         "Cannot record the included replacement because "
                         "its saved source is unavailable.\n"
                         "File: {file}"
-                    ).format(file=file_path)
+                    ).format(file=display_path(file_path))
                 )
             with saved_source_buffer as saved_source_lines:
                 mapped_selected_lines = map_selection_to_source(
@@ -116,7 +117,7 @@ def record_consumed_selection(
                             "its saved source cannot be advanced.\n"
                             "File: {file}\n"
                             "Error: {error}"
-                        ).format(file=file_path, error=error)
+                        ).format(file=display_path(file_path), error=error)
                     ) from error
             else:
                 selected_lines = mapped_selected_lines

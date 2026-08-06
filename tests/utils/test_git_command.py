@@ -232,6 +232,35 @@ class TestWaitForGitIndexLock:
         assert index_lock.exists()
         assert sleep_calls == [0.05]
 
+    def test_polls_dangling_symlink_until_timeout(self, tmp_path, monkeypatch):
+        """A dangling symlink still occupies Git's lock pathname."""
+        index_lock = tmp_path / "index.lock"
+        index_lock.symlink_to(tmp_path / "missing-target")
+        times = iter([0.0, 0.0, 0.2])
+        sleep_calls = []
+
+        monkeypatch.setattr(
+            git_index_lock,
+            "_git_index_lock_path",
+            lambda **_kwargs: index_lock,
+        )
+        monkeypatch.setattr(
+            git_index_lock.time,
+            "monotonic",
+            lambda: next(times),
+        )
+        monkeypatch.setattr(
+            git_index_lock.time,
+            "sleep",
+            lambda duration: sleep_calls.append(duration),
+        )
+
+        wait_for_git_index_lock(timeout_seconds=0.1, poll_seconds=0.05)
+
+        assert index_lock.is_symlink()
+        assert not index_lock.exists()
+        assert sleep_calls == [0.05]
+
     def test_ignores_non_repository(self, monkeypatch):
         """Lock waiting should defer non-repository errors to the git command."""
         sleep_calls = []

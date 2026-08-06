@@ -6,6 +6,7 @@ import os
 
 from ...core.buffer import LineBuffer
 from ...core.text_lifecycle import TextFileChangeType, normalized_text_change_type
+from ...git_paths import display_path
 from ...staging.index_update import update_index_with_blob_buffer
 from ...utils.buffer_io import write_buffer_to_working_tree_path
 from ...utils.git_index import git_update_index
@@ -24,12 +25,15 @@ def stage_text_file_to_index(
         result = git_update_index(file_path=file_path, force_remove=True, check=False)
         if result.returncode != 0:
             raise RuntimeError(
-                f"Failed to stage text deletion for {file_path}: {result.stderr}"
+                "Failed to stage text deletion for "
+                f"{display_path(file_path)}: {result.stderr}"
             )
         return
 
     if buffer is None:
-        raise RuntimeError(f"Text file not found in batch content: {file_path}")
+        raise RuntimeError(
+            f"Text file not found in batch content: {display_path(file_path)}"
+        )
 
     if file_mode is None:
         update_index_with_blob_buffer(file_path, buffer)
@@ -55,7 +59,9 @@ def write_text_file_to_worktree(
         return
 
     if buffer is None:
-        raise RuntimeError(f"Text file not found in batch content: {file_path}")
+        raise RuntimeError(
+            f"Text file not found in batch content: {display_path(file_path)}"
+        )
 
     write_buffer_to_working_tree_path(full_path, buffer, mode=file_mode)
 
@@ -76,6 +82,8 @@ def write_discarded_text_file_to_worktree(
         return
 
     if buffer is None:
-        raise RuntimeError(f"Text file not found in discarded content: {file_path}")
+        raise RuntimeError(
+            f"Text file not found in discarded content: {display_path(file_path)}"
+        )
 
     write_buffer_to_working_tree_path(full_path, buffer, mode=file_mode)

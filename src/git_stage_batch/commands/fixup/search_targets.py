@@ -13,6 +13,7 @@ from ...data.line_state import load_line_changes_from_state
 from ...data.selected_change.loading import require_selected_hunk
 from ...data.selected_change.paths import get_selected_change_file_path
 from ...exceptions import exit_with_error
+from ...git_paths import display_path
 from ...i18n import _
 from ...utils.file_io import read_text_file_contents
 from ...utils.paths import get_selected_hunk_hash_file_path
@@ -113,7 +114,11 @@ def _load_line_target_source(
 
     line_changes = render_file_as_single_hunk(target_file)
     if line_changes is None:
-        exit_with_error(_("No changes in file '{file}'.").format(file=target_file))
+        exit_with_error(
+            _("No changes in file '{file}'.").format(
+                file=display_path(target_file)
+            )
+        )
 
     hunk_hash = "file:" + compute_current_file_review_diff_fingerprint(
         target_file,

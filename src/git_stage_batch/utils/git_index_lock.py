@@ -42,7 +42,7 @@ def _git_index_lock_path(*, cwd: str | None, env: dict[str, str] | None) -> Path
         cwd=cwd,
         env=git_environment_with_optional_locks_disabled(env),
     )
-    return Path(result.stdout.strip()) / "index.lock"
+    return Path(result.stdout.removesuffix("\n")) / "index.lock"
 
 
 def wait_for_git_index_lock(

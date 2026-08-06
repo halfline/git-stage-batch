@@ -445,7 +445,11 @@ msgstr "Název dávky nemůže obsahovat: {char}"
 msgid "Batch name cannot start with '.'"
 msgstr "Název dávky nemůže začínat znakem '.'"
 
-#: src/git_stage_batch/batch/state/batch_names.py:67
+#: src/git_stage_batch/batch/state/batch_names.py:68
+msgid "Batch name must be valid UTF-8"
+msgstr "Název dávky musí být platný UTF-8"
+
+#: src/git_stage_batch/batch/state/batch_names.py:72
 #, python-brace-format
 msgid "Batch name cannot exceed {limit} UTF-8 bytes"
 msgstr "Název dávky nesmí překročit {limit} bajtů UTF-8"

@@ -470,7 +470,11 @@ msgstr "Nazwa partii nie może zawierać: {char}"
 msgid "Batch name cannot start with '.'"
 msgstr "Nazwa partii nie może rozpoczynać się od '.'"
 
-#: src/git_stage_batch/batch/state/batch_names.py:67
+#: src/git_stage_batch/batch/state/batch_names.py:68
+msgid "Batch name must be valid UTF-8"
+msgstr "Nazwa partii musi być prawidłowym UTF-8"
+
+#: src/git_stage_batch/batch/state/batch_names.py:72
 #, python-brace-format
 msgid "Batch name cannot exceed {limit} UTF-8 bytes"
 msgstr "Nazwa partii nie może przekraczać {limit} bajtów UTF-8"

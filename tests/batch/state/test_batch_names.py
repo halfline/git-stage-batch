@@ -76,6 +76,14 @@ def test_validate_batch_name_enforces_storage_safe_byte_limit(temp_git_repo):
     assert f"{MAX_BATCH_NAME_BYTES} UTF-8 bytes" in exc_info.value.message
 
 
+def test_validate_batch_name_rejects_surrogateescaped_bytes_cleanly(temp_git_repo):
+    """Undecodable argv bytes must remain inside the command-error boundary."""
+    name = b"batch-\xff".decode("utf-8", errors="surrogateescape")
+
+    with pytest.raises(CommandError, match="must be valid UTF-8"):
+        validate_batch_name(name)
+
+
 def test_create_batch_accepts_maximum_length_name(temp_git_repo):
     name = "a" * MAX_BATCH_NAME_BYTES
 

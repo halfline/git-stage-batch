@@ -455,7 +455,11 @@ msgstr "Batch-naam mag niet bevatten: {char}"
 msgid "Batch name cannot start with '.'"
 msgstr "Batch-naam mag niet beginnen met '.'"
 
-#: src/git_stage_batch/batch/state/batch_names.py:67
+#: src/git_stage_batch/batch/state/batch_names.py:68
+msgid "Batch name must be valid UTF-8"
+msgstr "Batch-naam moet geldige UTF-8 zijn"
+
+#: src/git_stage_batch/batch/state/batch_names.py:72
 #, python-brace-format
 msgid "Batch name cannot exceed {limit} UTF-8 bytes"
 msgstr "Batch-naam mag niet langer zijn dan {limit} UTF-8-bytes"

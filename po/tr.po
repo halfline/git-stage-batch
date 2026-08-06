@@ -453,7 +453,11 @@ msgstr "Grup adı şunu içeremez: {char}"
 msgid "Batch name cannot start with '.'"
 msgstr "Grup adı '.' ile başlayamaz"
 
-#: src/git_stage_batch/batch/state/batch_names.py:67
+#: src/git_stage_batch/batch/state/batch_names.py:68
+msgid "Batch name must be valid UTF-8"
+msgstr "Grup adı geçerli UTF-8 olmalıdır"
+
+#: src/git_stage_batch/batch/state/batch_names.py:72
 #, python-brace-format
 msgid "Batch name cannot exceed {limit} UTF-8 bytes"
 msgstr "Grup adı {limit} UTF-8 baytını aşamaz"

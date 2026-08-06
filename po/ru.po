@@ -456,7 +456,11 @@ msgstr "Имя пакета не может содержать: {char}"
 msgid "Batch name cannot start with '.'"
 msgstr "Имя пакета не может начинаться с '.'"
 
-#: src/git_stage_batch/batch/state/batch_names.py:67
+#: src/git_stage_batch/batch/state/batch_names.py:68
+msgid "Batch name must be valid UTF-8"
+msgstr "Имя пакета должно быть допустимым UTF-8"
+
+#: src/git_stage_batch/batch/state/batch_names.py:72
 #, python-brace-format
 msgid "Batch name cannot exceed {limit} UTF-8 bytes"
 msgstr "Имя пакета не может превышать {limit} байт в UTF-8"

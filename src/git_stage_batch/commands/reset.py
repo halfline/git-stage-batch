@@ -8,6 +8,7 @@ from .batch_source import reset_claims as _reset_claims
 from .batch_source import reset_selection as _reset_selection
 from .batch_source import selection_state_cleanup as _selection_state_cleanup
 from ..i18n import _
+from ..git_paths import terminal_safe_shell_join
 from ..data.undo.checkpoints import undo_checkpoint
 from ..utils.git_repository import require_git_repository
 from ..utils.paths import ensure_state_directory_exists
@@ -43,7 +44,10 @@ def command_reset_from_batch(
     file = selection.file
     effective_line_ids = selection.effective_line_ids
 
-    with undo_checkpoint(" ".join(selection.operation_parts), worktree_paths=[]):
+    with undo_checkpoint(
+        terminal_safe_shell_join(selection.operation_parts),
+        worktree_paths=[],
+    ):
         if to_batch is not None:
             _reset_claims.move_claims_between_batches(
                 batch_name,

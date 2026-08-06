@@ -8,6 +8,7 @@ from typing import Literal
 
 from ..state.batch_names import validate_batch_name
 from ...exceptions import CommandError
+from ...git_paths import terminal_safe_shell_quote
 from ...i18n import _
 
 
@@ -107,5 +108,9 @@ def require_candidate_operation(
         message += _(
             "\n\nPreview {expected} candidates with:\n"
             "  git-stage-batch show --from {batch}:{expected} --file {file}"
-        ).format(expected=expected, batch=selector.batch_name, file=file)
+        ).format(
+            expected=expected,
+            batch=terminal_safe_shell_quote(selector.batch_name),
+            file=terminal_safe_shell_quote(file),
+        )
     raise CommandError(message)

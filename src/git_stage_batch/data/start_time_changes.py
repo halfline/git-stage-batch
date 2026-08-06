@@ -7,7 +7,7 @@ import os
 from dataclasses import dataclass
 
 from ..utils.file_io import read_text_file_contents, write_text_file_contents
-from ..utils.git_command import run_git_command
+from ..utils.git_command import git_diff_reports_changes, run_git_command
 from ..git_paths import decode_path
 from ..utils.git_index import (
     GitIndexEntryUpdate,
@@ -388,7 +388,7 @@ def _paths_have_cached_diff(paths: list[str]) -> bool:
         requires_index_lock=False,
         literal_pathspecs=True,
     )
-    return result.returncode == 1
+    return git_diff_reports_changes(result)
 
 
 def _head_changed_since_session_start(paths: list[str]) -> bool:

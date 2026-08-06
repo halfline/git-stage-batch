@@ -24,6 +24,7 @@ from ...data.selected_change.store import (
 )
 from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import exit_with_error
+from ...git_paths import display_path, terminal_safe_shell_join
 from ...i18n import _
 from ...staging.content_buffers import build_target_index_buffer_from_lines
 from ...utils.journal import log_journal
@@ -69,7 +70,9 @@ def include_live_line_selection(
     target_file = file if file not in (None, "") else get_selected_change_file_path()
     with (
         undo_checkpoint(
-            operation or " ".join(operation_parts),
+            display_path(operation)
+            if operation is not None
+            else terminal_safe_shell_join(operation_parts),
             worktree_paths=[target_file] if target_file is not None else [],
         ),
         ExitStack() as selected_state_stack,
@@ -223,7 +226,7 @@ def include_live_line_selection(
                 print(
                     _("✓ Included selection {lines} from {file}").format(
                         lines=line_id_specification,
-                        file=line_changes.path,
+                        file=display_path(line_changes.path),
                     ),
                     file=sys.stderr,
                 )
@@ -236,7 +239,7 @@ def include_live_line_selection(
         print(
             _("✓ Included selection {lines} from {file}").format(
                 lines=line_id_specification,
-                file=line_changes.path,
+                file=display_path(line_changes.path),
             ),
             file=sys.stderr,
         )

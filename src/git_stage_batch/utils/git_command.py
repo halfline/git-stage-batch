@@ -16,6 +16,22 @@ from .git_environment import (
 from ..core.text_lines import bytes_to_lines
 
 
+def git_diff_reports_changes(
+    result: subprocess.CompletedProcess[str] | subprocess.CompletedProcess[bytes],
+) -> bool:
+    """Interpret Git's conventional quiet-diff exit status."""
+    if result.returncode == 0:
+        return False
+    if result.returncode == 1:
+        return True
+    raise subprocess.CalledProcessError(
+        result.returncode,
+        result.args,
+        output=result.stdout,
+        stderr=result.stderr,
+    )
+
+
 def _prepare_git_command_environment(
     *,
     requires_index_lock: bool,

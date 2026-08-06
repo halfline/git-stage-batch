@@ -18,6 +18,7 @@ def file_has_staged_changes(file_path: str) -> bool:
         ],
         check=False,
         requires_index_lock=False,
+        literal_pathspecs=True,
     )
     return result.returncode == 1
 
@@ -34,5 +35,6 @@ def file_has_unstaged_changes(file_path: str) -> bool:
         ],
         check=False,
         requires_index_lock=False,
+        literal_pathspecs=True,
     )
     return result.returncode == 1

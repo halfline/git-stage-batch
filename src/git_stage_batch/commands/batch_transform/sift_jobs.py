@@ -15,6 +15,7 @@ from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.buffer import LineBuffer
 from ...data.file_target_identity import WorktreeIdentity
 from ...exceptions import MergeError
+from ...git_paths import display_path
 from ...utils.buffer_io import write_buffer_to_path
 from ...utils.file_job_workspace import FileJobWorkspace
 
@@ -124,7 +125,8 @@ def validate_sifted_text_file_job_result(
         raise TypeError("sift text worker returned an invalid result")
     if result.ordinal != job.ordinal or result.file_path != job.file_path:
         raise ValueError(
-            f"sift text worker returned a mismatched result for {job.file_path}"
+            "sift text worker returned a mismatched result for "
+            f"{display_path(job.file_path)}"
         )
     if result.outcome == "retained":
         if result.manifest_path != job.manifest_output_path:

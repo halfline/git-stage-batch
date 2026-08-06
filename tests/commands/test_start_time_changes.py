@@ -144,6 +144,43 @@ def test_start_exposes_staged_deletion_as_deleted_line_selection(rename_repo):
     assert {line.kind for line in selected_change.lines if line.id is not None} == {"-"}
 
 
+@pytest.mark.parametrize(
+    "file_path",
+    (":(top)foo", ":(glob)foo", "*.c", ":(exclude)foo"),
+)
+def test_start_normalizes_staged_deletion_of_literal_pathspec_name(
+    rename_repo,
+    file_path,
+):
+    """Start-time deletion probes must treat discovered paths literally."""
+    path = rename_repo / file_path
+    path.write_text("literal pathspec name\n")
+    subprocess.run(
+        ["git", "--literal-pathspecs", "add", "--", file_path],
+        check=True,
+        cwd=rename_repo,
+    )
+    subprocess.run(
+        ["git", "commit", "-qm", "Add literal pathspec name"],
+        check=True,
+        cwd=rename_repo,
+    )
+    path.unlink()
+    subprocess.run(
+        ["git", "--literal-pathspecs", "add", "--", file_path],
+        check=True,
+        cwd=rename_repo,
+    )
+
+    command_start(quiet=True)
+
+    assert get_staged_deletions_file_path().exists()
+    assert _cached_name_status(rename_repo) == ""
+    selected_change = load_selected_change()
+    assert isinstance(selected_change, LineLevelChange)
+    assert selected_change.path == file_path
+
+
 def test_include_staged_deletion_removes_path_in_one_action(rename_repo):
     _stage_deletion(rename_repo)
 

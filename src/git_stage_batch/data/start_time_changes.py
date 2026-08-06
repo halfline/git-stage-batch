@@ -126,6 +126,7 @@ def _head_entry_for_path(file_path: str) -> tuple[str, str] | None:
         check=False,
         text_output=False,
         requires_index_lock=False,
+        literal_pathspecs=True,
     )
     if result.returncode != 0:
         return None
@@ -164,6 +165,7 @@ def _staged_deletion_is_text(file_path: str) -> bool:
         check=False,
         text_output=False,
         requires_index_lock=False,
+        literal_pathspecs=True,
     )
     if result.returncode != 0 or not result.stdout:
         return False

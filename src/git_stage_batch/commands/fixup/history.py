@@ -69,6 +69,7 @@ def find_next_fixup_candidate(
             ],
             check=True,
             requires_index_lock=False,
+            literal_pathspecs=True,
         )
     except subprocess.CalledProcessError:
         return None
@@ -95,6 +96,7 @@ def show_commit_diff_for_file(commit_hash: str, file_path: str) -> None:
             ],
             check=True,
             requires_index_lock=False,
+            literal_pathspecs=True,
         )
         if show_result.stdout.strip():
             print()

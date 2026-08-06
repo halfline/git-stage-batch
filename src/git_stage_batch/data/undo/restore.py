@@ -57,6 +57,7 @@ def _tree_entries(commit: str, prefix: str) -> list[tuple[str, str, str]]:
         text_output=False,
         cwd=str(get_git_repository_root_path()),
         requires_index_lock=False,
+        literal_pathspecs=True,
     )
     if result.returncode != 0 or not result.stdout:
         return []

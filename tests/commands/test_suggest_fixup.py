@@ -10,7 +10,10 @@ import subprocess
 import pytest
 
 from git_stage_batch.commands.fixup import search_targets
-from git_stage_batch.commands.fixup.history import find_next_fixup_candidate
+from git_stage_batch.commands.fixup.history import (
+    find_next_fixup_candidate,
+    show_commit_diff_for_file,
+)
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.data.suggest_fixup_state import write_suggest_fixup_state
 from git_stage_batch.data.hunk_tracking import fetch_next_change
@@ -81,6 +84,100 @@ class TestFindNextFixupCandidate:
         candidate = find_next_fixup_candidate("test.py", 1, 1, "HEAD", None)
 
         assert candidate is None
+
+    @pytest.mark.parametrize(
+        ("file_path", "pathspec_decoy"),
+        (
+            (":(top)foo", "foo"),
+            (":(glob)foo", "foo"),
+            ("*.c", "other.c"),
+            (":(exclude)foo", "other.txt"),
+        ),
+    )
+    def test_history_queries_treat_file_path_as_literal(
+        self,
+        temp_git_repo,
+        capsys,
+        file_path,
+        pathspec_decoy,
+    ):
+        """Both log -L and show must isolate a pathspec-looking filename."""
+        literal_file = temp_git_repo / file_path
+        decoy_file = temp_git_repo / pathspec_decoy
+        literal_file.write_text("literal v1\n")
+        decoy_file.write_text("decoy v1\n")
+        subprocess.run(
+            [
+                "git",
+                "--literal-pathspecs",
+                "add",
+                "--",
+                file_path,
+                pathspec_decoy,
+            ],
+            check=True,
+            cwd=temp_git_repo,
+        )
+        subprocess.run(
+            ["git", "commit", "-qm", "Add pathspec files"],
+            check=True,
+            cwd=temp_git_repo,
+        )
+
+        literal_file.write_text("literal v2\n")
+        subprocess.run(
+            ["git", "--literal-pathspecs", "add", "--", file_path],
+            check=True,
+            cwd=temp_git_repo,
+        )
+        subprocess.run(
+            ["git", "commit", "-qm", "Change literal file"],
+            check=True,
+            cwd=temp_git_repo,
+        )
+        literal_commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+        decoy_file.write_text("decoy v2\n")
+        subprocess.run(
+            ["git", "--literal-pathspecs", "add", "--", pathspec_decoy],
+            check=True,
+            cwd=temp_git_repo,
+        )
+        subprocess.run(
+            ["git", "commit", "-qm", "Change pathspec decoy"],
+            check=True,
+            cwd=temp_git_repo,
+        )
+        decoy_commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+        candidate = find_next_fixup_candidate(
+            file_path,
+            1,
+            1,
+            "HEAD~2",
+            None,
+        )
+        assert candidate == literal_commit
+
+        show_commit_diff_for_file(decoy_commit, file_path)
+        assert capsys.readouterr().out == ""
+
+        show_commit_diff_for_file(literal_commit, file_path)
+        output = capsys.readouterr().out
+        assert "literal v2" in output
+        assert "decoy v2" not in output
 
     def test_find_iterates_through_multiple_commits(self, temp_git_repo):
         """Test finding multiple candidates by iteration."""

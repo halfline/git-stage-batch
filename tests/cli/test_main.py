@@ -239,3 +239,24 @@ def test_main_handles_git_failure_before_dispatch_without_traceback(capsys):
     captured = capsys.readouterr()
     assert "fatal: not a git repository" in captured.err
     assert "Traceback" not in captured.err
+
+
+def test_main_rejects_non_utf8_batch_name_without_traceback(capsys):
+    """A surrogateescaped argv batch name should produce one clean CLI error."""
+    batch_name = b"batch-\xff".decode("utf-8", errors="surrogateescape")
+
+    with patch.object(sys, "argv", ["git-stage-batch", "new", batch_name]):
+        with patch.object(main_module, "require_git_repository"):
+            with patch.object(main_module, "should_page_output", return_value=False):
+                with patch.object(
+                    main_module,
+                    "acquire_session_lock",
+                    return_value=main_module.nullcontext(),
+                ):
+                    with pytest.raises(SystemExit) as exc_info:
+                        main_module.main()
+
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert "Batch name must be valid UTF-8" in captured.err
+    assert "Traceback" not in captured.err

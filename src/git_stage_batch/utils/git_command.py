@@ -9,7 +9,10 @@ from typing import Literal, overload
 
 from . import command_events, git_index_lock
 from .command import run_command, stream_command
-from .git_environment import git_environment_with_optional_locks_disabled
+from .git_environment import (
+    git_environment_with_deterministic_messages,
+    git_environment_with_optional_locks_disabled,
+)
 from ..core.text_lines import bytes_to_lines
 
 
@@ -30,7 +33,7 @@ def _git_command_environment(
     env: dict[str, str] | None,
 ) -> dict[str, str] | None:
     if requires_index_lock:
-        return env
+        return git_environment_with_deterministic_messages(env)
     return git_environment_with_optional_locks_disabled(env)
 
 
@@ -46,8 +49,8 @@ def _is_git_index_lock_error(
     result: subprocess.CompletedProcess[str] | subprocess.CompletedProcess[bytes],
 ) -> bool:
     stderr_text = _index_lock_error_text(result.stderr).lower()
-    return "index.lock" in stderr_text and (
-        "file exists" in stderr_text or "unable to create" in stderr_text
+    return ".lock" in stderr_text and (
+        "file exists" in stderr_text and "unable to create" in stderr_text
     )
 
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-import subprocess
 
 from ..data.start_time_changes import (
     restore_unstaged_start_time_deletions,
@@ -18,7 +17,7 @@ from ..data.session_ownership import (
 )
 from ..i18n import _
 from ..utils.file_io import read_file_paths_file
-from ..utils.git_command import run_git_command
+from ..utils.git_command import git_diff_reports_changes, run_git_command
 from ..utils.git_index import git_reset_paths
 from ..utils.git_repository import require_git_repository
 from ..utils.paths import get_auto_added_files_file_path
@@ -31,14 +30,7 @@ def _path_has_staged_content(file_path: str) -> bool:
         requires_index_lock=False,
         literal_pathspecs=True,
     )
-    if result.returncode not in (0, 1):
-        raise subprocess.CalledProcessError(
-            result.returncode,
-            result.args,
-            output=result.stdout,
-            stderr=result.stderr,
-        )
-    return result.returncode == 1
+    return git_diff_reports_changes(result)
 
 
 def command_stop() -> None:

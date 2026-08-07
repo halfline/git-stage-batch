@@ -38,7 +38,7 @@ from ...git_paths import (
 )
 from ...i18n import _
 from ...utils.file_io import append_lines_to_file, read_text_file_line_set
-from ...utils.git_command import run_git_command
+from ...utils.git_command import git_diff_reports_changes, run_git_command
 from ...utils.git_index import git_update_index
 from ...utils.git_repository import get_git_repository_root_path
 from ...utils.git_worktree import git_checkout_index_paths
@@ -113,7 +113,7 @@ def discard_file_changes(
                 check=False,
                 requires_index_lock=False,
             )
-            if diff_result.returncode == 0:
+            if not git_diff_reports_changes(diff_result):
                 print(_("No more hunks to process."), file=sys.stderr)
             else:
                 print(_("No selected hunk. Run 'show' first or specify file path."), file=sys.stderr)

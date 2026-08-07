@@ -34,7 +34,7 @@ from ...data.undo.checkpoints import undo_checkpoint
 from ...exceptions import exit_with_error
 from ...git_paths import display_path, terminal_safe_shell_quote
 from ...i18n import _, ngettext
-from ...utils.git_command import run_git_command
+from ...utils.git_command import git_diff_reports_changes, run_git_command
 from ...utils.git_index import (
     git_add_paths,
     git_apply_to_index,
@@ -68,7 +68,7 @@ def include_file_changes(
                 check=False,
                 requires_index_lock=False,
             )
-            if diff_result.returncode == 0:
+            if not git_diff_reports_changes(diff_result):
                 print(_("No changes to stage."), file=sys.stderr)
             else:
                 print(

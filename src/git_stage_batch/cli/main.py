@@ -11,8 +11,8 @@ from ..data.session_ownership import require_no_foreign_session_owner
 from ..exceptions import CommandError
 from ..i18n import _
 from ..runtime import dispatch_cli_mode
-from ..utils.journal import flush_journal
 from ..utils.git_repository import require_git_repository
+from ..utils.journal import flush_journal
 from .argument_parser import parse_command_line
 from .command_policy import (
     SessionOwnershipPolicy,
@@ -21,6 +21,15 @@ from .command_policy import (
     policy_uses_session_lock,
 )
 from .pager import pager_output, should_page_output
+
+
+def _error_stream_text(stream: str | bytes | None) -> str:
+    """Return subprocess diagnostics as printable text."""
+    if stream is None:
+        return ""
+    if isinstance(stream, bytes):
+        return stream.decode("utf-8", errors="replace")
+    return stream
 
 
 def acquire_session_lock() -> AbstractContextManager[None]:
@@ -84,8 +93,9 @@ def main() -> None:
             print(e.message, file=sys.stderr)
         sys.exit(e.exit_code)
     except subprocess.CalledProcessError as e:
-        if e.stderr:
-            print(e.stderr.rstrip(), file=sys.stderr)
+        stderr = _error_stream_text(e.stderr)
+        if stderr:
+            print(stderr.rstrip(), file=sys.stderr)
         else:
             command = " ".join(e.cmd) if isinstance(e.cmd, list) else str(e.cmd)
             print(

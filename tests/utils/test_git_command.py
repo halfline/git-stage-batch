@@ -2,6 +2,7 @@
 
 from git_stage_batch.utils import git_command as git_command_utils
 from git_stage_batch.utils import git_index_lock
+from git_stage_batch.utils.git_command import git_diff_reports_changes
 from git_stage_batch.utils.git_command import stream_git_command
 from git_stage_batch.utils.git_command import stream_git_diff
 
@@ -12,6 +13,31 @@ import pytest
 
 from git_stage_batch.utils.git_command import run_git_command
 from git_stage_batch.utils.git_index_lock import wait_for_git_index_lock
+
+
+@pytest.mark.parametrize(("returncode", "expected"), ((0, False), (1, True)))
+def test_git_diff_reports_conventional_status(returncode, expected):
+    """Quiet Git diff statuses zero and one should retain their meanings."""
+    result = subprocess.CompletedProcess(["git", "diff", "--quiet"], returncode)
+
+    assert git_diff_reports_changes(result) is expected
+
+
+def test_git_diff_reports_changes_propagates_git_errors():
+    """A quiet Git failure must not be reported as an unchanged tree."""
+    result = subprocess.CompletedProcess(
+        ["git", "diff", "--quiet"],
+        128,
+        stdout="partial output",
+        stderr="fatal: malformed index",
+    )
+
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        git_diff_reports_changes(result)
+
+    assert error.value.returncode == 128
+    assert error.value.stdout == "partial output"
+    assert error.value.stderr == "fatal: malformed index"
 
 
 @pytest.fixture

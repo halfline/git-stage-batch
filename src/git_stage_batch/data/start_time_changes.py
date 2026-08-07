@@ -7,7 +7,7 @@ import os
 from dataclasses import dataclass
 
 from ..utils.file_io import read_text_file_contents, write_text_file_contents
-from ..utils.git_command import run_git_command
+from ..utils.git_command import git_diff_reports_changes, run_git_command
 from ..git_paths import decode_path
 from ..utils.git_index import (
     GitIndexEntryUpdate,
@@ -93,7 +93,8 @@ def list_staged_change_records() -> list[StagedChangeRecord]:
         requires_index_lock=False,
         literal_pathspecs=True,
     )
-    if result.returncode != 0 or not result.stdout:
+    result.check_returncode()
+    if not result.stdout:
         return []
     return _parse_name_status_z(result.stdout)
 
@@ -388,7 +389,7 @@ def _paths_have_cached_diff(paths: list[str]) -> bool:
         requires_index_lock=False,
         literal_pathspecs=True,
     )
-    return result.returncode == 1
+    return git_diff_reports_changes(result)
 
 
 def _head_changed_since_session_start(paths: list[str]) -> bool:
@@ -406,7 +407,7 @@ def _head_changed_since_session_start(paths: list[str]) -> bool:
         requires_index_lock=False,
         literal_pathspecs=True,
     )
-    return result.returncode == 1
+    return git_diff_reports_changes(result)
 
 
 def restore_unstaged_start_time_renames() -> list[StagedRename]:

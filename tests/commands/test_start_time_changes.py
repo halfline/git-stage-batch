@@ -23,6 +23,7 @@ from git_stage_batch.commands.undo import command_undo
 from git_stage_batch.core.models import FileModeChange, LineLevelChange, RenameChange
 from git_stage_batch.batch.state.batch_names import batch_exists
 from git_stage_batch.data.selected_change.loading import load_selected_change
+from git_stage_batch.data.start_time_changes import list_staged_change_records
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import get_staged_deletions_file_path, get_staged_renames_file_path
 
@@ -89,6 +90,27 @@ def _index_content(repo, file_path: str) -> str:
         capture_output=True,
         text=True,
     ).stdout
+
+
+def test_staged_change_discovery_propagates_git_errors(monkeypatch):
+    """Failed staged discovery must not look like an empty change list."""
+    from git_stage_batch.data import start_time_changes
+
+    monkeypatch.setattr(
+        start_time_changes,
+        "run_git_command",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            ["git", "diff", "--cached"],
+            128,
+            stdout=b"",
+            stderr=b"fatal: malformed index",
+        ),
+    )
+
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        list_staged_change_records()
+
+    assert error.value.stderr == b"fatal: malformed index"
 
 
 def test_start_exposes_staged_rename_as_rename_selection(rename_repo, capsys):

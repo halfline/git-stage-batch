@@ -152,6 +152,85 @@ def test_start_freezes_base_and_creates_unique_recovery_refs(git_repo: Path) -> 
     assert "pre-count.txt does not match" in corrupted.stderr
 
 
+def test_check_range_infers_merge_base_from_remote_tracking_branch(
+    git_repo: Path,
+) -> None:
+    """An omitted base should use the current branch's tracked remote ref."""
+    base = _git(git_repo, "rev-parse", "HEAD").stdout.strip()
+    _git(git_repo, "update-ref", "refs/remotes/origin/trunk", base)
+    _git(git_repo, "config", "remote.origin.url", "https://example.com/repo.git")
+    _git(
+        git_repo,
+        "config",
+        "remote.origin.fetch",
+        "+refs/heads/*:refs/remotes/origin/*",
+    )
+    _git(git_repo, "branch", "--set-upstream-to", "origin/trunk")
+    _commit(git_repo, "Add parser")
+    _commit(git_repo, "Route requests")
+
+    checked = _helper(git_repo, "check-range")
+
+    assert checked.stdout.strip() == base
+
+
+def test_check_range_without_base_requires_remote_tracking_branch(
+    git_repo: Path,
+) -> None:
+    """Base inference should fail with an actionable detached-upstream error."""
+    _commit(git_repo, "Draft")
+
+    result = _helper(git_repo, "check-range", check=False)
+
+    assert result.returncode != 0
+    assert "no remote-tracking upstream; pass --base" in result.stderr
+
+
+def test_force_push_ref_allowance_is_narrow_and_persists(git_repo: Path) -> None:
+    """A verified review head may be rewritten without allowing other refs."""
+    base = _git(git_repo, "rev-parse", "HEAD").stdout.strip()
+    shared = _commit(git_repo, "Review draft")
+    review_ref = "refs/remotes/origin/review"
+    _git(git_repo, "update-ref", review_ref, shared)
+
+    checked = _helper(
+        git_repo,
+        "check-range",
+        "--base",
+        base,
+        "--allow-remote-ref",
+        review_ref,
+    )
+    _helper(
+        git_repo,
+        "start",
+        "--base",
+        base,
+        "--allow-remote-ref",
+        review_ref,
+    )
+    checkpoint = json.loads(
+        (
+            git_repo
+            / ".git-stage-batch"
+            / "refine-history"
+            / "checkpoint.json"
+        ).read_text(encoding="utf-8")
+    )
+
+    assert checked.stdout.strip() == base
+    assert checkpoint["allowed_remote_refs"] == [review_ref]
+    assert _helper(git_repo, "check-resume").stdout.strip() == base
+
+    other_ref = "refs/remotes/origin/release"
+    _git(git_repo, "update-ref", other_ref, shared)
+    rejected = _helper(git_repo, "check-resume", check=False)
+
+    assert rejected.returncode != 0
+    assert other_ref in rejected.stderr
+    assert review_ref not in rejected.stderr
+
+
 def test_range_rejects_an_earlier_commit_in_a_remote_ref(git_repo: Path) -> None:
     """Publication checks must cover the whole range, not only HEAD."""
     base = _git(git_repo, "rev-parse", "HEAD").stdout.strip()

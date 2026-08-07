@@ -186,6 +186,27 @@ def canonical_base(revision: str) -> str:
         raise SystemExit(f"invalid base revision {revision!r}") from error
 
 
+def canonical_remote_refs(revisions: list[str]) -> list[str]:
+    """Resolve explicitly allowed force-push refs to remote-tracking names."""
+    refs: set[str] = set()
+    for revision in revisions:
+        result = git_run(
+            "rev-parse",
+            "--symbolic-full-name",
+            "--verify",
+            revision,
+            check=False,
+        )
+        refname = result.stdout.strip()
+        if result.returncode or not refname.startswith("refs/remotes/"):
+            raise SystemExit(
+                "allowed rewrite ref must name an existing remote-tracking "
+                f"ref: {revision}"
+            )
+        refs.add(refname)
+    return sorted(refs)
+
+
 def range_commits(
     base: str,
     tip: str = "HEAD",
@@ -361,12 +382,17 @@ def remote_refs_containing(commit: str) -> list[str]:
     ).splitlines()
 
 
-def reject_shared_commits(commits: list[str]) -> None:
+def reject_shared_commits(
+    commits: list[str],
+    *,
+    allowed_remote_refs: list[str] | None = None,
+) -> None:
     """Reject one oldest-first linear chain visible through a remote ref."""
     if not commits:
         return
     oldest = commits[0]
-    refs = remote_refs_containing(oldest)
+    allowed = set(allowed_remote_refs or [])
+    refs = [ref for ref in remote_refs_containing(oldest) if ref not in allowed]
     if not refs:
         return
     raise SystemExit(
@@ -394,12 +420,20 @@ def protected_local_refs(
     return dict(sorted(refs.items()))
 
 
-def validate_range(revision: str, *, reject_shared: bool) -> tuple[str, list[str]]:
+def validate_range(
+    revision: str,
+    *,
+    reject_shared: bool,
+    allowed_remote_refs: list[str] | None = None,
+) -> tuple[str, list[str]]:
     """Resolve and validate one explicit history range."""
     base = canonical_base(revision)
     commits = range_commits(base)
     if reject_shared:
-        reject_shared_commits(commits)
+        reject_shared_commits(
+            commits,
+            allowed_remote_refs=allowed_remote_refs,
+        )
     return base, commits
 
 
@@ -653,6 +687,7 @@ def validate_checkpoint(
     recovery_ref = data.get("recovery_ref")
     original_count = data.get("original_count")
     protected_refs = data.get("protected_refs")
+    allowed_remote_refs = data.get("allowed_remote_refs", [])
     originals = pre.get("commits")
     if (
         not all(
@@ -661,6 +696,13 @@ def validate_checkpoint(
         )
         or not isinstance(original_count, int)
         or not isinstance(protected_refs, dict)
+        or not (
+            isinstance(allowed_remote_refs, list)
+            and all(
+                isinstance(refname, str) and refname.startswith("refs/remotes/")
+                for refname in allowed_remote_refs
+            )
+        )
         or not all(
             isinstance(refname, str)
             and refname.startswith("refs/heads/")
@@ -712,9 +754,15 @@ def validate_checkpoint(
         )
     original_shas = [record["sha"] for record in originals if "sha" in record]
     current_shas = range_commits(base, allow_empty=True)
-    reject_shared_commits(original_shas)
+    reject_shared_commits(
+        original_shas,
+        allowed_remote_refs=allowed_remote_refs,
+    )
     if current_shas != original_shas:
-        reject_shared_commits(current_shas)
+        reject_shared_commits(
+            current_shas,
+            allowed_remote_refs=allowed_remote_refs,
+        )
     if require_current and not rebase_active:
         current = records_for(base)
         errors.extend(compare_invariants(originals, current))
@@ -1112,7 +1160,12 @@ def cmd_state_dir(_: argparse.Namespace) -> None:
 def cmd_check_range(args: argparse.Namespace) -> None:
     """Validate and print the canonical explicit base."""
     require_stable_head()
-    base, _ = validate_range(args.base, reject_shared=not args.audit_only)
+    allowed_remote_refs = canonical_remote_refs(args.allow_remote_ref)
+    base, _ = validate_range(
+        args.base,
+        reject_shared=not args.audit_only,
+        allowed_remote_refs=allowed_remote_refs,
+    )
     print(base)
 
 
@@ -1125,7 +1178,12 @@ def cmd_inspect(args: argparse.Namespace) -> None:
 
 def cmd_start(args: argparse.Namespace) -> None:
     """Start a default mutating refinement."""
-    base, commits = validate_range(args.base, reject_shared=True)
+    allowed_remote_refs = canonical_remote_refs(args.allow_remote_ref)
+    base, commits = validate_range(
+        args.base,
+        reject_shared=True,
+        allowed_remote_refs=allowed_remote_refs,
+    )
     require_safe_state_dir()
     reject_non_rebase_operations()
     rebase_active, _ = active_rebase()
@@ -1151,6 +1209,7 @@ def cmd_start(args: argparse.Namespace) -> None:
         "original_count": len(commits),
         "recovery_ref": recovery_ref,
         "protected_refs": protected_local_refs(commits, branch_ref),
+        "allowed_remote_refs": allowed_remote_refs,
         "events": [{"at": now(), "event": "start", "base": base}],
     }
     save_checkpoint(checkpoint)
@@ -1821,7 +1880,11 @@ def cmd_complete(args: argparse.Namespace) -> None:
         raise SystemExit(
             "refine-commit-messages is already complete; completion is not repeatable"
         )
-    base, _ = validate_range(args.base, reject_shared=True)
+    base, _ = validate_range(
+        args.base,
+        reject_shared=True,
+        allowed_remote_refs=data.get("allowed_remote_refs", []),
+    )
     if base != checkpoint_base:
         raise SystemExit("completion base does not match the checkpoint")
     if rebase_active:
@@ -1871,6 +1934,7 @@ def build_parser() -> argparse.ArgumentParser:
     check_range = commands.add_parser("check-range")
     check_range.add_argument("--base", required=True)
     check_range.add_argument("--audit-only", action="store_true")
+    check_range.add_argument("--allow-remote-ref", action="append", default=[])
     check_range.set_defaults(func=cmd_check_range)
 
     inspect = commands.add_parser("inspect")
@@ -1879,6 +1943,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     start = commands.add_parser("start")
     start.add_argument("--base", required=True)
+    start.add_argument("--allow-remote-ref", action="append", default=[])
     start.set_defaults(func=cmd_start)
 
     status = commands.add_parser("status")

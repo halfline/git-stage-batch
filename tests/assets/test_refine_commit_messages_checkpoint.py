@@ -381,6 +381,55 @@ def test_audit_only_accepts_shared_history_without_writing_state(
     )
 
 
+def test_mutating_refinement_allows_verified_review_head(git_repo: Path) -> None:
+    """A force-push review ref should not allow unrelated published refs."""
+    base = _git(git_repo, "rev-parse", "HEAD").stdout.strip()
+    head = _commit(
+        git_repo,
+        _message(
+            "core: expose message inspection",
+            "The project provides a stable message representation.",
+            "Reviewers cannot inspect that representation as a report.",
+            "This commit exposes inspection through a report command.",
+        ),
+    )
+    review_ref = "refs/remotes/origin/review"
+    _git(git_repo, "update-ref", review_ref, head)
+
+    checked = _helper(
+        git_repo,
+        "check-range",
+        "--base",
+        base,
+        "--allow-remote-ref",
+        review_ref,
+    )
+    _helper(
+        git_repo,
+        "start",
+        "--base",
+        base,
+        "--allow-remote-ref",
+        review_ref,
+    )
+    state_dir = git_repo / ".git-stage-batch" / "refine-commit-messages"
+    checkpoint = json.loads(
+        (state_dir / "checkpoint.json").read_text(encoding="utf-8")
+    )
+
+    assert checked.stdout.strip() == base
+    assert checkpoint["allowed_remote_refs"] == [review_ref]
+    assert _helper(git_repo, "check-resume").stdout.strip() == base
+
+    other_ref = "refs/remotes/origin/release"
+    _git(git_repo, "update-ref", other_ref, head)
+    rejected = _helper(git_repo, "check-resume", check=False)
+
+    assert rejected.returncode != 0
+    assert other_ref in rejected.stderr
+    assert review_ref not in rejected.stderr
+
+
 def test_range_rejects_merge_commits(git_repo: Path) -> None:
     """Message-series ordering should not flatten merge topology."""
     base = _git(git_repo, "rev-parse", "HEAD").stdout.strip()

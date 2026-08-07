@@ -24,17 +24,22 @@ def _prepare_git_command_environment(
 ) -> dict[str, str] | None:
     if requires_index_lock:
         git_index_lock.wait_for_git_index_lock(cwd=cwd, env=env)
-    return _git_command_environment(requires_index_lock=requires_index_lock, env=env)
+    return _git_command_environment(
+        requires_index_lock=requires_index_lock,
+        cwd=cwd,
+        env=env,
+    )
 
 
 def _git_command_environment(
     *,
     requires_index_lock: bool,
+    cwd: str | None,
     env: dict[str, str] | None,
 ) -> dict[str, str] | None:
     if requires_index_lock:
-        return git_environment_with_deterministic_messages(env)
-    return git_environment_with_optional_locks_disabled(env)
+        return git_environment_with_deterministic_messages(env, cwd=cwd)
+    return git_environment_with_optional_locks_disabled(env, cwd=cwd)
 
 
 def _index_lock_error_text(stream: str | bytes | None) -> str:
@@ -335,6 +340,7 @@ def run_git_command(
             cwd=cwd,
             env=_git_command_environment(
                 requires_index_lock=requires_index_lock,
+                cwd=cwd,
                 env=env,
             ),
             capture_stdout=capture_stdout,

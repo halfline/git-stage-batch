@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from contextlib import AbstractContextManager, contextmanager, nullcontext
+from collections.abc import Iterator, Sequence
+from contextlib import AbstractContextManager, nullcontext
 import sys
-from typing import Iterator
 
 from ...core.diff_parser import (
     UnifiedDiffItem,
@@ -39,23 +38,11 @@ from ...utils.git_command import run_git_command
 from ...utils.git_index import (
     git_add_paths,
     git_apply_to_index,
-    git_read_tree,
-    git_write_tree,
 )
+from ...utils.index_transaction import isolated_index_transaction
 from ..selection import selected_change_staging as _selected_change_staging
 from ..selection.action_completion import finish_selected_change_action
 from .target_path import checkpoint_paths_for_live_file
-
-
-@contextmanager
-def _rollback_index_on_error() -> Iterator[None]:
-    """Restore the pre-operation index if whole-file staging fails."""
-    index_tree = git_write_tree()
-    try:
-        yield
-    except BaseException:
-        git_read_tree(index_tree)
-        raise
 
 
 def include_file_changes(
@@ -94,7 +81,7 @@ def include_file_changes(
 
     checkpoint: AbstractContextManager[object]
     patch_context: AbstractContextManager[Iterator[UnifiedDiffItem]]
-    rollback_context: AbstractContextManager[None]
+    index_transaction: AbstractContextManager[object]
     if _prepared_changes is None:
         auto_add_untracked_files([target_file])
         checkpoint_paths = checkpoint_paths_for_live_file(target_file)
@@ -114,11 +101,11 @@ def include_file_changes(
                 submodule_format="short",
             )
         )
-        rollback_context = _rollback_index_on_error()
+        index_transaction = isolated_index_transaction()
     else:
         checkpoint = nullcontext()
         patch_context = nullcontext(iter(_prepared_changes))
-        rollback_context = nullcontext()
+        index_transaction = nullcontext()
 
     with checkpoint:
         hunks_staged = 0
@@ -126,7 +113,7 @@ def include_file_changes(
         renames_staged = 0
         included_hashes: list[str] = []
         staged_rename_pairs: set[tuple[str, str]] = set()
-        with rollback_context, patch_context as patches:
+        with index_transaction, patch_context as patches:
             for patch in patches:
                 if isinstance(patch, FileModeChange):
                     if target_file not in (patch.path(), patch.index_path):

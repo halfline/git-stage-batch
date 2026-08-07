@@ -8,7 +8,10 @@ import time
 from pathlib import Path
 
 from .command import run_command
-from .git_environment import git_environment_with_optional_locks_disabled
+from .git_environment import (
+    git_environment_with_active_index,
+    git_environment_with_optional_locks_disabled,
+)
 
 
 DEFAULT_INDEX_LOCK_WAIT_SECONDS = 20.0
@@ -20,7 +23,7 @@ def _custom_index_lock_path(
     env: dict[str, str] | None,
     cwd: str | None,
 ) -> Path | None:
-    git_env = os.environ.copy() if env is None else dict(env)
+    git_env = git_environment_with_active_index(env, cwd=cwd)
     index_file = git_env.get("GIT_INDEX_FILE")
     if not index_file:
         return None
@@ -40,7 +43,7 @@ def _git_index_lock_path(*, cwd: str | None, env: dict[str, str] | None) -> Path
         ["git", "rev-parse", "--absolute-git-dir"],
         check=True,
         cwd=cwd,
-        env=git_environment_with_optional_locks_disabled(env),
+        env=git_environment_with_optional_locks_disabled(env, cwd=cwd),
     )
     return Path(result.stdout.removesuffix("\n")) / "index.lock"
 

@@ -1,6 +1,6 @@
 ---
 name: refine-history
-description: Rewrite an existing local commit series into a clean incremental history while preserving its final tree. Use when the user wants to polish, split, reword, or integrate fixup and repair commits after an explicit base, or resume an interrupted refinement. Do not use for unstaged work or shared/protected history.
+description: Rewrite an existing local commit series into a clean incremental history while preserving its final tree. Use when the user wants to polish, split, reword, or integrate fixup and repair commits after an optional base, infer the boundary from a tracked remote branch, safely rewrite a pull-request or merge-request branch, or resume an interrupted refinement. Do not use for unstaged work or commits published outside an explicitly verified force-push review branch.
 ---
 
 # Refine History
@@ -16,17 +16,21 @@ rewording pass.
 ## Usage
 
 ```text
-$refine-history BASE_SHA
+$refine-history [BASE_SHA]
 $refine-history resume
 ```
 
-For a fresh run, require one explicit base argument. Do not infer it from
-branch names, merge bases, reflogs, old checkpoints, or prior audit files.
-Bind that argument to `BASE_SHA`. The literal `resume` argument is the only
+For a fresh run, accept an optional explicit base. When it is omitted, use the
+merge base between `HEAD` and the current branch's configured remote-tracking
+ref. Fail with an actionable request for `BASE_SHA` when no remote-tracking
+ref exists. Never infer a base from reflogs, local branch names, old
+checkpoints, or prior audit files. The literal `resume` argument is the only
 case that may read the skill checkpoint to recover the canonical base.
 
-This skill is autonomous after invocation, but fail closed if the range is
-shared/protected or that cannot be established safely.
+This skill is autonomous after invocation. Fail closed when a commit in the
+rewrite range is published through an unrelated remote-tracking ref. A commit
+contained only in a verified pull-request or merge-request head ref may be
+rewritten when force pushing is an expected part of that review workflow.
 
 If `git-stage-batch` is not in `PATH`, use `pipx run git-stage-batch`. Read the
 installed help for each batch command before using it; installed help wins if
@@ -40,26 +44,42 @@ every message and series transition.
 ## Establish the rewrite boundary
 
 For a fresh run, move to the repository root, locate the installed helper, and
-freeze the explicit base to a full commit ID. The helper rejects an empty or
-non-linear range and any range commit contained in a remote-tracking ref:
+freeze the explicit or inferred base to a full commit ID. The helper rejects
+an empty or non-linear range and any range commit contained in a disallowed
+remote-tracking ref:
 
 ```bash
 REPO_ROOT=$(git --no-optional-locks rev-parse --show-toplevel)
 cd "$REPO_ROOT"
 REFINE_HISTORY_HELPER=.agents/skills/refine-history/scripts/refine-history-checkpoint.py
 export REFINE_HISTORY_STATE_DIR=$(python3 "$REFINE_HISTORY_HELPER" state-dir)
-if test -z "${BASE_SHA:-}"; then
-  echo "refine-history requires an explicit BASE_SHA"
-  exit 1
+if test -n "${BASE_SHA:-}" && test -n "${REVIEW_HEAD_REF:-}"; then
+  BASE_SHA=$(python3 "$REFINE_HISTORY_HELPER" check-range \
+    --base "$BASE_SHA" --allow-remote-ref "$REVIEW_HEAD_REF")
+elif test -n "${BASE_SHA:-}"; then
+  BASE_SHA=$(python3 "$REFINE_HISTORY_HELPER" check-range --base "$BASE_SHA")
+elif test -n "${REVIEW_HEAD_REF:-}"; then
+  BASE_SHA=$(python3 "$REFINE_HISTORY_HELPER" check-range \
+    --allow-remote-ref "$REVIEW_HEAD_REF")
+else
+  BASE_SHA=$(python3 "$REFINE_HISTORY_HELPER" check-range)
 fi
-BASE_SHA=$(python3 "$REFINE_HISTORY_HELPER" check-range --base "$BASE_SHA")
 ```
 
-Confirm separately that the branch is a local draft. The helper can inspect
-local remote-tracking refs, but it cannot prove server state or branch
-protection. Stop when a configured remote is not known to be current, branch
-policy is unknown, the branch is protected, or any publication evidence is
-ambiguous:
+Refresh the relevant remote-tracking refs and inspect publication evidence.
+Remote branch protection on the base is irrelevant because the base is not
+rewritten. A named local branch is also safe regardless of its name when no
+commit in `BASE_SHA..HEAD` is published.
+
+For a pull-request or merge-request branch, verify through provider metadata
+that the current branch is the review head and force pushing is expected. Then
+rerun `check-range` with `--allow-remote-ref FULL_REMOTE_TRACKING_REF`; never
+allow the target branch or an unrelated ref. Keep that argument for `start`:
+
+When the current branch tracks its review head, omitting `BASE_SHA` selects
+only commits added locally since that remote head. To rewrite the already
+published review series too, explicitly set `BASE_SHA` to the merge base with
+the review target branch and allow only the verified review-head ref.
 
 ```bash
 git --no-optional-locks branch --show-current
@@ -67,6 +87,10 @@ git --no-optional-locks branch -a --contains HEAD
 git --no-optional-locks remote -v
 git --no-optional-locks log --reverse --format='%H %s' "$BASE_SHA"..HEAD
 ```
+
+Stop only when remote-tracking information is stale or unavailable, a range
+commit is published outside the verified review-head exception, or publication
+evidence is ambiguous.
 
 Require a clean index and worktree, no rebase/cherry-pick/merge in progress,
 and no active or saved `git-stage-batch` work:
@@ -97,7 +121,12 @@ Start fresh state only after those checks. This clears only the prior
 recovery ref:
 
 ```bash
-python3 "$REFINE_HISTORY_HELPER" start --base "$BASE_SHA"
+if test -n "${REVIEW_HEAD_REF:-}"; then
+  python3 "$REFINE_HISTORY_HELPER" start --base "$BASE_SHA" \
+    --allow-remote-ref "$REVIEW_HEAD_REF"
+else
+  python3 "$REFINE_HISTORY_HELPER" start --base "$BASE_SHA"
+fi
 python3 "$REFINE_HISTORY_HELPER" status --json
 ```
 
@@ -121,8 +150,9 @@ git --no-optional-locks show-ref --verify "$RECOVERY_REF"
 
 `check-resume` requires the checkpoint, recovery ref, original range,
 `pre-tree.txt`, `pre-count.txt`, and `pre-series.txt` to agree and rechecks
-local remote-tracking containment. It does not refresh remotes or determine
-branch policy. If a rebase is active, inspect `git --no-optional-locks status`,
+local remote-tracking containment with the recorded review-head exception. It
+does not refresh remotes. If a rebase is active, inspect
+`git --no-optional-locks status`,
 the rebase todo/done files, the last checkpoint event, and the relevant rewrite
 procedure. Continue only when they identify the same interrupted refinement
 step. It is also safe to use `git rebase --abort` to return to that step's
@@ -299,12 +329,12 @@ python3 "$REFINE_HISTORY_HELPER" complete --base "$BASE_SHA"
 ```
 
 Immediately before completion, reconfirm that remote-tracking information is
-current, branch protection still permits rewriting, and publication evidence
-is unambiguous. `complete` rechecks the canonical base, checkpoint branch,
+current and publication evidence is unambiguous. `complete` rechecks the
+canonical base, checkpoint branch,
 local remote-tracking containment, clean tree/index, structured audit, matching
 successful `verify-range` record, and exact original final tree. Remote
-freshness and branch policy remain the caller's responsibility. The helper
-writes `post-count.txt` and `post-series.txt` and only then marks the checkpoint
+freshness remains the caller's responsibility. The helper writes
+`post-count.txt` and `post-series.txt` and only then marks the checkpoint
 complete.
 
 Report the original and final commit counts, final subjects in order, splits,

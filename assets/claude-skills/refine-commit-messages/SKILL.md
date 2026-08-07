@@ -122,12 +122,23 @@ REPO_ROOT=$(git --no-optional-locks rev-parse --show-toplevel)
 cd "$REPO_ROOT"
 REFINE_MESSAGES_HELPER=.claude/skills/refine-commit-messages/scripts/refine-commit-messages-checkpoint.py
 export REFINE_MESSAGES_STATE_DIR=$(python3 "$REFINE_MESSAGES_HELPER" state-dir)
-BASE_SHA=$(python3 "$REFINE_MESSAGES_HELPER" check-range --base "$BASE_SHA")
+if test -n "${REVIEW_HEAD_REF:-}"; then
+  BASE_SHA=$(python3 "$REFINE_MESSAGES_HELPER" check-range \
+    --base "$BASE_SHA" --allow-remote-ref "$REVIEW_HEAD_REF")
+else
+  BASE_SHA=$(python3 "$REFINE_MESSAGES_HELPER" check-range --base "$BASE_SHA")
+fi
 ```
 
-Confirm separately that the branch is a local unpublished draft. Stop when a
-configured remote is stale or unavailable, branch policy is unknown, the
-branch is protected, or publication evidence is ambiguous:
+Refresh the relevant remote-tracking refs and inspect publication evidence.
+Protection on the base branch is irrelevant because the base is not rewritten.
+For a pull-request or merge-request branch, verify through provider metadata
+that the current branch is the review head and force pushing is expected. A
+range contained only in that head ref may pass
+`--allow-remote-ref FULL_REMOTE_TRACKING_REF`; never allow the target branch or
+an unrelated ref. Stop when remote information is stale or unavailable, a
+range commit is published outside that exception, or publication evidence is
+ambiguous:
 
 ```bash
 git --no-optional-locks branch --show-current
@@ -140,7 +151,12 @@ Require a named local branch, a clean index and worktree, and no Git operation
 in progress. Then record the exact original sequence and create a recovery ref:
 
 ```bash
-python3 "$REFINE_MESSAGES_HELPER" start --base "$BASE_SHA"
+if test -n "${REVIEW_HEAD_REF:-}"; then
+  python3 "$REFINE_MESSAGES_HELPER" start --base "$BASE_SHA" \
+    --allow-remote-ref "$REVIEW_HEAD_REF"
+else
+  python3 "$REFINE_MESSAGES_HELPER" start --base "$BASE_SHA"
+fi
 python3 "$REFINE_MESSAGES_HELPER" status --json
 ```
 
@@ -295,9 +311,9 @@ python3 "$REFINE_MESSAGES_HELPER" complete --base "$BASE_SHA"
 ```
 
 Immediately before completion, reconfirm that remote-tracking information is
-current, branch protection still permits rewriting, and publication evidence
-is unambiguous. `complete` rechecks local remote-tracking containment,
+current and publication evidence is unambiguous. `complete` rechecks local
+remote-tracking containment with the recorded review-head exception,
 checkpoint ownership, out-of-scope local refs, the structured audit, and every
-message-only invariant; remote freshness and branch policy remain the caller's
-responsibility. Report the recovery ref, old-to-new subjects and SHAs,
+message-only invariant; remote freshness remains the caller's responsibility.
+Report the recovery ref, old-to-new subjects and SHAs,
 conventions applied, and the exact tree/author invariants verified.

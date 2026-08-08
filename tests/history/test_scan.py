@@ -1,0 +1,273 @@
+"""Tests for immutable history snapshots."""
+
+from __future__ import annotations
+
+import hashlib
+
+import pytest
+
+from git_stage_batch.exceptions import CommandError
+from git_stage_batch.history import safety
+from git_stage_batch.history.records import history_plan_document_record
+from git_stage_batch.history.scan import acquire_history_plan_document
+
+from .conftest import git
+
+
+def test_scan_captures_exact_commit_chain_and_keep_template(linear_history_repo):
+    repo = linear_history_repo
+
+    document = acquire_history_plan_document(repo.base)
+
+    snapshot = document.snapshot
+    assert snapshot.base_commit == repo.base
+    assert snapshot.tip_commit == repo.tip
+    assert snapshot.branch_ref == "refs/heads/topic"
+    assert [commit.commit_id for commit in snapshot.commits] == [
+        repo.first,
+        repo.tip,
+    ]
+    assert [commit.parent for commit in snapshot.commits] == [
+        repo.base,
+        repo.first,
+    ]
+    assert snapshot.commits[0].tree == snapshot.commits[1].parent_tree
+    assert snapshot.final_tree == snapshot.commits[-1].tree
+    assert [output.operation for output in document.plan.outputs] == [
+        "KEEP",
+        "KEEP",
+    ]
+    assert [output.source_commits for output in document.plan.outputs] == [
+        (repo.first,),
+        (repo.tip,),
+    ]
+    assert all(
+        output.unit_ids == tuple(unit.unit_id for unit in commit.units)
+        for output, commit in zip(
+            document.plan.outputs,
+            snapshot.commits,
+            strict=True,
+        )
+    )
+    safety_record = history_plan_document_record(document)["safety"]
+    assert safety_record["active_rewrite_operation"] is None
+    assert "active_history_operation" not in safety_record
+    assert document.safety.mutation_ready is True
+
+
+def test_scan_records_messages_identities_and_tree_pairs(linear_history_repo):
+    document = acquire_history_plan_document(linear_history_repo.base)
+    commit = document.snapshot.commits[0]
+
+    assert commit.message == "Change alpha\n"
+    assert commit.message_sha256 == hashlib.sha256(
+        commit.message.encode("utf-8")
+    ).hexdigest()
+    assert commit.author.name == "Test User"
+    assert commit.author.email == "test@example.com"
+    assert commit.author.raw.endswith(commit.author.timezone)
+    assert commit.parent_tree != commit.tree
+    assert commit.units[0].source_commit == commit.commit_id
+    assert len(commit.units[0].unit_id) == 64
+    assert len(commit.units[0].patch_id) == 64
+
+
+def test_scan_decodes_a_declared_commit_message_encoding(linear_history_repo):
+    repo = linear_history_repo
+    tree = git("rev-parse", "HEAD^{tree}")
+    payload = (
+        f"tree {tree}\n"
+        f"parent {repo.tip}\n"
+        "author Test User <test@example.com> 1700000000 +0000\n"
+        "committer Test User <test@example.com> 1700000000 +0000\n"
+        "encoding ISO-8859-1\n\n"
+    ).encode("ascii") + b"caf\xe9\n"
+    encoded_commit = git(
+        "hash-object",
+        "-t",
+        "commit",
+        "-w",
+        "--stdin",
+        input_bytes=payload,
+    )
+    git("update-ref", "refs/heads/topic", encoded_commit, repo.tip)
+
+    document = acquire_history_plan_document(repo.tip)
+
+    commit = document.snapshot.commits[0]
+    output = document.plan.outputs[0]
+    assert commit.message == "café\n"
+    assert commit.encoding == "ISO-8859-1"
+    assert output.message == commit.message
+    assert output.encoding == commit.encoding
+
+
+def test_scan_snapshot_contains_metadata_not_patch_lines(linear_history_repo):
+    record = history_plan_document_record(
+        acquire_history_plan_document(linear_history_repo.base)
+    )
+    serialized = repr(record)
+
+    assert "alpha topic" not in serialized
+    assert record["snapshot"]["commits"][0]["patch"]["old_tree"]
+    assert record["snapshot"]["commits"][0]["patch"]["new_tree"]
+
+
+def test_scan_keeps_siblings_when_a_file_changes_type(linear_history_repo):
+    repo = linear_history_repo
+    sibling = repo.root / "sibling.txt"
+    sibling.write_text("before\n", encoding="utf-8")
+    git("add", "sibling.txt")
+    git("commit", "-m", "Add transition inputs")
+    transition_base = git("rev-parse", "HEAD")
+
+    repo.source.unlink()
+    repo.source.symlink_to("sibling.txt")
+    sibling.write_text("after\n", encoding="utf-8")
+    git("add", "example.txt", "sibling.txt")
+    git("commit", "-m", "Change type beside text")
+
+    document = acquire_history_plan_document(transition_base)
+    units = document.snapshot.commits[0].units
+
+    assert any(unit.kind == "file-type" for unit in units)
+    assert any(
+        unit.path == "example.txt"
+        and unit.unsupported_reason == "file-type-with-content"
+        for unit in units
+    )
+    assert any(
+        unit.path == "sibling.txt" and unit.kind == "text-replacement"
+        for unit in units
+    )
+
+
+def test_scan_records_signature_identity_without_embedding_payload(
+    linear_history_repo,
+):
+    repo = linear_history_repo
+    tree = git("rev-parse", "HEAD^{tree}")
+    signature = b"-----BEGIN PGP SIGNATURE-----\nfake\n-----END PGP SIGNATURE-----"
+    payload = (
+        f"tree {tree}\n"
+        f"parent {repo.tip}\n"
+        "author Test User <test@example.com> 1700000000 +0000\n"
+        "committer Test User <test@example.com> 1700000000 +0000\n"
+        "gpgsig "
+    ).encode("ascii") + signature.replace(b"\n", b"\n ") + b"\n\nSigned\n"
+    signed_commit = git(
+        "hash-object",
+        "-t",
+        "commit",
+        "-w",
+        "--stdin",
+        input_bytes=payload,
+    )
+    git("update-ref", "refs/heads/topic", signed_commit, repo.tip)
+
+    document = acquire_history_plan_document(repo.tip)
+    commit = document.snapshot.commits[0]
+    record = history_plan_document_record(document)
+
+    assert commit.signatures[0].header == "gpgsig"
+    assert len(commit.signatures[0].sha256) == 64
+    assert record["snapshot"]["rewritten_signatures_preserved"] is False
+    assert "BEGIN PGP SIGNATURE" not in repr(record)
+
+
+def test_scan_unit_ids_ignore_repository_diff_display_configuration(
+    linear_history_repo,
+):
+    repo = linear_history_repo
+    unicode_path = repo.root / "café.txt"
+    unicode_path.write_text("one\n", encoding="utf-8")
+    git("add", "café.txt")
+    git("commit", "-m", "Add unicode path")
+    base = git("rev-parse", "HEAD")
+    unicode_path.write_text("two\n", encoding="utf-8")
+    git("commit", "-am", "Change unicode path")
+
+    git("config", "core.quotePath", "false")
+    first_ids = [
+        unit.unit_id
+        for unit in acquire_history_plan_document(base).snapshot.commits[0].units
+    ]
+    order_file = repo.root / "order"
+    order_file.write_text("example.txt\n", encoding="utf-8")
+    git("config", "diff.orderFile", str(order_file))
+    git("config", "diff.algorithm", "histogram")
+    git("config", "diff.indentHeuristic", "true")
+    git("config", "diff.interHunkContext", "99")
+    git("config", "core.quotePath", "true")
+    second_ids = [
+        unit.unit_id
+        for unit in acquire_history_plan_document(base).snapshot.commits[0].units
+    ]
+
+    assert second_ids == first_ids
+
+
+def test_scan_does_not_write_an_index_tree(linear_history_repo, monkeypatch):
+    original_run_git_command = safety.run_git_command
+
+    def reject_write_tree(arguments, *args, **kwargs):
+        assert arguments[0] != "write-tree"
+        return original_run_git_command(arguments, *args, **kwargs)
+
+    monkeypatch.setattr(safety, "run_git_command", reject_write_tree)
+    linear_history_repo.source.write_text("staged audit\n", encoding="utf-8")
+    git("add", "example.txt")
+
+    document = acquire_history_plan_document(linear_history_repo.base)
+
+    assert document.safety.index_tree is None
+    assert document.safety.index_clean is False
+    assert "staged-index" in document.safety.blockers
+
+
+def test_scan_reports_publication_of_an_older_range_commit(
+    linear_history_repo,
+):
+    repo = linear_history_repo
+    git("update-ref", "refs/remotes/origin/review", repo.first)
+
+    document = acquire_history_plan_document(repo.base)
+
+    first, tip = document.safety.remote_containment
+    assert first.commit_id == repo.first
+    assert first.remote_refs == ("refs/remotes/origin/review",)
+    assert tip.commit_id == repo.tip
+    assert tip.remote_refs == ()
+    assert document.safety.remote_refs_containing_tip == ()
+    assert "published-range" in document.safety.blockers
+
+
+def test_scan_rejects_merge_topology(linear_history_repo):
+    repo = linear_history_repo
+    git("checkout", "-b", "side", repo.first)
+    (repo.root / "side.txt").write_text("side\n", encoding="utf-8")
+    git("add", "side.txt")
+    git("commit", "-m", "Side")
+    git("checkout", "topic")
+    git("merge", "--no-ff", "side", "-m", "Merge side")
+
+    with pytest.raises(CommandError, match="requires a linear range"):
+        acquire_history_plan_document(repo.base)
+
+
+def test_scan_rejects_active_replace_objects(linear_history_repo):
+    repo = linear_history_repo
+    git("replace", repo.first, repo.tip)
+
+    with pytest.raises(CommandError, match="refuses replace objects"):
+        acquire_history_plan_document(repo.base)
+
+
+def test_scan_rejects_legacy_grafts(linear_history_repo):
+    repo = linear_history_repo
+    grafts = repo.root / git("rev-parse", "--git-path", "info/grafts")
+    grafts.parent.mkdir(parents=True, exist_ok=True)
+    grafts.write_text(f"{repo.tip} {repo.base}\n", encoding="ascii")
+
+    with pytest.raises(CommandError, match="legacy grafts"):
+        acquire_history_plan_document(repo.base)

@@ -1,11 +1,11 @@
 ---
 name: refine-history
-description: Rewrite an existing local commit series into a clean incremental history while preserving its final tree
+description: Rewrite or audit an existing local commit series as a clean incremental history while preserving its final tree
 user-invocable: true
 disable-model-invocation: true
 context: fork
-argument-hint: "[base-sha] | resume"
-when_to_use: "Use when the user wants Claude Code to polish, split, reword, or integrate fixup and repair commits in a local draft series after an optional base commit, infer the boundary from a tracked remote branch, safely rewrite a pull-request or merge-request branch, or resume an interrupted refinement. Examples: \"refine this history\", \"polish these commits\", \"split the broad commits after BASE_SHA\", \"fold fixups into the right commits\", \"resume refine-history\". Do not use for unstaged work or commits published outside an explicitly verified force-push review branch."
+argument-hint: "[base-sha] | audit [base-sha] | resume"
+when_to_use: "Use when the user wants Claude Code to inspect, polish, split, reword, or integrate fixup and repair commits in a local draft series after an optional base commit, infer the boundary from a tracked remote branch, safely rewrite a pull-request or merge-request branch, run an audit without mutation, or resume an interrupted refinement. Examples: \"refine this history\", \"audit these commits\", \"polish these commits\", \"split the broad commits after BASE_SHA\", \"fold fixups into the right commits\", \"resume refine-history\". Do not use for unstaged work or commits published outside an explicitly verified force-push review branch."
 allowed-tools:
   - Read
   - Grep
@@ -36,6 +36,7 @@ rewording pass.
 
 ```text
 /refine-history [BASE_SHA]
+/refine-history audit [BASE_SHA]
 /refine-history resume
 ```
 
@@ -44,7 +45,9 @@ merge base between `HEAD` and the current branch's configured remote-tracking
 ref. Fail with an actionable request for `BASE_SHA` when no remote-tracking
 ref exists. Never infer a base from reflogs, local branch names, old
 checkpoints, or prior audit files. The literal `resume` argument is the only
-case that may read the skill checkpoint to recover the canonical base.
+case that may read the skill checkpoint to recover the canonical base. The
+literal `audit` argument performs the complete semantic review without
+starting a checkpoint or changing commits, refs, the index, or the worktree.
 
 Run autonomously after invocation. Fail closed when a commit in the rewrite
 range is published through an unrelated remote-tracking ref. A commit
@@ -52,7 +55,13 @@ contained only in a verified pull-request or merge-request head ref may be
 rewritten when force pushing is an expected part of that review workflow.
 
 If `git-stage-batch` is not in `PATH`, use `pipx run git-stage-batch`. Read the
-installed help for each batch command before using it.
+installed help for each batch command before using it; installed help wins if
+it disagrees with this skill.
+
+Use `git-stage-batch rewrite scan` as the source of immutable range, commit,
+author, message, signature, tree, patch-unit, and local safety facts. The
+skill-owned helper remains the temporary mutation executor until installed
+help exposes `rewrite apply`, `continue`, `abort`, and `verify`.
 
 Before rewriting, read the repository's contribution guide and representative
 recent commits. Follow project message conventions for replacement commits
@@ -110,6 +119,25 @@ Stop only when remote-tracking information is stale or unavailable, a range
 commit is published outside the verified review-head exception, or publication
 evidence is ambiguous.
 
+For literal `audit`, skip every helper `start`, rewrite, message-mutation, and
+completion command. Write a read-only product snapshot, inspect its safety
+blockers as facts rather than mutation errors, build the complete semantic
+audit, and report proposed KEEP/SPLIT/MESSAGE/INTEGRATE decisions:
+
+```bash
+REWRITE_PLAN="$REFINE_HISTORY_STATE_DIR/rewrite-plan.json"
+git-stage-batch rewrite scan "$BASE_SHA" --output "$REWRITE_PLAN"
+git-stage-batch rewrite validate "$REWRITE_PLAN" --porcelain
+```
+
+Do not edit the generated KEEP template to encode SPLIT or INTEGRATE yet;
+those plan operations are not accepted until the installed CLI documents
+them. Use the snapshot's stable unit inventory in the audit report instead.
+Continue at **Build the audit**, without running the intervening mutation
+preconditions or checkpoint sections. After reporting the completed audit,
+stop. The remaining checkpoint, rewrite, message-mutation, and completion
+sections apply only to mutating or resume invocations.
+
 Require a clean index and worktree, no operation in progress, and no active or
 saved `git-stage-batch` work:
 
@@ -144,6 +172,9 @@ else
   python3 "$REFINE_HISTORY_HELPER" start --base "$BASE_SHA"
 fi
 python3 "$REFINE_HISTORY_HELPER" status --json
+REWRITE_PLAN="$REFINE_HISTORY_STATE_DIR/rewrite-plan.json"
+git-stage-batch rewrite scan "$BASE_SHA" --output "$REWRITE_PLAN"
+git-stage-batch rewrite validate "$REWRITE_PLAN" --porcelain
 ```
 
 Do not read old refine-history artifacts before `start`.
@@ -158,6 +189,7 @@ REPO_ROOT=$(git --no-optional-locks rev-parse --show-toplevel)
 cd "$REPO_ROOT"
 REFINE_HISTORY_HELPER=.claude/skills/refine-history/scripts/refine-history-checkpoint.py
 export REFINE_HISTORY_STATE_DIR=$(python3 "$REFINE_HISTORY_HELPER" state-dir)
+REWRITE_PLAN="$REFINE_HISTORY_STATE_DIR/rewrite-plan.json"
 python3 "$REFINE_HISTORY_HELPER" status --json
 BASE_SHA=$(python3 "$REFINE_HISTORY_HELPER" check-resume)
 RECOVERY_REF=$(python3 "$REFINE_HISTORY_HELPER" recovery-ref)
@@ -182,6 +214,11 @@ range, then continue at the audit or rewrite pass implied by the checkpoint.
 If the recorded phase is `complete`, rerun the completion gate against the
 current repository instead of starting another rewrite.
 
+When no rebase is active, regenerate and validate
+`$REFINE_HISTORY_STATE_DIR/rewrite-plan.json` from the recovered `BASE_SHA`
+before continuing. During an active rebase, rely on the helper checkpoint and
+rebase state until the repository returns to a complete linear range.
+
 ## Build the audit
 
 Generate a mechanical pressure document. It contains every current commit in
@@ -189,7 +226,15 @@ series order; non-empty `reasons` make that commit a presumed split candidate:
 
 ```bash
 python3 "$REFINE_HISTORY_HELPER" pressure --base "$BASE_SHA"
+git-stage-batch rewrite validate "$REWRITE_PLAN" --porcelain
 ```
+
+Treat `snapshot.commits` and each commit's `patch.units` as the authoritative
+conservation inventory. Tree pairs identify the exact patch without copying
+patch lines into the plan. Signature digests are audit facts; rewritten
+cryptographic signatures cannot stay valid. Safety facts are regenerated on
+validation, while rationale prose remains informational and never proves a
+split or integration mechanically.
 
 Inspect every commit in order, including its subject, body, diffstat, and
 patch. During a working pass, classify it as `KEEP`, `SPLIT`, `MESSAGE`, or
@@ -274,6 +319,10 @@ any rewrite, regenerate `pressure.json` and restart the audit because SHAs and
 dependencies changed. Verify every changed committed snapshot before
 continuing. Never defer a broken intermediate snapshot to a later repair.
 
+Also regenerate `rewrite-plan.json` with `rewrite scan` after every completed
+rewrite, then run `rewrite validate` before the next boundary change. A stale
+snapshot is a blocker, not a prompt to edit immutable scan facts.
+
 After the split and integration passes converge, require
 `.claude/skills/refine-commit-messages/SKILL.md`, then mark and invoke it:
 
@@ -296,6 +345,8 @@ justified, multi-outcome, or insufficiently probed entries:
 
 ```bash
 python3 "$REFINE_HISTORY_HELPER" validate-audit --base "$BASE_SHA"
+git-stage-batch rewrite scan "$BASE_SHA" --output "$REWRITE_PLAN"
+git-stage-batch rewrite validate "$REWRITE_PLAN" --porcelain
 ```
 
 Require a clean worktree/index, no batch/session, the original final tree, the

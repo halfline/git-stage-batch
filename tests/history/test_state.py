@@ -8,6 +8,7 @@ from dataclasses import replace
 
 import pytest
 
+import git_stage_batch.history.state as history_state
 from git_stage_batch.commands.rewrite_status import command_rewrite_status
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.history.json_files import history_json_sha256
@@ -29,6 +30,8 @@ from git_stage_batch.history.state import (
     load_active_history_operation,
     update_history_operation,
 )
+from git_stage_batch.output.rewrite_operation import print_rewrite_operation
+from git_stage_batch.output.rewrite_status import print_rewrite_status
 from git_stage_batch.utils.paths import get_rewrite_state_directory_path
 
 from .conftest import git
@@ -148,6 +151,7 @@ def test_inspection_detects_plan_tampering(linear_history_repo):
     inspection = inspect_history_operation(state)
 
     assert inspection.plan_matches is False
+    assert inspection.plan_operation_counts == ()
     assert inspection.resume_ready is False
     assert "plan-changed" in inspection.blockers
 
@@ -170,19 +174,103 @@ def test_status_reports_exact_next_action_and_recovery(
     capsys,
 ):
     state, document = _prepared_state(linear_history_repo)
+    document = replace(
+        document,
+        plan=replace(
+            document.plan,
+            outputs=(
+                replace(document.plan.outputs[0], operation="REWORD"),
+                document.plan.outputs[1],
+            ),
+        ),
+    )
+    state = replace(
+        state,
+        plan_sha256=history_json_sha256(history_plan_document_record(document)),
+    )
     initialize_history_operation(state, document)
 
     command_rewrite_status(porcelain=True)
 
     output = json.loads(capsys.readouterr().out)
+    assert output["schema_version"] == 1
     assert output["active"] is True
     assert output["phase"] == "PREPARED"
     assert output["next_action"] == "BUILD_OUTPUT"
     assert output["recovery_ref"] == state.recovery_ref
     assert output["output_ref"] == state.output_ref
+    assert output["plan"]["operation_counts"] == {"KEEP": 1, "REWORD": 1}
     assert output["progress"]["planned_output_count"] == 2
     assert output["inspection"]["resume_ready"] is True
     assert output["manual_recovery_command"].startswith("git update-ref refs/heads/topic")
+
+
+def test_status_shell_quotes_manual_recovery_branch(
+    linear_history_repo,
+    capsys,
+):
+    state, document = _prepared_state(linear_history_repo)
+    initialize_history_operation(state, document)
+    inspection = inspect_history_operation(state)
+    rendered_state = replace(
+        state,
+        branch_ref="refs/heads/topic;echo-owned",
+    )
+
+    print_rewrite_status(
+        rendered_state,
+        inspection,
+        active=True,
+        porcelain=True,
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["manual_recovery_command"] == (
+        "git update-ref 'refs/heads/topic;echo-owned' "
+        f"{state.recovery_ref} {state.expected_branch_tip}"
+    )
+
+
+def test_operation_output_does_not_claim_unrecorded_verification(
+    linear_history_repo,
+    capsys,
+):
+    state, _document = _prepared_state(linear_history_repo)
+    paused = replace(
+        state,
+        phase=HistoryPhase.PAUSED,
+        diagnostic="interrupted before verification",
+    )
+
+    print_rewrite_operation("continue", paused, porcelain=False)
+
+    output = capsys.readouterr().out
+    assert "Next action: BUILD_OUTPUT" in output
+    assert "Verified final tree" not in output
+
+
+def test_operation_output_identifies_completed_abort_as_noop(
+    linear_history_repo,
+    capsys,
+):
+    state, _document = _prepared_state(linear_history_repo)
+    complete = replace(
+        state,
+        phase=HistoryPhase.COMPLETE,
+        next_action=HistoryNextAction.NONE,
+        expected_branch_tip=state.original_tip,
+        output_commits=state.source_commits,
+        completed_output_count=state.planned_output_count,
+        last_verified_commit=state.original_tip,
+        last_verified_tree=state.original_final_tree,
+        verification_sha256="f" * 64,
+    )
+
+    print_rewrite_operation("abort", complete, porcelain=False)
+
+    output = capsys.readouterr().out
+    assert "already complete; abort made no changes" in output
+    assert "Verified final tree" not in output
 
 
 def test_status_reports_no_active_operation(linear_history_repo, capsys):
@@ -253,4 +341,34 @@ def test_inspection_binds_state_facts_to_persisted_plan(linear_history_repo):
     inspection = inspect_history_operation(forged)
 
     assert inspection.plan_matches is False
+    assert inspection.plan_operation_counts == ()
     assert "plan-changed" in inspection.blockers
+
+
+def test_inspection_binds_plan_digest_and_facts_to_one_read(
+    linear_history_repo,
+    monkeypatch,
+):
+    state, document = _prepared_state(linear_history_repo)
+    initialize_history_operation(state, document)
+    original_read = history_state.read_required_text_file_contents_and_sha256
+    read_count = 0
+
+    def replace_plan_after_read(path):
+        nonlocal read_count
+        read_count += 1
+        result = original_read(path)
+        path.write_text("{}\n", encoding="utf-8")
+        return result
+
+    monkeypatch.setattr(
+        history_state,
+        "read_required_text_file_contents_and_sha256",
+        replace_plan_after_read,
+    )
+
+    inspection = inspect_history_operation(state)
+
+    assert read_count == 1
+    assert inspection.plan_matches is True
+    assert inspection.plan_operation_counts == (("KEEP", 2),)

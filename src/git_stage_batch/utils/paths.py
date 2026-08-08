@@ -85,6 +85,11 @@ def get_fixup_state_directory_path() -> Path:
     return get_session_directory_path() / "fixup"
 
 
+def get_rewrite_state_directory_path() -> Path:
+    """Get the directory containing durable rewrite operation state."""
+    return get_common_state_directory_path() / "rewrite"
+
+
 def get_candidate_state_directory_path() -> Path:
     """Get the directory containing batch candidate iteration state."""
     return get_session_directory_path() / "candidates"

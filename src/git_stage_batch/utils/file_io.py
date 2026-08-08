@@ -119,6 +119,24 @@ def write_file_bytes(
     )
 
 
+def write_file_byte_chunks_atomically(
+    path: Path,
+    chunks: Iterable[bytes],
+    *,
+    mode_policy: AtomicWriteModePolicy = AtomicWriteModePolicy.PRIVATE,
+    mode: int | None = None,
+) -> None:
+    """Atomically stream byte chunks into one regular file."""
+    metadata = _existing_file_metadata(path)
+    replacement_mode = _replacement_mode(metadata, mode_policy, mode)
+    write_chunks_atomically(
+        path,
+        chunks,
+        mode=replacement_mode,
+        existing_metadata=metadata,
+    )
+
+
 def _existing_file_metadata(path: Path) -> os.stat_result | None:
     try:
         metadata = path.lstat()

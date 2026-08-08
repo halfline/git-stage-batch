@@ -356,8 +356,9 @@ Sometimes, intentionally.
 The staging and batch commands organize uncommitted changes so you can create
 new commits without rewriting existing ones. The `rewrite` command and bundled
 refinement workflows are specifically for rewriting a clean, linear series of
-local draft commits. They can reword commits and integrate later repairs while
-requiring the final Git tree to remain unchanged.
+local draft commits. They can reword or split commits, integrate later repairs,
+and reorder proven-independent changes while requiring the final Git tree to
+remain unchanged.
 
 The normal workflow stages selected working-tree changes into new commits
 rather than rewriting existing commits. Assistant decomposition workflows may
@@ -453,8 +454,9 @@ The staging commands help create better commits in the first place. The
 
 - `git rebase -i` applies an interactive todo list to existing commits.
 - `git-stage-batch rewrite` consumes a machine-readable semantic plan, checks
-  source and patch-unit conservation, replays the complete result, requires the
-  final tree to match, and records recovery state before changing the branch.
+  patch and unit conservation, validates dependency crossings, replays the
+  complete result, requires the final tree to match, and records recovery
+  state before changing the branch.
 
 Both can replace commit objects, so keep either workflow to local draft history.
 

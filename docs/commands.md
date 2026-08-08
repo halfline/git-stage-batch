@@ -927,6 +927,30 @@ later commit that repeats an earlier subject.
 Each generated commit also carries a random verification marker in its body.
 The command uses that marker to distinguish its own commit from a ref moved by
 a hook; autosquash discards the fixup body when the fixup is integrated.
+Commit hooks inherit the isolated `GIT_INDEX_FILE` used to materialize the
+proposed fixup tree. Hooks therefore inspect and stage against that temporary
+index, not the user's real staged index. After each hook returns, the command
+checks the verification marker, parent, subject, and complete tree; any
+unexpected hook change stops creation and rolls `HEAD` back when it is still
+safe to do so. Hooks used with this command must not assume that
+`GIT_INDEX_FILE` names the user's ordinary index.
+
+Successful creation deliberately retains its recovery ref below
+`refs/git-stage-batch/fixup/backups/`; the command does not prune those refs.
+The retained ref keeps the original tip reachable until recovery is no longer
+needed. Repositories with many fixup runs can inspect the accumulated refs and
+delete a reviewed terminal backup with an expected-old-value check:
+
+```bash
+❯ git for-each-ref --format='%(refname) %(objectname)' \
+    refs/git-stage-batch/fixup/backups/
+❯ git update-ref -d 'EXACT_RECOVERY_REF' EXPECTED_ORIGINAL_HEAD
+```
+
+Use the exact ref and object ID printed by the successful operation. Deleting
+the ref removes the command's recovery anchor and may allow the original
+commits to be garbage-collected, so retain it while rollback or comparison is
+still useful.
 
 The default boundary is the fork point, or merge base, between `HEAD` and its
 configured upstream. An explicit boundary is the excluded base of the target
@@ -997,10 +1021,23 @@ The excluded boundary defaults to the fork point or merge base with the
 configured upstream. The JSON snapshot records full commit, parent, and tree
 IDs; byte-faithful messages with declared encodings and raw-content digests;
 author and committer metadata; signature-header digests without signature
-payloads; and stable patch-unit identities. Exact parent/new tree pairs bind
-the patches without storing one Python or JSON object per changed line.
+payloads; stable patch-unit identities; and compact per-unit dependency
+evidence. Exact parent/new tree pairs bind the patches without storing one
+Python or JSON object per changed line.
 
-Scan does not create commits, refs, checkpoints, or index-tree objects. Dirty
+For each unit, the dependency graph records its original flat position, the
+earliest position reached by real adjacent patch swaps, and the first
+`BLOCKED` or `UNKNOWN` barrier. Same-path candidate swaps apply both units in
+the opposite order with isolated Git indexes and accept the crossing only when
+the resulting tree is identical. Consecutive different-path units are proved
+as one exact block replay to avoid quadratic Git process growth. One blocked
+sibling therefore does not suppress an independent sibling. Unsupported
+renames, file-type transitions, and atomic
+non-text changes remain `UNKNOWN`; analysis resumes from the next exact commit
+tree but retains an `UNKNOWN` edge back across the unsupported segment.
+
+Scan does not create commits, refs, checkpoints, or persistent objects. Its
+speculative tree objects live only in a temporary object quarantine. Dirty
 local state, active operations, saved batches, or remotely published range
 commits appear as safety blockers rather than preventing an audit. Merges,
 replace objects, and legacy grafts are rejected because they change the
@@ -1015,23 +1052,38 @@ Validate edited semantic input against a freshly regenerated snapshot:
 ❯ git-stage-batch rewrite validate rewrite-plan.json --porcelain
 ```
 
-The executor schema accepts ordered `KEEP`, `REWORD`, and `INTEGRATE` outputs.
-`KEEP` and `REWORD` consume one source commit. `INTEGRATE` consumes at least
-two source commits into the earliest target position while outputs for
-intervening sources retain their order. Each output must list the exact
-concatenated source-unit sequence and preserve its target source author.
-`KEEP` also preserves the message and encoding; `REWORD` and `INTEGRATE`
-explicitly supply an encodable message. Rationale text is informational and
-never substitutes for tree or patch conservation.
+The executor schema accepts ordered `KEEP`, `REWORD`, `SPLIT`, `INTEGRATE`,
+and `REORDER` outputs. `KEEP`, `REWORD`, and `REORDER` consume every unit of
+one source commit. `REORDER` marks a whole source moved earlier and preserves
+its exact message and encoding. `SPLIT` consumes a non-empty ordered subset of
+one source; every split source must produce at least two outputs, and every
+piece preserves the original author while supplying its own encodable message.
+
+`INTEGRATE` consumes the complete target source followed by units from one or
+more later repair sources. A multi-concern repair may partition its units
+across several targets without first creating temporary commits. Every output
+lists sources and units in source order, and every source unit is consumed
+exactly once globally. `KEEP` also preserves the message and encoding;
+`REWORD`, `SPLIT`, and `INTEGRATE` explicitly supply an encodable message.
+Rationale text is informational and never substitutes for tree or patch
+conservation.
 
 All snapshot fields are immutable. Validation rejects stale object IDs,
-forged metadata, omitted or duplicated units, reordered commits, abbreviated
-IDs, duplicate JSON keys, and unknown fields. The input safety block is not
-trusted: live index, worktree, operation, publication, and upstream facts are
-collected again and returned in the validation report. Validation replays the
-complete plan with Git's real full-index patches in a temporary object
-quarantine and requires the frozen final tree without retaining candidate
-objects or refs.
+forged metadata, omitted or duplicated units, unmarked reorder operations,
+abbreviated IDs, duplicate JSON keys, and unknown fields. Moving a unit earlier
+is permitted only as far as its recorded adjacent-swap proof. A chain of
+`BLOCKED` predecessors may move farther only when the plan keeps the complete
+chain ordered inside one output; exact full-plan replay must then prove that
+compound movement. A blocker assigned to another output and every `UNKNOWN`
+crossing remain rejected. Validation reacquires every exact unit, replays the
+complete requested order with Git, and requires the frozen final tree. The
+graph explains and limits ordering, while full replay remains the final safety
+oracle.
+
+The input safety block is not trusted: live index, worktree, operation,
+publication, and upstream facts are collected again and returned in the
+validation report. All candidate trees are materialized in a temporary object
+quarantine and leave no objects or refs behind.
 
 ### `rewrite apply`
 
@@ -1045,9 +1097,10 @@ Build, verify, and atomically update the checked-out branch:
 Apply creates a private recovery ref, records a durable `PREPARED` checkpoint,
 then builds deterministic unsigned commit objects behind an operation-owned
 output ref. It preserves the planned author, target source committer, declared
-encoding, exact message bytes, and every output tree. Invalidated source
-signature headers are omitted and recorded by header name and digest; payloads
-never enter the plan or audit record.
+encoding, exact KEEP/REORDER message bytes, and every output tree. Split pieces
+inherit the original source author and committer. Invalidated source signature
+headers are omitted and recorded by header name and digest; payloads never
+enter the plan or audit record.
 
 The checked-out branch remains at its original tip until the entire output
 chain has been mechanically replayed, independently verified, and shown to
@@ -1086,6 +1139,11 @@ both owned refs, persisted plan and verification digests, source/plan
 identity, output objects, branch compare-and-swap expectation, index, and
 worktree before declaring continuation safe.
 
+Operation records live below `git-stage-batch/rewrite/` in the repository's
+common Git directory (`.git/git-stage-batch/rewrite/` in an ordinary
+checkout). They therefore remain available if the linked worktree that began
+an operation is removed.
+
 ### `rewrite continue`
 
 ```bash
@@ -1110,6 +1168,27 @@ original value or the fully verified output value. Concurrent or manual
 foreign movement is never overwritten; the recovery ref and a compare-and-swap
 manual command remain available.
 
+Completed and aborted operations deliberately retain their state plus any
+recovery and output refs below `refs/git-stage-batch/rewrite/`; the command
+does not prune them automatically. Those refs preserve the original and
+replacement histories for later status, verification, and recovery. A
+repository with many terminal operations can inspect the accumulated refs and,
+after those capabilities are no longer needed, remove each reviewed ref with
+an expected-old-value check:
+
+```bash
+❯ git for-each-ref --format='%(refname) %(objectname)' \
+    refs/git-stage-batch/rewrite/
+❯ git update-ref -d 'EXACT_OPERATION_ORIGINAL_REF' EXPECTED_ORIGINAL_HEAD
+❯ git update-ref -d 'EXACT_OPERATION_OUTPUT_REF' EXPECTED_OUTPUT_HEAD
+```
+
+Delete only refs for a terminal operation and only when their exact expected
+objects match. A partially built operation might not have an output ref.
+Removing either anchor prevents later verification or automatic recovery for
+that operation and may allow the corresponding commits to be
+garbage-collected.
+
 ### `rewrite verify`
 
 ```bash
@@ -1122,6 +1201,9 @@ regenerates the frozen source facts independently of current `HEAD`, replays
 every output tree, rehashes each normalized unsigned commit, checks parents,
 authors, committers, messages, encodings, and signature removal, and compares
 the regenerated audit record with its durable digest.
+Verification may run while another worktree owns a staging session. It still
+takes the repository session lock so its related reads cannot interleave with
+`rewrite apply`, `rewrite continue`, or `rewrite abort` mutations.
 
 ---
 

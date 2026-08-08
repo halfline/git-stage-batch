@@ -69,20 +69,6 @@ def _allowed(
 # count makes a second, genuinely unused definition fail instead of inheriting
 # an existing exception.
 ALLOWED_FINDINGS = (
-    # Public history-executor substrate intentionally lands before the apply
-    # command that consumes it; these exceptions must disappear in slice 5.
-    _allowed(
-        "src/git_stage_batch/history/state.py",
-        "function",
-        "initialize_history_operation",
-        "Public checkpoint initializer reserved for the next executor slice.",
-    ),
-    _allowed(
-        "src/git_stage_batch/history/state.py",
-        "function",
-        "update_history_operation",
-        "Public checkpoint transition API reserved for the next executor slice.",
-    ),
     # Persisted and dynamically indexed mapping keys.
     _allowed(
         "src/git_stage_batch/batch/operation_candidate_state.py",

@@ -13,7 +13,9 @@ def build_root_parser() -> GitHelpArgumentParser:
     """Build the top-level git-stage-batch argument parser."""
     parser = GitHelpArgumentParser(
         prog="git-stage-batch",
-        description=_("Hunk-by-hunk and line-by-line staging for git"),
+        description=_(
+            "Fine-grained Git staging and deterministic draft-history refinement"
+        ),
         help_topic="stage-batch",
         exit_on_error=False,
     )

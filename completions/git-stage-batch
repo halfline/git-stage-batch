@@ -235,7 +235,7 @@ _git_stage_batch()
             ;;
         rewrite)
             if [[ $cword -eq 2 ]]; then
-                COMPREPLY=($(compgen -W "scan validate status" -- "$cur"))
+                COMPREPLY=($(compgen -W "scan validate apply status continue abort verify" -- "$cur"))
                 return
             fi
 
@@ -261,7 +261,20 @@ _git_stage_batch()
                     fi
                     COMPREPLY=($(compgen -W "--porcelain" -- "$cur"))
                     ;;
-                status)
+                apply)
+                    case "$prev" in
+                        --allow-published-ref)
+                            __gitcomp_nl "$(git for-each-ref --format='%(refname)' refs/remotes)"
+                            return
+                            ;;
+                    esac
+                    if [[ $cword -eq 3 && "$cur" != -* ]]; then
+                        _filedir
+                        return
+                    fi
+                    COMPREPLY=($(compgen -W "--allow-published-ref --porcelain" -- "$cur"))
+                    ;;
+                status|continue|abort|verify)
                     COMPREPLY=($(compgen -W "--porcelain" -- "$cur"))
                     ;;
             esac

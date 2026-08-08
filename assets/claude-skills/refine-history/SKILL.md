@@ -62,9 +62,10 @@ Use `git-stage-batch rewrite` as the only rewrite engine:
 - This skill owns semantic boundaries, narrative order, runnable snapshots,
   messages, and permission to use a verified review-head exception.
 
-Edit only `plan.outputs`. Never edit `snapshot` or `safety`, treat rationale
-as mechanical proof, run interactive rebase, reset or amend commits, apply a
-rejected patch manually, or manipulate product-owned refs and state files.
+Edit only `plan.outputs` and `plan.partitioned_units`. Never edit `snapshot` or
+`safety`, treat rationale as mechanical proof, run interactive rebase, reset or
+amend commits, apply a rejected patch manually, or manipulate product-owned
+refs and state files.
 When the installed CLI cannot validate the intended history, report the exact
 limitation as an open `UNREPRESENTABLE` finding and preserve the current
 history for safety. Preserving a boundary is not a semantic `KEEP` verdict.
@@ -141,8 +142,9 @@ a credible independent feature.
 
 Then perform a mandatory causal pass newest to oldest. Audit every exact unit,
 coherent unit group, and semantic sub-unit; when one mechanical unit contains
-several semantic outcomes, record those sub-unit outcomes even though the
-current plan cannot split them. For each group, keep a compact causal ledger
+several semantic outcomes, record those sub-unit outcomes and use partitioned
+RESOLVED provenance only when explicit resolution can materialize them safely.
+For each group, keep a compact causal ledger
 with its original source, fresh unit IDs, the outcome newly introduced by its
 source, its earliest honest semantic owner and evidence, its first mechanical
 blocker, its intended disposition, and its validation state. Use the series
@@ -220,12 +222,13 @@ validate it:
 git-stage-batch rewrite validate "$REWRITE_PLAN" --porcelain > "$VALIDATION"
 ```
 
-Validation must account for every source unit exactly once, accept every
-requested crossing, and reproduce the frozen final tree. Every `UNKNOWN` and
-every unaccounted `BLOCKED` crossing fail closed; an implemented compound
-movement may cross a complete `BLOCKED` chain only when all grouped units
-share the same semantic outcome. Unsupported atomic sources may remain whole
-in a `KEEP` output but may not be crossed or split.
+Validation must assign every ordinary source unit exactly once, account for
+every declared partitioned occurrence, accept every requested crossing, and
+reproduce the frozen final tree. Every `UNKNOWN` and every unaccounted
+`BLOCKED` crossing fail closed; an implemented compound movement may cross a
+complete `BLOCKED` chain only when all grouped units share the same semantic
+outcome. Unsupported atomic sources may remain whole in a `KEEP` output but
+may not be crossed or split.
 
 In `audit` mode, stop after validation and report both the desired semantic
 history and whether each disposition is representable. Include every

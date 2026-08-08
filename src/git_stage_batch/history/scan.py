@@ -158,18 +158,20 @@ def acquire_history_plan_document(
     )
     _require_frozen_head(commit_range.tip_commit, branch_ref)
     plan = HistoryPlan(
+        partitioned_units=(),
         outputs=tuple(
             HistoryPlannedCommit(
                 operation="KEEP",
+                materialization="EXACT",
                 source_commits=(commit.commit_id,),
-                unit_ids=tuple(unit.unit_id for unit in commit.units),
+                source_unit_ids=tuple(unit.unit_id for unit in commit.units),
                 message=commit.message,
                 encoding=commit.encoding,
                 author=commit.author,
                 rationale="",
             )
             for commit in history_snapshot.commits
-        )
+        ),
     )
     return HistoryPlanDocument(
         schema_version=CURRENT_HISTORY_PLAN_SCHEMA_VERSION,

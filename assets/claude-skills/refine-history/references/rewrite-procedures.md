@@ -64,7 +64,8 @@ excluded containment and non-mutating result.
 
 ## Immutable and editable fields
 
-Edit only `plan.outputs` in a fresh `rewrite scan` document. Never edit:
+Edit only `plan.outputs` and `plan.partitioned_units` in a fresh
+`rewrite scan` document. Never edit:
 
 - `schema_version`;
 - any `snapshot` fact, including commit metadata, unit IDs, dependencies, or
@@ -72,13 +73,21 @@ Edit only `plan.outputs` in a fresh `rewrite scan` document. Never edit:
 - `safety`, which is advisory and recollected by validation and apply.
 
 Each output retains the generated fields `operation`, `source_commits`,
-`unit_ids`, `message`, `encoding`, `author`, and `rationale`. Copy the complete
-generated author object instead of reconstructing it. Use full object and unit
-IDs. Rationale explains semantic intent but never authorizes a crossing.
+`materialization`, `source_unit_ids`, `message`, `encoding`, `author`, and
+`rationale`. Copy the complete generated author object instead of
+reconstructing it. Use full object and unit IDs. Rationale explains semantic
+intent but never authorizes a crossing.
+
+`plan.partitioned_units` starts empty. Add a record only when one mechanical
+unit contains semantic content for several output snapshots. Its `unit_id`
+names that source unit and its strictly increasing `output_indexes` name every
+zero-based RESOLVED output where part of the unit appears.
 
 Across the complete output list:
 
-- consume every source patch unit exactly once;
+- assign every ordinary source unit exactly once; repeat a declared
+  partitioned unit exactly once in each listed RESOLVED output and nowhere
+  else;
 - keep unit order within each source unless a proven movement changes output
   order;
 - preserve every empty source explicitly unless an integration deliberately
@@ -92,7 +101,9 @@ Treat the generated KEEP outputs as an identity-plan template. Before editing
 them, audit every source from newest to oldest at exact-unit or semantically
 inseparable-group granularity and decide where each outcome first belongs.
 When one mechanical unit contains several semantic outcomes, name the
-sub-unit ownership even though the current schema cannot divide it.
+sub-unit ownership. Exact replay cannot divide it; use declared partitioned
+provenance and explicit RESOLVED snapshots only when the resolution workflow
+can materialize every portion safely.
 
 For each group, first identify the earliest commit whose promised product
 state would be wrong or incomplete without it. Test mixed sources by removing
@@ -136,12 +147,14 @@ Replace one generated output with two or more outputs that all:
 4. consume a non-empty ordered subset of its units; and
 5. supply an accurate message, encoding, and semantic rationale.
 
-The split outputs must occur in the intended replacement order. Their unit
-subsets must be disjoint and together consume every unit from the source. Do
-not use original hunk count as the semantic boundary: a unit is the smallest
-mechanical inventory item, not necessarily a semantic atom, while the output
-grouping still needs a runnable product rationale. A mechanically atomic unit
-that spans semantic owners is `UNREPRESENTABLE`, not KEEP.
+The split outputs must occur in the intended replacement order. Ordinary
+source-unit subsets must be disjoint and together consume every ordinary unit
+from the source. If one unit spans several split outputs, mark every occurrence
+RESOLVED and add its exact output indexes to `plan.partitioned_units`. Do not
+use original hunk count as the semantic boundary: a unit is the smallest exact
+inventory item, not necessarily a semantic atom, while every resolved output
+still needs a runnable product rationale. If explicit resolution cannot safely
+materialize those portions, the unit remains `UNREPRESENTABLE`, not KEEP.
 
 Validation applies the selected units in order and rejects an accidental empty
 commit, a coordinate-shifting patch that cannot replay, lost authorship, or a
@@ -151,28 +164,31 @@ start an interactive rebase when validation rejects a split.
 ## Integrate later repair units
 
 Locate the causal owner where every repair unit first belongs before reading
-placement evidence. A mixed repair source may semantically need repair units
-at several earlier owners while its genuinely new outcome remains later. The
-current plan cannot make one source both an integrated secondary and a
-standalone output target, so record that desired partition as
-`UNREPRESENTABLE`; do not move the new outcome earlier or discard it to make
-the plan validate.
+placement evidence. A mixed repair source may place repair units at earlier
+owners while its genuinely new outcome remains in a later residual SPLIT
+output. With distinct mechanical units, assign each ordinary unit once. When
+one unit contains both portions, repeat it only in the affected RESOLVED
+outputs and declare those indexes in `plan.partitioned_units`. Do not move the
+new outcome earlier or discard it merely to make the plan validate.
 
 For each target output:
 
 1. change its operation to `INTEGRATE`;
 2. keep the target source first in `source_commits`, followed by each later
    repair source represented in that output;
-3. keep every target unit first in `unit_ids`, followed by the assigned repair
-   units in source order;
+3. keep every target unit first in `source_unit_ids`, followed by the assigned
+   repair units in source order;
 4. preserve the target author; and
 5. update the message only when the integrated result changes its stated
    outcome.
 
-The same repair source may appear in several integrated outputs when its units
-are partitioned. Remove its standalone output only after all its units are
-assigned exactly once. Leave unrelated intervening outputs in their semantic
-order. Never merge an unrelated blocker chain merely to make validation pass.
+The same repair source may appear in several integrated outputs through
+disjoint ordinary units or declared partitioned occurrences. Retain a later
+residual SPLIT output when that source has a genuinely new outcome. Remove its
+standalone boundary only after no residual outcome remains and every ordinary
+or partitioned unit is fully accounted for. Leave unrelated intervening
+outputs in their semantic order. Never merge an unrelated blocker chain merely
+to make validation pass.
 
 If a repair unit has no confident semantic target, record it as `UNRESOLVED`.
 One repair unit may follow a `BLOCKED` predecessor farther back when the plan

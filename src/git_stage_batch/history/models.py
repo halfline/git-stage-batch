@@ -9,7 +9,7 @@ from typing import Literal
 from ..fixup.models import FixupUnitKind
 
 
-CURRENT_HISTORY_PLAN_SCHEMA_VERSION = 3
+CURRENT_HISTORY_PLAN_SCHEMA_VERSION = 4
 CURRENT_HISTORY_STATE_SCHEMA_VERSION = 2
 
 HistoryPlanOperation = Literal[
@@ -27,6 +27,11 @@ HISTORY_PLAN_OPERATIONS: tuple[HistoryPlanOperation, ...] = (
     "REORDER",
 )
 HistoryDependencyBarrier = Literal["BLOCKED", "UNKNOWN"]
+HistoryPlanMaterialization = Literal["EXACT", "RESOLVED"]
+HISTORY_PLAN_MATERIALIZATIONS: tuple[HistoryPlanMaterialization, ...] = (
+    "EXACT",
+    "RESOLVED",
+)
 
 
 class HistoryPhase(str, Enum):
@@ -169,8 +174,9 @@ class HistoryPlannedCommit:
     """One semantically reviewed output commit declaration."""
 
     operation: HistoryPlanOperation
+    materialization: HistoryPlanMaterialization
     source_commits: tuple[str, ...]
-    unit_ids: tuple[str, ...]
+    source_unit_ids: tuple[str, ...]
     message: str
     encoding: str | None
     author: HistoryIdentity
@@ -178,9 +184,18 @@ class HistoryPlannedCommit:
 
 
 @dataclass(frozen=True, slots=True)
+class HistoryPartitionedUnit:
+    """One mechanical source unit represented in several resolved outputs."""
+
+    unit_id: str
+    output_indexes: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class HistoryPlan:
     """Ordered intended replacement commits."""
 
+    partitioned_units: tuple[HistoryPartitionedUnit, ...]
     outputs: tuple[HistoryPlannedCommit, ...]
 
 

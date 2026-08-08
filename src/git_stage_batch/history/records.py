@@ -143,8 +143,9 @@ def history_safety_record(safety: HistorySafetyFacts) -> dict[str, object]:
 def _planned_commit_record(output: HistoryPlannedCommit) -> dict[str, object]:
     return {
         "operation": output.operation,
+        "materialization": output.materialization,
         "source_commits": list(output.source_commits),
-        "unit_ids": list(output.unit_ids),
+        "source_unit_ids": list(output.source_unit_ids),
         "message": output.message,
         "encoding": output.encoding,
         "author": history_identity_record(output.author),
@@ -162,8 +163,15 @@ def history_plan_document_record(
         "snapshot": history_snapshot_record(document.snapshot),
         "safety": history_safety_record(document.safety),
         "plan": {
+            "partitioned_units": [
+                {
+                    "unit_id": partition.unit_id,
+                    "output_indexes": list(partition.output_indexes),
+                }
+                for partition in document.plan.partitioned_units
+            ],
             "outputs": [
                 _planned_commit_record(output) for output in document.plan.outputs
-            ]
+            ],
         },
     }

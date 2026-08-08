@@ -40,7 +40,7 @@ def _requires_unit_replay(
         for source_commit in output.source_commits
         for unit in sources[source_commit].units
     )
-    return output.unit_ids != expected_units
+    return output.source_unit_ids != expected_units
 
 
 def _apply_whole_source_output(
@@ -101,7 +101,7 @@ def _apply_unit_output(
     env: dict[str, str] | None,
 ) -> str:
     parent_tree = current_tree
-    for unit_id in output.unit_ids:
+    for unit_id in output.source_unit_ids:
         result = apply_history_replay_unit(
             current_tree,
             units[unit_id],
@@ -120,7 +120,7 @@ def _apply_unit_output(
                 )
             )
         current_tree = result.tree
-    if output.unit_ids and current_tree == parent_tree:
+    if output.source_unit_ids and current_tree == parent_tree:
         raise CommandError(
             _(
                 "Rewrite output {output} consumes non-empty units into "
@@ -137,6 +137,21 @@ def materialize_history_output_trees(
     env: dict[str, str] | None = None,
 ) -> HistoryReplayResult:
     """Replay every consumed source patch once and require the frozen final tree."""
+    resolved_output = next(
+        (
+            index
+            for index, output in enumerate(document.plan.outputs)
+            if output.materialization == "RESOLVED"
+        ),
+        None,
+    )
+    if resolved_output is not None:
+        raise CommandError(
+            _(
+                "Rewrite output {output} requires an explicit resolution "
+                "workspace."
+            ).format(output=resolved_output + 1)
+        )
     sources = {commit.commit_id: commit for commit in document.snapshot.commits}
     unit_output_indexes = {
         index

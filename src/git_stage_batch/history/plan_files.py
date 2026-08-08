@@ -21,9 +21,13 @@ from ..utils.strict_json import (
 )
 from .models import (
     CURRENT_HISTORY_PLAN_SCHEMA_VERSION,
+    HISTORY_PLAN_MATERIALIZATIONS,
+    HISTORY_PLAN_OPERATIONS,
     HistoryIdentity,
+    HistoryPartitionedUnit,
     HistoryPlan,
     HistoryPlanDocument,
+    HistoryPlanMaterialization,
     HistoryPlannedCommit,
     HistoryPlanOperation,
     HistoryUnitDependency,
@@ -44,8 +48,20 @@ _TOP_LEVEL_KEYS = frozenset(
         "plan",
     }
 )
-_PLAN_KEYS = frozenset({"outputs"})
+_PLAN_KEYS = frozenset({"outputs", "partitioned_units"})
 _OUTPUT_KEYS = frozenset(
+    {
+        "operation",
+        "materialization",
+        "source_commits",
+        "source_unit_ids",
+        "message",
+        "encoding",
+        "author",
+        "rationale",
+    }
+)
+_LEGACY_OUTPUT_KEYS = frozenset(
     {
         "operation",
         "source_commits",
@@ -56,6 +72,7 @@ _OUTPUT_KEYS = frozenset(
         "rationale",
     }
 )
+_PARTITIONED_UNIT_KEYS = frozenset({"unit_id", "output_indexes"})
 _IDENTITY_KEYS = frozenset(
     {
         "raw",
@@ -104,6 +121,18 @@ def _string_array(
     return tuple(result)
 
 
+def _output_index_array(value: object, location: str) -> tuple[int, ...]:
+    values = require_list(value, location)
+    result: list[int] = []
+    for index, item in enumerate(values):
+        if type(item) is not int:
+            _invalid(f"{location}[{index}] must be an integer")
+        if item < 0:
+            _invalid(f"{location}[{index}] must not be negative")
+        result.append(item)
+    return tuple(result)
+
+
 def _identity(value: object, location: str) -> HistoryIdentity:
     record = require_object(value, location)
     require_exact_keys(record, _IDENTITY_KEYS, location)
@@ -136,25 +165,37 @@ def _planned_commit(
     index: int,
     *,
     oid_length: int,
+    legacy_v3: bool,
 ) -> HistoryPlannedCommit:
     location = f"plan.outputs[{index}]"
     record = require_object(value, location)
-    require_exact_keys(record, _OUTPUT_KEYS, location)
+    require_exact_keys(
+        record,
+        _LEGACY_OUTPUT_KEYS if legacy_v3 else _OUTPUT_KEYS,
+        location,
+    )
     operation_value = require_string(record, "operation", location)
-    operations = {"KEEP", "REWORD", "INTEGRATE", "SPLIT", "REORDER"}
-    if operation_value not in operations:
+    if operation_value not in HISTORY_PLAN_OPERATIONS:
         _invalid(
             f"{location}.operation must be 'KEEP', 'REWORD', 'INTEGRATE', "
             "'SPLIT', or 'REORDER'"
         )
+    if legacy_v3:
+        materialization_value = "EXACT"
+        source_unit_field = "unit_ids"
+    else:
+        materialization_value = require_string(record, "materialization", location)
+        if materialization_value not in HISTORY_PLAN_MATERIALIZATIONS:
+            _invalid(f"{location}.materialization must be 'EXACT' or 'RESOLVED'")
+        source_unit_field = "source_unit_ids"
     source_commits = _string_array(
         record["source_commits"],
         f"{location}.source_commits",
         hex_length=oid_length,
     )
-    unit_ids = _string_array(
-        record["unit_ids"],
-        f"{location}.unit_ids",
+    source_unit_ids = _string_array(
+        record[source_unit_field],
+        f"{location}.{source_unit_field}",
         hex_length=64,
     )
     message = require_string(record, "message", location, allow_empty=True)
@@ -179,9 +220,13 @@ def _planned_commit(
                 f"{encoding or 'UTF-8'} ({error})"
             )
     return HistoryPlannedCommit(
-        operation=cast(HistoryPlanOperation, operation_value),
+        operation=operation_value,
+        materialization=cast(
+            HistoryPlanMaterialization,
+            materialization_value,
+        ),
         source_commits=source_commits,
-        unit_ids=unit_ids,
+        source_unit_ids=source_unit_ids,
         message=message,
         encoding=encoding,
         author=_identity(record["author"], f"{location}.author"),
@@ -189,13 +234,33 @@ def _planned_commit(
     )
 
 
-def _decode_plan(payload: str) -> tuple[dict[str, object], str, HistoryPlan]:
+def _partitioned_unit(value: object, index: int) -> HistoryPartitionedUnit:
+    location = f"plan.partitioned_units[{index}]"
+    record = require_object(value, location)
+    require_exact_keys(record, _PARTITIONED_UNIT_KEYS, location)
+    unit_id = require_string(record, "unit_id", location)
+    _require_full_hex_id(unit_id, 64, f"{location}.unit_id")
+    return HistoryPartitionedUnit(
+        unit_id=unit_id,
+        output_indexes=_output_index_array(
+            record["output_indexes"],
+            f"{location}.output_indexes",
+        ),
+    )
+
+
+def _decode_plan(
+    payload: str,
+    *,
+    allow_legacy_v3: bool = False,
+) -> tuple[dict[str, object], str, HistoryPlan]:
     try:
         raw = loads(payload)
         document = require_object(raw, "document")
         require_exact_keys(document, _TOP_LEVEL_KEYS, "document")
         version = require_integer(document, "schema_version", "document")
-        if version != CURRENT_HISTORY_PLAN_SCHEMA_VERSION:
+        legacy_v3 = version == 3 and allow_legacy_v3
+        if version != CURRENT_HISTORY_PLAN_SCHEMA_VERSION and not legacy_v3:
             _invalid(f"schema_version must be {CURRENT_HISTORY_PLAN_SCHEMA_VERSION}")
         if document["operation"] != "rewrite-plan":
             _invalid("operation must be 'rewrite-plan'")
@@ -215,16 +280,42 @@ def _decode_plan(payload: str) -> tuple[dict[str, object], str, HistoryPlan]:
         _require_full_hex_id(tip, oid_length, "snapshot.range.tip")
 
         plan_record = require_object(document["plan"], "plan")
-        require_exact_keys(plan_record, _PLAN_KEYS, "plan")
+        partitioned_units: tuple[HistoryPartitionedUnit, ...]
+        if legacy_v3:
+            require_exact_keys(plan_record, frozenset({"outputs"}), "plan")
+            partitioned_units = ()
+        else:
+            require_exact_keys(plan_record, _PLAN_KEYS, "plan")
+            partitioned_units = tuple(
+                _partitioned_unit(value, index)
+                for index, value in enumerate(
+                    require_list(
+                        plan_record["partitioned_units"],
+                        "plan.partitioned_units",
+                    )
+                )
+            )
         outputs = tuple(
-            _planned_commit(value, index, oid_length=oid_length)
+            _planned_commit(
+                value,
+                index,
+                oid_length=oid_length,
+                legacy_v3=legacy_v3,
+            )
             for index, value in enumerate(
                 require_list(plan_record["outputs"], "plan.outputs")
             )
         )
     except StrictJsonError as error:
         _invalid(str(error))
-    return snapshot, base, HistoryPlan(outputs=outputs)
+    return (
+        snapshot,
+        base,
+        HistoryPlan(
+            partitioned_units=partitioned_units,
+            outputs=outputs,
+        ),
+    )
 
 
 def _grouped_block_chain_can_defer_to_replay(
@@ -252,6 +343,7 @@ def _grouped_block_chain_can_defer_to_replay(
         if (
             current.barrier != "BLOCKED"
             or barrier_unit is None
+            or barrier_unit not in output_positions
             or output_positions[barrier_unit] != output_positions[current.unit_id]
             or desired_positions[barrier_unit]
             >= desired_positions[current.unit_id]
@@ -286,7 +378,10 @@ def _validate_plan_semantics(
     expected_units = tuple(
         unit.unit_id for source in source_commits for unit in source.units
     )
-    consumed_units: set[str] = set()
+    expected_unit_set = set(expected_units)
+    unit_occurrences: dict[str, list[int]] = {
+        unit_id: [] for unit_id in expected_units
+    }
     target_occurrences: dict[str, list[tuple[int, HistoryPlanOperation]]] = {}
     secondary_occurrences: dict[str, list[int]] = {}
     source_mentions: dict[str, int] = {}
@@ -309,17 +404,19 @@ def _validate_plan_semantics(
             _invalid(f"{location}.{output.operation} must consume one source commit")
         if output.operation == "INTEGRATE" and len(positions) < 2:
             _invalid(f"{location}.INTEGRATE must consume at least two commits")
+        if output.materialization == "RESOLVED" and not output.source_unit_ids:
+            _invalid(f"{location}.RESOLVED must declare at least one source unit")
 
         sources = tuple(source_by_id[commit] for commit in output.source_commits)
         unknown_units = [
-            unit_id for unit_id in output.unit_ids if unit_id not in unit_by_id
+            unit_id
+            for unit_id in output.source_unit_ids
+            if unit_id not in unit_by_id
         ]
         if unknown_units:
-            _invalid(f"{location}.unit_ids contains an unknown unit")
-        if len(set(output.unit_ids)) != len(output.unit_ids):
-            _invalid(f"{location}.unit_ids must not contain duplicates")
-        if any(unit_id in consumed_units for unit_id in output.unit_ids):
-            _invalid(f"{location}.unit_ids duplicates a consumed unit")
+            _invalid(f"{location}.source_unit_ids contains an unknown unit")
+        if len(set(output.source_unit_ids)) != len(output.source_unit_ids):
+            _invalid(f"{location}.source_unit_ids must not contain duplicates")
         selected_keys: list[tuple[int, int]] = []
         selected_by_source: dict[str, list[str]] = {
             source.commit_id: [] for source in sources
@@ -328,13 +425,15 @@ def _validate_plan_semantics(
             source.commit_id: source_index
             for source_index, source in enumerate(sources)
         }
-        for unit_id in output.unit_ids:
+        for unit_id in output.source_unit_ids:
             unit = unit_by_id[unit_id]
             if unit.source_commit not in source_order:
                 _invalid(
-                    f"{location}.unit_ids contains a unit from an unlisted source"
+                    f"{location}.source_unit_ids contains a unit from an "
+                    "unlisted source"
                 )
             selected_by_source[unit.source_commit].append(unit_id)
+            unit_occurrences[unit_id].append(index)
             selected_keys.append(
                 (
                     source_order[unit.source_commit],
@@ -343,7 +442,7 @@ def _validate_plan_semantics(
             )
         if selected_keys != sorted(selected_keys):
             _invalid(
-                f"{location}.unit_ids must retain source and unit order"
+                f"{location}.source_unit_ids must retain source and unit order"
             )
         for source in sources:
             if source.units and not selected_by_source[source.commit_id]:
@@ -351,8 +450,6 @@ def _validate_plan_semantics(
                     f"{location} lists source {source.commit_id} without any "
                     "of its units"
                 )
-
-        consumed_units.update(output.unit_ids)
         target_source = sources[0]
         unsupported_source = next(
             (source for source in sources if source.unsupported_headers),
@@ -369,13 +466,13 @@ def _validate_plan_semantics(
         target_units = tuple(unit.unit_id for unit in target_source.units)
         selected_target_units = tuple(selected_by_source[target_source.commit_id])
         if output.operation in {"KEEP", "REWORD", "REORDER"}:
-            if output.unit_ids != target_units:
+            if output.source_unit_ids != target_units:
                 _invalid(
                     f"{location}.{output.operation} must consume every target "
                     "unit in order"
                 )
         elif output.operation == "SPLIT":
-            if not output.unit_ids:
+            if not output.source_unit_ids:
                 _invalid(f"{location}.SPLIT must contain at least one unit")
         elif selected_target_units != target_units:
             _invalid(
@@ -408,18 +505,83 @@ def _validate_plan_semantics(
                 [],
             ).append(index)
 
-    if consumed_units != set(expected_units):
-        _invalid("plan.outputs must consume every patch unit exactly once")
+    partitioned_by_id: dict[str, HistoryPartitionedUnit] = {}
+    partition_positions: list[int] = []
+    expected_positions = {
+        unit_id: position for position, unit_id in enumerate(expected_units)
+    }
+    for index, partition in enumerate(plan.partitioned_units):
+        location = f"plan.partitioned_units[{index}]"
+        if partition.unit_id in partitioned_by_id:
+            _invalid(f"{location}.unit_id duplicates a partitioned unit")
+        if partition.unit_id not in expected_unit_set:
+            _invalid(f"{location}.unit_id names an unknown unit")
+        if len(partition.output_indexes) < 2:
+            _invalid(f"{location}.output_indexes must contain at least two outputs")
+        if partition.output_indexes != tuple(sorted(set(partition.output_indexes))):
+            _invalid(
+                f"{location}.output_indexes must be unique and strictly increasing"
+            )
+        if partition.output_indexes[-1] >= len(plan.outputs):
+            _invalid(f"{location}.output_indexes contains an unknown output")
+        if tuple(unit_occurrences[partition.unit_id]) != partition.output_indexes:
+            _invalid(
+                f"{location}.output_indexes must exactly match the unit's outputs"
+            )
+        if any(
+            plan.outputs[output_index].materialization != "RESOLVED"
+            for output_index in partition.output_indexes
+        ):
+            _invalid(f"{location} may appear only in RESOLVED outputs")
+        partitioned_by_id[partition.unit_id] = partition
+        partition_positions.append(expected_positions[partition.unit_id])
+    if partition_positions != sorted(partition_positions):
+        _invalid("plan.partitioned_units must retain source unit order")
+
+    partitioned_unit_ids = set(partitioned_by_id)
+    for index, output in enumerate(plan.outputs):
+        if output.operation == "SPLIT":
+            continue
+        partition_checked_target_units = {
+            unit.unit_id for unit in source_by_id[output.source_commits[0]].units
+        }
+        if partition_checked_target_units & partitioned_unit_ids:
+            _invalid(
+                f"plan.outputs[{index}].{output.operation} target units must "
+                "not be partitioned"
+            )
+
+    for unit_id in expected_units:
+        occurrences = unit_occurrences[unit_id]
+        if unit_id in partitioned_by_id:
+            continue
+        if len(occurrences) != 1:
+            _invalid(
+                "plan.outputs must assign every nonpartitioned source unit "
+                "exactly once"
+            )
 
     for source in source_commits:
         source_id = source.commit_id
         targets = target_occurrences.get(source_id, [])
         secondary = secondary_occurrences.get(source_id, [])
         if targets and secondary:
-            _invalid(
-                f"source commit {source_id} cannot be both an output target "
-                "and an integrated secondary source"
-            )
+            if any(operation != "SPLIT" for _output, operation in targets):
+                _invalid(
+                    f"source commit {source_id} may be both a secondary and a "
+                    "target only through residual SPLIT outputs"
+                )
+            target_indexes = [output for output, _operation in targets]
+            if max(secondary) >= min(target_indexes):
+                _invalid(
+                    f"source commit {source_id} secondary outputs must precede "
+                    "its residual SPLIT outputs"
+                )
+            if len(set((*secondary, *target_indexes))) < 2:
+                _invalid(
+                    f"source commit {source_id} must have at least two "
+                    "destinations when split across target and secondary outputs"
+                )
         if not targets and not secondary:
             _invalid(f"source commit {source_id} is not consumed by the plan")
         if len(targets) > 1 and any(
@@ -429,7 +591,7 @@ def _validate_plan_semantics(
                 f"source commit {source_id} may target several outputs only "
                 "through SPLIT"
             )
-        if len(targets) == 1 and targets[0][1] == "SPLIT":
+        if len(targets) == 1 and targets[0][1] == "SPLIT" and not secondary:
             _invalid(
                 f"source commit {source_id} must produce at least two SPLIT outputs"
             )
@@ -456,16 +618,21 @@ def _validate_plan_semantics(
                 "earlier"
             )
 
+    ordered_nonpartitioned_units = tuple(
+        unit_id
+        for output in plan.outputs
+        for unit_id in output.source_unit_ids
+        if unit_id not in partitioned_unit_ids
+    )
     desired_positions = {
         unit_id: position
-        for position, unit_id in enumerate(
-            unit_id for output in plan.outputs for unit_id in output.unit_ids
-        )
+        for position, unit_id in enumerate(ordered_nonpartitioned_units)
     }
     output_positions = {
         unit_id: output_index
         for output_index, output in enumerate(plan.outputs)
-        for unit_id in output.unit_ids
+        for unit_id in output.source_unit_ids
+        if unit_id not in partitioned_unit_ids
     }
     if len(live.snapshot.dependencies) != len(expected_units):
         _invalid("snapshot dependency graph does not cover every patch unit")
@@ -502,24 +669,47 @@ def _validate_plan_semantics(
         )
         if barrier_inconsistent:
             _invalid("snapshot dependency graph has inconsistent barrier evidence")
+        if dependency.unit_id in partitioned_unit_ids:
+            first_crossings[dependency.unit_id] = None
+            continue
         moving_position = desired_positions[dependency.unit_id]
+        moving_output = output_positions[dependency.unit_id]
         first_crossings[dependency.unit_id] = next(
             (
                 crossed_unit
                 for crossed_unit in expected_units[: dependency.earliest_position]
-                if desired_positions[crossed_unit] > moving_position
+                if (
+                    crossed_unit in partitioned_unit_ids
+                    and any(
+                        output_index > moving_output
+                        for output_index in partitioned_by_id[
+                            crossed_unit
+                        ].output_indexes
+                    )
+                )
+                or (
+                    crossed_unit not in partitioned_unit_ids
+                    and desired_positions[crossed_unit] > moving_position
+                )
             ),
             None,
         )
 
     for dependency in live.snapshot.dependencies:
         crossed_unit = first_crossings[dependency.unit_id]
-        if crossed_unit is None or _grouped_block_chain_can_defer_to_replay(
-            dependency,
-            dependencies_by_unit=dependencies_by_unit,
-            first_crossings=first_crossings,
-            desired_positions=desired_positions,
-            output_positions=output_positions,
+        if crossed_unit is None:
+            continue
+        moving_output = output_positions[dependency.unit_id]
+        if plan.outputs[moving_output].materialization == "RESOLVED":
+            continue
+        if crossed_unit not in partitioned_unit_ids and (
+            _grouped_block_chain_can_defer_to_replay(
+                dependency,
+                dependencies_by_unit=dependencies_by_unit,
+                first_crossings=first_crossings,
+                desired_positions=desired_positions,
+                output_positions=output_positions,
+            )
         ):
             continue
         barrier = (
@@ -594,7 +784,10 @@ def read_and_validate_frozen_history_plan(
 ) -> HistoryPlanDocument:
     """Validate a persisted plan from its frozen source objects after a rewrite."""
     payload = _read_plan_payload(plan_path)
-    frozen_snapshot, document_base, plan = _decode_plan(payload)
+    frozen_snapshot, document_base, plan = _decode_plan(
+        payload,
+        allow_legacy_v3=True,
+    )
     if document_base != base_commit:
         _invalid("snapshot.range.base does not match operation state")
     live_snapshot = acquire_frozen_history_snapshot(

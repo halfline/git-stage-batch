@@ -741,7 +741,8 @@ The same rule applies to `discard --to BATCH --line ... --as TEXT`.
 
 ### `fixup suggest` / `suggest-fixup`
 
-Suggest which commit the selected hunk should be fixed up to.
+Inspect exact lineage and mechanical placement evidence for the selected hunk,
+then suggest a commit to fix up.
 
 ```
 ❯ git-stage-batch fixup suggest [BOUNDARY]
@@ -749,10 +750,24 @@ Suggest which commit the selected hunk should be fixed up to.
 ❯ git-stage-batch suggest-fixup [BOUNDARY]
 ```
 
-Finds commits that previously modified the lines in the selected hunk and suggests them as fixup targets. Iteratively shows candidates starting from most recent, progressing backwards with each invocation.
+The command materializes the selected hunk as an exact patch without changing
+the real index. The patch is based on the frozen `HEAD` tree; an index-relative
+hunk is rejected when that file's index entry differs from `HEAD`. It searches
+each disjoint changed source range independently
+and also commutes the patch backward through the target range. Candidate
+iteration includes commits found by exact source-line history and any
+mechanical placement barrier, newest first. The output keeps those two forms
+of evidence separate: a placement barrier is useful, but is not presented as
+proof of semantic ownership.
+
+Pure additions to an existing tracked file use the adjacent old-file lines as
+lineage anchors. An insertion into an empty tracked file can therefore have
+placement evidence without lineage evidence. Whole-file additions remain
+unsupported.
 
 **Arguments:**
-- `BOUNDARY`: Lower bound for commit search (default: `@{upstream}`)
+- `BOUNDARY`: Commit excluded from the search. By default, use the fork point
+  (or merge base) between `HEAD` and its configured upstream.
 
 **Options:**
 - `--reset`: Start over from the most recent candidate
@@ -767,51 +782,83 @@ Finds commits that previously modified the lines in the selected hunk and sugges
 
 # Find which commit to fixup (searches back to upstream by default)
 ❯ git-stage-batch fixup suggest
-Candidate 1: a1b2c3d Fix authentication logic
+Selected unit 91c3e8ac213f in src/auth.py [agreed]
+Lineage: exact source lines resolve to a1b2c3d4e5f.
+Placement: patch first stops at a1b2c3d4e5f.
+Decision: lineage and placement agree.
+
+Candidate 1 of 2: a1b2c3d4e5f Fix authentication logic
+Candidate evidence: lineage-history, placement-barrier
 
 # Not the right commit, try next
 ❯ git-stage-batch fixup suggest
-Candidate 2: e4f5g6h Add user validation
+Candidate 2 of 2: e4f5a6b7c8d Add user validation
+Candidate evidence: lineage-history
 
 # This is the one! Create fixup commit
-❯ git commit --fixup=e4f5g6h
+❯ git commit --fixup=e4f5a6b7c8d
 
 # Or specify a different boundary for the search
 ❯ git-stage-batch fixup suggest main
-Candidate 1: a1b2c3d Fix authentication logic
+Candidate 1 of 2: a1b2c3d4e5f Fix authentication logic
 ```
 
-The command uses `git log -L` to find commits that touched the affected lines, making it easy to create fixup commits for amendment during interactive rebase.
+`fixup suggest` is read-only with respect to commits, refs, the working tree,
+and the index. It does not create a commit. Use the displayed `git commit
+--fixup=...` command for one reviewed target, or use `fixup create` to analyze
+the staged index and create conservative grouped fixups.
 
 **Porcelain output:**
 ```bash
 ❯ git-stage-batch fixup suggest --porcelain
 ```
 
-Outputs JSON with stable fields for script integration:
+The versioned record uses full object IDs only and includes the frozen range,
+exact unit, lineage, placement, candidate sources, and iteration position:
 ```json
 {
-  "candidate": {
-    "hash": "a1b2c3d",
-    "full_hash": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0",
-    "subject": "Fix authentication logic",
-    "author": "John Doe",
-    "date": "2026-03-01T10:30:00-05:00",
-    "relative_date": "2 weeks ago"
+  "schema_version": 1,
+  "operation": "fixup-suggest",
+  "object_format": "sha1",
+  "range": {
+    "base": "1111111111111111111111111111111111111111",
+    "head": "2222222222222222222222222222222222222222"
   },
-  "iteration": 1,
-  "boundary": "@{upstream}"
+  "unit": {
+    "id": "3333333333333333333333333333333333333333333333333333333333333333",
+    "path": "src/auth.py",
+    "status": "agreed",
+    "reason": "lineage-and-placement-agree",
+    "lineage": {
+      "queried_ranges": [{"start": 18, "end": 18}]
+    },
+    "placement": {
+      "status": "barrier",
+      "barrier": "2222222222222222222222222222222222222222"
+    }
+  },
+  "candidate": {
+    "id": "2222222222222222222222222222222222222222",
+    "subject": "Fix authentication logic",
+    "author_name": "John Doe",
+    "author_email": "john@example.com",
+    "authored_at": "2026-03-01T10:30:00-05:00"
+  },
+  "candidate_sources": ["lineage-history", "placement-barrier"],
+  "iteration": {"index": 1, "total": 2},
+  "result": "candidate"
 }
 ```
 
+When no evidence produces a candidate, porcelain prints the same complete
+record with `"candidate": null`, a `result` reason such as `no-candidates` or
+`exhausted`, and exits nonzero.
+
 **Automated fixup example:**
 ```bash
-# Get fixup candidate programmatically
-CANDIDATE=$(git-stage-batch fixup suggest --porcelain | jq -r '.candidate.hash')
-
-# Create fixup commit automatically
-if [ -n "$CANDIDATE" ]; then
-  git commit --fixup=$CANDIDATE
+# Get a full candidate ID and create a fixup only on a successful result
+if CANDIDATE=$(git-stage-batch fixup suggest --porcelain | jq -er '.candidate.id'); then
+  git commit --fixup="$CANDIDATE"
 fi
 ```
 
@@ -831,7 +878,10 @@ Suggest fixup target for specific lines only.
 ❯ git-stage-batch fixup suggest main --line 1,3
 ```
 
-Useful when a hunk contains changes to multiple unrelated areas. You can get separate fixup suggestions for different line ranges within the same hunk.
+Useful when a hunk contains changes to multiple unrelated areas. Display-ID
+ranges remain range-backed, and disjoint selected source lines are queried as
+disjoint ranges rather than being widened to one min/max span. The exact
+selected subset, not the complete hunk, is used for placement analysis.
 
 ---
 

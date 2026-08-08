@@ -363,7 +363,8 @@ unborn symbolic branch and initial index are recorded explicitly. `stop`
 preserves a first commit created during the session. `abort` removes that
 session-created branch tip, restores the original index, and leaves original
 first-commit files in the worktree. History-dependent commands such as
-`suggest-fixup` remain unavailable until the first commit exists.
+`fixup suggest`, `fixup create`, and the compatible `suggest-fixup` spelling
+remain unavailable until the first commit exists.
 
 ### `again`
 
@@ -736,13 +737,15 @@ The same rule applies to `discard --to BATCH --line ... --as TEXT`.
 
 ---
 
-## Fixup Suggestions
+## Fixup Workflows
 
-### `suggest-fixup`
+### `fixup suggest` / `suggest-fixup`
 
 Suggest which commit the selected hunk should be fixed up to.
 
 ```
+❯ git-stage-batch fixup suggest [BOUNDARY]
+# Compatible spelling:
 ❯ git-stage-batch suggest-fixup [BOUNDARY]
 ```
 
@@ -763,18 +766,18 @@ Finds commits that previously modified the lines in the selected hunk and sugges
 ❯ git-stage-batch start
 
 # Find which commit to fixup (searches back to upstream by default)
-❯ git-stage-batch suggest-fixup
+❯ git-stage-batch fixup suggest
 Candidate 1: a1b2c3d Fix authentication logic
 
 # Not the right commit, try next
-❯ git-stage-batch suggest-fixup
+❯ git-stage-batch fixup suggest
 Candidate 2: e4f5g6h Add user validation
 
 # This is the one! Create fixup commit
 ❯ git commit --fixup=e4f5g6h
 
 # Or specify a different boundary for the search
-❯ git-stage-batch suggest-fixup main
+❯ git-stage-batch fixup suggest main
 Candidate 1: a1b2c3d Fix authentication logic
 ```
 
@@ -782,7 +785,7 @@ The command uses `git log -L` to find commits that touched the affected lines, m
 
 **Porcelain output:**
 ```bash
-❯ git-stage-batch suggest-fixup --porcelain
+❯ git-stage-batch fixup suggest --porcelain
 ```
 
 Outputs JSON with stable fields for script integration:
@@ -804,7 +807,7 @@ Outputs JSON with stable fields for script integration:
 **Automated fixup example:**
 ```bash
 # Get fixup candidate programmatically
-CANDIDATE=$(git-stage-batch suggest-fixup --porcelain | jq -r '.candidate.hash')
+CANDIDATE=$(git-stage-batch fixup suggest --porcelain | jq -r '.candidate.hash')
 
 # Create fixup commit automatically
 if [ -n "$CANDIDATE" ]; then
@@ -819,16 +822,72 @@ fi
 Suggest fixup target for specific lines only.
 
 ```
-❯ git-stage-batch suggest-fixup [BOUNDARY] --line LINE_IDS
+❯ git-stage-batch fixup suggest [BOUNDARY] --line LINE_IDS
 ```
 
 **Example:**
 ```
-❯ git-stage-batch suggest-fixup --line 1,3
-❯ git-stage-batch suggest-fixup main --line 1,3
+❯ git-stage-batch fixup suggest --line 1,3
+❯ git-stage-batch fixup suggest main --line 1,3
 ```
 
 Useful when a hunk contains changes to multiple unrelated areas. You can get separate fixup suggestions for different line ranges within the same hunk.
+
+---
+
+### `fixup create`
+
+Analyze the exact staged index and create one ordinary `fixup!` commit per
+eligible target:
+
+```bash
+❯ git-stage-batch fixup create [BOUNDARY] [--dry-run] [--partial] [--porcelain]
+```
+
+The command combines exact-line history with tree-replay commutation. It
+creates a fixup when both signals agree, or when line history identifies one
+target and the patch can commute through the entire target range. It reports
+but does not automatically commit:
+
+- conflicting or ambiguous attribution;
+- mechanical placement without semantic line history;
+- changes with no target evidence; and
+- currently unsupported whole-file additions/deletions, renames, binary
+  changes, file modes, and gitlinks.
+
+By default, any such remaining unit prevents all mutation. Use `--partial` to
+create the eligible fixups and leave every other unit staged:
+
+```bash
+# Review exact assignments without changing HEAD, the index, or the worktree.
+❯ git-stage-batch fixup create --dry-run
+
+# Create eligible fixups while preserving unresolved staged work.
+❯ git-stage-batch fixup create --partial
+```
+
+`fixup create` never stages unstaged changes, runs autosquash, rewrites an
+existing commit, or publishes anything. It preserves a private recovery ref
+for the original `HEAD` and prints that ref after successful creation.
+The generated `fixup!` title normally uses the readable target subject. It
+falls back to the full target object ID only when subject matching would make
+`git rebase --autosquash` attach the fixup to another commit, including a
+later commit that repeats an earlier subject.
+Each generated commit also carries a random verification marker in its body.
+The command uses that marker to distinguish its own commit from a ref moved by
+a hook; autosquash discards the fixup body when the fixup is integrated.
+
+The default boundary is the fork point, or merge base, between `HEAD` and its
+configured upstream. An explicit boundary is the excluded base of the target
+range. The range must be non-empty and linear.
+
+**Porcelain output** is versioned JSON containing full object IDs, source tree
+fingerprints, every change unit and evidence source, target groups, created
+commits, and the recovery ref:
+
+```bash
+❯ git-stage-batch fixup create --dry-run --porcelain
+```
 
 ---
 

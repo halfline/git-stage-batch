@@ -175,9 +175,9 @@ handler.py :: @@ -15,8 +15,9 @@
 
 ---
 
-## Find Fixup Target
+## Create Fixup Commits
 
-Create fixup commits for historical changes:
+For one selected hunk, inspect historical candidates:
 
 ```
 ❯ git-stage-batch start
@@ -186,11 +186,16 @@ auth.py :: @@ -23,5 +23,5 @@
 [#2] + if age >= 18:
 
 # Which commit does this fix?
-❯ git-stage-batch suggest-fixup
+❯ git-stage-batch fixup suggest
 Candidate 1: a1b2c3d Add age validation
 
 # That's the one!
 ❯ git commit --fixup=a1b2c3d
+
+# Or stage several review fixes and let git-stage-batch partition them.
+❯ git add auth.py parser.py
+❯ git-stage-batch fixup create --dry-run
+❯ git-stage-batch fixup create
 
 # Later, during interactive rebase:
 ❯ git rebase -i --autosquash

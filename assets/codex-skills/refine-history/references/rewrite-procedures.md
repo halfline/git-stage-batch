@@ -5,10 +5,9 @@ Substitute the installed skill root for `.agents/skills/refine-history` when
 using another assistant. Delegate all message-only rewording to
 `refine-commit-messages`.
 
-These interactive-rebase procedures are a temporary executor fallback. Use
-them only while installed `git-stage-batch rewrite --help` lacks the required
-`apply` operation. Before each boundary change, require the current immutable
-scan to validate:
+The interactive-rebase procedures are now a temporary SPLIT fallback only.
+Use the object executor for KEEP, REWORD, and INTEGRATE plans. Before each
+boundary change, require the current immutable scan to validate:
 
 ```bash
 git-stage-batch rewrite validate "$REWRITE_PLAN" --porcelain
@@ -112,44 +111,43 @@ Do not squash a whole repair into a convenient earlier commit when its hunks
 belong at different historical points. If any hunk cannot be allocated
 confidently, stop instead of retaining a repair commit.
 
-If the repair has several targets, first use the broad-snapshot split procedure
-to replace it with one temporary repair commit per historical target. Confirm
-that the resulting `HEAD^{tree}` still matches `pre-tree.txt`, then restart the
-audit. Integrate each temporary repair with the one-target procedure below.
-Do not mark several targets `edit` while carrying one unsplit patch through the
-rebase: residual hunks at the first stop make later rebase steps unsafe.
+If the repair has several semantic targets, first use the broad-snapshot split
+fallback to replace it with one temporary repair commit per target. Confirm
+the final tree, regenerate `rewrite-plan.json`, then handle each one-target
+repair separately.
 
-For a one-target repair, save its patch, edit the target, and drop the repair:
+For a one-target repair, edit only `plan.outputs` in the scan document:
 
-```bash
-TARGET_SHA=PUT_COMMIT_THAT_SHOULD_HAVE_CONTAINED_THE_HUNK
-TARGET_SHORT=$(git --no-optional-locks rev-parse --short=7 "$TARGET_SHA")
-REPAIR_SHORT=$(git --no-optional-locks rev-parse --short=7 "$REPAIR_SHA")
-git --no-optional-locks show --format= --binary "$REPAIR_SHA" > "$REFINE_HISTORY_STATE_DIR/repair-$REPAIR_SHORT.patch"
-python3 "$REFINE_HISTORY_HELPER" mark --phase rewriting --note "integrate $REPAIR_SHA into $TARGET_SHA"
-GIT_SEQUENCE_EDITOR="sed -i -E -e 's/^pick (${TARGET_SHORT}[0-9a-f]*) /edit \\1 /' -e 's/^pick (${REPAIR_SHORT}[0-9a-f]*) /drop \\1 /'" git rebase -i "$BASE_SHA"
-```
+1. Change the target output operation to `INTEGRATE`.
+2. Set `source_commits` to the target followed by the repair commit, retaining
+   their original chronological order. Several repair commits for one target
+   may follow the same target.
+3. Set `unit_ids` to the exact concatenation of every listed source commit's
+   complete unit list in that same order.
+4. Remove the separately emitted repair output. Leave outputs for intervening
+   source commits in source order after the integrated target output.
+5. Preserve the target author. Keep its message and encoding unless the
+   integration genuinely changes the target's stated outcome.
 
-At the target, first require the complete one-target patch to apply. If the
-check fails, reconstruct the same hunks manually and verify the resulting
-working diff against the saved patch. Never suppress an apply failure:
+Then ask the product executor to prove and perform the movement:
 
 ```bash
-git --no-optional-locks apply --check "$REFINE_HISTORY_STATE_DIR/repair-$REPAIR_SHORT.patch"
-git apply "$REFINE_HISTORY_STATE_DIR/repair-$REPAIR_SHORT.patch"
-git-stage-batch start
-git-stage-batch show
-git-stage-batch include --line ALL_REPAIR_HUNK_LINE_IDS --no-auto-advance
-git --no-optional-locks diff --cached
-git --no-optional-locks diff --check
-git commit --amend --no-edit
-python3 .agents/skills/refine-history/scripts/verify-head-snapshot.py --ref HEAD -- python3 -m compileall -q src tests
-git-stage-batch stop
-test -z "$(git --no-optional-locks status --short)"
-git rebase --continue
+git-stage-batch rewrite validate "$REWRITE_PLAN" --porcelain
+if test -n "${REVIEW_HEAD_REF:-}"; then
+  git-stage-batch rewrite apply "$REWRITE_PLAN" \
+    --allow-published-ref "$REVIEW_HEAD_REF"
+else
+  git-stage-batch rewrite apply "$REWRITE_PLAN"
+fi
+git-stage-batch rewrite status --porcelain
+git-stage-batch rewrite verify --porcelain
 ```
 
-Restart the complete audit when the rebase finishes.
+Do not fall back to patch application when validation reports a conflict,
+unequal final tree, unsupported header, stale snapshot, or other mechanical
+failure. Revise the semantic assignment or retain the repair commit. If apply
+is interrupted, use `rewrite continue`; use `rewrite abort` to restore only an
+operation-owned tip. Restart the complete audit after successful application.
 
 ## Repair a failing committed snapshot
 

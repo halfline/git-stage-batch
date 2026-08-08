@@ -16,6 +16,14 @@ from ..utils.file_io import read_required_text_file_contents
 from ..utils.git_command import run_git_command
 from ..utils.git_index import git_write_tree
 from ..utils.git_repository import get_git_object_format
+from ..utils.strict_json import (
+    StrictJsonError,
+    loads as load_strict_json,
+    require_exact_keys as strict_require_exact_keys,
+    require_list as strict_require_list,
+    require_object as strict_require_object,
+    require_string as strict_require_string,
+)
 from .commutation import tree_for_commit
 from .models import (
     CURRENT_FIXUP_CREATE_PLAN_SCHEMA_VERSION,
@@ -68,29 +76,18 @@ def _invalid(detail: str) -> NoReturn:
     )
 
 
-def _json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError(f"duplicate field {key!r}")
-        result[key] = value
-    return result
-
-
-def _reject_json_constant(value: str) -> NoReturn:
-    raise ValueError(f"non-standard numeric value {value!r}")
-
-
 def _require_object(value: object, location: str) -> dict[str, object]:
-    if not isinstance(value, dict):
-        _invalid(f"{location} must be an object")
-    return cast(dict[str, object], value)
+    try:
+        return strict_require_object(value, location)
+    except StrictJsonError as error:
+        _invalid(str(error))
 
 
 def _require_list(value: object, location: str) -> list[object]:
-    if not isinstance(value, list):
-        _invalid(f"{location} must be an array")
-    return cast(list[object], value)
+    try:
+        return strict_require_list(value, location)
+    except StrictJsonError as error:
+        _invalid(str(error))
 
 
 def _require_exact_keys(
@@ -98,12 +95,10 @@ def _require_exact_keys(
     expected: frozenset[str],
     location: str,
 ) -> None:
-    missing = sorted(expected - value.keys())
-    unknown = sorted(value.keys() - expected)
-    if missing:
-        _invalid(f"{location} is missing field(s): {', '.join(missing)}")
-    if unknown:
-        _invalid(f"{location} has unknown field(s): {', '.join(unknown)}")
+    try:
+        strict_require_exact_keys(value, expected, location)
+    except StrictJsonError as error:
+        _invalid(str(error))
 
 
 def _require_string(
@@ -111,12 +106,10 @@ def _require_string(
     field: str,
     location: str,
 ) -> str:
-    if field not in value:
-        _invalid(f"{location} is missing field {field!r}")
-    result = value[field]
-    if not isinstance(result, str) or not result:
-        _invalid(f"{location}.{field} must be a non-empty string")
-    return result
+    try:
+        return strict_require_string(value, field, location)
+    except StrictJsonError as error:
+        _invalid(str(error))
 
 
 def _require_full_hex_id(value: str, length: int, location: str) -> None:
@@ -143,13 +136,9 @@ def _canonical_json(value: object) -> str:
 
 def _decode_document(payload: str) -> FixupCreatePlanDocument:
     try:
-        raw: object = json.loads(
-            payload,
-            object_pairs_hook=_json_object,
-            parse_constant=_reject_json_constant,
-        )
-    except (json.JSONDecodeError, RecursionError, ValueError) as error:
-        _invalid(f"document is not strict JSON ({error})")
+        raw = load_strict_json(payload)
+    except StrictJsonError as error:
+        _invalid(str(error))
 
     document = _require_object(raw, "document")
     _require_exact_keys(document, _TOP_LEVEL_KEYS, "document")

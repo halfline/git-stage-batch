@@ -1262,15 +1262,19 @@ dependencies.
 Selecting `refine-history` also installs `refine-commit-messages`.
 
 `refine-commit-messages BASE_SHA` audits a linear series and rewords
-noncompliant messages by default. It proves that every tree, patch boundary,
-author identity/date, signature presence, and series position remains
-unchanged. Its explicit `audit BASE_SHA` mode reports findings and complete
-proposed replacements without updating refs or commits.
+noncompliant messages by default. It expresses only KEEP and REWORD outputs in
+a rewrite plan and proves that every tree, patch boundary, author, committer,
+and series position remains unchanged. Rewritten cryptographic signatures are
+removed and reported because they cannot remain valid. Its explicit
+`audit BASE_SHA` mode validates proposed replacements without updating refs or
+commits.
 
-`refine-history BASE_SHA` additionally splits broad commits and integrates
-late repair commits before delegating its message pass. Its `resume` form
-continues the skill-owned checkpoint on its original branch after
-interruption. Mutating modes accept only clean, unpublished draft history.
+`refine-history BASE_SHA` additionally splits broad commits, integrates late
+repair units, and reorders only proven-independent sources before delegating
+its message pass. Both skills use `rewrite status`, operation-kind summaries,
+`continue`, `abort`, and `verify` instead of assistant-owned checkpoint or
+interactive-rebase helpers. Mutating modes accept clean local draft history or
+an explicitly verified force-push review head.
 
 `publish-unpushed-commits` maps a clean unpublished range onto reviewable
 GitHub pull requests or GitLab merge requests. It publishes ready for review by

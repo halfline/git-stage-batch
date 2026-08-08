@@ -248,8 +248,10 @@ Omit `--filter` when installing Claude skills if you also want the larger
 GitHub pull requests or GitLab merge requests by default, supports explicit
 `draft` and `audit` modes, handles forks and provider-native stacks, and never
 merges. Selecting publication or decomposition installs both refinement
-dependencies. Mutating workflows accept only clean, linear, unpublished ranges
-and provide a `resume` form. See the
+dependencies. Mutating refinement workflows accept only clean, linear,
+unpublished ranges or an explicitly verified force-push review head. That
+exception permits only a local rewrite and neither performs nor authorizes a
+push. They also provide a `resume` form. See the
 [AI assistant guide](ai-assistants.md) for Codex setup and fuller behavior.
 
 ## Example Workflow
@@ -360,14 +362,10 @@ local draft commits. They can reword or split commits, integrate later repairs,
 and reorder proven-independent changes while requiring the final Git tree to
 remain unchanged.
 
-The normal workflow stages selected working-tree changes into new commits
-rather than rewriting existing commits. Assistant decomposition workflows may
-polish commits they have just created while rebuilding a local series, but
-that rewriting is limited to fresh draft history.
-
-It is not meant to modify shared history or protected branches. Think of it as
-helping you prepare commits before they become part of reviewable project
-history, with any assistant-side polishing confined to local draft commits.
+Mutation is limited to unpublished local draft history by default. An
+explicitly verified review-head exception can permit a local rewrite for a
+normal force-push review workflow, but it does not authorize or perform a push.
+Do not use refinement to change protected or unrelated shared history.
 
 ### When should I use this?
 
@@ -441,11 +439,15 @@ natural tool for the same kind of commit curation.
 
 ### Is this safe for protected branches?
 
-Yes — because you should not use it there.
+The staging commands are appropriate while preparing commits on a local
+development branch. The rewrite workflow is not a way to alter protected
+branch history.
 
-This tool is meant for local development branches before merging.
-
-Once commits are pushed or merged into protected branches, standard Git practices apply and history should normally remain stable.
+`rewrite apply` refuses remotely contained source commits unless every
+containing remote-tracking ref is explicitly allowed as a verified review
+head. That exception permits only the local rewrite; it does not push or
+authorize a push or force-push. Keep protected, merged, and unrelated shared
+history stable.
 
 ### Is this similar to git rebase -i?
 
@@ -458,7 +460,8 @@ The staging commands help create better commits in the first place. The
   complete result, requires the final tree to match, and records recovery
   state before changing the branch.
 
-Both can replace commit objects, so keep either workflow to local draft history.
+Both can replace commit objects, so keep either workflow to local draft history
+or an explicitly verified review head where force-pushing is expected.
 
 ### Why curate Git history at all?
 

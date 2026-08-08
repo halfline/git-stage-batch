@@ -48,7 +48,7 @@ The bundled Claude skills currently include:
 - `refine-commit-messages` for auditing and rewording messages in an existing
   series without changing any patch or commit boundary
 - `refine-history` for splitting, rewording, and integrating commits in an
-  existing local draft series after an explicit base commit
+  existing local draft series after an optional base or its tracked upstream
 
 The regular commit skills stage the current working tree into new commits.
 The decomposition skill hands its rebuilt series to `refine-history` for the
@@ -60,7 +60,10 @@ workflows directly:
 claude "/refine-commit-messages BASE_SHA"
 claude "/refine-commit-messages audit BASE_SHA"
 claude "/refine-commit-messages resume"
+claude "/refine-history"
 claude "/refine-history BASE_SHA"
+claude "/refine-history audit"
+claude "/refine-history audit BASE_SHA"
 claude "/refine-history resume"
 claude "/publish-unpushed-commits"
 claude "/publish-unpushed-commits draft"
@@ -69,12 +72,16 @@ claude "/publish-unpushed-commits resume"
 ```
 
 The default forms of both refinement skills require a clean, non-empty, linear
-range after an explicit base and refuse shared, protected, or ambiguously
-published history. Message refinement rewords by default and proves every
-patch, boundary, tree, author identity/date, and signature presence is
-unchanged. Its `audit BASE_SHA` form may inspect shared history because it does
-not update refs or commits. The `resume` forms continue each skill's checkpoint
-on its original branch.
+unpublished range or an explicitly verified force-push review head, and refuse
+protected or ambiguously published history. The review-head exception permits
+only a local rewrite and neither performs nor authorizes a push. Message
+refinement requires an explicit base; history refinement can use the current
+branch's tracked upstream. Message refinement rewords by default and proves
+every patch, boundary, tree, author, committer, and series position is
+unchanged. Rewritten cryptographic signatures are removed and reported because
+they cannot remain valid. Explicit audit forms may inspect blocked history
+because scan and validation do not update refs or commits. The `resume` forms
+use the product rewrite checkpoint and its exact next action.
 
 Publication is ready for review by default. The explicit `draft` form keeps all
 new review requests in draft status, `audit` plans without publishing, and
@@ -244,17 +251,25 @@ The bundled Codex skills currently include:
 - `refine-commit-messages` for auditing and rewording messages in an existing
   series without changing any patch or commit boundary
 - `refine-history` for splitting, rewording, and integrating commits in an
-  existing local draft series after an explicit base commit
+  existing local draft series after an optional base or its tracked upstream
 
 The decomposition skill uses `refine-history` for its final committed-series
 rewrite, which delegates its final prose pass to `refine-commit-messages`.
-Invoke the latter directly as `$refine-commit-messages BASE_SHA`; it rewords by
-default, while `$refine-commit-messages audit BASE_SHA` only reports findings
-and proposed messages. Both mutating skills support `resume`, require a clean,
-linear local draft range after an explicit base, and create recovery refs.
-Message refinement verifies that every patch and boundary is unchanged; full
-history refinement additionally verifies every commit snapshot and the final
-tree.
+Invoke `$refine-history` with no base to use the tracked upstream, or invoke
+`$refine-history BASE_SHA` to select an explicit excluded boundary. Add
+`audit` before the optional base for a read-only report, and use
+`$refine-history resume` to continue its durable product checkpoint.
+
+Invoke `$refine-commit-messages BASE_SHA` directly for a message-only rewrite;
+it rewords by default, while `$refine-commit-messages audit BASE_SHA` only
+reports findings and proposed messages. Message refinement requires an
+explicit base. Both mutating skills require a clean, linear unpublished range
+or an explicitly verified force-push review head. That exception permits only
+a local rewrite and neither performs nor authorizes a push. Both skills support
+`resume` and create recovery refs. Message refinement verifies that every patch
+and boundary is unchanged. Full history refinement instead audits every output
+and its plan, runs the exact risk-selected semantic-boundary manifest, and
+completes the final-tip test and build suite.
 
 Invoke `$publish-unpushed-commits` to publish ready-for-review pull requests or
 merge requests, or add `draft`, `audit`, or `resume`. The skill chooses a native

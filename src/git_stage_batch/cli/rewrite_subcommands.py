@@ -52,7 +52,11 @@ def _dispatch_rewrite_scan(args: argparse.Namespace) -> None:
 
 
 def _dispatch_rewrite_validate(args: argparse.Namespace) -> None:
-    command_rewrite_validate(args.plan_path, porcelain=args.porcelain)
+    command_rewrite_validate(
+        args.plan_path,
+        resolutions_path=args.resolutions_path,
+        porcelain=args.porcelain,
+    )
 
 
 def _dispatch_rewrite_resolve(args: argparse.Namespace) -> None:
@@ -140,6 +144,12 @@ def add_rewrite_subcommand(subparsers: Subparsers) -> None:
         "plan_path",
         metavar="PLAN",
         help=_("Reusable rewrite plan emitted by rewrite scan"),
+    )
+    parser_validate.add_argument(
+        "--workspace",
+        dest="resolutions_path",
+        metavar="DIR",
+        help=_("Completed private rewrite-resolution workspace"),
     )
     parser_validate.add_argument(
         "--porcelain",

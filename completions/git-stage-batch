@@ -255,11 +255,17 @@ _git_stage_batch()
                     COMPREPLY=($(compgen -W "--output --porcelain" -- "$cur"))
                     ;;
                 validate)
+                    case "$prev" in
+                        --workspace)
+                            _filedir -d
+                            return
+                            ;;
+                    esac
                     if [[ $cword -eq 3 && "$cur" != -* ]]; then
                         _filedir
                         return
                     fi
-                    COMPREPLY=($(compgen -W "--porcelain" -- "$cur"))
+                    COMPREPLY=($(compgen -W "--workspace --porcelain" -- "$cur"))
                     ;;
                 resolve)
                     case "$prev" in

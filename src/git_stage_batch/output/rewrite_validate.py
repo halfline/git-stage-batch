@@ -4,12 +4,23 @@ from __future__ import annotations
 
 import json
 
+from ..git_paths import display_path, terminal_safe_text
 from ..history.models import HistoryPlanDocument
 from ..history.records import history_safety_record
+from ..history.resolution_workspace import HistoryAuthenticatedResolution
 from ..i18n import _, ngettext
 
 
-def _validation_record(document: HistoryPlanDocument) -> dict[str, object]:
+def _resolved_output_count(document: HistoryPlanDocument) -> int:
+    return sum(
+        output.materialization == "RESOLVED" for output in document.plan.outputs
+    )
+
+
+def _validation_record(
+    document: HistoryPlanDocument,
+    resolution: HistoryAuthenticatedResolution | None,
+) -> dict[str, object]:
     reword_count = sum(
         output.operation == "REWORD" for output in document.plan.outputs
     )
@@ -30,6 +41,7 @@ def _validation_record(document: HistoryPlanDocument) -> dict[str, object]:
         dependency.barrier == "UNKNOWN"
         for dependency in document.snapshot.dependencies
     )
+    resolved_outputs = _resolved_output_count(document)
     return {
         "schema_version": document.schema_version,
         "operation": "rewrite-validate",
@@ -46,6 +58,7 @@ def _validation_record(document: HistoryPlanDocument) -> dict[str, object]:
             "integrated_outputs": integration_count,
             "split_outputs": split_count,
             "reordered_outputs": reorder_count,
+            "resolved_outputs": resolved_outputs,
             "patch_units": sum(
                 len(commit.units) for commit in document.snapshot.commits
             ),
@@ -57,17 +70,33 @@ def _validation_record(document: HistoryPlanDocument) -> dict[str, object]:
             ),
         },
         "safety": history_safety_record(document.safety),
+        "resolution": (
+            None
+            if resolution is None
+            else {
+                "workspace": resolution.workspace_path,
+                "complete_sha256": resolution.complete_sha256,
+                "resolved_outputs": resolved_outputs,
+            }
+        ),
     }
 
 
 def print_rewrite_validation(
     document: HistoryPlanDocument,
     *,
+    resolution: HistoryAuthenticatedResolution | None = None,
     porcelain: bool,
 ) -> None:
     """Print successful semantic and mechanical plan validation."""
     if porcelain:
-        print(json.dumps(_validation_record(document), indent=2, ensure_ascii=True))
+        print(
+            json.dumps(
+                _validation_record(document, resolution),
+                indent=2,
+                ensure_ascii=True,
+            )
+        )
         return
     print(_("Rewrite plan is valid."))
     print(
@@ -77,6 +106,25 @@ def print_rewrite_validation(
             len(document.snapshot.commits),
         ).format(count=len(document.snapshot.commits))
     )
+    if resolution is not None:
+        resolved_outputs = _resolved_output_count(document)
+        print(
+            ngettext(
+                "{count} resolved output is authenticated.",
+                "{count} resolved outputs are authenticated.",
+                resolved_outputs,
+            ).format(count=resolved_outputs)
+        )
+        print(
+            _("Resolution workspace: {workspace}").format(
+                workspace=display_path(resolution.workspace_path)
+            )
+        )
+        print(
+            _("Resolution completion SHA-256: {sha256}").format(
+                sha256=terminal_safe_text(resolution.complete_sha256)
+            )
+        )
     if document.safety.mutation_ready:
         print(_("Mutation preconditions: ready"))
     else:

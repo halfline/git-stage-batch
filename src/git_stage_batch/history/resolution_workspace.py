@@ -115,6 +115,16 @@ class HistoryResolutionWorkspaceResult:
 
 
 @dataclass(frozen=True, slots=True)
+class HistoryAuthenticatedResolution:
+    """Authenticated provenance and replay facts for one COMPLETE workspace."""
+
+    raw_plan_sha256: str
+    complete_sha256: str
+    workspace_path: str
+    replay: HistoryReplayResult
+
+
+@dataclass(frozen=True, slots=True)
 class _WorkspaceBinding:
     record: dict[str, object]
     exact_sha256: str
@@ -1096,7 +1106,10 @@ class _WorkspaceMaterializer:
         *,
         accept_one: bool,
         export_missing: bool,
+        read_only: bool,
     ) -> None:
+        if read_only and (accept_one or export_missing):
+            raise AssertionError("read-only materialization cannot mutate workspace")
         self.document = document
         self.binding = binding
         self.workspace_path = workspace_path
@@ -1104,6 +1117,7 @@ class _WorkspaceMaterializer:
         self.quarantine = quarantine
         self.accept_one = accept_one
         self.export_missing = export_missing
+        self.read_only = read_only
         self.accepted = False
         self.output_keys: list[str] = []
         self.receipts: list[_ReceiptReplay] = []
@@ -1177,7 +1191,10 @@ class _WorkspaceMaterializer:
             output_path,
             env=env,
         )
-        if "receipt.json" not in set(list_resolution_directory(output_path)):
+        if (
+            not self.read_only
+            and "receipt.json" not in set(list_resolution_directory(output_path))
+        ):
             recover_interrupted_resolution_artifact_write(output_path / "receipt.json")
         output_entries = set(list_resolution_directory(output_path))
         base_entries = {"references", "request.json", "result.json", "results"}
@@ -1309,6 +1326,8 @@ class _WorkspaceMaterializer:
         return output_tree
 
     def publish_provisional_receipt(self) -> None:
+        if self.read_only:
+            raise AssertionError("read-only materialization cannot publish a receipt")
         provisional = self.provisional_receipt
         if provisional is None:
             raise AssertionError("no provisional resolution receipt to publish")
@@ -1374,6 +1393,7 @@ def _materialize_workspace(
     accept_one: bool,
     export_missing: bool,
     require_complete: bool,
+    read_only: bool,
 ) -> tuple[
     HistoryReplayResult | None,
     _WorkspaceMaterializer,
@@ -1387,6 +1407,7 @@ def _materialize_workspace(
         quarantine,
         accept_one=accept_one,
         export_missing=export_missing,
+        read_only=read_only,
     )
     try:
         replay = materialize_history_output_trees(
@@ -1453,14 +1474,14 @@ def materialize_completed_history_resolution(
     workspace_path: str,
     *,
     quarantine: GitObjectQuarantine,
-) -> HistoryReplayResult:
+) -> HistoryAuthenticatedResolution:
     """Rebuild and authenticate one COMPLETE workspace in a fresh quarantine."""
     if not isinstance(quarantine, GitObjectQuarantine):
         raise ValueError("a Git object quarantine environment is required")
-    absolute_path = _absolute_workspace_path(workspace_path)
     binding = _workspace_binding(document, raw_plan_sha256)
     if not binding.resolved_output_indexes:
         _invalid(_("plan does not contain any RESOLVED outputs"))
+    absolute_path = _absolute_workspace_path(workspace_path)
     require_private_resolution_directory(absolute_path)
     with lock_resolution_directory(absolute_path, create=False):
         _validate_workspace_root(absolute_path, binding, allow_complete=True)
@@ -1477,15 +1498,21 @@ def materialize_completed_history_resolution(
             accept_one=False,
             export_missing=False,
             require_complete=True,
+            read_only=True,
         )
         if replay is None or pending is not None or acceptance_ready:
             raise AssertionError("complete materialization returned pending output")
-        _read_expected_json(
+        complete_sha256 = _read_expected_json(
             absolute_path / "complete.json",
             _complete_record(binding, materializer, replay),
             "complete.json",
         )
-        return replay
+        return HistoryAuthenticatedResolution(
+            raw_plan_sha256=raw_plan_sha256,
+            complete_sha256=complete_sha256,
+            workspace_path=str(absolute_path),
+            replay=replay,
+        )
 
 
 def resolve_history_plan(
@@ -1522,6 +1549,7 @@ def resolve_history_plan(
                 accept_one=accept_result and not workspace_complete,
                 export_missing=not workspace_complete,
                 require_complete=workspace_complete,
+                read_only=False,
             )
             if acceptance_ready or materializer.provisional_receipt is not None:
                 if workspace_complete:
@@ -1536,6 +1564,7 @@ def resolve_history_plan(
                         accept_one=False,
                         export_missing=True,
                         require_complete=False,
+                        read_only=False,
                     )
                 )
                 if acceptance_ready or materializer.provisional_receipt is not None:

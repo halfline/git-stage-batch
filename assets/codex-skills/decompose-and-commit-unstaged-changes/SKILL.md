@@ -144,8 +144,9 @@ Then choose the resume point:
    passes, continue Phase 3 with remaining batches. If it fails, return to
    Phase 2 and fix the batch plan before rebuilding.
 4. If `resume_target` is `gate3-or-manual-audit`, finish the required
-   `refine-history` pass before rerunning Gate 3. If its checkpoint exists,
-   invoke `refine-history resume`; otherwise invoke it with the canonical
+   `refine-history` pass before rerunning Gate 3. Inspect
+   `git-stage-batch rewrite status --porcelain`; invoke `refine-history resume`
+   when a product operation is active, otherwise invoke it with the canonical
    `base` from the decompose checkpoint. If any batch refs remain, prefer
    `phase3-after-gate2` instead.
 5. If `resume_target` is `fresh`, run the normal full workflow from Phase 1.

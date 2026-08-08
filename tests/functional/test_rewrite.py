@@ -1,0 +1,122 @@
+"""End-to-end rewrite scan, validation, and status coverage."""
+
+from __future__ import annotations
+
+import json
+import subprocess
+
+import pytest
+
+from .conftest import git_stage_batch
+
+
+def _git(*arguments: str) -> str:
+    return subprocess.run(
+        ["git", *arguments],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def test_history_cli_scans_and_validates_reword_plan(functional_repo):
+    source = functional_repo / "src" / "utils.py"
+    base = _git("rev-parse", "HEAD")
+    source.write_text("def helper():\n    return 84\n", encoding="utf-8")
+    _git("commit", "-am", "Adjust helper")
+
+    scan = git_stage_batch("rewrite", "scan", base, "--porcelain")
+    plan = json.loads(scan.stdout)
+
+    assert plan["operation"] == "rewrite-plan"
+    assert plan["snapshot"]["range"]["base"] == base
+    assert plan["snapshot"]["range"]["tip"] == _git("rev-parse", "HEAD")
+    assert plan["safety"]["mutation_ready"] is True
+    assert plan["plan"]["outputs"][0]["operation"] == "KEEP"
+
+    plan["plan"]["outputs"][0]["operation"] = "REWORD"
+    plan["plan"]["outputs"][0]["message"] = "Explain helper adjustment\n"
+    plan_path = functional_repo / "history-plan.json"
+    plan_path.write_text(json.dumps(plan) + "\n", encoding="utf-8")
+    validation = git_stage_batch(
+        "rewrite",
+        "validate",
+        str(plan_path),
+        "--porcelain",
+    )
+    output = json.loads(validation.stdout)
+
+    assert output["valid"] is True
+    assert output["summary"]["reworded_commits"] == 1
+    assert output["range"]["final_tree"] == _git("rev-parse", "HEAD^{tree}")
+
+
+def test_history_cli_atomically_writes_plan(functional_repo):
+    source = functional_repo / "README.md"
+    base = _git("rev-parse", "HEAD")
+    source.write_text("# Updated\n", encoding="utf-8")
+    _git("commit", "-am", "Update readme")
+    plan_path = functional_repo / "plans" / "history.json"
+
+    result = git_stage_batch(
+        "rewrite",
+        "scan",
+        base,
+        "--output",
+        str(plan_path),
+    )
+
+    assert "Wrote reusable rewrite plan" in result.stdout
+    assert json.loads(plan_path.read_text(encoding="utf-8"))["schema_version"] == 1
+
+
+def test_history_cli_status_without_operation(functional_repo):
+    output = json.loads(
+        git_stage_batch("rewrite", "status", "--porcelain").stdout
+    )
+
+    assert output == {
+        "schema_version": 1,
+        "operation": "rewrite-status",
+        "active": False,
+    }
+
+
+def test_history_scan_and_validation_support_sha256(tmp_path, monkeypatch):
+    repo = tmp_path / "sha256-history"
+    repo.mkdir()
+    monkeypatch.chdir(repo)
+    initialized = subprocess.run(
+        ["git", "init", "-b", "topic", "--object-format=sha256"],
+        capture_output=True,
+        text=True,
+    )
+    if initialized.returncode != 0:
+        pytest.skip("installed Git does not support SHA-256 repositories")
+    _git("config", "user.name", "Test User")
+    _git("config", "user.email", "test@example.com")
+    source = repo / "value.txt"
+    source.write_text("base\n", encoding="utf-8")
+    _git("add", "value.txt")
+    _git("commit", "-m", "Base")
+    base = _git("rev-parse", "HEAD")
+    source.write_text("topic\n", encoding="utf-8")
+    _git("commit", "-am", "Topic")
+
+    plan = json.loads(
+        git_stage_batch("rewrite", "scan", base, "--porcelain").stdout
+    )
+    path = repo / "plan.json"
+    path.write_text(json.dumps(plan), encoding="utf-8")
+    validation = json.loads(
+        git_stage_batch(
+            "rewrite",
+            "validate",
+            str(path),
+            "--porcelain",
+        ).stdout
+    )
+
+    assert plan["snapshot"]["object_format"] == "sha256"
+    assert len(plan["snapshot"]["range"]["tip"]) == 64
+    assert validation["valid"] is True

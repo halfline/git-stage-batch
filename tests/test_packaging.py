@@ -130,6 +130,7 @@ class TestWheelContents:
             "git-stage-batch-discard.1",
             "git-stage-batch-install-assets.1",
             "git-stage-batch-journal.1",
+            "git-stage-batch-rewrite.1",
             "git-stage-batch-validate.1",
         }
 

@@ -12,6 +12,7 @@ from git_stage_batch.cli import (
     file_scope,
     fixup_subcommands,
     git_help,
+    rewrite_subcommands,
     include_dispatch,
     replacement_input,
     session_subcommands,
@@ -2216,6 +2217,67 @@ def test_parse_command_line_fixup_create_passes_plan_path(monkeypatch):
 def test_parse_command_line_fixup_requires_an_action():
     """The fixup namespace does not guess between suggestion and creation."""
     assert parse_command_line(["fixup"], quiet=True) is None
+
+
+def test_parse_command_line_history_scan_dispatches_snapshot_options(monkeypatch):
+    mock_command = Mock()
+    monkeypatch.setattr(
+        rewrite_subcommands,
+        "command_rewrite_scan",
+        mock_command,
+    )
+    args = parse_command_line(
+        ["rewrite", "scan", "main", "--output", "plan.json", "--porcelain"],
+        quiet=True,
+    )
+
+    assert args is not None
+    assert args.command == "rewrite"
+    assert args.rewrite_action == "scan"
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "main",
+        output_path="plan.json",
+        porcelain=True,
+    )
+
+
+def test_parse_command_line_rewrite_validate_dispatches_plan(monkeypatch):
+    mock_command = Mock()
+    monkeypatch.setattr(
+        rewrite_subcommands,
+        "command_rewrite_validate",
+        mock_command,
+    )
+    args = parse_command_line(
+        ["rewrite", "validate", "plan.json", "--porcelain"],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with("plan.json", porcelain=True)
+
+
+def test_parse_command_line_history_status_dispatches_porcelain(monkeypatch):
+    mock_command = Mock()
+    monkeypatch.setattr(
+        rewrite_subcommands,
+        "command_rewrite_status",
+        mock_command,
+    )
+    args = parse_command_line(
+        ["rewrite", "status", "--porcelain"],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(porcelain=True)
+
+
+def test_parse_command_line_history_requires_an_action():
+    assert parse_command_line(["rewrite"], quiet=True) is None
 
 
 def test_parse_command_line_new():

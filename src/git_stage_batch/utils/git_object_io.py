@@ -96,11 +96,16 @@ def get_empty_git_tree_object_id() -> str:
     return object_id
 
 
-def get_git_object_type(object_id: str) -> str | None:
+def get_git_object_type(
+    object_id: str,
+    *,
+    env: dict[str, str] | None = None,
+) -> str | None:
     """Return an object's Git type, or None when it does not exist."""
     result = run_git_command(
         ["cat-file", "-t", object_id],
         check=False,
+        env=env,
         requires_index_lock=False,
     )
     return result.stdout.strip() if result.returncode == 0 else None
@@ -113,6 +118,16 @@ class GitTreeBlob:
     file_path: str
     mode: str
     blob_sha: str
+
+
+@dataclass(frozen=True)
+class GitTreeEntry:
+    """One exact entry from a Git tree."""
+
+    file_path: str
+    mode: str
+    object_type: str
+    object_id: str
 
 
 @dataclass(frozen=True)
@@ -444,4 +459,48 @@ def list_git_tree_blobs(
             mode=metadata[0],
             blob_sha=metadata[2],
         )
+    return entries
+
+
+def list_git_tree_entries(
+    treeish: str,
+    file_paths: Iterable[str],
+    *,
+    env: dict[str, str] | None = None,
+) -> dict[str, GitTreeEntry]:
+    """List exact entries for literal paths in one tree without recursion."""
+    unique_file_paths = list(dict.fromkeys(file_paths))
+    if not unique_file_paths:
+        return {}
+
+    entries: dict[str, GitTreeEntry] = {}
+    for requested_path in unique_file_paths:
+        result = run_git_command(
+            ["ls-tree", "-z", "--full-tree", treeish, "--", requested_path],
+            text_output=False,
+            env=env,
+            requires_index_lock=False,
+            literal_pathspecs=True,
+        )
+        for record in nul_records(result.stdout):
+            if not record:
+                continue
+            try:
+                metadata_bytes, path_bytes = record.split(b"\t", 1)
+            except ValueError as error:
+                raise RuntimeError("Malformed git ls-tree record") from error
+            file_path = decode_path(path_bytes)
+            if file_path != requested_path:
+                raise RuntimeError("Git ls-tree returned an unexpected path")
+            metadata = metadata_bytes.decode("ascii", errors="replace").split()
+            if len(metadata) != 3:
+                raise RuntimeError("Malformed git ls-tree metadata")
+            if file_path in entries:
+                raise RuntimeError("Git ls-tree returned a duplicate path")
+            entries[file_path] = GitTreeEntry(
+                file_path=file_path,
+                mode=metadata[0],
+                object_type=metadata[1],
+                object_id=metadata[2],
+            )
     return entries

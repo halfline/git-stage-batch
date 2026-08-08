@@ -9,7 +9,10 @@ from typing import NoReturn, cast
 from ..exceptions import CommandError
 from ..git_paths import terminal_safe_text
 from ..i18n import _
-from ..utils.file_io import read_required_text_file_contents
+from ..utils.file_io import (
+    read_required_text_file_contents,
+    read_required_text_file_contents_and_sha256,
+)
 from ..utils.strict_json import (
     StrictJsonError,
     loads,
@@ -736,7 +739,20 @@ def _read_plan_payload(plan_path: str) -> str:
         ) from error
 
 
-def _validated_document(
+def _read_plan_payload_and_sha256(plan_path: str) -> tuple[str, str]:
+    path = Path(plan_path)
+    try:
+        return read_required_text_file_contents_and_sha256(path)
+    except (OSError, ValueError) as error:
+        raise CommandError(
+            _("Could not read rewrite plan {path}: {error}").format(
+                path=terminal_safe_text(str(path)),
+                error=terminal_safe_text(str(error)),
+            )
+        ) from error
+
+
+def _semantically_validated_document(
     frozen_snapshot: dict[str, object],
     live: HistoryPlanDocument,
     plan: HistoryPlan,
@@ -754,7 +770,15 @@ def _validated_document(
             "generate a new scan"
         )
     _validate_plan_semantics(live, plan)
-    document = replace(live, plan=plan)
+    return replace(live, plan=plan)
+
+
+def _validated_document(
+    frozen_snapshot: dict[str, object],
+    live: HistoryPlanDocument,
+    plan: HistoryPlan,
+) -> HistoryPlanDocument:
+    document = _semantically_validated_document(frozen_snapshot, live, plan)
     validate_history_plan_materialization(document)
     return document
 
@@ -772,6 +796,24 @@ def read_and_validate_history_plan(
         allowed_remote_refs=allowed_remote_refs,
     )
     return _validated_document(frozen_snapshot, live, plan)
+
+
+def read_and_validate_history_plan_semantics(
+    plan_path: str,
+    *,
+    allowed_remote_refs: tuple[str, ...] = (),
+) -> tuple[HistoryPlanDocument, str]:
+    """Validate plan semantics and return its same-read exact SHA-256."""
+    payload, plan_sha256 = _read_plan_payload_and_sha256(plan_path)
+    frozen_snapshot, base_commit, plan = _decode_plan(payload)
+    live = acquire_history_plan_document(
+        base_commit,
+        allowed_remote_refs=allowed_remote_refs,
+    )
+    return (
+        _semantically_validated_document(frozen_snapshot, live, plan),
+        plan_sha256,
+    )
 
 
 def read_and_validate_frozen_history_plan(

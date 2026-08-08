@@ -4,11 +4,15 @@ from __future__ import annotations
 
 from contextlib import ExitStack
 from dataclasses import dataclass
+from typing import Protocol
 
 from ..exceptions import CommandError
 from ..fixup.commutation import apply_patch_to_tree, load_tree_diff_as_buffer
 from ..i18n import _
-from ..utils.git_object_io import temporary_git_object_environment
+from ..utils.git_object_io import (
+    get_git_object_type,
+    temporary_git_object_environment,
+)
 from .models import (
     HistoryCommitSnapshot,
     HistoryPlanDocument,
@@ -27,6 +31,49 @@ class HistoryReplayResult:
 
     output_trees: tuple[str, ...]
     final_tree: str
+
+
+class HistoryResolvedOutputMaterializer(Protocol):
+    """Build one explicit output tree from its actual replay parent."""
+
+    def __call__(
+        self,
+        document: HistoryPlanDocument,
+        output_index: int,
+        output: HistoryPlannedCommit,
+        parent_tree: str,
+        *,
+        env: dict[str, str] | None,
+    ) -> str: ...
+
+
+def _require_resolved_tree(
+    document: HistoryPlanDocument,
+    output_index: int,
+    candidate: object,
+    *,
+    env: dict[str, str] | None,
+) -> str:
+    oid_length = 40 if document.snapshot.object_format == "sha1" else 64
+    if (
+        not isinstance(candidate, str)
+        or len(candidate) != oid_length
+        or any(character not in "0123456789abcdef" for character in candidate)
+    ):
+        raise CommandError(
+            _(
+                "Rewrite output {output} resolution did not produce a full "
+                "tree object ID."
+            ).format(output=output_index + 1)
+        )
+    if get_git_object_type(candidate, env=env) != "tree":
+        raise CommandError(
+            _(
+                "Rewrite output {output} resolution did not produce an "
+                "accessible tree object."
+            ).format(output=output_index + 1)
+        )
+    return candidate
 
 
 def _requires_unit_replay(
@@ -135,6 +182,7 @@ def materialize_history_output_trees(
     document: HistoryPlanDocument,
     *,
     env: dict[str, str] | None = None,
+    resolved_output_materializer: HistoryResolvedOutputMaterializer | None = None,
 ) -> HistoryReplayResult:
     """Replay every consumed source patch once and require the frozen final tree."""
     resolved_output = next(
@@ -145,7 +193,7 @@ def materialize_history_output_trees(
         ),
         None,
     )
-    if resolved_output is not None:
+    if resolved_output is not None and resolved_output_materializer is None:
         raise CommandError(
             _(
                 "Rewrite output {output} requires an explicit resolution "
@@ -156,7 +204,8 @@ def materialize_history_output_trees(
     unit_output_indexes = {
         index
         for index, output in enumerate(document.plan.outputs)
-        if _requires_unit_replay(output, sources)
+        if output.materialization == "EXACT"
+        and _requires_unit_replay(output, sources)
     }
     current_tree = document.snapshot.base_tree
     output_trees: list[str] = []
@@ -168,7 +217,30 @@ def materialize_history_output_trees(
             )
             units = {unit.snapshot.unit_id: unit for unit in acquired_units}
         for output_index, output in enumerate(document.plan.outputs):
-            if output_index in unit_output_indexes:
+            parent_tree = current_tree
+            if output.materialization == "RESOLVED":
+                if resolved_output_materializer is None:
+                    raise AssertionError("resolved materializer was checked above")
+                current_tree = _require_resolved_tree(
+                    document,
+                    output_index,
+                    resolved_output_materializer(
+                        document,
+                        output_index,
+                        output,
+                        parent_tree,
+                        env=env,
+                    ),
+                    env=env,
+                )
+                if current_tree == parent_tree:
+                    raise CommandError(
+                        _(
+                            "Rewrite output {output} resolves non-empty units "
+                            "into an empty commit."
+                        ).format(output=output_index + 1)
+                    )
+            elif output_index in unit_output_indexes:
                 current_tree = _apply_unit_output(
                     output,
                     units,

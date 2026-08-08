@@ -8,6 +8,7 @@ import hashlib
 import os
 import stat
 import sys
+import uuid
 from collections.abc import Iterable, Iterator
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
@@ -16,12 +17,15 @@ from pathlib import Path
 from typing import NoReturn
 
 from ..exceptions import CommandError
-from ..git_paths import display_path, terminal_safe_text
+from ..git_paths import display_path, encode_path, terminal_safe_text
 from ..i18n import _
+from ..utils.git_object_io import GitObjectQuarantine, create_git_blob
 
 
 PRIVATE_RESOLUTION_DIRECTORY_MODE = 0o700
 PRIVATE_RESOLUTION_FILE_MODE = 0o600
+_ARTIFACT_CHUNK_SIZE = 64 * 1024
+_ARTIFACT_NAME_DOMAIN = b"git-stage-batch-resolution-artifact-v1\0"
 _TEMPORARY_FILE_PREFIX = ".git-stage-batch-resolution-"
 _TEMPORARY_FILE_DOMAIN = b"git-stage-batch-resolution-write-v1\0"
 _MAXIMUM_DIRECTORY_ENTRIES = 64 * 1024
@@ -74,6 +78,14 @@ class ResolutionArtifactDigest:
 
     size: int
     sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class ResolutionImportedArtifact:
+    """A verified artifact imported into one selected Git object store."""
+
+    digest: ResolutionArtifactDigest
+    blob_object_id: str
 
 
 class PrivateFilePublicationOutcome(str, Enum):
@@ -791,6 +803,203 @@ def recover_interrupted_resolution_artifact_write(path: str | Path) -> None:
         _recover_interrupted_resolution_artifact_write(artifact_path, parent)
 
 
+def resolution_artifact_name(output_index: int, repository_path: str) -> str:
+    """Return an opaque filename for an output/path pair."""
+    if (
+        isinstance(output_index, bool)
+        or not isinstance(output_index, int)
+        or output_index < 0
+    ):
+        raise ValueError("output_index must be a non-negative integer")
+    if not isinstance(repository_path, str) or not repository_path:
+        raise ValueError("repository_path must be a non-empty string")
+
+    digest = hashlib.sha256()
+    digest.update(_ARTIFACT_NAME_DOMAIN)
+    digest.update(str(output_index).encode("ascii"))
+    digest.update(b"\0")
+    digest.update(encode_path(repository_path))
+    return f"artifact-{digest.hexdigest()}"
+
+
+def _opened_artifact_chunks(path: Path) -> Iterator[bytes]:
+    """Yield one exact regular file and reject identity changes while reading."""
+    leaf_name = path.name
+    with _pinned_directory(path.parent, require_private=True) as parent:
+        try:
+            path_metadata = os.stat(
+                leaf_name,
+                dir_fd=parent,
+                follow_symlinks=False,
+            )
+        except OSError as error:
+            _invalid(path, _("cannot inspect file: {error}").format(error=error))
+        _require_regular_metadata(path, path_metadata)
+
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        flags |= getattr(os, "O_NONBLOCK", 0)
+        try:
+            file_descriptor = os.open(leaf_name, flags, dir_fd=parent)
+        except OSError as error:
+            _invalid(path, _("cannot open file: {error}").format(error=error))
+
+        try:
+            opened_metadata = os.fstat(file_descriptor)
+            _require_regular_metadata(path, opened_metadata)
+            _require_current_owner(path, opened_metadata)
+            initial_identity = _identity(opened_metadata)
+            if initial_identity != _identity(path_metadata):
+                _invalid(path, _("file changed while it was opened"))
+            if initial_identity.links != 1:
+                _invalid(path, _("file must not have hard links"))
+
+            bytes_read = 0
+            while bytes_read < initial_identity.size:
+                chunk = os.read(
+                    file_descriptor,
+                    min(_ARTIFACT_CHUNK_SIZE, initial_identity.size - bytes_read),
+                )
+                if not chunk:
+                    break
+                bytes_read += len(chunk)
+                yield chunk
+
+            if bytes_read == initial_identity.size and os.read(file_descriptor, 1):
+                _invalid(path, _("file grew while it was read"))
+
+            final_identity = _identity(os.fstat(file_descriptor))
+            if (
+                final_identity != initial_identity
+                or bytes_read != initial_identity.size
+            ):
+                _invalid(path, _("file changed while it was read"))
+            try:
+                final_path_metadata = os.stat(
+                    leaf_name,
+                    dir_fd=parent,
+                    follow_symlinks=False,
+                )
+            except OSError as error:
+                _invalid(
+                    path,
+                    _("cannot verify file after reading: {error}").format(error=error),
+                )
+            _require_regular_metadata(path, final_path_metadata)
+            if _identity(final_path_metadata) != initial_identity:
+                _invalid(path, _("file path changed while it was read"))
+        finally:
+            os.close(file_descriptor)
+
+
+def _digesting_chunks(
+    chunks: Iterable[bytes],
+    digest: hashlib._Hash,
+    size: list[int],
+) -> Iterator[bytes]:
+    for chunk in chunks:
+        digest.update(chunk)
+        size[0] += len(chunk)
+        yield chunk
+
+
+def _artifact_digest(
+    digest: hashlib._Hash, size: list[int]
+) -> ResolutionArtifactDigest:
+    return ResolutionArtifactDigest(size=size[0], sha256=digest.hexdigest())
+
+
+def _require_expected_digest(
+    path: Path,
+    actual: ResolutionArtifactDigest,
+    expected: ResolutionArtifactDigest | None,
+) -> None:
+    if expected is not None and actual != expected:
+        _invalid(path, _("content does not match its expected size and SHA-256"))
+
+
+def digest_resolution_artifact(
+    path: str | Path,
+    *,
+    expected: ResolutionArtifactDigest | None = None,
+) -> ResolutionArtifactDigest:
+    """Stream and identify one exact regular-file artifact."""
+    artifact_path = _exact_path(path)
+    digest = hashlib.sha256()
+    size = [0]
+    for _chunk in _digesting_chunks(
+        _opened_artifact_chunks(artifact_path),
+        digest,
+        size,
+    ):
+        pass
+    result = _artifact_digest(digest, size)
+    _require_expected_digest(artifact_path, result, expected)
+    return result
+
+
+def import_resolution_artifact_blob(
+    path: str | Path,
+    *,
+    env: GitObjectQuarantine,
+    expected: ResolutionArtifactDigest | None = None,
+) -> ResolutionImportedArtifact:
+    """Stream one artifact into a required Git object quarantine."""
+    if not isinstance(env, GitObjectQuarantine):
+        raise ValueError("a Git object quarantine environment is required")
+    artifact_path = _exact_path(path)
+    digest = hashlib.sha256()
+    size = [0]
+    blob_object_id = create_git_blob(
+        _digesting_chunks(
+            _opened_artifact_chunks(artifact_path),
+            digest,
+            size,
+        ),
+        env=env.environment(),
+    )
+    artifact_digest = _artifact_digest(digest, size)
+    _require_expected_digest(artifact_path, artifact_digest, expected)
+    return ResolutionImportedArtifact(
+        digest=artifact_digest,
+        blob_object_id=blob_object_id,
+    )
+
+
+def _destination_metadata(
+    path: Path,
+    parent: int,
+) -> os.stat_result | None:
+    try:
+        metadata = os.stat(
+            path.name,
+            dir_fd=parent,
+            follow_symlinks=False,
+        )
+    except FileNotFoundError:
+        return None
+    except OSError as error:
+        _invalid(path, _("cannot inspect destination: {error}").format(error=error))
+    _require_regular_metadata(path, metadata)
+    return metadata
+
+
+def _destination_unchanged(
+    path: Path,
+    parent: int,
+    initial_metadata: os.stat_result | None,
+) -> None:
+    current_metadata = _destination_metadata(path, parent)
+    if initial_metadata is None:
+        if current_metadata is not None:
+            _invalid(path, _("destination appeared while it was being written"))
+        return
+    if current_metadata is None or _identity(current_metadata) != _identity(
+        initial_metadata
+    ):
+        _invalid(path, _("destination changed while it was being written"))
+
+
 def _require_open_file_path(
     path: Path,
     parent: int,
@@ -1096,3 +1305,82 @@ def publish_new_private_file(
             path=artifact_path,
             outcome=outcome,
         ) from error
+
+
+def write_resolution_artifact_atomically(
+    path: str | Path,
+    chunks: Iterable[bytes],
+    *,
+    expected: ResolutionArtifactDigest | None = None,
+) -> ResolutionArtifactDigest:
+    """Atomically stream one private artifact and return its exact identity."""
+    artifact_path = _exact_path(path)
+    with _pinned_directory(artifact_path.parent, require_private=True) as parent:
+        initial_metadata = _destination_metadata(artifact_path, parent)
+        temporary_name = (
+            f"{_TEMPORARY_FILE_PREFIX}{uuid.uuid4().hex}.tmp"
+        )
+        flags = (
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
+        try:
+            file_descriptor = os.open(
+                temporary_name,
+                flags,
+                PRIVATE_RESOLUTION_FILE_MODE,
+                dir_fd=parent,
+            )
+        except OSError as error:
+            _invalid(
+                artifact_path,
+                _("cannot create temporary artifact: {error}").format(error=error),
+            )
+        digest = hashlib.sha256()
+        size = 0
+        try:
+            with os.fdopen(file_descriptor, "wb") as destination:
+                for chunk in chunks:
+                    destination.write(chunk)
+                    digest.update(chunk)
+                    size += len(chunk)
+                destination.flush()
+                os.fchmod(destination.fileno(), PRIVATE_RESOLUTION_FILE_MODE)
+                os.fsync(destination.fileno())
+            result = ResolutionArtifactDigest(size=size, sha256=digest.hexdigest())
+            _require_expected_digest(artifact_path, result, expected)
+            _destination_unchanged(artifact_path, parent, initial_metadata)
+            os.replace(
+                temporary_name,
+                artifact_path.name,
+                src_dir_fd=parent,
+                dst_dir_fd=parent,
+            )
+            os.fsync(parent)
+            return result
+        finally:
+            try:
+                os.unlink(temporary_name, dir_fd=parent)
+            except FileNotFoundError:
+                pass
+
+
+def copy_resolution_artifact_atomically(
+    source: str | Path,
+    destination: str | Path,
+    *,
+    expected: ResolutionArtifactDigest | None = None,
+) -> ResolutionArtifactDigest:
+    """Securely copy one artifact into an exact private destination."""
+    source_path = _exact_path(source)
+    destination_path = _exact_path(destination)
+    if source_path == destination_path:
+        _invalid(destination_path, _("source and destination must differ"))
+    return write_resolution_artifact_atomically(
+        destination_path,
+        _opened_artifact_chunks(source_path),
+        expected=expected,
+    )

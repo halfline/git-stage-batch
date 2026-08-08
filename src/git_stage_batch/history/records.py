@@ -140,7 +140,10 @@ def history_safety_record(safety: HistorySafetyFacts) -> dict[str, object]:
     }
 
 
-def _planned_commit_record(output: HistoryPlannedCommit) -> dict[str, object]:
+def history_planned_commit_record(
+    output: HistoryPlannedCommit,
+) -> dict[str, object]:
+    """Return one canonical editable output declaration."""
     return {
         "operation": output.operation,
         "materialization": output.materialization,
@@ -171,7 +174,8 @@ def history_plan_document_record(
                 for partition in document.plan.partitioned_units
             ],
             "outputs": [
-                _planned_commit_record(output) for output in document.plan.outputs
+                history_planned_commit_record(output)
+                for output in document.plan.outputs
             ],
         },
     }

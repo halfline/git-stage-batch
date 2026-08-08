@@ -60,8 +60,9 @@ it disagrees with this skill.
 
 Use `git-stage-batch rewrite scan` as the source of immutable range, commit,
 author, message, signature, tree, patch-unit, and local safety facts. The
-skill-owned helper remains the temporary mutation executor until installed
-help exposes `rewrite apply`, `continue`, `abort`, and `verify`.
+product rewrite executor owns KEEP, REWORD, and INTEGRATE mutation,
+checkpointing, recovery, and verification. The skill-owned helper remains the
+temporary SPLIT executor and high-level semantic audit checkpoint.
 
 Before rewriting, read the repository's contribution guide and representative
 recent commits. Follow project message conventions for replacement commits
@@ -130,9 +131,9 @@ git-stage-batch rewrite scan "$BASE_SHA" --output "$REWRITE_PLAN"
 git-stage-batch rewrite validate "$REWRITE_PLAN" --porcelain
 ```
 
-Do not edit the generated KEEP template to encode SPLIT or INTEGRATE yet;
-those plan operations are not accepted until the installed CLI documents
-them. Use the snapshot's stable unit inventory in the audit report instead.
+Do not edit the generated KEEP template to encode SPLIT in audit mode. The
+installed executor accepts INTEGRATE, but audit remains non-mutating; describe
+the exact source and unit assignment in the report instead.
 Continue at **Build the audit**, without running the intervening mutation
 preconditions or checkpoint sections. After reporting the completed audit,
 stop. The remaining checkpoint, rewrite, message-mutation, and completion
@@ -183,6 +184,17 @@ Do not read old refine-history artifacts before `start`.
 
 Run this section only for the literal `resume` invocation. Do not call
 `start`, do not clear state, and do not accept a second base argument:
+
+```bash
+git-stage-batch rewrite status --porcelain
+```
+
+If this reports `"active": true`, the product checkpoint is authoritative.
+Run `git-stage-batch rewrite continue`, then `rewrite verify`; never infer a
+step from helper prose or start an interactive rebase. Use `rewrite abort`
+only when abandoning the active product operation. After completion,
+regenerate the scan and restart the semantic audit. Use the legacy helper
+resume path below only when no product operation is active.
 
 ```bash
 REPO_ROOT=$(git --no-optional-locks rev-parse --show-toplevel)
@@ -314,8 +326,25 @@ Run these passes:
 3. Run the first-class `refine-commit-messages` skill in its default mutating
    mode over the same canonical base.
 
-Use the exact boundary procedures in `references/rewrite-procedures.md`. After
-any rewrite, regenerate `pressure.json` and restart the audit because SHAs and
+Use the SPLIT fallback and INTEGRATE object-plan procedure in
+`references/rewrite-procedures.md`. For a pass containing no SPLIT decision,
+encode every reviewed integration in `rewrite-plan.json`, validate it, then
+run:
+
+```bash
+if test -n "${REVIEW_HEAD_REF:-}"; then
+  git-stage-batch rewrite apply "$REWRITE_PLAN" \
+    --allow-published-ref "$REVIEW_HEAD_REF"
+else
+  git-stage-batch rewrite apply "$REWRITE_PLAN"
+fi
+git-stage-batch rewrite verify --porcelain
+```
+
+The CLI must prove every crossing and the exact final tree. Never replace a
+rejected integration with manual patch application. Use interactive rebase
+only for SPLIT until the installed CLI accepts that operation. After any
+rewrite, regenerate `pressure.json` and restart the audit because SHAs and
 dependencies changed. Verify every changed committed snapshot before
 continuing. Never defer a broken intermediate snapshot to a later repair.
 
@@ -347,7 +376,12 @@ justified, multi-outcome, or insufficiently probed entries:
 python3 "$REFINE_HISTORY_HELPER" validate-audit --base "$BASE_SHA"
 git-stage-batch rewrite scan "$BASE_SHA" --output "$REWRITE_PLAN"
 git-stage-batch rewrite validate "$REWRITE_PLAN" --porcelain
+git-stage-batch rewrite status --porcelain
 ```
+
+When status names a latest `COMPLETE` product operation, also require
+`git-stage-batch rewrite verify --porcelain`. A latest `ABORTED` operation is
+not rewrite evidence.
 
 Require a clean worktree/index, no batch/session, the original final tree, the
 same ancestor base, passing normal tests, passing relevant checks for every

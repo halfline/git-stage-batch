@@ -5,10 +5,9 @@ Substitute the installed skill root for `.claude/skills/refine-history` when
 using another assistant. Delegate all message-only rewording to
 `refine-commit-messages`.
 
-These interactive-rebase procedures are a temporary executor fallback. Use
-them only while installed `git-stage-batch rewrite --help` lacks the required
-`apply` operation. Before each boundary change, require the current immutable
-scan to validate:
+The interactive-rebase procedures are now a temporary SPLIT fallback only.
+Use the object executor for KEEP, REWORD, and INTEGRATE plans. Before each
+boundary change, require the current immutable scan to validate:
 
 ```bash
 git-stage-batch rewrite validate "$REWRITE_PLAN" --porcelain
@@ -88,39 +87,40 @@ git --no-optional-locks log --reverse --format='%H %s' "$BASE_SHA"..HEAD -- PATH
 ```
 
 If any hunk cannot be allocated confidently, stop. If the repair has several
-targets, first use the broad-snapshot split procedure to replace it with one
-temporary repair commit per historical target. Confirm that `HEAD^{tree}`
-still matches `pre-tree.txt`, restart the audit, and integrate each temporary
-repair separately. Do not carry one unsplit patch through several `edit` stops;
-residual hunks at the first stop make later rebase steps unsafe.
+targets, first use the broad-snapshot split fallback to replace it with one
+temporary repair commit per target. Confirm the final tree, regenerate
+`rewrite-plan.json`, then handle each one-target repair separately.
 
-For one target:
+For a one-target repair, edit only `plan.outputs` in the scan document:
+
+1. Change the target output operation to `INTEGRATE`.
+2. List the target followed by its repair commit or commits in chronological
+   `source_commits` order.
+3. Concatenate every listed source commit's complete `unit_ids` in that order.
+4. Remove the separate repair output while leaving intervening outputs in
+   source order after the integrated target.
+5. Preserve the target author and keep its message/encoding unless its stated
+   outcome genuinely changes.
+
+Then require product proof and execution:
 
 ```bash
-TARGET_SHA=PUT_COMMIT_THAT_SHOULD_HAVE_CONTAINED_THE_HUNK
-TARGET_SHORT=$(git --no-optional-locks rev-parse --short=7 "$TARGET_SHA")
-REPAIR_SHORT=$(git --no-optional-locks rev-parse --short=7 "$REPAIR_SHA")
-git --no-optional-locks show --format= --binary "$REPAIR_SHA" > "$REFINE_HISTORY_STATE_DIR/repair-$REPAIR_SHORT.patch"
-python3 "$REFINE_HISTORY_HELPER" mark --phase rewriting --note "integrate $REPAIR_SHA into $TARGET_SHA"
-GIT_SEQUENCE_EDITOR="sed -i -E -e 's/^pick (${TARGET_SHORT}[0-9a-f]*) /edit \\1 /' -e 's/^pick (${REPAIR_SHORT}[0-9a-f]*) /drop \\1 /'" git rebase -i "$BASE_SHA"
-git --no-optional-locks apply --check "$REFINE_HISTORY_STATE_DIR/repair-$REPAIR_SHORT.patch"
-git apply "$REFINE_HISTORY_STATE_DIR/repair-$REPAIR_SHORT.patch"
-git-stage-batch start
-git-stage-batch show
-git-stage-batch include --line ALL_REPAIR_HUNK_LINE_IDS --no-auto-advance
-git --no-optional-locks diff --cached
-git --no-optional-locks diff --check
-git commit --amend --no-edit
-python3 .claude/skills/refine-history/scripts/verify-head-snapshot.py --ref HEAD -- python3 -m compileall -q src tests
-git-stage-batch stop
-test -z "$(git --no-optional-locks status --short)"
-git rebase --continue
+git-stage-batch rewrite validate "$REWRITE_PLAN" --porcelain
+if test -n "${REVIEW_HEAD_REF:-}"; then
+  git-stage-batch rewrite apply "$REWRITE_PLAN" \
+    --allow-published-ref "$REVIEW_HEAD_REF"
+else
+  git-stage-batch rewrite apply "$REWRITE_PLAN"
+fi
+git-stage-batch rewrite status --porcelain
+git-stage-batch rewrite verify --porcelain
 ```
 
-If `git --no-optional-locks apply --check` fails, reconstruct the same
-one-target hunks manually and verify the working diff against the saved patch.
-Never suppress the apply failure. Restart the complete audit when the rebase
-finishes.
+Do not fall back to patch application when validation reports a conflict,
+unequal final tree, unsupported header, stale snapshot, or other mechanical
+failure. Revise the assignment or retain the repair. If apply is interrupted,
+use `rewrite continue`; use `rewrite abort` only for an operation-owned tip.
+Restart the complete audit after successful application.
 
 ## Repair a failing committed snapshot
 

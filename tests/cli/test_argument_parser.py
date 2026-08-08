@@ -20,6 +20,7 @@ from git_stage_batch.cli import (
     skip_dispatch,
 )
 from git_stage_batch.cli.argument_parser import parse_command_line
+from git_stage_batch.cli.root_parser import build_root_parser
 from git_stage_batch.data import batch_file_scope as stored_batch_file_scope
 from git_stage_batch.data.file_review.records import FileReviewAction
 from git_stage_batch.exceptions import CommandError
@@ -28,6 +29,32 @@ from git_stage_batch.exceptions import CommandError
 def _stdin_with_bytes(data: bytes) -> io.TextIOWrapper:
     """Build stdin carrying exact bytes for `--as-stdin` tests."""
     return io.TextIOWrapper(io.BytesIO(data), encoding="utf-8", errors="surrogateescape")
+
+
+def test_root_help_describes_complete_rewrite_lifecycle() -> None:
+    """Top-level help should expose planning, mutation, and inspection."""
+    help_text = " ".join(build_root_parser().format_help().split())
+
+    assert (
+        "Fine-grained Git staging and deterministic draft-history refinement"
+        in help_text
+    )
+    assert "Plan, execute, and inspect a deterministic history refinement" in help_text
+
+
+def test_rewrite_help_describes_branch_mutation_and_conditional_abort(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rewrite action help should state its branch effects precisely."""
+    monkeypatch.setattr(git_help, "_show_git_stage_batch_help", lambda _topic: False)
+    with pytest.raises(SystemExit) as raised:
+        parse_command_line(["rewrite", "--help"], quiet=True)
+
+    assert raised.value.code == 0
+    help_text = " ".join(capsys.readouterr().out.split())
+    assert "Build, verify, and atomically update the checked-out branch" in help_text
+    assert "Abort and conditionally restore the original branch tip" in help_text
 
 
 class _UnreadableStdin:
@@ -2268,6 +2295,66 @@ def test_parse_command_line_history_status_dispatches_porcelain(monkeypatch):
     )
     args = parse_command_line(
         ["rewrite", "status", "--porcelain"],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(porcelain=True)
+
+
+def test_parse_command_line_rewrite_apply_dispatches_publication_exceptions(
+    monkeypatch,
+):
+    mock_command = Mock()
+    monkeypatch.setattr(
+        rewrite_subcommands,
+        "command_rewrite_apply",
+        mock_command,
+    )
+    args = parse_command_line(
+        [
+            "rewrite",
+            "apply",
+            "plan.json",
+            "--allow-published-ref",
+            "refs/remotes/origin/topic",
+            "--allow-published-ref",
+            "refs/remotes/upstream/topic",
+            "--porcelain",
+        ],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "plan.json",
+        allowed_remote_refs=(
+            "refs/remotes/origin/topic",
+            "refs/remotes/upstream/topic",
+        ),
+        porcelain=True,
+    )
+
+
+@pytest.mark.parametrize(
+    ("action", "attribute"),
+    [
+        ("continue", "command_rewrite_continue"),
+        ("abort", "command_rewrite_abort"),
+        ("verify", "command_rewrite_verify"),
+    ],
+)
+def test_parse_command_line_history_checkpoint_action(
+    monkeypatch,
+    action,
+    attribute,
+):
+    mock_command = Mock()
+    monkeypatch.setattr(rewrite_subcommands, attribute, mock_command)
+    args = parse_command_line(
+        ["rewrite", action, "--porcelain"],
         quiet=True,
     )
 

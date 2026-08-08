@@ -85,6 +85,9 @@ def test_bash_completion_covers_rewrite_actions_and_options():
     ).read_text()
 
     assert "fixup suggest-fixup rewrite new" in completion
-    assert 'compgen -W "scan validate status"' in completion
+    assert (
+        'compgen -W "scan validate apply status continue abort verify"'
+        in completion
+    )
     assert 'compgen -W "--output --porcelain"' in completion
     assert "--output)" in completion

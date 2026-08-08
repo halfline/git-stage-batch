@@ -8,17 +8,11 @@ import tracemalloc
 
 import pytest
 
-from git_stage_batch.fixup import models as fixup_models
 from git_stage_batch.fixup.commutation import (
     analyze_placement,
     load_tree_diff_as_buffer,
 )
-from git_stage_batch.fixup.models import FixupRange
-
-
-_FIXUP_UNIT_TYPE = getattr(fixup_models, "FixupUnit", None) or getattr(
-    fixup_models, "StagedFixupUnit"
-)
+from git_stage_batch.fixup.models import FixupRange, FixupUnit
 
 
 def _git(*arguments: str) -> str:
@@ -82,7 +76,7 @@ def test_patch_commutes_across_empty_commit(tree_diff_repo):
     changed_tree = _git("write-tree")
 
     with load_tree_diff_as_buffer(head_tree, changed_tree) as patch_buffer:
-        unit = _FIXUP_UNIT_TYPE(
+        unit = FixupUnit(
             unit_id="1" * 64,
             path="anchor.txt",
             kind="text-replacement",
@@ -91,6 +85,7 @@ def test_patch_commutes_across_empty_commit(tree_diff_repo):
         placement = analyze_placement(
             unit,
             FixupRange(
+                object_format="sha1",
                 base_commit=base,
                 head_commit=head,
                 commits_newest_first=(head,),

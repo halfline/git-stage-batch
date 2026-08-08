@@ -2183,8 +2183,32 @@ def test_parse_command_line_fixup_create_passes_arguments(monkeypatch):
     args.func(args)
     mock_command.assert_called_once_with(
         "main",
+        plan_path=None,
         dry_run=True,
         partial=True,
+        porcelain=True,
+    )
+
+
+def test_parse_command_line_fixup_create_passes_plan_path(monkeypatch):
+    """fixup create forwards a reusable plan path without a boundary."""
+    mock_command = Mock()
+    monkeypatch.setattr(fixup_subcommands, "command_create_fixups", mock_command)
+
+    args = parse_command_line(
+        ["fixup", "create", "--plan", "fixup-plan.json", "--porcelain"],
+        quiet=True,
+    )
+
+    assert args is not None
+    assert args.boundary is None
+    assert args.plan_path == "fixup-plan.json"
+    args.func(args)
+    mock_command.assert_called_once_with(
+        None,
+        plan_path="fixup-plan.json",
+        dry_run=False,
+        partial=False,
         porcelain=True,
     )
 

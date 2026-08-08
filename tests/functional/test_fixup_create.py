@@ -46,6 +46,39 @@ def test_fixup_create_cli_makes_reviewable_commit(functional_repo):
     assert _git("diff", "--cached") == ""
 
 
+def test_fixup_create_cli_replays_a_reviewed_plan(functional_repo):
+    source = functional_repo / "src" / "utils.py"
+    base = _git("rev-parse", "HEAD")
+    source.write_text("def helper():\n    return 84\n")
+    _git("add", "src/utils.py")
+    _git("commit", "-m", "Adjust helper value")
+    source.write_text("def helper():\n    return 126\n")
+    _git("add", "src/utils.py")
+
+    dry_run = git_stage_batch(
+        "fixup",
+        "create",
+        base,
+        "--dry-run",
+        "--porcelain",
+    )
+    plan_path = functional_repo / "fixup-plan.json"
+    plan_path.write_text(dry_run.stdout, encoding="utf-8")
+    result = git_stage_batch(
+        "fixup",
+        "create",
+        "--plan",
+        str(plan_path),
+        "--porcelain",
+    )
+    output = json.loads(result.stdout)
+
+    assert output["assignments"][0]["basis"] == "automatic"
+    assert output["summary"]["created_commits"] == 1
+    assert _git("log", "-1", "--format=%s") == "fixup! Adjust helper value"
+    assert _git("diff", "--cached") == ""
+
+
 def test_fixup_create_supports_sha256_repositories(tmp_path, monkeypatch):
     repo = tmp_path / "sha256-repo"
     repo.mkdir()
@@ -71,7 +104,22 @@ def test_fixup_create_supports_sha256_repositories(tmp_path, monkeypatch):
     source.write_text("fixed\n")
     _git("add", "value.txt")
 
-    result = git_stage_batch("fixup", "create", base, "--porcelain")
+    dry_run = git_stage_batch(
+        "fixup",
+        "create",
+        base,
+        "--dry-run",
+        "--porcelain",
+    )
+    plan_path = repo / "fixup-plan.json"
+    plan_path.write_text(dry_run.stdout, encoding="utf-8")
+    result = git_stage_batch(
+        "fixup",
+        "create",
+        "--plan",
+        str(plan_path),
+        "--porcelain",
+    )
     output = json.loads(result.stdout)
 
     assert output["source"]["object_format"] == "sha256"

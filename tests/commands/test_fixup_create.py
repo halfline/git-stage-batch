@@ -21,6 +21,17 @@ def _git(*arguments: str, check: bool = True) -> str:
     ).stdout.strip()
 
 
+def _write_plan(path, plan: dict[str, object]) -> None:
+    path.write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
+
+
+def _create_plan(base: str, path, capsys) -> dict[str, object]:
+    command_create_fixups(base, dry_run=True, porcelain=True)
+    plan = json.loads(capsys.readouterr().out)
+    _write_plan(path, plan)
+    return plan
+
+
 @pytest.fixture
 def fixup_create_repo(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
@@ -108,9 +119,368 @@ def test_create_dry_run_does_not_mutate(fixup_create_repo, capsys):
 
     output = json.loads(capsys.readouterr().out)
     assert output["dry_run"] is True
+    assert output["schema_version"] == 2
+    assert output["range"]["commits_newest_first"][0] == output["range"]["head"]
+    assert output["assignments"][0]["basis"] == "automatic"
+    assert output["summary"]["assigned_units"] == 1
     assert output["summary"]["created_commits"] == 0
     assert _git("rev-parse", "HEAD") == head_before
     assert _git("write-tree") == index_before
+
+
+def test_create_replays_an_unchanged_dry_run_plan(
+    fixup_create_repo,
+    capsys,
+):
+    repo, source, base, alpha_commit, _gamma_commit = fixup_create_repo
+    source.write_text("alpha fixed\nbeta\ngamma topic\n")
+    _git("add", "example.txt")
+    plan_path = repo / "fixup-plan.json"
+    plan = _create_plan(base, plan_path, capsys)
+
+    command_create_fixups(plan_path=str(plan_path), porcelain=True)
+
+    output = json.loads(capsys.readouterr().out)
+    assert plan["assignments"][0]["target"] == alpha_commit
+    assert output["assignments"] == plan["assignments"]
+    assert output["summary"]["created_commits"] == 1
+    assert _git("log", "-1", "--format=%s") == "fixup! Change alpha"
+    assert _git("diff", "--cached") == ""
+
+
+def test_create_accepts_a_mechanically_valid_explicit_assignment(
+    fixup_create_repo,
+    capsys,
+):
+    repo, source, base, alpha_commit, gamma_commit = fixup_create_repo
+    source.write_text("alpha fixed\nbeta\ngamma topic\n")
+    _git("add", "example.txt")
+    plan_path = repo / "fixup-plan.json"
+    plan = _create_plan(base, plan_path, capsys)
+    assert plan["units"][0]["target"] == alpha_commit
+
+    plan["assignments"][0]["target"] = gamma_commit
+    plan["assignments"][0]["basis"] = "explicit"
+    _write_plan(plan_path, plan)
+    command_create_fixups(plan_path=str(plan_path), porcelain=True)
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["units"][0]["target"] == alpha_commit
+    assert output["assignments"][0] == {
+        "unit_id": plan["units"][0]["id"],
+        "target": gamma_commit,
+        "basis": "explicit",
+    }
+    assert output["groups"][0]["target"] == gamma_commit
+    assert _git("log", "-1", "--format=%s") == "fixup! Change gamma"
+
+
+def test_create_requires_explicit_basis_for_a_reviewed_override(
+    fixup_create_repo,
+    capsys,
+):
+    repo, source, base, _alpha_commit, gamma_commit = fixup_create_repo
+    source.write_text("alpha fixed\nbeta\ngamma topic\n")
+    _git("add", "example.txt")
+    plan_path = repo / "fixup-plan.json"
+    plan = _create_plan(base, plan_path, capsys)
+    plan["assignments"][0]["target"] = gamma_commit
+    _write_plan(plan_path, plan)
+
+    with pytest.raises(CommandError, match="not automatically eligible"):
+        command_create_fixups(plan_path=str(plan_path))
+
+
+def test_create_rejects_an_explicit_target_behind_a_barrier(
+    fixup_create_repo,
+    capsys,
+):
+    repo, source, base, alpha_commit, gamma_commit = fixup_create_repo
+    source.write_text("alpha topic\nbeta\ngamma fixed\n")
+    _git("add", "example.txt")
+    plan_path = repo / "fixup-plan.json"
+    plan = _create_plan(base, plan_path, capsys)
+    assert plan["units"][0]["placement"]["barrier"] == gamma_commit
+    plan["assignments"][0]["target"] = alpha_commit
+    plan["assignments"][0]["basis"] = "explicit"
+    _write_plan(plan_path, plan)
+
+    with pytest.raises(CommandError, match="cannot cross the commits"):
+        command_create_fixups(plan_path=str(plan_path))
+
+
+def test_create_accepts_explicit_semantics_for_placement_only_evidence(
+    fixup_create_repo,
+    capsys,
+):
+    repo, source, base, _alpha_commit, gamma_commit = fixup_create_repo
+    source.write_text("alpha fixed\nbeta fixed\ngamma topic\n")
+    _git("add", "example.txt")
+    plan_path = repo / "fixup-plan.json"
+    plan = _create_plan(base, plan_path, capsys)
+    unit = plan["units"][0]
+    assert unit["status"] == "placement-only"
+    assert unit["target"] == gamma_commit
+    assert plan["assignments"] == []
+    plan["assignments"] = [
+        {
+            "unit_id": unit["id"],
+            "target": gamma_commit,
+            "basis": "explicit",
+        }
+    ]
+    _write_plan(plan_path, plan)
+
+    command_create_fixups(plan_path=str(plan_path), porcelain=True)
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["assignments"][0]["basis"] == "explicit"
+    assert output["summary"]["created_commits"] == 1
+
+
+def test_create_rejects_explicit_assignment_with_unknown_placement(
+    fixup_create_repo,
+    capsys,
+):
+    repo, _source, base, _alpha_commit, gamma_commit = fixup_create_repo
+    (repo / "new.txt").write_text("new work\n")
+    _git("add", "new.txt")
+    plan_path = repo / "fixup-plan.json"
+    plan = _create_plan(base, plan_path, capsys)
+    unit = plan["units"][0]
+    assert unit["placement"]["status"] == "unknown"
+    plan["assignments"] = [
+        {
+            "unit_id": unit["id"],
+            "target": gamma_commit,
+            "basis": "explicit",
+        }
+    ]
+    _write_plan(plan_path, plan)
+
+    with pytest.raises(CommandError, match="no conclusive mechanical placement"):
+        command_create_fixups(plan_path=str(plan_path))
+
+
+def test_create_rejects_a_plan_after_the_index_changes(
+    fixup_create_repo,
+    capsys,
+):
+    repo, source, base, _alpha_commit, _gamma_commit = fixup_create_repo
+    source.write_text("alpha fixed\nbeta\ngamma topic\n")
+    _git("add", "example.txt")
+    plan_path = repo / "fixup-plan.json"
+    _create_plan(base, plan_path, capsys)
+    source.write_text("alpha newer\nbeta\ngamma topic\n")
+    _git("add", "example.txt")
+
+    with pytest.raises(CommandError, match="does not match the current"):
+        command_create_fixups(plan_path=str(plan_path))
+
+
+def test_create_rejects_omitted_plan_units(
+    fixup_create_repo,
+    capsys,
+):
+    repo, source, base, _alpha_commit, _gamma_commit = fixup_create_repo
+    source.write_text("alpha fixed\nbeta\ngamma topic\n")
+    _git("add", "example.txt")
+    plan_path = repo / "fixup-plan.json"
+    plan = _create_plan(base, plan_path, capsys)
+    plan["units"] = []
+    plan["assignments"] = []
+    _write_plan(plan_path, plan)
+
+    with pytest.raises(CommandError, match="exact units or evidence"):
+        command_create_fixups(plan_path=str(plan_path))
+
+
+def test_create_reports_a_missing_unit_id_as_an_invalid_plan(
+    fixup_create_repo,
+    capsys,
+):
+    repo, source, base, _alpha_commit, _gamma_commit = fixup_create_repo
+    source.write_text("alpha fixed\nbeta\ngamma topic\n")
+    _git("add", "example.txt")
+    plan_path = repo / "fixup-plan.json"
+    plan = _create_plan(base, plan_path, capsys)
+    del plan["units"][0]["id"]
+    plan["assignments"] = []
+    _write_plan(plan_path, plan)
+
+    with pytest.raises(CommandError, match="missing field 'id'"):
+        command_create_fixups(plan_path=str(plan_path))
+
+
+def test_create_rejects_duplicate_json_fields(
+    fixup_create_repo,
+    capsys,
+):
+    repo, source, base, _alpha_commit, _gamma_commit = fixup_create_repo
+    source.write_text("alpha fixed\nbeta\ngamma topic\n")
+    _git("add", "example.txt")
+    plan_path = repo / "fixup-plan.json"
+    plan = _create_plan(base, plan_path, capsys)
+    payload = json.dumps(plan).replace(
+        '"operation": "fixup-create"',
+        '"operation": "fixup-create", "operation": "fixup-create"',
+        1,
+    )
+    plan_path.write_text(payload, encoding="utf-8")
+
+    with pytest.raises(CommandError, match="duplicate field 'operation'"):
+        command_create_fixups(plan_path=str(plan_path))
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("path", "forged.txt"),
+        ("reason", "forged-rationale"),
+    ],
+)
+def test_create_rejects_forged_plan_unit_evidence(
+    fixup_create_repo,
+    capsys,
+    field,
+    replacement,
+):
+    repo, source, base, _alpha_commit, _gamma_commit = fixup_create_repo
+    source.write_text("alpha fixed\nbeta\ngamma topic\n")
+    _git("add", "example.txt")
+    plan_path = repo / "fixup-plan.json"
+    plan = _create_plan(base, plan_path, capsys)
+    plan["units"][0][field] = replacement
+    _write_plan(plan_path, plan)
+
+    with pytest.raises(CommandError, match="exact units or evidence"):
+        command_create_fixups(plan_path=str(plan_path))
+
+
+def test_create_rejects_a_forged_stable_unit_id(
+    fixup_create_repo,
+    capsys,
+):
+    repo, source, base, _alpha_commit, _gamma_commit = fixup_create_repo
+    source.write_text("alpha fixed\nbeta\ngamma topic\n")
+    _git("add", "example.txt")
+    plan_path = repo / "fixup-plan.json"
+    plan = _create_plan(base, plan_path, capsys)
+    forged_id = "f" * 64
+    plan["units"][0]["id"] = forged_id
+    plan["assignments"][0]["unit_id"] = forged_id
+    _write_plan(plan_path, plan)
+
+    with pytest.raises(CommandError, match="exact units or evidence"):
+        command_create_fixups(plan_path=str(plan_path))
+
+
+def test_create_rejects_duplicate_plan_assignments(
+    fixup_create_repo,
+    capsys,
+):
+    repo, source, base, _alpha_commit, _gamma_commit = fixup_create_repo
+    source.write_text("alpha fixed\nbeta\ngamma topic\n")
+    _git("add", "example.txt")
+    plan_path = repo / "fixup-plan.json"
+    plan = _create_plan(base, plan_path, capsys)
+    plan["assignments"].append(dict(plan["assignments"][0]))
+    _write_plan(plan_path, plan)
+
+    with pytest.raises(CommandError, match="duplicates a unit assignment"):
+        command_create_fixups(plan_path=str(plan_path))
+
+
+def test_create_rejects_abbreviated_plan_target_ids(
+    fixup_create_repo,
+    capsys,
+):
+    repo, source, base, _alpha_commit, _gamma_commit = fixup_create_repo
+    source.write_text("alpha fixed\nbeta\ngamma topic\n")
+    _git("add", "example.txt")
+    plan_path = repo / "fixup-plan.json"
+    plan = _create_plan(base, plan_path, capsys)
+    plan["assignments"][0]["target"] = plan["assignments"][0]["target"][:12]
+    _write_plan(plan_path, plan)
+
+    with pytest.raises(CommandError, match="full lowercase hexadecimal"):
+        command_create_fixups(plan_path=str(plan_path))
+
+
+def test_create_validates_and_refreshes_a_reviewed_plan_in_dry_run(
+    fixup_create_repo,
+    capsys,
+):
+    repo, source, base, _alpha_commit, gamma_commit = fixup_create_repo
+    source.write_text("alpha fixed\nbeta\ngamma topic\n")
+    _git("add", "example.txt")
+    head_before = _git("rev-parse", "HEAD")
+    plan_path = repo / "fixup-plan.json"
+    plan = _create_plan(base, plan_path, capsys)
+    plan["assignments"][0]["target"] = gamma_commit
+    plan["assignments"][0]["basis"] = "explicit"
+    _write_plan(plan_path, plan)
+
+    command_create_fixups(
+        plan_path=str(plan_path),
+        dry_run=True,
+        porcelain=True,
+    )
+
+    refreshed = json.loads(capsys.readouterr().out)
+    assert refreshed["groups"][0]["target"] == gamma_commit
+    assert refreshed["assignments"][0]["basis"] == "explicit"
+    assert refreshed["dry_run"] is True
+    assert _git("rev-parse", "HEAD") == head_before
+
+
+def test_create_plan_can_leave_reviewed_units_staged_with_partial(
+    fixup_create_repo,
+    capsys,
+):
+    repo, source, base, alpha_commit, _gamma_commit = fixup_create_repo
+    source.write_text("alpha fixed\nbeta\ngamma fixed\n")
+    _git("add", "example.txt")
+    plan_path = repo / "fixup-plan.json"
+    plan = _create_plan(base, plan_path, capsys)
+    plan["assignments"] = [
+        assignment
+        for assignment in plan["assignments"]
+        if assignment["target"] == alpha_commit
+    ]
+    _write_plan(plan_path, plan)
+
+    with pytest.raises(CommandError, match="--partial"):
+        command_create_fixups(plan_path=str(plan_path))
+    capsys.readouterr()
+
+    command_create_fixups(
+        plan_path=str(plan_path),
+        partial=True,
+        porcelain=True,
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["summary"]["assigned_units"] == 1
+    assert output["summary"]["remaining_units"] == 1
+    assert output["summary"]["created_commits"] == 1
+    staged = _git("diff", "--cached", "--unified=0")
+    assert "gamma fixed" in staged
+    assert "alpha fixed" not in staged
+
+
+def test_create_rejects_a_boundary_together_with_a_plan(
+    fixup_create_repo,
+    capsys,
+):
+    repo, source, base, _alpha_commit, _gamma_commit = fixup_create_repo
+    source.write_text("alpha fixed\nbeta\ngamma topic\n")
+    _git("add", "example.txt")
+    plan_path = repo / "fixup-plan.json"
+    _create_plan(base, plan_path, capsys)
+
+    with pytest.raises(CommandError, match="both a fixup boundary and --plan"):
+        command_create_fixups(base, plan_path=str(plan_path))
 
 
 def test_create_requires_partial_when_some_units_are_unresolved(

@@ -74,4 +74,5 @@ def test_bash_completion_covers_fixup_actions_and_options():
 
     assert "fixup suggest-fixup new" in completion
     assert 'compgen -W "suggest create"' in completion
-    assert 'compgen -W "--dry-run --partial --porcelain"' in completion
+    assert 'compgen -W "--plan --dry-run --partial --porcelain"' in completion
+    assert "--plan)" in completion

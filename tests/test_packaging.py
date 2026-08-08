@@ -189,10 +189,11 @@ class TestWheelContents:
             files = whl.namelist()
 
         assert any(
-            "git_stage_batch/assets/claude-skills/refine-history/scripts/refine-history-checkpoint.py"
+            "git_stage_batch/assets/claude-skills/refine-history/SKILL.md"
             in f
             for f in files
         ), "Missing bundled refine-history Claude skill asset"
+        assert not any("refine-history-checkpoint.py" in f for f in files)
 
     def test_wheel_contains_claude_refine_messages_skill_asset(self, build_wheel):
         """Test that wheel contains the standalone Claude message skill."""
@@ -201,9 +202,10 @@ class TestWheelContents:
 
         assert any(
             "git_stage_batch/assets/claude-skills/refine-commit-messages/"
-            "scripts/refine-commit-messages-checkpoint.py" in f
+            "SKILL.md" in f
             for f in files
         ), "Missing bundled refine-commit-messages Claude skill asset"
+        assert not any("refine-commit-messages-checkpoint.py" in f for f in files)
 
     def test_wheel_contains_claude_publish_skill_asset(self, build_wheel):
         """Test that the wheel contains the Claude publication helper."""

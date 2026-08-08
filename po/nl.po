@@ -7323,3 +7323,453 @@ msgstr "Geschiedenisbron {commit} produceerde tijdens het opnieuw afspelen ander
 
 msgid "Rewrite operation was already complete; abort made no changes."
 msgstr "De herschrijfbewerking was al voltooid; afbreken heeft geen wijzigingen aangebracht."
+
+msgid "Create or advance an external rewrite-resolution workspace"
+msgstr "Een externe werkruimte voor herschrijfoplossingen maken of voortzetten"
+
+msgid "Reviewed rewrite plan containing resolved outputs"
+msgstr "Beoordeeld herschrijfplan met opgeloste uitvoer"
+
+msgid "Private external directory for resolution artifacts"
+msgstr "Afgeschermde externe map voor oplossingsartefacten"
+
+msgid "Import the current result and advance to the next output"
+msgstr "Het huidige resultaat importeren en doorgaan naar de volgende uitvoer"
+
+msgid "Output a machine-readable resolution checkpoint"
+msgstr "Een machineleesbaar oplossingscontrolepunt uitvoeren"
+
+#, python-brace-format
+msgid "Rewrite output {output} resolution did not produce a full tree object ID."
+msgstr "De oplossing van herschrijfuitvoer {output} heeft geen volledige boomobject-ID opgeleverd."
+
+#, python-brace-format
+msgid "Rewrite output {output} resolution did not produce an accessible tree object."
+msgstr "De oplossing van herschrijfuitvoer {output} heeft geen toegankelijk boomobject opgeleverd."
+
+#, python-brace-format
+msgid "Rewrite output {output} requires an explicit resolution workspace."
+msgstr "Herschrijfuitvoer {output} vereist een expliciete oplossingswerkruimte."
+
+#, python-brace-format
+msgid "Rewrite output {output} resolves non-empty units into an empty commit."
+msgstr "Herschrijfuitvoer {output} lost niet-lege eenheden op in een lege commit."
+
+#, python-brace-format
+msgid "Invalid resolution artifact '{path}': {detail}"
+msgstr "Ongeldig oplossingsartefact '{path}': {detail}"
+
+msgid "path must be absolute"
+msgstr "het pad moet absoluut zijn"
+
+msgid "path must not contain aliases or traversal"
+msgstr "het pad mag geen aliassen of padtraversatie bevatten"
+
+msgid "platform does not support secure directory access"
+msgstr "het platform ondersteunt geen veilige toegang tot mappen"
+
+#, python-brace-format
+msgid "path must not contain aliases, traversal, or symlinks ({error})"
+msgstr "het pad mag geen aliassen, padtraversatie of symbolische koppelingen bevatten ({error})"
+
+msgid "path must be a directory"
+msgstr "het pad moet een map zijn"
+
+msgid "directory permissions must be 0700"
+msgstr "de mapmachtigingen moeten 0700 zijn"
+
+msgid "directory path changed during artifact access"
+msgstr "het mappad is tijdens de toegang tot het artefact gewijzigd"
+
+msgid "path must not contain aliases, traversal, or symlinks"
+msgstr "het pad mag geen aliassen, padtraversatie of symbolische koppelingen bevatten"
+
+msgid "path must be a regular file"
+msgstr "het pad moet een normaal bestand zijn"
+
+msgid "path must be owned by the current user"
+msgstr "het pad moet eigendom zijn van de huidige gebruiker"
+
+msgid "file must not have hard links"
+msgstr "het bestand mag geen harde koppelingen hebben"
+
+msgid "file permissions must be 0600"
+msgstr "de bestandsmachtigingen moeten 0600 zijn"
+
+msgid "cannot create the filesystem root"
+msgstr "de hoofdmap van het bestandssysteem kan niet worden gemaakt"
+
+msgid "directory changed while it was opened"
+msgstr "de map is gewijzigd terwijl deze geopend was"
+
+#, python-brace-format
+msgid "cannot create private directory: {error}"
+msgstr "afgeschermde map kan niet worden gemaakt: {error}"
+
+msgid "directory exceeds the supported entry-count limit"
+msgstr "de map overschrijdt het ondersteunde maximumaantal items"
+
+#, python-brace-format
+msgid "cannot enumerate directory: {error}"
+msgstr "de map kan niet worden geïnventariseerd: {error}"
+
+msgid "locked and final directories must be distinct siblings"
+msgstr "de vergrendelde en definitieve map moeten verschillende mappen op hetzelfde niveau zijn"
+
+#, python-brace-format
+msgid "cannot open workspace lock: {error}"
+msgstr "de werkruimtevergrendeling kan niet worden geopend: {error}"
+
+#, python-brace-format
+msgid "cannot authenticate workspace lock: {error}"
+msgstr "de werkruimtevergrendeling kan niet worden geverifieerd: {error}"
+
+msgid "workspace lock changed while it was opened"
+msgstr "de werkruimtevergrendeling is gewijzigd terwijl deze geopend was"
+
+msgid "workspace is already in use"
+msgstr "de werkruimte is al in gebruik"
+
+#, python-brace-format
+msgid "cannot lock workspace: {error}"
+msgstr "de werkruimte kan niet worden vergrendeld: {error}"
+
+#, python-brace-format
+msgid "cannot re-authenticate workspace lock: {error}"
+msgstr "de werkruimtevergrendeling kan niet opnieuw worden geverifieerd: {error}"
+
+msgid "workspace lock changed while it was held"
+msgstr "de werkruimtevergrendeling is gewijzigd terwijl deze werd vastgehouden"
+
+msgid "staging and destination must be distinct siblings"
+msgstr "de stagingmap en het doel moeten verschillende paden op hetzelfde niveau zijn"
+
+#, python-brace-format
+msgid "cannot inspect staging directory: {error}"
+msgstr "de stagingmap kan niet worden geïnspecteerd: {error}"
+
+#, python-brace-format
+msgid "cannot open staging directory: {error}"
+msgstr "de stagingmap kan niet worden geopend: {error}"
+
+msgid "staging directory changed while it was opened"
+msgstr "de stagingmap is gewijzigd terwijl deze geopend was"
+
+#, python-brace-format
+msgid "cannot inspect destination: {error}"
+msgstr "het doel kan niet worden geïnspecteerd: {error}"
+
+msgid "destination already exists"
+msgstr "het doel bestaat al"
+
+#, python-brace-format
+msgid "cannot re-authenticate staging directory: {error}"
+msgstr "de stagingmap kan niet opnieuw worden geverifieerd: {error}"
+
+msgid "staging directory changed before publication"
+msgstr "de stagingmap is vóór publicatie gewijzigd"
+
+#, python-brace-format
+msgid "cannot publish directory: {error}"
+msgstr "de map kan niet worden gepubliceerd: {error}"
+
+msgid "published directory identity changed"
+msgstr "de identiteit van de gepubliceerde map is gewijzigd"
+
+#, python-brace-format
+msgid "cannot inspect file: {error}"
+msgstr "het bestand kan niet worden geïnspecteerd: {error}"
+
+#, python-brace-format
+msgid "cannot inspect interrupted write: {error}"
+msgstr "de onderbroken schrijfbewerking kan niet worden geïnspecteerd: {error}"
+
+#, python-brace-format
+msgid "cannot open interrupted write: {error}"
+msgstr "de onderbroken schrijfbewerking kan niet worden geopend: {error}"
+
+msgid "interrupted write changed before recovery"
+msgstr "de onderbroken schrijfbewerking is vóór herstel gewijzigd"
+
+#, python-brace-format
+msgid "cannot remove interrupted write: {error}"
+msgstr "de onderbroken schrijfbewerking kan niet worden verwijderd: {error}"
+
+msgid "metadata exceeds the supported size limit"
+msgstr "de metagegevens overschrijden de ondersteunde maximale grootte"
+
+#, python-brace-format
+msgid "metadata cannot be decoded: {error}"
+msgstr "de metagegevens kunnen niet worden gedecodeerd: {error}"
+
+#, python-brace-format
+msgid "cannot open file: {error}"
+msgstr "het bestand kan niet worden geopend: {error}"
+
+msgid "file changed while it was opened"
+msgstr "het bestand is gewijzigd terwijl het geopend was"
+
+msgid "file grew while it was read"
+msgstr "het bestand is tijdens het lezen groter geworden"
+
+msgid "file changed while it was read"
+msgstr "het bestand is tijdens het lezen gewijzigd"
+
+#, python-brace-format
+msgid "cannot verify file after reading: {error}"
+msgstr "het bestand kan na het lezen niet worden geverifieerd: {error}"
+
+msgid "file path changed while it was read"
+msgstr "het bestandspad is tijdens het lezen gewijzigd"
+
+msgid "content does not match its expected size and SHA-256"
+msgstr "de inhoud komt niet overeen met de verwachte grootte en SHA-256"
+
+msgid "destination appeared while it was being written"
+msgstr "het doel verscheen tijdens het schrijven"
+
+msgid "destination changed while it was being written"
+msgstr "het doel is tijdens het schrijven gewijzigd"
+
+#, python-brace-format
+msgid "cannot open destination: {error}"
+msgstr "het doel kan niet worden geopend: {error}"
+
+msgid "destination changed while it was opened"
+msgstr "het doel is gewijzigd terwijl het geopend was"
+
+#, python-brace-format
+msgid "cannot authenticate displaced destination: {error}"
+msgstr "het verplaatste doel kan niet worden geverifieerd: {error}"
+
+#, python-brace-format
+msgid "{detail} ({error})"
+msgstr "{detail} ({error})"
+
+#, python-brace-format
+msgid "cannot inspect raced destination: {error}"
+msgstr "het door een race beïnvloede doel kan niet worden geïnspecteerd: {error}"
+
+msgid "published artifact changed before exchange rollback"
+msgstr "het gepubliceerde artefact is vóór het terugdraaien van de omwisseling gewijzigd"
+
+msgid "raced destination changed before exchange rollback"
+msgstr "het door een race beïnvloede doel is vóór het terugdraaien van de omwisseling gewijzigd"
+
+#, python-brace-format
+msgid "cannot roll back raced destination: {error}"
+msgstr "het door een race beïnvloede doel kan niet worden teruggedraaid: {error}"
+
+msgid "temporary artifact changed during exchange rollback"
+msgstr "het tijdelijke artefact is tijdens het terugdraaien van de omwisseling gewijzigd"
+
+msgid "raced destination changed during exchange rollback"
+msgstr "het door een race beïnvloede doel is tijdens het terugdraaien van de omwisseling gewijzigd"
+
+#, python-brace-format
+msgid "cannot create temporary artifact: {error}"
+msgstr "het tijdelijke artefact kan niet worden gemaakt: {error}"
+
+msgid "temporary artifact changed while it was opened"
+msgstr "het tijdelijke artefact is gewijzigd terwijl het geopend was"
+
+msgid "artifact exceeds the supported size limit"
+msgstr "het artefact overschrijdt de ondersteunde maximale grootte"
+
+msgid "temporary artifact path changed while it was written"
+msgstr "het pad van het tijdelijke artefact is tijdens het schrijven gewijzigd"
+
+msgid "temporary artifact size changed"
+msgstr "de grootte van het tijdelijke artefact is gewijzigd"
+
+#, python-brace-format
+msgid "cannot publish artifact: {error}"
+msgstr "het artefact kan niet worden gepubliceerd: {error}"
+
+msgid "published artifact identity changed"
+msgstr "de identiteit van het gepubliceerde artefact is gewijzigd"
+
+msgid "destination changed during atomic replacement"
+msgstr "het doel is tijdens de atomaire vervanging gewijzigd"
+
+#, python-brace-format
+msgid "cannot remove displaced destination: {error}"
+msgstr "het verplaatste doel kan niet worden verwijderd: {error}"
+
+msgid "source and destination must differ"
+msgstr "bron en doel moeten verschillen"
+
+#, python-brace-format
+msgid "Invalid rewrite resolution workspace: {detail}"
+msgstr "Ongeldige werkruimte voor herschrijfoplossingen: {detail}"
+
+msgid "workspace path must be a non-empty string"
+msgstr "het werkruimtepad moet een niet-lege tekenreeks zijn"
+
+#, python-brace-format
+msgid "{location} is not valid strict JSON ({error})"
+msgstr "{location} is geen geldige strikte JSON ({error})"
+
+#, python-brace-format
+msgid "{location} does not match its immutable binding"
+msgstr "{location} komt niet overeen met de onveranderlijke binding"
+
+#, python-brace-format
+msgid "{location} has the wrong entries ({detail})"
+msgstr "{location} bevat de verkeerde items ({detail})"
+
+#, python-brace-format
+msgid "cannot inspect workspace path ({error})"
+msgstr "het werkruimtepad kan niet worden geïnspecteerd ({error})"
+
+#, python-brace-format
+msgid "source unit {unit} has unsupported kind {kind}"
+msgstr "broneenheid {unit} heeft niet-ondersteund type {kind}"
+
+#, python-brace-format
+msgid "source unit {unit} has unsupported coupling {reason}"
+msgstr "broneenheid {unit} heeft niet-ondersteunde koppeling {reason}"
+
+#, python-brace-format
+msgid "{context} path {path!r} has unsupported kind or mode {mode}"
+msgstr "{context}-pad {path!r} heeft niet-ondersteund type of modus {mode}"
+
+#, python-brace-format
+msgid "source blob {blob} is not accessible"
+msgstr "bronblob {blob} is niet toegankelijk"
+
+msgid "Git returned the wrong source blob"
+msgstr "Git heeft de verkeerde bronblob geretourneerd"
+
+msgid "Git returned duplicate source blobs"
+msgstr "Git heeft dubbele bronblobs geretourneerd"
+
+msgid "source blob size changed while it was exported"
+msgstr "de grootte van de bronblob is tijdens het exporteren gewijzigd"
+
+msgid "resolution reference artifact names collided"
+msgstr "de namen van oplossingsreferentieartefacten conflicteren"
+
+#, python-brace-format
+msgid "staged output {output} contains unexpected entries"
+msgstr "gestagede uitvoer {output} bevat onverwachte items"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to be created"
+msgstr "resultaatpad {path!r} mag niet worden gemaakt"
+
+#, python-brace-format
+msgid "result path {path!r} uses an unauthorized creation mode"
+msgstr "resultaatpad {path!r} gebruikt een niet-toegestane aanmaakmodus"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to be deleted"
+msgstr "resultaatpad {path!r} mag niet worden verwijderd"
+
+#, python-brace-format
+msgid "authorized result path {path!r} did not change"
+msgstr "toegestaan resultaatpad {path!r} is niet gewijzigd"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to change mode"
+msgstr "resultaatpad {path!r} mag niet van modus veranderen"
+
+#, python-brace-format
+msgid "result path {path!r} uses an unauthorized changed mode"
+msgstr "resultaatpad {path!r} gebruikt een niet-toegestane gewijzigde modus"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to change content"
+msgstr "resultaatpad {path!r} mag niet van inhoud veranderen"
+
+msgid "an absent result path has an artifact digest"
+msgstr "een afwezig resultaatpad heeft een artefactdigest"
+
+msgid "resolved output would be an empty commit"
+msgstr "de opgeloste uitvoer zou een lege commit zijn"
+
+#, python-brace-format
+msgid "{location} has the wrong path inventory"
+msgstr "{location} heeft de verkeerde padinventaris"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] must be an object"
+msgstr "{location}.paths[{index}] moet een object zijn"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] has the wrong fields"
+msgstr "{location}.paths[{index}] heeft de verkeerde velden"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] does not match result.json"
+msgstr "{location}.paths[{index}] komt niet overeen met result.json"
+
+msgid "an absent receipt path has an artifact digest"
+msgstr "een afwezig ontvangstpad heeft een artefactdigest"
+
+msgid "a present receipt path has an invalid artifact digest"
+msgstr "een aanwezig ontvangstpad heeft een ongeldige artefactdigest"
+
+msgid "resolution replay used the wrong document or environment"
+msgstr "het opnieuw afspelen van de oplossing gebruikte het verkeerde document of de verkeerde omgeving"
+
+#, python-brace-format
+msgid "output {output} resolution is missing"
+msgstr "de oplossing voor uitvoer {output} ontbreekt"
+
+#, python-brace-format
+msgid "workspace outputs contain unexpected entries: {entries}"
+msgstr "de werkruimte-uitvoer bevat onverwachte items: {entries}"
+
+#, python-brace-format
+msgid "output {output} result.json changed after acceptance"
+msgstr "result.json voor uitvoer {output} is na acceptatie gewijzigd"
+
+#, python-brace-format
+msgid "output {output} receipt.json is not authentic"
+msgstr "receipt.json voor uitvoer {output} is niet authentiek"
+
+#, python-brace-format
+msgid "output {output} has not been accepted"
+msgstr "uitvoer {output} is niet geaccepteerd"
+
+msgid "plan does not contain any RESOLVED outputs"
+msgstr "het plan bevat geen RESOLVED-uitvoer"
+
+msgid "--accept requires an existing workspace"
+msgstr "--accept vereist een bestaande werkruimte"
+
+#, python-brace-format
+msgid "Rewrite resolution workspace is complete: {workspace}"
+msgstr "De werkruimte voor herschrijfoplossingen is voltooid: {workspace}"
+
+#, python-brace-format
+msgid "{count} resolved output recorded."
+msgid_plural "{count} resolved outputs recorded."
+msgstr[0] "{count} opgelost uitvoerresultaat vastgelegd."
+msgstr[1] "{count} opgeloste uitvoerresultaten vastgelegd."
+
+#, python-brace-format
+msgid "Rewrite output {number} needs resolution ({key})."
+msgstr "Herschrijfuitvoer {number} moet worden opgelost ({key})."
+
+#, python-brace-format
+msgid "Inspect resolution request: {path}"
+msgstr "Oplossingsverzoek inspecteren: {path}"
+
+#, python-brace-format
+msgid "Edit resolution metadata: {path}"
+msgstr "Metagegevens van de oplossing bewerken: {path}"
+
+#, python-brace-format
+msgid "Edit resolved artifacts in: {path}"
+msgstr "Opgeloste artefacten bewerken in: {path}"
+
+msgid "Authorized path:"
+msgid_plural "Authorized paths:"
+msgstr[0] "Toegestaan pad:"
+msgstr[1] "Toegestane paden:"
+
+#, python-brace-format
+msgid "Then run: {command}"
+msgstr "Voer daarna uit: {command}"

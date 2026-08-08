@@ -7488,3 +7488,462 @@ msgstr "أنتج مصدر التاريخ {commit} وحدات رقعة مختلف
 
 msgid "Rewrite operation was already complete; abort made no changes."
 msgstr "كانت عملية إعادة الكتابة مكتملة بالفعل؛ ولم يُجرِ الإلغاء أي تغييرات."
+
+# Rewrite resolution workspace translations.
+msgid "Create or advance an external rewrite-resolution workspace"
+msgstr "إنشاء مساحة عمل خارجية لحل إعادة الكتابة أو التقدم فيها"
+
+msgid "Reviewed rewrite plan containing resolved outputs"
+msgstr "خطة إعادة كتابة مراجعة تحتوي على نواتج محلولة"
+
+msgid "Private external directory for resolution artifacts"
+msgstr "دليل خارجي خاص لعناصر الحل"
+
+msgid "Import the current result and advance to the next output"
+msgstr "استيراد النتيجة الحالية والتقدم إلى الناتج التالي"
+
+msgid "Output a machine-readable resolution checkpoint"
+msgstr "إخراج نقطة تحقق للحل قابلة للقراءة آليًا"
+
+#, python-brace-format
+msgid "Rewrite output {output} resolution did not produce a full tree object ID."
+msgstr "لم يُنتج حل ناتج إعادة الكتابة {output} معرّفًا كاملًا لكائن شجرة."
+
+#, python-brace-format
+msgid "Rewrite output {output} resolution did not produce an accessible tree object."
+msgstr "لم يُنتج حل ناتج إعادة الكتابة {output} كائن شجرة يمكن الوصول إليه."
+
+#, python-brace-format
+msgid "Rewrite output {output} requires an explicit resolution workspace."
+msgstr "يتطلب ناتج إعادة الكتابة {output} مساحة عمل صريحة للحل."
+
+#, python-brace-format
+msgid "Rewrite output {output} resolves non-empty units into an empty commit."
+msgstr "يحل ناتج إعادة الكتابة {output} وحدات غير فارغة في إيداع فارغ."
+
+#, python-brace-format
+msgid "Invalid resolution artifact '{path}': {detail}"
+msgstr "عنصر حل غير صالح '{path}': {detail}"
+
+msgid "path must be absolute"
+msgstr "يجب أن يكون المسار مطلقًا"
+
+msgid "path must not contain aliases or traversal"
+msgstr "يجب ألا يحتوي المسار على أسماء بديلة أو اجتياز"
+
+msgid "platform does not support secure directory access"
+msgstr "لا تدعم المنصة الوصول الآمن إلى الأدلة"
+
+#, python-brace-format
+msgid "path must not contain aliases, traversal, or symlinks ({error})"
+msgstr "يجب ألا يحتوي المسار على أسماء بديلة أو اجتياز أو روابط رمزية ({error})"
+
+msgid "path must be a directory"
+msgstr "يجب أن يكون المسار دليلًا"
+
+msgid "directory permissions must be 0700"
+msgstr "يجب أن تكون أذونات الدليل ⁦0700⁩"
+
+msgid "directory path changed during artifact access"
+msgstr "تغيّر مسار الدليل أثناء الوصول إلى العنصر"
+
+msgid "path must not contain aliases, traversal, or symlinks"
+msgstr "يجب ألا يحتوي المسار على أسماء بديلة أو اجتياز أو روابط رمزية"
+
+msgid "path must be a regular file"
+msgstr "يجب أن يكون المسار ملفًا عاديًا"
+
+msgid "path must be owned by the current user"
+msgstr "يجب أن يكون المسار مملوكًا للمستخدم الحالي"
+
+msgid "file must not have hard links"
+msgstr "يجب ألا تكون للملف روابط صلبة"
+
+msgid "file permissions must be 0600"
+msgstr "يجب أن تكون أذونات الملف ⁦0600⁩"
+
+msgid "cannot create the filesystem root"
+msgstr "لا يمكن إنشاء جذر نظام الملفات"
+
+msgid "directory changed while it was opened"
+msgstr "تغيّر الدليل أثناء فتحه"
+
+#, python-brace-format
+msgid "cannot create private directory: {error}"
+msgstr "لا يمكن إنشاء الدليل الخاص: {error}"
+
+msgid "directory exceeds the supported entry-count limit"
+msgstr "يتجاوز الدليل الحد المدعوم لعدد الإدخالات"
+
+#, python-brace-format
+msgid "cannot enumerate directory: {error}"
+msgstr "لا يمكن تعداد الدليل: {error}"
+
+msgid "locked and final directories must be distinct siblings"
+msgstr "يجب أن يكون الدليل المقفل والدليل النهائي شقيقين مختلفين"
+
+#, python-brace-format
+msgid "cannot open workspace lock: {error}"
+msgstr "لا يمكن فتح قفل مساحة العمل: {error}"
+
+#, python-brace-format
+msgid "cannot authenticate workspace lock: {error}"
+msgstr "لا يمكن مصادقة قفل مساحة العمل: {error}"
+
+msgid "workspace lock changed while it was opened"
+msgstr "تغيّر قفل مساحة العمل أثناء فتحه"
+
+msgid "workspace is already in use"
+msgstr "مساحة العمل قيد الاستخدام بالفعل"
+
+#, python-brace-format
+msgid "cannot lock workspace: {error}"
+msgstr "لا يمكن قفل مساحة العمل: {error}"
+
+#, python-brace-format
+msgid "cannot re-authenticate workspace lock: {error}"
+msgstr "لا يمكن إعادة مصادقة قفل مساحة العمل: {error}"
+
+msgid "workspace lock changed while it was held"
+msgstr "تغيّر قفل مساحة العمل أثناء الاحتفاظ به"
+
+msgid "staging and destination must be distinct siblings"
+msgstr "يجب أن يكون دليل التجهيز والوجهة شقيقين مختلفين"
+
+#, python-brace-format
+msgid "cannot inspect staging directory: {error}"
+msgstr "لا يمكن فحص دليل التجهيز: {error}"
+
+#, python-brace-format
+msgid "cannot open staging directory: {error}"
+msgstr "لا يمكن فتح دليل التجهيز: {error}"
+
+msgid "staging directory changed while it was opened"
+msgstr "تغيّر دليل التجهيز أثناء فتحه"
+
+#, python-brace-format
+msgid "cannot inspect destination: {error}"
+msgstr "لا يمكن فحص الوجهة: {error}"
+
+msgid "destination already exists"
+msgstr "الوجهة موجودة بالفعل"
+
+#, python-brace-format
+msgid "cannot re-authenticate staging directory: {error}"
+msgstr "لا يمكن إعادة مصادقة دليل التجهيز: {error}"
+
+msgid "staging directory changed before publication"
+msgstr "تغيّر دليل التجهيز قبل النشر"
+
+#, python-brace-format
+msgid "cannot publish directory: {error}"
+msgstr "لا يمكن نشر الدليل: {error}"
+
+msgid "published directory identity changed"
+msgstr "تغيّرت هوية الدليل المنشور"
+
+#, python-brace-format
+msgid "cannot inspect file: {error}"
+msgstr "لا يمكن فحص الملف: {error}"
+
+#, python-brace-format
+msgid "cannot inspect interrupted write: {error}"
+msgstr "لا يمكن فحص الكتابة المتقطعة: {error}"
+
+#, python-brace-format
+msgid "cannot open interrupted write: {error}"
+msgstr "لا يمكن فتح الكتابة المتقطعة: {error}"
+
+msgid "interrupted write changed before recovery"
+msgstr "تغيّرت الكتابة المتقطعة قبل الاسترداد"
+
+#, python-brace-format
+msgid "cannot remove interrupted write: {error}"
+msgstr "لا يمكن إزالة الكتابة المتقطعة: {error}"
+
+msgid "metadata exceeds the supported size limit"
+msgstr "تتجاوز البيانات الوصفية حد الحجم المدعوم"
+
+#, python-brace-format
+msgid "metadata cannot be decoded: {error}"
+msgstr "لا يمكن فك ترميز البيانات الوصفية: {error}"
+
+#, python-brace-format
+msgid "cannot open file: {error}"
+msgstr "لا يمكن فتح الملف: {error}"
+
+msgid "file changed while it was opened"
+msgstr "تغيّر الملف أثناء فتحه"
+
+msgid "file grew while it was read"
+msgstr "ازداد حجم الملف أثناء قراءته"
+
+msgid "file changed while it was read"
+msgstr "تغيّر الملف أثناء قراءته"
+
+#, python-brace-format
+msgid "cannot verify file after reading: {error}"
+msgstr "لا يمكن التحقق من الملف بعد قراءته: {error}"
+
+msgid "file path changed while it was read"
+msgstr "تغيّر مسار الملف أثناء قراءته"
+
+msgid "content does not match its expected size and SHA-256"
+msgstr "لا يطابق المحتوى حجمه وبصمة ⁦SHA-256⁩ المتوقعتين"
+
+msgid "destination appeared while it was being written"
+msgstr "ظهرت الوجهة أثناء الكتابة"
+
+msgid "destination changed while it was being written"
+msgstr "تغيّرت الوجهة أثناء الكتابة"
+
+#, python-brace-format
+msgid "cannot open destination: {error}"
+msgstr "لا يمكن فتح الوجهة: {error}"
+
+msgid "destination changed while it was opened"
+msgstr "تغيّرت الوجهة أثناء فتحها"
+
+#, python-brace-format
+msgid "cannot authenticate displaced destination: {error}"
+msgstr "لا يمكن مصادقة الوجهة المزاحة: {error}"
+
+#, python-brace-format
+msgid "{detail} ({error})"
+msgstr "{detail} ({error})"
+
+#, python-brace-format
+msgid "cannot inspect raced destination: {error}"
+msgstr "لا يمكن فحص الوجهة التي تعرضت لسباق: {error}"
+
+msgid "published artifact changed before exchange rollback"
+msgstr "تغيّر العنصر المنشور قبل التراجع عن التبديل"
+
+msgid "raced destination changed before exchange rollback"
+msgstr "تغيّرت الوجهة التي تعرضت لسباق قبل التراجع عن التبديل"
+
+#, python-brace-format
+msgid "cannot roll back raced destination: {error}"
+msgstr "لا يمكن التراجع عن الوجهة التي تعرضت لسباق: {error}"
+
+msgid "temporary artifact changed during exchange rollback"
+msgstr "تغيّر العنصر المؤقت أثناء التراجع عن التبديل"
+
+msgid "raced destination changed during exchange rollback"
+msgstr "تغيّرت الوجهة التي تعرضت لسباق أثناء التراجع عن التبديل"
+
+#, python-brace-format
+msgid "cannot create temporary artifact: {error}"
+msgstr "لا يمكن إنشاء العنصر المؤقت: {error}"
+
+msgid "temporary artifact changed while it was opened"
+msgstr "تغيّر العنصر المؤقت أثناء فتحه"
+
+msgid "artifact exceeds the supported size limit"
+msgstr "يتجاوز العنصر حد الحجم المدعوم"
+
+msgid "temporary artifact path changed while it was written"
+msgstr "تغيّر مسار العنصر المؤقت أثناء كتابته"
+
+msgid "temporary artifact size changed"
+msgstr "تغيّر حجم العنصر المؤقت"
+
+#, python-brace-format
+msgid "cannot publish artifact: {error}"
+msgstr "لا يمكن نشر العنصر: {error}"
+
+msgid "published artifact identity changed"
+msgstr "تغيّرت هوية العنصر المنشور"
+
+msgid "destination changed during atomic replacement"
+msgstr "تغيّرت الوجهة أثناء الاستبدال الذري"
+
+#, python-brace-format
+msgid "cannot remove displaced destination: {error}"
+msgstr "لا يمكن إزالة الوجهة المزاحة: {error}"
+
+msgid "source and destination must differ"
+msgstr "يجب أن يختلف المصدر والوجهة"
+
+#, python-brace-format
+msgid "Invalid rewrite resolution workspace: {detail}"
+msgstr "مساحة عمل حل إعادة الكتابة غير صالحة: {detail}"
+
+msgid "workspace path must be a non-empty string"
+msgstr "يجب أن يكون مسار مساحة العمل سلسلة غير فارغة"
+
+#, python-brace-format
+msgid "{location} is not valid strict JSON ({error})"
+msgstr "{location} ليس ⁦JSON⁩ صارمًا صالحًا ({error})"
+
+#, python-brace-format
+msgid "{location} does not match its immutable binding"
+msgstr "لا يطابق {location} ارتباطه غير القابل للتغيير"
+
+#, python-brace-format
+msgid "{location} has the wrong entries ({detail})"
+msgstr "يحتوي {location} على إدخالات خاطئة ({detail})"
+
+#, python-brace-format
+msgid "cannot inspect workspace path ({error})"
+msgstr "لا يمكن فحص مسار مساحة العمل ({error})"
+
+#, python-brace-format
+msgid "source unit {unit} has unsupported kind {kind}"
+msgstr "لوحدة المصدر {unit} نوع غير مدعوم {kind}"
+
+#, python-brace-format
+msgid "source unit {unit} has unsupported coupling {reason}"
+msgstr "لوحدة المصدر {unit} اقتران غير مدعوم {reason}"
+
+#, python-brace-format
+msgid "{context} path {path!r} has unsupported kind or mode {mode}"
+msgstr "لمسار {context}‏ {path!r} نوع أو نمط غير مدعوم {mode}"
+
+#, python-brace-format
+msgid "source blob {blob} is not accessible"
+msgstr "لا يمكن الوصول إلى كائن بيانات المصدر {blob}"
+
+msgid "Git returned the wrong source blob"
+msgstr "أرجع ⁦Git⁩ كائن بيانات المصدر الخطأ"
+
+msgid "Git returned duplicate source blobs"
+msgstr "أرجع ⁦Git⁩ كائنات بيانات مصدر مكررة"
+
+msgid "source blob size changed while it was exported"
+msgstr "تغيّر حجم كائن بيانات المصدر أثناء تصديره"
+
+msgid "resolution reference artifact names collided"
+msgstr "تعارضت أسماء عناصر مرجع الحل"
+
+#, python-brace-format
+msgid "staged output {output} contains unexpected entries"
+msgstr "يحتوي الناتج المجهّز {output} على إدخالات غير متوقعة"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to be created"
+msgstr "مسار النتيجة {path!r} غير مصرّح بإنشائه"
+
+#, python-brace-format
+msgid "result path {path!r} uses an unauthorized creation mode"
+msgstr "يستخدم مسار النتيجة {path!r} نمط إنشاء غير مصرّح به"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to be deleted"
+msgstr "مسار النتيجة {path!r} غير مصرّح بحذفه"
+
+#, python-brace-format
+msgid "authorized result path {path!r} did not change"
+msgstr "لم يتغيّر مسار النتيجة المصرّح به {path!r}"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to change mode"
+msgstr "مسار النتيجة {path!r} غير مصرّح له بتغيير النمط"
+
+#, python-brace-format
+msgid "result path {path!r} uses an unauthorized changed mode"
+msgstr "يستخدم مسار النتيجة {path!r} نمطًا متغيّرًا غير مصرّح به"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to change content"
+msgstr "مسار النتيجة {path!r} غير مصرّح له بتغيير المحتوى"
+
+msgid "an absent result path has an artifact digest"
+msgstr "لمسار نتيجة غائب بصمة عنصر"
+
+msgid "resolved output would be an empty commit"
+msgstr "سيكون الناتج المحلول إيداعًا فارغًا"
+
+#, python-brace-format
+msgid "{location} has the wrong path inventory"
+msgstr "يحتوي {location} على جرد مسارات خاطئ"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] must be an object"
+msgstr "يجب أن يكون ⁦{location}.paths[{index}]⁩ كائنًا"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] has the wrong fields"
+msgstr "يحتوي ⁦{location}.paths[{index}]⁩ على حقول خاطئة"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] does not match result.json"
+msgstr "لا يطابق ⁦{location}.paths[{index}]⁩ الملف ⁦result.json⁩"
+
+msgid "an absent receipt path has an artifact digest"
+msgstr "لمسار إيصال غائب بصمة عنصر"
+
+msgid "a present receipt path has an invalid artifact digest"
+msgstr "لمسار إيصال موجود بصمة عنصر غير صالحة"
+
+msgid "resolution replay used the wrong document or environment"
+msgstr "استخدمت إعادة تشغيل الحل المستند أو البيئة الخطأ"
+
+#, python-brace-format
+msgid "output {output} resolution is missing"
+msgstr "حل الناتج {output} مفقود"
+
+#, python-brace-format
+msgid "workspace outputs contain unexpected entries: {entries}"
+msgstr "تحتوي نواتج مساحة العمل على إدخالات غير متوقعة: {entries}"
+
+#, python-brace-format
+msgid "output {output} result.json changed after acceptance"
+msgstr "تغيّر ملف ⁦result.json⁩ للناتج {output} بعد القبول"
+
+#, python-brace-format
+msgid "output {output} receipt.json is not authentic"
+msgstr "ملف ⁦receipt.json⁩ للناتج {output} غير أصيل"
+
+#, python-brace-format
+msgid "output {output} has not been accepted"
+msgstr "لم يُقبل الناتج {output}"
+
+msgid "plan does not contain any RESOLVED outputs"
+msgstr "لا تحتوي الخطة على أي نواتج ⁦RESOLVED⁩"
+
+msgid "--accept requires an existing workspace"
+msgstr "يتطلب الخيار ⁦--accept⁩ مساحة عمل موجودة"
+
+#, python-brace-format
+msgid "Rewrite resolution workspace is complete: {workspace}"
+msgstr "اكتملت مساحة عمل حل إعادة الكتابة: {workspace}"
+
+#, python-brace-format
+msgid "{count} resolved output recorded."
+msgid_plural "{count} resolved outputs recorded."
+msgstr[0] "لم يُسجّل أي ناتج محلول."
+msgstr[1] "سُجّل ناتج محلول واحد."
+msgstr[2] "سُجّل ناتجان محلولان."
+msgstr[3] "سُجّلت {count} نواتج محلولة."
+msgstr[4] "سُجّل {count} ناتجًا محلولًا."
+msgstr[5] "سُجّل {count} ناتج محلول."
+
+#, python-brace-format
+msgid "Rewrite output {number} needs resolution ({key})."
+msgstr "يحتاج ناتج إعادة الكتابة {number} إلى حل ({key})."
+
+#, python-brace-format
+msgid "Inspect resolution request: {path}"
+msgstr "افحص طلب الحل: {path}"
+
+#, python-brace-format
+msgid "Edit resolution metadata: {path}"
+msgstr "حرّر البيانات الوصفية للحل: {path}"
+
+#, python-brace-format
+msgid "Edit resolved artifacts in: {path}"
+msgstr "حرّر العناصر المحلولة في: {path}"
+
+msgid "Authorized path:"
+msgid_plural "Authorized paths:"
+msgstr[0] "لا مسارات مصرّح بها:"
+msgstr[1] "المسار المصرّح به:"
+msgstr[2] "المساران المصرّح بهما:"
+msgstr[3] "المسارات المصرّح بها:"
+msgstr[4] "المسارات المصرّح بها:"
+msgstr[5] "المسارات المصرّح بها:"
+
+#, python-brace-format
+msgid "Then run: {command}"
+msgstr "ثم شغّل: {command}"

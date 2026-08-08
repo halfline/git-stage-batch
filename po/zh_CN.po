@@ -6771,3 +6771,454 @@ msgstr "历史源 {commit} 在重放期间生成了不同的补丁单元。"
 
 msgid "Rewrite operation was already complete; abort made no changes."
 msgstr "重写操作已完成；中止操作未做任何更改。"
+
+# Rewrite resolution workspace translations.
+msgid "Create or advance an external rewrite-resolution workspace"
+msgstr "创建或推进外部重写解析工作区"
+
+msgid "Private external directory for resolution artifacts"
+msgstr "用于解析工件的私有外部目录"
+
+msgid "Import the current result and advance to the next output"
+msgstr "导入当前结果并推进到下一个输出"
+
+#, python-brace-format
+msgid "Rewrite output {output} resolution did not produce a full tree object ID."
+msgstr "重写输出 {output} 的解析未生成完整的树对象 ID。"
+
+msgid "path must be absolute"
+msgstr "路径必须是绝对路径"
+
+msgid "path must not contain aliases or traversal"
+msgstr "路径不得包含别名或遍历"
+
+msgid "platform does not support secure directory access"
+msgstr "平台不支持安全目录访问"
+
+#, python-brace-format
+msgid "path must not contain aliases, traversal, or symlinks ({error})"
+msgstr "路径不得包含别名、遍历或符号链接（{error}）"
+
+msgid "path must be a directory"
+msgstr "路径必须是目录"
+
+msgid "directory permissions must be 0700"
+msgstr "目录权限必须为 0700"
+
+msgid "directory path changed during artifact access"
+msgstr "访问工件期间目录路径发生了变化"
+
+msgid "path must not contain aliases, traversal, or symlinks"
+msgstr "路径不得包含别名、遍历或符号链接"
+
+msgid "path must be owned by the current user"
+msgstr "路径必须由当前用户所有"
+
+msgid "cannot create the filesystem root"
+msgstr "无法创建文件系统根目录"
+
+#, python-brace-format
+msgid "cannot create private directory: {error}"
+msgstr "无法创建私有目录：{error}"
+
+#, python-brace-format
+msgid "cannot enumerate directory: {error}"
+msgstr "无法枚举目录：{error}"
+
+#, python-brace-format
+msgid "cannot open workspace lock: {error}"
+msgstr "无法打开工作区锁：{error}"
+
+msgid "file must not have hard links"
+msgstr "文件不得有硬链接"
+
+msgid "file permissions must be 0600"
+msgstr "文件权限必须为 0600"
+
+msgid "workspace is already in use"
+msgstr "工作区已在使用中"
+
+msgid "staging and destination must be distinct siblings"
+msgstr "暂存位置和目标位置必须是不同的同级项"
+
+#, python-brace-format
+msgid "cannot publish directory: {error}"
+msgstr "无法发布目录：{error}"
+
+msgid "published directory identity changed"
+msgstr "已发布目录的标识发生了变化"
+
+msgid "metadata exceeds the supported size limit"
+msgstr "元数据超出支持的大小限制"
+
+#, python-brace-format
+msgid "metadata cannot be decoded: {error}"
+msgstr "无法解码元数据：{error}"
+
+msgid "file grew while it was read"
+msgstr "文件在读取期间增大"
+
+#, python-brace-format
+msgid "cannot verify file after reading: {error}"
+msgstr "无法在读取后验证文件：{error}"
+
+msgid "content does not match its expected size and SHA-256"
+msgstr "内容与预期大小和 SHA-256 不匹配"
+
+#, python-brace-format
+msgid "cannot create temporary artifact: {error}"
+msgstr "无法创建临时工件：{error}"
+
+msgid "source and destination must differ"
+msgstr "源和目标必须不同"
+
+#, python-brace-format
+msgid "{location} does not match its immutable binding"
+msgstr "{location} 与其不可变绑定不匹配"
+
+#, python-brace-format
+msgid "{location} has the wrong entries ({detail})"
+msgstr "{location} 包含错误的条目（{detail}）"
+
+#, python-brace-format
+msgid "source unit {unit} has unsupported kind {kind}"
+msgstr "源单元 {unit} 具有不受支持的种类 {kind}"
+
+#, python-brace-format
+msgid "source unit {unit} has unsupported coupling {reason}"
+msgstr "源单元 {unit} 具有不受支持的耦合 {reason}"
+
+#, python-brace-format
+msgid "{context} path {path!r} has unsupported kind or mode {mode}"
+msgstr "{context} 路径 {path!r} 具有不受支持的种类或模式 {mode}"
+
+#, python-brace-format
+msgid "source blob {blob} is not accessible"
+msgstr "无法访问源 blob {blob}"
+
+msgid "Git returned the wrong source blob"
+msgstr "Git 返回了错误的源 blob"
+
+msgid "Git returned duplicate source blobs"
+msgstr "Git 返回了重复的源 blob"
+
+msgid "source blob size changed while it was exported"
+msgstr "导出期间源 blob 的大小发生了变化"
+
+msgid "resolution reference artifact names collided"
+msgstr "解析引用工件名称发生冲突"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to be created"
+msgstr "未授权创建结果路径 {path!r}"
+
+#, python-brace-format
+msgid "result path {path!r} uses an unauthorized creation mode"
+msgstr "结果路径 {path!r} 使用了未授权的创建模式"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to be deleted"
+msgstr "未授权删除结果路径 {path!r}"
+
+#, python-brace-format
+msgid "authorized result path {path!r} did not change"
+msgstr "已授权的结果路径 {path!r} 未发生变化"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to change mode"
+msgstr "未授权更改结果路径 {path!r} 的模式"
+
+#, python-brace-format
+msgid "result path {path!r} uses an unauthorized changed mode"
+msgstr "结果路径 {path!r} 使用了未授权的更改后模式"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to change content"
+msgstr "未授权更改结果路径 {path!r} 的内容"
+
+msgid "an absent result path has an artifact digest"
+msgstr "缺失的结果路径具有工件摘要"
+
+msgid "resolved output would be an empty commit"
+msgstr "解析后的输出将是空提交"
+
+#, python-brace-format
+msgid "{location} has the wrong path inventory"
+msgstr "{location} 的路径清单不正确"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] has the wrong fields"
+msgstr "{location}.paths[{index}] 的字段不正确"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] does not match result.json"
+msgstr "{location}.paths[{index}] 与 result.json 不匹配"
+
+msgid "an absent receipt path has an artifact digest"
+msgstr "缺失的收据路径具有工件摘要"
+
+msgid "a present receipt path has an invalid artifact digest"
+msgstr "存在的收据路径具有无效的工件摘要"
+
+msgid "resolution replay used the wrong document or environment"
+msgstr "解析重放使用了错误的文档或环境"
+
+#, python-brace-format
+msgid "output {output} resolution is missing"
+msgstr "缺少输出 {output} 的解析"
+
+#, python-brace-format
+msgid "workspace outputs contain unexpected entries: {entries}"
+msgstr "工作区输出包含意外条目：{entries}"
+
+#, python-brace-format
+msgid "output {output} result.json changed after acceptance"
+msgstr "输出 {output} 的 result.json 在接受后发生了变化"
+
+#, python-brace-format
+msgid "output {output} receipt.json is not authentic"
+msgstr "输出 {output} 的 receipt.json 不可信"
+
+#, python-brace-format
+msgid "output {output} has not been accepted"
+msgstr "输出 {output} 尚未被接受"
+
+msgid "plan does not contain any RESOLVED outputs"
+msgstr "计划不包含任何 RESOLVED 输出"
+
+msgid "--accept requires an existing workspace"
+msgstr "--accept 需要现有工作区"
+
+#, python-brace-format
+msgid "Rewrite resolution workspace is complete: {workspace}"
+msgstr "重写解析工作区已完成：{workspace}"
+
+#, python-brace-format
+msgid "Rewrite output {number} needs resolution ({key})."
+msgstr "重写输出 {number} 需要解析（{key}）。"
+
+#, python-brace-format
+msgid "Inspect resolution request: {path}"
+msgstr "检查解析请求：{path}"
+
+#, python-brace-format
+msgid "Edit resolution metadata: {path}"
+msgstr "编辑解析元数据：{path}"
+
+#, python-brace-format
+msgid "Edit resolved artifacts in: {path}"
+msgstr "在此处编辑已解析工件：{path}"
+
+msgid "Authorized path:"
+msgid_plural "Authorized paths:"
+msgstr[0] "已授权路径："
+
+# Resolution transport rollback diagnostics.
+#, python-brace-format
+msgid "{detail} ({error})"
+msgstr "{detail}（{error}）"
+
+msgid "published artifact changed before exchange rollback"
+msgstr "已发布的工件在交换回滚前发生了变化"
+
+msgid "raced destination changed before exchange rollback"
+msgstr "发生竞态的目标在交换回滚前发生了变化"
+
+msgid "temporary artifact changed during exchange rollback"
+msgstr "临时工件在交换回滚期间发生了变化"
+
+msgid "raced destination changed during exchange rollback"
+msgstr "发生竞态的目标在交换回滚期间发生了变化"
+
+msgid "temporary artifact path changed while it was written"
+msgstr "临时工件路径在写入期间发生了变化"
+
+msgid "temporary artifact size changed"
+msgstr "临时工件大小发生了变化"
+
+# Final resolution workspace diagnostics.
+msgid "Reviewed rewrite plan containing resolved outputs"
+msgstr "包含已解析输出的已审查重写计划"
+
+msgid "Output a machine-readable resolution checkpoint"
+msgstr "输出机器可读的解析检查点"
+
+#, python-brace-format
+msgid "Rewrite output {output} resolution did not produce an accessible tree object."
+msgstr "重写输出 {output} 的解析未生成可访问的树对象。"
+
+#, python-brace-format
+msgid "Rewrite output {output} requires an explicit resolution workspace."
+msgstr "重写输出 {output} 需要显式解析工作区。"
+
+#, python-brace-format
+msgid "Rewrite output {output} resolves non-empty units into an empty commit."
+msgstr "重写输出 {output} 将非空单元解析为空提交。"
+
+#, python-brace-format
+msgid "Invalid resolution artifact '{path}': {detail}"
+msgstr "无效的解析工件“{path}”：{detail}"
+
+msgid "path must be a regular file"
+msgstr "路径必须是常规文件"
+
+msgid "directory changed while it was opened"
+msgstr "目录在打开期间发生了变化"
+
+msgid "directory exceeds the supported entry-count limit"
+msgstr "目录超出支持的条目数量限制"
+
+msgid "locked and final directories must be distinct siblings"
+msgstr "已锁定目录和最终目录必须是不同的同级项"
+
+#, python-brace-format
+msgid "cannot authenticate workspace lock: {error}"
+msgstr "无法验证工作区锁：{error}"
+
+msgid "workspace lock changed while it was opened"
+msgstr "工作区锁在打开期间发生了变化"
+
+#, python-brace-format
+msgid "cannot lock workspace: {error}"
+msgstr "无法锁定工作区：{error}"
+
+#, python-brace-format
+msgid "cannot re-authenticate workspace lock: {error}"
+msgstr "无法重新验证工作区锁：{error}"
+
+msgid "workspace lock changed while it was held"
+msgstr "工作区锁在持有期间发生了变化"
+
+#, python-brace-format
+msgid "cannot inspect staging directory: {error}"
+msgstr "无法检查暂存目录：{error}"
+
+#, python-brace-format
+msgid "cannot open staging directory: {error}"
+msgstr "无法打开暂存目录：{error}"
+
+msgid "staging directory changed while it was opened"
+msgstr "暂存目录在打开期间发生了变化"
+
+#, python-brace-format
+msgid "cannot inspect destination: {error}"
+msgstr "无法检查目标：{error}"
+
+msgid "destination already exists"
+msgstr "目标已存在"
+
+#, python-brace-format
+msgid "cannot re-authenticate staging directory: {error}"
+msgstr "无法重新验证暂存目录：{error}"
+
+msgid "staging directory changed before publication"
+msgstr "暂存目录在发布前发生了变化"
+
+#, python-brace-format
+msgid "cannot inspect file: {error}"
+msgstr "无法检查文件：{error}"
+
+#, python-brace-format
+msgid "cannot inspect interrupted write: {error}"
+msgstr "无法检查中断的写入：{error}"
+
+#, python-brace-format
+msgid "cannot open interrupted write: {error}"
+msgstr "无法打开中断的写入：{error}"
+
+msgid "interrupted write changed before recovery"
+msgstr "中断的写入在恢复前发生了变化"
+
+#, python-brace-format
+msgid "cannot remove interrupted write: {error}"
+msgstr "无法删除中断的写入：{error}"
+
+#, python-brace-format
+msgid "cannot open file: {error}"
+msgstr "无法打开文件：{error}"
+
+msgid "file changed while it was opened"
+msgstr "文件在打开期间发生了变化"
+
+msgid "file changed while it was read"
+msgstr "文件在读取期间发生了变化"
+
+msgid "file path changed while it was read"
+msgstr "文件路径在读取期间发生了变化"
+
+msgid "destination appeared while it was being written"
+msgstr "目标在写入期间出现"
+
+msgid "destination changed while it was being written"
+msgstr "目标在写入期间发生了变化"
+
+#, python-brace-format
+msgid "cannot open destination: {error}"
+msgstr "无法打开目标：{error}"
+
+msgid "destination changed while it was opened"
+msgstr "目标在打开期间发生了变化"
+
+#, python-brace-format
+msgid "cannot authenticate displaced destination: {error}"
+msgstr "无法验证移位的目标：{error}"
+
+#, python-brace-format
+msgid "cannot inspect raced destination: {error}"
+msgstr "无法检查发生竞态的目标：{error}"
+
+#, python-brace-format
+msgid "cannot roll back raced destination: {error}"
+msgstr "无法回滚发生竞态的目标：{error}"
+
+msgid "temporary artifact changed while it was opened"
+msgstr "临时工件在打开期间发生了变化"
+
+msgid "artifact exceeds the supported size limit"
+msgstr "工件超出支持的大小限制"
+
+#, python-brace-format
+msgid "cannot publish artifact: {error}"
+msgstr "无法发布工件：{error}"
+
+msgid "published artifact identity changed"
+msgstr "已发布工件的标识发生了变化"
+
+msgid "destination changed during atomic replacement"
+msgstr "目标在原子替换期间发生了变化"
+
+#, python-brace-format
+msgid "cannot remove displaced destination: {error}"
+msgstr "无法删除移位的目标：{error}"
+
+#, python-brace-format
+msgid "Invalid rewrite resolution workspace: {detail}"
+msgstr "无效的重写解析工作区：{detail}"
+
+msgid "workspace path must be a non-empty string"
+msgstr "工作区路径必须是非空字符串"
+
+#, python-brace-format
+msgid "{location} is not valid strict JSON ({error})"
+msgstr "{location} 不是有效的严格 JSON（{error}）"
+
+#, python-brace-format
+msgid "cannot inspect workspace path ({error})"
+msgstr "无法检查工作区路径（{error}）"
+
+#, python-brace-format
+msgid "staged output {output} contains unexpected entries"
+msgstr "暂存输出 {output} 包含意外条目"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] must be an object"
+msgstr "{location}.paths[{index}] 必须是对象"
+
+#, python-brace-format
+msgid "{count} resolved output recorded."
+msgid_plural "{count} resolved outputs recorded."
+msgstr[0] "已记录 {count} 个解析输出。"
+
+#, python-brace-format
+msgid "Then run: {command}"
+msgstr "然后运行：{command}"

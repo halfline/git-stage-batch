@@ -7216,3 +7216,456 @@ msgstr "Geçmiş kaynağı {commit}, yeniden oynatma sırasında farklı yama bi
 
 msgid "Rewrite operation was already complete; abort made no changes."
 msgstr "Yeniden yazma işlemi zaten tamamlanmıştı; iptal herhangi bir değişiklik yapmadı."
+
+# Rewrite resolution workspace translations.
+msgid "Create or advance an external rewrite-resolution workspace"
+msgstr "Harici bir yeniden yazma çözümleme çalışma alanı oluştur veya ilerlet"
+
+msgid "Private external directory for resolution artifacts"
+msgstr "Çözümleme yapıtları için özel harici dizin"
+
+msgid "Import the current result and advance to the next output"
+msgstr "Geçerli sonucu içe aktar ve sonraki çıktıya ilerle"
+
+#, python-brace-format
+msgid "Rewrite output {output} resolution did not produce a full tree object ID."
+msgstr "{output} yeniden yazma çıktısının çözümlenmesi tam bir ağaç nesnesi kimliği üretmedi."
+
+msgid "path must be absolute"
+msgstr "yol mutlak olmalıdır"
+
+msgid "path must not contain aliases or traversal"
+msgstr "yol takma ad veya üst dizine geçiş içermemelidir"
+
+msgid "platform does not support secure directory access"
+msgstr "platform güvenli dizin erişimini desteklemiyor"
+
+#, python-brace-format
+msgid "path must not contain aliases, traversal, or symlinks ({error})"
+msgstr "yol takma ad, üst dizine geçiş veya sembolik bağlantı içermemelidir ({error})"
+
+msgid "path must be a directory"
+msgstr "yol bir dizin olmalıdır"
+
+msgid "directory permissions must be 0700"
+msgstr "dizin izinleri 0700 olmalıdır"
+
+msgid "directory path changed during artifact access"
+msgstr "yapıta erişilirken dizin yolu değişti"
+
+msgid "path must not contain aliases, traversal, or symlinks"
+msgstr "yol takma ad, üst dizine geçiş veya sembolik bağlantı içermemelidir"
+
+msgid "path must be owned by the current user"
+msgstr "yol geçerli kullanıcının sahipliğinde olmalıdır"
+
+msgid "cannot create the filesystem root"
+msgstr "dosya sistemi kökü oluşturulamaz"
+
+#, python-brace-format
+msgid "cannot create private directory: {error}"
+msgstr "özel dizin oluşturulamıyor: {error}"
+
+#, python-brace-format
+msgid "cannot enumerate directory: {error}"
+msgstr "dizin listelenemiyor: {error}"
+
+#, python-brace-format
+msgid "cannot open workspace lock: {error}"
+msgstr "çalışma alanı kilidi açılamıyor: {error}"
+
+msgid "file must not have hard links"
+msgstr "dosyanın sabit bağlantıları olmamalıdır"
+
+msgid "file permissions must be 0600"
+msgstr "dosya izinleri 0600 olmalıdır"
+
+msgid "workspace is already in use"
+msgstr "çalışma alanı zaten kullanımda"
+
+msgid "staging and destination must be distinct siblings"
+msgstr "hazırlama konumu ve hedef farklı kardeş öğeler olmalıdır"
+
+#, python-brace-format
+msgid "cannot publish directory: {error}"
+msgstr "dizin yayımlanamıyor: {error}"
+
+msgid "published directory identity changed"
+msgstr "yayımlanan dizinin kimliği değişti"
+
+msgid "metadata exceeds the supported size limit"
+msgstr "üst veriler desteklenen boyut sınırını aşıyor"
+
+#, python-brace-format
+msgid "metadata cannot be decoded: {error}"
+msgstr "üst verilerin kodu çözülemiyor: {error}"
+
+msgid "file grew while it was read"
+msgstr "dosya okunurken büyüdü"
+
+#, python-brace-format
+msgid "cannot verify file after reading: {error}"
+msgstr "dosya okunduktan sonra doğrulanamıyor: {error}"
+
+msgid "content does not match its expected size and SHA-256"
+msgstr "içerik beklenen boyut ve SHA-256 ile eşleşmiyor"
+
+#, python-brace-format
+msgid "cannot create temporary artifact: {error}"
+msgstr "geçici yapıt oluşturulamıyor: {error}"
+
+msgid "source and destination must differ"
+msgstr "kaynak ve hedef farklı olmalıdır"
+
+#, python-brace-format
+msgid "{location} does not match its immutable binding"
+msgstr "{location} değişmez bağıyla eşleşmiyor"
+
+#, python-brace-format
+msgid "{location} has the wrong entries ({detail})"
+msgstr "{location} yanlış girdiler içeriyor ({detail})"
+
+#, python-brace-format
+msgid "source unit {unit} has unsupported kind {kind}"
+msgstr "{unit} kaynak birimi desteklenmeyen {kind} türüne sahip"
+
+#, python-brace-format
+msgid "source unit {unit} has unsupported coupling {reason}"
+msgstr "{unit} kaynak birimi desteklenmeyen {reason} bağlaşımına sahip"
+
+#, python-brace-format
+msgid "{context} path {path!r} has unsupported kind or mode {mode}"
+msgstr "{context} içindeki {path!r} yolu desteklenmeyen {mode} türüne veya kipine sahip"
+
+#, python-brace-format
+msgid "source blob {blob} is not accessible"
+msgstr "{blob} kaynak blob’una erişilemiyor"
+
+msgid "Git returned the wrong source blob"
+msgstr "Git yanlış kaynak blob’unu döndürdü"
+
+msgid "Git returned duplicate source blobs"
+msgstr "Git yinelenen kaynak blob’ları döndürdü"
+
+msgid "source blob size changed while it was exported"
+msgstr "kaynak blob’un boyutu dışa aktarılırken değişti"
+
+msgid "resolution reference artifact names collided"
+msgstr "çözümleme başvuru yapıtlarının adları çakıştı"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to be created"
+msgstr "{path!r} sonuç yolunun oluşturulmasına izin verilmiyor"
+
+#, python-brace-format
+msgid "result path {path!r} uses an unauthorized creation mode"
+msgstr "{path!r} sonuç yolu izin verilmeyen bir oluşturma kipi kullanıyor"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to be deleted"
+msgstr "{path!r} sonuç yolunun silinmesine izin verilmiyor"
+
+#, python-brace-format
+msgid "authorized result path {path!r} did not change"
+msgstr "izin verilen {path!r} sonuç yolu değişmedi"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to change mode"
+msgstr "{path!r} sonuç yolunun kipini değiştirmesine izin verilmiyor"
+
+#, python-brace-format
+msgid "result path {path!r} uses an unauthorized changed mode"
+msgstr "{path!r} sonuç yolu izin verilmeyen değiştirilmiş bir kip kullanıyor"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to change content"
+msgstr "{path!r} sonuç yolunun içeriğini değiştirmesine izin verilmiyor"
+
+msgid "an absent result path has an artifact digest"
+msgstr "bulunmayan sonuç yolunun bir yapıt özeti var"
+
+msgid "resolved output would be an empty commit"
+msgstr "çözümlenen çıktı boş bir işleme olurdu"
+
+#, python-brace-format
+msgid "{location} has the wrong path inventory"
+msgstr "{location} yanlış yol envanterine sahip"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] has the wrong fields"
+msgstr "{location}.paths[{index}] yanlış alanlara sahip"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] does not match result.json"
+msgstr "{location}.paths[{index}] result.json ile eşleşmiyor"
+
+msgid "an absent receipt path has an artifact digest"
+msgstr "bulunmayan alındı yolunun bir yapıt özeti var"
+
+msgid "a present receipt path has an invalid artifact digest"
+msgstr "bulunan alındı yolunun geçersiz bir yapıt özeti var"
+
+msgid "resolution replay used the wrong document or environment"
+msgstr "çözümleme yinelemesi yanlış belgeyi veya ortamı kullandı"
+
+#, python-brace-format
+msgid "output {output} resolution is missing"
+msgstr "{output} çıktısının çözümlemesi eksik"
+
+#, python-brace-format
+msgid "workspace outputs contain unexpected entries: {entries}"
+msgstr "çalışma alanı çıktıları beklenmeyen girdiler içeriyor: {entries}"
+
+#, python-brace-format
+msgid "output {output} result.json changed after acceptance"
+msgstr "{output} çıktısının result.json dosyası kabulden sonra değişti"
+
+#, python-brace-format
+msgid "output {output} receipt.json is not authentic"
+msgstr "{output} çıktısının receipt.json dosyası özgün değil"
+
+#, python-brace-format
+msgid "output {output} has not been accepted"
+msgstr "{output} çıktısı kabul edilmedi"
+
+msgid "plan does not contain any RESOLVED outputs"
+msgstr "plan herhangi bir RESOLVED çıktısı içermiyor"
+
+msgid "--accept requires an existing workspace"
+msgstr "--accept var olan bir çalışma alanı gerektirir"
+
+#, python-brace-format
+msgid "Rewrite resolution workspace is complete: {workspace}"
+msgstr "Yeniden yazma çözümleme çalışma alanı tamamlandı: {workspace}"
+
+#, python-brace-format
+msgid "Rewrite output {number} needs resolution ({key})."
+msgstr "{number} yeniden yazma çıktısının çözümlenmesi gerekiyor ({key})."
+
+#, python-brace-format
+msgid "Inspect resolution request: {path}"
+msgstr "Çözümleme isteğini inceleyin: {path}"
+
+#, python-brace-format
+msgid "Edit resolution metadata: {path}"
+msgstr "Çözümleme üst verilerini düzenleyin: {path}"
+
+#, python-brace-format
+msgid "Edit resolved artifacts in: {path}"
+msgstr "Şuradaki çözümlenmiş yapıtları düzenleyin: {path}"
+
+msgid "Authorized path:"
+msgid_plural "Authorized paths:"
+msgstr[0] "İzin verilen yol:"
+msgstr[1] "İzin verilen yollar:"
+
+# Resolution transport rollback diagnostics.
+#, python-brace-format
+msgid "{detail} ({error})"
+msgstr "{detail} ({error})"
+
+msgid "published artifact changed before exchange rollback"
+msgstr "yayımlanan yapıt takas geri alınmadan önce değişti"
+
+msgid "raced destination changed before exchange rollback"
+msgstr "yarışan işlemce değiştirilen hedef takas geri alınmadan önce değişti"
+
+msgid "temporary artifact changed during exchange rollback"
+msgstr "geçici yapıt takas geri alınırken değişti"
+
+msgid "raced destination changed during exchange rollback"
+msgstr "yarışan işlemce değiştirilen hedef takas geri alınırken değişti"
+
+msgid "temporary artifact path changed while it was written"
+msgstr "geçici yapıt yolu yazılırken değişti"
+
+msgid "temporary artifact size changed"
+msgstr "geçici yapıt boyutu değişti"
+
+# Final resolution workspace diagnostics.
+msgid "Reviewed rewrite plan containing resolved outputs"
+msgstr "Çözümlenmiş çıktılar içeren gözden geçirilmiş yeniden yazma planı"
+
+msgid "Output a machine-readable resolution checkpoint"
+msgstr "Makinece okunabilir bir çözümleme denetim noktası çıktıla"
+
+#, python-brace-format
+msgid "Rewrite output {output} resolution did not produce an accessible tree object."
+msgstr "{output} yeniden yazma çıktısının çözümlenmesi erişilebilir bir ağaç nesnesi üretmedi."
+
+#, python-brace-format
+msgid "Rewrite output {output} requires an explicit resolution workspace."
+msgstr "{output} yeniden yazma çıktısı açık bir çözümleme çalışma alanı gerektiriyor."
+
+#, python-brace-format
+msgid "Rewrite output {output} resolves non-empty units into an empty commit."
+msgstr "{output} yeniden yazma çıktısı boş olmayan birimleri boş bir işlemeye çözümlüyor."
+
+#, python-brace-format
+msgid "Invalid resolution artifact '{path}': {detail}"
+msgstr "Geçersiz çözümleme yapıtı '{path}': {detail}"
+
+msgid "path must be a regular file"
+msgstr "yol normal bir dosya olmalıdır"
+
+msgid "directory changed while it was opened"
+msgstr "dizin açılırken değişti"
+
+msgid "directory exceeds the supported entry-count limit"
+msgstr "dizin desteklenen girdi sayısı sınırını aşıyor"
+
+msgid "locked and final directories must be distinct siblings"
+msgstr "kilitli ve son dizinler farklı kardeş öğeler olmalıdır"
+
+#, python-brace-format
+msgid "cannot authenticate workspace lock: {error}"
+msgstr "çalışma alanı kilidinin kimliği doğrulanamıyor: {error}"
+
+msgid "workspace lock changed while it was opened"
+msgstr "çalışma alanı kilidi açılırken değişti"
+
+#, python-brace-format
+msgid "cannot lock workspace: {error}"
+msgstr "çalışma alanı kilitlenemiyor: {error}"
+
+#, python-brace-format
+msgid "cannot re-authenticate workspace lock: {error}"
+msgstr "çalışma alanı kilidinin kimliği yeniden doğrulanamıyor: {error}"
+
+msgid "workspace lock changed while it was held"
+msgstr "çalışma alanı kilidi tutulurken değişti"
+
+#, python-brace-format
+msgid "cannot inspect staging directory: {error}"
+msgstr "hazırlama dizini incelenemiyor: {error}"
+
+#, python-brace-format
+msgid "cannot open staging directory: {error}"
+msgstr "hazırlama dizini açılamıyor: {error}"
+
+msgid "staging directory changed while it was opened"
+msgstr "hazırlama dizini açılırken değişti"
+
+#, python-brace-format
+msgid "cannot inspect destination: {error}"
+msgstr "hedef incelenemiyor: {error}"
+
+msgid "destination already exists"
+msgstr "hedef zaten var"
+
+#, python-brace-format
+msgid "cannot re-authenticate staging directory: {error}"
+msgstr "hazırlama dizininin kimliği yeniden doğrulanamıyor: {error}"
+
+msgid "staging directory changed before publication"
+msgstr "hazırlama dizini yayımlanmadan önce değişti"
+
+#, python-brace-format
+msgid "cannot inspect file: {error}"
+msgstr "dosya incelenemiyor: {error}"
+
+#, python-brace-format
+msgid "cannot inspect interrupted write: {error}"
+msgstr "kesintiye uğramış yazma incelenemiyor: {error}"
+
+#, python-brace-format
+msgid "cannot open interrupted write: {error}"
+msgstr "kesintiye uğramış yazma açılamıyor: {error}"
+
+msgid "interrupted write changed before recovery"
+msgstr "kesintiye uğramış yazma kurtarmadan önce değişti"
+
+#, python-brace-format
+msgid "cannot remove interrupted write: {error}"
+msgstr "kesintiye uğramış yazma kaldırılamıyor: {error}"
+
+#, python-brace-format
+msgid "cannot open file: {error}"
+msgstr "dosya açılamıyor: {error}"
+
+msgid "file changed while it was opened"
+msgstr "dosya açılırken değişti"
+
+msgid "file changed while it was read"
+msgstr "dosya okunurken değişti"
+
+msgid "file path changed while it was read"
+msgstr "dosya yolu okunurken değişti"
+
+msgid "destination appeared while it was being written"
+msgstr "hedef yazılırken belirdi"
+
+msgid "destination changed while it was being written"
+msgstr "hedef yazılırken değişti"
+
+#, python-brace-format
+msgid "cannot open destination: {error}"
+msgstr "hedef açılamıyor: {error}"
+
+msgid "destination changed while it was opened"
+msgstr "hedef açılırken değişti"
+
+#, python-brace-format
+msgid "cannot authenticate displaced destination: {error}"
+msgstr "yerinden edilen hedefin kimliği doğrulanamıyor: {error}"
+
+#, python-brace-format
+msgid "cannot inspect raced destination: {error}"
+msgstr "yarışan işlemce değiştirilen hedef incelenemiyor: {error}"
+
+#, python-brace-format
+msgid "cannot roll back raced destination: {error}"
+msgstr "yarışan işlemce değiştirilen hedef geri alınamıyor: {error}"
+
+msgid "temporary artifact changed while it was opened"
+msgstr "geçici yapıt açılırken değişti"
+
+msgid "artifact exceeds the supported size limit"
+msgstr "yapıt desteklenen boyut sınırını aşıyor"
+
+#, python-brace-format
+msgid "cannot publish artifact: {error}"
+msgstr "yapıt yayımlanamıyor: {error}"
+
+msgid "published artifact identity changed"
+msgstr "yayımlanan yapıtın kimliği değişti"
+
+msgid "destination changed during atomic replacement"
+msgstr "hedef atomik değiştirme sırasında değişti"
+
+#, python-brace-format
+msgid "cannot remove displaced destination: {error}"
+msgstr "yerinden edilen hedef kaldırılamıyor: {error}"
+
+#, python-brace-format
+msgid "Invalid rewrite resolution workspace: {detail}"
+msgstr "Geçersiz yeniden yazma çözümleme çalışma alanı: {detail}"
+
+msgid "workspace path must be a non-empty string"
+msgstr "çalışma alanı yolu boş olmayan bir dize olmalıdır"
+
+#, python-brace-format
+msgid "{location} is not valid strict JSON ({error})"
+msgstr "{location} geçerli katı JSON değil ({error})"
+
+#, python-brace-format
+msgid "cannot inspect workspace path ({error})"
+msgstr "çalışma alanı yolu incelenemiyor ({error})"
+
+#, python-brace-format
+msgid "staged output {output} contains unexpected entries"
+msgstr "hazırlanan {output} çıktısı beklenmeyen girdiler içeriyor"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] must be an object"
+msgstr "{location}.paths[{index}] bir nesne olmalıdır"
+
+#, python-brace-format
+msgid "{count} resolved output recorded."
+msgid_plural "{count} resolved outputs recorded."
+msgstr[0] "{count} çözümlenmiş çıktı kaydedildi."
+msgstr[1] "{count} çözümlenmiş çıktı kaydedildi."
+
+#, python-brace-format
+msgid "Then run: {command}"
+msgstr "Ardından şunu çalıştırın: {command}"

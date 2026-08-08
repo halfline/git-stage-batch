@@ -6813,3 +6813,451 @@ msgstr "기록 소스 {commit}에서 재적용 중 다른 패치 단위를 생�
 
 msgid "Rewrite operation was already complete; abort made no changes."
 msgstr "재작성 작업이 이미 완료되어 중단으로 인한 변경 사항이 없습니다."
+
+msgid "Create or advance an external rewrite-resolution workspace"
+msgstr "외부 재작성 해결 작업 공간을 생성하거나 진행합니다"
+
+msgid "Reviewed rewrite plan containing resolved outputs"
+msgstr "해결된 출력이 포함된 검토 완료 재작성 계획"
+
+msgid "Private external directory for resolution artifacts"
+msgstr "해결 아티팩트용 비공개 외부 디렉터리"
+
+msgid "Import the current result and advance to the next output"
+msgstr "현재 결과를 가져오고 다음 출력으로 진행합니다"
+
+msgid "Output a machine-readable resolution checkpoint"
+msgstr "기계 판독 가능한 해결 체크포인트를 출력합니다"
+
+#, python-brace-format
+msgid "Rewrite output {output} resolution did not produce a full tree object ID."
+msgstr "재작성 출력 {output} 해결에서 전체 트리 객체 ID가 생성되지 않았습니다."
+
+#, python-brace-format
+msgid "Rewrite output {output} resolution did not produce an accessible tree object."
+msgstr "재작성 출력 {output} 해결에서 접근 가능한 트리 객체가 생성되지 않았습니다."
+
+#, python-brace-format
+msgid "Rewrite output {output} requires an explicit resolution workspace."
+msgstr "재작성 출력 {output}에는 명시적인 해결 작업 공간이 필요합니다."
+
+#, python-brace-format
+msgid "Rewrite output {output} resolves non-empty units into an empty commit."
+msgstr "재작성 출력 {output}에서 비어 있지 않은 단위를 빈 커밋으로 해결합니다."
+
+#, python-brace-format
+msgid "Invalid resolution artifact '{path}': {detail}"
+msgstr "잘못된 해결 아티팩트 '{path}': {detail}"
+
+msgid "path must be absolute"
+msgstr "경로는 절대 경로여야 합니다"
+
+msgid "path must not contain aliases or traversal"
+msgstr "경로에는 별칭이나 경로 탐색이 포함되면 안 됩니다"
+
+msgid "platform does not support secure directory access"
+msgstr "플랫폼에서 안전한 디렉터리 접근을 지원하지 않습니다"
+
+#, python-brace-format
+msgid "path must not contain aliases, traversal, or symlinks ({error})"
+msgstr "경로에는 별칭, 경로 탐색 또는 심볼릭 링크가 포함되면 안 됩니다 ({error})"
+
+msgid "path must be a directory"
+msgstr "경로는 디렉터리여야 합니다"
+
+msgid "directory permissions must be 0700"
+msgstr "디렉터리 권한은 0700이어야 합니다"
+
+msgid "directory path changed during artifact access"
+msgstr "아티팩트 접근 중 디렉터리 경로가 변경되었습니다"
+
+msgid "path must not contain aliases, traversal, or symlinks"
+msgstr "경로에는 별칭, 경로 탐색 또는 심볼릭 링크가 포함되면 안 됩니다"
+
+msgid "path must be a regular file"
+msgstr "경로는 일반 파일이어야 합니다"
+
+msgid "path must be owned by the current user"
+msgstr "현재 사용자가 경로의 소유자여야 합니다"
+
+msgid "file must not have hard links"
+msgstr "파일에는 하드 링크가 있으면 안 됩니다"
+
+msgid "file permissions must be 0600"
+msgstr "파일 권한은 0600이어야 합니다"
+
+msgid "cannot create the filesystem root"
+msgstr "파일 시스템 루트를 생성할 수 없습니다"
+
+msgid "directory changed while it was opened"
+msgstr "디렉터리가 열린 동안 변경되었습니다"
+
+#, python-brace-format
+msgid "cannot create private directory: {error}"
+msgstr "비공개 디렉터리를 생성할 수 없습니다: {error}"
+
+msgid "directory exceeds the supported entry-count limit"
+msgstr "디렉터리가 지원되는 항목 수 제한을 초과합니다"
+
+#, python-brace-format
+msgid "cannot enumerate directory: {error}"
+msgstr "디렉터리의 항목을 나열할 수 없습니다: {error}"
+
+msgid "locked and final directories must be distinct siblings"
+msgstr "잠긴 디렉터리와 최종 디렉터리는 서로 다른 동일 계층 디렉터리여야 합니다"
+
+#, python-brace-format
+msgid "cannot open workspace lock: {error}"
+msgstr "작업 공간 잠금을 열 수 없습니다: {error}"
+
+#, python-brace-format
+msgid "cannot authenticate workspace lock: {error}"
+msgstr "작업 공간 잠금을 인증할 수 없습니다: {error}"
+
+msgid "workspace lock changed while it was opened"
+msgstr "작업 공간 잠금이 열린 동안 변경되었습니다"
+
+msgid "workspace is already in use"
+msgstr "작업 공간이 이미 사용 중입니다"
+
+#, python-brace-format
+msgid "cannot lock workspace: {error}"
+msgstr "작업 공간을 잠글 수 없습니다: {error}"
+
+#, python-brace-format
+msgid "cannot re-authenticate workspace lock: {error}"
+msgstr "작업 공간 잠금을 다시 인증할 수 없습니다: {error}"
+
+msgid "workspace lock changed while it was held"
+msgstr "작업 공간 잠금을 보유하는 동안 잠금이 변경되었습니다"
+
+msgid "staging and destination must be distinct siblings"
+msgstr "스테이징 경로와 대상은 서로 다른 동일 계층 경로여야 합니다"
+
+#, python-brace-format
+msgid "cannot inspect staging directory: {error}"
+msgstr "스테이징 디렉터리를 검사할 수 없습니다: {error}"
+
+#, python-brace-format
+msgid "cannot open staging directory: {error}"
+msgstr "스테이징 디렉터리를 열 수 없습니다: {error}"
+
+msgid "staging directory changed while it was opened"
+msgstr "스테이징 디렉터리가 열린 동안 변경되었습니다"
+
+#, python-brace-format
+msgid "cannot inspect destination: {error}"
+msgstr "대상을 검사할 수 없습니다: {error}"
+
+msgid "destination already exists"
+msgstr "대상이 이미 존재합니다"
+
+#, python-brace-format
+msgid "cannot re-authenticate staging directory: {error}"
+msgstr "스테이징 디렉터리를 다시 인증할 수 없습니다: {error}"
+
+msgid "staging directory changed before publication"
+msgstr "게시 전에 스테이징 디렉터리가 변경되었습니다"
+
+#, python-brace-format
+msgid "cannot publish directory: {error}"
+msgstr "디렉터리를 게시할 수 없습니다: {error}"
+
+msgid "published directory identity changed"
+msgstr "게시된 디렉터리의 식별 정보가 변경되었습니다"
+
+#, python-brace-format
+msgid "cannot inspect file: {error}"
+msgstr "파일을 검사할 수 없습니다: {error}"
+
+#, python-brace-format
+msgid "cannot inspect interrupted write: {error}"
+msgstr "중단된 쓰기를 검사할 수 없습니다: {error}"
+
+#, python-brace-format
+msgid "cannot open interrupted write: {error}"
+msgstr "중단된 쓰기를 열 수 없습니다: {error}"
+
+msgid "interrupted write changed before recovery"
+msgstr "복구 전에 중단된 쓰기가 변경되었습니다"
+
+#, python-brace-format
+msgid "cannot remove interrupted write: {error}"
+msgstr "중단된 쓰기를 제거할 수 없습니다: {error}"
+
+msgid "metadata exceeds the supported size limit"
+msgstr "메타데이터가 지원되는 크기 제한을 초과합니다"
+
+#, python-brace-format
+msgid "metadata cannot be decoded: {error}"
+msgstr "메타데이터를 디코딩할 수 없습니다: {error}"
+
+#, python-brace-format
+msgid "cannot open file: {error}"
+msgstr "파일을 열 수 없습니다: {error}"
+
+msgid "file changed while it was opened"
+msgstr "파일이 열린 동안 변경되었습니다"
+
+msgid "file grew while it was read"
+msgstr "파일을 읽는 동안 크기가 증가했습니다"
+
+msgid "file changed while it was read"
+msgstr "파일을 읽는 동안 변경되었습니다"
+
+#, python-brace-format
+msgid "cannot verify file after reading: {error}"
+msgstr "읽은 후 파일을 검증할 수 없습니다: {error}"
+
+msgid "file path changed while it was read"
+msgstr "파일을 읽는 동안 파일 경로가 변경되었습니다"
+
+msgid "content does not match its expected size and SHA-256"
+msgstr "내용이 예상 크기 및 SHA-256과 일치하지 않습니다"
+
+msgid "destination appeared while it was being written"
+msgstr "쓰는 동안 대상이 나타났습니다"
+
+msgid "destination changed while it was being written"
+msgstr "쓰는 동안 대상이 변경되었습니다"
+
+#, python-brace-format
+msgid "cannot open destination: {error}"
+msgstr "대상을 열 수 없습니다: {error}"
+
+msgid "destination changed while it was opened"
+msgstr "대상이 열린 동안 변경되었습니다"
+
+#, python-brace-format
+msgid "cannot authenticate displaced destination: {error}"
+msgstr "이동된 대상을 인증할 수 없습니다: {error}"
+
+#, python-brace-format
+msgid "{detail} ({error})"
+msgstr "{detail} ({error})"
+
+#, python-brace-format
+msgid "cannot inspect raced destination: {error}"
+msgstr "경합한 대상을 검사할 수 없습니다: {error}"
+
+msgid "published artifact changed before exchange rollback"
+msgstr "교환 롤백 전에 게시된 아티팩트가 변경되었습니다"
+
+msgid "raced destination changed before exchange rollback"
+msgstr "교환 롤백 전에 경합한 대상이 변경되었습니다"
+
+#, python-brace-format
+msgid "cannot roll back raced destination: {error}"
+msgstr "경합한 대상을 롤백할 수 없습니다: {error}"
+
+msgid "temporary artifact changed during exchange rollback"
+msgstr "교환 롤백 중 임시 아티팩트가 변경되었습니다"
+
+msgid "raced destination changed during exchange rollback"
+msgstr "교환 롤백 중 경합한 대상이 변경되었습니다"
+
+#, python-brace-format
+msgid "cannot create temporary artifact: {error}"
+msgstr "임시 아티팩트를 생성할 수 없습니다: {error}"
+
+msgid "temporary artifact changed while it was opened"
+msgstr "임시 아티팩트가 열린 동안 변경되었습니다"
+
+msgid "artifact exceeds the supported size limit"
+msgstr "아티팩트가 지원되는 크기 제한을 초과합니다"
+
+msgid "temporary artifact path changed while it was written"
+msgstr "쓰는 동안 임시 아티팩트 경로가 변경되었습니다"
+
+msgid "temporary artifact size changed"
+msgstr "임시 아티팩트 크기가 변경되었습니다"
+
+#, python-brace-format
+msgid "cannot publish artifact: {error}"
+msgstr "아티팩트를 게시할 수 없습니다: {error}"
+
+msgid "published artifact identity changed"
+msgstr "게시된 아티팩트의 식별 정보가 변경되었습니다"
+
+msgid "destination changed during atomic replacement"
+msgstr "원자적 교체 중 대상이 변경되었습니다"
+
+#, python-brace-format
+msgid "cannot remove displaced destination: {error}"
+msgstr "이동된 대상을 제거할 수 없습니다: {error}"
+
+msgid "source and destination must differ"
+msgstr "소스와 대상은 달라야 합니다"
+
+#, python-brace-format
+msgid "Invalid rewrite resolution workspace: {detail}"
+msgstr "잘못된 재작성 해결 작업 공간: {detail}"
+
+msgid "workspace path must be a non-empty string"
+msgstr "작업 공간 경로는 비어 있지 않은 문자열이어야 합니다"
+
+#, python-brace-format
+msgid "{location} is not valid strict JSON ({error})"
+msgstr "{location}은(는) 유효한 엄격한 JSON이 아닙니다 ({error})"
+
+#, python-brace-format
+msgid "{location} does not match its immutable binding"
+msgstr "{location}이(가) 변경 불가능한 바인딩과 일치하지 않습니다"
+
+#, python-brace-format
+msgid "{location} has the wrong entries ({detail})"
+msgstr "{location}에 잘못된 항목이 있습니다 ({detail})"
+
+#, python-brace-format
+msgid "cannot inspect workspace path ({error})"
+msgstr "작업 공간 경로를 검사할 수 없습니다 ({error})"
+
+#, python-brace-format
+msgid "source unit {unit} has unsupported kind {kind}"
+msgstr "소스 단위 {unit}의 종류 {kind}은(는) 지원되지 않습니다"
+
+#, python-brace-format
+msgid "source unit {unit} has unsupported coupling {reason}"
+msgstr "소스 단위 {unit}의 결합 {reason}은(는) 지원되지 않습니다"
+
+#, python-brace-format
+msgid "{context} path {path!r} has unsupported kind or mode {mode}"
+msgstr "{context} 경로 {path!r}의 종류 또는 모드 {mode}은(는) 지원되지 않습니다"
+
+#, python-brace-format
+msgid "source blob {blob} is not accessible"
+msgstr "소스 블롭 {blob}에 접근할 수 없습니다"
+
+msgid "Git returned the wrong source blob"
+msgstr "Git이 잘못된 소스 블롭을 반환했습니다"
+
+msgid "Git returned duplicate source blobs"
+msgstr "Git이 중복된 소스 블롭을 반환했습니다"
+
+msgid "source blob size changed while it was exported"
+msgstr "소스 블롭을 내보내는 동안 크기가 변경되었습니다"
+
+msgid "resolution reference artifact names collided"
+msgstr "해결 참조 아티팩트 이름이 충돌했습니다"
+
+#, python-brace-format
+msgid "staged output {output} contains unexpected entries"
+msgstr "스테이징된 출력 {output}에 예기치 않은 항목이 있습니다"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to be created"
+msgstr "결과 경로 {path!r}의 생성이 허용되지 않았습니다"
+
+#, python-brace-format
+msgid "result path {path!r} uses an unauthorized creation mode"
+msgstr "결과 경로 {path!r}에서 허용되지 않은 생성 모드를 사용합니다"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to be deleted"
+msgstr "결과 경로 {path!r}의 삭제가 허용되지 않았습니다"
+
+#, python-brace-format
+msgid "authorized result path {path!r} did not change"
+msgstr "허용된 결과 경로 {path!r}이(가) 변경되지 않았습니다"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to change mode"
+msgstr "결과 경로 {path!r}의 모드 변경이 허용되지 않았습니다"
+
+#, python-brace-format
+msgid "result path {path!r} uses an unauthorized changed mode"
+msgstr "결과 경로 {path!r}에서 허용되지 않은 변경 모드를 사용합니다"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to change content"
+msgstr "결과 경로 {path!r}의 내용 변경이 허용되지 않았습니다"
+
+msgid "an absent result path has an artifact digest"
+msgstr "존재하지 않는 결과 경로에 아티팩트 다이제스트가 있습니다"
+
+msgid "resolved output would be an empty commit"
+msgstr "해결된 출력이 빈 커밋이 됩니다"
+
+#, python-brace-format
+msgid "{location} has the wrong path inventory"
+msgstr "{location}의 경로 목록이 잘못되었습니다"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] must be an object"
+msgstr "{location}.paths[{index}]은(는) 객체여야 합니다"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] has the wrong fields"
+msgstr "{location}.paths[{index}]에 잘못된 필드가 있습니다"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] does not match result.json"
+msgstr "{location}.paths[{index}]이(가) result.json과 일치하지 않습니다"
+
+msgid "an absent receipt path has an artifact digest"
+msgstr "존재하지 않는 수령 경로에 아티팩트 다이제스트가 있습니다"
+
+msgid "a present receipt path has an invalid artifact digest"
+msgstr "존재하는 수령 경로에 잘못된 아티팩트 다이제스트가 있습니다"
+
+msgid "resolution replay used the wrong document or environment"
+msgstr "해결 재적용에서 잘못된 문서 또는 환경을 사용했습니다"
+
+#, python-brace-format
+msgid "output {output} resolution is missing"
+msgstr "출력 {output}의 해결이 없습니다"
+
+#, python-brace-format
+msgid "workspace outputs contain unexpected entries: {entries}"
+msgstr "작업 공간 출력에 예기치 않은 항목이 있습니다: {entries}"
+
+#, python-brace-format
+msgid "output {output} result.json changed after acceptance"
+msgstr "출력 {output}의 result.json이 수락 후 변경되었습니다"
+
+#, python-brace-format
+msgid "output {output} receipt.json is not authentic"
+msgstr "출력 {output}의 receipt.json이 진본이 아닙니다"
+
+#, python-brace-format
+msgid "output {output} has not been accepted"
+msgstr "출력 {output}이(가) 수락되지 않았습니다"
+
+msgid "plan does not contain any RESOLVED outputs"
+msgstr "계획에 RESOLVED 출력이 없습니다"
+
+msgid "--accept requires an existing workspace"
+msgstr "--accept에는 기존 작업 공간이 필요합니다"
+
+#, python-brace-format
+msgid "Rewrite resolution workspace is complete: {workspace}"
+msgstr "재작성 해결 작업 공간이 완료되었습니다: {workspace}"
+
+#, python-brace-format
+msgid "{count} resolved output recorded."
+msgid_plural "{count} resolved outputs recorded."
+msgstr[0] "해결된 출력 {count}개를 기록했습니다."
+
+#, python-brace-format
+msgid "Rewrite output {number} needs resolution ({key})."
+msgstr "재작성 출력 {number}에 해결이 필요합니다 ({key})."
+
+#, python-brace-format
+msgid "Inspect resolution request: {path}"
+msgstr "해결 요청을 검사하십시오: {path}"
+
+#, python-brace-format
+msgid "Edit resolution metadata: {path}"
+msgstr "해결 메타데이터를 편집하십시오: {path}"
+
+#, python-brace-format
+msgid "Edit resolved artifacts in: {path}"
+msgstr "다음 위치의 해결된 아티팩트를 편집하십시오: {path}"
+
+msgid "Authorized path:"
+msgid_plural "Authorized paths:"
+msgstr[0] "허용된 경로:"
+
+#, python-brace-format
+msgid "Then run: {command}"
+msgstr "그런 다음 실행하십시오: {command}"

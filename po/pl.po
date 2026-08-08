@@ -7372,3 +7372,456 @@ msgstr "Źródło historii {commit} utworzyło inne jednostki łatki podczas odt
 
 msgid "Rewrite operation was already complete; abort made no changes."
 msgstr "Operacja przepisywania była już ukończona; przerwanie nie wprowadziło żadnych zmian."
+
+# Rewrite resolution workspace translations.
+msgid "Create or advance an external rewrite-resolution workspace"
+msgstr "Utwórz lub rozwiń zewnętrzną przestrzeń roboczą rozwiązywania przepisywania"
+
+msgid "Reviewed rewrite plan containing resolved outputs"
+msgstr "Sprawdzony plan przepisywania zawierający rozwiązane wyniki"
+
+msgid "Private external directory for resolution artifacts"
+msgstr "Prywatny katalog zewnętrzny na artefakty rozwiązania"
+
+msgid "Import the current result and advance to the next output"
+msgstr "Zaimportuj bieżący rezultat i przejdź do następnego wyniku"
+
+msgid "Output a machine-readable resolution checkpoint"
+msgstr "Wyświetl punkt kontrolny rozwiązania w formacie czytelnym maszynowo"
+
+#, python-brace-format
+msgid "Rewrite output {output} resolution did not produce a full tree object ID."
+msgstr "Rozwiązanie wyniku przepisywania {output} nie utworzyło pełnego identyfikatora obiektu drzewa."
+
+#, python-brace-format
+msgid "Rewrite output {output} resolution did not produce an accessible tree object."
+msgstr "Rozwiązanie wyniku przepisywania {output} nie utworzyło dostępnego obiektu drzewa."
+
+#, python-brace-format
+msgid "Rewrite output {output} requires an explicit resolution workspace."
+msgstr "Wynik przepisywania {output} wymaga jawnej przestrzeni roboczej rozwiązania."
+
+#, python-brace-format
+msgid "Rewrite output {output} resolves non-empty units into an empty commit."
+msgstr "Wynik przepisywania {output} rozwiązuje niepuste jednostki w pustym commicie."
+
+#, python-brace-format
+msgid "Invalid resolution artifact '{path}': {detail}"
+msgstr "Nieprawidłowy artefakt rozwiązania „{path}”: {detail}"
+
+msgid "path must be absolute"
+msgstr "ścieżka musi być bezwzględna"
+
+msgid "path must not contain aliases or traversal"
+msgstr "ścieżka nie może zawierać aliasów ani przechodzenia po katalogach nadrzędnych"
+
+msgid "platform does not support secure directory access"
+msgstr "platforma nie obsługuje bezpiecznego dostępu do katalogów"
+
+#, python-brace-format
+msgid "path must not contain aliases, traversal, or symlinks ({error})"
+msgstr "ścieżka nie może zawierać aliasów, przechodzenia po katalogach nadrzędnych ani dowiązań symbolicznych ({error})"
+
+msgid "path must be a directory"
+msgstr "ścieżka musi być katalogiem"
+
+msgid "directory permissions must be 0700"
+msgstr "uprawnienia katalogu muszą mieć wartość 0700"
+
+msgid "directory path changed during artifact access"
+msgstr "ścieżka katalogu zmieniła się podczas dostępu do artefaktu"
+
+msgid "path must not contain aliases, traversal, or symlinks"
+msgstr "ścieżka nie może zawierać aliasów, przechodzenia po katalogach nadrzędnych ani dowiązań symbolicznych"
+
+msgid "path must be a regular file"
+msgstr "ścieżka musi być zwykłym plikiem"
+
+msgid "path must be owned by the current user"
+msgstr "ścieżka musi należeć do bieżącego użytkownika"
+
+msgid "file must not have hard links"
+msgstr "plik nie może mieć dowiązań twardych"
+
+msgid "file permissions must be 0600"
+msgstr "uprawnienia pliku muszą mieć wartość 0600"
+
+msgid "cannot create the filesystem root"
+msgstr "nie można utworzyć katalogu głównego systemu plików"
+
+msgid "directory changed while it was opened"
+msgstr "katalog zmienił się podczas otwierania"
+
+#, python-brace-format
+msgid "cannot create private directory: {error}"
+msgstr "nie można utworzyć katalogu prywatnego: {error}"
+
+msgid "directory exceeds the supported entry-count limit"
+msgstr "katalog przekracza obsługiwany limit liczby wpisów"
+
+#, python-brace-format
+msgid "cannot enumerate directory: {error}"
+msgstr "nie można wyliczyć wpisów katalogu: {error}"
+
+msgid "locked and final directories must be distinct siblings"
+msgstr "zablokowany i końcowy katalog muszą być odrębnymi elementami tego samego katalogu nadrzędnego"
+
+#, python-brace-format
+msgid "cannot open workspace lock: {error}"
+msgstr "nie można otworzyć blokady przestrzeni roboczej: {error}"
+
+#, python-brace-format
+msgid "cannot authenticate workspace lock: {error}"
+msgstr "nie można uwierzytelnić blokady przestrzeni roboczej: {error}"
+
+msgid "workspace lock changed while it was opened"
+msgstr "blokada przestrzeni roboczej zmieniła się podczas otwierania"
+
+msgid "workspace is already in use"
+msgstr "przestrzeń robocza jest już używana"
+
+#, python-brace-format
+msgid "cannot lock workspace: {error}"
+msgstr "nie można zablokować przestrzeni roboczej: {error}"
+
+#, python-brace-format
+msgid "cannot re-authenticate workspace lock: {error}"
+msgstr "nie można ponownie uwierzytelnić blokady przestrzeni roboczej: {error}"
+
+msgid "workspace lock changed while it was held"
+msgstr "blokada przestrzeni roboczej zmieniła się podczas jej utrzymywania"
+
+msgid "staging and destination must be distinct siblings"
+msgstr "katalog przygotowawczy i cel muszą być odrębnymi elementami tego samego katalogu nadrzędnego"
+
+#, python-brace-format
+msgid "cannot inspect staging directory: {error}"
+msgstr "nie można sprawdzić katalogu przygotowawczego: {error}"
+
+#, python-brace-format
+msgid "cannot open staging directory: {error}"
+msgstr "nie można otworzyć katalogu przygotowawczego: {error}"
+
+msgid "staging directory changed while it was opened"
+msgstr "katalog przygotowawczy zmienił się podczas otwierania"
+
+#, python-brace-format
+msgid "cannot inspect destination: {error}"
+msgstr "nie można sprawdzić celu: {error}"
+
+msgid "destination already exists"
+msgstr "cel już istnieje"
+
+#, python-brace-format
+msgid "cannot re-authenticate staging directory: {error}"
+msgstr "nie można ponownie uwierzytelnić katalogu przygotowawczego: {error}"
+
+msgid "staging directory changed before publication"
+msgstr "katalog przygotowawczy zmienił się przed publikacją"
+
+#, python-brace-format
+msgid "cannot publish directory: {error}"
+msgstr "nie można opublikować katalogu: {error}"
+
+msgid "published directory identity changed"
+msgstr "tożsamość opublikowanego katalogu zmieniła się"
+
+#, python-brace-format
+msgid "cannot inspect file: {error}"
+msgstr "nie można sprawdzić pliku: {error}"
+
+#, python-brace-format
+msgid "cannot inspect interrupted write: {error}"
+msgstr "nie można sprawdzić przerwanego zapisu: {error}"
+
+#, python-brace-format
+msgid "cannot open interrupted write: {error}"
+msgstr "nie można otworzyć przerwanego zapisu: {error}"
+
+msgid "interrupted write changed before recovery"
+msgstr "przerwany zapis zmienił się przed odzyskiwaniem"
+
+#, python-brace-format
+msgid "cannot remove interrupted write: {error}"
+msgstr "nie można usunąć przerwanego zapisu: {error}"
+
+msgid "metadata exceeds the supported size limit"
+msgstr "metadane przekraczają obsługiwany limit rozmiaru"
+
+#, python-brace-format
+msgid "metadata cannot be decoded: {error}"
+msgstr "nie można zdekodować metadanych: {error}"
+
+#, python-brace-format
+msgid "cannot open file: {error}"
+msgstr "nie można otworzyć pliku: {error}"
+
+msgid "file changed while it was opened"
+msgstr "plik zmienił się podczas otwierania"
+
+msgid "file grew while it was read"
+msgstr "plik powiększył się podczas odczytu"
+
+msgid "file changed while it was read"
+msgstr "plik zmienił się podczas odczytu"
+
+#, python-brace-format
+msgid "cannot verify file after reading: {error}"
+msgstr "nie można zweryfikować pliku po odczycie: {error}"
+
+msgid "file path changed while it was read"
+msgstr "ścieżka pliku zmieniła się podczas odczytu"
+
+msgid "content does not match its expected size and SHA-256"
+msgstr "zawartość nie odpowiada oczekiwanemu rozmiarowi i SHA-256"
+
+msgid "destination appeared while it was being written"
+msgstr "cel pojawił się podczas zapisu"
+
+msgid "destination changed while it was being written"
+msgstr "cel zmienił się podczas zapisu"
+
+#, python-brace-format
+msgid "cannot open destination: {error}"
+msgstr "nie można otworzyć celu: {error}"
+
+msgid "destination changed while it was opened"
+msgstr "cel zmienił się podczas otwierania"
+
+#, python-brace-format
+msgid "cannot authenticate displaced destination: {error}"
+msgstr "nie można uwierzytelnić przemieszczonego celu: {error}"
+
+#, python-brace-format
+msgid "{detail} ({error})"
+msgstr "{detail} ({error})"
+
+#, python-brace-format
+msgid "cannot inspect raced destination: {error}"
+msgstr "nie można sprawdzić celu zmienionego współbieżnie: {error}"
+
+msgid "published artifact changed before exchange rollback"
+msgstr "opublikowany artefakt zmienił się przed cofnięciem wymiany"
+
+msgid "raced destination changed before exchange rollback"
+msgstr "cel zmieniony współbieżnie zmienił się przed cofnięciem wymiany"
+
+#, python-brace-format
+msgid "cannot roll back raced destination: {error}"
+msgstr "nie można cofnąć celu zmienionego współbieżnie: {error}"
+
+msgid "temporary artifact changed during exchange rollback"
+msgstr "artefakt tymczasowy zmienił się podczas cofania wymiany"
+
+msgid "raced destination changed during exchange rollback"
+msgstr "cel zmieniony współbieżnie zmienił się podczas cofania wymiany"
+
+#, python-brace-format
+msgid "cannot create temporary artifact: {error}"
+msgstr "nie można utworzyć artefaktu tymczasowego: {error}"
+
+msgid "temporary artifact changed while it was opened"
+msgstr "artefakt tymczasowy zmienił się podczas otwierania"
+
+msgid "artifact exceeds the supported size limit"
+msgstr "artefakt przekracza obsługiwany limit rozmiaru"
+
+msgid "temporary artifact path changed while it was written"
+msgstr "ścieżka artefaktu tymczasowego zmieniła się podczas zapisu"
+
+msgid "temporary artifact size changed"
+msgstr "rozmiar artefaktu tymczasowego zmienił się"
+
+#, python-brace-format
+msgid "cannot publish artifact: {error}"
+msgstr "nie można opublikować artefaktu: {error}"
+
+msgid "published artifact identity changed"
+msgstr "tożsamość opublikowanego artefaktu zmieniła się"
+
+msgid "destination changed during atomic replacement"
+msgstr "cel zmienił się podczas atomowego zastępowania"
+
+#, python-brace-format
+msgid "cannot remove displaced destination: {error}"
+msgstr "nie można usunąć przemieszczonego celu: {error}"
+
+msgid "source and destination must differ"
+msgstr "źródło i cel muszą się różnić"
+
+#, python-brace-format
+msgid "Invalid rewrite resolution workspace: {detail}"
+msgstr "Nieprawidłowa przestrzeń robocza rozwiązania przepisywania: {detail}"
+
+msgid "workspace path must be a non-empty string"
+msgstr "ścieżka przestrzeni roboczej musi być niepustym ciągiem"
+
+#, python-brace-format
+msgid "{location} is not valid strict JSON ({error})"
+msgstr "{location} nie jest prawidłowym ścisłym JSON-em ({error})"
+
+#, python-brace-format
+msgid "{location} does not match its immutable binding"
+msgstr "{location} nie odpowiada swojemu niezmiennemu powiązaniu"
+
+#, python-brace-format
+msgid "{location} has the wrong entries ({detail})"
+msgstr "{location} zawiera nieprawidłowe wpisy ({detail})"
+
+#, python-brace-format
+msgid "cannot inspect workspace path ({error})"
+msgstr "nie można sprawdzić ścieżki przestrzeni roboczej ({error})"
+
+#, python-brace-format
+msgid "source unit {unit} has unsupported kind {kind}"
+msgstr "jednostka źródłowa {unit} ma nieobsługiwany rodzaj {kind}"
+
+#, python-brace-format
+msgid "source unit {unit} has unsupported coupling {reason}"
+msgstr "jednostka źródłowa {unit} ma nieobsługiwane powiązanie {reason}"
+
+#, python-brace-format
+msgid "{context} path {path!r} has unsupported kind or mode {mode}"
+msgstr "ścieżka {path!r} kontekstu {context} ma nieobsługiwany rodzaj lub tryb {mode}"
+
+#, python-brace-format
+msgid "source blob {blob} is not accessible"
+msgstr "blob źródłowy {blob} jest niedostępny"
+
+msgid "Git returned the wrong source blob"
+msgstr "Git zwrócił nieprawidłowy blob źródłowy"
+
+msgid "Git returned duplicate source blobs"
+msgstr "Git zwrócił zduplikowane bloby źródłowe"
+
+msgid "source blob size changed while it was exported"
+msgstr "rozmiar blobu źródłowego zmienił się podczas eksportu"
+
+msgid "resolution reference artifact names collided"
+msgstr "nazwy artefaktów referencyjnych rozwiązania kolidują"
+
+#, python-brace-format
+msgid "staged output {output} contains unexpected entries"
+msgstr "przygotowany wynik {output} zawiera nieoczekiwane wpisy"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to be created"
+msgstr "utworzenie ścieżki rezultatu {path!r} nie jest dozwolone"
+
+#, python-brace-format
+msgid "result path {path!r} uses an unauthorized creation mode"
+msgstr "ścieżka rezultatu {path!r} używa niedozwolonego trybu tworzenia"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to be deleted"
+msgstr "usunięcie ścieżki rezultatu {path!r} nie jest dozwolone"
+
+#, python-brace-format
+msgid "authorized result path {path!r} did not change"
+msgstr "dozwolona ścieżka rezultatu {path!r} nie zmieniła się"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to change mode"
+msgstr "zmiana trybu ścieżki rezultatu {path!r} nie jest dozwolona"
+
+#, python-brace-format
+msgid "result path {path!r} uses an unauthorized changed mode"
+msgstr "ścieżka rezultatu {path!r} używa niedozwolonego zmienionego trybu"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to change content"
+msgstr "zmiana zawartości ścieżki rezultatu {path!r} nie jest dozwolona"
+
+msgid "an absent result path has an artifact digest"
+msgstr "nieobecna ścieżka rezultatu ma skrót artefaktu"
+
+msgid "resolved output would be an empty commit"
+msgstr "rozwiązany wynik byłby pustym commitem"
+
+#, python-brace-format
+msgid "{location} has the wrong path inventory"
+msgstr "{location} zawiera nieprawidłowy spis ścieżek"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] must be an object"
+msgstr "{location}.paths[{index}] musi być obiektem"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] has the wrong fields"
+msgstr "{location}.paths[{index}] zawiera nieprawidłowe pola"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] does not match result.json"
+msgstr "{location}.paths[{index}] nie odpowiada plikowi result.json"
+
+msgid "an absent receipt path has an artifact digest"
+msgstr "nieobecna ścieżka potwierdzenia ma skrót artefaktu"
+
+msgid "a present receipt path has an invalid artifact digest"
+msgstr "obecna ścieżka potwierdzenia ma nieprawidłowy skrót artefaktu"
+
+msgid "resolution replay used the wrong document or environment"
+msgstr "odtworzenie rozwiązania użyło nieprawidłowego dokumentu lub środowiska"
+
+#, python-brace-format
+msgid "output {output} resolution is missing"
+msgstr "brakuje rozwiązania wyniku {output}"
+
+#, python-brace-format
+msgid "workspace outputs contain unexpected entries: {entries}"
+msgstr "wyniki przestrzeni roboczej zawierają nieoczekiwane wpisy: {entries}"
+
+#, python-brace-format
+msgid "output {output} result.json changed after acceptance"
+msgstr "plik result.json wyniku {output} zmienił się po zaakceptowaniu"
+
+#, python-brace-format
+msgid "output {output} receipt.json is not authentic"
+msgstr "plik receipt.json wyniku {output} nie jest autentyczny"
+
+#, python-brace-format
+msgid "output {output} has not been accepted"
+msgstr "wynik {output} nie został zaakceptowany"
+
+msgid "plan does not contain any RESOLVED outputs"
+msgstr "plan nie zawiera żadnych wyników RESOLVED"
+
+msgid "--accept requires an existing workspace"
+msgstr "--accept wymaga istniejącej przestrzeni roboczej"
+
+#, python-brace-format
+msgid "Rewrite resolution workspace is complete: {workspace}"
+msgstr "Przestrzeń robocza rozwiązania przepisywania jest kompletna: {workspace}"
+
+#, python-brace-format
+msgid "{count} resolved output recorded."
+msgid_plural "{count} resolved outputs recorded."
+msgstr[0] "Zapisano {count} rozwiązany wynik."
+msgstr[1] "Zapisano {count} rozwiązane wyniki."
+msgstr[2] "Zapisano {count} rozwiązanych wyników."
+
+#, python-brace-format
+msgid "Rewrite output {number} needs resolution ({key})."
+msgstr "Wynik przepisywania {number} wymaga rozwiązania ({key})."
+
+#, python-brace-format
+msgid "Inspect resolution request: {path}"
+msgstr "Sprawdź żądanie rozwiązania: {path}"
+
+#, python-brace-format
+msgid "Edit resolution metadata: {path}"
+msgstr "Edytuj metadane rozwiązania: {path}"
+
+#, python-brace-format
+msgid "Edit resolved artifacts in: {path}"
+msgstr "Edytuj rozwiązane artefakty w: {path}"
+
+msgid "Authorized path:"
+msgid_plural "Authorized paths:"
+msgstr[0] "Dozwolona ścieżka:"
+msgstr[1] "Dozwolone ścieżki:"
+msgstr[2] "Dozwolone ścieżki:"
+
+#, python-brace-format
+msgid "Then run: {command}"
+msgstr "Następnie uruchom: {command}"

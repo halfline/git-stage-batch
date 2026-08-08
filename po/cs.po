@@ -7261,3 +7261,456 @@ msgstr "Zdroj historie {commit} při opakovaném přehrání vytvořil jiné jed
 
 msgid "Rewrite operation was already complete; abort made no changes."
 msgstr "Operace přepisu již byla dokončena; přerušení neprovedlo žádné změny."
+
+# Rewrite resolution workspace translations.
+msgid "Create or advance an external rewrite-resolution workspace"
+msgstr "Vytvořit nebo posunout externí pracovní prostor pro řešení přepisu"
+
+msgid "Reviewed rewrite plan containing resolved outputs"
+msgstr "Zkontrolovaný plán přepisu obsahující vyřešené výstupy"
+
+msgid "Private external directory for resolution artifacts"
+msgstr "Soukromý externí adresář pro artefakty řešení"
+
+msgid "Import the current result and advance to the next output"
+msgstr "Importovat aktuální výsledek a přejít k dalšímu výstupu"
+
+msgid "Output a machine-readable resolution checkpoint"
+msgstr "Vypsat strojově čitelný kontrolní bod řešení"
+
+#, python-brace-format
+msgid "Rewrite output {output} resolution did not produce a full tree object ID."
+msgstr "Řešení výstupu přepisu {output} nevytvořilo úplný identifikátor objektu stromu."
+
+#, python-brace-format
+msgid "Rewrite output {output} resolution did not produce an accessible tree object."
+msgstr "Řešení výstupu přepisu {output} nevytvořilo dostupný objekt stromu."
+
+#, python-brace-format
+msgid "Rewrite output {output} requires an explicit resolution workspace."
+msgstr "Výstup přepisu {output} vyžaduje explicitní pracovní prostor řešení."
+
+#, python-brace-format
+msgid "Rewrite output {output} resolves non-empty units into an empty commit."
+msgstr "Výstup přepisu {output} řeší neprázdné jednotky do prázdného commitu."
+
+#, python-brace-format
+msgid "Invalid resolution artifact '{path}': {detail}"
+msgstr "Neplatný artefakt řešení „{path}“: {detail}"
+
+msgid "path must be absolute"
+msgstr "cesta musí být absolutní"
+
+msgid "path must not contain aliases or traversal"
+msgstr "cesta nesmí obsahovat aliasy ani procházení nadřazených adresářů"
+
+msgid "platform does not support secure directory access"
+msgstr "platforma nepodporuje bezpečný přístup k adresářům"
+
+#, python-brace-format
+msgid "path must not contain aliases, traversal, or symlinks ({error})"
+msgstr "cesta nesmí obsahovat aliasy, procházení nadřazených adresářů ani symbolické odkazy ({error})"
+
+msgid "path must be a directory"
+msgstr "cesta musí být adresář"
+
+msgid "directory permissions must be 0700"
+msgstr "oprávnění adresáře musí být 0700"
+
+msgid "directory path changed during artifact access"
+msgstr "cesta k adresáři se během přístupu k artefaktu změnila"
+
+msgid "path must not contain aliases, traversal, or symlinks"
+msgstr "cesta nesmí obsahovat aliasy, procházení nadřazených adresářů ani symbolické odkazy"
+
+msgid "path must be a regular file"
+msgstr "cesta musí být běžný soubor"
+
+msgid "path must be owned by the current user"
+msgstr "cesta musí být vlastněna aktuálním uživatelem"
+
+msgid "file must not have hard links"
+msgstr "soubor nesmí mít pevné odkazy"
+
+msgid "file permissions must be 0600"
+msgstr "oprávnění souboru musí být 0600"
+
+msgid "cannot create the filesystem root"
+msgstr "nelze vytvořit kořen souborového systému"
+
+msgid "directory changed while it was opened"
+msgstr "adresář se během otevírání změnil"
+
+#, python-brace-format
+msgid "cannot create private directory: {error}"
+msgstr "nelze vytvořit soukromý adresář: {error}"
+
+msgid "directory exceeds the supported entry-count limit"
+msgstr "adresář překračuje podporovaný limit počtu položek"
+
+#, python-brace-format
+msgid "cannot enumerate directory: {error}"
+msgstr "nelze vypsat položky adresáře: {error}"
+
+msgid "locked and final directories must be distinct siblings"
+msgstr "zamčený a konečný adresář musí být odlišné a mít stejný nadřazený adresář"
+
+#, python-brace-format
+msgid "cannot open workspace lock: {error}"
+msgstr "nelze otevřít zámek pracovního prostoru: {error}"
+
+#, python-brace-format
+msgid "cannot authenticate workspace lock: {error}"
+msgstr "nelze ověřit zámek pracovního prostoru: {error}"
+
+msgid "workspace lock changed while it was opened"
+msgstr "zámek pracovního prostoru se během otevírání změnil"
+
+msgid "workspace is already in use"
+msgstr "pracovní prostor se již používá"
+
+#, python-brace-format
+msgid "cannot lock workspace: {error}"
+msgstr "pracovní prostor nelze zamknout: {error}"
+
+#, python-brace-format
+msgid "cannot re-authenticate workspace lock: {error}"
+msgstr "nelze znovu ověřit zámek pracovního prostoru: {error}"
+
+msgid "workspace lock changed while it was held"
+msgstr "zámek pracovního prostoru se během držení změnil"
+
+msgid "staging and destination must be distinct siblings"
+msgstr "přípravný adresář a cíl musí být odlišné a mít stejný nadřazený adresář"
+
+#, python-brace-format
+msgid "cannot inspect staging directory: {error}"
+msgstr "nelze zkontrolovat přípravný adresář: {error}"
+
+#, python-brace-format
+msgid "cannot open staging directory: {error}"
+msgstr "nelze otevřít přípravný adresář: {error}"
+
+msgid "staging directory changed while it was opened"
+msgstr "přípravný adresář se během otevírání změnil"
+
+#, python-brace-format
+msgid "cannot inspect destination: {error}"
+msgstr "nelze zkontrolovat cíl: {error}"
+
+msgid "destination already exists"
+msgstr "cíl již existuje"
+
+#, python-brace-format
+msgid "cannot re-authenticate staging directory: {error}"
+msgstr "nelze znovu ověřit přípravný adresář: {error}"
+
+msgid "staging directory changed before publication"
+msgstr "přípravný adresář se před zveřejněním změnil"
+
+#, python-brace-format
+msgid "cannot publish directory: {error}"
+msgstr "adresář nelze zveřejnit: {error}"
+
+msgid "published directory identity changed"
+msgstr "identita zveřejněného adresáře se změnila"
+
+#, python-brace-format
+msgid "cannot inspect file: {error}"
+msgstr "soubor nelze zkontrolovat: {error}"
+
+#, python-brace-format
+msgid "cannot inspect interrupted write: {error}"
+msgstr "nelze zkontrolovat přerušený zápis: {error}"
+
+#, python-brace-format
+msgid "cannot open interrupted write: {error}"
+msgstr "nelze otevřít přerušený zápis: {error}"
+
+msgid "interrupted write changed before recovery"
+msgstr "přerušený zápis se před obnovením změnil"
+
+#, python-brace-format
+msgid "cannot remove interrupted write: {error}"
+msgstr "nelze odstranit přerušený zápis: {error}"
+
+msgid "metadata exceeds the supported size limit"
+msgstr "metadata překračují podporovaný limit velikosti"
+
+#, python-brace-format
+msgid "metadata cannot be decoded: {error}"
+msgstr "metadata nelze dekódovat: {error}"
+
+#, python-brace-format
+msgid "cannot open file: {error}"
+msgstr "soubor nelze otevřít: {error}"
+
+msgid "file changed while it was opened"
+msgstr "soubor se během otevírání změnil"
+
+msgid "file grew while it was read"
+msgstr "soubor se během čtení zvětšil"
+
+msgid "file changed while it was read"
+msgstr "soubor se během čtení změnil"
+
+#, python-brace-format
+msgid "cannot verify file after reading: {error}"
+msgstr "soubor nelze po přečtení ověřit: {error}"
+
+msgid "file path changed while it was read"
+msgstr "cesta k souboru se během čtení změnila"
+
+msgid "content does not match its expected size and SHA-256"
+msgstr "obsah neodpovídá očekávané velikosti a SHA-256"
+
+msgid "destination appeared while it was being written"
+msgstr "cíl se objevil během zápisu"
+
+msgid "destination changed while it was being written"
+msgstr "cíl se během zápisu změnil"
+
+#, python-brace-format
+msgid "cannot open destination: {error}"
+msgstr "cíl nelze otevřít: {error}"
+
+msgid "destination changed while it was opened"
+msgstr "cíl se během otevírání změnil"
+
+#, python-brace-format
+msgid "cannot authenticate displaced destination: {error}"
+msgstr "nelze ověřit přemístěný cíl: {error}"
+
+#, python-brace-format
+msgid "{detail} ({error})"
+msgstr "{detail} ({error})"
+
+#, python-brace-format
+msgid "cannot inspect raced destination: {error}"
+msgstr "nelze zkontrolovat souběžně změněný cíl: {error}"
+
+msgid "published artifact changed before exchange rollback"
+msgstr "zveřejněný artefakt se změnil před vrácením výměny"
+
+msgid "raced destination changed before exchange rollback"
+msgstr "souběžně změněný cíl se změnil před vrácením výměny"
+
+#, python-brace-format
+msgid "cannot roll back raced destination: {error}"
+msgstr "nelze vrátit souběžně změněný cíl: {error}"
+
+msgid "temporary artifact changed during exchange rollback"
+msgstr "dočasný artefakt se změnil během vracení výměny"
+
+msgid "raced destination changed during exchange rollback"
+msgstr "souběžně změněný cíl se změnil během vracení výměny"
+
+#, python-brace-format
+msgid "cannot create temporary artifact: {error}"
+msgstr "nelze vytvořit dočasný artefakt: {error}"
+
+msgid "temporary artifact changed while it was opened"
+msgstr "dočasný artefakt se během otevírání změnil"
+
+msgid "artifact exceeds the supported size limit"
+msgstr "artefakt překračuje podporovaný limit velikosti"
+
+msgid "temporary artifact path changed while it was written"
+msgstr "cesta k dočasnému artefaktu se během zápisu změnila"
+
+msgid "temporary artifact size changed"
+msgstr "velikost dočasného artefaktu se změnila"
+
+#, python-brace-format
+msgid "cannot publish artifact: {error}"
+msgstr "artefakt nelze zveřejnit: {error}"
+
+msgid "published artifact identity changed"
+msgstr "identita zveřejněného artefaktu se změnila"
+
+msgid "destination changed during atomic replacement"
+msgstr "cíl se během atomického nahrazení změnil"
+
+#, python-brace-format
+msgid "cannot remove displaced destination: {error}"
+msgstr "nelze odstranit přemístěný cíl: {error}"
+
+msgid "source and destination must differ"
+msgstr "zdroj a cíl se musí lišit"
+
+#, python-brace-format
+msgid "Invalid rewrite resolution workspace: {detail}"
+msgstr "Neplatný pracovní prostor řešení přepisu: {detail}"
+
+msgid "workspace path must be a non-empty string"
+msgstr "cesta k pracovnímu prostoru musí být neprázdný řetězec"
+
+#, python-brace-format
+msgid "{location} is not valid strict JSON ({error})"
+msgstr "{location} není platný striktní JSON ({error})"
+
+#, python-brace-format
+msgid "{location} does not match its immutable binding"
+msgstr "{location} neodpovídá své neměnné vazbě"
+
+#, python-brace-format
+msgid "{location} has the wrong entries ({detail})"
+msgstr "{location} obsahuje nesprávné položky ({detail})"
+
+#, python-brace-format
+msgid "cannot inspect workspace path ({error})"
+msgstr "nelze zkontrolovat cestu pracovního prostoru ({error})"
+
+#, python-brace-format
+msgid "source unit {unit} has unsupported kind {kind}"
+msgstr "zdrojová jednotka {unit} má nepodporovaný druh {kind}"
+
+#, python-brace-format
+msgid "source unit {unit} has unsupported coupling {reason}"
+msgstr "zdrojová jednotka {unit} má nepodporované propojení {reason}"
+
+#, python-brace-format
+msgid "{context} path {path!r} has unsupported kind or mode {mode}"
+msgstr "cesta {path!r} kontextu {context} má nepodporovaný druh nebo režim {mode}"
+
+#, python-brace-format
+msgid "source blob {blob} is not accessible"
+msgstr "zdrojový blob {blob} není dostupný"
+
+msgid "Git returned the wrong source blob"
+msgstr "Git vrátil nesprávný zdrojový blob"
+
+msgid "Git returned duplicate source blobs"
+msgstr "Git vrátil duplicitní zdrojové bloby"
+
+msgid "source blob size changed while it was exported"
+msgstr "velikost zdrojového blobu se během exportu změnila"
+
+msgid "resolution reference artifact names collided"
+msgstr "názvy referenčních artefaktů řešení kolidují"
+
+#, python-brace-format
+msgid "staged output {output} contains unexpected entries"
+msgstr "připravený výstup {output} obsahuje neočekávané položky"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to be created"
+msgstr "cestu výsledku {path!r} není povoleno vytvořit"
+
+#, python-brace-format
+msgid "result path {path!r} uses an unauthorized creation mode"
+msgstr "cesta výsledku {path!r} používá nepovolený režim vytvoření"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to be deleted"
+msgstr "cestu výsledku {path!r} není povoleno odstranit"
+
+#, python-brace-format
+msgid "authorized result path {path!r} did not change"
+msgstr "povolená cesta výsledku {path!r} se nezměnila"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to change mode"
+msgstr "cestě výsledku {path!r} není povoleno změnit režim"
+
+#, python-brace-format
+msgid "result path {path!r} uses an unauthorized changed mode"
+msgstr "cesta výsledku {path!r} používá nepovolený změněný režim"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to change content"
+msgstr "cestě výsledku {path!r} není povoleno změnit obsah"
+
+msgid "an absent result path has an artifact digest"
+msgstr "nepřítomná cesta výsledku má otisk artefaktu"
+
+msgid "resolved output would be an empty commit"
+msgstr "vyřešený výstup by byl prázdný commit"
+
+#, python-brace-format
+msgid "{location} has the wrong path inventory"
+msgstr "{location} obsahuje nesprávný soupis cest"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] must be an object"
+msgstr "{location}.paths[{index}] musí být objekt"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] has the wrong fields"
+msgstr "{location}.paths[{index}] obsahuje nesprávná pole"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] does not match result.json"
+msgstr "{location}.paths[{index}] neodpovídá souboru result.json"
+
+msgid "an absent receipt path has an artifact digest"
+msgstr "nepřítomná cesta potvrzení má otisk artefaktu"
+
+msgid "a present receipt path has an invalid artifact digest"
+msgstr "přítomná cesta potvrzení má neplatný otisk artefaktu"
+
+msgid "resolution replay used the wrong document or environment"
+msgstr "přehrání řešení použilo nesprávný dokument nebo prostředí"
+
+#, python-brace-format
+msgid "output {output} resolution is missing"
+msgstr "řešení výstupu {output} chybí"
+
+#, python-brace-format
+msgid "workspace outputs contain unexpected entries: {entries}"
+msgstr "výstupy pracovního prostoru obsahují neočekávané položky: {entries}"
+
+#, python-brace-format
+msgid "output {output} result.json changed after acceptance"
+msgstr "soubor result.json výstupu {output} se po přijetí změnil"
+
+#, python-brace-format
+msgid "output {output} receipt.json is not authentic"
+msgstr "soubor receipt.json výstupu {output} není autentický"
+
+#, python-brace-format
+msgid "output {output} has not been accepted"
+msgstr "výstup {output} nebyl přijat"
+
+msgid "plan does not contain any RESOLVED outputs"
+msgstr "plán neobsahuje žádné výstupy RESOLVED"
+
+msgid "--accept requires an existing workspace"
+msgstr "--accept vyžaduje existující pracovní prostor"
+
+#, python-brace-format
+msgid "Rewrite resolution workspace is complete: {workspace}"
+msgstr "Pracovní prostor řešení přepisu je dokončen: {workspace}"
+
+#, python-brace-format
+msgid "{count} resolved output recorded."
+msgid_plural "{count} resolved outputs recorded."
+msgstr[0] "Byl zaznamenán {count} vyřešený výstup."
+msgstr[1] "Byly zaznamenány {count} vyřešené výstupy."
+msgstr[2] "Bylo zaznamenáno {count} vyřešených výstupů."
+
+#, python-brace-format
+msgid "Rewrite output {number} needs resolution ({key})."
+msgstr "Výstup přepisu {number} vyžaduje řešení ({key})."
+
+#, python-brace-format
+msgid "Inspect resolution request: {path}"
+msgstr "Zkontrolujte požadavek na řešení: {path}"
+
+#, python-brace-format
+msgid "Edit resolution metadata: {path}"
+msgstr "Upravte metadata řešení: {path}"
+
+#, python-brace-format
+msgid "Edit resolved artifacts in: {path}"
+msgstr "Upravte vyřešené artefakty v: {path}"
+
+msgid "Authorized path:"
+msgid_plural "Authorized paths:"
+msgstr[0] "Povolená cesta:"
+msgstr[1] "Povolené cesty:"
+msgstr[2] "Povolené cesty:"
+
+#, python-brace-format
+msgid "Then run: {command}"
+msgstr "Poté spusťte: {command}"

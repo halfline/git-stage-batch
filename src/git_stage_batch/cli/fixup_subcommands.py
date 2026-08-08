@@ -82,7 +82,7 @@ def _add_suggest_fixup_arguments(parser: argparse.ArgumentParser) -> None:
         nargs="?",
         default=None,
         help=_(
-            "Git ref to use as lower bound for commit search (default: @{upstream})"
+            "Commit excluded from the search (default: fork point with upstream)"
         ),
     )
     parser.set_defaults(func=_dispatch_suggest_fixup_command)

@@ -83,13 +83,6 @@ ALLOWED_FINDINGS = (
         "TypedDict key read from persisted metadata by string name.",
     ),
     _allowed(
-        "src/git_stage_batch/batch/ownership/units.py",
-        "variable",
-        "next_index",
-        "TypedDict key read by string name.",
-        expected_count=2,
-    ),
-    _allowed(
         "src/git_stage_batch/batch/state/metadata_types.py",
         "variable",
         "added_lines",
@@ -142,6 +135,18 @@ ALLOWED_FINDINGS = (
         "variable",
         "text_bytes_b64",
         "TypedDict key read from persisted line state by string name.",
+    ),
+    _allowed(
+        "src/git_stage_batch/data/suggest_fixup_state.py",
+        "variable",
+        "range_fingerprint",
+        "TypedDict key read from persisted suggestion state by string name.",
+    ),
+    _allowed(
+        "src/git_stage_batch/data/suggest_fixup_state.py",
+        "variable",
+        "last_shown_commit",
+        "TypedDict key read from persisted suggestion state by string name.",
     ),
     _allowed(
         "src/git_stage_batch/data/live_change_jobs.py",

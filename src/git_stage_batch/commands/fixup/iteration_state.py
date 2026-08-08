@@ -17,7 +17,7 @@ from ...i18n import _
 class SuggestFixupIterationContext:
     """Resolved suggest-fixup state for one command invocation."""
 
-    effective_boundary: str
+    effective_boundary: str | None
     state: SuggestFixupState | None
 
 
@@ -37,13 +37,11 @@ def prepare_suggest_fixup_iteration(
 
     state = read_suggest_fixup_state()
 
-    if boundary is None:
-        effective_boundary = state.get("boundary") if state else "@{upstream}"
-    else:
-        effective_boundary = boundary
-        if state and state.get("boundary") != boundary:
-            clear_suggest_fixup_state()
-            state = None
+    effective_boundary = (
+        state["base_commit"]
+        if boundary is None and state is not None
+        else boundary
+    )
 
     if reset:
         clear_suggest_fixup_state()

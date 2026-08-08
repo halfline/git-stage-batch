@@ -13,7 +13,7 @@ from ..git_paths import display_path, terminal_safe_text
 from ..i18n import _
 
 
-def _reason_text(analysis: FixupUnitAnalysis) -> str:
+def fixup_reason_text(analysis: FixupUnitAnalysis) -> str:
     messages = {
         "lineage-and-placement-agree": _("lineage and placement agree"),
         "unique-lineage-and-free-placement": _(
@@ -36,6 +36,7 @@ def _reason_text(analysis: FixupUnitAnalysis) -> str:
         ),
         "file-mode-change": _("file-mode changes are not supported yet"),
         "gitlink-change": _("gitlink changes are not supported yet"),
+        "non-regular-text-file": _("the selected path is not a regular text file"),
         "unit-has-no-text-patch": _("the unit has no textual patch"),
         "staged-unit-no-longer-applies-to-head": _(
             "the staged unit no longer applies to the frozen HEAD"
@@ -56,7 +57,7 @@ def _unit_location(analysis: FixupUnitAnalysis) -> str:
     )
 
 
-def _analysis_record(analysis: FixupUnitAnalysis) -> dict[str, object]:
+def fixup_analysis_record(analysis: FixupUnitAnalysis) -> dict[str, object]:
     unit = analysis.unit
     return {
         "id": unit.unit_id,
@@ -119,7 +120,7 @@ def _porcelain_record(
             "head_tree": plan.head_tree,
             "index_tree": plan.index_tree,
         },
-        "units": [_analysis_record(analysis) for analysis in plan.units],
+        "units": [fixup_analysis_record(analysis) for analysis in plan.units],
         "groups": [
             {
                 "target": group.target,
@@ -181,7 +182,7 @@ def print_fixup_create_output(
                 status=analysis.status,
             )
         )
-        print(f"    {_reason_text(analysis)}")
+        print(f"    {fixup_reason_text(analysis)}")
 
     for group in plan.groups:
         print(

@@ -892,6 +892,7 @@ eligible target:
 
 ```bash
 ❯ git-stage-batch fixup create [BOUNDARY] [--dry-run] [--partial] [--porcelain]
+❯ git-stage-batch fixup create --plan FILE [--dry-run] [--partial] [--porcelain]
 ```
 
 The command combines exact-line history with tree-replay commutation. It
@@ -933,11 +934,51 @@ range. The range must be non-empty and linear.
 
 **Porcelain output** is versioned JSON containing full object IDs, source tree
 fingerprints, every change unit and evidence source, target groups, created
-commits, and the recovery ref:
+commits, and the recovery ref. A dry-run document is also a reusable plan:
 
 ```bash
 ❯ git-stage-batch fixup create --dry-run --porcelain
 ```
+
+To review or supply semantic assignments without weakening the mechanical
+checks, save that output, edit only its `assignments` array, and replay it:
+
+```bash
+❯ git-stage-batch fixup create main --dry-run --porcelain >fixup-plan.json
+# Review assignments. Use full unit and commit IDs in every edited record.
+❯ git-stage-batch fixup create --plan fixup-plan.json --dry-run
+❯ git-stage-batch fixup create --plan fixup-plan.json
+```
+
+Each assignment has this shape:
+
+```json
+{
+  "unit_id": "<full stable unit ID>",
+  "target": "<full commit object ID>",
+  "basis": "automatic"
+}
+```
+
+Generated assignments use `"basis": "automatic"`. Change the basis to
+`"explicit"` when a reviewed semantic decision adds an unresolved unit or
+overrides its suggested target. Explicit review can supply meaning that the
+lineage evidence lacks; it cannot move a patch through a mechanical barrier
+or an `UNKNOWN` placement. Remove an assignment to leave that unit staged;
+normal creation then requires `--partial` when any units remain.
+
+Plan input accepts only the current strict JSON schema and only dry-run output.
+Before creating refs or commits, the command regenerates and exactly compares
+the object format, `HEAD`, index tree, head tree, ordered range, stable unit
+IDs, paths, locations, and all lineage and placement evidence. It rejects
+omitted or forged unit facts and duplicate, abbreviated, or out-of-range
+assignments. It also relocates each assigned group to its target, replays the
+complete range, and requires the integrated result to reproduce the assigned
+staged patch.
+The `groups` and `summary` fields are generated reports rather than plan
+inputs; they are recalculated from the reviewed assignments. Passing both a
+positional boundary and `--plan` is an error because the plan already freezes
+its excluded base.
 
 ---
 

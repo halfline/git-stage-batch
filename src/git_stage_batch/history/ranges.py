@@ -155,6 +155,10 @@ def resolve_history_range(boundary: str | None) -> ResolvedHistoryRange:
     _require_unmodified_object_graph()
     tip = resolve_history_commit("HEAD")
     base = resolve_history_commit(boundary) if boundary is not None else _default_base()
+    return _resolved_range(base, tip)
+
+
+def _resolved_range(base: str, tip: str) -> ResolvedHistoryRange:
     _require_ancestor(base, tip)
     commits = _linear_commits(base, tip)
     return ResolvedHistoryRange(
@@ -163,3 +167,14 @@ def resolve_history_range(boundary: str | None) -> ResolvedHistoryRange:
         tip_commit=tip,
         commits_oldest_first=commits,
     )
+
+
+def resolve_exact_history_range(
+    boundary: str,
+    tip_revision: str,
+) -> ResolvedHistoryRange:
+    """Return one frozen linear range without consulting the current HEAD."""
+    _require_unmodified_object_graph()
+    base = resolve_history_commit(boundary)
+    tip = resolve_history_commit(tip_revision)
+    return _resolved_range(base, tip)

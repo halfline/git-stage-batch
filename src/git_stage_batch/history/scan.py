@@ -17,7 +17,11 @@ from .models import (
     HistoryPlannedCommit,
     HistorySnapshot,
 )
-from .ranges import resolve_history_range
+from .ranges import (
+    ResolvedHistoryRange,
+    resolve_exact_history_range,
+    resolve_history_range,
+)
 from .safety import collect_history_safety_facts
 from .unit_ids import history_unit_id
 
@@ -85,14 +89,15 @@ def _commit_snapshot(commit: str, expected_parent: str) -> HistoryCommitSnapshot
         message=parsed.message,
         message_sha256=parsed.message_sha256,
         signatures=parsed.signatures,
+        unsupported_headers=parsed.unsupported_headers,
         units=units,
     )
 
 
-def acquire_history_plan_document(boundary: str | None) -> HistoryPlanDocument:
-    """Capture an immutable range and a KEEP plan template without state writes."""
-    commit_range = resolve_history_range(boundary)
-    branch_ref = _symbolic_head()
+def _snapshot_from_range(
+    commit_range: ResolvedHistoryRange,
+    branch_ref: str | None,
+) -> HistorySnapshot:
     commits: list[HistoryCommitSnapshot] = []
     expected_parent = commit_range.base_commit
     for commit in commit_range.commits_oldest_first:
@@ -100,10 +105,8 @@ def acquire_history_plan_document(boundary: str | None) -> HistoryPlanDocument:
         commits.append(commit_snapshot)
         expected_parent = commit
 
-    _require_frozen_head(commit_range.tip_commit, branch_ref)
-
     frozen_commits = tuple(commits)
-    history_snapshot = HistorySnapshot(
+    return HistorySnapshot(
         object_format=commit_range.object_format,
         base_commit=commit_range.base_commit,
         tip_commit=commit_range.tip_commit,
@@ -112,6 +115,30 @@ def acquire_history_plan_document(boundary: str | None) -> HistoryPlanDocument:
         branch_ref=branch_ref,
         commits=frozen_commits,
     )
+
+
+def acquire_frozen_history_snapshot(
+    base_commit: str,
+    tip_commit: str,
+    branch_ref: str | None,
+) -> HistorySnapshot:
+    """Regenerate one exact source snapshot independently of current HEAD."""
+    return _snapshot_from_range(
+        resolve_exact_history_range(base_commit, tip_commit),
+        branch_ref,
+    )
+
+
+def acquire_history_plan_document(
+    boundary: str | None,
+    *,
+    allowed_remote_refs: tuple[str, ...] = (),
+) -> HistoryPlanDocument:
+    """Capture an immutable range and a KEEP plan template without state writes."""
+    commit_range = resolve_history_range(boundary)
+    branch_ref = _symbolic_head()
+    history_snapshot = _snapshot_from_range(commit_range, branch_ref)
+    _require_frozen_head(commit_range.tip_commit, branch_ref)
     safety = collect_history_safety_facts(
         tip=history_snapshot.tip_commit,
         final_tree=history_snapshot.final_tree,
@@ -119,6 +146,7 @@ def acquire_history_plan_document(boundary: str | None) -> HistoryPlanDocument:
         source_commits=tuple(
             commit.commit_id for commit in history_snapshot.commits
         ),
+        allowed_remote_refs=allowed_remote_refs,
     )
     _require_frozen_head(commit_range.tip_commit, branch_ref)
     plan = HistoryPlan(

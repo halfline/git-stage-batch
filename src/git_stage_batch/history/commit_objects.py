@@ -15,6 +15,16 @@ from .models import HistoryIdentity, HistorySignature
 _IDENTITY_DATE = re.compile(rb"^-?[0-9]+$")
 _IDENTITY_TIMEZONE = re.compile(rb"^[+-][0-9]{4}$")
 _SIGNATURE_HEADERS = frozenset({b"gpgsig", b"gpgsig-sha256"})
+_SUPPORTED_HEADERS = frozenset(
+    {
+        b"tree",
+        b"parent",
+        b"author",
+        b"committer",
+        b"encoding",
+        *_SIGNATURE_HEADERS,
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,8 +37,10 @@ class ParsedCommitObject:
     committer: HistoryIdentity
     encoding: str | None
     message: str
+    message_bytes: bytes
     message_sha256: str
     signatures: tuple[HistorySignature, ...]
+    unsupported_headers: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +128,8 @@ def _one_header(
 
 
 def _identity(value: bytes, commit: str, field: str) -> HistoryIdentity:
+    if b"\0" in value or b"\n" in value or b"\r" in value:
+        raise _malformed(commit, field)
     parts = value.rsplit(b" ", 2)
     if (
         len(parts) != 3
@@ -155,6 +169,10 @@ def parse_commit_object(commit: str) -> ParsedCommitObject:
     ]
     if len(encoding_headers) > 1:
         raise _malformed(commit, "encoding")
+    if encoding_headers and any(
+        delimiter in encoding_headers[0] for delimiter in (b"\0", b"\n", b"\r")
+    ):
+        raise _malformed(commit, "encoding")
     encoding = _decode(encoding_headers[0]) if encoding_headers else None
     signatures = tuple(
         HistorySignature(
@@ -175,6 +193,12 @@ def parse_commit_object(commit: str) -> ParsedCommitObject:
         ),
         encoding=encoding,
         message=_decode_message(message_bytes, encoding),
+        message_bytes=message_bytes,
         message_sha256=hashlib.sha256(message_bytes).hexdigest(),
         signatures=signatures,
+        unsupported_headers=tuple(
+            _decode(header.name)
+            for header in headers
+            if header.name not in _SUPPORTED_HEADERS
+        ),
     )

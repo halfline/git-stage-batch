@@ -29,40 +29,46 @@ from .models import (
 )
 from .json_files import history_canonical_json_sha256
 from .records import history_snapshot_record
-from .scan import acquire_history_plan_document
+from .replay import validate_history_plan_materialization
+from .safety import collect_history_safety_facts
+from .scan import acquire_frozen_history_snapshot, acquire_history_plan_document
 
 
-_TOP_LEVEL_KEYS = frozenset({
-    "schema_version",
-    "operation",
-    "snapshot",
-    "safety",
-    "plan",
-})
+_TOP_LEVEL_KEYS = frozenset(
+    {
+        "schema_version",
+        "operation",
+        "snapshot",
+        "safety",
+        "plan",
+    }
+)
 _PLAN_KEYS = frozenset({"outputs"})
-_OUTPUT_KEYS = frozenset({
-    "operation",
-    "source_commits",
-    "unit_ids",
-    "message",
-    "encoding",
-    "author",
-    "rationale",
-})
-_IDENTITY_KEYS = frozenset({
-    "raw",
-    "name",
-    "email",
-    "timestamp",
-    "timezone",
-})
+_OUTPUT_KEYS = frozenset(
+    {
+        "operation",
+        "source_commits",
+        "unit_ids",
+        "message",
+        "encoding",
+        "author",
+        "rationale",
+    }
+)
+_IDENTITY_KEYS = frozenset(
+    {
+        "raw",
+        "name",
+        "email",
+        "timestamp",
+        "timezone",
+    }
+)
 
 
 def _invalid(detail: str) -> NoReturn:
     raise CommandError(
-        _("Invalid rewrite plan: {detail}").format(
-            detail=terminal_safe_text(detail)
-        )
+        _("Invalid rewrite plan: {detail}").format(detail=terminal_safe_text(detail))
     )
 
 
@@ -134,8 +140,8 @@ def _planned_commit(
     record = require_object(value, location)
     require_exact_keys(record, _OUTPUT_KEYS, location)
     operation_value = require_string(record, "operation", location)
-    if operation_value not in {"KEEP", "REWORD"}:
-        _invalid(f"{location}.operation must be 'KEEP' or 'REWORD'")
+    if operation_value not in {"KEEP", "REWORD", "INTEGRATE"}:
+        _invalid(f"{location}.operation must be 'KEEP', 'REWORD', or 'INTEGRATE'")
     source_commits = _string_array(
         record["source_commits"],
         f"{location}.source_commits",
@@ -159,7 +165,7 @@ def _planned_commit(
         record["encoding"],
         f"{location}.encoding",
     )
-    if operation_value == "REWORD":
+    if operation_value in {"REWORD", "INTEGRATE"}:
         try:
             message.encode(encoding or "utf-8", errors="surrogateescape")
         except (LookupError, UnicodeEncodeError) as error:
@@ -185,10 +191,7 @@ def _decode_plan(payload: str) -> tuple[dict[str, object], str, HistoryPlan]:
         require_exact_keys(document, _TOP_LEVEL_KEYS, "document")
         version = require_integer(document, "schema_version", "document")
         if version != CURRENT_HISTORY_PLAN_SCHEMA_VERSION:
-            _invalid(
-                "schema_version must be "
-                f"{CURRENT_HISTORY_PLAN_SCHEMA_VERSION}"
-            )
+            _invalid(f"schema_version must be {CURRENT_HISTORY_PLAN_SCHEMA_VERSION}")
         if document["operation"] != "rewrite-plan":
             _invalid("operation must be 'rewrite-plan'")
 
@@ -224,39 +227,73 @@ def _validate_plan_semantics(
     plan: HistoryPlan,
 ) -> None:
     source_commits = live.snapshot.commits
-    if len(plan.outputs) != len(source_commits):
-        _invalid("KEEP/REWORD plans must produce one output per source commit")
-
+    if not plan.outputs:
+        _invalid("plan.outputs must contain at least one output commit")
+    source_by_id = {commit.commit_id: commit for commit in source_commits}
+    source_positions = {
+        commit.commit_id: index for index, commit in enumerate(source_commits)
+    }
+    consumed_sources: set[str] = set()
     consumed_units: set[str] = set()
-    for index, (output, source) in enumerate(
-        zip(plan.outputs, source_commits, strict=True)
-    ):
+    previous_first_position = -1
+    for index, output in enumerate(plan.outputs):
         location = f"plan.outputs[{index}]"
-        if output.source_commits != (source.commit_id,):
-            _invalid(
-                f"{location}.source_commits must consume the next source commit"
-            )
-        expected_units = tuple(unit.unit_id for unit in source.units)
+        if not output.source_commits:
+            _invalid(f"{location}.source_commits must not be empty")
+        if any(commit not in source_by_id for commit in output.source_commits):
+            _invalid(f"{location}.source_commits contains an unknown commit")
+        if any(commit in consumed_sources for commit in output.source_commits):
+            _invalid(f"{location}.source_commits duplicates a consumed commit")
+        positions = tuple(source_positions[commit] for commit in output.source_commits)
+        if positions != tuple(sorted(positions)):
+            _invalid(f"{location}.source_commits must retain source order")
+        if positions[0] <= previous_first_position:
+            _invalid(f"{location} is out of output order")
+        previous_first_position = positions[0]
+        if output.operation in {"KEEP", "REWORD"} and len(positions) != 1:
+            _invalid(f"{location}.{output.operation} must consume one source commit")
+        if output.operation == "INTEGRATE" and len(positions) < 2:
+            _invalid(f"{location}.INTEGRATE must consume at least two commits")
+
+        sources = tuple(source_by_id[commit] for commit in output.source_commits)
+        expected_units = tuple(
+            unit.unit_id for source in sources for unit in source.units
+        )
         if output.unit_ids != expected_units:
             _invalid(
-                f"{location}.unit_ids must exactly conserve the source units"
+                f"{location}.unit_ids must exactly conserve its source units in order"
             )
         if any(unit_id in consumed_units for unit_id in output.unit_ids):
             _invalid(f"{location}.unit_ids duplicates a consumed unit")
+        consumed_sources.update(output.source_commits)
         consumed_units.update(output.unit_ids)
-        if output.author != source.author:
-            _invalid(f"{location}.author must preserve the source author")
-        if output.operation == "KEEP" and output.message != source.message:
+        target_source = sources[0]
+        unsupported_source = next(
+            (source for source in sources if source.unsupported_headers),
+            None,
+        )
+        if unsupported_source is not None:
+            _invalid(
+                f"source commit {unsupported_source.commit_id} has unsupported "
+                "header(s): "
+                f"{', '.join(unsupported_source.unsupported_headers)}"
+            )
+        if output.author != target_source.author:
+            _invalid(f"{location}.author must preserve the target author")
+        if output.operation == "KEEP" and output.message != target_source.message:
             _invalid(f"{location}.message changed without a REWORD operation")
-        if output.operation == "KEEP" and output.encoding != source.encoding:
+        if output.operation == "KEEP" and output.encoding != target_source.encoding:
             _invalid(f"{location}.encoding changed without a REWORD operation")
 
+    expected_sources = {commit.commit_id for commit in source_commits}
+    if consumed_sources != expected_sources:
+        _invalid("plan.outputs must consume every source commit exactly once")
 
-def read_and_validate_history_plan(plan_path: str) -> HistoryPlanDocument:
-    """Regenerate immutable facts and validate the editable semantic plan."""
+
+def _read_plan_payload(plan_path: str) -> str:
     path = Path(plan_path)
     try:
-        payload = read_required_text_file_contents(path)
+        return read_required_text_file_contents(path)
     except (OSError, ValueError) as error:
         raise CommandError(
             _("Could not read rewrite plan {path}: {error}").format(
@@ -265,8 +302,12 @@ def read_and_validate_history_plan(plan_path: str) -> HistoryPlanDocument:
             )
         ) from error
 
-    frozen_snapshot, base_commit, plan = _decode_plan(payload)
-    live = acquire_history_plan_document(base_commit)
+
+def _validated_document(
+    frozen_snapshot: dict[str, object],
+    live: HistoryPlanDocument,
+    plan: HistoryPlan,
+) -> HistoryPlanDocument:
     try:
         frozen_digest = history_canonical_json_sha256(frozen_snapshot)
         live_digest = history_canonical_json_sha256(
@@ -280,4 +321,55 @@ def read_and_validate_history_plan(plan_path: str) -> HistoryPlanDocument:
             "generate a new scan"
         )
     _validate_plan_semantics(live, plan)
-    return replace(live, plan=plan)
+    document = replace(live, plan=plan)
+    validate_history_plan_materialization(document)
+    return document
+
+
+def read_and_validate_history_plan(
+    plan_path: str,
+    *,
+    allowed_remote_refs: tuple[str, ...] = (),
+) -> HistoryPlanDocument:
+    """Regenerate immutable facts and validate the editable semantic plan."""
+    payload = _read_plan_payload(plan_path)
+    frozen_snapshot, base_commit, plan = _decode_plan(payload)
+    live = acquire_history_plan_document(
+        base_commit,
+        allowed_remote_refs=allowed_remote_refs,
+    )
+    return _validated_document(frozen_snapshot, live, plan)
+
+
+def read_and_validate_frozen_history_plan(
+    plan_path: str,
+    *,
+    base_commit: str,
+    tip_commit: str,
+    branch_ref: str,
+    allowed_remote_refs: tuple[str, ...],
+) -> HistoryPlanDocument:
+    """Validate a persisted plan from its frozen source objects after a rewrite."""
+    payload = _read_plan_payload(plan_path)
+    frozen_snapshot, document_base, plan = _decode_plan(payload)
+    if document_base != base_commit:
+        _invalid("snapshot.range.base does not match operation state")
+    live_snapshot = acquire_frozen_history_snapshot(
+        base_commit,
+        tip_commit,
+        branch_ref,
+    )
+    safety = collect_history_safety_facts(
+        tip=tip_commit,
+        final_tree=live_snapshot.final_tree,
+        branch_ref=branch_ref,
+        source_commits=tuple(commit.commit_id for commit in live_snapshot.commits),
+        allowed_remote_refs=allowed_remote_refs,
+    )
+    live = HistoryPlanDocument(
+        schema_version=CURRENT_HISTORY_PLAN_SCHEMA_VERSION,
+        snapshot=live_snapshot,
+        safety=safety,
+        plan=plan,
+    )
+    return _validated_document(frozen_snapshot, live, plan)

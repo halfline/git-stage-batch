@@ -13,6 +13,9 @@ def _validation_record(document: HistoryPlanDocument) -> dict[str, object]:
     reword_count = sum(
         output.operation == "REWORD" for output in document.plan.outputs
     )
+    integration_count = sum(
+        output.operation == "INTEGRATE" for output in document.plan.outputs
+    )
     return {
         "schema_version": document.schema_version,
         "operation": "rewrite-validate",
@@ -26,6 +29,7 @@ def _validation_record(document: HistoryPlanDocument) -> dict[str, object]:
             "source_commits": len(document.snapshot.commits),
             "output_commits": len(document.plan.outputs),
             "reworded_commits": reword_count,
+            "integrated_outputs": integration_count,
             "patch_units": sum(
                 len(commit.units) for commit in document.snapshot.commits
             ),

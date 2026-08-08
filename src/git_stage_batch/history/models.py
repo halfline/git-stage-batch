@@ -9,10 +9,10 @@ from typing import Literal
 from ..fixup.models import FixupUnitKind
 
 
-CURRENT_HISTORY_PLAN_SCHEMA_VERSION = 1
+CURRENT_HISTORY_PLAN_SCHEMA_VERSION = 2
 CURRENT_HISTORY_STATE_SCHEMA_VERSION = 1
 
-HistoryPlanOperation = Literal["KEEP", "REWORD"]
+HistoryPlanOperation = Literal["KEEP", "REWORD", "INTEGRATE"]
 
 
 class HistoryPhase(str, Enum):
@@ -87,6 +87,7 @@ class HistoryCommitSnapshot:
     message: str
     message_sha256: str
     signatures: tuple[HistorySignature, ...]
+    unsupported_headers: tuple[str, ...]
     units: tuple[HistoryPatchUnit, ...]
 
 

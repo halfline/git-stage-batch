@@ -61,6 +61,7 @@ def _commit_record(commit: HistoryCommitSnapshot) -> dict[str, object]:
         "signatures": [
             _signature_record(signature) for signature in commit.signatures
         ],
+        "unsupported_headers": list(commit.unsupported_headers),
         "patch": {
             "old_tree": commit.parent_tree,
             "new_tree": commit.tree,

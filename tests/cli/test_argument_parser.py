@@ -2269,7 +2269,7 @@ def test_parse_command_line_history_scan_dispatches_snapshot_options(monkeypatch
     )
 
 
-def test_parse_command_line_rewrite_validate_dispatches_plan(monkeypatch):
+def test_parse_command_line_rewrite_validate_dispatches_resolutions(monkeypatch):
     mock_command = Mock()
     monkeypatch.setattr(
         rewrite_subcommands,
@@ -2277,13 +2277,45 @@ def test_parse_command_line_rewrite_validate_dispatches_plan(monkeypatch):
         mock_command,
     )
     args = parse_command_line(
-        ["rewrite", "validate", "plan.json", "--porcelain"],
+        [
+            "rewrite",
+            "validate",
+            "plan.json",
+            "--workspace",
+            "/tmp/rewrite-resolution",
+            "--porcelain",
+        ],
         quiet=True,
     )
 
     assert args is not None
+    assert args.command_policy is rewrite_subcommands.REWRITE_READ_POLICY
     args.func(args)
-    mock_command.assert_called_once_with("plan.json", porcelain=True)
+    mock_command.assert_called_once_with(
+        "plan.json",
+        resolutions_path="/tmp/rewrite-resolution",
+        porcelain=True,
+    )
+
+
+def test_parse_command_line_rewrite_validate_omits_resolutions_by_default(
+    monkeypatch,
+):
+    mock_command = Mock()
+    monkeypatch.setattr(
+        rewrite_subcommands,
+        "command_rewrite_validate",
+        mock_command,
+    )
+    args = parse_command_line(["rewrite", "validate", "plan.json"], quiet=True)
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "plan.json",
+        resolutions_path=None,
+        porcelain=False,
+    )
 
 
 def test_parse_command_line_rewrite_resolve_dispatches_workspace(monkeypatch):

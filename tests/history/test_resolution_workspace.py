@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import copy
 import gc
+import hashlib
 import json
 from pathlib import Path
 import shutil
+import stat
 import tracemalloc
 
 import pytest
@@ -63,6 +65,31 @@ def _leave_interrupted_write(destination: Path) -> Path:
     temporary.write_bytes(b"interrupted publication\n")
     temporary.chmod(0o600)
     return temporary
+
+
+def _workspace_snapshot(root: Path) -> tuple[tuple[object, ...], ...]:
+    """Capture entry identity, privacy metadata, and exact regular-file bytes."""
+    paths = (root, *sorted(root.rglob("*"), key=lambda path: str(path)))
+    snapshot: list[tuple[object, ...]] = []
+    for path in paths:
+        metadata = path.lstat()
+        payload = path.read_bytes() if stat.S_ISREG(metadata.st_mode) else None
+        snapshot.append(
+            (
+                "." if path == root else path.relative_to(root).as_posix(),
+                metadata.st_dev,
+                metadata.st_ino,
+                metadata.st_mode,
+                metadata.st_nlink,
+                metadata.st_uid,
+                metadata.st_gid,
+                metadata.st_size,
+                metadata.st_mtime_ns,
+                metadata.st_ctime_ns,
+                payload,
+            )
+        )
+    return tuple(snapshot)
 
 
 def _replace_result_with_reference(
@@ -583,7 +610,7 @@ def test_resolved_outputs_authorize_file_addition_and_deletion(
     )
 
 
-def test_completed_workspace_replays_read_only_in_a_fresh_quarantine(
+def test_completed_workspace_returns_same_read_authenticated_provenance(
     linear_history_repo,
 ):
     plan = _resolved_plan(linear_history_repo)
@@ -597,15 +624,21 @@ def test_completed_workspace_replays_read_only_in_a_fresh_quarantine(
     resolve_history_plan(str(plan), str(workspace), accept_result=True)
     document, plan_sha256 = read_and_validate_history_plan_semantics(str(plan))
 
+    aliased_workspace = workspace.parent / "unused" / ".." / workspace.name
     with temporary_git_object_environment() as quarantine:
-        replay = materialize_completed_history_resolution(
+        authenticated = materialize_completed_history_resolution(
             document,
             plan_sha256,
-            str(workspace),
+            str(aliased_workspace),
             quarantine=quarantine,
         )
 
-    assert replay.final_tree == document.snapshot.final_tree
+    assert authenticated.raw_plan_sha256 == plan_sha256
+    assert authenticated.complete_sha256 == hashlib.sha256(
+        (workspace / "complete.json").read_bytes()
+    ).hexdigest()
+    assert authenticated.workspace_path == str(workspace)
+    assert authenticated.replay.final_tree == document.snapshot.final_tree
 
 
 def test_completed_workspace_reader_requires_manifest_without_mutation(
@@ -627,6 +660,67 @@ def test_completed_workspace_reader_requires_manifest_without_mutation(
             )
 
     assert tuple(sorted(path.name for path in workspace.iterdir())) == before
+
+
+def test_completed_workspace_reader_rejects_exact_plan_before_path_access(
+    linear_history_repo,
+    monkeypatch,
+):
+    plan = _resolved_plan(linear_history_repo, resolved_indexes=())
+    document, plan_sha256 = read_and_validate_history_plan_semantics(str(plan))
+
+    def unexpected_path_access(_workspace_path):
+        raise AssertionError("workspace path was accessed")
+
+    monkeypatch.setattr(
+        resolution_workspace,
+        "_absolute_workspace_path",
+        unexpected_path_access,
+    )
+    with temporary_git_object_environment() as quarantine:
+        with pytest.raises(CommandError, match="does not contain any RESOLVED"):
+            materialize_completed_history_resolution(
+                document,
+                plan_sha256,
+                str(linear_history_repo.root / "must-not-be-accessed"),
+                quarantine=quarantine,
+            )
+
+
+def test_completed_workspace_reader_never_recovers_missing_receipt(
+    linear_history_repo,
+):
+    plan = _resolved_plan(linear_history_repo)
+    workspace = linear_history_repo.root / "resolution"
+    pending = resolve_history_plan(str(plan), str(workspace))
+    assert pending.output_key is not None
+    output_path = _output_path(workspace, pending.output_key)
+    _replace_result_with_reference(output_path, role="SOURCE_AFTER")
+    assert (
+        resolve_history_plan(
+            str(plan),
+            str(workspace),
+            accept_result=True,
+        ).status
+        == "COMPLETE"
+    )
+    receipt_path = output_path / "receipt.json"
+    receipt_path.unlink()
+    temporary_path = _leave_interrupted_write(receipt_path)
+    document, plan_sha256 = read_and_validate_history_plan_semantics(str(plan))
+    before = _workspace_snapshot(workspace)
+
+    with temporary_git_object_environment() as quarantine:
+        with pytest.raises(CommandError, match="receipt|wrong entries"):
+            materialize_completed_history_resolution(
+                document,
+                plan_sha256,
+                str(workspace),
+                quarantine=quarantine,
+            )
+
+    assert _workspace_snapshot(workspace) == before
+    assert temporary_path.read_bytes() == b"interrupted publication\n"
 
 
 def test_resolve_does_not_mutate_an_unbound_existing_directory(
@@ -864,7 +958,7 @@ def test_large_resolution_replay_has_bounded_python_heap(tmp_path, monkeypatch):
         tracemalloc.start()
         try:
             with temporary_git_object_environment() as quarantine:
-                replay = materialize_completed_history_resolution(
+                authenticated = materialize_completed_history_resolution(
                     document,
                     plan_sha256,
                     str(workspace),
@@ -874,7 +968,7 @@ def test_large_resolution_replay_has_bounded_python_heap(tmp_path, monkeypatch):
         finally:
             tracemalloc.stop()
         heap_peaks.append(peak_heap)
-        assert replay.final_tree == document.snapshot.final_tree
+        assert authenticated.replay.final_tree == document.snapshot.final_tree
 
     small_peak, large_peak = heap_peaks
     assert large_peak < small_peak + 128 * 1024

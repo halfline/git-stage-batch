@@ -91,5 +91,7 @@ def test_bash_completion_covers_rewrite_actions_and_options():
     )
     assert 'compgen -W "--output --porcelain"' in completion
     assert "--output)" in completion
+    assert 'compgen -W "--workspace --porcelain"' in completion
+    assert "--workspace)" in completion
     assert 'compgen -W "--workspace --accept --porcelain"' in completion
     assert "--workspace)" in completion

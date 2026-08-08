@@ -10,6 +10,7 @@ import pytest
 
 from git_stage_batch.fixup.commutation import (
     analyze_placement,
+    apply_patch_to_tree_result,
     load_tree_diff_as_buffer,
 )
 from git_stage_batch.fixup.models import FixupRange, FixupUnit
@@ -95,3 +96,40 @@ def test_patch_commutes_across_empty_commit(tree_diff_repo):
     assert placement.status == "commutes-through"
     assert placement.barrier is None
     assert placement.commuted_across == (head,)
+
+
+def test_patch_application_distinguishes_blockers_from_unknown_input(
+    tree_diff_repo,
+):
+    repo, base_tree = tree_diff_repo
+    anchor = repo / "anchor.txt"
+    anchor.write_text("desired\n", encoding="utf-8")
+    _git("add", "anchor.txt")
+    desired_tree = _git("write-tree")
+    anchor.write_text("conflicting\n", encoding="utf-8")
+    _git("add", "anchor.txt")
+    conflicting_tree = _git("write-tree")
+
+    with load_tree_diff_as_buffer(base_tree, desired_tree) as patch:
+        applied = apply_patch_to_tree_result(
+            base_tree,
+            patch.byte_chunks(),
+            three_way=False,
+        )
+        blocked = apply_patch_to_tree_result(
+            conflicting_tree,
+            patch.byte_chunks(),
+            three_way=False,
+        )
+    unknown = apply_patch_to_tree_result(
+        base_tree,
+        (b"not a patch\n",),
+        three_way=False,
+    )
+
+    assert applied.status == "APPLIED"
+    assert applied.tree == desired_tree
+    assert blocked.status == "BLOCKED"
+    assert blocked.tree is None
+    assert unknown.status == "UNKNOWN"
+    assert unknown.tree is None

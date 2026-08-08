@@ -133,7 +133,7 @@ def test_validate_rejects_reordered_source_commits(linear_history_repo):
     plan["plan"]["outputs"].reverse()
     _write_plan(path, plan)
 
-    with pytest.raises(CommandError, match="consume the next source commit"):
+    with pytest.raises(CommandError, match="out of output order"):
         read_and_validate_history_plan(str(path))
 
 
@@ -179,7 +179,7 @@ def test_validate_recalculates_informational_safety(linear_history_repo):
             '"operation": "rewrite-plan", "operation": "rewrite-plan"',
             1,
         ),
-        lambda payload: payload.replace('"schema_version": 1', '"schema_version": NaN', 1),
+        lambda payload: payload.replace('"schema_version": 2', '"schema_version": NaN', 1),
         lambda payload: payload.replace(
             '"operation": "rewrite-plan"',
             '"operation": "rewrite-plan", "unknown": true',
@@ -204,8 +204,8 @@ def test_validate_rejects_future_operation_before_executor_support(
     repo = linear_history_repo
     path = repo.root / "plan.json"
     plan = _plan(repo, path)
-    plan["plan"]["outputs"][0]["operation"] = "INTEGRATE"
+    plan["plan"]["outputs"][0]["operation"] = "SPLIT"
     _write_plan(path, plan)
 
-    with pytest.raises(CommandError, match="KEEP.*REWORD"):
+    with pytest.raises(CommandError, match="KEEP.*REWORD.*INTEGRATE"):
         read_and_validate_history_plan(str(path))

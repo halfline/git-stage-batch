@@ -1137,7 +1137,10 @@ the latest terminal operation without occupying the active slot. The private
 output ref keeps a partially built linear chain reachable. Status verifies
 both owned refs, persisted plan and verification digests, source/plan
 identity, output objects, branch compare-and-swap expectation, index, and
-worktree before declaring continuation safe.
+worktree before declaring continuation safe. Porcelain status also reports the
+persisted plan's count for each operation kind. A specialized workflow can
+therefore prove that an active checkpoint belongs to its allowed operation
+subset without reading private state files.
 
 Operation records live below `git-stage-batch/rewrite/` in the repository's
 common Git directory (`.git/git-stage-batch/rewrite/` in an ordinary

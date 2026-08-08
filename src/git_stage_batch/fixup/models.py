@@ -19,6 +19,7 @@ FixupUnitKind = Literal[
     "binary",
     "rename",
     "mode",
+    "file-type",
     "gitlink",
 ]
 

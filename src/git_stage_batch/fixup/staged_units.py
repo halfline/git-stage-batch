@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import replace
 
@@ -12,6 +12,7 @@ from ..core.hunk_headers import line_is_hunk_header, parse_hunk_header_line
 from ..core.models import (
     BinaryFileChange,
     FileModeChange,
+    FileTypeChange,
     GitlinkChange,
     HunkHeader,
     RenameChange,
@@ -58,8 +59,6 @@ def _insertion_anchors(header: HunkHeader) -> tuple[int, ...]:
     after = header.old_start + 1
     if before <= 0:
         return (after,) if after > 0 else ()
-    if after == before:
-        return (before,)
     return before, after
 
 
@@ -126,22 +125,21 @@ def _atomic_unit(
 
 
 @contextmanager
-def acquire_staged_fixup_units() -> Iterator[tuple[FixupUnit, ...]]:
-    """Acquire deterministic units and their bounded patch buffers."""
+def acquire_fixup_units_from_diff(
+    diff_lines: Iterable[bytes],
+    *,
+    allow_file_type_changes: bool = False,
+) -> Iterator[tuple[FixupUnit, ...]]:
+    """Acquire deterministic units from a streamed zero-context diff."""
     units: list[FixupUnit] = []
     owned_buffers: list[LineBuffer] = []
     renamed_paths: set[str] = set()
-    diff_lines = stream_git_diff(
-        base="HEAD",
-        cached=True,
-        context_lines=0,
-        full_index=True,
-        find_renames=True,
-        ignore_submodules="none",
-        submodule_format="short",
-    )
+    type_changed_paths: set[str] = set()
     try:
-        with acquire_unified_diff(diff_lines) as items:
+        with acquire_unified_diff(
+            diff_lines,
+            allow_file_type_changes=allow_file_type_changes,
+        ) as items:
             for item in items:
                 if isinstance(item, SingleHunkPatch):
                     if not isinstance(item.lines, LineBuffer):
@@ -170,6 +168,19 @@ def acquire_staged_fixup_units() -> Iterator[tuple[FixupUnit, ...]]:
                                 f"{item.content_fingerprint or ''}"
                             ),
                             reason="binary-change",
+                        )
+                    )
+                elif isinstance(item, FileTypeChange):
+                    type_changed_paths.add(item.path())
+                    units.append(
+                        _atomic_unit(
+                            kind="file-type",
+                            path=item.path(),
+                            payload=(
+                                f"{item.index_path or ''}\0{item.old_mode}\0"
+                                f"{item.new_mode}"
+                            ),
+                            reason="file-type-change",
                         )
                     )
                 elif isinstance(item, FileModeChange):
@@ -206,10 +217,18 @@ def acquire_staged_fixup_units() -> Iterator[tuple[FixupUnit, ...]]:
                         )
                     )
 
-        if renamed_paths:
+        if renamed_paths or type_changed_paths:
             units = [
-                replace(unit, unsupported_reason="rename-with-content")
-                if unit.patch_buffer is not None and unit.path in renamed_paths
+                replace(
+                    unit,
+                    unsupported_reason=(
+                        "rename-with-content"
+                        if unit.path in renamed_paths
+                        else "file-type-with-content"
+                    ),
+                )
+                if unit.patch_buffer is not None
+                and unit.path in renamed_paths | type_changed_paths
                 else unit
                 for unit in units
             ]
@@ -217,3 +236,41 @@ def acquire_staged_fixup_units() -> Iterator[tuple[FixupUnit, ...]]:
     finally:
         for buffer in owned_buffers:
             buffer.close()
+
+
+@contextmanager
+def acquire_tree_fixup_units(
+    old_treeish: str,
+    new_treeish: str,
+) -> Iterator[tuple[FixupUnit, ...]]:
+    """Acquire exact units for one immutable tree-to-tree transition."""
+    diff_lines = stream_git_diff(
+        base=old_treeish,
+        target=new_treeish,
+        context_lines=0,
+        full_index=True,
+        find_renames=True,
+        ignore_submodules="none",
+        submodule_format="short",
+    )
+    with acquire_fixup_units_from_diff(
+        diff_lines,
+        allow_file_type_changes=True,
+    ) as units:
+        yield units
+
+
+@contextmanager
+def acquire_staged_fixup_units() -> Iterator[tuple[FixupUnit, ...]]:
+    """Acquire deterministic staged units and their bounded patch buffers."""
+    diff_lines = stream_git_diff(
+        base="HEAD",
+        cached=True,
+        context_lines=0,
+        full_index=True,
+        find_renames=True,
+        ignore_submodules="none",
+        submodule_format="short",
+    )
+    with acquire_fixup_units_from_diff(diff_lines) as units:
+        yield units

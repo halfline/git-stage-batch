@@ -10,7 +10,7 @@ from ..fixup.models import FixupUnitKind
 
 
 CURRENT_HISTORY_PLAN_SCHEMA_VERSION = 2
-CURRENT_HISTORY_STATE_SCHEMA_VERSION = 1
+CURRENT_HISTORY_STATE_SCHEMA_VERSION = 2
 
 HistoryPlanOperation = Literal["KEEP", "REWORD", "INTEGRATE"]
 
@@ -25,7 +25,6 @@ class HistoryPhase(str, Enum):
     READY_TO_UPDATE = "READY_TO_UPDATE"
     COMPLETE = "COMPLETE"
     ABORTED = "ABORTED"
-    FAILED = "FAILED"
 
 
 class HistoryNextAction(str, Enum):
@@ -190,8 +189,11 @@ class HistoryOperationState:
     planned_output_count: int
     output_commits: tuple[str, ...]
     completed_output_count: int
+    pending_output_commit: str | None
+    pending_output_tree: str | None
     last_verified_commit: str | None
     last_verified_tree: str | None
+    verification_sha256: str | None
     diagnostic: str | None
 
 
@@ -207,9 +209,22 @@ class HistoryOperationInspection:
     plan_matches: bool
     output_objects_exist: bool
     output_ref_matches: bool
+    verification_matches: bool
     blockers: tuple[str, ...]
 
     @property
     def resume_ready(self) -> bool:
         """Return whether continuation can trust all checkpoint ownership."""
         return not self.blockers
+
+
+@dataclass(frozen=True, slots=True)
+class HistoryVerification:
+    """Independent proof for one completely built replacement series."""
+
+    operation_id: str
+    original_tip: str
+    output_tip: str
+    final_tree: str
+    output_commits: tuple[str, ...]
+    removed_signatures: tuple[tuple[str, HistorySignature], ...]

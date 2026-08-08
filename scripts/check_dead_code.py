@@ -213,12 +213,6 @@ ALLOWED_FINDINGS = (
     _allowed(
         "src/git_stage_batch/data/status_types.py",
         "variable",
-        "active",
-        "TypedDict key read from a status response by string name.",
-    ),
-    _allowed(
-        "src/git_stage_batch/data/status_types.py",
-        "variable",
         "in_progress",
         "TypedDict key read from a status response by string name.",
     ),
@@ -238,12 +232,6 @@ ALLOWED_FINDINGS = (
         "src/git_stage_batch/output/status_prompt.py",
         "variable",
         "skipped",
-        "TypedDict key consumed through str.format_map.",
-    ),
-    _allowed(
-        "src/git_stage_batch/output/status_prompt.py",
-        "variable",
-        "active",
         "TypedDict key consumed through str.format_map.",
     ),
     _allowed(
@@ -331,6 +319,12 @@ ALLOWED_FINDINGS = (
         "method",
         "writable",
         "Method implements the TextIO-compatible stream protocol.",
+    ),
+    _allowed(
+        "src/git_stage_batch/utils/file_io.py",
+        "method",
+        "readable",
+        "Method implements the RawIOBase protocol queried by io.BufferedReader.",
     ),
 )
 

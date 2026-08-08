@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import stat
 import subprocess
 import tempfile
 from collections.abc import Iterable, Iterator, Mapping
@@ -21,6 +22,34 @@ from ..git_paths import decode_path, nul_records
 
 _EMPTY_TREE_OBJECT_CACHE: dict[Path, str] = {}
 _QUARANTINE_CONSTRUCTION_TOKEN = object()
+_OBJECT_ENVIRONMENT_KEYS = (
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_QUARANTINE_PATH",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _GitRepositoryObjectIdentity:
+    object_format: str
+    common_directory: Path
+    common_device: int
+    common_inode: int
+    object_directory: Path
+    object_device: int
+    object_inode: int
+
+    def matches(self, other: _GitRepositoryObjectIdentity) -> bool:
+        """Return whether every certified repository identity fact agrees."""
+        return (
+            self.object_format == other.object_format
+            and self.common_directory == other.common_directory
+            and self.common_device == other.common_device
+            and self.common_inode == other.common_inode
+            and self.object_directory == other.object_directory
+            and self.object_device == other.object_device
+            and self.object_inode == other.object_inode
+        )
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -28,10 +57,14 @@ class GitObjectQuarantine:
     """Product-issued environment capability for temporary Git objects."""
 
     _environment: Mapping[str, str]
+    _persistent_environment: Mapping[str, str]
+    _persistent_identity: _GitRepositoryObjectIdentity
 
     def __init__(
         self,
         environment: dict[str, str],
+        persistent_environment: dict[str, str],
+        persistent_identity: _GitRepositoryObjectIdentity,
         *,
         _token: object,
     ) -> None:
@@ -42,10 +75,80 @@ class GitObjectQuarantine:
             "_environment",
             MappingProxyType(dict(environment)),
         )
+        object.__setattr__(
+            self,
+            "_persistent_environment",
+            MappingProxyType(dict(persistent_environment)),
+        )
+        object.__setattr__(self, "_persistent_identity", persistent_identity)
 
     def environment(self) -> dict[str, str]:
         """Return one disposable copy of the certified quarantine environment."""
         return dict(self._environment)
+
+    @property
+    def object_format(self) -> str:
+        """Return the certified persistent repository object format."""
+        return self._persistent_identity.object_format
+
+    def persistent_environment(self) -> dict[str, str]:
+        """Return a disposable environment for the persistent object store."""
+        return dict(self._persistent_environment)
+
+    def require_persistent_identity(self) -> None:
+        """Require the certified persistent repository object store identity."""
+        current = _git_repository_object_identity(self.persistent_environment())
+        if not self._persistent_identity.matches(current):
+            raise RuntimeError("The persistent Git object store identity changed")
+
+    def _require_open_persistent_object_directory(self, descriptor: int) -> None:
+        try:
+            opened = os.fstat(descriptor)
+            visible = os.stat(
+                self._persistent_identity.object_directory,
+                follow_symlinks=False,
+            )
+        except OSError as error:
+            raise RuntimeError(
+                f"Cannot authenticate the persistent Git object store: {error}"
+            ) from error
+        expected = (
+            self._persistent_identity.object_device,
+            self._persistent_identity.object_inode,
+        )
+        if (
+            not stat.S_ISDIR(opened.st_mode)
+            or not stat.S_ISDIR(visible.st_mode)
+            or (opened.st_dev, opened.st_ino) != expected
+            or (visible.st_dev, visible.st_ino) != expected
+        ):
+            raise RuntimeError("The persistent Git object store identity changed")
+
+    @contextmanager
+    def pinned_persistent_object_directory(self) -> Iterator[int]:
+        """Yield a pinned descriptor for the certified persistent object store."""
+        self.require_persistent_identity()
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
+        try:
+            descriptor = os.open(self._persistent_identity.object_directory, flags)
+        except OSError as error:
+            raise RuntimeError(
+                f"Cannot open the persistent Git object store: {error}"
+            ) from error
+        try:
+            self._require_open_persistent_object_directory(descriptor)
+            try:
+                yield descriptor
+            finally:
+                self._require_open_persistent_object_directory(descriptor)
+                self.require_persistent_identity()
+        finally:
+            os.close(descriptor)
 
 
 def _alternate_object_path(path: Path) -> str:
@@ -56,25 +159,78 @@ def _alternate_object_path(path: Path) -> str:
     return f'"{escaped}"'
 
 
+def _persistent_git_object_environment() -> dict[str, str]:
+    environment = os.environ.copy()
+    for key in _OBJECT_ENVIRONMENT_KEYS:
+        environment.pop(key, None)
+    return environment
+
+
+def _require_git_directory(
+    path_text: str, location: str
+) -> tuple[Path, os.stat_result]:
+    try:
+        path = Path(path_text).resolve(strict=True)
+        metadata = path.stat()
+    except OSError as error:
+        raise RuntimeError(f"Cannot inspect Git {location}: {error}") from error
+    if not stat.S_ISDIR(metadata.st_mode):
+        raise RuntimeError(f"Git {location} is not a directory: {path}")
+    return path, metadata
+
+
+def _git_repository_object_identity(
+    environment: dict[str, str],
+) -> _GitRepositoryObjectIdentity:
+    object_format = run_git_command(
+        ["rev-parse", "--show-object-format"],
+        env=environment,
+        requires_index_lock=False,
+    ).stdout.strip()
+    if object_format not in {"sha1", "sha256"}:
+        raise RuntimeError(f"Unsupported Git object format: {object_format}")
+    common_directory, common_metadata = _require_git_directory(
+        run_git_command(
+            ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+            env=environment,
+            requires_index_lock=False,
+        ).stdout.strip(),
+        "common directory",
+    )
+    object_directory, object_metadata = _require_git_directory(
+        run_git_command(
+            ["rev-parse", "--path-format=absolute", "--git-path", "objects"],
+            env=environment,
+            requires_index_lock=False,
+        ).stdout.strip(),
+        "object directory",
+    )
+    return _GitRepositoryObjectIdentity(
+        object_format=object_format,
+        common_directory=common_directory,
+        common_device=common_metadata.st_dev,
+        common_inode=common_metadata.st_ino,
+        object_directory=object_directory,
+        object_device=object_metadata.st_dev,
+        object_inode=object_metadata.st_ino,
+    )
+
+
 @contextmanager
 def temporary_git_object_environment() -> Iterator[GitObjectQuarantine]:
     """Yield an object quarantine that reads, but never retains, repository objects."""
-    object_directory = Path(
-        run_git_command(
-            ["rev-parse", "--git-path", "objects"],
-            requires_index_lock=False,
-        ).stdout.strip()
-    ).resolve()
+    persistent_environment = _persistent_git_object_environment()
+    persistent_identity = _git_repository_object_identity(persistent_environment)
     with tempfile.TemporaryDirectory(prefix="git-stage-batch-objects-") as path:
-        env = os.environ.copy()
-        prior_alternates = env.get("GIT_ALTERNATE_OBJECT_DIRECTORIES")
-        alternates = _alternate_object_path(object_directory)
-        if prior_alternates:
-            alternates = f"{alternates}{os.pathsep}{prior_alternates}"
+        env = persistent_environment.copy()
         env["GIT_OBJECT_DIRECTORY"] = path
-        env["GIT_ALTERNATE_OBJECT_DIRECTORIES"] = alternates
+        env["GIT_ALTERNATE_OBJECT_DIRECTORIES"] = _alternate_object_path(
+            persistent_identity.object_directory
+        )
         yield GitObjectQuarantine(
             env,
+            persistent_environment,
+            persistent_identity,
             _token=_QUARANTINE_CONSTRUCTION_TOKEN,
         )
 
@@ -302,7 +458,11 @@ def read_git_blob(blob_sha: str) -> Iterator[bytes]:
         ) from error
 
 
-def resolve_git_objects(object_names: Iterable[str]) -> dict[str, GitObjectInfo]:
+def resolve_git_objects(
+    object_names: Iterable[str],
+    *,
+    env: dict[str, str] | None = None,
+) -> dict[str, GitObjectInfo]:
     """Resolve object expressions without loading their contents."""
     unique_object_names = list(dict.fromkeys(object_names))
     if not unique_object_names:
@@ -315,6 +475,7 @@ def resolve_git_objects(object_names: Iterable[str]) -> dict[str, GitObjectInfo]
         ["cat-file", "--batch-check"],
         stdin_chunks=payload,
         text_output=False,
+        env=env,
         requires_index_lock=False,
     )
     headers = result.stdout.splitlines()

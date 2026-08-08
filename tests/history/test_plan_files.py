@@ -110,7 +110,7 @@ def test_validate_rejects_omitted_patch_unit(linear_history_repo):
     plan["plan"]["outputs"][0]["unit_ids"] = []
     _write_plan(path, plan)
 
-    with pytest.raises(CommandError, match="exactly conserve"):
+    with pytest.raises(CommandError, match="without any of its units"):
         read_and_validate_history_plan(str(path))
 
 
@@ -122,7 +122,7 @@ def test_validate_rejects_duplicate_patch_unit(linear_history_repo):
     plan["plan"]["outputs"][0]["unit_ids"] = [units[0], units[0]]
     _write_plan(path, plan)
 
-    with pytest.raises(CommandError, match="exactly conserve"):
+    with pytest.raises(CommandError, match="must not contain duplicates"):
         read_and_validate_history_plan(str(path))
 
 
@@ -133,7 +133,7 @@ def test_validate_rejects_reordered_source_commits(linear_history_repo):
     plan["plan"]["outputs"].reverse()
     _write_plan(path, plan)
 
-    with pytest.raises(CommandError, match="out of output order"):
+    with pytest.raises(CommandError, match="must use REORDER or SPLIT"):
         read_and_validate_history_plan(str(path))
 
 
@@ -179,7 +179,7 @@ def test_validate_recalculates_informational_safety(linear_history_repo):
             '"operation": "rewrite-plan", "operation": "rewrite-plan"',
             1,
         ),
-        lambda payload: payload.replace('"schema_version": 2', '"schema_version": NaN', 1),
+        lambda payload: payload.replace('"schema_version": 3', '"schema_version": NaN', 1),
         lambda payload: payload.replace(
             '"operation": "rewrite-plan"',
             '"operation": "rewrite-plan", "unknown": true',
@@ -198,14 +198,17 @@ def test_validate_rejects_non_strict_json(linear_history_repo, mutation):
         read_and_validate_history_plan(str(path))
 
 
-def test_validate_rejects_future_operation_before_executor_support(
+def test_validate_rejects_unknown_future_operation(
     linear_history_repo,
 ):
     repo = linear_history_repo
     path = repo.root / "plan.json"
     plan = _plan(repo, path)
-    plan["plan"]["outputs"][0]["operation"] = "SPLIT"
+    plan["plan"]["outputs"][0]["operation"] = "FUTURE"
     _write_plan(path, plan)
 
-    with pytest.raises(CommandError, match="KEEP.*REWORD.*INTEGRATE"):
+    with pytest.raises(
+        CommandError,
+        match="KEEP.*REWORD.*INTEGRATE.*SPLIT.*REORDER",
+    ):
         read_and_validate_history_plan(str(path))

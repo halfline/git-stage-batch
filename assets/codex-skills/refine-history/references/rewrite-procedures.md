@@ -5,6 +5,18 @@ Substitute the installed skill root for `.agents/skills/refine-history` when
 using another assistant. Delegate all message-only rewording to
 `refine-commit-messages`.
 
+These interactive-rebase procedures are a temporary executor fallback. Use
+them only while installed `git-stage-batch rewrite --help` lacks the required
+`apply` operation. Before each boundary change, require the current immutable
+scan to validate:
+
+```bash
+git-stage-batch rewrite validate "$REWRITE_PLAN" --porcelain
+```
+
+After each completed rebase, regenerate the scan from the canonical base
+before making another boundary decision.
+
 ## Split a broad committed snapshot
 
 For one split candidate, rebase from that commit's parent. Rebase from

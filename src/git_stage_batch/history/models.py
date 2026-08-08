@@ -19,6 +19,13 @@ HistoryPlanOperation = Literal[
     "SPLIT",
     "REORDER",
 ]
+HISTORY_PLAN_OPERATIONS: tuple[HistoryPlanOperation, ...] = (
+    "KEEP",
+    "REWORD",
+    "INTEGRATE",
+    "SPLIT",
+    "REORDER",
+)
 HistoryDependencyBarrier = Literal["BLOCKED", "UNKNOWN"]
 
 
@@ -230,6 +237,7 @@ class HistoryOperationInspection:
     output_objects_exist: bool
     output_ref_matches: bool
     verification_matches: bool
+    plan_operation_counts: tuple[tuple[HistoryPlanOperation, int], ...]
     blockers: tuple[str, ...]
 
     @property

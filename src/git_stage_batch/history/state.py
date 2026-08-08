@@ -30,11 +30,13 @@ from ..utils.strict_json import (
 from .json_files import history_json_sha256, write_history_json_file
 from .models import (
     CURRENT_HISTORY_STATE_SCHEMA_VERSION,
+    HISTORY_PLAN_OPERATIONS,
     HistoryNextAction,
     HistoryOperationInspection,
     HistoryOperationState,
     HistoryPhase,
     HistoryPlanDocument,
+    HistoryPlanOperation,
 )
 from .records import history_plan_document_record
 from .safety import collect_history_safety_facts
@@ -793,12 +795,14 @@ def _resolved_tree(commit: str) -> str | None:
     return value if result.returncode == 0 and value else None
 
 
-def _persisted_plan_matches_state(state: HistoryOperationState) -> bool:
+def _persisted_plan_facts(
+    state: HistoryOperationState,
+) -> tuple[bool, tuple[tuple[HistoryPlanOperation, int], ...]]:
     plan_path = history_operation_plan_path(state.operation_id)
     try:
         payload, plan_sha256 = read_required_text_file_contents_and_sha256(plan_path)
         if plan_sha256 != state.plan_sha256:
-            return False
+            return False, ()
         document = require_object(
             loads(payload),
             "document",
@@ -815,7 +819,19 @@ def _persisted_plan_matches_state(state: HistoryOperationState) -> bool:
             value for value in source_values if isinstance(value, str)
         )
         outputs = require_list(plan["outputs"], "plan.outputs")
-        return (
+        operation_counts = dict.fromkeys(HISTORY_PLAN_OPERATIONS, 0)
+        for index, output_value in enumerate(outputs):
+            output = require_object(output_value, f"plan.outputs[{index}]")
+            operation_value = require_string(
+                output,
+                "operation",
+                f"plan.outputs[{index}]",
+            )
+            if operation_value not in HISTORY_PLAN_OPERATIONS:
+                return False, ()
+            operation = operation_value
+            operation_counts[operation] += 1
+        matches = (
             len(source_commits) == len(source_values)
             and snapshot.get("object_format") == state.object_format
             and snapshot.get("branch_ref") == state.branch_ref
@@ -825,8 +841,15 @@ def _persisted_plan_matches_state(state: HistoryOperationState) -> bool:
             and source_commits == state.source_commits
             and len(outputs) == state.planned_output_count
         )
+        if not matches:
+            return False, ()
+        return True, tuple(
+            (operation, operation_counts[operation])
+            for operation in HISTORY_PLAN_OPERATIONS
+            if operation_counts[operation]
+        )
     except (KeyError, OSError, StrictJsonError, UnicodeError, ValueError):
-        return False
+        return False, ()
 
 
 def inspect_history_operation(
@@ -849,7 +872,7 @@ def inspect_history_operation(
         not _ref_is_symbolic(state.recovery_ref)
         and _resolved_commit(state.recovery_ref) == state.original_tip
     )
-    plan_matches = _persisted_plan_matches_state(state)
+    plan_matches, plan_operation_counts = _persisted_plan_facts(state)
     output_objects_exist = all(
         _resolved_commit(commit) == commit for commit in state.output_commits
     )
@@ -930,5 +953,6 @@ def inspect_history_operation(
         output_objects_exist=output_objects_exist,
         output_ref_matches=output_ref_matches,
         verification_matches=verification_matches,
+        plan_operation_counts=plan_operation_counts,
         blockers=tuple(dict.fromkeys(blockers)),
     )

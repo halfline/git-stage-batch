@@ -9,6 +9,9 @@ from ..history.models import HistoryOperationInspection, HistoryOperationState
 from ..i18n import _
 
 
+_HISTORY_STATUS_SCHEMA_VERSION = 1
+
+
 def _status_record(
     state: HistoryOperationState | None,
     inspection: HistoryOperationInspection | None,
@@ -17,14 +20,14 @@ def _status_record(
 ) -> dict[str, object]:
     if state is None:
         return {
-            "schema_version": 1,
+            "schema_version": _HISTORY_STATUS_SCHEMA_VERSION,
             "operation": "rewrite-status",
             "active": False,
         }
     if inspection is None:
         raise TypeError("active history state requires live inspection")
     return {
-        "schema_version": state.schema_version,
+        "schema_version": _HISTORY_STATUS_SCHEMA_VERSION,
         "operation": "rewrite-status",
         "active": active,
         "available": True,
@@ -40,6 +43,9 @@ def _status_record(
         },
         "recovery_ref": state.recovery_ref,
         "output_ref": state.output_ref,
+        "plan": {
+            "operation_counts": dict(inspection.plan_operation_counts),
+        },
         "manual_recovery_command": _manual_recovery_command(state),
         "progress": {
             "planned_output_count": state.planned_output_count,

@@ -19,7 +19,7 @@ def _planned_message_bytes(
     output: HistoryPlannedCommit,
     target: HistoryCommitSnapshot,
 ) -> bytes:
-    if output.operation == "KEEP":
+    if output.operation in {"KEEP", "REORDER"}:
         return parse_commit_object(target.commit_id).message_bytes
     try:
         return output.message.encode(

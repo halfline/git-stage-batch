@@ -64,3 +64,14 @@ def test_bash_completion_covers_journal_command_and_options():
 
     assert 'validate journal"' in completion
     assert "--path --purge --all --porcelain" in completion
+
+
+def test_bash_completion_covers_fixup_actions_and_options():
+    """Installed Bash completion should expose both fixup workflows."""
+    completion = (
+        Path(__file__).resolve().parents[2] / "completions" / "git-stage-batch"
+    ).read_text()
+
+    assert "fixup suggest-fixup new" in completion
+    assert 'compgen -W "suggest create"' in completion
+    assert 'compgen -W "--dry-run --partial --porcelain"' in completion

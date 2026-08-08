@@ -2030,6 +2030,7 @@ def test_parse_command_line_suggest_fixup():
     assert args.reset is False
     assert args.abort is False
     assert args.last is False
+    assert args.porcelain is False
     assert hasattr(args, "func")
     assert callable(args.func)
 
@@ -2087,6 +2088,7 @@ def test_parse_command_line_suggest_fixup_passes_hunk_args(monkeypatch):
         reset=True,
         abort=False,
         show_last=True,
+        porcelain=False,
     )
 
 
@@ -2112,7 +2114,84 @@ def test_parse_command_line_suggest_fixup_passes_line_args(monkeypatch):
         reset=False,
         abort=True,
         show_last=False,
+        porcelain=False,
     )
+
+
+def test_parse_command_line_suggest_fixup_passes_porcelain(monkeypatch):
+    """The compatible spelling forwards its documented porcelain mode."""
+    mock_command = Mock()
+    monkeypatch.setattr(fixup_subcommands, "command_suggest_fixup", mock_command)
+
+    args = parse_command_line(
+        ["suggest-fixup", "--porcelain", "main"],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "main",
+        reset=False,
+        abort=False,
+        show_last=False,
+        porcelain=True,
+    )
+
+
+def test_parse_command_line_fixup_suggest_uses_command_family(monkeypatch):
+    """fixup suggest exposes the compatible suggestion behavior."""
+    mock_command = Mock()
+    monkeypatch.setattr(
+        fixup_subcommands,
+        "command_suggest_fixup_line",
+        mock_command,
+    )
+
+    args = parse_command_line(
+        ["fixup", "suggest", "--line", "2,4", "--porcelain", "main"],
+        quiet=True,
+    )
+
+    assert args is not None
+    assert args.command == "fixup"
+    assert args.fixup_action == "suggest"
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "2,4",
+        "main",
+        reset=False,
+        abort=False,
+        show_last=False,
+        porcelain=True,
+    )
+
+
+def test_parse_command_line_fixup_create_passes_arguments(monkeypatch):
+    """fixup create forwards planning and output controls."""
+    mock_command = Mock()
+    monkeypatch.setattr(fixup_subcommands, "command_create_fixups", mock_command)
+
+    args = parse_command_line(
+        ["fixup", "create", "--dry-run", "--partial", "--porcelain", "main"],
+        quiet=True,
+    )
+
+    assert args is not None
+    assert args.command == "fixup"
+    assert args.fixup_action == "create"
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "main",
+        dry_run=True,
+        partial=True,
+        porcelain=True,
+    )
+
+
+def test_parse_command_line_fixup_requires_an_action():
+    """The fixup namespace does not guess between suggestion and creation."""
+    assert parse_command_line(["fixup"], quiet=True) is None
 
 
 def test_parse_command_line_new():

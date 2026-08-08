@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 
 from ..commands.rewrite_scan import command_rewrite_scan
+from ..commands.rewrite_status import command_rewrite_status
 from ..commands.rewrite_validate import command_rewrite_validate
 from ..i18n import _
 from .command_policy import (
@@ -35,6 +36,10 @@ def _dispatch_rewrite_scan(args: argparse.Namespace) -> None:
 
 def _dispatch_rewrite_validate(args: argparse.Namespace) -> None:
     command_rewrite_validate(args.plan_path, porcelain=args.porcelain)
+
+
+def _dispatch_rewrite_status(args: argparse.Namespace) -> None:
+    command_rewrite_status(porcelain=args.porcelain)
 
 
 def add_rewrite_subcommand(subparsers: Subparsers) -> None:
@@ -96,3 +101,17 @@ def add_rewrite_subcommand(subparsers: Subparsers) -> None:
         help=_("Output a machine-readable validation report"),
     )
     parser_validate.set_defaults(func=_dispatch_rewrite_validate)
+
+    parser_status = add_subcommand_parser(
+        actions,
+        "status",
+        policy=REWRITE_READ_POLICY,
+        help_topic="stage-batch-rewrite",
+        help=_("Inspect durable rewrite operation progress"),
+    )
+    parser_status.add_argument(
+        "--porcelain",
+        action="store_true",
+        help=_("Output machine-readable operation state"),
+    )
+    parser_status.set_defaults(func=_dispatch_rewrite_status)

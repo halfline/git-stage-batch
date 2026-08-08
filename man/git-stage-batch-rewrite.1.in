@@ -1,6 +1,6 @@
 .TH GIT-STAGE-BATCH-REWRITE 1 "August 2026" "git-stage-batch @VERSION@" "User Commands"
 .SH NAME
-git-stage-batch-rewrite \- scan and validate deterministic history refinements
+git-stage-batch-rewrite \- execute deterministic history refinements
 .SH SYNOPSIS
 .B git-stage-batch rewrite scan
 [\fB\-\-output\fR \fIFILE\fR]
@@ -11,7 +11,21 @@ git-stage-batch-rewrite \- scan and validate deterministic history refinements
 [\fB\-\-porcelain\fR]
 \fIPLAN\fR
 .PP
+.B git-stage-batch rewrite apply
+[\fB\-\-allow-published-ref\fR \fIREF\fR]...
+[\fB\-\-porcelain\fR]
+\fIPLAN\fR
+.PP
 .B git-stage-batch rewrite status
+[\fB\-\-porcelain\fR]
+.PP
+.B git-stage-batch rewrite continue
+[\fB\-\-porcelain\fR]
+.PP
+.B git-stage-batch rewrite abort
+[\fB\-\-porcelain\fR]
+.PP
+.B git-stage-batch rewrite verify
 [\fB\-\-porcelain\fR]
 .SH DESCRIPTION
 .B rewrite scan
@@ -26,15 +40,41 @@ through bounded storage.
 .PP
 .B rewrite validate
 strictly parses a reviewed scan document, regenerates every immutable fact
-from live Git objects, and currently accepts one ordered KEEP or REWORD output
-for each source commit. It requires exact patch-unit conservation, original
-authorship, and an explicit REWORD marker for changed messages.
+from live Git objects, and accepts KEEP, REWORD, and mechanically proven
+INTEGRATE outputs. It requires exact source and patch-unit conservation,
+original target authorship, complete replay, and the frozen final tree.
+.PP
+.B rewrite apply
+creates an operation-owned recovery ref, builds a deterministic unsigned
+replacement chain without changing the worktree, verifies it, then updates
+the checked-out branch once with compare-and-swap. Commit objects preserve
+the planned author, the target source committer, declared encoding, and exact
+message bytes. Source signature headers are omitted and recorded by digest.
+.PP
+Apply does not contact a remote and never performs or authorizes a push or
+force-push.
 .PP
 .B rewrite status
 reports the closed phase, exact next action, output progress, recovery ref,
 and independently rechecked resume preconditions for a durable operation.
 Before the apply executor creates an operation, status reports that no
-operation is active.
+operation is active. After completion or abort, it reports the latest terminal
+operation while leaving the active slot available for another plan.
+.PP
+.B rewrite continue
+revalidates an active checkpoint and executes only its exact next action.
+Pending output publication and final branch publication are reconciled
+idempotently after interruption.
+.PP
+.B rewrite abort
+records restore intent, retracts a pending output ref, and restores the
+original branch only when the live tip is an exact value owned by the
+operation. Foreign movement is never overwritten.
+.PP
+.B rewrite verify
+independently reconstructs the active or latest complete output, rechecks all
+commit metadata and topology, and compares its deterministic audit record to
+the checkpoint digest.
 .SH SCAN OPTIONS
 .TP
 .BI \-\-output " FILE"
@@ -61,6 +101,21 @@ signature count, and freshly collected mutation preconditions.
 .TP
 .B \-\-porcelain
 Print versioned JSON containing the complete durable checkpoint inspection.
+.SH APPLY OPTIONS
+.TP
+.BI \-\-allow-published-ref " REF"
+Permit local rewriting when a source commit is contained by the exact full
+remote-tracking ref
+.IR REF .
+Repeat for every containing ref. This option does not authorize a push or
+force-push.
+.TP
+.B \-\-porcelain
+Print a versioned JSON operation result.
+.SH CONTINUE, ABORT, AND VERIFY OPTIONS
+.TP
+.B \-\-porcelain
+Print a versioned JSON operation or verification result.
 .SH PLAN CONTRACT
 Only the
 .B plan.outputs
@@ -70,16 +125,21 @@ object is immutable and is compared exactly after regeneration. The
 .B safety
 object is informational and is always recollected when a plan is validated.
 .PP
-Every current output contains an operation, one source commit ID, the complete
-ordered source-unit list, a message and its declared encoding, the exact source
+Every output contains an operation, one or more source commit IDs, the complete
+ordered source-unit list, a message and its declared encoding, the exact target
 author, and an optional human rationale. Rationale prose is not treated as
 mechanical proof.
 .PP
 KEEP requires the original message. REWORD permits a new message but preserves
-the exact source patch, order, and author. Empty source commits remain explicit
-outputs with an empty unit list.
+the exact source patch, order, and author. INTEGRATE consumes at least two
+source commits into the earliest target position. Intervening outputs retain
+source order, every source patch is replayed exactly once through Git's real
+three-way machinery, and the complete result must reproduce the frozen final
+tree. Empty source commits remain explicit unless deliberately consumed by an
+integration.
 .SH SAFETY
-Scan and validation are read-only with respect to commits and refs. They may
+Scan and validation do not change commits or refs. Validation materializes
+candidate trees only in a temporary object quarantine. Both commands may
 run while local mutation preconditions are blocked and label those blockers in
 the safety report. They reject merges, stale or forged snapshots, duplicate
 JSON fields, abbreviated object IDs, omitted or reordered units, and active
@@ -104,10 +164,13 @@ explicitly.
 Durable operation checkpoints live below
 .BR .git/git-stage-batch/rewrite/ .
 They use private atomically replaced files, a closed phase/next-action schema,
-and operation-owned recovery/output refs. Status verifies the branch, expected
-tip, index, worktree, plan digest, output objects, recovery ref, and the output
-ref that keeps a paused replacement chain reachable before declaring resume
-ready. Manual recovery output uses compare-and-swap
+and operation-owned recovery/output refs. A pending commit/tree checkpoint
+closes the crash window around each output-ref update. A deterministic
+verification record binds final tree, output topology, plan digest, and removed
+signature digests. Status verifies the branch, expected tip, index, worktree,
+plan and verification digests, output objects, recovery ref, and the output ref
+that keeps a paused replacement chain reachable before declaring resume ready.
+Manual recovery output uses compare-and-swap
 .B git update-ref
 syntax so unrelated ref movement is not overwritten.
 .SH SEE ALSO

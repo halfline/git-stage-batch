@@ -11,6 +11,7 @@ from git_stage_batch.git_paths import (
     encode_path,
     nul_records,
     quote_path_token,
+    terminal_safe_text,
     terminal_safe_shell_join,
     terminal_safe_shell_quote,
     unquote_path_token,
@@ -38,6 +39,16 @@ def test_display_path_escapes_bidirectional_controls() -> None:
 
     assert displayed == '"before\\u202eafter\\u2069.txt"'
     assert json.loads(displayed) == path
+
+
+def test_terminal_safe_text_escapes_terminal_and_bidirectional_controls():
+    value = "subject\x1b[2J\u202ereversed\u2069"
+
+    displayed = terminal_safe_text(value)
+
+    assert "\x1b" not in displayed
+    assert "\u202e" not in displayed
+    assert json.loads(displayed) == value
 
 
 def test_terminal_safe_shell_quote_preserves_printable_arguments():

@@ -7356,3 +7356,19 @@ msgstr "{label}: gotowe"
 #, python-brace-format
 msgid "{label}: blocked ({blockers})"
 msgstr "{label}: zablokowane ({blockers})"
+
+# History split and reorder translations.
+#, python-brace-format
+msgid "Rewrite output {output} cannot replay unit {unit}: {status} ({detail})."
+msgstr "Wynik przepisywania {output} nie może odtworzyć jednostki {unit}: {status} ({detail})."
+
+#, python-brace-format
+msgid "Rewrite output {output} consumes non-empty units into an empty commit."
+msgstr "Wynik przepisywania {output} zużywa niepuste jednostki w pustym commicie."
+
+#, python-brace-format
+msgid "History source {commit} produced different patch units during replay."
+msgstr "Źródło historii {commit} utworzyło inne jednostki łatki podczas odtwarzania."
+
+msgid "Rewrite operation was already complete; abort made no changes."
+msgstr "Operacja przepisywania była już ukończona; przerwanie nie wprowadziło żadnych zmian."

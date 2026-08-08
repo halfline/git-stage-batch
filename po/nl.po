@@ -7307,3 +7307,19 @@ msgstr "{label}: gereed"
 #, python-brace-format
 msgid "{label}: blocked ({blockers})"
 msgstr "{label}: geblokkeerd ({blockers})"
+
+# History split and reorder translations.
+#, python-brace-format
+msgid "Rewrite output {output} cannot replay unit {unit}: {status} ({detail})."
+msgstr "Herschrijfuitvoer {output} kan eenheid {unit} niet opnieuw afspelen: {status} ({detail})."
+
+#, python-brace-format
+msgid "Rewrite output {output} consumes non-empty units into an empty commit."
+msgstr "Herschrijfuitvoer {output} verwerkt niet-lege eenheden in een lege commit."
+
+#, python-brace-format
+msgid "History source {commit} produced different patch units during replay."
+msgstr "Geschiedenisbron {commit} produceerde tijdens het opnieuw afspelen andere patcheenheden."
+
+msgid "Rewrite operation was already complete; abort made no changes."
+msgstr "De herschrijfbewerking was al voltooid; afbreken heeft geen wijzigingen aangebracht."

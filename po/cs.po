@@ -7245,3 +7245,19 @@ msgstr "{label}: připraveno"
 #, python-brace-format
 msgid "{label}: blocked ({blockers})"
 msgstr "{label}: blokováno ({blockers})"
+
+# History split and reorder translations.
+#, python-brace-format
+msgid "Rewrite output {output} cannot replay unit {unit}: {status} ({detail})."
+msgstr "Výstup přepisu {output} nemůže znovu přehrát jednotku {unit}: {status} ({detail})."
+
+#, python-brace-format
+msgid "Rewrite output {output} consumes non-empty units into an empty commit."
+msgstr "Výstup přepisu {output} spotřebovává neprázdné jednotky do prázdného commitu."
+
+#, python-brace-format
+msgid "History source {commit} produced different patch units during replay."
+msgstr "Zdroj historie {commit} při opakovaném přehrání vytvořil jiné jednotky záplaty."
+
+msgid "Rewrite operation was already complete; abort made no changes."
+msgstr "Operace přepisu již byla dokončena; přerušení neprovedlo žádné změny."

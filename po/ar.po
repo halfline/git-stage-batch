@@ -7472,3 +7472,19 @@ msgstr "{label}: جاهز"
 #, python-brace-format
 msgid "{label}: blocked ({blockers})"
 msgstr "{label}: محظور (‏{blockers})"
+
+# History split and reorder translations.
+#, python-brace-format
+msgid "Rewrite output {output} cannot replay unit {unit}: {status} ({detail})."
+msgstr "لا يمكن لناتج إعادة الكتابة {output} إعادة تشغيل الوحدة {unit}: {status} ({detail})."
+
+#, python-brace-format
+msgid "Rewrite output {output} consumes non-empty units into an empty commit."
+msgstr "يستهلك ناتج إعادة الكتابة {output} وحدات غير فارغة في إيداع فارغ."
+
+#, python-brace-format
+msgid "History source {commit} produced different patch units during replay."
+msgstr "أنتج مصدر التاريخ {commit} وحدات رقعة مختلفة أثناء إعادة التشغيل."
+
+msgid "Rewrite operation was already complete; abort made no changes."
+msgstr "كانت عملية إعادة الكتابة مكتملة بالفعل؛ ولم يُجرِ الإلغاء أي تغييرات."

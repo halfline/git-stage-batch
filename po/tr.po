@@ -7200,3 +7200,19 @@ msgstr "{label}: hazır"
 #, python-brace-format
 msgid "{label}: blocked ({blockers})"
 msgstr "{label}: engellendi ({blockers})"
+
+# History split and reorder translations.
+#, python-brace-format
+msgid "Rewrite output {output} cannot replay unit {unit}: {status} ({detail})."
+msgstr "Yeniden yazma çıktısı {output}, {unit} birimini yeniden oynatamıyor: {status} ({detail})."
+
+#, python-brace-format
+msgid "Rewrite output {output} consumes non-empty units into an empty commit."
+msgstr "Yeniden yazma çıktısı {output}, boş olmayan birimleri boş bir işlemeye tüketiyor."
+
+#, python-brace-format
+msgid "History source {commit} produced different patch units during replay."
+msgstr "Geçmiş kaynağı {commit}, yeniden oynatma sırasında farklı yama birimleri üretti."
+
+msgid "Rewrite operation was already complete; abort made no changes."
+msgstr "Yeniden yazma işlemi zaten tamamlanmıştı; iptal herhangi bir değişiklik yapmadı."

@@ -7354,3 +7354,19 @@ msgstr "{label}: готово"
 #, python-brace-format
 msgid "{label}: blocked ({blockers})"
 msgstr "{label}: заблокировано ({blockers})"
+
+# History split and reorder translations.
+#, python-brace-format
+msgid "Rewrite output {output} cannot replay unit {unit}: {status} ({detail})."
+msgstr "Выход перезаписи {output} не может повторно применить единицу {unit}: {status} ({detail})."
+
+#, python-brace-format
+msgid "Rewrite output {output} consumes non-empty units into an empty commit."
+msgstr "Выход перезаписи {output} включает непустые единицы в пустой коммит."
+
+#, python-brace-format
+msgid "History source {commit} produced different patch units during replay."
+msgstr "Источник истории {commit} создал другие единицы патча при повторном применении."
+
+msgid "Rewrite operation was already complete; abort made no changes."
+msgstr "Операция перезаписи уже была завершена; отмена не внесла изменений."

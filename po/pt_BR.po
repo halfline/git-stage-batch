@@ -7284,3 +7284,19 @@ msgstr "{label}: pronto"
 #, python-brace-format
 msgid "{label}: blocked ({blockers})"
 msgstr "{label}: bloqueado ({blockers})"
+
+# History split and reorder translations.
+#, python-brace-format
+msgid "Rewrite output {output} cannot replay unit {unit}: {status} ({detail})."
+msgstr "A saída de reescrita {output} não pode reaplicar a unidade {unit}: {status} ({detail})."
+
+#, python-brace-format
+msgid "Rewrite output {output} consumes non-empty units into an empty commit."
+msgstr "A saída de reescrita {output} consome unidades não vazias em um commit vazio."
+
+#, python-brace-format
+msgid "History source {commit} produced different patch units during replay."
+msgstr "A origem de histórico {commit} produziu unidades de patch diferentes durante a reaplicação."
+
+msgid "Rewrite operation was already complete; abort made no changes."
+msgstr "A operação de reescrita já estava concluída; o cancelamento não fez alterações."

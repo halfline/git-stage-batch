@@ -6797,3 +6797,19 @@ msgstr "{label}: 준비됨"
 #, python-brace-format
 msgid "{label}: blocked ({blockers})"
 msgstr "{label}: 차단됨 ({blockers})"
+
+# History split and reorder translations.
+#, python-brace-format
+msgid "Rewrite output {output} cannot replay unit {unit}: {status} ({detail})."
+msgstr "재작성 출력 {output}에서 단위 {unit}을(를) 재적용할 수 없습니다: {status} ({detail})."
+
+#, python-brace-format
+msgid "Rewrite output {output} consumes non-empty units into an empty commit."
+msgstr "재작성 출력 {output}에서 비어 있지 않은 단위를 빈 커밋에 포함합니다."
+
+#, python-brace-format
+msgid "History source {commit} produced different patch units during replay."
+msgstr "기록 소스 {commit}에서 재적용 중 다른 패치 단위를 생성했습니다."
+
+msgid "Rewrite operation was already complete; abort made no changes."
+msgstr "재작성 작업이 이미 완료되어 중단으로 인한 변경 사항이 없습니다."

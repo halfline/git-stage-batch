@@ -7307,3 +7307,19 @@ msgstr "{label}: готово"
 #, python-brace-format
 msgid "{label}: blocked ({blockers})"
 msgstr "{label}: заблоковано ({blockers})"
+
+# History split and reorder translations.
+#, python-brace-format
+msgid "Rewrite output {output} cannot replay unit {unit}: {status} ({detail})."
+msgstr "Вихід переписування {output} не може повторно застосувати одиницю {unit}: {status} ({detail})."
+
+#, python-brace-format
+msgid "Rewrite output {output} consumes non-empty units into an empty commit."
+msgstr "Вихід переписування {output} включає непорожні одиниці до порожнього коміту."
+
+#, python-brace-format
+msgid "History source {commit} produced different patch units during replay."
+msgstr "Джерело історії {commit} створило інші одиниці латки під час повторного застосування."
+
+msgid "Rewrite operation was already complete; abort made no changes."
+msgstr "Операцію переписування вже було завершено; переривання не внесло жодних змін."

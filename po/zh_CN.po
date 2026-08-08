@@ -6755,3 +6755,19 @@ msgstr "{label}：就绪"
 #, python-brace-format
 msgid "{label}: blocked ({blockers})"
 msgstr "{label}：已阻止（{blockers}）"
+
+# History split and reorder translations.
+#, python-brace-format
+msgid "Rewrite output {output} cannot replay unit {unit}: {status} ({detail})."
+msgstr "重写输出 {output} 无法重放单元 {unit}：{status}（{detail}）。"
+
+#, python-brace-format
+msgid "Rewrite output {output} consumes non-empty units into an empty commit."
+msgstr "重写输出 {output} 将非空单元合并到了空提交中。"
+
+#, python-brace-format
+msgid "History source {commit} produced different patch units during replay."
+msgstr "历史源 {commit} 在重放期间生成了不同的补丁单元。"
+
+msgid "Rewrite operation was already complete; abort made no changes."
+msgstr "重写操作已完成；中止操作未做任何更改。"

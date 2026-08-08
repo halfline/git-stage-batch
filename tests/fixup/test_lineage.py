@@ -6,12 +6,16 @@ import gc
 import tracemalloc
 
 from git_stage_batch.fixup import lineage as lineage_module
-from git_stage_batch.fixup.lineage import _incremental_header, analyze_lineage
-from git_stage_batch.fixup.models import FixupRange, StagedFixupUnit
+from git_stage_batch.fixup.lineage import (
+    _incremental_header,
+    analyze_lineage,
+    analyze_lineage_history,
+)
+from git_stage_batch.fixup.models import FixupRange, FixupUnit
 
 
-def _replacement_unit(line_count: int) -> StagedFixupUnit:
-    return StagedFixupUnit(
+def _replacement_unit(line_count: int) -> FixupUnit:
+    return FixupUnit(
         unit_id="unit",
         path="file.txt",
         kind="text-replacement",
@@ -41,6 +45,7 @@ def test_lineage_avoids_line_scale_python_heap(monkeypatch):
     """Incremental blame is reduced to scalar counters while it streams."""
     commit = "1" * 40
     commit_range = FixupRange(
+        object_format="sha1",
         base_commit="0" * 40,
         head_commit=commit,
         commits_newest_first=(commit,),
@@ -87,6 +92,7 @@ def test_lineage_retains_only_two_ambiguity_witnesses(monkeypatch):
     evidence = analyze_lineage(
         _replacement_unit(3),
         FixupRange(
+            object_format="sha1",
             base_commit="0" * 40,
             head_commit=commits[-1],
             commits_newest_first=tuple(reversed(commits)),
@@ -112,6 +118,7 @@ def test_lineage_neutralizes_configured_ignored_revisions(monkeypatch):
     evidence = analyze_lineage(
         _replacement_unit(1),
         FixupRange(
+            object_format="sha1",
             base_commit="0" * 40,
             head_commit=commit,
             commits_newest_first=(commit,),
@@ -132,3 +139,42 @@ def test_incremental_metadata_does_not_trigger_word_scale_splitting():
     metadata = SplitGuard(b"summary " + (b"word " * 65536))
 
     assert _incremental_header(metadata, object_id_width=40) is None
+
+
+def test_history_searches_disjoint_ranges_independently(monkeypatch):
+    newer = "2" * 40
+    older = "1" * 40
+    calls: list[tuple[list[str], dict[str, object]]] = []
+
+    def stream(arguments, *_args, **kwargs):
+        calls.append((arguments, kwargs))
+        range_spec = arguments[arguments.index("-L") + 1]
+        yield ((newer if range_spec.startswith("3,3:") else older) + "\n").encode()
+
+    monkeypatch.setattr(lineage_module, "stream_git_command", stream)
+    monkeypatch.setattr(lineage_module, "object_id_hex_length", lambda: 40)
+    evidence = analyze_lineage_history(
+        FixupUnit(
+            unit_id="unit",
+            path=":(top)literal",
+            kind="text-replacement",
+            patch_buffer=None,
+            lineage_ranges=((1, 1), (3, 3)),
+        ),
+        FixupRange(
+            object_format="sha1",
+            base_commit="0" * 40,
+            head_commit=newer,
+            commits_newest_first=(newer, older),
+        ),
+    )
+
+    assert evidence.queried_ranges == ((1, 1), (3, 3))
+    assert evidence.candidates == (newer, older)
+    assert evidence.completed_range_count == 2
+    assert evidence.complete is True
+    assert [
+        arguments[arguments.index("-L") + 1]
+        for arguments, _kwargs in calls
+    ] == ["1,1::(top)literal", "3,3::(top)literal"]
+    assert all(kwargs["literal_pathspecs"] is True for _arguments, kwargs in calls)

@@ -1140,11 +1140,6 @@ msgstr "清除状态并退出而不显示候选项"
 msgid "Re-show the last candidate without advancing"
 msgstr "重新显示上一个候选项而不前进"
 
-#: src/git_stage_batch/cli/fixup_subcommands.py:82
-#, python-brace-format
-msgid "Git ref to use as lower bound for commit search (default: @{upstream})"
-msgstr "用作提交搜索下限的 Git 引用（默认：@{upstream}）"
-
 #: src/git_stage_batch/cli/include_dispatch.py:35
 msgid "`--no-edge-overlap` only applies to live `include --line --as` operations."
 msgstr "`--no-edge-overlap` 仅适用于当前变更的 `include --line --as` 操作。"
@@ -2558,47 +2553,10 @@ msgid "✓ Skipped {count} hunk from {file}"
 msgid_plural "✓ Skipped {count} hunks from {file}"
 msgstr[0] "✓ 已跳过 {file} 中的 {count} 个变更块"
 
-#: src/git_stage_batch/commands/fixup/boundary.py:21
-#, python-brace-format
-msgid "Invalid boundary ref: {boundary}"
-msgstr "无效的边界引用：{boundary}"
-
-#: src/git_stage_batch/commands/fixup/boundary.py:31
-#, python-brace-format
-msgid "Failed to get commit range {boundary}..HEAD"
-msgstr "获取提交范围 {boundary}..HEAD 失败"
-
-#: src/git_stage_batch/commands/fixup/boundary.py:38
-#, python-brace-format
-msgid "No commits found in range {boundary}..HEAD"
-msgstr "在范围 {boundary}..HEAD 中未找到提交"
-
-#: src/git_stage_batch/commands/fixup/candidate_display.py:26
-msgid ""
-"No previous candidate to show.\n"
-"Run suggest-fixup without --last to find a candidate."
-msgstr ""
-"没有可显示的上一个候选项。\n"
-"请运行不带 --last 的 suggest-fixup 以查找候选项。"
-
-#: src/git_stage_batch/commands/fixup/candidate_display.py:70
-#, python-brace-format
-msgid "Candidate {iteration}: {info}"
-msgstr "候选项 {iteration}：{info}"
-
 #: src/git_stage_batch/commands/fixup/candidate_display.py:76
 #, python-brace-format
 msgid "Run: git commit --fixup={commit}"
 msgstr "运行：git commit --fixup={commit}"
-
-#: src/git_stage_batch/commands/fixup/candidate_iteration.py:47
-#, python-brace-format
-msgid ""
-"No commits in range {boundary}..HEAD modified these lines.\n"
-"The changes may be fixing code from before the boundary."
-msgstr ""
-"范围 {boundary}..HEAD 内没有提交修改过这些行。\n"
-"这些更改可能在修复范围边界之前的代码。"
 
 #: src/git_stage_batch/commands/fixup/candidate_iteration.py:53
 msgid "No more candidates found."
@@ -2607,16 +2565,6 @@ msgstr "未找到更多候选项。"
 #: src/git_stage_batch/commands/fixup/iteration_state.py:35
 msgid "Suggest-fixup iteration cleared."
 msgstr "建议修复迭代已清除。"
-
-#: src/git_stage_batch/commands/fixup/line_ranges.py:37
-msgid "No old line numbers found in hunk (all lines may be additions)."
-msgstr "在块中未找到旧行号（所有行可能都是新增的）。"
-
-#: src/git_stage_batch/commands/fixup/line_ranges.py:59
-msgid ""
-"No old line numbers found for specified lines (they may be newly added "
-"lines)."
-msgstr "未找到指定行的旧行号（它们可能是新添加的行）。"
 
 #: src/git_stage_batch/commands/fixup/search_targets.py:46
 #: src/git_stage_batch/commands/fixup/search_targets.py:102
@@ -6341,3 +6289,96 @@ msgstr "恢复引用：{recovery_ref}"
 #, python-brace-format
 msgid "{count} unit(s) remain staged."
 msgstr "仍有 {count} 个单元保持暂存。"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:85
+msgid "Commit excluded from the search (default: fork point with upstream)"
+msgstr "从搜索中排除的提交（默认：与 upstream 的分叉点）"
+
+#: src/git_stage_batch/commands/fixup/search_flow.py:36
+msgid "HEAD changed during fixup suggestion analysis. Run the command again."
+msgstr "fixup 建议分析期间 HEAD 已更改。请重新运行该命令。"
+
+#: src/git_stage_batch/commands/fixup/search_flow.py:113
+msgid ""
+"No previous candidate to show.\n"
+"Run fixup suggest without --last to find a candidate."
+msgstr "没有可重新显示的上一个候选。\n请运行不带 --last 的 fixup suggest 来查找候选。"
+
+#: src/git_stage_batch/commands/fixup/search_flow.py:141
+msgid ""
+"No commit in the selected range has exact lineage or placement evidence for "
+"this unit."
+msgstr "所选范围内没有提交具有此单元的精确沿袭或放置证据。"
+
+#: src/git_stage_batch/fixup/selected_units.py:79
+msgid "Selection contains line IDs outside the current hunk."
+msgstr "选择中包含当前差异块范围外的行 ID。"
+
+#: src/git_stage_batch/fixup/selected_units.py:82
+msgid "No changed lines were selected."
+msgstr "未选择任何已更改的行。"
+
+#: src/git_stage_batch/fixup/selected_units.py:202
+msgid "Could not read the selected file from the index."
+msgstr "无法从索引中读取所选文件。"
+
+#: src/git_stage_batch/fixup/selected_units.py:245
+msgid "The selected lines do not change the index."
+msgstr "所选行不会更改索引。"
+
+#: src/git_stage_batch/output/fixup_create.py:39
+msgid "the selected path is not a regular text file"
+msgstr "所选路径不是常规文本文件"
+
+#: src/git_stage_batch/output/fixup_suggest.py:141
+#, python-brace-format
+msgid "Lineage: exact source lines resolve to {commit}."
+msgstr "沿袭：精确源代码行解析到 {commit}。"
+
+#: src/git_stage_batch/output/fixup_suggest.py:147
+#, python-brace-format
+msgid "Lineage: multiple in-range owners ({commits})."
+msgstr "沿袭：范围内有多个所有者（{commits}）。"
+
+#: src/git_stage_batch/output/fixup_suggest.py:155
+#, python-brace-format
+msgid "Lineage: incomplete evidence includes {commit}."
+msgstr "沿袭：不完整的证据包含 {commit}。"
+
+#: src/git_stage_batch/output/fixup_suggest.py:160
+msgid "Lineage: no in-range owner was proven."
+msgstr "沿袭：未证实任何范围内所有者。"
+
+#: src/git_stage_batch/output/fixup_suggest.py:167
+#, python-brace-format
+msgid "Placement: patch first stops at {commit}."
+msgstr "放置：补丁最先在 {commit} 处停止。"
+
+#: src/git_stage_batch/output/fixup_suggest.py:172
+msgid "Placement: patch commutes through the entire range."
+msgstr "放置：补丁可穿过整个范围。"
+
+#: src/git_stage_batch/output/fixup_suggest.py:175
+#, python-brace-format
+msgid "Placement: unknown ({detail})."
+msgstr "放置：未知（{detail}）。"
+
+#: src/git_stage_batch/output/fixup_suggest.py:213
+#, python-brace-format
+msgid "Selected unit {unit} in {path} [{status}]"
+msgstr "已选择单元 {unit}，路径 {path} [{status}]"
+
+#: src/git_stage_batch/output/fixup_suggest.py:222
+#, python-brace-format
+msgid "Decision: {reason}."
+msgstr "判定：{reason}。"
+
+#: src/git_stage_batch/output/fixup_suggest.py:233
+#, python-brace-format
+msgid "Candidate {iteration} of {total}: {commit} {subject}"
+msgstr "候选 {iteration}/{total}：{commit} {subject}"
+
+#: src/git_stage_batch/output/fixup_suggest.py:241
+#, python-brace-format
+msgid "Candidate evidence: {sources}"
+msgstr "候选证据：{sources}"

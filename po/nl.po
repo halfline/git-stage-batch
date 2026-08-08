@@ -1252,13 +1252,6 @@ msgstr "Wis status en sluit af zonder kandidaten te tonen"
 msgid "Re-show the last candidate without advancing"
 msgstr "Toon de laatste kandidaat opnieuw zonder verder te gaan"
 
-#: src/git_stage_batch/cli/fixup_subcommands.py:82
-#, python-brace-format
-msgid "Git ref to use as lower bound for commit search (default: @{upstream})"
-msgstr ""
-"Git ref om te gebruiken als ondergrens voor commit-zoekopdracht (standaard: "
-"@{upstream})"
-
 #: src/git_stage_batch/cli/include_dispatch.py:35
 msgid "`--no-edge-overlap` only applies to live `include --line --as` operations."
 msgstr ""
@@ -2852,47 +2845,10 @@ msgid_plural "✓ Skipped {count} hunks from {file}"
 msgstr[0] "✓ {count} blok uit {file} overgeslagen"
 msgstr[1] "✓ {count} blokken uit {file} overgeslagen"
 
-#: src/git_stage_batch/commands/fixup/boundary.py:21
-#, python-brace-format
-msgid "Invalid boundary ref: {boundary}"
-msgstr "Ongeldige grens-ref: {boundary}"
-
-#: src/git_stage_batch/commands/fixup/boundary.py:31
-#, python-brace-format
-msgid "Failed to get commit range {boundary}..HEAD"
-msgstr "Kon commitbereik {boundary}..HEAD niet ophalen"
-
-#: src/git_stage_batch/commands/fixup/boundary.py:38
-#, python-brace-format
-msgid "No commits found in range {boundary}..HEAD"
-msgstr "Geen commits gevonden in bereik {boundary}..HEAD"
-
-#: src/git_stage_batch/commands/fixup/candidate_display.py:26
-msgid ""
-"No previous candidate to show.\n"
-"Run suggest-fixup without --last to find a candidate."
-msgstr ""
-"Er is geen vorige kandidaat om weer te geven.\n"
-"Voer suggest-fixup zonder --last uit om een kandidaat te vinden."
-
-#: src/git_stage_batch/commands/fixup/candidate_display.py:70
-#, python-brace-format
-msgid "Candidate {iteration}: {info}"
-msgstr "Kandidaat {iteration}: {info}"
-
 #: src/git_stage_batch/commands/fixup/candidate_display.py:76
 #, python-brace-format
 msgid "Run: git commit --fixup={commit}"
 msgstr "Voer uit: git commit --fixup={commit}"
-
-#: src/git_stage_batch/commands/fixup/candidate_iteration.py:47
-#, python-brace-format
-msgid ""
-"No commits in range {boundary}..HEAD modified these lines.\n"
-"The changes may be fixing code from before the boundary."
-msgstr ""
-"Geen enkele commit in bereik {boundary}..HEAD heeft deze regels gewijzigd.\n"
-"De wijzigingen herstellen mogelijk code van vóór de grens."
 
 #: src/git_stage_batch/commands/fixup/candidate_iteration.py:53
 msgid "No more candidates found."
@@ -2901,20 +2857,6 @@ msgstr "Geen kandidaten meer gevonden."
 #: src/git_stage_batch/commands/fixup/iteration_state.py:35
 msgid "Suggest-fixup iteration cleared."
 msgstr "Suggest-fixup iteratie gewist."
-
-#: src/git_stage_batch/commands/fixup/line_ranges.py:37
-msgid "No old line numbers found in hunk (all lines may be additions)."
-msgstr ""
-"Geen oude regelnummers gevonden in blok (alle regels zijn mogelijk "
-"toevoegingen)."
-
-#: src/git_stage_batch/commands/fixup/line_ranges.py:59
-msgid ""
-"No old line numbers found for specified lines (they may be newly added "
-"lines)."
-msgstr ""
-"Geen oude regelnummers gevonden voor opgegeven regels (het zijn mogelijk "
-"nieuw toegevoegde regels)."
 
 #: src/git_stage_batch/commands/fixup/search_targets.py:46
 #: src/git_stage_batch/commands/fixup/search_targets.py:102
@@ -6894,3 +6836,96 @@ msgstr "Herstelreferentie: {recovery_ref}"
 #, python-brace-format
 msgid "{count} unit(s) remain staged."
 msgstr "{count} eenheid/eenheden blijven in de index."
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:85
+msgid "Commit excluded from the search (default: fork point with upstream)"
+msgstr "Commit uitgesloten van de zoekopdracht (standaard: aftakpunt met upstream)"
+
+#: src/git_stage_batch/commands/fixup/search_flow.py:36
+msgid "HEAD changed during fixup suggestion analysis. Run the command again."
+msgstr "HEAD is gewijzigd tijdens de analyse van fixup-suggesties. Voer de opdracht opnieuw uit."
+
+#: src/git_stage_batch/commands/fixup/search_flow.py:113
+msgid ""
+"No previous candidate to show.\n"
+"Run fixup suggest without --last to find a candidate."
+msgstr "Geen vorige kandidaat om weer te geven.\nVoer fixup suggest zonder --last uit om een kandidaat te vinden."
+
+#: src/git_stage_batch/commands/fixup/search_flow.py:141
+msgid ""
+"No commit in the selected range has exact lineage or placement evidence for "
+"this unit."
+msgstr "Geen commit in het geselecteerde bereik heeft exact afstammings- of plaatsingsbewijs voor deze eenheid."
+
+#: src/git_stage_batch/fixup/selected_units.py:79
+msgid "Selection contains line IDs outside the current hunk."
+msgstr "De selectie bevat regel-ID's buiten de huidige hunk."
+
+#: src/git_stage_batch/fixup/selected_units.py:82
+msgid "No changed lines were selected."
+msgstr "Er zijn geen gewijzigde regels geselecteerd."
+
+#: src/git_stage_batch/fixup/selected_units.py:202
+msgid "Could not read the selected file from the index."
+msgstr "Het geselecteerde bestand kon niet uit de index worden gelezen."
+
+#: src/git_stage_batch/fixup/selected_units.py:245
+msgid "The selected lines do not change the index."
+msgstr "De geselecteerde regels wijzigen de index niet."
+
+#: src/git_stage_batch/output/fixup_create.py:39
+msgid "the selected path is not a regular text file"
+msgstr "het geselecteerde pad is geen gewoon tekstbestand"
+
+#: src/git_stage_batch/output/fixup_suggest.py:141
+#, python-brace-format
+msgid "Lineage: exact source lines resolve to {commit}."
+msgstr "Afstamming: de exacte bronregels verwijzen naar {commit}."
+
+#: src/git_stage_batch/output/fixup_suggest.py:147
+#, python-brace-format
+msgid "Lineage: multiple in-range owners ({commits})."
+msgstr "Afstamming: meerdere eigenaren binnen het bereik ({commits})."
+
+#: src/git_stage_batch/output/fixup_suggest.py:155
+#, python-brace-format
+msgid "Lineage: incomplete evidence includes {commit}."
+msgstr "Afstamming: onvolledig bewijs bevat {commit}."
+
+#: src/git_stage_batch/output/fixup_suggest.py:160
+msgid "Lineage: no in-range owner was proven."
+msgstr "Afstamming: er is geen eigenaar binnen het bereik bewezen."
+
+#: src/git_stage_batch/output/fixup_suggest.py:167
+#, python-brace-format
+msgid "Placement: patch first stops at {commit}."
+msgstr "Plaatsing: de patch stopt het eerst bij {commit}."
+
+#: src/git_stage_batch/output/fixup_suggest.py:172
+msgid "Placement: patch commutes through the entire range."
+msgstr "Plaatsing: de patch passeert het hele bereik."
+
+#: src/git_stage_batch/output/fixup_suggest.py:175
+#, python-brace-format
+msgid "Placement: unknown ({detail})."
+msgstr "Plaatsing: onbekend ({detail})."
+
+#: src/git_stage_batch/output/fixup_suggest.py:213
+#, python-brace-format
+msgid "Selected unit {unit} in {path} [{status}]"
+msgstr "Geselecteerde eenheid {unit} in {path} [{status}]"
+
+#: src/git_stage_batch/output/fixup_suggest.py:222
+#, python-brace-format
+msgid "Decision: {reason}."
+msgstr "Beslissing: {reason}."
+
+#: src/git_stage_batch/output/fixup_suggest.py:233
+#, python-brace-format
+msgid "Candidate {iteration} of {total}: {commit} {subject}"
+msgstr "Kandidaat {iteration} van {total}: {commit} {subject}"
+
+#: src/git_stage_batch/output/fixup_suggest.py:241
+#, python-brace-format
+msgid "Candidate evidence: {sources}"
+msgstr "Kandidaatbewijs: {sources}"

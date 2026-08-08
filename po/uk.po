@@ -1301,8 +1301,8 @@ msgid "Replacement text was not provided."
 msgstr "Текст заміни не вказано."
 
 #: src/git_stage_batch/cli/root_parser.py:16
-msgid "Hunk-by-hunk and line-by-line staging for git"
-msgstr "Додавання до індексу за фрагментами та рядками для Git"
+msgid "Fine-grained Git staging and deterministic draft-history refinement"
+msgstr "Точне додавання змін до індексу Git і детерміноване впорядкування чернетки історії"
 
 #: src/git_stage_batch/cli/root_parser.py:31
 msgid "Run as if started in path"
@@ -6961,8 +6961,8 @@ msgstr "Неприпустимий план fixup: {detail}"
 msgid "Could not read fixup plan {path}: {error}"
 msgstr "Не вдалося прочитати план fixup {path}: {error}"
 
-msgid "Inspect a deterministic history refinement"
-msgstr "Перевірити детерміноване уточнення історії"
+msgid "Plan, execute, and inspect a deterministic history refinement"
+msgstr "Спланувати, виконати та перевірити детерміноване уточнення історії"
 
 msgid "Rewrite action"
 msgstr "Дія переписування"
@@ -7106,13 +7106,6 @@ msgstr "Наступна дія: {action}"
 msgid "Diagnostic: {diagnostic}"
 msgstr "Діагностика: {diagnostic}"
 
-msgid "Resume preconditions: ready"
-msgstr "Передумови продовження: готові"
-
-#, python-brace-format
-msgid "Resume preconditions: blocked ({blockers})"
-msgstr "Передумови продовження: заблоковані ({blockers})"
-
 msgid "Rewrite plan is valid."
 msgstr "План переписування коректний."
 
@@ -7143,3 +7136,174 @@ msgid_plural "{count} source commits are conserved."
 msgstr[0] "Збережено {count} початковий коміт."
 msgstr[1] "Збережено {count} початкові коміти."
 msgstr[2] "Збережено {count} початкових комітів."
+
+# Rewrite executor translations.
+msgid "Build, verify, and atomically update the checked-out branch"
+msgstr "Створити, перевірити й атомарно оновити поточну гілку"
+
+msgid "Validated reusable rewrite plan"
+msgstr "Перевірений повторно використовуваний план переписування"
+
+msgid "Allow local rewriting of commits contained by remote REF"
+msgstr "Дозволити локальне переписування комітів, що містяться у віддаленому посиланні"
+
+msgid "Output a machine-readable operation result"
+msgstr "Вивести результат операції в машинозчитуваному вигляді"
+
+msgid "Resume the exact action in the active rewrite checkpoint"
+msgstr "Продовжити точну дію активної контрольної точки переписування"
+
+msgid "Abort and conditionally restore the original branch tip"
+msgstr "Перервати й за належних умов відновити початкову верхівку гілки"
+
+msgid "Independently verify the active or latest rewrite output"
+msgstr "Незалежно перевірити активний або останній результат переписування"
+
+#, python-brace-format
+msgid "The message for history source {commit} cannot be encoded as {encoding}."
+msgstr "Повідомлення джерела історії {commit} неможливо закодувати як {encoding}."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected topology."
+msgstr "Вихідний коміт переписування {commit} має неочікувану топологію."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected identity metadata."
+msgstr "Вихідний коміт переписування {commit} має неочікувані метадані ідентифікації."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected message metadata."
+msgstr "Вихідний коміт переписування {commit} має неочікувані метадані повідомлення."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected extra headers."
+msgstr "Вихідний коміт переписування {commit} має неочікувані додаткові заголовки."
+
+#, python-brace-format
+msgid "Invalid allowed remote-tracking ref: {refname}"
+msgstr "Неприпустиме дозволене посилання стеження за віддаленим репозиторієм: {refname}"
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id} cannot continue: {blockers}."
+msgstr "Операцію переписування {operation_id} неможливо продовжити: {blockers}."
+
+msgid "The pending rewrite output does not match deterministic replay."
+msgstr "Очікуваний результат переписування не збігається з детермінованим відтворенням."
+
+msgid "The rewrite output ref changed during commit publication."
+msgstr "Посилання вихідних даних переписування змінилося під час публікації коміту."
+
+msgid "The rewrite output ref no longer names an owned output commit."
+msgstr "Посилання вихідних даних переписування більше не вказує на коміт, що належить операції."
+
+msgid "Completed rewrite outputs do not match deterministic replay."
+msgstr "Завершені результати переписування не збігаються з детермінованим відтворенням."
+
+msgid "Built history commits do not match deterministic replay."
+msgstr "Створені коміти історії не збігаються з детермінованим відтворенням."
+
+msgid "The rewrite output ref changed before verification."
+msgstr "Посилання вихідних даних переписування змінилося до перевірки."
+
+msgid "The rewrite operation has no output commit."
+msgstr "Операція переписування не має вихідного коміту."
+
+msgid "The checked-out branch changed before finalization."
+msgstr "Отримана гілка змінилася до завершення."
+
+msgid "The branch changed before the history rewrite was finalized."
+msgstr "Гілка змінилася до завершення переписування історії."
+
+msgid "The branch no longer names an operation-owned commit."
+msgstr "Гілка більше не вказує на коміт, що належить операції."
+
+#, python-brace-format
+msgid "Rewrite apply is blocked by: {blockers}."
+msgstr "Застосування переписування заблоковано: {blockers}."
+
+msgid "Rewrite apply requires a checked-out local branch."
+msgstr "Для застосування переписування потрібна отримана локальна гілка."
+
+msgid "The pending output ref changed before rewrite abort."
+msgstr "Очікуване вихідне посилання змінилося до переривання операції переписування."
+
+msgid "The output ref changed before rewrite abort."
+msgstr "Вихідне посилання змінилося до переривання операції переписування."
+
+msgid "The recovery ref changed; automatic rewrite abort is unsafe."
+msgstr "Посилання відновлення змінилося; автоматично переривати операцію переписування небезпечно."
+
+msgid "The checked-out branch changed; automatic rewrite abort is unsafe."
+msgstr "Отримана гілка змінилася; автоматично переривати операцію переписування небезпечно."
+
+msgid "The branch changed while restoring the original history."
+msgstr "Гілка змінилася під час відновлення початкової історії."
+
+#, python-brace-format
+msgid "The branch does not name an operation-owned tip; recover manually from {recovery_ref}."
+msgstr "Гілка не вказує на верхівку, що належить операції; відновіть її вручну з {recovery_ref}."
+
+msgid "No rewrite operation is available to verify."
+msgstr "Немає операції переписування, доступної для перевірки."
+
+msgid "The rewrite operation has no complete output to verify."
+msgstr "Операція переписування не має повного результату для перевірки."
+
+#, python-brace-format
+msgid "Rewrite verification is blocked by: {blockers}."
+msgstr "Перевірку переписування заблоковано: {blockers}."
+
+msgid "The regenerated rewrite verification record changed."
+msgstr "Повторно створений запис перевірки переписування змінився."
+
+#, python-brace-format
+msgid "Rewrite output {output} cannot replay source commit {commit} at its requested position."
+msgstr "У результаті переписування {output} неможливо відтворити вихідний коміт {commit} у запитаній позиції."
+
+#, python-brace-format
+msgid "Rewrite output {output} integrates non-empty sources into an empty commit."
+msgstr "Результат переписування {output} об’єднує непорожні джерела в порожній коміт."
+
+#, python-brace-format
+msgid "The planned history replay produces tree {actual}, not the frozen final tree {expected}."
+msgstr "Заплановане відтворення історії створює дерево {actual}, а не зафіксоване кінцеве дерево {expected}."
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id}: {phase}"
+msgstr "Операція переписування {operation_id}: {phase}"
+
+#, python-brace-format
+msgid "Output tip: {commit}"
+msgstr "Верхівка результату: {commit}"
+
+msgid "Original branch tip restored."
+msgstr "Початкову верхівку гілки відновлено."
+
+#, python-brace-format
+msgid "Verified final tree: {tree}"
+msgstr "Перевірене кінцеве дерево: {tree}"
+
+#, python-brace-format
+msgid "Removed {count} invalidated source signature."
+msgid_plural "Removed {count} invalidated source signatures."
+msgstr[0] "Видалено {count} недійсний підпис вихідного коміту."
+msgstr[1] "Видалено {count} недійсні підписи вихідних комітів."
+msgstr[2] "Видалено {count} недійсних підписів вихідних комітів."
+
+#, python-brace-format
+msgid "Latest rewrite operation {operation_id}"
+msgstr "Остання операція переписування {operation_id}"
+
+msgid "Resume preconditions"
+msgstr "Передумови продовження"
+
+msgid "Verification preconditions"
+msgstr "Передумови перевірки"
+
+#, python-brace-format
+msgid "{label}: ready"
+msgstr "{label}: готово"
+
+#, python-brace-format
+msgid "{label}: blocked ({blockers})"
+msgstr "{label}: заблоковано ({blockers})"

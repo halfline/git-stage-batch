@@ -1200,8 +1200,8 @@ msgid "Replacement text was not provided."
 msgstr "置換テキストが指定されていません。"
 
 #: src/git_stage_batch/cli/root_parser.py:16
-msgid "Hunk-by-hunk and line-by-line staging for git"
-msgstr "Gitのハンク単位および行単位のステージング"
+msgid "Fine-grained Git staging and deterministic draft-history refinement"
+msgstr "きめ細かな Git ステージングと決定論的なドラフト履歴整理"
 
 #: src/git_stage_batch/cli/root_parser.py:31
 msgid "Run as if started in path"
@@ -6450,8 +6450,8 @@ msgstr "無効な fixup プラン: {detail}"
 msgid "Could not read fixup plan {path}: {error}"
 msgstr "fixup プラン {path} を読み取れませんでした: {error}"
 
-msgid "Inspect a deterministic history refinement"
-msgstr "決定的な履歴整理を検査"
+msgid "Plan, execute, and inspect a deterministic history refinement"
+msgstr "決定論的な履歴整理を計画、実行、検査"
 
 msgid "Rewrite action"
 msgstr "書き換え操作"
@@ -6595,13 +6595,6 @@ msgstr "次の操作: {action}"
 msgid "Diagnostic: {diagnostic}"
 msgstr "診断: {diagnostic}"
 
-msgid "Resume preconditions: ready"
-msgstr "再開の前提条件: 準備完了"
-
-#, python-brace-format
-msgid "Resume preconditions: blocked ({blockers})"
-msgstr "再開の前提条件: ブロック中（{blockers}）"
-
 msgid "Rewrite plan is valid."
 msgstr "書き換えプランは有効です。"
 
@@ -6624,3 +6617,172 @@ msgstr[0] "警告: {count} 個のソース署名は書き換え後も有効な�
 msgid "{count} source commit is conserved."
 msgid_plural "{count} source commits are conserved."
 msgstr[0] "{count} 件のソースコミットが保持されています。"
+
+# Rewrite executor translations.
+msgid "Build, verify, and atomically update the checked-out branch"
+msgstr "構築、検証してチェックアウト中のブランチをアトミックに更新"
+
+msgid "Validated reusable rewrite plan"
+msgstr "検証済みの再利用可能な書き換えプラン"
+
+msgid "Allow local rewriting of commits contained by remote REF"
+msgstr "リモート参照に含まれるコミットのローカルでの書き換えを許可する"
+
+msgid "Output a machine-readable operation result"
+msgstr "機械可読な操作結果を出力する"
+
+msgid "Resume the exact action in the active rewrite checkpoint"
+msgstr "アクティブな書き換えチェックポイントの正確なアクションを再開する"
+
+msgid "Abort and conditionally restore the original branch tip"
+msgstr "中止し、条件を満たす場合に元のブランチ先端を復元"
+
+msgid "Independently verify the active or latest rewrite output"
+msgstr "アクティブまたは最新の書き換え出力を個別に検証する"
+
+#, python-brace-format
+msgid "The message for history source {commit} cannot be encoded as {encoding}."
+msgstr "履歴ソース {commit} のメッセージを {encoding} でエンコードできません。"
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected topology."
+msgstr "書き換え出力コミット {commit} のトポロジーが想定外です。"
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected identity metadata."
+msgstr "書き換え出力コミット {commit} の識別情報メタデータが想定外です。"
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected message metadata."
+msgstr "書き換え出力コミット {commit} のメッセージメタデータが想定外です。"
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected extra headers."
+msgstr "書き換え出力コミット {commit} に想定外の追加ヘッダーがあります。"
+
+#, python-brace-format
+msgid "Invalid allowed remote-tracking ref: {refname}"
+msgstr "許可されたリモート追跡参照が無効です: {refname}"
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id} cannot continue: {blockers}."
+msgstr "書き換え操作 {operation_id} を続行できません: {blockers}。"
+
+msgid "The pending rewrite output does not match deterministic replay."
+msgstr "保留中の書き換え出力が決定的な再生と一致しません。"
+
+msgid "The rewrite output ref changed during commit publication."
+msgstr "コミットの公開中に書き換え出力参照が変更されました。"
+
+msgid "The rewrite output ref no longer names an owned output commit."
+msgstr "書き換え出力参照が、操作の所有する出力コミットを指していません。"
+
+msgid "Completed rewrite outputs do not match deterministic replay."
+msgstr "完了した書き換え出力が決定的な再生と一致しません。"
+
+msgid "Built history commits do not match deterministic replay."
+msgstr "構築した履歴コミットが決定的な再生と一致しません。"
+
+msgid "The rewrite output ref changed before verification."
+msgstr "検証前に書き換え出力参照が変更されました。"
+
+msgid "The rewrite operation has no output commit."
+msgstr "書き換え操作に出力コミットがありません。"
+
+msgid "The checked-out branch changed before finalization."
+msgstr "完了処理の前にチェックアウト中のブランチが変更されました。"
+
+msgid "The branch changed before the history rewrite was finalized."
+msgstr "履歴の書き換えが完了する前にブランチが変更されました。"
+
+msgid "The branch no longer names an operation-owned commit."
+msgstr "ブランチが操作の所有するコミットを指していません。"
+
+#, python-brace-format
+msgid "Rewrite apply is blocked by: {blockers}."
+msgstr "次の理由により書き換えを適用できません: {blockers}。"
+
+msgid "Rewrite apply requires a checked-out local branch."
+msgstr "書き換えを適用するにはローカルブランチをチェックアウトする必要があります。"
+
+msgid "The pending output ref changed before rewrite abort."
+msgstr "書き換えを中止する前に保留中の出力参照が変更されました。"
+
+msgid "The output ref changed before rewrite abort."
+msgstr "書き換えを中止する前に出力参照が変更されました。"
+
+msgid "The recovery ref changed; automatic rewrite abort is unsafe."
+msgstr "復旧参照が変更されたため、書き換えを自動的に中止するのは安全ではありません。"
+
+msgid "The checked-out branch changed; automatic rewrite abort is unsafe."
+msgstr "チェックアウト中のブランチが変更されたため、書き換えを自動的に中止するのは安全ではありません。"
+
+msgid "The branch changed while restoring the original history."
+msgstr "元の履歴の復元中にブランチが変更されました。"
+
+#, python-brace-format
+msgid "The branch does not name an operation-owned tip; recover manually from {recovery_ref}."
+msgstr "ブランチが操作の所有する先端を指していません。{recovery_ref} から手動で復旧してください。"
+
+msgid "No rewrite operation is available to verify."
+msgstr "検証できる書き換え操作がありません。"
+
+msgid "The rewrite operation has no complete output to verify."
+msgstr "書き換え操作に検証可能な完全な出力がありません。"
+
+#, python-brace-format
+msgid "Rewrite verification is blocked by: {blockers}."
+msgstr "次の理由により書き換えを検証できません: {blockers}。"
+
+msgid "The regenerated rewrite verification record changed."
+msgstr "再生成した書き換え検証記録が変更されました。"
+
+#, python-brace-format
+msgid "Rewrite output {output} cannot replay source commit {commit} at its requested position."
+msgstr "書き換え出力 {output} では、ソースコミット {commit} を指定位置で再生できません。"
+
+#, python-brace-format
+msgid "Rewrite output {output} integrates non-empty sources into an empty commit."
+msgstr "書き換え出力 {output} は空でないソースを空のコミットに統合しています。"
+
+#, python-brace-format
+msgid "The planned history replay produces tree {actual}, not the frozen final tree {expected}."
+msgstr "計画された履歴再生のツリーは {actual} であり、固定された最終ツリー {expected} ではありません。"
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id}: {phase}"
+msgstr "書き換え操作 {operation_id}: {phase}"
+
+#, python-brace-format
+msgid "Output tip: {commit}"
+msgstr "出力先端: {commit}"
+
+msgid "Original branch tip restored."
+msgstr "元のブランチ先端を復元しました。"
+
+#, python-brace-format
+msgid "Verified final tree: {tree}"
+msgstr "検証済み最終ツリー: {tree}"
+
+#, python-brace-format
+msgid "Removed {count} invalidated source signature."
+msgid_plural "Removed {count} invalidated source signatures."
+msgstr[0] "無効になったソース署名を {count} 個削除しました。"
+
+#, python-brace-format
+msgid "Latest rewrite operation {operation_id}"
+msgstr "最新の書き換え操作 {operation_id}"
+
+msgid "Resume preconditions"
+msgstr "再開の前提条件"
+
+msgid "Verification preconditions"
+msgstr "検証の前提条件"
+
+#, python-brace-format
+msgid "{label}: ready"
+msgstr "{label}: 準備完了"
+
+#, python-brace-format
+msgid "{label}: blocked ({blockers})"
+msgstr "{label}: ブロック中 ({blockers})"

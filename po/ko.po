@@ -1202,8 +1202,8 @@ msgid "Replacement text was not provided."
 msgstr "교체 텍스트가 제공되지 않았습니다."
 
 #: src/git_stage_batch/cli/root_parser.py:16
-msgid "Hunk-by-hunk and line-by-line staging for git"
-msgstr "Git의 헝크별 및 줄별 스테이징"
+msgid "Fine-grained Git staging and deterministic draft-history refinement"
+msgstr "세분화된 Git 스테이징과 결정론적 초안 기록 정제"
 
 #: src/git_stage_batch/cli/root_parser.py:31
 msgid "Run as if started in path"
@@ -6461,8 +6461,8 @@ msgstr "잘못된 fixup 계획: {detail}"
 msgid "Could not read fixup plan {path}: {error}"
 msgstr "fixup 계획 {path}을(를) 읽을 수 없습니다: {error}"
 
-msgid "Inspect a deterministic history refinement"
-msgstr "결정적인 기록 정제 검사"
+msgid "Plan, execute, and inspect a deterministic history refinement"
+msgstr "결정론적 기록 정제를 계획, 실행 및 검사"
 
 msgid "Rewrite action"
 msgstr "재작성 작업"
@@ -6606,13 +6606,6 @@ msgstr "다음 작업: {action}"
 msgid "Diagnostic: {diagnostic}"
 msgstr "진단: {diagnostic}"
 
-msgid "Resume preconditions: ready"
-msgstr "재개 전제 조건: 준비됨"
-
-#, python-brace-format
-msgid "Resume preconditions: blocked ({blockers})"
-msgstr "재개 전제 조건: 차단됨({blockers})"
-
 msgid "Rewrite plan is valid."
 msgstr "재작성 계획이 유효합니다."
 
@@ -6635,3 +6628,172 @@ msgstr[0] "경고: 소스 서명 {count}개는 다시 쓴 후에도 유효할 �
 msgid "{count} source commit is conserved."
 msgid_plural "{count} source commits are conserved."
 msgstr[0] "소스 커밋 {count}개가 보존됩니다."
+
+# Rewrite executor translations.
+msgid "Build, verify, and atomically update the checked-out branch"
+msgstr "빌드 및 검증 후 체크아웃된 브랜치를 원자적으로 업데이트"
+
+msgid "Validated reusable rewrite plan"
+msgstr "검증된 재사용 가능 재작성 계획"
+
+msgid "Allow local rewriting of commits contained by remote REF"
+msgstr "원격 참조에 포함된 커밋의 로컬 재작성 허용"
+
+msgid "Output a machine-readable operation result"
+msgstr "기계가 읽을 수 있는 작업 결과 출력"
+
+msgid "Resume the exact action in the active rewrite checkpoint"
+msgstr "활성 재작성 체크포인트의 정확한 작업 재개"
+
+msgid "Abort and conditionally restore the original branch tip"
+msgstr "중단하고 조건이 맞으면 원래 브랜치 끝 복원"
+
+msgid "Independently verify the active or latest rewrite output"
+msgstr "활성 또는 최신 재작성 출력을 독립적으로 검증"
+
+#, python-brace-format
+msgid "The message for history source {commit} cannot be encoded as {encoding}."
+msgstr "기록 원본 {commit}의 메시지를 {encoding}(으)로 인코딩할 수 없습니다."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected topology."
+msgstr "재작성 출력 커밋 {commit}의 토폴로지가 예상과 다릅니다."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected identity metadata."
+msgstr "재작성 출력 커밋 {commit}의 식별 메타데이터가 예상과 다릅니다."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected message metadata."
+msgstr "재작성 출력 커밋 {commit}의 메시지 메타데이터가 예상과 다릅니다."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected extra headers."
+msgstr "재작성 출력 커밋 {commit}에 예상하지 못한 추가 헤더가 있습니다."
+
+#, python-brace-format
+msgid "Invalid allowed remote-tracking ref: {refname}"
+msgstr "허용된 원격 추적 참조가 잘못되었습니다: {refname}"
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id} cannot continue: {blockers}."
+msgstr "재작성 작업 {operation_id}을(를) 계속할 수 없습니다: {blockers}."
+
+msgid "The pending rewrite output does not match deterministic replay."
+msgstr "대기 중인 재작성 출력이 결정적 재생과 일치하지 않습니다."
+
+msgid "The rewrite output ref changed during commit publication."
+msgstr "커밋을 게시하는 동안 재작성 출력 참조가 변경되었습니다."
+
+msgid "The rewrite output ref no longer names an owned output commit."
+msgstr "재작성 출력 참조가 더 이상 작업 소유 출력 커밋을 가리키지 않습니다."
+
+msgid "Completed rewrite outputs do not match deterministic replay."
+msgstr "완료된 재작성 출력이 결정적 재생과 일치하지 않습니다."
+
+msgid "Built history commits do not match deterministic replay."
+msgstr "빌드된 기록 커밋이 결정적 재생과 일치하지 않습니다."
+
+msgid "The rewrite output ref changed before verification."
+msgstr "검증 전에 재작성 출력 참조가 변경되었습니다."
+
+msgid "The rewrite operation has no output commit."
+msgstr "재작성 작업에 출력 커밋이 없습니다."
+
+msgid "The checked-out branch changed before finalization."
+msgstr "완료하기 전에 체크아웃한 브랜치가 변경되었습니다."
+
+msgid "The branch changed before the history rewrite was finalized."
+msgstr "기록 재작성이 완료되기 전에 브랜치가 변경되었습니다."
+
+msgid "The branch no longer names an operation-owned commit."
+msgstr "브랜치가 더 이상 작업 소유 커밋을 가리키지 않습니다."
+
+#, python-brace-format
+msgid "Rewrite apply is blocked by: {blockers}."
+msgstr "다음 이유로 재작성 적용이 차단되었습니다: {blockers}."
+
+msgid "Rewrite apply requires a checked-out local branch."
+msgstr "재작성을 적용하려면 로컬 브랜치를 체크아웃해야 합니다."
+
+msgid "The pending output ref changed before rewrite abort."
+msgstr "재작성을 중단하기 전에 대기 중인 출력 참조가 변경되었습니다."
+
+msgid "The output ref changed before rewrite abort."
+msgstr "재작성을 중단하기 전에 출력 참조가 변경되었습니다."
+
+msgid "The recovery ref changed; automatic rewrite abort is unsafe."
+msgstr "복구 참조가 변경되어 재작성을 자동으로 중단하는 것은 안전하지 않습니다."
+
+msgid "The checked-out branch changed; automatic rewrite abort is unsafe."
+msgstr "체크아웃한 브랜치가 변경되어 재작성을 자동으로 중단하는 것은 안전하지 않습니다."
+
+msgid "The branch changed while restoring the original history."
+msgstr "원래 기록을 복원하는 동안 브랜치가 변경되었습니다."
+
+#, python-brace-format
+msgid "The branch does not name an operation-owned tip; recover manually from {recovery_ref}."
+msgstr "브랜치가 작업 소유 끝을 가리키지 않습니다. {recovery_ref}에서 수동으로 복구하십시오."
+
+msgid "No rewrite operation is available to verify."
+msgstr "검증할 수 있는 재작성 작업이 없습니다."
+
+msgid "The rewrite operation has no complete output to verify."
+msgstr "재작성 작업에 검증할 수 있는 완전한 출력이 없습니다."
+
+#, python-brace-format
+msgid "Rewrite verification is blocked by: {blockers}."
+msgstr "다음 이유로 재작성 검증이 차단되었습니다: {blockers}."
+
+msgid "The regenerated rewrite verification record changed."
+msgstr "다시 생성한 재작성 검증 레코드가 변경되었습니다."
+
+#, python-brace-format
+msgid "Rewrite output {output} cannot replay source commit {commit} at its requested position."
+msgstr "재작성 출력 {output}에서 원본 커밋 {commit}을(를) 요청한 위치에 재생할 수 없습니다."
+
+#, python-brace-format
+msgid "Rewrite output {output} integrates non-empty sources into an empty commit."
+msgstr "재작성 출력 {output}에서 비어 있지 않은 원본을 빈 커밋으로 통합합니다."
+
+#, python-brace-format
+msgid "The planned history replay produces tree {actual}, not the frozen final tree {expected}."
+msgstr "계획된 기록 재생이 고정된 최종 트리 {expected}이(가) 아닌 트리 {actual}을(를) 만듭니다."
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id}: {phase}"
+msgstr "재작성 작업 {operation_id}: {phase}"
+
+#, python-brace-format
+msgid "Output tip: {commit}"
+msgstr "출력 끝: {commit}"
+
+msgid "Original branch tip restored."
+msgstr "원래 브랜치 끝을 복원했습니다."
+
+#, python-brace-format
+msgid "Verified final tree: {tree}"
+msgstr "검증된 최종 트리: {tree}"
+
+#, python-brace-format
+msgid "Removed {count} invalidated source signature."
+msgid_plural "Removed {count} invalidated source signatures."
+msgstr[0] "무효화된 원본 서명 {count}개를 제거했습니다."
+
+#, python-brace-format
+msgid "Latest rewrite operation {operation_id}"
+msgstr "최신 재작성 작업 {operation_id}"
+
+msgid "Resume preconditions"
+msgstr "재개 전제 조건"
+
+msgid "Verification preconditions"
+msgstr "검증 전제 조건"
+
+#, python-brace-format
+msgid "{label}: ready"
+msgstr "{label}: 준비됨"
+
+#, python-brace-format
+msgid "{label}: blocked ({blockers})"
+msgstr "{label}: 차단됨 ({blockers})"

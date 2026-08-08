@@ -1317,8 +1317,8 @@ msgid "Replacement text was not provided."
 msgstr "Текст замены не указан."
 
 #: src/git_stage_batch/cli/root_parser.py:16
-msgid "Hunk-by-hunk and line-by-line staging for git"
-msgstr "Добавление в индекс по фрагментам и строкам для Git"
+msgid "Fine-grained Git staging and deterministic draft-history refinement"
+msgstr "Точная подготовка изменений Git и детерминированное уточнение черновой истории"
 
 #: src/git_stage_batch/cli/root_parser.py:31
 msgid "Run as if started in path"
@@ -7008,8 +7008,8 @@ msgstr "Недопустимый план fixup: {detail}"
 msgid "Could not read fixup plan {path}: {error}"
 msgstr "Не удалось прочитать план fixup {path}: {error}"
 
-msgid "Inspect a deterministic history refinement"
-msgstr "Проверить детерминированное уточнение истории"
+msgid "Plan, execute, and inspect a deterministic history refinement"
+msgstr "Спланировать, выполнить и проверить детерминированное уточнение истории"
 
 msgid "Rewrite action"
 msgstr "Действие перезаписи"
@@ -7153,13 +7153,6 @@ msgstr "Следующее действие: {action}"
 msgid "Diagnostic: {diagnostic}"
 msgstr "Диагностика: {diagnostic}"
 
-msgid "Resume preconditions: ready"
-msgstr "Предварительные условия продолжения: готовы"
-
-#, python-brace-format
-msgid "Resume preconditions: blocked ({blockers})"
-msgstr "Предварительные условия продолжения: заблокированы ({blockers})"
-
 msgid "Rewrite plan is valid."
 msgstr "План перезаписи допустим."
 
@@ -7190,3 +7183,174 @@ msgid_plural "{count} source commits are conserved."
 msgstr[0] "Сохранён {count} исходный коммит."
 msgstr[1] "Сохранено {count} исходных коммита."
 msgstr[2] "Сохранено {count} исходных коммитов."
+
+# Rewrite executor translations.
+msgid "Build, verify, and atomically update the checked-out branch"
+msgstr "Собрать, проверить и атомарно обновить текущую ветку"
+
+msgid "Validated reusable rewrite plan"
+msgstr "Проверенный повторно используемый план перезаписи"
+
+msgid "Allow local rewriting of commits contained by remote REF"
+msgstr "Разрешить локальную перезапись коммитов, содержащихся в удалённой ссылке"
+
+msgid "Output a machine-readable operation result"
+msgstr "Вывести результат операции в машиночитаемом виде"
+
+msgid "Resume the exact action in the active rewrite checkpoint"
+msgstr "Возобновить точное действие активной контрольной точки перезаписи"
+
+msgid "Abort and conditionally restore the original branch tip"
+msgstr "Прервать и при соблюдении условий восстановить исходную вершину ветки"
+
+msgid "Independently verify the active or latest rewrite output"
+msgstr "Независимо проверить активный или последний результат перезаписи"
+
+#, python-brace-format
+msgid "The message for history source {commit} cannot be encoded as {encoding}."
+msgstr "Сообщение источника истории {commit} нельзя закодировать как {encoding}."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected topology."
+msgstr "У выходного коммита перезаписи {commit} неожиданная топология."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected identity metadata."
+msgstr "У выходного коммита перезаписи {commit} неожиданные метаданные идентификации."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected message metadata."
+msgstr "У выходного коммита перезаписи {commit} неожиданные метаданные сообщения."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected extra headers."
+msgstr "У выходного коммита перезаписи {commit} есть неожиданные дополнительные заголовки."
+
+#, python-brace-format
+msgid "Invalid allowed remote-tracking ref: {refname}"
+msgstr "Недопустимая разрешённая ссылка отслеживания удалённого репозитория: {refname}"
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id} cannot continue: {blockers}."
+msgstr "Операцию перезаписи {operation_id} нельзя продолжить: {blockers}."
+
+msgid "The pending rewrite output does not match deterministic replay."
+msgstr "Ожидающий результат перезаписи не совпадает с детерминированным воспроизведением."
+
+msgid "The rewrite output ref changed during commit publication."
+msgstr "Ссылка выходных данных перезаписи изменилась во время публикации коммита."
+
+msgid "The rewrite output ref no longer names an owned output commit."
+msgstr "Ссылка выходных данных перезаписи больше не указывает на принадлежащий операции коммит."
+
+msgid "Completed rewrite outputs do not match deterministic replay."
+msgstr "Завершённые результаты перезаписи не совпадают с детерминированным воспроизведением."
+
+msgid "Built history commits do not match deterministic replay."
+msgstr "Созданные коммиты истории не совпадают с детерминированным воспроизведением."
+
+msgid "The rewrite output ref changed before verification."
+msgstr "Ссылка выходных данных перезаписи изменилась до проверки."
+
+msgid "The rewrite operation has no output commit."
+msgstr "У операции перезаписи нет выходного коммита."
+
+msgid "The checked-out branch changed before finalization."
+msgstr "Извлечённая ветка изменилась до завершения."
+
+msgid "The branch changed before the history rewrite was finalized."
+msgstr "Ветка изменилась до завершения перезаписи истории."
+
+msgid "The branch no longer names an operation-owned commit."
+msgstr "Ветка больше не указывает на принадлежащий операции коммит."
+
+#, python-brace-format
+msgid "Rewrite apply is blocked by: {blockers}."
+msgstr "Применение перезаписи заблокировано: {blockers}."
+
+msgid "Rewrite apply requires a checked-out local branch."
+msgstr "Для применения перезаписи требуется извлечённая локальная ветка."
+
+msgid "The pending output ref changed before rewrite abort."
+msgstr "Ожидающая выходная ссылка изменилась до прерывания операции перезаписи."
+
+msgid "The output ref changed before rewrite abort."
+msgstr "Выходная ссылка изменилась до прерывания операции перезаписи."
+
+msgid "The recovery ref changed; automatic rewrite abort is unsafe."
+msgstr "Ссылка восстановления изменилась; автоматически прерывать операцию перезаписи небезопасно."
+
+msgid "The checked-out branch changed; automatic rewrite abort is unsafe."
+msgstr "Извлечённая ветка изменилась; автоматически прерывать операцию перезаписи небезопасно."
+
+msgid "The branch changed while restoring the original history."
+msgstr "Ветка изменилась во время восстановления исходной истории."
+
+#, python-brace-format
+msgid "The branch does not name an operation-owned tip; recover manually from {recovery_ref}."
+msgstr "Ветка не указывает на принадлежащую операции вершину; восстановите её вручную из {recovery_ref}."
+
+msgid "No rewrite operation is available to verify."
+msgstr "Нет операции перезаписи, доступной для проверки."
+
+msgid "The rewrite operation has no complete output to verify."
+msgstr "У операции перезаписи нет полного результата для проверки."
+
+#, python-brace-format
+msgid "Rewrite verification is blocked by: {blockers}."
+msgstr "Проверка перезаписи заблокирована: {blockers}."
+
+msgid "The regenerated rewrite verification record changed."
+msgstr "Повторно созданная запись проверки перезаписи изменилась."
+
+#, python-brace-format
+msgid "Rewrite output {output} cannot replay source commit {commit} at its requested position."
+msgstr "В результате перезаписи {output} нельзя воспроизвести исходный коммит {commit} в запрошенной позиции."
+
+#, python-brace-format
+msgid "Rewrite output {output} integrates non-empty sources into an empty commit."
+msgstr "Результат перезаписи {output} объединяет непустые источники в пустой коммит."
+
+#, python-brace-format
+msgid "The planned history replay produces tree {actual}, not the frozen final tree {expected}."
+msgstr "Запланированное воспроизведение истории создаёт дерево {actual}, а не зафиксированное конечное дерево {expected}."
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id}: {phase}"
+msgstr "Операция перезаписи {operation_id}: {phase}"
+
+#, python-brace-format
+msgid "Output tip: {commit}"
+msgstr "Вершина результата: {commit}"
+
+msgid "Original branch tip restored."
+msgstr "Исходная вершина ветки восстановлена."
+
+#, python-brace-format
+msgid "Verified final tree: {tree}"
+msgstr "Проверенное конечное дерево: {tree}"
+
+#, python-brace-format
+msgid "Removed {count} invalidated source signature."
+msgid_plural "Removed {count} invalidated source signatures."
+msgstr[0] "Удалена {count} ставшая недействительной подпись исходного коммита."
+msgstr[1] "Удалены {count} ставшие недействительными подписи исходных коммитов."
+msgstr[2] "Удалено {count} ставших недействительными подписей исходных коммитов."
+
+#, python-brace-format
+msgid "Latest rewrite operation {operation_id}"
+msgstr "Последняя операция перезаписи {operation_id}"
+
+msgid "Resume preconditions"
+msgstr "Предварительные условия возобновления"
+
+msgid "Verification preconditions"
+msgstr "Предварительные условия проверки"
+
+#, python-brace-format
+msgid "{label}: ready"
+msgstr "{label}: готово"
+
+#, python-brace-format
+msgid "{label}: blocked ({blockers})"
+msgstr "{label}: заблокировано ({blockers})"

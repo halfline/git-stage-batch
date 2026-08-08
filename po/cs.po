@@ -1283,8 +1283,8 @@ msgid "Replacement text was not provided."
 msgstr "Nebyl zadán náhradní text."
 
 #: src/git_stage_batch/cli/root_parser.py:16
-msgid "Hunk-by-hunk and line-by-line staging for git"
-msgstr "Přidávání do indexu po částech a řádcích pro Git"
+msgid "Fine-grained Git staging and deterministic draft-history refinement"
+msgstr "Jemné přidávání do indexu Git a deterministické zpřesnění konceptu historie"
 
 #: src/git_stage_batch/cli/root_parser.py:31
 msgid "Run as if started in path"
@@ -6899,8 +6899,8 @@ msgstr "Neplatný plán fixup: {detail}"
 msgid "Could not read fixup plan {path}: {error}"
 msgstr "Plán fixup {path} nelze přečíst: {error}"
 
-msgid "Inspect a deterministic history refinement"
-msgstr "Zkontrolovat deterministické zpřesnění historie"
+msgid "Plan, execute, and inspect a deterministic history refinement"
+msgstr "Naplánovat, provést a zkontrolovat deterministické zpřesnění historie"
 
 msgid "Rewrite action"
 msgstr "Akce přepisu"
@@ -7044,13 +7044,6 @@ msgstr "Další akce: {action}"
 msgid "Diagnostic: {diagnostic}"
 msgstr "Diagnostika: {diagnostic}"
 
-msgid "Resume preconditions: ready"
-msgstr "Předpoklady pokračování: připraveno"
-
-#, python-brace-format
-msgid "Resume preconditions: blocked ({blockers})"
-msgstr "Předpoklady pokračování: blokováno ({blockers})"
-
 msgid "Rewrite plan is valid."
 msgstr "Plán přepisu je platný."
 
@@ -7081,3 +7074,174 @@ msgid_plural "{count} source commits are conserved."
 msgstr[0] "Je zachován {count} zdrojový commit."
 msgstr[1] "Jsou zachovány {count} zdrojové commity."
 msgstr[2] "Je zachováno {count} zdrojových commitů."
+
+# Rewrite executor translations.
+msgid "Build, verify, and atomically update the checked-out branch"
+msgstr "Sestavit, ověřit a atomicky aktualizovat aktuální větev"
+
+msgid "Validated reusable rewrite plan"
+msgstr "Ověřený opakovaně použitelný plán přepisu"
+
+msgid "Allow local rewriting of commits contained by remote REF"
+msgstr "Povolit místní přepsání commitů obsažených ve vzdálené referenci"
+
+msgid "Output a machine-readable operation result"
+msgstr "Vypsat strojově čitelný výsledek operace"
+
+msgid "Resume the exact action in the active rewrite checkpoint"
+msgstr "Pokračovat přesnou akcí aktivního kontrolního bodu přepisu"
+
+msgid "Abort and conditionally restore the original branch tip"
+msgstr "Přerušit operaci a podmíněně obnovit původní špičku větve"
+
+msgid "Independently verify the active or latest rewrite output"
+msgstr "Nezávisle ověřit aktivní nebo poslední výstup přepisu"
+
+#, python-brace-format
+msgid "The message for history source {commit} cannot be encoded as {encoding}."
+msgstr "Zprávu zdroje historie {commit} nelze zakódovat jako {encoding}."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected topology."
+msgstr "Výstupní commit přepisu {commit} má neočekávanou topologii."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected identity metadata."
+msgstr "Výstupní commit přepisu {commit} má neočekávaná metadata identity."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected message metadata."
+msgstr "Výstupní commit přepisu {commit} má neočekávaná metadata zprávy."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected extra headers."
+msgstr "Výstupní commit přepisu {commit} má neočekávané dodatečné hlavičky."
+
+#, python-brace-format
+msgid "Invalid allowed remote-tracking ref: {refname}"
+msgstr "Neplatná povolená vzdálená sledovací reference: {refname}"
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id} cannot continue: {blockers}."
+msgstr "V operaci přepisu {operation_id} nelze pokračovat: {blockers}."
+
+msgid "The pending rewrite output does not match deterministic replay."
+msgstr "Čekající výstup přepisu neodpovídá deterministickému přehrání."
+
+msgid "The rewrite output ref changed during commit publication."
+msgstr "Reference výstupu přepisu se změnila během zveřejnění commitu."
+
+msgid "The rewrite output ref no longer names an owned output commit."
+msgstr "Reference výstupu přepisu již neukazuje na výstupní commit vlastněný operací."
+
+msgid "Completed rewrite outputs do not match deterministic replay."
+msgstr "Dokončené výstupy přepisu neodpovídají deterministickému přehrání."
+
+msgid "Built history commits do not match deterministic replay."
+msgstr "Sestavené commity historie neodpovídají deterministickému přehrání."
+
+msgid "The rewrite output ref changed before verification."
+msgstr "Reference výstupu přepisu se změnila před ověřením."
+
+msgid "The rewrite operation has no output commit."
+msgstr "Operace přepisu nemá výstupní commit."
+
+msgid "The checked-out branch changed before finalization."
+msgstr "Aktuálně nastavená větev se změnila před dokončením."
+
+msgid "The branch changed before the history rewrite was finalized."
+msgstr "Větev se změnila před dokončením přepisu historie."
+
+msgid "The branch no longer names an operation-owned commit."
+msgstr "Větev již neukazuje na commit vlastněný operací."
+
+#, python-brace-format
+msgid "Rewrite apply is blocked by: {blockers}."
+msgstr "Použití přepisu je blokováno: {blockers}."
+
+msgid "Rewrite apply requires a checked-out local branch."
+msgstr "Použití přepisu vyžaduje aktuálně nastavenou místní větev."
+
+msgid "The pending output ref changed before rewrite abort."
+msgstr "Čekající výstupní reference se změnila před zrušením přepisu."
+
+msgid "The output ref changed before rewrite abort."
+msgstr "Výstupní reference se změnila před zrušením přepisu."
+
+msgid "The recovery ref changed; automatic rewrite abort is unsafe."
+msgstr "Reference obnovení se změnila; automatické zrušení přepisu není bezpečné."
+
+msgid "The checked-out branch changed; automatic rewrite abort is unsafe."
+msgstr "Aktuálně nastavená větev se změnila; automatické zrušení přepisu není bezpečné."
+
+msgid "The branch changed while restoring the original history."
+msgstr "Větev se změnila během obnovování původní historie."
+
+#, python-brace-format
+msgid "The branch does not name an operation-owned tip; recover manually from {recovery_ref}."
+msgstr "Větev neukazuje na špičku vlastněnou operací; obnovte ji ručně z {recovery_ref}."
+
+msgid "No rewrite operation is available to verify."
+msgstr "Není dostupná žádná operace přepisu k ověření."
+
+msgid "The rewrite operation has no complete output to verify."
+msgstr "Operace přepisu nemá úplný výstup k ověření."
+
+#, python-brace-format
+msgid "Rewrite verification is blocked by: {blockers}."
+msgstr "Ověření přepisu je blokováno: {blockers}."
+
+msgid "The regenerated rewrite verification record changed."
+msgstr "Znovu vytvořený záznam ověření přepisu se změnil."
+
+#, python-brace-format
+msgid "Rewrite output {output} cannot replay source commit {commit} at its requested position."
+msgstr "Výstup přepisu {output} nemůže přehrát zdrojový commit {commit} na požadované pozici."
+
+#, python-brace-format
+msgid "Rewrite output {output} integrates non-empty sources into an empty commit."
+msgstr "Výstup přepisu {output} integruje neprázdné zdroje do prázdného commitu."
+
+#, python-brace-format
+msgid "The planned history replay produces tree {actual}, not the frozen final tree {expected}."
+msgstr "Plánované přehrání historie vytváří strom {actual}, nikoli zmrazený koncový strom {expected}."
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id}: {phase}"
+msgstr "Operace přepisu {operation_id}: {phase}"
+
+#, python-brace-format
+msgid "Output tip: {commit}"
+msgstr "Špička výstupu: {commit}"
+
+msgid "Original branch tip restored."
+msgstr "Původní špička větve byla obnovena."
+
+#, python-brace-format
+msgid "Verified final tree: {tree}"
+msgstr "Ověřený koncový strom: {tree}"
+
+#, python-brace-format
+msgid "Removed {count} invalidated source signature."
+msgid_plural "Removed {count} invalidated source signatures."
+msgstr[0] "Byl odstraněn {count} zneplatněný podpis zdrojového commitu."
+msgstr[1] "Byly odstraněny {count} zneplatněné podpisy zdrojových commitů."
+msgstr[2] "Bylo odstraněno {count} zneplatněných podpisů zdrojových commitů."
+
+#, python-brace-format
+msgid "Latest rewrite operation {operation_id}"
+msgstr "Poslední operace přepisu {operation_id}"
+
+msgid "Resume preconditions"
+msgstr "Předpoklady pokračování"
+
+msgid "Verification preconditions"
+msgstr "Předpoklady ověření"
+
+#, python-brace-format
+msgid "{label}: ready"
+msgstr "{label}: připraveno"
+
+#, python-brace-format
+msgid "{label}: blocked ({blockers})"
+msgstr "{label}: blokováno ({blockers})"

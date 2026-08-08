@@ -1192,8 +1192,8 @@ msgid "Replacement text was not provided."
 msgstr "未提供替换文本。"
 
 #: src/git_stage_batch/cli/root_parser.py:16
-msgid "Hunk-by-hunk and line-by-line staging for git"
-msgstr "Git 的逐块和逐行暂存"
+msgid "Fine-grained Git staging and deterministic draft-history refinement"
+msgstr "细粒度 Git 暂存和确定性的草稿历史优化"
 
 #: src/git_stage_batch/cli/root_parser.py:31
 msgid "Run as if started in path"
@@ -6419,8 +6419,8 @@ msgstr "无效的 fixup 计划：{detail}"
 msgid "Could not read fixup plan {path}: {error}"
 msgstr "无法读取 fixup 计划 {path}：{error}"
 
-msgid "Inspect a deterministic history refinement"
-msgstr "检查确定性的历史优化"
+msgid "Plan, execute, and inspect a deterministic history refinement"
+msgstr "规划、执行并检查确定性的历史优化"
 
 msgid "Rewrite action"
 msgstr "重写操作"
@@ -6564,13 +6564,6 @@ msgstr "下一操作：{action}"
 msgid "Diagnostic: {diagnostic}"
 msgstr "诊断：{diagnostic}"
 
-msgid "Resume preconditions: ready"
-msgstr "继续执行的前置条件：就绪"
-
-#, python-brace-format
-msgid "Resume preconditions: blocked ({blockers})"
-msgstr "继续执行的前置条件：已阻止（{blockers}）"
-
 msgid "Rewrite plan is valid."
 msgstr "重写计划有效。"
 
@@ -6593,3 +6586,172 @@ msgstr[0] "警告：{count} 个源签名在重写后无法保持有效。"
 msgid "{count} source commit is conserved."
 msgid_plural "{count} source commits are conserved."
 msgstr[0] "已保留 {count} 个源提交。"
+
+# Rewrite executor translations.
+msgid "Build, verify, and atomically update the checked-out branch"
+msgstr "构建并验证，然后以原子方式更新已检出的分支"
+
+msgid "Validated reusable rewrite plan"
+msgstr "已验证的可复用重写计划"
+
+msgid "Allow local rewriting of commits contained by remote REF"
+msgstr "允许在本地重写远程引用中包含的提交"
+
+msgid "Output a machine-readable operation result"
+msgstr "输出机器可读的操作结果"
+
+msgid "Resume the exact action in the active rewrite checkpoint"
+msgstr "恢复活动重写检查点中的确切操作"
+
+msgid "Abort and conditionally restore the original branch tip"
+msgstr "中止并在满足条件时恢复原始分支尖端"
+
+msgid "Independently verify the active or latest rewrite output"
+msgstr "独立验证活动或最新的重写输出"
+
+#, python-brace-format
+msgid "The message for history source {commit} cannot be encoded as {encoding}."
+msgstr "无法将历史源 {commit} 的消息编码为 {encoding}。"
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected topology."
+msgstr "重写输出提交 {commit} 的拓扑不符合预期。"
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected identity metadata."
+msgstr "重写输出提交 {commit} 的身份元数据不符合预期。"
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected message metadata."
+msgstr "重写输出提交 {commit} 的消息元数据不符合预期。"
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected extra headers."
+msgstr "重写输出提交 {commit} 包含意外的额外标头。"
+
+#, python-brace-format
+msgid "Invalid allowed remote-tracking ref: {refname}"
+msgstr "允许的远程跟踪引用无效：{refname}"
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id} cannot continue: {blockers}."
+msgstr "重写操作 {operation_id} 无法继续：{blockers}。"
+
+msgid "The pending rewrite output does not match deterministic replay."
+msgstr "待处理的重写输出与确定性重放不匹配。"
+
+msgid "The rewrite output ref changed during commit publication."
+msgstr "发布提交时重写输出引用发生了变化。"
+
+msgid "The rewrite output ref no longer names an owned output commit."
+msgstr "重写输出引用不再指向该操作拥有的输出提交。"
+
+msgid "Completed rewrite outputs do not match deterministic replay."
+msgstr "已完成的重写输出与确定性重放不匹配。"
+
+msgid "Built history commits do not match deterministic replay."
+msgstr "构建的历史提交与确定性重放不匹配。"
+
+msgid "The rewrite output ref changed before verification."
+msgstr "验证前重写输出引用发生了变化。"
+
+msgid "The rewrite operation has no output commit."
+msgstr "重写操作没有输出提交。"
+
+msgid "The checked-out branch changed before finalization."
+msgstr "完成前检出的分支发生了变化。"
+
+msgid "The branch changed before the history rewrite was finalized."
+msgstr "历史重写完成前分支发生了变化。"
+
+msgid "The branch no longer names an operation-owned commit."
+msgstr "分支不再指向该操作拥有的提交。"
+
+#, python-brace-format
+msgid "Rewrite apply is blocked by: {blockers}."
+msgstr "以下原因阻止应用重写：{blockers}。"
+
+msgid "Rewrite apply requires a checked-out local branch."
+msgstr "应用重写需要检出本地分支。"
+
+msgid "The pending output ref changed before rewrite abort."
+msgstr "中止重写前，待处理的输出引用发生了变化。"
+
+msgid "The output ref changed before rewrite abort."
+msgstr "中止重写前，输出引用发生了变化。"
+
+msgid "The recovery ref changed; automatic rewrite abort is unsafe."
+msgstr "恢复引用已更改；自动中止重写并不安全。"
+
+msgid "The checked-out branch changed; automatic rewrite abort is unsafe."
+msgstr "检出的分支已更改；自动中止重写并不安全。"
+
+msgid "The branch changed while restoring the original history."
+msgstr "恢复原始历史时分支发生了变化。"
+
+#, python-brace-format
+msgid "The branch does not name an operation-owned tip; recover manually from {recovery_ref}."
+msgstr "分支未指向该操作拥有的尖端；请从 {recovery_ref} 手动恢复。"
+
+msgid "No rewrite operation is available to verify."
+msgstr "没有可供验证的重写操作。"
+
+msgid "The rewrite operation has no complete output to verify."
+msgstr "重写操作没有可供验证的完整输出。"
+
+#, python-brace-format
+msgid "Rewrite verification is blocked by: {blockers}."
+msgstr "以下原因阻止验证重写：{blockers}。"
+
+msgid "The regenerated rewrite verification record changed."
+msgstr "重新生成的重写验证记录发生了变化。"
+
+#, python-brace-format
+msgid "Rewrite output {output} cannot replay source commit {commit} at its requested position."
+msgstr "重写输出 {output} 无法在请求的位置重放源提交 {commit}。"
+
+#, python-brace-format
+msgid "Rewrite output {output} integrates non-empty sources into an empty commit."
+msgstr "重写输出 {output} 将非空源集成到了空提交中。"
+
+#, python-brace-format
+msgid "The planned history replay produces tree {actual}, not the frozen final tree {expected}."
+msgstr "计划的历史重放生成了树 {actual}，而不是冻结的最终树 {expected}。"
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id}: {phase}"
+msgstr "重写操作 {operation_id}：{phase}"
+
+#, python-brace-format
+msgid "Output tip: {commit}"
+msgstr "输出尖端：{commit}"
+
+msgid "Original branch tip restored."
+msgstr "已恢复原始分支尖端。"
+
+#, python-brace-format
+msgid "Verified final tree: {tree}"
+msgstr "已验证的最终树：{tree}"
+
+#, python-brace-format
+msgid "Removed {count} invalidated source signature."
+msgid_plural "Removed {count} invalidated source signatures."
+msgstr[0] "已移除 {count} 个失效的源签名。"
+
+#, python-brace-format
+msgid "Latest rewrite operation {operation_id}"
+msgstr "最新重写操作 {operation_id}"
+
+msgid "Resume preconditions"
+msgstr "恢复的前提条件"
+
+msgid "Verification preconditions"
+msgstr "验证的前提条件"
+
+#, python-brace-format
+msgid "{label}: ready"
+msgstr "{label}：就绪"
+
+#, python-brace-format
+msgid "{label}: blocked ({blockers})"
+msgstr "{label}：已阻止（{blockers}）"

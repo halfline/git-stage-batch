@@ -1315,8 +1315,8 @@ msgid "Replacement text was not provided."
 msgstr "No se proporcionó el texto de reemplazo."
 
 #: src/git_stage_batch/cli/root_parser.py:16
-msgid "Hunk-by-hunk and line-by-line staging for git"
-msgstr "Preparación de cambios para Git, fragmento por fragmento y línea por línea"
+msgid "Fine-grained Git staging and deterministic draft-history refinement"
+msgstr "Preparación detallada de cambios para Git y refinamiento determinista del historial en borrador"
 
 #: src/git_stage_batch/cli/root_parser.py:31
 msgid "Run as if started in path"
@@ -6982,8 +6982,8 @@ msgstr "Plan de fixup no válido: {detail}"
 msgid "Could not read fixup plan {path}: {error}"
 msgstr "No se pudo leer el plan de fixup {path}: {error}"
 
-msgid "Inspect a deterministic history refinement"
-msgstr "Inspeccionar un refinamiento determinista del historial"
+msgid "Plan, execute, and inspect a deterministic history refinement"
+msgstr "Planificar, ejecutar e inspeccionar un refinamiento determinista del historial"
 
 msgid "Rewrite action"
 msgstr "Acción de reescritura"
@@ -7127,13 +7127,6 @@ msgstr "Siguiente acción: {action}"
 msgid "Diagnostic: {diagnostic}"
 msgstr "Diagnóstico: {diagnostic}"
 
-msgid "Resume preconditions: ready"
-msgstr "Precondiciones de reanudación: listas"
-
-#, python-brace-format
-msgid "Resume preconditions: blocked ({blockers})"
-msgstr "Precondiciones de reanudación: bloqueadas ({blockers})"
-
 msgid "Rewrite plan is valid."
 msgstr "El plan de reescritura es válido."
 
@@ -7160,3 +7153,173 @@ msgid "{count} source commit is conserved."
 msgid_plural "{count} source commits are conserved."
 msgstr[0] "Se conserva {count} commit de origen."
 msgstr[1] "Se conservan {count} commits de origen."
+
+# Rewrite executor translations.
+msgid "Build, verify, and atomically update the checked-out branch"
+msgstr "Construir, verificar y actualizar atómicamente la rama activa"
+
+msgid "Validated reusable rewrite plan"
+msgstr "Plan de reescritura reutilizable validado"
+
+msgid "Allow local rewriting of commits contained by remote REF"
+msgstr "Permitir la reescritura local de commits contenidos por la referencia remota"
+
+msgid "Output a machine-readable operation result"
+msgstr "Mostrar un resultado de operación legible por máquinas"
+
+msgid "Resume the exact action in the active rewrite checkpoint"
+msgstr "Reanudar la acción exacta del punto de control de reescritura activo"
+
+msgid "Abort and conditionally restore the original branch tip"
+msgstr "Cancelar y restaurar condicionalmente la punta original de la rama"
+
+msgid "Independently verify the active or latest rewrite output"
+msgstr "Verificar de forma independiente la salida de reescritura activa o más reciente"
+
+#, python-brace-format
+msgid "The message for history source {commit} cannot be encoded as {encoding}."
+msgstr "El mensaje del origen de historial {commit} no se puede codificar como {encoding}."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected topology."
+msgstr "El commit de salida de reescritura {commit} tiene una topología inesperada."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected identity metadata."
+msgstr "El commit de salida de reescritura {commit} tiene metadatos de identidad inesperados."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected message metadata."
+msgstr "El commit de salida de reescritura {commit} tiene metadatos de mensaje inesperados."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected extra headers."
+msgstr "El commit de salida de reescritura {commit} tiene cabeceras adicionales inesperadas."
+
+#, python-brace-format
+msgid "Invalid allowed remote-tracking ref: {refname}"
+msgstr "Referencia de seguimiento remoto permitida no válida: {refname}"
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id} cannot continue: {blockers}."
+msgstr "La operación de reescritura {operation_id} no puede continuar: {blockers}."
+
+msgid "The pending rewrite output does not match deterministic replay."
+msgstr "La salida de reescritura pendiente no coincide con la reproducción determinista."
+
+msgid "The rewrite output ref changed during commit publication."
+msgstr "La referencia de salida de reescritura cambió durante la publicación del commit."
+
+msgid "The rewrite output ref no longer names an owned output commit."
+msgstr "La referencia de salida de reescritura ya no nombra un commit de salida propio."
+
+msgid "Completed rewrite outputs do not match deterministic replay."
+msgstr "Las salidas de reescritura completadas no coinciden con la reproducción determinista."
+
+msgid "Built history commits do not match deterministic replay."
+msgstr "Los commits de historial construidos no coinciden con la reproducción determinista."
+
+msgid "The rewrite output ref changed before verification."
+msgstr "La referencia de salida de reescritura cambió antes de la verificación."
+
+msgid "The rewrite operation has no output commit."
+msgstr "La operación de reescritura no tiene ningún commit de salida."
+
+msgid "The checked-out branch changed before finalization."
+msgstr "La rama extraída cambió antes de la finalización."
+
+msgid "The branch changed before the history rewrite was finalized."
+msgstr "La rama cambió antes de finalizar la reescritura del historial."
+
+msgid "The branch no longer names an operation-owned commit."
+msgstr "La rama ya no nombra un commit propiedad de la operación."
+
+#, python-brace-format
+msgid "Rewrite apply is blocked by: {blockers}."
+msgstr "La aplicación de la reescritura está bloqueada por: {blockers}."
+
+msgid "Rewrite apply requires a checked-out local branch."
+msgstr "La aplicación de la reescritura requiere una rama local extraída."
+
+msgid "The pending output ref changed before rewrite abort."
+msgstr "La referencia de salida pendiente cambió antes de abortar la reescritura."
+
+msgid "The output ref changed before rewrite abort."
+msgstr "La referencia de salida cambió antes de abortar la reescritura."
+
+msgid "The recovery ref changed; automatic rewrite abort is unsafe."
+msgstr "La referencia de recuperación cambió; abortar automáticamente la reescritura no es seguro."
+
+msgid "The checked-out branch changed; automatic rewrite abort is unsafe."
+msgstr "La rama extraída cambió; abortar automáticamente la reescritura no es seguro."
+
+msgid "The branch changed while restoring the original history."
+msgstr "La rama cambió mientras se restauraba el historial original."
+
+#, python-brace-format
+msgid "The branch does not name an operation-owned tip; recover manually from {recovery_ref}."
+msgstr "La rama no nombra una punta propia de la operación; recupérela manualmente desde {recovery_ref}."
+
+msgid "No rewrite operation is available to verify."
+msgstr "No hay ninguna operación de reescritura disponible para verificar."
+
+msgid "The rewrite operation has no complete output to verify."
+msgstr "La operación de reescritura no tiene una salida completa que verificar."
+
+#, python-brace-format
+msgid "Rewrite verification is blocked by: {blockers}."
+msgstr "La verificación de la reescritura está bloqueada por: {blockers}."
+
+msgid "The regenerated rewrite verification record changed."
+msgstr "El registro de verificación de la reescritura regenerado cambió."
+
+#, python-brace-format
+msgid "Rewrite output {output} cannot replay source commit {commit} at its requested position."
+msgstr "La salida de reescritura {output} no puede reproducir el commit de origen {commit} en la posición solicitada."
+
+#, python-brace-format
+msgid "Rewrite output {output} integrates non-empty sources into an empty commit."
+msgstr "La salida de reescritura {output} integra orígenes no vacíos en un commit vacío."
+
+#, python-brace-format
+msgid "The planned history replay produces tree {actual}, not the frozen final tree {expected}."
+msgstr "La reproducción de historial planificada produce el árbol {actual}, no el árbol final congelado {expected}."
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id}: {phase}"
+msgstr "Operación de reescritura {operation_id}: {phase}"
+
+#, python-brace-format
+msgid "Output tip: {commit}"
+msgstr "Punta de salida: {commit}"
+
+msgid "Original branch tip restored."
+msgstr "Se restauró la punta original de la rama."
+
+#, python-brace-format
+msgid "Verified final tree: {tree}"
+msgstr "Árbol final verificado: {tree}"
+
+#, python-brace-format
+msgid "Removed {count} invalidated source signature."
+msgid_plural "Removed {count} invalidated source signatures."
+msgstr[0] "Se eliminó {count} firma de origen invalidada."
+msgstr[1] "Se eliminaron {count} firmas de origen invalidadas."
+
+#, python-brace-format
+msgid "Latest rewrite operation {operation_id}"
+msgstr "Última operación de reescritura {operation_id}"
+
+msgid "Resume preconditions"
+msgstr "Precondiciones de reanudación"
+
+msgid "Verification preconditions"
+msgstr "Precondiciones de verificación"
+
+#, python-brace-format
+msgid "{label}: ready"
+msgstr "{label}: listas"
+
+#, python-brace-format
+msgid "{label}: blocked ({blockers})"
+msgstr "{label}: bloqueadas ({blockers})"

@@ -1334,8 +1334,8 @@ msgid "Replacement text was not provided."
 msgstr "لم يُقدَّم النص البديل."
 
 #: src/git_stage_batch/cli/root_parser.py:16
-msgid "Hunk-by-hunk and line-by-line staging for git"
-msgstr "تجهيز تغييرات ⁦Git⁩ مقطعًا مقطعًا أو سطرًا سطرًا"
+msgid "Fine-grained Git staging and deterministic draft-history refinement"
+msgstr "تجهيز دقيق لتغييرات ⁦Git⁩ وتنقيح حتمي لمسودة التاريخ"
 
 #: src/git_stage_batch/cli/root_parser.py:31
 msgid "Run as if started in path"
@@ -7111,8 +7111,8 @@ msgstr "خطة ⁦fixup⁩ غير صالحة: {detail}"
 msgid "Could not read fixup plan {path}: {error}"
 msgstr "تعذّرت قراءة خطة ⁦fixup⁩ ‏{path}: {error}"
 
-msgid "Inspect a deterministic history refinement"
-msgstr "فحص تنقيح حتمي للتاريخ"
+msgid "Plan, execute, and inspect a deterministic history refinement"
+msgstr "خطّط لتنقيح حتمي للتاريخ ونفّذه وافحصه"
 
 msgid "Rewrite action"
 msgstr "إجراء إعادة الكتابة"
@@ -7256,13 +7256,6 @@ msgstr "الإجراء التالي: {action}"
 msgid "Diagnostic: {diagnostic}"
 msgstr "التشخيص: {diagnostic}"
 
-msgid "Resume preconditions: ready"
-msgstr "شروط الاستئناف المسبقة: جاهزة"
-
-#, python-brace-format
-msgid "Resume preconditions: blocked ({blockers})"
-msgstr "شروط الاستئناف المسبقة: محظورة ({blockers})"
-
 msgid "Rewrite plan is valid."
 msgstr "خطة إعادة الكتابة صالحة."
 
@@ -7305,3 +7298,177 @@ msgstr[2] "حُفظ إيداعا مصدر."
 msgstr[3] "حُفظت {count} إيداعات مصدر."
 msgstr[4] "حُفظ {count} إيداعًا مصدرًا."
 msgstr[5] "حُفظ {count} إيداع مصدر."
+
+# Rewrite executor translations.
+msgid "Build, verify, and atomically update the checked-out branch"
+msgstr "أنشئ ناتج إعادة الكتابة وتحقق منه وحدّث الفرع المسحوب ذريًا"
+
+msgid "Validated reusable rewrite plan"
+msgstr "خطة إعادة كتابة متحقق منها وقابلة لإعادة الاستخدام"
+
+msgid "Allow local rewriting of commits contained by remote REF"
+msgstr "اسمح بإعادة الكتابة المحلية للإيداعات التي يحتويها المرجع البعيد"
+
+msgid "Output a machine-readable operation result"
+msgstr "أخرج نتيجة عملية قابلة للقراءة آليًا"
+
+msgid "Resume the exact action in the active rewrite checkpoint"
+msgstr "استأنف الإجراء المحدد في نقطة تحقق إعادة الكتابة النشطة"
+
+msgid "Abort and conditionally restore the original branch tip"
+msgstr "ألغِ العملية واستعد طرف الفرع الأصلي عند استيفاء الشروط"
+
+msgid "Independently verify the active or latest rewrite output"
+msgstr "تحقق بصورة مستقلة من ناتج إعادة الكتابة النشط أو الأحدث"
+
+#, python-brace-format
+msgid "The message for history source {commit} cannot be encoded as {encoding}."
+msgstr "لا يمكن ترميز رسالة مصدر التاريخ {commit} بالترميز {encoding}."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected topology."
+msgstr "لإيداع ناتج إعادة الكتابة {commit} بنية غير متوقعة."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected identity metadata."
+msgstr "لإيداع ناتج إعادة الكتابة {commit} بيانات تعريف هوية غير متوقعة."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected message metadata."
+msgstr "لإيداع ناتج إعادة الكتابة {commit} بيانات تعريف رسالة غير متوقعة."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected extra headers."
+msgstr "لإيداع ناتج إعادة الكتابة {commit} ترويسات إضافية غير متوقعة."
+
+#, python-brace-format
+msgid "Invalid allowed remote-tracking ref: {refname}"
+msgstr "مرجع التتبع البعيد المسموح به غير صالح: {refname}"
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id} cannot continue: {blockers}."
+msgstr "لا يمكن متابعة عملية إعادة الكتابة {operation_id}: ‏{blockers}."
+
+msgid "The pending rewrite output does not match deterministic replay."
+msgstr "لا يتطابق ناتج إعادة الكتابة المعلق مع إعادة التشغيل الحتمية."
+
+msgid "The rewrite output ref changed during commit publication."
+msgstr "تغير مرجع ناتج إعادة الكتابة أثناء نشر الإيداع."
+
+msgid "The rewrite output ref no longer names an owned output commit."
+msgstr "لم يعد مرجع ناتج إعادة الكتابة يشير إلى إيداع ناتج مملوك للعملية."
+
+msgid "Completed rewrite outputs do not match deterministic replay."
+msgstr "لا تتطابق نواتج إعادة الكتابة المكتملة مع إعادة التشغيل الحتمية."
+
+msgid "Built history commits do not match deterministic replay."
+msgstr "لا تتطابق إيداعات التاريخ المنشأة مع إعادة التشغيل الحتمية."
+
+msgid "The rewrite output ref changed before verification."
+msgstr "تغير مرجع ناتج إعادة الكتابة قبل التحقق."
+
+msgid "The rewrite operation has no output commit."
+msgstr "ليس لعملية إعادة الكتابة إيداع ناتج."
+
+msgid "The checked-out branch changed before finalization."
+msgstr "تغير الفرع الحالي قبل الإنهاء."
+
+msgid "The branch changed before the history rewrite was finalized."
+msgstr "تغير الفرع قبل اكتمال إعادة كتابة التاريخ."
+
+msgid "The branch no longer names an operation-owned commit."
+msgstr "لم يعد الفرع يشير إلى إيداع مملوك للعملية."
+
+#, python-brace-format
+msgid "Rewrite apply is blocked by: {blockers}."
+msgstr "تعذر تطبيق إعادة الكتابة بسبب: ‏{blockers}."
+
+msgid "Rewrite apply requires a checked-out local branch."
+msgstr "يتطلب تطبيق إعادة الكتابة فرعًا محليًا حاليًا."
+
+msgid "The pending output ref changed before rewrite abort."
+msgstr "تغير مرجع الناتج المعلق قبل إحباط عملية إعادة الكتابة."
+
+msgid "The output ref changed before rewrite abort."
+msgstr "تغير مرجع الناتج قبل إحباط عملية إعادة الكتابة."
+
+msgid "The recovery ref changed; automatic rewrite abort is unsafe."
+msgstr "تغير مرجع الاستعادة؛ إحباط عملية إعادة الكتابة تلقائيًا غير آمن."
+
+msgid "The checked-out branch changed; automatic rewrite abort is unsafe."
+msgstr "تغير الفرع الحالي؛ إحباط عملية إعادة الكتابة تلقائيًا غير آمن."
+
+msgid "The branch changed while restoring the original history."
+msgstr "تغير الفرع أثناء استعادة التاريخ الأصلي."
+
+#, python-brace-format
+msgid "The branch does not name an operation-owned tip; recover manually from {recovery_ref}."
+msgstr "لا يشير الفرع إلى طرف مملوك للعملية؛ استعده يدويًا من {recovery_ref}."
+
+msgid "No rewrite operation is available to verify."
+msgstr "لا تتوفر عملية إعادة كتابة للتحقق منها."
+
+msgid "The rewrite operation has no complete output to verify."
+msgstr "ليس لعملية إعادة الكتابة ناتج مكتمل للتحقق منه."
+
+#, python-brace-format
+msgid "Rewrite verification is blocked by: {blockers}."
+msgstr "تعذر التحقق من إعادة الكتابة بسبب: ‏{blockers}."
+
+msgid "The regenerated rewrite verification record changed."
+msgstr "تغير سجل التحقق من إعادة الكتابة المعاد إنشاؤه."
+
+#, python-brace-format
+msgid "Rewrite output {output} cannot replay source commit {commit} at its requested position."
+msgstr "لا يمكن لناتج إعادة الكتابة {output} إعادة تشغيل إيداع المصدر {commit} في الموضع المطلوب."
+
+#, python-brace-format
+msgid "Rewrite output {output} integrates non-empty sources into an empty commit."
+msgstr "يدمج ناتج إعادة الكتابة {output} مصادر غير فارغة في إيداع فارغ."
+
+#, python-brace-format
+msgid "The planned history replay produces tree {actual}, not the frozen final tree {expected}."
+msgstr "تنتج إعادة تشغيل التاريخ المخططة الشجرة {actual}، لا الشجرة النهائية المجمدة {expected}."
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id}: {phase}"
+msgstr "عملية إعادة الكتابة {operation_id}: ‏{phase}"
+
+#, python-brace-format
+msgid "Output tip: {commit}"
+msgstr "طرف الناتج: {commit}"
+
+msgid "Original branch tip restored."
+msgstr "تمت استعادة طرف الفرع الأصلي."
+
+#, python-brace-format
+msgid "Verified final tree: {tree}"
+msgstr "الشجرة النهائية المتحقق منها: {tree}"
+
+#, python-brace-format
+msgid "Removed {count} invalidated source signature."
+msgid_plural "Removed {count} invalidated source signatures."
+msgstr[0] "لم تُزل أي توقيعات مصدر أُبطلت صلاحيتها."
+msgstr[1] "أُزيل توقيع مصدر واحد أُبطلت صلاحيته."
+msgstr[2] "أُزيل توقيعا مصدر أُبطلت صلاحيتهما."
+msgstr[3] "أُزيلت {count} توقيعات مصدر أُبطلت صلاحيتها."
+msgstr[4] "أُزيل {count} توقيع مصدر أُبطلت صلاحيته."
+msgstr[5] "أُزيل {count} توقيع مصدر أُبطلت صلاحيته."
+
+#, python-brace-format
+msgid "Latest rewrite operation {operation_id}"
+msgstr "أحدث عملية إعادة كتابة {operation_id}"
+
+msgid "Resume preconditions"
+msgstr "شروط الاستئناف المسبقة"
+
+msgid "Verification preconditions"
+msgstr "شروط التحقق المسبقة"
+
+#, python-brace-format
+msgid "{label}: ready"
+msgstr "{label}: جاهز"
+
+#, python-brace-format
+msgid "{label}: blocked ({blockers})"
+msgstr "{label}: محظور (‏{blockers})"

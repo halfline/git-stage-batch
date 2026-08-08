@@ -1306,8 +1306,8 @@ msgid "Replacement text was not provided."
 msgstr "Er is geen vervangingstekst opgegeven."
 
 #: src/git_stage_batch/cli/root_parser.py:16
-msgid "Hunk-by-hunk and line-by-line staging for git"
-msgstr "Wijzigingen per blok of per regel klaarzetten voor Git"
+msgid "Fine-grained Git staging and deterministic draft-history refinement"
+msgstr "Fijnmazige Git-staging en deterministische verfijning van conceptgeschiedenis"
 
 #: src/git_stage_batch/cli/root_parser.py:31
 msgid "Run as if started in path"
@@ -6966,8 +6966,8 @@ msgstr "Ongeldig fixup-plan: {detail}"
 msgid "Could not read fixup plan {path}: {error}"
 msgstr "Kon fixup-plan {path} niet lezen: {error}"
 
-msgid "Inspect a deterministic history refinement"
-msgstr "Een deterministische geschiedenisverfijning inspecteren"
+msgid "Plan, execute, and inspect a deterministic history refinement"
+msgstr "Een deterministische geschiedenisverfijning plannen, uitvoeren en inspecteren"
 
 msgid "Rewrite action"
 msgstr "Herschrijfactie"
@@ -7111,13 +7111,6 @@ msgstr "Volgende actie: {action}"
 msgid "Diagnostic: {diagnostic}"
 msgstr "Diagnose: {diagnostic}"
 
-msgid "Resume preconditions: ready"
-msgstr "Hervattingsvoorwaarden: gereed"
-
-#, python-brace-format
-msgid "Resume preconditions: blocked ({blockers})"
-msgstr "Hervattingsvoorwaarden: geblokkeerd ({blockers})"
-
 msgid "Rewrite plan is valid."
 msgstr "Het herschrijfplan is geldig."
 
@@ -7144,3 +7137,173 @@ msgid "{count} source commit is conserved."
 msgid_plural "{count} source commits are conserved."
 msgstr[0] "{count} broncommit blijft behouden."
 msgstr[1] "{count} broncommits blijven behouden."
+
+# Rewrite executor translations.
+msgid "Build, verify, and atomically update the checked-out branch"
+msgstr "Bouwen, verifiëren en de uitgecheckte branch atomair bijwerken"
+
+msgid "Validated reusable rewrite plan"
+msgstr "Gevalideerd herbruikbaar herschrijfplan"
+
+msgid "Allow local rewriting of commits contained by remote REF"
+msgstr "Lokale herschrijving toestaan van commits die in de externe referentie voorkomen"
+
+msgid "Output a machine-readable operation result"
+msgstr "Een machineleesbaar bewerkingsresultaat uitvoeren"
+
+msgid "Resume the exact action in the active rewrite checkpoint"
+msgstr "De exacte actie in het actieve herschrijfcontrolepunt hervatten"
+
+msgid "Abort and conditionally restore the original branch tip"
+msgstr "Afbreken en de oorspronkelijke branchtop voorwaardelijk herstellen"
+
+msgid "Independently verify the active or latest rewrite output"
+msgstr "De actieve of laatste herschrijfuitvoer onafhankelijk verifiëren"
+
+#, python-brace-format
+msgid "The message for history source {commit} cannot be encoded as {encoding}."
+msgstr "Het bericht voor geschiedenisbron {commit} kan niet als {encoding} worden gecodeerd."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected topology."
+msgstr "Herschrijfuitvoercommit {commit} heeft een onverwachte topologie."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected identity metadata."
+msgstr "Herschrijfuitvoercommit {commit} heeft onverwachte identiteitsmetadata."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected message metadata."
+msgstr "Herschrijfuitvoercommit {commit} heeft onverwachte berichtmetadata."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected extra headers."
+msgstr "Herschrijfuitvoercommit {commit} heeft onverwachte extra koppen."
+
+#, python-brace-format
+msgid "Invalid allowed remote-tracking ref: {refname}"
+msgstr "Ongeldige toegestane externe volgverwijzing: {refname}"
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id} cannot continue: {blockers}."
+msgstr "Herschrijfbewerking {operation_id} kan niet doorgaan: {blockers}."
+
+msgid "The pending rewrite output does not match deterministic replay."
+msgstr "De wachtende herschrijfuitvoer komt niet overeen met de deterministische herhaling."
+
+msgid "The rewrite output ref changed during commit publication."
+msgstr "De herschrijfuitvoerverwijzing is tijdens het publiceren van de commit gewijzigd."
+
+msgid "The rewrite output ref no longer names an owned output commit."
+msgstr "De herschrijfuitvoerverwijzing wijst niet langer naar een beheerde uitvoercommit."
+
+msgid "Completed rewrite outputs do not match deterministic replay."
+msgstr "Voltooide herschrijfuitvoer komt niet overeen met de deterministische herhaling."
+
+msgid "Built history commits do not match deterministic replay."
+msgstr "Gebouwde geschiedeniscommits komen niet overeen met de deterministische herhaling."
+
+msgid "The rewrite output ref changed before verification."
+msgstr "De herschrijfuitvoerverwijzing is vóór verificatie gewijzigd."
+
+msgid "The rewrite operation has no output commit."
+msgstr "De herschrijfbewerking heeft geen uitvoercommit."
+
+msgid "The checked-out branch changed before finalization."
+msgstr "De uitgecheckte branch is vóór voltooiing gewijzigd."
+
+msgid "The branch changed before the history rewrite was finalized."
+msgstr "De branch is gewijzigd voordat het herschrijven van de geschiedenis was voltooid."
+
+msgid "The branch no longer names an operation-owned commit."
+msgstr "De branch wijst niet langer naar een door de bewerking beheerde commit."
+
+#, python-brace-format
+msgid "Rewrite apply is blocked by: {blockers}."
+msgstr "Het toepassen van de herschrijving wordt geblokkeerd door: {blockers}."
+
+msgid "Rewrite apply requires a checked-out local branch."
+msgstr "Voor het toepassen van de herschrijving is een uitgecheckte lokale branch vereist."
+
+msgid "The pending output ref changed before rewrite abort."
+msgstr "De wachtende uitvoerverwijzing is vóór het afbreken van de herschrijving gewijzigd."
+
+msgid "The output ref changed before rewrite abort."
+msgstr "De uitvoerverwijzing is vóór het afbreken van de herschrijving gewijzigd."
+
+msgid "The recovery ref changed; automatic rewrite abort is unsafe."
+msgstr "De herstelverwijzing is gewijzigd; automatisch afbreken van de herschrijving is onveilig."
+
+msgid "The checked-out branch changed; automatic rewrite abort is unsafe."
+msgstr "De uitgecheckte branch is gewijzigd; automatisch afbreken van de herschrijving is onveilig."
+
+msgid "The branch changed while restoring the original history."
+msgstr "De branch is gewijzigd tijdens het herstellen van de oorspronkelijke geschiedenis."
+
+#, python-brace-format
+msgid "The branch does not name an operation-owned tip; recover manually from {recovery_ref}."
+msgstr "De branch wijst niet naar een beheerde top; herstel handmatig vanaf {recovery_ref}."
+
+msgid "No rewrite operation is available to verify."
+msgstr "Er is geen herschrijfbewerking beschikbaar om te verifiëren."
+
+msgid "The rewrite operation has no complete output to verify."
+msgstr "De herschrijfbewerking heeft geen volledige uitvoer om te verifiëren."
+
+#, python-brace-format
+msgid "Rewrite verification is blocked by: {blockers}."
+msgstr "Herschrijfverificatie wordt geblokkeerd door: {blockers}."
+
+msgid "The regenerated rewrite verification record changed."
+msgstr "Het opnieuw gegenereerde herschrijfverificatierecord is gewijzigd."
+
+#, python-brace-format
+msgid "Rewrite output {output} cannot replay source commit {commit} at its requested position."
+msgstr "Herschrijfuitvoer {output} kan broncommit {commit} niet op de gevraagde positie herhalen."
+
+#, python-brace-format
+msgid "Rewrite output {output} integrates non-empty sources into an empty commit."
+msgstr "Herschrijfuitvoer {output} integreert niet-lege bronnen in een lege commit."
+
+#, python-brace-format
+msgid "The planned history replay produces tree {actual}, not the frozen final tree {expected}."
+msgstr "De geplande geschiedenisherhaling produceert boom {actual}, niet de bevroren eindboom {expected}."
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id}: {phase}"
+msgstr "Herschrijfbewerking {operation_id}: {phase}"
+
+#, python-brace-format
+msgid "Output tip: {commit}"
+msgstr "Uitvoertop: {commit}"
+
+msgid "Original branch tip restored."
+msgstr "De oorspronkelijke branchtop is hersteld."
+
+#, python-brace-format
+msgid "Verified final tree: {tree}"
+msgstr "Geverifieerde eindboom: {tree}"
+
+#, python-brace-format
+msgid "Removed {count} invalidated source signature."
+msgid_plural "Removed {count} invalidated source signatures."
+msgstr[0] "{count} ongeldig geworden bronhandtekening is verwijderd."
+msgstr[1] "{count} ongeldig geworden bronhandtekeningen zijn verwijderd."
+
+#, python-brace-format
+msgid "Latest rewrite operation {operation_id}"
+msgstr "Laatste herschrijfbewerking {operation_id}"
+
+msgid "Resume preconditions"
+msgstr "Voorwaarden voor hervatten"
+
+msgid "Verification preconditions"
+msgstr "Voorwaarden voor verificatie"
+
+#, python-brace-format
+msgid "{label}: ready"
+msgstr "{label}: gereed"
+
+#, python-brace-format
+msgid "{label}: blocked ({blockers})"
+msgstr "{label}: geblokkeerd ({blockers})"

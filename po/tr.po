@@ -1295,8 +1295,8 @@ msgid "Replacement text was not provided."
 msgstr "Değiştirme metni sağlanmadı."
 
 #: src/git_stage_batch/cli/root_parser.py:16
-msgid "Hunk-by-hunk and line-by-line staging for git"
-msgstr "Git için parça parça ve satır satır hazırlama"
+msgid "Fine-grained Git staging and deterministic draft-history refinement"
+msgstr "İnce taneli Git hazırlama ve belirlenimci taslak geçmiş iyileştirmesi"
 
 #: src/git_stage_batch/cli/root_parser.py:31
 msgid "Run as if started in path"
@@ -6859,8 +6859,8 @@ msgstr "Geçersiz fixup planı: {detail}"
 msgid "Could not read fixup plan {path}: {error}"
 msgstr "{path} fixup planı okunamadı: {error}"
 
-msgid "Inspect a deterministic history refinement"
-msgstr "Belirlenimci bir geçmiş iyileştirmesini incele"
+msgid "Plan, execute, and inspect a deterministic history refinement"
+msgstr "Belirlenimci bir geçmiş iyileştirmesini planla, yürüt ve incele"
 
 msgid "Rewrite action"
 msgstr "Yeniden yazma eylemi"
@@ -7004,13 +7004,6 @@ msgstr "Sonraki eylem: {action}"
 msgid "Diagnostic: {diagnostic}"
 msgstr "Tanılama: {diagnostic}"
 
-msgid "Resume preconditions: ready"
-msgstr "Sürdürme ön koşulları: hazır"
-
-#, python-brace-format
-msgid "Resume preconditions: blocked ({blockers})"
-msgstr "Sürdürme ön koşulları: engellendi ({blockers})"
-
 msgid "Rewrite plan is valid."
 msgstr "Yeniden yazma planı geçerli."
 
@@ -7037,3 +7030,173 @@ msgid "{count} source commit is conserved."
 msgid_plural "{count} source commits are conserved."
 msgstr[0] "{count} kaynak commit korunuyor."
 msgstr[1] "{count} kaynak commit korunuyor."
+
+# Rewrite executor translations.
+msgid "Build, verify, and atomically update the checked-out branch"
+msgstr "Oluştur, doğrula ve kullanımdaki dalı atomik olarak güncelle"
+
+msgid "Validated reusable rewrite plan"
+msgstr "Doğrulanmış yeniden kullanılabilir yeniden yazma planı"
+
+msgid "Allow local rewriting of commits contained by remote REF"
+msgstr "Uzak başvurunun içerdiği commit’lerin yerel olarak yeniden yazılmasına izin ver"
+
+msgid "Output a machine-readable operation result"
+msgstr "Makine tarafından okunabilir bir işlem sonucu çıkar"
+
+msgid "Resume the exact action in the active rewrite checkpoint"
+msgstr "Etkin yeniden yazma denetim noktasındaki tam eylemi sürdür"
+
+msgid "Abort and conditionally restore the original branch tip"
+msgstr "İptal et ve koşullar uygunsa özgün dal ucunu geri yükle"
+
+msgid "Independently verify the active or latest rewrite output"
+msgstr "Etkin veya en son yeniden yazma çıktısını bağımsız olarak doğrula"
+
+#, python-brace-format
+msgid "The message for history source {commit} cannot be encoded as {encoding}."
+msgstr "{commit} geçmiş kaynağının iletisi {encoding} olarak kodlanamıyor."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected topology."
+msgstr "{commit} yeniden yazma çıktı commit’inin topolojisi beklenmiyor."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected identity metadata."
+msgstr "{commit} yeniden yazma çıktı commit’inin kimlik üst verileri beklenmiyor."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected message metadata."
+msgstr "{commit} yeniden yazma çıktı commit’inin ileti üst verileri beklenmiyor."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected extra headers."
+msgstr "{commit} yeniden yazma çıktı commit’inin beklenmeyen ek başlıkları var."
+
+#, python-brace-format
+msgid "Invalid allowed remote-tracking ref: {refname}"
+msgstr "Geçersiz izin verilen uzak izleme başvurusu: {refname}"
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id} cannot continue: {blockers}."
+msgstr "{operation_id} yeniden yazma işlemi sürdürülemiyor: {blockers}."
+
+msgid "The pending rewrite output does not match deterministic replay."
+msgstr "Bekleyen yeniden yazma çıktısı deterministik yeniden yürütmeyle eşleşmiyor."
+
+msgid "The rewrite output ref changed during commit publication."
+msgstr "Yeniden yazma çıktı başvurusu commit yayımlanırken değişti."
+
+msgid "The rewrite output ref no longer names an owned output commit."
+msgstr "Yeniden yazma çıktı başvurusu artık işleme ait bir çıktı commit’ini göstermiyor."
+
+msgid "Completed rewrite outputs do not match deterministic replay."
+msgstr "Tamamlanan yeniden yazma çıktıları deterministik yeniden yürütmeyle eşleşmiyor."
+
+msgid "Built history commits do not match deterministic replay."
+msgstr "Oluşturulan geçmiş commit’leri deterministik yeniden yürütmeyle eşleşmiyor."
+
+msgid "The rewrite output ref changed before verification."
+msgstr "Yeniden yazma çıktı başvurusu doğrulamadan önce değişti."
+
+msgid "The rewrite operation has no output commit."
+msgstr "Yeniden yazma işleminin çıktı commit’i yok."
+
+msgid "The checked-out branch changed before finalization."
+msgstr "Çıkış yapılmış dal tamamlanmadan önce değişti."
+
+msgid "The branch changed before the history rewrite was finalized."
+msgstr "Dal, geçmişin yeniden yazılması tamamlanmadan önce değişti."
+
+msgid "The branch no longer names an operation-owned commit."
+msgstr "Dal artık işleme ait bir commit’i göstermiyor."
+
+#, python-brace-format
+msgid "Rewrite apply is blocked by: {blockers}."
+msgstr "Yeniden yazma uygulaması şunlar tarafından engellendi: {blockers}."
+
+msgid "Rewrite apply requires a checked-out local branch."
+msgstr "Yeniden yazma uygulaması çıkış yapılmış yerel bir dal gerektirir."
+
+msgid "The pending output ref changed before rewrite abort."
+msgstr "Bekleyen çıktı başvurusu yeniden yazma iptal edilmeden önce değişti."
+
+msgid "The output ref changed before rewrite abort."
+msgstr "Çıktı başvurusu yeniden yazma iptal edilmeden önce değişti."
+
+msgid "The recovery ref changed; automatic rewrite abort is unsafe."
+msgstr "Kurtarma başvurusu değişti; yeniden yazmayı otomatik iptal etmek güvenli değil."
+
+msgid "The checked-out branch changed; automatic rewrite abort is unsafe."
+msgstr "Çıkış yapılmış dal değişti; yeniden yazmayı otomatik iptal etmek güvenli değil."
+
+msgid "The branch changed while restoring the original history."
+msgstr "Özgün geçmiş geri yüklenirken dal değişti."
+
+#, python-brace-format
+msgid "The branch does not name an operation-owned tip; recover manually from {recovery_ref}."
+msgstr "Dal işleme ait bir ucu göstermiyor; {recovery_ref} üzerinden elle kurtarın."
+
+msgid "No rewrite operation is available to verify."
+msgstr "Doğrulanabilecek bir yeniden yazma işlemi yok."
+
+msgid "The rewrite operation has no complete output to verify."
+msgstr "Yeniden yazma işleminin doğrulanabilecek tamamlanmış çıktısı yok."
+
+#, python-brace-format
+msgid "Rewrite verification is blocked by: {blockers}."
+msgstr "Yeniden yazma doğrulaması şunlar tarafından engellendi: {blockers}."
+
+msgid "The regenerated rewrite verification record changed."
+msgstr "Yeniden oluşturulan yeniden yazma doğrulama kaydı değişti."
+
+#, python-brace-format
+msgid "Rewrite output {output} cannot replay source commit {commit} at its requested position."
+msgstr "{output} yeniden yazma çıktısı {commit} kaynak commit’ini istenen konumda yeniden yürütemiyor."
+
+#, python-brace-format
+msgid "Rewrite output {output} integrates non-empty sources into an empty commit."
+msgstr "{output} yeniden yazma çıktısı boş olmayan kaynakları boş bir commit’te birleştiriyor."
+
+#, python-brace-format
+msgid "The planned history replay produces tree {actual}, not the frozen final tree {expected}."
+msgstr "Planlanan geçmiş yeniden yürütmesi dondurulmuş son ağaç {expected} yerine {actual} ağacını üretiyor."
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id}: {phase}"
+msgstr "Yeniden yazma işlemi {operation_id}: {phase}"
+
+#, python-brace-format
+msgid "Output tip: {commit}"
+msgstr "Çıktı ucu: {commit}"
+
+msgid "Original branch tip restored."
+msgstr "Özgün dal ucu geri yüklendi."
+
+#, python-brace-format
+msgid "Verified final tree: {tree}"
+msgstr "Doğrulanan son ağaç: {tree}"
+
+#, python-brace-format
+msgid "Removed {count} invalidated source signature."
+msgid_plural "Removed {count} invalidated source signatures."
+msgstr[0] "Geçersiz kılınan {count} kaynak imzası kaldırıldı."
+msgstr[1] "Geçersiz kılınan {count} kaynak imzası kaldırıldı."
+
+#, python-brace-format
+msgid "Latest rewrite operation {operation_id}"
+msgstr "En son yeniden yazma işlemi {operation_id}"
+
+msgid "Resume preconditions"
+msgstr "Sürdürme önkoşulları"
+
+msgid "Verification preconditions"
+msgstr "Doğrulama önkoşulları"
+
+#, python-brace-format
+msgid "{label}: ready"
+msgstr "{label}: hazır"
+
+#, python-brace-format
+msgid "{label}: blocked ({blockers})"
+msgstr "{label}: engellendi ({blockers})"

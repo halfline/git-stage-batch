@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from ..exceptions import CommandError
 from ..fixup.commutation import tree_for_commit
 from ..fixup.staged_units import acquire_tree_fixup_units
 from ..i18n import _
 from ..utils.git_command import run_git_command
 from .commit_objects import parse_commit_object
+from .dependencies import analyze_history_dependencies
 from .models import (
     CURRENT_HISTORY_PLAN_SCHEMA_VERSION,
     HistoryCommitSnapshot,
@@ -106,7 +109,7 @@ def _snapshot_from_range(
         expected_parent = commit
 
     frozen_commits = tuple(commits)
-    return HistorySnapshot(
+    snapshot = HistorySnapshot(
         object_format=commit_range.object_format,
         base_commit=commit_range.base_commit,
         tip_commit=commit_range.tip_commit,
@@ -114,6 +117,11 @@ def _snapshot_from_range(
         final_tree=frozen_commits[-1].tree,
         branch_ref=branch_ref,
         commits=frozen_commits,
+        dependencies=(),
+    )
+    return replace(
+        snapshot,
+        dependencies=analyze_history_dependencies(snapshot),
     )
 
 

@@ -11,6 +11,7 @@ from .models import (
     HistorySafetyFacts,
     HistorySignature,
     HistorySnapshot,
+    HistoryUnitDependency,
 )
 
 
@@ -70,6 +71,19 @@ def _commit_record(commit: HistoryCommitSnapshot) -> dict[str, object]:
     }
 
 
+def _dependency_record(
+    dependency: HistoryUnitDependency,
+) -> dict[str, object]:
+    return {
+        "unit_id": dependency.unit_id,
+        "original_position": dependency.original_position,
+        "earliest_position": dependency.earliest_position,
+        "barrier_unit_id": dependency.barrier_unit_id,
+        "barrier": dependency.barrier,
+        "detail": dependency.detail,
+    }
+
+
 def history_snapshot_record(snapshot: HistorySnapshot) -> dict[str, object]:
     """Return all immutable facts that plan validation must regenerate."""
     return {
@@ -88,6 +102,13 @@ def history_snapshot_record(snapshot: HistorySnapshot) -> dict[str, object]:
         "branch_ref": snapshot.branch_ref,
         "rewritten_signatures_preserved": False,
         "commits": [_commit_record(commit) for commit in snapshot.commits],
+        "dependency_graph": {
+            "algorithm_version": 1,
+            "units": [
+                _dependency_record(dependency)
+                for dependency in snapshot.dependencies
+            ],
+        },
     }
 
 

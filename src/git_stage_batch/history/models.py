@@ -9,10 +9,17 @@ from typing import Literal
 from ..fixup.models import FixupUnitKind
 
 
-CURRENT_HISTORY_PLAN_SCHEMA_VERSION = 2
+CURRENT_HISTORY_PLAN_SCHEMA_VERSION = 3
 CURRENT_HISTORY_STATE_SCHEMA_VERSION = 2
 
-HistoryPlanOperation = Literal["KEEP", "REWORD", "INTEGRATE"]
+HistoryPlanOperation = Literal[
+    "KEEP",
+    "REWORD",
+    "INTEGRATE",
+    "SPLIT",
+    "REORDER",
+]
+HistoryDependencyBarrier = Literal["BLOCKED", "UNKNOWN"]
 
 
 class HistoryPhase(str, Enum):
@@ -91,6 +98,18 @@ class HistoryCommitSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class HistoryUnitDependency:
+    """Compressed backward-commutation evidence for one exact source unit."""
+
+    unit_id: str
+    original_position: int
+    earliest_position: int
+    barrier_unit_id: str | None
+    barrier: HistoryDependencyBarrier | None
+    detail: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class HistorySnapshot:
     """Frozen linear source range consumed by one semantic plan."""
 
@@ -101,6 +120,7 @@ class HistorySnapshot:
     final_tree: str
     branch_ref: str | None
     commits: tuple[HistoryCommitSnapshot, ...]
+    dependencies: tuple[HistoryUnitDependency, ...]
 
 
 @dataclass(frozen=True, slots=True)

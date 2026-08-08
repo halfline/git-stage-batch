@@ -47,7 +47,8 @@ Edit only `plan.outputs`. Never edit `snapshot` or `safety`, treat rationale
 as mechanical proof, run interactive rebase, reset or amend commits, apply a
 rejected patch manually, or manipulate product-owned refs and state files.
 When the installed CLI cannot validate the intended history, report the exact
-limitation or keep the existing boundary.
+limitation as an open `UNREPRESENTABLE` finding and preserve the current
+history for safety. Preserving a boundary is not a semantic `KEEP` verdict.
 
 If `git-stage-batch` is not in `PATH`, use `pipx run git-stage-batch`. Read
 `git-stage-batch rewrite --help`; installed help wins if it disagrees with this
@@ -63,6 +64,7 @@ cd "$REPO_ROOT"
 PLAN_DIR=$(mktemp -d)
 REWRITE_PLAN="$PLAN_DIR/rewrite-plan.json"
 VALIDATION="$PLAN_DIR/validation.json"
+CAUSAL_LEDGER="$PLAN_DIR/causal-ledger.md"
 if test -n "${BASE_SHA:-}"; then
   git-stage-batch rewrite scan "$BASE_SHA" --output "$REWRITE_PLAN"
 else
@@ -107,24 +109,83 @@ excluded from the rewrite.
 
 ## Build the semantic audit
 
-Inspect every commit in order, including its full message, diffstat, patch,
-exact patch units, and dependency evidence. Build one compact series index
-with each commit's outcome, prerequisites, narrative role, and smallest
-runnable state. Do not reread the complete range for every decision.
+First inspect every commit oldest to newest, including its full message,
+diffstat, patch, and exact patch units, but defer dependency evidence. Build
+one compact series index with each commit's stated outcome, prerequisites,
+narrative role, and smallest runnable state. Do not reread the complete range
+for every decision.
 
-Classify every source as one of these intended outcomes:
+At each snapshot, compare the commit's claim with its implementation, model,
+tests, documentation, and user-visible behavior. A contradiction among those
+views pressures the unit that repairs it even when the later subject describes
+a credible independent feature.
 
-- `KEEP`: one coherent, accurately described state already exists.
+Then perform a mandatory causal pass newest to oldest. Audit every exact unit,
+coherent unit group, and semantic sub-unit; when one mechanical unit contains
+several semantic outcomes, record those sub-unit outcomes even though the
+current plan cannot split them. For each group, keep a compact causal ledger
+with its original source, fresh unit IDs, the outcome newly introduced by its
+source, its earliest honest semantic owner and evidence, its first mechanical
+blocker, its intended disposition, and its validation state. Use the series
+index, full messages, focused `git --no-optional-locks log -S` or `-G` searches,
+and the relevant source, test, and documentation snapshots as ownership
+evidence.
+
+Persist that compact ledger at `CAUSAL_LEDGER`, outside the worktree. It is
+non-executable audit evidence; the validated plan remains the only rewrite
+instruction. Update the ledger after every validation and apply so original
+source provenance survives fresh scans and context loss.
+
+Assign semantic ownership before consulting `earliest_position`, `BLOCKED`,
+or `UNKNOWN`. The owner is the earliest commit whose stated product scope,
+runnable behavior, model, or contract would already be wrong or incomplete
+without the change. It is not the oldest touched line and never defaults to the
+first blocker. Mechanical placement determines feasibility and execution, and
+may break a tie only among positions that are equally honest semantically.
+
+Use this counterfactual test for every later group:
+
+1. Without the source commit's genuinely new outcome, is the group still
+   needed to make an earlier promised outcome correct or complete?
+2. Without this group, is the source commit's new outcome still coherent?
+
+Two yes answers identify a mixed source: partition the repair from the new
+outcome. An explicitly narrower earlier scope can instead make a later
+extension legitimate.
+
+Classify intended outputs after the group audit:
+
+- `KEEP`: one coherent, accurately described state exists at its earliest
+  honest causal position.
 - `SPLIT`: independent ordered unit groups make smaller runnable states.
 - `INTEGRATE`: later repair units belong in one or more earlier outcomes.
 - `REORDER`: a complete source belongs earlier and every crossing is proven.
 - `MESSAGE`: the boundary is sound but the prose needs the later message pass.
 
-Treat a commit as a split or reorder candidate when it combines groundwork
-with adopters, several user-visible outcomes, independent variants, later
-enrichments, docs before behavior, or unrelated proof. Treat repair, fixup,
-cleanup, and process-shaped commits as integration candidates. A file, module,
-test file, or shared helper is not a concern boundary by itself.
+The generated all-`KEEP` plan is an unaudited identity template, not a semantic
+verdict. Subjects are claims to test, not candidate filters. Treat a commit as
+a split or reorder candidate when it combines groundwork with adopters,
+several user-visible outcomes, independent variants, later enrichments, docs
+before behavior, or unrelated proof. Search for repair content under every
+subject, not only repair-, fixup-, cleanup-, hardening-, or process-shaped
+commits. A file, module, test file, or shared helper is not a concern boundary
+by itself.
+
+Tests, documentation and manual paragraphs, examples, fixtures, translated
+strings, completion entries, build files, and packaging metadata are
+first-class groups. Map each one to the behavior it proves, describes,
+translates, or exposes. Respect repository conventions that keep support
+artifacts in separate commits, but place each artifact at the earliest support
+commit for that behavior and partition mixed artifact commits by outcome.
+
+Use `OWNED_HERE`, `MOVE`, `UNRESOLVED`, and `UNREPRESENTABLE` as audit states,
+never as plan operations. `OWNED_HERE` means the group is already at its
+earliest honest owner. `MOVE` means it has a different known owner and a plan
+candidate. `UNRESOLVED` means semantic ownership is not yet known, while
+`UNREPRESENTABLE` means the owner is known but the current mechanical unit or
+executor cannot express the move. A rejected intended plan remains
+`UNREPRESENTABLE` with its exact unit IDs and validator diagnostic; never
+retarget it to the blocker or relabel it `KEEP`.
 
 For every pressured `KEEP`, identify a concrete candidate extraction and the
 path-specific immediate breakage or narrative regression it would cause. If a
@@ -141,26 +202,34 @@ git-stage-batch rewrite validate "$REWRITE_PLAN" --porcelain > "$VALIDATION"
 ```
 
 Validation must account for every source unit exactly once, accept every
-requested crossing, and reproduce the frozen final tree. An `UNKNOWN` or
-`BLOCKED` edge fails closed. Unsupported atomic sources may remain whole in a
-`KEEP` output but may not be crossed or split.
+requested crossing, and reproduce the frozen final tree. Every `UNKNOWN` and
+every unaccounted `BLOCKED` crossing fail closed; an implemented compound
+movement may cross a complete `BLOCKED` chain only when all grouped units
+share the same semantic outcome. Unsupported atomic sources may remain whole
+in a `KEEP` output but may not be crossed or split.
 
-In `audit` mode, stop after validation and report every proposed output in
-order. Include rejected proposals and their exact validator diagnostics. Do
-not create refs, checkpoints, commits, or repository-local audit files.
+In `audit` mode, stop after validation and report both the desired semantic
+history and whether each disposition is representable. Include every
+`UNRESOLVED` or `UNREPRESENTABLE` finding, rejected proposal, and exact
+validator diagnostic. A mechanically valid all-`KEEP` plan cannot suppress an
+open causal finding. Do not create refs, checkpoints, commits, or
+repository-local audit files.
 
 ## Apply a validated plan
 
-Prefer one whole-range plan. Use another convergence pass only when the new
-history exposes a genuinely new semantic decision. Before apply, require zero
-overlap in the bound publication scope and a fresh validation report that says
-mutation is ready. For a verified review head, accept `published-range` only
-when it is the sole safety blocker, the provider-default and protected scope
-has zero overlap, and every allowed containing ref is the exact verified
-current review-head ref that will be passed to apply. Never pass an excluded
-WIP, tag, or archived review ref merely to clear the blocker. Reconfirm the
-scope and publication permission. The product recollects all preconditions
-with those allowed refs during apply.
+Prefer one whole-range plan. Use another convergence pass only after the prior
+pass places one or more groups at their actual semantic owners and the rewrite
+exposes a new decision or changes the inventory for remaining open groups.
+Never apply a validated landing at a non-owner blocker as a mechanical
+stepping stone. Before apply, require every output in that pass to be a
+coherent runnable state, zero overlap in the bound publication scope, and a
+fresh validation report that says mutation is ready. For a verified review
+head, accept `published-range` only when it is the sole safety blocker, the
+provider-default and protected scope has zero overlap, and every allowed
+containing ref is the exact verified current review-head ref that will be
+passed to apply. Never pass an excluded WIP, tag, or archived review ref merely
+to clear the blocker. Reconfirm the scope and publication permission. The
+product recollects all preconditions with those allowed refs during apply.
 
 ```bash
 git-stage-batch rewrite validate "$REWRITE_PLAN" --porcelain > "$VALIDATION"
@@ -184,7 +253,11 @@ cryptographic signature remains valid.
 After successful apply, save the returned recovery ref in the run report,
 rescan from the same canonical base, and restart the semantic audit because
 commit IDs and dependency positions changed. Never reuse or repair stale
-snapshot fields.
+snapshot fields. Remap every open causal intention to fresh unit IDs and keep
+its semantic owner and evidence until it is resolved. Also carry the
+original-source provenance of every completed integration and confirm on the
+fresh snapshot that its outcome appears at the intended owner rather than
+merely disappearing into a new hunk.
 
 When boundaries converge, invoke `$refine-commit-messages BASE_SHA` in its
 default mutating mode. Do not reword commits directly in this skill. Rescan and
@@ -222,18 +295,27 @@ When status names a latest `COMPLETE` operation, verify it, recover the base
 from `source.base`, rescan, and resume the semantic audit. A latest `ABORTED`
 operation is not rewrite evidence. If status has no operation,
 there is nothing durable to resume; request an explicit base for a fresh run.
+If the external causal ledger is unavailable after resume, use the reported
+recovery ref and read-only Git inspection to reconstruct original-source
+provenance before another apply. Until that reconstruction succeeds, record
+the missing provenance as `UNRESOLVED` and do not claim completion.
 
 ## Completion gate
 
-Complete only after a final scan and semantic pass leave every output as
-`KEEP`, the default `refine-commit-messages` pass has converged, and the final
-KEEP plan validates. Also require:
+Complete only after a final chronological index and newest-to-oldest causal
+ledger leave every fresh semantic group `OWNED_HERE`, the default
+`refine-commit-messages` pass has converged, and the final KEEP plan validates.
+Generated or validated all-`KEEP` output is necessary mechanical proof, not
+sufficient semantic proof. Also require:
 
 - `rewrite verify` passes for the latest completed mutation;
 - the index and tracked worktree are clean, with no active Git operation,
   staging session, saved batch, or rewrite operation;
 - normal repository tests and message checks pass;
-- no late repair/process commit or multi-outcome subject remains;
+- no repair unit hides under a clean subject and no `UNRESOLVED` or
+  `UNREPRESENTABLE` finding remains;
+- no output combines independent outcomes, and every prior integration's
+  original-source provenance has been checked against its intended owner;
 - remote containment is freshly rechecked and still authorized; and
 - a repository-appropriate narrow build/import/behavior check passes for
   every commit snapshot, including commits that were never rewritten.

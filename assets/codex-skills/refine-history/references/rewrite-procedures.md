@@ -1,8 +1,10 @@
 # Rewrite Plan Procedures
 
 Use these procedures only while running `refine-history`. The semantic plan is
-the sole description of changed boundaries. `git-stage-batch rewrite` is the
-sole mechanism for validating and applying them.
+the sole executable description of changed boundaries. The external causal
+ledger retains non-executable ownership evidence across passes.
+`git-stage-batch rewrite` is the sole mechanism for validating and applying
+the boundaries.
 
 ## Bind publication scope
 
@@ -84,9 +86,40 @@ Across the complete output list:
 - keep every output non-empty unless the source was already empty; and
 - require validation to reproduce the frozen final tree.
 
+## Assign semantic ownership before mechanics
+
+Treat the generated KEEP outputs as an identity-plan template. Before editing
+them, audit every source from newest to oldest at exact-unit or semantically
+inseparable-group granularity and decide where each outcome first belongs.
+When one mechanical unit contains several semantic outcomes, name the
+sub-unit ownership even though the current schema cannot divide it.
+
+For each group, first identify the earliest commit whose promised product
+state would be wrong or incomplete without it. Test mixed sources by removing
+their genuinely new outcome from consideration: if the group is still needed
+earlier and the later outcome remains coherent without it, the group is a
+repair for the earlier owner. Only after fixing that owner should you read its
+`earliest_position`, blocker, and replay evidence.
+
+A mechanical blocker is a placement frontier, never an owner. It may choose
+the least disruptive location only within a set of equally honest causal
+positions. Tests, documentation paragraphs, translated strings, fixtures,
+examples, completion, build, and packaging entries each belong to the
+behavior they prove, describe, translate, or expose; a shared file or hunk
+does not give them one semantic owner.
+
+Keep four non-plan audit states. `OWNED_HERE` means the group is already at its
+earliest honest owner. `MOVE` means another known owner has a plan candidate.
+`UNRESOLVED` means ownership is not yet known. `UNREPRESENTABLE` means
+ownership is known but the current unit inventory or executor cannot express
+it. None may be written as a plan operation; open findings may not be
+retargeted to a blocker or relabeled KEEP.
+
 ## Keep or reword one source
 
-Leave a generated output unchanged for `KEEP`.
+Leave a generated output unchanged for `KEEP` only after every semantic group
+in it is causally owned at that position. Mechanical validation of a generated
+KEEP template is not that audit.
 
 For a message-only correction, change only `operation` to `REWORD`, `message`,
 the declared `encoding` when necessary, and `rationale`. Preserve the single
@@ -106,8 +139,9 @@ Replace one generated output with two or more outputs that all:
 The split outputs must occur in the intended replacement order. Their unit
 subsets must be disjoint and together consume every unit from the source. Do
 not use original hunk count as the semantic boundary: a unit is the smallest
-mechanical inventory item, while the output grouping still needs a runnable
-product rationale.
+mechanical inventory item, not necessarily a semantic atom, while the output
+grouping still needs a runnable product rationale. A mechanically atomic unit
+that spans semantic owners is `UNREPRESENTABLE`, not KEEP.
 
 Validation applies the selected units in order and rejects an accidental empty
 commit, a coordinate-shifting patch that cannot replay, lost authorship, or a
@@ -116,8 +150,13 @@ start an interactive rebase when validation rejects a split.
 
 ## Integrate later repair units
 
-Locate where every repair unit first belongs. One repair source may be divided
-across several earlier targets without creating temporary repair commits.
+Locate the causal owner where every repair unit first belongs before reading
+placement evidence. A mixed repair source may semantically need repair units
+at several earlier owners while its genuinely new outcome remains later. The
+current plan cannot make one source both an integrated secondary and a
+standalone output target, so record that desired partition as
+`UNREPRESENTABLE`; do not move the new outcome earlier or discard it to make
+the plan validate.
 
 For each target output:
 
@@ -133,15 +172,17 @@ For each target output:
 The same repair source may appear in several integrated outputs when its units
 are partitioned. Remove its standalone output only after all its units are
 assigned exactly once. Leave unrelated intervening outputs in their semantic
-order.
+order. Never merge an unrelated blocker chain merely to make validation pass.
 
-If a repair unit has no confident semantic target, retain the repair commit.
+If a repair unit has no confident semantic target, record it as `UNRESOLVED`.
 One repair unit may follow a `BLOCKED` predecessor farther back when the plan
 keeps their complete blocker chain ordered inside the same output; validation
-then requires exact full-plan replay to prove the compound movement. A blocker
-assigned to another output and every `UNKNOWN` edge still require a revised
-assignment or retained history. Never substitute manual patch application for
-failed validation.
+then requires exact full-plan replay to prove the compound movement and every
+unit in that chain must share one causal outcome. A blocker assigned to another
+output and every `UNKNOWN` edge still reject that plan. Keep the intended owner
+as an open `UNREPRESENTABLE` finding with the exact diagnostic; never substitute
+the blocker, retained history, or manual patch application for failed
+validation.
 
 ## Reorder an independent source
 
@@ -150,10 +191,13 @@ Move a generated whole-source output earlier and mark the moved output
 message, encoding, and author. Outputs displaced later may remain `KEEP` when
 their own patch has not been explicitly moved earlier.
 
-Every moving unit must remain at or after its recorded `earliest_position`.
-One `BLOCKED` or `UNKNOWN` edge rejects the crossing. Dependency records are a
-limit and explanation; complete Git replay and the frozen final tree remain
-the final oracle.
+Every moving unit must remain at or after its recorded `earliest_position`
+unless it belongs to the complete same-output `BLOCKED` predecessor chain
+allowed above. Every unit in that exception must share the same causal outcome,
+and validation must prove the compound move by exact full-plan replay. An
+ungrouped `BLOCKED` edge, a blocker assigned to another output, or any `UNKNOWN`
+edge rejects the crossing. Dependency records are a limit and explanation;
+complete Git replay and the frozen final tree remain the final oracle.
 
 Do not split and reorder the same source as a shortcut. Express the desired
 unit outputs in their final positions and let validation determine whether
@@ -169,6 +213,12 @@ git-stage-batch rewrite validate "$REWRITE_PLAN" --porcelain
 
 Validation is read-only. Treat stale immutable facts, missing units,
 unsupported headers, barriers, and final-tree mismatches as plan failures.
+When validation rejects an intended causal assignment, preserve the branch
+and the assignment as an open finding. A later fresh scan remaps it to fresh
+unit IDs; it does not erase the intended owner. Another pass may follow a
+rewrite that placed coherent groups at their real owners and changed the
+inventory for remaining findings. Never apply a non-owner blocker landing as a
+stepping stone.
 
 Apply only a fully reviewed plan:
 

@@ -195,10 +195,18 @@ def stream_git_diff(
     env: dict[str, str] | None = None,
 ) -> Iterator[bytes]:
     """Stream a normalized, raw-content Git diff using keyworded options."""
-    config_arguments = []
+    config_arguments = [
+        "-c",
+        "core.quotePath=true",
+        "-c",
+        "diff.orderFile=/dev/null",
+    ]
     arguments = [
         "--no-ext-diff",
         "--no-textconv",
+        "--diff-algorithm=default",
+        "--no-indent-heuristic",
+        "--inter-hunk-context=0",
         "--src-prefix=a/",
         "--dst-prefix=b/",
     ]
@@ -213,7 +221,7 @@ def stream_git_diff(
     if full_index:
         arguments.append("--full-index")
     if find_renames and not no_renames:
-        arguments.append("--find-renames")
+        arguments.extend(["--find-renames=50%", "-l0"])
     if no_renames:
         arguments.append("--no-renames")
     if cached:

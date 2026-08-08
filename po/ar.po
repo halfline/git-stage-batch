@@ -7110,3 +7110,198 @@ msgstr "خطة ⁦fixup⁩ غير صالحة: {detail}"
 #, python-brace-format
 msgid "Could not read fixup plan {path}: {error}"
 msgstr "تعذّرت قراءة خطة ⁦fixup⁩ ‏{path}: {error}"
+
+msgid "Inspect a deterministic history refinement"
+msgstr "فحص تنقيح حتمي للتاريخ"
+
+msgid "Rewrite action"
+msgstr "إجراء إعادة الكتابة"
+
+msgid "Capture exact history facts and a KEEP plan template"
+msgstr "التقاط حقائق التاريخ الدقيقة وقالب خطة ⁦KEEP⁩"
+
+msgid "Atomically write the reusable JSON plan to FILE"
+msgstr "كتابة خطة ⁦JSON⁩ القابلة لإعادة الاستخدام ذريًا إلى ⁦FILE⁩"
+
+msgid "Output the reusable JSON plan on standard output"
+msgstr "إخراج خطة ⁦JSON⁩ القابلة لإعادة الاستخدام على الخرج القياسي"
+
+msgid "Commit excluded from the scan (default: fork point with upstream)"
+msgstr "الإيداع المستبعد من الفحص (الافتراضي: نقطة التفرع مع ⁦upstream⁩)"
+
+msgid "Validate a reviewed rewrite plan against live objects"
+msgstr "التحقق من خطة إعادة كتابة مُراجعة مقابل الكائنات الحالية"
+
+msgid "Reusable rewrite plan emitted by rewrite scan"
+msgstr "خطة إعادة كتابة قابلة لإعادة الاستخدام أنشأها ⁦rewrite scan⁩"
+
+msgid "Output a machine-readable validation report"
+msgstr "إخراج تقرير تحقق مقروء آليًا"
+
+msgid "Inspect durable rewrite operation progress"
+msgstr "فحص التقدم الدائم لعملية إعادة الكتابة"
+
+msgid "Output machine-readable operation state"
+msgstr "إخراج حالة العملية بشكل مقروء آليًا"
+
+#, python-brace-format
+msgid "Commit {commit} has malformed {field} metadata."
+msgstr "للإيداع {commit} بيانات وصفية {field} مشوهة."
+
+#, python-brace-format
+msgid "Invalid rewrite plan: {detail}"
+msgstr "خطة إعادة الكتابة غير صالحة: {detail}"
+
+#, python-brace-format
+msgid "Could not read rewrite plan {path}: {error}"
+msgstr "تعذّرت قراءة خطة إعادة الكتابة {path}: {error}"
+
+#, python-brace-format
+msgid "Could not inspect legacy grafts: {error}"
+msgstr "تعذّر فحص الطعوم القديمة: {error}"
+
+msgid "Rewrite scanning refuses replace objects or legacy grafts because they change commit identity semantics."
+msgstr "يرفض فحص إعادة الكتابة كائنات الاستبدال أو الطعوم القديمة لأنها تغيّر دلالات هوية الإيداع."
+
+#, python-brace-format
+msgid "Invalid history revision: {revision}"
+msgstr "مراجعة التاريخ غير صالحة: {revision}"
+
+msgid "No upstream branch is configured. Pass the excluded history base explicitly."
+msgstr "لا يوجد فرع ⁦upstream⁩ مضبوط. مرّر قاعدة التاريخ المستبعدة صراحةً."
+
+#, python-brace-format
+msgid "History base {base} is not an ancestor of HEAD."
+msgstr "قاعدة التاريخ {base} ليست سلفًا لـ⁦HEAD⁩."
+
+#, python-brace-format
+msgid "History refinement currently requires a linear range; commit {commit} does not continue the expected parent chain."
+msgstr "يتطلب تنقيح التاريخ حاليًا نطاقًا خطيًا؛ لا يتابع الإيداع {commit} سلسلة الآباء المتوقعة."
+
+msgid "No commits found between the history base and HEAD."
+msgstr "لم يُعثر على إيداعات بين قاعدة التاريخ و⁦HEAD⁩."
+
+msgid "HEAD changed while the history snapshot was being built."
+msgstr "تغيّر ⁦HEAD⁩ أثناء بناء لقطة التاريخ."
+
+#, python-brace-format
+msgid "History changed while commit {commit} was scanned."
+msgstr "تغيّر التاريخ أثناء فحص الإيداع {commit}."
+
+#, python-brace-format
+msgid "Commit {commit} produced duplicate history unit IDs."
+msgstr "أنتج الإيداع {commit} معرّفات وحدات تاريخ مكررة."
+
+#, python-brace-format
+msgid "Invalid rewrite operation state: {detail}"
+msgstr "حالة عملية إعادة الكتابة غير صالحة: {detail}"
+
+msgid "Another rewrite operation is already active."
+msgstr "هناك عملية إعادة كتابة أخرى نشطة بالفعل."
+
+#, python-brace-format
+msgid "Could not inspect history ref {refname}."
+msgstr "تعذّر فحص مرجع التاريخ {refname}."
+
+#, python-brace-format
+msgid "History snapshot {base}..{tip}"
+msgstr "لقطة التاريخ {base}..{tip}"
+
+msgid "Branch: detached HEAD"
+msgstr "الفرع: ⁦HEAD⁩ منفصل"
+
+#, python-brace-format
+msgid "Branch: {branch}"
+msgstr "الفرع: {branch}"
+
+msgid "Mutation preconditions: ready"
+msgstr "شروط التعديل المسبقة: جاهزة"
+
+#, python-brace-format
+msgid "Mutation preconditions: blocked ({blockers})"
+msgstr "شروط التعديل المسبقة: محظورة ({blockers})"
+
+#, python-brace-format
+msgid "Wrote reusable rewrite plan to {path}."
+msgstr "كُتبت خطة إعادة الكتابة القابلة لإعادة الاستخدام إلى {path}."
+
+msgid "No rewrite operation is active."
+msgstr "لا توجد عملية إعادة كتابة نشطة."
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id}"
+msgstr "عملية إعادة الكتابة {operation_id}"
+
+#, python-brace-format
+msgid "Phase: {phase}"
+msgstr "المرحلة: {phase}"
+
+#, python-brace-format
+msgid "Progress: {completed} of {planned} output commit(s)"
+msgstr "التقدم: {completed} من {planned} إيداعات خرج"
+
+#, python-brace-format
+msgid "Manual recovery: {command}"
+msgstr "الاسترداد اليدوي: {command}"
+
+#, python-brace-format
+msgid "Last verified commit: {commit}"
+msgstr "آخر إيداع جرى التحقق منه: {commit}"
+
+#, python-brace-format
+msgid "Next action: {action}"
+msgstr "الإجراء التالي: {action}"
+
+#, python-brace-format
+msgid "Diagnostic: {diagnostic}"
+msgstr "التشخيص: {diagnostic}"
+
+msgid "Resume preconditions: ready"
+msgstr "شروط الاستئناف المسبقة: جاهزة"
+
+#, python-brace-format
+msgid "Resume preconditions: blocked ({blockers})"
+msgstr "شروط الاستئناف المسبقة: محظورة ({blockers})"
+
+msgid "Rewrite plan is valid."
+msgstr "خطة إعادة الكتابة صالحة."
+
+#, python-brace-format
+msgid "{count} commit."
+msgid_plural "{count} commits."
+msgstr[0] "لا إيداعات."
+msgstr[1] "إيداع واحد."
+msgstr[2] "إيداعان."
+msgstr[3] "{count} إيداعات."
+msgstr[4] "{count} إيداعًا."
+msgstr[5] "{count} إيداع."
+
+#, python-brace-format
+msgid "{count} exact patch unit."
+msgid_plural "{count} exact patch units."
+msgstr[0] "لا وحدات رقعة دقيقة."
+msgstr[1] "وحدة رقعة دقيقة واحدة."
+msgstr[2] "وحدتا رقعة دقيقتان."
+msgstr[3] "{count} وحدات رقعة دقيقة."
+msgstr[4] "{count} وحدة رقعة دقيقة."
+msgstr[5] "{count} وحدة رقعة دقيقة."
+
+#, python-brace-format
+msgid "Warning: {count} source signature cannot remain valid after rewriting."
+msgid_plural "Warning: {count} source signatures cannot remain valid after rewriting."
+msgstr[0] "تحذير: لا توجد توقيعات مصدر يمكن أن تبقى صالحة بعد إعادة الكتابة."
+msgstr[1] "تحذير: لا يمكن لتوقيع مصدر واحد أن يبقى صالحًا بعد إعادة الكتابة."
+msgstr[2] "تحذير: لا يمكن لتوقيعي مصدر أن يبقيا صالحين بعد إعادة الكتابة."
+msgstr[3] "تحذير: لا يمكن لـ{count} توقيعات مصدر أن تبقى صالحة بعد إعادة الكتابة."
+msgstr[4] "تحذير: لا يمكن لـ{count} توقيع مصدر أن يبقى صالحًا بعد إعادة الكتابة."
+msgstr[5] "تحذير: لا يمكن لـ{count} توقيع مصدر أن يبقى صالحًا بعد إعادة الكتابة."
+
+#, python-brace-format
+msgid "{count} source commit is conserved."
+msgid_plural "{count} source commits are conserved."
+msgstr[0] "لم تُحفظ إيداعات مصدر."
+msgstr[1] "حُفظ إيداع مصدر واحد."
+msgstr[2] "حُفظ إيداعا مصدر."
+msgstr[3] "حُفظت {count} إيداعات مصدر."
+msgstr[4] "حُفظ {count} إيداعًا مصدرًا."
+msgstr[5] "حُفظ {count} إيداع مصدر."

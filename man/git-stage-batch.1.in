@@ -122,6 +122,9 @@ Allow a blocked file to be reviewed again.
 .BR git-stage-batch-fixup (1)
 Suggest fixup targets or create grouped fixup commits from staged changes.
 .TP
+.BR git-stage-batch-rewrite (1)
+Scan, validate, or inspect a deterministic history refinement.
+.TP
 .BR git-stage-batch-suggest-fixup (1)
 Compatible spelling for
 .BR "git-stage-batch fixup suggest" .
@@ -184,4 +187,5 @@ License: MIT
 .BR git-stage-batch-skip (1),
 .BR git-stage-batch-discard (1),
 .BR git-stage-batch-status (1),
+.BR git-stage-batch-rewrite (1),
 .BR git-stage-batch-journal (1)

@@ -6960,3 +6960,186 @@ msgstr "Неприпустимий план fixup: {detail}"
 #, python-brace-format
 msgid "Could not read fixup plan {path}: {error}"
 msgstr "Не вдалося прочитати план fixup {path}: {error}"
+
+msgid "Inspect a deterministic history refinement"
+msgstr "Перевірити детерміноване уточнення історії"
+
+msgid "Rewrite action"
+msgstr "Дія переписування"
+
+msgid "Capture exact history facts and a KEEP plan template"
+msgstr "Зібрати точні відомості про історію та шаблон плану KEEP"
+
+msgid "Atomically write the reusable JSON plan to FILE"
+msgstr "Атомарно записати повторно використовуваний план JSON у FILE"
+
+msgid "Output the reusable JSON plan on standard output"
+msgstr "Вивести повторно використовуваний план JSON у стандартний вивід"
+
+msgid "Commit excluded from the scan (default: fork point with upstream)"
+msgstr "Коміт, виключений із перевірки (типово: точка відгалуження від upstream)"
+
+msgid "Validate a reviewed rewrite plan against live objects"
+msgstr "Перевірити переглянутий план переписування за поточними об’єктами"
+
+msgid "Reusable rewrite plan emitted by rewrite scan"
+msgstr "Повторно використовуваний план переписування, створений rewrite scan"
+
+msgid "Output a machine-readable validation report"
+msgstr "Вивести звіт про перевірку в машинозчитуваному форматі"
+
+msgid "Inspect durable rewrite operation progress"
+msgstr "Перевірити збережений поступ операції переписування"
+
+msgid "Output machine-readable operation state"
+msgstr "Вивести стан операції в машинозчитуваному форматі"
+
+#, python-brace-format
+msgid "Commit {commit} has malformed {field} metadata."
+msgstr "Коміт {commit} має некоректні метадані {field}."
+
+#, python-brace-format
+msgid "Invalid rewrite plan: {detail}"
+msgstr "Некоректний план переписування: {detail}"
+
+#, python-brace-format
+msgid "Could not read rewrite plan {path}: {error}"
+msgstr "Не вдалося прочитати план переписування {path}: {error}"
+
+#, python-brace-format
+msgid "Could not inspect legacy grafts: {error}"
+msgstr "Не вдалося перевірити застарілі graft-записи: {error}"
+
+msgid "Rewrite scanning refuses replace objects or legacy grafts because they change commit identity semantics."
+msgstr "Перевірка переписування відхиляє об’єкти заміни та застарілі graft-записи, оскільки вони змінюють семантику ідентичності комітів."
+
+#, python-brace-format
+msgid "Invalid history revision: {revision}"
+msgstr "Некоректна ревізія історії: {revision}"
+
+msgid "No upstream branch is configured. Pass the excluded history base explicitly."
+msgstr "Гілку upstream не налаштовано. Явно вкажіть виключену базу історії."
+
+#, python-brace-format
+msgid "History base {base} is not an ancestor of HEAD."
+msgstr "База історії {base} не є предком HEAD."
+
+#, python-brace-format
+msgid "History refinement currently requires a linear range; commit {commit} does not continue the expected parent chain."
+msgstr "Для уточнення історії поки потрібен лінійний діапазон; коміт {commit} не продовжує очікуваний ланцюжок батьків."
+
+msgid "No commits found between the history base and HEAD."
+msgstr "Між базою історії та HEAD не знайдено комітів."
+
+msgid "HEAD changed while the history snapshot was being built."
+msgstr "HEAD змінився під час створення знімка історії."
+
+#, python-brace-format
+msgid "History changed while commit {commit} was scanned."
+msgstr "Історія змінилася під час перевірки коміту {commit}."
+
+#, python-brace-format
+msgid "Commit {commit} produced duplicate history unit IDs."
+msgstr "Коміт {commit} створив повторювані ідентифікатори одиниць історії."
+
+#, python-brace-format
+msgid "Invalid rewrite operation state: {detail}"
+msgstr "Некоректний стан операції переписування: {detail}"
+
+msgid "Another rewrite operation is already active."
+msgstr "Інша операція переписування вже активна."
+
+#, python-brace-format
+msgid "Could not inspect history ref {refname}."
+msgstr "Не вдалося перевірити посилання історії {refname}."
+
+#, python-brace-format
+msgid "History snapshot {base}..{tip}"
+msgstr "Знімок історії {base}..{tip}"
+
+msgid "Branch: detached HEAD"
+msgstr "Гілка: від’єднаний HEAD"
+
+#, python-brace-format
+msgid "Branch: {branch}"
+msgstr "Гілка: {branch}"
+
+msgid "Mutation preconditions: ready"
+msgstr "Передумови зміни: готові"
+
+#, python-brace-format
+msgid "Mutation preconditions: blocked ({blockers})"
+msgstr "Передумови зміни: заблоковані ({blockers})"
+
+#, python-brace-format
+msgid "Wrote reusable rewrite plan to {path}."
+msgstr "Повторно використовуваний план переписування записано до {path}."
+
+msgid "No rewrite operation is active."
+msgstr "Немає активної операції переписування."
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id}"
+msgstr "Операція переписування {operation_id}"
+
+#, python-brace-format
+msgid "Phase: {phase}"
+msgstr "Фаза: {phase}"
+
+#, python-brace-format
+msgid "Progress: {completed} of {planned} output commit(s)"
+msgstr "Поступ: {completed} з {planned} вихідних комітів"
+
+#, python-brace-format
+msgid "Manual recovery: {command}"
+msgstr "Ручне відновлення: {command}"
+
+#, python-brace-format
+msgid "Last verified commit: {commit}"
+msgstr "Останній перевірений коміт: {commit}"
+
+#, python-brace-format
+msgid "Next action: {action}"
+msgstr "Наступна дія: {action}"
+
+#, python-brace-format
+msgid "Diagnostic: {diagnostic}"
+msgstr "Діагностика: {diagnostic}"
+
+msgid "Resume preconditions: ready"
+msgstr "Передумови продовження: готові"
+
+#, python-brace-format
+msgid "Resume preconditions: blocked ({blockers})"
+msgstr "Передумови продовження: заблоковані ({blockers})"
+
+msgid "Rewrite plan is valid."
+msgstr "План переписування коректний."
+
+#, python-brace-format
+msgid "{count} commit."
+msgid_plural "{count} commits."
+msgstr[0] "{count} коміт."
+msgstr[1] "{count} коміти."
+msgstr[2] "{count} комітів."
+
+#, python-brace-format
+msgid "{count} exact patch unit."
+msgid_plural "{count} exact patch units."
+msgstr[0] "{count} точна одиниця патча."
+msgstr[1] "{count} точні одиниці патча."
+msgstr[2] "{count} точних одиниць патча."
+
+#, python-brace-format
+msgid "Warning: {count} source signature cannot remain valid after rewriting."
+msgid_plural "Warning: {count} source signatures cannot remain valid after rewriting."
+msgstr[0] "Попередження: {count} початковий підпис не зможе лишитися дійсним після перезапису."
+msgstr[1] "Попередження: {count} початкові підписи не зможуть лишитися дійсними після перезапису."
+msgstr[2] "Попередження: {count} початкових підписів не зможуть лишитися дійсними після перезапису."
+
+#, python-brace-format
+msgid "{count} source commit is conserved."
+msgid_plural "{count} source commits are conserved."
+msgstr[0] "Збережено {count} початковий коміт."
+msgstr[1] "Збережено {count} початкові коміти."
+msgstr[2] "Збережено {count} початкових комітів."

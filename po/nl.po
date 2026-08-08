@@ -6965,3 +6965,182 @@ msgstr "Ongeldig fixup-plan: {detail}"
 #, python-brace-format
 msgid "Could not read fixup plan {path}: {error}"
 msgstr "Kon fixup-plan {path} niet lezen: {error}"
+
+msgid "Inspect a deterministic history refinement"
+msgstr "Een deterministische geschiedenisverfijning inspecteren"
+
+msgid "Rewrite action"
+msgstr "Herschrijfactie"
+
+msgid "Capture exact history facts and a KEEP plan template"
+msgstr "Exacte geschiedenisfeiten en een KEEP-plansjabloon vastleggen"
+
+msgid "Atomically write the reusable JSON plan to FILE"
+msgstr "Het herbruikbare JSON-plan atomair naar FILE schrijven"
+
+msgid "Output the reusable JSON plan on standard output"
+msgstr "Het herbruikbare JSON-plan op de standaarduitvoer tonen"
+
+msgid "Commit excluded from the scan (default: fork point with upstream)"
+msgstr "Commit uitgesloten van de scan (standaard: forkpunt met upstream)"
+
+msgid "Validate a reviewed rewrite plan against live objects"
+msgstr "Een beoordeeld herschrijfplan valideren tegen actuele objecten"
+
+msgid "Reusable rewrite plan emitted by rewrite scan"
+msgstr "Herbruikbaar herschrijfplan uitgevoerd door rewrite scan"
+
+msgid "Output a machine-readable validation report"
+msgstr "Een machineleesbaar validatierapport tonen"
+
+msgid "Inspect durable rewrite operation progress"
+msgstr "Duurzame voortgang van de herschrijfbewerking inspecteren"
+
+msgid "Output machine-readable operation state"
+msgstr "Machineleesbare bewerkingsstatus tonen"
+
+#, python-brace-format
+msgid "Commit {commit} has malformed {field} metadata."
+msgstr "Commit {commit} heeft ongeldige {field}-metadata."
+
+#, python-brace-format
+msgid "Invalid rewrite plan: {detail}"
+msgstr "Ongeldig herschrijfplan: {detail}"
+
+#, python-brace-format
+msgid "Could not read rewrite plan {path}: {error}"
+msgstr "Kan herschrijfplan {path} niet lezen: {error}"
+
+#, python-brace-format
+msgid "Could not inspect legacy grafts: {error}"
+msgstr "Kan verouderde grafts niet inspecteren: {error}"
+
+msgid "Rewrite scanning refuses replace objects or legacy grafts because they change commit identity semantics."
+msgstr "De herschrijfscan weigert vervangingsobjecten en verouderde grafts omdat deze de betekenis van commitidentiteiten wijzigen."
+
+#, python-brace-format
+msgid "Invalid history revision: {revision}"
+msgstr "Ongeldige geschiedenisrevisie: {revision}"
+
+msgid "No upstream branch is configured. Pass the excluded history base explicitly."
+msgstr "Er is geen upstream-branch ingesteld. Geef de uitgesloten geschiedenisbasis expliciet op."
+
+#, python-brace-format
+msgid "History base {base} is not an ancestor of HEAD."
+msgstr "Geschiedenisbasis {base} is geen voorouder van HEAD."
+
+#, python-brace-format
+msgid "History refinement currently requires a linear range; commit {commit} does not continue the expected parent chain."
+msgstr "Geschiedenisverfijning vereist momenteel een lineair bereik; commit {commit} zet de verwachte ouderketen niet voort."
+
+msgid "No commits found between the history base and HEAD."
+msgstr "Geen commits gevonden tussen de geschiedenisbasis en HEAD."
+
+msgid "HEAD changed while the history snapshot was being built."
+msgstr "HEAD veranderde terwijl de geschiedenissnapshot werd opgebouwd."
+
+#, python-brace-format
+msgid "History changed while commit {commit} was scanned."
+msgstr "De geschiedenis veranderde tijdens het scannen van commit {commit}."
+
+#, python-brace-format
+msgid "Commit {commit} produced duplicate history unit IDs."
+msgstr "Commit {commit} produceerde dubbele geschiedenis-unit-ID's."
+
+#, python-brace-format
+msgid "Invalid rewrite operation state: {detail}"
+msgstr "Ongeldige status van herschrijfbewerking: {detail}"
+
+msgid "Another rewrite operation is already active."
+msgstr "Er is al een andere herschrijfbewerking actief."
+
+#, python-brace-format
+msgid "Could not inspect history ref {refname}."
+msgstr "Kan geschiedenisref {refname} niet inspecteren."
+
+#, python-brace-format
+msgid "History snapshot {base}..{tip}"
+msgstr "Geschiedenissnapshot {base}..{tip}"
+
+msgid "Branch: detached HEAD"
+msgstr "Branch: losgekoppelde HEAD"
+
+#, python-brace-format
+msgid "Branch: {branch}"
+msgstr "Branch: {branch}"
+
+msgid "Mutation preconditions: ready"
+msgstr "Mutatievoorwaarden: gereed"
+
+#, python-brace-format
+msgid "Mutation preconditions: blocked ({blockers})"
+msgstr "Mutatievoorwaarden: geblokkeerd ({blockers})"
+
+#, python-brace-format
+msgid "Wrote reusable rewrite plan to {path}."
+msgstr "Herbruikbaar herschrijfplan naar {path} geschreven."
+
+msgid "No rewrite operation is active."
+msgstr "Er is geen herschrijfbewerking actief."
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id}"
+msgstr "Herschrijfbewerking {operation_id}"
+
+#, python-brace-format
+msgid "Phase: {phase}"
+msgstr "Fase: {phase}"
+
+#, python-brace-format
+msgid "Progress: {completed} of {planned} output commit(s)"
+msgstr "Voortgang: {completed} van {planned} uitvoercommits"
+
+#, python-brace-format
+msgid "Manual recovery: {command}"
+msgstr "Handmatig herstel: {command}"
+
+#, python-brace-format
+msgid "Last verified commit: {commit}"
+msgstr "Laatst geverifieerde commit: {commit}"
+
+#, python-brace-format
+msgid "Next action: {action}"
+msgstr "Volgende actie: {action}"
+
+#, python-brace-format
+msgid "Diagnostic: {diagnostic}"
+msgstr "Diagnose: {diagnostic}"
+
+msgid "Resume preconditions: ready"
+msgstr "Hervattingsvoorwaarden: gereed"
+
+#, python-brace-format
+msgid "Resume preconditions: blocked ({blockers})"
+msgstr "Hervattingsvoorwaarden: geblokkeerd ({blockers})"
+
+msgid "Rewrite plan is valid."
+msgstr "Het herschrijfplan is geldig."
+
+#, python-brace-format
+msgid "{count} commit."
+msgid_plural "{count} commits."
+msgstr[0] "{count} commit."
+msgstr[1] "{count} commits."
+
+#, python-brace-format
+msgid "{count} exact patch unit."
+msgid_plural "{count} exact patch units."
+msgstr[0] "{count} exacte patch-unit."
+msgstr[1] "{count} exacte patch-units."
+
+#, python-brace-format
+msgid "Warning: {count} source signature cannot remain valid after rewriting."
+msgid_plural "Warning: {count} source signatures cannot remain valid after rewriting."
+msgstr[0] "Waarschuwing: {count} bronhandtekening kan na herschrijven niet geldig blijven."
+msgstr[1] "Waarschuwing: {count} bronhandtekeningen kunnen na herschrijven niet geldig blijven."
+
+#, python-brace-format
+msgid "{count} source commit is conserved."
+msgid_plural "{count} source commits are conserved."
+msgstr[0] "{count} broncommit blijft behouden."
+msgstr[1] "{count} broncommits blijven behouden."

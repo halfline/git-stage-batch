@@ -6942,3 +6942,182 @@ msgstr "Plano de fixup inválido: {detail}"
 #, python-brace-format
 msgid "Could not read fixup plan {path}: {error}"
 msgstr "Não foi possível ler o plano de fixup {path}: {error}"
+
+msgid "Inspect a deterministic history refinement"
+msgstr "Inspecionar um refinamento determinístico do histórico"
+
+msgid "Rewrite action"
+msgstr "Ação de reescrita"
+
+msgid "Capture exact history facts and a KEEP plan template"
+msgstr "Capturar fatos exatos do histórico e um modelo de plano KEEP"
+
+msgid "Atomically write the reusable JSON plan to FILE"
+msgstr "Gravar atomicamente o plano JSON reutilizável em FILE"
+
+msgid "Output the reusable JSON plan on standard output"
+msgstr "Exibir o plano JSON reutilizável na saída padrão"
+
+msgid "Commit excluded from the scan (default: fork point with upstream)"
+msgstr "Commit excluído da análise (padrão: ponto de bifurcação com upstream)"
+
+msgid "Validate a reviewed rewrite plan against live objects"
+msgstr "Validar um plano de reescrita revisado em relação aos objetos atuais"
+
+msgid "Reusable rewrite plan emitted by rewrite scan"
+msgstr "Plano de reescrita reutilizável emitido por rewrite scan"
+
+msgid "Output a machine-readable validation report"
+msgstr "Exibir um relatório de validação legível por máquina"
+
+msgid "Inspect durable rewrite operation progress"
+msgstr "Inspecionar o progresso durável da operação de reescrita"
+
+msgid "Output machine-readable operation state"
+msgstr "Exibir o estado da operação legível por máquina"
+
+#, python-brace-format
+msgid "Commit {commit} has malformed {field} metadata."
+msgstr "O commit {commit} tem metadados {field} malformados."
+
+#, python-brace-format
+msgid "Invalid rewrite plan: {detail}"
+msgstr "Plano de reescrita inválido: {detail}"
+
+#, python-brace-format
+msgid "Could not read rewrite plan {path}: {error}"
+msgstr "Não foi possível ler o plano de reescrita {path}: {error}"
+
+#, python-brace-format
+msgid "Could not inspect legacy grafts: {error}"
+msgstr "Não foi possível inspecionar os grafts legados: {error}"
+
+msgid "Rewrite scanning refuses replace objects or legacy grafts because they change commit identity semantics."
+msgstr "A análise da reescrita recusa objetos de substituição ou grafts legados porque eles alteram a semântica da identidade dos commits."
+
+#, python-brace-format
+msgid "Invalid history revision: {revision}"
+msgstr "Revisão de histórico inválida: {revision}"
+
+msgid "No upstream branch is configured. Pass the excluded history base explicitly."
+msgstr "Nenhum branch upstream está configurado. Informe explicitamente a base excluída do histórico."
+
+#, python-brace-format
+msgid "History base {base} is not an ancestor of HEAD."
+msgstr "A base de histórico {base} não é ancestral de HEAD."
+
+#, python-brace-format
+msgid "History refinement currently requires a linear range; commit {commit} does not continue the expected parent chain."
+msgstr "O refinamento do histórico atualmente exige um intervalo linear; o commit {commit} não continua a cadeia de pais esperada."
+
+msgid "No commits found between the history base and HEAD."
+msgstr "Nenhum commit encontrado entre a base do histórico e HEAD."
+
+msgid "HEAD changed while the history snapshot was being built."
+msgstr "HEAD mudou enquanto o snapshot do histórico era criado."
+
+#, python-brace-format
+msgid "History changed while commit {commit} was scanned."
+msgstr "O histórico mudou enquanto o commit {commit} era analisado."
+
+#, python-brace-format
+msgid "Commit {commit} produced duplicate history unit IDs."
+msgstr "O commit {commit} produziu IDs duplicados de unidades do histórico."
+
+#, python-brace-format
+msgid "Invalid rewrite operation state: {detail}"
+msgstr "Estado inválido da operação de reescrita: {detail}"
+
+msgid "Another rewrite operation is already active."
+msgstr "Outra operação de reescrita já está ativa."
+
+#, python-brace-format
+msgid "Could not inspect history ref {refname}."
+msgstr "Não foi possível inspecionar a ref de histórico {refname}."
+
+#, python-brace-format
+msgid "History snapshot {base}..{tip}"
+msgstr "Snapshot de histórico {base}..{tip}"
+
+msgid "Branch: detached HEAD"
+msgstr "Branch: HEAD desconectado"
+
+#, python-brace-format
+msgid "Branch: {branch}"
+msgstr "Branch: {branch}"
+
+msgid "Mutation preconditions: ready"
+msgstr "Pré-condições de mutação: prontas"
+
+#, python-brace-format
+msgid "Mutation preconditions: blocked ({blockers})"
+msgstr "Pré-condições de mutação: bloqueadas ({blockers})"
+
+#, python-brace-format
+msgid "Wrote reusable rewrite plan to {path}."
+msgstr "Plano de reescrita reutilizável gravado em {path}."
+
+msgid "No rewrite operation is active."
+msgstr "Nenhuma operação de reescrita está ativa."
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id}"
+msgstr "Operação de reescrita {operation_id}"
+
+#, python-brace-format
+msgid "Phase: {phase}"
+msgstr "Fase: {phase}"
+
+#, python-brace-format
+msgid "Progress: {completed} of {planned} output commit(s)"
+msgstr "Progresso: {completed} de {planned} commits de saída"
+
+#, python-brace-format
+msgid "Manual recovery: {command}"
+msgstr "Recuperação manual: {command}"
+
+#, python-brace-format
+msgid "Last verified commit: {commit}"
+msgstr "Último commit verificado: {commit}"
+
+#, python-brace-format
+msgid "Next action: {action}"
+msgstr "Próxima ação: {action}"
+
+#, python-brace-format
+msgid "Diagnostic: {diagnostic}"
+msgstr "Diagnóstico: {diagnostic}"
+
+msgid "Resume preconditions: ready"
+msgstr "Pré-condições de retomada: prontas"
+
+#, python-brace-format
+msgid "Resume preconditions: blocked ({blockers})"
+msgstr "Pré-condições de retomada: bloqueadas ({blockers})"
+
+msgid "Rewrite plan is valid."
+msgstr "O plano de reescrita é válido."
+
+#, python-brace-format
+msgid "{count} commit."
+msgid_plural "{count} commits."
+msgstr[0] "{count} commit."
+msgstr[1] "{count} commits."
+
+#, python-brace-format
+msgid "{count} exact patch unit."
+msgid_plural "{count} exact patch units."
+msgstr[0] "{count} unidade exata de patch."
+msgstr[1] "{count} unidades exatas de patch."
+
+#, python-brace-format
+msgid "Warning: {count} source signature cannot remain valid after rewriting."
+msgid_plural "Warning: {count} source signatures cannot remain valid after rewriting."
+msgstr[0] "Aviso: {count} assinatura de origem não pode permanecer válida após a reescrita."
+msgstr[1] "Aviso: {count} assinaturas de origem não podem permanecer válidas após a reescrita."
+
+#, python-brace-format
+msgid "{count} source commit is conserved."
+msgid_plural "{count} source commits are conserved."
+msgstr[0] "{count} commit de origem é preservado."
+msgstr[1] "{count} commits de origem são preservados."

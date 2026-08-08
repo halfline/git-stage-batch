@@ -6449,3 +6449,178 @@ msgstr "無効な fixup プラン: {detail}"
 #, python-brace-format
 msgid "Could not read fixup plan {path}: {error}"
 msgstr "fixup プラン {path} を読み取れませんでした: {error}"
+
+msgid "Inspect a deterministic history refinement"
+msgstr "決定的な履歴整理を検査"
+
+msgid "Rewrite action"
+msgstr "書き換え操作"
+
+msgid "Capture exact history facts and a KEEP plan template"
+msgstr "正確な履歴情報と KEEP プランのテンプレートを取得"
+
+msgid "Atomically write the reusable JSON plan to FILE"
+msgstr "再利用可能な JSON プランを FILE にアトミックに書き込む"
+
+msgid "Output the reusable JSON plan on standard output"
+msgstr "再利用可能な JSON プランを標準出力に出力"
+
+msgid "Commit excluded from the scan (default: fork point with upstream)"
+msgstr "スキャンから除外するコミット（デフォルト: upstream とのフォークポイント）"
+
+msgid "Validate a reviewed rewrite plan against live objects"
+msgstr "レビュー済み書き換えプランを現在のオブジェクトに対して検証"
+
+msgid "Reusable rewrite plan emitted by rewrite scan"
+msgstr "rewrite scan が出力した再利用可能な書き換えプラン"
+
+msgid "Output a machine-readable validation report"
+msgstr "機械可読な検証レポートを出力"
+
+msgid "Inspect durable rewrite operation progress"
+msgstr "永続的な書き換え操作の進行状況を検査"
+
+msgid "Output machine-readable operation state"
+msgstr "機械可読な操作状態を出力"
+
+#, python-brace-format
+msgid "Commit {commit} has malformed {field} metadata."
+msgstr "コミット {commit} の {field} メタデータが不正です。"
+
+#, python-brace-format
+msgid "Invalid rewrite plan: {detail}"
+msgstr "無効な書き換えプラン: {detail}"
+
+#, python-brace-format
+msgid "Could not read rewrite plan {path}: {error}"
+msgstr "書き換えプラン {path} を読み取れませんでした: {error}"
+
+#, python-brace-format
+msgid "Could not inspect legacy grafts: {error}"
+msgstr "従来の graft を検査できませんでした: {error}"
+
+msgid "Rewrite scanning refuses replace objects or legacy grafts because they change commit identity semantics."
+msgstr "置換オブジェクトや従来の graft はコミット識別情報の意味を変更するため、書き換えスキャンでは拒否されます。"
+
+#, python-brace-format
+msgid "Invalid history revision: {revision}"
+msgstr "無効な履歴リビジョン: {revision}"
+
+msgid "No upstream branch is configured. Pass the excluded history base explicitly."
+msgstr "upstream ブランチが設定されていません。除外する履歴ベースを明示的に指定してください。"
+
+#, python-brace-format
+msgid "History base {base} is not an ancestor of HEAD."
+msgstr "履歴ベース {base} は HEAD の祖先ではありません。"
+
+#, python-brace-format
+msgid "History refinement currently requires a linear range; commit {commit} does not continue the expected parent chain."
+msgstr "履歴整理には現在、線形範囲が必要です。コミット {commit} は期待される親チェーンに続いていません。"
+
+msgid "No commits found between the history base and HEAD."
+msgstr "履歴ベースと HEAD の間にコミットがありません。"
+
+msgid "HEAD changed while the history snapshot was being built."
+msgstr "履歴スナップショットの構築中に HEAD が変更されました。"
+
+#, python-brace-format
+msgid "History changed while commit {commit} was scanned."
+msgstr "コミット {commit} のスキャン中に履歴が変更されました。"
+
+#, python-brace-format
+msgid "Commit {commit} produced duplicate history unit IDs."
+msgstr "コミット {commit} から重複した履歴ユニット ID が生成されました。"
+
+#, python-brace-format
+msgid "Invalid rewrite operation state: {detail}"
+msgstr "無効な書き換え操作状態: {detail}"
+
+msgid "Another rewrite operation is already active."
+msgstr "別の書き換え操作がすでに有効です。"
+
+#, python-brace-format
+msgid "Could not inspect history ref {refname}."
+msgstr "履歴参照 {refname} を検査できませんでした。"
+
+#, python-brace-format
+msgid "History snapshot {base}..{tip}"
+msgstr "履歴スナップショット {base}..{tip}"
+
+msgid "Branch: detached HEAD"
+msgstr "ブランチ: デタッチされた HEAD"
+
+#, python-brace-format
+msgid "Branch: {branch}"
+msgstr "ブランチ: {branch}"
+
+msgid "Mutation preconditions: ready"
+msgstr "変更の前提条件: 準備完了"
+
+#, python-brace-format
+msgid "Mutation preconditions: blocked ({blockers})"
+msgstr "変更の前提条件: ブロック中（{blockers}）"
+
+#, python-brace-format
+msgid "Wrote reusable rewrite plan to {path}."
+msgstr "再利用可能な書き換えプランを {path} に書き込みました。"
+
+msgid "No rewrite operation is active."
+msgstr "有効な書き換え操作はありません。"
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id}"
+msgstr "書き換え操作 {operation_id}"
+
+#, python-brace-format
+msgid "Phase: {phase}"
+msgstr "フェーズ: {phase}"
+
+#, python-brace-format
+msgid "Progress: {completed} of {planned} output commit(s)"
+msgstr "進行状況: 出力コミット {planned} 件中 {completed} 件"
+
+#, python-brace-format
+msgid "Manual recovery: {command}"
+msgstr "手動復旧: {command}"
+
+#, python-brace-format
+msgid "Last verified commit: {commit}"
+msgstr "最後に検証したコミット: {commit}"
+
+#, python-brace-format
+msgid "Next action: {action}"
+msgstr "次の操作: {action}"
+
+#, python-brace-format
+msgid "Diagnostic: {diagnostic}"
+msgstr "診断: {diagnostic}"
+
+msgid "Resume preconditions: ready"
+msgstr "再開の前提条件: 準備完了"
+
+#, python-brace-format
+msgid "Resume preconditions: blocked ({blockers})"
+msgstr "再開の前提条件: ブロック中（{blockers}）"
+
+msgid "Rewrite plan is valid."
+msgstr "書き換えプランは有効です。"
+
+#, python-brace-format
+msgid "{count} commit."
+msgid_plural "{count} commits."
+msgstr[0] "{count} 件のコミット。"
+
+#, python-brace-format
+msgid "{count} exact patch unit."
+msgid_plural "{count} exact patch units."
+msgstr[0] "{count} 個の正確なパッチユニット。"
+
+#, python-brace-format
+msgid "Warning: {count} source signature cannot remain valid after rewriting."
+msgid_plural "Warning: {count} source signatures cannot remain valid after rewriting."
+msgstr[0] "警告: {count} 個のソース署名は書き換え後も有効な状態を維持できません。"
+
+#, python-brace-format
+msgid "{count} source commit is conserved."
+msgid_plural "{count} source commits are conserved."
+msgstr[0] "{count} 件のソースコミットが保持されています。"

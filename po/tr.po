@@ -6858,3 +6858,182 @@ msgstr "Geçersiz fixup planı: {detail}"
 #, python-brace-format
 msgid "Could not read fixup plan {path}: {error}"
 msgstr "{path} fixup planı okunamadı: {error}"
+
+msgid "Inspect a deterministic history refinement"
+msgstr "Belirlenimci bir geçmiş iyileştirmesini incele"
+
+msgid "Rewrite action"
+msgstr "Yeniden yazma eylemi"
+
+msgid "Capture exact history facts and a KEEP plan template"
+msgstr "Kesin geçmiş olgularını ve bir KEEP plan şablonunu yakala"
+
+msgid "Atomically write the reusable JSON plan to FILE"
+msgstr "Yeniden kullanılabilir JSON planını atomik olarak FILE konumuna yaz"
+
+msgid "Output the reusable JSON plan on standard output"
+msgstr "Yeniden kullanılabilir JSON planını standart çıktıya yazdır"
+
+msgid "Commit excluded from the scan (default: fork point with upstream)"
+msgstr "Taramanın dışında tutulan commit (öntanımlı: upstream ile çatallanma noktası)"
+
+msgid "Validate a reviewed rewrite plan against live objects"
+msgstr "Gözden geçirilmiş bir yeniden yazma planını canlı nesnelere göre doğrula"
+
+msgid "Reusable rewrite plan emitted by rewrite scan"
+msgstr "rewrite scan tarafından üretilen yeniden kullanılabilir yeniden yazma planı"
+
+msgid "Output a machine-readable validation report"
+msgstr "Makinece okunabilir doğrulama raporu çıktısı ver"
+
+msgid "Inspect durable rewrite operation progress"
+msgstr "Kalıcı yeniden yazma işlemi ilerlemesini incele"
+
+msgid "Output machine-readable operation state"
+msgstr "Makinece okunabilir işlem durumu çıktısı ver"
+
+#, python-brace-format
+msgid "Commit {commit} has malformed {field} metadata."
+msgstr "{commit} commit'i biçimsiz {field} üstverisine sahip."
+
+#, python-brace-format
+msgid "Invalid rewrite plan: {detail}"
+msgstr "Geçersiz yeniden yazma planı: {detail}"
+
+#, python-brace-format
+msgid "Could not read rewrite plan {path}: {error}"
+msgstr "{path} yeniden yazma planı okunamadı: {error}"
+
+#, python-brace-format
+msgid "Could not inspect legacy grafts: {error}"
+msgstr "Eski graft'lar incelenemedi: {error}"
+
+msgid "Rewrite scanning refuses replace objects or legacy grafts because they change commit identity semantics."
+msgstr "Yeniden yazma taraması, commit kimliği anlamını değiştirdikleri için değiştirme nesnelerini veya eski graft'ları reddeder."
+
+#, python-brace-format
+msgid "Invalid history revision: {revision}"
+msgstr "Geçersiz geçmiş revizyonu: {revision}"
+
+msgid "No upstream branch is configured. Pass the excluded history base explicitly."
+msgstr "Yapılandırılmış upstream dalı yok. Dışlanan geçmiş tabanını açıkça belirtin."
+
+#, python-brace-format
+msgid "History base {base} is not an ancestor of HEAD."
+msgstr "{base} geçmiş tabanı HEAD'in atası değil."
+
+#, python-brace-format
+msgid "History refinement currently requires a linear range; commit {commit} does not continue the expected parent chain."
+msgstr "Geçmiş iyileştirmesi şu anda doğrusal bir aralık gerektiriyor; {commit} commit'i beklenen üst zinciri sürdürmüyor."
+
+msgid "No commits found between the history base and HEAD."
+msgstr "Geçmiş tabanı ile HEAD arasında commit bulunamadı."
+
+msgid "HEAD changed while the history snapshot was being built."
+msgstr "Geçmiş anlık görüntüsü oluşturulurken HEAD değişti."
+
+#, python-brace-format
+msgid "History changed while commit {commit} was scanned."
+msgstr "{commit} commit'i taranırken geçmiş değişti."
+
+#, python-brace-format
+msgid "Commit {commit} produced duplicate history unit IDs."
+msgstr "{commit} commit'i yinelenen geçmiş birimi kimlikleri üretti."
+
+#, python-brace-format
+msgid "Invalid rewrite operation state: {detail}"
+msgstr "Geçersiz yeniden yazma işlemi durumu: {detail}"
+
+msgid "Another rewrite operation is already active."
+msgstr "Başka bir yeniden yazma işlemi zaten etkin."
+
+#, python-brace-format
+msgid "Could not inspect history ref {refname}."
+msgstr "{refname} geçmiş ref'i incelenemedi."
+
+#, python-brace-format
+msgid "History snapshot {base}..{tip}"
+msgstr "Geçmiş anlık görüntüsü {base}..{tip}"
+
+msgid "Branch: detached HEAD"
+msgstr "Dal: ayrık HEAD"
+
+#, python-brace-format
+msgid "Branch: {branch}"
+msgstr "Dal: {branch}"
+
+msgid "Mutation preconditions: ready"
+msgstr "Değişiklik ön koşulları: hazır"
+
+#, python-brace-format
+msgid "Mutation preconditions: blocked ({blockers})"
+msgstr "Değişiklik ön koşulları: engellendi ({blockers})"
+
+#, python-brace-format
+msgid "Wrote reusable rewrite plan to {path}."
+msgstr "Yeniden kullanılabilir yeniden yazma planı {path} konumuna yazıldı."
+
+msgid "No rewrite operation is active."
+msgstr "Etkin yeniden yazma işlemi yok."
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id}"
+msgstr "Yeniden yazma işlemi {operation_id}"
+
+#, python-brace-format
+msgid "Phase: {phase}"
+msgstr "Aşama: {phase}"
+
+#, python-brace-format
+msgid "Progress: {completed} of {planned} output commit(s)"
+msgstr "İlerleme: {planned} çıktı commit'inin {completed} tanesi"
+
+#, python-brace-format
+msgid "Manual recovery: {command}"
+msgstr "Elle kurtarma: {command}"
+
+#, python-brace-format
+msgid "Last verified commit: {commit}"
+msgstr "Son doğrulanan commit: {commit}"
+
+#, python-brace-format
+msgid "Next action: {action}"
+msgstr "Sonraki eylem: {action}"
+
+#, python-brace-format
+msgid "Diagnostic: {diagnostic}"
+msgstr "Tanılama: {diagnostic}"
+
+msgid "Resume preconditions: ready"
+msgstr "Sürdürme ön koşulları: hazır"
+
+#, python-brace-format
+msgid "Resume preconditions: blocked ({blockers})"
+msgstr "Sürdürme ön koşulları: engellendi ({blockers})"
+
+msgid "Rewrite plan is valid."
+msgstr "Yeniden yazma planı geçerli."
+
+#, python-brace-format
+msgid "{count} commit."
+msgid_plural "{count} commits."
+msgstr[0] "{count} commit."
+msgstr[1] "{count} commit."
+
+#, python-brace-format
+msgid "{count} exact patch unit."
+msgid_plural "{count} exact patch units."
+msgstr[0] "{count} kesin yama birimi."
+msgstr[1] "{count} kesin yama birimi."
+
+#, python-brace-format
+msgid "Warning: {count} source signature cannot remain valid after rewriting."
+msgid_plural "Warning: {count} source signatures cannot remain valid after rewriting."
+msgstr[0] "Uyarı: {count} kaynak imza yeniden yazımdan sonra geçerli kalamaz."
+msgstr[1] "Uyarı: {count} kaynak imza yeniden yazımdan sonra geçerli kalamaz."
+
+#, python-brace-format
+msgid "{count} source commit is conserved."
+msgid_plural "{count} source commits are conserved."
+msgstr[0] "{count} kaynak commit korunuyor."
+msgstr[1] "{count} kaynak commit korunuyor."

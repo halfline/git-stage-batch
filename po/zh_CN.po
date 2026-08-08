@@ -6418,3 +6418,178 @@ msgstr "无效的 fixup 计划：{detail}"
 #, python-brace-format
 msgid "Could not read fixup plan {path}: {error}"
 msgstr "无法读取 fixup 计划 {path}：{error}"
+
+msgid "Inspect a deterministic history refinement"
+msgstr "检查确定性的历史优化"
+
+msgid "Rewrite action"
+msgstr "重写操作"
+
+msgid "Capture exact history facts and a KEEP plan template"
+msgstr "捕获准确的历史事实和 KEEP 计划模板"
+
+msgid "Atomically write the reusable JSON plan to FILE"
+msgstr "以原子方式将可复用的 JSON 计划写入 FILE"
+
+msgid "Output the reusable JSON plan on standard output"
+msgstr "将可复用的 JSON 计划输出到标准输出"
+
+msgid "Commit excluded from the scan (default: fork point with upstream)"
+msgstr "扫描中排除的提交（默认：与 upstream 的分叉点）"
+
+msgid "Validate a reviewed rewrite plan against live objects"
+msgstr "根据当前对象验证已审查的重写计划"
+
+msgid "Reusable rewrite plan emitted by rewrite scan"
+msgstr "由 rewrite scan 生成的可复用重写计划"
+
+msgid "Output a machine-readable validation report"
+msgstr "输出机器可读的验证报告"
+
+msgid "Inspect durable rewrite operation progress"
+msgstr "检查持久的重写操作进度"
+
+msgid "Output machine-readable operation state"
+msgstr "输出机器可读的操作状态"
+
+#, python-brace-format
+msgid "Commit {commit} has malformed {field} metadata."
+msgstr "提交 {commit} 的 {field} 元数据格式不正确。"
+
+#, python-brace-format
+msgid "Invalid rewrite plan: {detail}"
+msgstr "无效的重写计划：{detail}"
+
+#, python-brace-format
+msgid "Could not read rewrite plan {path}: {error}"
+msgstr "无法读取重写计划 {path}：{error}"
+
+#, python-brace-format
+msgid "Could not inspect legacy grafts: {error}"
+msgstr "无法检查旧式 graft：{error}"
+
+msgid "Rewrite scanning refuses replace objects or legacy grafts because they change commit identity semantics."
+msgstr "重写扫描拒绝替换对象或旧式 graft，因为它们会更改提交身份的语义。"
+
+#, python-brace-format
+msgid "Invalid history revision: {revision}"
+msgstr "无效的历史修订：{revision}"
+
+msgid "No upstream branch is configured. Pass the excluded history base explicitly."
+msgstr "未配置 upstream 分支。请明确传入排除的历史基点。"
+
+#, python-brace-format
+msgid "History base {base} is not an ancestor of HEAD."
+msgstr "历史基点 {base} 不是 HEAD 的祖先。"
+
+#, python-brace-format
+msgid "History refinement currently requires a linear range; commit {commit} does not continue the expected parent chain."
+msgstr "历史优化目前要求线性范围；提交 {commit} 未延续预期的父提交链。"
+
+msgid "No commits found between the history base and HEAD."
+msgstr "在历史基点与 HEAD 之间未找到提交。"
+
+msgid "HEAD changed while the history snapshot was being built."
+msgstr "构建历史快照时 HEAD 发生了变化。"
+
+#, python-brace-format
+msgid "History changed while commit {commit} was scanned."
+msgstr "扫描提交 {commit} 时历史发生了变化。"
+
+#, python-brace-format
+msgid "Commit {commit} produced duplicate history unit IDs."
+msgstr "提交 {commit} 生成了重复的历史单元 ID。"
+
+#, python-brace-format
+msgid "Invalid rewrite operation state: {detail}"
+msgstr "无效的重写操作状态：{detail}"
+
+msgid "Another rewrite operation is already active."
+msgstr "已有另一个重写操作处于活动状态。"
+
+#, python-brace-format
+msgid "Could not inspect history ref {refname}."
+msgstr "无法检查历史引用 {refname}。"
+
+#, python-brace-format
+msgid "History snapshot {base}..{tip}"
+msgstr "历史快照 {base}..{tip}"
+
+msgid "Branch: detached HEAD"
+msgstr "分支：分离的 HEAD"
+
+#, python-brace-format
+msgid "Branch: {branch}"
+msgstr "分支：{branch}"
+
+msgid "Mutation preconditions: ready"
+msgstr "变更前置条件：就绪"
+
+#, python-brace-format
+msgid "Mutation preconditions: blocked ({blockers})"
+msgstr "变更前置条件：已阻止（{blockers}）"
+
+#, python-brace-format
+msgid "Wrote reusable rewrite plan to {path}."
+msgstr "已将可复用的重写计划写入 {path}。"
+
+msgid "No rewrite operation is active."
+msgstr "没有活动的重写操作。"
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id}"
+msgstr "重写操作 {operation_id}"
+
+#, python-brace-format
+msgid "Phase: {phase}"
+msgstr "阶段：{phase}"
+
+#, python-brace-format
+msgid "Progress: {completed} of {planned} output commit(s)"
+msgstr "进度：已完成 {completed}/{planned} 个输出提交"
+
+#, python-brace-format
+msgid "Manual recovery: {command}"
+msgstr "手动恢复：{command}"
+
+#, python-brace-format
+msgid "Last verified commit: {commit}"
+msgstr "最后验证的提交：{commit}"
+
+#, python-brace-format
+msgid "Next action: {action}"
+msgstr "下一操作：{action}"
+
+#, python-brace-format
+msgid "Diagnostic: {diagnostic}"
+msgstr "诊断：{diagnostic}"
+
+msgid "Resume preconditions: ready"
+msgstr "继续执行的前置条件：就绪"
+
+#, python-brace-format
+msgid "Resume preconditions: blocked ({blockers})"
+msgstr "继续执行的前置条件：已阻止（{blockers}）"
+
+msgid "Rewrite plan is valid."
+msgstr "重写计划有效。"
+
+#, python-brace-format
+msgid "{count} commit."
+msgid_plural "{count} commits."
+msgstr[0] "{count} 个提交。"
+
+#, python-brace-format
+msgid "{count} exact patch unit."
+msgid_plural "{count} exact patch units."
+msgstr[0] "{count} 个精确补丁单元。"
+
+#, python-brace-format
+msgid "Warning: {count} source signature cannot remain valid after rewriting."
+msgid_plural "Warning: {count} source signatures cannot remain valid after rewriting."
+msgstr[0] "警告：{count} 个源签名在重写后无法保持有效。"
+
+#, python-brace-format
+msgid "{count} source commit is conserved."
+msgid_plural "{count} source commits are conserved."
+msgstr[0] "已保留 {count} 个源提交。"

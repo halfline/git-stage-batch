@@ -6898,3 +6898,186 @@ msgstr "Neplatný plán fixup: {detail}"
 #, python-brace-format
 msgid "Could not read fixup plan {path}: {error}"
 msgstr "Plán fixup {path} nelze přečíst: {error}"
+
+msgid "Inspect a deterministic history refinement"
+msgstr "Zkontrolovat deterministické zpřesnění historie"
+
+msgid "Rewrite action"
+msgstr "Akce přepisu"
+
+msgid "Capture exact history facts and a KEEP plan template"
+msgstr "Zachytit přesná fakta historie a šablonu plánu KEEP"
+
+msgid "Atomically write the reusable JSON plan to FILE"
+msgstr "Atomicky zapsat opakovaně použitelný plán JSON do FILE"
+
+msgid "Output the reusable JSON plan on standard output"
+msgstr "Vypsat opakovaně použitelný plán JSON na standardní výstup"
+
+msgid "Commit excluded from the scan (default: fork point with upstream)"
+msgstr "Commit vyloučený z prohledávání (výchozí: bod rozvětvení s upstreamem)"
+
+msgid "Validate a reviewed rewrite plan against live objects"
+msgstr "Ověřit zkontrolovaný plán přepisu vůči aktuálním objektům"
+
+msgid "Reusable rewrite plan emitted by rewrite scan"
+msgstr "Opakovaně použitelný plán přepisu vytvořený příkazem rewrite scan"
+
+msgid "Output a machine-readable validation report"
+msgstr "Vypsat strojově čitelnou zprávu o ověření"
+
+msgid "Inspect durable rewrite operation progress"
+msgstr "Zkontrolovat trvalý průběh operace přepisu"
+
+msgid "Output machine-readable operation state"
+msgstr "Vypsat strojově čitelný stav operace"
+
+#, python-brace-format
+msgid "Commit {commit} has malformed {field} metadata."
+msgstr "Commit {commit} má poškozená metadata {field}."
+
+#, python-brace-format
+msgid "Invalid rewrite plan: {detail}"
+msgstr "Neplatný plán přepisu: {detail}"
+
+#, python-brace-format
+msgid "Could not read rewrite plan {path}: {error}"
+msgstr "Plán přepisu {path} nelze přečíst: {error}"
+
+#, python-brace-format
+msgid "Could not inspect legacy grafts: {error}"
+msgstr "Zastaralé grafty nelze zkontrolovat: {error}"
+
+msgid "Rewrite scanning refuses replace objects or legacy grafts because they change commit identity semantics."
+msgstr "Prohledávání přepisu odmítá náhradní objekty a zastaralé grafty, protože mění význam identity commitů."
+
+#, python-brace-format
+msgid "Invalid history revision: {revision}"
+msgstr "Neplatná revize historie: {revision}"
+
+msgid "No upstream branch is configured. Pass the excluded history base explicitly."
+msgstr "Není nastavená větev upstream. Zadejte explicitně vyloučenou základnu historie."
+
+#, python-brace-format
+msgid "History base {base} is not an ancestor of HEAD."
+msgstr "Základna historie {base} není předkem HEAD."
+
+#, python-brace-format
+msgid "History refinement currently requires a linear range; commit {commit} does not continue the expected parent chain."
+msgstr "Zpřesnění historie nyní vyžaduje lineární rozsah; commit {commit} nepokračuje v očekávaném řetězci rodičů."
+
+msgid "No commits found between the history base and HEAD."
+msgstr "Mezi základnou historie a HEAD nebyly nalezeny žádné commity."
+
+msgid "HEAD changed while the history snapshot was being built."
+msgstr "Během vytváření snímku historie se změnil HEAD."
+
+#, python-brace-format
+msgid "History changed while commit {commit} was scanned."
+msgstr "Během prohledávání commitu {commit} se změnila historie."
+
+#, python-brace-format
+msgid "Commit {commit} produced duplicate history unit IDs."
+msgstr "Commit {commit} vytvořil duplicitní ID jednotek historie."
+
+#, python-brace-format
+msgid "Invalid rewrite operation state: {detail}"
+msgstr "Neplatný stav operace přepisu: {detail}"
+
+msgid "Another rewrite operation is already active."
+msgstr "Jiná operace přepisu je již aktivní."
+
+#, python-brace-format
+msgid "Could not inspect history ref {refname}."
+msgstr "Odkaz historie {refname} nelze zkontrolovat."
+
+#, python-brace-format
+msgid "History snapshot {base}..{tip}"
+msgstr "Snímek historie {base}..{tip}"
+
+msgid "Branch: detached HEAD"
+msgstr "Větev: odpojený HEAD"
+
+#, python-brace-format
+msgid "Branch: {branch}"
+msgstr "Větev: {branch}"
+
+msgid "Mutation preconditions: ready"
+msgstr "Předpoklady změny: připraveno"
+
+#, python-brace-format
+msgid "Mutation preconditions: blocked ({blockers})"
+msgstr "Předpoklady změny: blokováno ({blockers})"
+
+#, python-brace-format
+msgid "Wrote reusable rewrite plan to {path}."
+msgstr "Opakovaně použitelný plán přepisu byl zapsán do {path}."
+
+msgid "No rewrite operation is active."
+msgstr "Není aktivní žádná operace přepisu."
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id}"
+msgstr "Operace přepisu {operation_id}"
+
+#, python-brace-format
+msgid "Phase: {phase}"
+msgstr "Fáze: {phase}"
+
+#, python-brace-format
+msgid "Progress: {completed} of {planned} output commit(s)"
+msgstr "Průběh: {completed} z {planned} výstupních commitů"
+
+#, python-brace-format
+msgid "Manual recovery: {command}"
+msgstr "Ruční obnovení: {command}"
+
+#, python-brace-format
+msgid "Last verified commit: {commit}"
+msgstr "Poslední ověřený commit: {commit}"
+
+#, python-brace-format
+msgid "Next action: {action}"
+msgstr "Další akce: {action}"
+
+#, python-brace-format
+msgid "Diagnostic: {diagnostic}"
+msgstr "Diagnostika: {diagnostic}"
+
+msgid "Resume preconditions: ready"
+msgstr "Předpoklady pokračování: připraveno"
+
+#, python-brace-format
+msgid "Resume preconditions: blocked ({blockers})"
+msgstr "Předpoklady pokračování: blokováno ({blockers})"
+
+msgid "Rewrite plan is valid."
+msgstr "Plán přepisu je platný."
+
+#, python-brace-format
+msgid "{count} commit."
+msgid_plural "{count} commits."
+msgstr[0] "{count} commit."
+msgstr[1] "{count} commity."
+msgstr[2] "{count} commitů."
+
+#, python-brace-format
+msgid "{count} exact patch unit."
+msgid_plural "{count} exact patch units."
+msgstr[0] "{count} přesná jednotka patche."
+msgstr[1] "{count} přesné jednotky patche."
+msgstr[2] "{count} přesných jednotek patche."
+
+#, python-brace-format
+msgid "Warning: {count} source signature cannot remain valid after rewriting."
+msgid_plural "Warning: {count} source signatures cannot remain valid after rewriting."
+msgstr[0] "Varování: {count} zdrojový podpis nemůže po přepsání zůstat platný."
+msgstr[1] "Varování: {count} zdrojové podpisy nemohou po přepsání zůstat platné."
+msgstr[2] "Varování: {count} zdrojových podpisů nemůže po přepsání zůstat platných."
+
+#, python-brace-format
+msgid "{count} source commit is conserved."
+msgid_plural "{count} source commits are conserved."
+msgstr[0] "Je zachován {count} zdrojový commit."
+msgstr[1] "Jsou zachovány {count} zdrojové commity."
+msgstr[2] "Je zachováno {count} zdrojových commitů."

@@ -1,0 +1,118 @@
+.TH GIT-STAGE-BATCH-REWRITE 1 "August 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-rewrite \- scan and validate deterministic history refinements
+.SH SYNOPSIS
+.B git-stage-batch rewrite scan
+[\fB\-\-output\fR \fIFILE\fR]
+[\fB\-\-porcelain\fR]
+[\fIBOUNDARY\fR]
+.PP
+.B git-stage-batch rewrite validate
+[\fB\-\-porcelain\fR]
+\fIPLAN\fR
+.PP
+.B git-stage-batch rewrite status
+[\fB\-\-porcelain\fR]
+.SH DESCRIPTION
+.B rewrite scan
+captures an immutable, linear commit range and emits a semantic KEEP plan
+template. The snapshot contains full commit, parent, and tree object IDs;
+exact author, committer, message, encoding, and signature state; and stable
+patch-unit identities derived from streamed zero-context diffs.
+.PP
+Patch bytes are not copied into JSON. Each commit records its exact old and
+new tree pair, from which later commands regenerate full-index binary patches
+through bounded storage.
+.PP
+.B rewrite validate
+strictly parses a reviewed scan document, regenerates every immutable fact
+from live Git objects, and currently accepts one ordered KEEP or REWORD output
+for each source commit. It requires exact patch-unit conservation, original
+authorship, and an explicit REWORD marker for changed messages.
+.PP
+.B rewrite status
+reports the closed phase, exact next action, output progress, recovery ref,
+and independently rechecked resume preconditions for a durable operation.
+Before the apply executor creates an operation, status reports that no
+operation is active.
+.SH SCAN OPTIONS
+.TP
+.BI \-\-output " FILE"
+Atomically write the reusable JSON document to
+.IR FILE .
+Existing regular-file permissions are preserved; symbolic-link destinations
+are refused.
+.TP
+.B \-\-porcelain
+Write the complete reusable JSON document to standard output. This can be
+combined with
+.B \-\-output
+when both a file and standard output are useful.
+.TP
+.I BOUNDARY
+Commit excluded from the source range. By default, use the fork point or
+merge base between HEAD and its configured upstream.
+.SH VALIDATE OPTIONS
+.TP
+.B \-\-porcelain
+Print a versioned JSON validation report with commit/unit counts, final tree,
+signature count, and freshly collected mutation preconditions.
+.SH STATUS OPTIONS
+.TP
+.B \-\-porcelain
+Print versioned JSON containing the complete durable checkpoint inspection.
+.SH PLAN CONTRACT
+Only the
+.B plan.outputs
+array is semantic input. The
+.B snapshot
+object is immutable and is compared exactly after regeneration. The
+.B safety
+object is informational and is always recollected when a plan is validated.
+.PP
+Every current output contains an operation, one source commit ID, the complete
+ordered source-unit list, a message and its declared encoding, the exact source
+author, and an optional human rationale. Rationale prose is not treated as
+mechanical proof.
+.PP
+KEEP requires the original message. REWORD permits a new message but preserves
+the exact source patch, order, and author. Empty source commits remain explicit
+outputs with an empty unit list.
+.SH SAFETY
+Scan and validation are read-only with respect to commits and refs. They may
+run while local mutation preconditions are blocked and label those blockers in
+the safety report. They reject merges, stale or forged snapshots, duplicate
+JSON fields, abbreviated object IDs, omitted or reordered units, and active
+replace objects or legacy grafts. Scan compares the index directly to the
+frozen final tree and does not invoke
+.BR git-write-tree (1)
+or create Git objects.
+.PP
+The safety report records tracked index/worktree cleanliness, staging-session
+and saved-batch state, active Git/rewrite operations, upstream divergence,
+remote refs containing every source commit, and untracked-path count. A remote
+ref containing any selected commit blocks mutation unless a later apply
+invocation records that exact verified review-head exception. Untracked paths
+are reported but do not by themselves block an object-based rewrite whose
+final tree is unchanged.
+.PP
+Source cryptographic signature headers are identified by header name and
+content digest. Their payloads are not copied into the plan. Rewritten commit
+objects cannot retain the validity of source signatures, which is reported
+explicitly.
+.PP
+Durable operation checkpoints live below
+.BR .git/git-stage-batch/rewrite/ .
+They use private atomically replaced files, a closed phase/next-action schema,
+and operation-owned recovery/output refs. Status verifies the branch, expected
+tip, index, worktree, plan digest, output objects, recovery ref, and the output
+ref that keeps a paused replacement chain reachable before declaring resume
+ready. Manual recovery output uses compare-and-swap
+.B git update-ref
+syntax so unrelated ref movement is not overwritten.
+.SH SEE ALSO
+.BR git-stage-batch (1),
+.BR git-stage-batch-fixup (1),
+.BR git-commit (1),
+.BR git-rev-list (1),
+.BR git-update-ref (1)

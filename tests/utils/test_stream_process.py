@@ -9,7 +9,7 @@ import sys
 
 import pytest
 
-from git_stage_batch.utils import command_streaming
+from git_stage_batch.utils import command as command_utils, command_streaming
 from git_stage_batch.utils.command import (
     run_command,
     start_command,
@@ -75,6 +75,376 @@ class TestBasicStreaming:
 
         assert stdout_data == b"out"
         assert stderr_data == b"err"
+
+    def test_direct_stdout_and_stderr_descriptors(self, tmp_path):
+        """Spawned output can flow directly into caller-provided descriptors."""
+        stdout_path = tmp_path / "stdout"
+        stderr_path = tmp_path / "stderr"
+        stdout_fd = os.open(
+            stdout_path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        stderr_fd = os.open(
+            stderr_path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+
+        process = start_command(
+            [
+                sys.executable,
+                "-c",
+                "import sys; print('out'); print('err', file=sys.stderr)",
+            ],
+            stdout_fd=stdout_fd,
+            stderr_fd=stderr_fd,
+            capture_stdout=False,
+            capture_stderr=False,
+        )
+
+        with pytest.raises(OSError) as stdout_error:
+            os.fstat(stdout_fd)
+        with pytest.raises(OSError) as stderr_error:
+            os.fstat(stderr_fd)
+        assert stdout_error.value.errno == errno.EBADF
+        assert stderr_error.value.errno == errno.EBADF
+        assert process.wait() == 0
+        assert stdout_path.read_bytes() == b"out\n"
+        assert stderr_path.read_bytes() == b"err\n"
+
+    def test_passed_descriptor_is_inherited_and_remains_caller_owned(self):
+        """A borrowed descriptor should stay open after child inheritance."""
+        read_fd, write_fd = os.pipe()
+        try:
+            process = start_command(
+                [
+                    sys.executable,
+                    "-c",
+                    f"import os; os.write({write_fd}, b'inherited')",
+                ],
+                pass_fds=(write_fd,),
+            )
+
+            assert process.wait() == 0
+            os.fstat(write_fd)
+            os.close(write_fd)
+            write_fd = -1
+            assert os.read(read_fd, 64) == b"inherited"
+        finally:
+            os.close(read_fd)
+            if write_fd >= 0:
+                os.close(write_fd)
+
+    def test_passed_descriptors_are_distinct_from_transferred_descriptors(
+        self,
+        tmp_path,
+    ):
+        """One descriptor cannot have borrowed and transferred ownership."""
+        output_fd = os.open(
+            tmp_path / "stdout",
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        try:
+            with pytest.raises(
+                ValueError,
+                match="supplied and passed process file descriptors must differ",
+            ):
+                start_command(
+                    ["true"],
+                    stdout_fd=output_fd,
+                    pass_fds=(output_fd,),
+                    capture_stdout=False,
+                )
+            os.fstat(output_fd)
+        finally:
+            os.close(output_fd)
+
+    @pytest.mark.parametrize("failed_allocation", range(1, 6))
+    def test_pipe_allocation_failures_close_prior_internal_descriptors(
+        self,
+        monkeypatch,
+        failed_allocation,
+    ):
+        """A failed pipe allocation should close every prior internal pipe."""
+        real_pipe = command_utils.os.pipe
+        opened_descriptors = []
+        allocation_count = 0
+
+        def injected_pipe():
+            nonlocal allocation_count
+            allocation_count += 1
+            if allocation_count == failed_allocation:
+                raise OSError(errno.EMFILE, "injected pipe allocation failure")
+            pipe_fds = real_pipe()
+            opened_descriptors.extend(pipe_fds)
+            return pipe_fds
+
+        monkeypatch.setattr(command_utils.os, "pipe", injected_pipe)
+
+        with pytest.raises(OSError, match="injected pipe allocation failure"):
+            start_command(
+                ["true"],
+                stdin=True,
+                extra_fds=[CapturedFd(10), CapturedFd(11)],
+            )
+
+        assert allocation_count == failed_allocation
+        for file_descriptor in opened_descriptors:
+            with pytest.raises(OSError) as descriptor_error:
+                os.fstat(file_descriptor)
+            assert descriptor_error.value.errno == errno.EBADF
+
+    def test_pipe_allocation_failure_preserves_supplied_descriptors(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """A failed spawn setup must not consume caller-supplied descriptors."""
+        stdin_fd, stdin_write_fd = os.pipe()
+        stdout_fd = os.open(
+            tmp_path / "stdout",
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        stderr_fd = os.open(
+            tmp_path / "stderr",
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+
+        def fail_pipe():
+            raise OSError(errno.EMFILE, "injected pipe allocation failure")
+
+        monkeypatch.setattr(command_utils.os, "pipe", fail_pipe)
+        try:
+            with pytest.raises(OSError, match="injected pipe allocation failure"):
+                start_command(
+                    ["true"],
+                    stdin_fd=stdin_fd,
+                    stdout_fd=stdout_fd,
+                    stderr_fd=stderr_fd,
+                    extra_fds=[CapturedFd(10)],
+                    capture_stdout=False,
+                    capture_stderr=False,
+                )
+
+            for file_descriptor in (stdin_fd, stdout_fd, stderr_fd):
+                os.fstat(file_descriptor)
+        finally:
+            for file_descriptor in (
+                stdin_fd,
+                stdin_write_fd,
+                stdout_fd,
+                stderr_fd,
+            ):
+                os.close(file_descriptor)
+
+    def test_file_action_failure_closes_internal_descriptors(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """A pre-spawn BaseException should retain only supplied descriptors."""
+        stdout_fd = os.open(
+            tmp_path / "stdout",
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        stderr_fd = os.open(
+            tmp_path / "stderr",
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        real_pipe = command_utils.os.pipe
+        real_dup = command_utils.os.dup
+        opened_pipe_fds = []
+        helper_fds = []
+        duplication_count = 0
+
+        def recording_pipe():
+            pipe_fds = real_pipe()
+            opened_pipe_fds.extend(pipe_fds)
+            return pipe_fds
+
+        def fail_second_dup(file_descriptor):
+            nonlocal duplication_count
+            duplication_count += 1
+            if duplication_count == 2:
+                raise KeyboardInterrupt("injected file-action failure")
+            duplicate_fd = real_dup(file_descriptor)
+            helper_fds.append(duplicate_fd)
+            return duplicate_fd
+
+        monkeypatch.setattr(command_utils.os, "pipe", recording_pipe)
+        monkeypatch.setattr(command_utils.os, "dup", fail_second_dup)
+        try:
+            with pytest.raises(KeyboardInterrupt, match="file-action failure"):
+                start_command(
+                    ["true"],
+                    stdout_fd=stdout_fd,
+                    stderr_fd=stderr_fd,
+                    extra_fds=[CapturedFd(stdout_fd), CapturedFd(stderr_fd)],
+                    capture_stdout=False,
+                    capture_stderr=False,
+                )
+
+            assert duplication_count == 2
+            for file_descriptor in (*opened_pipe_fds, *helper_fds):
+                with pytest.raises(OSError) as descriptor_error:
+                    os.fstat(file_descriptor)
+                assert descriptor_error.value.errno == errno.EBADF
+            os.fstat(stdout_fd)
+            os.fstat(stderr_fd)
+        finally:
+            for file_descriptor in (
+                *opened_pipe_fds,
+                *helper_fds,
+                stdout_fd,
+                stderr_fd,
+            ):
+                try:
+                    os.close(file_descriptor)
+                except OSError:
+                    pass
+
+    def test_post_spawn_construction_failure_closes_and_reaps(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        """An unreturned process preserves inputs, closes pipes, and is reaped."""
+        stdout_fd = os.open(
+            tmp_path / "stdout",
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        stderr_fd = os.open(
+            tmp_path / "stderr",
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        real_pipe = command_utils.os.pipe
+        real_posix_spawn = command_utils.os.posix_spawn
+        opened_pipe_fds = []
+        spawned_pids = []
+
+        def recording_pipe():
+            pipe_fds = real_pipe()
+            opened_pipe_fds.extend(pipe_fds)
+            return pipe_fds
+
+        def recording_posix_spawn(*args, **kwargs):
+            pid = real_posix_spawn(*args, **kwargs)
+            spawned_pids.append(pid)
+            return pid
+
+        def fail_process_construction(*args, **kwargs):
+            raise MemoryError("injected process construction failure")
+
+        monkeypatch.setattr(command_utils.os, "pipe", recording_pipe)
+        monkeypatch.setattr(command_utils.os, "posix_spawn", recording_posix_spawn)
+        monkeypatch.setattr(
+            command_utils.command_streaming,
+            "StreamingProcess",
+            fail_process_construction,
+        )
+        try:
+            with pytest.raises(MemoryError, match="process construction failure"):
+                start_command(
+                    [sys.executable, "-c", "import time; time.sleep(60)"],
+                    stdin=True,
+                    stdout_fd=stdout_fd,
+                    stderr_fd=stderr_fd,
+                    capture_stdout=False,
+                    capture_stderr=False,
+                )
+
+            assert len(spawned_pids) == 1
+            for file_descriptor in opened_pipe_fds:
+                with pytest.raises(OSError) as descriptor_error:
+                    os.fstat(file_descriptor)
+                assert descriptor_error.value.errno == errno.EBADF
+            for file_descriptor in (stdout_fd, stderr_fd):
+                os.fstat(file_descriptor)
+            with pytest.raises(ChildProcessError):
+                os.waitpid(spawned_pids[0], os.WNOHANG)
+        finally:
+            for pid in spawned_pids:
+                try:
+                    waited_pid, _status = os.waitpid(pid, os.WNOHANG)
+                except ChildProcessError:
+                    continue
+                if waited_pid == 0:
+                    try:
+                        os.kill(pid, 9)
+                    except ProcessLookupError:
+                        pass
+                    os.waitpid(pid, 0)
+            for file_descriptor in (*opened_pipe_fds, stdout_fd, stderr_fd):
+                try:
+                    os.close(file_descriptor)
+                except OSError:
+                    pass
+
+    def test_post_spawn_failure_does_not_close_reused_descriptor(
+        self,
+        monkeypatch,
+    ):
+        """Exception cleanup must not close a reused descriptor number."""
+        real_close = command_utils.os.close
+        real_posix_spawn = command_utils.os.posix_spawn
+        replacement_fds = []
+        spawned_pids = []
+
+        def close_then_reuse(file_descriptor):
+            real_close(file_descriptor)
+            if not replacement_fds:
+                replacement_fd = os.open(os.devnull, os.O_RDONLY)
+                assert replacement_fd == file_descriptor
+                replacement_fds.append(replacement_fd)
+
+        def recording_posix_spawn(*args, **kwargs):
+            pid = real_posix_spawn(*args, **kwargs)
+            spawned_pids.append(pid)
+            return pid
+
+        def fail_process_construction(*args, **kwargs):
+            raise MemoryError("injected process construction failure")
+
+        monkeypatch.setattr(command_utils.os, "close", close_then_reuse)
+        monkeypatch.setattr(command_utils.os, "posix_spawn", recording_posix_spawn)
+        monkeypatch.setattr(
+            command_utils.command_streaming,
+            "StreamingProcess",
+            fail_process_construction,
+        )
+        try:
+            with pytest.raises(MemoryError, match="process construction failure"):
+                start_command(
+                    [sys.executable, "-c", "import time; time.sleep(60)"],
+                )
+
+            assert len(replacement_fds) == 1
+            os.fstat(replacement_fds[0])
+            assert len(spawned_pids) == 1
+            with pytest.raises(ChildProcessError):
+                os.waitpid(spawned_pids[0], os.WNOHANG)
+        finally:
+            for pid in spawned_pids:
+                try:
+                    waited_pid, _status = os.waitpid(pid, os.WNOHANG)
+                except ChildProcessError:
+                    continue
+                if waited_pid == 0:
+                    try:
+                        os.kill(pid, 9)
+                    except ProcessLookupError:
+                        pass
+                    os.waitpid(pid, 0)
+            for file_descriptor in replacement_fds:
+                real_close(file_descriptor)
 
 
 class TestRunCommand:

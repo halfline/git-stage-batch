@@ -247,6 +247,33 @@ def test_quarantine_environment_cannot_be_redirected(temp_git_repo):
             )
 
 
+def test_quarantine_certifies_the_persistent_object_store(
+    temp_git_repo,
+    tmp_path,
+    monkeypatch,
+):
+    """Ambient quarantine variables must not redirect later promotion writes."""
+    redirected_objects = tmp_path / "redirected-objects"
+    redirected_objects.mkdir()
+    monkeypatch.setenv("GIT_OBJECT_DIRECTORY", str(redirected_objects))
+    monkeypatch.setenv("GIT_ALTERNATE_OBJECT_DIRECTORIES", str(redirected_objects))
+    monkeypatch.setenv("GIT_QUARANTINE_PATH", str(tmp_path / "foreign"))
+
+    with temporary_git_object_environment() as quarantine:
+        persistent = quarantine.persistent_environment()
+        head = run_git_command(
+            ["rev-parse", "HEAD"],
+            env=persistent,
+            requires_index_lock=False,
+        ).stdout.strip()
+
+        assert "GIT_OBJECT_DIRECTORY" not in persistent
+        assert "GIT_ALTERNATE_OBJECT_DIRECTORIES" not in persistent
+        assert "GIT_QUARANTINE_PATH" not in persistent
+        assert get_git_object_type(head, env=quarantine.environment()) == "commit"
+        quarantine.require_persistent_identity()
+
+
 def test_quarantined_tree_requires_environment_and_does_not_leak(temp_git_repo):
     """Tree listing should use the same temporary object environment."""
     file_path = "candidate.txt"

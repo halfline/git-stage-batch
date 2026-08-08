@@ -982,6 +982,70 @@ its excluded base.
 
 ---
 
+## History Refinement Inspection
+
+### `rewrite scan`
+
+Capture an immutable linear range and emit a reusable KEEP plan template:
+
+```bash
+❯ git-stage-batch rewrite scan [BOUNDARY] --output rewrite-plan.json
+❯ git-stage-batch rewrite scan [BOUNDARY] --porcelain >rewrite-plan.json
+```
+
+The excluded boundary defaults to the fork point or merge base with the
+configured upstream. The JSON snapshot records full commit, parent, and tree
+IDs; byte-faithful messages with declared encodings and raw-content digests;
+author and committer metadata; signature-header digests without signature
+payloads; and stable patch-unit identities. Exact parent/new tree pairs bind
+the patches without storing one Python or JSON object per changed line.
+
+Scan does not create commits, refs, checkpoints, or index-tree objects. Dirty
+local state, active operations, saved batches, or remotely published range
+commits appear as safety blockers rather than preventing an audit. Merges,
+replace objects, and legacy grafts are rejected because they change the
+supported topology or commit identity semantics.
+
+### `rewrite validate`
+
+Validate edited semantic input against a freshly regenerated snapshot:
+
+```bash
+❯ git-stage-batch rewrite validate rewrite-plan.json
+❯ git-stage-batch rewrite validate rewrite-plan.json --porcelain
+```
+
+The first executor schema accepts one ordered `KEEP` or `REWORD` output per
+source commit. Each output must consume the exact ordered source-unit list and
+preserve the source author. `KEEP` also preserves the message and encoding;
+`REWORD` explicitly supplies an encodable replacement. Rationale text is
+informational and never substitutes for tree or patch conservation.
+
+All snapshot fields are immutable. Validation rejects stale object IDs,
+forged metadata, omitted or duplicated units, reordered commits, abbreviated
+IDs, duplicate JSON keys, and unknown fields. The input safety block is not
+trusted: live index, worktree, operation, publication, and upstream facts are
+collected again and returned in the validation report.
+
+### `rewrite status`
+
+Inspect the durable state machine used by the rewrite executor:
+
+```bash
+❯ git-stage-batch rewrite status
+❯ git-stage-batch rewrite status --porcelain
+```
+
+Before an apply operation exists, status reports no active operation. For an
+active checkpoint it reports the closed phase, exact next action, completed
+and planned output counts, recovery and output refs, last verified tree, and
+live resume blockers. The private output ref keeps a partially built linear
+chain reachable. Status verifies both owned refs, the persisted plan digest,
+source/plan identity, output objects, branch compare-and-swap expectation,
+index, and worktree before declaring continuation safe.
+
+---
+
 ## Assistant Assets
 
 ### `install-assets [{claude-agents|claude-skills|codex-skills}] [--filter PATTERN...] [--force]`

@@ -11,9 +11,11 @@ from git_stage_batch.utils.git_object_io import (
     create_git_blob,
     create_git_blobs_from_paths,
     get_empty_git_tree_object_id,
+    list_git_tree_blobs,
     read_git_blobs_as_bytes,
     resolve_git_objects,
     stream_git_blobs,
+    temporary_git_object_environment,
 )
 from git_stage_batch.utils import git_object_io
 
@@ -201,6 +203,56 @@ def test_stream_git_blobs_does_not_materialize_large_payloads(temp_git_repo):
 
     assert streamed_size == payload_size
     assert largest_chunk < payload_size
+
+
+def test_quarantined_blob_requires_environment_and_does_not_leak(temp_git_repo):
+    """Streamed blob IO should remain confined to its object quarantine."""
+    with temporary_git_object_environment() as quarantine:
+        env = quarantine.environment()
+        blob_id = create_git_blob([b"quarantined payload\n"], env=env)
+
+        assert list(stream_git_blobs([blob_id])) == []
+        streamed = [
+            (blob.object_id, b"".join(blob.content_chunks))
+            for blob in stream_git_blobs([blob_id], env=env)
+        ]
+        assert streamed == [(blob_id, b"quarantined payload\n")]
+
+    result = run_git_command(
+        ["cat-file", "-e", blob_id],
+        check=False,
+        requires_index_lock=False,
+    )
+    assert result.returncode != 0
+
+
+def test_quarantined_tree_requires_environment_and_does_not_leak(temp_git_repo):
+    """Tree listing should use the same temporary object environment."""
+    file_path = "candidate.txt"
+    with temporary_git_object_environment() as quarantine:
+        env = quarantine.environment()
+        blob_id = create_git_blob([b"candidate content\n"], env=env)
+        tree_id = run_git_command(
+            ["mktree"],
+            stdin_chunks=[
+                f"100644 blob {blob_id}\t{file_path}\n".encode("ascii")
+            ],
+            env=env,
+            requires_index_lock=False,
+        ).stdout.strip()
+
+        assert list_git_tree_blobs(tree_id, [file_path]) == {}
+        entries = list_git_tree_blobs(tree_id, [file_path], env=env)
+        assert entries[file_path].blob_sha == blob_id
+        assert entries[file_path].mode == "100644"
+
+    for object_id in (blob_id, tree_id):
+        result = run_git_command(
+            ["cat-file", "-e", object_id],
+            check=False,
+            requires_index_lock=False,
+        )
+        assert result.returncode != 0
 
 
 def test_directory_snapshot_hashes_normal_files_in_one_batch(

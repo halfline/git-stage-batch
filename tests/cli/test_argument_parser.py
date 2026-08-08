@@ -2286,6 +2286,47 @@ def test_parse_command_line_rewrite_validate_dispatches_plan(monkeypatch):
     mock_command.assert_called_once_with("plan.json", porcelain=True)
 
 
+def test_parse_command_line_rewrite_resolve_dispatches_workspace(monkeypatch):
+    mock_command = Mock()
+    monkeypatch.setattr(
+        rewrite_subcommands,
+        "command_rewrite_resolve",
+        mock_command,
+    )
+    args = parse_command_line(
+        [
+            "rewrite",
+            "resolve",
+            "plan.json",
+            "--workspace",
+            "/tmp/rewrite-resolution",
+            "--accept",
+            "--porcelain",
+        ],
+        quiet=True,
+    )
+
+    assert args is not None
+    assert args.command_policy is rewrite_subcommands.REWRITE_READ_POLICY
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "plan.json",
+        workspace_path="/tmp/rewrite-resolution",
+        accept_result=True,
+        porcelain=True,
+    )
+
+
+def test_parse_command_line_rewrite_resolve_requires_workspace():
+    assert (
+        parse_command_line(
+            ["rewrite", "resolve", "plan.json"],
+            quiet=True,
+        )
+        is None
+    )
+
+
 def test_parse_command_line_history_status_dispatches_porcelain(monkeypatch):
     mock_command = Mock()
     monkeypatch.setattr(

@@ -17,7 +17,8 @@ git-stage-batch-fixup \- inspect fixup targets or create grouped fixup commits
 .B fixup suggest
 is the namespaced form of
 .BR suggest-fixup .
-It searches history for commits that touched the selected hunk or lines.
+It preserves disjoint source ranges, handles additions through adjacent-line
+anchors, and reports exact-line lineage separately from tree-replay placement.
 .PP
 .B fixup create
 analyzes the exact staged index, partitions eligible textual change units by
@@ -34,7 +35,8 @@ Ambiguous, conflicting, unsupported, and placement-only units remain staged.
 .TP
 .B suggest
 Suggest targets for the selected hunk or selected line IDs. Repeated
-invocations walk backward through candidates.
+invocations walk backward through candidates. This action does not create a
+commit or change the real index.
 .TP
 .B create
 Plan or create grouped fixup commits from staged changes.

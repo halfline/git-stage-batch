@@ -8,6 +8,7 @@ git-stage-batch-rewrite \- execute deterministic history refinements
 [\fIBOUNDARY\fR]
 .PP
 .B git-stage-batch rewrite validate
+[\fB\-\-workspace\fR \fIDIR\fR]
 [\fB\-\-porcelain\fR]
 \fIPLAN\fR
 .PP
@@ -55,10 +56,14 @@ from live Git objects, and accepts KEEP, REWORD, SPLIT, INTEGRATE, and
 mechanically proven REORDER outputs. It requires exact source and patch-unit
 conservation, original target authorship, dependency-safe ordering, complete
 replay, and the frozen final tree.
-Standalone validation completes only plans whose outputs use EXACT
-materialization; plans containing RESOLVED outputs go through
-.BR "rewrite resolve" ,
-which performs the same semantic validation before opening its workspace.
+For a plan whose outputs all use EXACT materialization, omit
+.BR \-\-workspace ;
+a gratuitous workspace is rejected rather than ignored. A plan containing any
+RESOLVED output requires a COMPLETE private workspace supplied with
+.BR \-\-workspace .
+Validation authenticates that workspace and its completion record read-only,
+replays its exact and resolved outputs in a fresh object quarantine, and
+rechecks the frozen final tree. No candidate objects or refs persist.
 .PP
 .B rewrite resolve
 creates or advances a private external workspace for explicitly RESOLVED
@@ -68,6 +73,10 @@ references, and accepts only unit-authorized result paths and transitions.
 Each accepted output receives a digest-bound receipt. Completion requires the
 entire replay to reproduce the frozen final tree and does not create commits,
 refs, or persistent candidate objects.
+The completed external workspace is currently an input only to
+.BR "rewrite validate" .
+.B rewrite apply
+does not yet accept it as input.
 .PP
 .B rewrite apply
 creates an operation-owned recovery ref, builds a deterministic unsigned
@@ -124,9 +133,23 @@ Commit excluded from the source range. By default, use the fork point or
 merge base between HEAD and its configured upstream.
 .SH VALIDATE OPTIONS
 .TP
+.BI \-\-workspace " DIR"
+Authenticate the COMPLETE private rewrite-resolution workspace at
+.I DIR
+for a plan containing RESOLVED outputs. The workspace must be bound to the
+exact plan and is inspected without repair or advancement. Supplying this
+option for an all-EXACT plan is rejected.
+.TP
 .B \-\-porcelain
 Print a versioned JSON validation report with commit/unit counts, final tree,
-signature count, and freshly collected mutation preconditions.
+signature count, freshly collected mutation preconditions, and
+.B summary.resolved_outputs
+count. The top-level
+.B resolution
+member is null for an all-EXACT plan; completed-workspace validation reports
+its canonical path, authenticated
+.B complete_sha256
+digest, and resolved-output count.
 .SH RESOLVE OPTIONS
 .TP
 .BI \-\-workspace " DIR"

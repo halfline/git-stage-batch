@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import subprocess
+from dataclasses import replace
 
 import pytest
 
 from git_stage_batch.exceptions import CommandError
-from git_stage_batch.history import execution
+from git_stage_batch.history import execution, state as history_state
 from git_stage_batch.history.execution import (
     abort_history_operation,
     continue_history_operation,
@@ -17,13 +19,20 @@ from git_stage_batch.history.execution import (
 )
 from git_stage_batch.history.models import HistoryPhase
 from git_stage_batch.history.commit_objects import parse_commit_object
+from git_stage_batch.history.json_files import (
+    history_json_sha256,
+    write_history_json_file,
+)
 from git_stage_batch.history.records import history_plan_document_record
 from git_stage_batch.history.scan import acquire_history_plan_document
 from git_stage_batch.history.state import (
     active_history_operation_id,
+    history_operation_directory,
+    history_operation_plan_path,
     latest_history_operation_id,
     load_active_history_operation,
     load_latest_history_operation,
+    write_history_verification_record,
 )
 from git_stage_batch.output.rewrite_operation import print_rewrite_operation
 
@@ -49,7 +58,7 @@ def _integrate_all(plan):
     first, second = plan["plan"]["outputs"]
     first["operation"] = "INTEGRATE"
     first["source_commits"].extend(second["source_commits"])
-    first["unit_ids"].extend(second["unit_ids"])
+    first["source_unit_ids"].extend(second["source_unit_ids"])
     plan["plan"]["outputs"] = [first]
 
 
@@ -57,8 +66,18 @@ def _integrate_first_and_last(plan):
     first, middle, repair = plan["plan"]["outputs"]
     first["operation"] = "INTEGRATE"
     first["source_commits"].extend(repair["source_commits"])
-    first["unit_ids"].extend(repair["unit_ids"])
+    first["source_unit_ids"].extend(repair["source_unit_ids"])
     plan["plan"]["outputs"] = [first, middle]
+
+
+def _legacy_v3_plan_record(plan):
+    legacy = copy.deepcopy(plan)
+    legacy["schema_version"] = 3
+    legacy["plan"].pop("partitioned_units")
+    for output in legacy["plan"]["outputs"]:
+        output.pop("materialization")
+        output["unit_ids"] = output.pop("source_unit_ids")
+    return legacy
 
 
 def test_apply_rewords_without_changing_the_final_tree(linear_history_repo):
@@ -517,6 +536,43 @@ def test_latest_verification_ignores_later_publication_policy(
 
     assert verified_state == state
     assert verification.output_tip == state.output_commits[-1]
+
+
+def test_latest_verification_reads_a_persisted_schema_three_plan(
+    linear_history_repo,
+):
+    repo = linear_history_repo
+    path, plan = _write_plan(repo, _reword_first)
+    state = start_history_operation(str(path))
+    _current_state, verification = verify_history_operation()
+    legacy_plan = _legacy_v3_plan_record(plan)
+    legacy_plan_sha256 = history_json_sha256(legacy_plan)
+    write_history_json_file(
+        history_operation_plan_path(state.operation_id),
+        legacy_plan,
+    )
+    legacy_verification = execution._verification_record(
+        verification,
+        plan_sha256=legacy_plan_sha256,
+    )
+    legacy_verification_sha256 = write_history_verification_record(
+        state.operation_id,
+        legacy_verification,
+    )
+    legacy_state = replace(
+        state,
+        plan_sha256=legacy_plan_sha256,
+        verification_sha256=legacy_verification_sha256,
+    )
+    write_history_json_file(
+        history_operation_directory(state.operation_id) / "state.json",
+        history_state._state_record(legacy_state),
+    )
+
+    verified_state, regenerated = verify_history_operation()
+
+    assert verified_state == legacy_state
+    assert regenerated == verification
 
 
 def test_independent_verify_reports_success_before_checkpoint_verification(

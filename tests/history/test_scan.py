@@ -22,6 +22,7 @@ def test_scan_captures_exact_commit_chain_and_keep_template(linear_history_repo)
     document = acquire_history_plan_document(repo.base)
 
     snapshot = document.snapshot
+    assert document.schema_version == 4
     assert snapshot.base_commit == repo.base
     assert snapshot.tip_commit == repo.tip
     assert snapshot.branch_ref == "refs/heads/topic"
@@ -39,12 +40,17 @@ def test_scan_captures_exact_commit_chain_and_keep_template(linear_history_repo)
         "KEEP",
         "KEEP",
     ]
+    assert [output.materialization for output in document.plan.outputs] == [
+        "EXACT",
+        "EXACT",
+    ]
+    assert document.plan.partitioned_units == ()
     assert [output.source_commits for output in document.plan.outputs] == [
         (repo.first,),
         (repo.tip,),
     ]
     assert all(
-        output.unit_ids == tuple(unit.unit_id for unit in commit.units)
+        output.source_unit_ids == tuple(unit.unit_id for unit in commit.units)
         for output, commit in zip(
             document.plan.outputs,
             snapshot.commits,
@@ -71,8 +77,9 @@ def test_scan_preserves_an_empty_commit_as_a_unitless_output(linear_history_repo
     assert commit.parent_tree == commit.tree
     assert commit.units == ()
     assert output.operation == "KEEP"
+    assert output.materialization == "EXACT"
     assert output.source_commits == (empty_commit,)
-    assert output.unit_ids == ()
+    assert output.source_unit_ids == ()
 
 
 def test_scan_reports_detached_head_as_a_mutation_blocker(linear_history_repo):

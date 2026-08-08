@@ -160,6 +160,8 @@ def test_refine_history_assigns_causal_ownership_before_placement() -> None:
         "never retarget it to the blocker",
         "Never apply a validated landing at a non-owner blocker",
         "original-source provenance",
+        "`plan.outputs` and `plan.partitioned_units`",
+        "account for every declared partitioned occurrence",
         "use the reported recovery ref and read-only Git inspection to reconstruct original-source provenance",
         "missing provenance as `UNRESOLVED`",
         "leave every fresh semantic group `OWNED_HERE`",
@@ -171,10 +173,11 @@ def test_refine_history_assigns_causal_ownership_before_placement() -> None:
         "A mechanical blocker is a placement frontier, never an owner",
         "four non-plan audit states",
         "not necessarily a semantic atom",
+        "strictly increasing `output_indexes`",
+        "later residual SPLIT output",
+        "repeat it only in the affected RESOLVED outputs",
         "Never merge an unrelated blocker chain",
         "An ungrouped `BLOCKED` edge",
-        "current schema cannot divide it",
-        "cannot make one source both an integrated secondary",
         "A later fresh scan remaps it to fresh unit IDs",
         "Never apply a non-owner blocker landing as a stepping stone",
     )
@@ -193,6 +196,11 @@ def test_refine_history_assigns_causal_ownership_before_placement() -> None:
         reference_prose = " ".join(reference.split())
         for contract in reference_contracts:
             assert contract in reference_prose
+        assert "current schema cannot divide it" not in reference_prose
+        assert (
+            "cannot make one source both an integrated secondary"
+            not in reference_prose
+        )
 
 
 def test_message_refinement_is_a_message_only_history_plan() -> None:

@@ -8,7 +8,7 @@ import json
 import pytest
 
 from git_stage_batch.exceptions import CommandError
-from git_stage_batch.history import execution
+from git_stage_batch.history import execution, replay
 from git_stage_batch.history.execution import (
     continue_history_operation,
     start_history_operation,
@@ -51,10 +51,10 @@ def _split_single_source(plan: dict[str, object]) -> None:
     first = copy.deepcopy(original)
     second = copy.deepcopy(original)
     first["operation"] = "SPLIT"
-    first["unit_ids"] = [original["unit_ids"][0]]
+    first["source_unit_ids"] = [original["source_unit_ids"][0]]
     first["message"] = "Change the first line\n"
     second["operation"] = "SPLIT"
-    second["unit_ids"] = [original["unit_ids"][1]]
+    second["source_unit_ids"] = [original["source_unit_ids"][1]]
     second["message"] = "Change the last line\n"
     plan["plan"]["outputs"] = [first, second]
 
@@ -176,6 +176,17 @@ def test_reorder_moves_only_across_proven_independent_units(
     dependencies = plan["snapshot"]["dependency_graph"]["units"]
     assert dependencies[1]["earliest_position"] == 0
     assert dependencies[1]["barrier"] is None
+    apply_whole_source = replay._apply_whole_source_output
+
+    def reject_whole_source_for_moved_output(*args, **kwargs):
+        assert args[3] != 0
+        return apply_whole_source(*args, **kwargs)
+
+    monkeypatch.setattr(
+        replay,
+        "_apply_whole_source_output",
+        reject_whole_source_for_moved_output,
+    )
 
     state = start_history_operation(str(path))
 
@@ -219,6 +230,104 @@ def test_reorder_rejects_a_blocked_same_line_crossing(
     assert active_history_operation_id() is None
 
 
+def test_resolved_mover_defers_blocked_crossing_to_workspace(
+    tmp_path,
+    monkeypatch,
+):
+    base = _initialize_repository(
+        tmp_path,
+        monkeypatch,
+        {"example.txt": "original\n"},
+    )
+    (tmp_path / "example.txt").write_text("first\n", encoding="utf-8")
+    git("commit", "-am", "First value")
+    (tmp_path / "example.txt").write_text("second\n", encoding="utf-8")
+    git("commit", "-am", "Second value")
+
+    def reorder_with_resolution(plan):
+        first, second = plan["plan"]["outputs"]
+        second["operation"] = "REORDER"
+        second["materialization"] = "RESOLVED"
+        plan["plan"]["outputs"] = [second, first]
+
+    path, _plan = _write_plan(tmp_path, base, reorder_with_resolution)
+
+    with pytest.raises(CommandError, match="explicit resolution workspace"):
+        read_and_validate_history_plan(str(path))
+
+
+def test_resolved_blocker_does_not_extend_an_exact_movers_proof(
+    tmp_path,
+    monkeypatch,
+):
+    base = _initialize_repository(
+        tmp_path,
+        monkeypatch,
+        {"example.txt": "original\n"},
+    )
+    (tmp_path / "example.txt").write_text("first\n", encoding="utf-8")
+    git("commit", "-am", "First value")
+    (tmp_path / "example.txt").write_text("second\n", encoding="utf-8")
+    git("commit", "-am", "Second value")
+
+    def reorder_past_resolved_blocker(plan):
+        first, second = plan["plan"]["outputs"]
+        first["materialization"] = "RESOLVED"
+        second["operation"] = "REORDER"
+        plan["plan"]["outputs"] = [second, first]
+
+    path, _plan = _write_plan(tmp_path, base, reorder_past_resolved_blocker)
+
+    with pytest.raises(CommandError, match="BLOCKED dependency"):
+        read_and_validate_history_plan(str(path))
+
+
+def test_exact_replay_allows_an_earlier_secondary_and_later_residual(
+    tmp_path,
+    monkeypatch,
+):
+    base = _initialize_repository(
+        tmp_path,
+        monkeypatch,
+        {
+            "alpha.txt": "alpha\n",
+            "beta.txt": "beta\n",
+            "gamma.txt": "gamma\n",
+        },
+    )
+    (tmp_path / "alpha.txt").write_text("alpha changed\n", encoding="utf-8")
+    git("commit", "-am", "Change alpha")
+    alpha_commit = git("rev-parse", "HEAD")
+    (tmp_path / "beta.txt").write_text("beta changed\n", encoding="utf-8")
+    (tmp_path / "gamma.txt").write_text("gamma changed\n", encoding="utf-8")
+    git("commit", "-am", "Change beta and gamma")
+    later_commit = git("rev-parse", "HEAD")
+    original_tree = git("rev-parse", "HEAD^{tree}")
+
+    def integrate_one_later_unit(plan):
+        alpha, later = plan["plan"]["outputs"]
+        alpha_unit = alpha["source_unit_ids"][0]
+        beta_unit, gamma_unit = later["source_unit_ids"]
+        alpha["operation"] = "INTEGRATE"
+        alpha["source_commits"] = [alpha_commit, later_commit]
+        alpha["source_unit_ids"] = [alpha_unit, beta_unit]
+        later["operation"] = "SPLIT"
+        later["source_unit_ids"] = [gamma_unit]
+
+    path, _plan = _write_plan(tmp_path, base, integrate_one_later_unit)
+
+    validated = read_and_validate_history_plan(str(path))
+    state = start_history_operation(str(path))
+
+    assert [output.operation for output in validated.plan.outputs] == [
+        "INTEGRATE",
+        "SPLIT",
+    ]
+    assert state.phase is HistoryPhase.COMPLETE
+    assert git("rev-parse", "HEAD^{tree}") == original_tree
+    assert git("rev-list", "--count", f"{base}..HEAD") == "2"
+
+
 def test_blocked_same_file_sibling_does_not_suppress_independent_repair(
     tmp_path,
     monkeypatch,
@@ -246,15 +355,15 @@ def test_blocked_same_file_sibling_does_not_suppress_independent_repair(
 
     def integrate_repair_units(plan):
         first_output, middle_output, repair_output = plan["plan"]["outputs"]
-        first_unit = first_output["unit_ids"][0]
-        middle_unit = middle_output["unit_ids"][0]
-        repair_first, repair_last = repair_output["unit_ids"]
+        first_unit = first_output["source_unit_ids"][0]
+        middle_unit = middle_output["source_unit_ids"][0]
+        repair_first, repair_last = repair_output["source_unit_ids"]
         first_output["operation"] = "INTEGRATE"
         first_output["source_commits"] = [first, repair]
-        first_output["unit_ids"] = [first_unit, repair_first]
+        first_output["source_unit_ids"] = [first_unit, repair_first]
         middle_output["operation"] = "INTEGRATE"
         middle_output["source_commits"] = [middle, repair]
-        middle_output["unit_ids"] = [middle_unit, repair_last]
+        middle_output["source_unit_ids"] = [middle_unit, repair_last]
         plan["plan"]["outputs"] = [first_output, middle_output]
 
     path, plan = _write_plan(tmp_path, base, integrate_repair_units)
@@ -332,7 +441,7 @@ def render(action, phase, verified):
         target_output, middle_output, repair_output = plan["plan"]["outputs"]
         target_output["operation"] = "INTEGRATE"
         target_output["source_commits"] = [target, repair]
-        target_output["unit_ids"].extend(repair_output["unit_ids"])
+        target_output["source_unit_ids"].extend(repair_output["source_unit_ids"])
         plan["plan"]["outputs"] = [target_output, middle_output]
 
     path, plan = _write_plan(tmp_path, base, integrate_repair)
@@ -412,10 +521,10 @@ def test_split_keeps_an_unmoved_atomic_source_on_whole_patch_replay(
         first = copy.deepcopy(original)
         second = copy.deepcopy(original)
         first["operation"] = "SPLIT"
-        first["unit_ids"] = [original["unit_ids"][0]]
+        first["source_unit_ids"] = [original["source_unit_ids"][0]]
         first["message"] = "Change the first line\n"
         second["operation"] = "SPLIT"
-        second["unit_ids"] = [original["unit_ids"][1]]
+        second["source_unit_ids"] = [original["source_unit_ids"][1]]
         second["message"] = "Change the last line\n"
         plan["plan"]["outputs"] = [rename, first, second]
 

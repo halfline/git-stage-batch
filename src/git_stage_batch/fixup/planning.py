@@ -17,6 +17,7 @@ from .analysis import (
 from .commutation import analyze_placement, tree_for_commit
 from .lineage import analyze_lineage
 from .models import (
+    CURRENT_FIXUP_CREATE_PLAN_SCHEMA_VERSION,
     FixupAssignment,
     FixupCreatePlan,
     FixupTargetGroup,
@@ -90,6 +91,15 @@ def _target_groups(
     )
 
 
+def build_fixup_target_groups(
+    analyses: tuple[FixupUnitAnalysis, ...],
+    assignments: tuple[FixupAssignment, ...],
+    commits_newest_first: tuple[str, ...],
+) -> tuple[FixupTargetGroup, ...]:
+    """Build deterministic target groups from validated assignments."""
+    return _target_groups(analyses, assignments, commits_newest_first)
+
+
 @contextmanager
 def acquire_fixup_create_plan(
     boundary: str | None,
@@ -135,7 +145,7 @@ def acquire_fixup_create_plan(
             if analysis.eligible and analysis.target is not None
         )
         yield FixupCreatePlan(
-            schema_version=1,
+            schema_version=CURRENT_FIXUP_CREATE_PLAN_SCHEMA_VERSION,
             object_format=commit_range.object_format,
             commit_range=commit_range,
             head_tree=head_tree,

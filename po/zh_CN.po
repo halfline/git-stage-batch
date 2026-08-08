@@ -6383,6 +6383,14 @@ msgstr "候选 {iteration}/{total}：{commit} {subject}"
 msgid "Candidate evidence: {sources}"
 msgstr "候选证据：{sources}"
 
+#: src/git_stage_batch/cli/fixup_subcommands.py:106
+msgid "Create from a reviewed dry-run JSON plan"
+msgstr "从已审核的试运行 JSON 计划创建"
+
+#: src/git_stage_batch/commands/fixup_create.py:59
+msgid "Cannot pass both a fixup boundary and --plan."
+msgstr "不能同时传入 fixup 边界和 --plan。"
+
 #: src/git_stage_batch/fixup/execution.py:189
 #, python-brace-format
 msgid "The staged units grouped for {target} cannot be replayed together at that target."
@@ -6400,3 +6408,13 @@ msgstr "无法在目标之后重放为 {target} 计划的 fixup。"
 #: src/git_stage_batch/fixup/execution.py:262
 msgid "Replaying the planned fixups at their targets does not reproduce the assigned staged changes."
 msgstr "在各目标处重放计划的 fixup 无法复现已分配的暂存更改。"
+
+#: src/git_stage_batch/fixup/plan_files.py:65
+#, python-brace-format
+msgid "Invalid fixup plan: {detail}"
+msgstr "无效的 fixup 计划：{detail}"
+
+#: src/git_stage_batch/fixup/plan_files.py:283
+#, python-brace-format
+msgid "Could not read fixup plan {path}: {error}"
+msgstr "无法读取 fixup 计划 {path}：{error}"

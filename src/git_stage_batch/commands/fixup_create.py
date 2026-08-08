@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from ..data.session_marker import session_is_active
 from ..exceptions import CommandError
-from ..fixup.execution import execute_fixup_create_plan
+from ..fixup.execution import (
+    execute_fixup_create_plan,
+    validate_fixup_create_plan_materialization,
+)
+from ..fixup.plan_files import acquire_fixup_create_plan_from_file
 from ..fixup.planning import acquire_fixup_create_plan
 from ..i18n import _
 from ..output.fixup_create import print_fixup_create_output
@@ -42,6 +46,7 @@ def _require_no_active_git_operation() -> None:
 def command_create_fixups(
     boundary: str | None = None,
     *,
+    plan_path: str | None = None,
     dry_run: bool = False,
     partial: bool = False,
     porcelain: bool = False,
@@ -49,6 +54,10 @@ def command_create_fixups(
     """Create one reviewable `fixup!` commit per eligible staged target."""
     require_git_repository()
     require_repository_history()
+    if boundary is not None and plan_path is not None:
+        raise CommandError(
+            _("Cannot pass both a fixup boundary and --plan.")
+        )
     if not dry_run:
         if session_is_active():
             raise CommandError(
@@ -59,8 +68,15 @@ def command_create_fixups(
             )
         _require_no_active_git_operation()
 
-    with acquire_fixup_create_plan(boundary) as plan:
+    plan_context = (
+        acquire_fixup_create_plan_from_file(plan_path)
+        if plan_path is not None
+        else acquire_fixup_create_plan(boundary)
+    )
+    with plan_context as plan:
         if dry_run:
+            if plan.assigned_units:
+                validate_fixup_create_plan_materialization(plan)
             print_fixup_create_output(
                 plan,
                 dry_run=True,
@@ -82,7 +98,7 @@ def command_create_fixups(
                     "eligible. Inspect the plan or rerun with --partial."
                 )
             )
-        if not plan.eligible_units:
+        if not plan.assigned_units:
             print_fixup_create_output(
                 plan,
                 dry_run=False,

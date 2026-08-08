@@ -6823,6 +6823,14 @@ msgstr "Aday {iteration}/{total}: {commit} {subject}"
 msgid "Candidate evidence: {sources}"
 msgstr "Aday kanıtı: {sources}"
 
+#: src/git_stage_batch/cli/fixup_subcommands.py:106
+msgid "Create from a reviewed dry-run JSON plan"
+msgstr "İncelenmiş bir deneme çalıştırması JSON planından oluştur"
+
+#: src/git_stage_batch/commands/fixup_create.py:59
+msgid "Cannot pass both a fixup boundary and --plan."
+msgstr "Bir fixup sınırı ile --plan birlikte geçirilemez."
+
 #: src/git_stage_batch/fixup/execution.py:189
 #, python-brace-format
 msgid "The staged units grouped for {target} cannot be replayed together at that target."
@@ -6840,3 +6848,13 @@ msgstr "{target} için planlanan fixup, hedefinden sonra yeniden oynatılamaz."
 #: src/git_stage_batch/fixup/execution.py:262
 msgid "Replaying the planned fixups at their targets does not reproduce the assigned staged changes."
 msgstr "Planlanan fixup’ların hedeflerinde yeniden oynatılması, atanmış hazırlanan değişiklikleri yeniden üretmiyor."
+
+#: src/git_stage_batch/fixup/plan_files.py:65
+#, python-brace-format
+msgid "Invalid fixup plan: {detail}"
+msgstr "Geçersiz fixup planı: {detail}"
+
+#: src/git_stage_batch/fixup/plan_files.py:283
+#, python-brace-format
+msgid "Could not read fixup plan {path}: {error}"
+msgstr "{path} fixup planı okunamadı: {error}"

@@ -91,6 +91,7 @@ def _add_suggest_fixup_arguments(parser: argparse.ArgumentParser) -> None:
 def _dispatch_create_fixups_command(args: argparse.Namespace) -> None:
     command_create_fixups(
         args.boundary,
+        plan_path=args.plan_path,
         dry_run=args.dry_run,
         partial=args.partial,
         porcelain=args.porcelain,
@@ -98,6 +99,12 @@ def _dispatch_create_fixups_command(args: argparse.Namespace) -> None:
 
 
 def _add_create_fixups_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--plan",
+        dest="plan_path",
+        metavar="FILE",
+        help=_("Create from a reviewed dry-run JSON plan"),
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",

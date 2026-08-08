@@ -6946,6 +6946,14 @@ msgstr "Candidato {iteration} de {total}: {commit} {subject}"
 msgid "Candidate evidence: {sources}"
 msgstr "Evidencia del candidato: {sources}"
 
+#: src/git_stage_batch/cli/fixup_subcommands.py:106
+msgid "Create from a reviewed dry-run JSON plan"
+msgstr "Crear desde un plan JSON de simulación revisado"
+
+#: src/git_stage_batch/commands/fixup_create.py:59
+msgid "Cannot pass both a fixup boundary and --plan."
+msgstr "No se pueden pasar a la vez un límite de fixup y --plan."
+
 #: src/git_stage_batch/fixup/execution.py:189
 #, python-brace-format
 msgid "The staged units grouped for {target} cannot be replayed together at that target."
@@ -6963,3 +6971,13 @@ msgstr "El fixup planificado para {target} no se puede reproducir después de su
 #: src/git_stage_batch/fixup/execution.py:262
 msgid "Replaying the planned fixups at their targets does not reproduce the assigned staged changes."
 msgstr "La reproducción de los fixups planificados en sus destinos no reproduce los cambios preparados asignados."
+
+#: src/git_stage_batch/fixup/plan_files.py:65
+#, python-brace-format
+msgid "Invalid fixup plan: {detail}"
+msgstr "Plan de fixup no válido: {detail}"
+
+#: src/git_stage_batch/fixup/plan_files.py:283
+#, python-brace-format
+msgid "Could not read fixup plan {path}: {error}"
+msgstr "No se pudo leer el plan de fixup {path}: {error}"

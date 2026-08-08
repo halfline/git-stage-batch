@@ -76,6 +76,9 @@ def _porcelain_record(
         "range": {
             "base": plan.commit_range.base_commit,
             "head": plan.commit_range.head_commit,
+            "commits_newest_first": list(
+                plan.commit_range.commits_newest_first
+            ),
         },
         "source": {
             "object_format": plan.object_format,
@@ -83,6 +86,14 @@ def _porcelain_record(
             "index_tree": plan.index_tree,
         },
         "units": [fixup_analysis_record(analysis) for analysis in plan.units],
+        "assignments": [
+            {
+                "unit_id": assignment.unit_id,
+                "target": assignment.target,
+                "basis": assignment.basis,
+            }
+            for assignment in plan.assignments
+        ],
         "groups": [
             {
                 "target": group.target,
@@ -100,7 +111,8 @@ def _porcelain_record(
         ],
         "summary": {
             "total_units": len(plan.units),
-            "eligible_units": len(plan.eligible_units),
+            "eligible_units": len(plan.automatic_units),
+            "assigned_units": len(plan.assigned_units),
             "remaining_units": len(plan.remaining_units),
             "created_commits": len(result.created) if result is not None else 0,
         },
@@ -131,17 +143,28 @@ def print_fixup_create_output(
             head=plan.commit_range.head_commit[:12],
         )
     )
+    assignments_by_id = {
+        assignment.unit_id: assignment for assignment in plan.assignments
+    }
     for analysis in plan.units:
-        target = (
+        evidence_target = (
             analysis.target[:12] if analysis.target is not None else _("unassigned")
         )
+        assignment = assignments_by_id.get(analysis.unit.unit_id)
+        assignment_target = (
+            assignment.target[:12] if assignment is not None else _("unassigned")
+        )
+        assignment_basis = assignment.basis if assignment is not None else "none"
         print(
-            "  {unit}  {path} {location} -> {target} [{status}]".format(
+            "  {unit}  {path} {location} evidence {evidence} [{status}] "
+            "-> {target} [{basis}]".format(
                 unit=analysis.unit.unit_id[:12],
                 path=display_path(analysis.unit.path),
                 location=_unit_location(analysis),
-                target=target,
+                evidence=evidence_target,
                 status=analysis.status,
+                target=assignment_target,
+                basis=assignment_basis,
             )
         )
         print(f"    {fixup_reason_text(analysis)}")

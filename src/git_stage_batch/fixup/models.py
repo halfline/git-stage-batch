@@ -8,6 +8,8 @@ from typing import Literal
 from ..core.buffer import LineBuffer
 
 
+CURRENT_FIXUP_CREATE_PLAN_SCHEMA_VERSION = 2
+
 FixupUnitKind = Literal[
     "text-addition",
     "text-deletion",
@@ -174,11 +176,6 @@ class FixupCreatePlan:
     units: tuple[FixupUnitAnalysis, ...]
     assignments: tuple[FixupAssignment, ...]
     groups: tuple[FixupTargetGroup, ...]
-
-    @property
-    def eligible_units(self) -> tuple[FixupUnitAnalysis, ...]:
-        """Return units the planner permits `fixup create` to commit."""
-        return tuple(unit for unit in self.units if unit.eligible)
 
     @property
     def automatic_units(self) -> tuple[FixupUnitAnalysis, ...]:

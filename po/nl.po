@@ -6930,6 +6930,14 @@ msgstr "Kandidaat {iteration} van {total}: {commit} {subject}"
 msgid "Candidate evidence: {sources}"
 msgstr "Kandidaatbewijs: {sources}"
 
+#: src/git_stage_batch/cli/fixup_subcommands.py:106
+msgid "Create from a reviewed dry-run JSON plan"
+msgstr "Maken vanuit een beoordeeld JSON-proefuitvoerplan"
+
+#: src/git_stage_batch/commands/fixup_create.py:59
+msgid "Cannot pass both a fixup boundary and --plan."
+msgstr "Een fixup-grens en --plan kunnen niet beide worden opgegeven."
+
 #: src/git_stage_batch/fixup/execution.py:189
 #, python-brace-format
 msgid "The staged units grouped for {target} cannot be replayed together at that target."
@@ -6947,3 +6955,13 @@ msgstr "De geplande fixup voor {target} kan niet na zijn doel worden afgespeeld.
 #: src/git_stage_batch/fixup/execution.py:262
 msgid "Replaying the planned fixups at their targets does not reproduce the assigned staged changes."
 msgstr "Het afspelen van de geplande fixups op hun doelen reproduceert de toegewezen gestagede wijzigingen niet."
+
+#: src/git_stage_batch/fixup/plan_files.py:65
+#, python-brace-format
+msgid "Invalid fixup plan: {detail}"
+msgstr "Ongeldig fixup-plan: {detail}"
+
+#: src/git_stage_batch/fixup/plan_files.py:283
+#, python-brace-format
+msgid "Could not read fixup plan {path}: {error}"
+msgstr "Kon fixup-plan {path} niet lezen: {error}"

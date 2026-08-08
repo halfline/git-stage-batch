@@ -386,3 +386,9 @@ def execute_fixup_create_plan(plan: FixupCreatePlan) -> FixupCreateResult:
         created=tuple(created),
         recovery_ref=recovery_ref,
     )
+
+
+def validate_fixup_create_plan_materialization(plan: FixupCreatePlan) -> None:
+    """Verify assignment grouping and patch conservation without creating refs."""
+    _prepare_groups(plan)
+    _require_frozen_source(plan, plan.commit_range.head_commit)

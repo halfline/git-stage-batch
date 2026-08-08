@@ -219,11 +219,17 @@ _git_stage_batch()
                     COMPREPLY=($(compgen -W "--reset --abort --last --line --lines --porcelain" -- "$cur"))
                     ;;
                 create)
+                    case "$prev" in
+                        --plan)
+                            _filedir
+                            return
+                            ;;
+                    esac
                     if [[ $cword -eq 3 && "$cur" != -* ]]; then
                         __gitcomp_nl "$(__git_refs)"
                         return
                     fi
-                    COMPREPLY=($(compgen -W "--dry-run --partial --porcelain" -- "$cur"))
+                    COMPREPLY=($(compgen -W "--plan --dry-run --partial --porcelain" -- "$cur"))
                     ;;
             esac
             ;;

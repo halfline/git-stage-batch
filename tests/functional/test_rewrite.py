@@ -31,6 +31,8 @@ def test_history_cli_scans_and_validates_reword_plan(functional_repo):
     assert plan["operation"] == "rewrite-plan"
     assert plan["snapshot"]["range"]["base"] == base
     assert plan["snapshot"]["range"]["tip"] == _git("rev-parse", "HEAD")
+    assert plan["snapshot"]["dependency_graph"]["algorithm_version"] == 1
+    assert len(plan["snapshot"]["dependency_graph"]["units"]) == 1
     assert plan["safety"]["mutation_ready"] is True
     assert plan["plan"]["outputs"][0]["operation"] == "KEEP"
 
@@ -48,6 +50,9 @@ def test_history_cli_scans_and_validates_reword_plan(functional_repo):
 
     assert output["valid"] is True
     assert output["summary"]["reworded_commits"] == 1
+    assert output["summary"]["dependency_units"] == 1
+    assert output["summary"]["blocked_dependencies"] == 0
+    assert output["summary"]["unknown_dependencies"] == 0
     assert output["range"]["final_tree"] == _git("rev-parse", "HEAD^{tree}")
 
 
@@ -67,7 +72,7 @@ def test_history_cli_atomically_writes_plan(functional_repo):
     )
 
     assert "Wrote reusable rewrite plan" in result.stdout
-    assert json.loads(plan_path.read_text(encoding="utf-8"))["schema_version"] == 2
+    assert json.loads(plan_path.read_text(encoding="utf-8"))["schema_version"] == 3
 
 
 def test_history_cli_status_without_operation(functional_repo):
@@ -149,17 +154,25 @@ def test_history_execution_supports_sha256(tmp_path, monkeypatch):
     _git("config", "user.email", "test@example.com")
     source = repo / "value.txt"
     source.write_text("base\n", encoding="utf-8")
-    _git("add", "value.txt")
+    other = repo / "other.txt"
+    other.write_text("other base\n", encoding="utf-8")
+    _git("add", "value.txt", "other.txt")
     _git("commit", "-m", "Base")
     base = _git("rev-parse", "HEAD")
     source.write_text("topic\n", encoding="utf-8")
     _git("commit", "-am", "Topic")
+    other.write_text("other topic\n", encoding="utf-8")
+    _git("commit", "-am", "Other topic")
+    original_tree = _git("rev-parse", "HEAD^{tree}")
 
     plan = json.loads(
         git_stage_batch("rewrite", "scan", base, "--porcelain").stdout
     )
-    plan["plan"]["outputs"][0]["operation"] = "REWORD"
-    plan["plan"]["outputs"][0]["message"] = "Reword SHA-256 topic\n"
+    topic, other_topic = plan["plan"]["outputs"]
+    topic["operation"] = "REWORD"
+    topic["message"] = "Reword SHA-256 topic\n"
+    other_topic["operation"] = "REORDER"
+    plan["plan"]["outputs"] = [other_topic, topic]
     path = repo / "plan.json"
     path.write_text(json.dumps(plan), encoding="utf-8")
     validation = json.loads(
@@ -189,4 +202,9 @@ def test_history_execution_supports_sha256(tmp_path, monkeypatch):
 
     assert applied["phase"] == "COMPLETE"
     assert len(applied["output_tip"]) == 64
+    assert _git("rev-parse", "HEAD^{tree}") == original_tree
+    assert _git("log", "--reverse", "--format=%s", f"{base}..HEAD").splitlines() == [
+        "Other topic",
+        "Reword SHA-256 topic",
+    ]
     assert verified["verified"] is True

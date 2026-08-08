@@ -1048,15 +1048,21 @@ supported topology or commit identity semantics.
 Validate edited semantic input against a freshly regenerated snapshot:
 
 ```bash
+# Validate an all-EXACT plan.
 ❯ git-stage-batch rewrite validate rewrite-plan.json
-❯ git-stage-batch rewrite validate rewrite-plan.json --porcelain
+
+# Validate a plan containing RESOLVED outputs against its completed workspace.
+❯ git-stage-batch rewrite validate rewrite-plan.json \
+    --workspace rewrite-resolution
 ```
 
 The executor schema accepts ordered `KEEP`, `REWORD`, `SPLIT`, `INTEGRATE`,
 and `REORDER` outputs with independent `EXACT` or `RESOLVED` materialization.
-Standalone `rewrite validate` completes only plans whose outputs are `EXACT`;
-a plan containing `RESOLVED` outputs goes through `rewrite resolve`, which
-performs the same semantic validation before opening its workspace.
+For a plan whose outputs are all `EXACT`, omit `--workspace`; supplying a
+gratuitous workspace is rejected rather than ignored. A plan containing any
+`RESOLVED` output requires `--workspace DIR`, where `DIR` is the `COMPLETE`
+private workspace produced by `rewrite resolve` for that exact plan. Missing,
+incomplete, or differently bound workspaces fail validation.
 `KEEP`, `REWORD`, and `REORDER` consume every unit of one source commit.
 `REORDER` marks a whole source moved earlier and preserves its exact message
 and encoding. `SPLIT` consumes a non-empty ordered subset of one source; every
@@ -1086,6 +1092,16 @@ that a patch commutes: it requires the explicit workspace workflow below to
 materialize and audit the requested snapshots. Dependency evidence limits
 exact replay, while complete replay and the frozen final tree remain required
 for either materialization.
+
+Completed-workspace validation is read-only. It authenticates the immutable
+workspace binding, receipts, result artifacts, and `complete.json`, then
+replays both exact and resolved outputs in a fresh Git object quarantine and
+rechecks the frozen final tree. It does not repair or advance the workspace,
+and no candidate objects or refs persist. Successful output reports the
+authenticated completion SHA-256 digest. Porcelain output always includes
+`summary.resolved_outputs`; its top-level `resolution` is `null` for an
+all-EXACT plan or an object containing `workspace`, `complete_sha256`, and
+`resolved_outputs` for completed-workspace validation.
 
 The input safety block is not trusted: live index, worktree, operation,
 publication, and upstream facts are collected again and returned in the
@@ -1140,6 +1156,9 @@ publishes the completed workspace by itself. Re-running without `--accept`
 safely reports the current request without accepting its seeded result.
 The first invocation requires that the workspace path does not exist;
 subsequent invocations reopen only the workspace bound to the same plan.
+The completed external workspace is currently an input only to
+`rewrite validate`. `rewrite apply` does not yet accept `--workspace`, so
+this slice does not use the workspace to build or publish replacement commits.
 
 ### `rewrite apply`
 

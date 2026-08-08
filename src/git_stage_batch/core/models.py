@@ -115,6 +115,12 @@ class FileModeChange:
 
 
 @dataclass(frozen=True)
+class FileTypeChange(FileModeChange):
+    """Atomic transition between regular, symlink, and other file types."""
+
+
+
+@dataclass(frozen=True)
 class TextFileDeletionChange:
     """Represents an atomic whole-text-file deletion."""
     old_path: str

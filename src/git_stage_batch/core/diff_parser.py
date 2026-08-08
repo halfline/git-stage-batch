@@ -17,6 +17,7 @@ from .buffer import LineBuffer
 from .models import (
     BinaryFileChange,
     FileModeChange,
+    FileTypeChange,
     GitlinkChange,
     LineLevelChange,
     HunkHeader,
@@ -62,8 +63,14 @@ def patch_is_empty_file_change(patch_lines: Iterable[bytes]) -> bool:
 class _UnifiedDiffParserBuildContext:
     """Own parser-created hunk buffers for a scoped unified diff parse."""
 
-    def __init__(self, lines: Iterable[bytes]) -> None:
+    def __init__(
+        self,
+        lines: Iterable[bytes],
+        *,
+        allow_file_type_changes: bool = False,
+    ) -> None:
         self._lines = lines
+        self._allow_file_type_changes = allow_file_type_changes
         self._buffers: list[LineBuffer] = []
         self._parser: Generator[UnifiedDiffItem, None, None] | None = None
         self._closed = False
@@ -144,6 +151,7 @@ class _UnifiedDiffParserBuildContext:
     def _parse(self) -> Generator[UnifiedDiffItem, None, None]:
         line_iter = iter(self._lines)
         lookahead: bytes | None = None  # One-line lookahead buffer
+        deleted_modes_by_path: dict[str, str] = {}
 
         def next_line() -> bytes | None:
             """Get next line, using lookahead if available."""
@@ -288,7 +296,28 @@ class _UnifiedDiffParserBuildContext:
                     type_transition = _file_metadata_diff.file_type_change(
                         metadata_lines
                     )
-                    if type_transition is not None and not is_gitlink:
+                    deleted_mode = _file_metadata_diff.deleted_file_mode(
+                        metadata_lines
+                    )
+                    if self._allow_file_type_changes and deleted_mode is not None:
+                        deleted_modes_by_path[old_path] = deleted_mode
+                    new_mode = _file_metadata_diff.new_file_mode(metadata_lines)
+                    if (
+                        type_transition is None
+                        and self._allow_file_type_changes
+                        and new_mode is not None
+                        and new_path in deleted_modes_by_path
+                        and deleted_modes_by_path[new_path] != new_mode
+                    ):
+                        type_transition = (
+                            deleted_modes_by_path.pop(new_path),
+                            new_mode,
+                        )
+                    if (
+                        type_transition is not None
+                        and not is_gitlink
+                        and not self._allow_file_type_changes
+                    ):
                         raise CommandError(
                             _(
                                 "File type changes are atomic and are not supported yet: "
@@ -299,6 +328,15 @@ class _UnifiedDiffParserBuildContext:
                                 new=type_transition[1],
                             )
                         )
+                    type_change = (
+                        FileTypeChange(
+                            new_path,
+                            *type_transition,
+                            index_path=old_path if is_rename else None,
+                        )
+                        if type_transition is not None and not is_gitlink
+                        else None
+                    )
                     mode_change = (
                         FileModeChange(
                             new_path,
@@ -352,11 +390,15 @@ class _UnifiedDiffParserBuildContext:
                             )
                             if mode_change is not None:
                                 yield mode_change
+                            if type_change is not None:
+                                yield type_change
                             continue
 
                         if is_rename:
                             if mode_change is not None:
                                 yield mode_change
+                            if type_change is not None:
+                                yield type_change
                             continue
 
                         if is_deleted_file:
@@ -377,6 +419,8 @@ class _UnifiedDiffParserBuildContext:
                             )
                         if mode_change is not None:
                             yield mode_change
+                        if type_change is not None:
+                            yield type_change
                         # Skip other files without hunks (mode-only, rename-only, etc.)
                         continue
 
@@ -519,15 +563,24 @@ class _UnifiedDiffParserBuildContext:
                             yield TextFileDeletionChange(old_path=old_path)
                     if mode_change is not None:
                         yield mode_change
+                    if type_change is not None:
+                        yield type_change
         finally:
             close = getattr(line_iter, "close", None)
             if close is not None:
                 close()
 
 
-def acquire_unified_diff(lines: Iterable[bytes]) -> _UnifiedDiffParserBuildContext:
+def acquire_unified_diff(
+    lines: Iterable[bytes],
+    *,
+    allow_file_type_changes: bool = False,
+) -> _UnifiedDiffParserBuildContext:
     """Acquire a scoped unified diff parser with parser-owned hunk buffers."""
-    return _UnifiedDiffParserBuildContext(lines)
+    return _UnifiedDiffParserBuildContext(
+        lines,
+        allow_file_type_changes=allow_file_type_changes,
+    )
 
 
 def build_line_changes_from_patch_lines(

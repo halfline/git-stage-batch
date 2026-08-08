@@ -6,6 +6,7 @@ from ..git_paths import decode_path, unquote_path_token
 
 
 DELETED_FILE_MODE_PREFIX = b"deleted file mode "
+NEW_FILE_MODE_PREFIX = b"new file mode "
 OLD_MODE_PREFIX = b"old mode "
 NEW_MODE_PREFIX = b"new mode "
 RENAME_FROM_PREFIX = b"rename from "
@@ -25,6 +26,36 @@ def metadata_indicates_deleted_file(metadata_lines: list[bytes]) -> bool:
     """Return whether diff metadata describes a deleted file."""
     return any(
         line.startswith(DELETED_FILE_MODE_PREFIX) for line in metadata_lines
+    )
+
+
+def deleted_file_mode(metadata_lines: list[bytes]) -> str | None:
+    """Return the mode recorded for a deleted path."""
+    return next(
+        (
+            line[len(DELETED_FILE_MODE_PREFIX):].decode(
+                "ascii",
+                errors="replace",
+            )
+            for line in metadata_lines
+            if line.startswith(DELETED_FILE_MODE_PREFIX)
+        ),
+        None,
+    )
+
+
+def new_file_mode(metadata_lines: list[bytes]) -> str | None:
+    """Return the mode recorded for a newly created path."""
+    return next(
+        (
+            line[len(NEW_FILE_MODE_PREFIX):].decode(
+                "ascii",
+                errors="replace",
+            )
+            for line in metadata_lines
+            if line.startswith(NEW_FILE_MODE_PREFIX)
+        ),
+        None,
     )
 
 

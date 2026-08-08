@@ -11,6 +11,12 @@ git-stage-batch-rewrite \- execute deterministic history refinements
 [\fB\-\-porcelain\fR]
 \fIPLAN\fR
 .PP
+.B git-stage-batch rewrite resolve
+\fIPLAN\fR
+\fB\-\-workspace\fR \fIDIR\fR
+[\fB\-\-accept\fR]
+[\fB\-\-porcelain\fR]
+.PP
 .B git-stage-batch rewrite apply
 [\fB\-\-allow-published-ref\fR \fIREF\fR]...
 [\fB\-\-porcelain\fR]
@@ -49,6 +55,19 @@ from live Git objects, and accepts KEEP, REWORD, SPLIT, INTEGRATE, and
 mechanically proven REORDER outputs. It requires exact source and patch-unit
 conservation, original target authorship, dependency-safe ordering, complete
 replay, and the frozen final tree.
+Standalone validation completes only plans whose outputs use EXACT
+materialization; plans containing RESOLVED outputs go through
+.BR "rewrite resolve" ,
+which performs the same semantic validation before opening its workspace.
+.PP
+.B rewrite resolve
+creates or advances a private external workspace for explicitly RESOLVED
+outputs. It replays from the frozen base in a temporary object quarantine,
+exports one immutable request at a time with current-parent and source
+references, and accepts only unit-authorized result paths and transitions.
+Each accepted output receives a digest-bound receipt. Completion requires the
+entire replay to reproduce the frozen final tree and does not create commits,
+refs, or persistent candidate objects.
 .PP
 .B rewrite apply
 creates an operation-owned recovery ref, builds a deterministic unsigned
@@ -108,6 +127,37 @@ merge base between HEAD and its configured upstream.
 .B \-\-porcelain
 Print a versioned JSON validation report with commit/unit counts, final tree,
 signature count, and freshly collected mutation preconditions.
+.SH RESOLVE OPTIONS
+.TP
+.BI \-\-workspace " DIR"
+Create a new private resolution workspace at
+.IR DIR .
+The first invocation requires a plan containing at least one RESOLVED output
+and requires that
+.I DIR
+does not exist. Subsequent invocations reopen only the workspace bound to the
+same plan.
+.TP
+.B \-\-accept
+Validate and accept the current editable result, then stop at the next
+RESOLVED output or publish the completed workspace marker. Without this
+option, a seeded or edited result is never accepted.
+.TP
+.B \-\-porcelain
+Print a versioned JSON checkpoint containing the canonical plan and workspace
+paths, current zero-based output index, opaque output key, authorized Git
+paths, and exact request/result locations.
+.PP
+Edit only the named
+.B result.json
+and opaque result artifacts. JSON object-member order is insignificant. A
+present path requires its opaque artifact and an authorized mode of 100644 or
+100755. An authorized deletion uses ABSENT with a null mode and removes its
+result artifact; an authorized addition becomes PRESENT after its artifact is
+created. Every listed path must change, and selected source units must
+authorize each content, lifecycle, or mode transition. Workspace directories
+must remain mode 0700, and every metadata or artifact file must remain mode
+0600.
 .SH STATUS OPTIONS
 .TP
 .B \-\-porcelain
@@ -128,38 +178,45 @@ Print a versioned JSON operation result.
 .B \-\-porcelain
 Print a versioned JSON operation or verification result.
 .SH PLAN CONTRACT
-Only the
+Only
+.B plan.partitioned_units
+and
 .B plan.outputs
-array is semantic input. The
+are semantic input. The
 .B snapshot
 object is immutable and is compared exactly after regeneration. The
 .B safety
 object is informational and is always recollected when a plan is validated.
 .PP
-Every output contains an operation, one or more source commit IDs, an exact
-ordered source-unit list, a message and its declared encoding, the exact target
-author, and an optional human rationale. Rationale prose is not treated as
-mechanical proof. Every source unit must be consumed exactly once globally.
+Every output contains a semantic operation, an EXACT or RESOLVED
+materialization, one or more source commit IDs, an exact ordered source-unit
+list, a message and its declared encoding, the exact target author, and an
+optional human rationale. Rationale prose is not treated as mechanical proof.
+An ordinary unit must occur exactly once globally. A declared partitioned unit
+occurs once in each listed RESOLVED output, and nowhere else, when one
+mechanical unit contains semantic portions owned by several snapshots.
 .PP
 KEEP requires the original message. REWORD permits a new message but preserves
 the exact source patch, order, and author. SPLIT assigns non-empty ordered unit
 subsets from one source to at least two output commits, preserving that source
 author. INTEGRATE consumes a complete target source plus ordered subsets from
 later repair sources; one repair source may be partitioned across several
-targets. REORDER marks a complete source moved earlier and preserves its exact
-message and encoding.
+targets, and may retain a later residual SPLIT output. REORDER marks a complete
+source moved earlier and preserves its exact message and encoding.
 .PP
-Every earlier move must stay within the unit's recorded adjacent-swap proof.
+Every earlier EXACT move must stay within the unit's recorded
+adjacent-swap proof.
 A chain of BLOCKED predecessors may move farther only when the complete chain
 stays ordered inside one output; full-plan replay must then prove that compound
 movement. A blocker assigned to another output and every UNKNOWN barrier fail
-closed. Validation still replays every requested unit through Git and requires
-the complete result to reproduce the frozen final tree; dependency evidence is
-not a substitute for that final oracle. Empty source commits remain explicit
-unless deliberately consumed by an integration.
+closed for exact replay. RESOLVED never claims commutation; it requires
+explicit, path-authorized output snapshots and a complete replay that
+reproduces the frozen final tree. Dependency evidence is not a substitute for
+that final oracle. Empty source commits remain explicit unless deliberately
+consumed by an integration.
 .SH SAFETY
-Scan and validation do not change commits or refs. Both materialize candidate
-trees only in a temporary object quarantine. They may
+Scan, validation, and resolution do not change commits or refs. They
+materialize candidate trees only in a temporary object quarantine. They may
 run while local mutation preconditions are blocked and label those blockers in
 the safety report. They reject merges, stale or forged snapshots, duplicate
 JSON fields, abbreviated object IDs, omitted or unproven reordered units, and

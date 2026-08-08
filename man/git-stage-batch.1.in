@@ -125,7 +125,7 @@ Allow a blocked file to be reviewed again.
 Suggest fixup targets or create grouped fixup commits from staged changes.
 .TP
 .BR git-stage-batch-rewrite (1)
-Scan, validate, or inspect a deterministic history refinement.
+Scan, resolve, validate, apply, or inspect a deterministic history refinement.
 .TP
 .BR git-stage-batch-suggest-fixup (1)
 Compatible spelling for

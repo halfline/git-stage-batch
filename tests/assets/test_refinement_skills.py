@@ -139,6 +139,62 @@ def test_refine_history_binds_narrow_publication_scope() -> None:
         )
 
 
+def test_refine_history_assigns_causal_ownership_before_placement() -> None:
+    """Mechanical barriers must not become semantic owners or convergence."""
+    skill_contracts = (
+        "mandatory causal pass newest to oldest",
+        "compare the commit's claim with its implementation",
+        "Assign semantic ownership before consulting",
+        "earliest honest semantic owner",
+        'CAUSAL_LEDGER="$PLAN_DIR/causal-ledger.md"',
+        "Persist that compact ledger at `CAUSAL_LEDGER`, outside the worktree",
+        "Update the ledger after every validation and apply",
+        "unaudited identity template",
+        "Subjects are claims to test, not candidate filters",
+        "Two yes answers identify a mixed source",
+        "translated strings",
+        "OWNED_HERE",
+        "MOVE",
+        "UNRESOLVED",
+        "UNREPRESENTABLE",
+        "never retarget it to the blocker",
+        "Never apply a validated landing at a non-owner blocker",
+        "original-source provenance",
+        "use the reported recovery ref and read-only Git inspection to reconstruct original-source provenance",
+        "missing provenance as `UNRESOLVED`",
+        "leave every fresh semantic group `OWNED_HERE`",
+        "compound movement may cross a complete `BLOCKED` chain only when all grouped units share the same semantic outcome",
+        "necessary mechanical proof, not sufficient semantic proof",
+    )
+    reference_contracts = (
+        "## Assign semantic ownership before mechanics",
+        "A mechanical blocker is a placement frontier, never an owner",
+        "four non-plan audit states",
+        "not necessarily a semantic atom",
+        "Never merge an unrelated blocker chain",
+        "An ungrouped `BLOCKED` edge",
+        "current schema cannot divide it",
+        "cannot make one source both an integrated secondary",
+        "A later fresh scan remaps it to fresh unit IDs",
+        "Never apply a non-owner blocker landing as a stepping stone",
+    )
+
+    for root in (CODEX_HISTORY, CLAUDE_HISTORY):
+        skill = _read(root / "SKILL.md")
+        skill_prose = " ".join(skill.split())
+        for contract in skill_contracts:
+            assert contract in skill_prose
+        assert "or keep the existing boundary" not in skill_prose
+        assert skill_prose.index(
+            "Assign semantic ownership before consulting"
+        ) < skill_prose.index("Mechanical placement determines feasibility")
+
+        reference = _read(root / "references" / "rewrite-procedures.md")
+        reference_prose = " ".join(reference.split())
+        for contract in reference_contracts:
+            assert contract in reference_prose
+
+
 def test_message_refinement_is_a_message_only_history_plan() -> None:
     """Message skills should validate their allowed subset before resume."""
     for root in (CODEX_MESSAGES, CLAUDE_MESSAGES):

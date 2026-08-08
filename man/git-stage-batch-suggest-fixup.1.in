@@ -5,6 +5,13 @@ git-stage-batch-suggest-fixup \- suggest a commit for a fixup
 .B git-stage-batch suggest-fixup
 [\fB\-\-line\fR \fIIDS\fR]
 [\fB\-\-reset\fR|\fB\-\-abort\fR|\fB\-\-last\fR]
+[\fB\-\-porcelain\fR]
+[\fIBOUNDARY\fR]
+.PP
+.B git-stage-batch fixup suggest
+[\fB\-\-line\fR \fIIDS\fR]
+[\fB\-\-reset\fR|\fB\-\-abort\fR|\fB\-\-last\fR]
+[\fB\-\-porcelain\fR]
 [\fIBOUNDARY\fR]
 .SH DESCRIPTION
 .B suggest-fixup
@@ -24,9 +31,14 @@ Clear suggestion state and exit without showing a candidate.
 .TP
 .B \-\-last
 Re-show the last candidate without advancing.
+.TP
+.B \-\-porcelain
+Output machine-readable JSON.
+.TP
 .I BOUNDARY
 Git ref to use as the lower bound for commit search. The default is
 .BR @{upstream} .
 .SH SEE ALSO
 .BR git-stage-batch (1),
+.BR git-stage-batch-fixup (1),
 .BR git-log (1)

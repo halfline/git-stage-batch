@@ -119,8 +119,12 @@ Permanently exclude a file from future sessions.
 .BR git-stage-batch-unblock-file (1)
 Allow a blocked file to be reviewed again.
 .TP
+.BR git-stage-batch-fixup (1)
+Suggest fixup targets or create grouped fixup commits from staged changes.
+.TP
 .BR git-stage-batch-suggest-fixup (1)
-Suggest a commit to fix up with the selected hunk.
+Compatible spelling for
+.BR "git-stage-batch fixup suggest" .
 .TP
 .BR git-stage-batch-install-assets (1)
 Install bundled assistant assets into the repository.

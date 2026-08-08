@@ -6131,3 +6131,244 @@ msgstr "置換対象の選択範囲は、バッチソース内の連続した 1 
 #: src/git_stage_batch/batch/replacement.py:44
 msgid "Replacement selection must resolve to one contiguous batch-source region."
 msgstr "置換対象の選択範囲は、バッチソース内の連続した 1 つの領域に収まる必要があります。"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:78 src/git_stage_batch/cli/fixup_subcommands.py:114
+msgid "Output machine-readable JSON"
+msgstr "機械可読 JSON を出力"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:104
+msgid "Show the complete assignment plan without creating commits"
+msgstr "コミットを作成せずに完全な割り当て計画を表示"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:109
+msgid "Create eligible fixups and leave other units staged"
+msgstr "対象となる fixup を作成し、他の単位はステージ済みのままにする"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:121
+msgid "Git commit to use as the excluded base of the target range (default: fork point with upstream)"
+msgstr "対象範囲から除外する基点として使う Git コミット (既定値: upstream との fork point)"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:134
+msgid "Suggest fixup targets or create grouped fixup commits"
+msgstr "fixup の対象を提案するか、グループ化した fixup コミットを作成"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:139
+msgid "Fixup action"
+msgstr "fixup 操作"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:146
+msgid "Suggest a target for the selected hunk"
+msgstr "選択したハンクの対象を提案"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:155
+msgid "Create grouped fixup commits from staged changes"
+msgstr "ステージ済み変更からグループ化した fixup コミットを作成"
+
+#: src/git_stage_batch/commands/fixup_create.py:36
+#, python-brace-format
+msgid "Cannot create fixup commits while another Git operation is active ({operation})."
+msgstr "別の Git 操作が進行中 ({operation}) のため、fixup コミットを作成できません。"
+
+#: src/git_stage_batch/commands/fixup_create.py:56
+msgid "Stop the active git-stage-batch session before creating fixup commits."
+msgstr "fixup コミットを作成する前に、進行中の git-stage-batch セッションを停止してください。"
+
+#: src/git_stage_batch/commands/fixup_create.py:81
+msgid "No commits were created because some staged units are not eligible. Inspect the plan or rerun with --partial."
+msgstr "一部のステージ済み単位が対象外のため、コミットは作成されませんでした。計画を確認するか、--partial を指定して再実行してください。"
+
+#: src/git_stage_batch/commands/fixup_create.py:92
+msgid "No staged units have an eligible fixup target."
+msgstr "対象となる fixup の宛先を持つステージ済み単位がありません。"
+
+#: src/git_stage_batch/fixup/execution.py:102
+#, python-brace-format
+msgid "Could not materialize the staged units assigned to {target}."
+msgstr "{target} に割り当てたステージ済み単位を実体化できませんでした。"
+
+#: src/git_stage_batch/fixup/execution.py:114
+#, python-brace-format
+msgid "The planned fixup for {target} could not be combined with the preceding fixup groups."
+msgstr "{target} 用に計画した fixup を先行する fixup グループと結合できませんでした。"
+
+#: src/git_stage_batch/fixup/execution.py:130
+msgid "The grouped fixup plan does not conserve the staged changes."
+msgstr "グループ化した fixup 計画はステージ済み変更を保持していません。"
+
+#: src/git_stage_batch/fixup/execution.py:134
+msgid "The complete fixup plan does not reproduce the staged index tree."
+msgstr "完全な fixup 計画はステージ済みインデックスツリーを再現しません。"
+
+#: src/git_stage_batch/fixup/execution.py:143
+msgid "HEAD or the staged index changed after fixup planning. No further fixup commits were created."
+msgstr "fixup の計画後に HEAD またはステージ済みインデックスが変更されました。これ以上 fixup コミットは作成されませんでした。"
+
+#: src/git_stage_batch/fixup/execution.py:160
+#, python-brace-format
+msgid "Fixup creation stopped after HEAD moved unexpectedly. The original commit is saved at {recovery_ref}; HEAD was not overwritten."
+msgstr "HEAD が予期せず移動したため fixup の作成を停止しました。元のコミットは {recovery_ref} に保存され、HEAD は上書きされていません。"
+
+#: src/git_stage_batch/fixup/execution.py:173
+#, python-brace-format
+msgid "Could not restore HEAD after fixup creation failed. The original commit is saved at {recovery_ref}."
+msgstr "fixup の作成失敗後に HEAD を復元できませんでした。元のコミットは {recovery_ref} に保存されています。"
+
+#: src/git_stage_batch/fixup/execution.py:183
+msgid "The fixup plan has no eligible staged units."
+msgstr "fixup 計画に対象となるステージ済み単位がありません。"
+
+#: src/git_stage_batch/fixup/execution.py:211
+msgid "HEAD no longer names the fixup commit that was just created."
+msgstr "HEAD は作成直後の fixup コミットを指していません。"
+
+#: src/git_stage_batch/fixup/execution.py:226
+msgid "A created fixup commit has an unexpected parent."
+msgstr "作成した fixup コミットの親が予期したものではありません。"
+
+#: src/git_stage_batch/fixup/execution.py:231
+msgid "A commit hook changed the planned fixup subject; the operation was rolled back."
+msgstr "コミットフックが計画した fixup の件名を変更したため、操作をロールバックしました。"
+
+#: src/git_stage_batch/fixup/execution.py:238
+msgid "A commit hook changed the planned fixup tree; the operation was rolled back."
+msgstr "コミットフックが計画した fixup のツリーを変更したため、操作をロールバックしました。"
+
+#: src/git_stage_batch/fixup/planning.py:191
+msgid "No staged changes are available for fixup creation."
+msgstr "fixup の作成に使用できるステージ済み変更がありません。"
+
+#: src/git_stage_batch/fixup/planning.py:210
+msgid "HEAD or the staged index changed during fixup analysis. Run the command again."
+msgstr "fixup の分析中に HEAD またはステージ済みインデックスが変更されました。コマンドを再実行してください。"
+
+#: src/git_stage_batch/fixup/ranges.py:22
+#, python-brace-format
+msgid "Invalid fixup boundary: {boundary}"
+msgstr "fixup の境界が無効です: {boundary}"
+
+#: src/git_stage_batch/fixup/ranges.py:36
+msgid "No upstream branch is configured. Pass the base commit for fixup analysis explicitly."
+msgstr "upstream ブランチが設定されていません。fixup 分析の基点コミットを明示してください。"
+
+#: src/git_stage_batch/fixup/ranges.py:56
+msgid "Could not determine a merge base between HEAD and its upstream."
+msgstr "HEAD とその upstream のマージベースを特定できませんでした。"
+
+#: src/git_stage_batch/fixup/ranges.py:71
+#, python-brace-format
+msgid "Fixup base {base} is not an ancestor of HEAD."
+msgstr "fixup の基点 {base} は HEAD の祖先ではありません。"
+
+#: src/git_stage_batch/fixup/ranges.py:94
+#, python-brace-format
+msgid "Fixup analysis currently requires a linear range; commit {commit} does not have exactly one parent."
+msgstr "fixup 分析には現在、線形範囲が必要です。コミット {commit} の親がちょうど 1 つではありません。"
+
+#: src/git_stage_batch/fixup/ranges.py:101
+msgid "No commits found between the fixup base and HEAD."
+msgstr "fixup の基点と HEAD の間にコミットが見つかりません。"
+
+#: src/git_stage_batch/fixup/staged_units.py:69
+msgid "Staged text patch has no hunk header."
+msgstr "ステージ済みテキストパッチにハンクヘッダーがありません。"
+
+#: src/git_stage_batch/output/fixup_create.py:18
+msgid "lineage and placement agree"
+msgstr "系譜と配置が一致"
+
+#: src/git_stage_batch/output/fixup_create.py:20
+msgid "unique lineage; patch commutes through the range"
+msgstr "一意の系譜。パッチは範囲全体を越えて交換可能"
+
+#: src/git_stage_batch/output/fixup_create.py:23
+msgid "mechanical placement only; semantic target is unproven"
+msgstr "機械的な配置のみ。意味上の対象は未確認"
+
+#: src/git_stage_batch/output/fixup_create.py:26
+msgid "lineage and placement identify different commits"
+msgstr "系譜と配置が異なるコミットを示しています"
+
+#: src/git_stage_batch/output/fixup_create.py:28
+msgid "selected lines have multiple owners"
+msgstr "選択した行に複数の所有者があります"
+
+#: src/git_stage_batch/output/fixup_create.py:29
+msgid "no target evidence in the selected range"
+msgstr "選択範囲内に対象の根拠がありません"
+
+#: src/git_stage_batch/output/fixup_create.py:30
+msgid "whole-file additions are not supported yet"
+msgstr "ファイル全体の追加はまだサポートされていません"
+
+#: src/git_stage_batch/output/fixup_create.py:31
+msgid "whole-file deletions are not supported yet"
+msgstr "ファイル全体の削除はまだサポートされていません"
+
+#: src/git_stage_batch/output/fixup_create.py:32
+msgid "binary changes are not supported yet"
+msgstr "バイナリ変更はまだサポートされていません"
+
+#: src/git_stage_batch/output/fixup_create.py:33
+msgid "renames are not supported yet"
+msgstr "名前変更はまだサポートされていません"
+
+#: src/git_stage_batch/output/fixup_create.py:35
+msgid "content changes across renames are not supported yet"
+msgstr "名前変更をまたぐ内容変更はまだサポートされていません"
+
+#: src/git_stage_batch/output/fixup_create.py:37
+msgid "file-mode changes are not supported yet"
+msgstr "ファイルモード変更はまだサポートされていません"
+
+#: src/git_stage_batch/output/fixup_create.py:38
+msgid "gitlink changes are not supported yet"
+msgstr "gitlink 変更はまだサポートされていません"
+
+#: src/git_stage_batch/output/fixup_create.py:39
+msgid "the unit has no textual patch"
+msgstr "単位にテキストパッチがありません"
+
+#: src/git_stage_batch/output/fixup_create.py:41
+msgid "the staged unit no longer applies to the frozen HEAD"
+msgstr "ステージ済み単位を固定した HEAD に適用できなくなりました"
+
+#: src/git_stage_batch/output/fixup_create.py:43
+msgid "the frozen range tree chain changed"
+msgstr "固定した範囲のツリー連鎖が変更されました"
+
+#: src/git_stage_batch/output/fixup_create.py:44
+msgid "placement analysis failed"
+msgstr "配置分析に失敗しました"
+
+#: src/git_stage_batch/output/fixup_create.py:166
+#, python-brace-format
+msgid "Fixup plan for {base}..{head}:"
+msgstr "{base}..{head} の fixup 計画:"
+
+#: src/git_stage_batch/output/fixup_create.py:173
+msgid "unassigned"
+msgstr "未割り当て"
+
+#: src/git_stage_batch/output/fixup_create.py:188
+#, python-brace-format
+msgid "Target {target} {subject}: {count} unit(s)"
+msgstr "対象 {target} {subject}: {count} 単位"
+
+#: src/git_stage_batch/output/fixup_create.py:196
+msgid "Dry run: no commits were created."
+msgstr "ドライラン: コミットは作成されませんでした。"
+
+#: src/git_stage_batch/output/fixup_create.py:200
+#, python-brace-format
+msgid "Created {commit} as a fixup for {target}."
+msgstr "{commit} を {target} の fixup として作成しました。"
+
+#: src/git_stage_batch/output/fixup_create.py:206
+#, python-brace-format
+msgid "Recovery ref: {recovery_ref}"
+msgstr "復旧用参照: {recovery_ref}"
+
+#: src/git_stage_batch/output/fixup_create.py:211
+#, python-brace-format
+msgid "{count} unit(s) remain staged."
+msgstr "{count} 単位がステージ済みのまま残っています。"

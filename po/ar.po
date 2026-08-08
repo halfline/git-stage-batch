@@ -6792,3 +6792,244 @@ msgstr "يجب أن تشكّل الأسطر المحددة للاستبدال ن
 #: src/git_stage_batch/batch/replacement.py:44
 msgid "Replacement selection must resolve to one contiguous batch-source region."
 msgstr "يجب أن يشكّل الجزء المحدد للاستبدال منطقة واحدة متصلة في مصدر الدفعة."
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:78 src/git_stage_batch/cli/fixup_subcommands.py:114
+msgid "Output machine-readable JSON"
+msgstr "أخرج ⁦JSON⁩ قابلاً للقراءة آليًا"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:104
+msgid "Show the complete assignment plan without creating commits"
+msgstr "اعرض خطة الإسناد الكاملة دون إنشاء إيداعات"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:109
+msgid "Create eligible fixups and leave other units staged"
+msgstr "أنشئ وحدات ⁦fixup⁩ المؤهلة واترك الوحدات الأخرى مُجهّزة"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:121
+msgid "Git commit to use as the excluded base of the target range (default: fork point with upstream)"
+msgstr "إيداع ⁦Git⁩ المستخدم قاعدةً مستبعدة من نطاق الهدف (الافتراضي: نقطة التفرع مع ⁦upstream⁩)"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:134
+msgid "Suggest fixup targets or create grouped fixup commits"
+msgstr "اقترح أهداف ⁦fixup⁩ أو أنشئ إيداعات ⁦fixup⁩ مجمّعة"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:139
+msgid "Fixup action"
+msgstr "إجراء ⁦fixup⁩"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:146
+msgid "Suggest a target for the selected hunk"
+msgstr "اقترح هدفًا للمقطع المحدد"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:155
+msgid "Create grouped fixup commits from staged changes"
+msgstr "أنشئ إيداعات ⁦fixup⁩ مجمّعة من التغييرات المُجهّزة"
+
+#: src/git_stage_batch/commands/fixup_create.py:36
+#, python-brace-format
+msgid "Cannot create fixup commits while another Git operation is active ({operation})."
+msgstr "لا يمكن إنشاء إيداعات ⁦fixup⁩ أثناء نشاط عملية ⁦Git⁩ أخرى ({operation})."
+
+#: src/git_stage_batch/commands/fixup_create.py:56
+msgid "Stop the active git-stage-batch session before creating fixup commits."
+msgstr "أوقف جلسة ⁦git-stage-batch⁩ النشطة قبل إنشاء إيداعات ⁦fixup⁩."
+
+#: src/git_stage_batch/commands/fixup_create.py:81
+msgid "No commits were created because some staged units are not eligible. Inspect the plan or rerun with --partial."
+msgstr "لم تُنشأ إيداعات لأن بعض الوحدات المُجهّزة غير مؤهلة. افحص الخطة أو أعد التشغيل مع ⁦--partial⁩."
+
+#: src/git_stage_batch/commands/fixup_create.py:92
+msgid "No staged units have an eligible fixup target."
+msgstr "ليس لأي وحدة مُجهّزة هدف ⁦fixup⁩ مؤهل."
+
+#: src/git_stage_batch/fixup/execution.py:102
+#, python-brace-format
+msgid "Could not materialize the staged units assigned to {target}."
+msgstr "تعذّر تكوين الوحدات المُجهّزة المسندة إلى {target}."
+
+#: src/git_stage_batch/fixup/execution.py:114
+#, python-brace-format
+msgid "The planned fixup for {target} could not be combined with the preceding fixup groups."
+msgstr "تعذّر دمج ⁦fixup⁩ المخطط له من أجل {target} مع مجموعات ⁦fixup⁩ السابقة."
+
+#: src/git_stage_batch/fixup/execution.py:130
+msgid "The grouped fixup plan does not conserve the staged changes."
+msgstr "لا تحفظ خطة وحدات ⁦fixup⁩ المجمّعة التغييرات المُجهّزة."
+
+#: src/git_stage_batch/fixup/execution.py:134
+msgid "The complete fixup plan does not reproduce the staged index tree."
+msgstr "لا تعيد خطة ⁦fixup⁩ الكاملة إنتاج شجرة الفهرس المُجهّز."
+
+#: src/git_stage_batch/fixup/execution.py:143
+msgid "HEAD or the staged index changed after fixup planning. No further fixup commits were created."
+msgstr "تغيّر ⁦HEAD⁩ أو الفهرس المُجهّز بعد تخطيط ⁦fixup⁩. لم تُنشأ إيداعات ⁦fixup⁩ أخرى."
+
+#: src/git_stage_batch/fixup/execution.py:160
+#, python-brace-format
+msgid "Fixup creation stopped after HEAD moved unexpectedly. The original commit is saved at {recovery_ref}; HEAD was not overwritten."
+msgstr "توقف إنشاء ⁦fixup⁩ بعد انتقال ⁦HEAD⁩ على نحو غير متوقع. حُفظ الإيداع الأصلي في {recovery_ref}؛ ولم يُكتب فوق ⁦HEAD⁩."
+
+#: src/git_stage_batch/fixup/execution.py:173
+#, python-brace-format
+msgid "Could not restore HEAD after fixup creation failed. The original commit is saved at {recovery_ref}."
+msgstr "تعذّرت استعادة ⁦HEAD⁩ بعد فشل إنشاء ⁦fixup⁩. حُفظ الإيداع الأصلي في {recovery_ref}."
+
+#: src/git_stage_batch/fixup/execution.py:183
+msgid "The fixup plan has no eligible staged units."
+msgstr "لا تحتوي خطة ⁦fixup⁩ على وحدات مُجهّزة مؤهلة."
+
+#: src/git_stage_batch/fixup/execution.py:211
+msgid "HEAD no longer names the fixup commit that was just created."
+msgstr "لم يعد ⁦HEAD⁩ يشير إلى إيداع ⁦fixup⁩ الذي أُنشئ للتو."
+
+#: src/git_stage_batch/fixup/execution.py:226
+msgid "A created fixup commit has an unexpected parent."
+msgstr "لإيداع ⁦fixup⁩ المُنشأ أصل غير متوقع."
+
+#: src/git_stage_batch/fixup/execution.py:231
+msgid "A commit hook changed the planned fixup subject; the operation was rolled back."
+msgstr "غيّر خطاف الإيداع موضوع ⁦fixup⁩ المخطط له؛ فتراجعت العملية."
+
+#: src/git_stage_batch/fixup/execution.py:238
+msgid "A commit hook changed the planned fixup tree; the operation was rolled back."
+msgstr "غيّر خطاف الإيداع شجرة ⁦fixup⁩ المخطط له؛ فتراجعت العملية."
+
+#: src/git_stage_batch/fixup/planning.py:191
+msgid "No staged changes are available for fixup creation."
+msgstr "لا توجد تغييرات مُجهّزة متاحة لإنشاء ⁦fixup⁩."
+
+#: src/git_stage_batch/fixup/planning.py:210
+msgid "HEAD or the staged index changed during fixup analysis. Run the command again."
+msgstr "تغيّر ⁦HEAD⁩ أو الفهرس المُجهّز أثناء تحليل ⁦fixup⁩. شغّل الأمر مجددًا."
+
+#: src/git_stage_batch/fixup/ranges.py:22
+#, python-brace-format
+msgid "Invalid fixup boundary: {boundary}"
+msgstr "حد ⁦fixup⁩ غير صالح: {boundary}"
+
+#: src/git_stage_batch/fixup/ranges.py:36
+msgid "No upstream branch is configured. Pass the base commit for fixup analysis explicitly."
+msgstr "لم يُضبط فرع ⁦upstream⁩. مرّر إيداع الأساس لتحليل ⁦fixup⁩ صراحةً."
+
+#: src/git_stage_batch/fixup/ranges.py:56
+msgid "Could not determine a merge base between HEAD and its upstream."
+msgstr "تعذّر تحديد قاعدة دمج بين ⁦HEAD⁩ و⁦upstream⁩ الخاص به."
+
+#: src/git_stage_batch/fixup/ranges.py:71
+#, python-brace-format
+msgid "Fixup base {base} is not an ancestor of HEAD."
+msgstr "قاعدة ⁦fixup⁩ {base} ليست سلفًا لـ⁦HEAD⁩."
+
+#: src/git_stage_batch/fixup/ranges.py:94
+#, python-brace-format
+msgid "Fixup analysis currently requires a linear range; commit {commit} does not have exactly one parent."
+msgstr "يتطلب تحليل ⁦fixup⁩ حاليًا نطاقًا خطيًا؛ وليس للإيداع {commit} أصل واحد بالضبط."
+
+#: src/git_stage_batch/fixup/ranges.py:101
+msgid "No commits found between the fixup base and HEAD."
+msgstr "لم يُعثر على إيداعات بين قاعدة ⁦fixup⁩ و⁦HEAD⁩."
+
+#: src/git_stage_batch/fixup/staged_units.py:69
+msgid "Staged text patch has no hunk header."
+msgstr "ليس لرقعة النص المُجهّزة ترويسة مقطع."
+
+#: src/git_stage_batch/output/fixup_create.py:18
+msgid "lineage and placement agree"
+msgstr "يتفق النسب والموضع"
+
+#: src/git_stage_batch/output/fixup_create.py:20
+msgid "unique lineage; patch commutes through the range"
+msgstr "نسب فريد؛ يمكن نقل الرقعة عبر النطاق دون تعارض"
+
+#: src/git_stage_batch/output/fixup_create.py:23
+msgid "mechanical placement only; semantic target is unproven"
+msgstr "موضع ميكانيكي فقط؛ الهدف الدلالي غير مثبت"
+
+#: src/git_stage_batch/output/fixup_create.py:26
+msgid "lineage and placement identify different commits"
+msgstr "يحدد النسب والموضع إيداعات مختلفة"
+
+#: src/git_stage_batch/output/fixup_create.py:28
+msgid "selected lines have multiple owners"
+msgstr "للأسطر المحددة عدة مالكين"
+
+#: src/git_stage_batch/output/fixup_create.py:29
+msgid "no target evidence in the selected range"
+msgstr "لا دليل على هدف في النطاق المحدد"
+
+#: src/git_stage_batch/output/fixup_create.py:30
+msgid "whole-file additions are not supported yet"
+msgstr "إضافة ملفات كاملة غير مدعومة بعد"
+
+#: src/git_stage_batch/output/fixup_create.py:31
+msgid "whole-file deletions are not supported yet"
+msgstr "حذف ملفات كاملة غير مدعوم بعد"
+
+#: src/git_stage_batch/output/fixup_create.py:32
+msgid "binary changes are not supported yet"
+msgstr "التغييرات الثنائية غير مدعومة بعد"
+
+#: src/git_stage_batch/output/fixup_create.py:33
+msgid "renames are not supported yet"
+msgstr "إعادة التسمية غير مدعومة بعد"
+
+#: src/git_stage_batch/output/fixup_create.py:35
+msgid "content changes across renames are not supported yet"
+msgstr "تغييرات المحتوى عبر إعادة التسمية غير مدعومة بعد"
+
+#: src/git_stage_batch/output/fixup_create.py:37
+msgid "file-mode changes are not supported yet"
+msgstr "تغييرات نمط الملف غير مدعومة بعد"
+
+#: src/git_stage_batch/output/fixup_create.py:38
+msgid "gitlink changes are not supported yet"
+msgstr "تغييرات ⁦gitlink⁩ غير مدعومة بعد"
+
+#: src/git_stage_batch/output/fixup_create.py:39
+msgid "the unit has no textual patch"
+msgstr "ليس للوحدة رقعة نصية"
+
+#: src/git_stage_batch/output/fixup_create.py:41
+msgid "the staged unit no longer applies to the frozen HEAD"
+msgstr "لم تعد الوحدة المُجهّزة تنطبق على ⁦HEAD⁩ المثبّت"
+
+#: src/git_stage_batch/output/fixup_create.py:43
+msgid "the frozen range tree chain changed"
+msgstr "تغيّرت سلسلة أشجار النطاق المثبّت"
+
+#: src/git_stage_batch/output/fixup_create.py:44
+msgid "placement analysis failed"
+msgstr "فشل تحليل الموضع"
+
+#: src/git_stage_batch/output/fixup_create.py:166
+#, python-brace-format
+msgid "Fixup plan for {base}..{head}:"
+msgstr "خطة ⁦fixup⁩ للنطاق ⁦{base}..{head}⁩:"
+
+#: src/git_stage_batch/output/fixup_create.py:173
+msgid "unassigned"
+msgstr "غير معيّن"
+
+#: src/git_stage_batch/output/fixup_create.py:188
+#, python-brace-format
+msgid "Target {target} {subject}: {count} unit(s)"
+msgstr "الهدف {target} {subject}: عدد الوحدات {count}"
+
+#: src/git_stage_batch/output/fixup_create.py:196
+msgid "Dry run: no commits were created."
+msgstr "تشغيل تجريبي: لم تُنشأ إيداعات."
+
+#: src/git_stage_batch/output/fixup_create.py:200
+#, python-brace-format
+msgid "Created {commit} as a fixup for {target}."
+msgstr "أُنشئ {commit} بوصفه ⁦fixup⁩ لـ{target}."
+
+#: src/git_stage_batch/output/fixup_create.py:206
+#, python-brace-format
+msgid "Recovery ref: {recovery_ref}"
+msgstr "مرجع الاستعادة: {recovery_ref}"
+
+#: src/git_stage_batch/output/fixup_create.py:211
+#, python-brace-format
+msgid "{count} unit(s) remain staged."
+msgstr "ما زال عدد الوحدات المُجهّزة {count}."

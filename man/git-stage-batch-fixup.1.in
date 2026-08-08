@@ -1,0 +1,85 @@
+.TH GIT-STAGE-BATCH-FIXUP 1 "August 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-fixup \- inspect fixup targets or create grouped fixup commits
+.SH SYNOPSIS
+.B git-stage-batch fixup suggest
+[\fB\-\-line\fR \fIIDS\fR]
+[\fB\-\-reset\fR|\fB\-\-abort\fR|\fB\-\-last\fR]
+[\fB\-\-porcelain\fR]
+[\fIBOUNDARY\fR]
+.PP
+.B git-stage-batch fixup create
+[\fB\-\-dry-run\fR]
+[\fB\-\-partial\fR]
+[\fB\-\-porcelain\fR]
+[\fIBOUNDARY\fR]
+.SH DESCRIPTION
+.B fixup suggest
+is the namespaced form of
+.BR suggest-fixup .
+It searches history for commits that touched the selected hunk or lines.
+.PP
+.B fixup create
+analyzes the exact staged index, partitions eligible textual change units by
+target commit, and creates one ordinary
+.B fixup!
+commit per target. It does not stage unstaged changes, rewrite existing
+commits, run autosquash, or publish anything.
+.PP
+Attribution combines exact-line history with tree-replay commutation. The
+command creates fixups only when those signals agree, or when unique line
+history chooses a target and the patch commutes through the complete range.
+Ambiguous, conflicting, unsupported, and placement-only units remain staged.
+.SH ACTIONS
+.TP
+.B suggest
+Suggest targets for the selected hunk or selected line IDs. Repeated
+invocations walk backward through candidates.
+.TP
+.B create
+Plan or create grouped fixup commits from staged changes.
+.SH CREATE OPTIONS
+.TP
+.B \-\-dry-run
+Print the complete unit assignment plan without creating commits or updating
+refs.
+.TP
+.B \-\-partial
+Create fixup commits for eligible units even when other units cannot be
+assigned. Without this option, any remaining unit prevents all mutation.
+.TP
+.B \-\-porcelain
+Print versioned JSON containing the frozen range, source trees, per-unit
+evidence, target groups, created commits, and recovery ref.
+.TP
+.I BOUNDARY
+Commit excluded from the target range. By default the command uses the fork
+point, or merge base, between
+.B HEAD
+and its configured upstream.
+.SH SAFETY
+The target range must be non-empty and linear. Plans are bound to full commit
+and tree object IDs and are rejected if HEAD or the index changes during the
+operation.
+.PP
+Fixup commits are materialized in isolated indexes; the real index and
+unstaged worktree remain untouched. On success, unresolved units remain
+staged. A private recovery ref records the original HEAD and is printed in
+command output.
+.PP
+Each generated fixup body contains a random verification marker. The command
+uses it to avoid overwriting HEAD if a hook moves the ref after commit
+creation. Autosquash discards this marker with the rest of the fixup body.
+.PP
+Generated fixup titles use the readable target subject unless autosquash
+subject matching would select another commit. In that case, the title uses
+the full target object ID.
+.PP
+An active git-stage-batch session or an in-progress merge, cherry-pick,
+revert, rebase, sequencer, or bisect operation prevents commit creation.
+Dry-run analysis remains available.
+.SH SEE ALSO
+.BR git-stage-batch (1),
+.BR git-stage-batch-suggest-fixup (1),
+.BR git-commit (1),
+.BR git-rebase (1)

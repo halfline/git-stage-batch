@@ -61,6 +61,7 @@ manpage_specs = [
   ['git-stage-batch-block-file.1.in', 'git-stage-batch-block-file.1'],
   ['git-stage-batch-discard.1.in', 'git-stage-batch-discard.1'],
   ['git-stage-batch-drop.1.in', 'git-stage-batch-drop.1'],
+  ['git-stage-batch-fixup.1.in', 'git-stage-batch-fixup.1'],
   ['git-stage-batch-include.1.in', 'git-stage-batch-include.1'],
   ['git-stage-batch-install-assets.1.in', 'git-stage-batch-install-assets.1'],
   ['git-stage-batch-interactive.1.in', 'git-stage-batch-interactive.1'],

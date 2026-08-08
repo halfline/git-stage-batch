@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import subprocess
 from collections.abc import Iterable
+from dataclasses import dataclass
+from typing import Literal
 
 from ..core.buffer import LineBuffer
 from ..utils.git_command import (
@@ -17,6 +19,18 @@ from .models import FixupRange, FixupUnit, PlacementEvidence
 
 class _RangeTreeChainChanged(ValueError):
     """Signal that a supposedly linear range no longer has matching trees."""
+
+
+PatchApplicationStatus = Literal["APPLIED", "BLOCKED", "UNKNOWN"]
+
+
+@dataclass(frozen=True, slots=True)
+class PatchApplicationResult:
+    """Tri-state result from applying an exact patch to an isolated tree."""
+
+    status: PatchApplicationStatus
+    tree: str | None
+    detail: str | None = None
 
 
 def tree_for_commit(commit: str) -> str:
@@ -73,28 +87,70 @@ def apply_patch_to_tree(
     env: dict[str, str] | None = None,
 ) -> str | None:
     """Apply a patch to an isolated index and return its tree, or None."""
+    return apply_patch_to_tree_result(
+        base_tree,
+        patch_chunks,
+        three_way=three_way,
+        unidiff_zero=unidiff_zero,
+        env=env,
+    ).tree
+
+
+def apply_patch_to_tree_result(
+    base_tree: str,
+    patch_chunks: Iterable[bytes],
+    *,
+    three_way: bool,
+    unidiff_zero: bool = False,
+    env: dict[str, str] | None = None,
+) -> PatchApplicationResult:
+    """Apply a patch with BLOCKED separated from operational uncertainty."""
     arguments = ["apply", "--cached", "--whitespace=nowarn"]
     if three_way:
         arguments.append("--3way")
     if unidiff_zero:
         arguments.append("--unidiff-zero")
 
-    with temp_git_index(base_env=env) as index_env:
-        git_read_tree(base_tree, env=index_env)
-        try:
-            for _output_line in stream_git_command(
-                arguments,
-                patch_chunks,
-                env=index_env,
-                requires_index_lock=True,
-            ):
-                pass
-        except subprocess.CalledProcessError:
-            return None
-        try:
-            return git_write_tree(env=index_env)
-        except subprocess.CalledProcessError:
-            return None
+    try:
+        index_context = temp_git_index(base_env=env)
+        with index_context as index_env:
+            try:
+                git_read_tree(base_tree, env=index_env)
+            except (OSError, subprocess.CalledProcessError) as error:
+                return PatchApplicationResult(
+                    status="UNKNOWN",
+                    tree=None,
+                    detail=f"git-read-tree-{type(error).__name__}",
+                )
+            try:
+                for _output_line in stream_git_command(
+                    arguments,
+                    patch_chunks,
+                    env=index_env,
+                    requires_index_lock=True,
+                ):
+                    pass
+            except subprocess.CalledProcessError as error:
+                return PatchApplicationResult(
+                    status="BLOCKED" if error.returncode == 1 else "UNKNOWN",
+                    tree=None,
+                    detail=f"git-apply-exit-{error.returncode}",
+                )
+            try:
+                tree = git_write_tree(env=index_env)
+            except (OSError, subprocess.CalledProcessError) as error:
+                return PatchApplicationResult(
+                    status="UNKNOWN",
+                    tree=None,
+                    detail=f"git-write-tree-{type(error).__name__}",
+                )
+    except OSError as error:
+        return PatchApplicationResult(
+            status="UNKNOWN",
+            tree=None,
+            detail=f"temporary-index-{type(error).__name__}",
+        )
+    return PatchApplicationResult(status="APPLIED", tree=tree)
 
 
 def _commute_across_commit(

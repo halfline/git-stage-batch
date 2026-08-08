@@ -15,7 +15,8 @@ from ..fixup.models import (
 from ..git_paths import display_path, terminal_safe_text
 from ..i18n import _
 from ..utils.git_command import run_git_command
-from .fixup_create import fixup_analysis_record, fixup_reason_text
+from ..fixup.records import fixup_analysis_record
+from .fixup_create import fixup_reason_text
 
 
 def _commit_details(commit: str) -> dict[str, str]:

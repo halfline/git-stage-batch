@@ -1053,37 +1053,93 @@ Validate edited semantic input against a freshly regenerated snapshot:
 ```
 
 The executor schema accepts ordered `KEEP`, `REWORD`, `SPLIT`, `INTEGRATE`,
-and `REORDER` outputs. `KEEP`, `REWORD`, and `REORDER` consume every unit of
-one source commit. `REORDER` marks a whole source moved earlier and preserves
-its exact message and encoding. `SPLIT` consumes a non-empty ordered subset of
-one source; every split source must produce at least two outputs, and every
-piece preserves the original author while supplying its own encodable message.
+and `REORDER` outputs with independent `EXACT` or `RESOLVED` materialization.
+Standalone `rewrite validate` completes only plans whose outputs are `EXACT`;
+a plan containing `RESOLVED` outputs goes through `rewrite resolve`, which
+performs the same semantic validation before opening its workspace.
+`KEEP`, `REWORD`, and `REORDER` consume every unit of one source commit.
+`REORDER` marks a whole source moved earlier and preserves its exact message
+and encoding. `SPLIT` consumes a non-empty ordered subset of one source; every
+split source must produce at least two outputs, and every piece preserves the
+original author while supplying its own encodable message.
 
 `INTEGRATE` consumes the complete target source followed by units from one or
-more later repair sources. A multi-concern repair may partition its units
-across several targets without first creating temporary commits. Every output
-lists sources and units in source order, and every source unit is consumed
-exactly once globally. `KEEP` also preserves the message and encoding;
-`REWORD`, `SPLIT`, and `INTEGRATE` explicitly supply an encodable message.
-Rationale text is informational and never substitutes for tree or patch
-conservation.
+more later repair sources. A multi-concern repair may partition its ordinary
+units across several targets without first creating temporary commits. Every
+output lists sources and units in source order. An ordinary source unit is
+consumed exactly once globally. When one mechanical unit contains semantic
+portions owned by several outputs, `plan.partitioned_units` lists every
+zero-based RESOLVED output where that unit occurs. `KEEP` also preserves the
+message and encoding; `REWORD`, `SPLIT`, and `INTEGRATE` explicitly supply an
+encodable message. Rationale text is informational and never substitutes for
+tree or patch conservation.
 
 All snapshot fields are immutable. Validation rejects stale object IDs,
-forged metadata, omitted or duplicated units, unmarked reorder operations,
-abbreviated IDs, duplicate JSON keys, and unknown fields. Moving a unit earlier
-is permitted only as far as its recorded adjacent-swap proof. A chain of
-`BLOCKED` predecessors may move farther only when the plan keeps the complete
-chain ordered inside one output; exact full-plan replay must then prove that
-compound movement. A blocker assigned to another output and every `UNKNOWN`
-crossing remain rejected. Validation reacquires every exact unit, replays the
-complete requested order with Git, and requires the frozen final tree. The
-graph explains and limits ordering, while full replay remains the final safety
-oracle.
+forged metadata, omitted or undeclared duplicate units, unmarked reorder
+operations, abbreviated IDs, duplicate JSON keys, and unknown fields. Moving
+an EXACT unit earlier is permitted only as far as its recorded adjacent-swap
+proof. A chain of `BLOCKED` predecessors may move farther only when the plan
+keeps the complete chain ordered inside one EXACT output; exact full-plan
+replay must then prove that compound movement. A blocker assigned to another
+output and every `UNKNOWN` crossing remain rejected. RESOLVED does not claim
+that a patch commutes: it requires the explicit workspace workflow below to
+materialize and audit the requested snapshots. Dependency evidence limits
+exact replay, while complete replay and the frozen final tree remain required
+for either materialization.
 
 The input safety block is not trusted: live index, worktree, operation,
 publication, and upstream facts are collected again and returned in the
 validation report. All candidate trees are materialized in a temporary object
 quarantine and leave no objects or refs behind.
+
+### `rewrite resolve`
+
+Create or advance a private workspace for outputs that require explicit
+snapshot materialization:
+
+```bash
+❯ git-stage-batch rewrite resolve rewrite-plan.json \
+    --workspace rewrite-resolution
+❯ git-stage-batch rewrite resolve rewrite-plan.json \
+    --workspace rewrite-resolution --accept
+```
+
+Resolution is deliberately separate from semantic ordering. The plan must
+already name each output's causal owner and mark only the mechanically
+non-exact outputs `RESOLVED`. The command regenerates and compares the frozen
+snapshot, validates unit conservation and ordering, then replays from the base
+tree in a fresh object quarantine. It stops at the first unresolved output and
+exports an immutable request containing its actual parent tree, exact source
+units, authorized Git paths, and streamed `CURRENT_PARENT`, `SOURCE_BEFORE`,
+and `SOURCE_AFTER` references.
+
+The porcelain result names the exact request, editable `result.json`, and
+opaque result-artifact directory. Edit only the result metadata and artifacts;
+Git paths are never used as filesystem artifact names. JSON object-member
+order is insignificant, but every field and path entry is required. For a
+present result, write the desired bytes to its opaque artifact, retain
+`state: "PRESENT"`, and choose an authorized `100644` or `100755` mode. Use
+`state: "ABSENT"` with a null mode and remove its result artifact for an
+authorized deletion; an authorized addition starts absent and becomes present
+only after its result artifact is created. Keep every workspace metadata and
+artifact file private with mode `0600`; newly created result artifacts with
+broader permissions are refused.
+`--accept` accepts exactly one output, verifies every authorized
+path and transition, replays the deterministic downstream prefix, then writes
+a digest-bound receipt. It either exports the next request or, after frozen
+final-tree equality succeeds, writes `complete.json`. A result cannot add,
+delete, change mode, or change content unless its selected source units
+authorize that kind of transition, and every authorized path must actually
+change.
+
+Workspaces and artifacts are private, reject links and unexpected entries,
+require root and subdirectory mode `0700`, and use descriptor-pinned bounded
+I/O. Candidate blobs and trees remain in a temporary Git object quarantine.
+The command never creates commits or refs, changes the index or worktree, or
+publishes the completed workspace by itself. Re-running without `--accept`
+safely reports the current request without accepting its seeded result.
+The first invocation requires that the workspace path does not exist;
+subsequent invocations reopen only the workspace bound to the same plan.
 
 ### `rewrite apply`
 

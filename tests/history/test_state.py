@@ -60,8 +60,11 @@ def _prepared_state(repo, operation_id: str = "a" * 32):
         planned_output_count=len(document.plan.outputs),
         output_commits=(),
         completed_output_count=0,
+        pending_output_commit=None,
+        pending_output_tree=None,
         last_verified_commit=None,
         last_verified_tree=None,
+        verification_sha256=None,
         diagnostic=None,
     )
     return state, document
@@ -87,7 +90,7 @@ def test_initialize_requires_existing_exact_recovery_ref(linear_history_repo):
     document = acquire_history_plan_document(linear_history_repo.base)
     plan_record = history_plan_document_record(document)
     state = HistoryOperationState(
-        schema_version=1,
+        schema_version=CURRENT_HISTORY_STATE_SCHEMA_VERSION,
         operation_id="b" * 32,
         phase=HistoryPhase.PREPARED,
         next_action=HistoryNextAction.BUILD_OUTPUT,
@@ -107,8 +110,11 @@ def test_initialize_requires_existing_exact_recovery_ref(linear_history_repo):
         planned_output_count=len(document.plan.outputs),
         output_commits=(),
         completed_output_count=0,
+        pending_output_commit=None,
+        pending_output_tree=None,
         last_verified_commit=None,
         last_verified_tree=None,
+        verification_sha256=None,
         diagnostic=None,
     )
 
@@ -129,7 +135,7 @@ def test_update_accepts_only_closed_phase_transitions(linear_history_repo):
         phase=HistoryPhase.COMPLETE,
         next_action=HistoryNextAction.NONE,
     )
-    with pytest.raises(CommandError, match="phase transition"):
+    with pytest.raises(CommandError, match="requires every output commit"):
         update_history_operation(invalid)
 
 

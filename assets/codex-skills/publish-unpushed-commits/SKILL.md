@@ -110,10 +110,10 @@ applies to repository inspection such as `status`, `diff`, `log`, `show`,
 `apply --check`. It prevents optional index-stat refreshes from contending for
 `.git/index.lock` when independent reads run concurrently.
 
-The publication and refinement checkpoint helpers already apply this option to
-their Git subprocesses. Do not infer that it makes mutations safe to overlap:
-run fetches, history rewrites, branch or ref updates, commits, and pushes
-serially in their documented order.
+The publication helper and product rewrite executor already apply this option
+to their Git subprocesses. Do not infer that it makes mutations safe to
+overlap: run fetches, history rewrites, branch or ref updates, commits, and
+pushes serially in their documented order.
 
 ## Progress discipline
 

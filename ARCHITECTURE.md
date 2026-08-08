@@ -76,6 +76,7 @@ and `discard`. It does not require reading the named-batch implementation.
 | `tui/` | Prompts, key handling, menus, and calls into `commands/` for interactive mode | A behavior must be reachable or presented differently in interactive mode |
 | `utils/` | Git command execution, Git object access, Git references, paths, file access, process streaming, and journals | Several callers need the same low-level Git, process, path, or file operation |
 | `editor/` | The in-memory line editor, piece table, line endings, and line export | Byte-preserving line editing changes |
+| `fixup/` | Canonical target ranges, scoped mmap-capable patch buffers, range-compressed lineage evidence, tree commutation, fixup plans, and recoverable fixup creation | Fixup attribution or grouped fixup construction changes independently of CLI presentation |
 | `batch/` | Named-batch storage, ownership records, display reconstruction, matching, merge, discard reversal, and source refresh | A named-batch behavior changes, already-batched lines are filtered incorrectly, or live line inclusion reaches the temporary batch merge described below |
 
 The package root also contains modules with narrow jobs:

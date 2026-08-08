@@ -5,10 +5,11 @@ from __future__ import annotations
 import os
 import subprocess
 import tempfile
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 
 from .git_command import (
     run_git_command,
@@ -19,6 +20,32 @@ from ..git_paths import decode_path, nul_records
 
 
 _EMPTY_TREE_OBJECT_CACHE: dict[Path, str] = {}
+_QUARANTINE_CONSTRUCTION_TOKEN = object()
+
+
+@dataclass(frozen=True, slots=True, init=False)
+class GitObjectQuarantine:
+    """Product-issued environment capability for temporary Git objects."""
+
+    _environment: Mapping[str, str]
+
+    def __init__(
+        self,
+        environment: dict[str, str],
+        *,
+        _token: object,
+    ) -> None:
+        if _token is not _QUARANTINE_CONSTRUCTION_TOKEN:
+            raise ValueError("Git object quarantines must be product-issued")
+        object.__setattr__(
+            self,
+            "_environment",
+            MappingProxyType(dict(environment)),
+        )
+
+    def environment(self) -> dict[str, str]:
+        """Return one disposable copy of the certified quarantine environment."""
+        return dict(self._environment)
 
 
 def _alternate_object_path(path: Path) -> str:
@@ -30,7 +57,7 @@ def _alternate_object_path(path: Path) -> str:
 
 
 @contextmanager
-def temporary_git_object_environment() -> Iterator[dict[str, str]]:
+def temporary_git_object_environment() -> Iterator[GitObjectQuarantine]:
     """Yield an object quarantine that reads, but never retains, repository objects."""
     object_directory = Path(
         run_git_command(
@@ -46,7 +73,10 @@ def temporary_git_object_environment() -> Iterator[dict[str, str]]:
             alternates = f"{alternates}{os.pathsep}{prior_alternates}"
         env["GIT_OBJECT_DIRECTORY"] = path
         env["GIT_ALTERNATE_OBJECT_DIRECTORIES"] = alternates
-        yield env
+        yield GitObjectQuarantine(
+            env,
+            _token=_QUARANTINE_CONSTRUCTION_TOKEN,
+        )
 
 
 def get_empty_git_tree_object_id() -> str:
@@ -156,12 +186,14 @@ def create_git_blob(
     content_chunks: Iterable[bytes],
     *,
     path: str | None = None,
+    env: dict[str, str] | None = None,
 ) -> str:
     """Create a git blob object from streaming content.
 
     Args:
         content_chunks: Iterable yielding binary content chunks to store
         path: Worktree path whose Git clean conversion should be applied
+        env: Optional environment for the Git object store
 
     Returns:
         Repository-native object ID of the created blob object
@@ -178,6 +210,7 @@ def create_git_blob(
         for line in stream_git_command(
             arguments,
             content_chunks,
+            env=env,
             requires_index_lock=False,
         ):
             stdout_chunks.append(line)
@@ -302,6 +335,7 @@ def stream_git_blobs(
     blob_names: Iterable[str],
     *,
     ignore_non_blobs: bool = False,
+    env: dict[str, str] | None = None,
 ) -> Iterator[GitBlobStream]:
     """Yield blob payload streams from one Git process.
 
@@ -317,6 +351,7 @@ def stream_git_blobs(
         stream_git_command_bytes(
             ["cat-file", "--batch"],
             payload,
+            env=env,
             requires_index_lock=False,
         )
     )
@@ -371,7 +406,10 @@ def read_git_blobs_as_bytes(
 
 
 def list_git_tree_blobs(
-    treeish: str, file_paths: Iterable[str]
+    treeish: str,
+    file_paths: Iterable[str],
+    *,
+    env: dict[str, str] | None = None,
 ) -> dict[str, GitTreeBlob]:
     """List blob entries for paths in one tree with one ls-tree process."""
     unique_file_paths = list(dict.fromkeys(file_paths))
@@ -382,6 +420,7 @@ def list_git_tree_blobs(
         ["ls-tree", "-rz", treeish, "--", *unique_file_paths],
         check=False,
         text_output=False,
+        env=env,
         requires_index_lock=False,
         literal_pathspecs=True,
     )

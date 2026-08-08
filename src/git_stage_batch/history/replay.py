@@ -191,5 +191,8 @@ def validate_history_plan_materialization(
     document: HistoryPlanDocument,
 ) -> HistoryReplayResult:
     """Prove a plan in a temporary object quarantine."""
-    with temporary_git_object_environment() as env:
-        return materialize_history_output_trees(document, env=env)
+    with temporary_git_object_environment() as quarantine:
+        return materialize_history_output_trees(
+            document,
+            env=quarantine.environment(),
+        )

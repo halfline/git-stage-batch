@@ -1,472 +1,367 @@
-"""Tests for suggest-fixup command infrastructure."""
-
-from git_stage_batch.commands.stop import command_stop
-from git_stage_batch.commands.suggest_fixup import command_suggest_fixup
-from git_stage_batch.commands.suggest_fixup import command_suggest_fixup_line
+"""Integration tests for exact-evidence fixup suggestions."""
 
 import json
 import subprocess
 
 import pytest
 
-from git_stage_batch.commands.fixup import search_targets
-from git_stage_batch.commands.fixup.history import (
-    find_next_fixup_candidate,
-    show_commit_diff_for_file,
-)
+from git_stage_batch.commands.fixup import search_flow
 from git_stage_batch.commands.start import command_start
-from git_stage_batch.data.suggest_fixup_state import write_suggest_fixup_state
-from git_stage_batch.data.hunk_tracking import fetch_next_change
+from git_stage_batch.commands.suggest_fixup import (
+    command_suggest_fixup,
+    command_suggest_fixup_line,
+)
 from git_stage_batch.data.file_hunk_display import render_file_as_single_hunk
+from git_stage_batch.data.hunk_tracking import fetch_next_change
+from git_stage_batch.data.suggest_fixup_state import read_suggest_fixup_state
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import get_suggest_fixup_state_file_path
 
 
+def _git(repo, *arguments):
+    return subprocess.run(
+        ["git", *arguments],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def _commit(repo, message):
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", message)
+    return _git(repo, "rev-parse", "HEAD")
+
+
 @pytest.fixture
 def temp_git_repo(tmp_path, monkeypatch):
-    """Create a temporary git repository for testing."""
+    """Create a repository with one excluded-boundary commit."""
     repo = tmp_path / "test_repo"
     repo.mkdir()
     monkeypatch.chdir(repo)
-
-    subprocess.run(["git", "init"], check=True, cwd=repo, capture_output=True)
-    subprocess.run(["git", "config", "user.name", "Test User"], check=True, cwd=repo, capture_output=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], check=True, cwd=repo, capture_output=True)
-
-    # Create initial commit
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.com")
     (repo / "README.md").write_text("# Test\n")
-    subprocess.run(["git", "add", "README.md"], check=True, cwd=repo, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "Initial commit"], check=True, cwd=repo, capture_output=True)
-
+    _commit(repo, "Initial commit")
     return repo
 
 
-class TestFindNextFixupCandidate:
-    """Tests for finding fixup candidates."""
+def _select_current_hunk():
+    command_start()
+    fetch_next_change()
 
-    def test_find_candidate_in_simple_history(self, temp_git_repo):
-        """Test finding a commit that modified lines."""
-        # Create a file and commit it
-        test_file = temp_git_repo / "test.py"
-        test_file.write_text("line 1\nline 2\nline 3\n")
-        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
 
-        # Modify lines and commit
-        test_file.write_text("line 1 modified\nline 2\nline 3\n")
-        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Modify line 1"], check=True, cwd=temp_git_repo, capture_output=True)
+def test_suggest_fixup_requires_selected_hunk(temp_git_repo):
+    _git(temp_git_repo, "commit", "--allow-empty", "-m", "Range commit")
+    with pytest.raises(CommandError):
+        command_suggest_fixup(boundary="HEAD~1")
 
-        # Get the commit hash
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            check=True,
-            cwd=temp_git_repo,
-            capture_output=True,
-            text=True
-        )
-        expected_commit = result.stdout.strip()
 
-        # Find candidate for line 1
-        candidate = find_next_fixup_candidate("test.py", 1, 1, "HEAD~2", None)
+def test_human_output_separates_lineage_and_placement(temp_git_repo, capsys):
+    source = temp_git_repo / "test.py"
+    source.write_text("line 1\n")
+    base = _commit(temp_git_repo, "Add test.py")
+    source.write_text("line 1 committed\n")
+    target = _commit(temp_git_repo, "Modify line 1")
+    source.write_text("line 1 corrected\n")
+    _select_current_hunk()
+    capsys.readouterr()
 
-        assert candidate == expected_commit
+    command_suggest_fixup(boundary=base)
 
-    def test_find_returns_none_when_no_commits(self, temp_git_repo):
-        """Test finding candidate returns None when no commits match."""
-        # Create a file and commit it
-        test_file = temp_git_repo / "test.py"
-        test_file.write_text("line 1\nline 2\nline 3\n")
-        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
+    output = capsys.readouterr().out
+    assert "Lineage:" in output
+    assert "Placement:" in output
+    assert "Decision:" in output
+    assert "Candidate 1 of 1:" in output
+    assert "Modify line 1" in output
+    assert target[:12] in output
+    assert "git commit --fixup=" in output
 
-        # Try to find candidate with boundary that excludes all commits
-        candidate = find_next_fixup_candidate("test.py", 1, 1, "HEAD", None)
 
-        assert candidate is None
+def test_porcelain_records_sha256_object_format(tmp_path, monkeypatch, capsys):
+    repo = tmp_path / "sha256-repo"
+    repo.mkdir()
+    monkeypatch.chdir(repo)
+    _git(repo, "init", "-q", "--object-format=sha256")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.com")
+    source = repo / "test.py"
+    source.write_text("base\n")
+    base = _commit(repo, "Add test.py")
+    source.write_text("committed\n")
+    target = _commit(repo, "Change test.py")
+    source.write_text("correction\n")
+    _select_current_hunk()
+    capsys.readouterr()
 
-    @pytest.mark.parametrize(
-        ("file_path", "pathspec_decoy"),
-        (
-            (":(top)foo", "foo"),
-            (":(glob)foo", "foo"),
-            ("*.c", "other.c"),
-            (":(exclude)foo", "other.txt"),
-        ),
-    )
-    def test_history_queries_treat_file_path_as_literal(
-        self,
-        temp_git_repo,
-        capsys,
-        file_path,
-        pathspec_decoy,
+    command_suggest_fixup(boundary=base, porcelain=True)
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["object_format"] == "sha256"
+    assert output["candidate"]["id"] == target
+    assert len(output["range"]["base"]) == 64
+    state = read_suggest_fixup_state()
+    assert state is not None
+    assert state["object_format"] == "sha256"
+
+
+def test_equivalent_boundary_spellings_continue_canonical_iteration(
+    temp_git_repo,
+    capsys,
+):
+    source = temp_git_repo / "test.py"
+    source.write_text("v1\n")
+    base = _commit(temp_git_repo, "Add test.py")
+    source.write_text("v2\n")
+    newest = _commit(temp_git_repo, "Change to v2")
+    source.write_text("v3\n")
+    older = _commit(temp_git_repo, "Change to v3")
+    source.write_text("worktree\n")
+    _select_current_hunk()
+    capsys.readouterr()
+
+    command_suggest_fixup(boundary="HEAD~2", porcelain=True)
+    first = json.loads(capsys.readouterr().out)
+    state = read_suggest_fixup_state()
+    assert state is not None
+    assert state["base_commit"] == base
+    assert state["head_commit"] == older
+    assert first["candidate"]["id"] == older
+    assert first["iteration"] == {"index": 1, "total": 2}
+
+    command_suggest_fixup(boundary=base, porcelain=True)
+    second = json.loads(capsys.readouterr().out)
+
+    assert second["candidate"]["id"] == newest
+    assert second["iteration"] == {"index": 2, "total": 2}
+
+
+def test_reset_and_last_control_iteration(temp_git_repo, capsys):
+    source = temp_git_repo / "test.py"
+    source.write_text("v1\n")
+    base = _commit(temp_git_repo, "Add test.py")
+    source.write_text("v2\n")
+    _commit(temp_git_repo, "Change to v2")
+    source.write_text("v3\n")
+    latest = _commit(temp_git_repo, "Change to v3")
+    source.write_text("worktree\n")
+    _select_current_hunk()
+    capsys.readouterr()
+
+    command_suggest_fixup(boundary=base, porcelain=True)
+    capsys.readouterr()
+    command_suggest_fixup(boundary=base, show_last=True, porcelain=True)
+    repeated = json.loads(capsys.readouterr().out)
+    assert repeated["candidate"]["id"] == latest
+    assert repeated["iteration"]["index"] == 1
+
+    command_suggest_fixup(boundary=base, reset=True, porcelain=True)
+    reset = json.loads(capsys.readouterr().out)
+    assert reset["candidate"]["id"] == latest
+    assert reset["iteration"]["index"] == 1
+
+
+def test_head_change_invalidates_saved_iteration(temp_git_repo, capsys):
+    source = temp_git_repo / "test.py"
+    source.write_text("v1\n")
+    base = _commit(temp_git_repo, "Add test.py")
+    source.write_text("v2\n")
+    _commit(temp_git_repo, "Change to v2")
+    source.write_text("worktree\n")
+    _select_current_hunk()
+    capsys.readouterr()
+
+    command_suggest_fixup(boundary=base, porcelain=True)
+    capsys.readouterr()
+    first_state = read_suggest_fixup_state()
+    assert first_state is not None
+
+    _git(temp_git_repo, "commit", "--allow-empty", "-m", "Move HEAD")
+    moved_head = _git(temp_git_repo, "rev-parse", "HEAD")
+    command_suggest_fixup(boundary=base, porcelain=True)
+    output = json.loads(capsys.readouterr().out)
+    second_state = read_suggest_fixup_state()
+
+    assert output["iteration"]["index"] == 1
+    assert second_state is not None
+    assert second_state["head_commit"] == moved_head
+    assert second_state["range_fingerprint"] != first_state["range_fingerprint"]
+
+
+def test_hunk_rejects_index_content_that_differs_from_head(temp_git_repo):
+    source = temp_git_repo / "test.py"
+    base = _git(temp_git_repo, "rev-parse", "HEAD")
+    source.write_text("committed\n")
+    _commit(temp_git_repo, "Add test.py")
+    source.write_text("staged change\n")
+    _git(temp_git_repo, "add", "test.py")
+    source.write_text("worktree correction\n")
+    _select_current_hunk()
+
+    with pytest.raises(
+        CommandError,
+        match="Index content no longer matches the selected line view",
     ):
-        """Both log -L and show must isolate a pathspec-looking filename."""
-        literal_file = temp_git_repo / file_path
-        decoy_file = temp_git_repo / pathspec_decoy
-        literal_file.write_text("literal v1\n")
-        decoy_file.write_text("decoy v1\n")
-        subprocess.run(
-            [
-                "git",
-                "--literal-pathspecs",
-                "add",
-                "--",
-                file_path,
-                pathspec_decoy,
-            ],
-            check=True,
-            cwd=temp_git_repo,
-        )
-        subprocess.run(
-            ["git", "commit", "-qm", "Add pathspec files"],
-            check=True,
-            cwd=temp_git_repo,
-        )
-
-        literal_file.write_text("literal v2\n")
-        subprocess.run(
-            ["git", "--literal-pathspecs", "add", "--", file_path],
-            check=True,
-            cwd=temp_git_repo,
-        )
-        subprocess.run(
-            ["git", "commit", "-qm", "Change literal file"],
-            check=True,
-            cwd=temp_git_repo,
-        )
-        literal_commit = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            check=True,
-            cwd=temp_git_repo,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-
-        decoy_file.write_text("decoy v2\n")
-        subprocess.run(
-            ["git", "--literal-pathspecs", "add", "--", pathspec_decoy],
-            check=True,
-            cwd=temp_git_repo,
-        )
-        subprocess.run(
-            ["git", "commit", "-qm", "Change pathspec decoy"],
-            check=True,
-            cwd=temp_git_repo,
-        )
-        decoy_commit = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            check=True,
-            cwd=temp_git_repo,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-
-        candidate = find_next_fixup_candidate(
-            file_path,
-            1,
-            1,
-            "HEAD~2",
-            None,
-        )
-        assert candidate == literal_commit
-
-        show_commit_diff_for_file(decoy_commit, file_path)
-        assert capsys.readouterr().out == ""
-
-        show_commit_diff_for_file(literal_commit, file_path)
-        output = capsys.readouterr().out
-        assert "literal v2" in output
-        assert "decoy v2" not in output
-
-    def test_find_iterates_through_multiple_commits(self, temp_git_repo):
-        """Test finding multiple candidates by iteration."""
-        # Create a file
-        test_file = temp_git_repo / "test.py"
-        test_file.write_text("line 1\n")
-        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-        result = subprocess.run(["git", "rev-parse", "HEAD"], check=True, cwd=temp_git_repo, capture_output=True, text=True)
-        commit0 = result.stdout.strip()
-
-        # First modification
-        test_file.write_text("line 1 v2\n")
-        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Modify v2"], check=True, cwd=temp_git_repo, capture_output=True)
-        result = subprocess.run(["git", "rev-parse", "HEAD"], check=True, cwd=temp_git_repo, capture_output=True, text=True)
-        commit1 = result.stdout.strip()
-
-        # Second modification
-        test_file.write_text("line 1 v3\n")
-        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Modify v3"], check=True, cwd=temp_git_repo, capture_output=True)
-        result = subprocess.run(["git", "rev-parse", "HEAD"], check=True, cwd=temp_git_repo, capture_output=True, text=True)
-        commit2 = result.stdout.strip()
-
-        # Find first candidate (most recent)
-        candidate1 = find_next_fixup_candidate("test.py", 1, 1, "HEAD~3", None)
-        assert candidate1 == commit2
-
-        # Find second candidate (pass first as last_shown)
-        candidate2 = find_next_fixup_candidate("test.py", 1, 1, "HEAD~3", candidate1)
-        assert candidate2 == commit1
-
-        # Find third candidate (the original addition)
-        candidate3 = find_next_fixup_candidate("test.py", 1, 1, "HEAD~3", candidate2)
-        assert candidate3 == commit0
-
-        # Find fourth candidate (should be None - exhausted)
-        candidate4 = find_next_fixup_candidate("test.py", 1, 1, "HEAD~3", candidate3)
-        assert candidate4 is None
-
-
-class TestCommandSuggestFixup:
-    """Tests for suggest-fixup command."""
-
-    def test_suggest_fixup_requires_selected_hunk(self, temp_git_repo):
-        """Test that suggest-fixup requires an active hunk."""
-        with pytest.raises(CommandError):
-            command_suggest_fixup()
-
-    def test_suggest_fixup_finds_commit(self, temp_git_repo, capsys):
-        """Test finding a commit that modified selected hunk."""
-        # Create a file
-        test_file = temp_git_repo / "test.py"
-        test_file.write_text("line 1\n")
-        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        # Modify and commit
-        test_file.write_text("line 1 modified\n")
-        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Modify line 1"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        # Create changes in working tree
-        test_file.write_text("line 1 modified again\n")
-
-        # Start session and cache hunk
-        command_start()
-        fetch_next_change()
-
-        # Suggest fixup with boundary that includes the modification
-        command_suggest_fixup(boundary="HEAD~2")
-
-        captured = capsys.readouterr()
-        assert "Candidate 1:" in captured.out
-        assert "Modify line 1" in captured.out
-        assert "git commit --fixup=" in captured.out
-
-    def test_suggest_fixup_abort_clears_state(self, temp_git_repo):
-        """Test that abort flag clears state."""
-        # Create state
-        write_suggest_fixup_state({"hunk_hash": "test"})
-        assert get_suggest_fixup_state_file_path().exists()
-
-        command_suggest_fixup(abort=True)
-
-        assert not get_suggest_fixup_state_file_path().exists()
-
-    def test_suggest_fixup_reset_restarts_iteration(self, temp_git_repo, capsys):
-        """Test that reset flag restarts iteration."""
-        # Create file with modifications
-        test_file = temp_git_repo / "test.py"
-        test_file.write_text("line 1\n")
-        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        test_file.write_text("line 1 v2\n")
-        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Modify v2"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        test_file.write_text("line 1 v3\n")
-        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Modify v3"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        test_file.write_text("line 1 v4\n")
-
-        command_start()
-        fetch_next_change()
-
-        # First call
-        command_suggest_fixup(boundary="HEAD~3")
-        captured = capsys.readouterr()
-        assert "Candidate 1:" in captured.out
-
-        # Second call with reset
-        command_suggest_fixup(boundary="HEAD~3", reset=True)
-        captured = capsys.readouterr()
-        assert "Candidate 1:" in captured.out  # Should restart at 1
-
-
-class TestCommandSuggestFixupLine:
-    """Tests for suggest-fixup --line command."""
-
-    def test_suggest_fixup_line_rejects_malformed_selection(self, monkeypatch):
-        """Malformed line syntax should remain inside the command boundary."""
-        monkeypatch.setattr(
-            search_targets,
-            "_load_line_target_source",
-            lambda _file: (object(), "hunk-hash"),
-        )
-
-        with pytest.raises(CommandError, match="Invalid line ID: abc"):
-            search_targets.require_suggest_fixup_line_target(
-                "abc",
-                boundary="HEAD",
-                file=None,
-            )
-
-    def test_suggest_fixup_line_requires_selected_hunk(self, temp_git_repo):
-        """Test that suggest-fixup --line requires an active hunk."""
-        with pytest.raises(CommandError):
-            command_suggest_fixup_line("1")
-
-    def test_suggest_fixup_line_finds_commit_for_specific_lines(self, temp_git_repo, capsys):
-        """Test finding commit for specific lines."""
-        # Create a file with multiple lines
-        test_file = temp_git_repo / "test.py"
-        test_file.write_text("line 1\nline 2\nline 3\n")
-        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        # Modify only line 1
-        test_file.write_text("line 1 modified\nline 2\nline 3\n")
-        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Modify line 1"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        # Modify both lines in working tree
-        test_file.write_text("line 1 modified again\nline 2 modified\nline 3\n")
-
-        command_start()
-        fetch_next_change()
-
-        # Suggest fixup for line 1 only
-        command_suggest_fixup_line("1", boundary="HEAD~2")
-
-        captured = capsys.readouterr()
-        assert "Candidate 1:" in captured.out
-        assert "Modify line 1" in captured.out
-
-    def test_suggest_fixup_line_uses_file_review_line_ids(self, temp_git_repo, capsys):
-        """Test finding commits for file-scoped review line IDs."""
-        test_file = temp_git_repo / "test.py"
-        test_file.write_text("line 1\nline 2\nline 3\nline 4\n")
-        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        test_file.write_text("line 1\nline 2\nline 3 committed\nline 4\n")
-        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Modify line 3"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        test_file.write_text("line 1 changed\nline 2\nline 3 changed\nline 4\n")
-
-        command_start()
-        line_changes = render_file_as_single_hunk("test.py")
-        line_id = next(
-            entry.id
-            for entry in line_changes.lines
-            if entry.kind == "-" and entry.old_line_number == 3
-        )
-
-        command_suggest_fixup_line(str(line_id), boundary="HEAD~2", file="test.py")
-
-        captured = capsys.readouterr()
-        assert "Candidate 1:" in captured.out
-        assert "Modify line 3" in captured.out
-
-    def test_suggest_fixup_line_errors_on_new_lines(self, temp_git_repo, capsys):
-        """Test error when all specified lines are new."""
-
-
-        # Create empty file
-        test_file = temp_git_repo / "test.py"
-        test_file.write_text("")
-        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add empty file"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        # Add new lines (all additions, no old line numbers)
-        test_file.write_text("new line 1\nnew line 2\n")
-
-        command_start()
-
-        # Should error because all lines are additions
-        with pytest.raises(CommandError) as exc_info:
-            command_suggest_fixup_line("1,2", boundary="HEAD~1")
-
-        assert "No old line numbers" in str(exc_info.value.message)
-
-        command_stop()
-
-        # Modify in second commit
-        test_file.write_text("modified line 1\n")
-        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Modify test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        # Create a working tree change
-        test_file.write_text("final change\n")
-
-        command_start()
-
-        captured = capsys.readouterr()
-
-        # Run suggest-fixup with --porcelain
-        command_suggest_fixup(boundary="HEAD~2", porcelain=True)
-
-        captured = capsys.readouterr()
-        output = json.loads(captured.out)
-
-        # Verify JSON structure
-        assert "candidate" in output
-        assert "iteration" in output
-        assert "boundary" in output
-
-        assert "hash" in output["candidate"]
-        assert "full_hash" in output["candidate"]
-        assert "subject" in output["candidate"]
-        assert "author" in output["candidate"]
-        assert "date" in output["candidate"]
-        assert "relative_date" in output["candidate"]
-
-        assert output["iteration"] == 1
-        assert output["boundary"] == "HEAD~2"
-
-    def test_suggest_fixup_porcelain_abort_silent(self, temp_git_repo, capsys):
-        """Test that suggest-fixup --porcelain --abort produces no output."""
-
-        command_suggest_fixup(abort=True, porcelain=True)
-
-        captured = capsys.readouterr()
-        assert captured.out == ""
-        assert captured.err == ""
-
-    def test_suggest_fixup_line_porcelain_outputs_json(self, temp_git_repo, capsys):
-        """Test that suggest-fixup-line --porcelain outputs JSON."""
-
-        # Create base commit
-        test_file = temp_git_repo / "test.py"
-        test_file.write_text("line 1\nline 2\n")
-        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        # Modify in second commit
-        test_file.write_text("modified 1\nmodified 2\n")
-        subprocess.run(["git", "add", "test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Modify test.py"], check=True, cwd=temp_git_repo, capture_output=True)
-
-        # Create working tree change
-        test_file.write_text("final 1\nfinal 2\n")
-
-        command_start()
-        capsys.readouterr()
-
-        # Run suggest-fixup-line with --porcelain
-        command_suggest_fixup_line("1", boundary="HEAD~2", porcelain=True)
-
-        captured = capsys.readouterr()
-        output = json.loads(captured.out)
-
-        # Verify JSON structure (same as suggest-fixup)
-        assert "candidate" in output
-        assert "iteration" in output
-        assert "boundary" in output
-        assert output["iteration"] == 1
+        command_suggest_fixup(boundary=base)
+
+
+def test_hunk_change_during_analysis_fails_before_state_or_output(
+    temp_git_repo,
+    capsys,
+    monkeypatch,
+):
+    source = temp_git_repo / "test.py"
+    source.write_text("base\n")
+    base = _commit(temp_git_repo, "Add test.py")
+    source.write_text("committed\n")
+    _commit(temp_git_repo, "Change test.py")
+    source.write_text("correction\n")
+    _select_current_hunk()
+    capsys.readouterr()
+
+    original = search_flow.analyze_lineage_history
+
+    def mutate_after_history(*args, **kwargs):
+        history = original(*args, **kwargs)
+        source.write_text("changed during analysis\n")
+        return history
+
+    monkeypatch.setattr(
+        search_flow,
+        "analyze_lineage_history",
+        mutate_after_history,
+    )
+
+    with pytest.raises(CommandError, match="Cached hunk is stale"):
+        command_suggest_fixup(boundary=base, porcelain=True)
+
+    assert capsys.readouterr().out == ""
+    assert read_suggest_fixup_state() is None
+
+
+def test_disjoint_line_selection_preserves_exact_source_ranges(
+    temp_git_repo,
+    capsys,
+):
+    source = temp_git_repo / "test.py"
+    source.write_text("one\ntwo\nthree\nfour\n")
+    base = _commit(temp_git_repo, "Add test.py")
+    source.write_text("one committed\ntwo\nthree\nfour\n")
+    _commit(temp_git_repo, "Change line one")
+    source.write_text("one committed\ntwo\nthree committed\nfour\n")
+    _commit(temp_git_repo, "Change line three")
+    source.write_text("one fixed\ntwo\nthree fixed\nfour\n")
+
+    command_start()
+    line_changes = render_file_as_single_hunk("test.py")
+    assert line_changes is not None
+    selected_ids = [
+        line.id
+        for line in line_changes.lines
+        if line.id is not None and line.kind in {"+", "-"}
+    ]
+    capsys.readouterr()
+
+    command_suggest_fixup_line(
+        ",".join(str(line_id) for line_id in selected_ids),
+        boundary=base,
+        file="test.py",
+        porcelain=True,
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["unit"]["lineage"]["queried_ranges"] == [
+        {"start": 1, "end": 1},
+        {"start": 3, "end": 3},
+    ]
+    assert output["unit"]["lineage"]["queried_line_count"] == 2
+    assert all(len(commit) == 40 for commit in output["candidates"])
+
+
+def test_addition_uses_anchor_lineage_and_placement(temp_git_repo, capsys):
+    source = temp_git_repo / "test.py"
+    source.write_text("anchor\n")
+    base = _commit(temp_git_repo, "Add test.py")
+    source.write_text("anchor committed\n")
+    target = _commit(temp_git_repo, "Change anchor")
+    source.write_text("anchor committed\ninserted fix\n")
+    _select_current_hunk()
+    capsys.readouterr()
+
+    command_suggest_fixup(boundary=base, porcelain=True)
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["unit"]["kind"] == "text-addition"
+    assert output["unit"]["lineage"]["queried_ranges"] == [
+        {"start": 1, "end": 1}
+    ]
+    assert output["unit"]["placement"]["barrier"] == target
+    assert output["candidate"]["id"] == target
+
+
+def test_addition_to_empty_tracked_file_uses_placement_only(
+    temp_git_repo,
+    capsys,
+):
+    source = temp_git_repo / "empty.txt"
+    source.write_text("")
+    base = _git(temp_git_repo, "rev-parse", "HEAD")
+    target = _commit(temp_git_repo, "Add empty file")
+    source.write_text("first line\n")
+    _select_current_hunk()
+    capsys.readouterr()
+
+    command_suggest_fixup(boundary=base, porcelain=True)
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["unit"]["status"] == "placement-only"
+    assert output["unit"]["lineage"]["queried_ranges"] == []
+    assert output["unit"]["placement"]["barrier"] == target
+    assert output["candidate_sources"] == ["placement-barrier"]
+
+
+def test_porcelain_no_candidate_has_reasoned_record(temp_git_repo, capsys):
+    source = temp_git_repo / "test.py"
+    source.write_text("owned before range\n")
+    base = _commit(temp_git_repo, "Add test.py")
+    _git(temp_git_repo, "commit", "--allow-empty", "-m", "Unrelated commit")
+    source.write_text("worktree fix\n")
+    _select_current_hunk()
+    capsys.readouterr()
+
+    with pytest.raises(SystemExit) as error:
+        command_suggest_fixup(boundary=base, porcelain=True)
+
+    assert error.value.code == 1
+    output = json.loads(capsys.readouterr().out)
+    assert output["result"] == "no-candidates"
+    assert output["candidate"] is None
+    assert output["unit"]["reason"] == "no-target-evidence"
+
+
+def test_abort_clears_state_without_output(temp_git_repo, capsys):
+    state_path = get_suggest_fixup_state_file_path()
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text("stale state")
+
+    command_suggest_fixup(abort=True, porcelain=True)
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    assert not state_path.exists()
+
+
+def test_line_selection_rejects_malformed_ids(temp_git_repo):
+    source = temp_git_repo / "test.py"
+    source.write_text("base\n")
+    base = _commit(temp_git_repo, "Add test.py")
+    _git(temp_git_repo, "commit", "--allow-empty", "-m", "Range commit")
+    source.write_text("changed\n")
+    command_start()
+
+    with pytest.raises(CommandError, match="Invalid line ID: abc"):
+        command_suggest_fixup_line("abc", boundary=base, file="test.py")

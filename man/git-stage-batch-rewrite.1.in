@@ -66,6 +66,9 @@ and independently rechecked resume preconditions for a durable operation.
 Before the apply executor creates an operation, status reports that no
 operation is active. After completion or abort, it reports the latest terminal
 operation while leaving the active slot available for another plan.
+Porcelain status includes counts by persisted plan operation, allowing a
+specialized workflow to verify the active plan kind without reading private
+checkpoint files.
 .PP
 .B rewrite continue
 revalidates an active checkpoint and executes only its exact next action.

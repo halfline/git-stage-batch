@@ -38,7 +38,12 @@ def _parent_commit(commit: str) -> str:
     return fields[1]
 
 
-def load_tree_diff_as_buffer(old_tree: str, new_tree: str) -> LineBuffer:
+def load_tree_diff_as_buffer(
+    old_tree: str,
+    new_tree: str,
+    *,
+    env: dict[str, str] | None = None,
+) -> LineBuffer:
     """Stream a full-index binary patch into bounded buffer storage."""
     chunks = stream_git_command_bytes(
         [
@@ -53,6 +58,7 @@ def load_tree_diff_as_buffer(old_tree: str, new_tree: str) -> LineBuffer:
             new_tree,
             "--",
         ],
+        env=env,
         requires_index_lock=False,
     )
     return LineBuffer.from_chunks(chunks)
@@ -64,6 +70,7 @@ def apply_patch_to_tree(
     *,
     three_way: bool,
     unidiff_zero: bool = False,
+    env: dict[str, str] | None = None,
 ) -> str | None:
     """Apply a patch to an isolated index and return its tree, or None."""
     arguments = ["apply", "--cached", "--whitespace=nowarn"]
@@ -72,20 +79,20 @@ def apply_patch_to_tree(
     if unidiff_zero:
         arguments.append("--unidiff-zero")
 
-    with temp_git_index() as env:
-        git_read_tree(base_tree, env=env)
+    with temp_git_index(base_env=env) as index_env:
+        git_read_tree(base_tree, env=index_env)
         try:
             for _output_line in stream_git_command(
                 arguments,
                 patch_chunks,
-                env=env,
+                env=index_env,
                 requires_index_lock=True,
             ):
                 pass
         except subprocess.CalledProcessError:
             return None
         try:
-            return git_write_tree(env=env)
+            return git_write_tree(env=index_env)
         except subprocess.CalledProcessError:
             return None
 

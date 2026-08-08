@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
+import tempfile
 from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -16,6 +19,34 @@ from ..git_paths import decode_path, nul_records
 
 
 _EMPTY_TREE_OBJECT_CACHE: dict[Path, str] = {}
+
+
+def _alternate_object_path(path: Path) -> str:
+    value = str(path)
+    if os.pathsep not in value and '"' not in value and "\\" not in value:
+        return value
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+@contextmanager
+def temporary_git_object_environment() -> Iterator[dict[str, str]]:
+    """Yield an object quarantine that reads, but never retains, repository objects."""
+    object_directory = Path(
+        run_git_command(
+            ["rev-parse", "--git-path", "objects"],
+            requires_index_lock=False,
+        ).stdout.strip()
+    ).resolve()
+    with tempfile.TemporaryDirectory(prefix="git-stage-batch-objects-") as path:
+        env = os.environ.copy()
+        prior_alternates = env.get("GIT_ALTERNATE_OBJECT_DIRECTORIES")
+        alternates = _alternate_object_path(object_directory)
+        if prior_alternates:
+            alternates = f"{alternates}{os.pathsep}{prior_alternates}"
+        env["GIT_OBJECT_DIRECTORY"] = path
+        env["GIT_ALTERNATE_OBJECT_DIRECTORIES"] = alternates
+        yield env
 
 
 def get_empty_git_tree_object_id() -> str:

@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import ctypes
 import errno
+import fcntl
 import hashlib
 import os
 import stat
 import sys
-import uuid
 from collections.abc import Iterable, Iterator
 from contextlib import ExitStack, contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -24,15 +25,18 @@ from ..utils.git_object_io import GitObjectQuarantine, create_git_blob
 
 PRIVATE_RESOLUTION_DIRECTORY_MODE = 0o700
 PRIVATE_RESOLUTION_FILE_MODE = 0o600
+MAXIMUM_RESOLUTION_METADATA_BYTES = 16 * 1024 * 1024
 _ARTIFACT_CHUNK_SIZE = 64 * 1024
 _ARTIFACT_NAME_DOMAIN = b"git-stage-batch-resolution-artifact-v1\0"
 _TEMPORARY_FILE_PREFIX = ".git-stage-batch-resolution-"
 _TEMPORARY_FILE_DOMAIN = b"git-stage-batch-resolution-write-v1\0"
 _MAXIMUM_DIRECTORY_ENTRIES = 64 * 1024
 _LINUX_RENAME_NOREPLACE = 1
+_LINUX_RENAME_EXCHANGE = 2
 _DARWIN_ACL_FIRST_ENTRY = 0
 _DARWIN_ACL_TYPE_EXTENDED = 0x00000100
 _DARWIN_MNT_UNKNOWNPERMISSIONS = 0x00200000
+_DARWIN_RENAME_SWAP = 0x00000002
 _DARWIN_RENAME_EXCL = 0x00000004
 _DIRECTORY_FLAGS = (
     os.O_RDONLY
@@ -137,6 +141,20 @@ class _FileIdentity:
     changed_ns: int
 
 
+@dataclass(frozen=True, slots=True)
+class _LockedResolutionRoot:
+    """One locked root used to resolve descendant paths without root ABA."""
+
+    visible_paths: tuple[Path, ...]
+    descriptor: int
+
+
+_ACTIVE_LOCKED_ROOT: ContextVar[_LockedResolutionRoot | None] = ContextVar(
+    "git_stage_batch_active_resolution_root",
+    default=None,
+)
+
+
 def _invalid(path: Path, detail: str) -> NoReturn:
     raise CommandError(
         _("Invalid resolution artifact '{path}': {detail}").format(
@@ -175,10 +193,29 @@ def _walk_directory(path: Path) -> Iterator[int]:
     """Pin one absolute directory without following any path component."""
     _require_directory_descriptor_support(path)
     with ExitStack() as descriptors:
+        active_root = _ACTIVE_LOCKED_ROOT.get()
+        relative_parts: tuple[str, ...] | None = None
+        if active_root is not None:
+            for visible_path in active_root.visible_paths:
+                try:
+                    relative_parts = path.relative_to(visible_path).parts
+                except ValueError:
+                    continue
+                break
         try:
-            descriptor = os.open(os.sep, _DIRECTORY_FLAGS)
+            if relative_parts is None:
+                descriptor = os.open(os.sep, _DIRECTORY_FLAGS)
+                components = path.parts[1:]
+            else:
+                assert active_root is not None
+                descriptor = os.open(
+                    ".",
+                    _DIRECTORY_FLAGS,
+                    dir_fd=active_root.descriptor,
+                )
+                components = relative_parts
             descriptors.callback(os.close, descriptor)
-            for component in path.parts[1:]:
+            for component in components:
                 descriptor = os.open(
                     component,
                     _DIRECTORY_FLAGS,
@@ -189,8 +226,7 @@ def _walk_directory(path: Path) -> Iterator[int]:
             _invalid(
                 path,
                 _(
-                    "path must not contain aliases, traversal, or symlinks "
-                    "({error})"
+                    "path must not contain aliases, traversal, or symlinks ({error})"
                 ).format(error=error),
             )
         if not stat.S_ISDIR(os.fstat(descriptor).st_mode):
@@ -308,6 +344,7 @@ def _pinned_directory(
     path: Path,
     *,
     require_private: bool,
+    final_path: Path | None = None,
 ) -> Iterator[int]:
     with _walk_directory(path) as descriptor:
         initial_metadata = os.fstat(descriptor)
@@ -317,24 +354,42 @@ def _pinned_directory(
                 initial_metadata,
                 descriptor=descriptor,
             )
+        completed = False
         try:
             yield descriptor
+            completed = True
         finally:
-            with _walk_directory(path) as current_descriptor:
-                current_metadata = os.fstat(current_descriptor)
-                if require_private:
-                    _require_private_directory_metadata(
-                        path,
-                        current_metadata,
-                        descriptor=current_descriptor,
-                    )
-                if _directory_object_identity(current_metadata) != (
-                    _directory_object_identity(initial_metadata)
-                ):
-                    _invalid(
-                        path,
-                        _("directory path changed during artifact access"),
-                    )
+            verification_paths = (
+                (final_path,)
+                if completed and final_path is not None
+                else tuple(
+                    candidate
+                    for candidate in (path, final_path)
+                    if candidate is not None
+                )
+            )
+            for verification_path in verification_paths:
+                try:
+                    with _walk_directory(verification_path) as current_descriptor:
+                        current_metadata = os.fstat(current_descriptor)
+                        if require_private:
+                            _require_private_directory_metadata(
+                                verification_path,
+                                current_metadata,
+                                descriptor=current_descriptor,
+                            )
+                        if _directory_object_identity(current_metadata) == (
+                            _directory_object_identity(initial_metadata)
+                        ):
+                            break
+                except CommandError:
+                    if len(verification_paths) == 1:
+                        raise
+            else:
+                _invalid(
+                    verification_paths[-1],
+                    _("directory path changed during artifact access"),
+                )
 
 
 def _identity(metadata: os.stat_result) -> _FileIdentity:
@@ -380,6 +435,16 @@ def _require_private_file_metadata(
         descriptor,
         permissions_detail=_("file permissions must be 0600"),
     )
+
+
+def _require_replaceable_file_metadata(
+    path: Path,
+    metadata: os.stat_result,
+) -> None:
+    _require_regular_metadata(path, metadata)
+    _require_current_owner(path, metadata)
+    if metadata.st_nlink != 1:
+        _invalid(path, _("file must not have hard links"))
 
 
 def create_private_resolution_directory(path: str | Path) -> Path:
@@ -487,6 +552,214 @@ def list_resolution_directory(
     return tuple(sorted(names))
 
 
+@contextmanager
+def lock_resolution_directory(
+    path: str | Path,
+    *,
+    create: bool = True,
+    moved_to: str | Path | None = None,
+) -> Iterator[None]:
+    """Hold one non-blocking advisory lock inside a pinned workspace root.
+
+    ``create=False`` opens an existing exact-mode lock read-only, allowing
+    workspace authentication to remain non-mutating. ``moved_to`` names a
+    distinct sibling where the locked directory must be visible on successful
+    exit, so callers can keep the same root pinned across atomic publication.
+    """
+    directory = _exact_path(path)
+    final_path = _exact_path(moved_to) if moved_to is not None else None
+    if final_path is not None and (
+        final_path == directory or final_path.parent != directory.parent
+    ):
+        _invalid(
+            final_path,
+            _("locked and final directories must be distinct siblings"),
+        )
+    lock_name = ".workspace.lock"
+    lock_path = directory / lock_name
+    with _pinned_directory(
+        directory,
+        require_private=True,
+        final_path=final_path,
+    ) as parent:
+        common_flags = (
+            getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+        )
+        created = False
+        created_identity: tuple[int, int] | None = None
+        setup_complete = False
+        try:
+            if create:
+                try:
+                    descriptor = os.open(
+                        lock_name,
+                        os.O_RDWR | os.O_CREAT | os.O_EXCL | common_flags,
+                        PRIVATE_RESOLUTION_FILE_MODE,
+                        dir_fd=parent,
+                    )
+                    created = True
+                except FileExistsError:
+                    descriptor = os.open(
+                        lock_name,
+                        os.O_RDWR | common_flags,
+                        dir_fd=parent,
+                    )
+            else:
+                descriptor = os.open(
+                    lock_name,
+                    os.O_RDONLY | common_flags,
+                    dir_fd=parent,
+                )
+        except OSError as error:
+            _invalid(
+                lock_path,
+                _("cannot open workspace lock: {error}").format(error=error),
+            )
+        try:
+            metadata = os.fstat(descriptor)
+            if created:
+                created_identity = _directory_object_identity(metadata)
+            _require_regular_metadata(lock_path, metadata)
+            _require_current_owner(lock_path, metadata)
+            if metadata.st_nlink != 1:
+                _invalid(lock_path, _("file must not have hard links"))
+            if created:
+                os.fchmod(descriptor, PRIVATE_RESOLUTION_FILE_MODE)
+                os.fsync(descriptor)
+                metadata = os.fstat(descriptor)
+            _require_private_file_metadata(
+                lock_path,
+                metadata,
+                descriptor=descriptor,
+            )
+            try:
+                path_metadata = os.stat(
+                    lock_name,
+                    dir_fd=parent,
+                    follow_symlinks=False,
+                )
+            except OSError as error:
+                _invalid(
+                    lock_path,
+                    _("cannot authenticate workspace lock: {error}").format(
+                        error=error
+                    ),
+                )
+            _require_private_file_metadata(
+                lock_path,
+                path_metadata,
+                descriptor=descriptor,
+            )
+            initial_identity = _identity(metadata)
+            if _identity(path_metadata) != initial_identity:
+                _invalid(lock_path, _("workspace lock changed while it was opened"))
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError as error:
+                if error.errno in (errno.EACCES, errno.EAGAIN):
+                    _invalid(directory, _("workspace is already in use"))
+                _invalid(
+                    lock_path,
+                    _("cannot lock workspace: {error}").format(error=error),
+                )
+            try:
+                locked_metadata = os.fstat(descriptor)
+                locked_path_metadata = os.stat(
+                    lock_name,
+                    dir_fd=parent,
+                    follow_symlinks=False,
+                )
+            except OSError as error:
+                _invalid(
+                    lock_path,
+                    _("cannot authenticate workspace lock: {error}").format(
+                        error=error
+                    ),
+                )
+            _require_private_file_metadata(
+                lock_path,
+                locked_metadata,
+                descriptor=descriptor,
+            )
+            _require_private_file_metadata(
+                lock_path,
+                locked_path_metadata,
+                descriptor=descriptor,
+            )
+            if (
+                _identity(locked_metadata) != initial_identity
+                or _identity(locked_path_metadata) != initial_identity
+            ):
+                _invalid(lock_path, _("workspace lock changed while it was opened"))
+            visible_paths = (
+                (directory,) if final_path is None else (directory, final_path)
+            )
+            token = _ACTIVE_LOCKED_ROOT.set(
+                _LockedResolutionRoot(
+                    visible_paths=visible_paths,
+                    descriptor=parent,
+                )
+            )
+            setup_complete = True
+            try:
+                yield
+            finally:
+                _ACTIVE_LOCKED_ROOT.reset(token)
+                final_metadata = os.fstat(descriptor)
+                _require_private_file_metadata(
+                    lock_path,
+                    final_metadata,
+                    descriptor=descriptor,
+                )
+                try:
+                    final_path_metadata = os.stat(
+                        lock_name,
+                        dir_fd=parent,
+                        follow_symlinks=False,
+                    )
+                except OSError as error:
+                    _invalid(
+                        lock_path,
+                        _("cannot re-authenticate workspace lock: {error}").format(
+                            error=error
+                        ),
+                    )
+                _require_private_file_metadata(
+                    lock_path,
+                    final_path_metadata,
+                    descriptor=descriptor,
+                )
+                if (
+                    _identity(final_metadata) != initial_identity
+                    or _identity(final_path_metadata) != initial_identity
+                ):
+                    _invalid(lock_path, _("workspace lock changed while it was held"))
+        finally:
+            os.close(descriptor)
+            if not setup_complete and created_identity is not None:
+                try:
+                    current_metadata = os.stat(
+                        lock_name,
+                        dir_fd=parent,
+                        follow_symlinks=False,
+                    )
+                    if (
+                        stat.S_ISREG(current_metadata.st_mode)
+                        and _directory_object_identity(current_metadata)
+                        == created_identity
+                        and (
+                            not hasattr(os, "geteuid")
+                            or current_metadata.st_uid == os.geteuid()
+                        )
+                    ):
+                        os.unlink(lock_name, dir_fd=parent)
+                        os.fsync(parent)
+                except OSError:
+                    pass
+
+
 def _rename_with_platform_flags(
     parent: int,
     source_name: str,
@@ -552,6 +825,21 @@ def _rename_noreplace(
         destination_name,
         linux_flags=_LINUX_RENAME_NOREPLACE,
         darwin_flags=_DARWIN_RENAME_EXCL,
+    )
+
+
+def _rename_exchange(
+    parent: int,
+    source_name: str,
+    destination_name: str,
+) -> None:
+    """Atomically exchange two existing siblings."""
+    _rename_with_platform_flags(
+        parent,
+        source_name,
+        destination_name,
+        linux_flags=_LINUX_RENAME_EXCHANGE,
+        darwin_flags=_DARWIN_RENAME_SWAP,
     )
 
 
@@ -803,6 +1091,34 @@ def recover_interrupted_resolution_artifact_write(path: str | Path) -> None:
         _recover_interrupted_resolution_artifact_write(artifact_path, parent)
 
 
+def read_resolution_metadata(
+    path: str | Path,
+    *,
+    maximum_bytes: int = MAXIMUM_RESOLUTION_METADATA_BYTES,
+) -> tuple[str, ResolutionArtifactDigest]:
+    """Read one bounded metadata file through its pinned private parent."""
+    if type(maximum_bytes) is not int or maximum_bytes <= 0:
+        raise ValueError("maximum_bytes must be a positive integer")
+    metadata_path = _exact_path(path)
+    payload = bytearray()
+    digest = hashlib.sha256()
+    size = 0
+    for chunk in _opened_artifact_chunks(metadata_path):
+        size += len(chunk)
+        if size > maximum_bytes:
+            _invalid(metadata_path, _("metadata exceeds the supported size limit"))
+        digest.update(chunk)
+        payload.extend(chunk)
+    try:
+        text = payload.decode("utf-8", errors="surrogateescape")
+    except UnicodeError as error:
+        _invalid(
+            metadata_path,
+            _("metadata cannot be decoded: {error}").format(error=error),
+        )
+    return text, ResolutionArtifactDigest(size=size, sha256=digest.hexdigest())
+
+
 def resolution_artifact_name(output_index: int, repository_path: str) -> str:
     """Return an opaque filename for an output/path pair."""
     if (
@@ -846,13 +1162,19 @@ def _opened_artifact_chunks(path: Path) -> Iterator[bytes]:
 
         try:
             opened_metadata = os.fstat(file_descriptor)
-            _require_regular_metadata(path, opened_metadata)
-            _require_current_owner(path, opened_metadata)
+            _require_private_file_metadata(
+                path,
+                path_metadata,
+                descriptor=file_descriptor,
+            )
+            _require_private_file_metadata(
+                path,
+                opened_metadata,
+                descriptor=file_descriptor,
+            )
             initial_identity = _identity(opened_metadata)
             if initial_identity != _identity(path_metadata):
                 _invalid(path, _("file changed while it was opened"))
-            if initial_identity.links != 1:
-                _invalid(path, _("file must not have hard links"))
 
             bytes_read = 0
             while bytes_read < initial_identity.size:
@@ -885,7 +1207,11 @@ def _opened_artifact_chunks(path: Path) -> Iterator[bytes]:
                     path,
                     _("cannot verify file after reading: {error}").format(error=error),
                 )
-            _require_regular_metadata(path, final_path_metadata)
+            _require_private_file_metadata(
+                path,
+                final_path_metadata,
+                descriptor=file_descriptor,
+            )
             if _identity(final_path_metadata) != initial_identity:
                 _invalid(path, _("file path changed while it was read"))
         finally:
@@ -980,7 +1306,7 @@ def _destination_metadata(
         return None
     except OSError as error:
         _invalid(path, _("cannot inspect destination: {error}").format(error=error))
-    _require_regular_metadata(path, metadata)
+    _require_replaceable_file_metadata(path, metadata)
     return metadata
 
 
@@ -998,6 +1324,152 @@ def _destination_unchanged(
         initial_metadata
     ):
         _invalid(path, _("destination changed while it was being written"))
+
+
+def _open_destination(
+    path: Path,
+    parent: int,
+    initial_metadata: os.stat_result,
+) -> int:
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    try:
+        descriptor = os.open(path.name, flags, dir_fd=parent)
+    except OSError as error:
+        _invalid(path, _("cannot open destination: {error}").format(error=error))
+    try:
+        opened_metadata = os.fstat(descriptor)
+        _require_replaceable_file_metadata(path, opened_metadata)
+        if _identity(opened_metadata) != _identity(initial_metadata):
+            _invalid(path, _("destination changed while it was opened"))
+    except BaseException:
+        os.close(descriptor)
+        raise
+    return descriptor
+
+
+def _displaced_destination_matches(
+    path: Path,
+    parent: int,
+    descriptor: int,
+    initial_metadata: os.stat_result,
+) -> bool:
+    try:
+        path_metadata = os.stat(
+            path.name,
+            dir_fd=parent,
+            follow_symlinks=False,
+        )
+        opened_metadata = os.fstat(descriptor)
+    except OSError as error:
+        _invalid(
+            path,
+            _("cannot authenticate displaced destination: {error}").format(error=error),
+        )
+    if _directory_object_identity(path_metadata) != _directory_object_identity(
+        initial_metadata
+    ) or _directory_object_identity(opened_metadata) != _directory_object_identity(
+        initial_metadata
+    ):
+        return False
+    _require_replaceable_file_metadata(path, path_metadata)
+    _require_replaceable_file_metadata(path, opened_metadata)
+    return _identity(path_metadata) == _identity(opened_metadata)
+
+
+def _require_open_replaceable_file_path(
+    path: Path,
+    parent: int,
+    descriptor: int,
+    object_identity: tuple[int, int],
+    detail: str,
+) -> None:
+    try:
+        path_metadata = os.stat(
+            path.name,
+            dir_fd=parent,
+            follow_symlinks=False,
+        )
+        opened_metadata = os.fstat(descriptor)
+    except OSError as error:
+        _invalid(path, _("{detail} ({error})").format(detail=detail, error=error))
+    _require_replaceable_file_metadata(path, path_metadata)
+    _require_replaceable_file_metadata(path, opened_metadata)
+    if (
+        _identity(path_metadata) != _identity(opened_metadata)
+        or _directory_object_identity(opened_metadata) != object_identity
+    ):
+        _invalid(path, detail)
+
+
+def _roll_back_raced_exchange(
+    artifact_path: Path,
+    temporary_path: Path,
+    parent: int,
+    artifact_descriptor: int,
+    artifact_identity: tuple[int, int],
+) -> None:
+    try:
+        displaced_metadata = os.stat(
+            temporary_path.name,
+            dir_fd=parent,
+            follow_symlinks=False,
+        )
+    except OSError as error:
+        _invalid(
+            temporary_path,
+            _("cannot inspect raced destination: {error}").format(error=error),
+        )
+    _require_replaceable_file_metadata(temporary_path, displaced_metadata)
+    displaced_descriptor = _open_destination(
+        temporary_path,
+        parent,
+        displaced_metadata,
+    )
+    displaced_identity = _directory_object_identity(displaced_metadata)
+    try:
+        _require_open_file_path(
+            artifact_path,
+            parent,
+            artifact_descriptor,
+            artifact_identity,
+            _("published artifact changed before exchange rollback"),
+        )
+        _require_open_replaceable_file_path(
+            temporary_path,
+            parent,
+            displaced_descriptor,
+            displaced_identity,
+            _("raced destination changed before exchange rollback"),
+        )
+        try:
+            _rename_exchange(
+                parent,
+                temporary_path.name,
+                artifact_path.name,
+            )
+        except OSError as error:
+            _invalid(
+                artifact_path,
+                _("cannot roll back raced destination: {error}").format(error=error),
+            )
+        _require_open_file_path(
+            temporary_path,
+            parent,
+            artifact_descriptor,
+            artifact_identity,
+            _("temporary artifact changed during exchange rollback"),
+        )
+        _require_open_replaceable_file_path(
+            artifact_path,
+            parent,
+            displaced_descriptor,
+            displaced_identity,
+            _("raced destination changed during exchange rollback"),
+        )
+        os.fsync(parent)
+    finally:
+        os.close(displaced_descriptor)
 
 
 def _require_open_file_path(
@@ -1312,14 +1784,18 @@ def write_resolution_artifact_atomically(
     chunks: Iterable[bytes],
     *,
     expected: ResolutionArtifactDigest | None = None,
+    maximum_bytes: int | None = None,
 ) -> ResolutionArtifactDigest:
     """Atomically stream one private artifact and return its exact identity."""
+    if maximum_bytes is not None and (
+        type(maximum_bytes) is not int or maximum_bytes <= 0
+    ):
+        raise ValueError("maximum_bytes must be a positive integer or None")
     artifact_path = _exact_path(path)
     with _pinned_directory(artifact_path.parent, require_private=True) as parent:
         initial_metadata = _destination_metadata(artifact_path, parent)
-        temporary_name = (
-            f"{_TEMPORARY_FILE_PREFIX}{uuid.uuid4().hex}.tmp"
-        )
+        temporary_name = _temporary_resolution_artifact_name(artifact_path)
+        temporary_path = artifact_path.with_name(temporary_name)
         flags = (
             os.O_WRONLY
             | os.O_CREAT
@@ -1341,31 +1817,147 @@ def write_resolution_artifact_atomically(
             )
         digest = hashlib.sha256()
         size = 0
+        temporary_identity: tuple[int, int] | None = None
+        destination_descriptor: int | None = None
         try:
-            with os.fdopen(file_descriptor, "wb") as destination:
+            if initial_metadata is not None:
+                destination_descriptor = _open_destination(
+                    artifact_path,
+                    parent,
+                    initial_metadata,
+                )
+            os.fchmod(file_descriptor, PRIVATE_RESOLUTION_FILE_MODE)
+            created_metadata = os.fstat(file_descriptor)
+            temporary_identity = _directory_object_identity(created_metadata)
+            _require_private_file_metadata(
+                temporary_path,
+                created_metadata,
+                descriptor=file_descriptor,
+            )
+            _require_open_file_path(
+                temporary_path,
+                parent,
+                file_descriptor,
+                temporary_identity,
+                _("temporary artifact changed while it was opened"),
+            )
+            with os.fdopen(file_descriptor, "wb", closefd=False) as destination:
                 for chunk in chunks:
+                    chunk_size = len(chunk)
+                    if maximum_bytes is not None and size + chunk_size > maximum_bytes:
+                        _invalid(
+                            artifact_path,
+                            _("artifact exceeds the supported size limit"),
+                        )
                     destination.write(chunk)
                     digest.update(chunk)
-                    size += len(chunk)
+                    size += chunk_size
                 destination.flush()
                 os.fchmod(destination.fileno(), PRIVATE_RESOLUTION_FILE_MODE)
                 os.fsync(destination.fileno())
+            written_metadata = _require_open_file_path(
+                temporary_path,
+                parent,
+                file_descriptor,
+                temporary_identity,
+                _("temporary artifact path changed while it was written"),
+            )
+            if written_metadata.st_size != size:
+                _invalid(artifact_path, _("temporary artifact size changed"))
             result = ResolutionArtifactDigest(size=size, sha256=digest.hexdigest())
             _require_expected_digest(artifact_path, result, expected)
             _destination_unchanged(artifact_path, parent, initial_metadata)
-            os.replace(
-                temporary_name,
-                artifact_path.name,
-                src_dir_fd=parent,
-                dst_dir_fd=parent,
+            try:
+                if initial_metadata is None:
+                    _rename_noreplace(
+                        parent,
+                        temporary_name,
+                        artifact_path.name,
+                    )
+                else:
+                    assert destination_descriptor is not None
+                    opened_destination_metadata = os.fstat(destination_descriptor)
+                    _require_replaceable_file_metadata(
+                        artifact_path,
+                        opened_destination_metadata,
+                    )
+                    if _identity(opened_destination_metadata) != _identity(
+                        initial_metadata
+                    ):
+                        _invalid(
+                            artifact_path,
+                            _("destination changed while it was being written"),
+                        )
+                    _rename_exchange(
+                        parent,
+                        temporary_name,
+                        artifact_path.name,
+                    )
+            except FileExistsError:
+                _invalid(
+                    artifact_path,
+                    _("destination appeared while it was being written"),
+                )
+            except OSError as error:
+                _invalid(
+                    artifact_path,
+                    _("cannot publish artifact: {error}").format(error=error),
+                )
+            _require_open_file_path(
+                artifact_path,
+                parent,
+                file_descriptor,
+                temporary_identity,
+                _("published artifact identity changed"),
             )
+            if initial_metadata is not None:
+                assert destination_descriptor is not None
+                displaced_path = artifact_path.with_name(temporary_name)
+                if not _displaced_destination_matches(
+                    displaced_path,
+                    parent,
+                    destination_descriptor,
+                    initial_metadata,
+                ):
+                    _roll_back_raced_exchange(
+                        artifact_path,
+                        displaced_path,
+                        parent,
+                        file_descriptor,
+                        temporary_identity,
+                    )
+                    _invalid(
+                        artifact_path,
+                        _("destination changed during atomic replacement"),
+                    )
+                try:
+                    os.unlink(temporary_name, dir_fd=parent)
+                except OSError as error:
+                    _invalid(
+                        displaced_path,
+                        _("cannot remove displaced destination: {error}").format(
+                            error=error
+                        ),
+                    )
             os.fsync(parent)
+            _require_open_file_path(
+                artifact_path,
+                parent,
+                file_descriptor,
+                temporary_identity,
+                _("published artifact identity changed"),
+            )
             return result
         finally:
-            try:
-                os.unlink(temporary_name, dir_fd=parent)
-            except FileNotFoundError:
-                pass
+            if temporary_identity is not None:
+                _remove_temporary_file_if_unchanged(
+                    parent,
+                    temporary_name,
+                    temporary_identity,
+                )
+            os.close(file_descriptor)
+            if destination_descriptor is not None:
+                os.close(destination_descriptor)
 
 
 def copy_resolution_artifact_atomically(

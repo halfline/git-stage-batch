@@ -7,6 +7,7 @@ import argparse
 from ..commands.rewrite_abort import command_rewrite_abort
 from ..commands.rewrite_apply import command_rewrite_apply
 from ..commands.rewrite_continue import command_rewrite_continue
+from ..commands.rewrite_resolve import command_rewrite_resolve
 from ..commands.rewrite_scan import command_rewrite_scan
 from ..commands.rewrite_status import command_rewrite_status
 from ..commands.rewrite_validate import command_rewrite_validate
@@ -52,6 +53,15 @@ def _dispatch_rewrite_scan(args: argparse.Namespace) -> None:
 
 def _dispatch_rewrite_validate(args: argparse.Namespace) -> None:
     command_rewrite_validate(args.plan_path, porcelain=args.porcelain)
+
+
+def _dispatch_rewrite_resolve(args: argparse.Namespace) -> None:
+    command_rewrite_resolve(
+        args.plan_path,
+        workspace_path=args.workspace_path,
+        accept_result=args.accept_result,
+        porcelain=args.porcelain,
+    )
 
 
 def _dispatch_rewrite_status(args: argparse.Namespace) -> None:
@@ -137,6 +147,38 @@ def add_rewrite_subcommand(subparsers: Subparsers) -> None:
         help=_("Output a machine-readable validation report"),
     )
     parser_validate.set_defaults(func=_dispatch_rewrite_validate)
+
+    parser_resolve = add_subcommand_parser(
+        actions,
+        "resolve",
+        policy=REWRITE_READ_POLICY,
+        help_topic="stage-batch-rewrite",
+        help=_("Create or advance an external rewrite-resolution workspace"),
+    )
+    parser_resolve.add_argument(
+        "plan_path",
+        metavar="PLAN",
+        help=_("Reviewed rewrite plan containing resolved outputs"),
+    )
+    parser_resolve.add_argument(
+        "--workspace",
+        dest="workspace_path",
+        required=True,
+        metavar="DIR",
+        help=_("Private external directory for resolution artifacts"),
+    )
+    parser_resolve.add_argument(
+        "--accept",
+        dest="accept_result",
+        action="store_true",
+        help=_("Import the current result and advance to the next output"),
+    )
+    parser_resolve.add_argument(
+        "--porcelain",
+        action="store_true",
+        help=_("Output a machine-readable resolution checkpoint"),
+    )
+    parser_resolve.set_defaults(func=_dispatch_rewrite_resolve)
 
     parser_apply = add_subcommand_parser(
         actions,

@@ -299,6 +299,45 @@ ALLOWED_FINDINGS = (
         "inode",
         "Field contributes to whole-dataclass equality.",
     ),
+    _allowed(
+        "src/git_stage_batch/history/resolution_files.py",
+        "variable",
+        "device",
+        "Field contributes to whole-dataclass equality.",
+    ),
+    _allowed(
+        "src/git_stage_batch/history/resolution_files.py",
+        "variable",
+        "inode",
+        "Field contributes to whole-dataclass equality.",
+    ),
+    _allowed(
+        "src/git_stage_batch/history/resolution_files.py",
+        "variable",
+        "links",
+        "Field contributes to whole-dataclass equality.",
+    ),
+    _allowed(
+        "src/git_stage_batch/history/resolution_files.py",
+        "variable",
+        "modified_ns",
+        "Field contributes to whole-dataclass equality.",
+    ),
+    _allowed(
+        "src/git_stage_batch/history/resolution_files.py",
+        "variable",
+        "changed_ns",
+        "Field contributes to whole-dataclass equality.",
+    ),
+    _allowed(
+        "src/git_stage_batch/history/resolution_workspace.py",
+        "function",
+        "materialize_completed_history_resolution",
+        (
+            "Public seam is isolated and directly tested before the next "
+            "history-validation command slice consumes it."
+        ),
+    ),
     # Protocol surface used indirectly by the standard library.
     _allowed(
         "src/git_stage_batch/cli/pager.py",

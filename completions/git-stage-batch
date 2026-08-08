@@ -235,7 +235,7 @@ _git_stage_batch()
             ;;
         rewrite)
             if [[ $cword -eq 2 ]]; then
-                COMPREPLY=($(compgen -W "scan validate apply status continue abort verify" -- "$cur"))
+                COMPREPLY=($(compgen -W "scan validate resolve apply status continue abort verify" -- "$cur"))
                 return
             fi
 
@@ -260,6 +260,19 @@ _git_stage_batch()
                         return
                     fi
                     COMPREPLY=($(compgen -W "--porcelain" -- "$cur"))
+                    ;;
+                resolve)
+                    case "$prev" in
+                        --workspace)
+                            _filedir -d
+                            return
+                            ;;
+                    esac
+                    if [[ $cword -eq 3 && "$cur" != -* ]]; then
+                        _filedir
+                        return
+                    fi
+                    COMPREPLY=($(compgen -W "--workspace --accept --porcelain" -- "$cur"))
                     ;;
                 apply)
                     case "$prev" in

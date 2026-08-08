@@ -6424,3 +6424,21 @@ msgstr "후보 {iteration}/{total}: {commit} {subject}"
 #, python-brace-format
 msgid "Candidate evidence: {sources}"
 msgstr "후보 근거: {sources}"
+
+#: src/git_stage_batch/fixup/execution.py:189
+#, python-brace-format
+msgid "The staged units grouped for {target} cannot be replayed together at that target."
+msgstr "{target}에 대해 그룹화된 스테이징 단위를 해당 대상에서 함께 재생할 수 없습니다."
+
+#: src/git_stage_batch/fixup/execution.py:237
+msgid "The original range cannot be replayed with the planned fixup groups."
+msgstr "원래 범위를 계획된 fixup 그룹과 함께 재생할 수 없습니다."
+
+#: src/git_stage_batch/fixup/execution.py:252
+#, python-brace-format
+msgid "The planned fixup for {target} cannot be replayed after its target."
+msgstr "{target}에 대해 계획된 fixup을 대상 뒤에서 재생할 수 없습니다."
+
+#: src/git_stage_batch/fixup/execution.py:262
+msgid "Replaying the planned fixups at their targets does not reproduce the assigned staged changes."
+msgstr "계획된 fixup을 각 대상에서 재생해도 할당된 스테이징 변경 사항이 재현되지 않습니다."

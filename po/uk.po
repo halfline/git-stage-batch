@@ -6924,3 +6924,21 @@ msgstr "Кандидат {iteration} із {total}: {commit} {subject}"
 #, python-brace-format
 msgid "Candidate evidence: {sources}"
 msgstr "Свідчення для кандидата: {sources}"
+
+#: src/git_stage_batch/fixup/execution.py:189
+#, python-brace-format
+msgid "The staged units grouped for {target} cannot be replayed together at that target."
+msgstr "Підготовлені одиниці, згруповані для {target}, не можна разом відтворити біля цієї цілі."
+
+#: src/git_stage_batch/fixup/execution.py:237
+msgid "The original range cannot be replayed with the planned fixup groups."
+msgstr "Початковий діапазон не можна відтворити із запланованими групами fixup."
+
+#: src/git_stage_batch/fixup/execution.py:252
+#, python-brace-format
+msgid "The planned fixup for {target} cannot be replayed after its target."
+msgstr "Запланований fixup для {target} не можна відтворити після його цілі."
+
+#: src/git_stage_batch/fixup/execution.py:262
+msgid "Replaying the planned fixups at their targets does not reproduce the assigned staged changes."
+msgstr "Відтворення запланованих fixup біля їхніх цілей не відтворює призначені підготовлені зміни."

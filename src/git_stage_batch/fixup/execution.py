@@ -5,6 +5,7 @@ from __future__ import annotations
 import subprocess
 import uuid
 from collections.abc import Iterator
+from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -16,6 +17,7 @@ from ..utils.git_refs import update_git_refs
 from .commutation import (
     apply_patch_to_tree,
     load_tree_diff_as_buffer,
+    relocate_patch_to_target,
     tree_for_commit,
 )
 from .models import (
@@ -82,57 +84,185 @@ def _patch_chunks_for_units(
             yield from unit.patch_buffer.byte_chunks()
 
 
-def _prepare_groups(plan: FixupCreatePlan) -> tuple[_PreparedGroup, ...]:
-    units_by_id = {
-        analysis.unit.unit_id: analysis.unit for analysis in plan.eligible_units
+def _validated_group_units(
+    plan: FixupCreatePlan,
+) -> dict[str, tuple[FixupUnit, ...]]:
+    analyses_by_id = {
+        analysis.unit.unit_id: analysis for analysis in plan.units
     }
-    current_tree = plan.head_tree
-    prepared: list[_PreparedGroup] = []
-    for group in plan.groups:
-        units = tuple(units_by_id[unit_id] for unit_id in group.unit_ids)
-        group_tree = apply_patch_to_tree(
-            plan.head_tree,
-            _patch_chunks_for_units(units),
-            three_way=False,
-            unidiff_zero=True,
-        )
-        if group_tree is None:
-            raise CommandError(
-                _(
-                    "Could not materialize the staged units assigned to {target}."
-                ).format(target=group.target)
-            )
-        with load_tree_diff_as_buffer(plan.head_tree, group_tree) as group_patch:
-            expected_tree = apply_patch_to_tree(
-                current_tree,
-                group_patch.byte_chunks(),
-                three_way=True,
-            )
-        if expected_tree is None or expected_tree == current_tree:
-            raise CommandError(
-                _(
-                    "The planned fixup for {target} could not be combined with "
-                    "the preceding fixup groups."
-                ).format(target=group.target)
-            )
-        prepared.append(_PreparedGroup(group=group, expected_tree=expected_tree))
-        current_tree = expected_tree
-
-    all_units = tuple(analysis.unit for analysis in plan.eligible_units)
-    combined_tree = apply_patch_to_tree(
-        plan.head_tree,
-        _patch_chunks_for_units(all_units),
-        three_way=False,
-        unidiff_zero=True,
-    )
-    if combined_tree is None or combined_tree != current_tree:
+    assignments_by_id = {
+        assignment.unit_id: assignment for assignment in plan.assignments
+    }
+    if (
+        len(analyses_by_id) != len(plan.units)
+        or len(assignments_by_id) != len(plan.assignments)
+        or not assignments_by_id.keys() <= analyses_by_id.keys()
+    ):
         raise CommandError(
             _("The grouped fixup plan does not conserve the staged changes.")
         )
-    if not plan.remaining_units and combined_tree != plan.index_tree:
+
+    grouped_ids: set[str] = set()
+    group_targets: set[str] = set()
+    units_by_target: dict[str, tuple[FixupUnit, ...]] = {}
+    for group in plan.groups:
+        if (
+            not group.unit_ids
+            or group.target in group_targets
+            or group.target not in plan.commit_range.commits_newest_first
+        ):
+            raise CommandError(
+                _("The grouped fixup plan does not conserve the staged changes.")
+            )
+        group_targets.add(group.target)
+
+        group_units: list[FixupUnit] = []
+        for unit_id in group.unit_ids:
+            assignment = assignments_by_id.get(unit_id)
+            if (
+                assignment is None
+                or assignment.target != group.target
+                or unit_id in grouped_ids
+            ):
+                raise CommandError(
+                    _(
+                        "The grouped fixup plan does not conserve the staged "
+                        "changes."
+                    )
+                )
+            grouped_ids.add(unit_id)
+            group_units.append(analyses_by_id[unit_id].unit)
+        units_by_target[group.target] = tuple(group_units)
+
+    if grouped_ids != assignments_by_id.keys():
         raise CommandError(
-            _("The complete fixup plan does not reproduce the staged index tree.")
+            _("The grouped fixup plan does not conserve the staged changes.")
         )
+    return units_by_target
+
+
+def _prepare_groups(plan: FixupCreatePlan) -> tuple[_PreparedGroup, ...]:
+    units_by_target = _validated_group_units(plan)
+    current_tree = plan.head_tree
+    prepared: list[_PreparedGroup] = []
+    with ExitStack() as target_patch_stack:
+        target_patches = {}
+        for group in plan.groups:
+            units = units_by_target[group.target]
+            group_tree = apply_patch_to_tree(
+                plan.head_tree,
+                _patch_chunks_for_units(units),
+                three_way=False,
+                unidiff_zero=True,
+            )
+            if group_tree is None:
+                raise CommandError(
+                    _(
+                        "Could not materialize the staged units assigned to "
+                        "{target}."
+                    ).format(target=group.target)
+                )
+            with load_tree_diff_as_buffer(
+                plan.head_tree,
+                group_tree,
+            ) as group_patch:
+                expected_tree = apply_patch_to_tree(
+                    current_tree,
+                    group_patch.byte_chunks(),
+                    three_way=True,
+                )
+                relocated_tree = relocate_patch_to_target(
+                    group_patch,
+                    plan.commit_range,
+                    group.target,
+                )
+            if expected_tree is None or expected_tree == current_tree:
+                raise CommandError(
+                    _(
+                        "The planned fixup for {target} could not be combined "
+                        "with the preceding fixup groups."
+                    ).format(target=group.target)
+                )
+            if relocated_tree is None:
+                raise CommandError(
+                    _(
+                        "The staged units grouped for {target} cannot be "
+                        "replayed together at that target."
+                    ).format(target=group.target)
+                )
+            target_patches[group.target] = target_patch_stack.enter_context(
+                load_tree_diff_as_buffer(current_tree, expected_tree)
+            )
+            prepared.append(
+                _PreparedGroup(group=group, expected_tree=expected_tree)
+            )
+            current_tree = expected_tree
+
+        all_units = tuple(analysis.unit for analysis in plan.assigned_units)
+        combined_tree = apply_patch_to_tree(
+            plan.head_tree,
+            _patch_chunks_for_units(all_units),
+            three_way=False,
+            unidiff_zero=True,
+        )
+        if combined_tree is None or combined_tree != current_tree:
+            raise CommandError(
+                _("The grouped fixup plan does not conserve the staged changes.")
+            )
+        if not plan.remaining_units and combined_tree != plan.index_tree:
+            raise CommandError(
+                _(
+                    "The complete fixup plan does not reproduce the staged "
+                    "index tree."
+                )
+            )
+
+        replayed_tree = tree_for_commit(plan.commit_range.base_commit)
+        original_parent_tree = replayed_tree
+        for commit in reversed(plan.commit_range.commits_newest_first):
+            commit_tree = tree_for_commit(commit)
+            if commit_tree != original_parent_tree:
+                with load_tree_diff_as_buffer(
+                    original_parent_tree,
+                    commit_tree,
+                ) as commit_patch:
+                    next_replayed_tree = apply_patch_to_tree(
+                        replayed_tree,
+                        commit_patch.byte_chunks(),
+                        three_way=True,
+                    )
+                if next_replayed_tree is None:
+                    raise CommandError(
+                        _(
+                            "The original range cannot be replayed with the "
+                            "planned fixup groups."
+                        )
+                    )
+                replayed_tree = next_replayed_tree
+            target_patch = target_patches.get(commit)
+            if target_patch is not None:
+                next_replayed_tree = apply_patch_to_tree(
+                    replayed_tree,
+                    target_patch.byte_chunks(),
+                    three_way=True,
+                )
+                if next_replayed_tree is None:
+                    raise CommandError(
+                        _(
+                            "The planned fixup for {target} cannot be replayed "
+                            "after its target."
+                        ).format(target=commit)
+                    )
+                replayed_tree = next_replayed_tree
+            original_parent_tree = commit_tree
+
+        if replayed_tree != combined_tree:
+            raise CommandError(
+                _(
+                    "Replaying the planned fixups at their targets does not "
+                    "reproduce the assigned staged changes."
+                )
+            )
     return tuple(prepared)
 
 

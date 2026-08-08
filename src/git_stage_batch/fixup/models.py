@@ -181,9 +181,29 @@ class FixupCreatePlan:
         return tuple(unit for unit in self.units if unit.eligible)
 
     @property
+    def automatic_units(self) -> tuple[FixupUnitAnalysis, ...]:
+        """Return units whose evidence permits automatic assignment."""
+        return tuple(analysis for analysis in self.units if analysis.eligible)
+
+    @property
+    def assigned_units(self) -> tuple[FixupUnitAnalysis, ...]:
+        """Return units selected by the plan for fixup creation."""
+        assigned_ids = {assignment.unit_id for assignment in self.assignments}
+        return tuple(
+            analysis
+            for analysis in self.units
+            if analysis.unit.unit_id in assigned_ids
+        )
+
+    @property
     def remaining_units(self) -> tuple[FixupUnitAnalysis, ...]:
         """Return units that will remain staged."""
-        return tuple(unit for unit in self.units if not unit.eligible)
+        assigned_ids = {assignment.unit_id for assignment in self.assignments}
+        return tuple(
+            analysis
+            for analysis in self.units
+            if analysis.unit.unit_id not in assigned_ids
+        )
 
 
 @dataclass(frozen=True, slots=True)

@@ -6413,3 +6413,21 @@ msgstr "候補 {iteration}/{total}: {commit} {subject}"
 #, python-brace-format
 msgid "Candidate evidence: {sources}"
 msgstr "候補の根拠: {sources}"
+
+#: src/git_stage_batch/fixup/execution.py:189
+#, python-brace-format
+msgid "The staged units grouped for {target} cannot be replayed together at that target."
+msgstr "{target} 用にグループ化されたステージ済みユニットを、そのターゲットでまとめて再生できません。"
+
+#: src/git_stage_batch/fixup/execution.py:237
+msgid "The original range cannot be replayed with the planned fixup groups."
+msgstr "元の範囲を、計画された fixup グループとともに再生できません。"
+
+#: src/git_stage_batch/fixup/execution.py:252
+#, python-brace-format
+msgid "The planned fixup for {target} cannot be replayed after its target."
+msgstr "{target} 用に計画された fixup を、そのターゲットの後で再生できません。"
+
+#: src/git_stage_batch/fixup/execution.py:262
+msgid "Replaying the planned fixups at their targets does not reproduce the assigned staged changes."
+msgstr "計画された fixup を各ターゲットで再生しても、割り当てられたステージ済み変更を再現できません。"

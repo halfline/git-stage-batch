@@ -15,6 +15,10 @@ from ..utils.git_index import git_read_tree, git_write_tree, temp_git_index
 from .models import FixupRange, FixupUnit, PlacementEvidence
 
 
+class _RangeTreeChainChanged(ValueError):
+    """Signal that a supposedly linear range no longer has matching trees."""
+
+
 def tree_for_commit(commit: str) -> str:
     """Return the canonical tree object for a commit."""
     return run_git_command(
@@ -86,6 +90,142 @@ def apply_patch_to_tree(
             return None
 
 
+def _commute_across_commit(
+    current_original_tree: str,
+    current_modified_tree: str,
+    commit: str,
+) -> tuple[str, str] | None:
+    commit_tree = tree_for_commit(commit)
+    if commit_tree != current_original_tree:
+        raise _RangeTreeChainChanged
+
+    parent = _parent_commit(commit)
+    parent_tree = tree_for_commit(parent)
+    with load_tree_diff_as_buffer(
+        current_original_tree,
+        current_modified_tree,
+    ) as relocation_patch:
+        earlier_modified_tree = apply_patch_to_tree(
+            parent_tree,
+            relocation_patch.byte_chunks(),
+            three_way=True,
+        )
+    if earlier_modified_tree is None:
+        return None
+
+    replayed_tree: str | None
+    if parent_tree == current_original_tree:
+        # Empty commits replay to the already-relocated tree. Passing an empty
+        # diff to `git apply` would incorrectly report a blocker.
+        replayed_tree = earlier_modified_tree
+    else:
+        with load_tree_diff_as_buffer(
+            parent_tree,
+            current_original_tree,
+        ) as commit_patch:
+            replayed_tree = apply_patch_to_tree(
+                earlier_modified_tree,
+                commit_patch.byte_chunks(),
+                three_way=True,
+            )
+    if replayed_tree != current_modified_tree:
+        return None
+    return parent_tree, earlier_modified_tree
+
+
+def analyze_patch_placement(
+    patch_buffer: LineBuffer,
+    commit_range: FixupRange,
+) -> PlacementEvidence:
+    """Find the first commit an exact textual patch cannot commute across."""
+    commuted_across: list[str] = []
+    try:
+        current_original_tree = tree_for_commit(commit_range.head_commit)
+        current_modified_tree = apply_patch_to_tree(
+            current_original_tree,
+            patch_buffer.byte_chunks(),
+            three_way=False,
+            unidiff_zero=True,
+        )
+        if current_modified_tree is None:
+            return PlacementEvidence(
+                status="unknown",
+                barrier=None,
+                commuted_across=(),
+                detail="staged-unit-no-longer-applies-to-head",
+            )
+
+        for commit in commit_range.commits_newest_first:
+            crossing = _commute_across_commit(
+                current_original_tree,
+                current_modified_tree,
+                commit,
+            )
+            if crossing is None:
+                return PlacementEvidence(
+                    status="barrier",
+                    barrier=commit,
+                    commuted_across=tuple(commuted_across),
+                )
+            current_original_tree, current_modified_tree = crossing
+            commuted_across.append(commit)
+
+        return PlacementEvidence(
+            status="commutes-through",
+            barrier=None,
+            commuted_across=tuple(commuted_across),
+        )
+    except _RangeTreeChainChanged:
+        return PlacementEvidence(
+            status="unknown",
+            barrier=None,
+            commuted_across=tuple(commuted_across),
+            detail="range-tree-chain-changed",
+        )
+    except (OSError, ValueError, subprocess.CalledProcessError) as error:
+        return PlacementEvidence(
+            status="unknown",
+            barrier=None,
+            commuted_across=tuple(commuted_across),
+            detail=type(error).__name__,
+        )
+
+
+def relocate_patch_to_target(
+    patch_buffer: LineBuffer,
+    commit_range: FixupRange,
+    target: str,
+) -> str | None:
+    """Return the target tree with a patch relocated after it, if proven."""
+    if target not in commit_range.commits_newest_first:
+        return None
+    try:
+        current_original_tree = tree_for_commit(commit_range.head_commit)
+        current_modified_tree = apply_patch_to_tree(
+            current_original_tree,
+            patch_buffer.byte_chunks(),
+            three_way=False,
+            unidiff_zero=True,
+        )
+        if current_modified_tree is None:
+            return None
+
+        for commit in commit_range.commits_newest_first:
+            if commit == target:
+                return current_modified_tree
+            crossing = _commute_across_commit(
+                current_original_tree,
+                current_modified_tree,
+                commit,
+            )
+            if crossing is None:
+                return None
+            current_original_tree, current_modified_tree = crossing
+    except (OSError, ValueError, subprocess.CalledProcessError):
+        return None
+    return None
+
+
 def analyze_placement(
     unit: FixupUnit,
     commit_range: FixupRange,
@@ -98,88 +238,4 @@ def analyze_placement(
             commuted_across=(),
             detail="unit-has-no-text-patch",
         )
-
-    try:
-        current_original_tree = tree_for_commit(commit_range.head_commit)
-        current_modified_tree = apply_patch_to_tree(
-            current_original_tree,
-            unit.patch_buffer.byte_chunks(),
-            three_way=False,
-            unidiff_zero=True,
-        )
-        if current_modified_tree is None:
-            return PlacementEvidence(
-                status="unknown",
-                barrier=None,
-                commuted_across=(),
-                detail="staged-unit-no-longer-applies-to-head",
-            )
-
-        commuted_across: list[str] = []
-        for commit in commit_range.commits_newest_first:
-            commit_tree = tree_for_commit(commit)
-            if commit_tree != current_original_tree:
-                return PlacementEvidence(
-                    status="unknown",
-                    barrier=None,
-                    commuted_across=tuple(commuted_across),
-                    detail="range-tree-chain-changed",
-                )
-
-            parent = _parent_commit(commit)
-            parent_tree = tree_for_commit(parent)
-            with load_tree_diff_as_buffer(
-                current_original_tree,
-                current_modified_tree,
-            ) as relocation_patch:
-                earlier_modified_tree = apply_patch_to_tree(
-                    parent_tree,
-                    relocation_patch.byte_chunks(),
-                    three_way=True,
-                )
-            if earlier_modified_tree is None:
-                return PlacementEvidence(
-                    status="barrier",
-                    barrier=commit,
-                    commuted_across=tuple(commuted_across),
-                )
-
-            replayed_tree: str | None
-            if parent_tree == current_original_tree:
-                # Empty commits replay to the already-relocated tree. Passing
-                # an empty diff to `git apply` would incorrectly report a
-                # blocker because Git rejects input containing no patch.
-                replayed_tree = earlier_modified_tree
-            else:
-                with load_tree_diff_as_buffer(
-                    parent_tree,
-                    current_original_tree,
-                ) as commit_patch:
-                    replayed_tree = apply_patch_to_tree(
-                        earlier_modified_tree,
-                        commit_patch.byte_chunks(),
-                        three_way=True,
-                    )
-            if replayed_tree != current_modified_tree:
-                return PlacementEvidence(
-                    status="barrier",
-                    barrier=commit,
-                    commuted_across=tuple(commuted_across),
-                )
-
-            commuted_across.append(commit)
-            current_original_tree = parent_tree
-            current_modified_tree = earlier_modified_tree
-
-        return PlacementEvidence(
-            status="commutes-through",
-            barrier=None,
-            commuted_across=tuple(commuted_across),
-        )
-    except (OSError, ValueError, subprocess.CalledProcessError) as error:
-        return PlacementEvidence(
-            status="unknown",
-            barrier=None,
-            commuted_across=(),
-            detail=type(error).__name__,
-        )
+    return analyze_patch_placement(unit.patch_buffer, commit_range)

@@ -6382,3 +6382,21 @@ msgstr "候选 {iteration}/{total}：{commit} {subject}"
 #, python-brace-format
 msgid "Candidate evidence: {sources}"
 msgstr "候选证据：{sources}"
+
+#: src/git_stage_batch/fixup/execution.py:189
+#, python-brace-format
+msgid "The staged units grouped for {target} cannot be replayed together at that target."
+msgstr "无法在目标 {target} 处一起重放为其分组的已暂存单元。"
+
+#: src/git_stage_batch/fixup/execution.py:237
+msgid "The original range cannot be replayed with the planned fixup groups."
+msgstr "无法使用计划的 fixup 组重放原始范围。"
+
+#: src/git_stage_batch/fixup/execution.py:252
+#, python-brace-format
+msgid "The planned fixup for {target} cannot be replayed after its target."
+msgstr "无法在目标之后重放为 {target} 计划的 fixup。"
+
+#: src/git_stage_batch/fixup/execution.py:262
+msgid "Replaying the planned fixups at their targets does not reproduce the assigned staged changes."
+msgstr "在各目标处重放计划的 fixup 无法复现已分配的暂存更改。"

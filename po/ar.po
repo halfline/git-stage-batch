@@ -7074,3 +7074,21 @@ msgstr "المرشح {iteration} من {total}: {commit} {subject}"
 #, python-brace-format
 msgid "Candidate evidence: {sources}"
 msgstr "دليل المرشح: {sources}"
+
+#: src/git_stage_batch/fixup/execution.py:189
+#, python-brace-format
+msgid "The staged units grouped for {target} cannot be replayed together at that target."
+msgstr "لا يمكن إعادة تطبيق الوحدات المُجهّزة المجمعة للهدف {target} معًا عند ذلك الهدف."
+
+#: src/git_stage_batch/fixup/execution.py:237
+msgid "The original range cannot be replayed with the planned fixup groups."
+msgstr "لا يمكن إعادة تطبيق النطاق الأصلي مع مجموعات ⁦fixup⁩ المخططة."
+
+#: src/git_stage_batch/fixup/execution.py:252
+#, python-brace-format
+msgid "The planned fixup for {target} cannot be replayed after its target."
+msgstr "لا يمكن إعادة تطبيق ⁦fixup⁩ المخطط للهدف {target} بعد هدفه."
+
+#: src/git_stage_batch/fixup/execution.py:262
+msgid "Replaying the planned fixups at their targets does not reproduce the assigned staged changes."
+msgstr "إعادة تطبيق عمليات ⁦fixup⁩ المخططة عند أهدافها لا تعيد إنتاج التغييرات المُجهّزة المعيّنة."

@@ -7004,3 +7004,21 @@ msgstr "Candidat {iteration} sur {total} : {commit} {subject}"
 #, python-brace-format
 msgid "Candidate evidence: {sources}"
 msgstr "Preuves du candidat : {sources}"
+
+#: src/git_stage_batch/fixup/execution.py:189
+#, python-brace-format
+msgid "The staged units grouped for {target} cannot be replayed together at that target."
+msgstr "Les unités indexées regroupées pour {target} ne peuvent pas être rejouées ensemble à cette cible."
+
+#: src/git_stage_batch/fixup/execution.py:237
+msgid "The original range cannot be replayed with the planned fixup groups."
+msgstr "La plage d’origine ne peut pas être rejouée avec les groupes de fixup planifiés."
+
+#: src/git_stage_batch/fixup/execution.py:252
+#, python-brace-format
+msgid "The planned fixup for {target} cannot be replayed after its target."
+msgstr "Le fixup planifié pour {target} ne peut pas être rejoué après sa cible."
+
+#: src/git_stage_batch/fixup/execution.py:262
+msgid "Replaying the planned fixups at their targets does not reproduce the assigned staged changes."
+msgstr "Le rejeu des fixups planifiés à leurs cibles ne reproduit pas les modifications indexées assignées."

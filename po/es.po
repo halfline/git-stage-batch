@@ -6945,3 +6945,21 @@ msgstr "Candidato {iteration} de {total}: {commit} {subject}"
 #, python-brace-format
 msgid "Candidate evidence: {sources}"
 msgstr "Evidencia del candidato: {sources}"
+
+#: src/git_stage_batch/fixup/execution.py:189
+#, python-brace-format
+msgid "The staged units grouped for {target} cannot be replayed together at that target."
+msgstr "Las unidades preparadas agrupadas para {target} no se pueden reproducir juntas en ese destino."
+
+#: src/git_stage_batch/fixup/execution.py:237
+msgid "The original range cannot be replayed with the planned fixup groups."
+msgstr "El rango original no se puede reproducir con los grupos de fixup planificados."
+
+#: src/git_stage_batch/fixup/execution.py:252
+#, python-brace-format
+msgid "The planned fixup for {target} cannot be replayed after its target."
+msgstr "El fixup planificado para {target} no se puede reproducir después de su destino."
+
+#: src/git_stage_batch/fixup/execution.py:262
+msgid "Replaying the planned fixups at their targets does not reproduce the assigned staged changes."
+msgstr "La reproducción de los fixups planificados en sus destinos no reproduce los cambios preparados asignados."

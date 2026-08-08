@@ -16,6 +16,20 @@ def _validation_record(document: HistoryPlanDocument) -> dict[str, object]:
     integration_count = sum(
         output.operation == "INTEGRATE" for output in document.plan.outputs
     )
+    split_count = sum(
+        output.operation == "SPLIT" for output in document.plan.outputs
+    )
+    reorder_count = sum(
+        output.operation == "REORDER" for output in document.plan.outputs
+    )
+    blocked_dependencies = sum(
+        dependency.barrier == "BLOCKED"
+        for dependency in document.snapshot.dependencies
+    )
+    unknown_dependencies = sum(
+        dependency.barrier == "UNKNOWN"
+        for dependency in document.snapshot.dependencies
+    )
     return {
         "schema_version": document.schema_version,
         "operation": "rewrite-validate",
@@ -30,9 +44,14 @@ def _validation_record(document: HistoryPlanDocument) -> dict[str, object]:
             "output_commits": len(document.plan.outputs),
             "reworded_commits": reword_count,
             "integrated_outputs": integration_count,
+            "split_outputs": split_count,
+            "reordered_outputs": reorder_count,
             "patch_units": sum(
                 len(commit.units) for commit in document.snapshot.commits
             ),
+            "dependency_units": len(document.snapshot.dependencies),
+            "blocked_dependencies": blocked_dependencies,
+            "unknown_dependencies": unknown_dependencies,
             "source_signatures": sum(
                 len(commit.signatures) for commit in document.snapshot.commits
             ),

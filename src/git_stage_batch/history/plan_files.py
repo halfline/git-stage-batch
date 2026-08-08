@@ -26,6 +26,7 @@ from .models import (
     HistoryPlanDocument,
     HistoryPlannedCommit,
     HistoryPlanOperation,
+    HistoryUnitDependency,
 )
 from .json_files import history_canonical_json_sha256
 from .records import history_snapshot_record
@@ -140,8 +141,12 @@ def _planned_commit(
     record = require_object(value, location)
     require_exact_keys(record, _OUTPUT_KEYS, location)
     operation_value = require_string(record, "operation", location)
-    if operation_value not in {"KEEP", "REWORD", "INTEGRATE"}:
-        _invalid(f"{location}.operation must be 'KEEP', 'REWORD', or 'INTEGRATE'")
+    operations = {"KEEP", "REWORD", "INTEGRATE", "SPLIT", "REORDER"}
+    if operation_value not in operations:
+        _invalid(
+            f"{location}.operation must be 'KEEP', 'REWORD', 'INTEGRATE', "
+            "'SPLIT', or 'REORDER'"
+        )
     source_commits = _string_array(
         record["source_commits"],
         f"{location}.source_commits",
@@ -165,7 +170,7 @@ def _planned_commit(
         record["encoding"],
         f"{location}.encoding",
     )
-    if operation_value in {"REWORD", "INTEGRATE"}:
+    if operation_value in {"REWORD", "INTEGRATE", "SPLIT"}:
         try:
             message.encode(encoding or "utf-8", errors="surrogateescape")
         except (LookupError, UnicodeEncodeError) as error:
@@ -222,6 +227,40 @@ def _decode_plan(payload: str) -> tuple[dict[str, object], str, HistoryPlan]:
     return snapshot, base, HistoryPlan(outputs=outputs)
 
 
+def _grouped_block_chain_can_defer_to_replay(
+    dependency: HistoryUnitDependency,
+    *,
+    dependencies_by_unit: dict[str, HistoryUnitDependency],
+    first_crossings: dict[str, str | None],
+    desired_positions: dict[str, int],
+    output_positions: dict[str, int],
+) -> bool:
+    """Return whether ordered blockers move inside one planned output.
+
+    A unit scan stops at its first real blocker, so it has no independent
+    evidence for the prefix crossed by that blocker. When the plan keeps a
+    chain of real blockers ordered inside one output, exact materialization can
+    prove the compound movement as a whole. UNKNOWN barriers never qualify.
+    """
+    visited: set[str] = set()
+    current = dependency
+    while first_crossings[current.unit_id] is not None:
+        if current.unit_id in visited:
+            return False
+        visited.add(current.unit_id)
+        barrier_unit = current.barrier_unit_id
+        if (
+            current.barrier != "BLOCKED"
+            or barrier_unit is None
+            or output_positions[barrier_unit] != output_positions[current.unit_id]
+            or desired_positions[barrier_unit]
+            >= desired_positions[current.unit_id]
+        ):
+            return False
+        current = dependencies_by_unit[barrier_unit]
+    return True
+
+
 def _validate_plan_semantics(
     live: HistoryPlanDocument,
     plan: HistoryPlan,
@@ -233,39 +272,86 @@ def _validate_plan_semantics(
     source_positions = {
         commit.commit_id: index for index, commit in enumerate(source_commits)
     }
-    consumed_sources: set[str] = set()
+    unit_by_id = {
+        unit.unit_id: unit
+        for source in source_commits
+        for unit in source.units
+    }
+    unit_positions_by_source = {
+        source.commit_id: {
+            unit.unit_id: index for index, unit in enumerate(source.units)
+        }
+        for source in source_commits
+    }
+    expected_units = tuple(
+        unit.unit_id for source in source_commits for unit in source.units
+    )
     consumed_units: set[str] = set()
-    previous_first_position = -1
+    target_occurrences: dict[str, list[tuple[int, HistoryPlanOperation]]] = {}
+    secondary_occurrences: dict[str, list[int]] = {}
+    source_mentions: dict[str, int] = {}
+    output_target_positions: list[int] = []
+
     for index, output in enumerate(plan.outputs):
         location = f"plan.outputs[{index}]"
         if not output.source_commits:
             _invalid(f"{location}.source_commits must not be empty")
         if any(commit not in source_by_id for commit in output.source_commits):
             _invalid(f"{location}.source_commits contains an unknown commit")
-        if any(commit in consumed_sources for commit in output.source_commits):
-            _invalid(f"{location}.source_commits duplicates a consumed commit")
+        if len(set(output.source_commits)) != len(output.source_commits):
+            _invalid(f"{location}.source_commits must not contain duplicates")
         positions = tuple(source_positions[commit] for commit in output.source_commits)
         if positions != tuple(sorted(positions)):
             _invalid(f"{location}.source_commits must retain source order")
-        if positions[0] <= previous_first_position:
-            _invalid(f"{location} is out of output order")
-        previous_first_position = positions[0]
-        if output.operation in {"KEEP", "REWORD"} and len(positions) != 1:
+        if output.operation in {"KEEP", "REWORD", "SPLIT", "REORDER"} and len(
+            positions
+        ) != 1:
             _invalid(f"{location}.{output.operation} must consume one source commit")
         if output.operation == "INTEGRATE" and len(positions) < 2:
             _invalid(f"{location}.INTEGRATE must consume at least two commits")
 
         sources = tuple(source_by_id[commit] for commit in output.source_commits)
-        expected_units = tuple(
-            unit.unit_id for source in sources for unit in source.units
-        )
-        if output.unit_ids != expected_units:
-            _invalid(
-                f"{location}.unit_ids must exactly conserve its source units in order"
-            )
+        unknown_units = [
+            unit_id for unit_id in output.unit_ids if unit_id not in unit_by_id
+        ]
+        if unknown_units:
+            _invalid(f"{location}.unit_ids contains an unknown unit")
+        if len(set(output.unit_ids)) != len(output.unit_ids):
+            _invalid(f"{location}.unit_ids must not contain duplicates")
         if any(unit_id in consumed_units for unit_id in output.unit_ids):
             _invalid(f"{location}.unit_ids duplicates a consumed unit")
-        consumed_sources.update(output.source_commits)
+        selected_keys: list[tuple[int, int]] = []
+        selected_by_source: dict[str, list[str]] = {
+            source.commit_id: [] for source in sources
+        }
+        source_order = {
+            source.commit_id: source_index
+            for source_index, source in enumerate(sources)
+        }
+        for unit_id in output.unit_ids:
+            unit = unit_by_id[unit_id]
+            if unit.source_commit not in source_order:
+                _invalid(
+                    f"{location}.unit_ids contains a unit from an unlisted source"
+                )
+            selected_by_source[unit.source_commit].append(unit_id)
+            selected_keys.append(
+                (
+                    source_order[unit.source_commit],
+                    unit_positions_by_source[unit.source_commit][unit_id],
+                )
+            )
+        if selected_keys != sorted(selected_keys):
+            _invalid(
+                f"{location}.unit_ids must retain source and unit order"
+            )
+        for source in sources:
+            if source.units and not selected_by_source[source.commit_id]:
+                _invalid(
+                    f"{location} lists source {source.commit_id} without any "
+                    "of its units"
+                )
+
         consumed_units.update(output.unit_ids)
         target_source = sources[0]
         unsupported_source = next(
@@ -280,14 +366,171 @@ def _validate_plan_semantics(
             )
         if output.author != target_source.author:
             _invalid(f"{location}.author must preserve the target author")
-        if output.operation == "KEEP" and output.message != target_source.message:
-            _invalid(f"{location}.message changed without a REWORD operation")
-        if output.operation == "KEEP" and output.encoding != target_source.encoding:
-            _invalid(f"{location}.encoding changed without a REWORD operation")
+        target_units = tuple(unit.unit_id for unit in target_source.units)
+        selected_target_units = tuple(selected_by_source[target_source.commit_id])
+        if output.operation in {"KEEP", "REWORD", "REORDER"}:
+            if output.unit_ids != target_units:
+                _invalid(
+                    f"{location}.{output.operation} must consume every target "
+                    "unit in order"
+                )
+        elif output.operation == "SPLIT":
+            if not output.unit_ids:
+                _invalid(f"{location}.SPLIT must contain at least one unit")
+        elif selected_target_units != target_units:
+            _invalid(
+                f"{location}.INTEGRATE must consume every target unit in order"
+            )
 
-    expected_sources = {commit.commit_id for commit in source_commits}
-    if consumed_sources != expected_sources:
-        _invalid("plan.outputs must consume every source commit exactly once")
+        if output.operation in {"KEEP", "REORDER"}:
+            if output.message != target_source.message:
+                _invalid(
+                    f"{location}.message changed without a REWORD, SPLIT, or "
+                    "INTEGRATE operation"
+                )
+            if output.encoding != target_source.encoding:
+                _invalid(
+                    f"{location}.encoding changed without a REWORD, SPLIT, or "
+                    "INTEGRATE operation"
+                )
+
+        target_occurrences.setdefault(target_source.commit_id, []).append(
+            (index, output.operation)
+        )
+        output_target_positions.append(positions[0])
+        for source in sources:
+            source_mentions[source.commit_id] = (
+                source_mentions.get(source.commit_id, 0) + 1
+            )
+        for secondary_source in sources[1:]:
+            secondary_occurrences.setdefault(
+                secondary_source.commit_id,
+                [],
+            ).append(index)
+
+    if consumed_units != set(expected_units):
+        _invalid("plan.outputs must consume every patch unit exactly once")
+
+    for source in source_commits:
+        source_id = source.commit_id
+        targets = target_occurrences.get(source_id, [])
+        secondary = secondary_occurrences.get(source_id, [])
+        if targets and secondary:
+            _invalid(
+                f"source commit {source_id} cannot be both an output target "
+                "and an integrated secondary source"
+            )
+        if not targets and not secondary:
+            _invalid(f"source commit {source_id} is not consumed by the plan")
+        if len(targets) > 1 and any(
+            operation != "SPLIT" for _output, operation in targets
+        ):
+            _invalid(
+                f"source commit {source_id} may target several outputs only "
+                "through SPLIT"
+            )
+        if len(targets) == 1 and targets[0][1] == "SPLIT":
+            _invalid(
+                f"source commit {source_id} must produce at least two SPLIT outputs"
+            )
+        if not source.units and source_mentions.get(source_id, 0) != 1:
+            _invalid(
+                f"empty source commit {source_id} must be consumed exactly once"
+            )
+
+    moved_earlier_outputs: set[int] = set()
+    for earlier_index, earlier_position in enumerate(output_target_positions):
+        for later_position in output_target_positions[earlier_index + 1 :]:
+            if earlier_position <= later_position:
+                continue
+            moved_earlier_outputs.add(earlier_index)
+            if plan.outputs[earlier_index].operation not in {"REORDER", "SPLIT"}:
+                _invalid(
+                    f"plan.outputs[{earlier_index}] must use REORDER or SPLIT "
+                    "when moving before an earlier source"
+                )
+    for output_index, output in enumerate(plan.outputs):
+        if output.operation == "REORDER" and output_index not in moved_earlier_outputs:
+            _invalid(
+                f"plan.outputs[{output_index}].REORDER does not move its source "
+                "earlier"
+            )
+
+    desired_positions = {
+        unit_id: position
+        for position, unit_id in enumerate(
+            unit_id for output in plan.outputs for unit_id in output.unit_ids
+        )
+    }
+    output_positions = {
+        unit_id: output_index
+        for output_index, output in enumerate(plan.outputs)
+        for unit_id in output.unit_ids
+    }
+    if len(live.snapshot.dependencies) != len(expected_units):
+        _invalid("snapshot dependency graph does not cover every patch unit")
+    dependencies_by_unit = {
+        dependency.unit_id: dependency
+        for dependency in live.snapshot.dependencies
+    }
+    first_crossings: dict[str, str | None] = {}
+    for dependency in live.snapshot.dependencies:
+        original_position = dependency.original_position
+        if (
+            original_position >= len(expected_units)
+            or expected_units[original_position] != dependency.unit_id
+            or dependency.earliest_position < 0
+            or dependency.earliest_position > original_position
+        ):
+            _invalid("snapshot dependency graph has inconsistent unit positions")
+        expected_barrier_unit = (
+            expected_units[dependency.earliest_position - 1]
+            if dependency.earliest_position > 0
+            else None
+        )
+        barrier_inconsistent = (
+            dependency.barrier_unit_id != expected_barrier_unit
+            or (dependency.barrier is None) != (dependency.detail is None)
+            or (
+                expected_barrier_unit is not None
+                and dependency.barrier is None
+            )
+            or (
+                expected_barrier_unit is None
+                and dependency.barrier == "BLOCKED"
+            )
+        )
+        if barrier_inconsistent:
+            _invalid("snapshot dependency graph has inconsistent barrier evidence")
+        moving_position = desired_positions[dependency.unit_id]
+        first_crossings[dependency.unit_id] = next(
+            (
+                crossed_unit
+                for crossed_unit in expected_units[: dependency.earliest_position]
+                if desired_positions[crossed_unit] > moving_position
+            ),
+            None,
+        )
+
+    for dependency in live.snapshot.dependencies:
+        crossed_unit = first_crossings[dependency.unit_id]
+        if crossed_unit is None or _grouped_block_chain_can_defer_to_replay(
+            dependency,
+            dependencies_by_unit=dependencies_by_unit,
+            first_crossings=first_crossings,
+            desired_positions=desired_positions,
+            output_positions=output_positions,
+        ):
+            continue
+        barrier = (
+            dependency.barrier
+            if crossed_unit == dependency.barrier_unit_id
+            else "UNKNOWN"
+        )
+        _invalid(
+            f"planned unit order crosses a {barrier} dependency between "
+            f"{crossed_unit} and {dependency.unit_id}"
+        )
 
 
 def _read_plan_payload(plan_path: str) -> str:

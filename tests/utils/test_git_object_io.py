@@ -1,6 +1,8 @@
 """Tests for Git object IO helpers."""
 
+import os
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -11,7 +13,9 @@ from git_stage_batch.utils.git_object_io import (
     create_git_blob,
     create_git_blobs_from_paths,
     get_empty_git_tree_object_id,
+    get_git_object_type,
     list_git_tree_blobs,
+    list_git_tree_entries,
     read_git_blobs_as_bytes,
     resolve_git_objects,
     stream_git_blobs,
@@ -226,6 +230,23 @@ def test_quarantined_blob_requires_environment_and_does_not_leak(temp_git_repo):
     assert result.returncode != 0
 
 
+def test_quarantine_environment_cannot_be_redirected(temp_git_repo):
+    """Issued quarantine capabilities must preserve their object directory."""
+    with temporary_git_object_environment() as quarantine:
+        issued = quarantine.environment()
+        object_directory = issued["GIT_OBJECT_DIRECTORY"]
+        issued["GIT_OBJECT_DIRECTORY"] = ".git/objects"
+
+        assert not isinstance(quarantine, dict)
+        assert quarantine.environment()["GIT_OBJECT_DIRECTORY"] == object_directory
+        with pytest.raises(TypeError):
+            dict.__setitem__(  # type: ignore[arg-type]
+                quarantine,
+                "GIT_OBJECT_DIRECTORY",
+                ".git/objects",
+            )
+
+
 def test_quarantined_tree_requires_environment_and_does_not_leak(temp_git_repo):
     """Tree listing should use the same temporary object environment."""
     file_path = "candidate.txt"
@@ -242,6 +263,8 @@ def test_quarantined_tree_requires_environment_and_does_not_leak(temp_git_repo):
         ).stdout.strip()
 
         assert list_git_tree_blobs(tree_id, [file_path]) == {}
+        assert get_git_object_type(tree_id) is None
+        assert get_git_object_type(tree_id, env=env) == "tree"
         entries = list_git_tree_blobs(tree_id, [file_path], env=env)
         assert entries[file_path].blob_sha == blob_id
         assert entries[file_path].mode == "100644"
@@ -253,6 +276,48 @@ def test_quarantined_tree_requires_environment_and_does_not_leak(temp_git_repo):
             requires_index_lock=False,
         )
         assert result.returncode != 0
+
+
+def test_tree_entry_listing_preserves_non_blob_types_and_exact_paths(temp_git_repo):
+    """Exact entry inspection should expose trees without recursing into them."""
+    nested = temp_git_repo / "nested"
+    nested.mkdir()
+    (nested / "child.txt").write_text("child\n", encoding="utf-8")
+    subprocess.run(["git", "add", "nested/child.txt"], check=True)
+    tree_id = run_git_command(["write-tree"]).stdout.strip()
+
+    entries = list_git_tree_entries(
+        tree_id,
+        ["nested", "nested/child.txt", "missing"],
+    )
+
+    assert set(entries) == {"nested", "nested/child.txt"}
+    assert entries["nested"].object_type == "tree"
+    assert entries["nested"].mode == "040000"
+    assert entries["nested/child.txt"].object_type == "blob"
+
+
+def test_tree_entry_listing_uses_root_relative_paths_from_subdirectory(temp_git_repo):
+    """Exact path comparison must not depend on the process working directory."""
+    nested = temp_git_repo / "nested"
+    nested.mkdir()
+    (nested / "child.txt").write_text("child\n", encoding="utf-8")
+    subprocess.run(["git", "add", "nested/child.txt"], check=True)
+    tree_id = run_git_command(["write-tree"]).stdout.strip()
+    original_directory = Path.cwd()
+    try:
+        os.chdir(nested)
+        entries = list_git_tree_entries(tree_id, ["nested/child.txt"])
+    finally:
+        os.chdir(original_directory)
+
+    assert entries["nested/child.txt"].object_type == "blob"
+
+
+def test_tree_entry_listing_fails_closed_for_missing_tree(temp_git_repo):
+    """Operational lookup failure must not masquerade as an absent path."""
+    with pytest.raises(subprocess.CalledProcessError):
+        list_git_tree_entries("f" * 40, ["missing.txt"])
 
 
 def test_directory_snapshot_hashes_normal_files_in_one_batch(

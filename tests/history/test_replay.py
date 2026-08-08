@@ -4,11 +4,105 @@ from __future__ import annotations
 
 import gc
 import tracemalloc
+from dataclasses import replace
 
+import pytest
+
+from git_stage_batch.exceptions import CommandError
 from git_stage_batch.history.replay import materialize_history_output_trees
 from git_stage_batch.history.scan import acquire_history_plan_document
 
 from .conftest import git
+
+
+def test_history_replay_delegates_only_resolved_output_materialization(
+    linear_history_repo,
+):
+    document = acquire_history_plan_document(linear_history_repo.base)
+    first_output = replace(document.plan.outputs[0], materialization="RESOLVED")
+    document = replace(
+        document,
+        plan=replace(
+            document.plan,
+            outputs=(first_output, *document.plan.outputs[1:]),
+        ),
+    )
+    calls: list[tuple[int, str]] = []
+
+    def resolve_output(
+        callback_document,
+        output_index,
+        output,
+        parent_tree,
+        *,
+        env,
+    ):
+        assert callback_document is document
+        assert output is first_output
+        assert env is None
+        calls.append((output_index, parent_tree))
+        return document.snapshot.commits[0].tree
+
+    replay = materialize_history_output_trees(
+        document,
+        resolved_output_materializer=resolve_output,
+    )
+
+    assert calls == [(0, document.snapshot.base_tree)]
+    assert replay.final_tree == document.snapshot.final_tree
+
+
+def test_history_replay_rejects_empty_resolved_output(linear_history_repo):
+    document = acquire_history_plan_document(linear_history_repo.base)
+    first_output = replace(document.plan.outputs[0], materialization="RESOLVED")
+    document = replace(
+        document,
+        plan=replace(
+            document.plan,
+            outputs=(first_output, *document.plan.outputs[1:]),
+        ),
+    )
+
+    with pytest.raises(CommandError, match="resolves non-empty units.*empty"):
+        materialize_history_output_trees(
+            document,
+            resolved_output_materializer=(
+                lambda _document, _index, _output, parent_tree, **_kwargs: (
+                    parent_tree
+                )
+            ),
+        )
+
+
+@pytest.mark.parametrize(
+    ("candidate", "match"),
+    [
+        ("--not-an-object", "full tree object ID"),
+        ("0" * 40, "accessible tree object"),
+    ],
+)
+def test_history_replay_rejects_unvalidated_resolved_tree(
+    linear_history_repo,
+    candidate,
+    match,
+):
+    document = acquire_history_plan_document(linear_history_repo.base)
+    first_output = replace(document.plan.outputs[0], materialization="RESOLVED")
+    document = replace(
+        document,
+        plan=replace(
+            document.plan,
+            outputs=(first_output, *document.plan.outputs[1:]),
+        ),
+    )
+
+    with pytest.raises(CommandError, match=match):
+        materialize_history_output_trees(
+            document,
+            resolved_output_materializer=(
+                lambda _document, _index, _output, _parent, **_kwargs: candidate
+            ),
+        )
 
 
 def test_history_replay_avoids_line_scale_python_heap(tmp_path, monkeypatch):

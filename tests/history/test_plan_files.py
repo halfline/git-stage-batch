@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 
 import pytest
 
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.history import replay
-from git_stage_batch.history.plan_files import read_and_validate_history_plan
+from git_stage_batch.history.plan_files import (
+    read_and_validate_history_plan,
+    read_and_validate_history_plan_semantics,
+)
 from git_stage_batch.history.records import history_plan_document_record
 from git_stage_batch.history.scan import acquire_history_plan_document
 
@@ -313,6 +317,21 @@ def test_validate_stops_full_source_resolution_before_whole_replay(
 
     with pytest.raises(CommandError, match="explicit resolution workspace"):
         read_and_validate_history_plan(str(path))
+
+
+def test_semantic_validation_accepts_resolved_output_without_replay(
+    linear_history_repo,
+):
+    repo = linear_history_repo
+    path = repo.root / "plan.json"
+    plan = _plan(repo, path)
+    plan["plan"]["outputs"][0]["materialization"] = "RESOLVED"
+    _write_plan(path, plan)
+
+    document, plan_sha256 = read_and_validate_history_plan_semantics(str(path))
+
+    assert document.plan.outputs[0].materialization == "RESOLVED"
+    assert plan_sha256 == hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def test_validate_accepts_partitioned_secondary_with_later_residual(

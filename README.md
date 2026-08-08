@@ -26,7 +26,9 @@ deterministic refinement of clean, linear draft commits. Use hunks, lines, and
 batches to shape new commits around meaning, or use a validated semantic plan
 to reword or split commits, integrate later repairs, and reorder
 proven-independent changes in an existing local draft series while preserving
-its final Git tree.
+its final Git tree. Rewriting is limited to unpublished history by default; a
+verified force-push review-head exception permits only the local rewrite and
+neither performs nor authorizes a push.
 
 ## Features
 
@@ -89,8 +91,10 @@ Omit `--filter` when installing Claude skills if you also want the larger
 GitHub pull requests or GitLab merge requests by default, supports explicit
 `draft` and `audit` modes, handles forks and provider-native stacks, and never
 merges. Selecting publication or decomposition installs both refinement
-dependencies. Mutating refinement and publication accept only a clean, linear,
-unpublished range and provide a `resume` form for interruption.
+dependencies. Mutating refinement accepts only a clean, linear, unpublished
+range or an explicitly verified force-push review head. That exception permits
+only a local rewrite and neither performs nor authorizes a push. Refinement
+resumes through the product rewrite checkpoint and its exact next action.
 
 ## Example Workflow
 

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import gc
+import tracemalloc
 
 import pytest
 
 from git_stage_batch.exceptions import CommandError
-from git_stage_batch.history import safety
+from git_stage_batch.history import dependencies, safety
 from git_stage_batch.history.records import history_plan_document_record
 from git_stage_batch.history.scan import acquire_history_plan_document
 
@@ -55,6 +57,36 @@ def test_scan_captures_exact_commit_chain_and_keep_template(linear_history_repo)
     assert document.safety.mutation_ready is True
 
 
+def test_scan_preserves_an_empty_commit_as_a_unitless_output(linear_history_repo):
+    repo = linear_history_repo
+    git("commit", "--allow-empty", "-m", "Empty marker")
+    empty_commit = git("rev-parse", "HEAD")
+
+    document = acquire_history_plan_document(repo.base)
+
+    commit = document.snapshot.commits[-1]
+    output = document.plan.outputs[-1]
+    assert commit.commit_id == empty_commit
+    assert commit.parent == repo.tip
+    assert commit.parent_tree == commit.tree
+    assert commit.units == ()
+    assert output.operation == "KEEP"
+    assert output.source_commits == (empty_commit,)
+    assert output.unit_ids == ()
+
+
+def test_scan_reports_detached_head_as_a_mutation_blocker(linear_history_repo):
+    repo = linear_history_repo
+    git("checkout", "--detach", repo.tip)
+
+    document = acquire_history_plan_document(repo.base)
+
+    assert document.snapshot.tip_commit == repo.tip
+    assert document.snapshot.branch_ref is None
+    assert "detached-head" in document.safety.blockers
+    assert document.safety.mutation_ready is False
+
+
 def test_scan_records_messages_identities_and_tree_pairs(linear_history_repo):
     document = acquire_history_plan_document(linear_history_repo.base)
     commit = document.snapshot.commits[0]
@@ -70,6 +102,30 @@ def test_scan_records_messages_identities_and_tree_pairs(linear_history_repo):
     assert commit.units[0].source_commit == commit.commit_id
     assert len(commit.units[0].unit_id) == 64
     assert len(commit.units[0].patch_id) == 64
+
+
+def test_scan_records_compact_per_unit_dependency_evidence(linear_history_repo):
+    document = acquire_history_plan_document(linear_history_repo.base)
+    dependencies = document.snapshot.dependencies
+    record = history_plan_document_record(document)
+
+    assert [dependency.original_position for dependency in dependencies] == [0, 1]
+    assert [dependency.earliest_position for dependency in dependencies] == [0, 0]
+    assert all(dependency.barrier is None for dependency in dependencies)
+    assert record["snapshot"]["dependency_graph"] == {
+        "algorithm_version": 1,
+        "units": [
+            {
+                "unit_id": dependency.unit_id,
+                "original_position": dependency.original_position,
+                "earliest_position": dependency.earliest_position,
+                "barrier_unit_id": dependency.barrier_unit_id,
+                "barrier": dependency.barrier,
+                "detail": dependency.detail,
+            }
+            for dependency in dependencies
+        ],
+    }
 
 
 def test_scan_decodes_a_declared_commit_message_encoding(linear_history_repo):
@@ -207,7 +263,7 @@ def test_scan_unit_ids_ignore_repository_diff_display_configuration(
     assert second_ids == first_ids
 
 
-def test_scan_does_not_write_an_index_tree(linear_history_repo, monkeypatch):
+def test_scan_does_not_write_the_real_index_tree(linear_history_repo, monkeypatch):
     original_run_git_command = safety.run_git_command
 
     def reject_write_tree(arguments, *args, **kwargs):
@@ -223,6 +279,94 @@ def test_scan_does_not_write_an_index_tree(linear_history_repo, monkeypatch):
     assert document.safety.index_tree is None
     assert document.safety.index_clean is False
     assert "staged-index" in document.safety.blockers
+
+
+def test_scan_does_not_retain_dependency_candidate_trees(linear_history_repo):
+    before = git("count-objects", "-v")
+
+    acquire_history_plan_document(linear_history_repo.base)
+
+    assert git("count-objects", "-v") == before
+
+
+def test_scan_dependency_analysis_avoids_line_scale_python_heap(
+    tmp_path,
+    monkeypatch,
+):
+    line = b"history dependency payload " + b"x" * 480 + b"\n"
+    heap_peaks: list[int] = []
+
+    for line_count in (4096, 32768):
+        repository = tmp_path / f"repo-{line_count}"
+        repository.mkdir()
+        monkeypatch.chdir(repository)
+        git("init", "-q", "-b", "topic")
+        git("config", "user.name", "Test User")
+        git("config", "user.email", "test@example.com")
+        (repository / "anchor.txt").write_text("anchor\n", encoding="utf-8")
+        git("add", "anchor.txt")
+        git("commit", "-m", "Base")
+        base = git("rev-parse", "HEAD")
+        (repository / "large.txt").write_bytes(line * line_count)
+        git("add", "large.txt")
+        git("commit", "-m", "Add large dependency payload")
+
+        gc.collect()
+        tracemalloc.start()
+        try:
+            document = acquire_history_plan_document(base)
+            _current_heap, peak_heap = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+        heap_peaks.append(peak_heap)
+        assert len(document.snapshot.dependencies) == 1
+
+    small_peak, large_peak = heap_peaks
+    assert large_peak < small_peak + 64 * 1024
+
+
+def test_scan_groups_different_path_dependency_replay(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.chdir(tmp_path)
+    git("init", "-q", "-b", "topic")
+    git("config", "user.name", "Test User")
+    git("config", "user.email", "test@example.com")
+    path_count = 12
+    for index in range(path_count):
+        (tmp_path / f"path-{index}.txt").write_text("", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-m", "Base")
+    base = git("rev-parse", "HEAD")
+    for index in range(path_count):
+        (tmp_path / f"path-{index}.txt").write_text(
+            f"value {index}\n",
+            encoding="utf-8",
+        )
+        git("commit", "-am", f"Change path {index}")
+
+    real_apply = dependencies.apply_history_replay_unit
+    application_count = 0
+
+    def count_application(*args, **kwargs):
+        nonlocal application_count
+        application_count += 1
+        return real_apply(*args, **kwargs)
+
+    monkeypatch.setattr(
+        dependencies,
+        "apply_history_replay_unit",
+        count_application,
+    )
+
+    document = acquire_history_plan_document(base)
+
+    assert all(
+        dependency.earliest_position == 0
+        for dependency in document.snapshot.dependencies
+    )
+    assert application_count < path_count * 3
 
 
 def test_scan_reports_publication_of_an_older_range_commit(

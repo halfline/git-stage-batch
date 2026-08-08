@@ -75,6 +75,28 @@ def test_create_makes_one_fixup_per_target_and_preserves_unstaged_work(
     assert _git("diff") == unstaged_before
 
 
+def test_create_groups_multiple_exact_units_for_one_target(
+    fixup_create_repo,
+    capsys,
+):
+    _repo, source, base, _alpha_commit, _gamma_commit = fixup_create_repo
+    source.write_text("alpha combined\nbeta\ngamma combined\n")
+    _git("commit", "-am", "Change alpha and gamma")
+    target = _git("rev-parse", "HEAD")
+    source.write_text("alpha fixed\nbeta\ngamma fixed\n")
+    _git("add", "example.txt")
+
+    command_create_fixups(base, porcelain=True)
+
+    output = json.loads(capsys.readouterr().out)
+    assert len(output["units"]) == 2
+    assert len(output["groups"]) == 1
+    assert output["groups"][0]["target"] == target
+    assert len(output["groups"][0]["unit_ids"]) == 2
+    assert output["summary"]["created_commits"] == 1
+    assert _git("diff", "--cached") == ""
+
+
 def test_create_dry_run_does_not_mutate(fixup_create_repo, capsys):
     _repo, source, base, _alpha_commit, _gamma_commit = fixup_create_repo
     source.write_text("alpha fixed\nbeta\ngamma topic\n")

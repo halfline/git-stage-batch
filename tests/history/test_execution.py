@@ -152,7 +152,7 @@ def test_validate_rejects_integration_across_a_blocking_intermediate(
 
     with pytest.raises(
         CommandError,
-        match="cannot replay source commit|frozen final tree",
+        match="BLOCKED dependency|cannot replay source commit|frozen final tree",
     ):
         start_history_operation(str(path))
 

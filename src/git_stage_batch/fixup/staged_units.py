@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import hashlib
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import replace
 
@@ -28,23 +27,8 @@ from ..core.patch_headers import (
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.git_command import stream_git_diff
-from .models import FixupUnitKind, StagedFixupUnit
-
-
-def _unit_id(
-    kind: FixupUnitKind,
-    path: str,
-    payload_chunks: Iterable[bytes],
-) -> str:
-    digest = hashlib.sha256()
-    digest.update(b"git-stage-batch-fixup-unit-v1\0")
-    digest.update(kind.encode("ascii"))
-    digest.update(b"\0")
-    digest.update(path.encode("utf-8", errors="surrogateescape"))
-    digest.update(b"\0")
-    for chunk in payload_chunks:
-        digest.update(chunk)
-    return digest.hexdigest()
+from .models import FixupUnit, FixupUnitKind
+from .unit_ids import fixup_unit_id
 
 
 def _hunk_metadata(
@@ -82,7 +66,7 @@ def _insertion_anchors(header: HunkHeader) -> tuple[int, ...]:
 def _text_unit(
     item: SingleHunkPatch,
     patch_buffer: LineBuffer,
-) -> StagedFixupUnit:
+) -> FixupUnit:
     header, is_whole_file_addition, is_whole_file_deletion = _hunk_metadata(
         patch_buffer
     )
@@ -104,8 +88,13 @@ def _text_unit(
 
     anchor_lines = _insertion_anchors(header) if kind == "text-addition" else ()
     path = item.path()
-    return StagedFixupUnit(
-        unit_id=_unit_id(kind, path, patch_buffer.byte_chunks()),
+    lineage_ranges = (
+        ((header.old_start, header.old_start + header.old_len - 1),)
+        if header.old_len
+        else tuple((line, line) for line in anchor_lines)
+    )
+    return FixupUnit(
+        unit_id=fixup_unit_id(kind, path, patch_buffer.byte_chunks()),
         path=path,
         kind=kind,
         patch_buffer=patch_buffer,
@@ -113,6 +102,7 @@ def _text_unit(
         old_len=header.old_len,
         new_start=header.new_start,
         new_len=header.new_len,
+        lineage_ranges=lineage_ranges,
         anchor_line_numbers=anchor_lines,
         unsupported_reason=unsupported_reason,
     )
@@ -124,10 +114,10 @@ def _atomic_unit(
     path: str,
     payload: str,
     reason: str,
-) -> StagedFixupUnit:
+) -> FixupUnit:
     payload_bytes = payload.encode("utf-8", errors="surrogateescape")
-    return StagedFixupUnit(
-        unit_id=_unit_id(kind, path, (payload_bytes,)),
+    return FixupUnit(
+        unit_id=fixup_unit_id(kind, path, (payload_bytes,)),
         path=path,
         kind=kind,
         patch_buffer=None,
@@ -136,9 +126,9 @@ def _atomic_unit(
 
 
 @contextmanager
-def acquire_staged_fixup_units() -> Iterator[tuple[StagedFixupUnit, ...]]:
+def acquire_staged_fixup_units() -> Iterator[tuple[FixupUnit, ...]]:
     """Acquire deterministic units and their bounded patch buffers."""
-    units: list[StagedFixupUnit] = []
+    units: list[FixupUnit] = []
     owned_buffers: list[LineBuffer] = []
     renamed_paths: set[str] = set()
     diff_lines = stream_git_diff(

@@ -1,4 +1,4 @@
-"""Range-compressed exact-line ancestry evidence for staged fixup units."""
+"""Range-compressed exact-line ancestry evidence for fixup units."""
 
 from __future__ import annotations
 
@@ -7,7 +7,12 @@ from dataclasses import dataclass
 
 from ..utils.git_command import stream_git_command
 from ..utils.git_repository import object_id_hex_length
-from .models import FixupRange, LineageEvidence, StagedFixupUnit
+from .models import (
+    FixupRange,
+    FixupUnit,
+    LineageEvidence,
+    LineageHistoryEvidence,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +61,7 @@ def _blame_range(
     start: int,
     end: int,
     *,
+    head_commit: str,
     in_range: set[str],
     object_id_width: int,
 ) -> _BlameRangeSummary:
@@ -72,7 +78,7 @@ def _blame_range(
             "--no-ignore-revs-file",
             "-L",
             f"{start},{end}",
-            "HEAD",
+            head_commit,
             "--",
             path,
         ],
@@ -101,18 +107,21 @@ def _blame_range(
     )
 
 
-def _queried_ranges(unit: StagedFixupUnit) -> tuple[tuple[int, int], ...]:
+def lineage_query_ranges(unit: FixupUnit) -> tuple[tuple[int, int], ...]:
+    """Return the unit's exact, normalized source ranges."""
+    if unit.lineage_ranges:
+        return unit.lineage_ranges
     if unit.old_start is not None and unit.old_len:
         return ((unit.old_start, unit.old_start + unit.old_len - 1),)
     return tuple((line_number, line_number) for line_number in unit.anchor_line_numbers)
 
 
 def analyze_lineage(
-    unit: StagedFixupUnit,
+    unit: FixupUnit,
     commit_range: FixupRange,
 ) -> LineageEvidence:
     """Summarize incremental blame without retaining per-line observations."""
-    queried_ranges = _queried_ranges(unit)
+    queried_ranges = lineage_query_ranges(unit)
     queried_line_count = sum(end - start + 1 for start, end in queried_ranges)
     in_range = set(commit_range.commits_newest_first)
     object_id_width = object_id_hex_length()
@@ -126,6 +135,7 @@ def analyze_lineage(
                 unit.path,
                 start,
                 end,
+                head_commit=commit_range.head_commit,
                 in_range=in_range,
                 object_id_width=object_id_width,
             )
@@ -142,15 +152,15 @@ def analyze_lineage(
         for commit in commit_range.commits_newest_first
         if commit in candidate_witnesses
     )
-    if unit.old_len:
-        conclusive = (
-            queried_line_count > 0
-            and resolved_line_count == queried_line_count
-            and in_range_line_count == queried_line_count
-            and len(ordered_candidates) == 1
+    conclusive = (
+        queried_line_count > 0
+        and resolved_line_count == queried_line_count
+        and len(ordered_candidates) == 1
+        and (
+            unit.kind == "text-addition"
+            or in_range_line_count == queried_line_count
         )
-    else:
-        conclusive = len(ordered_candidates) == 1
+    )
     return LineageEvidence(
         candidates=ordered_candidates,
         queried_ranges=queried_ranges,
@@ -158,4 +168,59 @@ def analyze_lineage(
         resolved_line_count=resolved_line_count,
         in_range_line_count=in_range_line_count,
         conclusive=conclusive,
+    )
+
+
+def analyze_lineage_history(
+    unit: FixupUnit,
+    commit_range: FixupRange,
+) -> LineageHistoryEvidence:
+    """Find in-range commits that touched any exact source range.
+
+    One ``git log -L`` process is used per disjoint range. Candidate storage is
+    bounded by the number of commits in the already-materialized fixup range,
+    rather than by the number of selected lines or log records.
+    """
+    queried_ranges = lineage_query_ranges(unit)
+    object_id_width = object_id_hex_length()
+    in_range = set(commit_range.commits_newest_first)
+    candidate_witnesses: set[str] = set()
+    completed_range_count = 0
+
+    for start, end in queried_ranges:
+        try:
+            for line in stream_git_command(
+                [
+                    "log",
+                    "-L",
+                    f"{start},{end}:{unit.path}",
+                    f"{commit_range.base_commit}..{commit_range.head_commit}",
+                    "--format=%H",
+                    "--no-patch",
+                ],
+                requires_index_lock=False,
+                literal_pathspecs=True,
+            ):
+                token = line.strip()
+                if len(token) != object_id_width:
+                    continue
+                try:
+                    commit = token.decode("ascii")
+                    int(commit, 16)
+                except (UnicodeDecodeError, ValueError):
+                    continue
+                if commit in in_range:
+                    candidate_witnesses.add(commit)
+        except (OSError, subprocess.CalledProcessError):
+            continue
+        completed_range_count += 1
+
+    return LineageHistoryEvidence(
+        candidates=tuple(
+            commit
+            for commit in commit_range.commits_newest_first
+            if commit in candidate_witnesses
+        ),
+        queried_ranges=queried_ranges,
+        completed_range_count=completed_range_count,
     )

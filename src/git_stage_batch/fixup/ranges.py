@@ -7,6 +7,7 @@ import subprocess
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.git_command import run_git_command
+from ..utils.git_repository import get_git_object_format
 from .models import FixupRange
 
 
@@ -109,6 +110,7 @@ def resolve_fixup_range(boundary: str | None) -> FixupRange:
     _require_ancestor(base, head_commit)
     commits = _require_linear_range(base, head_commit)
     return FixupRange(
+        object_format=get_git_object_format(),
         base_commit=base,
         head_commit=head_commit,
         commits_newest_first=commits,

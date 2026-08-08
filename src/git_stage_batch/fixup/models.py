@@ -32,6 +32,10 @@ FixupUnitStatus = Literal[
 ]
 
 PlacementStatus = Literal["barrier", "commutes-through", "unknown"]
+SuggestFixupCandidateSource = Literal[
+    "lineage-history",
+    "placement-barrier",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,11 +45,12 @@ class FixupRange:
     base_commit: str
     head_commit: str
     commits_newest_first: tuple[str, ...]
+    object_format: str = "sha1"
 
 
 @dataclass(frozen=True, slots=True)
-class StagedFixupUnit:
-    """One exact staged change unit considered for target attribution."""
+class FixupUnit:
+    """One exact change unit considered for target attribution."""
 
     unit_id: str
     path: str
@@ -55,6 +60,7 @@ class StagedFixupUnit:
     old_len: int | None = None
     new_start: int | None = None
     new_len: int | None = None
+    lineage_ranges: tuple[tuple[int, int], ...] = ()
     anchor_line_numbers: tuple[int, ...] = ()
     unsupported_reason: str | None = None
 
@@ -66,7 +72,7 @@ class StagedFixupUnit:
 
 @dataclass(frozen=True, slots=True)
 class LineageEvidence:
-    """Range-compressed exact-line history evidence for a staged unit.
+    """Range-compressed exact-line history evidence for a fixup unit.
 
     ``candidates`` retains at most two distinct in-range owner witnesses. Two
     are sufficient to distinguish unique attribution from ambiguity without
@@ -89,8 +95,32 @@ class LineageEvidence:
 
 
 @dataclass(frozen=True, slots=True)
+class LineageHistoryEvidence:
+    """Commits that touched the unit's exact source ranges in the range."""
+
+    candidates: tuple[str, ...]
+    queried_ranges: tuple[tuple[int, int], ...]
+    completed_range_count: int
+
+    @property
+    def complete(self) -> bool:
+        """Return whether every exact source range was searched."""
+        return self.completed_range_count == len(self.queried_ranges)
+
+
+@dataclass(frozen=True, slots=True)
+class SuggestFixupCandidate:
+    """One suggestion candidate and the evidence that caused its inclusion."""
+
+    commit: str
+    iteration: int
+    total: int
+    sources: tuple[SuggestFixupCandidateSource, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class PlacementEvidence:
-    """Result of commuting a staged unit backward through a linear range."""
+    """Result of commuting a fixup unit backward through a linear range."""
 
     status: PlacementStatus
     barrier: str | None
@@ -100,9 +130,9 @@ class PlacementEvidence:
 
 @dataclass(frozen=True, slots=True)
 class FixupUnitAnalysis:
-    """Combined lineage and placement decision for one staged unit."""
+    """Combined lineage and placement decision for one fixup unit."""
 
-    unit: StagedFixupUnit
+    unit: FixupUnit
     status: FixupUnitStatus
     target: str | None
     eligible: bool

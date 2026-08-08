@@ -12,7 +12,7 @@ from ..utils.git_command import (
     stream_git_command_bytes,
 )
 from ..utils.git_index import git_read_tree, git_write_tree, temp_git_index
-from .models import FixupRange, PlacementEvidence, StagedFixupUnit
+from .models import FixupRange, FixupUnit, PlacementEvidence
 
 
 def tree_for_commit(commit: str) -> str:
@@ -87,10 +87,10 @@ def apply_patch_to_tree(
 
 
 def analyze_placement(
-    unit: StagedFixupUnit,
+    unit: FixupUnit,
     commit_range: FixupRange,
 ) -> PlacementEvidence:
-    """Find the first commit the staged unit cannot commute backward past."""
+    """Find the first commit the fixup unit cannot commute backward past."""
     if unit.patch_buffer is None:
         return PlacementEvidence(
             status="unknown",

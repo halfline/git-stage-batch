@@ -10,129 +10,22 @@ from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.git_command import run_git_command
 from ..utils.git_index import git_write_tree
-from ..utils.git_repository import get_git_object_format
+from .analysis import (
+    combine_fixup_evidence,
+    unsupported_fixup_unit_analysis,
+)
 from .commutation import analyze_placement, tree_for_commit
 from .lineage import analyze_lineage
 from .models import (
     FixupCreatePlan,
     FixupTargetGroup,
     FixupUnitAnalysis,
-    LineageEvidence,
-    PlacementEvidence,
-    StagedFixupUnit,
 )
 from .ranges import resolve_fixup_range
 from .staged_units import acquire_staged_fixup_units
 
 
 _AUTOSQUASH_PREFIXES = ("fixup! ", "amend! ", "squash! ")
-
-
-def _unsupported_analysis(unit: StagedFixupUnit) -> FixupUnitAnalysis:
-    return FixupUnitAnalysis(
-        unit=unit,
-        status="unsupported",
-        target=None,
-        eligible=False,
-        reason_code=unit.unsupported_reason or "unsupported-change",
-        lineage=LineageEvidence(
-            candidates=(),
-            queried_ranges=(),
-            queried_line_count=0,
-            resolved_line_count=0,
-            in_range_line_count=0,
-            conclusive=False,
-        ),
-        placement=PlacementEvidence(
-            status="unknown",
-            barrier=None,
-            commuted_across=(),
-            detail=unit.unsupported_reason,
-        ),
-    )
-
-
-def _combine_evidence(
-    unit: StagedFixupUnit,
-    lineage: LineageEvidence,
-    placement: PlacementEvidence,
-) -> FixupUnitAnalysis:
-    if placement.status == "unknown":
-        return FixupUnitAnalysis(
-            unit=unit,
-            status="unknown",
-            target=None,
-            eligible=False,
-            reason_code=placement.detail or "placement-analysis-failed",
-            lineage=lineage,
-            placement=placement,
-        )
-
-    if len(lineage.candidates) > 1:
-        return FixupUnitAnalysis(
-            unit=unit,
-            status="ambiguous",
-            target=None,
-            eligible=False,
-            reason_code="multiple-lineage-candidates",
-            lineage=lineage,
-            placement=placement,
-        )
-
-    lineage_target = lineage.unique_target
-    barrier = placement.barrier
-    if lineage_target is not None and barrier is not None:
-        if lineage_target == barrier:
-            return FixupUnitAnalysis(
-                unit=unit,
-                status="agreed",
-                target=barrier,
-                eligible=True,
-                reason_code="lineage-and-placement-agree",
-                lineage=lineage,
-                placement=placement,
-            )
-        return FixupUnitAnalysis(
-            unit=unit,
-            status="disagreement",
-            target=None,
-            eligible=False,
-            reason_code="lineage-and-placement-disagree",
-            lineage=lineage,
-            placement=placement,
-        )
-
-    if lineage_target is not None and placement.status == "commutes-through":
-        return FixupUnitAnalysis(
-            unit=unit,
-            status="lineage-only",
-            target=lineage_target,
-            eligible=True,
-            reason_code="unique-lineage-and-free-placement",
-            lineage=lineage,
-            placement=placement,
-        )
-
-    if barrier is not None:
-        return FixupUnitAnalysis(
-            unit=unit,
-            status="placement-only",
-            target=barrier,
-            eligible=False,
-            reason_code="placement-barrier-without-lineage",
-            lineage=lineage,
-            placement=placement,
-        )
-
-    return FixupUnitAnalysis(
-        unit=unit,
-        status="unresolved",
-        target=None,
-        eligible=False,
-        reason_code="no-target-evidence",
-        lineage=lineage,
-        placement=placement,
-    )
 
 
 def _commit_subject(commit: str) -> str:
@@ -206,11 +99,11 @@ def acquire_fixup_create_plan(
         analyses: list[FixupUnitAnalysis] = []
         for unit in units:
             if not unit.is_supported_text:
-                analyses.append(_unsupported_analysis(unit))
+                analyses.append(unsupported_fixup_unit_analysis(unit))
                 continue
             lineage = analyze_lineage(unit, commit_range)
             placement = analyze_placement(unit, commit_range)
-            analyses.append(_combine_evidence(unit, lineage, placement))
+            analyses.append(combine_fixup_evidence(unit, lineage, placement))
 
         current_head = run_git_command(
             ["rev-parse", "--verify", "HEAD^{commit}"],
@@ -228,7 +121,7 @@ def acquire_fixup_create_plan(
         frozen_analyses = tuple(analyses)
         yield FixupCreatePlan(
             schema_version=1,
-            object_format=get_git_object_format(),
+            object_format=commit_range.object_format,
             commit_range=commit_range,
             head_tree=head_tree,
             index_tree=index_tree,

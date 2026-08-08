@@ -23,7 +23,7 @@ from .models import (
     FixupCreatePlan,
     FixupCreateResult,
     FixupTargetGroup,
-    StagedFixupUnit,
+    FixupUnit,
 )
 
 
@@ -75,7 +75,7 @@ def _commit_arguments(group: FixupTargetGroup, marker: str) -> list[str]:
 
 
 def _patch_chunks_for_units(
-    units: tuple[StagedFixupUnit, ...],
+    units: tuple[FixupUnit, ...],
 ) -> Iterator[bytes]:
     for unit in units:
         if unit.patch_buffer is not None:

@@ -7778,3 +7778,22 @@ msgstr[2] "Записано {count} вирішених виводів."
 #, python-brace-format
 msgid "Then run: {command}"
 msgstr "Потім виконайте: {command}"
+
+# Completed resolution validation translations.
+msgid "Completed private rewrite-resolution workspace"
+msgstr "Завершена приватна робоча область вирішення переписування"
+
+#, python-brace-format
+msgid "{count} resolved output is authenticated."
+msgid_plural "{count} resolved outputs are authenticated."
+msgstr[0] "Автентифіковано {count} вирішений вивід."
+msgstr[1] "Автентифіковано {count} вирішені виводи."
+msgstr[2] "Автентифіковано {count} вирішених виводів."
+
+#, python-brace-format
+msgid "Resolution workspace: {workspace}"
+msgstr "Робоча область вирішення: {workspace}"
+
+#, python-brace-format
+msgid "Resolution completion SHA-256: {sha256}"
+msgstr "SHA-256 завершення вирішення: {sha256}"

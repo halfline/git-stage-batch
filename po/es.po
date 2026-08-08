@@ -7792,3 +7792,21 @@ msgstr[1] "Se registraron {count} salidas resueltas."
 #, python-brace-format
 msgid "Then run: {command}"
 msgstr "A continuación, ejecute: {command}"
+
+# Completed resolution validation translations.
+msgid "Completed private rewrite-resolution workspace"
+msgstr "Espacio de trabajo privado de resolución de la reescritura completado"
+
+#, python-brace-format
+msgid "{count} resolved output is authenticated."
+msgid_plural "{count} resolved outputs are authenticated."
+msgstr[0] "Se autenticó {count} salida resuelta."
+msgstr[1] "Se autenticaron {count} salidas resueltas."
+
+#, python-brace-format
+msgid "Resolution workspace: {workspace}"
+msgstr "Espacio de trabajo de resolución: {workspace}"
+
+#, python-brace-format
+msgid "Resolution completion SHA-256: {sha256}"
+msgstr "SHA-256 de finalización de la resolución: {sha256}"

@@ -7714,3 +7714,22 @@ msgstr[2] "Povolené cesty:"
 #, python-brace-format
 msgid "Then run: {command}"
 msgstr "Poté spusťte: {command}"
+
+# Completed resolution validation translations.
+msgid "Completed private rewrite-resolution workspace"
+msgstr "Dokončený soukromý pracovní prostor pro řešení přepisu"
+
+#, python-brace-format
+msgid "{count} resolved output is authenticated."
+msgid_plural "{count} resolved outputs are authenticated."
+msgstr[0] "Byl ověřen {count} vyřešený výstup."
+msgstr[1] "Byly ověřeny {count} vyřešené výstupy."
+msgstr[2] "Bylo ověřeno {count} vyřešených výstupů."
+
+#, python-brace-format
+msgid "Resolution workspace: {workspace}"
+msgstr "Pracovní prostor řešení: {workspace}"
+
+#, python-brace-format
+msgid "Resolution completion SHA-256: {sha256}"
+msgstr "SHA-256 dokončení řešení: {sha256}"

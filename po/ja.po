@@ -7250,3 +7250,20 @@ msgstr[0] "許可されたパス:"
 #, python-brace-format
 msgid "Then run: {command}"
 msgstr "次に実行してください: {command}"
+
+# Completed resolution validation translations.
+msgid "Completed private rewrite-resolution workspace"
+msgstr "完了済みの非公開書き換え解決ワークスペース"
+
+#, python-brace-format
+msgid "{count} resolved output is authenticated."
+msgid_plural "{count} resolved outputs are authenticated."
+msgstr[0] "解決済み出力を {count} 件認証しました。"
+
+#, python-brace-format
+msgid "Resolution workspace: {workspace}"
+msgstr "解決ワークスペース: {workspace}"
+
+#, python-brace-format
+msgid "Resolution completion SHA-256: {sha256}"
+msgstr "解決完了の SHA-256: {sha256}"

@@ -7261,3 +7261,20 @@ msgstr[0] "허용된 경로:"
 #, python-brace-format
 msgid "Then run: {command}"
 msgstr "그런 다음 실행하십시오: {command}"
+
+# Completed resolution validation translations.
+msgid "Completed private rewrite-resolution workspace"
+msgstr "완료된 비공개 재작성 해결 작업 공간"
+
+#, python-brace-format
+msgid "{count} resolved output is authenticated."
+msgid_plural "{count} resolved outputs are authenticated."
+msgstr[0] "해결된 출력 {count}개를 인증했습니다."
+
+#, python-brace-format
+msgid "Resolution workspace: {workspace}"
+msgstr "해결 작업 공간: {workspace}"
+
+#, python-brace-format
+msgid "Resolution completion SHA-256: {sha256}"
+msgstr "해결 완료 SHA-256: {sha256}"

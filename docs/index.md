@@ -36,7 +36,9 @@ This clarity assists contributors explore the codebase, maintainers review chang
 </div>
 
 <div style="font-size: 1.1em; font-weight: 500; max-width: 42em; margin: 0 auto 2em;">
-<strong>git-stage-batch</strong> helps you build that history incrementally by letting you stage changes hunk-by-hunk or line-by-line, shaping commits around meaning instead of the order the edits happened.
+<strong>git-stage-batch</strong> helps you build or refine that history: stage
+working-tree changes hunk-by-hunk or line-by-line, or audit and rewrite a clean,
+linear commit range while preserving its final tree.
 </div>
 
 <div style="text-align: center; margin: 2em 0 3em;">
@@ -121,6 +123,7 @@ Similar to `git add -p` but **more granular and flexible**:
 - ✅ **State persistence** - Resume staging across multiple invocations
 - ✅ **Colored output** - Clear visual distinction in your terminal
 - ✅ **File operations** - Stage/skip entire files at once
+- ✅ **Draft-history refinement** - Plan, validate, and execute deterministic rewrites
 - ✅ **No dependencies** - Pure Python standard library
 
 ## Quick Start
@@ -348,9 +351,13 @@ Automatically detects and clears cached state when files are committed or modifi
 
 ### Is this rewriting Git history?
 
-Usually no.
+Sometimes, intentionally.
 
-git-stage-batch is intended for organizing draft patch sets before they are committed or shared. It helps you turn a messy working tree into a clean sequence of logical commits.
+The staging and batch commands organize uncommitted changes so you can create
+new commits without rewriting existing ones. The `rewrite` command and bundled
+refinement workflows are specifically for rewriting a clean, linear series of
+local draft commits. They can reword commits and integrate later repairs while
+requiring the final Git tree to remain unchanged.
 
 The normal workflow stages selected working-tree changes into new commits
 rather than rewriting existing commits. Assistant decomposition workflows may
@@ -419,16 +426,17 @@ commits. The niche is different:
 
 - `git-stage-batch` is for Git-native repositories and workflows. It works with
   Git's index, regular Git commits, and existing Git hosting without asking the
-  project or contributor to adopt a new VCS workflow.
+  project or contributor to adopt a new VCS workflow. It also provides a
+  validated rewrite workflow for clean, linear local draft history.
 - `jj` is a broader replacement workflow for people who want Jujutsu's commit
   model, operation log, automatic rebasing, and history-editing primitives.
 - `jj-hunk` is the hunk-selection layer for that `jj` workflow, especially when
   an agent or script needs to select hunks non-interactively.
 
-If your project and collaborators use Git, `git-stage-batch` fills the
-automation-friendly gap between `git add -p` and larger history-rewrite tools.
-If your project already uses `jj`, `jj-hunk` may be the more natural tool for
-the same kind of commit curation.
+If your project and collaborators use Git, `git-stage-batch` combines
+automation-friendly index staging with constrained, auditable refinement of
+draft commits. If your project already uses `jj`, `jj-hunk` may be the more
+natural tool for the same kind of commit curation.
 
 ### Is this safe for protected branches?
 
@@ -440,12 +448,15 @@ Once commits are pushed or merged into protected branches, standard Git practice
 
 ### Is this similar to git rebase -i?
 
-It solves a related problem but at a different stage.
+The staging commands help create better commits in the first place. The
+`rewrite` command overlaps with `git rebase -i`, but uses a different contract:
 
-- `git rebase -i` reorganizes existing commits
-- `git-stage-batch` helps you create better commits in the first place
+- `git rebase -i` applies an interactive todo list to existing commits.
+- `git-stage-batch rewrite` consumes a machine-readable semantic plan, checks
+  source and patch-unit conservation, replays the complete result, requires the
+  final tree to match, and records recovery state before changing the branch.
 
-Many developers will still use `rebase -i` occasionally, but with curated commits it becomes much less necessary.
+Both can replace commit objects, so keep either workflow to local draft history.
 
 ### Why curate Git history at all?
 

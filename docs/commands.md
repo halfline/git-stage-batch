@@ -982,7 +982,7 @@ its excluded base.
 
 ---
 
-## History Refinement Inspection
+## History Refinement
 
 ### `rewrite scan`
 
@@ -1015,17 +1015,57 @@ Validate edited semantic input against a freshly regenerated snapshot:
 ❯ git-stage-batch rewrite validate rewrite-plan.json --porcelain
 ```
 
-The first executor schema accepts one ordered `KEEP` or `REWORD` output per
-source commit. Each output must consume the exact ordered source-unit list and
-preserve the source author. `KEEP` also preserves the message and encoding;
-`REWORD` explicitly supplies an encodable replacement. Rationale text is
-informational and never substitutes for tree or patch conservation.
+The executor schema accepts ordered `KEEP`, `REWORD`, and `INTEGRATE` outputs.
+`KEEP` and `REWORD` consume one source commit. `INTEGRATE` consumes at least
+two source commits into the earliest target position while outputs for
+intervening sources retain their order. Each output must list the exact
+concatenated source-unit sequence and preserve its target source author.
+`KEEP` also preserves the message and encoding; `REWORD` and `INTEGRATE`
+explicitly supply an encodable message. Rationale text is informational and
+never substitutes for tree or patch conservation.
 
 All snapshot fields are immutable. Validation rejects stale object IDs,
 forged metadata, omitted or duplicated units, reordered commits, abbreviated
 IDs, duplicate JSON keys, and unknown fields. The input safety block is not
 trusted: live index, worktree, operation, publication, and upstream facts are
-collected again and returned in the validation report.
+collected again and returned in the validation report. Validation replays the
+complete plan with Git's real full-index patches in a temporary object
+quarantine and requires the frozen final tree without retaining candidate
+objects or refs.
+
+### `rewrite apply`
+
+Build, verify, and atomically update the checked-out branch:
+
+```bash
+❯ git-stage-batch rewrite apply rewrite-plan.json
+❯ git-stage-batch rewrite apply rewrite-plan.json --porcelain
+```
+
+Apply creates a private recovery ref, records a durable `PREPARED` checkpoint,
+then builds deterministic unsigned commit objects behind an operation-owned
+output ref. It preserves the planned author, target source committer, declared
+encoding, exact message bytes, and every output tree. Invalidated source
+signature headers are omitted and recorded by header name and digest; payloads
+never enter the plan or audit record.
+
+The checked-out branch remains at its original tip until the entire output
+chain has been mechanically replayed, independently verified, and shown to
+have the frozen final tree. Apply then performs one compare-and-swap branch
+update. It never runs interactive rebase, invokes commit hooks, edits the
+worktree, contacts a remote, or pushes or force-pushes.
+
+Any remote-tracking ref containing a source commit blocks apply by default.
+After separately verifying that a ref is an authorized force-push review head,
+name that exact full ref explicitly:
+
+```bash
+❯ git-stage-batch rewrite apply rewrite-plan.json \
+    --allow-published-ref refs/remotes/origin/my-review
+```
+
+Repeat the option for every containing remote ref. The exception authorizes
+only the local rewrite; it never authorizes a later push.
 
 ### `rewrite status`
 
@@ -1036,13 +1076,52 @@ Inspect the durable state machine used by the rewrite executor:
 ❯ git-stage-batch rewrite status --porcelain
 ```
 
-Before an apply operation exists, status reports no active operation. For an
-active checkpoint it reports the closed phase, exact next action, completed
-and planned output counts, recovery and output refs, last verified tree, and
-live resume blockers. The private output ref keeps a partially built linear
-chain reachable. Status verifies both owned refs, the persisted plan digest,
-source/plan identity, output objects, branch compare-and-swap expectation,
-index, and worktree before declaring continuation safe.
+Before any operation exists, status reports no active operation. For an active
+checkpoint it reports the closed phase, exact next action, completed and
+planned output counts, pending publication, recovery and output refs, last
+verified tree, and live resume blockers. After completion or abort it reports
+the latest terminal operation without occupying the active slot. The private
+output ref keeps a partially built linear chain reachable. Status verifies
+both owned refs, persisted plan and verification digests, source/plan
+identity, output objects, branch compare-and-swap expectation, index, and
+worktree before declaring continuation safe.
+
+### `rewrite continue`
+
+```bash
+❯ git-stage-batch rewrite continue
+```
+
+Continue revalidates the checkpoint and executes only its recorded next
+action. Each output uses a pending commit/tree checkpoint around the output-ref
+compare-and-swap, so interruption before or after ref publication converges on
+the same deterministic object. The final branch CAS is similarly reconciled
+if it completed before the terminal state write.
+
+### `rewrite abort`
+
+```bash
+❯ git-stage-batch rewrite abort
+```
+
+Abort first persists restore intent. It retracts an operation-owned pending
+output ref and restores the original branch only if the live tip is still the
+original value or the fully verified output value. Concurrent or manual
+foreign movement is never overwritten; the recovery ref and a compare-and-swap
+manual command remain available.
+
+### `rewrite verify`
+
+```bash
+❯ git-stage-batch rewrite verify
+❯ git-stage-batch rewrite verify --porcelain
+```
+
+Verify works on the active operation or latest complete operation. It
+regenerates the frozen source facts independently of current `HEAD`, replays
+every output tree, rehashes each normalized unsigned commit, checks parents,
+authors, committers, messages, encodings, and signature removal, and compares
+the regenerated audit record with its durable digest.
 
 ---
 

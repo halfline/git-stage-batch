@@ -32,6 +32,7 @@ FixupUnitStatus = Literal[
 ]
 
 PlacementStatus = Literal["barrier", "commutes-through", "unknown"]
+FixupAssignmentBasis = Literal["automatic", "explicit"]
 SuggestFixupCandidateSource = Literal[
     "lineage-history",
     "placement-barrier",
@@ -153,6 +154,15 @@ class FixupTargetGroup:
 
 
 @dataclass(frozen=True, slots=True)
+class FixupAssignment:
+    """Reviewed assignment of one exact staged unit to one target commit."""
+
+    unit_id: str
+    target: str
+    basis: FixupAssignmentBasis
+
+
+@dataclass(frozen=True, slots=True)
 class FixupCreatePlan:
     """Frozen staged-fixup plan bound to exact repository objects."""
 
@@ -162,6 +172,7 @@ class FixupCreatePlan:
     head_tree: str
     index_tree: str
     units: tuple[FixupUnitAnalysis, ...]
+    assignments: tuple[FixupAssignment, ...]
     groups: tuple[FixupTargetGroup, ...]
 
     @property

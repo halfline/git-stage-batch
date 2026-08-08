@@ -17,6 +17,7 @@ from .analysis import (
 from .commutation import analyze_placement, tree_for_commit
 from .lineage import analyze_lineage
 from .models import (
+    FixupAssignment,
     FixupCreatePlan,
     FixupTargetGroup,
     FixupUnitAnalysis,
@@ -37,12 +38,17 @@ def _commit_subject(commit: str) -> str:
 
 def _target_groups(
     analyses: tuple[FixupUnitAnalysis, ...],
+    assignments: tuple[FixupAssignment, ...],
     commits_newest_first: tuple[str, ...],
 ) -> tuple[FixupTargetGroup, ...]:
     unit_ids_by_target: dict[str, list[str]] = defaultdict(list)
+    assignments_by_id = {
+        assignment.unit_id: assignment for assignment in assignments
+    }
     for analysis in analyses:
-        if analysis.eligible and analysis.target is not None:
-            unit_ids_by_target[analysis.target].append(analysis.unit.unit_id)
+        assignment = assignments_by_id.get(analysis.unit.unit_id)
+        if assignment is not None:
+            unit_ids_by_target[assignment.target].append(analysis.unit.unit_id)
 
     if not unit_ids_by_target:
         return ()
@@ -119,6 +125,15 @@ def acquire_fixup_create_plan(
             )
 
         frozen_analyses = tuple(analyses)
+        automatic_assignments = tuple(
+            FixupAssignment(
+                unit_id=analysis.unit.unit_id,
+                target=analysis.target,
+                basis="automatic",
+            )
+            for analysis in frozen_analyses
+            if analysis.eligible and analysis.target is not None
+        )
         yield FixupCreatePlan(
             schema_version=1,
             object_format=commit_range.object_format,
@@ -126,8 +141,10 @@ def acquire_fixup_create_plan(
             head_tree=head_tree,
             index_tree=index_tree,
             units=frozen_analyses,
+            assignments=automatic_assignments,
             groups=_target_groups(
                 frozen_analyses,
+                automatic_assignments,
                 commit_range.commits_newest_first,
             ),
         )

@@ -11,7 +11,10 @@ import pytest
 import git_stage_batch.history.state as history_state
 from git_stage_batch.commands.rewrite_status import command_rewrite_status
 from git_stage_batch.exceptions import CommandError
-from git_stage_batch.history.json_files import history_json_sha256
+from git_stage_batch.history.json_files import (
+    history_json_sha256,
+    write_history_json_file,
+)
 from git_stage_batch.history.models import (
     CURRENT_HISTORY_STATE_SCHEMA_VERSION,
     HistoryNextAction,
@@ -362,7 +365,40 @@ def test_initialize_publishes_private_recoverable_checkpoint(
     assert stat.S_IMODE(operation_directory.stat().st_mode) == 0o700
     assert stat.S_IMODE((operation_directory / "plan.json").stat().st_mode) == 0o600
     assert stat.S_IMODE((operation_directory / "state.json").stat().st_mode) == 0o600
-    assert inspect_history_operation(state).resume_ready is True
+    inspection = inspect_history_operation(state)
+    assert inspection.resolution_matches is None
+    assert inspection.resume_ready is True
+
+
+def test_schema_two_exact_operation_needs_no_resolution_bundle(
+    linear_history_repo,
+):
+    state, document = _prepared_state(linear_history_repo)
+    legacy = replace(state, schema_version=2)
+    _initialize_history_operation(legacy, document)
+    legacy_plan = history_plan_document_record(document)
+    legacy_plan["schema_version"] = 3
+    legacy_plan["plan"].pop("partitioned_units")
+    for output in legacy_plan["plan"]["outputs"]:
+        output.pop("materialization")
+        output["unit_ids"] = output.pop("source_unit_ids")
+    legacy = replace(
+        legacy,
+        plan_sha256=history_json_sha256(legacy_plan),
+    )
+    write_history_json_file(
+        history_operation_directory(legacy.operation_id) / "plan.json",
+        legacy_plan,
+    )
+    write_history_json_file(
+        history_operation_directory(legacy.operation_id) / "state.json",
+        history_state._state_record(legacy),
+    )
+
+    inspection = inspect_history_operation(legacy)
+
+    assert inspection.resolution_matches is None
+    assert inspection.resume_ready is True
 
 
 def test_initialize_requires_existing_exact_recovery_ref(linear_history_repo):
@@ -673,4 +709,5 @@ def test_inspection_binds_plan_digest_and_facts_to_one_read(
 
     assert read_count == 1
     assert inspection.plan_matches is True
+    assert inspection.resolution_matches is None
     assert inspection.plan_operation_counts == (("KEEP", 2),)

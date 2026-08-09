@@ -62,6 +62,17 @@ Use `git-stage-batch rewrite` as the only rewrite engine:
 - This skill owns semantic boundaries, narrative order, runnable snapshots,
   messages, and permission to use a verified review-head exception.
 
+Treat the repository, the dedicated resolution workspace, and helper processes
+as one trusted same-user execution boundary. Use the product's existing
+digests, workspace binding, owned refs, compare-and-swap updates, and recovery
+records for stale-state detection, tree conservation, atomic updates, and
+recovery.
+
+Keep that workflow direct. Do not add a second approval format, custom Python
+module loader, chained helper manifest, or parallel workspace-transfer
+transaction. Add infrastructure only for a demonstrated correctness,
+consistency, atomicity, or recovery requirement.
+
 Edit only `plan.outputs` and `plan.partitioned_units`. Never edit `snapshot` or
 `safety`, treat rationale as mechanical proof, run interactive rebase, reset or
 amend commits, apply a rejected patch manually, or manipulate product-owned
@@ -85,6 +96,7 @@ PLAN_DIR=$(mktemp -d)
 REWRITE_PLAN="$PLAN_DIR/rewrite-plan.json"
 VALIDATION="$PLAN_DIR/validation.json"
 CAUSAL_LEDGER="$PLAN_DIR/causal-ledger.md"
+REWRITE_WORKSPACE="$PLAN_DIR/rewrite-workspace"
 if test -n "${BASE_SHA:-}"; then
   git-stage-batch rewrite scan "$BASE_SHA" --output "$REWRITE_PLAN"
 else
@@ -146,11 +158,12 @@ several semantic outcomes, record those sub-unit outcomes and use partitioned
 RESOLVED provenance only when explicit resolution can materialize them safely.
 For each group, keep a compact causal ledger
 with its original source, fresh unit IDs, the outcome newly introduced by its
-source, its earliest honest semantic owner and evidence, its first mechanical
-blocker, its intended disposition, and its validation state. Use the series
-index, full messages, focused `git --no-optional-locks log -S` or `-G` searches,
-and the relevant source, test, and documentation snapshots as ownership
-evidence.
+source, its earliest honest semantic owner and evidence, its semantic
+prerequisites, its mechanical placement evidence, its intended output position
+and materialization, its intended disposition, and its validation state. Use
+the series index, full messages, focused `git --no-optional-locks log -S` or
+`-G` searches, and the relevant source, test, and documentation snapshots as
+ownership evidence.
 
 Persist that compact ledger at `CAUSAL_LEDGER`, outside the worktree. It is
 non-executable audit evidence; the validated plan remains the only rewrite
@@ -161,8 +174,36 @@ Assign semantic ownership before consulting `earliest_position`, `BLOCKED`,
 or `UNKNOWN`. The owner is the earliest commit whose stated product scope,
 runnable behavior, model, or contract would already be wrong or incomplete
 without the change. It is not the oldest touched line and never defaults to the
-first blocker. Mechanical placement determines feasibility and execution, and
-may break a tie only among positions that are equally honest semantically.
+first blocker.
+
+After ownership, perform a mandatory ordering pass:
+
+1. Add the semantic prerequisite edges among owned outcomes.
+2. Overlay `earliest_position`, `BLOCKED`, `UNKNOWN`, and exact replay evidence
+   from the scan onto those edges.
+3. Choose the earliest feasible chronology that preserves every causal owner,
+   semantic prerequisite, and mechanical placement constraint.
+4. Use `EXACT` when every required crossing is proven. Use `RESOLVED` when the
+   required owner or prerequisite order is noncommuting but the explicit
+   resolution workflow can safely materialize the intended snapshots.
+
+Mechanical placement therefore selects and constrains chronology after
+ownership; it never reassigns ownership. A required placement that is neither
+exactly proven nor safely materializable remains `UNREPRESENTABLE`.
+
+For every `RESOLVED` output, audit each authorized path from its actual parent
+tree through every later natural source/path transition. The parent-to-result
+transition may introduce only the semantic portion owned by that output; never
+seed an earlier snapshot with bytes owned by a later output or the frozen final
+tree as a hidden stepping stone. If the intended chronology cannot be
+materialized directly, change the output topology or leave the placement
+`UNREPRESENTABLE`.
+
+When a partitioned unit occurs in several outputs, audit its strictly increasing
+`output_indexes` as one progressive chronology. Each occurrence must start from
+the state left by preceding outputs, make a real transition, and introduce only
+its owned portion. Never resolve occurrences independently from
+`SOURCE_BEFORE`, repeat a later result early, or accept a no-op occurrence.
 
 Use this counterfactual test for every later group:
 
@@ -173,6 +214,15 @@ Use this counterfactual test for every later group:
 Two yes answers identify a mixed source: partition the repair from the new
 outcome. An explicitly narrower earlier scope can instead make a later
 extension legitimate.
+
+A later `EXACT` rejection after moving units is source-wide placement
+evidence: reopen every moved unit from that source for materialization,
+prerequisites, partitioning, and chronology. It is not contrary causal
+evidence and never overrides an established semantic owner. Retain
+`RESOLVED` when explicit resolution safely materializes the intended
+snapshots; otherwise retain the intended owner as `UNREPRESENTABLE` with the
+exact diagnostic. Reassign a unit to its natural source boundary only when
+independent causal evidence changes its owner.
 
 Classify intended outputs after the group audit:
 
@@ -215,20 +265,49 @@ a generic "related" rationale. Every output rationale should name the product
 state and why its exact units belong together, while recognizing that the CLI
 does not use prose as proof.
 
-Edit the external plan according to `references/rewrite-procedures.md`, then
-validate it:
+Edit the external plan according to `references/rewrite-procedures.md`. For an
+all-`EXACT` plan, validate it directly:
 
 ```bash
 git-stage-batch rewrite validate "$REWRITE_PLAN" --porcelain > "$VALIDATION"
 ```
 
+When the reviewed plan contains any `RESOLVED` output, create its dedicated
+external workspace and advance one reported result at a time instead:
+
+```bash
+git-stage-batch rewrite resolve "$REWRITE_PLAN" \
+  --workspace "$REWRITE_WORKSPACE" --porcelain
+# Edit only each path's state, mode, and result artifact bytes.
+git-stage-batch rewrite resolve "$REWRITE_PLAN" \
+  --workspace "$REWRITE_WORKSPACE" --accept --porcelain
+```
+
+Repeat the edit and `--accept` step until the product reports `COMPLETE`,
+then validate the same plan-workspace pair:
+
+```bash
+git-stage-batch rewrite validate "$REWRITE_PLAN" \
+  --workspace "$REWRITE_WORKSPACE" --porcelain > "$VALIDATION"
+```
+
+Any plan-file byte change after workspace creation invalidates use of the
+prior workspace binding; resolve the exact file in a new workspace. A semantic
+edit to `plan.outputs` or `plan.partitioned_units` additionally invalidates the
+prior request keys, results, receipts, and artifact assumptions. The edit does
+not itself invalidate immutable Git tree or object IDs; an unchanged ID
+remains content-addressed evidence, but no prior record binds it to or
+authorizes the edited plan.
+
 Validation must assign every ordinary source unit exactly once, account for
 every declared partitioned occurrence, accept every requested crossing, and
 reproduce the frozen final tree. Every `UNKNOWN` and every unaccounted
-`BLOCKED` crossing fail closed; an implemented compound movement may cross a
-complete `BLOCKED` chain only when all grouped units share the same semantic
-outcome. Unsupported atomic sources may remain whole in a `KEEP` output but
-may not be crossed or split.
+`BLOCKED` crossing in an `EXACT` output fail closed; an implemented compound
+movement may cross a complete `BLOCKED` chain only when all grouped units share
+the same semantic outcome. A `RESOLVED` output instead requires a completed
+workspace bound to the current plan that explicitly materializes its intended
+snapshot. Unsupported atomic sources may remain whole in a `KEEP` output but
+may not be crossed or split without safe explicit resolution.
 
 In `audit` mode, stop after validation and report both the desired semantic
 history and whether each disposition is representable. Include every
@@ -242,6 +321,9 @@ repository-local audit files.
 Prefer one whole-range plan. Use another convergence pass only after the prior
 pass places one or more groups at their actual semantic owners and the rewrite
 exposes a new decision or changes the inventory for remaining open groups.
+Before starting another pass, name the newly enabled `INTEGRATE`, `SPLIT`, or
+`REORDER` decision and its expected output-count or operation-count delta. A
+fresh base or fresh unit IDs alone are not progress.
 Never apply a validated landing at a non-owner blocker as a mechanical
 stepping stone. Before apply, require every output in that pass to be a
 coherent runnable state, zero overlap in the bound publication scope, and a
@@ -252,6 +334,99 @@ containing ref is the exact verified current review-head ref that will be
 passed to apply. Never pass an excluded WIP, tag, or archived review ref merely
 to clear the blocker. Reconfirm the scope and publication permission. The
 product recollects all preconditions with those allowed refs during apply.
+
+When a full-series result has already passed apply, `rewrite verify`, and its
+selected semantic snapshot checks, its exact ordered output chain may serve as
+a verified prefix for later direct child commits. Continue from that prefix
+only after binding its canonical base, tip and tree, ordered commit/tree vector,
+verification digest, command-allocation policy, and clean repository state.
+Require every appended commit to be one coherent child of the preceding tip,
+and record its earlier causal owner in a new external ledger. Direct append is
+source chronology for the next pass; it neither changes semantic ownership nor
+permits editing a completed checkpoint. A changed prefix object or tree,
+verification policy, earlier command allocation, or unbounded dependency cone
+requires fresh verification instead of continuation.
+
+After a direct append, run a fresh `rewrite scan` from the same canonical base
+through the new tip. The suffix is new refinement input, not an active product
+operation that `rewrite continue` can resume. Do not rebuild the authenticated
+prefix or recreate a completed `RESOLVED` workspace merely because the tip
+grew. In the fresh scan, prefix outputs are ordinary immutable sources. Use a
+new `RESOLVED` output only for a demonstrated dependency or topology constraint
+and bind its new workspace to the fresh plan.
+
+Use three verification tiers for a full-series result:
+
+1. **Object and plan:** audit every output, including its parent, tree, message,
+   author, encoding, operation, source-unit and path ownership, output order,
+   original-source provenance, product apply report, and `rewrite verify`.
+2. **Semantic boundaries:** run the relevant narrow build, import, or behavior
+   checks at changed owners, immediate adopters or test successors, later
+   natural boundaries, and explicitly justified risk-selected preserved states.
+   Freeze a manifest that maps each selected exact output to its risk and exact
+   commands. Each command must exist at that snapshot. Run all commands for one
+   output in one clean checkout, sharing generated state only within that group
+   and keeping it outside the checkout.
+3. **Final tip:** run the complete normal repository test suite, message checks,
+   and repository-appropriate build at the final candidate tip.
+
+An unchanged verified prefix may reuse immutable semantic-boundary receipts
+whose exact inputs and assumptions remain valid. Reauthenticate the complete
+combined output chain in the object-and-plan tier, run the semantic-boundary
+tier for the suffix and every boundary whose allocation or assumptions changed,
+then run the complete final-tip tier. Keep boundary selection tied to recorded
+risk rather than expanding it to unchanged outputs without cause.
+
+When the authority repository uses object alternates, borrowed packs, or
+another non-ordinary object store, a detached worktree is not portability
+proof. Rehearse the verified prefix, direct append, and any follow-on rewrite
+in a disposable ordinary clone with no alternates. Reacquire every
+repository-bound scan or resolution workspace there, require the same prefix
+and resulting commit/tree sequence, and run the same three verification tiers
+at their scoped boundaries before authority mutation.
+
+Give every verification or rehearsal attempt a unique immutable run root. On
+failure, preserve the exact command, environment, exit status, diagnosed cause,
+transcript, receipt, diagnostics, and repository state; never retry in place,
+overwrite the failed evidence, or treat it as authorization. Do not blindly
+repeat an unchanged command and environment. A runner defect requires a
+documented correction and a new attempt, while a semantic failure reopens the
+plan. A failed suffix attempt does not invalidate an independently
+authenticated prefix, but only a clean receipt may authorize continuation or
+authority mutation.
+
+When an execution harness authenticates Git-generated object IDs or object
+namespace deltas across repositories, never depend on Git's automatic `%h`
+abbreviation. Set `core.abbrev=40` in every Git and product child environment,
+reject a child that does not observe it, and record full object IDs. Rehearse
+the object-producing path in two ordinary no-alternates clones whose object
+stores have materially different cardinalities, and require identical full-ID
+object graphs. An identical content prefix does not make automatic
+abbreviations repository-independent.
+
+If a commit lands but a later harness gate fails before its verification or
+checkpoint record, stop and preserve that failed run. Do not reset, amend, or
+recommit the exact landed commit. A separately identified successor may adopt
+it only after binding its HEAD, parent, tree, index, refs, reflogs, hook
+transcript, product operation state, and exact object-namespace delta, and
+proving the failure occurred after commit creation but before verification and
+checkpoint publication. Start a new checkpoint lineage with an explicit
+adoption record, run every omitted check, and mark the adopted commit verified
+before creating another commit. Any mismatch requires manual recovery.
+
+For a plan with `RESOLVED` outputs, revalidate and apply the same completed
+plan-workspace pair:
+
+```bash
+git-stage-batch rewrite validate "$REWRITE_PLAN" \
+  --workspace "$REWRITE_WORKSPACE" --porcelain > "$VALIDATION"
+git-stage-batch rewrite apply "$REWRITE_PLAN" \
+  --workspace "$REWRITE_WORKSPACE" --porcelain
+git-stage-batch rewrite verify --porcelain
+```
+
+For an all-`EXACT` plan, omit every resolution command and `--workspace`
+option and use the ordinary flow below.
 
 ```bash
 git-stage-batch rewrite validate "$REWRITE_PLAN" --porcelain > "$VALIDATION"
@@ -265,6 +440,11 @@ git-stage-batch rewrite verify --porcelain
 ```
 
 Repeat `--allow-published-ref` for every verified containing review-head ref.
+For a resolved plan, combine those repeated options with
+`--workspace "$REWRITE_WORKSPACE"`. Apply revalidates the completed external
+workspace binding and copies it into operation-owned state before activation.
+Continuation and independent verification replay that owned copy, so they do
+not depend on the external workspace remaining present.
 Apply builds the complete replacement chain behind owned refs, verifies it,
 and updates the checked-out branch once by compare-and-swap. It does not run
 commit hooks or sign commits. Inspect repository message rules before apply,
@@ -281,6 +461,10 @@ original-source provenance of every completed integration and confirm on the
 fresh snapshot that its outcome appears at the intended owner rather than
 merely disappearing into a new hunk.
 
+For every moved group, verify the changed owner output, its immediate adopter
+or test successor, and every later natural source or test boundary whose API
+or representation the group crosses before declaring convergence.
+
 When boundaries converge, invoke `/refine-commit-messages BASE_SHA` in its
 default mutating mode. Do not reword commits directly in this skill. Rescan and
 perform one final boundary audit afterward; if message work exposed a boundary
@@ -295,7 +479,11 @@ git-stage-batch rewrite status --porcelain
 ```
 
 When `active` is true, trust its phase, `next_action`, plan operation counts,
-owned refs, blockers, and `inspection.resume_ready`. If resume is ready, run:
+owned refs, blockers, `inspection.resolution_matches`, and
+`inspection.resume_ready`. Require `inspection.resume_ready` to be true.
+`inspection.resolution_matches` must be null for an all-`EXACT` operation or
+true for a resolved operation; false blocks continuation. When those
+conditions hold, run:
 
 ```bash
 git-stage-batch rewrite continue --porcelain
@@ -304,7 +492,7 @@ git-stage-batch rewrite status --porcelain
 
 Continue until the product reaches a terminal phase, then require
 `git-stage-batch rewrite verify --porcelain` for `COMPLETE`. Never infer a
-missing step from Git state or private files. If status reports blockers,
+missing step from Git state or product-owned files. If status reports blockers,
 report them and the recovery ref without modifying unrelated state.
 
 Use `rewrite abort` only when abandoning the active product operation. It
@@ -339,12 +527,12 @@ sufficient semantic proof. Also require:
 - no output combines independent outcomes, and every prior integration's
   original-source provenance has been checked against its intended owner;
 - remote containment is freshly rechecked and still authorized; and
-- a repository-appropriate narrow build/import/behavior check passes for
-  every commit snapshot, including commits that were never rewritten.
+- the object-and-plan, selected semantic-boundary, and final-tip verification
+  tiers all pass, including any authenticated verified-prefix continuation.
 
-The bundled `scripts/verify-head-snapshot.py` may run that last check in a
-temporary detached worktree. Choose the command for the repository; do not
-blindly use a Python example in a non-Python project.
+The bundled `scripts/verify-head-snapshot.py` may run selected boundary checks
+in temporary detached worktrees. Choose commands for the repository and each
+boundary; do not blindly use a Python example in a non-Python project.
 
 Report the canonical base, original and final counts, final subjects, splits,
 integrations, reorders, rewords, pressured keeps and exact breakage reasons,

@@ -816,16 +816,15 @@ def read_and_validate_history_plan_semantics(
     )
 
 
-def read_and_validate_frozen_history_plan(
-    plan_path: str,
+def read_and_validate_frozen_history_plan_semantics_from_payload(
+    payload: str,
     *,
     base_commit: str,
     tip_commit: str,
     branch_ref: str,
     allowed_remote_refs: tuple[str, ...],
 ) -> HistoryPlanDocument:
-    """Validate a persisted plan from its frozen source objects after a rewrite."""
-    payload = _read_plan_payload(plan_path)
+    """Validate one captured persisted plan against its frozen source objects."""
     frozen_snapshot, document_base, plan = _decode_plan(
         payload,
         allow_legacy_v3=True,
@@ -850,4 +849,26 @@ def read_and_validate_frozen_history_plan(
         safety=safety,
         plan=plan,
     )
-    return _validated_document(frozen_snapshot, live, plan)
+    return _semantically_validated_document(frozen_snapshot, live, plan)
+
+
+def read_and_validate_frozen_history_plan_semantics(
+    plan_path: str,
+    *,
+    base_commit: str,
+    tip_commit: str,
+    branch_ref: str,
+    allowed_remote_refs: tuple[str, ...],
+) -> tuple[HistoryPlanDocument, str]:
+    """Validate frozen semantics and return the plan's same-read SHA-256."""
+    payload, plan_sha256 = _read_plan_payload_and_sha256(plan_path)
+    return (
+        read_and_validate_frozen_history_plan_semantics_from_payload(
+            payload,
+            base_commit=base_commit,
+            tip_commit=tip_commit,
+            branch_ref=branch_ref,
+            allowed_remote_refs=allowed_remote_refs,
+        ),
+        plan_sha256,
+    )

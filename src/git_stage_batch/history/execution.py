@@ -21,11 +21,14 @@ from .models import (
     HistoryVerification,
 )
 from .plan_files import (
-    read_and_validate_frozen_history_plan,
+    read_and_validate_frozen_history_plan_semantics,
     read_and_validate_history_plan,
 )
 from .records import history_plan_document_record
-from .replay import materialize_history_output_trees
+from .replay import (
+    materialize_history_output_trees,
+    validate_history_plan_materialization,
+)
 from .state import (
     deactivate_history_operation,
     history_operation_plan_path,
@@ -103,13 +106,19 @@ def _ref_is_symbolic(refname: str) -> bool:
 
 
 def _operation_document(state: HistoryOperationState) -> HistoryPlanDocument:
-    return read_and_validate_frozen_history_plan(
+    document, plan_sha256 = read_and_validate_frozen_history_plan_semantics(
         str(history_operation_plan_path(state.operation_id)),
         base_commit=state.base_commit,
         tip_commit=state.original_tip,
         branch_ref=state.branch_ref,
         allowed_remote_refs=state.allowed_remote_refs,
     )
+    if plan_sha256 != state.plan_sha256:
+        raise CommandError(
+            _("The persisted rewrite plan no longer matches its checkpoint.")
+        )
+    validate_history_plan_materialization(document)
+    return document
 
 
 def _expected_output_objects(

@@ -201,9 +201,11 @@ def analyze_history_dependencies(
     snapshot: HistorySnapshot,
 ) -> tuple[HistoryUnitDependency, ...]:
     """Return compact first-barrier evidence for every exact source unit."""
-    with temporary_git_object_environment() as quarantine:
-        env = quarantine.environment()
-        with acquire_history_replay_units(snapshot) as units:
+    with (
+        temporary_git_object_environment(disable_replace_objects=True) as quarantine,
+        quarantine.pinned_environment() as env,
+    ):
+        with acquire_history_replay_units(snapshot, env=env) as units:
             dependencies: list[HistoryUnitDependency | None] = [None] * len(units)
             segment_start = 0
             segment_units: list[HistoryReplayUnit] = []

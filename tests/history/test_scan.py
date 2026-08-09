@@ -100,9 +100,10 @@ def test_scan_records_messages_identities_and_tree_pairs(linear_history_repo):
     commit = document.snapshot.commits[0]
 
     assert commit.message == "Change alpha\n"
-    assert commit.message_sha256 == hashlib.sha256(
-        commit.message.encode("utf-8")
-    ).hexdigest()
+    assert (
+        commit.message_sha256
+        == hashlib.sha256(commit.message.encode("utf-8")).hexdigest()
+    )
     assert commit.author.name == "Test User"
     assert commit.author.email == "test@example.com"
     assert commit.author.raw.endswith(commit.author.timezone)
@@ -201,8 +202,7 @@ def test_scan_keeps_siblings_when_a_file_changes_type(linear_history_repo):
         for unit in units
     )
     assert any(
-        unit.path == "sibling.txt" and unit.kind == "text-replacement"
-        for unit in units
+        unit.path == "sibling.txt" and unit.kind == "text-replacement" for unit in units
     )
 
 
@@ -213,12 +213,16 @@ def test_scan_records_signature_identity_without_embedding_payload(
     tree = git("rev-parse", "HEAD^{tree}")
     signature = b"-----BEGIN PGP SIGNATURE-----\nfake\n-----END PGP SIGNATURE-----"
     payload = (
-        f"tree {tree}\n"
-        f"parent {repo.tip}\n"
-        "author Test User <test@example.com> 1700000000 +0000\n"
-        "committer Test User <test@example.com> 1700000000 +0000\n"
-        "gpgsig "
-    ).encode("ascii") + signature.replace(b"\n", b"\n ") + b"\n\nSigned\n"
+        (
+            f"tree {tree}\n"
+            f"parent {repo.tip}\n"
+            "author Test User <test@example.com> 1700000000 +0000\n"
+            "committer Test User <test@example.com> 1700000000 +0000\n"
+            "gpgsig "
+        ).encode("ascii")
+        + signature.replace(b"\n", b"\n ")
+        + b"\n\nSigned\n"
+    )
     signed_commit = git(
         "hash-object",
         "-t",

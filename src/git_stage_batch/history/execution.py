@@ -486,6 +486,8 @@ def start_history_operation(
         phase=HistoryPhase.PREPARED,
         next_action=HistoryNextAction.BUILD_OUTPUT,
         plan_sha256=history_json_sha256(plan_record),
+        resolution_raw_plan_sha256=None,
+        resolution_complete_sha256=None,
         object_format=document.snapshot.object_format,
         branch_ref=branch_ref,
         base_commit=document.snapshot.base_commit,

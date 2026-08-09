@@ -29,7 +29,6 @@ from ..utils.strict_json import (
 )
 from .json_files import history_json_sha256, write_history_json_file
 from .models import (
-    CURRENT_HISTORY_STATE_SCHEMA_VERSION,
     HISTORY_PLAN_OPERATIONS,
     HistoryNextAction,
     HistoryOperationInspection,
@@ -48,7 +47,7 @@ from .resolution_files import (
 from .safety import collect_history_safety_facts
 
 
-_STATE_KEYS = frozenset(
+_STATE_V2_KEYS = frozenset(
     {
         "schema_version",
         "operation_id",
@@ -76,6 +75,11 @@ _STATE_KEYS = frozenset(
         "diagnostic",
     }
 )
+_STATE_V3_KEYS = _STATE_V2_KEYS | {
+    "resolution_raw_plan_sha256",
+    "resolution_complete_sha256",
+}
+_SUPPORTED_STATE_SCHEMA_VERSIONS = frozenset({2, 3})
 _ALLOWED_NEXT_ACTIONS = {
     HistoryPhase.PREPARED: frozenset({HistoryNextAction.BUILD_OUTPUT}),
     HistoryPhase.BUILDING: frozenset({HistoryNextAction.BUILD_OUTPUT}),
@@ -297,7 +301,7 @@ def _require_hex(value: str, length: int, location: str) -> None:
 
 
 def _state_record(state: HistoryOperationState) -> dict[str, object]:
-    return {
+    record: dict[str, object] = {
         "schema_version": state.schema_version,
         "operation_id": state.operation_id,
         "phase": state.phase.value,
@@ -323,14 +327,45 @@ def _state_record(state: HistoryOperationState) -> dict[str, object]:
         "verification_sha256": state.verification_sha256,
         "diagnostic": state.diagnostic,
     }
+    if state.schema_version == 2:
+        if (
+            state.resolution_raw_plan_sha256 is not None
+            or state.resolution_complete_sha256 is not None
+        ):
+            _invalid("schema version 2 cannot contain resolution provenance")
+        return record
+    if state.schema_version == 3:
+        record["resolution_raw_plan_sha256"] = (
+            state.resolution_raw_plan_sha256
+        )
+        record["resolution_complete_sha256"] = state.resolution_complete_sha256
+        return record
+    _invalid("schema_version must be 2 or 3")
 
 
 def _validate_state(state: HistoryOperationState) -> None:
-    if state.schema_version != CURRENT_HISTORY_STATE_SCHEMA_VERSION:
-        _invalid(f"schema_version must be {CURRENT_HISTORY_STATE_SCHEMA_VERSION}")
+    if state.schema_version not in _SUPPORTED_STATE_SCHEMA_VERSIONS:
+        _invalid("schema_version must be 2 or 3")
     _validate_operation_id(state.operation_id)
     oid_length = _object_id_length(state.object_format)
     _require_hex(state.plan_sha256, 64, "plan_sha256")
+    if (
+        state.resolution_raw_plan_sha256 is None
+    ) != (state.resolution_complete_sha256 is None):
+        _invalid("resolution provenance digests must both be null or both be set")
+    if state.resolution_raw_plan_sha256 is not None:
+        _require_hex(
+            state.resolution_raw_plan_sha256,
+            64,
+            "resolution_raw_plan_sha256",
+        )
+        _require_hex(
+            cast(str, state.resolution_complete_sha256),
+            64,
+            "resolution_complete_sha256",
+        )
+    if state.schema_version == 2 and state.resolution_raw_plan_sha256 is not None:
+        _invalid("schema version 2 cannot contain resolution provenance")
     for field, value in (
         ("base_commit", state.base_commit),
         ("original_tip", state.original_tip),
@@ -469,7 +504,13 @@ def _decode_state(payload: str) -> HistoryOperationState:
     try:
         raw = loads(payload)
         record = require_object(raw, "state")
-        require_exact_keys(record, _STATE_KEYS, "state")
+        schema_version = require_integer(record, "schema_version", "state")
+        if schema_version == 2:
+            require_exact_keys(record, _STATE_V2_KEYS, "state")
+        elif schema_version == 3:
+            require_exact_keys(record, _STATE_V3_KEYS, "state")
+        else:
+            _invalid("schema_version must be 2 or 3")
         phase_value = require_string(record, "phase", "state")
         action_value = require_string(record, "next_action", "state")
         try:
@@ -499,7 +540,7 @@ def _decode_state(payload: str) -> HistoryOperationState:
                 _invalid(f"allowed_remote_refs[{index}] must be a string")
             allowed_remote_refs.append(value)
         state = HistoryOperationState(
-            schema_version=require_integer(record, "schema_version", "state"),
+            schema_version=schema_version,
             operation_id=require_string(record, "operation_id", "state"),
             phase=phase,
             next_action=action,
@@ -559,6 +600,24 @@ def _decode_state(payload: str) -> HistoryOperationState:
                 "state",
             ),
             diagnostic=_nullable_string(record, "diagnostic", "state"),
+            resolution_raw_plan_sha256=(
+                None
+                if schema_version == 2
+                else _nullable_string(
+                    record,
+                    "resolution_raw_plan_sha256",
+                    "state",
+                )
+            ),
+            resolution_complete_sha256=(
+                None
+                if schema_version == 2
+                else _nullable_string(
+                    record,
+                    "resolution_complete_sha256",
+                    "state",
+                )
+            ),
         )
     except StrictJsonError as error:
         _invalid(str(error))

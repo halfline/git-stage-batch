@@ -10,7 +10,7 @@ from ..fixup.models import FixupUnitKind
 
 
 CURRENT_HISTORY_PLAN_SCHEMA_VERSION = 4
-CURRENT_HISTORY_STATE_SCHEMA_VERSION = 2
+CURRENT_HISTORY_STATE_SCHEMA_VERSION = 3
 
 HistoryPlanOperation = Literal[
     "KEEP",
@@ -218,6 +218,8 @@ class HistoryOperationState:
     phase: HistoryPhase
     next_action: HistoryNextAction
     plan_sha256: str
+    resolution_raw_plan_sha256: str | None
+    resolution_complete_sha256: str | None
     object_format: str
     branch_ref: str
     base_commit: str

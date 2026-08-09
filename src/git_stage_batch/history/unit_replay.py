@@ -56,8 +56,7 @@ def acquire_history_replay_units(
                 )
             )
             patch_ids = tuple(
-                history_unit_id(commit.commit_id, patch.unit_id)
-                for patch in patches
+                history_unit_id(commit.commit_id, patch.unit_id) for patch in patches
             )
             expected_ids = tuple(unit.unit_id for unit in commit.units)
             if patch_ids != expected_ids:

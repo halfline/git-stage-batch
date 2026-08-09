@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Iterator
 
 from ..exceptions import CommandError
@@ -15,14 +16,10 @@ def _encode_header(value: str) -> bytes:
     return value.encode("utf-8", errors="surrogateescape")
 
 
-def _planned_message_bytes(
+def _rewritten_message_bytes(
     output: HistoryPlannedCommit,
     target: HistoryCommitSnapshot,
-    *,
-    env: dict[str, str] | None,
 ) -> bytes:
-    if output.operation in {"KEEP", "REORDER"}:
-        return parse_commit_object(target.commit_id, env=env).message_bytes
     try:
         return output.message.encode(
             output.encoding or "utf-8",
@@ -38,6 +35,34 @@ def _planned_message_bytes(
                 encoding=output.encoding or "UTF-8",
             )
         ) from error
+
+
+def _planned_message_bytes(
+    output: HistoryPlannedCommit,
+    target: HistoryCommitSnapshot,
+    *,
+    env: dict[str, str] | None,
+) -> bytes:
+    if output.operation in {"KEEP", "REORDER"}:
+        parsed = parse_commit_object(target.commit_id, env=env)
+        if parsed.message_sha256 != target.message_sha256:
+            raise CommandError(
+                _(
+                    "The raw message for history source {commit} no longer "
+                    "matches its frozen digest."
+                ).format(commit=target.commit_id)
+            )
+        return parsed.message_bytes
+    return _rewritten_message_bytes(output, target)
+
+
+def _planned_message_sha256(
+    output: HistoryPlannedCommit,
+    target: HistoryCommitSnapshot,
+) -> str:
+    if output.operation in {"KEEP", "REORDER"}:
+        return target.message_sha256
+    return hashlib.sha256(_rewritten_message_bytes(output, target)).hexdigest()
 
 
 def history_commit_payload_chunks(
@@ -115,7 +140,11 @@ def require_history_commit_matches(
                 "Rewrite output commit {commit} has unexpected identity metadata."
             ).format(commit=commit)
         )
-    if parsed.encoding != output.encoding or parsed.message != output.message:
+    if (
+        parsed.encoding != output.encoding
+        or parsed.message != output.message
+        or parsed.message_sha256 != _planned_message_sha256(output, target)
+    ):
         raise CommandError(
             _("Rewrite output commit {commit} has unexpected message metadata.").format(
                 commit=commit

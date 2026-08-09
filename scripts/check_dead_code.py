@@ -287,19 +287,6 @@ ALLOWED_FINDINGS = (
         "ctime_ns",
         "Field contributes to whole-dataclass equality.",
     ),
-    # Product seams introduced one slice before their first caller.
-    _allowed(
-        "src/git_stage_batch/utils/git_object_promotion.py",
-        "function",
-        "promote_git_object_closure",
-        "Consumed by the next durable rewrite-apply slice.",
-    ),
-    _allowed(
-        "src/git_stage_batch/utils/git_object_promotion.py",
-        "function",
-        "release_git_object_promotion_lease",
-        "Consumed by the next durable rewrite-apply slice.",
-    ),
     # Protocol surface used indirectly by the standard library.
     _allowed(
         "src/git_stage_batch/cli/pager.py",

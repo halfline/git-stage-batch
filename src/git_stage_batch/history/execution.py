@@ -9,6 +9,14 @@ from dataclasses import replace
 from ..exceptions import CommandError
 from ..i18n import _
 from ..utils.git_command import run_git_command
+from ..utils.git_object_io import (
+    GitObjectQuarantine,
+    temporary_git_object_environment,
+)
+from ..utils.git_object_promotion import (
+    promote_git_object_closure,
+    release_git_object_promotion_lease,
+)
 from ..utils.git_refs import update_git_refs
 from .commit_writer import create_history_commit, require_history_commit_matches
 from .json_files import history_json_sha256
@@ -127,28 +135,31 @@ def _operation_document(state: HistoryOperationState) -> HistoryPlanDocument:
 def _expected_output_objects(
     document: HistoryPlanDocument,
     *,
+    quarantine: GitObjectQuarantine,
     write: bool,
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    replay = materialize_history_output_trees(document)
-    sources = {commit.commit_id: commit for commit in document.snapshot.commits}
-    parent = document.snapshot.base_commit
-    commits: list[str] = []
-    for output, tree in zip(
-        document.plan.outputs,
-        replay.output_trees,
-        strict=True,
-    ):
-        target = sources[output.source_commits[0]]
-        commit = create_history_commit(
-            tree=tree,
-            parent=parent,
-            output=output,
-            target=target,
-            write=write,
-        )
-        commits.append(commit)
-        parent = commit
-    return tuple(commits), replay.output_trees
+    with quarantine.pinned_environment() as environment:
+        replay = materialize_history_output_trees(document, env=environment)
+        sources = {commit.commit_id: commit for commit in document.snapshot.commits}
+        parent = document.snapshot.base_commit
+        commits: list[str] = []
+        for output, tree in zip(
+            document.plan.outputs,
+            replay.output_trees,
+            strict=True,
+        ):
+            target = sources[output.source_commits[0]]
+            commit = create_history_commit(
+                tree=tree,
+                parent=parent,
+                output=output,
+                target=target,
+                write=write,
+                env=environment,
+            )
+            commits.append(commit)
+            parent = commit
+        return tuple(commits), replay.output_trees
 
 
 def _require_resume_ready(state: HistoryOperationState) -> None:
@@ -226,21 +237,35 @@ def _build_outputs(
     state: HistoryOperationState,
     document: HistoryPlanDocument,
 ) -> HistoryOperationState:
-    expected_commits, expected_trees = _expected_output_objects(
-        document,
-        write=True,
-    )
-    if state.output_commits != expected_commits[: state.completed_output_count]:
-        raise CommandError(
-            _("Completed rewrite outputs do not match deterministic replay.")
+    with temporary_git_object_environment(disable_replace_objects=True) as quarantine:
+        expected_commits, expected_trees = _expected_output_objects(
+            document,
+            quarantine=quarantine,
+            write=True,
         )
-    while state.completed_output_count < state.planned_output_count:
-        index = state.completed_output_count
-        state = _publish_pending_output(
-            state,
-            commit=expected_commits[index],
-            tree=expected_trees[index],
+        if state.output_commits != expected_commits[: state.completed_output_count]:
+            raise CommandError(
+                _("Completed rewrite outputs do not match deterministic replay.")
+            )
+        expected_objects = {
+            **dict.fromkeys(expected_commits, "commit"),
+            **dict.fromkeys(expected_trees, "tree"),
+        }
+        lease = promote_git_object_closure(
+            quarantine,
+            lease_id=f"rewrite-{state.operation_id}",
+            include=(expected_commits[-1],),
+            exclude=(state.base_commit,),
+            expected_objects=expected_objects,
         )
+        while state.completed_output_count < state.planned_output_count:
+            index = state.completed_output_count
+            state = _publish_pending_output(
+                state,
+                commit=expected_commits[index],
+                tree=expected_trees[index],
+            )
+        release_git_object_promotion_lease(quarantine, lease)
 
     verifying = replace(
         state,
@@ -282,10 +307,14 @@ def _verify_output_objects(
     state: HistoryOperationState,
     document: HistoryPlanDocument,
 ) -> tuple[HistoryVerification, tuple[str, ...]]:
-    expected_commits, expected_trees = _expected_output_objects(
-        document,
-        write=False,
-    )
+    with temporary_git_object_environment(
+        disable_replace_objects=True
+    ) as quarantine:
+        expected_commits, expected_trees = _expected_output_objects(
+            document,
+            quarantine=quarantine,
+            write=False,
+        )
     if state.output_commits != expected_commits:
         raise CommandError(
             _("Built history commits do not match deterministic replay.")

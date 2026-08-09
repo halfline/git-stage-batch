@@ -857,6 +857,55 @@ def test_persistent_output_closure_rejects_a_blob_shared_with_the_base(
                 )
 
 
+def test_verify_rejects_a_blob_with_a_corrupt_body_and_readable_header(
+    linear_history_repo,
+):
+    repo = linear_history_repo
+    shared = repo.root / "shared.bin"
+    shared.write_bytes(bytes(range(256)) * 4096)
+    git("add", "shared.bin")
+    git("commit", "-m", "Add shared base payload")
+    repo.base = git("rev-parse", "HEAD")
+    shared_blob = git("rev-parse", f"{repo.base}:shared.bin")
+    repo.source.write_text(
+        "alpha topic again\nbeta\ngamma topic\n",
+        encoding="utf-8",
+    )
+    git("commit", "-am", "Change alpha again")
+    path, _plan = _write_plan(repo, _reword_first)
+
+    start_history_operation(str(path))
+    object_directory = Path(
+        git(
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-path",
+            "objects",
+        )
+    )
+    loose_blob = object_directory / shared_blob[:2] / shared_blob[2:]
+    compressed = bytearray(loose_blob.read_bytes())
+    compressed[-1] ^= 1
+    loose_blob.chmod(0o600)
+    loose_blob.write_bytes(compressed)
+    header = git(
+        "cat-file",
+        "--batch-check=%(objectname) %(objecttype) %(objectsize)",
+        input_bytes=f"{shared_blob}\n".encode("ascii"),
+    )
+    assert header == f"{shared_blob} blob {shared.stat().st_size}"
+    corrupt_read = subprocess.run(
+        ["git", "cat-file", "blob", shared_blob],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+    assert corrupt_read.returncode != 0
+
+    with pytest.raises(CommandError, match="object closure is incomplete"):
+        verify_history_operation()
+
+
 def test_validate_rejects_integration_across_a_blocking_intermediate(
     linear_history_repo,
 ):

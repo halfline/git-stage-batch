@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import stat
-from dataclasses import replace
+from dataclasses import fields, replace
 
 import pytest
 
@@ -134,6 +134,125 @@ def test_schema_two_state_round_trips_without_schema_three_fields(
     assert history_state._state_record(decoded) == record
 
 
+def test_schema_two_transition_cannot_upgrade_to_schema_three(
+    linear_history_repo,
+):
+    state, document = _prepared_state(linear_history_repo)
+    legacy = replace(state, schema_version=2)
+    _initialize_history_operation(legacy, document)
+
+    upgraded = replace(
+        legacy,
+        schema_version=CURRENT_HISTORY_STATE_SCHEMA_VERSION,
+        phase=HistoryPhase.BUILDING,
+    )
+
+    with pytest.raises(CommandError, match="schema_version is immutable"):
+        update_history_operation(upgraded)
+
+    assert load_active_history_operation() == legacy
+    continued = replace(legacy, phase=HistoryPhase.BUILDING)
+    update_history_operation(continued)
+    persisted = json.loads(
+        (
+            history_operation_directory(legacy.operation_id) / "state.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert load_active_history_operation() == continued
+    assert "resolution_raw_plan_sha256" not in persisted
+    assert "resolution_complete_sha256" not in persisted
+
+
+def test_operation_transition_immutable_field_inventory_is_complete():
+    mutable_fields = {
+        "phase",
+        "next_action",
+        "expected_branch_tip",
+        "output_commits",
+        "completed_output_count",
+        "pending_output_commit",
+        "pending_output_tree",
+        "last_verified_commit",
+        "last_verified_tree",
+        "verification_sha256",
+        "diagnostic",
+    }
+    expected = tuple(
+        field.name
+        for field in fields(HistoryOperationState)
+        if field.name not in mutable_fields
+    )
+
+    assert history_state._IMMUTABLE_STATE_FIELDS == expected
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "plan_sha256",
+        "branch_ref",
+        "base_commit",
+        "original_tip",
+        "original_final_tree",
+        "source_commits",
+        "allowed_remote_refs",
+        "planned_output_count",
+    ],
+)
+def test_update_rejects_immutable_operation_fact_changes(
+    linear_history_repo,
+    field,
+):
+    repo = linear_history_repo
+    state, document = _prepared_state(repo)
+    _initialize_history_operation(state, document)
+    replacements: dict[str, object] = {
+        "plan_sha256": "e" * 64,
+        "branch_ref": "refs/heads/other",
+        "base_commit": repo.first,
+        "original_tip": repo.first,
+        "original_final_tree": git("rev-parse", f"{repo.base}^{{tree}}"),
+        "source_commits": (repo.tip,),
+        "allowed_remote_refs": ("refs/remotes/origin/topic",),
+        "planned_output_count": state.planned_output_count + 1,
+    }
+    changes = {field: replacements[field], "phase": HistoryPhase.BUILDING}
+    if field == "original_tip":
+        changes.update(
+            source_commits=(repo.first,),
+            expected_branch_tip=repo.first,
+        )
+
+    changed = replace(state, **changes)
+    with pytest.raises(CommandError, match=f"{field} is immutable"):
+        update_history_operation(changed)
+
+    assert load_active_history_operation() == state
+
+
+def test_update_preserves_the_completed_output_prefix(linear_history_repo):
+    state, document = _prepared_state(linear_history_repo)
+    _initialize_history_operation(state, document)
+    first, second = state.source_commits
+    git("update-ref", state.output_ref, first)
+    completed = replace(
+        state,
+        phase=HistoryPhase.BUILDING,
+        output_commits=(first,),
+        completed_output_count=1,
+    )
+    update_history_operation(completed)
+    git("update-ref", state.output_ref, second, first)
+
+    with pytest.raises(
+        CommandError,
+        match="output_commits must preserve and extend",
+    ):
+        update_history_operation(replace(completed, output_commits=(second,)))
+
+    assert load_active_history_operation() == completed
+
+
 def test_schema_three_state_round_trips_resolution_provenance(
     linear_history_repo,
 ):
@@ -189,6 +308,27 @@ def test_schema_three_rejects_invalid_resolution_provenance(
 
     with pytest.raises(CommandError, match=expected_error):
         history_state._decode_state(json.dumps(record))
+
+
+def test_update_rejects_resolution_provenance_tampering(
+    linear_history_repo,
+):
+    state, document = _prepared_state(linear_history_repo)
+    _initialize_history_operation(state, document)
+    tampered = replace(
+        state,
+        phase=HistoryPhase.BUILDING,
+        resolution_raw_plan_sha256="b" * 64,
+        resolution_complete_sha256="d" * 64,
+    )
+
+    with pytest.raises(
+        CommandError,
+        match="resolution_raw_plan_sha256 is immutable",
+    ):
+        update_history_operation(tampered)
+
+    assert load_active_history_operation() == state
 
 
 def test_initialize_publishes_private_recoverable_checkpoint(

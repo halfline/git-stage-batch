@@ -5,9 +5,11 @@ from __future__ import annotations
 import copy
 import json
 import os
+import shutil
 import stat
 import subprocess
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -540,6 +542,37 @@ def test_commit_writer_binds_keep_to_the_frozen_raw_message(
         )
 
 
+def test_apply_and_verify_ignore_replace_refs_for_source_messages(
+    linear_history_repo,
+    monkeypatch,
+):
+    repo = linear_history_repo
+    source_commit, replacement_commit = _add_text_equivalent_encoded_commits(repo)
+    path, _plan = _write_plan(repo)
+    real_build_outputs = execution._build_outputs
+
+    def install_replace_ref_and_build(state, document):
+        git("replace", source_commit, replacement_commit)
+        return real_build_outputs(state, document)
+
+    monkeypatch.setattr(execution, "_build_outputs", install_replace_ref_and_build)
+
+    state = start_history_operation(str(path))
+    assert git("replace", "--list") == source_commit
+    assert state.output_commits == (source_commit,)
+    git("replace", "-d", source_commit)
+    verified_state, verification = verify_history_operation()
+
+    assert verified_state == state
+    assert verification.output_tip == source_commit
+    raw_output = subprocess.run(
+        ["git", "--no-replace-objects", "cat-file", "commit", source_commit],
+        check=True,
+        capture_output=True,
+    ).stdout
+    assert raw_output.endswith(b"\n\nhello\n")
+
+
 def test_apply_integrates_repair_through_commuting_intermediate(
     linear_history_repo,
 ):
@@ -558,6 +591,61 @@ def test_apply_integrates_repair_through_commuting_intermediate(
     assert len(state.output_commits) == 2
     assert git("rev-list", "--count", f"{repo.base}..HEAD") == "2"
     assert git("rev-parse", "HEAD^{tree}") == original_tree
+
+
+def test_verify_rejects_a_missing_persistent_intermediate_tree(
+    linear_history_repo,
+):
+    repo = linear_history_repo
+    repo.source.write_text(
+        "alpha repaired\nbeta\ngamma topic\n",
+        encoding="utf-8",
+    )
+    git("commit", "-am", "Repair alpha")
+    path, _plan = _write_plan(repo, _integrate_first_and_last)
+    pack_directory = Path(
+        git(
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-path",
+            "objects/pack",
+        )
+    )
+    packs_before = set(pack_directory.glob("pack-*.pack"))
+    state = start_history_operation(str(path))
+    intermediate_tree = git("rev-parse", f"{state.output_commits[0]}^{{tree}}")
+    promoted_packs = set(pack_directory.glob("pack-*.pack")) - packs_before
+    assert len(promoted_packs) == 1
+    pack_path = promoted_packs.pop()
+    index_path = pack_path.with_suffix(".idx")
+    unpack_source = repo.root / "promoted-history.pack"
+    shutil.copyfile(pack_path, unpack_source)
+    pack_path.unlink()
+    index_path.unlink()
+    with unpack_source.open("rb") as stream:
+        subprocess.run(
+            ["git", "unpack-objects", "-r"],
+            stdin=stream,
+            check=True,
+            capture_output=True,
+        )
+    unpack_source.unlink()
+    object_directory = Path(
+        git(
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-path",
+            "objects",
+        )
+    )
+    loose_tree = object_directory / intermediate_tree[:2] / intermediate_tree[2:]
+    assert loose_tree.is_file()
+    loose_tree.unlink()
+    assert git("cat-file", "-t", state.output_commits[0]) == "commit"
+    assert git("cat-file", "-t", intermediate_tree, check=False) == ""
+
+    with pytest.raises(CommandError, match="object closure is incomplete"):
+        verify_history_operation()
 
 
 def test_validate_rejects_integration_across_a_blocking_intermediate(

@@ -1156,22 +1156,58 @@ publishes the completed workspace by itself. Re-running without `--accept`
 safely reports the current request without accepting its seeded result.
 The first invocation requires that the workspace path does not exist;
 subsequent invocations reopen only the workspace bound to the same plan.
-The completed external workspace is currently an input only to
-`rewrite validate`. `rewrite apply` does not yet accept `--workspace`, so
-this slice does not use the workspace to build or publish replacement commits.
+The completed external workspace remains a reusable, read-only input to
+`rewrite validate`. Supply it with `--workspace` on the initial
+`rewrite apply` invocation to hand its authenticated results to a durable
+operation; apply never modifies or publishes the external workspace itself.
 
 ### `rewrite apply`
 
 Build, verify, and atomically update the checked-out branch:
 
 ```bash
+# Apply an all-EXACT plan.
 ❯ git-stage-batch rewrite apply rewrite-plan.json
+
+# Apply a plan containing RESOLVED outputs.
+❯ git-stage-batch rewrite apply rewrite-plan.json \
+    --workspace rewrite-resolution
+
 ❯ git-stage-batch rewrite apply rewrite-plan.json --porcelain
 ```
 
-Apply creates a private recovery ref, records a durable `PREPARED` checkpoint,
-then builds deterministic unsigned commit objects behind an operation-owned
-output ref. It preserves the planned author, target source committer, declared
+For an all-EXACT plan, omit `--workspace`; supplying a workspace is rejected
+rather than ignored. A plan containing any `RESOLVED` output requires
+`--workspace DIR` on the initial apply invocation. `DIR` must be the
+`COMPLETE` private workspace produced by `rewrite resolve` for that exact
+plan. Missing, incomplete, changed, or differently bound workspaces are
+rejected.
+
+Before activating the operation, apply authenticates the external workspace,
+copies its exact private inventory into the unpublished operation directory,
+confirms that the source did not change during the copy, and independently
+authenticates the copy in a separate fresh object quarantine. It then rechecks
+the branch, index, and worktree facts that authorize mutation. Once the
+operation is activated, building, `rewrite continue`, `rewrite status`, and
+`rewrite verify` use only the operation-owned copy. The external workspace may
+then be moved or deleted without affecting continuation or later independent
+verification; none of those commands accepts its path again.
+
+Apply creates a durable private recovery ref, records a durable `PREPARED`
+checkpoint, then reconstructs the selected exact and resolved output trees in
+a temporary object quarantine. It builds deterministic unsigned commits there
+and promotes the required commit, tree, and blob closure durably into the
+repository before publishing the operation-owned output ref. The promotion
+lease and exact-name ref updates keep interruption recovery bounded to objects
+and refs owned by the operation.
+
+Before changing the branch, apply requires that complete output closure to be
+readable from persistent object storage with lazy fetching disabled. It
+independently regenerates the expected commits and trees in another fresh
+quarantine, compares them with the persistent objects, and writes a
+digest-bound verification record. For a resolved plan, the record also binds
+the raw-plan and completed-workspace digests and the resolved-output count.
+Commit objects preserve the planned author, target source committer, declared
 encoding, exact KEEP/REORDER message bytes, and every output tree. Split pieces
 inherit the original source author and committer. Invalidated source signature
 headers are omitted and recorded by header name and digest; payloads never
@@ -1210,12 +1246,13 @@ planned output counts, pending publication, recovery and output refs, last
 verified tree, and live resume blockers. After completion or abort it reports
 the latest terminal operation without occupying the active slot. The private
 output ref keeps a partially built linear chain reachable. Status verifies
-both owned refs, persisted plan and verification digests, source/plan
-identity, output objects, branch compare-and-swap expectation, index, and
-worktree before declaring continuation safe. Porcelain status also reports the
-persisted plan's count for each operation kind. A specialized workflow can
-therefore prove that an active checkpoint belongs to its allowed operation
-subset without reading private state files.
+both owned refs, persisted plan and verification digests, the operation-owned
+resolution workspace when present, source/plan identity, output objects,
+branch compare-and-swap expectation, index, and worktree before declaring
+continuation safe. Porcelain status also reports the persisted plan's count
+for each operation kind. A specialized workflow can therefore prove that an
+active checkpoint belongs to its allowed operation subset without reading
+private state files.
 
 Operation records live below `git-stage-batch/rewrite/` in the repository's
 common Git directory (`.git/git-stage-batch/rewrite/` in an ordinary
@@ -1278,7 +1315,9 @@ Verify works on the active operation or latest complete operation. It
 regenerates the frozen source facts independently of current `HEAD`, replays
 every output tree, rehashes each normalized unsigned commit, checks parents,
 authors, committers, messages, encodings, and signature removal, and compares
-the regenerated audit record with its durable digest.
+the regenerated audit record with its durable digest. For a resolved plan it
+replays the operation-owned workspace and does not read the external workspace
+originally supplied to apply.
 Verification may run while another worktree owns a staging session. It still
 takes the repository session lock so its related reads cannot interleave with
 `rewrite apply`, `rewrite continue`, or `rewrite abort` mutations.

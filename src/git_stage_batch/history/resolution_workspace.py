@@ -1503,6 +1503,172 @@ def _finish_workspace(
     )
 
 
+def _authenticate_completed_history_resolution_locked(
+    document: HistoryPlanDocument,
+    raw_plan_sha256: str,
+    workspace_path: Path,
+    binding: _WorkspaceBinding,
+    quarantine: GitObjectQuarantine,
+) -> tuple[HistoryAuthenticatedResolution, tuple[str, ...]]:
+    """Authenticate one COMPLETE workspace while its caller holds the lock."""
+    _validate_workspace_root(workspace_path, binding, allow_complete=True)
+    _require_directory_entries(
+        workspace_path,
+        {".workspace.lock", "complete.json", "outputs", "workspace.json"},
+        "workspace root",
+    )
+    replay, materializer, pending, acceptance_ready = _materialize_workspace(
+        document,
+        binding,
+        workspace_path,
+        quarantine,
+        accept_one=False,
+        export_missing=False,
+        require_complete=True,
+        read_only=True,
+    )
+    if replay is None or pending is not None or acceptance_ready:
+        raise AssertionError("complete materialization returned pending output")
+    complete_sha256 = _read_expected_json(
+        workspace_path / "complete.json",
+        _complete_record(binding, materializer, replay),
+        "complete.json",
+    )
+    return (
+        HistoryAuthenticatedResolution(
+            raw_plan_sha256=raw_plan_sha256,
+            complete_sha256=complete_sha256,
+            workspace_path=str(workspace_path),
+            replay=replay,
+        ),
+        tuple(materializer.output_keys),
+    )
+
+
+def _copy_resolution_files(
+    source: Path,
+    destination: Path,
+    names: tuple[str, ...],
+) -> None:
+    for name in names:
+        copy_resolution_artifact_atomically(
+            source / name,
+            destination / name,
+        )
+
+
+def _copy_completed_workspace_inventory(
+    source: Path,
+    destination: Path,
+    output_keys: tuple[str, ...],
+) -> None:
+    """Copy the exact schema-1 COMPLETE inventory without buffering payloads."""
+    create_private_resolution_directory(destination / "outputs")
+    _copy_resolution_files(
+        source,
+        destination,
+        ("workspace.json", "complete.json"),
+    )
+    source_outputs = source / "outputs"
+    destination_outputs = destination / "outputs"
+    for output_key in output_keys:
+        source_output = source_outputs / output_key
+        destination_output = destination_outputs / output_key
+        require_private_resolution_directory(source_output)
+        create_private_resolution_directory(destination_output)
+        for directory_name in ("references", "results"):
+            source_directory = source_output / directory_name
+            destination_directory = destination_output / directory_name
+            require_private_resolution_directory(source_directory)
+            create_private_resolution_directory(destination_directory)
+            artifact_names = list_resolution_directory(source_directory)
+            _copy_resolution_files(
+                source_directory,
+                destination_directory,
+                artifact_names,
+            )
+            _require_directory_entries(
+                source_directory,
+                set(artifact_names),
+                f"source output {output_key} {directory_name}",
+            )
+            _require_directory_entries(
+                destination_directory,
+                set(artifact_names),
+                f"owned output {output_key} {directory_name}",
+            )
+        _copy_resolution_files(
+            source_output,
+            destination_output,
+            (
+                "request.json",
+                "result.json",
+                "receipt.json",
+            ),
+        )
+        output_entries = {
+            "request.json",
+            "result.json",
+            "receipt.json",
+            "references",
+            "results",
+        }
+        _require_directory_entries(
+            source_output,
+            output_entries,
+            f"source output {output_key}",
+        )
+        _require_directory_entries(
+            destination_output,
+            output_entries,
+            f"owned output {output_key}",
+        )
+    expected_outputs = set(output_keys)
+    _require_directory_entries(
+        source_outputs,
+        expected_outputs,
+        "source resolution outputs",
+    )
+    _require_directory_entries(
+        destination_outputs,
+        expected_outputs,
+        "owned resolution outputs",
+    )
+    expected_root = {".workspace.lock", "complete.json", "outputs", "workspace.json"}
+    _require_directory_entries(source, expected_root, "source resolution workspace")
+    _require_directory_entries(destination, expected_root, "owned resolution copy")
+
+
+def _same_authenticated_resolution_facts(
+    first: HistoryAuthenticatedResolution,
+    second: HistoryAuthenticatedResolution,
+) -> bool:
+    return (
+        first.raw_plan_sha256 == second.raw_plan_sha256
+        and first.complete_sha256 == second.complete_sha256
+        and first.replay.output_trees == second.replay.output_trees
+        and first.replay.final_tree == second.replay.final_tree
+    )
+
+
+def _require_distinct_quarantine_object_directories(
+    source: GitObjectQuarantine,
+    destination: GitObjectQuarantine,
+) -> None:
+    with source.pinned_quarantine_object_directory() as source_descriptor:
+        with destination.pinned_quarantine_object_directory() as destination_descriptor:
+            source_identity = source.require_quarantine_object_directory_identity(
+                source_descriptor
+            )
+            destination_identity = (
+                destination.require_quarantine_object_directory_identity(
+                    destination_descriptor
+                )
+            )
+            if source_identity == destination_identity:
+                raise ValueError("source and destination quarantines must be distinct")
+
+
 def materialize_completed_history_resolution(
     document: HistoryPlanDocument,
     raw_plan_sha256: str,
@@ -1519,35 +1685,139 @@ def materialize_completed_history_resolution(
     absolute_path = _absolute_workspace_path(workspace_path)
     require_private_resolution_directory(absolute_path)
     with lock_resolution_directory(absolute_path, create=False):
-        _validate_workspace_root(absolute_path, binding, allow_complete=True)
-        _require_directory_entries(
-            absolute_path,
-            {".workspace.lock", "complete.json", "outputs", "workspace.json"},
-            "workspace root",
-        )
-        replay, materializer, pending, acceptance_ready = _materialize_workspace(
+        authenticated, _output_keys = _authenticate_completed_history_resolution_locked(
             document,
-            binding,
+            raw_plan_sha256,
             absolute_path,
+            binding,
             quarantine,
-            accept_one=False,
-            export_missing=False,
-            require_complete=True,
-            read_only=True,
         )
-        if replay is None or pending is not None or acceptance_ready:
-            raise AssertionError("complete materialization returned pending output")
-        complete_sha256 = _read_expected_json(
-            absolute_path / "complete.json",
-            _complete_record(binding, materializer, replay),
-            "complete.json",
+        return authenticated
+
+
+def copy_completed_history_resolution(
+    document: HistoryPlanDocument,
+    raw_plan_sha256: str,
+    source_path: str,
+    destination_path: str,
+    *,
+    source_quarantine: GitObjectQuarantine,
+    destination_quarantine: GitObjectQuarantine,
+) -> HistoryAuthenticatedResolution:
+    """Copy and independently authenticate one COMPLETE schema-1 workspace."""
+    if not isinstance(source_quarantine, GitObjectQuarantine) or not isinstance(
+        destination_quarantine,
+        GitObjectQuarantine,
+    ):
+        raise ValueError("two Git object quarantine environments are required")
+    if source_quarantine is destination_quarantine:
+        raise ValueError("source and destination quarantines must be distinct")
+    binding = _workspace_binding(document, raw_plan_sha256)
+    if not binding.resolved_output_indexes:
+        _invalid(_("plan does not contain any RESOLVED outputs"))
+    _require_distinct_quarantine_object_directories(
+        source_quarantine,
+        destination_quarantine,
+    )
+    source = _absolute_workspace_path(source_path)
+    destination = _absolute_workspace_path(destination_path)
+    if source == destination or source in destination.parents:
+        _invalid(_("source and destination workspaces must be disjoint"))
+    if _workspace_exists(destination):
+        _invalid(_("destination workspace already exists"))
+    require_private_resolution_directory(source)
+
+    staging = (
+        destination.parent / f".git-stage-batch-resolution-copy-{uuid.uuid4().hex}"
+    )
+    create_private_resolution_directory(staging)
+    with lock_resolution_directory(staging, moved_to=destination):
+        with source_quarantine.pinned_quarantine_object_directory() as source_objects:
+            with (
+                destination_quarantine.pinned_quarantine_object_directory() as destination_objects
+            ):
+                source_identity = (
+                    source_quarantine.require_quarantine_object_directory_identity(
+                        source_objects
+                    )
+                )
+                destination_identity = (
+                    destination_quarantine.require_quarantine_object_directory_identity(
+                        destination_objects
+                    )
+                )
+                if source_identity == destination_identity:
+                    raise ValueError(
+                        "source and destination quarantines must be distinct"
+                    )
+                with lock_resolution_directory(source, create=False):
+                    source_resolution, output_keys = (
+                        _authenticate_completed_history_resolution_locked(
+                            document,
+                            raw_plan_sha256,
+                            source,
+                            binding,
+                            source_quarantine,
+                        )
+                    )
+                    _copy_completed_workspace_inventory(
+                        source,
+                        staging,
+                        output_keys,
+                    )
+                    confirmed_source, confirmed_output_keys = (
+                        _authenticate_completed_history_resolution_locked(
+                            document,
+                            raw_plan_sha256,
+                            source,
+                            binding,
+                            source_quarantine,
+                        )
+                    )
+                    if confirmed_output_keys != output_keys or not (
+                        _same_authenticated_resolution_facts(
+                            source_resolution,
+                            confirmed_source,
+                        )
+                    ):
+                        _invalid(
+                            _("source resolution workspace changed while it was copied")
+                        )
+                staged_resolution, staged_output_keys = (
+                    _authenticate_completed_history_resolution_locked(
+                        document,
+                        raw_plan_sha256,
+                        staging,
+                        binding,
+                        destination_quarantine,
+                    )
+                )
+                if staged_output_keys != output_keys or not (
+                    _same_authenticated_resolution_facts(
+                        source_resolution,
+                        staged_resolution,
+                    )
+                ):
+                    _invalid(
+                        _(
+                            "owned resolution copy does not match its "
+                            "authenticated source"
+                        )
+                    )
+                source_quarantine.require_quarantine_object_directory_identity(
+                    source_objects
+                )
+                destination_quarantine.require_quarantine_object_directory_identity(
+                    destination_objects
+                )
+        destination_resolution = HistoryAuthenticatedResolution(
+            raw_plan_sha256=staged_resolution.raw_plan_sha256,
+            complete_sha256=staged_resolution.complete_sha256,
+            workspace_path=str(destination),
+            replay=staged_resolution.replay,
         )
-        return HistoryAuthenticatedResolution(
-            raw_plan_sha256=raw_plan_sha256,
-            complete_sha256=complete_sha256,
-            workspace_path=str(absolute_path),
-            replay=replay,
-        )
+        publish_private_resolution_directory(staging, destination)
+    return destination_resolution
 
 
 def resolve_history_plan(

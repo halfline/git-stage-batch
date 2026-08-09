@@ -39,6 +39,12 @@ from .models import (
     HistoryPlanOperation,
 )
 from .records import history_plan_document_record
+from .resolution_files import (
+    create_private_resolution_directory,
+    list_resolution_directory,
+    publish_private_resolution_directory,
+    publish_new_private_file,
+)
 from .safety import collect_history_safety_facts
 
 
@@ -183,6 +189,12 @@ def history_operation_directory(operation_id: str) -> Path:
     """Return the private directory for one validated operation ID."""
     _validate_operation_id(operation_id)
     return _history_directory() / operation_id
+
+
+def history_operation_preparation_directory(operation_id: str) -> Path:
+    """Return the private unpublished staging directory for one operation."""
+    _validate_operation_id(operation_id)
+    return _history_directory() / f".prepare-{operation_id}"
 
 
 def history_operation_plan_path(operation_id: str) -> Path:
@@ -595,15 +607,66 @@ def load_history_operation_for_status() -> tuple[HistoryOperationState | None, b
     return load_latest_history_operation(), False
 
 
-def initialize_history_operation(
+def prepare_history_operation(
     state: HistoryOperationState,
     document: HistoryPlanDocument,
-) -> None:
-    """Publish one PREPARED checkpoint after its recovery ref exists."""
+) -> Path:
+    """Build one complete private operation directory without publishing it."""
     _validate_state(state)
     if state.phase is not HistoryPhase.PREPARED:
         _invalid("a new operation must start in PREPARED")
     plan_record = _require_state_matches_plan(state, document)
+    if active_history_operation_id() is not None:
+        raise CommandError(_("Another rewrite operation is already active."))
+    if _ref_is_symbolic(state.recovery_ref) or _resolved_commit(
+        state.recovery_ref
+    ) not in {None, state.original_tip}:
+        _invalid("recovery_ref must be absent or preserve original_tip")
+    if _resolved_object(state.output_ref) is not None:
+        _invalid("output_ref must not exist before output is built")
+
+    _ensure_history_directory()
+    preparation = history_operation_preparation_directory(state.operation_id)
+    operation_directory = history_operation_directory(state.operation_id)
+    for path, label in (
+        (preparation, "operation preparation directory"),
+        (operation_directory, "operation directory"),
+    ):
+        try:
+            path.lstat()
+        except FileNotFoundError:
+            pass
+        except OSError as error:
+            _invalid(f"cannot inspect {label}: {error}")
+        else:
+            _invalid(f"{label} already exists")
+
+    create_private_resolution_directory(preparation)
+    write_history_json_file(
+        preparation / "plan.json",
+        plan_record,
+        mode_policy=AtomicWriteModePolicy.PRIVATE,
+    )
+    write_history_json_file(
+        preparation / "state.json",
+        _state_record(state),
+        mode_policy=AtomicWriteModePolicy.PRIVATE,
+    )
+    if set(list_resolution_directory(preparation)) != {"plan.json", "state.json"}:
+        _invalid("operation preparation contains unexpected entries")
+    return preparation
+
+
+def publish_prepared_history_operation(
+    state: HistoryOperationState,
+    preparation: Path,
+) -> None:
+    """Publish one complete operation directory after its recovery ref exists."""
+    expected_preparation = history_operation_preparation_directory(
+        state.operation_id
+    )
+    if preparation != expected_preparation:
+        _invalid("operation preparation path does not belong to operation_id")
     if active_history_operation_id() is not None:
         raise CommandError(_("Another rewrite operation is already active."))
     if (
@@ -613,27 +676,56 @@ def initialize_history_operation(
         _invalid("recovery_ref must already preserve original_tip")
     if _resolved_object(state.output_ref) is not None:
         _invalid("output_ref must not exist before output is built")
+    if set(list_resolution_directory(preparation)) != {"plan.json", "state.json"}:
+        _invalid("operation preparation contains unexpected entries")
 
-    history_directory = _ensure_history_directory()
-    operation_directory = history_directory / state.operation_id
-    try:
-        operation_directory.lstat()
-    except FileNotFoundError:
-        pass
-    else:
-        _invalid("operation directory already exists")
-    operation_directory.mkdir(mode=0o700)
-    write_history_json_file(
-        operation_directory / "plan.json",
-        plan_record,
-        mode_policy=AtomicWriteModePolicy.PRIVATE,
+    publish_private_resolution_directory(
+        preparation,
+        history_operation_directory(state.operation_id),
     )
-    write_history_json_file(
-        operation_directory / "state.json",
-        _state_record(state),
-        mode_policy=AtomicWriteModePolicy.PRIVATE,
+    persisted = _load_history_operation(state.operation_id)
+    if persisted != state:
+        _invalid("published operation state does not match its preparation")
+    inspection = inspect_history_operation(state, require_active=False)
+    if not inspection.resume_ready:
+        _invalid(
+            "published operation is not activation-ready: "
+            + ", ".join(inspection.blockers)
+        )
+
+
+def activate_prepared_history_operation(state: HistoryOperationState) -> None:
+    """Publish the create-only active pointer after every durable prerequisite."""
+    persisted = _load_history_operation(state.operation_id)
+    if persisted != state:
+        _invalid("published operation state changed before activation")
+    active_operation_id = active_history_operation_id()
+    if active_operation_id == state.operation_id:
+        inspection = inspect_history_operation(state, require_active=True)
+        if not inspection.resume_ready:
+            _invalid(
+                "active operation is not resume-ready: "
+                + ", ".join(inspection.blockers)
+            )
+        return
+    if active_operation_id is not None:
+        raise CommandError(_("Another rewrite operation is already active."))
+    if (
+        _ref_is_symbolic(state.recovery_ref)
+        or _resolved_commit(state.recovery_ref) != state.original_tip
+    ):
+        _invalid("recovery_ref must preserve original_tip before activation")
+    inspection = inspect_history_operation(state, require_active=False)
+    if not inspection.resume_ready:
+        _invalid(
+            "published operation is not activation-ready: "
+            + ", ".join(inspection.blockers)
+        )
+    publish_new_private_file(
+        _active_path(),
+        f"{state.operation_id}\n".encode("ascii"),
+        maximum_bytes=33,
     )
-    write_text_file_contents(_active_path(), f"{state.operation_id}\n")
 
 
 def update_history_operation(state: HistoryOperationState) -> None:

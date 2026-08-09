@@ -29,15 +29,18 @@ from .replay import (
     materialize_history_output_trees,
     validate_history_plan_materialization,
 )
+from .safety import collect_history_safety_facts
 from .state import (
+    activate_prepared_history_operation,
     deactivate_history_operation,
     history_operation_plan_path,
     history_output_ref,
     history_recovery_ref,
-    initialize_history_operation,
     inspect_history_operation,
     load_active_history_operation,
     load_history_operation_for_status,
+    prepare_history_operation,
+    publish_prepared_history_operation,
     update_history_operation,
     write_history_verification_record,
 )
@@ -424,6 +427,34 @@ def _pause_after_failure(error: BaseException) -> None:
         return
 
 
+def _require_start_facts_unchanged(
+    document: HistoryPlanDocument,
+    *,
+    allowed_remote_refs: tuple[str, ...],
+) -> None:
+    snapshot = document.snapshot
+    current_branch = _symbolic_head()
+    current_tip = _resolved_commit("HEAD")
+    safety = collect_history_safety_facts(
+        tip=snapshot.tip_commit,
+        final_tree=snapshot.final_tree,
+        branch_ref=current_branch,
+        source_commits=tuple(commit.commit_id for commit in snapshot.commits),
+        allowed_remote_refs=allowed_remote_refs,
+    )
+    blockers = list(safety.blockers)
+    if current_branch != snapshot.branch_ref:
+        blockers.append("branch-ref-changed")
+    if current_tip != snapshot.tip_commit:
+        blockers.append("branch-tip-changed")
+    if blockers:
+        raise CommandError(
+            _("Rewrite apply is blocked by: {blockers}.").format(
+                blockers=", ".join(dict.fromkeys(blockers))
+            )
+        )
+
+
 def start_history_operation(
     plan_path: str,
     *,
@@ -475,22 +506,19 @@ def start_history_operation(
         verification_sha256=None,
         diagnostic=None,
     )
+    preparation = prepare_history_operation(state, document)
+    _require_start_facts_unchanged(
+        document,
+        allowed_remote_refs=allowed_refs,
+    )
     update_git_refs(
         updates=((recovery_ref, document.snapshot.tip_commit),),
         expected_old_values={recovery_ref: None},
+        durable=True,
+        no_deref=True,
     )
-    try:
-        initialize_history_operation(state, document)
-    except BaseException:
-        try:
-            update_git_refs(
-                deletes=(recovery_ref,),
-                ignore_missing_deletes=False,
-                expected_old_values={recovery_ref: document.snapshot.tip_commit},
-            )
-        except BaseException:
-            pass
-        raise
+    publish_prepared_history_operation(state, preparation)
+    activate_prepared_history_operation(state)
     return continue_history_operation()
 
 

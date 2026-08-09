@@ -371,6 +371,33 @@ def test_output_cas_rejects_a_raced_dangling_symbolic_ref(
     assert _resolved_ref(victim_ref) == ""
     assert git("rev-parse", "HEAD") == repo.tip
 
+
+def test_branch_cas_rejects_a_raced_dangling_symbolic_ref(
+    linear_history_repo,
+    monkeypatch,
+):
+    repo = linear_history_repo
+    path, _plan = _write_plan(repo, _reword_first)
+    branch_ref = "refs/heads/topic"
+    victim_ref = "refs/heads/unrelated-branch-target"
+    real_update_refs = execution.update_git_refs
+
+    def race_branch_ref(*, updates=(), **kwargs):
+        if updates and updates[0][0] == branch_ref:
+            git("symbolic-ref", branch_ref, victim_ref)
+        return real_update_refs(updates=updates, **kwargs)
+
+    monkeypatch.setattr(execution, "update_git_refs", race_branch_ref)
+
+    with pytest.raises(CommandError, match="branch changed before"):
+        start_history_operation(str(path))
+
+    assert git("symbolic-ref", branch_ref) == victim_ref
+    assert _resolved_ref(victim_ref) == ""
+    assert _resolved_ref("HEAD") == ""
+    assert _resolved_ref(load_active_history_operation().recovery_ref) == repo.tip
+
+
 def test_apply_rewords_without_changing_the_final_tree(linear_history_repo):
     repo = linear_history_repo
     original_tree = git("rev-parse", "HEAD^{tree}")

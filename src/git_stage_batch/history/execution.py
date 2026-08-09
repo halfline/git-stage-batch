@@ -5,11 +5,16 @@ from __future__ import annotations
 import subprocess
 import tempfile
 import uuid
+from collections.abc import Iterable
 from dataclasses import replace
 
 from ..exceptions import CommandError
 from ..i18n import _
-from ..utils.git_command import run_git_command, stream_git_command
+from ..utils.git_command import (
+    run_git_command,
+    stream_git_command,
+    stream_git_command_bytes,
+)
 from ..utils.git_object_io import (
     GitObjectQuarantine,
     temporary_git_object_environment,
@@ -179,8 +184,11 @@ def _expected_output_objects(
     *,
     quarantine: GitObjectQuarantine,
     write: bool,
+    disable_lazy_fetch: bool = False,
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
     with quarantine.pinned_environment() as environment:
+        if disable_lazy_fetch:
+            environment["GIT_NO_LAZY_FETCH"] = "1"
         replay = _operation_replay(
             state,
             document,
@@ -379,26 +387,106 @@ def _invalid_persistent_output_closure() -> CommandError:
     )
 
 
+class _PersistentObjectBatchReader:
+    """Consume Git's batch-object protocol with bounded payload buffering."""
+
+    def __init__(self, chunks: Iterable[bytes]) -> None:
+        self._chunks = iter(chunks)
+        self._pending = bytearray()
+
+    def read_line(self) -> bytes:
+        """Read one bounded protocol header without its newline."""
+        while True:
+            line_end = self._pending.find(b"\n")
+            if line_end >= 0:
+                line = bytes(self._pending[:line_end])
+                del self._pending[: line_end + 1]
+                return line
+            if len(self._pending) > 256:
+                raise ValueError("oversized Git batch-object header")
+            self._extend()
+
+    def discard_exactly(self, size: int) -> None:
+        """Discard exactly ``size`` payload bytes in bounded chunks."""
+        remaining = size
+        while remaining:
+            if not self._pending:
+                self._extend()
+            chunk_size = min(remaining, len(self._pending))
+            del self._pending[:chunk_size]
+            remaining -= chunk_size
+
+    def require_delimiter(self) -> None:
+        """Require the newline terminating one batch payload."""
+        if not self._pending:
+            self._extend()
+        if self._pending[0] != ord("\n"):
+            raise ValueError("invalid Git batch-object delimiter")
+        del self._pending[0]
+
+    def finish(self) -> None:
+        """Require the batch protocol to end without trailing output."""
+        if self._pending:
+            raise ValueError("trailing Git batch-object output")
+        for chunk in self._chunks:
+            if chunk:
+                raise ValueError("trailing Git batch-object output")
+
+    def _extend(self) -> None:
+        try:
+            self._pending.extend(next(self._chunks))
+        except StopIteration as error:
+            raise ValueError("truncated Git batch-object output") from error
+
+
 def _require_persistent_output_closure(
     state: HistoryOperationState,
     *,
+    output_trees: tuple[str, ...],
     environment: dict[str, str],
 ) -> None:
     object_id_width = 40 if state.object_format == "sha1" else 64
     requested_count = 0
     reported_count = 0
-    with tempfile.TemporaryFile() as object_ids:
+    with (
+        tempfile.TemporaryFile() as object_ids,
+        tempfile.TemporaryFile() as expected_object_ids,
+        tempfile.TemporaryFile() as expected_object_metadata,
+        tempfile.TemporaryFile() as tree_roots,
+    ):
+        # Check rebuilt commit bodies explicitly without walking parents across the
+        # trusted base boundary. Traverse every output tree without an exclusion so
+        # objects shared with the base or an intermediate tree remain required.
+        for object_id_text in state.output_commits:
+            if len(object_id_text) != object_id_width or any(
+                character not in "0123456789abcdef" for character in object_id_text
+            ):
+                raise _invalid_persistent_output_closure()
+            object_id = object_id_text.encode("ascii")
+            if object_ids.write(object_id + b"\n") != object_id_width + 1:
+                raise _invalid_persistent_output_closure()
+            if expected_object_ids.write(object_id + b"\n") != object_id_width + 1:
+                raise _invalid_persistent_output_closure()
+            requested_count += 1
+        for tree_text in output_trees:
+            if len(tree_text) != object_id_width or any(
+                character not in "0123456789abcdef" for character in tree_text
+            ):
+                raise _invalid_persistent_output_closure()
+            tree = tree_text.encode("ascii")
+            if tree_roots.write(tree + b"\n") != object_id_width + 1:
+                raise _invalid_persistent_output_closure()
+        tree_roots.seek(0)
         try:
             for line in stream_git_command(
                 [
-                    "--no-replace-objects",
                     "rev-list",
                     "--objects",
                     "--no-object-names",
                     "--missing=error",
-                    state.output_commits[-1],
-                    f"^{state.base_commit}",
+                    "--stdin",
                 ],
+                stdin_chunks=tree_roots,
                 env=environment,
                 requires_index_lock=False,
             ):
@@ -414,14 +502,16 @@ def _require_persistent_output_closure(
                     )
                 if object_ids.write(object_id + b"\n") != object_id_width + 1:
                     raise _invalid_persistent_output_closure()
+                if expected_object_ids.write(object_id + b"\n") != object_id_width + 1:
+                    raise _invalid_persistent_output_closure()
                 requested_count += 1
         except subprocess.CalledProcessError as error:
             raise _invalid_persistent_output_closure() from error
         object_ids.seek(0)
+        expected_object_ids.seek(0)
         try:
             for line in stream_git_command(
                 [
-                    "--no-replace-objects",
                     "cat-file",
                     "--batch-check=%(objectname) %(objecttype) %(objectsize)",
                 ],
@@ -431,18 +521,63 @@ def _require_persistent_output_closure(
             ):
                 record = line.removesuffix(b"\n")
                 fields = record.split(b" ")
+                expected_object_id = expected_object_ids.readline().removesuffix(b"\n")
+                expected_types = (
+                    {b"commit"}
+                    if reported_count < len(state.output_commits)
+                    else {b"blob", b"tree"}
+                )
                 if (
                     len(fields) != 3
+                    or fields[0] != expected_object_id
+                    or fields[1] not in expected_types
+                    or len(fields[0]) != object_id_width
+                    or any(byte not in b"0123456789abcdef" for byte in fields[0])
+                    or not fields[2].isdigit()
+                ):
+                    raise _invalid_persistent_output_closure()
+                if expected_object_metadata.write(record + b"\n") != len(record) + 1:
+                    raise _invalid_persistent_output_closure()
+                reported_count += 1
+        except subprocess.CalledProcessError as error:
+            raise _invalid_persistent_output_closure() from error
+        object_ids.seek(0)
+        expected_object_metadata.seek(0)
+        try:
+            reader = _PersistentObjectBatchReader(
+                stream_git_command_bytes(
+                    [
+                        "cat-file",
+                        "--batch",
+                    ],
+                    stdin_chunks=object_ids,
+                    env=environment,
+                    requires_index_lock=False,
+                )
+            )
+            content_count = 0
+            while content_count < requested_count:
+                record = reader.read_line()
+                fields = record.split(b" ")
+                expected_metadata = expected_object_metadata.readline().removesuffix(
+                    b"\n"
+                )
+                if (
+                    len(fields) != 3
+                    or record != expected_metadata
                     or fields[1] not in {b"blob", b"commit", b"tree"}
                     or len(fields[0]) != object_id_width
                     or any(byte not in b"0123456789abcdef" for byte in fields[0])
                     or not fields[2].isdigit()
                 ):
                     raise _invalid_persistent_output_closure()
-                reported_count += 1
-        except subprocess.CalledProcessError as error:
+                reader.discard_exactly(int(fields[2]))
+                reader.require_delimiter()
+                content_count += 1
+            reader.finish()
+        except (subprocess.CalledProcessError, ValueError) as error:
             raise _invalid_persistent_output_closure() from error
-    if reported_count != requested_count:
+    if reported_count != requested_count or content_count != requested_count:
         raise _invalid_persistent_output_closure()
 
 
@@ -455,10 +590,6 @@ def _verify_output_objects(
     ) as persistent_view:
         with persistent_view.pinned_environment() as persistent_environment:
             persistent_environment["GIT_NO_LAZY_FETCH"] = "1"
-            _require_persistent_output_closure(
-                state,
-                environment=persistent_environment,
-            )
             with temporary_git_object_environment(
                 disable_replace_objects=True
             ) as quarantine:
@@ -467,11 +598,17 @@ def _verify_output_objects(
                     document,
                     quarantine=quarantine,
                     write=False,
+                    disable_lazy_fetch=True,
                 )
             if state.output_commits != expected_commits:
                 raise CommandError(
                     _("Built history commits do not match deterministic replay.")
                 )
+            _require_persistent_output_closure(
+                state,
+                output_trees=expected_trees,
+                environment=persistent_environment,
+            )
             if _resolved_object(state.output_ref) != expected_commits[-1]:
                 raise CommandError(
                     _("The rewrite output ref changed before verification.")

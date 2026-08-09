@@ -23,8 +23,14 @@ def update_git_refs(
     deletes: Iterable[str] = (),
     ignore_missing_deletes: bool = True,
     expected_old_values: Mapping[str, str | None] | None = None,
+    durable: bool = False,
 ) -> None:
-    """Update one or more Git refs in a single update-ref transaction."""
+    """Update one or more Git refs in a single update-ref transaction.
+
+    ``durable`` requests an fsync-backed reference publication boundary for
+    callers whose own durable checkpoints depend on the ref surviving an
+    unclean shutdown.
+    """
     update_commands = list(updates)
     delete_commands = list(deletes)
     if ignore_missing_deletes:
@@ -71,8 +77,17 @@ def update_git_refs(
     )
     commands.extend(["prepare", "commit"])
     payload = ("\n".join(commands) + "\n").encode("utf-8")
+    arguments = ["update-ref", "--stdin"]
+    if durable:
+        arguments = [
+            "-c",
+            "core.fsync=reference",
+            "-c",
+            "core.fsyncMethod=fsync",
+            *arguments,
+        ]
     for _chunk in stream_git_command(
-        ["update-ref", "--stdin"],
+        arguments,
         [payload],
         requires_index_lock=False,
     ):

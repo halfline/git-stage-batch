@@ -15,6 +15,7 @@ from ..utils.git_object_io import (
     temporary_git_object_environment,
 )
 from ..utils.git_object_promotion import (
+    adopt_git_object_promotion_lease,
     promote_git_object_closure,
     release_git_object_promotion_lease,
 )
@@ -655,12 +656,15 @@ def continue_history_operation() -> HistoryOperationState:
         }:
             deactivate_history_operation(state)
             return state
+        if (
+            state.phase is HistoryPhase.PAUSED
+            and state.next_action is HistoryNextAction.RESTORE_ORIGINAL
+        ):
+            return abort_history_operation()
         _require_resume_ready(state)
         document = _operation_document(state)
 
         if state.phase is HistoryPhase.PAUSED:
-            if state.next_action is HistoryNextAction.RESTORE_ORIGINAL:
-                return abort_history_operation()
             if state.next_action is HistoryNextAction.BUILD_OUTPUT:
                 state = _initialize_build(state)
             elif state.next_action is HistoryNextAction.VERIFY_SERIES:
@@ -704,11 +708,15 @@ def _retract_pending_output(state: HistoryOperationState) -> HistoryOperationSta
                     deletes=(state.output_ref,),
                     ignore_missing_deletes=False,
                     expected_old_values={state.output_ref: pending},
+                    durable=True,
+                    no_deref=True,
                 )
             else:
                 update_git_refs(
                     updates=((state.output_ref, completed_tip),),
                     expected_old_values={state.output_ref: pending},
+                    durable=True,
+                    no_deref=True,
                 )
         except subprocess.CalledProcessError as error:
             raise CommandError(
@@ -723,6 +731,16 @@ def _retract_pending_output(state: HistoryOperationState) -> HistoryOperationSta
     )
     update_history_operation(retracted)
     return retracted
+
+
+def _release_history_promotion_lease(state: HistoryOperationState) -> None:
+    with temporary_git_object_environment(disable_replace_objects=True) as quarantine:
+        promotion_lease = adopt_git_object_promotion_lease(
+            quarantine,
+            lease_id=f"rewrite-{state.operation_id}",
+        )
+        if promotion_lease is not None:
+            release_git_object_promotion_lease(quarantine, promotion_lease)
 
 
 def abort_history_operation() -> HistoryOperationState:
@@ -770,6 +788,8 @@ def abort_history_operation() -> HistoryOperationState:
             update_git_refs(
                 updates=((state.branch_ref, state.original_tip),),
                 expected_old_values={state.branch_ref: output_tip},
+                durable=True,
+                no_deref=True,
             )
         except subprocess.CalledProcessError as error:
             raise CommandError(
@@ -782,6 +802,8 @@ def abort_history_operation() -> HistoryOperationState:
                 "manually from {recovery_ref}."
             ).format(recovery_ref=state.recovery_ref)
         )
+
+    _release_history_promotion_lease(state)
 
     aborted = replace(
         state,

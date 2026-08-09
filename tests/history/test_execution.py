@@ -1029,6 +1029,26 @@ def test_latest_verification_ignores_later_publication_policy(
     assert verification.output_tip == state.output_commits[-1]
 
 
+def test_latest_verification_is_independent_of_current_checkout(
+    linear_history_repo,
+):
+    repo = linear_history_repo
+    path, _plan = _write_plan(repo, _reword_first)
+    state = start_history_operation(str(path))
+    git("switch", "-c", "later-work")
+    repo.source.write_text("later committed work\n", encoding="utf-8")
+    git("add", "example.txt")
+    git("commit", "-m", "Add later work")
+    repo.source.write_text("later staged work\n", encoding="utf-8")
+    git("add", "example.txt")
+    repo.source.write_text("later unstaged work\n", encoding="utf-8")
+
+    verified_state, verification = verify_history_operation()
+
+    assert verified_state == state
+    assert verification.output_tip == state.output_commits[-1]
+
+
 def test_latest_verification_reads_a_persisted_schema_three_plan(
     linear_history_repo,
 ):

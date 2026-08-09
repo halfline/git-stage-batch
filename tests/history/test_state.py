@@ -22,12 +22,14 @@ from git_stage_batch.history.records import history_plan_document_record
 from git_stage_batch.history.scan import acquire_history_plan_document
 from git_stage_batch.history.state import (
     active_history_operation_id,
+    activate_prepared_history_operation,
     history_operation_directory,
     history_output_ref,
     history_recovery_ref,
-    initialize_history_operation,
     inspect_history_operation,
     load_active_history_operation,
+    prepare_history_operation,
+    publish_prepared_history_operation,
     update_history_operation,
 )
 from git_stage_batch.output.rewrite_operation import print_rewrite_operation
@@ -73,12 +75,18 @@ def _prepared_state(repo, operation_id: str = "a" * 32):
     return state, document
 
 
+def _initialize_history_operation(state, document) -> None:
+    preparation = prepare_history_operation(state, document)
+    publish_prepared_history_operation(state, preparation)
+    activate_prepared_history_operation(state)
+
+
 def test_initialize_publishes_private_recoverable_checkpoint(
     linear_history_repo,
 ):
     state, document = _prepared_state(linear_history_repo)
 
-    initialize_history_operation(state, document)
+    _initialize_history_operation(state, document)
 
     assert active_history_operation_id() == state.operation_id
     assert load_active_history_operation() == state
@@ -121,13 +129,13 @@ def test_initialize_requires_existing_exact_recovery_ref(linear_history_repo):
         diagnostic=None,
     )
 
-    with pytest.raises(CommandError, match="recovery_ref must already"):
-        initialize_history_operation(state, document)
+    with pytest.raises(CommandError, match="recovery_ref must"):
+        _initialize_history_operation(state, document)
 
 
 def test_update_accepts_only_closed_phase_transitions(linear_history_repo):
     state, document = _prepared_state(linear_history_repo)
-    initialize_history_operation(state, document)
+    _initialize_history_operation(state, document)
 
     building = replace(state, phase=HistoryPhase.BUILDING)
     update_history_operation(building)
@@ -144,7 +152,7 @@ def test_update_accepts_only_closed_phase_transitions(linear_history_repo):
 
 def test_inspection_detects_plan_tampering(linear_history_repo):
     state, document = _prepared_state(linear_history_repo)
-    initialize_history_operation(state, document)
+    _initialize_history_operation(state, document)
     plan_path = history_operation_directory(state.operation_id) / "plan.json"
     plan_path.write_text("{}\n", encoding="utf-8")
 
@@ -159,7 +167,7 @@ def test_inspection_detects_plan_tampering(linear_history_repo):
 def test_inspection_detects_external_branch_movement(linear_history_repo):
     repo = linear_history_repo
     state, document = _prepared_state(repo)
-    initialize_history_operation(state, document)
+    _initialize_history_operation(state, document)
     git("update-ref", "refs/heads/topic", repo.first, repo.tip)
 
     inspection = inspect_history_operation(state)
@@ -188,7 +196,7 @@ def test_status_reports_exact_next_action_and_recovery(
         state,
         plan_sha256=history_json_sha256(history_plan_document_record(document)),
     )
-    initialize_history_operation(state, document)
+    _initialize_history_operation(state, document)
 
     command_rewrite_status(porcelain=True)
 
@@ -210,7 +218,7 @@ def test_status_shell_quotes_manual_recovery_branch(
     capsys,
 ):
     state, document = _prepared_state(linear_history_repo)
-    initialize_history_operation(state, document)
+    _initialize_history_operation(state, document)
     inspection = inspect_history_operation(state)
     rendered_state = replace(
         state,
@@ -305,7 +313,7 @@ def test_history_directory_must_not_be_a_symlink(linear_history_repo):
 
 def test_operation_directory_must_not_be_a_symlink(linear_history_repo):
     state, document = _prepared_state(linear_history_repo)
-    initialize_history_operation(state, document)
+    _initialize_history_operation(state, document)
     operation_directory = history_operation_directory(state.operation_id)
     relocated = operation_directory.with_name("relocated")
     operation_directory.rename(relocated)
@@ -319,8 +327,8 @@ def test_initialize_rejects_a_symbolic_recovery_ref(linear_history_repo):
     state, document = _prepared_state(linear_history_repo)
     git("symbolic-ref", state.recovery_ref, state.branch_ref)
 
-    with pytest.raises(CommandError, match="recovery_ref must already"):
-        initialize_history_operation(state, document)
+    with pytest.raises(CommandError, match="recovery_ref must"):
+        _initialize_history_operation(state, document)
 
 
 def test_initialize_rejects_any_existing_output_ref(linear_history_repo):
@@ -329,13 +337,13 @@ def test_initialize_rejects_any_existing_output_ref(linear_history_repo):
     git("update-ref", state.output_ref, tree)
 
     with pytest.raises(CommandError, match="output_ref must not exist"):
-        initialize_history_operation(state, document)
+        _initialize_history_operation(state, document)
 
 
 def test_inspection_binds_state_facts_to_persisted_plan(linear_history_repo):
     repo = linear_history_repo
     state, document = _prepared_state(repo)
-    initialize_history_operation(state, document)
+    _initialize_history_operation(state, document)
     forged = replace(state, source_commits=(repo.base, repo.tip))
 
     inspection = inspect_history_operation(forged)
@@ -350,7 +358,7 @@ def test_inspection_binds_plan_digest_and_facts_to_one_read(
     monkeypatch,
 ):
     state, document = _prepared_state(linear_history_repo)
-    initialize_history_operation(state, document)
+    _initialize_history_operation(state, document)
     original_read = history_state.read_required_text_file_contents_and_sha256
     read_count = 0
 

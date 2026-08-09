@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import copy
 import json
+import os
+import stat
 import subprocess
 from dataclasses import replace
 from types import SimpleNamespace
@@ -14,6 +16,7 @@ from git_stage_batch.exceptions import CommandError
 from git_stage_batch.history import (
     execution,
     plan_files,
+    resolution_files,
     state as history_state,
 )
 from git_stage_batch.history.commit_writer import (
@@ -33,11 +36,17 @@ from git_stage_batch.history.json_files import (
     write_history_json_file,
 )
 from git_stage_batch.history.records import history_plan_document_record
+from git_stage_batch.history.resolution_files import (
+    PrivateFilePublicationError,
+    PrivateFilePublicationOutcome,
+)
 from git_stage_batch.history.scan import acquire_history_plan_document
 from git_stage_batch.history.state import (
     active_history_operation_id,
     history_operation_directory,
     history_operation_plan_path,
+    history_operation_preparation_directory,
+    history_recovery_ref,
     latest_history_operation_id,
     load_active_history_operation,
     load_latest_history_operation,
@@ -97,6 +106,10 @@ def _use_operation_id(monkeypatch, operation_id):
     )
 
 
+def _resolved_ref(refname):
+    return git("rev-parse", "--verify", "--quiet", refname, check=False)
+
+
 def _add_text_equivalent_encoded_commits(repo):
     prefix = (
         f"tree {git('rev-parse', 'HEAD^{tree}')}\n"
@@ -126,6 +139,210 @@ def _add_text_equivalent_encoded_commits(repo):
     return source_commit, replacement_commit
 
 
+@pytest.mark.parametrize(
+    "failed_artifact",
+    ["preparation", "plan.json", "state.json"],
+)
+def test_start_does_not_expose_an_incomplete_preparation(
+    linear_history_repo,
+    monkeypatch,
+    failed_artifact,
+):
+    repo = linear_history_repo
+    path, _plan = _write_plan(repo)
+    operation_id = "1" * 32
+    _use_operation_id(monkeypatch, operation_id)
+
+    if failed_artifact == "preparation":
+
+        def fail_preparation(_path):
+            raise RuntimeError("injected preparation failure")
+
+        monkeypatch.setattr(
+            history_state,
+            "create_private_resolution_directory",
+            fail_preparation,
+        )
+    else:
+        original_write = history_state.write_history_json_file
+
+        def fail_selected_write(destination, value, **kwargs):
+            if destination.name == failed_artifact:
+                raise RuntimeError(f"injected {failed_artifact} failure")
+            return original_write(destination, value, **kwargs)
+
+        monkeypatch.setattr(
+            history_state,
+            "write_history_json_file",
+            fail_selected_write,
+        )
+
+    with pytest.raises(RuntimeError, match="injected"):
+        start_history_operation(str(path))
+
+    assert active_history_operation_id() is None
+    assert _resolved_ref(history_recovery_ref(operation_id)) == ""
+    assert not history_operation_directory(operation_id).exists()
+
+
+def test_start_does_not_replace_an_operation_directory_collision(
+    linear_history_repo,
+    monkeypatch,
+):
+    repo = linear_history_repo
+    path, _plan = _write_plan(repo)
+    operation_id = "2" * 32
+    _use_operation_id(monkeypatch, operation_id)
+    history_directory = history_operation_directory(operation_id).parent
+    history_directory.mkdir(parents=True, mode=0o700)
+    operation_directory = history_operation_directory(operation_id)
+    operation_directory.mkdir(mode=0o700)
+    sentinel = operation_directory / "foreign"
+    sentinel.write_text("foreign operation\n", encoding="utf-8")
+    sentinel.chmod(0o600)
+
+    with pytest.raises(CommandError, match="operation directory already exists"):
+        start_history_operation(str(path))
+
+    assert sentinel.read_text(encoding="utf-8") == "foreign operation\n"
+    assert active_history_operation_id() is None
+    assert _resolved_ref(history_recovery_ref(operation_id)) == ""
+    assert not history_operation_preparation_directory(operation_id).exists()
+
+
+def test_start_does_not_replace_active_appearing_at_publication(
+    linear_history_repo,
+    monkeypatch,
+):
+    repo = linear_history_repo
+    path, _plan = _write_plan(repo)
+    operation_id = "3" * 32
+    foreign_operation_id = "f" * 32
+    _use_operation_id(monkeypatch, operation_id)
+    original_rename_noreplace = resolution_files._rename_noreplace
+
+    def publish_foreign_active(parent, source_name, destination_name):
+        if destination_name == "active":
+            descriptor = os.open(
+                destination_name,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                0o600,
+                dir_fd=parent,
+            )
+            try:
+                os.fchmod(descriptor, 0o600)
+                os.write(descriptor, f"{foreign_operation_id}\n".encode("ascii"))
+            finally:
+                os.close(descriptor)
+        original_rename_noreplace(parent, source_name, destination_name)
+
+    monkeypatch.setattr(
+        resolution_files,
+        "_rename_noreplace",
+        publish_foreign_active,
+    )
+
+    with pytest.raises(PrivateFilePublicationError) as caught:
+        start_history_operation(str(path))
+
+    assert caught.value.outcome is PrivateFilePublicationOutcome.NOT_COMMITTED
+    assert active_history_operation_id() == foreign_operation_id
+    assert history_operation_directory(operation_id).is_dir()
+    assert _resolved_ref(history_recovery_ref(operation_id)) == repo.tip
+
+
+def test_start_preserves_recovery_after_operation_directory_publication_failure(
+    linear_history_repo,
+    monkeypatch,
+):
+    repo = linear_history_repo
+    path, _plan = _write_plan(repo)
+    operation_id = "4" * 32
+    _use_operation_id(monkeypatch, operation_id)
+    operation_directory = history_operation_directory(operation_id)
+    active_path = operation_directory.parent / "active"
+    original_fsync = resolution_files.os.fsync
+
+    def fail_parent_fsync_after_directory_rename(descriptor):
+        if (
+            operation_directory.is_dir()
+            and not active_path.exists()
+            and stat.S_ISDIR(os.fstat(descriptor).st_mode)
+        ):
+            raise OSError("injected operation-directory parent fsync failure")
+        original_fsync(descriptor)
+
+    monkeypatch.setattr(
+        resolution_files.os,
+        "fsync",
+        fail_parent_fsync_after_directory_rename,
+    )
+
+    with pytest.raises(OSError, match="operation-directory parent fsync"):
+        start_history_operation(str(path))
+
+    assert active_history_operation_id() is None
+    assert operation_directory.is_dir()
+    assert _resolved_ref(history_recovery_ref(operation_id)) == repo.tip
+
+
+def test_start_preserves_committed_active_after_parent_fsync_failure(
+    linear_history_repo,
+    monkeypatch,
+):
+    repo = linear_history_repo
+    path, _plan = _write_plan(repo)
+    operation_id = "5" * 32
+    _use_operation_id(monkeypatch, operation_id)
+    operation_directory = history_operation_directory(operation_id)
+    active_path = operation_directory.parent / "active"
+    original_fsync = resolution_files.os.fsync
+
+    def fail_parent_fsync_after_active_rename(descriptor):
+        if active_path.is_file() and stat.S_ISDIR(os.fstat(descriptor).st_mode):
+            raise OSError("injected active parent fsync failure")
+        original_fsync(descriptor)
+
+    monkeypatch.setattr(
+        resolution_files.os,
+        "fsync",
+        fail_parent_fsync_after_active_rename,
+    )
+
+    with pytest.raises(PrivateFilePublicationError) as caught:
+        start_history_operation(str(path))
+
+    assert caught.value.outcome is PrivateFilePublicationOutcome.COMMITTED
+    assert active_history_operation_id() == operation_id
+    assert operation_directory.is_dir()
+    assert _resolved_ref(history_recovery_ref(operation_id)) == repo.tip
+
+
+def test_start_recovery_cas_rejects_a_raced_dangling_symbolic_ref(
+    linear_history_repo,
+    monkeypatch,
+):
+    repo = linear_history_repo
+    path, _plan = _write_plan(repo)
+    operation_id = "6" * 32
+    recovery_ref = history_recovery_ref(operation_id)
+    victim_ref = "refs/heads/unrelated-recovery-target"
+    _use_operation_id(monkeypatch, operation_id)
+    real_update_refs = execution.update_git_refs
+
+    def race_recovery_ref(*, updates=(), **kwargs):
+        if updates and updates[0][0] == recovery_ref:
+            git("symbolic-ref", recovery_ref, victim_ref)
+        return real_update_refs(updates=updates, **kwargs)
+
+    monkeypatch.setattr(execution, "update_git_refs", race_recovery_ref)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        start_history_operation(str(path))
+
+    assert git("symbolic-ref", recovery_ref) == victim_ref
+    assert _resolved_ref(victim_ref) == ""
+    assert active_history_operation_id() is None
 def test_apply_rewords_without_changing_the_final_tree(linear_history_repo):
     repo = linear_history_repo
     original_tree = git("rev-parse", "HEAD^{tree}")

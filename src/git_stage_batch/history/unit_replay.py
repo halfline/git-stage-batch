@@ -41,13 +41,19 @@ class HistoryReplayUnit:
 @contextmanager
 def acquire_history_replay_units(
     snapshot: HistorySnapshot,
+    *,
+    env: dict[str, str] | None = None,
 ) -> Iterator[tuple[HistoryReplayUnit, ...]]:
     """Reacquire every exact unit while retaining only bounded patch buffers."""
     acquired: list[HistoryReplayUnit] = []
     with ExitStack() as stack:
         for commit in snapshot.commits:
             patches = stack.enter_context(
-                acquire_tree_fixup_units(commit.parent_tree, commit.tree)
+                acquire_tree_fixup_units(
+                    commit.parent_tree,
+                    commit.tree,
+                    env=env,
+                )
             )
             patch_ids = tuple(
                 history_unit_id(commit.commit_id, patch.unit_id)

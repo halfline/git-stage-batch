@@ -34,6 +34,7 @@ from git_stage_batch.history.state import (
     active_history_operation_id,
     activate_prepared_history_operation,
     history_operation_directory,
+    history_operation_resolutions_path,
     history_output_ref,
     history_recovery_ref,
     inspect_history_operation,
@@ -489,6 +490,23 @@ def test_resolved_plan_without_provenance_blocks_status_and_continue(
     assert "resolution-bundle-changed" in output["inspection"]["blockers"]
     with pytest.raises(CommandError, match="resolution-bundle-changed"):
         continue_history_operation()
+
+
+def test_resolved_operation_rejects_a_changed_owned_bundle(
+    linear_history_repo,
+    monkeypatch,
+):
+    state = _start_resolved_history_operation(linear_history_repo, monkeypatch)
+    complete_path = (
+        history_operation_resolutions_path(state.operation_id) / "complete.json"
+    )
+    complete_path.write_text("{}\n", encoding="utf-8")
+
+    inspection = inspect_history_operation(state)
+
+    assert inspection.resolution_matches is False
+    assert inspection.resume_ready is False
+    assert "resolution-bundle-changed" in inspection.blockers
 
 
 def test_initialize_requires_existing_exact_recovery_ref(linear_history_repo):

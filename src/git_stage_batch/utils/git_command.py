@@ -12,6 +12,7 @@ from .command import run_command, stream_command
 from .git_environment import (
     git_environment_with_deterministic_messages,
     git_environment_with_optional_locks_disabled,
+    git_environment_with_pinned_object_store,
 )
 from ..core.text_lines import bytes_to_lines
 
@@ -37,13 +38,15 @@ def _prepare_git_command_environment(
     requires_index_lock: bool,
     cwd: str | None,
     env: dict[str, str] | None,
-) -> dict[str, str] | None:
+) -> tuple[dict[str, str] | None, tuple[int, ...]]:
     if requires_index_lock:
         git_index_lock.wait_for_git_index_lock(cwd=cwd, env=env)
-    return _git_command_environment(
-        requires_index_lock=requires_index_lock,
-        cwd=cwd,
-        env=env,
+    return git_environment_with_pinned_object_store(
+        _git_command_environment(
+            requires_index_lock=requires_index_lock,
+            cwd=cwd,
+            env=env,
+        )
     )
 
 
@@ -150,15 +153,17 @@ def stream_git_command_bytes(
     )
     exit_code = 0
     stderr_chunks = []
+    command_environment, pass_fds = _prepare_git_command_environment(
+        requires_index_lock=requires_index_lock,
+        cwd=cwd,
+        env=env,
+    )
     for event in stream_command(
         ["git", *command_arguments],
         stdin_chunks,
         cwd=cwd,
-        env=_prepare_git_command_environment(
-            requires_index_lock=requires_index_lock,
-            cwd=cwd,
-            env=env,
-        ),
+        env=command_environment,
+        pass_fds=pass_fds,
     ):
         if isinstance(event, command_events.ExitEvent):
             exit_code = event.exit_code
@@ -356,19 +361,23 @@ def run_git_command(
         )
 
     while True:
+        command_environment, pass_fds = git_environment_with_pinned_object_store(
+            _git_command_environment(
+                requires_index_lock=requires_index_lock,
+                cwd=cwd,
+                env=env,
+            )
+        )
         result = run_command(
             command,
             reusable_stdin_chunks,
             check=False,
             text_output=text_output,
             cwd=cwd,
-            env=_git_command_environment(
-                requires_index_lock=requires_index_lock,
-                cwd=cwd,
-                env=env,
-            ),
+            env=command_environment,
             capture_stdout=capture_stdout,
             capture_stderr=capture_stderr,
+            pass_fds=pass_fds,
         )
         if not (
             retry_deadline is not None

@@ -39,6 +39,7 @@ from collections.abc import Iterable, Iterator
 from typing import Literal, overload
 
 from . import command_events, command_streaming
+from .git_descriptor_exec import prepare_darwin_descriptor_command
 
 
 def _close_fd_if_present(fd: int | None) -> None:
@@ -223,6 +224,7 @@ def start_command(
     """
     if not arguments:
         raise ValueError("arguments must not be empty")
+    arguments = prepare_darwin_descriptor_command(arguments, env)
     if extra_fds is None:
         extra_fds = []
     if stdin and stdin_fd is not None:

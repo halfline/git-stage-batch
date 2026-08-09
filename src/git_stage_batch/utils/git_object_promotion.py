@@ -72,6 +72,14 @@ class _OpenedPackLease:
     keep_identity: _FileIdentity
 
 
+@dataclass(frozen=True, slots=True)
+class _OpenedPackObjects:
+    pack_descriptor: int
+    pack_identity: _FileIdentity
+    index_descriptor: int
+    index_identity: _FileIdentity
+
+
 def _require_lease_id(value: str) -> str:
     if (
         not isinstance(value, str)
@@ -207,10 +215,17 @@ def _pack_artifact_name(pack_hash: str, suffix: str) -> str:
 
 
 def _released_lease_name(lease: GitObjectPromotionLease) -> str:
+    return (
+        f".git-stage-batch-released-{lease.pack_hash}-"
+        f"{_released_lease_digest(lease.lease_id)}"
+    )
+
+
+def _released_lease_digest(lease_id: str) -> str:
     digest = hashlib.sha256()
     digest.update(b"git-stage-batch pack lease release\0")
-    digest.update(lease.lease_id.encode("ascii"))
-    return f".git-stage-batch-released-{lease.pack_hash}-{digest.hexdigest()}"
+    digest.update(lease_id.encode("ascii"))
+    return digest.hexdigest()
 
 
 def _rename_noreplace(
@@ -463,10 +478,18 @@ def _close_opened_pack_lease(opened: _OpenedPackLease) -> None:
         _close_file_descriptor(descriptor)
 
 
-def _open_authenticated_pack_lease(
+def _close_opened_pack_objects(opened: _OpenedPackObjects) -> None:
+    for descriptor in (
+        opened.index_descriptor,
+        opened.pack_descriptor,
+    ):
+        _close_file_descriptor(descriptor)
+
+
+def _open_authenticated_pack_objects(
     pack_directory: int,
     lease: GitObjectPromotionLease,
-) -> _OpenedPackLease:
+) -> _OpenedPackObjects:
     descriptors: list[int] = []
     try:
         pack_descriptor, pack_identity = _open_pack_artifact(
@@ -485,6 +508,28 @@ def _open_authenticated_pack_lease(
             require_nonwritable=True,
         )
         descriptors.append(index_descriptor)
+        opened = _OpenedPackObjects(
+            pack_descriptor=pack_descriptor,
+            pack_identity=pack_identity,
+            index_descriptor=index_descriptor,
+            index_identity=index_identity,
+        )
+        _authenticate_pack_contents(pack_descriptor, pack_identity, lease)
+        _authenticate_index_contents(index_descriptor, index_identity, lease)
+        return opened
+    except BaseException:
+        for descriptor in reversed(descriptors):
+            _close_file_descriptor(descriptor)
+        raise
+
+
+def _open_authenticated_pack_lease(
+    pack_directory: int,
+    lease: GitObjectPromotionLease,
+) -> _OpenedPackLease:
+    objects = _open_authenticated_pack_objects(pack_directory, lease)
+    keep_descriptor: int | None = None
+    try:
         keep_descriptor, keep_identity = _open_pack_artifact(
             pack_directory,
             _pack_artifact_name(lease.pack_hash, "keep"),
@@ -492,21 +537,23 @@ def _open_authenticated_pack_lease(
             require_private=True,
             require_nonwritable=False,
         )
-        descriptors.append(keep_descriptor)
         opened = _OpenedPackLease(
-            pack_descriptor=pack_descriptor,
-            pack_identity=pack_identity,
-            index_descriptor=index_descriptor,
-            index_identity=index_identity,
+            pack_descriptor=objects.pack_descriptor,
+            pack_identity=objects.pack_identity,
+            index_descriptor=objects.index_descriptor,
+            index_identity=objects.index_identity,
             keep_descriptor=keep_descriptor,
             keep_identity=keep_identity,
         )
-        _authenticate_pack_contents(pack_descriptor, pack_identity, lease)
-        _authenticate_index_contents(index_descriptor, index_identity, lease)
         _authenticate_keep_contents(keep_descriptor, keep_identity, lease)
         return opened
     except BaseException:
-        for descriptor in reversed(descriptors):
+        if keep_descriptor is not None:
+            _close_file_descriptor(keep_descriptor)
+        for descriptor in (
+            objects.index_descriptor,
+            objects.pack_descriptor,
+        ):
             _close_file_descriptor(descriptor)
         raise
 
@@ -1066,6 +1113,26 @@ def _native_keep_pack_hash(name: str, *, object_format: str) -> str | None:
     return pack_hash
 
 
+def _exact_released_marker_pack_hash(
+    name: str,
+    *,
+    lease_id: str,
+    object_format: str,
+) -> str | None:
+    prefix = ".git-stage-batch-released-"
+    suffix = f"-{_released_lease_digest(lease_id)}"
+    if not name.startswith(prefix) or not name.endswith(suffix):
+        return None
+    object_id_length = 40 if object_format == "sha1" else 64
+    expected_length = len(prefix) + object_id_length + len(suffix)
+    if len(name) != expected_length:
+        raise RuntimeError("A Git pack release marker has a malformed name")
+    pack_hash = name[len(prefix) : -len(suffix)]
+    if any(character not in "0123456789abcdef" for character in pack_hash):
+        raise RuntimeError("A Git pack release marker has a malformed pack hash")
+    return pack_hash
+
+
 def _exact_lease_keep_identity(
     pack_directory: int,
     name: str,
@@ -1161,13 +1228,62 @@ def _find_exact_existing_pack_lease(
     return existing
 
 
+def _find_exact_released_pack_lease(
+    pack_directory: int,
+    *,
+    lease_id: str,
+    object_format: str,
+) -> tuple[GitObjectPromotionLease, _FileIdentity] | None:
+    expected_contents = f"{lease_id}\n".encode("ascii")
+    existing: tuple[GitObjectPromotionLease, _FileIdentity] | None = None
+    try:
+        with _fresh_pack_directory_entries(pack_directory) as entries:
+            for entry in entries:
+                pack_hash = _exact_released_marker_pack_hash(
+                    entry.name,
+                    lease_id=lease_id,
+                    object_format=object_format,
+                )
+                if pack_hash is None:
+                    continue
+                identity = _exact_lease_keep_identity(
+                    pack_directory,
+                    entry.name,
+                    expected_contents=expected_contents,
+                )
+                if identity is None:
+                    raise RuntimeError(
+                        "A Git pack release marker does not match its lease_id"
+                    )
+                if existing is not None:
+                    raise RuntimeError(
+                        "Multiple Git pack release markers match the requested lease_id"
+                    )
+                existing = (
+                    GitObjectPromotionLease(
+                        lease_id=lease_id,
+                        pack_hash=pack_hash,
+                        object_format=object_format,
+                        keep_device=identity.device,
+                        keep_inode=identity.inode,
+                        keep_changed_ns=identity.changed_ns,
+                        prior_released_device=None,
+                        prior_released_inode=None,
+                    ),
+                    identity,
+                )
+    except OSError as error:
+        raise RuntimeError(f"Cannot scan Git pack release markers: {error}") from error
+    return existing
+
+
 def _authenticate_promoted_pack_lease(
     object_directory: int,
     pack_directory: int,
     parsed_lease: GitObjectPromotionLease,
     *,
-    expected_objects: Mapping[str, str],
-    persistent_environment: dict[str, str],
+    expected_objects: Mapping[str, str] | None,
+    persistent_environment: dict[str, str] | None,
     expected_keep_identity: _FileIdentity | None,
 ) -> GitObjectPromotionLease:
     opened = _open_authenticated_pack_lease(pack_directory, parsed_lease)
@@ -1213,10 +1329,15 @@ def _authenticate_promoted_pack_lease(
             lease,
             opened,
         )
-        _require_promoted_objects(
-            expected_objects,
-            persistent_environment=persistent_environment,
-        )
+        if expected_objects is not None:
+            if persistent_environment is None:
+                raise TypeError(
+                    "expected promoted objects require a persistent environment"
+                )
+            _require_promoted_objects(
+                expected_objects,
+                persistent_environment=persistent_environment,
+            )
         _require_opened_pack_lease_unchanged(
             pack_directory,
             lease,
@@ -1468,7 +1589,7 @@ def _rollback_unowned_release_move(
 def _require_pack_and_index_unchanged(
     pack_directory: int,
     lease: GitObjectPromotionLease,
-    opened: _OpenedPackLease,
+    opened: _OpenedPackLease | _OpenedPackObjects,
 ) -> None:
     _require_pack_artifact_unchanged(
         pack_directory,
@@ -1626,6 +1747,85 @@ def _authenticate_released_lease_marker(
         _close_file_descriptor(descriptor)
 
 
+def _authenticate_released_pack_lease(
+    object_directory: int,
+    pack_directory: int,
+    parsed_lease: GitObjectPromotionLease,
+    *,
+    expected_marker_identity: _FileIdentity,
+) -> GitObjectPromotionLease:
+    marker_name = _released_lease_name(parsed_lease)
+    keep_name = _pack_artifact_name(parsed_lease.pack_hash, "keep")
+    if not _artifact_is_absent(pack_directory, keep_name):
+        raise RuntimeError(
+            "An active Git pack keep appeared beside its released marker"
+        )
+    opened = _open_authenticated_pack_objects(pack_directory, parsed_lease)
+    try:
+        marker_identity = _authenticate_released_lease_marker(
+            object_directory,
+            pack_directory,
+            parsed_lease,
+            released_name=marker_name,
+            expected_identity=(
+                expected_marker_identity.device,
+                expected_marker_identity.inode,
+            ),
+        )
+        if marker_identity != expected_marker_identity:
+            raise RuntimeError("The released Git pack marker changed during adoption")
+        _require_pack_and_index_unchanged(
+            pack_directory,
+            parsed_lease,
+            opened,
+        )
+        os.fsync(opened.pack_descriptor)
+        os.fsync(opened.index_descriptor)
+        _require_pack_and_index_unchanged(
+            pack_directory,
+            parsed_lease,
+            opened,
+        )
+        os.fsync(pack_directory)
+        os.fsync(object_directory)
+        _require_pack_and_index_unchanged(
+            pack_directory,
+            parsed_lease,
+            opened,
+        )
+        final_marker_identity = _authenticate_released_lease_marker(
+            object_directory,
+            pack_directory,
+            parsed_lease,
+            released_name=marker_name,
+            expected_identity=(marker_identity.device, marker_identity.inode),
+        )
+        if final_marker_identity != marker_identity or not _artifact_is_absent(
+            pack_directory,
+            keep_name,
+        ):
+            raise RuntimeError("The released Git pack lease changed during adoption")
+        return GitObjectPromotionLease(
+            lease_id=parsed_lease.lease_id,
+            pack_hash=parsed_lease.pack_hash,
+            object_format=parsed_lease.object_format,
+            keep_device=marker_identity.device,
+            keep_inode=marker_identity.inode,
+            keep_changed_ns=marker_identity.changed_ns,
+            prior_released_device=None,
+            prior_released_inode=None,
+        )
+    finally:
+        try:
+            _require_pack_and_index_unchanged(
+                pack_directory,
+                parsed_lease,
+                opened,
+            )
+        finally:
+            _close_opened_pack_objects(opened)
+
+
 def _fsync_release_directories(
     object_directory: int,
     pack_directory: int,
@@ -1765,6 +1965,87 @@ def _select_released_marker_identity(
             "The released Git pack keep file does not match a recorded identity"
         )
     return visible
+
+
+def adopt_git_object_promotion_lease(
+    quarantine: GitObjectQuarantine,
+    *,
+    lease_id: str,
+) -> GitObjectPromotionLease | None:
+    """Recover one exact durable pack lease without rebuilding its object set."""
+    if not isinstance(quarantine, GitObjectQuarantine):
+        raise ValueError("a Git object quarantine capability is required")
+    validated_lease_id = _require_lease_id(lease_id)
+    with (
+        acquire_session_lock(),
+        quarantine.pinned_persistent_object_directory() as object_directory,
+    ):
+        with _pinned_pack_directory(object_directory) as pack_directory:
+            active = _find_exact_existing_pack_lease(
+                pack_directory,
+                lease_id=validated_lease_id,
+                object_format=quarantine.object_format,
+            )
+            released = _find_exact_released_pack_lease(
+                pack_directory,
+                lease_id=validated_lease_id,
+                object_format=quarantine.object_format,
+            )
+            if (
+                active is not None
+                and released is not None
+                and (active[0].pack_hash != released[0].pack_hash)
+            ):
+                raise RuntimeError(
+                    "Active and released Git pack leases disagree on their pack"
+                )
+
+            adopted: GitObjectPromotionLease | None
+            if active is not None:
+                active_lease, active_identity = active
+                adopted = _authenticate_promoted_pack_lease(
+                    object_directory,
+                    pack_directory,
+                    active_lease,
+                    expected_objects=None,
+                    persistent_environment=None,
+                    expected_keep_identity=active_identity,
+                )
+                expected_prior_identity = (
+                    None
+                    if released is None
+                    else (released[1].device, released[1].inode)
+                )
+                if _recorded_prior_release_identity(adopted) != (
+                    expected_prior_identity
+                ):
+                    raise RuntimeError(
+                        "The prior Git pack release marker changed during adoption"
+                    )
+            elif released is not None:
+                released_lease, released_identity = released
+                adopted = _authenticate_released_pack_lease(
+                    object_directory,
+                    pack_directory,
+                    released_lease,
+                    expected_marker_identity=released_identity,
+                )
+            else:
+                adopted = None
+
+            final_active = _find_exact_existing_pack_lease(
+                pack_directory,
+                lease_id=validated_lease_id,
+                object_format=quarantine.object_format,
+            )
+            final_released = _find_exact_released_pack_lease(
+                pack_directory,
+                lease_id=validated_lease_id,
+                object_format=quarantine.object_format,
+            )
+            if final_active != active or final_released != released:
+                raise RuntimeError("The Git pack lease changed during adoption")
+            return adopted
 
 
 def release_git_object_promotion_lease(

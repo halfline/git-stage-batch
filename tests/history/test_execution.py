@@ -42,12 +42,15 @@ from git_stage_batch.history.resolution_files import (
     PrivateFilePublicationError,
     PrivateFilePublicationOutcome,
 )
+from git_stage_batch.history.resolution_workspace import resolve_history_plan
 from git_stage_batch.history.scan import acquire_history_plan_document
 from git_stage_batch.history.state import (
     active_history_operation_id,
     history_operation_directory,
     history_operation_plan_path,
     history_operation_preparation_directory,
+    history_operation_resolutions_path,
+    history_operation_verification_path,
     history_recovery_ref,
     latest_history_operation_id,
     load_active_history_operation,
@@ -89,6 +92,40 @@ def _integrate_first_and_last(plan):
     first["source_commits"].extend(repair["source_commits"])
     first["source_unit_ids"].extend(repair["source_unit_ids"])
     plan["plan"]["outputs"] = [first, middle]
+
+
+def _resolve_first_output(repo, path):
+    workspace = repo.root / "external-resolution"
+    pending = resolve_history_plan(str(path), str(workspace))
+    assert pending.output_key is not None
+    output_path = workspace / "outputs" / pending.output_key
+    request = json.loads((output_path / "request.json").read_text(encoding="utf-8"))
+    result_path = output_path / "result.json"
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    request_path = request["authorized_paths"][0]
+    source_after = next(
+        reference
+        for reference in request_path["references"]
+        if reference["role"] == "SOURCE_AFTER"
+    )
+    result_entry = result["paths"][0]
+    shutil.copyfile(
+        output_path / "references" / source_after["artifact"],
+        output_path / "results" / result_entry["artifact"],
+    )
+    result_entry["state"] = source_after["state"]
+    result_entry["mode"] = source_after["mode"]
+    result_path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    result_path.chmod(0o600)
+    assert (
+        resolve_history_plan(
+            str(path),
+            str(workspace),
+            accept_result=True,
+        ).status
+        == "COMPLETE"
+    )
+    return workspace
 
 
 def _legacy_v3_plan_record(plan):
@@ -452,6 +489,106 @@ def test_apply_rewords_without_changing_the_final_tree(linear_history_repo):
     verified_state, verification = verify_history_operation()
     assert verified_state == state
     assert verification.final_tree == original_tree
+
+
+def test_apply_owns_completed_resolutions_for_independent_verification(
+    linear_history_repo,
+):
+    repo = linear_history_repo
+
+    def resolve_first(plan):
+        plan["plan"]["outputs"][0]["materialization"] = "RESOLVED"
+
+    path, _plan = _write_plan(repo, resolve_first)
+    external_workspace = _resolve_first_output(repo, path)
+    original_tree = git("rev-parse", "HEAD^{tree}")
+
+    state = start_history_operation(
+        str(path),
+        resolutions_path=str(external_workspace),
+    )
+
+    assert state.phase is HistoryPhase.COMPLETE
+    assert state.resolution_raw_plan_sha256 is not None
+    assert state.resolution_complete_sha256 is not None
+    owned_workspace = history_operation_resolutions_path(state.operation_id)
+    assert owned_workspace.is_dir()
+    verification_record = json.loads(
+        history_operation_verification_path(state.operation_id).read_text(
+            encoding="utf-8"
+        )
+    )
+    assert verification_record["schema_version"] == 2
+    assert verification_record["resolution"] == {
+        "raw_plan_sha256": state.resolution_raw_plan_sha256,
+        "complete_sha256": state.resolution_complete_sha256,
+        "resolved_outputs": 1,
+    }
+    shutil.rmtree(external_workspace)
+
+    verified_state, verification = verify_history_operation()
+
+    assert verified_state == state
+    assert verification.final_tree == original_tree
+    assert git("rev-parse", "HEAD^{tree}") == original_tree
+
+
+@pytest.mark.parametrize(
+    ("changed_fact", "expected_blocker"),
+    [
+        ("branch", "branch-tip-changed"),
+        ("index", "staged-index"),
+        ("worktree", "tracked-worktree"),
+    ],
+)
+def test_resolution_copy_rechecks_mutation_facts_before_activation(
+    linear_history_repo,
+    monkeypatch,
+    changed_fact,
+    expected_blocker,
+):
+    repo = linear_history_repo
+
+    def resolve_first(plan):
+        plan["plan"]["outputs"][0]["materialization"] = "RESOLVED"
+
+    path, _plan = _write_plan(repo, resolve_first)
+    workspace = _resolve_first_output(repo, path)
+    operation_id = {
+        "branch": "6" * 32,
+        "index": "7" * 32,
+        "worktree": "8" * 32,
+    }[changed_fact]
+    _use_operation_id(monkeypatch, operation_id)
+    original_copy = history_state.copy_completed_history_resolution
+
+    def copy_then_change_repository(*args, **kwargs):
+        result = original_copy(*args, **kwargs)
+        if changed_fact == "branch":
+            git("update-ref", "refs/heads/topic", repo.first, repo.tip)
+        elif changed_fact == "index":
+            repo.source.write_text("staged during copy\n", encoding="utf-8")
+            git("add", "example.txt")
+        else:
+            repo.source.write_text("changed during copy\n", encoding="utf-8")
+        return result
+
+    monkeypatch.setattr(
+        history_state,
+        "copy_completed_history_resolution",
+        copy_then_change_repository,
+    )
+
+    with pytest.raises(CommandError, match=expected_blocker):
+        start_history_operation(
+            str(path),
+            resolutions_path=str(workspace),
+        )
+
+    assert active_history_operation_id() is None
+    assert _resolved_ref(history_recovery_ref(operation_id)) == ""
+    assert not history_operation_directory(operation_id).exists()
+    assert history_operation_preparation_directory(operation_id).is_dir()
 
 
 def test_operation_document_rejects_a_plan_swapped_between_read_and_digest(

@@ -150,9 +150,9 @@ class _LockedResolutionRoot:
     descriptor: int
 
 
-_ACTIVE_LOCKED_ROOT: ContextVar[_LockedResolutionRoot | None] = ContextVar(
-    "git_stage_batch_active_resolution_root",
-    default=None,
+_ACTIVE_LOCKED_ROOTS: ContextVar[tuple[_LockedResolutionRoot, ...]] = ContextVar(
+    "git_stage_batch_active_resolution_roots",
+    default=(),
 )
 
 
@@ -194,14 +194,17 @@ def _walk_directory(path: Path) -> Iterator[int]:
     """Pin one absolute directory without following any path component."""
     _require_directory_descriptor_support(path)
     with ExitStack() as descriptors:
-        active_root = _ACTIVE_LOCKED_ROOT.get()
+        active_root: _LockedResolutionRoot | None = None
         relative_parts: tuple[str, ...] | None = None
-        if active_root is not None:
-            for visible_path in active_root.visible_paths:
+        for candidate_root in reversed(_ACTIVE_LOCKED_ROOTS.get()):
+            for visible_path in candidate_root.visible_paths:
                 try:
                     relative_parts = path.relative_to(visible_path).parts
                 except ValueError:
                     continue
+                active_root = candidate_root
+                break
+            if active_root is not None:
                 break
         try:
             if relative_parts is None:
@@ -697,17 +700,20 @@ def lock_resolution_directory(
             visible_paths = (
                 (directory,) if final_path is None else (directory, final_path)
             )
-            token = _ACTIVE_LOCKED_ROOT.set(
-                _LockedResolutionRoot(
-                    visible_paths=visible_paths,
-                    descriptor=parent,
+            token = _ACTIVE_LOCKED_ROOTS.set(
+                (
+                    *_ACTIVE_LOCKED_ROOTS.get(),
+                    _LockedResolutionRoot(
+                        visible_paths=visible_paths,
+                        descriptor=parent,
+                    ),
                 )
             )
             setup_complete = True
             try:
                 yield
             finally:
-                _ACTIVE_LOCKED_ROOT.reset(token)
+                _ACTIVE_LOCKED_ROOTS.reset(token)
                 final_metadata = os.fstat(descriptor)
                 _require_private_file_metadata(
                     lock_path,

@@ -282,6 +282,10 @@ _git_stage_batch()
                     ;;
                 apply)
                     case "$prev" in
+                        --workspace)
+                            _filedir -d
+                            return
+                            ;;
                         --allow-published-ref)
                             __gitcomp_nl "$(git for-each-ref --format='%(refname)' refs/remotes)"
                             return
@@ -291,7 +295,7 @@ _git_stage_batch()
                         _filedir
                         return
                     fi
-                    COMPREPLY=($(compgen -W "--allow-published-ref --porcelain" -- "$cur"))
+                    COMPREPLY=($(compgen -W "--workspace --allow-published-ref --porcelain" -- "$cur"))
                     ;;
                 status|continue|abort|verify)
                     COMPREPLY=($(compgen -W "--porcelain" -- "$cur"))

@@ -7805,3 +7805,10 @@ msgstr "Необроблене повідомлення джерела істо�
 
 msgid "The persisted rewrite plan no longer matches its checkpoint."
 msgstr "Збережений план переписування більше не відповідає своїй контрольній точці."
+
+#, python-brace-format
+msgid "cannot authenticate locked directory: {error}"
+msgstr "неможливо автентифікувати заблокований каталог: {error}"
+
+msgid "staging directory is not the locked workspace"
+msgstr "проміжний каталог не є заблокованою робочою областю"

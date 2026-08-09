@@ -7247,3 +7247,10 @@ msgstr "历史源 {commit} 的原始消息不再与其冻结摘要匹配。"
 
 msgid "The persisted rewrite plan no longer matches its checkpoint."
 msgstr "持久化的重写计划不再与其检查点匹配。"
+
+#, python-brace-format
+msgid "cannot authenticate locked directory: {error}"
+msgstr "无法验证已锁定的目录：{error}"
+
+msgid "staging directory is not the locked workspace"
+msgstr "暂存目录不是已锁定的工作区"

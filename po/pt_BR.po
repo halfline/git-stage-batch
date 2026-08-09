@@ -7779,3 +7779,10 @@ msgstr "A mensagem bruta da origem de histórico {commit} não corresponde mais 
 
 msgid "The persisted rewrite plan no longer matches its checkpoint."
 msgstr "O plano de reescrita persistido não corresponde mais ao seu ponto de verificação."
+
+#, python-brace-format
+msgid "cannot authenticate locked directory: {error}"
+msgstr "não é possível autenticar o diretório bloqueado: {error}"
+
+msgid "staging directory is not the locked workspace"
+msgstr "o diretório de preparação não é o espaço de trabalho bloqueado"

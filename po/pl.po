@@ -7852,3 +7852,10 @@ msgstr "Surowa wiadomość źródła historii {commit} nie odpowiada już swojem
 
 msgid "The persisted rewrite plan no longer matches its checkpoint."
 msgstr "Zapisany plan przepisywania nie odpowiada już swojemu punktowi kontrolnemu."
+
+#, python-brace-format
+msgid "cannot authenticate locked directory: {error}"
+msgstr "nie można uwierzytelnić zablokowanego katalogu: {error}"
+
+msgid "staging directory is not the locked workspace"
+msgstr "katalog przygotowawczy nie jest zablokowaną przestrzenią roboczą"

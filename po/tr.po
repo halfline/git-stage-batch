@@ -7695,3 +7695,10 @@ msgstr "{commit} geçmiş kaynağının ham iletisi artık dondurulmuş özetiyl
 
 msgid "The persisted rewrite plan no longer matches its checkpoint."
 msgstr "Kalıcı olarak kaydedilen yeniden yazma planı artık denetim noktasıyla eşleşmiyor."
+
+#, python-brace-format
+msgid "cannot authenticate locked directory: {error}"
+msgstr "kilitli dizinin kimliği doğrulanamıyor: {error}"
+
+msgid "staging directory is not the locked workspace"
+msgstr "hazırlama dizini kilitli çalışma alanı değil"

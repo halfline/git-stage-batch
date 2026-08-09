@@ -7741,3 +7741,11 @@ msgstr "Nezpracovaná zpráva zdroje historie {commit} již neodpovídá jejímu
 
 msgid "The persisted rewrite plan no longer matches its checkpoint."
 msgstr "Uložený plán přepisu již neodpovídá svému kontrolnímu bodu."
+
+# Descriptor-pinned private publication translations.
+#, python-brace-format
+msgid "cannot authenticate locked directory: {error}"
+msgstr "nelze ověřit uzamčený adresář: {error}"
+
+msgid "staging directory is not the locked workspace"
+msgstr "přípravný adresář není uzamčeným pracovním prostorem"

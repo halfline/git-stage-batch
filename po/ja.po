@@ -7275,3 +7275,11 @@ msgstr "履歴ソース {commit} の生のメッセージが、固定された�
 
 msgid "The persisted rewrite plan no longer matches its checkpoint."
 msgstr "永続化された書き換えプランがチェックポイントと一致しなくなりました。"
+
+# Descriptor-pinned private publication translations.
+#, python-brace-format
+msgid "cannot authenticate locked directory: {error}"
+msgstr "ロックされたディレクトリを認証できません: {error}"
+
+msgid "staging directory is not the locked workspace"
+msgstr "ステージングディレクトリはロックされたワークスペースではありません"

@@ -7818,3 +7818,11 @@ msgstr "El mensaje sin procesar de la fuente de historial {commit} ya no coincid
 
 msgid "The persisted rewrite plan no longer matches its checkpoint."
 msgstr "El plan de reescritura persistido ya no coincide con su punto de control."
+
+# Descriptor-pinned private publication translations.
+#, python-brace-format
+msgid "cannot authenticate locked directory: {error}"
+msgstr "no se puede autenticar el directorio bloqueado: {error}"
+
+msgid "staging directory is not the locked workspace"
+msgstr "el directorio provisional no es el espacio de trabajo bloqueado"

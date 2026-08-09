@@ -7977,3 +7977,11 @@ msgstr "لم تعد الرسالة الخام لمصدر التاريخ {commit}
 
 msgid "The persisted rewrite plan no longer matches its checkpoint."
 msgstr "لم تعد خطة إعادة الكتابة المحفوظة تطابق نقطة التحقق الخاصة بها."
+
+# Descriptor-pinned private publication translations.
+#, python-brace-format
+msgid "cannot authenticate locked directory: {error}"
+msgstr "لا يمكن مصادقة الدليل المقفل: {error}"
+
+msgid "staging directory is not the locked workspace"
+msgstr "دليل التجهيز ليس مساحة العمل المقفلة"

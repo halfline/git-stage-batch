@@ -7877,3 +7877,11 @@ msgstr "Le message brut de la source d’historique {commit} ne correspond plus 
 
 msgid "The persisted rewrite plan no longer matches its checkpoint."
 msgstr "Le plan de réécriture enregistré ne correspond plus à son point de contrôle."
+
+# Descriptor-pinned private publication translations.
+#, python-brace-format
+msgid "cannot authenticate locked directory: {error}"
+msgstr "impossible d’authentifier le répertoire verrouillé : {error}"
+
+msgid "staging directory is not the locked workspace"
+msgstr "le répertoire intermédiaire n’est pas l’espace de travail verrouillé"

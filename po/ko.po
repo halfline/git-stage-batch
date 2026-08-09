@@ -7286,3 +7286,11 @@ msgstr "기록 소스 {commit}의 원시 메시지가 더 이상 고정된 다�
 
 msgid "The persisted rewrite plan no longer matches its checkpoint."
 msgstr "저장된 재작성 계획이 더 이상 체크포인트와 일치하지 않습니다."
+
+# Descriptor-pinned private publication translations.
+#, python-brace-format
+msgid "cannot authenticate locked directory: {error}"
+msgstr "잠긴 디렉터리를 인증할 수 없습니다: {error}"
+
+msgid "staging directory is not the locked workspace"
+msgstr "스테이징 디렉터리가 잠긴 작업 공간이 아닙니다"

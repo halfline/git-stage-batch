@@ -7799,3 +7799,10 @@ msgstr "Het onbewerkte bericht voor geschiedenisbron {commit} komt niet langer o
 
 msgid "The persisted rewrite plan no longer matches its checkpoint."
 msgstr "Het opgeslagen herschrijfplan komt niet langer overeen met zijn controlepunt."
+
+#, python-brace-format
+msgid "cannot authenticate locked directory: {error}"
+msgstr "de vergrendelde map kan niet worden geverifieerd: {error}"
+
+msgid "staging directory is not the locked workspace"
+msgstr "de stagingmap is niet de vergrendelde werkruimte"

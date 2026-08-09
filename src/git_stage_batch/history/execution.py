@@ -409,6 +409,8 @@ def _finalize_branch(state: HistoryOperationState) -> HistoryOperationState:
             update_git_refs(
                 updates=((state.branch_ref, output_tip),),
                 expected_old_values={state.branch_ref: state.original_tip},
+                durable=True,
+                no_deref=True,
             )
         except subprocess.CalledProcessError as error:
             raise CommandError(

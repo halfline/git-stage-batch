@@ -29,10 +29,10 @@ def command_rewrite_validate(
     if resolutions_path is None:
         document = read_and_validate_history_plan(plan_path)
     else:
-        document, raw_plan_sha256 = read_and_validate_history_plan_semantics(
-            plan_path
-        )
-        with temporary_git_object_environment() as quarantine:
+        document, raw_plan_sha256 = read_and_validate_history_plan_semantics(plan_path)
+        with temporary_git_object_environment(
+            disable_replace_objects=True
+        ) as quarantine:
             resolution = materialize_completed_history_resolution(
                 document,
                 raw_plan_sha256,

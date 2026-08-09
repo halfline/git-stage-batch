@@ -500,6 +500,25 @@ def test_lock_authenticates_moved_root_through_publication(tmp_path):
     assert not staging.exists()
 
 
+def test_publication_rejects_replacement_of_locked_staging_root(tmp_path):
+    staging = _private_directory(tmp_path / "staging")
+    displaced = tmp_path / "displaced"
+    destination = tmp_path / "workspace"
+
+    with pytest.raises(CommandError, match="not the locked workspace"):
+        with lock_resolution_directory(staging, moved_to=destination):
+            staging.rename(displaced)
+            staging.mkdir(mode=0o700)
+            try:
+                publish_private_resolution_directory(staging, destination)
+            finally:
+                staging.rmdir()
+                displaced.rename(staging)
+
+    assert staging.is_dir()
+    assert not destination.exists()
+
+
 def test_lock_exit_authentication_runs_when_body_raises(tmp_path):
     workspace = _private_directory(tmp_path / "workspace")
 

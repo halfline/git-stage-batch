@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import gc
 import tracemalloc
+from contextlib import contextmanager
 from dataclasses import replace
 
 import pytest
 
 from git_stage_batch.exceptions import CommandError
-from git_stage_batch.history.replay import materialize_history_output_trees
+from git_stage_batch.history import replay as history_replay
+from git_stage_batch.history.replay import (
+    materialize_history_output_trees,
+    validate_history_plan_materialization,
+)
 from git_stage_batch.history.scan import acquire_history_plan_document
 
 from .conftest import git
@@ -103,6 +108,50 @@ def test_history_replay_rejects_unvalidated_resolved_tree(
                 lambda _document, _index, _output, _parent, **_kwargs: candidate
             ),
         )
+
+
+def test_plan_materialization_ignores_replace_refs_installed_after_validation(
+    linear_history_repo,
+    monkeypatch,
+):
+    repo = linear_history_repo
+    document = acquire_history_plan_document(repo.base)
+    first, second = document.plan.outputs
+    reordered = replace(
+        document,
+        plan=replace(
+            document.plan,
+            outputs=(
+                replace(second, operation="REORDER"),
+                replace(first, operation="REORDER"),
+            ),
+        ),
+    )
+    source_tree = document.snapshot.commits[0].tree
+    replacement_tree = document.snapshot.final_tree
+    create_quarantine = history_replay.temporary_git_object_environment
+
+    @contextmanager
+    def replace_racing_quarantine(*, disable_replace_objects=False):
+        git("replace", source_tree, replacement_tree)
+        try:
+            with create_quarantine(
+                disable_replace_objects=disable_replace_objects
+            ) as quarantine:
+                assert quarantine.environment()["GIT_NO_REPLACE_OBJECTS"] == "1"
+                yield quarantine
+        finally:
+            git("replace", "-d", source_tree)
+
+    monkeypatch.setattr(
+        history_replay,
+        "temporary_git_object_environment",
+        replace_racing_quarantine,
+    )
+
+    result = validate_history_plan_materialization(reordered)
+
+    assert result.final_tree == document.snapshot.final_tree
 
 
 def test_history_replay_avoids_line_scale_python_heap(tmp_path, monkeypatch):

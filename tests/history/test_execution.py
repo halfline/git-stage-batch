@@ -8,6 +8,7 @@ import os
 import shutil
 import stat
 import subprocess
+import tracemalloc
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -951,6 +952,45 @@ def test_persistent_output_closure_rejects_invalid_batch_body_protocol(
                     output_trees=output_trees,
                     environment=environment,
                 )
+
+
+def test_persistent_output_closure_body_reads_have_bounded_python_heap(
+    linear_history_repo,
+):
+    repo = linear_history_repo
+    path, _plan = _write_plan(repo, _reword_first)
+    state = start_history_operation(str(path))
+    payload = repo.root / "payload.bin"
+    heap_peaks: list[int] = []
+
+    for size in (1024 * 1024, 16 * 1024 * 1024):
+        payload.write_bytes(b"x" * size)
+        git("add", "payload.bin")
+        git("commit", "-m", f"Add {size}-byte payload")
+        sample_state = replace(
+            state,
+            output_commits=(git("rev-parse", "HEAD"),),
+        )
+        sample_tree = git("rev-parse", "HEAD^{tree}")
+        with execution.temporary_git_object_environment(
+            disable_replace_objects=True
+        ) as persistent_view:
+            with persistent_view.pinned_environment() as environment:
+                environment["GIT_NO_LAZY_FETCH"] = "1"
+                tracemalloc.start()
+                try:
+                    execution._require_persistent_output_closure(
+                        sample_state,
+                        output_trees=(sample_tree,),
+                        environment=environment,
+                    )
+                    _current_heap, peak_heap = tracemalloc.get_traced_memory()
+                finally:
+                    tracemalloc.stop()
+        heap_peaks.append(peak_heap)
+
+    small_peak, large_peak = heap_peaks
+    assert large_peak < small_peak + 128 * 1024
 
 
 def test_validate_rejects_integration_across_a_blocking_intermediate(

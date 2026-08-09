@@ -13,7 +13,10 @@ import git_stage_batch.history.state as history_state
 from git_stage_batch.commands.rewrite_status import command_rewrite_status
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.history import execution as history_execution
-from git_stage_batch.history.execution import start_history_operation
+from git_stage_batch.history.execution import (
+    continue_history_operation,
+    start_history_operation,
+)
 from git_stage_batch.history.json_files import (
     history_json_sha256,
     write_history_json_file,
@@ -460,6 +463,32 @@ def test_inspection_authenticates_resolved_operation_provenance(
 
     assert inspection.resolution_matches is True
     assert inspection.resume_ready is True
+
+
+def test_resolved_plan_without_provenance_blocks_status_and_continue(
+    linear_history_repo,
+    monkeypatch,
+    capsys,
+):
+    state = _start_resolved_history_operation(linear_history_repo, monkeypatch)
+    inconsistent = replace(
+        state,
+        resolution_raw_plan_sha256=None,
+        resolution_complete_sha256=None,
+    )
+    write_history_json_file(
+        history_operation_directory(state.operation_id) / "state.json",
+        history_state._state_record(inconsistent),
+    )
+
+    command_rewrite_status(porcelain=True)
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["inspection"]["resolution_matches"] is False
+    assert output["inspection"]["resume_ready"] is False
+    assert "resolution-bundle-changed" in output["inspection"]["blockers"]
+    with pytest.raises(CommandError, match="resolution-bundle-changed"):
+        continue_history_operation()
 
 
 def test_initialize_requires_existing_exact_recovery_ref(linear_history_repo):

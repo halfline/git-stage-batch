@@ -906,6 +906,53 @@ def test_verify_rejects_a_blob_with_a_corrupt_body_and_readable_header(
         verify_history_operation()
 
 
+@pytest.mark.parametrize("response", ["missing", "truncated"])
+def test_persistent_output_closure_rejects_invalid_batch_body_protocol(
+    linear_history_repo,
+    monkeypatch,
+    response,
+):
+    repo = linear_history_repo
+    path, _plan = _write_plan(repo, _reword_first)
+    state = start_history_operation(str(path))
+    output_trees = tuple(
+        git("rev-parse", f"{commit}^{{tree}}") for commit in state.output_commits
+    )
+    first_commit = state.output_commits[0]
+    if response == "missing":
+        batch_output = f"{first_commit} missing\n".encode("ascii")
+    else:
+        header = git(
+            "cat-file",
+            "--batch-check=%(objectname) %(objecttype) %(objectsize)",
+            input_bytes=f"{first_commit}\n".encode("ascii"),
+        )
+        batch_output = f"{header}\n".encode("ascii")
+
+    def invalid_batch_body(arguments, **kwargs):
+        assert arguments == ["cat-file", "--batch"]
+        assert kwargs["stdin_chunks"] is not None
+        return iter((batch_output,))
+
+    monkeypatch.setattr(
+        execution,
+        "stream_git_command_bytes",
+        invalid_batch_body,
+    )
+
+    with execution.temporary_git_object_environment(
+        disable_replace_objects=True
+    ) as persistent_view:
+        with persistent_view.pinned_environment() as environment:
+            environment["GIT_NO_LAZY_FETCH"] = "1"
+            with pytest.raises(CommandError, match="object closure is incomplete"):
+                execution._require_persistent_output_closure(
+                    state,
+                    output_trees=output_trees,
+                    environment=environment,
+                )
+
+
 def test_validate_rejects_integration_across_a_blocking_intermediate(
     linear_history_repo,
 ):

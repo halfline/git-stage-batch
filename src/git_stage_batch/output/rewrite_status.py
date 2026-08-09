@@ -65,6 +65,7 @@ def _status_record(
             "worktree_clean": inspection.worktree_clean,
             "recovery_ref_matches": inspection.recovery_ref_matches,
             "plan_matches": inspection.plan_matches,
+            "resolution_matches": inspection.resolution_matches,
             "output_objects_exist": inspection.output_objects_exist,
             "output_ref_matches": inspection.output_ref_matches,
             "verification_matches": inspection.verification_matches,

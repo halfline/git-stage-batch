@@ -483,6 +483,30 @@ def test_status_reports_exact_next_action_and_recovery(
     )
 
 
+@pytest.mark.parametrize("resolution_matches", [None, False, True])
+def test_status_reports_resolution_match_state(
+    linear_history_repo,
+    capsys,
+    resolution_matches,
+):
+    state, document = _prepared_state(linear_history_repo)
+    _initialize_history_operation(state, document)
+    inspection = replace(
+        inspect_history_operation(state),
+        resolution_matches=resolution_matches,
+    )
+
+    print_rewrite_status(
+        state,
+        inspection,
+        active=True,
+        porcelain=True,
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["inspection"]["resolution_matches"] is resolution_matches
+
+
 def test_status_shell_quotes_manual_recovery_branch(
     linear_history_repo,
     capsys,

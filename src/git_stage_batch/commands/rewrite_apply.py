@@ -11,6 +11,7 @@ from ..utils.session_start_point import require_repository_history
 def command_rewrite_apply(
     plan_path: str,
     *,
+    resolutions_path: str | None = None,
     allowed_remote_refs: tuple[str, ...],
     porcelain: bool = False,
 ) -> None:
@@ -19,6 +20,7 @@ def command_rewrite_apply(
     require_repository_history()
     state = start_history_operation(
         plan_path,
+        resolutions_path=resolutions_path,
         allowed_remote_refs=allowed_remote_refs,
     )
     print_rewrite_operation("apply", state, porcelain=porcelain)

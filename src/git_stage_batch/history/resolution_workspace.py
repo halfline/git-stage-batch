@@ -1575,7 +1575,9 @@ def resolve_history_plan(
         workspace_complete = "complete.json" in set(
             list_resolution_directory(absolute_path)
         )
-        with temporary_git_object_environment() as quarantine:
+        with temporary_git_object_environment(
+            disable_replace_objects=True
+        ) as quarantine:
             replay, materializer, pending, acceptance_ready = _materialize_workspace(
                 document,
                 binding,

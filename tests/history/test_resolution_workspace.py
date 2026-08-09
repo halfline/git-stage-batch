@@ -22,11 +22,15 @@ from git_stage_batch.history.plan_files import (
 from git_stage_batch.history.records import history_plan_document_record
 from git_stage_batch.history.resolution_files import lock_resolution_directory
 from git_stage_batch.history.resolution_workspace import (
+    copy_completed_history_resolution,
     materialize_completed_history_resolution,
     resolve_history_plan,
 )
 from git_stage_batch.history.scan import acquire_history_plan_document
-from git_stage_batch.utils.git_object_io import temporary_git_object_environment
+from git_stage_batch.utils.git_object_io import (
+    get_git_object_type,
+    temporary_git_object_environment,
+)
 
 from .conftest import git
 
@@ -121,6 +125,27 @@ def _replace_result_with_reference(
     result_path["state"] = reference["state"]
     result_path["mode"] = reference["mode"]
     _write_plan(output_path / "result.json", result)
+
+
+def _completed_resolution_workspace(linear_history_repo):
+    plan = _resolved_plan(linear_history_repo)
+    workspace = linear_history_repo.root / "resolution"
+    pending = resolve_history_plan(str(plan), str(workspace))
+    assert pending.output_key is not None
+    _replace_result_with_reference(
+        _output_path(workspace, pending.output_key),
+        role="SOURCE_AFTER",
+    )
+    assert (
+        resolve_history_plan(
+            str(plan),
+            str(workspace),
+            accept_result=True,
+        ).status
+        == "COMPLETE"
+    )
+    document, plan_sha256 = read_and_validate_history_plan_semantics(str(plan))
+    return plan, workspace, document, plan_sha256
 
 
 def test_resolution_exports_source_context_and_completes_exact_replay(
@@ -683,6 +708,536 @@ def test_completed_workspace_returns_same_read_authenticated_provenance(
     assert authenticated.replay.final_tree == document.snapshot.final_tree
 
 
+def test_completed_workspace_copy_owns_exact_authenticated_inventory(
+    linear_history_repo,
+):
+    _plan, source, document, plan_sha256 = _completed_resolution_workspace(
+        linear_history_repo
+    )
+    destination = linear_history_repo.root / "operation" / "resolutions"
+    destination.parent.mkdir(mode=0o700)
+    source_before = _workspace_snapshot(source)
+
+    with temporary_git_object_environment() as source_quarantine:
+        with temporary_git_object_environment() as destination_quarantine:
+            authenticated = copy_completed_history_resolution(
+                document,
+                plan_sha256,
+                str(source),
+                str(destination),
+                source_quarantine=source_quarantine,
+                destination_quarantine=destination_quarantine,
+            )
+
+    assert authenticated.workspace_path == str(destination)
+    assert authenticated.raw_plan_sha256 == plan_sha256
+    assert (
+        authenticated.complete_sha256
+        == hashlib.sha256((source / "complete.json").read_bytes()).hexdigest()
+    )
+    assert authenticated.replay.final_tree == document.snapshot.final_tree
+    assert _workspace_snapshot(source) == source_before
+    assert (source / ".workspace.lock").stat().st_ino != (
+        destination / ".workspace.lock"
+    ).stat().st_ino
+    source_files = {
+        path.relative_to(source): path.read_bytes()
+        for path in source.rglob("*")
+        if path.is_file() and path.name != ".workspace.lock"
+    }
+    destination_files = {
+        path.relative_to(destination): path.read_bytes()
+        for path in destination.rglob("*")
+        if path.is_file() and path.name != ".workspace.lock"
+    }
+    assert destination_files == source_files
+    encoded_source = str(source).encode()
+    assert all(encoded_source not in payload for payload in destination_files.values())
+    assert not tuple(destination.parent.glob(".git-stage-batch-resolution-copy-*"))
+
+
+def test_completed_workspace_copy_requires_two_quarantines_before_path_access(
+    linear_history_repo,
+    monkeypatch,
+):
+    plan = _resolved_plan(linear_history_repo)
+    document, plan_sha256 = read_and_validate_history_plan_semantics(str(plan))
+
+    def unexpected_path_access(_workspace_path):
+        raise AssertionError("workspace path was accessed")
+
+    monkeypatch.setattr(
+        resolution_workspace,
+        "_absolute_workspace_path",
+        unexpected_path_access,
+    )
+    with temporary_git_object_environment() as quarantine:
+        with pytest.raises(ValueError, match="must be distinct"):
+            copy_completed_history_resolution(
+                document,
+                plan_sha256,
+                "unused-source",
+                "unused-destination",
+                source_quarantine=quarantine,
+                destination_quarantine=quarantine,
+            )
+
+
+def test_completed_workspace_copy_rejects_aliased_quarantine_identity(
+    linear_history_repo,
+    monkeypatch,
+):
+    plan = _resolved_plan(linear_history_repo)
+    document, plan_sha256 = read_and_validate_history_plan_semantics(str(plan))
+
+    def unexpected_path_access(_workspace_path):
+        raise AssertionError("workspace path was accessed")
+
+    monkeypatch.setattr(
+        resolution_workspace,
+        "_absolute_workspace_path",
+        unexpected_path_access,
+    )
+    with temporary_git_object_environment() as source_quarantine:
+        aliased_quarantine = copy.copy(source_quarantine)
+        assert aliased_quarantine is not source_quarantine
+        with pytest.raises(ValueError, match="must be distinct"):
+            copy_completed_history_resolution(
+                document,
+                plan_sha256,
+                "unused-source",
+                "unused-destination",
+                source_quarantine=source_quarantine,
+                destination_quarantine=aliased_quarantine,
+            )
+
+
+def test_completed_workspace_copy_holds_source_lock_through_inventory_copy(
+    linear_history_repo,
+    monkeypatch,
+):
+    _plan, source, document, plan_sha256 = _completed_resolution_workspace(
+        linear_history_repo
+    )
+    destination = linear_history_repo.root / "owned-resolution"
+    copy_inventory = resolution_workspace._copy_completed_workspace_inventory
+    observed_lock = False
+
+    def require_lock_then_copy(source_path, destination_path, output_keys):
+        nonlocal observed_lock
+        with pytest.raises(CommandError, match="already in use"):
+            with lock_resolution_directory(source, create=False):
+                pass
+        observed_lock = True
+        copy_inventory(source_path, destination_path, output_keys)
+
+    monkeypatch.setattr(
+        resolution_workspace,
+        "_copy_completed_workspace_inventory",
+        require_lock_then_copy,
+    )
+    with temporary_git_object_environment() as source_quarantine:
+        with temporary_git_object_environment() as destination_quarantine:
+            copy_completed_history_resolution(
+                document,
+                plan_sha256,
+                str(source),
+                str(destination),
+                source_quarantine=source_quarantine,
+                destination_quarantine=destination_quarantine,
+            )
+
+    assert observed_lock
+
+
+def test_completed_workspace_copy_authenticates_locked_staging_before_publish(
+    linear_history_repo,
+    monkeypatch,
+):
+    _plan, source, document, plan_sha256 = _completed_resolution_workspace(
+        linear_history_repo
+    )
+    destination = linear_history_repo.root / "owned-resolution"
+    authenticate = (
+        resolution_workspace._authenticate_completed_history_resolution_locked
+    )
+    staged_authentications = 0
+
+    def observe_authentication(
+        candidate_document,
+        candidate_plan_sha256,
+        workspace_path,
+        binding,
+        quarantine,
+    ):
+        nonlocal staged_authentications
+        if workspace_path != source:
+            staged_authentications += 1
+            assert workspace_path.name.startswith(".git-stage-batch-resolution-copy-")
+            assert not destination.exists()
+            with pytest.raises(CommandError, match="already in use"):
+                with lock_resolution_directory(workspace_path, create=False):
+                    pass
+        return authenticate(
+            candidate_document,
+            candidate_plan_sha256,
+            workspace_path,
+            binding,
+            quarantine,
+        )
+
+    monkeypatch.setattr(
+        resolution_workspace,
+        "_authenticate_completed_history_resolution_locked",
+        observe_authentication,
+    )
+    with temporary_git_object_environment() as source_quarantine:
+        with temporary_git_object_environment() as destination_quarantine:
+            authenticated = copy_completed_history_resolution(
+                document,
+                plan_sha256,
+                str(source),
+                str(destination),
+                source_quarantine=source_quarantine,
+                destination_quarantine=destination_quarantine,
+            )
+
+    assert staged_authentications == 1
+    assert authenticated.workspace_path == str(destination)
+    assert destination.exists()
+
+
+def test_completed_workspace_copy_does_not_claim_destination_when_source_is_busy(
+    linear_history_repo,
+):
+    _plan, source, document, plan_sha256 = _completed_resolution_workspace(
+        linear_history_repo
+    )
+    destination = linear_history_repo.root / "owned-resolution"
+
+    with lock_resolution_directory(source, create=False):
+        with temporary_git_object_environment() as source_quarantine:
+            with temporary_git_object_environment() as destination_quarantine:
+                with pytest.raises(CommandError, match="already in use"):
+                    copy_completed_history_resolution(
+                        document,
+                        plan_sha256,
+                        str(source),
+                        str(destination),
+                        source_quarantine=source_quarantine,
+                        destination_quarantine=destination_quarantine,
+                    )
+
+    assert not destination.exists()
+    with temporary_git_object_environment() as source_quarantine:
+        with temporary_git_object_environment() as destination_quarantine:
+            retried = copy_completed_history_resolution(
+                document,
+                plan_sha256,
+                str(source),
+                str(destination),
+                source_quarantine=source_quarantine,
+                destination_quarantine=destination_quarantine,
+            )
+    assert retried.workspace_path == str(destination)
+
+
+def test_completed_workspace_copy_preserves_existing_destination(
+    linear_history_repo,
+):
+    _plan, source, document, plan_sha256 = _completed_resolution_workspace(
+        linear_history_repo
+    )
+    destination = linear_history_repo.root / "owned-resolution"
+    destination.mkdir(mode=0o700)
+    sentinel = destination / "sentinel"
+    sentinel.write_text("existing\n", encoding="utf-8")
+
+    with temporary_git_object_environment() as source_quarantine:
+        with temporary_git_object_environment() as destination_quarantine:
+            with pytest.raises(CommandError, match="already exists"):
+                copy_completed_history_resolution(
+                    document,
+                    plan_sha256,
+                    str(source),
+                    str(destination),
+                    source_quarantine=source_quarantine,
+                    destination_quarantine=destination_quarantine,
+                )
+
+    assert sentinel.read_text(encoding="utf-8") == "existing\n"
+    assert tuple(destination.iterdir()) == (sentinel,)
+
+
+def test_completed_workspace_copy_rejects_exact_plan_before_path_access(
+    linear_history_repo,
+    monkeypatch,
+):
+    plan = _resolved_plan(linear_history_repo, resolved_indexes=())
+    document, plan_sha256 = read_and_validate_history_plan_semantics(str(plan))
+
+    def unexpected_path_access(_workspace_path):
+        raise AssertionError("workspace path was accessed")
+
+    monkeypatch.setattr(
+        resolution_workspace,
+        "_absolute_workspace_path",
+        unexpected_path_access,
+    )
+    with temporary_git_object_environment() as source_quarantine:
+        with temporary_git_object_environment() as destination_quarantine:
+            with pytest.raises(CommandError, match="does not contain any RESOLVED"):
+                copy_completed_history_resolution(
+                    document,
+                    plan_sha256,
+                    "unused-source",
+                    "unused-destination",
+                    source_quarantine=source_quarantine,
+                    destination_quarantine=destination_quarantine,
+                )
+
+
+def test_completed_workspace_copy_detects_source_mutation_before_publication(
+    linear_history_repo,
+    monkeypatch,
+):
+    _plan, source, document, plan_sha256 = _completed_resolution_workspace(
+        linear_history_repo
+    )
+    destination = linear_history_repo.root / "owned-resolution"
+    copy_artifact = resolution_workspace.copy_resolution_artifact_atomically
+    original_workspace = (source / "workspace.json").read_bytes()
+    mutated = False
+
+    def copy_then_mutate(source_path, destination_path, *, expected=None):
+        nonlocal mutated
+        digest = copy_artifact(source_path, destination_path, expected=expected)
+        if Path(source_path).name == "complete.json" and not mutated:
+            mutated = True
+            (source / "workspace.json").write_text("{}\n", encoding="utf-8")
+            (source / "workspace.json").chmod(0o600)
+        return digest
+
+    monkeypatch.setattr(
+        resolution_workspace,
+        "copy_resolution_artifact_atomically",
+        copy_then_mutate,
+    )
+    with temporary_git_object_environment() as source_quarantine:
+        with temporary_git_object_environment() as destination_quarantine:
+            with pytest.raises(CommandError, match="workspace.json"):
+                copy_completed_history_resolution(
+                    document,
+                    plan_sha256,
+                    str(source),
+                    str(destination),
+                    source_quarantine=source_quarantine,
+                    destination_quarantine=destination_quarantine,
+                )
+
+    assert mutated
+    assert not destination.exists()
+    (source / "workspace.json").write_bytes(original_workspace)
+    (source / "workspace.json").chmod(0o600)
+    with temporary_git_object_environment() as source_quarantine:
+        with temporary_git_object_environment() as destination_quarantine:
+            retried = copy_completed_history_resolution(
+                document,
+                plan_sha256,
+                str(source),
+                str(destination),
+                source_quarantine=source_quarantine,
+                destination_quarantine=destination_quarantine,
+            )
+    assert retried.workspace_path == str(destination)
+
+
+def test_completed_workspace_copy_authenticates_staging_before_publication(
+    linear_history_repo,
+    monkeypatch,
+):
+    _plan, source, document, plan_sha256 = _completed_resolution_workspace(
+        linear_history_repo
+    )
+    destination = linear_history_repo.root / "owned-resolution"
+    copy_inventory = resolution_workspace._copy_completed_workspace_inventory
+
+    def copy_then_mutate(source_path, destination_path, output_keys):
+        copy_inventory(source_path, destination_path, output_keys)
+        (destination_path / "complete.json").write_text("{}\n", encoding="utf-8")
+        (destination_path / "complete.json").chmod(0o600)
+
+    monkeypatch.setattr(
+        resolution_workspace,
+        "_copy_completed_workspace_inventory",
+        copy_then_mutate,
+    )
+    with temporary_git_object_environment() as source_quarantine:
+        with temporary_git_object_environment() as destination_quarantine:
+            with pytest.raises(CommandError, match="complete.json"):
+                copy_completed_history_resolution(
+                    document,
+                    plan_sha256,
+                    str(source),
+                    str(destination),
+                    source_quarantine=source_quarantine,
+                    destination_quarantine=destination_quarantine,
+                )
+
+    assert not destination.exists()
+    monkeypatch.setattr(
+        resolution_workspace,
+        "_copy_completed_workspace_inventory",
+        copy_inventory,
+    )
+    with temporary_git_object_environment() as source_quarantine:
+        with temporary_git_object_environment() as destination_quarantine:
+            retried = copy_completed_history_resolution(
+                document,
+                plan_sha256,
+                str(source),
+                str(destination),
+                source_quarantine=source_quarantine,
+                destination_quarantine=destination_quarantine,
+            )
+    assert retried.workspace_path == str(destination)
+
+
+def test_completed_workspace_copy_rejects_quarantine_inode_change_before_publish(
+    linear_history_repo,
+    monkeypatch,
+):
+    _plan, source, document, plan_sha256 = _completed_resolution_workspace(
+        linear_history_repo
+    )
+    destination = linear_history_repo.root / "owned-resolution"
+    copy_inventory = resolution_workspace._copy_completed_workspace_inventory
+
+    with temporary_git_object_environment() as source_quarantine:
+        with temporary_git_object_environment() as destination_quarantine:
+            object_directory = Path(
+                destination_quarantine.environment()["GIT_OBJECT_DIRECTORY"]
+            )
+            displaced = object_directory.with_name(f"{object_directory.name}-displaced")
+
+            def copy_then_replace_quarantine(
+                source_path,
+                destination_path,
+                output_keys,
+            ):
+                copy_inventory(source_path, destination_path, output_keys)
+                object_directory.rename(displaced)
+                object_directory.mkdir(mode=0o700)
+
+            monkeypatch.setattr(
+                resolution_workspace,
+                "_copy_completed_workspace_inventory",
+                copy_then_replace_quarantine,
+            )
+            try:
+                with pytest.raises(RuntimeError, match="quarantine identity changed"):
+                    copy_completed_history_resolution(
+                        document,
+                        plan_sha256,
+                        str(source),
+                        str(destination),
+                        source_quarantine=source_quarantine,
+                        destination_quarantine=destination_quarantine,
+                    )
+            finally:
+                shutil.rmtree(object_directory)
+                displaced.rename(object_directory)
+
+    assert not destination.exists()
+
+
+def test_completed_workspace_copy_prevents_novel_object_leak_during_aba(
+    linear_history_repo,
+    monkeypatch,
+):
+    plan = _resolved_plan(linear_history_repo, resolved_indexes=(0, 1))
+    source = linear_history_repo.root / "resolution"
+    first = resolve_history_plan(str(plan), str(source))
+    assert first.output_key is not None
+    novel_payload = b"alpha from an explicit intermediate resolution\nbeta\ngamma\n"
+    _replace_result_with_reference(
+        _output_path(source, first.output_key),
+        role="SOURCE_AFTER",
+        payload=novel_payload,
+    )
+    second = resolve_history_plan(
+        str(plan),
+        str(source),
+        accept_result=True,
+    )
+    assert second.output_key is not None
+    _replace_result_with_reference(
+        _output_path(source, second.output_key),
+        role="SOURCE_AFTER",
+    )
+    assert (
+        resolve_history_plan(
+            str(plan),
+            str(source),
+            accept_result=True,
+        ).status
+        == "COMPLETE"
+    )
+    novel_tree = _metadata(source / "complete.json")["output_trees"][0]
+    assert isinstance(novel_tree, str)
+    assert get_git_object_type(novel_tree) is None
+    document, plan_sha256 = read_and_validate_history_plan_semantics(str(plan))
+    destination = linear_history_repo.root / "owned-resolution"
+    materialize = resolution_workspace.materialize_history_output_trees
+    persistent_objects = Path(git("rev-parse", "--git-path", "objects")).resolve()
+    swapped = False
+
+    def materialize_with_quarantine_aba(*args, **kwargs):
+        nonlocal swapped
+        materializer = kwargs.get("resolved_output_materializer")
+        if (
+            materializer is not None
+            and materializer.workspace_path != source
+            and not swapped
+        ):
+            quarantine = materializer.quarantine
+            object_directory = Path(quarantine.environment()["GIT_OBJECT_DIRECTORY"])
+            displaced = object_directory.with_name(f"{object_directory.name}-displaced")
+            object_directory.rename(displaced)
+            object_directory.symlink_to(
+                persistent_objects,
+                target_is_directory=True,
+            )
+            swapped = True
+            try:
+                return materialize(*args, **kwargs)
+            finally:
+                object_directory.unlink()
+                displaced.rename(object_directory)
+        return materialize(*args, **kwargs)
+
+    monkeypatch.setattr(
+        resolution_workspace,
+        "materialize_history_output_trees",
+        materialize_with_quarantine_aba,
+    )
+    with temporary_git_object_environment() as source_quarantine:
+        with temporary_git_object_environment() as destination_quarantine:
+            authenticated = copy_completed_history_resolution(
+                document,
+                plan_sha256,
+                str(source),
+                str(destination),
+                source_quarantine=source_quarantine,
+                destination_quarantine=destination_quarantine,
+            )
+
+    assert swapped
+    assert authenticated.workspace_path == str(destination)
+    assert authenticated.replay.final_tree == document.snapshot.final_tree
+    assert get_git_object_type(novel_tree) is None
+
+
 def test_completed_workspace_reader_requires_manifest_without_mutation(
     linear_history_repo,
 ):
@@ -957,7 +1512,10 @@ def test_selected_content_and_mode_units_do_not_launder_each_other(
     )
 
 
-def test_large_resolution_replay_has_bounded_python_heap(tmp_path, monkeypatch):
+def test_large_resolution_copy_and_replay_have_bounded_python_heap(
+    tmp_path,
+    monkeypatch,
+):
     line = b"resolved history payload " + b"x" * 488 + b"\n"
     heap_peaks: list[int] = []
 
@@ -999,13 +1557,16 @@ def test_large_resolution_replay_has_bounded_python_heap(tmp_path, monkeypatch):
         gc.collect()
         tracemalloc.start()
         try:
-            with temporary_git_object_environment() as quarantine:
-                authenticated = materialize_completed_history_resolution(
-                    document,
-                    plan_sha256,
-                    str(workspace),
-                    quarantine=quarantine,
-                )
+            with temporary_git_object_environment() as source_quarantine:
+                with temporary_git_object_environment() as destination_quarantine:
+                    authenticated = copy_completed_history_resolution(
+                        document,
+                        plan_sha256,
+                        str(workspace),
+                        str(repository / "owned-resolution"),
+                        source_quarantine=source_quarantine,
+                        destination_quarantine=destination_quarantine,
+                    )
             _current_heap, peak_heap = tracemalloc.get_traced_memory()
         finally:
             tracemalloc.stop()

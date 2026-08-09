@@ -19,6 +19,7 @@ git-stage-batch-rewrite \- execute deterministic history refinements
 [\fB\-\-porcelain\fR]
 .PP
 .B git-stage-batch rewrite apply
+[\fB\-\-workspace\fR \fIDIR\fR]
 [\fB\-\-allow-published-ref\fR \fIREF\fR]...
 [\fB\-\-porcelain\fR]
 \fIPLAN\fR
@@ -73,17 +74,50 @@ references, and accepts only unit-authorized result paths and transitions.
 Each accepted output receives a digest-bound receipt. Completion requires the
 entire replay to reproduce the frozen final tree and does not create commits,
 refs, or persistent candidate objects.
-The completed external workspace is currently an input only to
+The completed external workspace remains a reusable, read-only input to
 .BR "rewrite validate" .
+Supply it with
+.B \-\-workspace
+on the initial
 .B rewrite apply
-does not yet accept it as input.
+invocation to hand its authenticated results to a durable operation. Apply
+does not modify or publish the external workspace itself.
 .PP
 .B rewrite apply
-creates an operation-owned recovery ref, builds a deterministic unsigned
-replacement chain without changing the worktree, verifies it, then updates
-the checked-out branch once with compare-and-swap. Commit objects preserve
-the planned author, the target source committer, declared encoding, and exact
-message bytes. Source signature headers are omitted and recorded by digest.
+requires
+.BI \-\-workspace " DIR"
+on the initial invocation for a plan containing any RESOLVED output.
+.I DIR
+must be the COMPLETE private workspace produced by
+.B rewrite resolve
+for that exact plan. Omit the option for an all-EXACT plan; a gratuitous,
+missing, incomplete, changed, or differently bound workspace is rejected.
+.PP
+Before activation, apply authenticates the external workspace, copies its
+exact private inventory into the unpublished operation directory, confirms
+that the source did not change during the copy, and independently
+authenticates the copy in a separate fresh object quarantine. It then rechecks
+the branch, index, and worktree mutation facts. Once activated, building,
+continue, status, and verify use only the operation-owned copy. The external
+workspace may then be moved or deleted without affecting continuation or
+later verification; its path is not supplied again.
+.PP
+Apply creates a durable operation-owned recovery ref and PREPARED checkpoint,
+then reconstructs exact and resolved output trees and builds deterministic
+unsigned commits in a temporary object quarantine. It durably promotes the
+required commit, tree, and blob closure before updating the local operation-owned
+output ref. A promotion lease and exact-name ref updates keep interruption
+recovery bounded to operation-owned objects and refs.
+.PP
+Before changing the checked-out branch, apply requires the complete output
+closure to be readable from persistent object storage with lazy fetching
+disabled. It independently regenerates the expected commits and trees in a
+fresh quarantine, compares them with the persistent objects, and writes a
+digest-bound verification record. For a resolved plan, that record also binds
+the raw-plan and completion digests and the resolved-output count. Apply then
+updates the branch once with compare-and-swap. Commit objects preserve the
+planned author, target source committer, declared encoding, and exact message
+bytes. Source signature headers are omitted and recorded by digest.
 .PP
 Apply does not contact a remote and never performs or authorizes a push or
 force-push.
@@ -187,6 +221,16 @@ must remain mode 0700, and every metadata or artifact file must remain mode
 Print versioned JSON containing the complete durable checkpoint inspection.
 .SH APPLY OPTIONS
 .TP
+.BI \-\-workspace " DIR"
+Authenticate and take an operation-owned copy of the COMPLETE private
+rewrite-resolution workspace at
+.I DIR
+when starting a plan containing RESOLVED outputs. The workspace must be bound
+to the exact plan. Supplying this option for an all-EXACT plan is rejected.
+After activation, continue, status, and verify use the owned copy and no
+longer depend on
+.IR DIR .
+.TP
 .BI \-\-allow-published-ref " REF"
 Permit local rewriting when a source commit is contained by the exact full
 remote-tracking ref
@@ -267,12 +311,16 @@ in the repository's common Git directory. That path is
 in an ordinary checkout, and remains reachable after a linked worktree is
 removed.
 They use private atomically replaced files, a closed phase/next-action schema,
-and operation-owned recovery/output refs. A pending commit/tree checkpoint
-closes the crash window around each output-ref update. A deterministic
-verification record binds final tree, output topology, plan digest, and removed
-signature digests. Status verifies the branch, expected tip, index, worktree,
-plan and verification digests, output objects, recovery ref, and the output ref
-that keeps a paused replacement chain reachable before declaring resume ready.
+operation-owned resolution copies when required, and operation-owned
+recovery/output refs. A pending commit/tree checkpoint closes the crash window
+around each output-ref update. Replacement objects are built in a quarantine,
+promoted under a durable lease, and checked as a complete persistent closure
+before branch publication. A deterministic verification record binds final
+tree, output topology, plan digest, resolution provenance when present, and
+removed signature digests. Status verifies the branch, expected tip, index,
+worktree, plan, resolution and verification digests, output objects, recovery
+ref, and the output ref that keeps a paused replacement chain reachable before
+declaring resume ready.
 Manual recovery output uses compare-and-swap
 .B git update-ref
 syntax so unrelated ref movement is not overwritten.

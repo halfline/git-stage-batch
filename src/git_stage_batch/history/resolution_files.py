@@ -21,6 +21,7 @@ from ..exceptions import CommandError
 from ..git_paths import display_path, encode_path, terminal_safe_text
 from ..i18n import _
 from ..utils.git_object_io import GitObjectQuarantine, create_git_blob
+from ..utils.git_environment import require_pinned_git_object_environment
 
 
 PRIVATE_RESOLUTION_DIRECTORY_MODE = 0o700
@@ -1264,10 +1265,28 @@ def digest_resolution_artifact(
     return result
 
 
+def _import_resolution_artifact_blob_in_environment(
+    artifact_path: Path,
+    object_environment: dict[str, str],
+    digest: hashlib._Hash,
+    size: list[int],
+) -> str:
+    require_pinned_git_object_environment(object_environment)
+    return create_git_blob(
+        _digesting_chunks(
+            _opened_artifact_chunks(artifact_path),
+            digest,
+            size,
+        ),
+        env=object_environment,
+    )
+
+
 def import_resolution_artifact_blob(
     path: str | Path,
     *,
     env: GitObjectQuarantine,
+    object_environment: dict[str, str] | None = None,
     expected: ResolutionArtifactDigest | None = None,
 ) -> ResolutionImportedArtifact:
     """Stream one artifact into a required Git object quarantine."""
@@ -1276,14 +1295,21 @@ def import_resolution_artifact_blob(
     artifact_path = _exact_path(path)
     digest = hashlib.sha256()
     size = [0]
-    blob_object_id = create_git_blob(
-        _digesting_chunks(
-            _opened_artifact_chunks(artifact_path),
+    if object_environment is None:
+        with env.pinned_environment() as pinned_environment:
+            blob_object_id = _import_resolution_artifact_blob_in_environment(
+                artifact_path,
+                pinned_environment,
+                digest,
+                size,
+            )
+    else:
+        blob_object_id = _import_resolution_artifact_blob_in_environment(
+            artifact_path,
+            object_environment,
             digest,
             size,
-        ),
-        env=env.environment(),
-    )
+        )
     artifact_digest = _artifact_digest(digest, size)
     _require_expected_digest(artifact_path, artifact_digest, expected)
     return ResolutionImportedArtifact(

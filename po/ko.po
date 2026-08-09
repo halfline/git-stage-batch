@@ -7294,3 +7294,10 @@ msgstr "잠긴 디렉터리를 인증할 수 없습니다: {error}"
 
 msgid "staging directory is not the locked workspace"
 msgstr "스테이징 디렉터리가 잠긴 작업 공간이 아닙니다"
+
+# Persistent rewrite output verification translations.
+msgid "The persistent rewrite output object closure is incomplete or invalid."
+msgstr "영구 재작성 출력 객체 클로저가 불완전하거나 잘못되었습니다."
+
+msgid "Git returned malformed object closure data while verifying rewrite output."
+msgstr "재작성 출력을 검증하는 동안 Git이 잘못된 형식의 객체 클로저 데이터를 반환했습니다."

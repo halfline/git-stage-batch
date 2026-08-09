@@ -7826,3 +7826,10 @@ msgstr "no se puede autenticar el directorio bloqueado: {error}"
 
 msgid "staging directory is not the locked workspace"
 msgstr "el directorio provisional no es el espacio de trabajo bloqueado"
+
+# Persistent rewrite output verification translations.
+msgid "The persistent rewrite output object closure is incomplete or invalid."
+msgstr "El cierre persistente de objetos de la salida de la reescritura está incompleto o no es válido."
+
+msgid "Git returned malformed object closure data while verifying rewrite output."
+msgstr "Git devolvió datos de cierre de objetos con formato incorrecto al verificar la salida de la reescritura."

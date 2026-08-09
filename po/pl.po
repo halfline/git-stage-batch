@@ -7853,6 +7853,12 @@ msgstr "Surowa wiadomość źródła historii {commit} nie odpowiada już swojem
 msgid "The persisted rewrite plan no longer matches its checkpoint."
 msgstr "Zapisany plan przepisywania nie odpowiada już swojemu punktowi kontrolnemu."
 
+
+msgid "The persistent rewrite output object closure is incomplete or invalid."
+msgstr "Trwałe domknięcie obiektów wyniku przepisywania jest niepełne lub nieprawidłowe."
+
+msgid "Git returned malformed object closure data while verifying rewrite output."
+msgstr "Git zwrócił nieprawidłowe dane domknięcia obiektów podczas weryfikowania wyniku przepisywania."
 #, python-brace-format
 msgid "cannot authenticate locked directory: {error}"
 msgstr "nie można uwierzytelnić zablokowanego katalogu: {error}"

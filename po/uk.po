@@ -7806,6 +7806,12 @@ msgstr "Необроблене повідомлення джерела істо�
 msgid "The persisted rewrite plan no longer matches its checkpoint."
 msgstr "Збережений план переписування більше не відповідає своїй контрольній точці."
 
+
+msgid "The persistent rewrite output object closure is incomplete or invalid."
+msgstr "Збережене замикання об’єктів виводу переписування неповне або недійсне."
+
+msgid "Git returned malformed object closure data while verifying rewrite output."
+msgstr "Git повернув неправильно сформовані дані замикання об’єктів під час перевірки виводу переписування."
 #, python-brace-format
 msgid "cannot authenticate locked directory: {error}"
 msgstr "неможливо автентифікувати заблокований каталог: {error}"

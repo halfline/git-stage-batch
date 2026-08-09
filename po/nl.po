@@ -7800,6 +7800,12 @@ msgstr "Het onbewerkte bericht voor geschiedenisbron {commit} komt niet langer o
 msgid "The persisted rewrite plan no longer matches its checkpoint."
 msgstr "Het opgeslagen herschrijfplan komt niet langer overeen met zijn controlepunt."
 
+
+msgid "The persistent rewrite output object closure is incomplete or invalid."
+msgstr "De blijvende objectafsluiting van de herschrijfuitvoer is onvolledig of ongeldig."
+
+msgid "Git returned malformed object closure data while verifying rewrite output."
+msgstr "Git heeft misvormde objectafsluitingsgegevens geretourneerd tijdens het verifiëren van de herschrijfuitvoer."
 #, python-brace-format
 msgid "cannot authenticate locked directory: {error}"
 msgstr "de vergrendelde map kan niet worden geverifieerd: {error}"

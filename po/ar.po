@@ -7985,3 +7985,10 @@ msgstr "لا يمكن مصادقة الدليل المقفل: {error}"
 
 msgid "staging directory is not the locked workspace"
 msgstr "دليل التجهيز ليس مساحة العمل المقفلة"
+
+# Persistent rewrite output verification translations.
+msgid "The persistent rewrite output object closure is incomplete or invalid."
+msgstr "إغلاق كائنات ناتج إعادة الكتابة الدائم غير مكتمل أو غير صالح."
+
+msgid "Git returned malformed object closure data while verifying rewrite output."
+msgstr "أعاد ⁦Git⁩ بيانات مشوّهة لإغلاق الكائنات أثناء التحقق من ناتج إعادة الكتابة."

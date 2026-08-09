@@ -7893,3 +7893,10 @@ msgstr "gesperrtes Verzeichnis kann nicht authentifiziert werden: {error}"
 
 msgid "staging directory is not the locked workspace"
 msgstr "das Staging-Verzeichnis ist nicht der gesperrte Arbeitsbereich"
+
+# Persistent rewrite output verification translations.
+msgid "The persistent rewrite output object closure is incomplete or invalid."
+msgstr "Die persistente Objekthülle der Umschreibungsausgabe ist unvollständig oder ungültig."
+
+msgid "Git returned malformed object closure data while verifying rewrite output."
+msgstr "Git hat beim Überprüfen der Umschreibungsausgabe fehlerhafte Daten zur Objekthülle zurückgegeben."

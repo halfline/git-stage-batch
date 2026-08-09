@@ -7248,6 +7248,12 @@ msgstr "历史源 {commit} 的原始消息不再与其冻结摘要匹配。"
 msgid "The persisted rewrite plan no longer matches its checkpoint."
 msgstr "持久化的重写计划不再与其检查点匹配。"
 
+
+msgid "The persistent rewrite output object closure is incomplete or invalid."
+msgstr "重写输出的持久化对象闭包不完整或无效。"
+
+msgid "Git returned malformed object closure data while verifying rewrite output."
+msgstr "Git 在验证重写输出时返回了格式错误的对象闭包数据。"
 #, python-brace-format
 msgid "cannot authenticate locked directory: {error}"
 msgstr "无法验证已锁定的目录：{error}"

@@ -7696,6 +7696,12 @@ msgstr "{commit} geçmiş kaynağının ham iletisi artık dondurulmuş özetiyl
 msgid "The persisted rewrite plan no longer matches its checkpoint."
 msgstr "Kalıcı olarak kaydedilen yeniden yazma planı artık denetim noktasıyla eşleşmiyor."
 
+
+msgid "The persistent rewrite output object closure is incomplete or invalid."
+msgstr "Yeniden yazma çıktısının kalıcı nesne kapanışı eksik veya geçersiz."
+
+msgid "Git returned malformed object closure data while verifying rewrite output."
+msgstr "Git, yeniden yazma çıktısını doğrularken bozuk nesne kapanışı verileri döndürdü."
 #, python-brace-format
 msgid "cannot authenticate locked directory: {error}"
 msgstr "kilitli dizinin kimliği doğrulanamıyor: {error}"

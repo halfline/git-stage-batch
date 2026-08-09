@@ -7283,3 +7283,10 @@ msgstr "ロックされたディレクトリを認証できません: {error}"
 
 msgid "staging directory is not the locked workspace"
 msgstr "ステージングディレクトリはロックされたワークスペースではありません"
+
+# Persistent rewrite output verification translations.
+msgid "The persistent rewrite output object closure is incomplete or invalid."
+msgstr "永続的な書き換え出力オブジェクトクロージャが不完全または無効です。"
+
+msgid "Git returned malformed object closure data while verifying rewrite output."
+msgstr "書き換え出力の検証中に Git が不正な形式のオブジェクトクロージャデータを返しました。"

@@ -7780,6 +7780,12 @@ msgstr "A mensagem bruta da origem de histórico {commit} não corresponde mais 
 msgid "The persisted rewrite plan no longer matches its checkpoint."
 msgstr "O plano de reescrita persistido não corresponde mais ao seu ponto de verificação."
 
+
+msgid "The persistent rewrite output object closure is incomplete or invalid."
+msgstr "O fechamento persistente dos objetos da saída de reescrita está incompleto ou é inválido."
+
+msgid "Git returned malformed object closure data while verifying rewrite output."
+msgstr "O Git retornou dados malformados de fechamento de objetos ao verificar a saída de reescrita."
 #, python-brace-format
 msgid "cannot authenticate locked directory: {error}"
 msgstr "não é possível autenticar o diretório bloqueado: {error}"

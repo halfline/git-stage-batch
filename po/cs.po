@@ -7749,3 +7749,10 @@ msgstr "nelze ověřit uzamčený adresář: {error}"
 
 msgid "staging directory is not the locked workspace"
 msgstr "přípravný adresář není uzamčeným pracovním prostorem"
+
+# Persistent rewrite output verification translations.
+msgid "The persistent rewrite output object closure is incomplete or invalid."
+msgstr "Trvalý uzávěr objektů výstupu přepisu je neúplný nebo neplatný."
+
+msgid "Git returned malformed object closure data while verifying rewrite output."
+msgstr "Git při ověřování výstupu přepisu vrátil poškozená data uzávěru objektů."

@@ -7869,3 +7869,11 @@ msgstr "Espace de travail de résolution : {workspace}"
 #, python-brace-format
 msgid "Resolution completion SHA-256: {sha256}"
 msgstr "SHA-256 d’achèvement de la résolution : {sha256}"
+
+# Frozen history authentication translations.
+#, python-brace-format
+msgid "The raw message for history source {commit} no longer matches its frozen digest."
+msgstr "Le message brut de la source d’historique {commit} ne correspond plus à son empreinte figée."
+
+msgid "The persisted rewrite plan no longer matches its checkpoint."
+msgstr "Le plan de réécriture enregistré ne correspond plus à son point de contrôle."

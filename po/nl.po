@@ -7791,3 +7791,11 @@ msgstr "Werkruimte voor geschiedenisoplossingen: {workspace}"
 #, python-brace-format
 msgid "Resolution completion SHA-256: {sha256}"
 msgstr "SHA-256 van voltooiing van de geschiedenisoplossing: {sha256}"
+
+# Durable rewrite operation translations.
+#, python-brace-format
+msgid "The raw message for history source {commit} no longer matches its frozen digest."
+msgstr "Het onbewerkte bericht voor geschiedenisbron {commit} komt niet langer overeen met zijn bevroren digest."
+
+msgid "The persisted rewrite plan no longer matches its checkpoint."
+msgstr "Het opgeslagen herschrijfplan komt niet langer overeen met zijn controlepunt."

@@ -7687,3 +7687,11 @@ msgstr "Çözümleme çalışma alanı: {workspace}"
 #, python-brace-format
 msgid "Resolution completion SHA-256: {sha256}"
 msgstr "Çözümleme tamamlama SHA-256 değeri: {sha256}"
+
+# Durable rewrite operation translations.
+#, python-brace-format
+msgid "The raw message for history source {commit} no longer matches its frozen digest."
+msgstr "{commit} geçmiş kaynağının ham iletisi artık dondurulmuş özetiyle eşleşmiyor."
+
+msgid "The persisted rewrite plan no longer matches its checkpoint."
+msgstr "Kalıcı olarak kaydedilen yeniden yazma planı artık denetim noktasıyla eşleşmiyor."

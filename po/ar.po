@@ -7969,3 +7969,11 @@ msgstr "مساحة عمل الحل: {workspace}"
 #, python-brace-format
 msgid "Resolution completion SHA-256: {sha256}"
 msgstr "بصمة إكمال الحل ⁦SHA-256⁩: {sha256}"
+
+# Frozen history authentication translations.
+#, python-brace-format
+msgid "The raw message for history source {commit} no longer matches its frozen digest."
+msgstr "لم تعد الرسالة الخام لمصدر التاريخ {commit} تطابق بصمتها المجمّدة."
+
+msgid "The persisted rewrite plan no longer matches its checkpoint."
+msgstr "لم تعد خطة إعادة الكتابة المحفوظة تطابق نقطة التحقق الخاصة بها."

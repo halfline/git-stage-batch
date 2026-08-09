@@ -7844,3 +7844,11 @@ msgstr "Przestrzeń robocza rozwiązania: {workspace}"
 #, python-brace-format
 msgid "Resolution completion SHA-256: {sha256}"
 msgstr "SHA-256 ukończenia rozwiązania: {sha256}"
+
+# Durable rewrite operation translations.
+#, python-brace-format
+msgid "The raw message for history source {commit} no longer matches its frozen digest."
+msgstr "Surowa wiadomość źródła historii {commit} nie odpowiada już swojemu zamrożonemu skrótowi."
+
+msgid "The persisted rewrite plan no longer matches its checkpoint."
+msgstr "Zapisany plan przepisywania nie odpowiada już swojemu punktowi kontrolnemu."

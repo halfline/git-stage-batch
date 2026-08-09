@@ -7267,3 +7267,11 @@ msgstr "解決ワークスペース: {workspace}"
 #, python-brace-format
 msgid "Resolution completion SHA-256: {sha256}"
 msgstr "解決完了の SHA-256: {sha256}"
+
+# Frozen history authentication translations.
+#, python-brace-format
+msgid "The raw message for history source {commit} no longer matches its frozen digest."
+msgstr "履歴ソース {commit} の生のメッセージが、固定されたダイジェストと一致しなくなりました。"
+
+msgid "The persisted rewrite plan no longer matches its checkpoint."
+msgstr "永続化された書き換えプランがチェックポイントと一致しなくなりました。"

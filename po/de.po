@@ -7877,3 +7877,11 @@ msgstr "Arbeitsbereich zur Verlaufsauflösung: {workspace}"
 #, python-brace-format
 msgid "Resolution completion SHA-256: {sha256}"
 msgstr "SHA-256 des Abschlusses der Verlaufsauflösung: {sha256}"
+
+# Frozen history authentication translations.
+#, python-brace-format
+msgid "The raw message for history source {commit} no longer matches its frozen digest."
+msgstr "Die Rohmeldung der Verlaufsquelle {commit} entspricht nicht mehr ihrer eingefrorenen Prüfsumme."
+
+msgid "The persisted rewrite plan no longer matches its checkpoint."
+msgstr "Der gespeicherte Umschreibungsplan entspricht nicht mehr seinem Prüfpunkt."

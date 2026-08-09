@@ -33,17 +33,21 @@ from .models import (
 from .plan_files import (
     read_and_validate_frozen_history_plan_semantics,
     read_and_validate_history_plan,
+    read_and_validate_history_plan_semantics,
 )
 from .records import history_plan_document_record
 from .replay import (
+    HistoryReplayResult,
     materialize_history_output_trees,
     validate_history_plan_materialization,
 )
+from .resolution_workspace import materialize_completed_history_resolution
 from .safety import collect_history_safety_facts
 from .state import (
     activate_prepared_history_operation,
     deactivate_history_operation,
     history_operation_plan_path,
+    history_operation_resolutions_path,
     history_output_ref,
     history_recovery_ref,
     inspect_history_operation,
@@ -130,18 +134,59 @@ def _operation_document(state: HistoryOperationState) -> HistoryPlanDocument:
         raise CommandError(
             _("The persisted rewrite plan no longer matches its checkpoint.")
         )
-    validate_history_plan_materialization(document)
+    has_resolved_outputs = any(
+        output.materialization == "RESOLVED" for output in document.plan.outputs
+    )
+    has_resolution_provenance = state.resolution_raw_plan_sha256 is not None
+    if has_resolved_outputs != has_resolution_provenance:
+        raise CommandError(
+            _("Rewrite resolution provenance does not match the persisted plan.")
+        )
+    if not has_resolved_outputs:
+        validate_history_plan_materialization(document)
     return document
 
 
+def _operation_replay(
+    state: HistoryOperationState,
+    document: HistoryPlanDocument,
+    *,
+    quarantine_environment: dict[str, str],
+    quarantine: GitObjectQuarantine,
+) -> HistoryReplayResult:
+    raw_plan_sha256 = state.resolution_raw_plan_sha256
+    if raw_plan_sha256 is None:
+        return materialize_history_output_trees(
+            document,
+            env=quarantine_environment,
+        )
+    authenticated = materialize_completed_history_resolution(
+        document,
+        raw_plan_sha256,
+        str(history_operation_resolutions_path(state.operation_id)),
+        quarantine=quarantine,
+    )
+    if authenticated.complete_sha256 != state.resolution_complete_sha256:
+        raise CommandError(
+            _("The operation-owned rewrite resolution workspace changed.")
+        )
+    return authenticated.replay
+
+
 def _expected_output_objects(
+    state: HistoryOperationState,
     document: HistoryPlanDocument,
     *,
     quarantine: GitObjectQuarantine,
     write: bool,
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
     with quarantine.pinned_environment() as environment:
-        replay = materialize_history_output_trees(document, env=environment)
+        replay = _operation_replay(
+            state,
+            document,
+            quarantine_environment=environment,
+            quarantine=quarantine,
+        )
         sources = {commit.commit_id: commit for commit in document.snapshot.commits}
         parent = document.snapshot.base_commit
         commits: list[str] = []
@@ -243,6 +288,7 @@ def _build_outputs(
 ) -> HistoryOperationState:
     with temporary_git_object_environment(disable_replace_objects=True) as quarantine:
         expected_commits, expected_trees = _expected_output_objects(
+            state,
             document,
             quarantine=quarantine,
             write=True,
@@ -285,8 +331,10 @@ def _verification_record(
     verification: HistoryVerification,
     *,
     plan_sha256: str,
+    state: HistoryOperationState | None = None,
+    document: HistoryPlanDocument | None = None,
 ) -> dict[str, object]:
-    return {
+    record: dict[str, object] = {
         "schema_version": 1,
         "operation": "rewrite-verification",
         "operation_id": verification.operation_id,
@@ -305,6 +353,24 @@ def _verification_record(
         ],
         "signatures_preserved": False,
     }
+    if state is None or state.schema_version == 2:
+        return record
+    if document is None:
+        raise TypeError("schema-version-3 verification requires its plan document")
+    raw_plan_sha256 = state.resolution_raw_plan_sha256
+    record["schema_version"] = 2
+    record["resolution"] = (
+        None
+        if raw_plan_sha256 is None
+        else {
+            "raw_plan_sha256": raw_plan_sha256,
+            "complete_sha256": state.resolution_complete_sha256,
+            "resolved_outputs": sum(
+                output.materialization == "RESOLVED" for output in document.plan.outputs
+            ),
+        }
+    )
+    return record
 
 
 def _invalid_persistent_output_closure() -> CommandError:
@@ -397,6 +463,7 @@ def _verify_output_objects(
                 disable_replace_objects=True
             ) as quarantine:
                 expected_commits, expected_trees = _expected_output_objects(
+                    state,
                     document,
                     quarantine=quarantine,
                     write=False,
@@ -465,7 +532,12 @@ def _verify_outputs(
 
     verification_digest = write_history_verification_record(
         state.operation_id,
-        _verification_record(verification, plan_sha256=state.plan_sha256),
+        _verification_record(
+            verification,
+            plan_sha256=state.plan_sha256,
+            state=state,
+            document=document,
+        ),
     )
     ready = replace(
         state,
@@ -578,14 +650,23 @@ def _require_start_facts_unchanged(
 def start_history_operation(
     plan_path: str,
     *,
+    resolutions_path: str | None = None,
     allowed_remote_refs: tuple[str, ...] = (),
 ) -> HistoryOperationState:
     """Validate, checkpoint, build, verify, and atomically finalize one plan."""
     allowed_refs = normalize_allowed_remote_refs(allowed_remote_refs)
-    document = read_and_validate_history_plan(
-        plan_path,
-        allowed_remote_refs=allowed_refs,
-    )
+    raw_plan_sha256: str | None = None
+    resolution_complete_sha256: str | None = None
+    if resolutions_path is None:
+        document = read_and_validate_history_plan(
+            plan_path,
+            allowed_remote_refs=allowed_refs,
+        )
+    else:
+        document, raw_plan_sha256 = read_and_validate_history_plan_semantics(
+            plan_path,
+            allowed_remote_refs=allowed_refs,
+        )
     if not document.safety.mutation_ready:
         raise CommandError(
             _("Rewrite apply is blocked by: {blockers}.").format(
@@ -595,6 +676,18 @@ def start_history_operation(
     branch_ref = document.snapshot.branch_ref
     if branch_ref is None:
         raise CommandError(_("Rewrite apply requires a checked-out local branch."))
+    if resolutions_path is not None:
+        assert raw_plan_sha256 is not None
+        with temporary_git_object_environment(
+            disable_replace_objects=True
+        ) as quarantine:
+            authenticated = materialize_completed_history_resolution(
+                document,
+                raw_plan_sha256,
+                resolutions_path,
+                quarantine=quarantine,
+            )
+        resolution_complete_sha256 = authenticated.complete_sha256
 
     operation_id = uuid.uuid4().hex
     recovery_ref = history_recovery_ref(operation_id)
@@ -606,8 +699,8 @@ def start_history_operation(
         phase=HistoryPhase.PREPARED,
         next_action=HistoryNextAction.BUILD_OUTPUT,
         plan_sha256=history_json_sha256(plan_record),
-        resolution_raw_plan_sha256=None,
-        resolution_complete_sha256=None,
+        resolution_raw_plan_sha256=raw_plan_sha256,
+        resolution_complete_sha256=resolution_complete_sha256,
         object_format=document.snapshot.object_format,
         branch_ref=branch_ref,
         base_commit=document.snapshot.base_commit,
@@ -631,7 +724,7 @@ def start_history_operation(
     preparation = prepare_history_operation(
         state,
         document,
-        resolutions_source=None,
+        resolutions_source=resolutions_path,
     )
     _require_start_facts_unchanged(
         document,
@@ -857,7 +950,12 @@ def verify_history_operation() -> tuple[HistoryOperationState, HistoryVerificati
         )
     document = _operation_document(state)
     verification, _trees = _verify_output_objects(state, document)
-    record = _verification_record(verification, plan_sha256=state.plan_sha256)
+    record = _verification_record(
+        verification,
+        plan_sha256=state.plan_sha256,
+        state=state,
+        document=document,
+    )
     digest = history_json_sha256(record)
     if state.verification_sha256 is not None and digest != state.verification_sha256:
         raise CommandError(_("The regenerated rewrite verification record changed."))

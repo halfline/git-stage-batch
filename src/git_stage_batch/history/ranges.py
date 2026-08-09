@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 
 from ..exceptions import CommandError
 from ..git_paths import terminal_safe_text
 from ..i18n import _
 from ..utils.git_command import run_git_command
-from ..utils.git_repository import get_git_object_format
+from ..utils.git_repository import (
+    get_git_common_directory_path,
+    get_git_object_format,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,11 +32,13 @@ def _require_unmodified_object_graph() -> None:
         ["replace", "--list"],
         requires_index_lock=False,
     ).stdout.splitlines()
-    grafts_path = Path(
-        run_git_command(
-            ["rev-parse", "--git-path", "info/grafts"],
-            requires_index_lock=False,
-        ).stdout.strip()
+    # The scan scope redirects GIT_GRAFT_FILE, so inspect the pre-scope
+    # location directly to preserve the upfront rejection.
+    grafts_override = os.environ.get("GIT_GRAFT_FILE")
+    grafts_path = (
+        Path(grafts_override)
+        if grafts_override is not None
+        else get_git_common_directory_path() / "info" / "grafts"
     )
     try:
         grafts_active = grafts_path.stat().st_size > 0

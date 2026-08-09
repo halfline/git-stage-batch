@@ -53,6 +53,10 @@ _ACTIVE_GIT_OBJECT_DIRECTORY_PINS: ContextVar[tuple[_GitObjectEnvironmentPin, ..
         default=(),
     )
 )
+_USE_RAW_GIT_OBJECT_GRAPH: ContextVar[bool] = ContextVar(
+    "git_stage_batch_use_raw_git_object_graph",
+    default=False,
+)
 _PINNED_GIT_OBJECT_ENVIRONMENT_MARKER = "GIT_STAGE_BATCH_PINNED_OBJECT_ENVIRONMENT"
 
 
@@ -218,6 +222,23 @@ def git_environment_with_pinned_object_store(
     )
 
 
+@contextmanager
+def use_raw_git_object_graph() -> Iterator[None]:
+    """Make scoped Git commands ignore replacement refs and legacy grafts."""
+    token = _USE_RAW_GIT_OBJECT_GRAPH.set(True)
+    try:
+        yield
+    finally:
+        _USE_RAW_GIT_OBJECT_GRAPH.reset(token)
+
+
+def _apply_raw_git_object_graph(environment: dict[str, str]) -> None:
+    if not _USE_RAW_GIT_OBJECT_GRAPH.get():
+        return
+    environment["GIT_NO_REPLACE_OBJECTS"] = "1"
+    environment["GIT_GRAFT_FILE"] = os.devnull
+
+
 def git_environment_with_active_index(
     env: dict[str, str] | None,
     *,
@@ -225,15 +246,16 @@ def git_environment_with_active_index(
 ) -> dict[str, str]:
     """Copy an environment and apply the current same-worktree index override."""
     override = _ACTIVE_GIT_INDEX_OVERRIDE.get()
-    if override is None:
-        return os.environ.copy() if env is None else dict(env)
-
     if env is not None:
         git_env = dict(env)
-    elif override.env is not None:
+    elif override is not None and override.env is not None:
         git_env = dict(override.env)
     else:
         git_env = os.environ.copy()
+    _apply_raw_git_object_graph(git_env)
+
+    if override is None:
+        return git_env
 
     if not _cwd_uses_index_override(override, cwd=cwd):
         if env is None:

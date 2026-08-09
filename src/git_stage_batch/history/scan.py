@@ -9,6 +9,7 @@ from ..fixup.commutation import tree_for_commit
 from ..fixup.staged_units import acquire_tree_fixup_units
 from ..i18n import _
 from ..utils.git_command import run_git_command
+from ..utils.git_environment import use_raw_git_object_graph
 from .commit_objects import parse_commit_object
 from .dependencies import analyze_history_dependencies
 from .models import (
@@ -131,10 +132,11 @@ def acquire_frozen_history_snapshot(
     branch_ref: str | None,
 ) -> HistorySnapshot:
     """Regenerate one exact source snapshot independently of current HEAD."""
-    return _snapshot_from_range(
-        resolve_exact_history_range(base_commit, tip_commit),
-        branch_ref,
-    )
+    with use_raw_git_object_graph():
+        return _snapshot_from_range(
+            resolve_exact_history_range(base_commit, tip_commit),
+            branch_ref,
+        )
 
 
 def acquire_history_plan_document(
@@ -143,39 +145,40 @@ def acquire_history_plan_document(
     allowed_remote_refs: tuple[str, ...] = (),
 ) -> HistoryPlanDocument:
     """Capture an immutable range and a KEEP plan template without state writes."""
-    commit_range = resolve_history_range(boundary)
-    branch_ref = _symbolic_head()
-    history_snapshot = _snapshot_from_range(commit_range, branch_ref)
-    _require_frozen_head(commit_range.tip_commit, branch_ref)
-    safety = collect_history_safety_facts(
-        tip=history_snapshot.tip_commit,
-        final_tree=history_snapshot.final_tree,
-        branch_ref=history_snapshot.branch_ref,
-        source_commits=tuple(
-            commit.commit_id for commit in history_snapshot.commits
-        ),
-        allowed_remote_refs=allowed_remote_refs,
-    )
-    _require_frozen_head(commit_range.tip_commit, branch_ref)
-    plan = HistoryPlan(
-        partitioned_units=(),
-        outputs=tuple(
-            HistoryPlannedCommit(
-                operation="KEEP",
-                materialization="EXACT",
-                source_commits=(commit.commit_id,),
-                source_unit_ids=tuple(unit.unit_id for unit in commit.units),
-                message=commit.message,
-                encoding=commit.encoding,
-                author=commit.author,
-                rationale="",
-            )
-            for commit in history_snapshot.commits
-        ),
-    )
-    return HistoryPlanDocument(
-        schema_version=CURRENT_HISTORY_PLAN_SCHEMA_VERSION,
-        snapshot=history_snapshot,
-        safety=safety,
-        plan=plan,
-    )
+    with use_raw_git_object_graph():
+        commit_range = resolve_history_range(boundary)
+        branch_ref = _symbolic_head()
+        history_snapshot = _snapshot_from_range(commit_range, branch_ref)
+        _require_frozen_head(commit_range.tip_commit, branch_ref)
+        safety = collect_history_safety_facts(
+            tip=history_snapshot.tip_commit,
+            final_tree=history_snapshot.final_tree,
+            branch_ref=history_snapshot.branch_ref,
+            source_commits=tuple(
+                commit.commit_id for commit in history_snapshot.commits
+            ),
+            allowed_remote_refs=allowed_remote_refs,
+        )
+        _require_frozen_head(commit_range.tip_commit, branch_ref)
+        plan = HistoryPlan(
+            partitioned_units=(),
+            outputs=tuple(
+                HistoryPlannedCommit(
+                    operation="KEEP",
+                    materialization="EXACT",
+                    source_commits=(commit.commit_id,),
+                    source_unit_ids=tuple(unit.unit_id for unit in commit.units),
+                    message=commit.message,
+                    encoding=commit.encoding,
+                    author=commit.author,
+                    rationale="",
+                )
+                for commit in history_snapshot.commits
+            ),
+        )
+        return HistoryPlanDocument(
+            schema_version=CURRENT_HISTORY_PLAN_SCHEMA_VERSION,
+            snapshot=history_snapshot,
+            safety=safety,
+            plan=plan,
+        )

@@ -809,6 +809,54 @@ def test_verify_rejects_a_missing_persistent_intermediate_tree(
         verify_history_operation()
 
 
+def test_persistent_output_closure_rejects_a_blob_shared_with_the_base(
+    linear_history_repo,
+):
+    repo = linear_history_repo
+    shared = repo.root / "shared.txt"
+    shared.write_text("shared from base\n", encoding="utf-8")
+    git("add", "shared.txt")
+    git("commit", "-m", "Add shared base file")
+    repo.base = git("rev-parse", "HEAD")
+    shared_blob = git("rev-parse", f"{repo.base}:shared.txt")
+    repo.source.write_text(
+        "alpha topic again\nbeta\ngamma topic\n",
+        encoding="utf-8",
+    )
+    git("commit", "-am", "Change alpha again")
+    path, _plan = _write_plan(repo, _reword_first)
+
+    state = start_history_operation(str(path))
+    output_trees = tuple(
+        git("rev-parse", f"{commit}^{{tree}}") for commit in state.output_commits
+    )
+    object_directory = Path(
+        git(
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-path",
+            "objects",
+        )
+    )
+    loose_blob = object_directory / shared_blob[:2] / shared_blob[2:]
+    assert loose_blob.is_file()
+    loose_blob.unlink()
+    assert git("cat-file", "-t", state.output_commits[-1]) == "commit"
+    assert git("cat-file", "-t", shared_blob, check=False) == ""
+
+    with execution.temporary_git_object_environment(
+        disable_replace_objects=True
+    ) as persistent_view:
+        with persistent_view.pinned_environment() as environment:
+            environment["GIT_NO_LAZY_FETCH"] = "1"
+            with pytest.raises(CommandError, match="object closure is incomplete"):
+                execution._require_persistent_output_closure(
+                    state,
+                    output_trees=output_trees,
+                    environment=environment,
+                )
+
+
 def test_validate_rejects_integration_across_a_blocking_intermediate(
     linear_history_repo,
 ):

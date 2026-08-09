@@ -75,6 +75,7 @@ def _dispatch_rewrite_status(args: argparse.Namespace) -> None:
 def _dispatch_rewrite_apply(args: argparse.Namespace) -> None:
     command_rewrite_apply(
         args.plan_path,
+        resolutions_path=args.resolutions_path,
         allowed_remote_refs=tuple(args.allowed_remote_refs),
         porcelain=args.porcelain,
     )
@@ -201,6 +202,12 @@ def add_rewrite_subcommand(subparsers: Subparsers) -> None:
         "plan_path",
         metavar="PLAN",
         help=_("Validated reusable rewrite plan"),
+    )
+    parser_apply.add_argument(
+        "--workspace",
+        dest="resolutions_path",
+        metavar="DIR",
+        help=_("Completed private rewrite-resolution workspace"),
     )
     parser_apply.add_argument(
         "--allow-published-ref",

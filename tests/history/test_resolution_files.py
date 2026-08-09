@@ -446,15 +446,7 @@ def test_locked_root_walk_uses_independent_directory_position(tmp_path):
     workspace = _private_directory(tmp_path / "workspace")
 
     with lock_resolution_directory(workspace):
-        active_root_context = getattr(resolution_files, "_ACTIVE_LOCKED_ROOT", None)
-        if active_root_context is None:
-            locked_descriptor = resolution_files._ACTIVE_LOCKED_ROOTS.get()[
-                -1
-            ].descriptor
-        else:
-            active_root = active_root_context.get()
-            assert active_root is not None
-            locked_descriptor = active_root.descriptor
+        locked_descriptor = resolution_files._ACTIVE_LOCKED_ROOTS.get()[-1].descriptor
         original_position = os.lseek(locked_descriptor, 0, os.SEEK_CUR)
         try:
             try:
@@ -473,6 +465,27 @@ def test_locked_root_walk_uses_independent_directory_position(tmp_path):
                 assert os.lseek(walked_descriptor, 0, os.SEEK_CUR) == 0
         finally:
             os.lseek(locked_descriptor, original_position, os.SEEK_SET)
+
+
+def test_nested_locks_keep_outer_descendant_access_descriptor_anchored(tmp_path):
+    outer = _private_directory(tmp_path / "outer")
+    inner = _private_directory(tmp_path / "inner")
+    displaced = tmp_path / "displaced"
+    replacement = tmp_path / "replacement"
+    payload = b"copied through the outer descriptor\n"
+
+    with lock_resolution_directory(outer):
+        with lock_resolution_directory(inner):
+            outer.rename(displaced)
+            outer.mkdir(mode=0o700)
+            try:
+                write_resolution_artifact_atomically(outer / "result", [payload])
+                assert (displaced / "result").read_bytes() == payload
+                assert not (outer / "result").exists()
+            finally:
+                outer.rename(replacement)
+                displaced.rename(outer)
+                replacement.rmdir()
 
 
 def test_lock_authenticates_moved_root_through_publication(tmp_path):

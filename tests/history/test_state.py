@@ -158,9 +158,9 @@ def test_schema_two_transition_cannot_upgrade_to_schema_three(
     continued = replace(legacy, phase=HistoryPhase.BUILDING)
     update_history_operation(continued)
     persisted = json.loads(
-        (
-            history_operation_directory(legacy.operation_id) / "state.json"
-        ).read_text(encoding="utf-8")
+        (history_operation_directory(legacy.operation_id) / "state.json").read_text(
+            encoding="utf-8"
+        )
     )
     assert load_active_history_operation() == continued
     assert "resolution_raw_plan_sha256" not in persisted

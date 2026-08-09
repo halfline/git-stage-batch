@@ -509,6 +509,24 @@ def test_resolved_operation_rejects_a_changed_owned_bundle(
     assert "resolution-bundle-changed" in inspection.blockers
 
 
+def test_exact_plan_with_forged_provenance_requires_a_resolution_bundle(
+    linear_history_repo,
+):
+    state, document = _prepared_state(linear_history_repo)
+    _initialize_history_operation(state, document)
+    forged = replace(
+        state,
+        resolution_raw_plan_sha256="b" * 64,
+        resolution_complete_sha256="c" * 64,
+    )
+
+    inspection = inspect_history_operation(forged)
+
+    assert inspection.resolution_matches is False
+    assert inspection.resume_ready is False
+    assert "resolution-bundle-changed" in inspection.blockers
+
+
 def test_initialize_requires_existing_exact_recovery_ref(linear_history_repo):
     document = acquire_history_plan_document(linear_history_repo.base)
     plan_record = history_plan_document_record(document)

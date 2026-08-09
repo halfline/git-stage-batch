@@ -150,10 +150,15 @@ def _identity(value: bytes, commit: str, field: str) -> HistoryIdentity:
     )
 
 
-def parse_commit_object(commit: str) -> ParsedCommitObject:
+def parse_commit_object(
+    commit: str,
+    *,
+    env: dict[str, str] | None = None,
+) -> ParsedCommitObject:
     """Read and parse one commit object without Git display formatting."""
     payload = run_git_command(
         ["cat-file", "commit", commit],
+        env=env,
         text_output=False,
         requires_index_lock=False,
     ).stdout

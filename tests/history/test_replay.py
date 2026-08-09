@@ -72,9 +72,7 @@ def test_history_replay_rejects_empty_resolved_output(linear_history_repo):
         materialize_history_output_trees(
             document,
             resolved_output_materializer=(
-                lambda _document, _index, _output, parent_tree, **_kwargs: (
-                    parent_tree
-                )
+                lambda _document, _index, _output, parent_tree, **_kwargs: (parent_tree)
             ),
         )
 

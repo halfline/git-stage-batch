@@ -1,6 +1,7 @@
 """Tests for Git object IO helpers."""
 
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -272,6 +273,118 @@ def test_quarantine_certifies_the_persistent_object_store(
         assert "GIT_QUARANTINE_PATH" not in persistent
         assert get_git_object_type(head, env=quarantine.environment()) == "commit"
         quarantine.require_persistent_identity()
+
+
+def test_quarantine_object_directory_pin_certifies_filesystem_identity(
+    temp_git_repo,
+):
+    with temporary_git_object_environment() as quarantine:
+        object_directory = Path(quarantine.environment()["GIT_OBJECT_DIRECTORY"])
+        metadata = object_directory.stat()
+        expected = metadata.st_dev, metadata.st_ino
+
+        with quarantine.pinned_quarantine_object_directory() as descriptor:
+            assert (
+                quarantine.require_quarantine_object_directory_identity(descriptor)
+                == expected
+            )
+            assert (
+                os.fstat(descriptor).st_dev,
+                os.fstat(descriptor).st_ino,
+            ) == expected
+
+
+def test_quarantine_object_directory_pin_rejects_visible_inode_change(
+    temp_git_repo,
+):
+    with temporary_git_object_environment() as quarantine:
+        object_directory = Path(quarantine.environment()["GIT_OBJECT_DIRECTORY"])
+        displaced = object_directory.with_name(f"{object_directory.name}-displaced")
+        try:
+            with pytest.raises(RuntimeError, match="quarantine identity changed"):
+                with quarantine.pinned_quarantine_object_directory():
+                    object_directory.rename(displaced)
+                    object_directory.mkdir(mode=0o700)
+        finally:
+            shutil.rmtree(object_directory)
+            displaced.rename(object_directory)
+
+
+def test_pinned_quarantine_environment_prevents_object_path_aba_leakage(
+    temp_git_repo,
+):
+    payload = f"candidate only for {temp_git_repo}\n".encode()
+    with temporary_git_object_environment() as quarantine:
+        ordinary_environment = quarantine.environment()
+        persistent_environment = quarantine.persistent_environment()
+        object_directory = Path(ordinary_environment["GIT_OBJECT_DIRECTORY"])
+        persistent_directory = Path(
+            run_git_command(
+                ["rev-parse", "--git-path", "objects"],
+                env=persistent_environment,
+                requires_index_lock=False,
+            ).stdout.strip()
+        ).resolve()
+        displaced = object_directory.with_name(f"{object_directory.name}-displaced")
+
+        with quarantine.pinned_environment() as environment:
+            object_directory.rename(displaced)
+            object_directory.symlink_to(
+                persistent_directory,
+                target_is_directory=True,
+            )
+            try:
+                environment["GIT_OBJECT_DIRECTORY"] = str(persistent_directory)
+                environment["GIT_ALTERNATE_OBJECT_DIRECTORIES"] = str(
+                    persistent_directory
+                )
+                environment["GIT_QUARANTINE_PATH"] = str(persistent_directory)
+                object_id = create_git_blob([payload], env=environment)
+                tree_id = run_git_command(
+                    ["mktree"],
+                    stdin_chunks=[
+                        f"100644 blob {object_id}\tcandidate.txt\n".encode("ascii")
+                    ],
+                    env=environment,
+                    requires_index_lock=False,
+                ).stdout.strip()
+                displaced_environment = persistent_environment.copy()
+                displaced_environment["GIT_OBJECT_DIRECTORY"] = str(displaced)
+
+                assert (
+                    get_git_object_type(
+                        object_id,
+                        env=displaced_environment,
+                    )
+                    == "blob"
+                )
+                assert (
+                    get_git_object_type(
+                        tree_id,
+                        env=displaced_environment,
+                    )
+                    == "tree"
+                )
+                assert (
+                    get_git_object_type(
+                        object_id,
+                        env=persistent_environment,
+                    )
+                    is None
+                )
+                assert (
+                    get_git_object_type(
+                        tree_id,
+                        env=persistent_environment,
+                    )
+                    is None
+                )
+            finally:
+                object_directory.unlink()
+                displaced.rename(object_directory)
+
+    assert get_git_object_type(object_id) is None
+    assert get_git_object_type(tree_id) is None
 
 
 def test_quarantined_tree_requires_environment_and_does_not_leak(temp_git_repo):

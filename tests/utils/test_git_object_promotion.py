@@ -18,6 +18,7 @@ from git_stage_batch.utils.git_object_io import (
 )
 from git_stage_batch.utils.git_object_promotion import (
     GitObjectPromotionLease,
+    adopt_git_object_promotion_lease,
     promote_git_object_closure,
     release_git_object_promotion_lease,
 )
@@ -788,6 +789,311 @@ def test_release_git_object_promotion_lease_is_durable_and_idempotent(
     assert released == []
 
 
+def test_adopt_git_object_promotion_lease_authenticates_active_lease(
+    temp_git_repo,
+    monkeypatch,
+):
+    """Adoption should recover an exact keep without replaying its object set."""
+    with temporary_git_object_environment() as quarantine:
+        base_commit, blob_id, tree_id, commit_id = _quarantined_candidate_commit(
+            quarantine,
+            [b"active adoption payload\n"],
+        )
+        lease = promote_git_object_closure(
+            quarantine,
+            lease_id="adopt-active",
+            include=(commit_id,),
+            exclude=(base_commit,),
+            expected_objects={
+                commit_id: "commit",
+                tree_id: "tree",
+                blob_id: "blob",
+            },
+        )
+
+        def unexpected_object_resolution(*args, **kwargs):
+            pytest.fail("lease adoption must not resolve an expected object set")
+
+        monkeypatch.setattr(
+            git_object_promotion,
+            "resolve_git_objects",
+            unexpected_object_resolution,
+        )
+        adopted = adopt_git_object_promotion_lease(
+            quarantine,
+            lease_id="adopt-active",
+        )
+
+        assert adopted is not None
+        assert adopted == lease
+        assert release_git_object_promotion_lease(quarantine, adopted) is True
+
+
+def test_adopt_git_object_promotion_lease_returns_none_without_artifacts(
+    temp_git_repo,
+):
+    """An operation with no promoted pack has no lease to clean up."""
+    with temporary_git_object_environment() as quarantine:
+        assert (
+            adopt_git_object_promotion_lease(
+                quarantine,
+                lease_id="never-promoted",
+            )
+            is None
+        )
+
+
+def test_adopt_git_object_promotion_lease_recovers_released_marker(
+    temp_git_repo,
+    monkeypatch,
+):
+    """A marker left after the keep rename must reconstruct a releasable lease."""
+    with temporary_git_object_environment() as quarantine:
+        base_commit, blob_id, tree_id, commit_id = _quarantined_candidate_commit(
+            quarantine,
+            [b"released marker adoption\n"],
+        )
+        lease = promote_git_object_closure(
+            quarantine,
+            lease_id="adopt-released-marker",
+            include=(commit_id,),
+            exclude=(base_commit,),
+            expected_objects={
+                commit_id: "commit",
+                tree_id: "tree",
+                blob_id: "blob",
+            },
+        )
+        real_unlink = git_object_promotion.os.unlink
+
+        def fail_marker_unlink(path, *args, **kwargs):
+            if str(path).startswith(".git-stage-batch-released-"):
+                raise OSError("injected marker cleanup failure")
+            real_unlink(path, *args, **kwargs)
+
+        monkeypatch.setattr(git_object_promotion.os, "unlink", fail_marker_unlink)
+        with pytest.raises(OSError, match="injected marker cleanup failure"):
+            release_git_object_promotion_lease(quarantine, lease)
+        monkeypatch.setattr(git_object_promotion.os, "unlink", real_unlink)
+
+        adopted = adopt_git_object_promotion_lease(
+            quarantine,
+            lease_id="adopt-released-marker",
+        )
+        assert adopted is not None
+        assert adopted.pack_hash == lease.pack_hash
+        assert (adopted.keep_device, adopted.keep_inode) == (
+            lease.keep_device,
+            lease.keep_inode,
+        )
+        assert adopted.prior_released_device is None
+        assert adopted.prior_released_inode is None
+        assert release_git_object_promotion_lease(quarantine, adopted) is False
+
+    keep_path = _promotion_artifact_path(lease, "keep")
+    assert not keep_path.exists()
+    assert not list(
+        keep_path.parent.glob(f".git-stage-batch-released-{lease.pack_hash}-*")
+    )
+
+
+def test_adopt_git_object_promotion_lease_recovers_prior_release_identity(
+    temp_git_repo,
+    monkeypatch,
+):
+    """An active retry should retain the identity of its older release marker."""
+    with temporary_git_object_environment() as quarantine:
+        base_commit, blob_id, tree_id, commit_id = _quarantined_candidate_commit(
+            quarantine,
+            [b"prior marker adoption\n"],
+        )
+        arguments = {
+            "include": (commit_id,),
+            "exclude": (base_commit,),
+            "expected_objects": {
+                commit_id: "commit",
+                tree_id: "tree",
+                blob_id: "blob",
+            },
+        }
+        first = promote_git_object_closure(
+            quarantine,
+            lease_id="adopt-prior-marker",
+            **arguments,
+        )
+        real_unlink = git_object_promotion.os.unlink
+
+        def fail_marker_unlink(path, *args, **kwargs):
+            if str(path).startswith(".git-stage-batch-released-"):
+                raise OSError("injected prior marker failure")
+            real_unlink(path, *args, **kwargs)
+
+        monkeypatch.setattr(git_object_promotion.os, "unlink", fail_marker_unlink)
+        with pytest.raises(OSError, match="injected prior marker failure"):
+            release_git_object_promotion_lease(quarantine, first)
+        monkeypatch.setattr(git_object_promotion.os, "unlink", real_unlink)
+        retried = promote_git_object_closure(
+            quarantine,
+            lease_id="adopt-prior-marker",
+            **arguments,
+        )
+
+        adopted = adopt_git_object_promotion_lease(
+            quarantine,
+            lease_id="adopt-prior-marker",
+        )
+
+        assert adopted is not None
+        assert adopted == retried
+        assert (adopted.prior_released_device, adopted.prior_released_inode) == (
+            first.keep_device,
+            first.keep_inode,
+        )
+        assert release_git_object_promotion_lease(quarantine, adopted) is True
+
+
+def test_adopt_git_object_promotion_lease_rejects_disagreeing_artifacts(
+    temp_git_repo,
+    monkeypatch,
+):
+    """One lease id cannot identify active and released markers for two packs."""
+    with temporary_git_object_environment() as quarantine:
+        first_base, first_blob, first_tree, first_commit = (
+            _quarantined_candidate_commit(
+                quarantine,
+                [b"first mismatched pack\n"],
+            )
+        )
+        first = promote_git_object_closure(
+            quarantine,
+            lease_id="adopt-mismatch",
+            include=(first_commit,),
+            exclude=(first_base,),
+            expected_objects={
+                first_commit: "commit",
+                first_tree: "tree",
+                first_blob: "blob",
+            },
+        )
+        real_unlink = git_object_promotion.os.unlink
+
+        def fail_marker_unlink(path, *args, **kwargs):
+            if str(path).startswith(".git-stage-batch-released-"):
+                raise OSError("injected mismatch marker failure")
+            real_unlink(path, *args, **kwargs)
+
+        monkeypatch.setattr(git_object_promotion.os, "unlink", fail_marker_unlink)
+        with pytest.raises(OSError, match="injected mismatch marker failure"):
+            release_git_object_promotion_lease(quarantine, first)
+        monkeypatch.setattr(git_object_promotion.os, "unlink", real_unlink)
+
+        second_base, second_blob, second_tree, second_commit = (
+            _quarantined_candidate_commit(
+                quarantine,
+                [b"second mismatched pack\n"],
+            )
+        )
+        second = promote_git_object_closure(
+            quarantine,
+            lease_id="foreign-active",
+            include=(second_commit,),
+            exclude=(second_base,),
+            expected_objects={
+                second_commit: "commit",
+                second_tree: "tree",
+                second_blob: "blob",
+            },
+        )
+        second_keep = _promotion_artifact_path(second, "keep")
+        second_keep.write_bytes(b"adopt-mismatch\n")
+        second_keep.chmod(0o600)
+
+        with pytest.raises(RuntimeError, match="disagree on their pack"):
+            adopt_git_object_promotion_lease(
+                quarantine,
+                lease_id="adopt-mismatch",
+            )
+
+
+def test_adopt_git_object_promotion_lease_rejects_tampered_pack(
+    temp_git_repo,
+):
+    """Adoption must verify pack bytes rather than trusting marker names."""
+    with temporary_git_object_environment() as quarantine:
+        base_commit, blob_id, tree_id, commit_id = _quarantined_candidate_commit(
+            quarantine,
+            [b"tampered adoption pack\n"],
+        )
+        lease = promote_git_object_closure(
+            quarantine,
+            lease_id="adopt-tampered-pack",
+            include=(commit_id,),
+            exclude=(base_commit,),
+            expected_objects={
+                commit_id: "commit",
+                tree_id: "tree",
+                blob_id: "blob",
+            },
+        )
+        pack_path = _promotion_artifact_path(lease, "pack")
+        pack_path.chmod(0o644)
+        with pack_path.open("r+b") as pack_file:
+            pack_file.write(b"FAIL")
+        pack_path.chmod(0o444)
+
+        with pytest.raises(RuntimeError, match="pack file"):
+            adopt_git_object_promotion_lease(
+                quarantine,
+                lease_id="adopt-tampered-pack",
+            )
+
+
+def test_adopt_git_object_promotion_lease_rejects_tampered_release_marker(
+    temp_git_repo,
+    monkeypatch,
+):
+    """A canonical marker name cannot authorize foreign marker contents."""
+    with temporary_git_object_environment() as quarantine:
+        base_commit, blob_id, tree_id, commit_id = _quarantined_candidate_commit(
+            quarantine,
+            [b"tampered adoption marker\n"],
+        )
+        lease = promote_git_object_closure(
+            quarantine,
+            lease_id="adopt-tampered-marker",
+            include=(commit_id,),
+            exclude=(base_commit,),
+            expected_objects={
+                commit_id: "commit",
+                tree_id: "tree",
+                blob_id: "blob",
+            },
+        )
+        real_unlink = git_object_promotion.os.unlink
+
+        def fail_marker_unlink(path, *args, **kwargs):
+            if str(path).startswith(".git-stage-batch-released-"):
+                raise OSError("injected marker preservation")
+            real_unlink(path, *args, **kwargs)
+
+        monkeypatch.setattr(git_object_promotion.os, "unlink", fail_marker_unlink)
+        with pytest.raises(OSError, match="injected marker preservation"):
+            release_git_object_promotion_lease(quarantine, lease)
+        monkeypatch.setattr(git_object_promotion.os, "unlink", real_unlink)
+        keep_path = _promotion_artifact_path(lease, "keep")
+        marker = next(
+            keep_path.parent.glob(f".git-stage-batch-released-{lease.pack_hash}-*")
+        )
+        marker.write_bytes(b"foreign\n")
+        marker.chmod(0o600)
+
+        with pytest.raises(RuntimeError, match="does not match its lease_id"):
+            adopt_git_object_promotion_lease(
+                quarantine,
+                lease_id="adopt-tampered-marker",
+            )
+
+
 def test_release_git_object_promotion_lease_recovers_after_cleanup_fsync_failure(
     temp_git_repo,
     monkeypatch,
@@ -1520,7 +1826,13 @@ def test_promote_git_object_closure_supports_sha256_repositories(
                 blob_id: "blob",
             },
         )
-        assert release_git_object_promotion_lease(quarantine, lease) is True
+        adopted = adopt_git_object_promotion_lease(
+            quarantine,
+            lease_id="sha256-promotion",
+        )
+        assert adopted == lease
+        assert adopted is not None
+        assert release_git_object_promotion_lease(quarantine, adopted) is True
         assert release_git_object_promotion_lease(quarantine, lease) is False
 
     assert len(lease.pack_hash) == 64
@@ -1727,5 +2039,47 @@ def test_promote_git_object_closure_has_payload_bounded_python_heap(temp_git_rep
 
     small_peak = promotion_peak(1024 * 1024)
     large_peak = promotion_peak(16 * 1024 * 1024)
+
+    assert large_peak <= small_peak + 256 * 1024
+
+
+def test_adopt_git_object_promotion_lease_has_payload_bounded_python_heap(
+    temp_git_repo,
+):
+    """Lease discovery and checksum verification must stream pack payloads."""
+
+    def adoption_peak(size: int) -> int:
+        chunk_size = 64 * 1024
+        with temporary_git_object_environment() as quarantine:
+            base_commit, blob_id, tree_id, commit_id = _quarantined_candidate_commit(
+                quarantine,
+                (os.urandom(chunk_size) for _ in range(size // chunk_size)),
+            )
+            lease_id = f"adopt-heap-{size}"
+            lease = promote_git_object_closure(
+                quarantine,
+                lease_id=lease_id,
+                include=(commit_id,),
+                exclude=(base_commit,),
+                expected_objects={
+                    commit_id: "commit",
+                    tree_id: "tree",
+                    blob_id: "blob",
+                },
+            )
+            gc.collect()
+            tracemalloc.start()
+            try:
+                adopted = adopt_git_object_promotion_lease(
+                    quarantine,
+                    lease_id=lease_id,
+                )
+                assert adopted == lease
+                return tracemalloc.get_traced_memory()[1]
+            finally:
+                tracemalloc.stop()
+
+    small_peak = adoption_peak(1024 * 1024)
+    large_peak = adoption_peak(16 * 1024 * 1024)
 
     assert large_peak <= small_peak + 256 * 1024

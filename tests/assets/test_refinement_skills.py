@@ -80,9 +80,9 @@ def test_refine_history_delegates_every_mechanical_transition() -> None:
         assert "stop after validation" in prose
         assert "Do not create refs, checkpoints, commits" in prose
 
-    assert _read(
-        CODEX_HISTORY / "references" / "rewrite-procedures.md"
-    ) == _read(CLAUDE_HISTORY / "references" / "rewrite-procedures.md")
+    assert _read(CODEX_HISTORY / "references" / "rewrite-procedures.md") == _read(
+        CLAUDE_HISTORY / "references" / "rewrite-procedures.md"
+    )
 
 
 def test_refine_history_binds_narrow_publication_scope() -> None:
@@ -169,7 +169,7 @@ def test_refine_history_assigns_causal_ownership_before_placement() -> None:
         "necessary mechanical proof, not sufficient semantic proof",
     )
     reference_contracts = (
-        "## Assign semantic ownership before mechanics",
+        "## Assign ownership, prerequisites, and placement",
         "A mechanical blocker is a placement frontier, never an owner",
         "four non-plan audit states",
         "not necessarily a semantic atom",
@@ -190,7 +190,7 @@ def test_refine_history_assigns_causal_ownership_before_placement() -> None:
         assert "or keep the existing boundary" not in skill_prose
         assert skill_prose.index(
             "Assign semantic ownership before consulting"
-        ) < skill_prose.index("Mechanical placement determines feasibility")
+        ) < skill_prose.index("After ownership, perform a mandatory ordering pass")
 
         reference = _read(root / "references" / "rewrite-procedures.md")
         reference_prose = " ".join(reference.split())
@@ -198,8 +198,465 @@ def test_refine_history_assigns_causal_ownership_before_placement() -> None:
             assert contract in reference_prose
         assert "current schema cannot divide it" not in reference_prose
         assert (
-            "cannot make one source both an integrated secondary"
-            not in reference_prose
+            "cannot make one source both an integrated secondary" not in reference_prose
+        )
+
+
+def test_refine_history_uses_placement_to_order_after_ownership() -> None:
+    """Placement should constrain chronology without becoming ownership."""
+    skill_steps = (
+        "Assign semantic ownership before consulting",
+        "After ownership, perform a mandatory ordering pass",
+        "Add the semantic prerequisite edges",
+        "Overlay `earliest_position`, `BLOCKED`, `UNKNOWN`, and exact replay evidence",
+        "Choose the earliest feasible chronology",
+        "Use `EXACT` when every required crossing is proven",
+        "Use `RESOLVED` when the required owner or prerequisite order is noncommuting",
+    )
+    reference_steps = (
+        "Fix that causal owner before choosing an output position",
+        "determine the semantic prerequisite edges",
+        "overlay the scan's `earliest_position`, `BLOCKED`, `UNKNOWN`, and exact replay evidence",
+        "Choose the earliest feasible chronology",
+        "Use `EXACT` for an output when every crossing required by that chronology is proven",
+        "Use `RESOLVED` when the owner or prerequisite order requires a noncommuting placement",
+    )
+
+    for root in (CODEX_HISTORY, CLAUDE_HISTORY):
+        skill = " ".join(_read(root / "SKILL.md").replace("\\\n", " ").split())
+        skill_positions = [skill.index(step) for step in skill_steps]
+        assert skill_positions == sorted(skill_positions)
+        assert (
+            "Mechanical placement therefore selects and constrains chronology" in skill
+        )
+        assert "it never reassigns ownership" in skill
+
+        reference = " ".join(
+            _read(root / "references" / "rewrite-procedures.md")
+            .replace("\\\n", " ")
+            .split()
+        )
+        reference_positions = [reference.index(step) for step in reference_steps]
+        assert reference_positions == sorted(reference_positions)
+        assert "placement evidence constrains and selects the chronology" in reference
+        assert "it never changes the owner" in reference
+
+
+def test_refine_history_audits_resolved_path_chronology() -> None:
+    """Resolved paths should make owner-correct chronological progress."""
+    skill_contracts = (
+        "actual parent tree",
+        "every later natural source/path transition",
+        "hidden stepping stone",
+        "change the output topology",
+        "one progressive chronology",
+        "Never resolve occurrences independently from `SOURCE_BEFORE`",
+        "no-op occurrence",
+    )
+    reference_contracts = (
+        "`CURRENT_PARENT`",
+        "`SOURCE_BEFORE`",
+        "`SOURCE_AFTER`",
+        "every later natural source boundary",
+        "hidden stepping stone",
+        "one progressive transition chain",
+        "Never resolve occurrences independently from `SOURCE_BEFORE`",
+        "no-op occurrence",
+        "change the output topology",
+    )
+
+    for root in (CODEX_HISTORY, CLAUDE_HISTORY):
+        skill = " ".join(_read(root / "SKILL.md").split())
+        for contract in skill_contracts:
+            assert contract in skill
+        assert skill.index("actual parent tree") < skill.index(
+            "every later natural source/path transition"
+        )
+        assert skill.index("one progressive chronology") < skill.index(
+            "Never resolve occurrences independently from `SOURCE_BEFORE`"
+        )
+
+        reference = " ".join(
+            _read(root / "references" / "rewrite-procedures.md").split()
+        )
+        for contract in reference_contracts:
+            assert contract in reference
+        assert reference.index("`CURRENT_PARENT`") < reference.index(
+            "every later natural source boundary"
+        )
+        assert reference.index("one progressive transition chain") < reference.index(
+            "Never resolve occurrences independently from `SOURCE_BEFORE`"
+        )
+
+
+def test_refine_history_continues_from_verified_prefixes() -> None:
+    """Verified suffixes should become fresh, portable refinement input."""
+    skill_contracts = (
+        "verified prefix for later direct child commits",
+        "binding its canonical base, tip and tree, ordered commit/tree vector",
+        "record its earlier causal owner in a new external ledger",
+        "neither changes semantic ownership nor permits editing a completed checkpoint",
+        "fresh `rewrite scan` from the same canonical base through the new tip",
+        "suffix is new refinement input",
+        "not an active product operation that `rewrite continue` can resume",
+        "Do not rebuild the authenticated prefix or recreate a completed `RESOLVED` workspace",
+        "prefix outputs are ordinary immutable sources",
+        "new `RESOLVED` output only for a demonstrated dependency or topology constraint",
+        "disposable ordinary clone with no alternates",
+        "Reacquire every repository-bound scan or resolution workspace",
+        "unique immutable run root",
+        "exact command, environment, exit status, diagnosed cause",
+        "never retry in place, overwrite the failed evidence",
+        "Do not blindly repeat an unchanged command and environment",
+        "failed suffix attempt does not invalidate",
+        "only a clean receipt may authorize continuation",
+    )
+    reference_contracts = (
+        "## Continue from a verified prefix",
+        "selected semantic-check receipts",
+        "linear chain whose first parent is that exact prefix",
+        "new external causal ledger anchored at the verified prefix",
+        "Never reopen or edit the checkpoint that completed the prefix",
+        "fresh scan from the same canonical base through the appended tip",
+        "suffix is new input",
+        "never a reason to call `rewrite continue`",
+        "Do not rebuild verified-prefix commits or recreate a completed `RESOLVED` workspace",
+        "prefix outputs become ordinary immutable sources",
+        "demonstrated dependency or topology constraint",
+        "disposable ordinary clone with no alternates",
+        "Never copy a repository-bound plan or workspace",
+        "new immutable run root",
+        "exact command, environment, exit status, diagnosed cause",
+        "Do not retry in place",
+        "blindly repeat the same command and environment",
+        "failed attempt remains negative evidence",
+    )
+
+    for root in (CODEX_HISTORY, CLAUDE_HISTORY):
+        skill = " ".join(_read(root / "SKILL.md").split())
+        for contract in skill_contracts:
+            assert contract in skill
+        assert skill.index("verified prefix for later direct child commits") < skill.index(
+            "fresh `rewrite scan` from the same canonical base through the new tip"
+        )
+        assert skill.index("fresh `rewrite scan`") < skill.index(
+            "prefix outputs are ordinary immutable sources"
+        )
+        assert skill.index("disposable ordinary clone with no alternates") < (
+            skill.index("unique immutable run root")
+        )
+
+        reference = " ".join(
+            _read(root / "references" / "rewrite-procedures.md").split()
+        )
+        for contract in reference_contracts:
+            assert contract in reference
+        assert reference.index("## Continue from a verified prefix") < reference.index(
+            "fresh scan from the same canonical base through the appended tip"
+        )
+
+
+def test_refine_history_stabilizes_and_recovers_harness_execution() -> None:
+    """Harnesses should bind full IDs and adopt landed commits safely."""
+    skill_contracts = (
+        "never depend on Git's automatic `%h` abbreviation",
+        "`core.abbrev=40` in every Git and product child environment",
+        "two ordinary no-alternates clones",
+        "materially different cardinalities",
+        "identical full-ID object graphs",
+        "automatic abbreviations repository-independent",
+        "commit lands but a later harness gate fails before its verification or checkpoint record",
+        "Do not reset, amend, or recommit the exact landed commit",
+        "binding its HEAD, parent, tree, index, refs, reflogs, hook transcript",
+        "exact object-namespace delta",
+        "failure occurred after commit creation but before verification and checkpoint publication",
+        "new checkpoint lineage with an explicit adoption record",
+        "mark the adopted commit verified before creating another commit",
+        "Any mismatch requires manual recovery",
+    )
+    reference_contracts = (
+        "## Stabilize and recover harness execution",
+        "must not consume automatic `%h` abbreviations",
+        "Force `core.abbrev=40` through every direct Git invocation",
+        "every product child's Git environment",
+        "assert the effective setting and full-length log output before mutation",
+        "two ordinary no-alternates clones",
+        "materially different object-store cardinalities",
+        "unpinned automatic abbreviations differ",
+        "landed-state recovery, not permission to retry",
+        "do not reset, amend, or recommit its exact HEAD",
+        "authenticates the failed-run inventory",
+        "refs, reflog suffixes, hook transcript",
+        "object-namespace delta are exactly the landed state",
+        "`ADOPTED_PENDING_VERIFICATION`",
+        "records `VERIFIED` before it creates the next commit",
+        "require manual recovery instead",
+    )
+
+    skill_sections: list[str] = []
+    reference_sections: list[str] = []
+    for root in (CODEX_HISTORY, CLAUDE_HISTORY):
+        skill = " ".join(_read(root / "SKILL.md").split())
+        for contract in skill_contracts:
+            assert contract in skill
+        assert skill.index("core.abbrev=40") < skill.index(
+            "commit lands but a later harness gate fails"
+        )
+        start = skill.index("When an execution harness authenticates")
+        end = skill.index("For a plan with `RESOLVED` outputs", start)
+        skill_sections.append(skill[start:end])
+
+        reference = " ".join(
+            _markdown_section(
+                _read(root / "references" / "rewrite-procedures.md"),
+                "## Stabilize and recover harness execution",
+            ).split()
+        )
+        for contract in reference_contracts:
+            assert contract in reference
+        assert reference.index("core.abbrev=40") < reference.index(
+            "landed-state recovery"
+        )
+        reference_sections.append(reference)
+
+    assert skill_sections[0] == skill_sections[1]
+    assert reference_sections[0] == reference_sections[1]
+
+
+def test_refine_history_uses_risk_tiered_proof() -> None:
+    """Full refinement should bind exhaustive objects to scoped commands."""
+    skill_contracts = (
+        "Use three verification tiers",
+        "Object and plan",
+        "audit every output, including its parent, tree, message, author, encoding, operation",
+        "source-unit and path ownership, output order, original-source provenance",
+        "Semantic boundaries",
+        "maps each selected exact output to its risk and exact commands",
+        "Each command must exist at that snapshot",
+        "all commands for one output in one clean checkout",
+        "generated state only within that group and keeping it outside the checkout",
+        "Final tip",
+        "complete normal repository test suite",
+        "Reauthenticate the complete combined output chain",
+        "boundary selection tied to recorded risk",
+    )
+    reference_contracts = (
+        "Verify a full-series result in three tiers",
+        "object-and-plan tier audits every output's commit, parent, tree, message, author, encoding, operation",
+        "source-unit and path ownership, output order, original-source provenance",
+        "semantic-boundary tier",
+        "maps each exact selected output to its risk and exact commands",
+        "every command to exist at that snapshot",
+        "all commands for one output in one clean checkout",
+        "generated state only within that group and storing it outside the checkout",
+        "final-tip tier runs the complete normal repository test suite",
+        "every output in the complete combined chain",
+        "follows its exact risk manifest",
+    )
+
+    prohibited = (
+        "every commit snapshot",
+        "every final commit snapshot",
+        "full commit-snapshot command matrix",
+        "command matrix over every commit",
+        "every-commit command requirement",
+    )
+
+    for root in (CODEX_HISTORY, CLAUDE_HISTORY):
+        skill = " ".join(_read(root / "SKILL.md").split())
+        for contract in skill_contracts:
+            assert contract in skill
+        assert skill.index("Object and plan") < skill.index("Semantic boundaries")
+        assert skill.index("Semantic boundaries") < skill.index("Final tip")
+
+        reference = " ".join(
+            _read(root / "references" / "rewrite-procedures.md").split()
+        )
+        for contract in reference_contracts:
+            assert contract in reference
+        assert reference.index("object-and-plan tier") < reference.index(
+            "semantic-boundary tier"
+        )
+        assert reference.index("semantic-boundary tier") < reference.index(
+            "final-tip tier"
+        )
+
+        for phrase in prohibited:
+            assert phrase not in skill.lower()
+            assert phrase not in reference.lower()
+
+    public_docs = " ".join(_read(AI_ASSISTANTS).split())
+    assert "audits every output and its plan" in public_docs
+    assert "exact risk-selected semantic-boundary manifest" in public_docs
+    assert "completes the final-tip test and build suite" in public_docs
+    for phrase in prohibited:
+        assert phrase not in public_docs.lower()
+
+
+def test_refine_history_flows_completed_resolutions_through_apply() -> None:
+    """Resolved plans should retain one plan binding through apply."""
+    skill_contracts = (
+        'REWRITE_WORKSPACE="$PLAN_DIR/rewrite-workspace"',
+        'rewrite resolve "$REWRITE_PLAN" --workspace "$REWRITE_WORKSPACE"',
+        "until the product reports `COMPLETE`",
+        'rewrite validate "$REWRITE_PLAN" --workspace "$REWRITE_WORKSPACE"',
+        'rewrite apply "$REWRITE_PLAN" --workspace "$REWRITE_WORKSPACE"',
+        "copies it into operation-owned state before activation",
+        "do not depend on the external workspace remaining present",
+        "`inspection.resolution_matches`",
+        "`inspection.resolution_matches` must be null for an all-`EXACT` operation or true for a resolved operation",
+        "false blocks continuation",
+    )
+    reference_contracts = (
+        "## Resolve, validate, apply, and recover",
+        'rewrite resolve "$REWRITE_PLAN" --workspace "$REWRITE_WORKSPACE"',
+        "until the workspace reports `COMPLETE`",
+        'rewrite validate "$REWRITE_PLAN" --workspace "$REWRITE_WORKSPACE"',
+        'rewrite apply "$REWRITE_PLAN" --workspace "$REWRITE_WORKSPACE"',
+        "copies it into operation-owned state before activation",
+        "do not depend on the external workspace remaining present",
+        "`inspection.resolution_matches`",
+        "`inspection.resolution_matches` is null for an all-`EXACT` operation or true for a resolved operation",
+        "A false resolution match blocks continuation",
+    )
+
+    for root in (CODEX_HISTORY, CLAUDE_HISTORY):
+        skill = " ".join(_read(root / "SKILL.md").replace("\\\n", " ").split())
+        for contract in skill_contracts:
+            assert contract in skill
+        assert skill.index('rewrite resolve "$REWRITE_PLAN"') < skill.index(
+            'rewrite validate "$REWRITE_PLAN" --workspace "$REWRITE_WORKSPACE"'
+        )
+        assert skill.index(
+            'rewrite validate "$REWRITE_PLAN" --workspace "$REWRITE_WORKSPACE"'
+        ) < skill.index('rewrite apply "$REWRITE_PLAN" --workspace "$REWRITE_WORKSPACE"')
+
+        reference = " ".join(
+            _read(root / "references" / "rewrite-procedures.md")
+            .replace("\\\n", " ")
+            .split()
+        )
+        for contract in reference_contracts:
+            assert contract in reference
+        assert reference.index('rewrite resolve "$REWRITE_PLAN"') < reference.index(
+            'rewrite validate "$REWRITE_PLAN" --workspace "$REWRITE_WORKSPACE"'
+        )
+        assert reference.index(
+            'rewrite validate "$REWRITE_PLAN" --workspace "$REWRITE_WORKSPACE"'
+        ) < reference.index(
+            'rewrite apply "$REWRITE_PLAN" --workspace "$REWRITE_WORKSPACE"'
+        )
+
+
+def test_refine_history_reuses_trusted_correctness_evidence() -> None:
+    """History refinement should preserve causal ownership and reusable facts."""
+    skill_contracts = (
+        "one trusted same-user execution boundary",
+        "stale-state detection, tree conservation, atomic updates, and recovery",
+        "Do not add a second approval format",
+        "custom Python module loader",
+        "chained helper manifest",
+        "parallel workspace-transfer transaction",
+        "demonstrated correctness, consistency, atomicity, or recovery requirement",
+        "source-wide placement evidence",
+        "never overrides an established semantic owner",
+        "Retain `RESOLVED`",
+        "retain the intended owner as `UNREPRESENTABLE`",
+        "independent causal evidence changes its owner",
+        "Any plan-file byte change after workspace creation invalidates use of the prior workspace binding",
+        "A semantic edit to `plan.outputs` or `plan.partitioned_units` additionally invalidates",
+        "does not itself invalidate immutable Git tree or object IDs",
+        "unchanged ID remains content-addressed evidence",
+        "expected output-count or operation-count delta",
+        "fresh base or fresh unit IDs alone are not progress",
+        "changed owner output, its immediate adopter or test successor",
+        "later natural source or test boundary",
+    )
+    reference_contracts = (
+        "re-audit every moved unit from that source",
+        "rather than changing only the rejected output",
+        "Treat the rejection as placement evidence",
+        "never overrides established causal ownership",
+        "Retain `RESOLVED`",
+        "open `UNREPRESENTABLE` finding with the exact diagnostic",
+        "infer a new owner from placement failure",
+        "resolved replay bound to the current plan",
+        "workspace binding ties the fresh plan",
+        "Each request's `output_key` also binds",
+        "exact `parent_tree`",
+        "declared path/artifact inventory",
+        "result digest, artifact digests",
+        "immediately replay every intervening `EXACT` output",
+        "Any plan-file byte change after workspace creation invalidates use of the prior workspace binding",
+        "A semantic change to either editable plan field additionally invalidates",
+        "does not itself invalidate immutable Git tree or object IDs",
+        "Product resolve and validation replay are the authoritative tree proof",
+        "Only to diagnose an unexplained request, result, receipt, or replay-tree discrepancy",
+        "temporary Git index",
+        "declared path/mode transitions",
+        "temporary Git object store",
+        "Do not derive that diagnostic tree from a checkout or filesystem walk",
+        "The diagnostic never replaces product validation",
+        "Fresh unit IDs or a fresh base with unchanged ownership decisions are not progress",
+        "A passing final tip does not replace those intermediate checks",
+    )
+    superseded_skill_phrases = (
+        "private external workspace",
+        "authenticated completed workspace",
+        "reauthenticates the completed external workspace",
+        "missing step from Git state or private files",
+        "invalidates all request keys, results, receipts, parent/output tree IDs",
+    )
+    superseded_reference_phrases = (
+        "authenticated resolved replay",
+        "private external workspace",
+        "Apply authenticates the external workspace",
+        "private plan/state files",
+        "reopens ownership, prerequisites, partitioning, and chronology",
+        "Changing either editable plan field invalidates all request keys",
+        "For an independent candidate-tree check",
+    )
+
+    for root in (CODEX_HISTORY, CLAUDE_HISTORY):
+        skill = " ".join(_read(root / "SKILL.md").split())
+        for contract in skill_contracts:
+            assert contract in skill
+        for phrase in superseded_skill_phrases:
+            assert phrase not in skill
+        assert skill.index("one trusted same-user execution boundary") < skill.index(
+            "Edit only `plan.outputs`"
+        )
+        assert skill.index("source-wide placement evidence") < skill.index(
+            "Classify intended outputs"
+        )
+        assert skill.index(
+            "never overrides an established semantic owner"
+        ) < skill.index("Retain `RESOLVED`")
+        assert skill.index(
+            "expected output-count or operation-count delta"
+        ) < skill.index("Never apply a validated landing")
+        assert skill.index("changed owner output") < skill.index(
+            "When boundaries converge"
+        )
+
+        reference = " ".join(
+            _read(root / "references" / "rewrite-procedures.md").split()
+        )
+        for contract in reference_contracts:
+            assert contract in reference
+        for phrase in superseded_reference_phrases:
+            assert phrase not in reference
+        assert reference.index(
+            "workspace binding ties the fresh plan"
+        ) < reference.index('rewrite resolve "$REWRITE_PLAN"')
+        assert reference.index(
+            "immediately replay every intervening `EXACT` output"
+        ) < reference.index("A semantic change to either editable plan field")
+        assert reference.index(
+            "Product resolve and validation replay are the authoritative tree proof"
+        ) < reference.index("temporary Git index")
+        assert reference.index("temporary Git index") < reference.index(
+            "Validation is read-only"
         )
 
 
@@ -226,8 +683,8 @@ def test_message_refinement_is_a_message_only_history_plan() -> None:
     claude = _read(CLAUDE_MESSAGES / "SKILL.md")
     assert "$refine-commit-messages audit BASE_SHA" in codex
     assert "/refine-commit-messages audit BASE_SHA" in claude
-    assert '--audit-only' not in codex
-    assert '--audit-only' not in claude
+    assert "--audit-only" not in codex
+    assert "--audit-only" not in claude
 
 
 def test_message_guidance_requires_low_context_prose() -> None:

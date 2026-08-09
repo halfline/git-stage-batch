@@ -7290,3 +7290,22 @@ msgstr "永続的な書き換え出力オブジェクトクロージャが不完
 
 msgid "Git returned malformed object closure data while verifying rewrite output."
 msgstr "書き換え出力の検証中に Git が不正な形式のオブジェクトクロージャデータを返しました。"
+
+# Operation-owned resolution translations.
+msgid "Rewrite resolution provenance does not match the persisted plan."
+msgstr "書き換え解決の来歴が永続化されたプランと一致しません。"
+
+msgid "The operation-owned rewrite resolution workspace changed."
+msgstr "操作が所有する書き換え解決ワークスペースが変更されました。"
+
+msgid "source and destination workspaces must be disjoint"
+msgstr "ソースと宛先のワークスペースは互いに分離されている必要があります"
+
+msgid "destination workspace already exists"
+msgstr "宛先ワークスペースはすでに存在します"
+
+msgid "source resolution workspace changed while it was copied"
+msgstr "ソースの解決ワークスペースがコピー中に変更されました"
+
+msgid "owned resolution copy does not match its authenticated source"
+msgstr "所有されている解決コピーが認証済みのソースと一致しません"

@@ -7301,3 +7301,22 @@ msgstr "영구 재작성 출력 객체 클로저가 불완전하거나 잘못되
 
 msgid "Git returned malformed object closure data while verifying rewrite output."
 msgstr "재작성 출력을 검증하는 동안 Git이 잘못된 형식의 객체 클로저 데이터를 반환했습니다."
+
+# Operation-owned resolution translations.
+msgid "Rewrite resolution provenance does not match the persisted plan."
+msgstr "재작성 해결의 출처 정보가 저장된 계획과 일치하지 않습니다."
+
+msgid "The operation-owned rewrite resolution workspace changed."
+msgstr "작업이 소유한 재작성 해결 작업 공간이 변경되었습니다."
+
+msgid "source and destination workspaces must be disjoint"
+msgstr "소스와 대상 작업 공간은 서로 분리되어야 합니다"
+
+msgid "destination workspace already exists"
+msgstr "대상 작업 공간이 이미 있습니다"
+
+msgid "source resolution workspace changed while it was copied"
+msgstr "소스 해결 작업 공간이 복사되는 동안 변경되었습니다"
+
+msgid "owned resolution copy does not match its authenticated source"
+msgstr "소유된 해결 복사본이 인증된 소스와 일치하지 않습니다"

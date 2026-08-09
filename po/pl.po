@@ -7853,15 +7853,33 @@ msgstr "Surowa wiadomość źródła historii {commit} nie odpowiada już swojem
 msgid "The persisted rewrite plan no longer matches its checkpoint."
 msgstr "Zapisany plan przepisywania nie odpowiada już swojemu punktowi kontrolnemu."
 
+msgid "Rewrite resolution provenance does not match the persisted plan."
+msgstr "Pochodzenie rozwiązania przepisywania nie odpowiada zapisanemu planowi."
+
+msgid "The operation-owned rewrite resolution workspace changed."
+msgstr "Przestrzeń robocza rozwiązania przepisywania należąca do operacji zmieniła się."
 
 msgid "The persistent rewrite output object closure is incomplete or invalid."
 msgstr "Trwałe domknięcie obiektów wyniku przepisywania jest niepełne lub nieprawidłowe."
 
 msgid "Git returned malformed object closure data while verifying rewrite output."
 msgstr "Git zwrócił nieprawidłowe dane domknięcia obiektów podczas weryfikowania wyniku przepisywania."
+
 #, python-brace-format
 msgid "cannot authenticate locked directory: {error}"
 msgstr "nie można uwierzytelnić zablokowanego katalogu: {error}"
 
 msgid "staging directory is not the locked workspace"
 msgstr "katalog przygotowawczy nie jest zablokowaną przestrzenią roboczą"
+
+msgid "source and destination workspaces must be disjoint"
+msgstr "źródłowa i docelowa przestrzeń robocza muszą być rozłączne"
+
+msgid "destination workspace already exists"
+msgstr "docelowa przestrzeń robocza już istnieje"
+
+msgid "source resolution workspace changed while it was copied"
+msgstr "źródłowa przestrzeń robocza rozwiązania zmieniła się podczas kopiowania"
+
+msgid "owned resolution copy does not match its authenticated source"
+msgstr "kopia rozwiązania należąca do operacji nie odpowiada swojemu uwierzytelnionemu źródłu"

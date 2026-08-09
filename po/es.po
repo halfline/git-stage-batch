@@ -7833,3 +7833,22 @@ msgstr "El cierre persistente de objetos de la salida de la reescritura está in
 
 msgid "Git returned malformed object closure data while verifying rewrite output."
 msgstr "Git devolvió datos de cierre de objetos con formato incorrecto al verificar la salida de la reescritura."
+
+# Operation-owned resolution translations.
+msgid "Rewrite resolution provenance does not match the persisted plan."
+msgstr "La procedencia de la resolución de la reescritura no coincide con el plan persistido."
+
+msgid "The operation-owned rewrite resolution workspace changed."
+msgstr "El espacio de trabajo de resolución de la reescritura propiedad de la operación cambió."
+
+msgid "source and destination workspaces must be disjoint"
+msgstr "los espacios de trabajo de origen y destino deben estar separados"
+
+msgid "destination workspace already exists"
+msgstr "el espacio de trabajo de destino ya existe"
+
+msgid "source resolution workspace changed while it was copied"
+msgstr "el espacio de trabajo de resolución de origen cambió mientras se copiaba"
+
+msgid "owned resolution copy does not match its authenticated source"
+msgstr "la copia de resolución propiedad de la operación no coincide con su origen autenticado"

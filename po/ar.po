@@ -7992,3 +7992,22 @@ msgstr "إغلاق كائنات ناتج إعادة الكتابة الدائم 
 
 msgid "Git returned malformed object closure data while verifying rewrite output."
 msgstr "أعاد ⁦Git⁩ بيانات مشوّهة لإغلاق الكائنات أثناء التحقق من ناتج إعادة الكتابة."
+
+# Operation-owned resolution translations.
+msgid "Rewrite resolution provenance does not match the persisted plan."
+msgstr "لا يتطابق أصل حل إعادة الكتابة مع الخطة المحفوظة."
+
+msgid "The operation-owned rewrite resolution workspace changed."
+msgstr "تغيّرت مساحة عمل حل إعادة الكتابة المملوكة للعملية."
+
+msgid "source and destination workspaces must be disjoint"
+msgstr "يجب أن تكون مساحتا عمل المصدر والوجهة منفصلتين"
+
+msgid "destination workspace already exists"
+msgstr "مساحة عمل الوجهة موجودة بالفعل"
+
+msgid "source resolution workspace changed while it was copied"
+msgstr "تغيّرت مساحة عمل حل المصدر أثناء نسخها"
+
+msgid "owned resolution copy does not match its authenticated source"
+msgstr "لا تطابق نسخة الحل المملوكة مصدرها المصادق عليه"

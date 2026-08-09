@@ -7756,3 +7756,22 @@ msgstr "Trvalý uzávěr objektů výstupu přepisu je neúplný nebo neplatný.
 
 msgid "Git returned malformed object closure data while verifying rewrite output."
 msgstr "Git při ověřování výstupu přepisu vrátil poškozená data uzávěru objektů."
+
+# Operation-owned resolution translations.
+msgid "Rewrite resolution provenance does not match the persisted plan."
+msgstr "Původ řešení přepisu neodpovídá uloženému plánu."
+
+msgid "The operation-owned rewrite resolution workspace changed."
+msgstr "Pracovní prostor řešení přepisu vlastněný operací se změnil."
+
+msgid "source and destination workspaces must be disjoint"
+msgstr "zdrojový a cílový pracovní prostor musejí být odděleny"
+
+msgid "destination workspace already exists"
+msgstr "cílový pracovní prostor již existuje"
+
+msgid "source resolution workspace changed while it was copied"
+msgstr "pracovní prostor zdrojového řešení se během kopírování změnil"
+
+msgid "owned resolution copy does not match its authenticated source"
+msgstr "vlastněná kopie řešení neodpovídá svému ověřenému zdroji"

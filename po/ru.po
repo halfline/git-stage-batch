@@ -7853,15 +7853,33 @@ msgstr "Необработанное сообщение источника ис�
 msgid "The persisted rewrite plan no longer matches its checkpoint."
 msgstr "Сохранённый план перезаписи больше не соответствует своей контрольной точке."
 
+msgid "Rewrite resolution provenance does not match the persisted plan."
+msgstr "Происхождение разрешения перезаписи не соответствует сохранённому плану."
+
+msgid "The operation-owned rewrite resolution workspace changed."
+msgstr "Рабочая область разрешения перезаписи, принадлежащая операции, изменилась."
 
 msgid "The persistent rewrite output object closure is incomplete or invalid."
 msgstr "Сохранённое замыкание объектов выходных данных перезаписи неполно или недопустимо."
 
 msgid "Git returned malformed object closure data while verifying rewrite output."
 msgstr "Git вернул неверно сформированные данные замыкания объектов при проверке выходных данных перезаписи."
+
 #, python-brace-format
 msgid "cannot authenticate locked directory: {error}"
 msgstr "невозможно аутентифицировать заблокированный каталог: {error}"
 
 msgid "staging directory is not the locked workspace"
 msgstr "промежуточный каталог не является заблокированной рабочей областью"
+
+msgid "source and destination workspaces must be disjoint"
+msgstr "исходная и целевая рабочие области не должны пересекаться"
+
+msgid "destination workspace already exists"
+msgstr "целевая рабочая область уже существует"
+
+msgid "source resolution workspace changed while it was copied"
+msgstr "исходная рабочая область разрешения изменилась во время копирования"
+
+msgid "owned resolution copy does not match its authenticated source"
+msgstr "принадлежащая операции копия разрешения не соответствует своему аутентифицированному источнику"

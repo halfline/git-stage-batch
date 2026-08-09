@@ -7780,15 +7780,33 @@ msgstr "A mensagem bruta da origem de histórico {commit} não corresponde mais 
 msgid "The persisted rewrite plan no longer matches its checkpoint."
 msgstr "O plano de reescrita persistido não corresponde mais ao seu ponto de verificação."
 
+msgid "Rewrite resolution provenance does not match the persisted plan."
+msgstr "A proveniência da resolução da reescrita não corresponde ao plano persistido."
+
+msgid "The operation-owned rewrite resolution workspace changed."
+msgstr "O espaço de trabalho de resolução da reescrita pertencente à operação foi alterado."
 
 msgid "The persistent rewrite output object closure is incomplete or invalid."
 msgstr "O fechamento persistente dos objetos da saída de reescrita está incompleto ou é inválido."
 
 msgid "Git returned malformed object closure data while verifying rewrite output."
 msgstr "O Git retornou dados malformados de fechamento de objetos ao verificar a saída de reescrita."
+
 #, python-brace-format
 msgid "cannot authenticate locked directory: {error}"
 msgstr "não é possível autenticar o diretório bloqueado: {error}"
 
 msgid "staging directory is not the locked workspace"
 msgstr "o diretório de preparação não é o espaço de trabalho bloqueado"
+
+msgid "source and destination workspaces must be disjoint"
+msgstr "os espaços de trabalho de origem e destino não podem se sobrepor"
+
+msgid "destination workspace already exists"
+msgstr "o espaço de trabalho de destino já existe"
+
+msgid "source resolution workspace changed while it was copied"
+msgstr "o espaço de trabalho de resolução de origem mudou enquanto era copiado"
+
+msgid "owned resolution copy does not match its authenticated source"
+msgstr "a cópia da resolução pertencente à operação não corresponde à sua origem autenticada"

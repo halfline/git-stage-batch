@@ -7696,15 +7696,33 @@ msgstr "{commit} geçmiş kaynağının ham iletisi artık dondurulmuş özetiyl
 msgid "The persisted rewrite plan no longer matches its checkpoint."
 msgstr "Kalıcı olarak kaydedilen yeniden yazma planı artık denetim noktasıyla eşleşmiyor."
 
+msgid "Rewrite resolution provenance does not match the persisted plan."
+msgstr "Yeniden yazma çözümlemesinin kökeni kaydedilmiş planla eşleşmiyor."
+
+msgid "The operation-owned rewrite resolution workspace changed."
+msgstr "İşleme ait yeniden yazma çözümleme çalışma alanı değişti."
 
 msgid "The persistent rewrite output object closure is incomplete or invalid."
 msgstr "Yeniden yazma çıktısının kalıcı nesne kapanışı eksik veya geçersiz."
 
 msgid "Git returned malformed object closure data while verifying rewrite output."
 msgstr "Git, yeniden yazma çıktısını doğrularken bozuk nesne kapanışı verileri döndürdü."
+
 #, python-brace-format
 msgid "cannot authenticate locked directory: {error}"
 msgstr "kilitli dizinin kimliği doğrulanamıyor: {error}"
 
 msgid "staging directory is not the locked workspace"
 msgstr "hazırlama dizini kilitli çalışma alanı değil"
+
+msgid "source and destination workspaces must be disjoint"
+msgstr "kaynak ve hedef çalışma alanları ayrık olmalıdır"
+
+msgid "destination workspace already exists"
+msgstr "hedef çalışma alanı zaten var"
+
+msgid "source resolution workspace changed while it was copied"
+msgstr "kaynak çözümleme çalışma alanı kopyalanırken değişti"
+
+msgid "owned resolution copy does not match its authenticated source"
+msgstr "işleme ait çözümleme kopyası kimliği doğrulanmış kaynağıyla eşleşmiyor"

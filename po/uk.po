@@ -7806,15 +7806,33 @@ msgstr "Необроблене повідомлення джерела істо�
 msgid "The persisted rewrite plan no longer matches its checkpoint."
 msgstr "Збережений план переписування більше не відповідає своїй контрольній точці."
 
+msgid "Rewrite resolution provenance does not match the persisted plan."
+msgstr "Походження вирішення переписування не відповідає збереженому плану."
+
+msgid "The operation-owned rewrite resolution workspace changed."
+msgstr "Робоча область вирішення переписування, що належить операції, змінилася."
 
 msgid "The persistent rewrite output object closure is incomplete or invalid."
 msgstr "Збережене замикання об’єктів виводу переписування неповне або недійсне."
 
 msgid "Git returned malformed object closure data while verifying rewrite output."
 msgstr "Git повернув неправильно сформовані дані замикання об’єктів під час перевірки виводу переписування."
+
 #, python-brace-format
 msgid "cannot authenticate locked directory: {error}"
 msgstr "неможливо автентифікувати заблокований каталог: {error}"
 
 msgid "staging directory is not the locked workspace"
 msgstr "проміжний каталог не є заблокованою робочою областю"
+
+msgid "source and destination workspaces must be disjoint"
+msgstr "вихідна й цільова робочі області не повинні перетинатися"
+
+msgid "destination workspace already exists"
+msgstr "цільова робоча область вже існує"
+
+msgid "source resolution workspace changed while it was copied"
+msgstr "вихідна робоча область вирішення змінилася під час копіювання"
+
+msgid "owned resolution copy does not match its authenticated source"
+msgstr "копія вирішення, що належить операції, не відповідає своєму автентифікованому джерелу"

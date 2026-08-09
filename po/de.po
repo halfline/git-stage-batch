@@ -7900,3 +7900,22 @@ msgstr "Die persistente Objekthülle der Umschreibungsausgabe ist unvollständig
 
 msgid "Git returned malformed object closure data while verifying rewrite output."
 msgstr "Git hat beim Überprüfen der Umschreibungsausgabe fehlerhafte Daten zur Objekthülle zurückgegeben."
+
+# Operation-owned resolution translations.
+msgid "Rewrite resolution provenance does not match the persisted plan."
+msgstr "Die Herkunft der Umschreibungsauflösung entspricht nicht dem gespeicherten Plan."
+
+msgid "The operation-owned rewrite resolution workspace changed."
+msgstr "Der operationseigene Arbeitsbereich zur Umschreibungsauflösung hat sich geändert."
+
+msgid "source and destination workspaces must be disjoint"
+msgstr "Quell- und Zielarbeitsbereich müssen getrennt sein"
+
+msgid "destination workspace already exists"
+msgstr "der Zielarbeitsbereich ist bereits vorhanden"
+
+msgid "source resolution workspace changed while it was copied"
+msgstr "der Quellarbeitsbereich zur Auflösung hat sich während des Kopierens geändert"
+
+msgid "owned resolution copy does not match its authenticated source"
+msgstr "die eigene Auflösungskopie entspricht nicht ihrer authentifizierten Quelle"

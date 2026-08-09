@@ -439,9 +439,7 @@ def test_quarantined_tree_requires_environment_and_does_not_leak(temp_git_repo):
         blob_id = create_git_blob([b"candidate content\n"], env=env)
         tree_id = run_git_command(
             ["mktree"],
-            stdin_chunks=[
-                f"100644 blob {blob_id}\t{file_path}\n".encode("ascii")
-            ],
+            stdin_chunks=[f"100644 blob {blob_id}\t{file_path}\n".encode("ascii")],
             env=env,
             requires_index_lock=False,
         ).stdout.strip()

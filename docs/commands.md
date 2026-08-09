@@ -1259,6 +1259,15 @@ common Git directory (`.git/git-stage-batch/rewrite/` in an ordinary
 checkout). They therefore remain available if the linked worktree that began
 an operation is removed.
 
+In porcelain output, `inspection.resolution_matches` is `null` only when the
+captured, digest-bound persisted output plan is structurally valid, all-EXACT,
+and the checkpoint correctly has no resolution provenance. It is `true` only
+when a plan containing RESOLVED outputs has matching provenance and its
+operation-owned workspace authenticates successfully. An invalid output plan,
+missing or gratuitous provenance, a provenance mismatch, or a changed
+resolution workspace reports `false`, adds `resolution-bundle-changed`, and
+prevents continuation.
+
 ### `rewrite continue`
 
 ```bash

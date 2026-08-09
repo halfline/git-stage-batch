@@ -50,14 +50,14 @@ def _prepared_state(repo, operation_id: str = "a" * 32):
         phase=HistoryPhase.PREPARED,
         next_action=HistoryNextAction.BUILD_OUTPUT,
         plan_sha256=history_json_sha256(plan_record),
+        resolution_raw_plan_sha256=None,
+        resolution_complete_sha256=None,
         object_format=document.snapshot.object_format,
         branch_ref="refs/heads/topic",
         base_commit=repo.base,
         original_tip=repo.tip,
         original_final_tree=document.snapshot.final_tree,
-        source_commits=tuple(
-            commit.commit_id for commit in document.snapshot.commits
-        ),
+        source_commits=tuple(commit.commit_id for commit in document.snapshot.commits),
         allowed_remote_refs=(),
         recovery_ref=recovery_ref,
         output_ref=history_output_ref(operation_id),
@@ -79,6 +79,116 @@ def _initialize_history_operation(state, document) -> None:
     preparation = prepare_history_operation(state, document)
     publish_prepared_history_operation(state, preparation)
     activate_prepared_history_operation(state)
+
+
+def _state_in_phase(
+    state: HistoryOperationState,
+    phase: HistoryPhase,
+) -> HistoryOperationState:
+    if phase is HistoryPhase.PREPARED:
+        return state
+    if phase is HistoryPhase.PAUSED:
+        return replace(
+            state,
+            phase=phase,
+            diagnostic="paused before output construction",
+        )
+    if phase is HistoryPhase.COMPLETE:
+        return replace(
+            state,
+            phase=phase,
+            next_action=HistoryNextAction.NONE,
+            expected_branch_tip=state.original_tip,
+            output_commits=state.source_commits,
+            completed_output_count=state.planned_output_count,
+            last_verified_commit=state.original_tip,
+            last_verified_tree=state.original_final_tree,
+            verification_sha256="f" * 64,
+        )
+    raise AssertionError(f"unsupported test phase: {phase.value}")
+
+
+@pytest.mark.parametrize(
+    "phase",
+    [
+        HistoryPhase.PREPARED,
+        HistoryPhase.PAUSED,
+        HistoryPhase.COMPLETE,
+    ],
+)
+def test_schema_two_state_round_trips_without_schema_three_fields(
+    linear_history_repo,
+    phase,
+):
+    state, _document = _prepared_state(linear_history_repo)
+    legacy = replace(_state_in_phase(state, phase), schema_version=2)
+    record = history_state._state_record(legacy)
+
+    decoded = history_state._decode_state(json.dumps(record))
+
+    assert decoded == legacy
+    assert decoded.resolution_raw_plan_sha256 is None
+    assert decoded.resolution_complete_sha256 is None
+    assert "resolution_raw_plan_sha256" not in record
+    assert "resolution_complete_sha256" not in record
+    assert history_state._state_record(decoded) == record
+
+
+def test_schema_three_state_round_trips_resolution_provenance(
+    linear_history_repo,
+):
+    state, _document = _prepared_state(linear_history_repo)
+    state = replace(
+        state,
+        resolution_raw_plan_sha256="b" * 64,
+        resolution_complete_sha256="c" * 64,
+    )
+
+    record = history_state._state_record(state)
+    decoded = history_state._decode_state(json.dumps(record))
+
+    assert state.schema_version == 3
+    assert record["resolution_raw_plan_sha256"] == "b" * 64
+    assert record["resolution_complete_sha256"] == "c" * 64
+    assert decoded == state
+
+
+def test_state_schema_dispatch_rejects_hybrid_records(linear_history_repo):
+    state, _document = _prepared_state(linear_history_repo)
+    legacy_record = history_state._state_record(replace(state, schema_version=2))
+    legacy_record["resolution_raw_plan_sha256"] = None
+    legacy_record["resolution_complete_sha256"] = None
+
+    with pytest.raises(CommandError, match="unknown field"):
+        history_state._decode_state(json.dumps(legacy_record))
+
+    current_record = history_state._state_record(state)
+    del current_record["resolution_complete_sha256"]
+    with pytest.raises(CommandError, match="missing field"):
+        history_state._decode_state(json.dumps(current_record))
+
+
+@pytest.mark.parametrize(
+    ("raw_plan_sha256", "complete_sha256", "expected_error"),
+    [
+        ("b" * 64, None, "both be null or both be set"),
+        ("B" * 64, "c" * 64, "resolution_raw_plan_sha256 must be lowercase"),
+        ("b" * 64, "short", "resolution_complete_sha256 must be lowercase"),
+    ],
+)
+def test_schema_three_rejects_invalid_resolution_provenance(
+    linear_history_repo,
+    raw_plan_sha256,
+    complete_sha256,
+    expected_error,
+):
+    state, _document = _prepared_state(linear_history_repo)
+    record = history_state._state_record(state)
+    record["resolution_raw_plan_sha256"] = raw_plan_sha256
+    record["resolution_complete_sha256"] = complete_sha256
+
+    with pytest.raises(CommandError, match=expected_error):
+        history_state._decode_state(json.dumps(record))
 
 
 def test_initialize_publishes_private_recoverable_checkpoint(
@@ -106,14 +216,14 @@ def test_initialize_requires_existing_exact_recovery_ref(linear_history_repo):
         phase=HistoryPhase.PREPARED,
         next_action=HistoryNextAction.BUILD_OUTPUT,
         plan_sha256=history_json_sha256(plan_record),
+        resolution_raw_plan_sha256=None,
+        resolution_complete_sha256=None,
         object_format=document.snapshot.object_format,
         branch_ref="refs/heads/topic",
         base_commit=linear_history_repo.base,
         original_tip=linear_history_repo.tip,
         original_final_tree=document.snapshot.final_tree,
-        source_commits=tuple(
-            commit.commit_id for commit in document.snapshot.commits
-        ),
+        source_commits=tuple(commit.commit_id for commit in document.snapshot.commits),
         allowed_remote_refs=(),
         recovery_ref=history_recovery_ref("b" * 32),
         output_ref=history_output_ref("b" * 32),
@@ -210,7 +320,9 @@ def test_status_reports_exact_next_action_and_recovery(
     assert output["plan"]["operation_counts"] == {"KEEP": 1, "REWORD": 1}
     assert output["progress"]["planned_output_count"] == 2
     assert output["inspection"]["resume_ready"] is True
-    assert output["manual_recovery_command"].startswith("git update-ref refs/heads/topic")
+    assert output["manual_recovery_command"].startswith(
+        "git update-ref refs/heads/topic"
+    )
 
 
 def test_status_shell_quotes_manual_recovery_branch(

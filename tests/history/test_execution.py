@@ -909,6 +909,7 @@ def test_latest_verification_reads_a_persisted_schema_three_plan(
     )
     legacy_state = replace(
         state,
+        schema_version=2,
         plan_sha256=legacy_plan_sha256,
         verification_sha256=legacy_verification_sha256,
     )

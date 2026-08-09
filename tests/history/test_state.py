@@ -76,7 +76,11 @@ def _prepared_state(repo, operation_id: str = "a" * 32):
 
 
 def _initialize_history_operation(state, document) -> None:
-    preparation = prepare_history_operation(state, document)
+    preparation = prepare_history_operation(
+        state,
+        document,
+        resolutions_source=None,
+    )
     publish_prepared_history_operation(state, preparation)
     activate_prepared_history_operation(state)
 
@@ -329,6 +333,20 @@ def test_update_rejects_resolution_provenance_tampering(
         update_history_operation(tampered)
 
     assert load_active_history_operation() == state
+
+
+def test_initialize_rejects_resolution_provenance_without_resolved_outputs(
+    linear_history_repo,
+):
+    state, document = _prepared_state(linear_history_repo)
+    state = replace(
+        state,
+        resolution_raw_plan_sha256="b" * 64,
+        resolution_complete_sha256="c" * 64,
+    )
+
+    with pytest.raises(CommandError, match="provenance does not match"):
+        _initialize_history_operation(state, document)
 
 
 def test_initialize_publishes_private_recoverable_checkpoint(

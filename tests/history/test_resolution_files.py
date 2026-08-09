@@ -20,6 +20,8 @@ import pytest
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.history import resolution_files
 from git_stage_batch.history.resolution_files import (
+    PrivateFilePublicationError,
+    PrivateFilePublicationOutcome,
     ResolutionArtifactDigest,
     copy_resolution_artifact_atomically,
     create_private_resolution_directory,
@@ -28,6 +30,7 @@ from git_stage_batch.history.resolution_files import (
     list_resolution_directory,
     lock_resolution_directory,
     publish_private_resolution_directory,
+    publish_new_private_file,
     recover_interrupted_resolution_artifact_write,
     require_private_resolution_directory,
     resolution_artifact_name,
@@ -479,7 +482,7 @@ def test_nested_locks_keep_outer_descendant_access_descriptor_anchored(tmp_path)
             outer.rename(displaced)
             outer.mkdir(mode=0o700)
             try:
-                write_resolution_artifact_atomically(outer / "result", [payload])
+                publish_new_private_file(outer / "result", payload)
                 assert (displaced / "result").read_bytes() == payload
                 assert not (outer / "result").exists()
             finally:
@@ -738,6 +741,414 @@ def test_atomic_copy_is_private_and_digest_guarded(tmp_path):
         )
     assert destination.read_bytes() == payload
     assert list(destination_workspace.glob(".git-stage-batch-resolution-*.tmp")) == []
+
+
+def test_create_only_publication_streams_private_file_and_small_bytes(tmp_path):
+    workspace = _private_directory(tmp_path / "workspace")
+    streamed = workspace / "streamed"
+    direct = workspace / "direct"
+    payload = b"first\x00chunk\nsecond\xffchunk\n"
+    old_umask = os.umask(0)
+    try:
+        streamed_digest = publish_new_private_file(
+            streamed,
+            (payload[:7], payload[7:]),
+        )
+        direct_digest = publish_new_private_file(direct, payload)
+    finally:
+        os.umask(old_umask)
+
+    expected = ResolutionArtifactDigest(
+        size=len(payload),
+        sha256=hashlib.sha256(payload).hexdigest(),
+    )
+    assert streamed_digest == expected
+    assert direct_digest == expected
+    assert streamed.read_bytes() == payload
+    assert direct.read_bytes() == payload
+    assert stat.S_IMODE(streamed.stat().st_mode) == 0o600
+    assert stat.S_IMODE(direct.stat().st_mode) == 0o600
+    assert list(workspace.glob(".git-stage-batch-resolution-*.tmp")) == []
+
+
+def test_create_only_publication_rejects_existing_destination_without_attempt(
+    tmp_path,
+):
+    workspace = _private_directory(tmp_path / "workspace")
+    destination = workspace / "result"
+    original_payload = b"original\n"
+    _write_private_bytes(destination, original_payload)
+
+    with pytest.raises(PrivateFilePublicationError) as caught:
+        publish_new_private_file(destination, b"replacement\n")
+
+    assert "destination already exists" in str(caught.value)
+    assert caught.value.outcome is PrivateFilePublicationOutcome.NOT_ATTEMPTED
+    assert destination.read_bytes() == original_payload
+    assert list(workspace.glob(".git-stage-batch-resolution-*.tmp")) == []
+
+
+def test_create_only_publication_never_replaces_destination_appearing_at_rename(
+    tmp_path,
+    monkeypatch,
+):
+    workspace = _private_directory(tmp_path / "workspace")
+    destination = workspace / "result"
+    raced_payload = b"raced destination\n"
+    original_rename_noreplace = resolution_files._rename_noreplace
+
+    def racing_rename(parent, source_name, destination_name):
+        descriptor = os.open(
+            destination_name,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+            dir_fd=parent,
+        )
+        try:
+            os.fchmod(descriptor, 0o600)
+            os.write(descriptor, raced_payload)
+        finally:
+            os.close(descriptor)
+        original_rename_noreplace(parent, source_name, destination_name)
+
+    monkeypatch.setattr(resolution_files, "_rename_noreplace", racing_rename)
+
+    with pytest.raises(PrivateFilePublicationError) as caught:
+        publish_new_private_file(destination, b"published payload\n")
+
+    assert "destination appeared" in str(caught.value)
+    assert caught.value.outcome is PrivateFilePublicationOutcome.NOT_COMMITTED
+    assert destination.read_bytes() == raced_payload
+    assert list(workspace.glob(".git-stage-batch-resolution-*.tmp")) == []
+
+
+def test_create_only_publication_reports_file_fsync_before_commit(
+    tmp_path,
+    monkeypatch,
+):
+    workspace = _private_directory(tmp_path / "workspace")
+    destination = workspace / "result"
+    original_fsync = resolution_files.os.fsync
+
+    def failing_file_fsync(descriptor):
+        if stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise OSError("injected file fsync failure")
+        original_fsync(descriptor)
+
+    monkeypatch.setattr(resolution_files.os, "fsync", failing_file_fsync)
+
+    with pytest.raises(PrivateFilePublicationError) as caught:
+        publish_new_private_file(destination, b"payload\n")
+
+    assert caught.value.outcome is PrivateFilePublicationOutcome.NOT_ATTEMPTED
+    assert not destination.exists()
+    assert list(workspace.glob(".git-stage-batch-resolution-*.tmp")) == []
+
+
+def test_create_only_publication_reports_parent_fsync_after_commit(
+    tmp_path,
+    monkeypatch,
+):
+    workspace = _private_directory(tmp_path / "workspace")
+    destination = workspace / "result"
+    payload = b"published before fsync failure\n"
+    original_fsync = resolution_files.os.fsync
+
+    def failing_parent_fsync(descriptor):
+        if stat.S_ISDIR(os.fstat(descriptor).st_mode) and destination.exists():
+            raise OSError("injected parent fsync failure")
+        original_fsync(descriptor)
+
+    monkeypatch.setattr(resolution_files.os, "fsync", failing_parent_fsync)
+
+    with pytest.raises(PrivateFilePublicationError) as caught:
+        publish_new_private_file(destination, payload)
+
+    assert caught.value.outcome is PrivateFilePublicationOutcome.COMMITTED
+    assert destination.read_bytes() == payload
+    assert list(workspace.glob(".git-stage-batch-resolution-*.tmp")) == []
+
+
+def test_create_only_publication_reports_authentication_failure_after_commit(
+    tmp_path,
+    monkeypatch,
+):
+    workspace = _private_directory(tmp_path / "workspace")
+    destination = workspace / "result"
+    payload = b"published before authentication failure\n"
+    original_require_open_file_path = resolution_files._require_open_file_path
+
+    def failing_published_authentication(
+        path,
+        parent,
+        descriptor,
+        object_identity,
+        detail,
+    ):
+        metadata = original_require_open_file_path(
+            path,
+            parent,
+            descriptor,
+            object_identity,
+            detail,
+        )
+        if path == destination:
+            raise OSError("injected authentication failure")
+        return metadata
+
+    monkeypatch.setattr(
+        resolution_files,
+        "_require_open_file_path",
+        failing_published_authentication,
+    )
+
+    with pytest.raises(PrivateFilePublicationError) as caught:
+        publish_new_private_file(destination, payload)
+
+    assert caught.value.outcome is PrivateFilePublicationOutcome.COMMITTED
+    assert destination.read_bytes() == payload
+
+
+def test_create_only_publication_reports_parent_replacement_after_commit(
+    tmp_path,
+    monkeypatch,
+):
+    workspace = _private_directory(tmp_path / "workspace")
+    moved_workspace = tmp_path / "moved-workspace"
+    destination = workspace / "result"
+    payload = b"published into pinned parent\n"
+    original_fsync = resolution_files.os.fsync
+    swapped = False
+
+    def swapping_parent_fsync(descriptor):
+        nonlocal swapped
+        if (
+            not swapped
+            and stat.S_ISDIR(os.fstat(descriptor).st_mode)
+            and destination.exists()
+        ):
+            swapped = True
+            workspace.rename(moved_workspace)
+            workspace.mkdir(mode=0o700)
+        original_fsync(descriptor)
+
+    monkeypatch.setattr(resolution_files.os, "fsync", swapping_parent_fsync)
+
+    with pytest.raises(PrivateFilePublicationError) as caught:
+        publish_new_private_file(destination, payload)
+
+    assert caught.value.outcome is PrivateFilePublicationOutcome.COMMITTED
+    assert not destination.exists()
+    assert (moved_workspace / "result").read_bytes() == payload
+
+
+@pytest.mark.parametrize(
+    ("issue", "message"),
+    [
+        ("extended-acl", "permissions must be 0600"),
+        ("unknown-permissions", "owned by the current user"),
+    ],
+)
+def test_create_only_publication_rejects_nonprivate_darwin_file_state(
+    tmp_path,
+    monkeypatch,
+    issue,
+    message,
+):
+    workspace = _private_directory(tmp_path / "workspace")
+    destination = workspace / "result"
+    inspected_modes = _inject_darwin_privacy_failure(
+        monkeypatch,
+        issue=issue,
+        affected=lambda metadata: stat.S_ISREG(metadata.st_mode),
+    )
+
+    with pytest.raises(PrivateFilePublicationError, match=message) as caught:
+        publish_new_private_file(destination, b"content\n")
+
+    assert caught.value.outcome is PrivateFilePublicationOutcome.NOT_ATTEMPTED
+    assert inspected_modes
+    assert not destination.exists()
+    assert list(workspace.glob(".git-stage-batch-resolution-*.tmp")) == []
+
+
+def test_create_only_publication_enforces_size_cap_before_commit(tmp_path):
+    workspace = _private_directory(tmp_path / "workspace")
+    destination = workspace / "result"
+
+    with pytest.raises(
+        PrivateFilePublicationError,
+        match="supported size limit",
+    ) as caught:
+        publish_new_private_file(
+            destination,
+            (b"1234", b"5"),
+            maximum_bytes=4,
+        )
+
+    assert caught.value.outcome is PrivateFilePublicationOutcome.NOT_ATTEMPTED
+    assert not destination.exists()
+    with pytest.raises(ValueError, match="positive integer or None"):
+        publish_new_private_file(
+            destination,
+            b"",
+            maximum_bytes=True,
+        )
+
+
+def test_create_only_publication_recovers_and_fsyncs_stale_temporary(
+    tmp_path,
+    monkeypatch,
+):
+    workspace = _private_directory(tmp_path / "workspace")
+    destination = workspace / "result"
+    temporary = workspace / resolution_files._temporary_resolution_artifact_name(
+        destination
+    )
+    _write_private_bytes(temporary, b"interrupted payload\n")
+    original_fsync = resolution_files.os.fsync
+    directory_fsync_states: list[tuple[bool, bool]] = []
+
+    def tracking_fsync(descriptor):
+        if stat.S_ISDIR(os.fstat(descriptor).st_mode):
+            directory_fsync_states.append((temporary.exists(), destination.exists()))
+        original_fsync(descriptor)
+
+    monkeypatch.setattr(resolution_files.os, "fsync", tracking_fsync)
+
+    result = publish_new_private_file(destination, b"complete payload\n")
+
+    assert result.size == len(b"complete payload\n")
+    assert destination.read_bytes() == b"complete payload\n"
+    assert directory_fsync_states == [(False, False), (False, True)]
+
+
+def test_create_only_publication_rejects_unsafe_stale_temporary(tmp_path):
+    workspace = _private_directory(tmp_path / "workspace")
+    destination = workspace / "result"
+    temporary = workspace / resolution_files._temporary_resolution_artifact_name(
+        destination
+    )
+    temporary.write_bytes(b"untrusted interrupted payload\n")
+    temporary.chmod(0o644)
+
+    with pytest.raises(PrivateFilePublicationError) as caught:
+        publish_new_private_file(destination, b"complete payload\n")
+
+    assert caught.value.outcome is PrivateFilePublicationOutcome.NOT_ATTEMPTED
+    assert not destination.exists()
+    assert temporary.read_bytes() == b"untrusted interrupted payload\n"
+
+
+def test_create_only_publication_reconciles_committed_rename_error(
+    tmp_path,
+    monkeypatch,
+):
+    workspace = _private_directory(tmp_path / "workspace")
+    destination = workspace / "result"
+    payload = b"committed before rename wrapper failure\n"
+    original_rename_noreplace = resolution_files._rename_noreplace
+    original_fsync = resolution_files.os.fsync
+    published_parent_fsyncs = 0
+
+    def committed_then_failed(parent, source_name, destination_name):
+        original_rename_noreplace(parent, source_name, destination_name)
+        raise OSError("injected post-rename wrapper failure")
+
+    def tracking_fsync(descriptor):
+        nonlocal published_parent_fsyncs
+        if stat.S_ISDIR(os.fstat(descriptor).st_mode) and destination.exists():
+            published_parent_fsyncs += 1
+        original_fsync(descriptor)
+
+    monkeypatch.setattr(
+        resolution_files,
+        "_rename_noreplace",
+        committed_then_failed,
+    )
+    monkeypatch.setattr(resolution_files.os, "fsync", tracking_fsync)
+
+    with pytest.raises(PrivateFilePublicationError) as caught:
+        publish_new_private_file(destination, payload)
+
+    assert caught.value.outcome is PrivateFilePublicationOutcome.COMMITTED
+    assert isinstance(caught.value.cause, OSError)
+    assert destination.read_bytes() == payload
+    assert published_parent_fsyncs == 1
+
+
+def test_create_only_publication_reports_indeterminate_rename_error(
+    tmp_path,
+    monkeypatch,
+):
+    workspace = _private_directory(tmp_path / "workspace")
+    destination = workspace / "result"
+    moved_name = "unaccounted-publication-inode"
+    moved = workspace / moved_name
+    payload = b"unaccounted payload\n"
+
+    def moved_then_failed(parent, source_name, _destination_name):
+        os.rename(
+            source_name,
+            moved_name,
+            src_dir_fd=parent,
+            dst_dir_fd=parent,
+        )
+        raise OSError("injected indeterminate rename failure")
+
+    monkeypatch.setattr(
+        resolution_files,
+        "_rename_noreplace",
+        moved_then_failed,
+    )
+
+    with pytest.raises(PrivateFilePublicationError) as caught:
+        publish_new_private_file(destination, payload)
+
+    assert caught.value.outcome is PrivateFilePublicationOutcome.INDETERMINATE
+    assert not destination.exists()
+    assert moved.read_bytes() == payload
+
+
+@pytest.mark.parametrize("exception_type", [KeyboardInterrupt, SystemExit])
+@pytest.mark.parametrize("commit_before_interrupt", [False, True])
+def test_create_only_publication_preserves_process_interrupts_and_cleanup(
+    tmp_path,
+    monkeypatch,
+    exception_type,
+    commit_before_interrupt,
+):
+    workspace = _private_directory(tmp_path / "workspace")
+    destination = workspace / "result"
+    payload = b"interrupt boundary payload\n"
+    original_rename_noreplace = resolution_files._rename_noreplace
+    original_fsync = resolution_files.os.fsync
+    published_parent_fsyncs = 0
+
+    def interrupting_rename(parent, source_name, destination_name):
+        if commit_before_interrupt:
+            original_rename_noreplace(parent, source_name, destination_name)
+        raise exception_type("injected publication interrupt")
+
+    def tracking_fsync(descriptor):
+        nonlocal published_parent_fsyncs
+        if stat.S_ISDIR(os.fstat(descriptor).st_mode) and destination.exists():
+            published_parent_fsyncs += 1
+        original_fsync(descriptor)
+
+    monkeypatch.setattr(
+        resolution_files,
+        "_rename_noreplace",
+        interrupting_rename,
+    )
+    monkeypatch.setattr(resolution_files.os, "fsync", tracking_fsync)
+
+    with pytest.raises(exception_type, match="injected publication interrupt"):
+        publish_new_private_file(destination, payload)
+
+    assert destination.exists() is commit_before_interrupt
+    assert published_parent_fsyncs == int(commit_before_interrupt)
+    assert list(workspace.glob(".git-stage-batch-resolution-*.tmp")) == []
 
 
 def test_atomic_write_rejects_nonregular_destination(tmp_path):
@@ -1000,6 +1411,35 @@ def test_large_artifact_digest_has_bounded_python_heap(tmp_path):
             tracemalloc.stop()
         heap_peaks.append(peak_heap)
         assert digest.size == payload_size
+
+    small_peak, large_peak = heap_peaks
+    assert large_peak < small_peak + 128 * 1024
+
+
+def test_create_only_publication_has_payload_bounded_python_heap(tmp_path):
+    workspace = _private_directory(tmp_path / "workspace")
+    heap_peaks: list[int] = []
+    chunk = b"published resolution pointer\n" * 2048
+
+    for payload_size in (1024 * 1024, 16 * 1024 * 1024):
+        destination = workspace / f"pointer-{payload_size}"
+
+        def chunks():
+            remaining = payload_size
+            while remaining:
+                written = min(remaining, len(chunk))
+                yield chunk[:written]
+                remaining -= written
+
+        gc.collect()
+        tracemalloc.start()
+        try:
+            result = publish_new_private_file(destination, chunks())
+            _current_heap, peak_heap = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+        heap_peaks.append(peak_heap)
+        assert result.size == payload_size
 
     small_peak, large_peak = heap_peaks
     assert large_peak < small_peak + 128 * 1024

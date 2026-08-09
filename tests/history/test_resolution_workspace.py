@@ -701,9 +701,10 @@ def test_completed_workspace_returns_same_read_authenticated_provenance(
         )
 
     assert authenticated.raw_plan_sha256 == plan_sha256
-    assert authenticated.complete_sha256 == hashlib.sha256(
-        (workspace / "complete.json").read_bytes()
-    ).hexdigest()
+    assert (
+        authenticated.complete_sha256
+        == hashlib.sha256((workspace / "complete.json").read_bytes()).hexdigest()
+    )
     assert authenticated.workspace_path == str(workspace)
     assert authenticated.replay.final_tree == document.snapshot.final_tree
 

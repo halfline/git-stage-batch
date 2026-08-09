@@ -431,6 +431,7 @@ def stream_command(
     env: dict[str, str] | None = None,
     capture_stdout: bool = True,
     capture_stderr: bool = True,
+    pass_fds: Iterable[int] = (),
 ) -> Iterator[command_events.CommandEvent]:
     """One-shot convenience wrapper for streaming a command.
 
@@ -451,6 +452,7 @@ def stream_command(
         env=env,
         capture_stdout=capture_stdout,
         capture_stderr=capture_stderr,
+        pass_fds=pass_fds,
     )
 
     try:
@@ -473,6 +475,7 @@ def run_command(
     env: dict[str, str] | None = None,
     capture_stdout: bool = True,
     capture_stderr: bool = True,
+    pass_fds: Iterable[int] = (),
 ) -> subprocess.CompletedProcess[str]: ...
 
 
@@ -487,6 +490,7 @@ def run_command(
     env: dict[str, str] | None = None,
     capture_stdout: bool = True,
     capture_stderr: bool = True,
+    pass_fds: Iterable[int] = (),
 ) -> subprocess.CompletedProcess[bytes]: ...
 
 
@@ -501,6 +505,7 @@ def run_command(
     env: dict[str, str] | None = None,
     capture_stdout: bool = True,
     capture_stderr: bool = True,
+    pass_fds: Iterable[int] = (),
 ) -> subprocess.CompletedProcess[str] | subprocess.CompletedProcess[bytes]: ...
 
 
@@ -514,6 +519,7 @@ def run_command(
     env: dict[str, str] | None = None,
     capture_stdout: bool = True,
     capture_stderr: bool = True,
+    pass_fds: Iterable[int] = (),
 ) -> subprocess.CompletedProcess[str] | subprocess.CompletedProcess[bytes]:
     """Run a command to completion and capture stdout/stderr.
 
@@ -532,6 +538,7 @@ def run_command(
         env=env,
         capture_stdout=capture_stdout,
         capture_stderr=capture_stderr,
+        pass_fds=pass_fds,
     ):
         if isinstance(event, command_events.ExitEvent):
             returncode = event.exit_code

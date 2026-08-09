@@ -9,7 +9,7 @@ import tracemalloc
 import pytest
 
 from git_stage_batch.exceptions import CommandError
-from git_stage_batch.history import dependencies, safety
+from git_stage_batch.history import dependencies, ranges, safety
 from git_stage_batch.history.records import history_plan_document_record
 from git_stage_batch.history.scan import acquire_history_plan_document
 
@@ -296,6 +296,68 @@ def test_scan_does_not_retain_dependency_candidate_trees(linear_history_repo):
     assert git("count-objects", "-v") == before
 
 
+def test_scan_ignores_replace_ref_installed_after_upfront_check(
+    linear_history_repo,
+    monkeypatch,
+):
+    repo = linear_history_repo
+    baseline = acquire_history_plan_document(repo.base)
+    require_unmodified_object_graph = ranges._require_unmodified_object_graph
+    installed = False
+
+    def install_replace_after_check():
+        nonlocal installed
+        require_unmodified_object_graph()
+        git("replace", repo.first, repo.tip)
+        installed = True
+
+    monkeypatch.setattr(
+        ranges,
+        "_require_unmodified_object_graph",
+        install_replace_after_check,
+    )
+    try:
+        raced = acquire_history_plan_document(repo.base)
+    finally:
+        if installed:
+            git("replace", "-d", repo.first)
+
+    assert installed
+    assert raced == baseline
+
+
+def test_scan_ignores_legacy_graft_changed_after_upfront_check(
+    linear_history_repo,
+    monkeypatch,
+):
+    repo = linear_history_repo
+    grafts = repo.root / git("rev-parse", "--git-path", "info/grafts")
+    grafts.parent.mkdir(parents=True, exist_ok=True)
+    grafts.touch()
+    baseline = acquire_history_plan_document(repo.base)
+    require_unmodified_object_graph = ranges._require_unmodified_object_graph
+    changed = False
+
+    def change_graft_after_check():
+        nonlocal changed
+        require_unmodified_object_graph()
+        grafts.write_text(f"{repo.tip} {repo.base}\n", encoding="ascii")
+        changed = True
+
+    monkeypatch.setattr(
+        ranges,
+        "_require_unmodified_object_graph",
+        change_graft_after_check,
+    )
+    try:
+        raced = acquire_history_plan_document(repo.base)
+    finally:
+        grafts.unlink(missing_ok=True)
+
+    assert changed
+    assert raced == baseline
+
+
 def test_scan_dependency_analysis_avoids_line_scale_python_heap(
     tmp_path,
     monkeypatch,
@@ -419,6 +481,19 @@ def test_scan_rejects_legacy_grafts(linear_history_repo):
     grafts = repo.root / git("rev-parse", "--git-path", "info/grafts")
     grafts.parent.mkdir(parents=True, exist_ok=True)
     grafts.write_text(f"{repo.tip} {repo.base}\n", encoding="ascii")
+
+    with pytest.raises(CommandError, match="legacy grafts"):
+        acquire_history_plan_document(repo.base)
+
+
+def test_scan_rejects_configured_legacy_graft_file(
+    linear_history_repo,
+    monkeypatch,
+):
+    repo = linear_history_repo
+    grafts = repo.root / "custom-grafts"
+    grafts.write_text(f"{repo.tip} {repo.base}\n", encoding="ascii")
+    monkeypatch.setenv("GIT_GRAFT_FILE", str(grafts))
 
     with pytest.raises(CommandError, match="legacy grafts"):
         acquire_history_plan_document(repo.base)

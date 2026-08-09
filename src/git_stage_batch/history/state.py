@@ -40,7 +40,10 @@ from .models import (
     HistoryPlanOperation,
 )
 from .records import history_plan_document_record
-from .plan_files import read_and_validate_frozen_history_plan_semantics
+from .plan_files import (
+    decode_frozen_history_plan_payload,
+    read_and_validate_frozen_history_plan_semantics_from_payload,
+)
 from .resolution_files import (
     create_private_resolution_directory,
     list_resolution_directory,
@@ -1024,20 +1027,22 @@ def _resolved_tree(commit: str) -> str | None:
 
 def _persisted_plan_facts(
     state: HistoryOperationState,
-) -> tuple[bool, tuple[tuple[HistoryPlanOperation, int], ...]]:
+) -> tuple[
+    bool,
+    tuple[tuple[HistoryPlanOperation, int], ...],
+    bool | None,
+    str | None,
+]:
     plan_path = history_operation_plan_path(state.operation_id)
     try:
         payload, plan_sha256 = read_required_text_file_contents_and_sha256(plan_path)
         if plan_sha256 != state.plan_sha256:
-            return False, ()
-        document = require_object(
-            loads(payload),
-            "document",
+            return False, (), None, None
+        snapshot, _base_commit, plan = decode_frozen_history_plan_payload(
+            payload
         )
-        snapshot = require_object(document["snapshot"], "snapshot")
         range_record = require_object(snapshot["range"], "snapshot.range")
         trees = require_object(snapshot["trees"], "snapshot.trees")
-        plan = require_object(document["plan"], "plan")
         source_values = require_list(
             range_record["commits_oldest_first"],
             "snapshot.range.commits_oldest_first",
@@ -1045,19 +1050,14 @@ def _persisted_plan_facts(
         source_commits = tuple(
             value for value in source_values if isinstance(value, str)
         )
-        outputs = require_list(plan["outputs"], "plan.outputs")
+        outputs = plan.outputs
         operation_counts = dict.fromkeys(HISTORY_PLAN_OPERATIONS, 0)
-        for index, output_value in enumerate(outputs):
-            output = require_object(output_value, f"plan.outputs[{index}]")
-            operation_value = require_string(
-                output,
-                "operation",
-                f"plan.outputs[{index}]",
-            )
-            if operation_value not in HISTORY_PLAN_OPERATIONS:
-                return False, ()
-            operation = operation_value
+        for output in outputs:
+            operation = output.operation
             operation_counts[operation] += 1
+        has_resolved_outputs = any(
+            output.materialization == "RESOLVED" for output in outputs
+        )
         matches = (
             len(source_commits) == len(source_values)
             and snapshot.get("object_format") == state.object_format
@@ -1069,29 +1069,53 @@ def _persisted_plan_facts(
             and len(outputs) == state.planned_output_count
         )
         if not matches:
-            return False, ()
-        return True, tuple(
-            (operation, operation_counts[operation])
-            for operation in HISTORY_PLAN_OPERATIONS
-            if operation_counts[operation]
+            return False, (), None, None
+        return (
+            True,
+            tuple(
+                (operation, operation_counts[operation])
+                for operation in HISTORY_PLAN_OPERATIONS
+                if operation_counts[operation]
+            ),
+            has_resolved_outputs,
+            payload,
         )
-    except (KeyError, OSError, StrictJsonError, UnicodeError, ValueError):
-        return False, ()
+    except (
+        CommandError,
+        KeyError,
+        OSError,
+        StrictJsonError,
+        UnicodeError,
+        ValueError,
+    ):
+        return False, (), None, None
 
 
-def _operation_resolution_matches(state: HistoryOperationState) -> bool | None:
+def _operation_resolution_matches(
+    state: HistoryOperationState,
+    has_resolved_outputs: bool | None,
+    persisted_plan_payload: str | None,
+) -> bool | None:
     raw_plan_sha256 = state.resolution_raw_plan_sha256
+    if has_resolved_outputs is None:
+        return False
+    if has_resolved_outputs != (raw_plan_sha256 is not None):
+        return False
     if raw_plan_sha256 is None:
         return None
+    if persisted_plan_payload is None:
+        return False
     try:
-        document, plan_sha256 = read_and_validate_frozen_history_plan_semantics(
-            str(history_operation_plan_path(state.operation_id)),
+        document = read_and_validate_frozen_history_plan_semantics_from_payload(
+            persisted_plan_payload,
             base_commit=state.base_commit,
             tip_commit=state.original_tip,
             branch_ref=state.branch_ref,
             allowed_remote_refs=state.allowed_remote_refs,
         )
-        if plan_sha256 != state.plan_sha256:
+        if not any(
+            output.materialization == "RESOLVED" for output in document.plan.outputs
+        ):
             return False
         with temporary_git_object_environment(
             disable_replace_objects=True
@@ -1133,8 +1157,17 @@ def inspect_history_operation(
         not _ref_is_symbolic(state.recovery_ref)
         and _resolved_commit(state.recovery_ref) == state.original_tip
     )
-    plan_matches, plan_operation_counts = _persisted_plan_facts(state)
-    resolution_matches = _operation_resolution_matches(state)
+    (
+        plan_matches,
+        plan_operation_counts,
+        has_resolved_outputs,
+        plan_payload,
+    ) = _persisted_plan_facts(state)
+    resolution_matches = _operation_resolution_matches(
+        state,
+        has_resolved_outputs,
+        plan_payload,
+    )
     output_objects_exist = all(
         _resolved_commit(commit) == commit for commit in state.output_commits
     )

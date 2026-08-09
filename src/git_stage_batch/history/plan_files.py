@@ -321,6 +321,13 @@ def _decode_plan(
     )
 
 
+def decode_frozen_history_plan_payload(
+    payload: str,
+) -> tuple[dict[str, object], str, HistoryPlan]:
+    """Strictly decode persisted plan declarations without Git reads."""
+    return _decode_plan(payload, allow_legacy_v3=True)
+
+
 def _grouped_block_chain_can_defer_to_replay(
     dependency: HistoryUnitDependency,
     *,

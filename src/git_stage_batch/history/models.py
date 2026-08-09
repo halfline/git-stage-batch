@@ -251,6 +251,7 @@ class HistoryOperationInspection:
     worktree_clean: bool
     recovery_ref_matches: bool
     plan_matches: bool
+    resolution_matches: bool | None
     output_objects_exist: bool
     output_ref_matches: bool
     verification_matches: bool

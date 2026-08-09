@@ -628,7 +628,11 @@ def start_history_operation(
         verification_sha256=None,
         diagnostic=None,
     )
-    preparation = prepare_history_operation(state, document)
+    preparation = prepare_history_operation(
+        state,
+        document,
+        resolutions_source=None,
+    )
     _require_start_facts_unchanged(
         document,
         allowed_remote_refs=allowed_refs,
@@ -839,6 +843,7 @@ def verify_history_operation() -> tuple[HistoryOperationState, HistoryVerificati
             "active-rewrite-operation",
             "recovery-ref-changed",
             "plan-changed",
+            "resolution-bundle-changed",
             "output-object-missing",
             "output-ref-changed",
             "verification-record-changed",

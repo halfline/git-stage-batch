@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import stat
+import subprocess
 from pathlib import Path
 from typing import NoReturn, cast
 
@@ -17,6 +18,7 @@ from ..utils.file_io import (
     write_text_file_contents,
 )
 from ..utils.git_command import run_git_command
+from ..utils.git_object_io import temporary_git_object_environment
 from ..utils.paths import get_rewrite_state_directory_path
 from ..utils.strict_json import (
     StrictJsonError,
@@ -38,11 +40,16 @@ from .models import (
     HistoryPlanOperation,
 )
 from .records import history_plan_document_record
+from .plan_files import read_and_validate_frozen_history_plan_semantics
 from .resolution_files import (
     create_private_resolution_directory,
     list_resolution_directory,
     publish_private_resolution_directory,
     publish_new_private_file,
+)
+from .resolution_workspace import (
+    copy_completed_history_resolution,
+    materialize_completed_history_resolution,
 )
 from .safety import collect_history_safety_facts
 
@@ -221,6 +228,11 @@ def history_operation_preparation_directory(operation_id: str) -> Path:
 def history_operation_plan_path(operation_id: str) -> Path:
     """Return the immutable persisted plan path for one operation."""
     return history_operation_directory(operation_id) / "plan.json"
+
+
+def history_operation_resolutions_path(operation_id: str) -> Path:
+    """Return the operation-owned completed resolution workspace path."""
+    return history_operation_directory(operation_id) / "resolutions"
 
 
 def history_operation_verification_path(operation_id: str) -> Path:
@@ -514,6 +526,11 @@ def _require_state_matches_plan(
     plan_record = history_plan_document_record(document)
     if state.plan_sha256 != history_json_sha256(plan_record):
         _invalid("plan_sha256 does not match the validated plan")
+    has_resolved_outputs = any(
+        output.materialization == "RESOLVED" for output in document.plan.outputs
+    )
+    if has_resolved_outputs != (state.resolution_raw_plan_sha256 is not None):
+        _invalid("resolution provenance does not match plan materialization")
     return plan_record
 
 
@@ -686,6 +703,8 @@ def load_history_operation_for_status() -> tuple[HistoryOperationState | None, b
 def prepare_history_operation(
     state: HistoryOperationState,
     document: HistoryPlanDocument,
+    *,
+    resolutions_source: str | None,
 ) -> Path:
     """Build one complete private operation directory without publishing it."""
     _validate_state(state)
@@ -700,6 +719,10 @@ def prepare_history_operation(
         _invalid("recovery_ref must be absent or preserve original_tip")
     if _resolved_object(state.output_ref) is not None:
         _invalid("output_ref must not exist before output is built")
+
+    has_resolution = state.resolution_raw_plan_sha256 is not None
+    if has_resolution != (resolutions_source is not None):
+        _invalid("resolution source does not match operation provenance")
 
     _ensure_history_directory()
     preparation = history_operation_preparation_directory(state.operation_id)
@@ -718,6 +741,26 @@ def prepare_history_operation(
             _invalid(f"{label} already exists")
 
     create_private_resolution_directory(preparation)
+    if resolutions_source is not None:
+        raw_plan_sha256 = cast(str, state.resolution_raw_plan_sha256)
+        complete_sha256 = cast(str, state.resolution_complete_sha256)
+        with temporary_git_object_environment(
+            disable_replace_objects=True
+        ) as source_quarantine:
+            with temporary_git_object_environment(
+                disable_replace_objects=True
+            ) as destination_quarantine:
+                authenticated = copy_completed_history_resolution(
+                    document,
+                    raw_plan_sha256,
+                    resolutions_source,
+                    str(preparation / "resolutions"),
+                    source_quarantine=source_quarantine,
+                    destination_quarantine=destination_quarantine,
+                )
+        if authenticated.complete_sha256 != complete_sha256:
+            _invalid("resolution completion digest changed during preparation")
+
     write_history_json_file(
         preparation / "plan.json",
         plan_record,
@@ -728,7 +771,11 @@ def prepare_history_operation(
         _state_record(state),
         mode_policy=AtomicWriteModePolicy.PRIVATE,
     )
-    if set(list_resolution_directory(preparation)) != {"plan.json", "state.json"}:
+    expected_entries = {"plan.json", "state.json"}
+    if has_resolution:
+        expected_entries.add("resolutions")
+    actual_entries = set(list_resolution_directory(preparation))
+    if actual_entries != expected_entries:
         _invalid("operation preparation contains unexpected entries")
     return preparation
 
@@ -752,7 +799,10 @@ def publish_prepared_history_operation(
         _invalid("recovery_ref must already preserve original_tip")
     if _resolved_object(state.output_ref) is not None:
         _invalid("output_ref must not exist before output is built")
-    if set(list_resolution_directory(preparation)) != {"plan.json", "state.json"}:
+    expected_entries = {"plan.json", "state.json"}
+    if state.resolution_raw_plan_sha256 is not None:
+        expected_entries.add("resolutions")
+    if set(list_resolution_directory(preparation)) != expected_entries:
         _invalid("operation preparation contains unexpected entries")
 
     publish_private_resolution_directory(
@@ -1029,6 +1079,40 @@ def _persisted_plan_facts(
         return False, ()
 
 
+def _operation_resolution_matches(state: HistoryOperationState) -> bool | None:
+    raw_plan_sha256 = state.resolution_raw_plan_sha256
+    if raw_plan_sha256 is None:
+        return None
+    try:
+        document, plan_sha256 = read_and_validate_frozen_history_plan_semantics(
+            str(history_operation_plan_path(state.operation_id)),
+            base_commit=state.base_commit,
+            tip_commit=state.original_tip,
+            branch_ref=state.branch_ref,
+            allowed_remote_refs=state.allowed_remote_refs,
+        )
+        if plan_sha256 != state.plan_sha256:
+            return False
+        with temporary_git_object_environment(
+            disable_replace_objects=True
+        ) as quarantine:
+            authenticated = materialize_completed_history_resolution(
+                document,
+                raw_plan_sha256,
+                str(history_operation_resolutions_path(state.operation_id)),
+                quarantine=quarantine,
+            )
+        return authenticated.complete_sha256 == state.resolution_complete_sha256
+    except (
+        CommandError,
+        OSError,
+        RuntimeError,
+        subprocess.CalledProcessError,
+        ValueError,
+    ):
+        return False
+
+
 def inspect_history_operation(
     state: HistoryOperationState,
     *,
@@ -1050,6 +1134,7 @@ def inspect_history_operation(
         and _resolved_commit(state.recovery_ref) == state.original_tip
     )
     plan_matches, plan_operation_counts = _persisted_plan_facts(state)
+    resolution_matches = _operation_resolution_matches(state)
     output_objects_exist = all(
         _resolved_commit(commit) == commit for commit in state.output_commits
     )
@@ -1098,6 +1183,7 @@ def inspect_history_operation(
         (safety.worktree_clean, "tracked-worktree"),
         (recovery_matches, "recovery-ref-changed"),
         (plan_matches, "plan-changed"),
+        (resolution_matches is not False, "resolution-bundle-changed"),
         (output_objects_exist, "output-object-missing"),
         (output_ref_matches, "output-ref-changed"),
         (verification_matches, "verification-record-changed"),
@@ -1127,6 +1213,7 @@ def inspect_history_operation(
         worktree_clean=safety.worktree_clean,
         recovery_ref_matches=recovery_matches,
         plan_matches=plan_matches,
+        resolution_matches=resolution_matches,
         output_objects_exist=output_objects_exist,
         output_ref_matches=output_ref_matches,
         verification_matches=verification_matches,

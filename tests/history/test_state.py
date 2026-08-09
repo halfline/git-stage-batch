@@ -589,9 +589,51 @@ def test_inspection_detects_plan_tampering(linear_history_repo):
     inspection = inspect_history_operation(state)
 
     assert inspection.plan_matches is False
+    assert inspection.resolution_matches is False
     assert inspection.plan_operation_counts == ()
     assert inspection.resume_ready is False
     assert "plan-changed" in inspection.blockers
+    assert "resolution-bundle-changed" in inspection.blockers
+
+
+@pytest.mark.parametrize(
+    "malformation",
+    ["invalid-materialization", "missing-author"],
+)
+def test_status_rejects_a_digest_matched_malformed_plan(
+    linear_history_repo,
+    capsys,
+    malformation,
+):
+    state, document = _prepared_state(linear_history_repo)
+    _initialize_history_operation(state, document)
+    invalid_plan = history_plan_document_record(document)
+    first_output = invalid_plan["plan"]["outputs"][0]
+    if malformation == "invalid-materialization":
+        first_output["materialization"] = "INVALID"
+    else:
+        first_output.pop("author")
+    forged = replace(
+        state,
+        plan_sha256=history_json_sha256(invalid_plan),
+    )
+    write_history_json_file(
+        history_operation_directory(state.operation_id) / "plan.json",
+        invalid_plan,
+    )
+    write_history_json_file(
+        history_operation_directory(state.operation_id) / "state.json",
+        history_state._state_record(forged),
+    )
+
+    command_rewrite_status(porcelain=True)
+
+    inspection = json.loads(capsys.readouterr().out)["inspection"]
+    assert inspection["plan_matches"] is False
+    assert inspection["resolution_matches"] is False
+    assert inspection["resume_ready"] is False
+    assert "plan-changed" in inspection["blockers"]
+    assert "resolution-bundle-changed" in inspection["blockers"]
 
 
 def test_inspection_detects_external_branch_movement(linear_history_repo):

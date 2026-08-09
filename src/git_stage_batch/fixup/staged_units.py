@@ -242,6 +242,8 @@ def acquire_fixup_units_from_diff(
 def acquire_tree_fixup_units(
     old_treeish: str,
     new_treeish: str,
+    *,
+    env: dict[str, str] | None = None,
 ) -> Iterator[tuple[FixupUnit, ...]]:
     """Acquire exact units for one immutable tree-to-tree transition."""
     diff_lines = stream_git_diff(
@@ -252,6 +254,7 @@ def acquire_tree_fixup_units(
         find_renames=True,
         ignore_submodules="none",
         submodule_format="short",
+        env=env,
     )
     with acquire_fixup_units_from_diff(
         diff_lines,

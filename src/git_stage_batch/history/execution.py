@@ -809,10 +809,23 @@ def verify_history_operation() -> tuple[HistoryOperationState, HistoryVerificati
     ):
         raise CommandError(_("The rewrite operation has no complete output to verify."))
     inspection = inspect_history_operation(state, require_active=active)
-    if not inspection.resume_ready:
+    proof_blockers = tuple(
+        blocker
+        for blocker in inspection.blockers
+        if blocker
+        in {
+            "active-rewrite-operation",
+            "recovery-ref-changed",
+            "plan-changed",
+            "output-object-missing",
+            "output-ref-changed",
+            "verification-record-changed",
+        }
+    )
+    if proof_blockers:
         raise CommandError(
             _("Rewrite verification is blocked by: {blockers}.").format(
-                blockers=", ".join(inspection.blockers)
+                blockers=", ".join(proof_blockers)
             )
         )
     document = _operation_document(state)

@@ -18,9 +18,11 @@ def _encode_header(value: str) -> bytes:
 def _planned_message_bytes(
     output: HistoryPlannedCommit,
     target: HistoryCommitSnapshot,
+    *,
+    env: dict[str, str] | None,
 ) -> bytes:
     if output.operation in {"KEEP", "REORDER"}:
-        return parse_commit_object(target.commit_id).message_bytes
+        return parse_commit_object(target.commit_id, env=env).message_bytes
     try:
         return output.message.encode(
             output.encoding or "utf-8",
@@ -44,6 +46,7 @@ def history_commit_payload_chunks(
     parent: str,
     output: HistoryPlannedCommit,
     target: HistoryCommitSnapshot,
+    env: dict[str, str] | None = None,
 ) -> Iterator[bytes]:
     """Yield one normalized unsigned commit object in bounded field chunks."""
     yield f"tree {tree}\n".encode("ascii")
@@ -58,7 +61,7 @@ def history_commit_payload_chunks(
         yield _encode_header(output.encoding)
         yield b"\n"
     yield b"\n"
-    yield _planned_message_bytes(output, target)
+    yield _planned_message_bytes(output, target, env=env)
 
 
 def create_history_commit(
@@ -68,6 +71,7 @@ def create_history_commit(
     output: HistoryPlannedCommit,
     target: HistoryCommitSnapshot,
     write: bool,
+    env: dict[str, str] | None = None,
 ) -> str:
     """Hash or store one deterministic unsigned replacement commit."""
     arguments = ["hash-object", "-t", "commit"]
@@ -81,7 +85,9 @@ def create_history_commit(
             parent=parent,
             output=output,
             target=target,
+            env=env,
         ),
+        env=env,
         requires_index_lock=False,
     ).stdout.strip()
 
@@ -93,9 +99,10 @@ def require_history_commit_matches(
     parent: str,
     output: HistoryPlannedCommit,
     target: HistoryCommitSnapshot,
+    env: dict[str, str] | None = None,
 ) -> ParsedCommitObject:
     """Require one built commit to match every planned object-level field."""
-    parsed = parse_commit_object(commit)
+    parsed = parse_commit_object(commit, env=env)
     if parsed.tree != tree or parsed.parents != (parent,):
         raise CommandError(
             _("Rewrite output commit {commit} has unexpected topology.").format(

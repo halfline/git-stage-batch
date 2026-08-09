@@ -275,6 +275,50 @@ def test_quarantine_certifies_the_persistent_object_store(
         quarantine.require_persistent_identity()
 
 
+def test_quarantine_can_disable_replace_objects_and_grafts_in_every_environment(
+    temp_git_repo,
+    monkeypatch,
+):
+    base = run_git_command(
+        ["rev-parse", "HEAD"],
+        requires_index_lock=False,
+    ).stdout.strip()
+    (temp_git_repo / "README.md").write_text("# Changed\n")
+    subprocess.run(["git", "commit", "-am", "Change"], check=True)
+    tip = run_git_command(
+        ["rev-parse", "HEAD"],
+        requires_index_lock=False,
+    ).stdout.strip()
+    grafts = temp_git_repo / "custom-grafts"
+    grafts.write_text(f"{tip}\n", encoding="ascii")
+    monkeypatch.setenv("GIT_NO_REPLACE_OBJECTS", "0")
+    monkeypatch.setenv("GIT_GRAFT_FILE", str(grafts))
+
+    with temporary_git_object_environment(disable_replace_objects=True) as quarantine:
+        assert quarantine.environment()["GIT_NO_REPLACE_OBJECTS"] == "1"
+        assert quarantine.environment()["GIT_GRAFT_FILE"] == os.devnull
+        assert quarantine.persistent_environment()["GIT_NO_REPLACE_OBJECTS"] == "1"
+        assert quarantine.persistent_environment()["GIT_GRAFT_FILE"] == os.devnull
+        with quarantine.pinned_environment() as environment:
+            assert environment["GIT_NO_REPLACE_OBJECTS"] == "1"
+            assert environment["GIT_GRAFT_FILE"] == os.devnull
+            parents = run_git_command(
+                ["rev-list", "--parents", "-n", "1", "HEAD"],
+                env=environment,
+                requires_index_lock=False,
+            ).stdout.split()
+
+    assert parents == [tip, base]
+
+
+def test_quarantine_rejects_nonboolean_replace_control(temp_git_repo):
+    with pytest.raises(ValueError, match="must be a boolean"):
+        with temporary_git_object_environment(
+            disable_replace_objects=1,  # type: ignore[arg-type]
+        ):
+            pass
+
+
 def test_quarantine_object_directory_pin_certifies_filesystem_identity(
     temp_git_repo,
 ):

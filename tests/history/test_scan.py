@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import gc
 import tracemalloc
+from contextlib import contextmanager
 
 import pytest
 
@@ -294,6 +295,40 @@ def test_scan_does_not_retain_dependency_candidate_trees(linear_history_repo):
     acquire_history_plan_document(linear_history_repo.base)
 
     assert git("count-objects", "-v") == before
+
+
+def test_dependency_analysis_ignores_replace_refs_installed_after_snapshot(
+    linear_history_repo,
+    monkeypatch,
+):
+    repo = linear_history_repo
+    baseline = acquire_history_plan_document(repo.base)
+    source_tree = git("rev-parse", f"{repo.first}^{{tree}}")
+    replacement_tree = git("rev-parse", f"{repo.tip}^{{tree}}")
+    create_quarantine = dependencies.temporary_git_object_environment
+
+    @contextmanager
+    def replace_racing_quarantine(*, disable_replace_objects=False):
+        git("replace", source_tree, replacement_tree)
+        try:
+            with create_quarantine(
+                disable_replace_objects=disable_replace_objects
+            ) as quarantine:
+                assert quarantine.environment()["GIT_NO_REPLACE_OBJECTS"] == "1"
+                yield quarantine
+        finally:
+            git("replace", "-d", source_tree)
+
+    monkeypatch.setattr(
+        dependencies,
+        "temporary_git_object_environment",
+        replace_racing_quarantine,
+    )
+
+    raced = acquire_history_plan_document(repo.base)
+
+    assert raced.snapshot.commits == baseline.snapshot.commits
+    assert raced.snapshot.dependencies == baseline.snapshot.dependencies
 
 
 def test_scan_ignores_replace_ref_installed_after_upfront_check(

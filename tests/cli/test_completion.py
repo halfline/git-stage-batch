@@ -95,3 +95,7 @@ def test_bash_completion_covers_rewrite_actions_and_options():
     assert "--workspace)" in completion
     assert 'compgen -W "--workspace --accept --porcelain"' in completion
     assert "--workspace)" in completion
+    assert (
+        'compgen -W "--workspace --allow-published-ref --porcelain"'
+        in completion
+    )

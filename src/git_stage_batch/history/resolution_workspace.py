@@ -979,6 +979,7 @@ def _apply_result(
     results_path: Path,
     *,
     quarantine: GitObjectQuarantine,
+    env: dict[str, str],
     expected_digests: tuple[ResolutionArtifactDigest | None, ...] | None = None,
 ) -> tuple[str, tuple[dict[str, object], ...]]:
     if len(paths) != len(policies):
@@ -999,6 +1000,7 @@ def _apply_result(
         imported = import_resolution_artifact_blob(
             results_path / path.artifact,
             env=quarantine,
+            object_environment=env,
             expected=expected,
         )
         _require_authorized_transition(path, policy, imported.blob_object_id)
@@ -1010,7 +1012,7 @@ def _apply_result(
             )
         )
         receipt_paths.append(_path_receipt_record(path, imported.digest))
-    with temp_git_index(base_env=quarantine.environment()) as index_env:
+    with temp_git_index(base_env=env) as index_env:
         git_read_tree(parent_tree, env=index_env)
         git_update_index_entries(updates, env=index_env)
         output_tree = git_write_tree(env=index_env)
@@ -1233,6 +1235,7 @@ class _WorkspaceMaterializer:
                 policies,
                 output_path / "results",
                 quarantine=self.quarantine,
+                env=env,
             )
             receipt = _receipt_record(
                 self.binding,
@@ -1282,6 +1285,7 @@ class _WorkspaceMaterializer:
                 policies,
                 output_path / "results",
                 quarantine=self.quarantine,
+                env=env,
                 expected_digests=expected_digests,
             )
             expected_receipt = _receipt_record(
@@ -1400,6 +1404,37 @@ def _materialize_workspace(
     _PendingResolution | None,
     bool,
 ]:
+    with quarantine.pinned_environment() as environment:
+        return _materialize_workspace_in_environment(
+            document,
+            binding,
+            workspace_path,
+            quarantine,
+            environment,
+            accept_one=accept_one,
+            export_missing=export_missing,
+            require_complete=require_complete,
+            read_only=read_only,
+        )
+
+
+def _materialize_workspace_in_environment(
+    document: HistoryPlanDocument,
+    binding: _WorkspaceBinding,
+    workspace_path: Path,
+    quarantine: GitObjectQuarantine,
+    environment: dict[str, str],
+    *,
+    accept_one: bool,
+    export_missing: bool,
+    require_complete: bool,
+    read_only: bool,
+) -> tuple[
+    HistoryReplayResult | None,
+    _WorkspaceMaterializer,
+    _PendingResolution | None,
+    bool,
+]:
     materializer = _WorkspaceMaterializer(
         document,
         binding,
@@ -1412,7 +1447,7 @@ def _materialize_workspace(
     try:
         replay = materialize_history_output_trees(
             document,
-            env=quarantine.environment(),
+            env=environment,
             resolved_output_materializer=materializer,
         )
     except _ResolutionNeeded as needed:

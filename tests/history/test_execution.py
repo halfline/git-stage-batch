@@ -21,6 +21,7 @@ from git_stage_batch.history import (
     resolution_files,
     state as history_state,
 )
+from git_stage_batch.history.commit_objects import parse_commit_object
 from git_stage_batch.history.commit_writer import (
     create_history_commit,
     require_history_commit_matches,
@@ -31,12 +32,11 @@ from git_stage_batch.history.execution import (
     start_history_operation,
     verify_history_operation,
 )
-from git_stage_batch.history.models import HistoryPhase
-from git_stage_batch.history.commit_objects import parse_commit_object
 from git_stage_batch.history.json_files import (
     history_json_sha256,
     write_history_json_file,
 )
+from git_stage_batch.history.models import HistoryPhase
 from git_stage_batch.history.records import history_plan_document_record
 from git_stage_batch.history.resolution_files import (
     PrivateFilePublicationError,

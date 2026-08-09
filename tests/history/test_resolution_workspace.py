@@ -6,6 +6,7 @@ import copy
 import gc
 import hashlib
 import json
+from contextlib import contextmanager
 from pathlib import Path
 import shutil
 import stat
@@ -162,6 +163,47 @@ def test_resolution_exports_source_context_and_completes_exact_replay(
     assert complete.request_path is None
     completion = _metadata(workspace / "complete.json")
     assert completion["final_tree"] == git("rev-parse", "HEAD^{tree}")
+
+
+def test_resolution_ignores_replace_refs_installed_after_plan_validation(
+    linear_history_repo,
+    monkeypatch,
+):
+    repo = linear_history_repo
+    plan = _resolved_plan(repo)
+    workspace = repo.root / "resolution"
+    source_tree = git("rev-parse", f"{repo.first}^{{tree}}")
+    replacement_tree = git("rev-parse", f"{repo.tip}^{{tree}}")
+    expected_blob = git("rev-parse", f"{repo.first}:example.txt")
+    create_quarantine = resolution_workspace.temporary_git_object_environment
+
+    @contextmanager
+    def replace_racing_quarantine(*, disable_replace_objects=False):
+        git("replace", source_tree, replacement_tree)
+        try:
+            with create_quarantine(
+                disable_replace_objects=disable_replace_objects
+            ) as quarantine:
+                assert quarantine.environment()["GIT_NO_REPLACE_OBJECTS"] == "1"
+                yield quarantine
+        finally:
+            git("replace", "-d", source_tree)
+
+    monkeypatch.setattr(
+        resolution_workspace,
+        "temporary_git_object_environment",
+        replace_racing_quarantine,
+    )
+
+    pending = resolve_history_plan(str(plan), str(workspace))
+
+    assert pending.output_key is not None
+    request = _metadata(_output_path(workspace, pending.output_key) / "request.json")
+    references = request["authorized_paths"][0]["references"]
+    source_after = next(
+        reference for reference in references if reference["role"] == "SOURCE_AFTER"
+    )
+    assert source_after["blob"] == expected_blob
 
 
 def test_resolution_reentry_does_not_accept_seeded_result(linear_history_repo):

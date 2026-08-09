@@ -80,6 +80,23 @@ _STATE_V3_KEYS = _STATE_V2_KEYS | {
     "resolution_complete_sha256",
 }
 _SUPPORTED_STATE_SCHEMA_VERSIONS = frozenset({2, 3})
+_IMMUTABLE_STATE_FIELDS = (
+    "schema_version",
+    "operation_id",
+    "plan_sha256",
+    "resolution_raw_plan_sha256",
+    "resolution_complete_sha256",
+    "object_format",
+    "branch_ref",
+    "base_commit",
+    "original_tip",
+    "original_final_tree",
+    "source_commits",
+    "allowed_remote_refs",
+    "recovery_ref",
+    "output_ref",
+    "planned_output_count",
+)
 _ALLOWED_NEXT_ACTIONS = {
     HistoryPhase.PREPARED: frozenset({HistoryNextAction.BUILD_OUTPUT}),
     HistoryPhase.BUILDING: frozenset({HistoryNextAction.BUILD_OUTPUT}),
@@ -793,6 +810,15 @@ def update_history_operation(state: HistoryOperationState) -> None:
     current = load_active_history_operation()
     if current is None or current.operation_id != state.operation_id:
         _invalid("operation is not active")
+    for field in _IMMUTABLE_STATE_FIELDS:
+        if getattr(state, field) != getattr(current, field):
+            _invalid(f"{field} is immutable across operation transitions")
+    if (
+        state.output_commits[: len(current.output_commits)]
+        != current.output_commits
+        or len(state.output_commits) > len(current.output_commits) + 1
+    ):
+        _invalid("output_commits must preserve and extend the completed prefix")
     if state.phase not in _ALLOWED_TRANSITIONS[current.phase]:
         _invalid(
             f"phase transition {current.phase.value} -> {state.phase.value} "

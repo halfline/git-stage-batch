@@ -1193,9 +1193,8 @@ class _WorkspaceMaterializer:
             output_path,
             env=env,
         )
-        if (
-            not self.read_only
-            and "receipt.json" not in set(list_resolution_directory(output_path))
+        if not self.read_only and "receipt.json" not in set(
+            list_resolution_directory(output_path)
         ):
             recover_interrupted_resolution_artifact_write(output_path / "receipt.json")
         output_entries = set(list_resolution_directory(output_path))

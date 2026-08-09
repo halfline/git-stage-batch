@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import subprocess
+import tempfile
 import uuid
 from dataclasses import replace
 
 from ..exceptions import CommandError
 from ..i18n import _
-from ..utils.git_command import run_git_command
+from ..utils.git_command import run_git_command, stream_git_command
 from ..utils.git_object_io import (
     GitObjectQuarantine,
     temporary_git_object_environment,
@@ -305,42 +306,127 @@ def _verification_record(
     }
 
 
+def _invalid_persistent_output_closure() -> CommandError:
+    return CommandError(
+        _("The persistent rewrite output object closure is incomplete or invalid.")
+    )
+
+
+def _require_persistent_output_closure(
+    state: HistoryOperationState,
+    *,
+    environment: dict[str, str],
+) -> None:
+    object_id_width = 40 if state.object_format == "sha1" else 64
+    requested_count = 0
+    reported_count = 0
+    with tempfile.TemporaryFile() as object_ids:
+        try:
+            for line in stream_git_command(
+                [
+                    "--no-replace-objects",
+                    "rev-list",
+                    "--objects",
+                    "--no-object-names",
+                    "--missing=error",
+                    state.output_commits[-1],
+                    f"^{state.base_commit}",
+                ],
+                env=environment,
+                requires_index_lock=False,
+            ):
+                object_id = line.removesuffix(b"\n")
+                if len(object_id) != object_id_width or any(
+                    byte not in b"0123456789abcdef" for byte in object_id
+                ):
+                    raise CommandError(
+                        _(
+                            "Git returned malformed object closure data while "
+                            "verifying rewrite output."
+                        )
+                    )
+                if object_ids.write(object_id + b"\n") != object_id_width + 1:
+                    raise _invalid_persistent_output_closure()
+                requested_count += 1
+        except subprocess.CalledProcessError as error:
+            raise _invalid_persistent_output_closure() from error
+        object_ids.seek(0)
+        try:
+            for line in stream_git_command(
+                [
+                    "--no-replace-objects",
+                    "cat-file",
+                    "--batch-check=%(objectname) %(objecttype) %(objectsize)",
+                ],
+                stdin_chunks=object_ids,
+                env=environment,
+                requires_index_lock=False,
+            ):
+                record = line.removesuffix(b"\n")
+                fields = record.split(b" ")
+                if (
+                    len(fields) != 3
+                    or fields[1] not in {b"blob", b"commit", b"tree"}
+                    or len(fields[0]) != object_id_width
+                    or any(byte not in b"0123456789abcdef" for byte in fields[0])
+                    or not fields[2].isdigit()
+                ):
+                    raise _invalid_persistent_output_closure()
+                reported_count += 1
+        except subprocess.CalledProcessError as error:
+            raise _invalid_persistent_output_closure() from error
+    if reported_count != requested_count:
+        raise _invalid_persistent_output_closure()
+
+
 def _verify_output_objects(
     state: HistoryOperationState,
     document: HistoryPlanDocument,
 ) -> tuple[HistoryVerification, tuple[str, ...]]:
     with temporary_git_object_environment(
         disable_replace_objects=True
-    ) as quarantine:
-        expected_commits, expected_trees = _expected_output_objects(
-            document,
-            quarantine=quarantine,
-            write=False,
-        )
-    if state.output_commits != expected_commits:
-        raise CommandError(
-            _("Built history commits do not match deterministic replay.")
-        )
-    if _resolved_object(state.output_ref) != expected_commits[-1]:
-        raise CommandError(_("The rewrite output ref changed before verification."))
+    ) as persistent_view:
+        with persistent_view.pinned_environment() as persistent_environment:
+            persistent_environment["GIT_NO_LAZY_FETCH"] = "1"
+            _require_persistent_output_closure(
+                state,
+                environment=persistent_environment,
+            )
+            with temporary_git_object_environment(
+                disable_replace_objects=True
+            ) as quarantine:
+                expected_commits, expected_trees = _expected_output_objects(
+                    document,
+                    quarantine=quarantine,
+                    write=False,
+                )
+            if state.output_commits != expected_commits:
+                raise CommandError(
+                    _("Built history commits do not match deterministic replay.")
+                )
+            if _resolved_object(state.output_ref) != expected_commits[-1]:
+                raise CommandError(
+                    _("The rewrite output ref changed before verification.")
+                )
 
-    sources = {commit.commit_id: commit for commit in document.snapshot.commits}
-    parent = document.snapshot.base_commit
-    for commit, tree, output in zip(
-        expected_commits,
-        expected_trees,
-        document.plan.outputs,
-        strict=True,
-    ):
-        target = sources[output.source_commits[0]]
-        require_history_commit_matches(
-            commit,
-            tree=tree,
-            parent=parent,
-            output=output,
-            target=target,
-        )
-        parent = commit
+            sources = {commit.commit_id: commit for commit in document.snapshot.commits}
+            parent = document.snapshot.base_commit
+            for commit, tree, output in zip(
+                expected_commits,
+                expected_trees,
+                document.plan.outputs,
+                strict=True,
+            ):
+                target = sources[output.source_commits[0]]
+                require_history_commit_matches(
+                    commit,
+                    tree=tree,
+                    parent=parent,
+                    output=output,
+                    target=target,
+                    env=persistent_environment,
+                )
+                parent = commit
 
     removed_signatures = tuple(
         (source.commit_id, signature)

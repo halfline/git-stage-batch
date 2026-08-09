@@ -850,6 +850,32 @@ def _rename_exchange(
     )
 
 
+def _locked_resolution_root_identity(path: Path) -> tuple[int, int] | None:
+    active_root = next(
+        (
+            candidate
+            for candidate in reversed(_ACTIVE_LOCKED_ROOTS.get())
+            if path in candidate.visible_paths
+        ),
+        None,
+    )
+    if active_root is None:
+        return None
+    try:
+        metadata = os.fstat(active_root.descriptor)
+    except OSError as error:
+        _invalid(
+            path,
+            _("cannot authenticate locked directory: {error}").format(error=error),
+        )
+    _require_private_directory_metadata(
+        path,
+        metadata,
+        descriptor=active_root.descriptor,
+    )
+    return _directory_object_identity(metadata)
+
+
 def publish_private_resolution_directory(
     staging_path: str | Path,
     destination_path: str | Path,
@@ -859,6 +885,7 @@ def publish_private_resolution_directory(
     destination = _exact_path(destination_path)
     if staging == destination or staging.parent != destination.parent:
         _invalid(destination, _("staging and destination must be distinct siblings"))
+    locked_root_identity = _locked_resolution_root_identity(staging)
     with _pinned_directory(staging.parent, require_private=False) as parent:
         try:
             staging_metadata = os.stat(
@@ -897,6 +924,11 @@ def publish_private_resolution_directory(
             initial_identity = _identity(opened_metadata)
             if _identity(staging_metadata) != initial_identity:
                 _invalid(staging, _("staging directory changed while it was opened"))
+            if (
+                locked_root_identity is not None
+                and _directory_object_identity(opened_metadata) != locked_root_identity
+            ):
+                _invalid(staging, _("staging directory is not the locked workspace"))
             os.fsync(descriptor)
 
             try:
@@ -944,6 +976,12 @@ def publish_private_resolution_directory(
                 or _identity(current_opened_metadata) != initial_identity
             ):
                 _invalid(staging, _("staging directory changed before publication"))
+            if locked_root_identity is not None and (
+                _locked_resolution_root_identity(staging) != locked_root_identity
+                or _directory_object_identity(current_opened_metadata)
+                != locked_root_identity
+            ):
+                _invalid(staging, _("staging directory is not the locked workspace"))
 
             try:
                 _rename_noreplace(

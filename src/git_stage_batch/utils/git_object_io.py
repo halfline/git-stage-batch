@@ -310,9 +310,18 @@ def _git_repository_object_identity(
 
 
 @contextmanager
-def temporary_git_object_environment() -> Iterator[GitObjectQuarantine]:
+def temporary_git_object_environment(
+    *,
+    disable_replace_objects: bool = False,
+) -> Iterator[GitObjectQuarantine]:
     """Yield an object quarantine that reads, but never retains, repository objects."""
+    if type(disable_replace_objects) is not bool:
+        raise ValueError("disable_replace_objects must be a boolean")
     persistent_environment = _persistent_git_object_environment()
+    if disable_replace_objects:
+        persistent_environment["GIT_NO_REPLACE_OBJECTS"] = "1"
+        # Replacement refs and legacy grafts are independent Git seams.
+        persistent_environment["GIT_GRAFT_FILE"] = os.devnull
     persistent_identity = _git_repository_object_identity(persistent_environment)
     with tempfile.TemporaryDirectory(prefix="git-stage-batch-objects-") as path:
         object_directory, object_metadata = _require_git_directory(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import stat
 from dataclasses import fields, replace
 
@@ -11,6 +12,8 @@ import pytest
 import git_stage_batch.history.state as history_state
 from git_stage_batch.commands.rewrite_status import command_rewrite_status
 from git_stage_batch.exceptions import CommandError
+from git_stage_batch.history import execution as history_execution
+from git_stage_batch.history.execution import start_history_operation
 from git_stage_batch.history.json_files import (
     history_json_sha256,
     write_history_json_file,
@@ -22,6 +25,7 @@ from git_stage_batch.history.models import (
     HistoryPhase,
 )
 from git_stage_batch.history.records import history_plan_document_record
+from git_stage_batch.history.resolution_workspace import resolve_history_plan
 from git_stage_batch.history.scan import acquire_history_plan_document
 from git_stage_batch.history.state import (
     active_history_operation_id,
@@ -86,6 +90,51 @@ def _initialize_history_operation(state, document) -> None:
     )
     publish_prepared_history_operation(state, preparation)
     activate_prepared_history_operation(state)
+
+
+def _start_resolved_history_operation(repo, monkeypatch):
+    plan_record = history_plan_document_record(acquire_history_plan_document(repo.base))
+    plan_record["plan"]["outputs"][0]["materialization"] = "RESOLVED"
+    plan_path = repo.root / "resolved-history-plan.json"
+    write_history_json_file(plan_path, plan_record)
+    workspace = repo.root / "resolved-history-workspace"
+    pending = resolve_history_plan(str(plan_path), str(workspace))
+    assert pending.output_key is not None
+    output_path = workspace / "outputs" / pending.output_key
+    request = json.loads((output_path / "request.json").read_text(encoding="utf-8"))
+    result_path = output_path / "result.json"
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    request_path = request["authorized_paths"][0]
+    source_after = next(
+        reference
+        for reference in request_path["references"]
+        if reference["role"] == "SOURCE_AFTER"
+    )
+    result_entry = result["paths"][0]
+    shutil.copyfile(
+        output_path / "references" / source_after["artifact"],
+        output_path / "results" / result_entry["artifact"],
+    )
+    result_entry["state"] = source_after["state"]
+    result_entry["mode"] = source_after["mode"]
+    write_history_json_file(result_path, result)
+    result_path.chmod(0o600)
+    completed = resolve_history_plan(
+        str(plan_path),
+        str(workspace),
+        accept_result=True,
+    )
+    assert completed.status == "COMPLETE"
+    with monkeypatch.context() as start_context:
+        start_context.setattr(
+            history_execution,
+            "continue_history_operation",
+            history_state.load_active_history_operation,
+        )
+        return start_history_operation(
+            str(plan_path),
+            resolutions_path=str(workspace),
+        )
 
 
 def _state_in_phase(
@@ -398,6 +447,18 @@ def test_schema_two_exact_operation_needs_no_resolution_bundle(
     inspection = inspect_history_operation(legacy)
 
     assert inspection.resolution_matches is None
+    assert inspection.resume_ready is True
+
+
+def test_inspection_authenticates_resolved_operation_provenance(
+    linear_history_repo,
+    monkeypatch,
+):
+    state = _start_resolved_history_operation(linear_history_repo, monkeypatch)
+
+    inspection = inspect_history_operation(state)
+
+    assert inspection.resolution_matches is True
     assert inspection.resume_ready is True
 
 

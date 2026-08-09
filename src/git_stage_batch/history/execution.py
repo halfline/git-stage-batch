@@ -211,6 +211,8 @@ def _publish_pending_output(
             update_git_refs(
                 updates=((state.output_ref, commit),),
                 expected_old_values={state.output_ref: completed_tip},
+                durable=True,
+                no_deref=True,
             )
         except subprocess.CalledProcessError as error:
             raise CommandError(

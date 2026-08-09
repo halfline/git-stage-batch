@@ -55,6 +55,7 @@ from git_stage_batch.history.state import (
     write_history_verification_record,
 )
 from git_stage_batch.output.rewrite_operation import print_rewrite_operation
+from git_stage_batch.utils import git_object_promotion
 
 from .conftest import git
 
@@ -110,6 +111,29 @@ def _use_operation_id(monkeypatch, operation_id):
 
 def _resolved_ref(refname):
     return git("rev-parse", "--verify", "--quiet", refname, check=False)
+
+
+def _operation_promotion_artifacts(operation_id):
+    lease_contents = f"rewrite-{operation_id}\n".encode("ascii")
+    pack_directory = Path(
+        git(
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-path",
+            "objects/pack",
+        )
+    )
+    active = tuple(
+        path
+        for path in pack_directory.glob("pack-*.keep")
+        if path.is_file() and path.read_bytes() == lease_contents
+    )
+    released = tuple(
+        path
+        for path in pack_directory.glob(".git-stage-batch-released-*")
+        if path.is_file() and path.read_bytes() == lease_contents
+    )
+    return active, released
 
 
 def _add_text_equivalent_encoded_commits(repo):
@@ -794,6 +818,183 @@ def test_abort_before_build_restores_terminal_latest_state(
     assert git("rev-parse", "HEAD") == repo.tip
     assert active_history_operation_id() is None
     assert load_latest_history_operation() == aborted
+
+
+def test_abort_releases_promotion_interrupted_before_first_output(
+    linear_history_repo,
+    monkeypatch,
+):
+    """Abort should discover a lease even before output state or refs exist."""
+    repo = linear_history_repo
+    path, _plan = _write_plan(repo, _reword_first)
+
+    def interrupt_before_first_pending(*args, **kwargs):
+        raise RuntimeError("stop after promotion")
+
+    monkeypatch.setattr(
+        execution,
+        "_publish_pending_output",
+        interrupt_before_first_pending,
+    )
+    with pytest.raises(RuntimeError, match="stop after promotion"):
+        start_history_operation(str(path))
+
+    paused = load_active_history_operation()
+    assert paused.phase is HistoryPhase.PAUSED
+    assert paused.completed_output_count == 0
+    assert paused.pending_output_commit is None
+    assert _resolved_ref(paused.output_ref) == ""
+    active, released = _operation_promotion_artifacts(paused.operation_id)
+    assert len(active) == 1
+    assert released == ()
+
+    def unexpected_plan_read(*args, **kwargs):
+        pytest.fail("rewrite abort must not load the plan or resolutions")
+
+    monkeypatch.setattr(execution, "_operation_document", unexpected_plan_read)
+    aborted = abort_history_operation()
+
+    assert aborted.phase is HistoryPhase.ABORTED
+    assert git("rev-parse", "HEAD") == repo.tip
+    assert _operation_promotion_artifacts(paused.operation_id) == ((), ())
+
+
+def test_abort_releases_promotion_after_partial_output_publication(
+    linear_history_repo,
+    monkeypatch,
+):
+    """An output ref may anchor a partial series without retaining its keep."""
+    repo = linear_history_repo
+    path, _plan = _write_plan(repo, _reword_first)
+    real_publish = execution._publish_pending_output
+
+    def interrupt_before_second_pending(state, *, commit, tree):
+        if state.completed_output_count == 1:
+            raise RuntimeError("stop after partial output")
+        return real_publish(state, commit=commit, tree=tree)
+
+    monkeypatch.setattr(
+        execution,
+        "_publish_pending_output",
+        interrupt_before_second_pending,
+    )
+    with pytest.raises(RuntimeError, match="stop after partial output"):
+        start_history_operation(str(path))
+
+    paused = load_active_history_operation()
+    assert paused.phase is HistoryPhase.PAUSED
+    assert paused.completed_output_count == 1
+    assert paused.pending_output_commit is None
+    assert _resolved_ref(paused.output_ref) == paused.output_commits[-1]
+    active, released = _operation_promotion_artifacts(paused.operation_id)
+    assert len(active) == 1
+    assert released == ()
+
+    aborted = abort_history_operation()
+
+    assert aborted.phase is HistoryPhase.ABORTED
+    assert _resolved_ref(aborted.output_ref) == aborted.output_commits[-1]
+    assert _operation_promotion_artifacts(paused.operation_id) == ((), ())
+
+
+def test_abort_cleans_release_marker_left_by_build_failure(
+    linear_history_repo,
+    monkeypatch,
+):
+    """Abort should recover when build release renamed the keep before failing."""
+    repo = linear_history_repo
+    path, _plan = _write_plan(repo, _reword_first)
+    real_unlink = git_object_promotion.os.unlink
+    failed = False
+
+    def fail_marker_unlink(path, *args, **kwargs):
+        nonlocal failed
+        if not failed and str(path).startswith(".git-stage-batch-released-"):
+            failed = True
+            raise OSError("stop during build lease release")
+        real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(git_object_promotion.os, "unlink", fail_marker_unlink)
+    with pytest.raises(OSError, match="stop during build lease release"):
+        start_history_operation(str(path))
+    monkeypatch.setattr(git_object_promotion.os, "unlink", real_unlink)
+
+    paused = load_active_history_operation()
+    assert paused.phase is HistoryPhase.PAUSED
+    assert paused.completed_output_count == paused.planned_output_count
+    active, released = _operation_promotion_artifacts(paused.operation_id)
+    assert active == ()
+    assert len(released) == 1
+
+    aborted = abort_history_operation()
+
+    assert aborted.phase is HistoryPhase.ABORTED
+    assert git("rev-parse", "HEAD") == repo.tip
+    assert _operation_promotion_artifacts(paused.operation_id) == ((), ())
+
+
+def test_abort_lease_cleanup_failure_remains_exactly_retryable(
+    linear_history_repo,
+    monkeypatch,
+):
+    """A failed cleanup must preserve RESTORE_ORIGINAL until retry succeeds."""
+    repo = linear_history_repo
+    path, _plan = _write_plan(repo, _reword_first)
+
+    def interrupt_before_first_pending(*args, **kwargs):
+        raise RuntimeError("stop before abort cleanup")
+
+    monkeypatch.setattr(
+        execution,
+        "_publish_pending_output",
+        interrupt_before_first_pending,
+    )
+    with pytest.raises(RuntimeError, match="stop before abort cleanup"):
+        start_history_operation(str(path))
+    paused = load_active_history_operation()
+
+    real_fsync_directories = git_object_promotion._fsync_release_directories
+    failed = False
+
+    def fail_first_release_fsync(object_directory, pack_directory):
+        nonlocal failed
+        if not failed:
+            failed = True
+            raise OSError("stop during abort lease cleanup")
+        real_fsync_directories(object_directory, pack_directory)
+
+    monkeypatch.setattr(
+        git_object_promotion,
+        "_fsync_release_directories",
+        fail_first_release_fsync,
+    )
+    with pytest.raises(OSError, match="stop during abort lease cleanup"):
+        abort_history_operation()
+
+    restoring = load_active_history_operation()
+    assert restoring.phase is HistoryPhase.PAUSED
+    assert restoring.next_action.value == "RESTORE_ORIGINAL"
+    assert git("rev-parse", "HEAD") == repo.tip
+    active, released = _operation_promotion_artifacts(paused.operation_id)
+    assert active == ()
+    assert len(released) == 1
+
+    monkeypatch.setattr(
+        git_object_promotion,
+        "_fsync_release_directories",
+        real_fsync_directories,
+    )
+
+    def unexpected_plan_dependency(*args, **kwargs):
+        pytest.fail("RESTORE_ORIGINAL retry must not inspect plan materialization")
+
+    monkeypatch.setattr(execution, "_require_resume_ready", unexpected_plan_dependency)
+    monkeypatch.setattr(execution, "_operation_document", unexpected_plan_dependency)
+    aborted = continue_history_operation()
+
+    assert aborted.phase is HistoryPhase.ABORTED
+    assert active_history_operation_id() is None
+    assert _operation_promotion_artifacts(paused.operation_id) == ((), ())
 
 
 def test_continue_adopts_a_pending_output_ref_after_interruption(

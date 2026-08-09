@@ -213,7 +213,7 @@ def materialize_history_output_trees(
         units: dict[str, HistoryReplayUnit] = {}
         if unit_output_indexes:
             acquired_units = stack.enter_context(
-                acquire_history_replay_units(document.snapshot)
+                acquire_history_replay_units(document.snapshot, env=env)
             )
             units = {unit.snapshot.unit_id: unit for unit in acquired_units}
         for output_index, output in enumerate(document.plan.outputs):

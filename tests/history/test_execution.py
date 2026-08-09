@@ -343,6 +343,34 @@ def test_start_recovery_cas_rejects_a_raced_dangling_symbolic_ref(
     assert git("symbolic-ref", recovery_ref) == victim_ref
     assert _resolved_ref(victim_ref) == ""
     assert active_history_operation_id() is None
+
+
+def test_output_cas_rejects_a_raced_dangling_symbolic_ref(
+    linear_history_repo,
+    monkeypatch,
+):
+    repo = linear_history_repo
+    path, _plan = _write_plan(repo, _reword_first)
+    operation_id = "7" * 32
+    output_ref = f"refs/git-stage-batch/rewrite/{operation_id}/output"
+    victim_ref = "refs/heads/unrelated-output-target"
+    _use_operation_id(monkeypatch, operation_id)
+    real_update_refs = execution.update_git_refs
+
+    def race_output_ref(*, updates=(), **kwargs):
+        if updates and updates[0][0] == output_ref:
+            git("symbolic-ref", output_ref, victim_ref)
+        return real_update_refs(updates=updates, **kwargs)
+
+    monkeypatch.setattr(execution, "update_git_refs", race_output_ref)
+
+    with pytest.raises(CommandError, match="output ref changed"):
+        start_history_operation(str(path))
+
+    assert git("symbolic-ref", output_ref) == victim_ref
+    assert _resolved_ref(victim_ref) == ""
+    assert git("rev-parse", "HEAD") == repo.tip
+
 def test_apply_rewords_without_changing_the_final_tree(linear_history_repo):
     repo = linear_history_repo
     original_tree = git("rev-parse", "HEAD^{tree}")

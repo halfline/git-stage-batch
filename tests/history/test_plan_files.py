@@ -11,6 +11,7 @@ import pytest
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.history import replay
 from git_stage_batch.history.plan_files import (
+    read_and_validate_frozen_history_plan_semantics,
     read_and_validate_history_plan,
     read_and_validate_history_plan_semantics,
 )
@@ -329,6 +330,27 @@ def test_semantic_validation_accepts_resolved_output_without_replay(
     _write_plan(path, plan)
 
     document, plan_sha256 = read_and_validate_history_plan_semantics(str(path))
+
+    assert document.plan.outputs[0].materialization == "RESOLVED"
+    assert plan_sha256 == hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_frozen_semantic_validation_hashes_the_captured_resolved_plan(
+    linear_history_repo,
+):
+    repo = linear_history_repo
+    path = repo.root / "plan.json"
+    plan = _plan(repo, path)
+    plan["plan"]["outputs"][0]["materialization"] = "RESOLVED"
+    _write_plan(path, plan)
+
+    document, plan_sha256 = read_and_validate_frozen_history_plan_semantics(
+        str(path),
+        base_commit=repo.base,
+        tip_commit=repo.tip,
+        branch_ref="refs/heads/topic",
+        allowed_remote_refs=(),
+    )
 
     assert document.plan.outputs[0].materialization == "RESOLVED"
     assert plan_sha256 == hashlib.sha256(path.read_bytes()).hexdigest()

@@ -6,11 +6,16 @@ import copy
 import json
 import subprocess
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 
 from git_stage_batch.exceptions import CommandError
-from git_stage_batch.history import execution, state as history_state
+from git_stage_batch.history import (
+    execution,
+    plan_files,
+    state as history_state,
+)
 from git_stage_batch.history.commit_writer import (
     create_history_commit,
     require_history_commit_matches,
@@ -84,6 +89,14 @@ def _legacy_v3_plan_record(plan):
     return legacy
 
 
+def _use_operation_id(monkeypatch, operation_id):
+    monkeypatch.setattr(
+        execution.uuid,
+        "uuid4",
+        lambda: SimpleNamespace(hex=operation_id),
+    )
+
+
 def _add_text_equivalent_encoded_commits(repo):
     prefix = (
         f"tree {git('rev-parse', 'HEAD^{tree}')}\n"
@@ -111,6 +124,8 @@ def _add_text_equivalent_encoded_commits(repo):
     git("update-ref", "refs/heads/topic", source_commit, repo.tip)
     repo.base = repo.tip
     return source_commit, replacement_commit
+
+
 def test_apply_rewords_without_changing_the_final_tree(linear_history_repo):
     repo = linear_history_repo
     original_tree = git("rev-parse", "HEAD^{tree}")
@@ -139,6 +154,58 @@ def test_apply_rewords_without_changing_the_final_tree(linear_history_repo):
     verified_state, verification = verify_history_operation()
     assert verified_state == state
     assert verification.final_tree == original_tree
+
+
+def test_operation_document_rejects_a_plan_swapped_between_read_and_digest(
+    linear_history_repo,
+    monkeypatch,
+):
+    repo = linear_history_repo
+    path, plan = _write_plan(repo)
+    operation_id = "9" * 32
+    _use_operation_id(monkeypatch, operation_id)
+    monkeypatch.setattr(
+        execution,
+        "continue_history_operation",
+        load_active_history_operation,
+    )
+    state = start_history_operation(str(path))
+    assert state is not None
+    persisted_path = history_operation_plan_path(operation_id)
+    trusted_payload = persisted_path.read_text(encoding="utf-8")
+    swapped_plan = copy.deepcopy(plan)
+    swapped_output = swapped_plan["plan"]["outputs"][0]
+    swapped_output["operation"] = "REWORD"
+    swapped_output["message"] = "Untrusted swapped message\n"
+    persisted_path.write_text(
+        json.dumps(swapped_plan, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    _swapped_payload, swapped_sha256 = (
+        plan_files.read_required_text_file_contents_and_sha256(persisted_path)
+    )
+    assert swapped_sha256 != state.plan_sha256
+    original_read = plan_files.read_required_text_file_contents_and_sha256
+    reads = 0
+
+    def read_then_restore_trusted_plan(plan_path):
+        nonlocal reads
+        reads += 1
+        captured = original_read(plan_path)
+        plan_path.write_text(trusted_payload, encoding="utf-8")
+        return captured
+
+    monkeypatch.setattr(
+        plan_files,
+        "read_required_text_file_contents_and_sha256",
+        read_then_restore_trusted_plan,
+    )
+
+    with pytest.raises(CommandError, match="no longer matches its checkpoint"):
+        execution._operation_document(state)
+
+    assert reads == 1
+    assert persisted_path.read_text(encoding="utf-8") == trusted_payload
 
 
 def test_apply_integrates_adjacent_sources_into_one_commit(linear_history_repo):

@@ -56,9 +56,7 @@ def _dependency_for_replayable_unit(
         )
         if moving_first.status != "APPLIED" or moving_first.tree is None:
             barrier_unit_id = crossed.snapshot.unit_id
-            barrier = (
-                "BLOCKED" if moving_first.status == "BLOCKED" else "UNKNOWN"
-            )
+            barrier = "BLOCKED" if moving_first.status == "BLOCKED" else "UNKNOWN"
             detail = moving_first.detail
             break
         crossed_second = apply_history_replay_unit(
@@ -68,9 +66,7 @@ def _dependency_for_replayable_unit(
         )
         if crossed_second.status != "APPLIED" or crossed_second.tree is None:
             barrier_unit_id = crossed.snapshot.unit_id
-            barrier = (
-                "BLOCKED" if crossed_second.status == "BLOCKED" else "UNKNOWN"
-            )
+            barrier = "BLOCKED" if crossed_second.status == "BLOCKED" else "UNKNOWN"
             detail = crossed_second.detail
             break
         if crossed_second.tree != trees[current_position + 1]:
@@ -270,7 +266,5 @@ def analyze_history_dependencies(
             if any(dependency is None for dependency in dependencies):
                 raise RuntimeError("history dependency analysis left a unit unrecorded")
             return tuple(
-                dependency
-                for dependency in dependencies
-                if dependency is not None
+                dependency for dependency in dependencies if dependency is not None
             )

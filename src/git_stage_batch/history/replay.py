@@ -170,12 +170,10 @@ def _apply_unit_output(
     if output.source_unit_ids and current_tree == parent_tree:
         raise CommandError(
             _(
-                "Rewrite output {output} consumes non-empty units into "
-                "an empty commit."
+                "Rewrite output {output} consumes non-empty units into an empty commit."
             ).format(output=output_index + 1)
         )
     return current_tree
-
 
 
 def materialize_history_output_trees(
@@ -196,16 +194,14 @@ def materialize_history_output_trees(
     if resolved_output is not None and resolved_output_materializer is None:
         raise CommandError(
             _(
-                "Rewrite output {output} requires an explicit resolution "
-                "workspace."
+                "Rewrite output {output} requires an explicit resolution workspace."
             ).format(output=resolved_output + 1)
         )
     sources = {commit.commit_id: commit for commit in document.snapshot.commits}
     unit_output_indexes = {
         index
         for index, output in enumerate(document.plan.outputs)
-        if output.materialization == "EXACT"
-        and _requires_unit_replay(output, sources)
+        if output.materialization == "EXACT" and _requires_unit_replay(output, sources)
     }
     current_tree = document.snapshot.base_tree
     output_trees: list[str] = []

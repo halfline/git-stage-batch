@@ -11,6 +11,10 @@ import pytest
 
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.history import execution, state as history_state
+from git_stage_batch.history.commit_writer import (
+    create_history_commit,
+    require_history_commit_matches,
+)
 from git_stage_batch.history.execution import (
     abort_history_operation,
     continue_history_operation,
@@ -80,6 +84,33 @@ def _legacy_v3_plan_record(plan):
     return legacy
 
 
+def _add_text_equivalent_encoded_commits(repo):
+    prefix = (
+        f"tree {git('rev-parse', 'HEAD^{tree}')}\n"
+        f"parent {repo.tip}\n"
+        "author Test User <test@example.com> 1700000000 +0000\n"
+        "committer Test User <test@example.com> 1700000000 +0000\n"
+        "encoding ISO-2022-JP\n\n"
+    ).encode("ascii")
+    source_commit = git(
+        "hash-object",
+        "-t",
+        "commit",
+        "-w",
+        "--stdin",
+        input_bytes=prefix + b"hello\n",
+    )
+    replacement_commit = git(
+        "hash-object",
+        "-t",
+        "commit",
+        "-w",
+        "--stdin",
+        input_bytes=prefix + b"\x1b(Bhello\n",
+    )
+    git("update-ref", "refs/heads/topic", source_commit, repo.tip)
+    repo.base = repo.tip
+    return source_commit, replacement_commit
 def test_apply_rewords_without_changing_the_final_tree(linear_history_repo):
     repo = linear_history_repo
     original_tree = git("rev-parse", "HEAD^{tree}")
@@ -135,6 +166,39 @@ def test_apply_preserves_an_empty_source_commit(linear_history_repo):
     assert state.output_commits[-1] == empty_commit
     assert git("rev-list", "--count", f"{repo.base}..HEAD") == "3"
     assert git("show", "-s", "--format=%B", "HEAD") == "Empty marker"
+
+
+def test_commit_writer_binds_keep_to_the_frozen_raw_message(
+    linear_history_repo,
+):
+    repo = linear_history_repo
+    source_commit, replacement_commit = _add_text_equivalent_encoded_commits(repo)
+    document = acquire_history_plan_document(repo.base)
+    target = document.snapshot.commits[0]
+    output = document.plan.outputs[0]
+    source = parse_commit_object(source_commit)
+    replacement = parse_commit_object(replacement_commit)
+    assert source.message == replacement.message == "hello\n"
+    assert source.message_sha256 != replacement.message_sha256
+
+    with pytest.raises(CommandError, match="unexpected message metadata"):
+        require_history_commit_matches(
+            replacement_commit,
+            tree=target.tree,
+            parent=target.parent,
+            output=output,
+            target=target,
+        )
+
+    git("replace", source_commit, replacement_commit)
+    with pytest.raises(CommandError, match="frozen digest"):
+        create_history_commit(
+            tree=target.tree,
+            parent=target.parent,
+            output=output,
+            target=target,
+            write=False,
+        )
 
 
 def test_apply_integrates_repair_through_commuting_intermediate(

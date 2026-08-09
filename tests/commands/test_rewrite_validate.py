@@ -172,8 +172,11 @@ def test_completed_workspace_authenticates_in_fresh_quarantine(
     create_quarantine = rewrite_validate.temporary_git_object_environment
 
     @contextmanager
-    def tracked_quarantine():
-        with create_quarantine() as quarantine:
+    def tracked_quarantine(*, disable_replace_objects=False):
+        with create_quarantine(
+            disable_replace_objects=disable_replace_objects
+        ) as quarantine:
+            assert quarantine.environment()["GIT_NO_REPLACE_OBJECTS"] == "1"
             quarantine_path = Path(quarantine.environment()["GIT_OBJECT_DIRECTORY"])
             assert quarantine_path.is_dir()
             quarantine_paths.append(quarantine_path)
@@ -205,6 +208,51 @@ def test_completed_workspace_authenticates_in_fresh_quarantine(
     assert len(quarantine_paths) == 1
     assert not quarantine_paths[0].exists()
     assert _git("for-each-ref", "--format=%(refname) %(objectname)") == refs_before
+    _assert_candidate_objects_absent(repository)
+
+
+def test_completed_workspace_ignores_replace_refs_installed_after_plan_validation(
+    resolved_repository,
+    monkeypatch,
+    capsys,
+):
+    repository = resolved_repository
+    first_commit = repository.plan_record["snapshot"]["range"]["commits_oldest_first"][
+        0
+    ]
+    assert isinstance(first_commit, str)
+    source_tree = _git("rev-parse", f"{first_commit}^{{tree}}")
+    replacement_tree = repository.final_tree
+    create_quarantine = rewrite_validate.temporary_git_object_environment
+
+    @contextmanager
+    def replace_racing_quarantine(*, disable_replace_objects=False):
+        _git("replace", source_tree, replacement_tree)
+        try:
+            with create_quarantine(
+                disable_replace_objects=disable_replace_objects
+            ) as quarantine:
+                assert quarantine.environment()["GIT_NO_REPLACE_OBJECTS"] == "1"
+                yield quarantine
+        finally:
+            _git("replace", "-d", source_tree)
+
+    monkeypatch.setattr(
+        rewrite_validate,
+        "temporary_git_object_environment",
+        replace_racing_quarantine,
+    )
+
+    rewrite_validate.command_rewrite_validate(
+        str(repository.plan),
+        resolutions_path=str(repository.workspace),
+        porcelain=True,
+    )
+
+    report = json.loads(capsys.readouterr().out)
+    assert report["valid"] is True
+    assert report["range"]["final_tree"] == repository.final_tree
+    assert _git("replace", "--list") == ""
     _assert_candidate_objects_absent(repository)
 
 

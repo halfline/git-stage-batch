@@ -2390,6 +2390,8 @@ def test_parse_command_line_rewrite_apply_dispatches_publication_exceptions(
             "rewrite",
             "apply",
             "plan.json",
+            "--workspace",
+            "/tmp/rewrite-resolution",
             "--allow-published-ref",
             "refs/remotes/origin/topic",
             "--allow-published-ref",
@@ -2403,11 +2405,33 @@ def test_parse_command_line_rewrite_apply_dispatches_publication_exceptions(
     args.func(args)
     mock_command.assert_called_once_with(
         "plan.json",
+        resolutions_path="/tmp/rewrite-resolution",
         allowed_remote_refs=(
             "refs/remotes/origin/topic",
             "refs/remotes/upstream/topic",
         ),
         porcelain=True,
+    )
+
+
+def test_parse_command_line_rewrite_apply_omits_resolutions_by_default(
+    monkeypatch,
+):
+    mock_command = Mock()
+    monkeypatch.setattr(
+        rewrite_subcommands,
+        "command_rewrite_apply",
+        mock_command,
+    )
+    args = parse_command_line(["rewrite", "apply", "plan.json"], quiet=True)
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "plan.json",
+        resolutions_path=None,
+        allowed_remote_refs=(),
+        porcelain=False,
     )
 
 

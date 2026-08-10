@@ -25,6 +25,7 @@ from ..utils.git_object_promotion import (
     release_git_object_promotion_lease,
 )
 from ..utils.git_refs import update_git_refs
+from ..utils.scratch import default_scratch_parent
 from .commit_writer import create_history_commit, require_history_commit_matches
 from .json_files import history_json_sha256
 from .models import (
@@ -448,11 +449,12 @@ def _require_persistent_output_closure(
     object_id_width = 40 if state.object_format == "sha1" else 64
     requested_count = 0
     reported_count = 0
+    scratch_parent = default_scratch_parent()
     with (
-        tempfile.TemporaryFile() as object_ids,
-        tempfile.TemporaryFile() as expected_object_ids,
-        tempfile.TemporaryFile() as expected_object_metadata,
-        tempfile.TemporaryFile() as tree_roots,
+        tempfile.TemporaryFile(dir=scratch_parent) as object_ids,
+        tempfile.TemporaryFile(dir=scratch_parent) as expected_object_ids,
+        tempfile.TemporaryFile(dir=scratch_parent) as expected_object_metadata,
+        tempfile.TemporaryFile(dir=scratch_parent) as tree_roots,
     ):
         # Check rebuilt commit bodies explicitly without walking parents across the
         # trusted base boundary. Traverse every output tree without an exclusion so

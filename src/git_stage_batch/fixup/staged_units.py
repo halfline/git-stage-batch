@@ -246,7 +246,22 @@ def acquire_tree_fixup_units(
     env: dict[str, str] | None = None,
 ) -> Iterator[tuple[FixupUnit, ...]]:
     """Acquire exact units for one immutable tree-to-tree transition."""
-    diff_lines = stream_git_diff(
+    diff_lines = stream_tree_fixup_diff(old_treeish, new_treeish, env=env)
+    with acquire_fixup_units_from_diff(
+        diff_lines,
+        allow_file_type_changes=True,
+    ) as units:
+        yield units
+
+
+def stream_tree_fixup_diff(
+    old_treeish: str,
+    new_treeish: str,
+    *,
+    env: dict[str, str] | None = None,
+) -> Iterator[bytes]:
+    """Stream the exact normalized diff used to discover tree fixup units."""
+    yield from stream_git_diff(
         base=old_treeish,
         target=new_treeish,
         context_lines=0,
@@ -256,11 +271,6 @@ def acquire_tree_fixup_units(
         submodule_format="short",
         env=env,
     )
-    with acquire_fixup_units_from_diff(
-        diff_lines,
-        allow_file_type_changes=True,
-    ) as units:
-        yield units
 
 
 @contextmanager

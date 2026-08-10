@@ -31,6 +31,7 @@ allowed-tools:
   - Bash(mkdir *)
   - Bash(mktemp *)
   - Bash(test *)
+  - Bash(uname *)
 ---
 
 # Publish Unpushed Commits

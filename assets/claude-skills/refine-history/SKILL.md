@@ -20,6 +20,7 @@ allowed-tools:
   - Bash(mktemp *)
   - Bash(python3 *)
   - Bash(test *)
+  - Bash(uname *)
 ---
 
 # Refine History
@@ -92,7 +93,15 @@ Move to the repository root and keep the semantic plan outside the worktree:
 ```bash
 REPO_ROOT=$(git --no-optional-locks rev-parse --show-toplevel)
 cd "$REPO_ROOT"
-PLAN_DIR=$(mktemp -d)
+PLAN_PARENT=${TMPDIR:-${TEMP:-${TMP:-}}}
+if test -z "$PLAN_PARENT" && test "$(uname -s)" = Linux; then
+  PLAN_PARENT=/var/tmp
+fi
+if test -n "$PLAN_PARENT"; then
+  PLAN_DIR=$(mktemp -d "$PLAN_PARENT/git-stage-batch-refine-history.XXXXXXXX")
+else
+  PLAN_DIR=$(mktemp -d)
+fi
 REWRITE_PLAN="$PLAN_DIR/rewrite-plan.json"
 VALIDATION="$PLAN_DIR/validation.json"
 CAUSAL_LEDGER="$PLAN_DIR/causal-ledger.md"

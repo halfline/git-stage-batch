@@ -11,6 +11,8 @@ from pathlib import Path
 from types import TracebackType
 from typing import BinaryIO, Protocol, TypeVar, cast, overload
 
+from ..utils.scratch import default_scratch_parent
+
 
 _UINT32_MAX = (1 << 32) - 1
 _UINT64_MAX = (1 << 64) - 1
@@ -131,9 +133,8 @@ def _byte_storage_from_chunk_prefix_and_remainder(
 
 
 def _temporary_file(spool_dir: str | Path | None = None) -> BinaryIO:
-    return tempfile.TemporaryFile(
-        dir=None if spool_dir is None else Path(spool_dir)
-    )
+    directory = default_scratch_parent() if spool_dir is None else Path(spool_dir)
+    return tempfile.TemporaryFile(dir=directory)
 
 
 def _normalize_width(width: int) -> int:

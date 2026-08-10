@@ -6,6 +6,22 @@ ledger retains non-executable ownership evidence across passes.
 `git-stage-batch rewrite` is the sole mechanism for validating and applying
 the boundaries.
 
+## Reuse immutable analysis
+
+The product's persistent history-snapshot cache reuses exact commit, tree,
+unit, and dependency records only when the repository, range, object format,
+Git behavior, and analysis versions match and the source objects remain
+available. Live safety facts are collected again on every command. Let the
+product manage these records; never edit or copy a cache entry into a plan.
+
+Key causal-ledger conclusions by their exact unit, owner, prerequisite, and
+snapshot evidence. After a changed decision or fresh scan, remap stable
+conclusions through source provenance and re-audit the affected dependency and
+snapshot cone. Retain the final whole-range validation. Incremental suffix
+scans and replay-tree reuse remain future work, and no Bloom-filter path
+prefilter is implemented; a probabilistic filter may select work but can never
+prove independence or correctness.
+
 ## Bind publication scope
 
 Create a run-local publication-scope record before deciding whether the range

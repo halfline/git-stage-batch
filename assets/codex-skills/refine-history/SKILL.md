@@ -139,6 +139,24 @@ one compact series index with each commit's stated outcome, prerequisites,
 narrative role, and smallest runnable state. Do not reread the complete range
 for every decision.
 
+Keep the documented `scan`, resolve or validate, apply, and verify workflow
+authoritative for the current plan. Avoid duplicate product invocations for
+the same state, and reuse exact immutable commit, tree, unit, and dependency
+evidence from its records while those inputs are unchanged.
+
+Memoize semantic-audit conclusions in the causal ledger with
+content-addressed keys over the patch-unit content and relevant snapshot,
+dependency, and ownership evidence. When an input or decision changes,
+invalidate and re-audit only its cone: the affected units, owners,
+prerequisite dependents, and output snapshots. Expand to the whole range only
+when that cone cannot be bounded or the unit inventory changes globally.
+The CLI persistently caches immutable snapshot and dependency analysis for an
+exact range and Git behavior while collecting live safety facts again. Reuse
+that product cache, but never treat a cache hit as plan, replay, or final-range
+proof. Incremental suffix scans, replay-tree caching, and Bloom-filter path
+prefilters are not implemented; do not claim or depend on them, and never use
+a probabilistic prefilter as correctness proof.
+
 At each snapshot, compare the commit's claim with its implementation, model,
 tests, documentation, and user-visible behavior. A contradiction among those
 views pressures the unit that repairs it even when the later subject describes

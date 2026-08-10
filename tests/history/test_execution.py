@@ -954,6 +954,48 @@ def test_persistent_output_closure_rejects_invalid_batch_body_protocol(
                 )
 
 
+def test_persistent_output_closure_uses_default_scratch_parent(
+    linear_history_repo,
+    tmp_path,
+    monkeypatch,
+):
+    """Closure verification should place its bounded files in large scratch."""
+    repo = linear_history_repo
+    path, _plan = _write_plan(repo, _reword_first)
+    state = start_history_operation(str(path))
+    output_trees = tuple(
+        git("rev-parse", f"{commit}^{{tree}}") for commit in state.output_commits
+    )
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    directories = []
+    original_temporary_file = execution.tempfile.TemporaryFile
+
+    def recording_temporary_file(*args, **kwargs):
+        directories.append(kwargs.get("dir"))
+        return original_temporary_file(*args, **kwargs)
+
+    monkeypatch.setattr(execution, "default_scratch_parent", lambda: scratch)
+    monkeypatch.setattr(
+        execution.tempfile,
+        "TemporaryFile",
+        recording_temporary_file,
+    )
+
+    with execution.temporary_git_object_environment(
+        disable_replace_objects=True
+    ) as persistent_view:
+        with persistent_view.pinned_environment() as environment:
+            environment["GIT_NO_LAZY_FETCH"] = "1"
+            execution._require_persistent_output_closure(
+                state,
+                output_trees=output_trees,
+                environment=environment,
+            )
+
+    assert directories == [scratch] * 4
+
+
 def test_persistent_output_closure_body_reads_have_bounded_python_heap(
     linear_history_repo,
 ):

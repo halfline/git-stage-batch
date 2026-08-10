@@ -20,6 +20,7 @@ from .git_command import (
 )
 from .git_environment import pin_git_object_environment
 from ..git_paths import decode_path, nul_records
+from .scratch import default_scratch_parent
 
 
 _EMPTY_TREE_OBJECT_CACHE: dict[Path, str] = {}
@@ -323,7 +324,10 @@ def temporary_git_object_environment(
         # Replacement refs and legacy grafts are independent Git seams.
         persistent_environment["GIT_GRAFT_FILE"] = os.devnull
     persistent_identity = _git_repository_object_identity(persistent_environment)
-    with tempfile.TemporaryDirectory(prefix="git-stage-batch-objects-") as path:
+    with tempfile.TemporaryDirectory(
+        prefix="git-stage-batch-objects-",
+        dir=default_scratch_parent(),
+    ) as path:
         object_directory, object_metadata = _require_git_directory(
             path,
             "quarantine object directory",

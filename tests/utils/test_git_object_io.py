@@ -68,6 +68,24 @@ def test_empty_tree_helper_returns_a_tree_object(temp_git_repo):
     assert run_git_command(["ls-tree", object_id]).stdout == ""
 
 
+def test_object_quarantine_uses_dynamic_default_scratch_parent(
+    temp_git_repo,
+    tmp_path,
+    monkeypatch,
+):
+    """Git object quarantines should use the current scratch override."""
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    monkeypatch.setenv("TMPDIR", str(scratch))
+
+    with temporary_git_object_environment() as quarantine:
+        object_directory = Path(quarantine.environment()["GIT_OBJECT_DIRECTORY"])
+        assert object_directory.parent == scratch
+        assert object_directory.name.startswith("git-stage-batch-objects-")
+
+    assert not object_directory.exists()
+
+
 def test_create_git_blobs_from_paths_hashes_path_bytes(temp_git_repo):
     """Path-based blob creation should store exact file bytes."""
     files = [

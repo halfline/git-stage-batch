@@ -83,8 +83,9 @@ git-stage-batch rewrite validate "$REWRITE_PLAN" --porcelain > "$VALIDATION"
 
 The initial KEEP plan freezes the exact linear range. Read its canonical base,
 tip, messages, encodings, authors, committers, signatures, patch units, trees,
-publication facts, and mutation blockers. Scan and validation are read-only
-and create no refs or checkpoints.
+publication facts, and mutation blockers. Scan and validation do not update
+commits, refs, or checkpoints; they may reuse or update the disposable
+history-analysis cache.
 
 Build one compact series index before drafting. For each position, record the
 SHA, subject, narrative role, one plain-language patch outcome, relevant parent

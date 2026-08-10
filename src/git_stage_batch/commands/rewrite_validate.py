@@ -22,7 +22,7 @@ def command_rewrite_validate(
     resolutions_path: str | None = None,
     porcelain: bool = False,
 ) -> None:
-    """Validate a semantic plan against a regenerated immutable snapshot."""
+    """Validate a semantic plan against independently reacquired source facts."""
     require_git_repository()
     require_repository_history()
     resolution: HistoryAuthenticatedResolution | None = None

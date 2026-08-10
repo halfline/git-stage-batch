@@ -1,4 +1,4 @@
-"""Read-only construction of reusable rewrite-plan snapshots."""
+"""Repository-read-only construction of reusable rewrite-plan snapshots."""
 
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ from .ranges import (
     resolve_history_range,
 )
 from .safety import collect_history_safety_facts
+from .snapshot_cache import acquire_cached_history_snapshot
 from .unit_ids import history_unit_id
 
 
@@ -102,6 +103,29 @@ def _snapshot_from_range(
     commit_range: ResolvedHistoryRange,
     branch_ref: str | None,
 ) -> HistorySnapshot:
+    base_tree = tree_for_commit(commit_range.base_commit)
+    final_tree = tree_for_commit(commit_range.tip_commit)
+    return acquire_cached_history_snapshot(
+        commit_range,
+        branch_ref,
+        base_tree=base_tree,
+        final_tree=final_tree,
+        build=lambda: _build_snapshot_from_range(
+            commit_range,
+            branch_ref,
+            base_tree=base_tree,
+            final_tree=final_tree,
+        ),
+    )
+
+
+def _build_snapshot_from_range(
+    commit_range: ResolvedHistoryRange,
+    branch_ref: str | None,
+    *,
+    base_tree: str,
+    final_tree: str,
+) -> HistorySnapshot:
     commits: list[HistoryCommitSnapshot] = []
     expected_parent = commit_range.base_commit
     for commit in commit_range.commits_oldest_first:
@@ -110,12 +134,18 @@ def _snapshot_from_range(
         expected_parent = commit
 
     frozen_commits = tuple(commits)
+    if frozen_commits[-1].tree != final_tree:
+        raise CommandError(
+            _("History changed while commit {commit} was scanned.").format(
+                commit=commit_range.tip_commit
+            )
+        )
     snapshot = HistorySnapshot(
         object_format=commit_range.object_format,
         base_commit=commit_range.base_commit,
         tip_commit=commit_range.tip_commit,
-        base_tree=tree_for_commit(commit_range.base_commit),
-        final_tree=frozen_commits[-1].tree,
+        base_tree=base_tree,
+        final_tree=final_tree,
         branch_ref=branch_ref,
         commits=frozen_commits,
         dependencies=(),
@@ -131,7 +161,7 @@ def acquire_frozen_history_snapshot(
     tip_commit: str,
     branch_ref: str | None,
 ) -> HistorySnapshot:
-    """Regenerate one exact source snapshot independently of current HEAD."""
+    """Acquire one exact source snapshot independently of current HEAD."""
     with use_raw_git_object_graph():
         return _snapshot_from_range(
             resolve_exact_history_range(base_commit, tip_commit),
@@ -144,7 +174,7 @@ def acquire_history_plan_document(
     *,
     allowed_remote_refs: tuple[str, ...] = (),
 ) -> HistoryPlanDocument:
-    """Capture an immutable range and a KEEP plan template without state writes."""
+    """Capture an immutable range and KEEP plan without operation-state writes."""
     with use_raw_git_object_graph():
         commit_range = resolve_history_range(boundary)
         branch_ref = _symbolic_head()

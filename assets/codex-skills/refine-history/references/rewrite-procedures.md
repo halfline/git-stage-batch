@@ -322,8 +322,10 @@ Git object store. Do not derive that diagnostic tree from a checkout or
 filesystem walk; generated, cached, and untracked files can describe a
 different snapshot. The diagnostic never replaces product validation.
 
-Validation is read-only. Treat stale immutable facts, missing units,
-unsupported headers, barriers, and final-tree mismatches as plan failures.
+Validation does not update commits, refs, checkpoints, the plan, or a completed
+workspace; it may reuse or update the disposable history-analysis cache. Treat
+stale immutable facts, missing units, unsupported headers, barriers, and
+final-tree mismatches as plan failures.
 When validation rejects an intended causal assignment, preserve the branch
 and the assignment as an open finding. A later fresh scan remaps it to fresh
 unit IDs; it does not erase the intended owner. Another pass may follow a

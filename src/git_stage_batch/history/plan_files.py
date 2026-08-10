@@ -795,7 +795,7 @@ def read_and_validate_history_plan(
     *,
     allowed_remote_refs: tuple[str, ...] = (),
 ) -> HistoryPlanDocument:
-    """Regenerate immutable facts and validate the editable semantic plan."""
+    """Reacquire immutable facts and validate the editable semantic plan."""
     payload = _read_plan_payload(plan_path)
     frozen_snapshot, base_commit, plan = _decode_plan(payload)
     live = acquire_history_plan_document(

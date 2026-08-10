@@ -115,9 +115,12 @@ git-stage-batch rewrite validate "$REWRITE_PLAN" --porcelain > "$VALIDATION"
 ```
 
 Read the canonical base, tip, branch, safety blockers, remote containment, and
-signature count from these product records. Scan and validation are read-only;
-their candidate objects are quarantined and they create no operation state.
-Dirty state may appear as an audit fact, but it blocks apply.
+signature count from these product records. Scan writes the requested fresh
+plan; neither command updates commits, refs, checkpoints, an existing plan, or
+resolution workspaces. They may reuse or update the disposable
+history-snapshot cache; their candidate objects are quarantined and they create
+no operation state. Dirty state may appear as an audit fact, but it blocks
+apply.
 
 Before classifying publication, bind an explicit run-local publication scope.
 By default it contains only the exact remote-tracking ref mapped from the

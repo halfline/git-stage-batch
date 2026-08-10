@@ -85,7 +85,7 @@ def _dependency_record(
 
 
 def history_snapshot_record(snapshot: HistorySnapshot) -> dict[str, object]:
-    """Return all immutable facts that plan validation must regenerate."""
+    """Return all immutable facts that plan validation must reacquire."""
     return {
         "object_format": snapshot.object_format,
         "range": {

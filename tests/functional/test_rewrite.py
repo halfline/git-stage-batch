@@ -80,6 +80,41 @@ def test_history_cli_atomically_writes_plan(functional_repo):
     assert json.loads(plan_path.read_text(encoding="utf-8"))["schema_version"] == 4
 
 
+def test_history_cli_reuses_snapshot_analysis_between_processes(
+    functional_repo,
+    tmp_path,
+    monkeypatch,
+):
+    cache = tmp_path / "history-snapshot-cache"
+    monkeypatch.setenv("GIT_STAGE_BATCH_HISTORY_CACHE_ROOT", str(cache))
+    source = functional_repo / "README.md"
+    base = _git("rev-parse", "HEAD")
+    source.write_text("# Cached history\n", encoding="utf-8")
+    _git("commit", "-am", "Update cached history")
+    plan_path = functional_repo / "history.json"
+
+    git_stage_batch(
+        "rewrite",
+        "scan",
+        base,
+        "--output",
+        str(plan_path),
+    )
+    cache_path = next(cache.glob("*.json"))
+    first_metadata = cache_path.stat()
+
+    git_stage_batch(
+        "rewrite",
+        "validate",
+        str(plan_path),
+        "--porcelain",
+    )
+    second_metadata = cache_path.stat()
+
+    assert second_metadata.st_ino == first_metadata.st_ino
+    assert second_metadata.st_mtime_ns == first_metadata.st_mtime_ns
+
+
 def test_history_cli_status_without_operation(functional_repo):
     output = json.loads(
         git_stage_batch("rewrite", "status", "--porcelain").stdout

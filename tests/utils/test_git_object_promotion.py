@@ -97,6 +97,93 @@ def _promotion_artifact_path(lease, suffix):
     )
 
 
+def test_bounded_git_config_uses_default_scratch_parent(
+    temp_git_repo,
+    tmp_path,
+    monkeypatch,
+):
+    """Bounded Git config output should use the large-scratch default."""
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    directories = []
+    original_temporary_file = git_object_promotion.tempfile.TemporaryFile
+
+    def recording_temporary_file(*args, **kwargs):
+        directories.append(kwargs.get("dir"))
+        return original_temporary_file(*args, **kwargs)
+
+    monkeypatch.setattr(
+        git_object_promotion,
+        "default_scratch_parent",
+        lambda: scratch,
+    )
+    monkeypatch.setattr(
+        git_object_promotion.tempfile,
+        "TemporaryFile",
+        recording_temporary_file,
+    )
+
+    exit_code, output = git_object_promotion._run_bounded_git_config(
+        ["--local", "--get-all", "git-stage-batch.missing"],
+        environment=os.environ.copy(),
+    )
+
+    assert exit_code == 1
+    assert output == b""
+    assert directories == [scratch] * 2
+
+
+def test_pack_diagnostics_use_default_scratch_parent(
+    temp_git_repo,
+    tmp_path,
+    monkeypatch,
+):
+    """Pack producer and consumer diagnostics should use large scratch."""
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    directories = []
+    original_temporary_file = git_object_promotion.tempfile.TemporaryFile
+
+    def recording_temporary_file(*args, **kwargs):
+        directories.append(kwargs.get("dir"))
+        return original_temporary_file(*args, **kwargs)
+
+    monkeypatch.setattr(
+        git_object_promotion,
+        "default_scratch_parent",
+        lambda: scratch,
+    )
+    monkeypatch.setattr(
+        git_object_promotion,
+        "_run_bounded_git_config",
+        lambda *args, **kwargs: (1, b""),
+    )
+    monkeypatch.setattr(
+        git_object_promotion.tempfile,
+        "TemporaryFile",
+        recording_temporary_file,
+    )
+
+    with temporary_git_object_environment() as quarantine:
+        base_commit, blob_id, tree_id, commit_id = _quarantined_candidate_commit(
+            quarantine,
+            [b"scratch diagnostics\n"],
+        )
+        lease = promote_git_object_closure(
+            quarantine,
+            lease_id="scratch-diagnostics",
+            include=(commit_id,),
+            exclude=(base_commit,),
+            expected_objects={
+                commit_id: "commit",
+                tree_id: "tree",
+                blob_id: "blob",
+            },
+        )
+        assert directories == [scratch] * 3
+        assert release_git_object_promotion_lease(quarantine, lease) is True
+
+
 def test_promote_git_object_closure_publishes_only_after_strict_indexing(
     temp_git_repo,
 ):

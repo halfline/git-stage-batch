@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -200,6 +201,90 @@ def test_refine_history_assigns_causal_ownership_before_placement() -> None:
         assert (
             "cannot make one source both an integrated secondary" not in reference_prose
         )
+
+
+def test_refine_history_uses_identifiable_durable_scratch() -> None:
+    """Long-running plan artifacts should avoid the ordinary /tmp default."""
+    required = (
+        "PLAN_PARENT=${TMPDIR:-${TEMP:-${TMP:-}}}",
+        'test "$(uname -s)" = Linux',
+        "PLAN_PARENT=/var/tmp",
+        'PLAN_DIR=$(mktemp -d "$PLAN_PARENT/git-stage-batch-refine-history.XXXXXXXX")',
+        "PLAN_DIR=$(mktemp -d)",
+    )
+
+    for root in (CODEX_HISTORY, CLAUDE_HISTORY):
+        skill = _read(root / "SKILL.md")
+        for value in required:
+            assert value in skill
+    assert "Bash(uname *)" in _read(CLAUDE_HISTORY / "SKILL.md")
+
+
+def test_refine_history_scratch_honors_environment_and_platform(
+    tmp_path: Path,
+) -> None:
+    """The skill scratch policy should match the runtime selection order."""
+    configured = {
+        variable: tmp_path / variable.lower()
+        for variable in ("TMPDIR", "TEMP", "TMP")
+    }
+    cases = (
+        (
+            "Linux",
+            configured,
+            f"-d {configured['TMPDIR']}/git-stage-batch-refine-history.XXXXXXXX",
+        ),
+        (
+            "Linux",
+            {key: value for key, value in configured.items() if key != "TMPDIR"},
+            f"-d {configured['TEMP']}/git-stage-batch-refine-history.XXXXXXXX",
+        ),
+        (
+            "Linux",
+            {"TMP": configured["TMP"]},
+            f"-d {configured['TMP']}/git-stage-batch-refine-history.XXXXXXXX",
+        ),
+        ("Linux", {}, "-d /var/tmp/git-stage-batch-refine-history.XXXXXXXX"),
+        ("Darwin", {}, "-d"),
+    )
+    for root in (CODEX_HISTORY, CLAUDE_HISTORY):
+        skill_lines = _read(root / "SKILL.md").splitlines()
+        start = next(
+            index
+            for index, line in enumerate(skill_lines)
+            if line.startswith("PLAN_PARENT=")
+        )
+        end = next(
+            index
+            for index, line in enumerate(skill_lines[start:], start)
+            if line.startswith("REWRITE_PLAN=")
+        )
+        commands = "\n".join(skill_lines[start:end])
+        for platform, overrides, expected_arguments in cases:
+            environment = os.environ.copy()
+            for variable in ("TMPDIR", "TEMP", "TMP"):
+                environment.pop(variable, None)
+            environment.update(
+                {key: str(value) for key, value in overrides.items()}
+            )
+            result = subprocess.run(
+                [
+                    "bash",
+                    "-eu",
+                    "-c",
+                    (
+                        f"uname() {{ printf '%s\\n' {platform!r}; }}\n"
+                        "mktemp() { printf '%s\\n' \"$*\"; }\n"
+                        f"{commands}\n"
+                        'printf \'%s\\n\' "$PLAN_DIR"'
+                    ),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                env=environment,
+            )
+            assert result.stdout.strip() == expected_arguments
 
 
 def test_refine_history_uses_placement_to_order_after_ownership() -> None:

@@ -808,6 +808,9 @@ def test_snapshot_helpers_match_and_leave_no_worktree(
     (repo / "value.txt").write_text("committed\n", encoding="utf-8")
     _git(repo, "add", "value.txt")
     _git(repo, "commit", "-m", "Base")
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    observed_worktree = tmp_path / "observed-worktree"
 
     result = subprocess.run(
         [
@@ -822,15 +825,20 @@ def test_snapshot_helpers_match_and_leave_no_worktree(
             "-c",
             (
                 "from pathlib import Path; "
-                "assert Path('value.txt').read_text() == 'committed\\n'"
+                "assert Path('value.txt').read_text() == 'committed\\n'; "
+                f"Path({str(observed_worktree)!r}).write_text(str(Path.cwd()))"
             ),
         ],
         check=False,
         capture_output=True,
         text=True,
+        env={**os.environ, "TMPDIR": str(scratch)},
     )
 
     assert result.returncode == 0, result.stderr
+    snapshot_worktree = Path(observed_worktree.read_text(encoding="utf-8"))
+    assert snapshot_worktree.parent.parent == scratch
+    assert snapshot_worktree.parent.name.startswith("git-stage-batch-verify-head-")
     worktrees = _git(repo, "worktree", "list", "--porcelain").stdout
     assert worktrees.count("worktree ") == 1
     assert _git(repo, "status", "--short").stdout == ""

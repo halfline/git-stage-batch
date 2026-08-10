@@ -22,6 +22,7 @@ from .git_object_io import (
     resolve_git_objects,
 )
 from .git_descriptor_exec import DARWIN_OBJECT_DIRECTORY_DESCRIPTOR
+from .scratch import default_scratch_parent
 from .session_lock import acquire_session_lock, acquire_session_lock_descriptor
 
 
@@ -606,10 +607,11 @@ def _run_bounded_git_config(
 ) -> tuple[int, bytes]:
     process: command_streaming.StreamingProcess | None = None
     owned_file_descriptors: set[int] = set()
+    scratch_parent = default_scratch_parent()
     try:
         with (
-            tempfile.TemporaryFile() as stdout_file,
-            tempfile.TemporaryFile() as stderr_file,
+            tempfile.TemporaryFile(dir=scratch_parent) as stdout_file,
+            tempfile.TemporaryFile(dir=scratch_parent) as stderr_file,
         ):
             stdout_descriptor = _duplicate_tracked_file_descriptor(
                 stdout_file.fileno(),
@@ -832,11 +834,12 @@ def _git_pack_pipeline(
     pack_read_fd, pack_write_fd = _open_tracked_pipe(owned_file_descriptors)
     consumer: command_streaming.StreamingProcess | None = None
     producer: command_streaming.StreamingProcess | None = None
+    scratch_parent = default_scratch_parent()
     try:
         with (
-            tempfile.TemporaryFile() as producer_stderr,
-            tempfile.TemporaryFile() as consumer_stdout,
-            tempfile.TemporaryFile() as consumer_stderr,
+            tempfile.TemporaryFile(dir=scratch_parent) as producer_stderr,
+            tempfile.TemporaryFile(dir=scratch_parent) as consumer_stdout,
+            tempfile.TemporaryFile(dir=scratch_parent) as consumer_stderr,
         ):
             consumer_stdout_fd = _duplicate_tracked_file_descriptor(
                 consumer_stdout.fileno(),

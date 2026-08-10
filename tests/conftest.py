@@ -5,11 +5,36 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import tempfile
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import overload
 
 import pytest
+
+
+@pytest.fixture(scope="session")
+def _history_snapshot_cache_root() -> Iterable[Path]:
+    """Keep persistent history-cache fixtures out of the product cache."""
+    scratch_parent = Path("/var/tmp")
+    if not scratch_parent.is_dir():
+        scratch_parent = Path(tempfile.gettempdir())
+    with tempfile.TemporaryDirectory(
+        prefix="git-stage-batch-test-history-cache-",
+        dir=scratch_parent,
+    ) as cache_root:
+        yield Path(cache_root)
+
+
+@pytest.fixture(autouse=True)
+def _use_disposable_history_snapshot_cache(
+    monkeypatch: pytest.MonkeyPatch,
+    _history_snapshot_cache_root: Path,
+) -> None:
+    monkeypatch.setenv(
+        "GIT_STAGE_BATCH_HISTORY_CACHE_ROOT",
+        str(_history_snapshot_cache_root),
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:

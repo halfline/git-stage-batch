@@ -4,17 +4,35 @@ from __future__ import annotations
 
 import hashlib
 import gc
+import json
 import tracemalloc
 from contextlib import contextmanager
 
 import pytest
 
 from git_stage_batch.exceptions import CommandError
-from git_stage_batch.history import dependencies, ranges, safety
+from git_stage_batch.history import dependencies, ranges, safety, scan, snapshot_cache
+from git_stage_batch.history.json_files import history_canonical_json_sha256
 from git_stage_batch.history.records import history_plan_document_record
 from git_stage_batch.history.scan import acquire_history_plan_document
 
 from .conftest import git
+
+
+def _disable_snapshot_cache(monkeypatch) -> None:
+    def build_only(
+        _commit_range,
+        _branch_ref,
+        *,
+        base_tree,
+        final_tree,
+        build,
+    ):
+        assert base_tree
+        assert final_tree
+        return build()
+
+    monkeypatch.setattr(scan, "acquire_cached_history_snapshot", build_only)
 
 
 def test_scan_captures_exact_commit_chain_and_keep_template(linear_history_repo):
@@ -62,6 +80,387 @@ def test_scan_captures_exact_commit_chain_and_keep_template(linear_history_repo)
     assert safety_record["active_rewrite_operation"] is None
     assert "active_history_operation" not in safety_record
     assert document.safety.mutation_ready is True
+
+
+def test_scan_reuses_immutable_snapshot_analysis_across_process_boundaries(
+    linear_history_repo,
+    tmp_path,
+    monkeypatch,
+):
+    cache = tmp_path / "snapshot-cache"
+    monkeypatch.setenv("GIT_STAGE_BATCH_HISTORY_CACHE_ROOT", str(cache))
+    first = acquire_history_plan_document(linear_history_repo.base)
+
+    def unexpected_rebuild(*_args, **_kwargs):
+        raise AssertionError("immutable snapshot analysis was repeated")
+
+    monkeypatch.setattr(scan, "_build_snapshot_from_range", unexpected_rebuild)
+    second = acquire_history_plan_document(linear_history_repo.base)
+
+    assert second.snapshot == first.snapshot
+    records = tuple(cache.glob("*.json"))
+    assert len(records) == 1
+    assert records[0].stat().st_mode & 0o777 == 0o600
+    assert cache.stat().st_mode & 0o777 == 0o700
+    cache_record = json.loads(records[0].read_text(encoding="utf-8"))
+    key = cache_record["key"]
+    assert key["object_format"] == first.snapshot.object_format
+    assert key["base_commit"] == first.snapshot.base_commit
+    assert key["tip_commit"] == first.snapshot.tip_commit
+    assert key["base_tree"] == first.snapshot.base_tree
+    assert key["final_tree"] == first.snapshot.final_tree
+    assert key["branch_ref"] == first.snapshot.branch_ref
+    assert key["commits_oldest_first"] == [
+        commit.commit_id for commit in first.snapshot.commits
+    ]
+    assert key["plan_schema_version"] == 4
+    assert key["snapshot_algorithm_version"] == 1
+    assert key["dependency_algorithm_version"] == 1
+    assert key["code_version"] == 1
+    assert len(key["repository_id"]) == 64
+    assert len(key["git_behavior_fingerprint"]) == 64
+    assert len(key["git_config_fingerprint"]) == 64
+    assert len(key["source_edge_diff_sha256"]) == 64
+
+
+def test_scan_cache_uses_dynamic_default_scratch_parent(
+    linear_history_repo,
+    tmp_path,
+    monkeypatch,
+):
+    scratch = tmp_path / "large-scratch"
+    scratch.mkdir()
+    monkeypatch.delenv("GIT_STAGE_BATCH_HISTORY_CACHE_ROOT")
+    monkeypatch.setattr(
+        snapshot_cache,
+        "default_scratch_parent",
+        lambda: scratch,
+    )
+    original_temporary_file = snapshot_cache.tempfile.TemporaryFile
+    temporary_directories = []
+
+    def tracked_temporary_file(*args, **kwargs):
+        temporary_directories.append(kwargs.get("dir"))
+        return original_temporary_file(*args, **kwargs)
+
+    class TrackedTempfile:
+        TemporaryFile = staticmethod(tracked_temporary_file)
+        gettempdir = staticmethod(snapshot_cache.tempfile.gettempdir)
+
+    monkeypatch.setattr(snapshot_cache, "tempfile", TrackedTempfile)
+
+    acquire_history_plan_document(linear_history_repo.base)
+
+    cache = scratch / f"git-stage-batch-{snapshot_cache.os.getuid()}"
+    assert len(tuple((cache / "history-snapshots").glob("*.json"))) == 1
+    assert temporary_directories == [scratch, scratch, scratch]
+
+
+def test_scan_cache_preserves_an_existing_override_directory_mode(
+    linear_history_repo,
+    tmp_path,
+    monkeypatch,
+):
+    cache = tmp_path / "snapshot-cache"
+    cache.mkdir(mode=0o755)
+    cache.chmod(0o755)
+    monkeypatch.setenv("GIT_STAGE_BATCH_HISTORY_CACHE_ROOT", str(cache))
+
+    acquire_history_plan_document(linear_history_repo.base)
+
+    assert cache.stat().st_mode & 0o777 == 0o755
+    assert next(cache.glob("*.json")).stat().st_mode & 0o777 == 0o600
+
+
+def test_scan_cache_bounds_persisted_range_entries(
+    linear_history_repo,
+    tmp_path,
+    monkeypatch,
+):
+    cache = tmp_path / "snapshot-cache"
+    monkeypatch.setenv("GIT_STAGE_BATCH_HISTORY_CACHE_ROOT", str(cache))
+    monkeypatch.setattr(
+        snapshot_cache,
+        "HISTORY_SNAPSHOT_CACHE_MAXIMUM_ENTRIES",
+        1,
+    )
+    acquire_history_plan_document(linear_history_repo.base)
+    git("commit", "--allow-empty", "-m", "Advance cached range")
+
+    acquire_history_plan_document(linear_history_repo.base)
+
+    assert len(tuple(cache.glob("history-snapshot-*.json"))) == 1
+
+
+def test_scan_cache_keys_effective_diff_configuration(
+    linear_history_repo,
+    tmp_path,
+    monkeypatch,
+):
+    cache = tmp_path / "snapshot-cache"
+    monkeypatch.setenv("GIT_STAGE_BATCH_HISTORY_CACHE_ROOT", str(cache))
+    git("config", "core.bigFileThreshold", "1")
+    binary = acquire_history_plan_document(linear_history_repo.base)
+    git("config", "core.bigFileThreshold", "1m")
+    textual = acquire_history_plan_document(linear_history_repo.base)
+
+    assert binary.snapshot.commits[0].units[0].kind == "binary"
+    assert textual.snapshot.commits[0].units[0].kind == "text-replacement"
+    assert len(tuple(cache.glob("history-snapshot-*.json"))) == 2
+
+
+def test_scan_cache_rechecks_repository_attributes(
+    linear_history_repo,
+    tmp_path,
+    monkeypatch,
+):
+    cache = tmp_path / "snapshot-cache"
+    monkeypatch.setenv("GIT_STAGE_BATCH_HISTORY_CACHE_ROOT", str(cache))
+    attributes = linear_history_repo.root / git(
+        "rev-parse",
+        "--git-path",
+        "info/attributes",
+    )
+    attributes.parent.mkdir(parents=True, exist_ok=True)
+    attributes.write_text("example.txt binary\n", encoding="utf-8")
+    binary = acquire_history_plan_document(linear_history_repo.base)
+    original_builder = scan._build_snapshot_from_range
+    build_count = 0
+
+    def counted_rebuild(*args, **kwargs):
+        nonlocal build_count
+        build_count += 1
+        return original_builder(*args, **kwargs)
+
+    attributes.write_text("example.txt -binary\n", encoding="utf-8")
+    monkeypatch.setattr(scan, "_build_snapshot_from_range", counted_rebuild)
+    textual = acquire_history_plan_document(linear_history_repo.base)
+
+    assert binary.snapshot.commits[0].units[0].kind == "binary"
+    assert textual.snapshot.commits[0].units[0].kind == "text-replacement"
+    assert build_count == 1
+    assert len(tuple(cache.glob("history-snapshot-*.json"))) == 1
+
+
+def test_scan_cache_does_not_publish_across_an_attribute_change_after_build(
+    linear_history_repo,
+    tmp_path,
+    monkeypatch,
+):
+    cache = tmp_path / "snapshot-cache"
+    monkeypatch.setenv("GIT_STAGE_BATCH_HISTORY_CACHE_ROOT", str(cache))
+    attributes = linear_history_repo.root / git(
+        "rev-parse",
+        "--git-path",
+        "info/attributes",
+    )
+    attributes.parent.mkdir(parents=True, exist_ok=True)
+    attributes.write_text("example.txt binary\n", encoding="utf-8")
+    original_builder = scan._build_snapshot_from_range
+
+    def build_then_change_attributes(*args, **kwargs):
+        snapshot = original_builder(*args, **kwargs)
+        attributes.write_text("example.txt -binary\n", encoding="utf-8")
+        return snapshot
+
+    monkeypatch.setattr(
+        scan,
+        "_build_snapshot_from_range",
+        build_then_change_attributes,
+    )
+    binary = acquire_history_plan_document(linear_history_repo.base)
+
+    assert binary.snapshot.commits[0].units[0].kind == "binary"
+    assert tuple(cache.glob("history-snapshot-*.json")) == ()
+
+    textual = acquire_history_plan_document(linear_history_repo.base)
+
+    assert textual.snapshot.commits[0].units[0].kind == "text-replacement"
+    assert len(tuple(cache.glob("history-snapshot-*.json"))) == 1
+
+    def unexpected_rebuild(*_args, **_kwargs):
+        raise AssertionError("consistent post-build snapshot was not reused")
+
+    monkeypatch.setattr(scan, "_build_snapshot_from_range", unexpected_rebuild)
+    hot = acquire_history_plan_document(linear_history_repo.base)
+
+    assert hot.snapshot == textual.snapshot
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("schema_version", True),
+        ("schema_version", 1.0),
+        ("plan_schema_version", True),
+        ("snapshot_algorithm_version", 1.0),
+        ("dependency_algorithm_version", True),
+        ("code_version", 1.0),
+        ("snapshot_dependency_algorithm_version", True),
+        ("snapshot_dependency_algorithm_version", 1.0),
+    ),
+)
+def test_scan_cache_strictly_decodes_version_integers(
+    linear_history_repo,
+    tmp_path,
+    monkeypatch,
+    field,
+    value,
+):
+    cache = tmp_path / "snapshot-cache"
+    monkeypatch.setenv("GIT_STAGE_BATCH_HISTORY_CACHE_ROOT", str(cache))
+    first = acquire_history_plan_document(linear_history_repo.base)
+    cache_path = next(cache.glob("history-snapshot-*.json"))
+    record = json.loads(cache_path.read_text(encoding="utf-8"))
+    if field == "schema_version":
+        record[field] = value
+    elif field == "snapshot_dependency_algorithm_version":
+        record["snapshot"]["dependency_graph"]["algorithm_version"] = value
+        record["snapshot_sha256"] = history_canonical_json_sha256(record["snapshot"])
+    else:
+        record["key"][field] = value
+    cache_path.write_text(json.dumps(record), encoding="utf-8")
+    original_builder = scan._build_snapshot_from_range
+    build_count = 0
+
+    def counted_rebuild(*args, **kwargs):
+        nonlocal build_count
+        build_count += 1
+        return original_builder(*args, **kwargs)
+
+    monkeypatch.setattr(scan, "_build_snapshot_from_range", counted_rebuild)
+    second = acquire_history_plan_document(linear_history_repo.base)
+
+    assert build_count == 1
+    assert second.snapshot == first.snapshot
+
+
+@pytest.mark.parametrize("missing_kind", ("blob", "tree"))
+def test_scan_cache_rebuilds_when_a_descendant_object_is_missing(
+    linear_history_repo,
+    tmp_path,
+    monkeypatch,
+    missing_kind,
+):
+    cache = tmp_path / "snapshot-cache"
+    monkeypatch.setenv("GIT_STAGE_BATCH_HISTORY_CACHE_ROOT", str(cache))
+    shared = linear_history_repo.root / "shared.txt"
+    shared.write_text("shared payload\n", encoding="utf-8")
+    nested = linear_history_repo.root / "nested"
+    nested.mkdir()
+    (nested / "shared.txt").write_text("nested payload\n", encoding="utf-8")
+    git("add", "shared.txt", "nested/shared.txt")
+    git("commit", "-m", "Add shared cache inputs")
+    base = git("rev-parse", "HEAD")
+    linear_history_repo.source.write_text("next cached edge\n", encoding="utf-8")
+    git("commit", "-am", "Advance cached edge")
+    first = acquire_history_plan_document(base)
+    object_id = git(
+        "rev-parse",
+        f"{base}:{'shared.txt' if missing_kind == 'blob' else 'nested'}",
+    )
+    object_directory = linear_history_repo.root / git(
+        "rev-parse",
+        "--git-path",
+        "objects",
+    )
+    loose_object = object_directory / object_id[:2] / object_id[2:]
+    saved_object = loose_object.with_name(f"{loose_object.name}.saved")
+    assert loose_object.is_file()
+    loose_object.rename(saved_object)
+    original_builder = scan._build_snapshot_from_range
+    build_count = 0
+
+    def counted_rebuild(*args, **kwargs):
+        nonlocal build_count
+        build_count += 1
+        return original_builder(*args, **kwargs)
+
+    monkeypatch.setattr(scan, "_build_snapshot_from_range", counted_rebuild)
+    try:
+        second = acquire_history_plan_document(base)
+    finally:
+        saved_object.rename(loose_object)
+
+    assert build_count == 1
+    assert second.snapshot.commits == first.snapshot.commits
+    assert second.snapshot.dependencies[0].barrier == "UNKNOWN"
+
+
+def test_scan_cache_keeps_live_worktree_facts_fresh(
+    linear_history_repo,
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        "GIT_STAGE_BATCH_HISTORY_CACHE_ROOT",
+        str(tmp_path / "snapshot-cache"),
+    )
+    first = acquire_history_plan_document(linear_history_repo.base)
+    linear_history_repo.source.write_text("changed after scan\n", encoding="utf-8")
+
+    def unexpected_rebuild(*_args, **_kwargs):
+        raise AssertionError("immutable snapshot analysis was repeated")
+
+    monkeypatch.setattr(scan, "_build_snapshot_from_range", unexpected_rebuild)
+    second = acquire_history_plan_document(linear_history_repo.base)
+
+    assert second.snapshot == first.snapshot
+    assert first.safety.worktree_clean is True
+    assert second.safety.worktree_clean is False
+    assert "tracked-worktree" in second.safety.blockers
+
+
+def test_scan_rebuilds_a_corrupt_snapshot_cache(
+    linear_history_repo,
+    tmp_path,
+    monkeypatch,
+):
+    cache = tmp_path / "snapshot-cache"
+    monkeypatch.setenv("GIT_STAGE_BATCH_HISTORY_CACHE_ROOT", str(cache))
+    first = acquire_history_plan_document(linear_history_repo.base)
+    cache_record = next(cache.glob("*.json"))
+    cache_record.write_text("{not json", encoding="utf-8")
+    original_builder = scan._build_snapshot_from_range
+    build_count = 0
+
+    def counted_rebuild(*args, **kwargs):
+        nonlocal build_count
+        build_count += 1
+        return original_builder(*args, **kwargs)
+
+    monkeypatch.setattr(scan, "_build_snapshot_from_range", counted_rebuild)
+    second = acquire_history_plan_document(linear_history_repo.base)
+
+    assert build_count == 1
+    assert second.snapshot == first.snapshot
+    assert cache_record.read_text(encoding="utf-8").startswith("{\n")
+
+
+def test_scan_rebuilds_when_cached_source_objects_are_unavailable(
+    linear_history_repo,
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        "GIT_STAGE_BATCH_HISTORY_CACHE_ROOT",
+        str(tmp_path / "snapshot-cache"),
+    )
+    first = acquire_history_plan_document(linear_history_repo.base)
+    original_builder = scan._build_snapshot_from_range
+    build_count = 0
+
+    def counted_rebuild(*args, **kwargs):
+        nonlocal build_count
+        build_count += 1
+        return original_builder(*args, **kwargs)
+
+    monkeypatch.setattr(snapshot_cache, "resolve_git_objects", lambda _objects: {})
+    monkeypatch.setattr(scan, "_build_snapshot_from_range", counted_rebuild)
+    second = acquire_history_plan_document(linear_history_repo.base)
+
+    assert build_count == 1
+    assert second.snapshot == first.snapshot
 
 
 def test_scan_preserves_an_empty_commit_as_a_unitless_output(linear_history_repo):
@@ -245,6 +644,7 @@ def test_scan_records_signature_identity_without_embedding_payload(
 
 def test_scan_unit_ids_ignore_repository_diff_display_configuration(
     linear_history_repo,
+    monkeypatch,
 ):
     repo = linear_history_repo
     unicode_path = repo.root / "café.txt"
@@ -267,12 +667,22 @@ def test_scan_unit_ids_ignore_repository_diff_display_configuration(
     git("config", "diff.indentHeuristic", "true")
     git("config", "diff.interHunkContext", "99")
     git("config", "core.quotePath", "true")
+    original_builder = scan._build_snapshot_from_range
+    build_count = 0
+
+    def counted_rebuild(*args, **kwargs):
+        nonlocal build_count
+        build_count += 1
+        return original_builder(*args, **kwargs)
+
+    monkeypatch.setattr(scan, "_build_snapshot_from_range", counted_rebuild)
     second_ids = [
         unit.unit_id
         for unit in acquire_history_plan_document(base).snapshot.commits[0].units
     ]
 
     assert second_ids == first_ids
+    assert build_count == 1
 
 
 def test_scan_does_not_write_the_real_index_tree(linear_history_repo, monkeypatch):
@@ -328,6 +738,7 @@ def test_dependency_analysis_ignores_replace_refs_installed_after_snapshot(
         "temporary_git_object_environment",
         replace_racing_quarantine,
     )
+    _disable_snapshot_cache(monkeypatch)
 
     raced = acquire_history_plan_document(repo.base)
 
@@ -355,6 +766,7 @@ def test_scan_ignores_replace_ref_installed_after_upfront_check(
         "_require_unmodified_object_graph",
         install_replace_after_check,
     )
+    _disable_snapshot_cache(monkeypatch)
     try:
         raced = acquire_history_plan_document(repo.base)
     finally:
@@ -388,6 +800,7 @@ def test_scan_ignores_legacy_graft_changed_after_upfront_check(
         "_require_unmodified_object_graph",
         change_graft_after_check,
     )
+    _disable_snapshot_cache(monkeypatch)
     try:
         raced = acquire_history_plan_document(repo.base)
     finally:

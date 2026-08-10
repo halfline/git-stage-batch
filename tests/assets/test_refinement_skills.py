@@ -671,6 +671,18 @@ def test_refine_history_reuses_trusted_correctness_evidence() -> None:
         "Retain `RESOLVED`",
         "retain the intended owner as `UNREPRESENTABLE`",
         "independent causal evidence changes its owner",
+        "documented `scan`, resolve or validate, apply, and verify workflow",
+        "Avoid duplicate product invocations for the same state",
+        "reuse exact immutable commit, tree, unit, and dependency evidence",
+        "Memoize semantic-audit conclusions",
+        "content-addressed keys",
+        "invalidate and re-audit only its cone",
+        "affected units, owners, prerequisite dependents, and output snapshots",
+        "persistently caches immutable snapshot and dependency analysis",
+        "collecting live safety facts again",
+        "never treat a cache hit as plan, replay, or final-range proof",
+        "Incremental suffix scans, replay-tree caching, and Bloom-filter path prefilters are not implemented",
+        "never use a probabilistic prefilter as correctness proof",
         "Any plan-file byte change after workspace creation invalidates use of the prior workspace binding",
         "A semantic edit to `plan.outputs` or `plan.partitioned_units` additionally invalidates",
         "does not itself invalidate immutable Git tree or object IDs",
@@ -707,12 +719,20 @@ def test_refine_history_reuses_trusted_correctness_evidence() -> None:
         "The diagnostic never replaces product validation",
         "Fresh unit IDs or a fresh base with unchanged ownership decisions are not progress",
         "A passing final tip does not replace those intermediate checks",
+        "persistent history-snapshot cache reuses exact commit, tree, unit, and dependency records",
+        "Git behavior, and analysis versions match",
+        "Live safety facts are collected again on every command",
+        "never edit or copy a cache entry into a plan",
+        "re-audit the affected dependency and snapshot cone",
+        "Retain the final whole-range validation",
+        "no Bloom-filter path prefilter is implemented",
     )
     superseded_skill_phrases = (
         "private external workspace",
         "authenticated completed workspace",
         "reauthenticates the completed external workspace",
         "missing step from Git state or private files",
+        "one scan/validator/continue process authoritative",
         "invalidates all request keys, results, receipts, parent/output tree IDs",
     )
     superseded_reference_phrases = (
@@ -736,6 +756,12 @@ def test_refine_history_reuses_trusted_correctness_evidence() -> None:
         )
         assert skill.index("source-wide placement evidence") < skill.index(
             "Classify intended outputs"
+        )
+        assert skill.index(
+            "documented `scan`, resolve or validate, apply, and verify workflow"
+        ) < skill.index("At each snapshot")
+        assert skill.index("Memoize semantic-audit conclusions") < skill.index(
+            "At each snapshot"
         )
         assert skill.index(
             "never overrides an established semantic owner"
@@ -763,16 +789,8 @@ def test_refine_history_reuses_trusted_correctness_evidence() -> None:
         assert reference.index(
             "Product resolve and validation replay are the authoritative tree proof"
         ) < reference.index("temporary Git index")
-        validation_boundary = next(
-            phrase
-            for phrase in (
-                "Validation does not update commits, refs, checkpoints",
-                "Validation is read-only",
-            )
-            if phrase in reference
-        )
         assert reference.index("temporary Git index") < reference.index(
-            validation_boundary
+            "Validation does not update commits, refs, checkpoints"
         )
 
 
@@ -801,6 +819,14 @@ def test_message_refinement_is_a_message_only_history_plan() -> None:
     assert "/refine-commit-messages audit BASE_SHA" in claude
     assert "--audit-only" not in codex
     assert "--audit-only" not in claude
+
+
+def test_message_refinement_discloses_snapshot_cache() -> None:
+    """Message skills should qualify immutable-analysis cache writes."""
+    for root in (CODEX_MESSAGES, CLAUDE_MESSAGES):
+        prose = " ".join(_read(root / "SKILL.md").split())
+        assert "may reuse or update the disposable history-analysis cache" in prose
+        assert "Scan and validation are read-only" not in prose
 
 
 def test_message_guidance_requires_low_context_prose() -> None:

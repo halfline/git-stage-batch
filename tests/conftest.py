@@ -29,7 +29,9 @@ def pytest_configure(config: pytest.Config) -> None:
 def _sync_editable_meson_build() -> None:
     """Run the current interpreter's editable Meson build if it exists."""
     project_root = Path(__file__).resolve().parent.parent
-    build_dir = project_root / "build" / f"cp{sys.version_info.major}{sys.version_info.minor}"
+    build_dir = (
+        project_root / "build" / f"cp{sys.version_info.major}{sys.version_info.minor}"
+    )
     if not (build_dir / "build.ninja").exists():
         return
 

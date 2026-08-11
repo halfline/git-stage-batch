@@ -24,7 +24,9 @@ turns that process into a clear sequence of logical changes.
 `git-stage-batch` combines fine-grained staging of uncommitted changes with
 deterministic refinement of clean, linear draft commits. Use hunks, lines, and
 batches to shape new commits around meaning, or use a validated semantic plan
-to refine an existing local draft series while preserving its final Git tree.
+to reword or split commits, integrate later repairs, and reorder
+proven-independent changes in an existing local draft series while preserving
+its final Git tree.
 
 ## Features
 

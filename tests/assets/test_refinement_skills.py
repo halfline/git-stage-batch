@@ -305,6 +305,43 @@ def test_refine_history_keeps_review_head_exception_exact() -> None:
             assert contract in shared
 
 
+def test_refine_history_bounds_targeted_exact_swap() -> None:
+    """One adjacent swap should retain proof and recovery boundaries."""
+    skill_contracts = (
+        "swap exactly two adjacent whole source commits",
+        "swapped intermediate state to be coherent by inspection",
+        "first output of the pair, the moved `LATER` source",
+        "previously unseen intermediate tree",
+        "do not claim completion or improvise a rollback",
+    )
+    reference_contracts = (
+        "## Swap one adjacent pair",
+        "Place `LATER` immediately before `EARLIER`",
+        "change only `LATER`'s operation to `REORDER` and its rationale",
+        "A required `BLOCKED` or `UNKNOWN` crossing",
+        "first output of the pair, the moved `LATER` source",
+        "`rewrite abort` cannot undo a `COMPLETE` operation",
+        "Ask before any separately reviewed recovery",
+    )
+
+    for root in (CODEX_HISTORY, CLAUDE_HISTORY):
+        skill_section = _markdown_section(
+            _read(root / "SKILL.md"), "## Targeted exact rewrite"
+        )
+        skill_prose = " ".join(skill_section.split())
+        for contract in skill_contracts:
+            assert contract in skill_prose
+        assert skill_prose.index(
+            "swapped intermediate state to be coherent by inspection"
+        ) < skill_prose.index("After apply")
+
+        reference = " ".join(
+            _read(root / "references" / "targeted-exact-rewrites.md").split()
+        )
+        for contract in reference_contracts:
+            assert contract in reference
+
+
 def test_refine_history_assigns_causal_ownership_before_placement() -> None:
     """Mechanical barriers must not become semantic owners or convergence."""
     skill_contracts = (

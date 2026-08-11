@@ -5,7 +5,7 @@ user-invocable: true
 disable-model-invocation: true
 context: fork
 argument-hint: "[base-sha] | audit [base-sha] | resume"
-when_to_use: "Use when the user wants Claude Code to inspect, polish, split, reword, reorder, or integrate fixup and repair commits in a local draft series after an optional base commit, infer the boundary from a tracked remote branch, safely rewrite a pull-request or merge-request branch, run an audit without mutation, or resume an interrupted refinement. Examples: \"refine this history\", \"audit these commits\", \"split the broad commits after BASE_SHA\", \"fold fixups into the right commits\", \"resume refine-history\". Do not use for unstaged work or commits published outside an explicitly verified force-push review branch."
+when_to_use: "Use when the user wants Claude Code to inspect, polish, split, squash adjacent commits, reword, reorder, or integrate fixup and repair commits in a local draft series after an optional base commit, infer the boundary from a tracked remote branch, safely rewrite a pull-request or merge-request branch, run an audit without mutation, or resume an interrupted refinement. Examples: \"refine this history\", \"squash these two adjacent commits\", \"audit these commits\", \"split the broad commits after BASE_SHA\", \"fold fixups into the right commits\", \"resume refine-history\". Do not use for unstaged work or commits published outside an explicitly verified force-push review branch."
 allowed-tools:
   - Read
   - Grep
@@ -28,10 +28,12 @@ allowed-tools:
 Rewrite the committed series in `BASE_SHA..HEAD` so every commit is one
 coherent product state. Preserve the final tree exactly.
 
-Read `references/rewrite-procedures.md` completely before editing a history
-plan. Read the repository contribution guide, commit-message hook, and a
-representative sample of recent commits before drafting messages. The
-first-class `refine-commit-messages` skill owns the final message-only pass.
+For one targeted exact rewrite, read
+`references/targeted-exact-rewrites.md` completely. For every full-series
+audit or rewrite, read `references/rewrite-procedures.md` completely. Read the
+repository contribution guide, commit-message hook, and a representative
+sample of recent commits before drafting messages. The first-class
+`refine-commit-messages` skill owns the final message-only pass.
 
 ## Usage
 
@@ -41,9 +43,10 @@ first-class `refine-commit-messages` skill owns the final message-only pass.
 /refine-history resume
 ```
 
-For a fresh run, accept an optional explicit excluded base. When omitted, let
-`rewrite scan` use the fork point or merge base with the configured upstream.
-Fail with an actionable request for `BASE_SHA` when no upstream exists. Never
+For a fresh full-series run, accept an optional explicit excluded base. When
+omitted, let `rewrite scan` use the fork point or merge base with the configured
+upstream. Fail with an actionable request for `BASE_SHA` when no upstream
+exists. Targeted mode uses the narrower rule in **Scan a fresh range**. Never
 infer a base from branch names, reflogs, old plan files, or prose notes.
 
 `audit` performs the complete semantic and mechanical review without applying
@@ -88,6 +91,16 @@ skill.
 
 ## Scan a fresh range
 
+For a targeted exact rewrite, identify the exact selected source or adjacent
+pair before scanning. Honor an explicit `BASE_SHA`; otherwise resolve each
+selection to a full commit ID and set `BASE_SHA` to the first parent of the
+earliest selected source. That makes the scan contain the target and every
+descendant through `HEAD`, without an unrelated prefix. Confirm that the fresh
+scan names the exact target or pair and that a pair is scan-adjacent. If the
+earliest target has no parent, report that the current rewrite CLI cannot
+represent this root-boundary rewrite. Full-series work continues to use the
+explicit or inferred base described above.
+
 Move to the repository root and keep the semantic plan outside the worktree:
 
 ```bash
@@ -111,8 +124,18 @@ if test -n "${BASE_SHA:-}"; then
 else
   git-stage-batch rewrite scan --output "$REWRITE_PLAN"
 fi
+```
+
+The scan-only recipe above is common to both workflows. For a full-series
+audit, validate the generated identity template before semantic work:
+
+```bash
 git-stage-batch rewrite validate "$REWRITE_PLAN" --porcelain > "$VALIDATION"
 ```
+
+A targeted exact rewrite instead edits the generated plan first. It skips the
+standalone validation command because `rewrite apply` runs the same complete
+plan validation before creating operation state.
 
 Read the canonical base, tip, branch, safety blockers, remote containment, and
 signature count from these product records. Scan writes the requested fresh
@@ -150,6 +173,40 @@ cannot express the bound policy without allowing that ref, stop without
 mutation and report the executor limitation. Permission to rewrite locally
 never grants permission to push. The base may be published because it is
 excluded from the rewrite.
+
+## Targeted exact rewrite
+
+Use this fast path only when the user unambiguously selects one transformation
+in the fresh scanned range:
+
+- squash exactly two adjacent whole source commits into one.
+
+This completes only that request; it does not audit or certify the rest of the
+series. Within the trusted same-user boundary, the user's exact selection is
+the semantic decision for that target. Do not add another approval step.
+
+Follow `references/targeted-exact-rewrites.md` completely to edit, inspect, and
+apply one generated plan. Keep every other output as generated `KEEP`
+preservation rather than a semantic `KEEP` verdict; require empty partitions,
+exactly one non-`KEEP` operation, and only `EXACT` materialization. Do not run
+a separate `rewrite validate`. Direct apply validates the complete plan before
+creating operation state or a recovery ref.
+
+Inspect only the selected pair. Apply repository message rules and preserve
+required squash attribution. This path may omit the series index, causal
+ledger, global ownership and ordering passes, pressured-`KEEP` review, final
+whole-series message pass, and unchanged-snapshot checks.
+
+After apply, require status to report the latest operation `COMPLETE`, inactive,
+and with the expected counts; then verify and require clean tracked state.
+Report descendants, invalidated signatures, the recovery ref, and that this
+was a targeted rewrite rather than a full series audit.
+
+Never use this path for `SPLIT`, partial-unit integration, more than one
+transformation, `RESOLVED` materialization, ambiguity, nonadjacent targets, or
+series cleanup.
+If it needs another semantic decision or apply rejects it, leave history
+unchanged and use the full workflow only when that remains within the request.
 
 ## Build the semantic audit
 
@@ -348,22 +405,24 @@ repository-local audit files.
 
 ## Apply a validated plan
 
-Prefer one whole-range plan. Use another convergence pass only after the prior
-pass places one or more groups at their actual semantic owners and the rewrite
-exposes a new decision or changes the inventory for remaining open groups.
-Before starting another pass, name the newly enabled `INTEGRATE`, `SPLIT`, or
-`REORDER` decision and its expected output-count or operation-count delta. A
-fresh base or fresh unit IDs alone are not progress.
-Never apply a validated landing at a non-owner blocker as a mechanical
-stepping stone. Before apply, require every output in that pass to be a
-coherent runnable state, zero overlap in the bound publication scope, and a
-fresh validation report that says mutation is ready. For a verified review
-head, accept `published-range` only when it is the sole safety blocker, the
-provider-default and protected scope has zero overlap, and every allowed
-containing ref is the exact verified current review-head ref that will be
-passed to apply. Never pass an excluded WIP, tag, or archived review ref merely
-to clear the blocker. Reconfirm the scope and publication permission. The
-product recollects all preconditions with those allowed refs during apply.
+For a full-series refinement, prefer one whole-range plan. Use another
+convergence pass only after the prior pass places one or more groups at their
+actual semantic owners and the rewrite exposes a new decision or changes the
+inventory for remaining open groups. Before starting another pass, name the
+newly enabled `INTEGRATE`, `SPLIT`, or `REORDER` decision and its expected
+output-count or operation-count delta. A fresh base or fresh unit IDs alone are
+not progress. Never apply a validated landing at a non-owner blocker as a
+mechanical stepping stone. Before a full-series apply, require every output in
+that pass to be a coherent runnable state. A targeted exact rewrite instead
+uses its direct-apply gate above. For an unpublished full-series range, require
+zero overlap in the bound publication scope and a fresh validation report that
+says mutation is ready. For a verified review head, accept `published-range`
+only when it is the sole safety blocker, the provider-default and protected
+scope has zero overlap, and every allowed containing ref is the exact verified
+current review-head ref that will be passed to apply. Never pass an excluded WIP, tag,
+or archived review ref merely to clear the blocker. Reconfirm the scope and
+publication permission in either case. The product recollects all
+preconditions with those allowed refs during apply.
 
 When a full-series result has already passed apply, `rewrite verify`, and its
 selected semantic snapshot checks, its exact ordered output chain may serve as
@@ -482,21 +541,24 @@ run documented message validators when available, and report every source
 signature that validation says will be removed. Never imply that a rewritten
 cryptographic signature remains valid.
 
-After successful apply, save the returned recovery ref in the run report,
-rescan from the same canonical base, and restart the semantic audit because
-commit IDs and dependency positions changed. Never reuse or repair stale
-snapshot fields. Remap every open causal intention to fresh unit IDs and keep
-its semantic owner and evidence until it is resolved. Also carry the
-original-source provenance of every completed integration and confirm on the
-fresh snapshot that its outcome appears at the intended owner rather than
-merely disappearing into a new hunk.
+After any successful apply, save the returned recovery ref in the run report.
+After a full-series apply, rescan from the same canonical base and restart the
+semantic audit because commit IDs and dependency positions changed. Never
+reuse or repair stale snapshot fields. Remap every open causal intention to
+fresh unit IDs and keep its semantic owner and evidence until it is resolved.
+Also carry the original-source provenance of every completed integration and
+confirm on the fresh snapshot that its outcome appears at the intended owner
+rather than merely disappearing into a new hunk. A targeted exact rewrite
+instead proceeds directly to its narrower completion checks.
 
-For every moved group, verify the changed owner output, its immediate adopter
-or test successor, and every later natural source or test boundary whose API
-or representation the group crosses before declaring convergence.
+For every moved group in a full-series refinement, verify the changed owner
+output, its immediate adopter or test successor, and every later natural source
+or test boundary whose API or representation the group crosses before
+declaring convergence.
 
-When boundaries converge, invoke `/refine-commit-messages BASE_SHA` in its
-default mutating mode. Do not reword commits directly in this skill. Rescan and
+When boundaries converge in a full-series refinement, invoke
+`/refine-commit-messages BASE_SHA` in its default mutating mode. Do not reword
+commits directly in this skill. Rescan and
 perform one final boundary audit afterward; if message work exposed a boundary
 problem, return to a newly scanned rewrite plan.
 
@@ -531,19 +593,24 @@ manual recovery guidance when foreign movement makes restoration unsafe. Do
 not delete state or refs and do not run the manual recovery command without
 separately reviewing the exact live ref values.
 
-When status names a latest `COMPLETE` operation, verify it, recover the base
-from `source.base`, rescan, and resume the semantic audit. A latest `ABORTED`
-operation is not rewrite evidence. If status has no operation,
-there is nothing durable to resume; request an explicit base for a fresh run.
-If the external causal ledger is unavailable after resume, use the reported
-recovery ref and read-only Git inspection to reconstruct original-source
-provenance before another apply. Until that reconstruction succeeds, record
-the missing provenance as `UNRESOLVED` and do not claim completion.
+When status names a latest `COMPLETE` operation, verify it. Finish the targeted
+gate only when the original explicit request and exact external plan still
+establish that narrow scope; operation counts alone are not enough. Otherwise,
+recover the base from `source.base`, rescan, and resume the full semantic audit.
+A latest `ABORTED` operation is not rewrite evidence. If status has no
+operation, there is nothing durable to resume; request an explicit base for a
+fresh run. If the external causal ledger is unavailable after a full-series
+resume, use the reported recovery ref and read-only Git inspection to
+reconstruct original-source provenance before another apply. Until that
+reconstruction succeeds, record the missing provenance as `UNRESOLVED` and do
+not claim completion.
 
-## Completion gate
+## Full-series completion gate
 
-Complete only after a final chronological index and newest-to-oldest causal
-ledger leave every fresh semantic group `OWNED_HERE`, the default
+Use this gate for comprehensive refinement; a targeted exact rewrite uses its
+narrower gate above and must not be reported as a series audit. Complete the
+full workflow only after a final chronological index and newest-to-oldest
+causal ledger leave every fresh semantic group `OWNED_HERE`, the default
 `refine-commit-messages` pass has converged, and the final KEEP plan validates.
 Generated or validated all-`KEEP` output is necessary mechanical proof, not
 sufficient semantic proof. Also require:

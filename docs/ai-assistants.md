@@ -83,6 +83,12 @@ they cannot remain valid. Explicit audit forms may inspect blocked history
 because scan and validation do not update refs or commits. The `resume` forms
 use the product rewrite checkpoint and its exact next action.
 
+For one unambiguous adjacent two-commit squash, adjacent two-commit swap, or
+complete message replacement, `refine-history` can use a targeted exact mode.
+It still scans, validates, checks live mutation safety, applies, and verifies
+the selected transformation, but it does not claim to have audited the
+untouched series. Broader cleanup requests use the full semantic audit.
+
 Publication is ready for review by default. The explicit `draft` form keeps all
 new review requests in draft status, `audit` plans without publishing, and
 `resume` continues the strict publication checkpoint. The skill uses GitHub's
@@ -270,6 +276,12 @@ a local rewrite and neither performs nor authorizes a push. Both skills support
 and boundary is unchanged. Full history refinement instead audits every output
 and its plan, runs the exact risk-selected semantic-boundary manifest, and
 completes the final-tip test and build suite.
+
+For one unambiguous adjacent two-commit squash, adjacent two-commit swap, or
+complete message replacement, `refine-history` can use a targeted exact mode.
+It still scans, validates, checks live mutation safety, applies, and verifies
+the selected transformation, but it does not claim to have audited the
+untouched series. Broader cleanup requests use the full semantic audit.
 
 Invoke `$publish-unpushed-commits` to publish ready-for-review pull requests or
 merge requests, or add `draft`, `audit`, or `resume`. The skill chooses a native

@@ -140,6 +140,29 @@ def test_refine_history_binds_narrow_publication_scope() -> None:
         )
 
 
+def test_refine_history_scan_cache_wording_during_transition() -> None:
+    """History scan sections should disclose cache writes during migration."""
+    accepted_boundaries = (
+        "Scan and validation do not update commits, refs, checkpoints, "
+        "an existing plan, or resolution workspaces",
+        "Scan writes the requested fresh plan; neither command updates "
+        "commits, refs, checkpoints, an existing plan, or resolution workspaces",
+    )
+    for root in (CODEX_HISTORY, CLAUDE_HISTORY):
+        skill = " ".join(_read(root / "SKILL.md").split())
+        scan_section = skill.split("## Scan a fresh range", 1)[1].split(
+            "## ", 1
+        )[0]
+        assert any(
+            boundary in scan_section for boundary in accepted_boundaries
+        )
+        assert (
+            "may reuse or update the disposable history-snapshot cache"
+            in scan_section
+        )
+        assert "Scan and validation are read-only" not in scan_section
+
+
 def test_refine_history_assigns_causal_ownership_before_placement() -> None:
     """Mechanical barriers must not become semantic owners or convergence."""
     skill_contracts = (

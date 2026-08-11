@@ -12,6 +12,17 @@ def _read(relative_path: str) -> str:
     return (PROJECT_ROOT / relative_path).read_text(encoding="utf-8")
 
 
+def test_public_guides_state_the_rewrite_and_publication_boundary() -> None:
+    """Guides should neither hide rewriting nor imply permission to push."""
+    homepage = _read("docs/index.md")
+    readme = _read("README.md")
+    assistants = _read("docs/ai-assistants.md")
+    examples = _read("docs/examples.md")
+    combined = "\n".join((homepage, readme, assistants, examples))
+
+    assert "git-stage-batch rewrite scan" in examples
+    assert "git-stage-batch rewrite apply" in examples
+    assert "git-stage-batch rewrite verify" in examples
 
 
 def test_rewrite_manual_states_remote_and_abort_boundaries() -> None:

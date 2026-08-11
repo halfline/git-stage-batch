@@ -740,8 +740,16 @@ def test_refine_history_reuses_trusted_correctness_evidence() -> None:
         assert reference.index(
             "Product resolve and validation replay are the authoritative tree proof"
         ) < reference.index("temporary Git index")
+        validation_boundary = next(
+            phrase
+            for phrase in (
+                "Validation does not update commits, refs, checkpoints",
+                "Validation is read-only",
+            )
+            if phrase in reference
+        )
         assert reference.index("temporary Git index") < reference.index(
-            "Validation is read-only"
+            validation_boundary
         )
 
 

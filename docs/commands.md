@@ -1197,7 +1197,7 @@ Apply creates a durable private recovery ref, records a durable `PREPARED`
 checkpoint, then reconstructs the selected exact and resolved output trees in
 a temporary object quarantine. It builds deterministic unsigned commits there
 and promotes the required commit, tree, and blob closure durably into the
-repository before publishing the operation-owned output ref. The promotion
+repository before updating the local operation-owned output ref. The promotion
 lease and exact-name ref updates keep interruption recovery bounded to objects
 and refs owned by the operation.
 

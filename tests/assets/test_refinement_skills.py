@@ -169,6 +169,7 @@ def test_refine_history_bounds_targeted_exact_squash() -> None:
         "first parent of the earliest selected source",
         "target and every descendant through `HEAD`",
         "current rewrite CLI cannot represent this root-boundary rewrite",
+        "only the selected source or pair",
         "may omit the series index, causal ledger",
         "Do not run a separate `rewrite validate`",
         "validates the complete plan before creating operation state or a recovery ref",
@@ -180,6 +181,7 @@ def test_refine_history_bounds_targeted_exact_squash() -> None:
         "leave history unchanged",
     )
     full_series_contracts = (
+        "one explicitly targeted reword may use the fast path below",
         "Scan writes the requested fresh plan; neither command updates commits, refs, checkpoints, an existing plan, or resolution workspaces",
         "may reuse or update the disposable history-snapshot cache",
         "For a full-series refinement, prefer one whole-range plan",
@@ -209,11 +211,6 @@ def test_refine_history_bounds_targeted_exact_squash() -> None:
         "never reconstruct the rewrite manually",
     )
 
-    inspection_scope_contracts = (
-        "only the selected pair",
-        "only the selected source or pair",
-    )
-
     skill_sections = []
     reference_sections = []
     for root in (CODEX_HISTORY, CLAUDE_HISTORY):
@@ -221,9 +218,6 @@ def test_refine_history_bounds_targeted_exact_squash() -> None:
         skill_prose = " ".join(skill.split())
         for contract in (*skill_contracts, *full_series_contracts):
             assert contract in skill_prose
-        assert sum(
-            contract in skill_prose for contract in inspection_scope_contracts
-        ) == 1
         assert "squash adjacent commits" in skill
         assert "Scan and validation are read-only" not in skill
 
@@ -340,6 +334,25 @@ def test_refine_history_bounds_targeted_exact_swap() -> None:
         )
         for contract in reference_contracts:
             assert contract in reference
+
+
+def test_refine_history_bounds_targeted_exact_reword() -> None:
+    """One complete reword should reject a byte-identical no-op."""
+    for root in (CODEX_HISTORY, CLAUDE_HISTORY):
+        skill = " ".join(_read(root / "SKILL.md").split())
+        assert "replace the complete message of exactly one source commit" in skill
+        assert "one explicitly targeted reword may use the fast path below" in skill
+
+        reference = " ".join(
+            _read(root / "references" / "targeted-exact-rewrites.md").split()
+        )
+        assert "## Reword one source" in reference
+        assert (
+            "Require `(message, encoding)` to differ from the frozen source"
+            in reference
+        )
+        assert "report that no rewrite is needed" in reference
+        assert "do not apply a `REWORD` plan" in reference
 
 
 def test_refine_history_assigns_causal_ownership_before_placement() -> None:

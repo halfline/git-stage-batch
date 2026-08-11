@@ -294,6 +294,11 @@ class TestWheelContents:
             "git_stage_batch/assets/codex-skills/refine-history/agents/openai.yaml" in f
             for f in files
         ), "Missing bundled refine-history Codex skill asset"
+        assert any(
+            "git_stage_batch/assets/codex-skills/refine-history/references/"
+            "targeted-exact-rewrites.md" in f
+            for f in files
+        ), "Missing targeted Codex rewrite procedures"
 
     def test_wheel_contains_codex_refine_messages_skill_asset(self, build_wheel):
         """Test that wheel contains the standalone Codex message skill."""

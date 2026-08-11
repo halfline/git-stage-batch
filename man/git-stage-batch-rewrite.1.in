@@ -52,11 +52,12 @@ new tree pair, from which later commands regenerate full-index binary patches
 through bounded storage.
 .PP
 .B rewrite validate
-strictly parses a reviewed scan document, regenerates every immutable fact
-from live Git objects, and accepts KEEP, REWORD, SPLIT, INTEGRATE, and
-mechanically proven REORDER outputs. It requires exact source and patch-unit
-conservation, original target authorship, dependency-safe ordering, complete
-replay, and the frozen final tree.
+strictly parses a reviewed scan document, independently reacquires every
+immutable source fact, and accepts KEEP, REWORD, SPLIT, INTEGRATE, and
+mechanically proven REORDER outputs. A cached fact is reused only after its
+exact source inputs and object closure still match. Validation requires exact
+source and patch-unit conservation, original target authorship,
+dependency-safe ordering, complete replay, and the frozen final tree.
 For a plan whose outputs all use EXACT materialization, omit
 .BR \-\-workspace ;
 a gratuitous workspace is rejected rather than ignored. A plan containing any
@@ -260,7 +261,7 @@ and
 .B plan.outputs
 are semantic input. The
 .B snapshot
-object is immutable and is compared exactly after regeneration. The
+object is immutable and is compared exactly after reacquisition. The
 .B safety
 object is informational and is always recollected when a plan is validated.
 .PP
@@ -299,6 +300,15 @@ JSON fields, abbreviated object IDs, omitted or unproven reordered units, and
 active replace objects or legacy grafts. Scan compares the index directly to
 the frozen final tree and never retains candidate objects in the repository's
 object database.
+.PP
+Commands that acquire the frozen source snapshot may reuse immutable snapshot
+and dependency analysis from a persistent JSON cache with at most 64 entries.
+A cache hit requires an exact
+repository, range, tree, branch, object-format, Git-behavior, configuration,
+analysis-version, source-diff, and source-object-closure match. A miss or
+failed check rebuilds the analysis from source objects. Live safety facts are
+always collected again. The cache stores no candidate Git objects and never
+substitutes for plan replay or final-tree proof.
 .PP
 The safety report records tracked index/worktree cleanliness, staging-session
 and saved-batch state, active Git/rewrite operations, upstream divergence,

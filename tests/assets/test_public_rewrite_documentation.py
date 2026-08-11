@@ -57,6 +57,29 @@ def test_public_guides_state_the_rewrite_and_publication_boundary() -> None:
         assert phrase not in combined
 
 
+def test_rewrite_guides_disclose_bounded_analysis_cache() -> None:
+    """Read-only command prose should describe its disposable cache exactly."""
+    commands = _read("docs/commands.md")
+    storage = _read("docs/storage.md")
+    manual = _read("man/git-stage-batch-rewrite.1.in")
+    combined = " ".join("\n".join((commands, storage, manual)).split())
+
+    assert "persistent JSON cache" in combined
+    assert "at most 64 entries" in combined
+    assert "/var/tmp/git-stage-batch-$UID/history-snapshots" in combined
+    assert "GIT_STAGE_BATCH_HISTORY_CACHE_ROOT" in combined
+    assert "Live safety facts are always collected again" in combined
+    assert "never substitutes for plan replay or final-tree proof" in combined
+
+    forbidden = (
+        "freshly regenerated snapshot",
+        "regenerates every immutable fact",
+        "Scan does not create commits, refs, checkpoints, or persistent objects",
+    )
+    for phrase in forbidden:
+        assert phrase not in combined
+
+
 def test_rewrite_manual_states_remote_and_abort_boundaries() -> None:
     """Installed rewrite help should describe its mutation limits."""
     manual = " ".join(_read("man/git-stage-batch-rewrite.1.in").split())

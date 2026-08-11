@@ -39,6 +39,9 @@ def test_public_guides_state_the_rewrite_and_publication_boundary() -> None:
 
     assert "Sometimes, intentionally." in homepage
     assert "reword or split commits, integrate later repairs" in homepage
+    assert "protected or unrelated shared history" in homepage
+    assert "explicitly verified force-push review head" in combined
+    assert "neither performs nor authorizes a push" in combined
     assert "git-stage-batch rewrite scan" in examples
     assert "git-stage-batch rewrite apply" in examples
     assert "git-stage-batch rewrite verify" in examples
@@ -47,6 +50,8 @@ def test_public_guides_state_the_rewrite_and_publication_boundary() -> None:
         "Usually no.",
         "larger history-rewrite tools",
         "git-stage-batch helps you create better commits in the first place",
+        "limited to fresh draft history",
+        "before they become part of reviewable project",
     )
     for phrase in forbidden:
         assert phrase not in combined

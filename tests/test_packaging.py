@@ -136,6 +136,22 @@ class TestWheelContents:
 
         assert expected_pages <= packaged_pages
 
+    def test_wheel_metadata_describes_staging_and_rewriting(self, build_wheel):
+        """The package index summary should expose both product workflows."""
+        with zipfile.ZipFile(build_wheel, "r") as whl:
+            metadata_paths = [
+                name
+                for name in whl.namelist()
+                if name.endswith(".dist-info/METADATA")
+            ]
+            assert len(metadata_paths) == 1
+            metadata = whl.read(metadata_paths[0]).decode("utf-8")
+
+        assert (
+            "Summary: Fine-grained Git staging and deterministic "
+            "draft-history refinement\n"
+        ) in metadata
+
     def test_wheel_contains_claude_skill_asset(self, build_wheel):
         """Test that wheel contains the bundled Claude skill asset."""
         with zipfile.ZipFile(build_wheel, "r") as whl:

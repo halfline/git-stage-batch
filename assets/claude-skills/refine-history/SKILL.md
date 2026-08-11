@@ -179,7 +179,8 @@ excluded from the rewrite.
 Use this fast path only when the user unambiguously selects one transformation
 in the fresh scanned range:
 
-- squash exactly two adjacent whole source commits into one.
+- squash exactly two adjacent whole source commits into one;
+- swap exactly two adjacent whole source commits.
 
 This completes only that request; it does not audit or certify the rest of the
 series. Within the trusted same-user boundary, the user's exact selection is
@@ -192,13 +193,17 @@ exactly one non-`KEEP` operation, and only `EXACT` materialization. Do not run
 a separate `rewrite validate`. Direct apply validates the complete plan before
 creating operation state or a recovery ref.
 
-Inspect only the selected pair. Apply repository message rules and preserve
-required squash attribution. This path may omit the series index, causal
+Inspect only the selected pair. Apply repository message rules,
+preserve required squash attribution, and require a swapped intermediate state
+to be coherent by inspection. This path may omit the series index, causal
 ledger, global ownership and ordering passes, pressured-`KEEP` review, final
 whole-series message pass, and unchanged-snapshot checks.
 
 After apply, require status to report the latest operation `COMPLETE`, inactive,
-and with the expected counts; then verify and require clean tracked state.
+and with the expected counts; then verify and require clean tracked state. For
+a swap, narrowly check the first output of the pair, the moved `LATER` source,
+which can introduce a previously unseen intermediate tree. On failure, report
+the failure and recovery ref; do not claim completion or improvise a rollback.
 Report descendants, invalidated signatures, the recovery ref, and that this
 was a targeted rewrite rather than a full series audit.
 

@@ -9,6 +9,7 @@ Contents:
 
 - **Preserve the generated scope** — keep every unrelated output untouched.
 - **Squash one adjacent pair** — collapse two whole sources.
+- **Swap one adjacent pair** — cross only a proven adjacent boundary.
 - **Inspect and apply once** — use apply's pre-state validation and verify.
 
 ## Preserve the generated scope
@@ -42,6 +43,19 @@ that `LATER` repairs an earlier owner. When the sources have different authors
 or attribution trailers, require the combined message and repository policy to
 make the intended attribution unambiguous before using the fast path.
 
+## Swap one adjacent pair
+
+Let `EARLIER` and `LATER` be consecutive generated whole-source outputs. Place
+`LATER` immediately before `EARLIER`, change only `LATER`'s operation to
+`REORDER` and its rationale, and preserve its complete sources, units, message,
+encoding, and author. Leave `EARLIER` as the generated `KEEP` output.
+
+Before apply, inspect both patches and messages in their proposed context.
+Require the intermediate state after `LATER` to be coherent by inspection and
+both messages to remain truthful. A required `BLOCKED` or `UNKNOWN` crossing
+must make apply reject the plan; never select `RESOLVED` materialization in the
+targeted path.
+
 ## Inspect and apply once
 
 Do not run a separate `rewrite validate` for this targeted path. Compare the
@@ -49,7 +63,9 @@ edited document with the generated plan before apply. Require empty partitions,
 every output `EXACT`, exactly one non-`KEEP` operation, and these exact shapes:
 
 - squash: one integrated output, zero reworded, split, reordered, or resolved
-  outputs, and one fewer output commit than source commit.
+  outputs, and one fewer output commit than source commit;
+- reorder: one reordered output, zero reworded, integrated, split, or resolved
+  outputs, and equal source and output counts.
 
 Run apply directly on that exact plan:
 
@@ -78,7 +94,11 @@ unit and final-tree proof.
 
 Require status to report the latest operation as `phase: "COMPLETE"`,
 `active: false`, the expected `progress.planned_output_count`, and the expected
-`plan.operation_counts`.
+`plan.operation_counts`. After a swap, narrowly check the first output of the
+pair, the moved `LATER` source. If that check fails, report the failure and
+recovery ref; do not claim completion or improvise a rollback or broader
+rewrite. The branch remains at the rewritten tip, and `rewrite abort` cannot
+undo a `COMPLETE` operation. Ask before any separately reviewed recovery.
 
 Exit without mutation when the plan needs partial units, partitioned
 provenance, more than one non-`KEEP` operation, any `RESOLVED` output, or a

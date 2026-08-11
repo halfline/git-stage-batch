@@ -217,13 +217,13 @@ def _remove_normalized_rename_destinations_before_stash_apply() -> None:
             target_path.unlink(missing_ok=True)
 
 
-def _regular_file_contents_match(snapshot_path: Path, target_path: Path) -> bool:
+def _regular_file_contents_match(snapshot_path: bytes, target_path: bytes) -> bool:
     """Compare two regular files without process-global result caching."""
-    if snapshot_path.stat().st_size != target_path.stat().st_size:
+    if os.stat(snapshot_path).st_size != os.stat(target_path).st_size:
         return False
     with (
-        snapshot_path.open("rb") as snapshot_file,
-        target_path.open("rb") as target_file,
+        os.fdopen(os.open(snapshot_path, os.O_RDONLY), "rb") as snapshot_file,
+        os.fdopen(os.open(target_path, os.O_RDONLY), "rb") as target_file,
     ):
         while True:
             snapshot_chunk = snapshot_file.read(64 * 1024)
@@ -234,47 +234,58 @@ def _regular_file_contents_match(snapshot_path: Path, target_path: Path) -> bool
                 return True
 
 
+def _snapshot_bytes_path_matches_target(
+    snapshot_path: bytes,
+    target_path: bytes,
+) -> bool:
+    """Compare snapshot paths without interning every directory entry."""
+    snapshot_metadata = os.lstat(snapshot_path)
+    target_metadata = os.lstat(target_path)
+    if stat.S_ISLNK(snapshot_metadata.st_mode):
+        return stat.S_ISLNK(target_metadata.st_mode) and os.readlink(
+            snapshot_path
+        ) == os.readlink(target_path)
+
+    if stat.S_ISDIR(snapshot_metadata.st_mode):
+        if not stat.S_ISDIR(target_metadata.st_mode):
+            return False
+        if stat.S_IMODE(snapshot_metadata.st_mode) != stat.S_IMODE(
+            target_metadata.st_mode
+        ):
+            return False
+
+        snapshot_child_count = 0
+        with os.scandir(snapshot_path) as snapshot_entries:
+            for snapshot_entry in snapshot_entries:
+                snapshot_child_count += 1
+                target_child = os.path.join(target_path, snapshot_entry.name)
+                if not _snapshot_bytes_path_matches_target(
+                    snapshot_entry.path,
+                    target_child,
+                ):
+                    return False
+
+        target_child_count = 0
+        with os.scandir(target_path) as target_entries:
+            for _target_entry in target_entries:
+                target_child_count += 1
+        return snapshot_child_count == target_child_count
+
+    return (
+        stat.S_ISREG(snapshot_metadata.st_mode)
+        and stat.S_ISREG(target_metadata.st_mode)
+        and stat.S_IMODE(snapshot_metadata.st_mode)
+        == stat.S_IMODE(target_metadata.st_mode)
+        and _regular_file_contents_match(snapshot_path, target_path)
+    )
+
+
 def _snapshot_path_matches_target(snapshot_path: Path, target_path: Path) -> bool:
     """Return whether an abort snapshot has already been restored exactly."""
     try:
-        if snapshot_path.is_symlink():
-            return (
-                target_path.is_symlink()
-                and os.readlink(os.fsencode(snapshot_path))
-                == os.readlink(os.fsencode(target_path))
-            )
-
-        if snapshot_path.is_dir():
-            if target_path.is_symlink() or not target_path.is_dir():
-                return False
-            if stat.S_IMODE(snapshot_path.stat().st_mode) != stat.S_IMODE(
-                target_path.stat().st_mode
-            ):
-                return False
-
-            snapshot_child_count = 0
-            with os.scandir(snapshot_path) as snapshot_entries:
-                for snapshot_entry in snapshot_entries:
-                    snapshot_child_count += 1
-                    snapshot_child = Path(snapshot_entry.path)
-                    target_child = target_path / snapshot_entry.name
-                    if not os.path.lexists(target_child) or not (
-                        _snapshot_path_matches_target(snapshot_child, target_child)
-                    ):
-                        return False
-
-            target_child_count = 0
-            with os.scandir(target_path) as target_entries:
-                for _target_entry in target_entries:
-                    target_child_count += 1
-            return snapshot_child_count == target_child_count
-
-        return (
-            not target_path.is_symlink()
-            and target_path.is_file()
-            and stat.S_IMODE(snapshot_path.stat().st_mode)
-            == stat.S_IMODE(target_path.stat().st_mode)
-            and _regular_file_contents_match(snapshot_path, target_path)
+        return _snapshot_bytes_path_matches_target(
+            os.fsencode(snapshot_path),
+            os.fsencode(target_path),
         )
     except OSError:
         # A disappearing or unreadable destination cannot be trusted as an

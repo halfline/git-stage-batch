@@ -193,6 +193,11 @@ class TestWheelContents:
             in f
             for f in files
         ), "Missing bundled refine-history Claude skill asset"
+        assert any(
+            "git_stage_batch/assets/claude-skills/refine-history/references/"
+            "targeted-exact-rewrites.md" in f
+            for f in files
+        ), "Missing targeted Claude rewrite procedures"
         assert not any("refine-history-checkpoint.py" in f for f in files)
 
     def test_wheel_contains_claude_refine_messages_skill_asset(self, build_wheel):

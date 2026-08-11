@@ -1051,6 +1051,28 @@ def test_message_guidance_requires_low_context_prose() -> None:
         assert "Write for a reader who has never seen the repository" in drafter
 
 
+def test_message_guidance_reserves_imperative_voice_for_summaries() -> None:
+    """Message bodies should stay indicative in both provider variants."""
+    codex_guidance = _read(
+        CODEX_MESSAGES / "references" / "message-guidelines.md"
+    )
+    claude_guidance = _read(
+        CLAUDE_MESSAGES / "references" / "message-guidelines.md"
+    )
+
+    assert codex_guidance == claude_guidance
+    prose = " ".join(codex_guidance.split())
+    required = (
+        "Use imperative voice only in the commit summary.",
+        "Write every commit-body sentence as an indicative, declarative statement",
+        "including the selected-state, problem, `This commit`, and "
+        "series-transition paragraphs",
+        "Never use a body sentence to instruct the reader.",
+    )
+    for phrase in required:
+        assert phrase in prose
+
+
 def test_snapshot_helpers_match_and_leave_no_worktree(
     tmp_path: Path,
 ) -> None:

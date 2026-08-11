@@ -262,6 +262,34 @@ This helps you:
 
 ---
 
+## Refine Local Draft History
+
+For a clean, linear unpublished range, capture exact source facts, edit only
+the semantic plan fields, validate the result, then apply and verify it:
+
+```bash
+# Repository-read-only: capture a KEEP template for commits after main.
+❯ git-stage-batch rewrite scan main --output rewrite-plan.json
+
+# Review and edit only plan.outputs and plan.partitioned_units.
+❯ $EDITOR rewrite-plan.json
+
+# Repository-read-only: prove unit conservation, replay, and the final tree.
+❯ git-stage-batch rewrite validate rewrite-plan.json
+
+# Branch-mutating: build and verify, then atomically update the checked-out branch.
+❯ git-stage-batch rewrite apply rewrite-plan.json
+
+# Independently verify the completed local rewrite.
+❯ git-stage-batch rewrite verify
+```
+
+An explicitly verified force-push review head can be allowed by its exact
+remote-tracking ref. That exception permits only this local branch rewrite;
+`rewrite apply` never contacts a remote or performs or authorizes a push.
+
+---
+
 ## Recovering from Mistakes
 
 Made a wrong decision? Use `abort`:

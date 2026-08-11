@@ -1036,16 +1036,30 @@ renames, file-type transitions, and atomic
 non-text changes remain `UNKNOWN`; analysis resumes from the next exact commit
 tree but retains an `UNKNOWN` edge back across the unsupported segment.
 
-Scan does not create commits, refs, checkpoints, or persistent objects. Its
-speculative tree objects live only in a temporary object quarantine. Dirty
-local state, active operations, saved batches, or remotely published range
-commits appear as safety blockers rather than preventing an audit. Merges,
-replace objects, and legacy grafts are rejected because they change the
-supported topology or commit identity semantics.
+Scan does not create commits, refs, checkpoints, or persistent Git objects.
+Its speculative tree objects live only in a temporary object quarantine.
+Commands that acquire the frozen source snapshot may reuse or update a
+persistent JSON cache of exact snapshot and dependency analysis. The cache
+retains at most 64 entries. On Linux, the default root is
+`/var/tmp/git-stage-batch-$UID/history-snapshots`; `TMPDIR`,
+`TEMP`, or `TMP` selects another scratch parent, and
+`GIT_STAGE_BATCH_HISTORY_CACHE_ROOT` overrides the complete cache root.
+
+A cached entry is accepted only after the repository identity, exact range and
+trees, branch, object format, effective Git configuration and build behavior,
+analysis versions, source-edge diffs, and source-object closure still match.
+A miss or failed check rebuilds the analysis from the source objects. Live
+safety facts are always collected again, and cached analysis never substitutes
+for plan replay or final-tree proof.
+
+Dirty local state, active operations, saved batches, or remotely published
+range commits appear as safety blockers rather than preventing an audit.
+Merges, replace objects, and legacy grafts are rejected because they change
+the supported topology or commit identity semantics.
 
 ### `rewrite validate`
 
-Validate edited semantic input against a freshly regenerated snapshot:
+Validate edited semantic input against independently reacquired source facts:
 
 ```bash
 # Validate an all-EXACT plan.
@@ -1093,12 +1107,13 @@ materialize and audit the requested snapshots. Dependency evidence limits
 exact replay, while complete replay and the frozen final tree remain required
 for either materialization.
 
-Completed-workspace validation is read-only. It authenticates the immutable
-workspace binding, receipts, result artifacts, and `complete.json`, then
-replays both exact and resolved outputs in a fresh Git object quarantine and
-rechecks the frozen final tree. It does not repair or advance the workspace,
-and no candidate objects or refs persist. Successful output reports the
-authenticated completion SHA-256 digest. Porcelain output always includes
+Completed-workspace validation does not modify the completed workspace,
+commits, or refs. It authenticates the immutable workspace binding, receipts,
+result artifacts, and `complete.json`, then replays both exact and resolved
+outputs in a fresh Git object quarantine and rechecks the frozen final tree. It
+does not repair or advance the workspace, and no candidate objects or refs
+persist. Successful output reports the authenticated completion SHA-256
+digest. Porcelain output always includes
 `summary.resolved_outputs`; its top-level `resolution` is `null` for an
 all-EXACT plan or an object containing `workspace`, `complete_sha256`, and
 `resolved_outputs` for completed-workspace validation.
@@ -1122,7 +1137,7 @@ snapshot materialization:
 
 Resolution is deliberately separate from semantic ordering. The plan must
 already name each output's causal owner and mark only the mechanically
-non-exact outputs `RESOLVED`. The command regenerates and compares the frozen
+non-exact outputs `RESOLVED`. The command reacquires and compares the frozen
 snapshot, validates unit conservation and ordering, then replays from the base
 tree in a fresh object quarantine. It stops at the first unresolved output and
 exports an immutable request containing its actual parent tree, exact source
@@ -1321,10 +1336,10 @@ garbage-collected.
 ```
 
 Verify works on the active operation or latest complete operation. It
-regenerates the frozen source facts independently of current `HEAD`, replays
+reacquires the frozen source facts independently of current `HEAD`, replays
 every output tree, rehashes each normalized unsigned commit, checks parents,
 authors, committers, messages, encodings, and signature removal, and compares
-the regenerated audit record with its durable digest. For a resolved plan it
+the reconstructed audit record with its durable digest. For a resolved plan it
 replays the operation-owned workspace and does not read the external workspace
 originally supplied to apply.
 Verification may run while another worktree owns a staging session. It still

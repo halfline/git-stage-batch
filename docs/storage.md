@@ -3,6 +3,22 @@
 Git-stage-batch stores durable batch state under `refs/git-stage-batch/` and
 worktree-local session scratch files below the worktree's Git directory.
 
+## Disposable history-analysis cache
+
+Rewrite commands that acquire a frozen source snapshot may reuse exact commit,
+tree, patch-unit, and dependency analysis from a persistent JSON cache. The
+cache retains at most 64 entries. On Linux its default location is
+`/var/tmp/git-stage-batch-$UID/history-snapshots`; `TMPDIR`, `TEMP`, or `TMP`
+selects another scratch parent, and `GIT_STAGE_BATCH_HISTORY_CACHE_ROOT`
+overrides the complete cache root.
+
+Entries are accepted only while their exact repository, range, Git behavior,
+configuration, analysis versions, source diffs, and object closure still
+match. A miss or failed check rebuilds the analysis, and live rewrite safety
+facts are always collected again. The cache is disposable optimization data,
+not recovery state or proof of a valid plan, replay, or final tree. Removing it
+only makes the next matching analysis cold.
+
 ## Batch metadata authority and crash residue
 
 Batch content and state refs are authoritative. A file-backed

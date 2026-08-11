@@ -33,7 +33,8 @@ For one targeted exact rewrite, read
 audit or rewrite, read `references/rewrite-procedures.md` completely. Read the
 repository contribution guide, commit-message hook, and a representative
 sample of recent commits before drafting messages. The first-class
-`refine-commit-messages` skill owns the final message-only pass.
+`refine-commit-messages` skill owns broad and final message-only passes; one
+explicitly targeted reword may use the fast path below.
 
 ## Usage
 
@@ -180,7 +181,8 @@ Use this fast path only when the user unambiguously selects one transformation
 in the fresh scanned range:
 
 - squash exactly two adjacent whole source commits into one;
-- swap exactly two adjacent whole source commits.
+- swap exactly two adjacent whole source commits; or
+- replace the complete message of exactly one source commit.
 
 This completes only that request; it does not audit or certify the rest of the
 series. Within the trusted same-user boundary, the user's exact selection is
@@ -193,7 +195,7 @@ exactly one non-`KEEP` operation, and only `EXACT` materialization. Do not run
 a separate `rewrite validate`. Direct apply validates the complete plan before
 creating operation state or a recovery ref.
 
-Inspect only the selected pair. Apply repository message rules,
+Inspect only the selected source or pair. Apply repository message rules,
 preserve required squash attribution, and require a swapped intermediate state
 to be coherent by inspection. This path may omit the series index, causal
 ledger, global ownership and ordering passes, pressured-`KEEP` review, final
@@ -562,8 +564,8 @@ or test boundary whose API or representation the group crosses before
 declaring convergence.
 
 When boundaries converge in a full-series refinement, invoke
-`/refine-commit-messages BASE_SHA` in its default mutating mode. Do not reword
-commits directly in this skill. Rescan and
+`/refine-commit-messages BASE_SHA` in its default mutating mode. Outside the
+one-target fast path, do not reword commits directly in this skill. Rescan and
 perform one final boundary audit afterward; if message work exposed a boundary
 problem, return to a newly scanned rewrite plan.
 

@@ -10,6 +10,7 @@ Contents:
 - **Preserve the generated scope** — keep every unrelated output untouched.
 - **Squash one adjacent pair** — collapse two whole sources.
 - **Swap one adjacent pair** — cross only a proven adjacent boundary.
+- **Reword one source** — replace one complete message.
 - **Inspect and apply once** — use apply's pre-state validation and verify.
 
 ## Preserve the generated scope
@@ -56,6 +57,15 @@ both messages to remain truthful. A required `BLOCKED` or `UNKNOWN` crossing
 must make apply reject the plan; never select `RESOLVED` materialization in the
 targeted path.
 
+## Reword one source
+
+Change only one generated output's operation to `REWORD`, its complete message,
+its encoding when necessary, and its rationale. Preserve every source, unit,
+patch, boundary, position, and author. Require `(message, encoding)` to differ
+from the frozen source. If both are unchanged, report that no rewrite is needed
+and do not apply a `REWORD` plan. Broad or final message audits remain in
+`refine-commit-messages`.
+
 ## Inspect and apply once
 
 Do not run a separate `rewrite validate` for this targeted path. Compare the
@@ -65,6 +75,8 @@ every output `EXACT`, exactly one non-`KEEP` operation, and these exact shapes:
 - squash: one integrated output, zero reworded, split, reordered, or resolved
   outputs, and one fewer output commit than source commit;
 - reorder: one reordered output, zero reworded, integrated, split, or resolved
+  outputs, and equal source and output counts; or
+- reword: one reworded output, zero integrated, split, reordered, or resolved
   outputs, and equal source and output counts.
 
 Run apply directly on that exact plan:

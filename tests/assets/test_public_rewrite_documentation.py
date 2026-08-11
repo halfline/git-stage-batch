@@ -37,9 +37,19 @@ def test_public_guides_state_the_rewrite_and_publication_boundary() -> None:
     examples = _read("docs/examples.md")
     combined = "\n".join((homepage, readme, assistants, examples))
 
+    assert "Sometimes, intentionally." in homepage
+    assert "reword or split commits, integrate later repairs" in homepage
     assert "git-stage-batch rewrite scan" in examples
     assert "git-stage-batch rewrite apply" in examples
     assert "git-stage-batch rewrite verify" in examples
+
+    forbidden = (
+        "Usually no.",
+        "larger history-rewrite tools",
+        "git-stage-batch helps you create better commits in the first place",
+    )
+    for phrase in forbidden:
+        assert phrase not in combined
 
 
 def test_rewrite_manual_states_remote_and_abort_boundaries() -> None:

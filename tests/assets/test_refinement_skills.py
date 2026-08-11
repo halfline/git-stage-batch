@@ -21,6 +21,15 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _markdown_section(contents: str, heading: str) -> str:
+    """Return one level-two Markdown section, including its heading."""
+    start = contents.index(f"{heading}\n")
+    next_heading = contents.find("\n## ", start + len(heading))
+    if next_heading == -1:
+        return contents[start:]
+    return contents[start : next_heading + 1]
+
+
 def _git(repo: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["git", *arguments],
@@ -84,6 +93,9 @@ def test_refine_history_delegates_every_mechanical_transition() -> None:
     assert _read(CODEX_HISTORY / "references" / "rewrite-procedures.md") == _read(
         CLAUDE_HISTORY / "references" / "rewrite-procedures.md"
     )
+    assert _read(CODEX_HISTORY / "references" / "targeted-exact-rewrites.md") == _read(
+        CLAUDE_HISTORY / "references" / "targeted-exact-rewrites.md"
+    )
 
 
 def test_refine_history_binds_narrow_publication_scope() -> None:
@@ -140,27 +152,157 @@ def test_refine_history_binds_narrow_publication_scope() -> None:
         )
 
 
-def test_refine_history_scan_cache_wording_during_transition() -> None:
-    """History scan sections should disclose cache writes during migration."""
-    accepted_boundaries = (
-        "Scan and validation do not update commits, refs, checkpoints, "
-        "an existing plan, or resolution workspaces",
-        "Scan writes the requested fresh plan; neither command updates "
-        "commits, refs, checkpoints, an existing plan, or resolution workspaces",
+def test_refine_history_bounds_targeted_exact_squash() -> None:
+    """One adjacent squash should skip only whole-series semantic ceremony."""
+    skill_contracts = (
+        "## Targeted exact rewrite",
+        "squash exactly two adjacent whole source commits into one",
+        "does not audit or certify the rest of the series",
+        "Within the trusted same-user boundary",
+        "Do not add another approval step",
+        "`KEEP` preservation rather than a semantic `KEEP` verdict",
+        "exactly one non-`KEEP` operation",
+        "`EXACT` materialization",
+        "Honor an explicit `BASE_SHA`",
+        "fresh full-series run",
+        "Targeted mode uses the narrower rule",
+        "first parent of the earliest selected source",
+        "target and every descendant through `HEAD`",
+        "current rewrite CLI cannot represent this root-boundary rewrite",
+        "may omit the series index, causal ledger",
+        "Do not run a separate `rewrite validate`",
+        "validates the complete plan before creating operation state or a recovery ref",
+        "operation `COMPLETE`, inactive",
+        "Never use this path for `SPLIT`",
+        "partial-unit integration",
+        "more than one transformation",
+        "`RESOLVED` materialization",
+        "leave history unchanged",
     )
+    full_series_contracts = (
+        "Scan writes the requested fresh plan; neither command updates commits, refs, checkpoints, an existing plan, or resolution workspaces",
+        "may reuse or update the disposable history-snapshot cache",
+        "For a full-series refinement, prefer one whole-range plan",
+        "Before a full-series apply",
+        "After any successful apply",
+        "After a full-series apply",
+        "When boundaries converge in a full-series refinement",
+        "operation counts alone are not enough",
+        "## Full-series completion gate",
+        "must not be reported as a series audit",
+    )
+    reference_contracts = (
+        "# Targeted EXACT Rewrites",
+        'retain `materialization: "EXACT"` on every output',
+        "Copy `EARLIER` and change its operation to `INTEGRATE`",
+        "all `EARLIER` units followed by all `LATER` units",
+        "user-selected boundary collapse",
+        "field-for-field unchanged",
+        "Do not run a separate `rewrite validate`",
+        "git-stage-batch rewrite status --porcelain",
+        "one fewer output commit than source commit",
+        "before it creates operation state or a recovery ref",
+        '`phase: "COMPLETE"`',
+        "`active: false`",
+        "successful completion is the product's unit and final-tree proof",
+        "non-empty sources have a net-empty result",
+        "never reconstruct the rewrite manually",
+    )
+
+    inspection_scope_contracts = (
+        "only the selected pair",
+        "only the selected source or pair",
+    )
+
+    skill_sections = []
+    reference_sections = []
+    for root in (CODEX_HISTORY, CLAUDE_HISTORY):
+        skill = _read(root / "SKILL.md")
+        skill_prose = " ".join(skill.split())
+        for contract in (*skill_contracts, *full_series_contracts):
+            assert contract in skill_prose
+        assert sum(
+            contract in skill_prose for contract in inspection_scope_contracts
+        ) == 1
+        assert "squash adjacent commits" in skill
+        assert "Scan and validation are read-only" not in skill
+
+        scan_section = _markdown_section(skill, "## Scan a fresh range")
+        scan_recipe_end = scan_section.index("```\n\nThe scan-only recipe")
+        full_series_only = scan_section.index("For a full-series\naudit")
+        identity_validation = scan_section.index(
+            'git-stage-batch rewrite validate "$REWRITE_PLAN"'
+        )
+        targeted_redirect = scan_section.index("A targeted exact rewrite instead edits")
+        assert "rewrite validate" not in scan_section[:scan_recipe_end]
+        assert (
+            scan_recipe_end < full_series_only < identity_validation < targeted_redirect
+        )
+
+        skill_section = _markdown_section(skill, "## Targeted exact rewrite")
+        assert "rewrite resolve" not in skill_section
+        assert "git-stage-batch rewrite validate" not in skill_section
+        assert "git-stage-batch rewrite apply" not in skill_section
+        skill_section_prose = " ".join(skill_section.split())
+        assert skill_section_prose.index(
+            "Follow `references/targeted-exact-rewrites.md`"
+        ) < skill_section_prose.index("Do not run a separate `rewrite validate`")
+        skill_sections.append(skill_section)
+
+        full_reference = _read(root / "references" / "rewrite-procedures.md")
+        assert "## Build one targeted EXACT plan" not in full_reference
+        reference = _read(root / "references" / "targeted-exact-rewrites.md")
+        reference_prose = " ".join(reference.split())
+        for contract in reference_contracts:
+            assert contract in reference_prose
+        assert "git-stage-batch rewrite validate" not in reference
+        assert "git-stage-batch rewrite apply" in reference
+        assert "`valid: true`" not in reference
+        reference_sections.append(reference)
+
+        apply_section = _markdown_section(skill, "## Apply a validated plan")
+        assert apply_section.index(
+            'git-stage-batch rewrite validate "$REWRITE_PLAN"'
+        ) < apply_section.index('git-stage-batch rewrite apply "$REWRITE_PLAN"')
+
+    assert skill_sections[0] == skill_sections[1]
+    assert reference_sections[0] == reference_sections[1]
+
+
+def test_refine_history_keeps_review_head_exception_exact() -> None:
+    """Narrow scope must not turn ignored refs into apply exceptions."""
+    skill_contracts = (
+        "An active review head, including one configured as the current upstream, remains a narrow exception, not a scope expansion",
+        "exact current review head",
+        "zero overlap with the provider-default and protected scope",
+        "pass only each exact full `refs/remotes/...` review-head ref",
+        "Never pass an excluded WIP, tag, or archived review ref merely to clear the blocker",
+    )
+    targeted_contracts = (
+        "exact current review-head refs authorized by the run-local publication-scope record",
+        "zero overlap with its freshly queried provider-default and protected-branch tips",
+        "never pass an excluded WIP branch, tag, archived or closed review ref",
+        "If apply cannot express the bound scope, stop without mutation",
+    )
+    shared_contracts = (
+        "A configured upstream that is this exact current active review head",
+        "it never joins the default included set",
+    )
+
     for root in (CODEX_HISTORY, CLAUDE_HISTORY):
         skill = " ".join(_read(root / "SKILL.md").split())
-        scan_section = skill.split("## Scan a fresh range", 1)[1].split(
-            "## ", 1
-        )[0]
-        assert any(
-            boundary in scan_section for boundary in accepted_boundaries
+        targeted = " ".join(
+            _read(root / "references" / "targeted-exact-rewrites.md").split()
         )
-        assert (
-            "may reuse or update the disposable history-snapshot cache"
-            in scan_section
+        shared = " ".join(
+            _read(root / "references" / "rewrite-procedures.md").split()
         )
-        assert "Scan and validation are read-only" not in scan_section
+        for contract in skill_contracts:
+            assert contract in skill
+        for contract in targeted_contracts:
+            assert contract in targeted
+        for contract in shared_contracts:
+            assert contract in shared
 
 
 def test_refine_history_assigns_causal_ownership_before_placement() -> None:

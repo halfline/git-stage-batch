@@ -9,6 +9,7 @@ import sys
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+AI_ASSISTANTS = PROJECT_ROOT / "docs" / "ai-assistants.md"
 CODEX_ROOT = PROJECT_ROOT / "assets" / "codex-skills"
 CLAUDE_ROOT = PROJECT_ROOT / "assets" / "claude-skills"
 CODEX_HISTORY = CODEX_ROOT / "refine-history"
@@ -353,6 +354,15 @@ def test_refine_history_bounds_targeted_exact_reword() -> None:
         )
         assert "report that no rewrite is needed" in reference
         assert "do not apply a `REWORD` plan" in reference
+
+
+def test_refine_history_documents_targeted_exact_mode() -> None:
+    """Both assistant entry points should label the narrow mode honestly."""
+    assistant_docs = " ".join(_read(AI_ASSISTANTS).split())
+    assert assistant_docs.count("targeted exact mode") == 2
+    assert (
+        assistant_docs.count("does not claim to have audited the untouched series") == 2
+    )
 
 
 def test_refine_history_assigns_causal_ownership_before_placement() -> None:

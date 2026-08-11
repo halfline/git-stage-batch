@@ -9,7 +9,7 @@
 [![CI](https://github.com/halfline/git-stage-batch/actions/workflows/ci.yml/badge.svg)](https://github.com/halfline/git-stage-batch/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Hunk-by-hunk and line-by-line staging for git, designed for building clean commit history.
+Fine-grained Git staging and deterministic draft-history refinement
 
 **Writing code is messy. Git history doesn't have to be.**
 
@@ -17,9 +17,14 @@ Hunk-by-hunk and line-by-line staging for git, designed for building clean commi
   <img src="https://github.com/halfline/git-stage-batch/releases/download/v0.5.0/demo.gif" alt="git-stage-batch demo" width="700">
 </p>
 
-During development we experiment, refactor, backtrack, and fix mistakes. If every step ends up as a commit, the history becomes noise. A curated history turns that process into a clear sequence of logical changes.
+During development we experiment, refactor, backtrack, and fix mistakes. If
+every step ends up as a commit, the history becomes noise. A curated history
+turns that process into a clear sequence of logical changes.
 
-`git-stage-batch` helps you build that history incrementally by letting you stage changes hunk-by-hunk or line-by-line, shaping commits around meaning instead of the order the edits happened.
+`git-stage-batch` combines fine-grained staging of uncommitted changes with
+deterministic refinement of clean, linear draft commits. Use hunks, lines, and
+batches to shape new commits around meaning, or use a validated semantic plan
+to refine an existing local draft series while preserving its final Git tree.
 
 ## Features
 
@@ -28,6 +33,7 @@ During development we experiment, refactor, backtrack, and fix mistakes. If ever
 - **Interactive mode** - Menu-driven hunk-by-hunk workflow inspired by `git add -p`
 - **State persistence** - Resume staging across multiple invocations
 - **Batch operations** - Save hunks for later, organize complex changes
+- **Deterministic history refinement** - Validate and execute semantic rewrites of local draft commits
 - **Machine-readable output** - `--porcelain` flag for scripting
 - **No runtime Python packages** - Uses the standard library and the external Git executable
 
@@ -110,13 +116,15 @@ git-stage-batch a
 
 ## Why git-stage-batch?
 
-Similar to `git add -p` but **more granular and flexible**:
+For uncommitted changes, it is similar to `git add -p` but **more granular and
+flexible**:
 
 - ✅ **Line-by-line staging** - Stage specific lines within a hunk
 - ✅ **Interactive mode** - Continuous hunk-by-hunk workflow with menus
 - ✅ **Batch operations** - Save hunks for later processing
 - ✅ **Colored output** - Clear visual distinction in your terminal
 - ✅ **File operations** - Stage/skip entire files at once
+- ✅ **Deterministic history refinement** - Validate and execute semantic rewrites of clean draft commits
 
 ## Interactive Mode
 

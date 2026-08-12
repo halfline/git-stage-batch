@@ -1,11 +1,13 @@
 """Tests for line-matching anchors derived from deletion references."""
 
 from contextlib import nullcontext
+from typing import cast
 
 import pytest
 
 from git_stage_batch.batch.merge import baseline_anchor_matching
 from git_stage_batch.batch.merge.baseline_anchor_matching import (
+    acquire_discard_baseline_anchor_pairs,
     acquire_deletion_anchor_pairs_for_target,
 )
 from git_stage_batch.batch.line_matching.match_workspace import MatcherWorkspace
@@ -19,13 +21,397 @@ from git_stage_batch.batch.merge.merge import (
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.references import BaselineReference
-from git_stage_batch.batch.ownership.replacement_units import ReplacementUnitOrigin
+from git_stage_batch.batch.ownership.replacement_units import (
+    ReplacementUnit,
+    ReplacementUnitOrigin,
+)
+from git_stage_batch.core.line_selection import LineRanges
 from git_stage_batch.exceptions import MergeError
 
 
 def _deletion_anchor_pairs(*args, **kwargs):
     with acquire_deletion_anchor_pairs_for_target(*args, **kwargs) as anchors:
         return tuple(anchors)
+
+
+def _discard_anchor_pairs(*args, **kwargs):
+    with acquire_discard_baseline_anchor_pairs(*args, **kwargs) as anchors:
+        return tuple(anchors)
+
+
+def test_discard_anchors_complete_copied_bof_insertion():
+    """A live copied run can prove which equal baseline copy must survive."""
+    baseline = [b"A\n", b"B\n"]
+    source = [b"A\n", b"B\n", b"A\n", b"B\n"]
+    reference = BaselineReference(
+        after_line=None,
+        before_line=1,
+        before_content=b"A\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-2"],
+        baseline_references={1: reference, 2: reference},
+    )
+
+    with match_lines(source, source) as source_to_working:
+        anchors = _discard_anchor_pairs(
+            source,
+            baseline,
+            ownership,
+            source_to_working_mapping=source_to_working,
+            working_lines=source,
+        )
+
+    assert anchors == ((1, 3),)
+
+
+def test_discard_does_not_reanchor_removed_repeated_bof_insertion():
+    """A shorter baseline copy cannot impersonate an already removed run."""
+    baseline = [b"A\n", b"A\n"]
+    source = [b"A\n", b"A\n", b"A\n"]
+    reference = BaselineReference(
+        after_line=None,
+        before_line=1,
+        before_content=b"A\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["1"],
+        baseline_references={1: reference},
+    )
+
+    with match_lines(source, baseline) as source_to_working:
+        anchors = _discard_anchor_pairs(
+            source,
+            baseline,
+            ownership,
+            source_to_working_mapping=source_to_working,
+            working_lines=baseline,
+        )
+
+    assert anchors == ()
+
+
+@pytest.mark.parametrize(
+    "working",
+    [
+        [
+            b"P\n",
+            b"H\n",
+            b"A\n",
+            b"Q\n",
+            b"B\n",
+            b"T\n",
+            b"U\n",
+            b"H\n",
+            b"A\n",
+            b"X\n",
+            b"B\n",
+            b"T\n",
+        ],
+        [
+            b"P\n",
+            b"H\n",
+            b"A\n",
+            b"B\n",
+            b"T\n",
+            b"U\n",
+            b"H\n",
+            b"A\n",
+            b"X\n",
+            b"B\n",
+            b"T\n",
+        ],
+    ],
+    ids=["intended-gap-diverged", "intended-gap-already-absent"],
+)
+def test_discard_refuses_pure_insertion_in_ambiguous_source_clone(working):
+    """An exact whole-source clone cannot steal a diverged insertion gap."""
+    baseline = [b"H\n", b"A\n", b"B\n", b"T\n"]
+    source = [b"H\n", b"A\n", b"X\n", b"B\n", b"T\n"]
+    reference = BaselineReference(
+        after_line=2,
+        after_content=b"A\n",
+        before_line=3,
+        before_content=b"B\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["3"],
+        baseline_references={3: reference},
+    )
+
+    with match_lines(source, working) as source_to_working:
+        with pytest.raises(MergeError, match="different version"):
+            _discard_anchor_pairs(
+                source,
+                baseline,
+                ownership,
+                source_to_working_mapping=source_to_working,
+                working_lines=working,
+            )
+
+
+def test_discard_does_not_anchor_partial_copied_insertion_run():
+    """One selected line cannot stand in for its unselected insertion sibling."""
+    baseline = [b"A\n", b"B\n"]
+    source = [b"A\n", b"B\n", b"A\n", b"B\n"]
+    ownership = BatchOwnership.from_presence_lines(
+        ["1"],
+        baseline_references={
+            1: BaselineReference(
+                after_line=None,
+                before_line=1,
+                before_content=b"A\n",
+                has_before_line=True,
+            )
+        },
+    )
+
+    with match_lines(source, source) as source_to_working:
+        anchors = _discard_anchor_pairs(
+            source,
+            baseline,
+            ownership,
+            source_to_working_mapping=source_to_working,
+            working_lines=source,
+        )
+
+    assert anchors == ()
+
+
+def test_discard_does_not_anchor_incomplete_reference_group():
+    """Malformed metadata within a selected insertion run fails closed."""
+    baseline = [b"A\n", b"B\n"]
+    source = [b"A\n", b"B\n", b"A\n", b"B\n"]
+    reference = BaselineReference(
+        after_line=None,
+        before_line=1,
+        before_content=b"A\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["1-2"],
+        baseline_references={
+            1: reference,
+            2: cast(BaselineReference, {}),
+        },
+    )
+
+    with match_lines(source, source) as source_to_working:
+        anchors = _discard_anchor_pairs(
+            source,
+            baseline,
+            ownership,
+            source_to_working_mapping=source_to_working,
+            working_lines=source,
+        )
+
+    assert anchors == ()
+
+
+def test_discard_does_not_anchor_malformed_deletion_reference():
+    """Malformed deletion reference metadata cannot constrain correspondence."""
+    ownership = BatchOwnership(
+        [],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"old\n"],
+                baseline_reference=cast(BaselineReference, {}),
+            )
+        ],
+    )
+
+    assert _discard_anchor_pairs(
+        [b"A\n", b"new\n"],
+        [b"A\n", b"old\n"],
+        ownership,
+    ) == ()
+
+
+def test_discard_anchors_replacement_on_both_equal_edges():
+    """Replacement-unit metadata contributes its verified trailing edge."""
+    baseline = [
+        b"old-header\n",
+        b"{\n",
+        b" common\n",
+        b" old-only\n",
+        b"}\n",
+        b"tail\n",
+    ]
+    source = [
+        b"new-header\n",
+        b"{\n",
+        b" common\n",
+        b" new-only\n",
+        b"}\n",
+        b"tail\n",
+    ]
+    ownership = BatchOwnership.from_presence_lines(
+        ["1", "4"],
+        [
+            AbsenceClaim(
+                anchor_line=None,
+                content_lines=[b"old-header\n"],
+                baseline_reference=BaselineReference(
+                    after_line=None,
+                    before_line=2,
+                    has_before_line=True,
+                ),
+            ),
+            AbsenceClaim(
+                anchor_line=3,
+                content_lines=[b" old-only\n"],
+                baseline_reference=BaselineReference(
+                    after_line=3,
+                    before_line=5,
+                    has_before_line=True,
+                ),
+            ),
+        ],
+        replacement_units=[
+            ReplacementUnit(["1"], [0]),
+            ReplacementUnit(["4"], [1]),
+        ],
+    )
+
+    anchors = _discard_anchor_pairs(source, baseline, ownership)
+
+    assert anchors == ((2, 2), (3, 3), (5, 5))
+
+
+def test_discard_replacement_anchor_does_not_scan_prior_presence_ranges(
+    monkeypatch,
+):
+    """Replacement containment uses indexed ranges instead of count scans."""
+    baseline = [b"A\n", b"old\n", b"T\n"]
+    source = [b"A\n", b"new\n", b"T\n"]
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"old\n"],
+                baseline_reference=BaselineReference(
+                    after_line=1,
+                    before_line=3,
+                    has_before_line=True,
+                ),
+            )
+        ],
+        replacement_units=[ReplacementUnit(["2"], [0])],
+    )
+
+    def reject_count_scan(*_args, **_kwargs):
+        raise AssertionError("discard anchors must not scan presence ranges")
+
+    monkeypatch.setattr(LineRanges, "count", reject_count_scan)
+
+    assert _discard_anchor_pairs(source, baseline, ownership) == (
+        (1, 1),
+        (3, 3),
+    )
+
+
+def test_discard_refuses_collectively_crossing_deletion_anchors():
+    """Individually valid but crossing ownership anchors refuse discard."""
+    baseline = [b"X\n", b"old-one\n", b"Y\n", b"old-two\n"]
+    source = [b"Y\n", b"middle\n", b"X\n"]
+    ownership = BatchOwnership(
+        [],
+        [
+            AbsenceClaim(
+                anchor_line=3,
+                content_lines=[b"old-one\n"],
+                baseline_reference=BaselineReference(after_line=1),
+            ),
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"old-two\n"],
+                baseline_reference=BaselineReference(after_line=3),
+            ),
+        ],
+    )
+
+    with pytest.raises(MergeError, match="different version"):
+        _discard_anchor_pairs(source, baseline, ownership)
+
+
+def test_discard_does_not_anchor_partial_replacement_origin_trailing_line():
+    """A sibling line outside a split unit cannot become its equal edge."""
+    baseline = [b"A\n", b"O1\n", b"O2\n", b"T\n"]
+    source = [b"A\n", b"N1\n", b"T\n", b"T\n"]
+    reference = BaselineReference(
+        after_line=1,
+        before_line=4,
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"O1\n", b"O2\n"],
+                baseline_reference=reference,
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                ["2"],
+                [0],
+                origin=ReplacementUnitOrigin(
+                    old_start=2,
+                    old_end=3,
+                    new_start=2,
+                    new_end=3,
+                    baseline_reference=reference,
+                ),
+            )
+        ],
+    )
+
+    assert _discard_anchor_pairs(source, baseline, ownership) == ((1, 1),)
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        cast(ReplacementUnitOrigin, {}),
+        ReplacementUnitOrigin(
+            old_start=0,
+            old_end=0,
+            new_start=0,
+            new_end=0,
+        ),
+    ],
+    ids=["wrong-type", "non-positive-coordinates"],
+)
+def test_discard_does_not_trust_malformed_replacement_origin(origin):
+    """Malformed origin metadata cannot authorize a trailing-edge anchor."""
+    baseline = [b"A\n", b"old\n", b"T\n"]
+    source = [b"A\n", b"new\n", b"T\n"]
+    reference = BaselineReference(
+        after_line=1,
+        before_line=3,
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"old\n"],
+                baseline_reference=reference,
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(["2"], [0], origin=origin),
+        ],
+    )
+
+    assert _discard_anchor_pairs(source, baseline, ownership) == ((1, 1),)
 
 
 def test_baseline_coordinates_anchor_exact_realization_target():
@@ -171,7 +557,7 @@ def test_live_merge_does_not_apply_ambiguous_baseline_coordinate(supply_mapping)
     with mapping_context as mapping:
         with pytest.raises(
             MergeError,
-            match="recorded baseline coordinates and structural content matching",
+            match="Batch was created from a different version of the file",
         ):
             merge_batch_from_line_sequences_as_buffer(
                 source,
@@ -221,7 +607,7 @@ def test_live_merge_does_not_insert_at_ambiguous_baseline_coordinate():
 
     with pytest.raises(
         MergeError,
-        match="recorded baseline coordinates and structural content matching",
+        match="Batch was created from a different version of the file",
     ):
         merge_batch_from_line_sequences_as_buffer(
             source,

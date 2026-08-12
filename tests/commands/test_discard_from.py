@@ -10,7 +10,9 @@ import pytest
 import git_stage_batch.commands.batch_source.discard_action as discard_action
 from git_stage_batch.batch.state.lifecycle import create_batch
 from git_stage_batch.batch.file_display import render_batch_file_display
+from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.commands.discard_from import command_discard_from_batch
+from git_stage_batch.commands.include_from import command_include_from_batch
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import ensure_state_directory_exists
@@ -64,6 +66,142 @@ class TestCommandDiscardFromBatch:
 
         captured = capsys.readouterr()
         assert "Discarded changes from batch" in captured.err
+
+    @pytest.mark.parametrize("materialize", ["apply", "include"])
+    def test_discard_from_reverses_applied_extracted_helper(
+        self,
+        temp_git_repo,
+        materialize,
+    ):
+        """Discarding an applied helper extraction must restore the baseline."""
+        plane = temp_git_repo / "plane.c"
+        baseline = """\
+static struct state *duplicate_state(void)
+{
+        struct state *state;
+        struct frame_info *frame_info;
+
+        state = allocate_state();
+        if (!state)
+                return NULL;
+
+        frame_info = allocate_frame_info();
+        if (!frame_info) {
+                free_state(state);
+                return NULL;
+        }
+
+        state->frame_info = frame_info;
+        return state;
+}
+
+static void destroy_state(struct state *state)
+{
+        struct controller *controller = state->controller;
+
+        if (controller && state->frame_info->buffer) {
+                /* Drop the reference acquired by primary_update(). */
+                if (buffer_has_references(state->frame_info->buffer))
+                        buffer_put(state->frame_info->buffer);
+        }
+
+        free_frame_info(state->frame_info);
+        free_state(state);
+}
+
+static void reset_state(void)
+{
+        struct state *state;
+
+        state = allocate_state();
+        if (!state)
+                return;
+
+        install_state(state);
+}
+"""
+        extracted = """\
+static struct state *allocate_complete_state(void)
+{
+        struct state *state;
+
+        state = allocate_state();
+        if (!state)
+                return NULL;
+
+        state->frame_info = allocate_frame_info();
+        if (!state->frame_info) {
+                free_state(state);
+                return NULL;
+        }
+
+        return state;
+}
+
+static struct state *duplicate_state(void)
+{
+        struct state *state;
+
+        state = allocate_complete_state();
+        if (!state)
+                return NULL;
+
+        return state;
+}
+
+static void destroy_state(struct state *state)
+{
+        if (state->frame_info && state->frame_info->buffer) {
+                /* Drop the reference acquired by atomic_update(). */
+                buffer_put(state->frame_info->buffer);
+        }
+
+        free_frame_info(state->frame_info);
+        free_state(state);
+}
+
+static void reset_state(void)
+{
+        struct state *state;
+
+        state = allocate_complete_state();
+        if (!state)
+                return;
+
+        install_state(state);
+}
+"""
+        plane.write_text(baseline)
+        subprocess.run(
+            ["git", "add", "plane.c"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add plane state"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+
+        plane.write_text(extracted)
+        command_start(quiet=True)
+        command_include_to_batch("helper-extraction", file="plane.c", quiet=True)
+        plane.write_text(baseline)
+
+        if materialize == "apply":
+            command_apply_from_batch("helper-extraction", file="plane.c")
+        else:
+            command_include_from_batch("helper-extraction", file="plane.c")
+        assert plane.read_text() == extracted
+
+        local_change = "/* unrelated local change */\n"
+        plane.write_text(extracted + local_change)
+
+        command_discard_from_batch("helper-extraction", file="plane.c")
+
+        assert plane.read_text() == baseline + local_change
 
     def test_multi_file_failure_rolls_back_earlier_discards(
         self,

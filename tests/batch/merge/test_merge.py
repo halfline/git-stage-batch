@@ -3010,6 +3010,146 @@ class TestDiscardBatch:
         # Should restore line2 from baseline, keep extra line
         assert result == b"line1\nline2\nextra\nline3\n"
 
+    def test_discard_uses_replacement_edges_around_copied_baseline_content(self):
+        """Recorded replacement edges prevent copied content stealing alignment."""
+        baseline = (
+            b"old-header\n{\n common\n old-only\n}\nold-sep\ntail\n"
+        )
+        batch_source = (
+            b"new-header\n{\n common\n new-only\n}\nold-sep\n"
+            b"old-header\n{\n common\n}\ntail\n"
+        )
+        working = batch_source + b"LOCAL\n"
+        copied_reference = BaselineReference(
+            after_line=6,
+            after_content=b"old-sep\n",
+            before_line=7,
+            before_content=b"tail\n",
+            has_before_line=True,
+        )
+        deletions = [
+            AbsenceClaim(
+                anchor_line=None,
+                content_lines=[b"old-header\n"],
+                baseline_reference=BaselineReference(
+                    after_line=None,
+                    before_line=2,
+                    before_content=b"{\n",
+                    has_before_line=True,
+                ),
+            ),
+            AbsenceClaim(
+                anchor_line=3,
+                content_lines=[b" old-only\n"],
+                baseline_reference=BaselineReference(
+                    after_line=3,
+                    after_content=b" common\n",
+                    before_line=5,
+                    before_content=b"}\n",
+                    has_before_line=True,
+                ),
+            ),
+        ]
+        ownership = BatchOwnership.from_presence_lines(
+            ["1", "4", "7-10"],
+            deletions,
+            baseline_references={
+                line: copied_reference for line in range(7, 11)
+            },
+            replacement_units=[
+                ReplacementUnit(["1"], [0]),
+                ReplacementUnit(["4"], [1]),
+            ],
+        )
+
+        result = discard_batch(batch_source, ownership, working, baseline)
+
+        assert result == baseline + b"LOCAL\n"
+
+    def test_discard_removes_copied_bof_insertion_idempotently(self):
+        """Referenced copied content is removed once without touching local edits."""
+        baseline = b"A\nB\n"
+        batch_source = b"A\nB\nA\nB\n"
+        working = batch_source + b"LOCAL\n"
+        reference = BaselineReference(
+            after_line=None,
+            before_line=1,
+            before_content=b"A\n",
+            has_before_line=True,
+        )
+        ownership = BatchOwnership.from_presence_lines(
+            ["1-2"],
+            baseline_references={1: reference, 2: reference},
+        )
+
+        result = discard_batch(batch_source, ownership, working, baseline)
+
+        assert result == baseline + b"LOCAL\n"
+        assert (
+            discard_batch(batch_source, ownership, result, baseline)
+            == result
+        )
+
+    def test_discard_repeated_bof_copy_is_idempotent(self):
+        """Repeated boundary lines do not make a second discard destructive."""
+        baseline = b"A\nA\n"
+        batch_source = b"A\nA\nA\n"
+        reference = BaselineReference(
+            after_line=None,
+            before_line=1,
+            before_content=b"A\n",
+            has_before_line=True,
+        )
+        ownership = BatchOwnership.from_presence_lines(
+            ["1"],
+            baseline_references={1: reference},
+        )
+
+        result = discard_batch(
+            batch_source,
+            ownership,
+            batch_source,
+            baseline,
+        )
+
+        assert result == baseline
+        assert (
+            discard_batch(batch_source, ownership, result, baseline)
+            == baseline
+        )
+
+    @pytest.mark.parametrize(
+        "first_gap",
+        [b"Q\n", b""],
+        ids=["intended-gap-diverged", "intended-gap-already-absent"],
+    )
+    def test_discard_refuses_insertion_from_ambiguous_source_clone(
+        self,
+        first_gap,
+    ):
+        """Discard never removes an insertion from an unrelated source clone."""
+        baseline = b"H\nA\nB\nT\n"
+        batch_source = b"H\nA\nX\nB\nT\n"
+        working = (
+            b"P\nH\nA\n"
+            + first_gap
+            + b"B\nT\nU\nH\nA\nX\nB\nT\n"
+        )
+        reference = BaselineReference(
+            after_line=2,
+            after_content=b"A\n",
+            before_line=3,
+            before_content=b"B\n",
+            has_before_line=True,
+        )
+        ownership = BatchOwnership.from_presence_lines(
+            ["3"],
+            baseline_references={3: reference},
+        )
+
+        with pytest.raises(MergeError, match="different version"):
+            discard_batch(batch_source, ownership, working, baseline)
+
     def test_discard_after_divergence(self):
         """Test discarding after working tree diverged from batch source."""
         baseline = b"A\nB\nC\nD\nE\n"

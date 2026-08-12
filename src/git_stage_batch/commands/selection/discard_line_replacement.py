@@ -12,6 +12,7 @@ from ...batch.source.annotation import annotate_with_batch_source_working_lines
 from ...batch.state.lifecycle import create_batch
 from ...batch.ownership.metadata_loading import acquire_ownership_for_metadata_dict
 from ...batch.ownership.merging import merge_batch_ownership
+from ...batch.ownership import insertion_references as _insertion_references
 from ...batch.ownership.remapping import remap_batch_ownership_with_lineage
 from ...batch.ownership.translation import translate_lines_to_batch_ownership
 from ...batch.ownership_update import acquire_batch_ownership_update_for_selection
@@ -143,6 +144,9 @@ def prepare_discard_line_replacement_selection(
             line_changes.path,
             rewritten_cached_lines,
             rewritten_working_lines,
+        )
+        _insertion_references.record_baseline_references_for_additions(
+            rewritten_line_changes,
         )
         rewritten_selected_lines = _select_rewritten_replacement_lines(
             selected_lines,

@@ -1140,11 +1140,6 @@ msgstr "清除状态并退出而不显示候选项"
 msgid "Re-show the last candidate without advancing"
 msgstr "重新显示上一个候选项而不前进"
 
-#: src/git_stage_batch/cli/fixup_subcommands.py:82
-#, python-brace-format
-msgid "Git ref to use as lower bound for commit search (default: @{upstream})"
-msgstr "用作提交搜索下限的 Git 引用（默认：@{upstream}）"
-
 #: src/git_stage_batch/cli/include_dispatch.py:35
 msgid "`--no-edge-overlap` only applies to live `include --line --as` operations."
 msgstr "`--no-edge-overlap` 仅适用于当前变更的 `include --line --as` 操作。"
@@ -1197,8 +1192,8 @@ msgid "Replacement text was not provided."
 msgstr "未提供替换文本。"
 
 #: src/git_stage_batch/cli/root_parser.py:16
-msgid "Hunk-by-hunk and line-by-line staging for git"
-msgstr "Git 的逐块和逐行暂存"
+msgid "Fine-grained Git staging and deterministic draft-history refinement"
+msgstr "细粒度 Git 暂存和确定性的草稿历史优化"
 
 #: src/git_stage_batch/cli/root_parser.py:31
 msgid "Run as if started in path"
@@ -2558,47 +2553,10 @@ msgid "✓ Skipped {count} hunk from {file}"
 msgid_plural "✓ Skipped {count} hunks from {file}"
 msgstr[0] "✓ 已跳过 {file} 中的 {count} 个变更块"
 
-#: src/git_stage_batch/commands/fixup/boundary.py:21
-#, python-brace-format
-msgid "Invalid boundary ref: {boundary}"
-msgstr "无效的边界引用：{boundary}"
-
-#: src/git_stage_batch/commands/fixup/boundary.py:31
-#, python-brace-format
-msgid "Failed to get commit range {boundary}..HEAD"
-msgstr "获取提交范围 {boundary}..HEAD 失败"
-
-#: src/git_stage_batch/commands/fixup/boundary.py:38
-#, python-brace-format
-msgid "No commits found in range {boundary}..HEAD"
-msgstr "在范围 {boundary}..HEAD 中未找到提交"
-
-#: src/git_stage_batch/commands/fixup/candidate_display.py:26
-msgid ""
-"No previous candidate to show.\n"
-"Run suggest-fixup without --last to find a candidate."
-msgstr ""
-"没有可显示的上一个候选项。\n"
-"请运行不带 --last 的 suggest-fixup 以查找候选项。"
-
-#: src/git_stage_batch/commands/fixup/candidate_display.py:70
-#, python-brace-format
-msgid "Candidate {iteration}: {info}"
-msgstr "候选项 {iteration}：{info}"
-
 #: src/git_stage_batch/commands/fixup/candidate_display.py:76
 #, python-brace-format
 msgid "Run: git commit --fixup={commit}"
 msgstr "运行：git commit --fixup={commit}"
-
-#: src/git_stage_batch/commands/fixup/candidate_iteration.py:47
-#, python-brace-format
-msgid ""
-"No commits in range {boundary}..HEAD modified these lines.\n"
-"The changes may be fixing code from before the boundary."
-msgstr ""
-"范围 {boundary}..HEAD 内没有提交修改过这些行。\n"
-"这些更改可能在修复范围边界之前的代码。"
 
 #: src/git_stage_batch/commands/fixup/candidate_iteration.py:53
 msgid "No more candidates found."
@@ -2607,16 +2565,6 @@ msgstr "未找到更多候选项。"
 #: src/git_stage_batch/commands/fixup/iteration_state.py:35
 msgid "Suggest-fixup iteration cleared."
 msgstr "建议修复迭代已清除。"
-
-#: src/git_stage_batch/commands/fixup/line_ranges.py:37
-msgid "No old line numbers found in hunk (all lines may be additions)."
-msgstr "在块中未找到旧行号（所有行可能都是新增的）。"
-
-#: src/git_stage_batch/commands/fixup/line_ranges.py:59
-msgid ""
-"No old line numbers found for specified lines (they may be newly added "
-"lines)."
-msgstr "未找到指定行的旧行号（它们可能是新添加的行）。"
 
 #: src/git_stage_batch/commands/fixup/search_targets.py:46
 #: src/git_stage_batch/commands/fixup/search_targets.py:102
@@ -6100,3 +6048,1233 @@ msgstr "替换选择必须对应批次源中一个连续的行范围。"
 #: src/git_stage_batch/batch/replacement.py:44
 msgid "Replacement selection must resolve to one contiguous batch-source region."
 msgstr "替换选择必须对应批次源中一个连续区域。"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:78 src/git_stage_batch/cli/fixup_subcommands.py:114
+msgid "Output machine-readable JSON"
+msgstr "输出机器可读的 JSON"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:104
+msgid "Show the complete assignment plan without creating commits"
+msgstr "显示完整的分配计划而不创建提交"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:109
+msgid "Create eligible fixups and leave other units staged"
+msgstr "创建符合条件的 fixup，并让其他单元保持暂存"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:121
+msgid "Git commit to use as the excluded base of the target range (default: fork point with upstream)"
+msgstr "用作目标范围排除基点的 Git 提交（默认：与上游的分叉点）"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:134
+msgid "Suggest fixup targets or create grouped fixup commits"
+msgstr "建议 fixup 目标或创建分组的 fixup 提交"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:139
+msgid "Fixup action"
+msgstr "fixup 操作"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:146
+msgid "Suggest a target for the selected hunk"
+msgstr "为所选补丁块建议目标"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:155
+msgid "Create grouped fixup commits from staged changes"
+msgstr "从暂存更改创建分组的 fixup 提交"
+
+#: src/git_stage_batch/commands/fixup_create.py:36
+#, python-brace-format
+msgid "Cannot create fixup commits while another Git operation is active ({operation})."
+msgstr "另一个 Git 操作正在进行时无法创建 fixup 提交（{operation}）。"
+
+#: src/git_stage_batch/commands/fixup_create.py:56
+msgid "Stop the active git-stage-batch session before creating fixup commits."
+msgstr "创建 fixup 提交前请停止活动的 git-stage-batch 会话。"
+
+#: src/git_stage_batch/commands/fixup_create.py:81
+msgid "No commits were created because some staged units are not eligible. Inspect the plan or rerun with --partial."
+msgstr "由于某些暂存单元不符合条件，未创建任何提交。请检查计划或使用 --partial 重新运行。"
+
+#: src/git_stage_batch/commands/fixup_create.py:92
+msgid "No staged units have an eligible fixup target."
+msgstr "没有暂存单元具有符合条件的 fixup 目标。"
+
+#: src/git_stage_batch/fixup/execution.py:102
+#, python-brace-format
+msgid "Could not materialize the staged units assigned to {target}."
+msgstr "无法实现分配给 {target} 的暂存单元。"
+
+#: src/git_stage_batch/fixup/execution.py:114
+#, python-brace-format
+msgid "The planned fixup for {target} could not be combined with the preceding fixup groups."
+msgstr "无法将为 {target} 计划的 fixup 与之前的 fixup 组组合。"
+
+#: src/git_stage_batch/fixup/execution.py:130
+msgid "The grouped fixup plan does not conserve the staged changes."
+msgstr "分组的 fixup 计划未保留暂存更改。"
+
+#: src/git_stage_batch/fixup/execution.py:134
+msgid "The complete fixup plan does not reproduce the staged index tree."
+msgstr "完整的 fixup 计划未重现暂存索引树。"
+
+#: src/git_stage_batch/fixup/execution.py:143
+msgid "HEAD or the staged index changed after fixup planning. No further fixup commits were created."
+msgstr "fixup 计划完成后 HEAD 或暂存索引发生了变化。未再创建 fixup 提交。"
+
+#: src/git_stage_batch/fixup/execution.py:160
+#, python-brace-format
+msgid "Fixup creation stopped after HEAD moved unexpectedly. The original commit is saved at {recovery_ref}; HEAD was not overwritten."
+msgstr "HEAD 意外移动后，fixup 创建已停止。原始提交已保存在 {recovery_ref}；HEAD 未被覆盖。"
+
+#: src/git_stage_batch/fixup/execution.py:173
+#, python-brace-format
+msgid "Could not restore HEAD after fixup creation failed. The original commit is saved at {recovery_ref}."
+msgstr "fixup 创建失败后无法还原 HEAD。原始提交已保存在 {recovery_ref}。"
+
+#: src/git_stage_batch/fixup/execution.py:183
+msgid "The fixup plan has no eligible staged units."
+msgstr "fixup 计划没有符合条件的暂存单元。"
+
+#: src/git_stage_batch/fixup/execution.py:211
+msgid "HEAD no longer names the fixup commit that was just created."
+msgstr "HEAD 不再指向刚创建的 fixup 提交。"
+
+#: src/git_stage_batch/fixup/execution.py:226
+msgid "A created fixup commit has an unexpected parent."
+msgstr "已创建的 fixup 提交具有意外的父提交。"
+
+#: src/git_stage_batch/fixup/execution.py:231
+msgid "A commit hook changed the planned fixup subject; the operation was rolled back."
+msgstr "提交钩子更改了计划的 fixup 主题；操作已回滚。"
+
+#: src/git_stage_batch/fixup/execution.py:238
+msgid "A commit hook changed the planned fixup tree; the operation was rolled back."
+msgstr "提交钩子更改了计划的 fixup 树；操作已回滚。"
+
+#: src/git_stage_batch/fixup/planning.py:191
+msgid "No staged changes are available for fixup creation."
+msgstr "没有可用于创建 fixup 的暂存更改。"
+
+#: src/git_stage_batch/fixup/planning.py:210
+msgid "HEAD or the staged index changed during fixup analysis. Run the command again."
+msgstr "fixup 分析期间 HEAD 或暂存索引发生了变化。请重新运行命令。"
+
+#: src/git_stage_batch/fixup/ranges.py:22
+#, python-brace-format
+msgid "Invalid fixup boundary: {boundary}"
+msgstr "无效的 fixup 边界：{boundary}"
+
+#: src/git_stage_batch/fixup/ranges.py:36
+msgid "No upstream branch is configured. Pass the base commit for fixup analysis explicitly."
+msgstr "未配置上游分支。请显式传入用于 fixup 分析的基点提交。"
+
+#: src/git_stage_batch/fixup/ranges.py:56
+msgid "Could not determine a merge base between HEAD and its upstream."
+msgstr "无法确定 HEAD 与其上游之间的合并基点。"
+
+#: src/git_stage_batch/fixup/ranges.py:71
+#, python-brace-format
+msgid "Fixup base {base} is not an ancestor of HEAD."
+msgstr "fixup 基点 {base} 不是 HEAD 的祖先。"
+
+#: src/git_stage_batch/fixup/ranges.py:94
+#, python-brace-format
+msgid "Fixup analysis currently requires a linear range; commit {commit} does not have exactly one parent."
+msgstr "fixup 分析目前要求线性范围；提交 {commit} 并非恰好有一个父提交。"
+
+#: src/git_stage_batch/fixup/ranges.py:101
+msgid "No commits found between the fixup base and HEAD."
+msgstr "在 fixup 基点与 HEAD 之间未找到提交。"
+
+#: src/git_stage_batch/fixup/staged_units.py:69
+msgid "Staged text patch has no hunk header."
+msgstr "暂存的文本补丁没有补丁块头。"
+
+#: src/git_stage_batch/output/fixup_create.py:18
+msgid "lineage and placement agree"
+msgstr "沿袭和放置结果一致"
+
+#: src/git_stage_batch/output/fixup_create.py:20
+msgid "unique lineage; patch commutes through the range"
+msgstr "沿袭唯一；补丁可交换穿过整个范围"
+
+#: src/git_stage_batch/output/fixup_create.py:23
+msgid "mechanical placement only; semantic target is unproven"
+msgstr "仅有机械放置；语义目标尚未证实"
+
+#: src/git_stage_batch/output/fixup_create.py:26
+msgid "lineage and placement identify different commits"
+msgstr "沿袭和放置指向不同的提交"
+
+#: src/git_stage_batch/output/fixup_create.py:28
+msgid "selected lines have multiple owners"
+msgstr "所选行有多个所有者"
+
+#: src/git_stage_batch/output/fixup_create.py:29
+msgid "no target evidence in the selected range"
+msgstr "所选范围内没有目标证据"
+
+#: src/git_stage_batch/output/fixup_create.py:30
+msgid "whole-file additions are not supported yet"
+msgstr "尚不支持添加整个文件"
+
+#: src/git_stage_batch/output/fixup_create.py:31
+msgid "whole-file deletions are not supported yet"
+msgstr "尚不支持删除整个文件"
+
+#: src/git_stage_batch/output/fixup_create.py:32
+msgid "binary changes are not supported yet"
+msgstr "尚不支持二进制更改"
+
+#: src/git_stage_batch/output/fixup_create.py:33
+msgid "renames are not supported yet"
+msgstr "尚不支持重命名"
+
+#: src/git_stage_batch/output/fixup_create.py:35
+msgid "content changes across renames are not supported yet"
+msgstr "尚不支持跨重命名的内容更改"
+
+#: src/git_stage_batch/output/fixup_create.py:37
+msgid "file-mode changes are not supported yet"
+msgstr "尚不支持文件模式更改"
+
+#: src/git_stage_batch/output/fixup_create.py:38
+msgid "gitlink changes are not supported yet"
+msgstr "尚不支持 gitlink 更改"
+
+#: src/git_stage_batch/output/fixup_create.py:39
+msgid "the unit has no textual patch"
+msgstr "该单元没有文本补丁"
+
+#: src/git_stage_batch/output/fixup_create.py:41
+msgid "the staged unit no longer applies to the frozen HEAD"
+msgstr "暂存单元不再适用于冻结的 HEAD"
+
+#: src/git_stage_batch/output/fixup_create.py:43
+msgid "the frozen range tree chain changed"
+msgstr "冻结范围的树链发生了变化"
+
+#: src/git_stage_batch/output/fixup_create.py:44
+msgid "placement analysis failed"
+msgstr "放置分析失败"
+
+#: src/git_stage_batch/output/fixup_create.py:166
+#, python-brace-format
+msgid "Fixup plan for {base}..{head}:"
+msgstr "{base}..{head} 的 fixup 计划："
+
+#: src/git_stage_batch/output/fixup_create.py:173
+msgid "unassigned"
+msgstr "未分配"
+
+#: src/git_stage_batch/output/fixup_create.py:188
+#, python-brace-format
+msgid "Target {target} {subject}: {count} unit(s)"
+msgstr "目标 {target} {subject}：{count} 个单元"
+
+#: src/git_stage_batch/output/fixup_create.py:196
+msgid "Dry run: no commits were created."
+msgstr "试运行：未创建任何提交。"
+
+#: src/git_stage_batch/output/fixup_create.py:200
+#, python-brace-format
+msgid "Created {commit} as a fixup for {target}."
+msgstr "已创建 {commit} 作为 {target} 的 fixup。"
+
+#: src/git_stage_batch/output/fixup_create.py:206
+#, python-brace-format
+msgid "Recovery ref: {recovery_ref}"
+msgstr "恢复引用：{recovery_ref}"
+
+#: src/git_stage_batch/output/fixup_create.py:211
+#, python-brace-format
+msgid "{count} unit(s) remain staged."
+msgstr "仍有 {count} 个单元保持暂存。"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:85
+msgid "Commit excluded from the search (default: fork point with upstream)"
+msgstr "从搜索中排除的提交（默认：与 upstream 的分叉点）"
+
+#: src/git_stage_batch/commands/fixup/search_flow.py:36
+msgid "HEAD changed during fixup suggestion analysis. Run the command again."
+msgstr "fixup 建议分析期间 HEAD 已更改。请重新运行该命令。"
+
+#: src/git_stage_batch/commands/fixup/search_flow.py:113
+msgid ""
+"No previous candidate to show.\n"
+"Run fixup suggest without --last to find a candidate."
+msgstr "没有可重新显示的上一个候选。\n请运行不带 --last 的 fixup suggest 来查找候选。"
+
+#: src/git_stage_batch/commands/fixup/search_flow.py:141
+msgid ""
+"No commit in the selected range has exact lineage or placement evidence for "
+"this unit."
+msgstr "所选范围内没有提交具有此单元的精确沿袭或放置证据。"
+
+#: src/git_stage_batch/fixup/selected_units.py:79
+msgid "Selection contains line IDs outside the current hunk."
+msgstr "选择中包含当前差异块范围外的行 ID。"
+
+#: src/git_stage_batch/fixup/selected_units.py:82
+msgid "No changed lines were selected."
+msgstr "未选择任何已更改的行。"
+
+#: src/git_stage_batch/fixup/selected_units.py:202
+msgid "Could not read the selected file from the index."
+msgstr "无法从索引中读取所选文件。"
+
+#: src/git_stage_batch/fixup/selected_units.py:245
+msgid "The selected lines do not change the index."
+msgstr "所选行不会更改索引。"
+
+#: src/git_stage_batch/output/fixup_create.py:39
+msgid "the selected path is not a regular text file"
+msgstr "所选路径不是常规文本文件"
+
+#: src/git_stage_batch/output/fixup_suggest.py:141
+#, python-brace-format
+msgid "Lineage: exact source lines resolve to {commit}."
+msgstr "沿袭：精确源代码行解析到 {commit}。"
+
+#: src/git_stage_batch/output/fixup_suggest.py:147
+#, python-brace-format
+msgid "Lineage: multiple in-range owners ({commits})."
+msgstr "沿袭：范围内有多个所有者（{commits}）。"
+
+#: src/git_stage_batch/output/fixup_suggest.py:155
+#, python-brace-format
+msgid "Lineage: incomplete evidence includes {commit}."
+msgstr "沿袭：不完整的证据包含 {commit}。"
+
+#: src/git_stage_batch/output/fixup_suggest.py:160
+msgid "Lineage: no in-range owner was proven."
+msgstr "沿袭：未证实任何范围内所有者。"
+
+#: src/git_stage_batch/output/fixup_suggest.py:167
+#, python-brace-format
+msgid "Placement: patch first stops at {commit}."
+msgstr "放置：补丁最先在 {commit} 处停止。"
+
+#: src/git_stage_batch/output/fixup_suggest.py:172
+msgid "Placement: patch commutes through the entire range."
+msgstr "放置：补丁可穿过整个范围。"
+
+#: src/git_stage_batch/output/fixup_suggest.py:175
+#, python-brace-format
+msgid "Placement: unknown ({detail})."
+msgstr "放置：未知（{detail}）。"
+
+#: src/git_stage_batch/output/fixup_suggest.py:213
+#, python-brace-format
+msgid "Selected unit {unit} in {path} [{status}]"
+msgstr "已选择单元 {unit}，路径 {path} [{status}]"
+
+#: src/git_stage_batch/output/fixup_suggest.py:222
+#, python-brace-format
+msgid "Decision: {reason}."
+msgstr "判定：{reason}。"
+
+#: src/git_stage_batch/output/fixup_suggest.py:233
+#, python-brace-format
+msgid "Candidate {iteration} of {total}: {commit} {subject}"
+msgstr "候选 {iteration}/{total}：{commit} {subject}"
+
+#: src/git_stage_batch/output/fixup_suggest.py:241
+#, python-brace-format
+msgid "Candidate evidence: {sources}"
+msgstr "候选证据：{sources}"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:106
+msgid "Create from a reviewed dry-run JSON plan"
+msgstr "从已审核的试运行 JSON 计划创建"
+
+#: src/git_stage_batch/commands/fixup_create.py:59
+msgid "Cannot pass both a fixup boundary and --plan."
+msgstr "不能同时传入 fixup 边界和 --plan。"
+
+#: src/git_stage_batch/fixup/execution.py:189
+#, python-brace-format
+msgid "The staged units grouped for {target} cannot be replayed together at that target."
+msgstr "无法在目标 {target} 处一起重放为其分组的已暂存单元。"
+
+#: src/git_stage_batch/fixup/execution.py:237
+msgid "The original range cannot be replayed with the planned fixup groups."
+msgstr "无法使用计划的 fixup 组重放原始范围。"
+
+#: src/git_stage_batch/fixup/execution.py:252
+#, python-brace-format
+msgid "The planned fixup for {target} cannot be replayed after its target."
+msgstr "无法在目标之后重放为 {target} 计划的 fixup。"
+
+#: src/git_stage_batch/fixup/execution.py:262
+msgid "Replaying the planned fixups at their targets does not reproduce the assigned staged changes."
+msgstr "在各目标处重放计划的 fixup 无法复现已分配的暂存更改。"
+
+#: src/git_stage_batch/fixup/plan_files.py:65
+#, python-brace-format
+msgid "Invalid fixup plan: {detail}"
+msgstr "无效的 fixup 计划：{detail}"
+
+#: src/git_stage_batch/fixup/plan_files.py:283
+#, python-brace-format
+msgid "Could not read fixup plan {path}: {error}"
+msgstr "无法读取 fixup 计划 {path}：{error}"
+
+msgid "Plan, execute, and inspect a deterministic history refinement"
+msgstr "规划、执行并检查确定性的历史优化"
+
+msgid "Rewrite action"
+msgstr "重写操作"
+
+msgid "Capture exact history facts and a KEEP plan template"
+msgstr "捕获准确的历史事实和 KEEP 计划模板"
+
+msgid "Atomically write the reusable JSON plan to FILE"
+msgstr "以原子方式将可复用的 JSON 计划写入 FILE"
+
+msgid "Output the reusable JSON plan on standard output"
+msgstr "将可复用的 JSON 计划输出到标准输出"
+
+msgid "Commit excluded from the scan (default: fork point with upstream)"
+msgstr "扫描中排除的提交（默认：与 upstream 的分叉点）"
+
+msgid "Validate a reviewed rewrite plan against live objects"
+msgstr "根据当前对象验证已审查的重写计划"
+
+msgid "Reusable rewrite plan emitted by rewrite scan"
+msgstr "由 rewrite scan 生成的可复用重写计划"
+
+msgid "Output a machine-readable validation report"
+msgstr "输出机器可读的验证报告"
+
+msgid "Inspect durable rewrite operation progress"
+msgstr "检查持久的重写操作进度"
+
+msgid "Output machine-readable operation state"
+msgstr "输出机器可读的操作状态"
+
+#, python-brace-format
+msgid "Commit {commit} has malformed {field} metadata."
+msgstr "提交 {commit} 的 {field} 元数据格式不正确。"
+
+#, python-brace-format
+msgid "Invalid rewrite plan: {detail}"
+msgstr "无效的重写计划：{detail}"
+
+#, python-brace-format
+msgid "Could not read rewrite plan {path}: {error}"
+msgstr "无法读取重写计划 {path}：{error}"
+
+#, python-brace-format
+msgid "Could not inspect legacy grafts: {error}"
+msgstr "无法检查旧式 graft：{error}"
+
+msgid "Rewrite scanning refuses replace objects or legacy grafts because they change commit identity semantics."
+msgstr "重写扫描拒绝替换对象或旧式 graft，因为它们会更改提交身份的语义。"
+
+#, python-brace-format
+msgid "Invalid history revision: {revision}"
+msgstr "无效的历史修订：{revision}"
+
+msgid "No upstream branch is configured. Pass the excluded history base explicitly."
+msgstr "未配置 upstream 分支。请明确传入排除的历史基点。"
+
+#, python-brace-format
+msgid "History base {base} is not an ancestor of HEAD."
+msgstr "历史基点 {base} 不是 HEAD 的祖先。"
+
+#, python-brace-format
+msgid "History refinement currently requires a linear range; commit {commit} does not continue the expected parent chain."
+msgstr "历史优化目前要求线性范围；提交 {commit} 未延续预期的父提交链。"
+
+msgid "No commits found between the history base and HEAD."
+msgstr "在历史基点与 HEAD 之间未找到提交。"
+
+msgid "HEAD changed while the history snapshot was being built."
+msgstr "构建历史快照时 HEAD 发生了变化。"
+
+#, python-brace-format
+msgid "History changed while commit {commit} was scanned."
+msgstr "扫描提交 {commit} 时历史发生了变化。"
+
+#, python-brace-format
+msgid "Commit {commit} produced duplicate history unit IDs."
+msgstr "提交 {commit} 生成了重复的历史单元 ID。"
+
+#, python-brace-format
+msgid "Invalid rewrite operation state: {detail}"
+msgstr "无效的重写操作状态：{detail}"
+
+msgid "Another rewrite operation is already active."
+msgstr "已有另一个重写操作处于活动状态。"
+
+#, python-brace-format
+msgid "Could not inspect history ref {refname}."
+msgstr "无法检查历史引用 {refname}。"
+
+#, python-brace-format
+msgid "History snapshot {base}..{tip}"
+msgstr "历史快照 {base}..{tip}"
+
+msgid "Branch: detached HEAD"
+msgstr "分支：分离的 HEAD"
+
+#, python-brace-format
+msgid "Branch: {branch}"
+msgstr "分支：{branch}"
+
+msgid "Mutation preconditions: ready"
+msgstr "变更前置条件：就绪"
+
+#, python-brace-format
+msgid "Mutation preconditions: blocked ({blockers})"
+msgstr "变更前置条件：已阻止（{blockers}）"
+
+#, python-brace-format
+msgid "Wrote reusable rewrite plan to {path}."
+msgstr "已将可复用的重写计划写入 {path}。"
+
+msgid "No rewrite operation is active."
+msgstr "没有活动的重写操作。"
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id}"
+msgstr "重写操作 {operation_id}"
+
+#, python-brace-format
+msgid "Phase: {phase}"
+msgstr "阶段：{phase}"
+
+#, python-brace-format
+msgid "Progress: {completed} of {planned} output commit(s)"
+msgstr "进度：已完成 {completed}/{planned} 个输出提交"
+
+#, python-brace-format
+msgid "Manual recovery: {command}"
+msgstr "手动恢复：{command}"
+
+#, python-brace-format
+msgid "Last verified commit: {commit}"
+msgstr "最后验证的提交：{commit}"
+
+#, python-brace-format
+msgid "Next action: {action}"
+msgstr "下一操作：{action}"
+
+#, python-brace-format
+msgid "Diagnostic: {diagnostic}"
+msgstr "诊断：{diagnostic}"
+
+msgid "Rewrite plan is valid."
+msgstr "重写计划有效。"
+
+#, python-brace-format
+msgid "{count} commit."
+msgid_plural "{count} commits."
+msgstr[0] "{count} 个提交。"
+
+#, python-brace-format
+msgid "{count} exact patch unit."
+msgid_plural "{count} exact patch units."
+msgstr[0] "{count} 个精确补丁单元。"
+
+#, python-brace-format
+msgid "Warning: {count} source signature cannot remain valid after rewriting."
+msgid_plural "Warning: {count} source signatures cannot remain valid after rewriting."
+msgstr[0] "警告：{count} 个源签名在重写后无法保持有效。"
+
+#, python-brace-format
+msgid "{count} source commit is conserved."
+msgid_plural "{count} source commits are conserved."
+msgstr[0] "已保留 {count} 个源提交。"
+
+# Rewrite executor translations.
+msgid "Build, verify, and atomically update the checked-out branch"
+msgstr "构建并验证，然后以原子方式更新已检出的分支"
+
+msgid "Validated reusable rewrite plan"
+msgstr "已验证的可复用重写计划"
+
+msgid "Allow local rewriting of commits contained by remote REF"
+msgstr "允许在本地重写远程引用中包含的提交"
+
+msgid "Output a machine-readable operation result"
+msgstr "输出机器可读的操作结果"
+
+msgid "Resume the exact action in the active rewrite checkpoint"
+msgstr "恢复活动重写检查点中的确切操作"
+
+msgid "Abort and conditionally restore the original branch tip"
+msgstr "中止并在满足条件时恢复原始分支尖端"
+
+msgid "Independently verify the active or latest rewrite output"
+msgstr "独立验证活动或最新的重写输出"
+
+#, python-brace-format
+msgid "The message for history source {commit} cannot be encoded as {encoding}."
+msgstr "无法将历史源 {commit} 的消息编码为 {encoding}。"
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected topology."
+msgstr "重写输出提交 {commit} 的拓扑不符合预期。"
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected identity metadata."
+msgstr "重写输出提交 {commit} 的身份元数据不符合预期。"
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected message metadata."
+msgstr "重写输出提交 {commit} 的消息元数据不符合预期。"
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected extra headers."
+msgstr "重写输出提交 {commit} 包含意外的额外标头。"
+
+#, python-brace-format
+msgid "Invalid allowed remote-tracking ref: {refname}"
+msgstr "允许的远程跟踪引用无效：{refname}"
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id} cannot continue: {blockers}."
+msgstr "重写操作 {operation_id} 无法继续：{blockers}。"
+
+msgid "The pending rewrite output does not match deterministic replay."
+msgstr "待处理的重写输出与确定性重放不匹配。"
+
+msgid "The rewrite output ref changed during commit publication."
+msgstr "发布提交时重写输出引用发生了变化。"
+
+msgid "The rewrite output ref no longer names an owned output commit."
+msgstr "重写输出引用不再指向该操作拥有的输出提交。"
+
+msgid "Completed rewrite outputs do not match deterministic replay."
+msgstr "已完成的重写输出与确定性重放不匹配。"
+
+msgid "Built history commits do not match deterministic replay."
+msgstr "构建的历史提交与确定性重放不匹配。"
+
+msgid "The rewrite output ref changed before verification."
+msgstr "验证前重写输出引用发生了变化。"
+
+msgid "The rewrite operation has no output commit."
+msgstr "重写操作没有输出提交。"
+
+msgid "The checked-out branch changed before finalization."
+msgstr "完成前检出的分支发生了变化。"
+
+msgid "The branch changed before the history rewrite was finalized."
+msgstr "历史重写完成前分支发生了变化。"
+
+msgid "The branch no longer names an operation-owned commit."
+msgstr "分支不再指向该操作拥有的提交。"
+
+#, python-brace-format
+msgid "Rewrite apply is blocked by: {blockers}."
+msgstr "以下原因阻止应用重写：{blockers}。"
+
+msgid "Rewrite apply requires a checked-out local branch."
+msgstr "应用重写需要检出本地分支。"
+
+msgid "The pending output ref changed before rewrite abort."
+msgstr "中止重写前，待处理的输出引用发生了变化。"
+
+msgid "The output ref changed before rewrite abort."
+msgstr "中止重写前，输出引用发生了变化。"
+
+msgid "The recovery ref changed; automatic rewrite abort is unsafe."
+msgstr "恢复引用已更改；自动中止重写并不安全。"
+
+msgid "The checked-out branch changed; automatic rewrite abort is unsafe."
+msgstr "检出的分支已更改；自动中止重写并不安全。"
+
+msgid "The branch changed while restoring the original history."
+msgstr "恢复原始历史时分支发生了变化。"
+
+#, python-brace-format
+msgid "The branch does not name an operation-owned tip; recover manually from {recovery_ref}."
+msgstr "分支未指向该操作拥有的尖端；请从 {recovery_ref} 手动恢复。"
+
+msgid "No rewrite operation is available to verify."
+msgstr "没有可供验证的重写操作。"
+
+msgid "The rewrite operation has no complete output to verify."
+msgstr "重写操作没有可供验证的完整输出。"
+
+#, python-brace-format
+msgid "Rewrite verification is blocked by: {blockers}."
+msgstr "以下原因阻止验证重写：{blockers}。"
+
+msgid "The regenerated rewrite verification record changed."
+msgstr "重新生成的重写验证记录发生了变化。"
+
+#, python-brace-format
+msgid "Rewrite output {output} cannot replay source commit {commit} at its requested position."
+msgstr "重写输出 {output} 无法在请求的位置重放源提交 {commit}。"
+
+#, python-brace-format
+msgid "Rewrite output {output} integrates non-empty sources into an empty commit."
+msgstr "重写输出 {output} 将非空源集成到了空提交中。"
+
+#, python-brace-format
+msgid "The planned history replay produces tree {actual}, not the frozen final tree {expected}."
+msgstr "计划的历史重放生成了树 {actual}，而不是冻结的最终树 {expected}。"
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id}: {phase}"
+msgstr "重写操作 {operation_id}：{phase}"
+
+#, python-brace-format
+msgid "Output tip: {commit}"
+msgstr "输出尖端：{commit}"
+
+msgid "Original branch tip restored."
+msgstr "已恢复原始分支尖端。"
+
+#, python-brace-format
+msgid "Verified final tree: {tree}"
+msgstr "已验证的最终树：{tree}"
+
+#, python-brace-format
+msgid "Removed {count} invalidated source signature."
+msgid_plural "Removed {count} invalidated source signatures."
+msgstr[0] "已移除 {count} 个失效的源签名。"
+
+#, python-brace-format
+msgid "Latest rewrite operation {operation_id}"
+msgstr "最新重写操作 {operation_id}"
+
+msgid "Resume preconditions"
+msgstr "恢复的前提条件"
+
+msgid "Verification preconditions"
+msgstr "验证的前提条件"
+
+#, python-brace-format
+msgid "{label}: ready"
+msgstr "{label}：就绪"
+
+#, python-brace-format
+msgid "{label}: blocked ({blockers})"
+msgstr "{label}：已阻止（{blockers}）"
+
+# History split and reorder translations.
+#, python-brace-format
+msgid "Rewrite output {output} cannot replay unit {unit}: {status} ({detail})."
+msgstr "重写输出 {output} 无法重放单元 {unit}：{status}（{detail}）。"
+
+#, python-brace-format
+msgid "Rewrite output {output} consumes non-empty units into an empty commit."
+msgstr "重写输出 {output} 将非空单元合并到了空提交中。"
+
+#, python-brace-format
+msgid "History source {commit} produced different patch units during replay."
+msgstr "历史源 {commit} 在重放期间生成了不同的补丁单元。"
+
+msgid "Rewrite operation was already complete; abort made no changes."
+msgstr "重写操作已完成；中止操作未做任何更改。"
+
+# Rewrite resolution workspace translations.
+msgid "Create or advance an external rewrite-resolution workspace"
+msgstr "创建或推进外部重写解析工作区"
+
+msgid "Private external directory for resolution artifacts"
+msgstr "用于解析工件的私有外部目录"
+
+msgid "Import the current result and advance to the next output"
+msgstr "导入当前结果并推进到下一个输出"
+
+#, python-brace-format
+msgid "Rewrite output {output} resolution did not produce a full tree object ID."
+msgstr "重写输出 {output} 的解析未生成完整的树对象 ID。"
+
+msgid "path must be absolute"
+msgstr "路径必须是绝对路径"
+
+msgid "path must not contain aliases or traversal"
+msgstr "路径不得包含别名或遍历"
+
+msgid "platform does not support secure directory access"
+msgstr "平台不支持安全目录访问"
+
+#, python-brace-format
+msgid "path must not contain aliases, traversal, or symlinks ({error})"
+msgstr "路径不得包含别名、遍历或符号链接（{error}）"
+
+msgid "path must be a directory"
+msgstr "路径必须是目录"
+
+msgid "directory permissions must be 0700"
+msgstr "目录权限必须为 0700"
+
+msgid "directory path changed during artifact access"
+msgstr "访问工件期间目录路径发生了变化"
+
+msgid "path must not contain aliases, traversal, or symlinks"
+msgstr "路径不得包含别名、遍历或符号链接"
+
+msgid "path must be owned by the current user"
+msgstr "路径必须由当前用户所有"
+
+msgid "cannot create the filesystem root"
+msgstr "无法创建文件系统根目录"
+
+#, python-brace-format
+msgid "cannot create private directory: {error}"
+msgstr "无法创建私有目录：{error}"
+
+#, python-brace-format
+msgid "cannot enumerate directory: {error}"
+msgstr "无法枚举目录：{error}"
+
+#, python-brace-format
+msgid "cannot open workspace lock: {error}"
+msgstr "无法打开工作区锁：{error}"
+
+msgid "file must not have hard links"
+msgstr "文件不得有硬链接"
+
+msgid "file permissions must be 0600"
+msgstr "文件权限必须为 0600"
+
+msgid "workspace is already in use"
+msgstr "工作区已在使用中"
+
+msgid "staging and destination must be distinct siblings"
+msgstr "暂存位置和目标位置必须是不同的同级项"
+
+#, python-brace-format
+msgid "cannot publish directory: {error}"
+msgstr "无法发布目录：{error}"
+
+msgid "published directory identity changed"
+msgstr "已发布目录的标识发生了变化"
+
+msgid "metadata exceeds the supported size limit"
+msgstr "元数据超出支持的大小限制"
+
+#, python-brace-format
+msgid "metadata cannot be decoded: {error}"
+msgstr "无法解码元数据：{error}"
+
+msgid "file grew while it was read"
+msgstr "文件在读取期间增大"
+
+#, python-brace-format
+msgid "cannot verify file after reading: {error}"
+msgstr "无法在读取后验证文件：{error}"
+
+msgid "content does not match its expected size and SHA-256"
+msgstr "内容与预期大小和 SHA-256 不匹配"
+
+#, python-brace-format
+msgid "cannot create temporary artifact: {error}"
+msgstr "无法创建临时工件：{error}"
+
+msgid "source and destination must differ"
+msgstr "源和目标必须不同"
+
+#, python-brace-format
+msgid "{location} does not match its immutable binding"
+msgstr "{location} 与其不可变绑定不匹配"
+
+#, python-brace-format
+msgid "{location} has the wrong entries ({detail})"
+msgstr "{location} 包含错误的条目（{detail}）"
+
+#, python-brace-format
+msgid "source unit {unit} has unsupported kind {kind}"
+msgstr "源单元 {unit} 具有不受支持的种类 {kind}"
+
+#, python-brace-format
+msgid "source unit {unit} has unsupported coupling {reason}"
+msgstr "源单元 {unit} 具有不受支持的耦合 {reason}"
+
+#, python-brace-format
+msgid "{context} path {path!r} has unsupported kind or mode {mode}"
+msgstr "{context} 路径 {path!r} 具有不受支持的种类或模式 {mode}"
+
+#, python-brace-format
+msgid "source blob {blob} is not accessible"
+msgstr "无法访问源 blob {blob}"
+
+msgid "Git returned the wrong source blob"
+msgstr "Git 返回了错误的源 blob"
+
+msgid "Git returned duplicate source blobs"
+msgstr "Git 返回了重复的源 blob"
+
+msgid "source blob size changed while it was exported"
+msgstr "导出期间源 blob 的大小发生了变化"
+
+msgid "resolution reference artifact names collided"
+msgstr "解析引用工件名称发生冲突"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to be created"
+msgstr "未授权创建结果路径 {path!r}"
+
+#, python-brace-format
+msgid "result path {path!r} uses an unauthorized creation mode"
+msgstr "结果路径 {path!r} 使用了未授权的创建模式"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to be deleted"
+msgstr "未授权删除结果路径 {path!r}"
+
+#, python-brace-format
+msgid "authorized result path {path!r} did not change"
+msgstr "已授权的结果路径 {path!r} 未发生变化"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to change mode"
+msgstr "未授权更改结果路径 {path!r} 的模式"
+
+#, python-brace-format
+msgid "result path {path!r} uses an unauthorized changed mode"
+msgstr "结果路径 {path!r} 使用了未授权的更改后模式"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to change content"
+msgstr "未授权更改结果路径 {path!r} 的内容"
+
+msgid "an absent result path has an artifact digest"
+msgstr "缺失的结果路径具有工件摘要"
+
+msgid "resolved output would be an empty commit"
+msgstr "解析后的输出将是空提交"
+
+#, python-brace-format
+msgid "{location} has the wrong path inventory"
+msgstr "{location} 的路径清单不正确"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] has the wrong fields"
+msgstr "{location}.paths[{index}] 的字段不正确"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] does not match result.json"
+msgstr "{location}.paths[{index}] 与 result.json 不匹配"
+
+msgid "an absent receipt path has an artifact digest"
+msgstr "缺失的收据路径具有工件摘要"
+
+msgid "a present receipt path has an invalid artifact digest"
+msgstr "存在的收据路径具有无效的工件摘要"
+
+msgid "resolution replay used the wrong document or environment"
+msgstr "解析重放使用了错误的文档或环境"
+
+#, python-brace-format
+msgid "output {output} resolution is missing"
+msgstr "缺少输出 {output} 的解析"
+
+#, python-brace-format
+msgid "workspace outputs contain unexpected entries: {entries}"
+msgstr "工作区输出包含意外条目：{entries}"
+
+#, python-brace-format
+msgid "output {output} result.json changed after acceptance"
+msgstr "输出 {output} 的 result.json 在接受后发生了变化"
+
+#, python-brace-format
+msgid "output {output} receipt.json is not authentic"
+msgstr "输出 {output} 的 receipt.json 不可信"
+
+#, python-brace-format
+msgid "output {output} has not been accepted"
+msgstr "输出 {output} 尚未被接受"
+
+msgid "plan does not contain any RESOLVED outputs"
+msgstr "计划不包含任何 RESOLVED 输出"
+
+msgid "--accept requires an existing workspace"
+msgstr "--accept 需要现有工作区"
+
+#, python-brace-format
+msgid "Rewrite resolution workspace is complete: {workspace}"
+msgstr "重写解析工作区已完成：{workspace}"
+
+#, python-brace-format
+msgid "Rewrite output {number} needs resolution ({key})."
+msgstr "重写输出 {number} 需要解析（{key}）。"
+
+#, python-brace-format
+msgid "Inspect resolution request: {path}"
+msgstr "检查解析请求：{path}"
+
+#, python-brace-format
+msgid "Edit resolution metadata: {path}"
+msgstr "编辑解析元数据：{path}"
+
+#, python-brace-format
+msgid "Edit resolved artifacts in: {path}"
+msgstr "在此处编辑已解析工件：{path}"
+
+msgid "Authorized path:"
+msgid_plural "Authorized paths:"
+msgstr[0] "已授权路径："
+
+# Resolution transport rollback diagnostics.
+#, python-brace-format
+msgid "{detail} ({error})"
+msgstr "{detail}（{error}）"
+
+msgid "published artifact changed before exchange rollback"
+msgstr "已发布的工件在交换回滚前发生了变化"
+
+msgid "raced destination changed before exchange rollback"
+msgstr "发生竞态的目标在交换回滚前发生了变化"
+
+msgid "temporary artifact changed during exchange rollback"
+msgstr "临时工件在交换回滚期间发生了变化"
+
+msgid "raced destination changed during exchange rollback"
+msgstr "发生竞态的目标在交换回滚期间发生了变化"
+
+msgid "temporary artifact path changed while it was written"
+msgstr "临时工件路径在写入期间发生了变化"
+
+msgid "temporary artifact size changed"
+msgstr "临时工件大小发生了变化"
+
+# Final resolution workspace diagnostics.
+msgid "Reviewed rewrite plan containing resolved outputs"
+msgstr "包含已解析输出的已审查重写计划"
+
+msgid "Output a machine-readable resolution checkpoint"
+msgstr "输出机器可读的解析检查点"
+
+#, python-brace-format
+msgid "Rewrite output {output} resolution did not produce an accessible tree object."
+msgstr "重写输出 {output} 的解析未生成可访问的树对象。"
+
+#, python-brace-format
+msgid "Rewrite output {output} requires an explicit resolution workspace."
+msgstr "重写输出 {output} 需要显式解析工作区。"
+
+#, python-brace-format
+msgid "Rewrite output {output} resolves non-empty units into an empty commit."
+msgstr "重写输出 {output} 将非空单元解析为空提交。"
+
+#, python-brace-format
+msgid "Invalid resolution artifact '{path}': {detail}"
+msgstr "无效的解析工件“{path}”：{detail}"
+
+msgid "path must be a regular file"
+msgstr "路径必须是常规文件"
+
+msgid "directory changed while it was opened"
+msgstr "目录在打开期间发生了变化"
+
+msgid "directory exceeds the supported entry-count limit"
+msgstr "目录超出支持的条目数量限制"
+
+msgid "locked and final directories must be distinct siblings"
+msgstr "已锁定目录和最终目录必须是不同的同级项"
+
+#, python-brace-format
+msgid "cannot authenticate workspace lock: {error}"
+msgstr "无法验证工作区锁：{error}"
+
+msgid "workspace lock changed while it was opened"
+msgstr "工作区锁在打开期间发生了变化"
+
+#, python-brace-format
+msgid "cannot lock workspace: {error}"
+msgstr "无法锁定工作区：{error}"
+
+#, python-brace-format
+msgid "cannot re-authenticate workspace lock: {error}"
+msgstr "无法重新验证工作区锁：{error}"
+
+msgid "workspace lock changed while it was held"
+msgstr "工作区锁在持有期间发生了变化"
+
+#, python-brace-format
+msgid "cannot inspect staging directory: {error}"
+msgstr "无法检查暂存目录：{error}"
+
+#, python-brace-format
+msgid "cannot open staging directory: {error}"
+msgstr "无法打开暂存目录：{error}"
+
+msgid "staging directory changed while it was opened"
+msgstr "暂存目录在打开期间发生了变化"
+
+#, python-brace-format
+msgid "cannot inspect destination: {error}"
+msgstr "无法检查目标：{error}"
+
+msgid "destination already exists"
+msgstr "目标已存在"
+
+#, python-brace-format
+msgid "cannot re-authenticate staging directory: {error}"
+msgstr "无法重新验证暂存目录：{error}"
+
+msgid "staging directory changed before publication"
+msgstr "暂存目录在发布前发生了变化"
+
+#, python-brace-format
+msgid "cannot inspect file: {error}"
+msgstr "无法检查文件：{error}"
+
+#, python-brace-format
+msgid "cannot inspect interrupted write: {error}"
+msgstr "无法检查中断的写入：{error}"
+
+#, python-brace-format
+msgid "cannot open interrupted write: {error}"
+msgstr "无法打开中断的写入：{error}"
+
+msgid "interrupted write changed before recovery"
+msgstr "中断的写入在恢复前发生了变化"
+
+#, python-brace-format
+msgid "cannot remove interrupted write: {error}"
+msgstr "无法删除中断的写入：{error}"
+
+#, python-brace-format
+msgid "cannot open file: {error}"
+msgstr "无法打开文件：{error}"
+
+msgid "file changed while it was opened"
+msgstr "文件在打开期间发生了变化"
+
+msgid "file changed while it was read"
+msgstr "文件在读取期间发生了变化"
+
+msgid "file path changed while it was read"
+msgstr "文件路径在读取期间发生了变化"
+
+msgid "destination appeared while it was being written"
+msgstr "目标在写入期间出现"
+
+msgid "destination changed while it was being written"
+msgstr "目标在写入期间发生了变化"
+
+#, python-brace-format
+msgid "cannot open destination: {error}"
+msgstr "无法打开目标：{error}"
+
+msgid "destination changed while it was opened"
+msgstr "目标在打开期间发生了变化"
+
+#, python-brace-format
+msgid "cannot authenticate displaced destination: {error}"
+msgstr "无法验证移位的目标：{error}"
+
+#, python-brace-format
+msgid "cannot inspect raced destination: {error}"
+msgstr "无法检查发生竞态的目标：{error}"
+
+#, python-brace-format
+msgid "cannot roll back raced destination: {error}"
+msgstr "无法回滚发生竞态的目标：{error}"
+
+msgid "temporary artifact changed while it was opened"
+msgstr "临时工件在打开期间发生了变化"
+
+msgid "artifact exceeds the supported size limit"
+msgstr "工件超出支持的大小限制"
+
+#, python-brace-format
+msgid "cannot publish artifact: {error}"
+msgstr "无法发布工件：{error}"
+
+msgid "published artifact identity changed"
+msgstr "已发布工件的标识发生了变化"
+
+msgid "destination changed during atomic replacement"
+msgstr "目标在原子替换期间发生了变化"
+
+#, python-brace-format
+msgid "cannot remove displaced destination: {error}"
+msgstr "无法删除移位的目标：{error}"
+
+#, python-brace-format
+msgid "Invalid rewrite resolution workspace: {detail}"
+msgstr "无效的重写解析工作区：{detail}"
+
+msgid "workspace path must be a non-empty string"
+msgstr "工作区路径必须是非空字符串"
+
+#, python-brace-format
+msgid "{location} is not valid strict JSON ({error})"
+msgstr "{location} 不是有效的严格 JSON（{error}）"
+
+#, python-brace-format
+msgid "cannot inspect workspace path ({error})"
+msgstr "无法检查工作区路径（{error}）"
+
+#, python-brace-format
+msgid "staged output {output} contains unexpected entries"
+msgstr "暂存输出 {output} 包含意外条目"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] must be an object"
+msgstr "{location}.paths[{index}] 必须是对象"
+
+#, python-brace-format
+msgid "{count} resolved output recorded."
+msgid_plural "{count} resolved outputs recorded."
+msgstr[0] "已记录 {count} 个解析输出。"
+
+#, python-brace-format
+msgid "Then run: {command}"
+msgstr "然后运行：{command}"
+
+# Completed resolution validation translations.
+msgid "Completed private rewrite-resolution workspace"
+msgstr "已完成的私有重写解析工作区"
+
+#, python-brace-format
+msgid "{count} resolved output is authenticated."
+msgid_plural "{count} resolved outputs are authenticated."
+msgstr[0] "已验证 {count} 个解析输出。"
+
+#, python-brace-format
+msgid "Resolution workspace: {workspace}"
+msgstr "解析工作区：{workspace}"
+
+#, python-brace-format
+msgid "Resolution completion SHA-256: {sha256}"
+msgstr "解析完成记录的 SHA-256：{sha256}"
+
+# Durable rewrite operation translations.
+#, python-brace-format
+msgid "The raw message for history source {commit} no longer matches its frozen digest."
+msgstr "历史源 {commit} 的原始消息不再与其冻结摘要匹配。"
+
+msgid "The persisted rewrite plan no longer matches its checkpoint."
+msgstr "持久化的重写计划不再与其检查点匹配。"
+
+msgid "Rewrite resolution provenance does not match the persisted plan."
+msgstr "重写解析的来源信息与持久化计划不匹配。"
+
+msgid "The operation-owned rewrite resolution workspace changed."
+msgstr "该操作拥有的重写解析工作区发生了变化。"
+
+msgid "The persistent rewrite output object closure is incomplete or invalid."
+msgstr "重写输出的持久化对象闭包不完整或无效。"
+
+msgid "Git returned malformed object closure data while verifying rewrite output."
+msgstr "Git 在验证重写输出时返回了格式错误的对象闭包数据。"
+
+#, python-brace-format
+msgid "cannot authenticate locked directory: {error}"
+msgstr "无法验证已锁定的目录：{error}"
+
+msgid "staging directory is not the locked workspace"
+msgstr "暂存目录不是已锁定的工作区"
+
+msgid "source and destination workspaces must be disjoint"
+msgstr "源工作区和目标工作区必须互不重叠"
+
+msgid "destination workspace already exists"
+msgstr "目标工作区已存在"
+
+msgid "source resolution workspace changed while it was copied"
+msgstr "源解析工作区在复制期间发生了变化"
+
+msgid "owned resolution copy does not match its authenticated source"
+msgstr "该操作拥有的解析副本与其已验证的源不匹配"

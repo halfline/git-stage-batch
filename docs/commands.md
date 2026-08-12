@@ -363,7 +363,8 @@ unborn symbolic branch and initial index are recorded explicitly. `stop`
 preserves a first commit created during the session. `abort` removes that
 session-created branch tip, restores the original index, and leaves original
 first-commit files in the worktree. History-dependent commands such as
-`suggest-fixup` remain unavailable until the first commit exists.
+`fixup suggest`, `fixup create`, and the compatible `suggest-fixup` spelling
+remain unavailable until the first commit exists.
 
 ### `again`
 
@@ -736,20 +737,37 @@ The same rule applies to `discard --to BATCH --line ... --as TEXT`.
 
 ---
 
-## Fixup Suggestions
+## Fixup Workflows
 
-### `suggest-fixup`
+### `fixup suggest` / `suggest-fixup`
 
-Suggest which commit the selected hunk should be fixed up to.
+Inspect exact lineage and mechanical placement evidence for the selected hunk,
+then suggest a commit to fix up.
 
 ```
+❯ git-stage-batch fixup suggest [BOUNDARY]
+# Compatible spelling:
 ❯ git-stage-batch suggest-fixup [BOUNDARY]
 ```
 
-Finds commits that previously modified the lines in the selected hunk and suggests them as fixup targets. Iteratively shows candidates starting from most recent, progressing backwards with each invocation.
+The command materializes the selected hunk as an exact patch without changing
+the real index. The patch is based on the frozen `HEAD` tree; an index-relative
+hunk is rejected when that file's index entry differs from `HEAD`. It searches
+each disjoint changed source range independently
+and also commutes the patch backward through the target range. Candidate
+iteration includes commits found by exact source-line history and any
+mechanical placement barrier, newest first. The output keeps those two forms
+of evidence separate: a placement barrier is useful, but is not presented as
+proof of semantic ownership.
+
+Pure additions to an existing tracked file use the adjacent old-file lines as
+lineage anchors. An insertion into an empty tracked file can therefore have
+placement evidence without lineage evidence. Whole-file additions remain
+unsupported.
 
 **Arguments:**
-- `BOUNDARY`: Lower bound for commit search (default: `@{upstream}`)
+- `BOUNDARY`: Commit excluded from the search. By default, use the fork point
+  (or merge base) between `HEAD` and its configured upstream.
 
 **Options:**
 - `--reset`: Start over from the most recent candidate
@@ -763,52 +781,84 @@ Finds commits that previously modified the lines in the selected hunk and sugges
 ❯ git-stage-batch start
 
 # Find which commit to fixup (searches back to upstream by default)
-❯ git-stage-batch suggest-fixup
-Candidate 1: a1b2c3d Fix authentication logic
+❯ git-stage-batch fixup suggest
+Selected unit 91c3e8ac213f in src/auth.py [agreed]
+Lineage: exact source lines resolve to a1b2c3d4e5f.
+Placement: patch first stops at a1b2c3d4e5f.
+Decision: lineage and placement agree.
+
+Candidate 1 of 2: a1b2c3d4e5f Fix authentication logic
+Candidate evidence: lineage-history, placement-barrier
 
 # Not the right commit, try next
-❯ git-stage-batch suggest-fixup
-Candidate 2: e4f5g6h Add user validation
+❯ git-stage-batch fixup suggest
+Candidate 2 of 2: e4f5a6b7c8d Add user validation
+Candidate evidence: lineage-history
 
 # This is the one! Create fixup commit
-❯ git commit --fixup=e4f5g6h
+❯ git commit --fixup=e4f5a6b7c8d
 
 # Or specify a different boundary for the search
-❯ git-stage-batch suggest-fixup main
-Candidate 1: a1b2c3d Fix authentication logic
+❯ git-stage-batch fixup suggest main
+Candidate 1 of 2: a1b2c3d4e5f Fix authentication logic
 ```
 
-The command uses `git log -L` to find commits that touched the affected lines, making it easy to create fixup commits for amendment during interactive rebase.
+`fixup suggest` is read-only with respect to commits, refs, the working tree,
+and the index. It does not create a commit. Use the displayed `git commit
+--fixup=...` command for one reviewed target, or use `fixup create` to analyze
+the staged index and create conservative grouped fixups.
 
 **Porcelain output:**
 ```bash
-❯ git-stage-batch suggest-fixup --porcelain
+❯ git-stage-batch fixup suggest --porcelain
 ```
 
-Outputs JSON with stable fields for script integration:
+The versioned record uses full object IDs only and includes the frozen range,
+exact unit, lineage, placement, candidate sources, and iteration position:
 ```json
 {
-  "candidate": {
-    "hash": "a1b2c3d",
-    "full_hash": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0",
-    "subject": "Fix authentication logic",
-    "author": "John Doe",
-    "date": "2026-03-01T10:30:00-05:00",
-    "relative_date": "2 weeks ago"
+  "schema_version": 1,
+  "operation": "fixup-suggest",
+  "object_format": "sha1",
+  "range": {
+    "base": "1111111111111111111111111111111111111111",
+    "head": "2222222222222222222222222222222222222222"
   },
-  "iteration": 1,
-  "boundary": "@{upstream}"
+  "unit": {
+    "id": "3333333333333333333333333333333333333333333333333333333333333333",
+    "path": "src/auth.py",
+    "status": "agreed",
+    "reason": "lineage-and-placement-agree",
+    "lineage": {
+      "queried_ranges": [{"start": 18, "end": 18}]
+    },
+    "placement": {
+      "status": "barrier",
+      "barrier": "2222222222222222222222222222222222222222"
+    }
+  },
+  "candidate": {
+    "id": "2222222222222222222222222222222222222222",
+    "subject": "Fix authentication logic",
+    "author_name": "John Doe",
+    "author_email": "john@example.com",
+    "authored_at": "2026-03-01T10:30:00-05:00"
+  },
+  "candidate_sources": ["lineage-history", "placement-barrier"],
+  "iteration": {"index": 1, "total": 2},
+  "result": "candidate"
 }
 ```
 
+When no evidence produces a candidate, porcelain prints the same complete
+record with `"candidate": null`, a `result` reason such as `no-candidates` or
+`exhausted`, and exits nonzero.
+
 **Automated fixup example:**
 ```bash
-# Get fixup candidate programmatically
-CANDIDATE=$(git-stage-batch suggest-fixup --porcelain | jq -r '.candidate.hash')
-
-# Create fixup commit automatically
-if [ -n "$CANDIDATE" ]; then
-  git commit --fixup=$CANDIDATE
+# Get a full candidate ID and create a fixup only on a successful result
+if CANDIDATE=$(git-stage-batch fixup suggest --porcelain | jq -er '.candidate.id'); then
+  git commit --fixup="$CANDIDATE"
 fi
 ```
 
@@ -819,16 +869,482 @@ fi
 Suggest fixup target for specific lines only.
 
 ```
-❯ git-stage-batch suggest-fixup [BOUNDARY] --line LINE_IDS
+❯ git-stage-batch fixup suggest [BOUNDARY] --line LINE_IDS
 ```
 
 **Example:**
 ```
-❯ git-stage-batch suggest-fixup --line 1,3
-❯ git-stage-batch suggest-fixup main --line 1,3
+❯ git-stage-batch fixup suggest --line 1,3
+❯ git-stage-batch fixup suggest main --line 1,3
 ```
 
-Useful when a hunk contains changes to multiple unrelated areas. You can get separate fixup suggestions for different line ranges within the same hunk.
+Useful when a hunk contains changes to multiple unrelated areas. Display-ID
+ranges remain range-backed, and disjoint selected source lines are queried as
+disjoint ranges rather than being widened to one min/max span. The exact
+selected subset, not the complete hunk, is used for placement analysis.
+
+---
+
+### `fixup create`
+
+Analyze the exact staged index and create one ordinary `fixup!` commit per
+eligible target:
+
+```bash
+❯ git-stage-batch fixup create [BOUNDARY] [--dry-run] [--partial] [--porcelain]
+❯ git-stage-batch fixup create --plan FILE [--dry-run] [--partial] [--porcelain]
+```
+
+The command combines exact-line history with tree-replay commutation. It
+creates a fixup when both signals agree, or when line history identifies one
+target and the patch can commute through the entire target range. It reports
+but does not automatically commit:
+
+- conflicting or ambiguous attribution;
+- mechanical placement without semantic line history;
+- changes with no target evidence; and
+- currently unsupported whole-file additions/deletions, renames, binary
+  changes, file modes, and gitlinks.
+
+By default, any such remaining unit prevents all mutation. Use `--partial` to
+create the eligible fixups and leave every other unit staged:
+
+```bash
+# Review exact assignments without changing HEAD, the index, or the worktree.
+❯ git-stage-batch fixup create --dry-run
+
+# Create eligible fixups while preserving unresolved staged work.
+❯ git-stage-batch fixup create --partial
+```
+
+`fixup create` never stages unstaged changes, runs autosquash, rewrites an
+existing commit, or publishes anything. It preserves a private recovery ref
+for the original `HEAD` and prints that ref after successful creation.
+The generated `fixup!` title normally uses the readable target subject. It
+falls back to the full target object ID only when subject matching would make
+`git rebase --autosquash` attach the fixup to another commit, including a
+later commit that repeats an earlier subject.
+Each generated commit also carries a random verification marker in its body.
+The command uses that marker to distinguish its own commit from a ref moved by
+a hook; autosquash discards the fixup body when the fixup is integrated.
+Commit hooks inherit the isolated `GIT_INDEX_FILE` used to materialize the
+proposed fixup tree. Hooks therefore inspect and stage against that temporary
+index, not the user's real staged index. After each hook returns, the command
+checks the verification marker, parent, subject, and complete tree; any
+unexpected hook change stops creation and rolls `HEAD` back when it is still
+safe to do so. Hooks used with this command must not assume that
+`GIT_INDEX_FILE` names the user's ordinary index.
+
+Successful creation deliberately retains its recovery ref below
+`refs/git-stage-batch/fixup/backups/`; the command does not prune those refs.
+The retained ref keeps the original tip reachable until recovery is no longer
+needed. Repositories with many fixup runs can inspect the accumulated refs and
+delete a reviewed terminal backup with an expected-old-value check:
+
+```bash
+❯ git for-each-ref --format='%(refname) %(objectname)' \
+    refs/git-stage-batch/fixup/backups/
+❯ git update-ref -d 'EXACT_RECOVERY_REF' EXPECTED_ORIGINAL_HEAD
+```
+
+Use the exact ref and object ID printed by the successful operation. Deleting
+the ref removes the command's recovery anchor and may allow the original
+commits to be garbage-collected, so retain it while rollback or comparison is
+still useful.
+
+The default boundary is the fork point, or merge base, between `HEAD` and its
+configured upstream. An explicit boundary is the excluded base of the target
+range. The range must be non-empty and linear.
+
+**Porcelain output** is versioned JSON containing full object IDs, source tree
+fingerprints, every change unit and evidence source, target groups, created
+commits, and the recovery ref. A dry-run document is also a reusable plan:
+
+```bash
+❯ git-stage-batch fixup create --dry-run --porcelain
+```
+
+To review or supply semantic assignments without weakening the mechanical
+checks, save that output, edit only its `assignments` array, and replay it:
+
+```bash
+❯ git-stage-batch fixup create main --dry-run --porcelain >fixup-plan.json
+# Review assignments. Use full unit and commit IDs in every edited record.
+❯ git-stage-batch fixup create --plan fixup-plan.json --dry-run
+❯ git-stage-batch fixup create --plan fixup-plan.json
+```
+
+Each assignment has this shape:
+
+```json
+{
+  "unit_id": "<full stable unit ID>",
+  "target": "<full commit object ID>",
+  "basis": "automatic"
+}
+```
+
+Generated assignments use `"basis": "automatic"`. Change the basis to
+`"explicit"` when a reviewed semantic decision adds an unresolved unit or
+overrides its suggested target. Explicit review can supply meaning that the
+lineage evidence lacks; it cannot move a patch through a mechanical barrier
+or an `UNKNOWN` placement. Remove an assignment to leave that unit staged;
+normal creation then requires `--partial` when any units remain.
+
+Plan input accepts only the current strict JSON schema and only dry-run output.
+Before creating refs or commits, the command regenerates and exactly compares
+the object format, `HEAD`, index tree, head tree, ordered range, stable unit
+IDs, paths, locations, and all lineage and placement evidence. It rejects
+omitted or forged unit facts and duplicate, abbreviated, or out-of-range
+assignments. It also relocates each assigned group to its target, replays the
+complete range, and requires the integrated result to reproduce the assigned
+staged patch.
+The `groups` and `summary` fields are generated reports rather than plan
+inputs; they are recalculated from the reviewed assignments. Passing both a
+positional boundary and `--plan` is an error because the plan already freezes
+its excluded base.
+
+---
+
+## History Refinement
+
+### `rewrite scan`
+
+Capture an immutable linear range and emit a reusable KEEP plan template:
+
+```bash
+❯ git-stage-batch rewrite scan [BOUNDARY] --output rewrite-plan.json
+❯ git-stage-batch rewrite scan [BOUNDARY] --porcelain >rewrite-plan.json
+```
+
+The excluded boundary defaults to the fork point or merge base with the
+configured upstream. The JSON snapshot records full commit, parent, and tree
+IDs; byte-faithful messages with declared encodings and raw-content digests;
+author and committer metadata; signature-header digests without signature
+payloads; stable patch-unit identities; and compact per-unit dependency
+evidence. Exact parent/new tree pairs bind the patches without storing one
+Python or JSON object per changed line.
+
+For each unit, the dependency graph records its original flat position, the
+earliest position reached by real adjacent patch swaps, and the first
+`BLOCKED` or `UNKNOWN` barrier. Same-path candidate swaps apply both units in
+the opposite order with isolated Git indexes and accept the crossing only when
+the resulting tree is identical. Consecutive different-path units are proved
+as one exact block replay to avoid quadratic Git process growth. One blocked
+sibling therefore does not suppress an independent sibling. Unsupported
+renames, file-type transitions, and atomic
+non-text changes remain `UNKNOWN`; analysis resumes from the next exact commit
+tree but retains an `UNKNOWN` edge back across the unsupported segment.
+
+Scan does not create commits, refs, checkpoints, or persistent Git objects.
+Its speculative tree objects live only in a temporary object quarantine.
+Commands that acquire the frozen source snapshot may reuse or update a
+persistent JSON cache of exact snapshot and dependency analysis. The cache
+retains at most 64 entries. On Linux, the default root is
+`/var/tmp/git-stage-batch-$UID/history-snapshots`; `TMPDIR`,
+`TEMP`, or `TMP` selects another scratch parent, and
+`GIT_STAGE_BATCH_HISTORY_CACHE_ROOT` overrides the complete cache root.
+
+A cached entry is accepted only after the repository identity, exact range and
+trees, branch, object format, effective Git configuration and build behavior,
+analysis versions, source-edge diffs, and source-object closure still match.
+A miss or failed check rebuilds the analysis from the source objects. Live
+safety facts are always collected again, and cached analysis never substitutes
+for plan replay or final-tree proof.
+
+Dirty local state, active operations, saved batches, or remotely published
+range commits appear as safety blockers rather than preventing an audit.
+Merges, replace objects, and legacy grafts are rejected because they change
+the supported topology or commit identity semantics.
+
+### `rewrite validate`
+
+Validate edited semantic input against independently reacquired source facts:
+
+```bash
+# Validate an all-EXACT plan.
+❯ git-stage-batch rewrite validate rewrite-plan.json
+
+# Validate a plan containing RESOLVED outputs against its completed workspace.
+❯ git-stage-batch rewrite validate rewrite-plan.json \
+    --workspace rewrite-resolution
+```
+
+The executor schema accepts ordered `KEEP`, `REWORD`, `SPLIT`, `INTEGRATE`,
+and `REORDER` outputs with independent `EXACT` or `RESOLVED` materialization.
+For a plan whose outputs are all `EXACT`, omit `--workspace`; supplying a
+gratuitous workspace is rejected rather than ignored. A plan containing any
+`RESOLVED` output requires `--workspace DIR`, where `DIR` is the `COMPLETE`
+private workspace produced by `rewrite resolve` for that exact plan. Missing,
+incomplete, or differently bound workspaces fail validation.
+`KEEP`, `REWORD`, and `REORDER` consume every unit of one source commit.
+`REORDER` marks a whole source moved earlier and preserves its exact message
+and encoding. `SPLIT` consumes a non-empty ordered subset of one source; every
+split source must produce at least two outputs, and every piece preserves the
+original author while supplying its own encodable message.
+
+`INTEGRATE` consumes the complete target source followed by units from one or
+more later repair sources. A multi-concern repair may partition its ordinary
+units across several targets without first creating temporary commits. Every
+output lists sources and units in source order. An ordinary source unit is
+consumed exactly once globally. When one mechanical unit contains semantic
+portions owned by several outputs, `plan.partitioned_units` lists every
+zero-based RESOLVED output where that unit occurs. `KEEP` also preserves the
+message and encoding; `REWORD`, `SPLIT`, and `INTEGRATE` explicitly supply an
+encodable message. Rationale text is informational and never substitutes for
+tree or patch conservation.
+
+All snapshot fields are immutable. Validation rejects stale object IDs,
+forged metadata, omitted or undeclared duplicate units, unmarked reorder
+operations, abbreviated IDs, duplicate JSON keys, and unknown fields. Moving
+an EXACT unit earlier is permitted only as far as its recorded adjacent-swap
+proof. A chain of `BLOCKED` predecessors may move farther only when the plan
+keeps the complete chain ordered inside one EXACT output; exact full-plan
+replay must then prove that compound movement. A blocker assigned to another
+output and every `UNKNOWN` crossing remain rejected. RESOLVED does not claim
+that a patch commutes: it requires the explicit workspace workflow below to
+materialize and audit the requested snapshots. Dependency evidence limits
+exact replay, while complete replay and the frozen final tree remain required
+for either materialization.
+
+Completed-workspace validation does not modify the completed workspace,
+commits, or refs. It authenticates the immutable workspace binding, receipts,
+result artifacts, and `complete.json`, then replays both exact and resolved
+outputs in a fresh Git object quarantine and rechecks the frozen final tree. It
+does not repair or advance the workspace, and no candidate objects or refs
+persist. Successful output reports the authenticated completion SHA-256
+digest. Porcelain output always includes
+`summary.resolved_outputs`; its top-level `resolution` is `null` for an
+all-EXACT plan or an object containing `workspace`, `complete_sha256`, and
+`resolved_outputs` for completed-workspace validation.
+
+The input safety block is not trusted: live index, worktree, operation,
+publication, and upstream facts are collected again and returned in the
+validation report. All candidate trees are materialized in a temporary object
+quarantine and leave no objects or refs behind.
+
+### `rewrite resolve`
+
+Create or advance a private workspace for outputs that require explicit
+snapshot materialization:
+
+```bash
+❯ git-stage-batch rewrite resolve rewrite-plan.json \
+    --workspace rewrite-resolution
+❯ git-stage-batch rewrite resolve rewrite-plan.json \
+    --workspace rewrite-resolution --accept
+```
+
+Resolution is deliberately separate from semantic ordering. The plan must
+already name each output's causal owner and mark only the mechanically
+non-exact outputs `RESOLVED`. The command reacquires and compares the frozen
+snapshot, validates unit conservation and ordering, then replays from the base
+tree in a fresh object quarantine. It stops at the first unresolved output and
+exports an immutable request containing its actual parent tree, exact source
+units, authorized Git paths, and streamed `CURRENT_PARENT`, `SOURCE_BEFORE`,
+and `SOURCE_AFTER` references.
+
+The porcelain result names the exact request, editable `result.json`, and
+opaque result-artifact directory. Edit only the result metadata and artifacts;
+Git paths are never used as filesystem artifact names. JSON object-member
+order is insignificant, but every field and path entry is required. For a
+present result, write the desired bytes to its opaque artifact, retain
+`state: "PRESENT"`, and choose an authorized `100644` or `100755` mode. Use
+`state: "ABSENT"` with a null mode and remove its result artifact for an
+authorized deletion; an authorized addition starts absent and becomes present
+only after its result artifact is created. Keep every workspace metadata and
+artifact file private with mode `0600`; newly created result artifacts with
+broader permissions are refused.
+`--accept` accepts exactly one output, verifies every authorized
+path and transition, replays the deterministic downstream prefix, then writes
+a digest-bound receipt. It either exports the next request or, after frozen
+final-tree equality succeeds, writes `complete.json`. A result cannot add,
+delete, change mode, or change content unless its selected source units
+authorize that kind of transition, and every authorized path must actually
+change.
+
+Workspaces and artifacts are private, reject links and unexpected entries,
+require root and subdirectory mode `0700`, and use descriptor-pinned bounded
+I/O. Candidate blobs and trees remain in a temporary Git object quarantine.
+The command never creates commits or refs, changes the index or worktree, or
+publishes the completed workspace by itself. Re-running without `--accept`
+safely reports the current request without accepting its seeded result.
+The first invocation requires that the workspace path does not exist;
+subsequent invocations reopen only the workspace bound to the same plan.
+The completed external workspace remains a reusable, read-only input to
+`rewrite validate`. Supply it with `--workspace` on the initial
+`rewrite apply` invocation to hand its authenticated results to a durable
+operation; apply never modifies or publishes the external workspace itself.
+
+### `rewrite apply`
+
+Build, verify, and atomically update the checked-out branch:
+
+```bash
+# Apply an all-EXACT plan.
+❯ git-stage-batch rewrite apply rewrite-plan.json
+
+# Apply a plan containing RESOLVED outputs.
+❯ git-stage-batch rewrite apply rewrite-plan.json \
+    --workspace rewrite-resolution
+
+❯ git-stage-batch rewrite apply rewrite-plan.json --porcelain
+```
+
+For an all-EXACT plan, omit `--workspace`; supplying a workspace is rejected
+rather than ignored. A plan containing any `RESOLVED` output requires
+`--workspace DIR` on the initial apply invocation. `DIR` must be the
+`COMPLETE` private workspace produced by `rewrite resolve` for that exact
+plan. Missing, incomplete, changed, or differently bound workspaces are
+rejected.
+
+Before activating the operation, apply authenticates the external workspace,
+copies its exact private inventory into the unpublished operation directory,
+confirms that the source did not change during the copy, and independently
+authenticates the copy in a separate fresh object quarantine. It then rechecks
+the branch, index, and worktree facts that authorize mutation. Once the
+operation is activated, building, `rewrite continue`, `rewrite status`, and
+`rewrite verify` use only the operation-owned copy. The external workspace may
+then be moved or deleted without affecting continuation or later independent
+verification; none of those commands accepts its path again.
+
+Apply creates a durable private recovery ref, records a durable `PREPARED`
+checkpoint, then reconstructs the selected exact and resolved output trees in
+a temporary object quarantine. It builds deterministic unsigned commits there
+and promotes the required commit, tree, and blob closure durably into the
+repository before updating the local operation-owned output ref. The promotion
+lease and exact-name ref updates keep interruption recovery bounded to objects
+and refs owned by the operation.
+
+Before changing the branch, apply requires that complete output closure to be
+readable from persistent object storage with lazy fetching disabled. It
+independently regenerates the expected commits and trees in another fresh
+quarantine, compares them with the persistent objects, and writes a
+digest-bound verification record. For a resolved plan, the record also binds
+the raw-plan and completed-workspace digests and the resolved-output count.
+Commit objects preserve the planned author, target source committer, declared
+encoding, exact KEEP/REORDER message bytes, and every output tree. Split pieces
+inherit the original source author and committer. Invalidated source signature
+headers are omitted and recorded by header name and digest; payloads never
+enter the plan or audit record.
+
+The checked-out branch remains at its original tip until the entire output
+chain has been mechanically replayed, independently verified, and shown to
+have the frozen final tree. Apply then performs one compare-and-swap branch
+update. It never runs interactive rebase, invokes commit hooks, edits the
+worktree, contacts a remote, or pushes or force-pushes.
+
+Any remote-tracking ref containing a source commit blocks apply by default.
+After separately verifying that a ref is an authorized force-push review head,
+name that exact full ref explicitly:
+
+```bash
+❯ git-stage-batch rewrite apply rewrite-plan.json \
+    --allow-published-ref refs/remotes/origin/my-review
+```
+
+Repeat the option for every containing remote ref. The exception authorizes
+only the local rewrite; it never authorizes a later push.
+
+### `rewrite status`
+
+Inspect the durable state machine used by the rewrite executor:
+
+```bash
+❯ git-stage-batch rewrite status
+❯ git-stage-batch rewrite status --porcelain
+```
+
+Before any operation exists, status reports no active operation. For an active
+checkpoint it reports the closed phase, exact next action, completed and
+planned output counts, pending publication, recovery and output refs, last
+verified tree, and live resume blockers. After completion or abort it reports
+the latest terminal operation without occupying the active slot. The private
+output ref keeps a partially built linear chain reachable. Status verifies
+both owned refs, persisted plan and verification digests, the operation-owned
+resolution workspace when present, source/plan identity, output objects,
+branch compare-and-swap expectation, index, and worktree before declaring
+continuation safe. Porcelain status also reports the persisted plan's count
+for each operation kind. A specialized workflow can therefore prove that an
+active checkpoint belongs to its allowed operation subset without reading
+private state files.
+
+Operation records live below `git-stage-batch/rewrite/` in the repository's
+common Git directory (`.git/git-stage-batch/rewrite/` in an ordinary
+checkout). They therefore remain available if the linked worktree that began
+an operation is removed.
+
+In porcelain output, `inspection.resolution_matches` is `null` only when the
+captured, digest-bound persisted output plan is structurally valid, all-EXACT,
+and the checkpoint correctly has no resolution provenance. It is `true` only
+when a plan containing RESOLVED outputs has matching provenance and its
+operation-owned workspace authenticates successfully. An invalid output plan,
+missing or gratuitous provenance, a provenance mismatch, or a changed
+resolution workspace reports `false`, adds `resolution-bundle-changed`, and
+prevents continuation.
+
+### `rewrite continue`
+
+```bash
+❯ git-stage-batch rewrite continue
+```
+
+Continue revalidates the checkpoint and executes only its recorded next
+action. Each output uses a pending commit/tree checkpoint around the output-ref
+compare-and-swap, so interruption before or after ref publication converges on
+the same deterministic object. The final branch CAS is similarly reconciled
+if it completed before the terminal state write.
+
+### `rewrite abort`
+
+```bash
+❯ git-stage-batch rewrite abort
+```
+
+Abort first persists restore intent. It retracts an operation-owned pending
+output ref and restores the original branch only if the live tip is still the
+original value or the fully verified output value. Concurrent or manual
+foreign movement is never overwritten; the recovery ref and a compare-and-swap
+manual command remain available.
+
+Completed and aborted operations deliberately retain their state plus any
+recovery and output refs below `refs/git-stage-batch/rewrite/`; the command
+does not prune them automatically. Those refs preserve the original and
+replacement histories for later status, verification, and recovery. A
+repository with many terminal operations can inspect the accumulated refs and,
+after those capabilities are no longer needed, remove each reviewed ref with
+an expected-old-value check:
+
+```bash
+❯ git for-each-ref --format='%(refname) %(objectname)' \
+    refs/git-stage-batch/rewrite/
+❯ git update-ref -d 'EXACT_OPERATION_ORIGINAL_REF' EXPECTED_ORIGINAL_HEAD
+❯ git update-ref -d 'EXACT_OPERATION_OUTPUT_REF' EXPECTED_OUTPUT_HEAD
+```
+
+Delete only refs for a terminal operation and only when their exact expected
+objects match. A partially built operation might not have an output ref.
+Removing either anchor prevents later verification or automatic recovery for
+that operation and may allow the corresponding commits to be
+garbage-collected.
+
+### `rewrite verify`
+
+```bash
+❯ git-stage-batch rewrite verify
+❯ git-stage-batch rewrite verify --porcelain
+```
+
+Verify works on the active operation or latest complete operation. It
+reacquires the frozen source facts independently of current `HEAD`, replays
+every output tree, rehashes each normalized unsigned commit, checks parents,
+authors, committers, messages, encodings, and signature removal, and compares
+the reconstructed audit record with its durable digest. For a resolved plan it
+replays the operation-owned workspace and does not read the external workspace
+originally supplied to apply.
+Verification may run while another worktree owns a staging session. It still
+takes the repository session lock so its related reads cannot interleave with
+`rewrite apply`, `rewrite continue`, or `rewrite abort` mutations.
 
 ---
 
@@ -884,15 +1400,19 @@ dependencies.
 Selecting `refine-history` also installs `refine-commit-messages`.
 
 `refine-commit-messages BASE_SHA` audits a linear series and rewords
-noncompliant messages by default. It proves that every tree, patch boundary,
-author identity/date, signature presence, and series position remains
-unchanged. Its explicit `audit BASE_SHA` mode reports findings and complete
-proposed replacements without updating refs or commits.
+noncompliant messages by default. It expresses only KEEP and REWORD outputs in
+a rewrite plan and proves that every tree, patch boundary, author, committer,
+and series position remains unchanged. Rewritten cryptographic signatures are
+removed and reported because they cannot remain valid. Its explicit
+`audit BASE_SHA` mode validates proposed replacements without updating refs or
+commits.
 
-`refine-history BASE_SHA` additionally splits broad commits and integrates
-late repair commits before delegating its message pass. Its `resume` form
-continues the skill-owned checkpoint on its original branch after
-interruption. Mutating modes accept only clean, unpublished draft history.
+`refine-history BASE_SHA` additionally splits broad commits, integrates late
+repair units, and reorders only proven-independent sources before delegating
+its message pass. Both skills use `rewrite status`, operation-kind summaries,
+`continue`, `abort`, and `verify` instead of assistant-owned checkpoint or
+interactive-rebase helpers. Mutating modes accept clean local draft history or
+an explicitly verified force-push review head.
 
 `publish-unpushed-commits` maps a clean unpublished range onto reviewable
 GitHub pull requests or GitLab merge requests. It publishes ready for review by

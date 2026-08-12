@@ -1,4 +1,4 @@
-"""Persisted state for iterative suggest-fixup searches."""
+"""Persisted state for iterative fixup-suggestion searches."""
 
 from __future__ import annotations
 
@@ -9,24 +9,102 @@ from ..utils.file_io import read_text_file_contents, write_text_file_contents
 from ..utils.paths import get_suggest_fixup_state_file_path
 
 
-class _SuggestFixupSearchState(TypedDict):
+SUGGEST_FIXUP_STATE_SCHEMA_VERSION = 1
+
+
+class SuggestFixupSearchState(TypedDict):
+    """Canonical identity of one frozen suggestion search."""
+
+    schema_version: int
+    object_format: str
     hunk_hash: str
-    line_ids: list[int] | None
-    boundary: str
+    line_id_ranges: list[list[int]] | None
+    base_commit: str
+    head_commit: str
+    range_fingerprint: str
     file_path: str
-    min_line: int
-    max_line: int
+    unit_id: str
+    queried_ranges: list[list[int]]
 
 
-class SuggestFixupState(_SuggestFixupSearchState, total=False):
-    """Validated persisted state for an iterative suggest-fixup search."""
+class SuggestFixupState(SuggestFixupSearchState, total=False):
+    """Validated persisted state for an iterative suggestion search."""
 
     last_shown_commit: str
     iteration: int
 
 
+def _is_hex_identifier(value: object, lengths: tuple[int, ...]) -> bool:
+    if not isinstance(value, str) or len(value) not in lengths:
+        return False
+    try:
+        int(value, 16)
+    except ValueError:
+        return False
+    return True
+
+
+def _ranges_are_normalized(value: object, *, nullable: bool) -> bool:
+    if value is None:
+        return nullable
+    if not isinstance(value, list):
+        return False
+
+    previous_end: int | None = None
+    for item in value:
+        if not (
+            isinstance(item, list)
+            and len(item) == 2
+            and type(item[0]) is int
+            and type(item[1]) is int
+        ):
+            return False
+        start, end = item
+        if (
+            start <= 0
+            or end < start
+            or (previous_end is not None and start <= previous_end + 1)
+        ):
+            return False
+        previous_end = end
+    return True
+
+
+def _state_is_valid(state: dict[object, object]) -> bool:
+    line_id_ranges = state.get("line_id_ranges")
+    queried_ranges = state.get("queried_ranges")
+    has_iteration = (
+        "last_shown_commit" in state or "iteration" in state
+    )
+    object_format = state.get("object_format")
+    object_id_length = 40 if object_format == "sha1" else 64
+    return (
+        state.get("schema_version") == SUGGEST_FIXUP_STATE_SCHEMA_VERSION
+        and object_format in {"sha1", "sha256"}
+        and isinstance(state.get("hunk_hash"), str)
+        and _ranges_are_normalized(line_id_ranges, nullable=True)
+        and _is_hex_identifier(state.get("base_commit"), (object_id_length,))
+        and _is_hex_identifier(state.get("head_commit"), (object_id_length,))
+        and _is_hex_identifier(state.get("range_fingerprint"), (64,))
+        and isinstance(state.get("file_path"), str)
+        and _is_hex_identifier(state.get("unit_id"), (64,))
+        and _ranges_are_normalized(queried_ranges, nullable=False)
+        and (
+            not has_iteration
+            or (
+                _is_hex_identifier(
+                    state.get("last_shown_commit"),
+                    (object_id_length,),
+                )
+                and type(state.get("iteration")) is int
+                and cast(int, state.get("iteration")) > 0
+            )
+        )
+    )
+
+
 def read_suggest_fixup_state() -> SuggestFixupState | None:
-    """Return persisted suggest-fixup state, or None when absent or invalid."""
+    """Return persisted suggestion state, or None when absent or invalid."""
     state_path = get_suggest_fixup_state_file_path()
     if not state_path.exists():
         return None
@@ -37,37 +115,14 @@ def read_suggest_fixup_state() -> SuggestFixupState | None:
     if type(value) is not dict:
         return None
     state = cast(dict[object, object], value)
-    line_ids = state.get("line_ids")
-    if not (
-        isinstance(state.get("hunk_hash"), str)
-        and (
-            line_ids is None
-            or (
-                isinstance(line_ids, list)
-                and all(type(line_id) is int for line_id in line_ids)
-            )
-        )
-        and isinstance(state.get("boundary"), str)
-        and isinstance(state.get("file_path"), str)
-        and type(state.get("min_line")) is int
-        and type(state.get("max_line")) is int
-        and (
-            (
-                "last_shown_commit" not in state
-                and "iteration" not in state
-            )
-            or (
-                isinstance(state.get("last_shown_commit"), str)
-                and type(state.get("iteration")) is int
-            )
-        )
-    ):
+    if not _state_is_valid(state):
         return None
     return cast(SuggestFixupState, state)
 
 
 def write_suggest_fixup_state(state: SuggestFixupState) -> None:
-    """Persist suggest-fixup state."""
+    """Persist canonical suggestion state."""
+    get_suggest_fixup_state_file_path().parent.mkdir(parents=True, exist_ok=True)
     write_text_file_contents(
         get_suggest_fixup_state_file_path(),
         json.dumps(state, indent=2),
@@ -75,28 +130,15 @@ def write_suggest_fixup_state(state: SuggestFixupState) -> None:
 
 
 def clear_suggest_fixup_state() -> None:
-    """Remove persisted suggest-fixup state."""
+    """Remove persisted suggestion state."""
     get_suggest_fixup_state_file_path().unlink(missing_ok=True)
 
 
-def suggest_fixup_state_should_reset(
-    selected_hunk_hash: str,
-    line_ids: list[int] | None,
-    boundary: str,
-    file_path: str,
-    min_line: int,
-    max_line: int,
+def suggest_fixup_state_matches_search(
+    state: SuggestFixupState | None,
+    search: SuggestFixupSearchState,
 ) -> bool:
-    """Return whether persisted state belongs to a different search context."""
-    state = read_suggest_fixup_state()
+    """Return whether state belongs to the exact frozen search."""
     if state is None:
-        return True
-
-    return (
-        state.get("hunk_hash") != selected_hunk_hash
-        or state.get("line_ids") != line_ids
-        or state.get("boundary") != boundary
-        or state.get("file_path") != file_path
-        or state.get("min_line") != min_line
-        or state.get("max_line") != max_line
-    )
+        return False
+    return all(state.get(key) == value for key, value in search.items())

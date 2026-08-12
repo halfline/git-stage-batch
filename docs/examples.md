@@ -175,9 +175,9 @@ handler.py :: @@ -15,8 +15,9 @@
 
 ---
 
-## Find Fixup Target
+## Create Fixup Commits
 
-Create fixup commits for historical changes:
+For one selected hunk, inspect historical candidates:
 
 ```
 ❯ git-stage-batch start
@@ -186,11 +186,16 @@ auth.py :: @@ -23,5 +23,5 @@
 [#2] + if age >= 18:
 
 # Which commit does this fix?
-❯ git-stage-batch suggest-fixup
+❯ git-stage-batch fixup suggest
 Candidate 1: a1b2c3d Add age validation
 
 # That's the one!
 ❯ git commit --fixup=a1b2c3d
+
+# Or stage several review fixes and let git-stage-batch partition them.
+❯ git add auth.py parser.py
+❯ git-stage-batch fixup create --dry-run
+❯ git-stage-batch fixup create
 
 # Later, during interactive rebase:
 ❯ git rebase -i --autosquash
@@ -254,6 +259,34 @@ This helps you:
 - See what you've already processed
 - Know how much work remains
 - Plan which skipped hunks to handle next
+
+---
+
+## Refine Local Draft History
+
+For a clean, linear unpublished range, capture exact source facts, edit only
+the semantic plan fields, validate the result, then apply and verify it:
+
+```bash
+# Repository-read-only: capture a KEEP template for commits after main.
+❯ git-stage-batch rewrite scan main --output rewrite-plan.json
+
+# Review and edit only plan.outputs and plan.partitioned_units.
+❯ $EDITOR rewrite-plan.json
+
+# Repository-read-only: prove unit conservation, replay, and the final tree.
+❯ git-stage-batch rewrite validate rewrite-plan.json
+
+# Branch-mutating: build and verify, then atomically update the checked-out branch.
+❯ git-stage-batch rewrite apply rewrite-plan.json
+
+# Independently verify the completed local rewrite.
+❯ git-stage-batch rewrite verify
+```
+
+An explicitly verified force-push review head can be allowed by its exact
+remote-tracking ref. That exception permits only this local branch rewrite;
+`rewrite apply` never contacts a remote or performs or authorizes a push.
 
 ---
 

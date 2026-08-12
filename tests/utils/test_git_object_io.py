@@ -1,6 +1,9 @@
 """Tests for Git object IO helpers."""
 
+import os
+import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -11,9 +14,13 @@ from git_stage_batch.utils.git_object_io import (
     create_git_blob,
     create_git_blobs_from_paths,
     get_empty_git_tree_object_id,
+    get_git_object_type,
+    list_git_tree_blobs,
+    list_git_tree_entries,
     read_git_blobs_as_bytes,
     resolve_git_objects,
     stream_git_blobs,
+    temporary_git_object_environment,
 )
 from git_stage_batch.utils import git_object_io
 
@@ -59,6 +66,24 @@ def test_empty_tree_helper_returns_a_tree_object(temp_git_repo):
 
     assert run_git_command(["cat-file", "-t", object_id]).stdout.strip() == "tree"
     assert run_git_command(["ls-tree", object_id]).stdout == ""
+
+
+def test_object_quarantine_uses_dynamic_default_scratch_parent(
+    temp_git_repo,
+    tmp_path,
+    monkeypatch,
+):
+    """Git object quarantines should use the current scratch override."""
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    monkeypatch.setenv("TMPDIR", str(scratch))
+
+    with temporary_git_object_environment() as quarantine:
+        object_directory = Path(quarantine.environment()["GIT_OBJECT_DIRECTORY"])
+        assert object_directory.parent == scratch
+        assert object_directory.name.startswith("git-stage-batch-objects-")
+
+    assert not object_directory.exists()
 
 
 def test_create_git_blobs_from_paths_hashes_path_bytes(temp_git_repo):
@@ -201,6 +226,298 @@ def test_stream_git_blobs_does_not_materialize_large_payloads(temp_git_repo):
 
     assert streamed_size == payload_size
     assert largest_chunk < payload_size
+
+
+def test_quarantined_blob_requires_environment_and_does_not_leak(temp_git_repo):
+    """Streamed blob IO should remain confined to its object quarantine."""
+    with temporary_git_object_environment() as quarantine:
+        env = quarantine.environment()
+        blob_id = create_git_blob([b"quarantined payload\n"], env=env)
+
+        assert list(stream_git_blobs([blob_id])) == []
+        streamed = [
+            (blob.object_id, b"".join(blob.content_chunks))
+            for blob in stream_git_blobs([blob_id], env=env)
+        ]
+        assert streamed == [(blob_id, b"quarantined payload\n")]
+
+    result = run_git_command(
+        ["cat-file", "-e", blob_id],
+        check=False,
+        requires_index_lock=False,
+    )
+    assert result.returncode != 0
+
+
+def test_quarantine_environment_cannot_be_redirected(temp_git_repo):
+    """Issued quarantine capabilities must preserve their object directory."""
+    with temporary_git_object_environment() as quarantine:
+        issued = quarantine.environment()
+        object_directory = issued["GIT_OBJECT_DIRECTORY"]
+        issued["GIT_OBJECT_DIRECTORY"] = ".git/objects"
+
+        assert not isinstance(quarantine, dict)
+        assert quarantine.environment()["GIT_OBJECT_DIRECTORY"] == object_directory
+        with pytest.raises(TypeError):
+            dict.__setitem__(  # type: ignore[arg-type]
+                quarantine,
+                "GIT_OBJECT_DIRECTORY",
+                ".git/objects",
+            )
+
+
+def test_quarantine_certifies_the_persistent_object_store(
+    temp_git_repo,
+    tmp_path,
+    monkeypatch,
+):
+    """Ambient quarantine variables must not redirect later promotion writes."""
+    redirected_objects = tmp_path / "redirected-objects"
+    redirected_objects.mkdir()
+    monkeypatch.setenv("GIT_OBJECT_DIRECTORY", str(redirected_objects))
+    monkeypatch.setenv("GIT_ALTERNATE_OBJECT_DIRECTORIES", str(redirected_objects))
+    monkeypatch.setenv("GIT_QUARANTINE_PATH", str(tmp_path / "foreign"))
+
+    with temporary_git_object_environment() as quarantine:
+        persistent = quarantine.persistent_environment()
+        head = run_git_command(
+            ["rev-parse", "HEAD"],
+            env=persistent,
+            requires_index_lock=False,
+        ).stdout.strip()
+
+        assert "GIT_OBJECT_DIRECTORY" not in persistent
+        assert "GIT_ALTERNATE_OBJECT_DIRECTORIES" not in persistent
+        assert "GIT_QUARANTINE_PATH" not in persistent
+        assert get_git_object_type(head, env=quarantine.environment()) == "commit"
+        quarantine.require_persistent_identity()
+
+
+def test_quarantine_can_disable_replace_objects_and_grafts_in_every_environment(
+    temp_git_repo,
+    monkeypatch,
+):
+    base = run_git_command(
+        ["rev-parse", "HEAD"],
+        requires_index_lock=False,
+    ).stdout.strip()
+    (temp_git_repo / "README.md").write_text("# Changed\n")
+    subprocess.run(["git", "commit", "-am", "Change"], check=True)
+    tip = run_git_command(
+        ["rev-parse", "HEAD"],
+        requires_index_lock=False,
+    ).stdout.strip()
+    grafts = temp_git_repo / "custom-grafts"
+    grafts.write_text(f"{tip}\n", encoding="ascii")
+    monkeypatch.setenv("GIT_NO_REPLACE_OBJECTS", "0")
+    monkeypatch.setenv("GIT_GRAFT_FILE", str(grafts))
+
+    with temporary_git_object_environment(disable_replace_objects=True) as quarantine:
+        assert quarantine.environment()["GIT_NO_REPLACE_OBJECTS"] == "1"
+        assert quarantine.environment()["GIT_GRAFT_FILE"] == os.devnull
+        assert quarantine.persistent_environment()["GIT_NO_REPLACE_OBJECTS"] == "1"
+        assert quarantine.persistent_environment()["GIT_GRAFT_FILE"] == os.devnull
+        with quarantine.pinned_environment() as environment:
+            assert environment["GIT_NO_REPLACE_OBJECTS"] == "1"
+            assert environment["GIT_GRAFT_FILE"] == os.devnull
+            parents = run_git_command(
+                ["rev-list", "--parents", "-n", "1", "HEAD"],
+                env=environment,
+                requires_index_lock=False,
+            ).stdout.split()
+
+    assert parents == [tip, base]
+
+
+def test_quarantine_rejects_nonboolean_replace_control(temp_git_repo):
+    with pytest.raises(ValueError, match="must be a boolean"):
+        with temporary_git_object_environment(
+            disable_replace_objects=1,  # type: ignore[arg-type]
+        ):
+            pass
+
+
+def test_quarantine_object_directory_pin_certifies_filesystem_identity(
+    temp_git_repo,
+):
+    with temporary_git_object_environment() as quarantine:
+        object_directory = Path(quarantine.environment()["GIT_OBJECT_DIRECTORY"])
+        metadata = object_directory.stat()
+        expected = metadata.st_dev, metadata.st_ino
+
+        with quarantine.pinned_quarantine_object_directory() as descriptor:
+            assert (
+                quarantine.require_quarantine_object_directory_identity(descriptor)
+                == expected
+            )
+            assert (
+                os.fstat(descriptor).st_dev,
+                os.fstat(descriptor).st_ino,
+            ) == expected
+
+
+def test_quarantine_object_directory_pin_rejects_visible_inode_change(
+    temp_git_repo,
+):
+    with temporary_git_object_environment() as quarantine:
+        object_directory = Path(quarantine.environment()["GIT_OBJECT_DIRECTORY"])
+        displaced = object_directory.with_name(f"{object_directory.name}-displaced")
+        try:
+            with pytest.raises(RuntimeError, match="quarantine identity changed"):
+                with quarantine.pinned_quarantine_object_directory():
+                    object_directory.rename(displaced)
+                    object_directory.mkdir(mode=0o700)
+        finally:
+            shutil.rmtree(object_directory)
+            displaced.rename(object_directory)
+
+
+def test_pinned_quarantine_environment_prevents_object_path_aba_leakage(
+    temp_git_repo,
+):
+    payload = f"candidate only for {temp_git_repo}\n".encode()
+    with temporary_git_object_environment() as quarantine:
+        ordinary_environment = quarantine.environment()
+        persistent_environment = quarantine.persistent_environment()
+        object_directory = Path(ordinary_environment["GIT_OBJECT_DIRECTORY"])
+        persistent_directory = Path(
+            run_git_command(
+                ["rev-parse", "--git-path", "objects"],
+                env=persistent_environment,
+                requires_index_lock=False,
+            ).stdout.strip()
+        ).resolve()
+        displaced = object_directory.with_name(f"{object_directory.name}-displaced")
+
+        with quarantine.pinned_environment() as environment:
+            object_directory.rename(displaced)
+            object_directory.symlink_to(
+                persistent_directory,
+                target_is_directory=True,
+            )
+            try:
+                environment["GIT_OBJECT_DIRECTORY"] = str(persistent_directory)
+                environment["GIT_ALTERNATE_OBJECT_DIRECTORIES"] = str(
+                    persistent_directory
+                )
+                environment["GIT_QUARANTINE_PATH"] = str(persistent_directory)
+                object_id = create_git_blob([payload], env=environment)
+                tree_id = run_git_command(
+                    ["mktree"],
+                    stdin_chunks=[
+                        f"100644 blob {object_id}\tcandidate.txt\n".encode("ascii")
+                    ],
+                    env=environment,
+                    requires_index_lock=False,
+                ).stdout.strip()
+                displaced_environment = persistent_environment.copy()
+                displaced_environment["GIT_OBJECT_DIRECTORY"] = str(displaced)
+
+                assert (
+                    get_git_object_type(
+                        object_id,
+                        env=displaced_environment,
+                    )
+                    == "blob"
+                )
+                assert (
+                    get_git_object_type(
+                        tree_id,
+                        env=displaced_environment,
+                    )
+                    == "tree"
+                )
+                assert (
+                    get_git_object_type(
+                        object_id,
+                        env=persistent_environment,
+                    )
+                    is None
+                )
+                assert (
+                    get_git_object_type(
+                        tree_id,
+                        env=persistent_environment,
+                    )
+                    is None
+                )
+            finally:
+                object_directory.unlink()
+                displaced.rename(object_directory)
+
+    assert get_git_object_type(object_id) is None
+    assert get_git_object_type(tree_id) is None
+
+
+def test_quarantined_tree_requires_environment_and_does_not_leak(temp_git_repo):
+    """Tree listing should use the same temporary object environment."""
+    file_path = "candidate.txt"
+    with temporary_git_object_environment() as quarantine:
+        env = quarantine.environment()
+        blob_id = create_git_blob([b"candidate content\n"], env=env)
+        tree_id = run_git_command(
+            ["mktree"],
+            stdin_chunks=[f"100644 blob {blob_id}\t{file_path}\n".encode("ascii")],
+            env=env,
+            requires_index_lock=False,
+        ).stdout.strip()
+
+        assert list_git_tree_blobs(tree_id, [file_path]) == {}
+        assert get_git_object_type(tree_id) is None
+        assert get_git_object_type(tree_id, env=env) == "tree"
+        entries = list_git_tree_blobs(tree_id, [file_path], env=env)
+        assert entries[file_path].blob_sha == blob_id
+        assert entries[file_path].mode == "100644"
+
+    for object_id in (blob_id, tree_id):
+        result = run_git_command(
+            ["cat-file", "-e", object_id],
+            check=False,
+            requires_index_lock=False,
+        )
+        assert result.returncode != 0
+
+
+def test_tree_entry_listing_preserves_non_blob_types_and_exact_paths(temp_git_repo):
+    """Exact entry inspection should expose trees without recursing into them."""
+    nested = temp_git_repo / "nested"
+    nested.mkdir()
+    (nested / "child.txt").write_text("child\n", encoding="utf-8")
+    subprocess.run(["git", "add", "nested/child.txt"], check=True)
+    tree_id = run_git_command(["write-tree"]).stdout.strip()
+
+    entries = list_git_tree_entries(
+        tree_id,
+        ["nested", "nested/child.txt", "missing"],
+    )
+
+    assert set(entries) == {"nested", "nested/child.txt"}
+    assert entries["nested"].object_type == "tree"
+    assert entries["nested"].mode == "040000"
+    assert entries["nested/child.txt"].object_type == "blob"
+
+
+def test_tree_entry_listing_uses_root_relative_paths_from_subdirectory(temp_git_repo):
+    """Exact path comparison must not depend on the process working directory."""
+    nested = temp_git_repo / "nested"
+    nested.mkdir()
+    (nested / "child.txt").write_text("child\n", encoding="utf-8")
+    subprocess.run(["git", "add", "nested/child.txt"], check=True)
+    tree_id = run_git_command(["write-tree"]).stdout.strip()
+    original_directory = Path.cwd()
+    try:
+        os.chdir(nested)
+        entries = list_git_tree_entries(tree_id, ["nested/child.txt"])
+    finally:
+        os.chdir(original_directory)
+
+    assert entries["nested/child.txt"].object_type == "blob"
+
+
+def test_tree_entry_listing_fails_closed_for_missing_tree(temp_git_repo):
+    """Operational lookup failure must not masquerade as an absent path."""
+    with pytest.raises(subprocess.CalledProcessError):
+        list_git_tree_entries("f" * 40, ["missing.txt"])
 
 
 def test_directory_snapshot_hashes_normal_files_in_one_batch(

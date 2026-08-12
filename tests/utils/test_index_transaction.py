@@ -323,6 +323,25 @@ def test_successful_transaction_blocks_concurrent_real_index_update(tmp_path):
     assert _cached_paths(repo) == {b"target.txt"}
 
 
+def test_explicit_publication_retains_real_index_lock(tmp_path):
+    """An early publication must not release the transaction's exclusion."""
+    repo = tmp_path / "repo"
+    _initialize_repository(repo)
+    (repo / "target.txt").write_text("transaction\n")
+    (repo / "concurrent.txt").write_text("external\n")
+
+    with isolated_index_transaction(cwd=str(repo)) as publish_index:
+        _transaction_git(repo, "add", "target.txt")
+        publish_index()
+
+        assert _cached_paths(repo) == {b"target.txt"}
+        with pytest.raises(subprocess.CalledProcessError) as error:
+            _git(repo, "add", "concurrent.txt")
+
+    assert b"index.lock" in error.value.stderr
+    assert _cached_paths(repo) == {b"target.txt"}
+
+
 def test_transaction_refuses_index_replacement_that_bypasses_lock(tmp_path):
     """Publication must fail closed when a writer ignores Git's index lock."""
     repo = tmp_path / "repo"

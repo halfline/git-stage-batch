@@ -4,10 +4,22 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+
+def default_scratch_parent() -> Path | None:
+    """Return the current process's preferred parent for large scratch data."""
+    for variable in ("TMPDIR", "TEMP", "TMP"):
+        configured = os.environ.get(variable)
+        if configured:
+            return Path(configured)
+    if sys.platform == "linux":
+        return Path("/var/tmp")
+    return None
 
 
 def parse_args() -> argparse.Namespace:
@@ -33,7 +45,10 @@ def main() -> int:
         command = [sys.executable, "-m", "compileall", "-q", "src", "tests"]
 
     repo = Path(args.repo).resolve()
-    with tempfile.TemporaryDirectory(prefix="verify-head-") as tmp:
+    with tempfile.TemporaryDirectory(
+        prefix="git-stage-batch-verify-head-",
+        dir=default_scratch_parent(),
+    ) as tmp:
         worktree = Path(tmp) / "worktree"
         try:
             subprocess.run(

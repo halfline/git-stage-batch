@@ -76,7 +76,13 @@ and `discard`. It does not require reading the named-batch implementation.
 | `tui/` | Prompts, key handling, menus, and calls into `commands/` for interactive mode | A behavior must be reachable or presented differently in interactive mode |
 | `utils/` | Git command execution, Git object access, Git references, paths, file access, process streaming, and journals | Several callers need the same low-level Git, process, path, or file operation |
 | `editor/` | The in-memory line editor, piece table, line endings, and line export | Byte-preserving line editing changes |
+| `fixup/` | Canonical target ranges, scoped mmap-capable patch buffers, range-compressed lineage evidence, tree commutation, fixup plans, and recoverable fixup creation | Fixup attribution or grouped fixup construction changes independently of CLI presentation |
+| `history/` | Immutable range snapshots, dependency evidence, semantic plan validation, deterministic object replay, durable checkpoints, recovery, and verification | Commit-series refinement changes independently of CLI presentation |
 | `batch/` | Named-batch storage, ownership records, display reconstruction, matching, merge, discard reversal, and source refresh | A named-batch behavior changes, already-batched lines are filtered incorrectly, or live line inclusion reaches the temporary batch merge described below |
+
+Rewrite checkpoints differ from worktree-local session state: they live below
+`git-stage-batch/rewrite/` in the repository's common Git directory so a
+linked worktree can be removed without orphaning an interrupted rewrite.
 
 The package root also contains modules with narrow jobs:
 
@@ -247,6 +253,7 @@ Use the narrowest row that describes the change:
 | Add an interactive key or menu item | A handler under `tui/` that calls the command | `tui/action_dispatch.py`, prompt or help modules, a command function, interactive tests |
 | Add a reusable Git operation | A specific `utils/git_*` module | Utility tests and the command or data caller |
 | Change line content written to the index | `staging/content_buffers.py` or `staging/index_update.py` | The command that chooses the content, staging tests, command tests |
+| Change commit-series planning, replay, or recovery | The owning module under `history/` | Rewrite CLI dispatch, output, history tests, manual page, website command reference |
 | Change named-batch persistence or merge behavior | The owning module under `batch/` | A batch-facing command, batch tests, command tests, [Batch internals](BATCHES.md) |
 
 ## Add a command users can run
@@ -377,6 +384,7 @@ it should not mutate the index, working tree, or session.
 | `tui/` | `tests/tui/` | The same behavior must be proven across interactive and non-interactive use |
 | `utils/` | `tests/utils/` | A real repository is required to prove the helper contract |
 | `editor/` | `tests/editor/` | Edited content must pass through a complete command |
+| `history/` | `tests/history/` | A checkpoint, ref update, or replay must survive multiple invocations |
 | `batch/` | `tests/batch/` | A named batch must survive or interact with a session workflow |
 
 Use `tests/functional/` for multi-step repository behavior, not as a substitute

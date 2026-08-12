@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import hashlib
+import io
 import os
 import stat
 from collections.abc import Collection
 from enum import Enum
 from pathlib import Path
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable, Protocol
+
+if TYPE_CHECKING:
+    from typing_extensions import Buffer
 
 from .atomic_write import (
     fsync_directory as _fsync_directory,
@@ -31,6 +36,31 @@ PROJECT_FILE_MODE = 0o644
 _PATH_LIST_MAGIC = b"\0git-stage-batch-path-list-v1\0"
 
 
+class _Digest(Protocol):
+    """Incremental digest operations used by the raw reader."""
+
+    def update(self, data: Buffer) -> None: ...
+
+    def hexdigest(self) -> str: ...
+
+
+class _DigestingRawReader(io.RawIOBase):
+    """Hash the exact bytes consumed by a buffered text reader."""
+
+    def __init__(self, source: io.FileIO, digest: _Digest) -> None:
+        self._source = source
+        self._digest = digest
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer: Buffer) -> int | None:
+        count = self._source.readinto(buffer)
+        if count:
+            self._digest.update(memoryview(buffer)[:count])
+        return count
+
+
 def read_required_text_file_contents(path: Path) -> str:
     """Read a required file's text contents with UTF-8 encoding.
 
@@ -39,6 +69,34 @@ def read_required_text_file_contents(path: Path) -> str:
     missing file from a present, zero-length file.
     """
     return path.read_text(encoding="utf-8", errors="surrogateescape")
+
+
+def read_required_text_file_contents_and_sha256(path: Path) -> tuple[str, str]:
+    """Read and hash one regular-file stream without retaining a byte copy."""
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    flags |= getattr(os, "O_NONBLOCK", 0)
+    opened_descriptor = os.open(path, flags)
+    file_descriptor: int | None = opened_descriptor
+    try:
+        metadata = os.fstat(opened_descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise OSError(f"Path is not a regular file: {path}")
+        source = io.FileIO(opened_descriptor, mode="rb", closefd=True)
+        file_descriptor = None
+        digest = hashlib.sha256()
+        with source:
+            raw_reader = _DigestingRawReader(source, digest)
+            with io.TextIOWrapper(
+                io.BufferedReader(raw_reader),
+                encoding="utf-8",
+                errors="surrogateescape",
+            ) as text_reader:
+                contents = text_reader.read()
+        return contents, digest.hexdigest()
+    finally:
+        if file_descriptor is not None:
+            os.close(file_descriptor)
 
 
 def read_text_file_contents(path: Path) -> str:
@@ -116,6 +174,24 @@ def write_file_bytes(
         data,
         mode_policy=mode_policy,
         mode=mode,
+    )
+
+
+def write_file_byte_chunks_atomically(
+    path: Path,
+    chunks: Iterable[bytes],
+    *,
+    mode_policy: AtomicWriteModePolicy = AtomicWriteModePolicy.PRIVATE,
+    mode: int | None = None,
+) -> None:
+    """Atomically stream byte chunks into one regular file."""
+    metadata = _existing_file_metadata(path)
+    replacement_mode = _replacement_mode(metadata, mode_policy, mode)
+    write_chunks_atomically(
+        path,
+        chunks,
+        mode=replacement_mode,
+        existing_metadata=metadata,
     )
 
 

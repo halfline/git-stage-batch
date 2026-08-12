@@ -130,10 +130,27 @@ class TestWheelContents:
             "git-stage-batch-discard.1",
             "git-stage-batch-install-assets.1",
             "git-stage-batch-journal.1",
+            "git-stage-batch-rewrite.1",
             "git-stage-batch-validate.1",
         }
 
         assert expected_pages <= packaged_pages
+
+    def test_wheel_metadata_describes_staging_and_rewriting(self, build_wheel):
+        """The package index summary should expose both product workflows."""
+        with zipfile.ZipFile(build_wheel, "r") as whl:
+            metadata_paths = [
+                name
+                for name in whl.namelist()
+                if name.endswith(".dist-info/METADATA")
+            ]
+            assert len(metadata_paths) == 1
+            metadata = whl.read(metadata_paths[0]).decode("utf-8")
+
+        assert (
+            "Summary: Fine-grained Git staging and deterministic "
+            "draft-history refinement\n"
+        ) in metadata
 
     def test_wheel_contains_claude_skill_asset(self, build_wheel):
         """Test that wheel contains the bundled Claude skill asset."""
@@ -172,10 +189,16 @@ class TestWheelContents:
             files = whl.namelist()
 
         assert any(
-            "git_stage_batch/assets/claude-skills/refine-history/scripts/refine-history-checkpoint.py"
+            "git_stage_batch/assets/claude-skills/refine-history/SKILL.md"
             in f
             for f in files
         ), "Missing bundled refine-history Claude skill asset"
+        assert any(
+            "git_stage_batch/assets/claude-skills/refine-history/references/"
+            "targeted-exact-rewrites.md" in f
+            for f in files
+        ), "Missing targeted Claude rewrite procedures"
+        assert not any("refine-history-checkpoint.py" in f for f in files)
 
     def test_wheel_contains_claude_refine_messages_skill_asset(self, build_wheel):
         """Test that wheel contains the standalone Claude message skill."""
@@ -184,9 +207,10 @@ class TestWheelContents:
 
         assert any(
             "git_stage_batch/assets/claude-skills/refine-commit-messages/"
-            "scripts/refine-commit-messages-checkpoint.py" in f
+            "SKILL.md" in f
             for f in files
         ), "Missing bundled refine-commit-messages Claude skill asset"
+        assert not any("refine-commit-messages-checkpoint.py" in f for f in files)
 
     def test_wheel_contains_claude_publish_skill_asset(self, build_wheel):
         """Test that the wheel contains the Claude publication helper."""
@@ -275,6 +299,11 @@ class TestWheelContents:
             "git_stage_batch/assets/codex-skills/refine-history/agents/openai.yaml" in f
             for f in files
         ), "Missing bundled refine-history Codex skill asset"
+        assert any(
+            "git_stage_batch/assets/codex-skills/refine-history/references/"
+            "targeted-exact-rewrites.md" in f
+            for f in files
+        ), "Missing targeted Codex rewrite procedures"
 
     def test_wheel_contains_codex_refine_messages_skill_asset(self, build_wheel):
         """Test that wheel contains the standalone Codex message skill."""

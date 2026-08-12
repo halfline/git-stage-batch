@@ -1150,11 +1150,6 @@ msgstr "후보를 표시하지 않고 상태 초기화 및 종료"
 msgid "Re-show the last candidate without advancing"
 msgstr "진행하지 않고 마지막 후보 다시 표시"
 
-#: src/git_stage_batch/cli/fixup_subcommands.py:82
-#, python-brace-format
-msgid "Git ref to use as lower bound for commit search (default: @{upstream})"
-msgstr "커밋 검색의 하한으로 사용할 Git ref (기본값: @{upstream})"
-
 #: src/git_stage_batch/cli/include_dispatch.py:35
 msgid "`--no-edge-overlap` only applies to live `include --line --as` operations."
 msgstr "`--no-edge-overlap`은 현재 변경에 대한 `include --line --as` 작업에만 적용됩니다."
@@ -1207,8 +1202,8 @@ msgid "Replacement text was not provided."
 msgstr "교체 텍스트가 제공되지 않았습니다."
 
 #: src/git_stage_batch/cli/root_parser.py:16
-msgid "Hunk-by-hunk and line-by-line staging for git"
-msgstr "Git의 헝크별 및 줄별 스테이징"
+msgid "Fine-grained Git staging and deterministic draft-history refinement"
+msgstr "세분화된 Git 스테이징과 결정론적 초안 기록 정제"
 
 #: src/git_stage_batch/cli/root_parser.py:31
 msgid "Run as if started in path"
@@ -2580,47 +2575,10 @@ msgid "✓ Skipped {count} hunk from {file}"
 msgid_plural "✓ Skipped {count} hunks from {file}"
 msgstr[0] "✓ {file}에서 헝크 {count}개를 건너뛰었습니다"
 
-#: src/git_stage_batch/commands/fixup/boundary.py:21
-#, python-brace-format
-msgid "Invalid boundary ref: {boundary}"
-msgstr "잘못된 경계 ref: {boundary}"
-
-#: src/git_stage_batch/commands/fixup/boundary.py:31
-#, python-brace-format
-msgid "Failed to get commit range {boundary}..HEAD"
-msgstr "커밋 범위 {boundary}..HEAD를 가져오는데 실패했습니다"
-
-#: src/git_stage_batch/commands/fixup/boundary.py:38
-#, python-brace-format
-msgid "No commits found in range {boundary}..HEAD"
-msgstr "{boundary}..HEAD 범위에서 커밋을 찾을 수 없습니다"
-
-#: src/git_stage_batch/commands/fixup/candidate_display.py:26
-msgid ""
-"No previous candidate to show.\n"
-"Run suggest-fixup without --last to find a candidate."
-msgstr ""
-"표시할 이전 후보가 없습니다.\n"
-"후보를 찾으려면 --last 없이 suggest-fixup을 실행하십시오."
-
-#: src/git_stage_batch/commands/fixup/candidate_display.py:70
-#, python-brace-format
-msgid "Candidate {iteration}: {info}"
-msgstr "후보 {iteration}: {info}"
-
 #: src/git_stage_batch/commands/fixup/candidate_display.py:76
 #, python-brace-format
 msgid "Run: git commit --fixup={commit}"
 msgstr "실행: git commit --fixup={commit}"
-
-#: src/git_stage_batch/commands/fixup/candidate_iteration.py:47
-#, python-brace-format
-msgid ""
-"No commits in range {boundary}..HEAD modified these lines.\n"
-"The changes may be fixing code from before the boundary."
-msgstr ""
-"{boundary}..HEAD 범위에서 이 행을 수정한 커밋이 없습니다.\n"
-"경계보다 이전의 코드를 고치는 변경일 수 있습니다."
 
 #: src/git_stage_batch/commands/fixup/candidate_iteration.py:53
 msgid "No more candidates found."
@@ -2629,16 +2587,6 @@ msgstr "더 이상 후보를 찾을 수 없습니다."
 #: src/git_stage_batch/commands/fixup/iteration_state.py:35
 msgid "Suggest-fixup iteration cleared."
 msgstr "Suggest-fixup 반복이 초기화되었습니다."
-
-#: src/git_stage_batch/commands/fixup/line_ranges.py:37
-msgid "No old line numbers found in hunk (all lines may be additions)."
-msgstr "헝크에서 이전 줄 번호를 찾을 수 없습니다 (모든 줄이 추가일 수 있습니다)."
-
-#: src/git_stage_batch/commands/fixup/line_ranges.py:59
-msgid ""
-"No old line numbers found for specified lines (they may be newly added "
-"lines)."
-msgstr "지정된 줄에 대한 이전 줄 번호를 찾을 수 없습니다 (새로 추가된 줄일 수 있습니다)."
 
 #: src/git_stage_batch/commands/fixup/search_targets.py:46
 #: src/git_stage_batch/commands/fixup/search_targets.py:102
@@ -6142,3 +6090,1233 @@ msgstr "교체 선택 영역은 배치 소스의 연속된 단일 줄 범위여�
 #: src/git_stage_batch/batch/replacement.py:44
 msgid "Replacement selection must resolve to one contiguous batch-source region."
 msgstr "교체 선택 영역은 배치 소스의 연속된 단일 영역이어야 합니다."
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:78 src/git_stage_batch/cli/fixup_subcommands.py:114
+msgid "Output machine-readable JSON"
+msgstr "기계 판독 가능한 JSON 출력"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:104
+msgid "Show the complete assignment plan without creating commits"
+msgstr "커밋을 만들지 않고 전체 할당 계획 표시"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:109
+msgid "Create eligible fixups and leave other units staged"
+msgstr "적합한 fixup을 만들고 다른 단위는 스테이징된 상태로 유지"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:121
+msgid "Git commit to use as the excluded base of the target range (default: fork point with upstream)"
+msgstr "대상 범위에서 제외할 기준으로 사용할 Git 커밋(기본값: upstream과의 분기점)"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:134
+msgid "Suggest fixup targets or create grouped fixup commits"
+msgstr "fixup 대상을 제안하거나 그룹화된 fixup 커밋 만들기"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:139
+msgid "Fixup action"
+msgstr "fixup 작업"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:146
+msgid "Suggest a target for the selected hunk"
+msgstr "선택한 헝크의 대상 제안"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:155
+msgid "Create grouped fixup commits from staged changes"
+msgstr "스테이징된 변경 사항에서 그룹화된 fixup 커밋 만들기"
+
+#: src/git_stage_batch/commands/fixup_create.py:36
+#, python-brace-format
+msgid "Cannot create fixup commits while another Git operation is active ({operation})."
+msgstr "다른 Git 작업이 진행 중이면 fixup 커밋을 만들 수 없습니다({operation})."
+
+#: src/git_stage_batch/commands/fixup_create.py:56
+msgid "Stop the active git-stage-batch session before creating fixup commits."
+msgstr "fixup 커밋을 만들기 전에 활성 git-stage-batch 세션을 중지하십시오."
+
+#: src/git_stage_batch/commands/fixup_create.py:81
+msgid "No commits were created because some staged units are not eligible. Inspect the plan or rerun with --partial."
+msgstr "일부 스테이징된 단위가 적합하지 않아 커밋을 만들지 않았습니다. 계획을 검토하거나 --partial로 다시 실행하십시오."
+
+#: src/git_stage_batch/commands/fixup_create.py:92
+msgid "No staged units have an eligible fixup target."
+msgstr "적합한 fixup 대상이 있는 스테이징된 단위가 없습니다."
+
+#: src/git_stage_batch/fixup/execution.py:102
+#, python-brace-format
+msgid "Could not materialize the staged units assigned to {target}."
+msgstr "{target}에 할당된 스테이징 단위를 구체화할 수 없습니다."
+
+#: src/git_stage_batch/fixup/execution.py:114
+#, python-brace-format
+msgid "The planned fixup for {target} could not be combined with the preceding fixup groups."
+msgstr "{target}에 대해 계획한 fixup을 앞선 fixup 그룹과 결합할 수 없습니다."
+
+#: src/git_stage_batch/fixup/execution.py:130
+msgid "The grouped fixup plan does not conserve the staged changes."
+msgstr "그룹화된 fixup 계획이 스테이징된 변경 사항을 보존하지 않습니다."
+
+#: src/git_stage_batch/fixup/execution.py:134
+msgid "The complete fixup plan does not reproduce the staged index tree."
+msgstr "전체 fixup 계획이 스테이징된 인덱스 트리를 재현하지 않습니다."
+
+#: src/git_stage_batch/fixup/execution.py:143
+msgid "HEAD or the staged index changed after fixup planning. No further fixup commits were created."
+msgstr "fixup을 계획한 뒤 HEAD 또는 스테이징된 인덱스가 변경되었습니다. 추가 fixup 커밋을 만들지 않았습니다."
+
+#: src/git_stage_batch/fixup/execution.py:160
+#, python-brace-format
+msgid "Fixup creation stopped after HEAD moved unexpectedly. The original commit is saved at {recovery_ref}; HEAD was not overwritten."
+msgstr "HEAD가 예기치 않게 이동하여 fixup 만들기를 중지했습니다. 원래 커밋은 {recovery_ref}에 저장되었으며 HEAD는 덮어쓰지 않았습니다."
+
+#: src/git_stage_batch/fixup/execution.py:173
+#, python-brace-format
+msgid "Could not restore HEAD after fixup creation failed. The original commit is saved at {recovery_ref}."
+msgstr "fixup 만들기에 실패한 뒤 HEAD를 복원할 수 없습니다. 원래 커밋은 {recovery_ref}에 저장되었습니다."
+
+#: src/git_stage_batch/fixup/execution.py:183
+msgid "The fixup plan has no eligible staged units."
+msgstr "fixup 계획에 적합한 스테이징 단위가 없습니다."
+
+#: src/git_stage_batch/fixup/execution.py:211
+msgid "HEAD no longer names the fixup commit that was just created."
+msgstr "HEAD가 방금 만든 fixup 커밋을 더 이상 가리키지 않습니다."
+
+#: src/git_stage_batch/fixup/execution.py:226
+msgid "A created fixup commit has an unexpected parent."
+msgstr "생성된 fixup 커밋에 예기치 않은 부모가 있습니다."
+
+#: src/git_stage_batch/fixup/execution.py:231
+msgid "A commit hook changed the planned fixup subject; the operation was rolled back."
+msgstr "커밋 훅이 계획한 fixup 제목을 변경하여 작업을 롤백했습니다."
+
+#: src/git_stage_batch/fixup/execution.py:238
+msgid "A commit hook changed the planned fixup tree; the operation was rolled back."
+msgstr "커밋 훅이 계획한 fixup 트리를 변경하여 작업을 롤백했습니다."
+
+#: src/git_stage_batch/fixup/planning.py:191
+msgid "No staged changes are available for fixup creation."
+msgstr "fixup을 만드는 데 사용할 스테이징된 변경 사항이 없습니다."
+
+#: src/git_stage_batch/fixup/planning.py:210
+msgid "HEAD or the staged index changed during fixup analysis. Run the command again."
+msgstr "fixup 분석 중 HEAD 또는 스테이징된 인덱스가 변경되었습니다. 명령을 다시 실행하십시오."
+
+#: src/git_stage_batch/fixup/ranges.py:22
+#, python-brace-format
+msgid "Invalid fixup boundary: {boundary}"
+msgstr "잘못된 fixup 경계: {boundary}"
+
+#: src/git_stage_batch/fixup/ranges.py:36
+msgid "No upstream branch is configured. Pass the base commit for fixup analysis explicitly."
+msgstr "upstream 브랜치가 설정되지 않았습니다. fixup 분석의 기준 커밋을 명시적으로 전달하십시오."
+
+#: src/git_stage_batch/fixup/ranges.py:56
+msgid "Could not determine a merge base between HEAD and its upstream."
+msgstr "HEAD와 해당 upstream 사이의 병합 기준점을 확인할 수 없습니다."
+
+#: src/git_stage_batch/fixup/ranges.py:71
+#, python-brace-format
+msgid "Fixup base {base} is not an ancestor of HEAD."
+msgstr "fixup 기준 {base}은(는) HEAD의 조상이 아닙니다."
+
+#: src/git_stage_batch/fixup/ranges.py:94
+#, python-brace-format
+msgid "Fixup analysis currently requires a linear range; commit {commit} does not have exactly one parent."
+msgstr "현재 fixup 분석에는 선형 범위가 필요합니다. 커밋 {commit}의 부모가 정확히 하나가 아닙니다."
+
+#: src/git_stage_batch/fixup/ranges.py:101
+msgid "No commits found between the fixup base and HEAD."
+msgstr "fixup 기준과 HEAD 사이에서 커밋을 찾지 못했습니다."
+
+#: src/git_stage_batch/fixup/staged_units.py:69
+msgid "Staged text patch has no hunk header."
+msgstr "스테이징된 텍스트 패치에 헝크 헤더가 없습니다."
+
+#: src/git_stage_batch/output/fixup_create.py:18
+msgid "lineage and placement agree"
+msgstr "계보와 배치가 일치함"
+
+#: src/git_stage_batch/output/fixup_create.py:20
+msgid "unique lineage; patch commutes through the range"
+msgstr "고유한 계보; 패치가 전체 범위를 지나 교환 가능함"
+
+#: src/git_stage_batch/output/fixup_create.py:23
+msgid "mechanical placement only; semantic target is unproven"
+msgstr "기계적 배치만 확인됨; 의미상 대상은 입증되지 않음"
+
+#: src/git_stage_batch/output/fixup_create.py:26
+msgid "lineage and placement identify different commits"
+msgstr "계보와 배치가 서로 다른 커밋을 식별함"
+
+#: src/git_stage_batch/output/fixup_create.py:28
+msgid "selected lines have multiple owners"
+msgstr "선택한 줄에 소유자가 여러 명 있음"
+
+#: src/git_stage_batch/output/fixup_create.py:29
+msgid "no target evidence in the selected range"
+msgstr "선택한 범위에 대상 근거가 없음"
+
+#: src/git_stage_batch/output/fixup_create.py:30
+msgid "whole-file additions are not supported yet"
+msgstr "전체 파일 추가는 아직 지원되지 않음"
+
+#: src/git_stage_batch/output/fixup_create.py:31
+msgid "whole-file deletions are not supported yet"
+msgstr "전체 파일 삭제는 아직 지원되지 않음"
+
+#: src/git_stage_batch/output/fixup_create.py:32
+msgid "binary changes are not supported yet"
+msgstr "바이너리 변경은 아직 지원되지 않음"
+
+#: src/git_stage_batch/output/fixup_create.py:33
+msgid "renames are not supported yet"
+msgstr "이름 변경은 아직 지원되지 않음"
+
+#: src/git_stage_batch/output/fixup_create.py:35
+msgid "content changes across renames are not supported yet"
+msgstr "이름 변경을 가로지르는 내용 변경은 아직 지원되지 않음"
+
+#: src/git_stage_batch/output/fixup_create.py:37
+msgid "file-mode changes are not supported yet"
+msgstr "파일 모드 변경은 아직 지원되지 않음"
+
+#: src/git_stage_batch/output/fixup_create.py:38
+msgid "gitlink changes are not supported yet"
+msgstr "gitlink 변경은 아직 지원되지 않음"
+
+#: src/git_stage_batch/output/fixup_create.py:39
+msgid "the unit has no textual patch"
+msgstr "단위에 텍스트 패치가 없음"
+
+#: src/git_stage_batch/output/fixup_create.py:41
+msgid "the staged unit no longer applies to the frozen HEAD"
+msgstr "스테이징된 단위를 고정된 HEAD에 더 이상 적용할 수 없음"
+
+#: src/git_stage_batch/output/fixup_create.py:43
+msgid "the frozen range tree chain changed"
+msgstr "고정된 범위의 트리 체인이 변경됨"
+
+#: src/git_stage_batch/output/fixup_create.py:44
+msgid "placement analysis failed"
+msgstr "배치 분석 실패"
+
+#: src/git_stage_batch/output/fixup_create.py:166
+#, python-brace-format
+msgid "Fixup plan for {base}..{head}:"
+msgstr "{base}..{head}의 fixup 계획:"
+
+#: src/git_stage_batch/output/fixup_create.py:173
+msgid "unassigned"
+msgstr "할당되지 않음"
+
+#: src/git_stage_batch/output/fixup_create.py:188
+#, python-brace-format
+msgid "Target {target} {subject}: {count} unit(s)"
+msgstr "대상 {target} {subject}: 단위 {count}개"
+
+#: src/git_stage_batch/output/fixup_create.py:196
+msgid "Dry run: no commits were created."
+msgstr "시험 실행: 커밋을 만들지 않았습니다."
+
+#: src/git_stage_batch/output/fixup_create.py:200
+#, python-brace-format
+msgid "Created {commit} as a fixup for {target}."
+msgstr "{commit}을(를) {target}의 fixup으로 만들었습니다."
+
+#: src/git_stage_batch/output/fixup_create.py:206
+#, python-brace-format
+msgid "Recovery ref: {recovery_ref}"
+msgstr "복구 참조: {recovery_ref}"
+
+#: src/git_stage_batch/output/fixup_create.py:211
+#, python-brace-format
+msgid "{count} unit(s) remain staged."
+msgstr "단위 {count}개가 스테이징된 상태로 남아 있습니다."
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:85
+msgid "Commit excluded from the search (default: fork point with upstream)"
+msgstr "검색에서 제외할 커밋(기본값: upstream과의 분기점)"
+
+#: src/git_stage_batch/commands/fixup/search_flow.py:36
+msgid "HEAD changed during fixup suggestion analysis. Run the command again."
+msgstr "fixup 제안 분석 중 HEAD가 변경되었습니다. 명령을 다시 실행하십시오."
+
+#: src/git_stage_batch/commands/fixup/search_flow.py:113
+msgid ""
+"No previous candidate to show.\n"
+"Run fixup suggest without --last to find a candidate."
+msgstr "다시 표시할 이전 후보가 없습니다.\n후보를 찾으려면 --last 없이 fixup suggest를 실행하십시오."
+
+#: src/git_stage_batch/commands/fixup/search_flow.py:141
+msgid ""
+"No commit in the selected range has exact lineage or placement evidence for "
+"this unit."
+msgstr "선택한 범위의 어떤 커밋에도 이 단위에 대한 정확한 계보 또는 배치 근거가 없습니다."
+
+#: src/git_stage_batch/fixup/selected_units.py:79
+msgid "Selection contains line IDs outside the current hunk."
+msgstr "선택 항목에 현재 헝크 범위를 벗어난 줄 ID가 있습니다."
+
+#: src/git_stage_batch/fixup/selected_units.py:82
+msgid "No changed lines were selected."
+msgstr "변경된 줄을 선택하지 않았습니다."
+
+#: src/git_stage_batch/fixup/selected_units.py:202
+msgid "Could not read the selected file from the index."
+msgstr "인덱스에서 선택한 파일을 읽을 수 없습니다."
+
+#: src/git_stage_batch/fixup/selected_units.py:245
+msgid "The selected lines do not change the index."
+msgstr "선택한 줄은 인덱스를 변경하지 않습니다."
+
+#: src/git_stage_batch/output/fixup_create.py:39
+msgid "the selected path is not a regular text file"
+msgstr "선택한 경로가 일반 텍스트 파일이 아닙니다"
+
+#: src/git_stage_batch/output/fixup_suggest.py:141
+#, python-brace-format
+msgid "Lineage: exact source lines resolve to {commit}."
+msgstr "계보: 정확한 원본 줄은 {commit}(으)로 확인됩니다."
+
+#: src/git_stage_batch/output/fixup_suggest.py:147
+#, python-brace-format
+msgid "Lineage: multiple in-range owners ({commits})."
+msgstr "계보: 범위 안에 소유자가 여러 명입니다({commits})."
+
+#: src/git_stage_batch/output/fixup_suggest.py:155
+#, python-brace-format
+msgid "Lineage: incomplete evidence includes {commit}."
+msgstr "계보: 불완전한 근거에 {commit}이 포함됩니다."
+
+#: src/git_stage_batch/output/fixup_suggest.py:160
+msgid "Lineage: no in-range owner was proven."
+msgstr "계보: 범위 안의 소유자가 입증되지 않았습니다."
+
+#: src/git_stage_batch/output/fixup_suggest.py:167
+#, python-brace-format
+msgid "Placement: patch first stops at {commit}."
+msgstr "배치: 패치가 먼저 {commit}에서 멈춥니다."
+
+#: src/git_stage_batch/output/fixup_suggest.py:172
+msgid "Placement: patch commutes through the entire range."
+msgstr "배치: 패치가 전체 범위를 통과합니다."
+
+#: src/git_stage_batch/output/fixup_suggest.py:175
+#, python-brace-format
+msgid "Placement: unknown ({detail})."
+msgstr "배치: 알 수 없음({detail})."
+
+#: src/git_stage_batch/output/fixup_suggest.py:213
+#, python-brace-format
+msgid "Selected unit {unit} in {path} [{status}]"
+msgstr "선택한 단위 {unit}, 경로 {path} [{status}]"
+
+#: src/git_stage_batch/output/fixup_suggest.py:222
+#, python-brace-format
+msgid "Decision: {reason}."
+msgstr "결정: {reason}."
+
+#: src/git_stage_batch/output/fixup_suggest.py:233
+#, python-brace-format
+msgid "Candidate {iteration} of {total}: {commit} {subject}"
+msgstr "후보 {iteration}/{total}: {commit} {subject}"
+
+#: src/git_stage_batch/output/fixup_suggest.py:241
+#, python-brace-format
+msgid "Candidate evidence: {sources}"
+msgstr "후보 근거: {sources}"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:106
+msgid "Create from a reviewed dry-run JSON plan"
+msgstr "검토된 시험 실행 JSON 계획에서 만들기"
+
+#: src/git_stage_batch/commands/fixup_create.py:59
+msgid "Cannot pass both a fixup boundary and --plan."
+msgstr "fixup 경계와 --plan을 함께 전달할 수 없습니다."
+
+#: src/git_stage_batch/fixup/execution.py:189
+#, python-brace-format
+msgid "The staged units grouped for {target} cannot be replayed together at that target."
+msgstr "{target}에 대해 그룹화된 스테이징 단위를 해당 대상에서 함께 재생할 수 없습니다."
+
+#: src/git_stage_batch/fixup/execution.py:237
+msgid "The original range cannot be replayed with the planned fixup groups."
+msgstr "원래 범위를 계획된 fixup 그룹과 함께 재생할 수 없습니다."
+
+#: src/git_stage_batch/fixup/execution.py:252
+#, python-brace-format
+msgid "The planned fixup for {target} cannot be replayed after its target."
+msgstr "{target}에 대해 계획된 fixup을 대상 뒤에서 재생할 수 없습니다."
+
+#: src/git_stage_batch/fixup/execution.py:262
+msgid "Replaying the planned fixups at their targets does not reproduce the assigned staged changes."
+msgstr "계획된 fixup을 각 대상에서 재생해도 할당된 스테이징 변경 사항이 재현되지 않습니다."
+
+#: src/git_stage_batch/fixup/plan_files.py:65
+#, python-brace-format
+msgid "Invalid fixup plan: {detail}"
+msgstr "잘못된 fixup 계획: {detail}"
+
+#: src/git_stage_batch/fixup/plan_files.py:283
+#, python-brace-format
+msgid "Could not read fixup plan {path}: {error}"
+msgstr "fixup 계획 {path}을(를) 읽을 수 없습니다: {error}"
+
+msgid "Plan, execute, and inspect a deterministic history refinement"
+msgstr "결정론적 기록 정제를 계획, 실행 및 검사"
+
+msgid "Rewrite action"
+msgstr "재작성 작업"
+
+msgid "Capture exact history facts and a KEEP plan template"
+msgstr "정확한 기록 정보와 KEEP 계획 템플릿 캡처"
+
+msgid "Atomically write the reusable JSON plan to FILE"
+msgstr "재사용 가능한 JSON 계획을 FILE에 원자적으로 쓰기"
+
+msgid "Output the reusable JSON plan on standard output"
+msgstr "재사용 가능한 JSON 계획을 표준 출력으로 내보내기"
+
+msgid "Commit excluded from the scan (default: fork point with upstream)"
+msgstr "검사에서 제외할 커밋(기본값: upstream과의 분기점)"
+
+msgid "Validate a reviewed rewrite plan against live objects"
+msgstr "검토된 재작성 계획을 현재 객체와 대조하여 검증"
+
+msgid "Reusable rewrite plan emitted by rewrite scan"
+msgstr "rewrite scan이 생성한 재사용 가능한 재작성 계획"
+
+msgid "Output a machine-readable validation report"
+msgstr "기계 판독 가능한 검증 보고서 출력"
+
+msgid "Inspect durable rewrite operation progress"
+msgstr "지속 가능한 재작성 작업 진행 상황 검사"
+
+msgid "Output machine-readable operation state"
+msgstr "기계 판독 가능한 작업 상태 출력"
+
+#, python-brace-format
+msgid "Commit {commit} has malformed {field} metadata."
+msgstr "커밋 {commit}의 {field} 메타데이터 형식이 잘못되었습니다."
+
+#, python-brace-format
+msgid "Invalid rewrite plan: {detail}"
+msgstr "잘못된 재작성 계획: {detail}"
+
+#, python-brace-format
+msgid "Could not read rewrite plan {path}: {error}"
+msgstr "재작성 계획 {path}을(를) 읽을 수 없습니다: {error}"
+
+#, python-brace-format
+msgid "Could not inspect legacy grafts: {error}"
+msgstr "레거시 graft를 검사할 수 없습니다: {error}"
+
+msgid "Rewrite scanning refuses replace objects or legacy grafts because they change commit identity semantics."
+msgstr "대체 객체나 레거시 graft는 커밋 식별 의미를 변경하므로 재작성 검사에서 거부됩니다."
+
+#, python-brace-format
+msgid "Invalid history revision: {revision}"
+msgstr "잘못된 기록 리비전: {revision}"
+
+msgid "No upstream branch is configured. Pass the excluded history base explicitly."
+msgstr "upstream 브랜치가 구성되지 않았습니다. 제외할 기록 기준을 명시적으로 전달하세요."
+
+#, python-brace-format
+msgid "History base {base} is not an ancestor of HEAD."
+msgstr "기록 기준 {base}은(는) HEAD의 조상이 아닙니다."
+
+#, python-brace-format
+msgid "History refinement currently requires a linear range; commit {commit} does not continue the expected parent chain."
+msgstr "기록 정제에는 현재 선형 범위가 필요합니다. 커밋 {commit}이(가) 예상 부모 체인을 잇지 않습니다."
+
+msgid "No commits found between the history base and HEAD."
+msgstr "기록 기준과 HEAD 사이에 커밋이 없습니다."
+
+msgid "HEAD changed while the history snapshot was being built."
+msgstr "기록 스냅샷을 만드는 동안 HEAD가 변경되었습니다."
+
+#, python-brace-format
+msgid "History changed while commit {commit} was scanned."
+msgstr "커밋 {commit}을(를) 검사하는 동안 기록이 변경되었습니다."
+
+#, python-brace-format
+msgid "Commit {commit} produced duplicate history unit IDs."
+msgstr "커밋 {commit}이(가) 중복된 기록 단위 ID를 생성했습니다."
+
+#, python-brace-format
+msgid "Invalid rewrite operation state: {detail}"
+msgstr "잘못된 재작성 작업 상태: {detail}"
+
+msgid "Another rewrite operation is already active."
+msgstr "다른 재작성 작업이 이미 활성 상태입니다."
+
+#, python-brace-format
+msgid "Could not inspect history ref {refname}."
+msgstr "기록 ref {refname}을(를) 검사할 수 없습니다."
+
+#, python-brace-format
+msgid "History snapshot {base}..{tip}"
+msgstr "기록 스냅샷 {base}..{tip}"
+
+msgid "Branch: detached HEAD"
+msgstr "브랜치: 분리된 HEAD"
+
+#, python-brace-format
+msgid "Branch: {branch}"
+msgstr "브랜치: {branch}"
+
+msgid "Mutation preconditions: ready"
+msgstr "변경 전제 조건: 준비됨"
+
+#, python-brace-format
+msgid "Mutation preconditions: blocked ({blockers})"
+msgstr "변경 전제 조건: 차단됨({blockers})"
+
+#, python-brace-format
+msgid "Wrote reusable rewrite plan to {path}."
+msgstr "재사용 가능한 재작성 계획을 {path}에 썼습니다."
+
+msgid "No rewrite operation is active."
+msgstr "활성 재작성 작업이 없습니다."
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id}"
+msgstr "재작성 작업 {operation_id}"
+
+#, python-brace-format
+msgid "Phase: {phase}"
+msgstr "단계: {phase}"
+
+#, python-brace-format
+msgid "Progress: {completed} of {planned} output commit(s)"
+msgstr "진행률: 출력 커밋 {planned}개 중 {completed}개"
+
+#, python-brace-format
+msgid "Manual recovery: {command}"
+msgstr "수동 복구: {command}"
+
+#, python-brace-format
+msgid "Last verified commit: {commit}"
+msgstr "마지막으로 검증한 커밋: {commit}"
+
+#, python-brace-format
+msgid "Next action: {action}"
+msgstr "다음 작업: {action}"
+
+#, python-brace-format
+msgid "Diagnostic: {diagnostic}"
+msgstr "진단: {diagnostic}"
+
+msgid "Rewrite plan is valid."
+msgstr "재작성 계획이 유효합니다."
+
+#, python-brace-format
+msgid "{count} commit."
+msgid_plural "{count} commits."
+msgstr[0] "커밋 {count}개."
+
+#, python-brace-format
+msgid "{count} exact patch unit."
+msgid_plural "{count} exact patch units."
+msgstr[0] "정확한 패치 단위 {count}개."
+
+#, python-brace-format
+msgid "Warning: {count} source signature cannot remain valid after rewriting."
+msgid_plural "Warning: {count} source signatures cannot remain valid after rewriting."
+msgstr[0] "경고: 소스 서명 {count}개는 다시 쓴 후에도 유효할 수 없습니다."
+
+#, python-brace-format
+msgid "{count} source commit is conserved."
+msgid_plural "{count} source commits are conserved."
+msgstr[0] "소스 커밋 {count}개가 보존됩니다."
+
+# Rewrite executor translations.
+msgid "Build, verify, and atomically update the checked-out branch"
+msgstr "빌드 및 검증 후 체크아웃된 브랜치를 원자적으로 업데이트"
+
+msgid "Validated reusable rewrite plan"
+msgstr "검증된 재사용 가능 재작성 계획"
+
+msgid "Allow local rewriting of commits contained by remote REF"
+msgstr "원격 참조에 포함된 커밋의 로컬 재작성 허용"
+
+msgid "Output a machine-readable operation result"
+msgstr "기계가 읽을 수 있는 작업 결과 출력"
+
+msgid "Resume the exact action in the active rewrite checkpoint"
+msgstr "활성 재작성 체크포인트의 정확한 작업 재개"
+
+msgid "Abort and conditionally restore the original branch tip"
+msgstr "중단하고 조건이 맞으면 원래 브랜치 끝 복원"
+
+msgid "Independently verify the active or latest rewrite output"
+msgstr "활성 또는 최신 재작성 출력을 독립적으로 검증"
+
+#, python-brace-format
+msgid "The message for history source {commit} cannot be encoded as {encoding}."
+msgstr "기록 원본 {commit}의 메시지를 {encoding}(으)로 인코딩할 수 없습니다."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected topology."
+msgstr "재작성 출력 커밋 {commit}의 토폴로지가 예상과 다릅니다."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected identity metadata."
+msgstr "재작성 출력 커밋 {commit}의 식별 메타데이터가 예상과 다릅니다."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected message metadata."
+msgstr "재작성 출력 커밋 {commit}의 메시지 메타데이터가 예상과 다릅니다."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected extra headers."
+msgstr "재작성 출력 커밋 {commit}에 예상하지 못한 추가 헤더가 있습니다."
+
+#, python-brace-format
+msgid "Invalid allowed remote-tracking ref: {refname}"
+msgstr "허용된 원격 추적 참조가 잘못되었습니다: {refname}"
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id} cannot continue: {blockers}."
+msgstr "재작성 작업 {operation_id}을(를) 계속할 수 없습니다: {blockers}."
+
+msgid "The pending rewrite output does not match deterministic replay."
+msgstr "대기 중인 재작성 출력이 결정적 재생과 일치하지 않습니다."
+
+msgid "The rewrite output ref changed during commit publication."
+msgstr "커밋을 게시하는 동안 재작성 출력 참조가 변경되었습니다."
+
+msgid "The rewrite output ref no longer names an owned output commit."
+msgstr "재작성 출력 참조가 더 이상 작업 소유 출력 커밋을 가리키지 않습니다."
+
+msgid "Completed rewrite outputs do not match deterministic replay."
+msgstr "완료된 재작성 출력이 결정적 재생과 일치하지 않습니다."
+
+msgid "Built history commits do not match deterministic replay."
+msgstr "빌드된 기록 커밋이 결정적 재생과 일치하지 않습니다."
+
+msgid "The rewrite output ref changed before verification."
+msgstr "검증 전에 재작성 출력 참조가 변경되었습니다."
+
+msgid "The rewrite operation has no output commit."
+msgstr "재작성 작업에 출력 커밋이 없습니다."
+
+msgid "The checked-out branch changed before finalization."
+msgstr "완료하기 전에 체크아웃한 브랜치가 변경되었습니다."
+
+msgid "The branch changed before the history rewrite was finalized."
+msgstr "기록 재작성이 완료되기 전에 브랜치가 변경되었습니다."
+
+msgid "The branch no longer names an operation-owned commit."
+msgstr "브랜치가 더 이상 작업 소유 커밋을 가리키지 않습니다."
+
+#, python-brace-format
+msgid "Rewrite apply is blocked by: {blockers}."
+msgstr "다음 이유로 재작성 적용이 차단되었습니다: {blockers}."
+
+msgid "Rewrite apply requires a checked-out local branch."
+msgstr "재작성을 적용하려면 로컬 브랜치를 체크아웃해야 합니다."
+
+msgid "The pending output ref changed before rewrite abort."
+msgstr "재작성을 중단하기 전에 대기 중인 출력 참조가 변경되었습니다."
+
+msgid "The output ref changed before rewrite abort."
+msgstr "재작성을 중단하기 전에 출력 참조가 변경되었습니다."
+
+msgid "The recovery ref changed; automatic rewrite abort is unsafe."
+msgstr "복구 참조가 변경되어 재작성을 자동으로 중단하는 것은 안전하지 않습니다."
+
+msgid "The checked-out branch changed; automatic rewrite abort is unsafe."
+msgstr "체크아웃한 브랜치가 변경되어 재작성을 자동으로 중단하는 것은 안전하지 않습니다."
+
+msgid "The branch changed while restoring the original history."
+msgstr "원래 기록을 복원하는 동안 브랜치가 변경되었습니다."
+
+#, python-brace-format
+msgid "The branch does not name an operation-owned tip; recover manually from {recovery_ref}."
+msgstr "브랜치가 작업 소유 끝을 가리키지 않습니다. {recovery_ref}에서 수동으로 복구하십시오."
+
+msgid "No rewrite operation is available to verify."
+msgstr "검증할 수 있는 재작성 작업이 없습니다."
+
+msgid "The rewrite operation has no complete output to verify."
+msgstr "재작성 작업에 검증할 수 있는 완전한 출력이 없습니다."
+
+#, python-brace-format
+msgid "Rewrite verification is blocked by: {blockers}."
+msgstr "다음 이유로 재작성 검증이 차단되었습니다: {blockers}."
+
+msgid "The regenerated rewrite verification record changed."
+msgstr "다시 생성한 재작성 검증 레코드가 변경되었습니다."
+
+#, python-brace-format
+msgid "Rewrite output {output} cannot replay source commit {commit} at its requested position."
+msgstr "재작성 출력 {output}에서 원본 커밋 {commit}을(를) 요청한 위치에 재생할 수 없습니다."
+
+#, python-brace-format
+msgid "Rewrite output {output} integrates non-empty sources into an empty commit."
+msgstr "재작성 출력 {output}에서 비어 있지 않은 원본을 빈 커밋으로 통합합니다."
+
+#, python-brace-format
+msgid "The planned history replay produces tree {actual}, not the frozen final tree {expected}."
+msgstr "계획된 기록 재생이 고정된 최종 트리 {expected}이(가) 아닌 트리 {actual}을(를) 만듭니다."
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id}: {phase}"
+msgstr "재작성 작업 {operation_id}: {phase}"
+
+#, python-brace-format
+msgid "Output tip: {commit}"
+msgstr "출력 끝: {commit}"
+
+msgid "Original branch tip restored."
+msgstr "원래 브랜치 끝을 복원했습니다."
+
+#, python-brace-format
+msgid "Verified final tree: {tree}"
+msgstr "검증된 최종 트리: {tree}"
+
+#, python-brace-format
+msgid "Removed {count} invalidated source signature."
+msgid_plural "Removed {count} invalidated source signatures."
+msgstr[0] "무효화된 원본 서명 {count}개를 제거했습니다."
+
+#, python-brace-format
+msgid "Latest rewrite operation {operation_id}"
+msgstr "최신 재작성 작업 {operation_id}"
+
+msgid "Resume preconditions"
+msgstr "재개 전제 조건"
+
+msgid "Verification preconditions"
+msgstr "검증 전제 조건"
+
+#, python-brace-format
+msgid "{label}: ready"
+msgstr "{label}: 준비됨"
+
+#, python-brace-format
+msgid "{label}: blocked ({blockers})"
+msgstr "{label}: 차단됨 ({blockers})"
+
+# History split and reorder translations.
+#, python-brace-format
+msgid "Rewrite output {output} cannot replay unit {unit}: {status} ({detail})."
+msgstr "재작성 출력 {output}에서 단위 {unit}을(를) 재적용할 수 없습니다: {status} ({detail})."
+
+#, python-brace-format
+msgid "Rewrite output {output} consumes non-empty units into an empty commit."
+msgstr "재작성 출력 {output}에서 비어 있지 않은 단위를 빈 커밋에 포함합니다."
+
+#, python-brace-format
+msgid "History source {commit} produced different patch units during replay."
+msgstr "기록 소스 {commit}에서 재적용 중 다른 패치 단위를 생성했습니다."
+
+msgid "Rewrite operation was already complete; abort made no changes."
+msgstr "재작성 작업이 이미 완료되어 중단으로 인한 변경 사항이 없습니다."
+
+msgid "Create or advance an external rewrite-resolution workspace"
+msgstr "외부 재작성 해결 작업 공간을 생성하거나 진행합니다"
+
+msgid "Reviewed rewrite plan containing resolved outputs"
+msgstr "해결된 출력이 포함된 검토 완료 재작성 계획"
+
+msgid "Private external directory for resolution artifacts"
+msgstr "해결 아티팩트용 비공개 외부 디렉터리"
+
+msgid "Import the current result and advance to the next output"
+msgstr "현재 결과를 가져오고 다음 출력으로 진행합니다"
+
+msgid "Output a machine-readable resolution checkpoint"
+msgstr "기계 판독 가능한 해결 체크포인트를 출력합니다"
+
+#, python-brace-format
+msgid "Rewrite output {output} resolution did not produce a full tree object ID."
+msgstr "재작성 출력 {output} 해결에서 전체 트리 객체 ID가 생성되지 않았습니다."
+
+#, python-brace-format
+msgid "Rewrite output {output} resolution did not produce an accessible tree object."
+msgstr "재작성 출력 {output} 해결에서 접근 가능한 트리 객체가 생성되지 않았습니다."
+
+#, python-brace-format
+msgid "Rewrite output {output} requires an explicit resolution workspace."
+msgstr "재작성 출력 {output}에는 명시적인 해결 작업 공간이 필요합니다."
+
+#, python-brace-format
+msgid "Rewrite output {output} resolves non-empty units into an empty commit."
+msgstr "재작성 출력 {output}에서 비어 있지 않은 단위를 빈 커밋으로 해결합니다."
+
+#, python-brace-format
+msgid "Invalid resolution artifact '{path}': {detail}"
+msgstr "잘못된 해결 아티팩트 '{path}': {detail}"
+
+msgid "path must be absolute"
+msgstr "경로는 절대 경로여야 합니다"
+
+msgid "path must not contain aliases or traversal"
+msgstr "경로에는 별칭이나 경로 탐색이 포함되면 안 됩니다"
+
+msgid "platform does not support secure directory access"
+msgstr "플랫폼에서 안전한 디렉터리 접근을 지원하지 않습니다"
+
+#, python-brace-format
+msgid "path must not contain aliases, traversal, or symlinks ({error})"
+msgstr "경로에는 별칭, 경로 탐색 또는 심볼릭 링크가 포함되면 안 됩니다 ({error})"
+
+msgid "path must be a directory"
+msgstr "경로는 디렉터리여야 합니다"
+
+msgid "directory permissions must be 0700"
+msgstr "디렉터리 권한은 0700이어야 합니다"
+
+msgid "directory path changed during artifact access"
+msgstr "아티팩트 접근 중 디렉터리 경로가 변경되었습니다"
+
+msgid "path must not contain aliases, traversal, or symlinks"
+msgstr "경로에는 별칭, 경로 탐색 또는 심볼릭 링크가 포함되면 안 됩니다"
+
+msgid "path must be a regular file"
+msgstr "경로는 일반 파일이어야 합니다"
+
+msgid "path must be owned by the current user"
+msgstr "현재 사용자가 경로의 소유자여야 합니다"
+
+msgid "file must not have hard links"
+msgstr "파일에는 하드 링크가 있으면 안 됩니다"
+
+msgid "file permissions must be 0600"
+msgstr "파일 권한은 0600이어야 합니다"
+
+msgid "cannot create the filesystem root"
+msgstr "파일 시스템 루트를 생성할 수 없습니다"
+
+msgid "directory changed while it was opened"
+msgstr "디렉터리가 열린 동안 변경되었습니다"
+
+#, python-brace-format
+msgid "cannot create private directory: {error}"
+msgstr "비공개 디렉터리를 생성할 수 없습니다: {error}"
+
+msgid "directory exceeds the supported entry-count limit"
+msgstr "디렉터리가 지원되는 항목 수 제한을 초과합니다"
+
+#, python-brace-format
+msgid "cannot enumerate directory: {error}"
+msgstr "디렉터리의 항목을 나열할 수 없습니다: {error}"
+
+msgid "locked and final directories must be distinct siblings"
+msgstr "잠긴 디렉터리와 최종 디렉터리는 서로 다른 동일 계층 디렉터리여야 합니다"
+
+#, python-brace-format
+msgid "cannot open workspace lock: {error}"
+msgstr "작업 공간 잠금을 열 수 없습니다: {error}"
+
+#, python-brace-format
+msgid "cannot authenticate workspace lock: {error}"
+msgstr "작업 공간 잠금을 인증할 수 없습니다: {error}"
+
+msgid "workspace lock changed while it was opened"
+msgstr "작업 공간 잠금이 열린 동안 변경되었습니다"
+
+msgid "workspace is already in use"
+msgstr "작업 공간이 이미 사용 중입니다"
+
+#, python-brace-format
+msgid "cannot lock workspace: {error}"
+msgstr "작업 공간을 잠글 수 없습니다: {error}"
+
+#, python-brace-format
+msgid "cannot re-authenticate workspace lock: {error}"
+msgstr "작업 공간 잠금을 다시 인증할 수 없습니다: {error}"
+
+msgid "workspace lock changed while it was held"
+msgstr "작업 공간 잠금을 보유하는 동안 잠금이 변경되었습니다"
+
+msgid "staging and destination must be distinct siblings"
+msgstr "스테이징 경로와 대상은 서로 다른 동일 계층 경로여야 합니다"
+
+#, python-brace-format
+msgid "cannot inspect staging directory: {error}"
+msgstr "스테이징 디렉터리를 검사할 수 없습니다: {error}"
+
+#, python-brace-format
+msgid "cannot open staging directory: {error}"
+msgstr "스테이징 디렉터리를 열 수 없습니다: {error}"
+
+msgid "staging directory changed while it was opened"
+msgstr "스테이징 디렉터리가 열린 동안 변경되었습니다"
+
+#, python-brace-format
+msgid "cannot inspect destination: {error}"
+msgstr "대상을 검사할 수 없습니다: {error}"
+
+msgid "destination already exists"
+msgstr "대상이 이미 존재합니다"
+
+#, python-brace-format
+msgid "cannot re-authenticate staging directory: {error}"
+msgstr "스테이징 디렉터리를 다시 인증할 수 없습니다: {error}"
+
+msgid "staging directory changed before publication"
+msgstr "게시 전에 스테이징 디렉터리가 변경되었습니다"
+
+#, python-brace-format
+msgid "cannot publish directory: {error}"
+msgstr "디렉터리를 게시할 수 없습니다: {error}"
+
+msgid "published directory identity changed"
+msgstr "게시된 디렉터리의 식별 정보가 변경되었습니다"
+
+#, python-brace-format
+msgid "cannot inspect file: {error}"
+msgstr "파일을 검사할 수 없습니다: {error}"
+
+#, python-brace-format
+msgid "cannot inspect interrupted write: {error}"
+msgstr "중단된 쓰기를 검사할 수 없습니다: {error}"
+
+#, python-brace-format
+msgid "cannot open interrupted write: {error}"
+msgstr "중단된 쓰기를 열 수 없습니다: {error}"
+
+msgid "interrupted write changed before recovery"
+msgstr "복구 전에 중단된 쓰기가 변경되었습니다"
+
+#, python-brace-format
+msgid "cannot remove interrupted write: {error}"
+msgstr "중단된 쓰기를 제거할 수 없습니다: {error}"
+
+msgid "metadata exceeds the supported size limit"
+msgstr "메타데이터가 지원되는 크기 제한을 초과합니다"
+
+#, python-brace-format
+msgid "metadata cannot be decoded: {error}"
+msgstr "메타데이터를 디코딩할 수 없습니다: {error}"
+
+#, python-brace-format
+msgid "cannot open file: {error}"
+msgstr "파일을 열 수 없습니다: {error}"
+
+msgid "file changed while it was opened"
+msgstr "파일이 열린 동안 변경되었습니다"
+
+msgid "file grew while it was read"
+msgstr "파일을 읽는 동안 크기가 증가했습니다"
+
+msgid "file changed while it was read"
+msgstr "파일을 읽는 동안 변경되었습니다"
+
+#, python-brace-format
+msgid "cannot verify file after reading: {error}"
+msgstr "읽은 후 파일을 검증할 수 없습니다: {error}"
+
+msgid "file path changed while it was read"
+msgstr "파일을 읽는 동안 파일 경로가 변경되었습니다"
+
+msgid "content does not match its expected size and SHA-256"
+msgstr "내용이 예상 크기 및 SHA-256과 일치하지 않습니다"
+
+msgid "destination appeared while it was being written"
+msgstr "쓰는 동안 대상이 나타났습니다"
+
+msgid "destination changed while it was being written"
+msgstr "쓰는 동안 대상이 변경되었습니다"
+
+#, python-brace-format
+msgid "cannot open destination: {error}"
+msgstr "대상을 열 수 없습니다: {error}"
+
+msgid "destination changed while it was opened"
+msgstr "대상이 열린 동안 변경되었습니다"
+
+#, python-brace-format
+msgid "cannot authenticate displaced destination: {error}"
+msgstr "이동된 대상을 인증할 수 없습니다: {error}"
+
+#, python-brace-format
+msgid "{detail} ({error})"
+msgstr "{detail} ({error})"
+
+#, python-brace-format
+msgid "cannot inspect raced destination: {error}"
+msgstr "경합한 대상을 검사할 수 없습니다: {error}"
+
+msgid "published artifact changed before exchange rollback"
+msgstr "교환 롤백 전에 게시된 아티팩트가 변경되었습니다"
+
+msgid "raced destination changed before exchange rollback"
+msgstr "교환 롤백 전에 경합한 대상이 변경되었습니다"
+
+#, python-brace-format
+msgid "cannot roll back raced destination: {error}"
+msgstr "경합한 대상을 롤백할 수 없습니다: {error}"
+
+msgid "temporary artifact changed during exchange rollback"
+msgstr "교환 롤백 중 임시 아티팩트가 변경되었습니다"
+
+msgid "raced destination changed during exchange rollback"
+msgstr "교환 롤백 중 경합한 대상이 변경되었습니다"
+
+#, python-brace-format
+msgid "cannot create temporary artifact: {error}"
+msgstr "임시 아티팩트를 생성할 수 없습니다: {error}"
+
+msgid "temporary artifact changed while it was opened"
+msgstr "임시 아티팩트가 열린 동안 변경되었습니다"
+
+msgid "artifact exceeds the supported size limit"
+msgstr "아티팩트가 지원되는 크기 제한을 초과합니다"
+
+msgid "temporary artifact path changed while it was written"
+msgstr "쓰는 동안 임시 아티팩트 경로가 변경되었습니다"
+
+msgid "temporary artifact size changed"
+msgstr "임시 아티팩트 크기가 변경되었습니다"
+
+#, python-brace-format
+msgid "cannot publish artifact: {error}"
+msgstr "아티팩트를 게시할 수 없습니다: {error}"
+
+msgid "published artifact identity changed"
+msgstr "게시된 아티팩트의 식별 정보가 변경되었습니다"
+
+msgid "destination changed during atomic replacement"
+msgstr "원자적 교체 중 대상이 변경되었습니다"
+
+#, python-brace-format
+msgid "cannot remove displaced destination: {error}"
+msgstr "이동된 대상을 제거할 수 없습니다: {error}"
+
+msgid "source and destination must differ"
+msgstr "소스와 대상은 달라야 합니다"
+
+#, python-brace-format
+msgid "Invalid rewrite resolution workspace: {detail}"
+msgstr "잘못된 재작성 해결 작업 공간: {detail}"
+
+msgid "workspace path must be a non-empty string"
+msgstr "작업 공간 경로는 비어 있지 않은 문자열이어야 합니다"
+
+#, python-brace-format
+msgid "{location} is not valid strict JSON ({error})"
+msgstr "{location}은(는) 유효한 엄격한 JSON이 아닙니다 ({error})"
+
+#, python-brace-format
+msgid "{location} does not match its immutable binding"
+msgstr "{location}이(가) 변경 불가능한 바인딩과 일치하지 않습니다"
+
+#, python-brace-format
+msgid "{location} has the wrong entries ({detail})"
+msgstr "{location}에 잘못된 항목이 있습니다 ({detail})"
+
+#, python-brace-format
+msgid "cannot inspect workspace path ({error})"
+msgstr "작업 공간 경로를 검사할 수 없습니다 ({error})"
+
+#, python-brace-format
+msgid "source unit {unit} has unsupported kind {kind}"
+msgstr "소스 단위 {unit}의 종류 {kind}은(는) 지원되지 않습니다"
+
+#, python-brace-format
+msgid "source unit {unit} has unsupported coupling {reason}"
+msgstr "소스 단위 {unit}의 결합 {reason}은(는) 지원되지 않습니다"
+
+#, python-brace-format
+msgid "{context} path {path!r} has unsupported kind or mode {mode}"
+msgstr "{context} 경로 {path!r}의 종류 또는 모드 {mode}은(는) 지원되지 않습니다"
+
+#, python-brace-format
+msgid "source blob {blob} is not accessible"
+msgstr "소스 블롭 {blob}에 접근할 수 없습니다"
+
+msgid "Git returned the wrong source blob"
+msgstr "Git이 잘못된 소스 블롭을 반환했습니다"
+
+msgid "Git returned duplicate source blobs"
+msgstr "Git이 중복된 소스 블롭을 반환했습니다"
+
+msgid "source blob size changed while it was exported"
+msgstr "소스 블롭을 내보내는 동안 크기가 변경되었습니다"
+
+msgid "resolution reference artifact names collided"
+msgstr "해결 참조 아티팩트 이름이 충돌했습니다"
+
+#, python-brace-format
+msgid "staged output {output} contains unexpected entries"
+msgstr "스테이징된 출력 {output}에 예기치 않은 항목이 있습니다"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to be created"
+msgstr "결과 경로 {path!r}의 생성이 허용되지 않았습니다"
+
+#, python-brace-format
+msgid "result path {path!r} uses an unauthorized creation mode"
+msgstr "결과 경로 {path!r}에서 허용되지 않은 생성 모드를 사용합니다"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to be deleted"
+msgstr "결과 경로 {path!r}의 삭제가 허용되지 않았습니다"
+
+#, python-brace-format
+msgid "authorized result path {path!r} did not change"
+msgstr "허용된 결과 경로 {path!r}이(가) 변경되지 않았습니다"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to change mode"
+msgstr "결과 경로 {path!r}의 모드 변경이 허용되지 않았습니다"
+
+#, python-brace-format
+msgid "result path {path!r} uses an unauthorized changed mode"
+msgstr "결과 경로 {path!r}에서 허용되지 않은 변경 모드를 사용합니다"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to change content"
+msgstr "결과 경로 {path!r}의 내용 변경이 허용되지 않았습니다"
+
+msgid "an absent result path has an artifact digest"
+msgstr "존재하지 않는 결과 경로에 아티팩트 다이제스트가 있습니다"
+
+msgid "resolved output would be an empty commit"
+msgstr "해결된 출력이 빈 커밋이 됩니다"
+
+#, python-brace-format
+msgid "{location} has the wrong path inventory"
+msgstr "{location}의 경로 목록이 잘못되었습니다"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] must be an object"
+msgstr "{location}.paths[{index}]은(는) 객체여야 합니다"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] has the wrong fields"
+msgstr "{location}.paths[{index}]에 잘못된 필드가 있습니다"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] does not match result.json"
+msgstr "{location}.paths[{index}]이(가) result.json과 일치하지 않습니다"
+
+msgid "an absent receipt path has an artifact digest"
+msgstr "존재하지 않는 수령 경로에 아티팩트 다이제스트가 있습니다"
+
+msgid "a present receipt path has an invalid artifact digest"
+msgstr "존재하는 수령 경로에 잘못된 아티팩트 다이제스트가 있습니다"
+
+msgid "resolution replay used the wrong document or environment"
+msgstr "해결 재적용에서 잘못된 문서 또는 환경을 사용했습니다"
+
+#, python-brace-format
+msgid "output {output} resolution is missing"
+msgstr "출력 {output}의 해결이 없습니다"
+
+#, python-brace-format
+msgid "workspace outputs contain unexpected entries: {entries}"
+msgstr "작업 공간 출력에 예기치 않은 항목이 있습니다: {entries}"
+
+#, python-brace-format
+msgid "output {output} result.json changed after acceptance"
+msgstr "출력 {output}의 result.json이 수락 후 변경되었습니다"
+
+#, python-brace-format
+msgid "output {output} receipt.json is not authentic"
+msgstr "출력 {output}의 receipt.json이 진본이 아닙니다"
+
+#, python-brace-format
+msgid "output {output} has not been accepted"
+msgstr "출력 {output}이(가) 수락되지 않았습니다"
+
+msgid "plan does not contain any RESOLVED outputs"
+msgstr "계획에 RESOLVED 출력이 없습니다"
+
+msgid "--accept requires an existing workspace"
+msgstr "--accept에는 기존 작업 공간이 필요합니다"
+
+#, python-brace-format
+msgid "Rewrite resolution workspace is complete: {workspace}"
+msgstr "재작성 해결 작업 공간이 완료되었습니다: {workspace}"
+
+#, python-brace-format
+msgid "{count} resolved output recorded."
+msgid_plural "{count} resolved outputs recorded."
+msgstr[0] "해결된 출력 {count}개를 기록했습니다."
+
+#, python-brace-format
+msgid "Rewrite output {number} needs resolution ({key})."
+msgstr "재작성 출력 {number}에 해결이 필요합니다 ({key})."
+
+#, python-brace-format
+msgid "Inspect resolution request: {path}"
+msgstr "해결 요청을 검사하십시오: {path}"
+
+#, python-brace-format
+msgid "Edit resolution metadata: {path}"
+msgstr "해결 메타데이터를 편집하십시오: {path}"
+
+#, python-brace-format
+msgid "Edit resolved artifacts in: {path}"
+msgstr "다음 위치의 해결된 아티팩트를 편집하십시오: {path}"
+
+msgid "Authorized path:"
+msgid_plural "Authorized paths:"
+msgstr[0] "허용된 경로:"
+
+#, python-brace-format
+msgid "Then run: {command}"
+msgstr "그런 다음 실행하십시오: {command}"
+
+# Completed resolution validation translations.
+msgid "Completed private rewrite-resolution workspace"
+msgstr "완료된 비공개 재작성 해결 작업 공간"
+
+#, python-brace-format
+msgid "{count} resolved output is authenticated."
+msgid_plural "{count} resolved outputs are authenticated."
+msgstr[0] "해결된 출력 {count}개를 인증했습니다."
+
+#, python-brace-format
+msgid "Resolution workspace: {workspace}"
+msgstr "해결 작업 공간: {workspace}"
+
+#, python-brace-format
+msgid "Resolution completion SHA-256: {sha256}"
+msgstr "해결 완료 SHA-256: {sha256}"
+
+# Frozen history authentication translations.
+#, python-brace-format
+msgid "The raw message for history source {commit} no longer matches its frozen digest."
+msgstr "기록 소스 {commit}의 원시 메시지가 더 이상 고정된 다이제스트와 일치하지 않습니다."
+
+msgid "The persisted rewrite plan no longer matches its checkpoint."
+msgstr "저장된 재작성 계획이 더 이상 체크포인트와 일치하지 않습니다."
+
+# Descriptor-pinned private publication translations.
+#, python-brace-format
+msgid "cannot authenticate locked directory: {error}"
+msgstr "잠긴 디렉터리를 인증할 수 없습니다: {error}"
+
+msgid "staging directory is not the locked workspace"
+msgstr "스테이징 디렉터리가 잠긴 작업 공간이 아닙니다"
+
+# Persistent rewrite output verification translations.
+msgid "The persistent rewrite output object closure is incomplete or invalid."
+msgstr "영구 재작성 출력 객체 클로저가 불완전하거나 잘못되었습니다."
+
+msgid "Git returned malformed object closure data while verifying rewrite output."
+msgstr "재작성 출력을 검증하는 동안 Git이 잘못된 형식의 객체 클로저 데이터를 반환했습니다."
+
+# Operation-owned resolution translations.
+msgid "Rewrite resolution provenance does not match the persisted plan."
+msgstr "재작성 해결의 출처 정보가 저장된 계획과 일치하지 않습니다."
+
+msgid "The operation-owned rewrite resolution workspace changed."
+msgstr "작업이 소유한 재작성 해결 작업 공간이 변경되었습니다."
+
+msgid "source and destination workspaces must be disjoint"
+msgstr "소스와 대상 작업 공간은 서로 분리되어야 합니다"
+
+msgid "destination workspace already exists"
+msgstr "대상 작업 공간이 이미 있습니다"
+
+msgid "source resolution workspace changed while it was copied"
+msgstr "소스 해결 작업 공간이 복사되는 동안 변경되었습니다"
+
+msgid "owned resolution copy does not match its authenticated source"
+msgstr "소유된 해결 복사본이 인증된 소스와 일치하지 않습니다"

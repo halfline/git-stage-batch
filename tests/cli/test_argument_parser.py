@@ -12,6 +12,7 @@ from git_stage_batch.cli import (
     file_scope,
     fixup_subcommands,
     git_help,
+    rewrite_subcommands,
     include_dispatch,
     replacement_input,
     session_subcommands,
@@ -19,6 +20,7 @@ from git_stage_batch.cli import (
     skip_dispatch,
 )
 from git_stage_batch.cli.argument_parser import parse_command_line
+from git_stage_batch.cli.root_parser import build_root_parser
 from git_stage_batch.data import batch_file_scope as stored_batch_file_scope
 from git_stage_batch.data.file_review.records import FileReviewAction
 from git_stage_batch.exceptions import CommandError
@@ -27,6 +29,32 @@ from git_stage_batch.exceptions import CommandError
 def _stdin_with_bytes(data: bytes) -> io.TextIOWrapper:
     """Build stdin carrying exact bytes for `--as-stdin` tests."""
     return io.TextIOWrapper(io.BytesIO(data), encoding="utf-8", errors="surrogateescape")
+
+
+def test_root_help_describes_complete_rewrite_lifecycle() -> None:
+    """Top-level help should expose planning, mutation, and inspection."""
+    help_text = " ".join(build_root_parser().format_help().split())
+
+    assert (
+        "Fine-grained Git staging and deterministic draft-history refinement"
+        in help_text
+    )
+    assert "Plan, execute, and inspect a deterministic history refinement" in help_text
+
+
+def test_rewrite_help_describes_branch_mutation_and_conditional_abort(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rewrite action help should state its branch effects precisely."""
+    monkeypatch.setattr(git_help, "_show_git_stage_batch_help", lambda _topic: False)
+    with pytest.raises(SystemExit) as raised:
+        parse_command_line(["rewrite", "--help"], quiet=True)
+
+    assert raised.value.code == 0
+    help_text = " ".join(capsys.readouterr().out.split())
+    assert "Build, verify, and atomically update the checked-out branch" in help_text
+    assert "Abort and conditionally restore the original branch tip" in help_text
 
 
 class _UnreadableStdin:
@@ -2030,6 +2058,7 @@ def test_parse_command_line_suggest_fixup():
     assert args.reset is False
     assert args.abort is False
     assert args.last is False
+    assert args.porcelain is False
     assert hasattr(args, "func")
     assert callable(args.func)
 
@@ -2087,6 +2116,7 @@ def test_parse_command_line_suggest_fixup_passes_hunk_args(monkeypatch):
         reset=True,
         abort=False,
         show_last=True,
+        porcelain=False,
     )
 
 
@@ -2112,7 +2142,326 @@ def test_parse_command_line_suggest_fixup_passes_line_args(monkeypatch):
         reset=False,
         abort=True,
         show_last=False,
+        porcelain=False,
     )
+
+
+def test_parse_command_line_suggest_fixup_passes_porcelain(monkeypatch):
+    """The compatible spelling forwards its documented porcelain mode."""
+    mock_command = Mock()
+    monkeypatch.setattr(fixup_subcommands, "command_suggest_fixup", mock_command)
+
+    args = parse_command_line(
+        ["suggest-fixup", "--porcelain", "main"],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "main",
+        reset=False,
+        abort=False,
+        show_last=False,
+        porcelain=True,
+    )
+
+
+def test_parse_command_line_fixup_suggest_uses_command_family(monkeypatch):
+    """fixup suggest exposes the compatible suggestion behavior."""
+    mock_command = Mock()
+    monkeypatch.setattr(
+        fixup_subcommands,
+        "command_suggest_fixup_line",
+        mock_command,
+    )
+
+    args = parse_command_line(
+        ["fixup", "suggest", "--line", "2,4", "--porcelain", "main"],
+        quiet=True,
+    )
+
+    assert args is not None
+    assert args.command == "fixup"
+    assert args.fixup_action == "suggest"
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "2,4",
+        "main",
+        reset=False,
+        abort=False,
+        show_last=False,
+        porcelain=True,
+    )
+
+
+def test_parse_command_line_fixup_create_passes_arguments(monkeypatch):
+    """fixup create forwards planning and output controls."""
+    mock_command = Mock()
+    monkeypatch.setattr(fixup_subcommands, "command_create_fixups", mock_command)
+
+    args = parse_command_line(
+        ["fixup", "create", "--dry-run", "--partial", "--porcelain", "main"],
+        quiet=True,
+    )
+
+    assert args is not None
+    assert args.command == "fixup"
+    assert args.fixup_action == "create"
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "main",
+        plan_path=None,
+        dry_run=True,
+        partial=True,
+        porcelain=True,
+    )
+
+
+def test_parse_command_line_fixup_create_passes_plan_path(monkeypatch):
+    """fixup create forwards a reusable plan path without a boundary."""
+    mock_command = Mock()
+    monkeypatch.setattr(fixup_subcommands, "command_create_fixups", mock_command)
+
+    args = parse_command_line(
+        ["fixup", "create", "--plan", "fixup-plan.json", "--porcelain"],
+        quiet=True,
+    )
+
+    assert args is not None
+    assert args.boundary is None
+    assert args.plan_path == "fixup-plan.json"
+    args.func(args)
+    mock_command.assert_called_once_with(
+        None,
+        plan_path="fixup-plan.json",
+        dry_run=False,
+        partial=False,
+        porcelain=True,
+    )
+
+
+def test_parse_command_line_fixup_requires_an_action():
+    """The fixup namespace does not guess between suggestion and creation."""
+    assert parse_command_line(["fixup"], quiet=True) is None
+
+
+def test_parse_command_line_history_scan_dispatches_snapshot_options(monkeypatch):
+    mock_command = Mock()
+    monkeypatch.setattr(
+        rewrite_subcommands,
+        "command_rewrite_scan",
+        mock_command,
+    )
+    args = parse_command_line(
+        ["rewrite", "scan", "main", "--output", "plan.json", "--porcelain"],
+        quiet=True,
+    )
+
+    assert args is not None
+    assert args.command == "rewrite"
+    assert args.rewrite_action == "scan"
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "main",
+        output_path="plan.json",
+        porcelain=True,
+    )
+
+
+def test_parse_command_line_rewrite_validate_dispatches_resolutions(monkeypatch):
+    mock_command = Mock()
+    monkeypatch.setattr(
+        rewrite_subcommands,
+        "command_rewrite_validate",
+        mock_command,
+    )
+    args = parse_command_line(
+        [
+            "rewrite",
+            "validate",
+            "plan.json",
+            "--workspace",
+            "/tmp/rewrite-resolution",
+            "--porcelain",
+        ],
+        quiet=True,
+    )
+
+    assert args is not None
+    assert args.command_policy is rewrite_subcommands.REWRITE_READ_POLICY
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "plan.json",
+        resolutions_path="/tmp/rewrite-resolution",
+        porcelain=True,
+    )
+
+
+def test_parse_command_line_rewrite_validate_omits_resolutions_by_default(
+    monkeypatch,
+):
+    mock_command = Mock()
+    monkeypatch.setattr(
+        rewrite_subcommands,
+        "command_rewrite_validate",
+        mock_command,
+    )
+    args = parse_command_line(["rewrite", "validate", "plan.json"], quiet=True)
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "plan.json",
+        resolutions_path=None,
+        porcelain=False,
+    )
+
+
+def test_parse_command_line_rewrite_resolve_dispatches_workspace(monkeypatch):
+    mock_command = Mock()
+    monkeypatch.setattr(
+        rewrite_subcommands,
+        "command_rewrite_resolve",
+        mock_command,
+    )
+    args = parse_command_line(
+        [
+            "rewrite",
+            "resolve",
+            "plan.json",
+            "--workspace",
+            "/tmp/rewrite-resolution",
+            "--accept",
+            "--porcelain",
+        ],
+        quiet=True,
+    )
+
+    assert args is not None
+    assert args.command_policy is rewrite_subcommands.REWRITE_READ_POLICY
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "plan.json",
+        workspace_path="/tmp/rewrite-resolution",
+        accept_result=True,
+        porcelain=True,
+    )
+
+
+def test_parse_command_line_rewrite_resolve_requires_workspace():
+    assert (
+        parse_command_line(
+            ["rewrite", "resolve", "plan.json"],
+            quiet=True,
+        )
+        is None
+    )
+
+
+def test_parse_command_line_history_status_dispatches_porcelain(monkeypatch):
+    mock_command = Mock()
+    monkeypatch.setattr(
+        rewrite_subcommands,
+        "command_rewrite_status",
+        mock_command,
+    )
+    args = parse_command_line(
+        ["rewrite", "status", "--porcelain"],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(porcelain=True)
+
+
+def test_parse_command_line_rewrite_apply_dispatches_publication_exceptions(
+    monkeypatch,
+):
+    mock_command = Mock()
+    monkeypatch.setattr(
+        rewrite_subcommands,
+        "command_rewrite_apply",
+        mock_command,
+    )
+    args = parse_command_line(
+        [
+            "rewrite",
+            "apply",
+            "plan.json",
+            "--workspace",
+            "/tmp/rewrite-resolution",
+            "--allow-published-ref",
+            "refs/remotes/origin/topic",
+            "--allow-published-ref",
+            "refs/remotes/upstream/topic",
+            "--porcelain",
+        ],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "plan.json",
+        resolutions_path="/tmp/rewrite-resolution",
+        allowed_remote_refs=(
+            "refs/remotes/origin/topic",
+            "refs/remotes/upstream/topic",
+        ),
+        porcelain=True,
+    )
+
+
+def test_parse_command_line_rewrite_apply_omits_resolutions_by_default(
+    monkeypatch,
+):
+    mock_command = Mock()
+    monkeypatch.setattr(
+        rewrite_subcommands,
+        "command_rewrite_apply",
+        mock_command,
+    )
+    args = parse_command_line(["rewrite", "apply", "plan.json"], quiet=True)
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(
+        "plan.json",
+        resolutions_path=None,
+        allowed_remote_refs=(),
+        porcelain=False,
+    )
+
+
+@pytest.mark.parametrize(
+    ("action", "attribute"),
+    [
+        ("continue", "command_rewrite_continue"),
+        ("abort", "command_rewrite_abort"),
+        ("verify", "command_rewrite_verify"),
+    ],
+)
+def test_parse_command_line_history_checkpoint_action(
+    monkeypatch,
+    action,
+    attribute,
+):
+    mock_command = Mock()
+    monkeypatch.setattr(rewrite_subcommands, attribute, mock_command)
+    args = parse_command_line(
+        ["rewrite", action, "--porcelain"],
+        quiet=True,
+    )
+
+    assert args is not None
+    args.func(args)
+    mock_command.assert_called_once_with(porcelain=True)
+
+
+def test_parse_command_line_history_requires_an_action():
+    assert parse_command_line(["rewrite"], quiet=True) is None
 
 
 def test_parse_command_line_new():

@@ -1,19 +1,19 @@
 ---
 name: refine-commit-messages
-description: Audit and, by default, rewrite the messages in an existing local linear commit series while preserving every patch and commit boundary. Use when the user wants to polish commit prose, enforce repository message conventions, repair series narrative or fourth-paragraph transitions, or resume an interrupted message-only rewrite. Use the explicit audit mode when the user wants findings and proposed messages without changing history. Do not use for changing commit contents or boundaries.
+description: Audit and, by default, rewrite the messages in an existing local linear commit series while preserving every patch and commit boundary. Use when the user wants to polish commit prose, enforce repository message conventions, repair series narrative or fourth-paragraph transitions, or resume an interrupted message-only rewrite. Use explicit audit mode for findings and proposed messages without history changes. Do not use for changing commit contents, order, or boundaries.
 ---
 
 # Refine Commit Messages
 
 Refine every message in `BASE_SHA..HEAD` as one series. By default, reword
-noncompliant commits. Preserve the commit count, order, tree at every series
-position, author identity/date, signature presence, and final tree.
+noncompliant commits while preserving source order, commit count, every output
+tree, patch-unit ownership, author and committer metadata, and the final tree.
 
-Read `references/message-guidelines.md` before auditing. Treat the patches as
-evidence for the prose, never as editable material. Within each message,
-reject unexplained local terms, coined shorthand, and compressed labels that
-make a newcomer decode the prose when a plain sentence could state the
-behavior directly.
+Read `references/message-guidelines.md` completely before auditing. Read the
+repository contribution guide, commit-message hook, documented message
+validators, and representative recent messages. Repository rules override the
+bundled fallback. Use `.agents/internal/commit-message-drafter.md` in its
+historical-commit mode when installed.
 
 ## Usage
 
@@ -23,280 +23,169 @@ $refine-commit-messages audit BASE_SHA
 $refine-commit-messages resume
 ```
 
-For a fresh run, accept either one explicit base or the literal `audit`
-followed by one explicit base. Do not infer the base from branch names, merge
-bases, reflogs, or old state. The default is mutating refinement. Recognize
-audit mode only when the user explicitly supplies `audit` as the first
-argument or unmistakably asks for no history changes.
+A fresh run requires one explicit excluded base. Do not infer it from branch
+names, merge bases, reflogs, prior plans, or product state. Default mode is
+mutating. Recognize `audit` only when the user explicitly requests no history
+changes. `resume` applies only to an active or latest durable product operation.
 
-`resume` applies only to an interrupted default refinement. Audit runs have no
-checkpoint to resume.
+## Mechanical boundary
 
-Before either mode, read repository guidance, representative recent messages,
-and the commit-message hook. Repository-specific rules override the bundled
-fallback rules. Use `.agents/internal/commit-message-drafter.md` in its
-historical-commit mode when installed.
+Use `git-stage-batch rewrite` for all range facts, plan validation, commit
+construction, checkpoints, refs, recovery, continuation, abort, and
+verification. A message plan may contain only `KEEP` and `REWORD` outputs.
+Preserve each output's single source, complete ordered unit list, author, and
+position. Edit only its operation, message, encoding when needed, and
+rationale. Never stage, amend, rebase, reorder, split, integrate, drop, or
+manually rewrite commits.
 
-Build one compact series index before drafting. Record the base, source head,
-and overall goal once. For each position, record its SHA, subject, narrative
-role, one plain-language sentence describing the patch outcome, and only the
-prior capabilities needed to understand that change. Do not copy the whole
-prefix of earlier entries into each new entry. Inspect each patch once in
-order and update the index with that commit's state change.
+`rewrite apply` constructs deterministic unsigned commits and does not invoke
+commit hooks or signing. If any source in a mutating range is signed, validation
+reports it and apply removes the invalidated signature header by audited digest.
+Do not promise signature preservation or attempt to copy a cryptographic
+signature to a new commit. Run documented message validators when available
+and inspect hook rules before apply.
 
-For an individual draft, provide the target SHA, relevant parent state, patch,
-overall goal, target index entry, adjacent entries, and discovered rules. Do
-not resend the full index or reread the complete raw series for every commit,
-and never ask the drafter to inspect the clean staged index for an
-already-committed patch.
+If the patch does not fit one coherent message, stop and report that
+`refine-history` is needed. If `git-stage-batch` is not in `PATH`, use
+`pipx run git-stage-batch`; installed `rewrite --help` wins over this skill.
 
-Persist the index as `series-index.json`, bound to the canonical base and
-source head. In audit mode, keep it under the external audit temporary
-directory. In default mode, write it under
-`$REFINE_MESSAGES_STATE_DIR` after `start`. Reuse a matching index after
-context compaction or `resume`; never repeat the range-wide semantic read just
-to reconstruct lost working context.
+## Build the series audit once
+
+Move to the repository root and create analysis files outside the worktree:
+
+```bash
+REPO_ROOT=$(git --no-optional-locks rev-parse --show-toplevel)
+cd "$REPO_ROOT"
+PLAN_DIR=$(mktemp -d)
+REWRITE_PLAN="$PLAN_DIR/rewrite-plan.json"
+VALIDATION="$PLAN_DIR/validation.json"
+git-stage-batch rewrite scan "$BASE_SHA" --output "$REWRITE_PLAN"
+git-stage-batch rewrite validate "$REWRITE_PLAN" --porcelain > "$VALIDATION"
+```
+
+The initial KEEP plan freezes the exact linear range. Read its canonical base,
+tip, messages, encodings, authors, committers, signatures, patch units, trees,
+publication facts, and mutation blockers. Scan and validation do not update
+commits, refs, or checkpoints; they may reuse or update the disposable
+history-analysis cache.
+
+Build one compact series index before drafting. For each position, record the
+SHA, subject, narrative role, one plain-language patch outcome, relevant parent
+state, and only the prior capabilities needed to understand the change. Inspect
+each complete patch once in order. Do not copy the whole prefix into each entry
+or reread the raw series for every draft.
+
+For each message, compare the full patch with repository rules and adjacent
+series transitions. Reject unexplained local terms, coined shorthand,
+artifact-only subjects, compressed labels, claims absent from the patch, and
+meaningful patch outcomes absent from the prose. Draft from the target patch
+and its relevant neighboring context, not from the clean staged index.
+
+Classify every output:
+
+- `KEEP` when the exact message is compliant and narratively accurate.
+- `REWORD` when a complete replacement is required.
+
+For `REWORD`, edit only `operation`, `message`, optional `encoding`, and a
+concrete `rationale`. Keep all other generated fields exact. Cover every output
+once and preserve order.
+
+Validate the edited plan:
+
+```bash
+git-stage-batch rewrite validate "$REWRITE_PLAN" --porcelain > "$VALIDATION"
+```
+
+Require `valid: true`, equal source/output counts, zero split, integration, and
+reorder outputs, exact final-tree replay, and no stale facts. Validation also
+proves that every replacement is encodable.
 
 ## Audit mode
 
-Audit mode must not update refs, run rebase, amend commits, create a
-recovery ref, or write inside the repository. It may create temporary files
-outside the repository for structured analysis.
+Audit mode stops after the edited plan validates. Report every source in order
+with `KEEP` or `REWORD`, the exact repository rule and patch evidence, adjacent
+series transition, and complete proposed message for every `REWORD`. Report
+validator failures as failures; do not silently weaken or apply the plan.
 
-The user-facing `audit` mode maps to the checkpoint helper's internal
-`--audit-only` flag. Freeze and inspect the explicit range:
+Audit mode must not call `rewrite apply`, create recovery refs or checkpoints,
+or write audit files inside the repository. Its external temporary plan is
+disposable.
 
-```bash
-REPO_ROOT=$(git --no-optional-locks rev-parse --show-toplevel)
-cd "$REPO_ROOT"
-REFINE_MESSAGES_HELPER=.agents/skills/refine-commit-messages/scripts/refine-commit-messages-checkpoint.py
-BASE_SHA=$(python3 "$REFINE_MESSAGES_HELPER" check-range --audit-only --base "$BASE_SHA")
-AUDIT_TMP=$(mktemp -d)
-python3 "$REFINE_MESSAGES_HELPER" inspect --base "$BASE_SHA" > "$AUDIT_TMP/scan.json"
-```
+## Apply the message plan
 
-`scan.json` contains every message and its mechanical signals. Inspect the
-patches once:
+If every output is `KEEP`, no rewrite is needed. Otherwise, refresh relevant
+remote-tracking facts and verify provider metadata. A containing remote ref is
+allowed only when it is the exact verified force-push review head. Permission
+to rewrite locally does not authorize a push.
 
-```bash
-git --no-optional-locks log --reverse --stat --patch --find-renames "$BASE_SHA"..HEAD
-```
-
-Report every commit in order with `KEEP` or `REWORD`, the concrete rule and
-patch evidence, and a complete proposed replacement for each `REWORD`.
-Cross-check all mechanical signals in `scan.json`; explain a signal only when
-repository guidance makes it a concrete false positive. Do not silently fix
-anything.
-
-For a machine-checked audit, use the structured shape in the default workflow
-with `"mode": "audit-only"`, save it outside the repository, and run:
-
-```bash
-python3 "$REFINE_MESSAGES_HELPER" validate-audit --audit-only --audit-file "$AUDIT_TMP/audit.json" --base "$BASE_SHA"
-```
-
-## Start the default refinement
-
-The helper rejects empty or nonlinear ranges and commits contained in local
-remote-tracking refs:
-
-```bash
-REPO_ROOT=$(git --no-optional-locks rev-parse --show-toplevel)
-cd "$REPO_ROOT"
-REFINE_MESSAGES_HELPER=.agents/skills/refine-commit-messages/scripts/refine-commit-messages-checkpoint.py
-export REFINE_MESSAGES_STATE_DIR=$(python3 "$REFINE_MESSAGES_HELPER" state-dir)
-if test -n "${REVIEW_HEAD_REF:-}"; then
-  BASE_SHA=$(python3 "$REFINE_MESSAGES_HELPER" check-range \
-    --base "$BASE_SHA" --allow-remote-ref "$REVIEW_HEAD_REF")
-else
-  BASE_SHA=$(python3 "$REFINE_MESSAGES_HELPER" check-range --base "$BASE_SHA")
-fi
-```
-
-Refresh the relevant remote-tracking refs and inspect publication evidence.
-Protection on the base branch is irrelevant because the base is not rewritten.
-For a pull-request or merge-request branch, verify through provider metadata
-that the current branch is the review head and force pushing is expected. A
-range contained only in that head ref may pass
-`--allow-remote-ref FULL_REMOTE_TRACKING_REF`; never allow the target branch or
-an unrelated ref. Stop when remote information is stale or unavailable, a
-range commit is published outside that exception, or publication evidence is
-ambiguous:
-
-```bash
-git --no-optional-locks branch --show-current
-git --no-optional-locks branch -a --contains HEAD
-git --no-optional-locks remote -v
-git --no-optional-locks status --short
-```
-
-Require a named local branch, a clean index and worktree, and no Git operation
-in progress. Then record the exact original sequence and create a recovery ref:
+Require the validation report to say mutation is ready, then apply the same
+validated plan:
 
 ```bash
 if test -n "${REVIEW_HEAD_REF:-}"; then
-  python3 "$REFINE_MESSAGES_HELPER" start --base "$BASE_SHA" \
-    --allow-remote-ref "$REVIEW_HEAD_REF"
+  git-stage-batch rewrite apply "$REWRITE_PLAN" \
+    --allow-published-ref "$REVIEW_HEAD_REF" --porcelain
 else
-  python3 "$REFINE_MESSAGES_HELPER" start --base "$BASE_SHA"
+  git-stage-batch rewrite apply "$REWRITE_PLAN" --porcelain
 fi
-python3 "$REFINE_MESSAGES_HELPER" status --json
+git-stage-batch rewrite verify --porcelain
 ```
 
-Do not read or reuse artifacts from an older run before `start`.
-If the range contains signed commits, ensure the configured signing mechanism
-can re-sign them. The one-pass callbacks explicitly re-sign originally signed
-positions and keep originally unsigned positions unsigned; a signing failure
-stops the rebase.
+Repeat the review-head option for every authorized containing ref. Apply
+rechecks the live branch, tip, index, worktree, Git operations, staging state,
+saved batches, publication, and plan before creating its durable operation.
+It builds behind an output ref and updates the branch once by compare-and-swap.
 
-## Resume
+After apply, inspect the final messages in order, rerun repository message
+checks and normal tests, and report source signatures removed by digest. Do not
+redraft unchanged semantic decisions merely because descendant object IDs
+changed.
 
-For the literal `resume` invocation, do not call `start`:
+## Resume or abort
+
+For literal `resume`, run:
 
 ```bash
-REPO_ROOT=$(git --no-optional-locks rev-parse --show-toplevel)
-cd "$REPO_ROOT"
-REFINE_MESSAGES_HELPER=.agents/skills/refine-commit-messages/scripts/refine-commit-messages-checkpoint.py
-export REFINE_MESSAGES_STATE_DIR=$(python3 "$REFINE_MESSAGES_HELPER" state-dir)
-python3 "$REFINE_MESSAGES_HELPER" status --json
-BASE_SHA=$(python3 "$REFINE_MESSAGES_HELPER" check-resume)
-RECOVERY_REF=$(python3 "$REFINE_MESSAGES_HELPER" recovery-ref)
-git --no-optional-locks show-ref --verify "$RECOVERY_REF"
+git-stage-batch rewrite status --porcelain
 ```
 
-Use the checkpoint phase reported by `status`. For the current `applying`
-phase, inspect `git --no-optional-locks status`, the rebase todo/done files, and
-the last checkpoint event. Continue only when they identify the same rewrite
-plan and series position. After resolving a transient hook failure or other
-understood stop, run:
+Before continuing, require `plan.operation_counts` to contain only `KEEP` and
+`REWORD`. This prevents the message-only skill from adopting a boundary-changing
+operation. When `active` is true, also require
+`inspection.resume_ready: true`, then run:
 
 ```bash
-git --no-optional-locks -c commit.gpgSign=false rebase --continue
-python3 "$REFINE_MESSAGES_HELPER" finalize-apply --base "$BASE_SHA"
+git-stage-batch rewrite continue --porcelain
+git-stage-batch rewrite status --porcelain
 ```
 
-If no rebase is active while the phase is `applying`, compare `HEAD` with the
-checkpoint's `rewrite_source_head`. An equal value means the rebase never
-started or was aborted; fix the cause and rerun `apply-audit`. A different
-value means the rebase changed history, so run only `finalize-apply` and let it
-verify the result. Aborting the rebase is safe; never abort and then call
-`start`. If a message itself fails the commit hook, abort the controlled
-rebase, correct that proposal in `audit.json`, and rerun `apply-audit` from the
-existing checkpoint. Outside a rebase,
-`check-resume` requires the exact original tree sequence and author metadata
-to remain intact.
+Continue according to the product's exact `next_action` until terminal. Require
+`rewrite verify --porcelain` for `COMPLETE`. Never inspect private files, infer
+a rebase position, or run Git continuation commands.
 
-A checkpoint in the older `rewriting` phase predates the one-pass workflow. If
-its rebase is active, abort that rebase to return to the saved pre-step state,
-then run `apply-audit`, which validates the existing audit; do not call
-`start`.
-If no rebase is active, first run `verify` and `scan`, update the audit's
-position-bound SHAs and mechanical signals, and recheck only the message that
-already landed and its neighbors before using `apply-audit`.
+Use `rewrite abort` only when abandoning the active message operation. It
+restores only operation-owned values and preserves safe manual recovery
+guidance after foreign ref movement. Do not delete product state or refs.
 
-## Audit and rewrite
-
-Generate the current mechanical scan:
-
-```bash
-python3 "$REFINE_MESSAGES_HELPER" scan --base "$BASE_SHA"
-```
-
-Use the series index to inspect every commit's body and patch exactly once.
-Write
-`$REFINE_MESSAGES_STATE_DIR/audit.json` with this shape:
-
-```json
-{
-  "schema": 1,
-  "mode": "refine",
-  "base": "FULL_BASE_SHA",
-  "head": "FULL_CURRENT_HEAD_SHA",
-  "conventions": {
-    "sources": ["CONTRIBUTING.md", "fallback message guidelines"],
-    "summary": "Concrete structure, plain-language, term, and wrapping rules"
-  },
-  "commits": [
-    {
-      "sha": "FULL_CURRENT_COMMIT_SHA",
-      "subject": "Exact current subject",
-      "signals": ["Exact signal copied from scan.json"],
-      "verdict": "REWORD",
-      "reason": "Concrete mismatch between message, patch, or series position",
-      "patch_fidelity": "How the message accounts for the complete patch",
-      "series_transition": "How this position follows and leads to its neighbors",
-      "proposed_message": "Complete replacement subject and body"
-    }
-  ]
-}
-```
-
-Use `KEEP` for compliant entries and omit `proposed_message`. When keeping a
-mechanically signaled message because of an explicit repository override, add:
-
-```json
-"signal_false_positives": [
-  {
-    "signal": "Exact signal",
-    "source": "Exact entry from conventions.sources",
-    "reason": "Concrete overriding repository rule"
-  }
-]
-```
-
-For a `REWORD`, write `patch_fidelity` and `series_transition` about the
-proposed replacement; the helper carries those findings into the final audit.
-Cover every commit exactly once in order.
-
-If every verdict is `KEEP`, proceed directly to the completion gate. Otherwise
-apply every replacement in one controlled rebase:
-
-```bash
-python3 "$REFINE_MESSAGES_HELPER" apply-audit --base "$BASE_SHA"
-```
-
-`apply-audit` validates `scan.json` and the complete audit before creating a
-rebase. Do not run a separate validation pass first.
-
-Do not stage, edit, reset, split, squash, reorder, or drop content. If a hook
-changes the index or tree, stop and restore from the recovery ref. If a patch
-does not match one coherent message, report that `refine-history` is needed
-instead of changing its boundary here.
-
-`apply-audit` freezes the validated audit by series position and adds one
-constant-size verification callback after every pick in a portable rebase
-todo. Each callback restores that position's expected message and signature
-presence while verifying its tree and author. The callbacks run from a frozen
-copy inside the worktree's Git directory, so historical checkouts cannot
-replace the helper. The rebase disables abbreviated todo commands, autosquash,
-update-refs, rebase-merges, and autostash. Afterward, the helper performs one
-linear whole-series check, regenerates `scan.json`, and converts the audit to
-current all-`KEEP` entries.
-
-Do not rebuild the complete audit merely because rewritten ancestors changed
-descendant SHAs. Reinspect only a message that differs from the validated
-plan, its adjacent transitions, or evidence affected by a changed repository
-rule. If boundaries, order, or patches changed, stop rather than trying to
-repair the audit. Ordinary successful application needs one initial semantic
-audit. Later checks are linear mechanical verification and never repeat
-semantic drafting once per reworded commit.
+When status reports a latest `COMPLETE` KEEP/REWORD operation, verify it and
+finish the completion checks. `ABORTED` is not successful message refinement.
+If there is no product operation, there is nothing to resume;
+request an explicit base for a fresh run.
 
 ## Completion gate
 
-Reconfirm publication safety, then let the helper validate the final
-all-`KEEP` audit and complete:
+Complete only when:
 
-```bash
-git --no-optional-locks status --short
-git --no-optional-locks branch -a --contains HEAD
-git --no-optional-locks remote -v
-python3 "$REFINE_MESSAGES_HELPER" complete --base "$BASE_SHA"
-```
+- every final message has a `KEEP` verdict under the discovered rules;
+- a fresh message-only KEEP plan validates for the same base and current tip;
+- source count, order, every position's tree and patch units, author and
+  committer metadata, and final tree match the product proofs;
+- `rewrite verify` passes for the latest completed rewrite;
+- the index and tracked worktree are clean and no operation, batch, or staging
+  session is active;
+- normal tests and documented message checks pass; and
+- publication evidence is freshly rechecked and remains authorized.
 
-Immediately before completion, reconfirm that remote-tracking information is
-current and publication evidence is unambiguous. `complete` rechecks local
-remote-tracking containment with the recorded review-head exception,
-checkpoint ownership, out-of-scope local refs, the structured audit, and every
-message-only invariant; remote freshness remains the caller's responsibility.
-Report the recovery ref, old-to-new subjects and SHAs,
-conventions applied, and the exact tree/author invariants verified.
+Report old-to-new subjects and SHAs, conventions applied, exact invariants,
+removed signature digests, validation commands, and the product recovery ref.
+Never publish or force-push unless the user separately asks.

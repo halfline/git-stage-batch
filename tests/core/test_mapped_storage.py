@@ -164,6 +164,71 @@ def test_page_sized_mapped_int_vector_uses_mmap(monkeypatch):
     assert calls == 1
 
 
+def test_mapped_storage_uses_dynamic_default_scratch_parent(
+    tmp_path,
+    monkeypatch,
+):
+    """Implicit mapped spill files should use the large-scratch default."""
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    directories = []
+    original_temporary_file = mapped_storage_module.tempfile.TemporaryFile
+
+    def recording_temporary_file(*args, **kwargs):
+        directories.append(kwargs.get("dir"))
+        return original_temporary_file(*args, **kwargs)
+
+    monkeypatch.setattr(
+        mapped_storage_module,
+        "default_scratch_parent",
+        lambda: scratch,
+    )
+    monkeypatch.setattr(
+        mapped_storage_module.tempfile,
+        "TemporaryFile",
+        recording_temporary_file,
+    )
+
+    with MappedIntVector(mmap.PAGESIZE // 8) as vector:
+        assert vector.byte_count == mmap.PAGESIZE
+
+    assert directories == [scratch]
+
+
+def test_explicit_mapped_storage_spool_precedes_default(
+    tmp_path,
+    monkeypatch,
+):
+    """A caller-owned spool directory should retain explicit placement."""
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    directories = []
+    original_temporary_file = mapped_storage_module.tempfile.TemporaryFile
+
+    def recording_temporary_file(*args, **kwargs):
+        directories.append(kwargs.get("dir"))
+        return original_temporary_file(*args, **kwargs)
+
+    monkeypatch.setattr(
+        mapped_storage_module,
+        "default_scratch_parent",
+        lambda: pytest.fail("explicit spool should bypass the default"),
+    )
+    monkeypatch.setattr(
+        mapped_storage_module.tempfile,
+        "TemporaryFile",
+        recording_temporary_file,
+    )
+
+    with MappedIntVector(
+        mmap.PAGESIZE // 8,
+        spool_dir=spool,
+    ) as vector:
+        assert vector.byte_count == mmap.PAGESIZE
+
+    assert directories == [spool]
+
+
 def test_mapped_int_vector_uses_64_bit_slots():
     """Mapped integer vectors store values past the 32-bit range."""
     value = (1 << 40) + 3

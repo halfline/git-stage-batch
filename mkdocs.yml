@@ -1,5 +1,5 @@
 site_name: git-stage-batch
-site_description: Hunk-by-hunk and line-by-line staging for git
+site_description: Fine-grained Git staging and deterministic draft-history refinement
 site_author: Ray Strode
 site_url: https://halfline.github.io/git-stage-batch/
 repo_url: https://github.com/halfline/git-stage-batch

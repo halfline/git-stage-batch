@@ -1282,11 +1282,6 @@ msgstr "امسح الحالة واخرج من دون عرض المرشحين"
 msgid "Re-show the last candidate without advancing"
 msgstr "اعرض المرشح الأخير مجددًا من دون الانتقال إلى التالي"
 
-#: src/git_stage_batch/cli/fixup_subcommands.py:82
-#, python-brace-format
-msgid "Git ref to use as lower bound for commit search (default: @{upstream})"
-msgstr "مرجع ⁦Git⁩ المستخدم حدًا أدنى للبحث عن الإيداعات (الافتراضي: ⁦@{upstream}⁩)"
-
 #: src/git_stage_batch/cli/include_dispatch.py:35
 msgid "`--no-edge-overlap` only applies to live `include --line --as` operations."
 msgstr "ينطبق ⁦`--no-edge-overlap`⁩ فقط على عمليات ⁦`include --line --as`⁩ المباشرة."
@@ -1339,8 +1334,8 @@ msgid "Replacement text was not provided."
 msgstr "لم يُقدَّم النص البديل."
 
 #: src/git_stage_batch/cli/root_parser.py:16
-msgid "Hunk-by-hunk and line-by-line staging for git"
-msgstr "تجهيز تغييرات ⁦Git⁩ مقطعًا مقطعًا أو سطرًا سطرًا"
+msgid "Fine-grained Git staging and deterministic draft-history refinement"
+msgstr "تجهيز دقيق لتغييرات ⁦Git⁩ وتنقيح حتمي لمسودة التاريخ"
 
 #: src/git_stage_batch/cli/root_parser.py:31
 msgid "Run as if started in path"
@@ -2963,47 +2958,10 @@ msgstr[3] "✓ جرى تخطّي {count} مقاطع من {file}"
 msgstr[4] "✓ جرى تخطّي {count} مقطعًا من {file}"
 msgstr[5] "✓ جرى تخطّي {count} مقطع من {file}"
 
-#: src/git_stage_batch/commands/fixup/boundary.py:21
-#, python-brace-format
-msgid "Invalid boundary ref: {boundary}"
-msgstr "مرجع الحدود غير صالح: {boundary}"
-
-#: src/git_stage_batch/commands/fixup/boundary.py:31
-#, python-brace-format
-msgid "Failed to get commit range {boundary}..HEAD"
-msgstr "تعذّر الحصول على نطاق الإيداعات ⁦{boundary}..HEAD⁩"
-
-#: src/git_stage_batch/commands/fixup/boundary.py:38
-#, python-brace-format
-msgid "No commits found in range {boundary}..HEAD"
-msgstr "لم يُعثر على إيداعات في النطاق ⁦{boundary}..HEAD⁩"
-
-#: src/git_stage_batch/commands/fixup/candidate_display.py:26
-msgid ""
-"No previous candidate to show.\n"
-"Run suggest-fixup without --last to find a candidate."
-msgstr ""
-"لا يوجد مرشح سابق لعرضه.\n"
-"شغّل ⁦suggest-fixup⁩ من دون ⁦--last⁩ للعثور على مرشح."
-
-#: src/git_stage_batch/commands/fixup/candidate_display.py:70
-#, python-brace-format
-msgid "Candidate {iteration}: {info}"
-msgstr "المرشح {iteration}: {info}"
-
 #: src/git_stage_batch/commands/fixup/candidate_display.py:76
 #, python-brace-format
 msgid "Run: git commit --fixup={commit}"
 msgstr "شغّل: ⁦git commit --fixup={commit}⁩"
-
-#: src/git_stage_batch/commands/fixup/candidate_iteration.py:47
-#, python-brace-format
-msgid ""
-"No commits in range {boundary}..HEAD modified these lines.\n"
-"The changes may be fixing code from before the boundary."
-msgstr ""
-"لم يعدّل أي إيداع ضمن النطاق ⁦{boundary}..HEAD⁩ هذه الأسطر.\n"
-"قد تكون التغييرات إصلاحًا لشيفرة تسبق الحد."
 
 #: src/git_stage_batch/commands/fixup/candidate_iteration.py:53
 msgid "No more candidates found."
@@ -3012,16 +2970,6 @@ msgstr "لا مزيد من المرشحين."
 #: src/git_stage_batch/commands/fixup/iteration_state.py:35
 msgid "Suggest-fixup iteration cleared."
 msgstr "مُسحت جولة ⁦suggest-fixup⁩."
-
-#: src/git_stage_batch/commands/fixup/line_ranges.py:37
-msgid "No old line numbers found in hunk (all lines may be additions)."
-msgstr "لم يُعثر على أرقام أسطر قديمة في المقطع (قد تكون كل الأسطر إضافات)."
-
-#: src/git_stage_batch/commands/fixup/line_ranges.py:59
-msgid ""
-"No old line numbers found for specified lines (they may be newly added "
-"lines)."
-msgstr "لم يُعثر على أرقام أسطر قديمة للأسطر المحددة (قد تكون أسطرًا مضافة حديثًا)."
 
 #: src/git_stage_batch/commands/fixup/search_targets.py:46
 #: src/git_stage_batch/commands/fixup/search_targets.py:102
@@ -6792,3 +6740,1274 @@ msgstr "يجب أن تشكّل الأسطر المحددة للاستبدال ن
 #: src/git_stage_batch/batch/replacement.py:44
 msgid "Replacement selection must resolve to one contiguous batch-source region."
 msgstr "يجب أن يشكّل الجزء المحدد للاستبدال منطقة واحدة متصلة في مصدر الدفعة."
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:78 src/git_stage_batch/cli/fixup_subcommands.py:114
+msgid "Output machine-readable JSON"
+msgstr "أخرج ⁦JSON⁩ قابلاً للقراءة آليًا"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:104
+msgid "Show the complete assignment plan without creating commits"
+msgstr "اعرض خطة الإسناد الكاملة دون إنشاء إيداعات"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:109
+msgid "Create eligible fixups and leave other units staged"
+msgstr "أنشئ وحدات ⁦fixup⁩ المؤهلة واترك الوحدات الأخرى مُجهّزة"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:121
+msgid "Git commit to use as the excluded base of the target range (default: fork point with upstream)"
+msgstr "إيداع ⁦Git⁩ المستخدم قاعدةً مستبعدة من نطاق الهدف (الافتراضي: نقطة التفرع مع ⁦upstream⁩)"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:134
+msgid "Suggest fixup targets or create grouped fixup commits"
+msgstr "اقترح أهداف ⁦fixup⁩ أو أنشئ إيداعات ⁦fixup⁩ مجمّعة"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:139
+msgid "Fixup action"
+msgstr "إجراء ⁦fixup⁩"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:146
+msgid "Suggest a target for the selected hunk"
+msgstr "اقترح هدفًا للمقطع المحدد"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:155
+msgid "Create grouped fixup commits from staged changes"
+msgstr "أنشئ إيداعات ⁦fixup⁩ مجمّعة من التغييرات المُجهّزة"
+
+#: src/git_stage_batch/commands/fixup_create.py:36
+#, python-brace-format
+msgid "Cannot create fixup commits while another Git operation is active ({operation})."
+msgstr "لا يمكن إنشاء إيداعات ⁦fixup⁩ أثناء نشاط عملية ⁦Git⁩ أخرى ({operation})."
+
+#: src/git_stage_batch/commands/fixup_create.py:56
+msgid "Stop the active git-stage-batch session before creating fixup commits."
+msgstr "أوقف جلسة ⁦git-stage-batch⁩ النشطة قبل إنشاء إيداعات ⁦fixup⁩."
+
+#: src/git_stage_batch/commands/fixup_create.py:81
+msgid "No commits were created because some staged units are not eligible. Inspect the plan or rerun with --partial."
+msgstr "لم تُنشأ إيداعات لأن بعض الوحدات المُجهّزة غير مؤهلة. افحص الخطة أو أعد التشغيل مع ⁦--partial⁩."
+
+#: src/git_stage_batch/commands/fixup_create.py:92
+msgid "No staged units have an eligible fixup target."
+msgstr "ليس لأي وحدة مُجهّزة هدف ⁦fixup⁩ مؤهل."
+
+#: src/git_stage_batch/fixup/execution.py:102
+#, python-brace-format
+msgid "Could not materialize the staged units assigned to {target}."
+msgstr "تعذّر تكوين الوحدات المُجهّزة المسندة إلى {target}."
+
+#: src/git_stage_batch/fixup/execution.py:114
+#, python-brace-format
+msgid "The planned fixup for {target} could not be combined with the preceding fixup groups."
+msgstr "تعذّر دمج ⁦fixup⁩ المخطط له من أجل {target} مع مجموعات ⁦fixup⁩ السابقة."
+
+#: src/git_stage_batch/fixup/execution.py:130
+msgid "The grouped fixup plan does not conserve the staged changes."
+msgstr "لا تحفظ خطة وحدات ⁦fixup⁩ المجمّعة التغييرات المُجهّزة."
+
+#: src/git_stage_batch/fixup/execution.py:134
+msgid "The complete fixup plan does not reproduce the staged index tree."
+msgstr "لا تعيد خطة ⁦fixup⁩ الكاملة إنتاج شجرة الفهرس المُجهّز."
+
+#: src/git_stage_batch/fixup/execution.py:143
+msgid "HEAD or the staged index changed after fixup planning. No further fixup commits were created."
+msgstr "تغيّر ⁦HEAD⁩ أو الفهرس المُجهّز بعد تخطيط ⁦fixup⁩. لم تُنشأ إيداعات ⁦fixup⁩ أخرى."
+
+#: src/git_stage_batch/fixup/execution.py:160
+#, python-brace-format
+msgid "Fixup creation stopped after HEAD moved unexpectedly. The original commit is saved at {recovery_ref}; HEAD was not overwritten."
+msgstr "توقف إنشاء ⁦fixup⁩ بعد انتقال ⁦HEAD⁩ على نحو غير متوقع. حُفظ الإيداع الأصلي في {recovery_ref}؛ ولم يُكتب فوق ⁦HEAD⁩."
+
+#: src/git_stage_batch/fixup/execution.py:173
+#, python-brace-format
+msgid "Could not restore HEAD after fixup creation failed. The original commit is saved at {recovery_ref}."
+msgstr "تعذّرت استعادة ⁦HEAD⁩ بعد فشل إنشاء ⁦fixup⁩. حُفظ الإيداع الأصلي في {recovery_ref}."
+
+#: src/git_stage_batch/fixup/execution.py:183
+msgid "The fixup plan has no eligible staged units."
+msgstr "لا تحتوي خطة ⁦fixup⁩ على وحدات مُجهّزة مؤهلة."
+
+#: src/git_stage_batch/fixup/execution.py:211
+msgid "HEAD no longer names the fixup commit that was just created."
+msgstr "لم يعد ⁦HEAD⁩ يشير إلى إيداع ⁦fixup⁩ الذي أُنشئ للتو."
+
+#: src/git_stage_batch/fixup/execution.py:226
+msgid "A created fixup commit has an unexpected parent."
+msgstr "لإيداع ⁦fixup⁩ المُنشأ أصل غير متوقع."
+
+#: src/git_stage_batch/fixup/execution.py:231
+msgid "A commit hook changed the planned fixup subject; the operation was rolled back."
+msgstr "غيّر خطاف الإيداع موضوع ⁦fixup⁩ المخطط له؛ فتراجعت العملية."
+
+#: src/git_stage_batch/fixup/execution.py:238
+msgid "A commit hook changed the planned fixup tree; the operation was rolled back."
+msgstr "غيّر خطاف الإيداع شجرة ⁦fixup⁩ المخطط له؛ فتراجعت العملية."
+
+#: src/git_stage_batch/fixup/planning.py:191
+msgid "No staged changes are available for fixup creation."
+msgstr "لا توجد تغييرات مُجهّزة متاحة لإنشاء ⁦fixup⁩."
+
+#: src/git_stage_batch/fixup/planning.py:210
+msgid "HEAD or the staged index changed during fixup analysis. Run the command again."
+msgstr "تغيّر ⁦HEAD⁩ أو الفهرس المُجهّز أثناء تحليل ⁦fixup⁩. شغّل الأمر مجددًا."
+
+#: src/git_stage_batch/fixup/ranges.py:22
+#, python-brace-format
+msgid "Invalid fixup boundary: {boundary}"
+msgstr "حد ⁦fixup⁩ غير صالح: {boundary}"
+
+#: src/git_stage_batch/fixup/ranges.py:36
+msgid "No upstream branch is configured. Pass the base commit for fixup analysis explicitly."
+msgstr "لم يُضبط فرع ⁦upstream⁩. مرّر إيداع الأساس لتحليل ⁦fixup⁩ صراحةً."
+
+#: src/git_stage_batch/fixup/ranges.py:56
+msgid "Could not determine a merge base between HEAD and its upstream."
+msgstr "تعذّر تحديد قاعدة دمج بين ⁦HEAD⁩ و⁦upstream⁩ الخاص به."
+
+#: src/git_stage_batch/fixup/ranges.py:71
+#, python-brace-format
+msgid "Fixup base {base} is not an ancestor of HEAD."
+msgstr "قاعدة ⁦fixup⁩ {base} ليست سلفًا لـ⁦HEAD⁩."
+
+#: src/git_stage_batch/fixup/ranges.py:94
+#, python-brace-format
+msgid "Fixup analysis currently requires a linear range; commit {commit} does not have exactly one parent."
+msgstr "يتطلب تحليل ⁦fixup⁩ حاليًا نطاقًا خطيًا؛ وليس للإيداع {commit} أصل واحد بالضبط."
+
+#: src/git_stage_batch/fixup/ranges.py:101
+msgid "No commits found between the fixup base and HEAD."
+msgstr "لم يُعثر على إيداعات بين قاعدة ⁦fixup⁩ و⁦HEAD⁩."
+
+#: src/git_stage_batch/fixup/staged_units.py:69
+msgid "Staged text patch has no hunk header."
+msgstr "ليس لرقعة النص المُجهّزة ترويسة مقطع."
+
+#: src/git_stage_batch/output/fixup_create.py:18
+msgid "lineage and placement agree"
+msgstr "يتفق النسب والموضع"
+
+#: src/git_stage_batch/output/fixup_create.py:20
+msgid "unique lineage; patch commutes through the range"
+msgstr "نسب فريد؛ يمكن نقل الرقعة عبر النطاق دون تعارض"
+
+#: src/git_stage_batch/output/fixup_create.py:23
+msgid "mechanical placement only; semantic target is unproven"
+msgstr "موضع ميكانيكي فقط؛ الهدف الدلالي غير مثبت"
+
+#: src/git_stage_batch/output/fixup_create.py:26
+msgid "lineage and placement identify different commits"
+msgstr "يحدد النسب والموضع إيداعات مختلفة"
+
+#: src/git_stage_batch/output/fixup_create.py:28
+msgid "selected lines have multiple owners"
+msgstr "للأسطر المحددة عدة مالكين"
+
+#: src/git_stage_batch/output/fixup_create.py:29
+msgid "no target evidence in the selected range"
+msgstr "لا دليل على هدف في النطاق المحدد"
+
+#: src/git_stage_batch/output/fixup_create.py:30
+msgid "whole-file additions are not supported yet"
+msgstr "إضافة ملفات كاملة غير مدعومة بعد"
+
+#: src/git_stage_batch/output/fixup_create.py:31
+msgid "whole-file deletions are not supported yet"
+msgstr "حذف ملفات كاملة غير مدعوم بعد"
+
+#: src/git_stage_batch/output/fixup_create.py:32
+msgid "binary changes are not supported yet"
+msgstr "التغييرات الثنائية غير مدعومة بعد"
+
+#: src/git_stage_batch/output/fixup_create.py:33
+msgid "renames are not supported yet"
+msgstr "إعادة التسمية غير مدعومة بعد"
+
+#: src/git_stage_batch/output/fixup_create.py:35
+msgid "content changes across renames are not supported yet"
+msgstr "تغييرات المحتوى عبر إعادة التسمية غير مدعومة بعد"
+
+#: src/git_stage_batch/output/fixup_create.py:37
+msgid "file-mode changes are not supported yet"
+msgstr "تغييرات نمط الملف غير مدعومة بعد"
+
+#: src/git_stage_batch/output/fixup_create.py:38
+msgid "gitlink changes are not supported yet"
+msgstr "تغييرات ⁦gitlink⁩ غير مدعومة بعد"
+
+#: src/git_stage_batch/output/fixup_create.py:39
+msgid "the unit has no textual patch"
+msgstr "ليس للوحدة رقعة نصية"
+
+#: src/git_stage_batch/output/fixup_create.py:41
+msgid "the staged unit no longer applies to the frozen HEAD"
+msgstr "لم تعد الوحدة المُجهّزة تنطبق على ⁦HEAD⁩ المثبّت"
+
+#: src/git_stage_batch/output/fixup_create.py:43
+msgid "the frozen range tree chain changed"
+msgstr "تغيّرت سلسلة أشجار النطاق المثبّت"
+
+#: src/git_stage_batch/output/fixup_create.py:44
+msgid "placement analysis failed"
+msgstr "فشل تحليل الموضع"
+
+#: src/git_stage_batch/output/fixup_create.py:166
+#, python-brace-format
+msgid "Fixup plan for {base}..{head}:"
+msgstr "خطة ⁦fixup⁩ للنطاق ⁦{base}..{head}⁩:"
+
+#: src/git_stage_batch/output/fixup_create.py:173
+msgid "unassigned"
+msgstr "غير معيّن"
+
+#: src/git_stage_batch/output/fixup_create.py:188
+#, python-brace-format
+msgid "Target {target} {subject}: {count} unit(s)"
+msgstr "الهدف {target} {subject}: عدد الوحدات {count}"
+
+#: src/git_stage_batch/output/fixup_create.py:196
+msgid "Dry run: no commits were created."
+msgstr "تشغيل تجريبي: لم تُنشأ إيداعات."
+
+#: src/git_stage_batch/output/fixup_create.py:200
+#, python-brace-format
+msgid "Created {commit} as a fixup for {target}."
+msgstr "أُنشئ {commit} بوصفه ⁦fixup⁩ لـ{target}."
+
+#: src/git_stage_batch/output/fixup_create.py:206
+#, python-brace-format
+msgid "Recovery ref: {recovery_ref}"
+msgstr "مرجع الاستعادة: {recovery_ref}"
+
+#: src/git_stage_batch/output/fixup_create.py:211
+#, python-brace-format
+msgid "{count} unit(s) remain staged."
+msgstr "ما زال عدد الوحدات المُجهّزة {count}."
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:85
+msgid "Commit excluded from the search (default: fork point with upstream)"
+msgstr "الإيداع المستبعد من البحث (الافتراضي: نقطة التفرع مع ⁦upstream⁩)"
+
+#: src/git_stage_batch/commands/fixup/search_flow.py:36
+msgid "HEAD changed during fixup suggestion analysis. Run the command again."
+msgstr "تغيّر ⁦HEAD⁩ أثناء تحليل اقتراح ⁦fixup⁩. شغّل الأمر مجددًا."
+
+#: src/git_stage_batch/commands/fixup/search_flow.py:113
+msgid ""
+"No previous candidate to show.\n"
+"Run fixup suggest without --last to find a candidate."
+msgstr "لا يوجد مرشح سابق لعرضه.\nشغّل ⁦fixup suggest⁩ دون ⁦--last⁩ للعثور على مرشح."
+
+#: src/git_stage_batch/commands/fixup/search_flow.py:141
+msgid ""
+"No commit in the selected range has exact lineage or placement evidence for "
+"this unit."
+msgstr "لا يملك أي إيداع في النطاق المحدد دليل نسب أو موضع دقيقًا لهذه الوحدة."
+
+#: src/git_stage_batch/fixup/selected_units.py:79
+msgid "Selection contains line IDs outside the current hunk."
+msgstr "يتضمن التحديد معرّفات أسطر خارج المقطع الحالي."
+
+#: src/git_stage_batch/fixup/selected_units.py:82
+msgid "No changed lines were selected."
+msgstr "لم تُحدّد أي أسطر متغيّرة."
+
+#: src/git_stage_batch/fixup/selected_units.py:202
+msgid "Could not read the selected file from the index."
+msgstr "تعذّرت قراءة الملف المحدد من الفهرس."
+
+#: src/git_stage_batch/fixup/selected_units.py:245
+msgid "The selected lines do not change the index."
+msgstr "لا تغيّر الأسطر المحددة الفهرس."
+
+#: src/git_stage_batch/output/fixup_create.py:39
+msgid "the selected path is not a regular text file"
+msgstr "المسار المحدد ليس ملفًا نصيًا عاديًا"
+
+#: src/git_stage_batch/output/fixup_suggest.py:141
+#, python-brace-format
+msgid "Lineage: exact source lines resolve to {commit}."
+msgstr "النسب: تُعزى أسطر المصدر الدقيقة إلى {commit}."
+
+#: src/git_stage_batch/output/fixup_suggest.py:147
+#, python-brace-format
+msgid "Lineage: multiple in-range owners ({commits})."
+msgstr "النسب: يوجد عدة مالكين داخل النطاق ({commits})."
+
+#: src/git_stage_batch/output/fixup_suggest.py:155
+#, python-brace-format
+msgid "Lineage: incomplete evidence includes {commit}."
+msgstr "النسب: يتضمن الدليل غير المكتمل {commit}."
+
+#: src/git_stage_batch/output/fixup_suggest.py:160
+msgid "Lineage: no in-range owner was proven."
+msgstr "النسب: لم يُثبت أي مالك داخل النطاق."
+
+#: src/git_stage_batch/output/fixup_suggest.py:167
+#, python-brace-format
+msgid "Placement: patch first stops at {commit}."
+msgstr "الموضع: تتوقف الرقعة أولًا عند {commit}."
+
+#: src/git_stage_batch/output/fixup_suggest.py:172
+msgid "Placement: patch commutes through the entire range."
+msgstr "الموضع: تعبر الرقعة النطاق كله."
+
+#: src/git_stage_batch/output/fixup_suggest.py:175
+#, python-brace-format
+msgid "Placement: unknown ({detail})."
+msgstr "الموضع: غير معروف ({detail})."
+
+#: src/git_stage_batch/output/fixup_suggest.py:213
+#, python-brace-format
+msgid "Selected unit {unit} in {path} [{status}]"
+msgstr "الوحدة المحددة {unit} في {path} [{status}]"
+
+#: src/git_stage_batch/output/fixup_suggest.py:222
+#, python-brace-format
+msgid "Decision: {reason}."
+msgstr "القرار: {reason}."
+
+#: src/git_stage_batch/output/fixup_suggest.py:233
+#, python-brace-format
+msgid "Candidate {iteration} of {total}: {commit} {subject}"
+msgstr "المرشح {iteration} من {total}: {commit} {subject}"
+
+#: src/git_stage_batch/output/fixup_suggest.py:241
+#, python-brace-format
+msgid "Candidate evidence: {sources}"
+msgstr "دليل المرشح: {sources}"
+
+#: src/git_stage_batch/cli/fixup_subcommands.py:106
+msgid "Create from a reviewed dry-run JSON plan"
+msgstr "الإنشاء من خطة ⁦JSON⁩ مُراجعة لتشغيل تجريبي"
+
+#: src/git_stage_batch/commands/fixup_create.py:59
+msgid "Cannot pass both a fixup boundary and --plan."
+msgstr "لا يمكن تمرير حدّ ⁦fixup⁩ و⁦--plan⁩ معًا."
+
+#: src/git_stage_batch/fixup/execution.py:189
+#, python-brace-format
+msgid "The staged units grouped for {target} cannot be replayed together at that target."
+msgstr "لا يمكن إعادة تطبيق الوحدات المُجهّزة المجمعة للهدف {target} معًا عند ذلك الهدف."
+
+#: src/git_stage_batch/fixup/execution.py:237
+msgid "The original range cannot be replayed with the planned fixup groups."
+msgstr "لا يمكن إعادة تطبيق النطاق الأصلي مع مجموعات ⁦fixup⁩ المخططة."
+
+#: src/git_stage_batch/fixup/execution.py:252
+#, python-brace-format
+msgid "The planned fixup for {target} cannot be replayed after its target."
+msgstr "لا يمكن إعادة تطبيق ⁦fixup⁩ المخطط للهدف {target} بعد هدفه."
+
+#: src/git_stage_batch/fixup/execution.py:262
+msgid "Replaying the planned fixups at their targets does not reproduce the assigned staged changes."
+msgstr "إعادة تطبيق عمليات ⁦fixup⁩ المخططة عند أهدافها لا تعيد إنتاج التغييرات المُجهّزة المعيّنة."
+
+#: src/git_stage_batch/fixup/plan_files.py:65
+#, python-brace-format
+msgid "Invalid fixup plan: {detail}"
+msgstr "خطة ⁦fixup⁩ غير صالحة: {detail}"
+
+#: src/git_stage_batch/fixup/plan_files.py:283
+#, python-brace-format
+msgid "Could not read fixup plan {path}: {error}"
+msgstr "تعذّرت قراءة خطة ⁦fixup⁩ ‏{path}: {error}"
+
+msgid "Plan, execute, and inspect a deterministic history refinement"
+msgstr "خطّط لتنقيح حتمي للتاريخ ونفّذه وافحصه"
+
+msgid "Rewrite action"
+msgstr "إجراء إعادة الكتابة"
+
+msgid "Capture exact history facts and a KEEP plan template"
+msgstr "التقاط حقائق التاريخ الدقيقة وقالب خطة ⁦KEEP⁩"
+
+msgid "Atomically write the reusable JSON plan to FILE"
+msgstr "كتابة خطة ⁦JSON⁩ القابلة لإعادة الاستخدام ذريًا إلى ⁦FILE⁩"
+
+msgid "Output the reusable JSON plan on standard output"
+msgstr "إخراج خطة ⁦JSON⁩ القابلة لإعادة الاستخدام على الخرج القياسي"
+
+msgid "Commit excluded from the scan (default: fork point with upstream)"
+msgstr "الإيداع المستبعد من الفحص (الافتراضي: نقطة التفرع مع ⁦upstream⁩)"
+
+msgid "Validate a reviewed rewrite plan against live objects"
+msgstr "التحقق من خطة إعادة كتابة مُراجعة مقابل الكائنات الحالية"
+
+msgid "Reusable rewrite plan emitted by rewrite scan"
+msgstr "خطة إعادة كتابة قابلة لإعادة الاستخدام أنشأها ⁦rewrite scan⁩"
+
+msgid "Output a machine-readable validation report"
+msgstr "إخراج تقرير تحقق مقروء آليًا"
+
+msgid "Inspect durable rewrite operation progress"
+msgstr "فحص التقدم الدائم لعملية إعادة الكتابة"
+
+msgid "Output machine-readable operation state"
+msgstr "إخراج حالة العملية بشكل مقروء آليًا"
+
+#, python-brace-format
+msgid "Commit {commit} has malformed {field} metadata."
+msgstr "للإيداع {commit} بيانات وصفية {field} مشوهة."
+
+#, python-brace-format
+msgid "Invalid rewrite plan: {detail}"
+msgstr "خطة إعادة الكتابة غير صالحة: {detail}"
+
+#, python-brace-format
+msgid "Could not read rewrite plan {path}: {error}"
+msgstr "تعذّرت قراءة خطة إعادة الكتابة {path}: {error}"
+
+#, python-brace-format
+msgid "Could not inspect legacy grafts: {error}"
+msgstr "تعذّر فحص الطعوم القديمة: {error}"
+
+msgid "Rewrite scanning refuses replace objects or legacy grafts because they change commit identity semantics."
+msgstr "يرفض فحص إعادة الكتابة كائنات الاستبدال أو الطعوم القديمة لأنها تغيّر دلالات هوية الإيداع."
+
+#, python-brace-format
+msgid "Invalid history revision: {revision}"
+msgstr "مراجعة التاريخ غير صالحة: {revision}"
+
+msgid "No upstream branch is configured. Pass the excluded history base explicitly."
+msgstr "لا يوجد فرع ⁦upstream⁩ مضبوط. مرّر قاعدة التاريخ المستبعدة صراحةً."
+
+#, python-brace-format
+msgid "History base {base} is not an ancestor of HEAD."
+msgstr "قاعدة التاريخ {base} ليست سلفًا لـ⁦HEAD⁩."
+
+#, python-brace-format
+msgid "History refinement currently requires a linear range; commit {commit} does not continue the expected parent chain."
+msgstr "يتطلب تنقيح التاريخ حاليًا نطاقًا خطيًا؛ لا يتابع الإيداع {commit} سلسلة الآباء المتوقعة."
+
+msgid "No commits found between the history base and HEAD."
+msgstr "لم يُعثر على إيداعات بين قاعدة التاريخ و⁦HEAD⁩."
+
+msgid "HEAD changed while the history snapshot was being built."
+msgstr "تغيّر ⁦HEAD⁩ أثناء بناء لقطة التاريخ."
+
+#, python-brace-format
+msgid "History changed while commit {commit} was scanned."
+msgstr "تغيّر التاريخ أثناء فحص الإيداع {commit}."
+
+#, python-brace-format
+msgid "Commit {commit} produced duplicate history unit IDs."
+msgstr "أنتج الإيداع {commit} معرّفات وحدات تاريخ مكررة."
+
+#, python-brace-format
+msgid "Invalid rewrite operation state: {detail}"
+msgstr "حالة عملية إعادة الكتابة غير صالحة: {detail}"
+
+msgid "Another rewrite operation is already active."
+msgstr "هناك عملية إعادة كتابة أخرى نشطة بالفعل."
+
+#, python-brace-format
+msgid "Could not inspect history ref {refname}."
+msgstr "تعذّر فحص مرجع التاريخ {refname}."
+
+#, python-brace-format
+msgid "History snapshot {base}..{tip}"
+msgstr "لقطة التاريخ {base}..{tip}"
+
+msgid "Branch: detached HEAD"
+msgstr "الفرع: ⁦HEAD⁩ منفصل"
+
+#, python-brace-format
+msgid "Branch: {branch}"
+msgstr "الفرع: {branch}"
+
+msgid "Mutation preconditions: ready"
+msgstr "شروط التعديل المسبقة: جاهزة"
+
+#, python-brace-format
+msgid "Mutation preconditions: blocked ({blockers})"
+msgstr "شروط التعديل المسبقة: محظورة ({blockers})"
+
+#, python-brace-format
+msgid "Wrote reusable rewrite plan to {path}."
+msgstr "كُتبت خطة إعادة الكتابة القابلة لإعادة الاستخدام إلى {path}."
+
+msgid "No rewrite operation is active."
+msgstr "لا توجد عملية إعادة كتابة نشطة."
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id}"
+msgstr "عملية إعادة الكتابة {operation_id}"
+
+#, python-brace-format
+msgid "Phase: {phase}"
+msgstr "المرحلة: {phase}"
+
+#, python-brace-format
+msgid "Progress: {completed} of {planned} output commit(s)"
+msgstr "التقدم: {completed} من {planned} إيداعات خرج"
+
+#, python-brace-format
+msgid "Manual recovery: {command}"
+msgstr "الاسترداد اليدوي: {command}"
+
+#, python-brace-format
+msgid "Last verified commit: {commit}"
+msgstr "آخر إيداع جرى التحقق منه: {commit}"
+
+#, python-brace-format
+msgid "Next action: {action}"
+msgstr "الإجراء التالي: {action}"
+
+#, python-brace-format
+msgid "Diagnostic: {diagnostic}"
+msgstr "التشخيص: {diagnostic}"
+
+msgid "Rewrite plan is valid."
+msgstr "خطة إعادة الكتابة صالحة."
+
+#, python-brace-format
+msgid "{count} commit."
+msgid_plural "{count} commits."
+msgstr[0] "لا إيداعات."
+msgstr[1] "إيداع واحد."
+msgstr[2] "إيداعان."
+msgstr[3] "{count} إيداعات."
+msgstr[4] "{count} إيداعًا."
+msgstr[5] "{count} إيداع."
+
+#, python-brace-format
+msgid "{count} exact patch unit."
+msgid_plural "{count} exact patch units."
+msgstr[0] "لا وحدات رقعة دقيقة."
+msgstr[1] "وحدة رقعة دقيقة واحدة."
+msgstr[2] "وحدتا رقعة دقيقتان."
+msgstr[3] "{count} وحدات رقعة دقيقة."
+msgstr[4] "{count} وحدة رقعة دقيقة."
+msgstr[5] "{count} وحدة رقعة دقيقة."
+
+#, python-brace-format
+msgid "Warning: {count} source signature cannot remain valid after rewriting."
+msgid_plural "Warning: {count} source signatures cannot remain valid after rewriting."
+msgstr[0] "تحذير: لا توجد توقيعات مصدر يمكن أن تبقى صالحة بعد إعادة الكتابة."
+msgstr[1] "تحذير: لا يمكن لتوقيع مصدر واحد أن يبقى صالحًا بعد إعادة الكتابة."
+msgstr[2] "تحذير: لا يمكن لتوقيعي مصدر أن يبقيا صالحين بعد إعادة الكتابة."
+msgstr[3] "تحذير: لا يمكن لـ{count} توقيعات مصدر أن تبقى صالحة بعد إعادة الكتابة."
+msgstr[4] "تحذير: لا يمكن لـ{count} توقيع مصدر أن يبقى صالحًا بعد إعادة الكتابة."
+msgstr[5] "تحذير: لا يمكن لـ{count} توقيع مصدر أن يبقى صالحًا بعد إعادة الكتابة."
+
+#, python-brace-format
+msgid "{count} source commit is conserved."
+msgid_plural "{count} source commits are conserved."
+msgstr[0] "لم تُحفظ إيداعات مصدر."
+msgstr[1] "حُفظ إيداع مصدر واحد."
+msgstr[2] "حُفظ إيداعا مصدر."
+msgstr[3] "حُفظت {count} إيداعات مصدر."
+msgstr[4] "حُفظ {count} إيداعًا مصدرًا."
+msgstr[5] "حُفظ {count} إيداع مصدر."
+
+# Rewrite executor translations.
+msgid "Build, verify, and atomically update the checked-out branch"
+msgstr "أنشئ ناتج إعادة الكتابة وتحقق منه وحدّث الفرع المسحوب ذريًا"
+
+msgid "Validated reusable rewrite plan"
+msgstr "خطة إعادة كتابة متحقق منها وقابلة لإعادة الاستخدام"
+
+msgid "Allow local rewriting of commits contained by remote REF"
+msgstr "اسمح بإعادة الكتابة المحلية للإيداعات التي يحتويها المرجع البعيد"
+
+msgid "Output a machine-readable operation result"
+msgstr "أخرج نتيجة عملية قابلة للقراءة آليًا"
+
+msgid "Resume the exact action in the active rewrite checkpoint"
+msgstr "استأنف الإجراء المحدد في نقطة تحقق إعادة الكتابة النشطة"
+
+msgid "Abort and conditionally restore the original branch tip"
+msgstr "ألغِ العملية واستعد طرف الفرع الأصلي عند استيفاء الشروط"
+
+msgid "Independently verify the active or latest rewrite output"
+msgstr "تحقق بصورة مستقلة من ناتج إعادة الكتابة النشط أو الأحدث"
+
+#, python-brace-format
+msgid "The message for history source {commit} cannot be encoded as {encoding}."
+msgstr "لا يمكن ترميز رسالة مصدر التاريخ {commit} بالترميز {encoding}."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected topology."
+msgstr "لإيداع ناتج إعادة الكتابة {commit} بنية غير متوقعة."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected identity metadata."
+msgstr "لإيداع ناتج إعادة الكتابة {commit} بيانات تعريف هوية غير متوقعة."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected message metadata."
+msgstr "لإيداع ناتج إعادة الكتابة {commit} بيانات تعريف رسالة غير متوقعة."
+
+#, python-brace-format
+msgid "Rewrite output commit {commit} has unexpected extra headers."
+msgstr "لإيداع ناتج إعادة الكتابة {commit} ترويسات إضافية غير متوقعة."
+
+#, python-brace-format
+msgid "Invalid allowed remote-tracking ref: {refname}"
+msgstr "مرجع التتبع البعيد المسموح به غير صالح: {refname}"
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id} cannot continue: {blockers}."
+msgstr "لا يمكن متابعة عملية إعادة الكتابة {operation_id}: ‏{blockers}."
+
+msgid "The pending rewrite output does not match deterministic replay."
+msgstr "لا يتطابق ناتج إعادة الكتابة المعلق مع إعادة التشغيل الحتمية."
+
+msgid "The rewrite output ref changed during commit publication."
+msgstr "تغير مرجع ناتج إعادة الكتابة أثناء نشر الإيداع."
+
+msgid "The rewrite output ref no longer names an owned output commit."
+msgstr "لم يعد مرجع ناتج إعادة الكتابة يشير إلى إيداع ناتج مملوك للعملية."
+
+msgid "Completed rewrite outputs do not match deterministic replay."
+msgstr "لا تتطابق نواتج إعادة الكتابة المكتملة مع إعادة التشغيل الحتمية."
+
+msgid "Built history commits do not match deterministic replay."
+msgstr "لا تتطابق إيداعات التاريخ المنشأة مع إعادة التشغيل الحتمية."
+
+msgid "The rewrite output ref changed before verification."
+msgstr "تغير مرجع ناتج إعادة الكتابة قبل التحقق."
+
+msgid "The rewrite operation has no output commit."
+msgstr "ليس لعملية إعادة الكتابة إيداع ناتج."
+
+msgid "The checked-out branch changed before finalization."
+msgstr "تغير الفرع الحالي قبل الإنهاء."
+
+msgid "The branch changed before the history rewrite was finalized."
+msgstr "تغير الفرع قبل اكتمال إعادة كتابة التاريخ."
+
+msgid "The branch no longer names an operation-owned commit."
+msgstr "لم يعد الفرع يشير إلى إيداع مملوك للعملية."
+
+#, python-brace-format
+msgid "Rewrite apply is blocked by: {blockers}."
+msgstr "تعذر تطبيق إعادة الكتابة بسبب: ‏{blockers}."
+
+msgid "Rewrite apply requires a checked-out local branch."
+msgstr "يتطلب تطبيق إعادة الكتابة فرعًا محليًا حاليًا."
+
+msgid "The pending output ref changed before rewrite abort."
+msgstr "تغير مرجع الناتج المعلق قبل إحباط عملية إعادة الكتابة."
+
+msgid "The output ref changed before rewrite abort."
+msgstr "تغير مرجع الناتج قبل إحباط عملية إعادة الكتابة."
+
+msgid "The recovery ref changed; automatic rewrite abort is unsafe."
+msgstr "تغير مرجع الاستعادة؛ إحباط عملية إعادة الكتابة تلقائيًا غير آمن."
+
+msgid "The checked-out branch changed; automatic rewrite abort is unsafe."
+msgstr "تغير الفرع الحالي؛ إحباط عملية إعادة الكتابة تلقائيًا غير آمن."
+
+msgid "The branch changed while restoring the original history."
+msgstr "تغير الفرع أثناء استعادة التاريخ الأصلي."
+
+#, python-brace-format
+msgid "The branch does not name an operation-owned tip; recover manually from {recovery_ref}."
+msgstr "لا يشير الفرع إلى طرف مملوك للعملية؛ استعده يدويًا من {recovery_ref}."
+
+msgid "No rewrite operation is available to verify."
+msgstr "لا تتوفر عملية إعادة كتابة للتحقق منها."
+
+msgid "The rewrite operation has no complete output to verify."
+msgstr "ليس لعملية إعادة الكتابة ناتج مكتمل للتحقق منه."
+
+#, python-brace-format
+msgid "Rewrite verification is blocked by: {blockers}."
+msgstr "تعذر التحقق من إعادة الكتابة بسبب: ‏{blockers}."
+
+msgid "The regenerated rewrite verification record changed."
+msgstr "تغير سجل التحقق من إعادة الكتابة المعاد إنشاؤه."
+
+#, python-brace-format
+msgid "Rewrite output {output} cannot replay source commit {commit} at its requested position."
+msgstr "لا يمكن لناتج إعادة الكتابة {output} إعادة تشغيل إيداع المصدر {commit} في الموضع المطلوب."
+
+#, python-brace-format
+msgid "Rewrite output {output} integrates non-empty sources into an empty commit."
+msgstr "يدمج ناتج إعادة الكتابة {output} مصادر غير فارغة في إيداع فارغ."
+
+#, python-brace-format
+msgid "The planned history replay produces tree {actual}, not the frozen final tree {expected}."
+msgstr "تنتج إعادة تشغيل التاريخ المخططة الشجرة {actual}، لا الشجرة النهائية المجمدة {expected}."
+
+#, python-brace-format
+msgid "Rewrite operation {operation_id}: {phase}"
+msgstr "عملية إعادة الكتابة {operation_id}: ‏{phase}"
+
+#, python-brace-format
+msgid "Output tip: {commit}"
+msgstr "طرف الناتج: {commit}"
+
+msgid "Original branch tip restored."
+msgstr "تمت استعادة طرف الفرع الأصلي."
+
+#, python-brace-format
+msgid "Verified final tree: {tree}"
+msgstr "الشجرة النهائية المتحقق منها: {tree}"
+
+#, python-brace-format
+msgid "Removed {count} invalidated source signature."
+msgid_plural "Removed {count} invalidated source signatures."
+msgstr[0] "لم تُزل أي توقيعات مصدر أُبطلت صلاحيتها."
+msgstr[1] "أُزيل توقيع مصدر واحد أُبطلت صلاحيته."
+msgstr[2] "أُزيل توقيعا مصدر أُبطلت صلاحيتهما."
+msgstr[3] "أُزيلت {count} توقيعات مصدر أُبطلت صلاحيتها."
+msgstr[4] "أُزيل {count} توقيع مصدر أُبطلت صلاحيته."
+msgstr[5] "أُزيل {count} توقيع مصدر أُبطلت صلاحيته."
+
+#, python-brace-format
+msgid "Latest rewrite operation {operation_id}"
+msgstr "أحدث عملية إعادة كتابة {operation_id}"
+
+msgid "Resume preconditions"
+msgstr "شروط الاستئناف المسبقة"
+
+msgid "Verification preconditions"
+msgstr "شروط التحقق المسبقة"
+
+#, python-brace-format
+msgid "{label}: ready"
+msgstr "{label}: جاهز"
+
+#, python-brace-format
+msgid "{label}: blocked ({blockers})"
+msgstr "{label}: محظور (‏{blockers})"
+
+# History split and reorder translations.
+#, python-brace-format
+msgid "Rewrite output {output} cannot replay unit {unit}: {status} ({detail})."
+msgstr "لا يمكن لناتج إعادة الكتابة {output} إعادة تشغيل الوحدة {unit}: {status} ({detail})."
+
+#, python-brace-format
+msgid "Rewrite output {output} consumes non-empty units into an empty commit."
+msgstr "يستهلك ناتج إعادة الكتابة {output} وحدات غير فارغة في إيداع فارغ."
+
+#, python-brace-format
+msgid "History source {commit} produced different patch units during replay."
+msgstr "أنتج مصدر التاريخ {commit} وحدات رقعة مختلفة أثناء إعادة التشغيل."
+
+msgid "Rewrite operation was already complete; abort made no changes."
+msgstr "كانت عملية إعادة الكتابة مكتملة بالفعل؛ ولم يُجرِ الإلغاء أي تغييرات."
+
+# Rewrite resolution workspace translations.
+msgid "Create or advance an external rewrite-resolution workspace"
+msgstr "إنشاء مساحة عمل خارجية لحل إعادة الكتابة أو التقدم فيها"
+
+msgid "Reviewed rewrite plan containing resolved outputs"
+msgstr "خطة إعادة كتابة مراجعة تحتوي على نواتج محلولة"
+
+msgid "Private external directory for resolution artifacts"
+msgstr "دليل خارجي خاص لعناصر الحل"
+
+msgid "Import the current result and advance to the next output"
+msgstr "استيراد النتيجة الحالية والتقدم إلى الناتج التالي"
+
+msgid "Output a machine-readable resolution checkpoint"
+msgstr "إخراج نقطة تحقق للحل قابلة للقراءة آليًا"
+
+#, python-brace-format
+msgid "Rewrite output {output} resolution did not produce a full tree object ID."
+msgstr "لم يُنتج حل ناتج إعادة الكتابة {output} معرّفًا كاملًا لكائن شجرة."
+
+#, python-brace-format
+msgid "Rewrite output {output} resolution did not produce an accessible tree object."
+msgstr "لم يُنتج حل ناتج إعادة الكتابة {output} كائن شجرة يمكن الوصول إليه."
+
+#, python-brace-format
+msgid "Rewrite output {output} requires an explicit resolution workspace."
+msgstr "يتطلب ناتج إعادة الكتابة {output} مساحة عمل صريحة للحل."
+
+#, python-brace-format
+msgid "Rewrite output {output} resolves non-empty units into an empty commit."
+msgstr "يحل ناتج إعادة الكتابة {output} وحدات غير فارغة في إيداع فارغ."
+
+#, python-brace-format
+msgid "Invalid resolution artifact '{path}': {detail}"
+msgstr "عنصر حل غير صالح '{path}': {detail}"
+
+msgid "path must be absolute"
+msgstr "يجب أن يكون المسار مطلقًا"
+
+msgid "path must not contain aliases or traversal"
+msgstr "يجب ألا يحتوي المسار على أسماء بديلة أو اجتياز"
+
+msgid "platform does not support secure directory access"
+msgstr "لا تدعم المنصة الوصول الآمن إلى الأدلة"
+
+#, python-brace-format
+msgid "path must not contain aliases, traversal, or symlinks ({error})"
+msgstr "يجب ألا يحتوي المسار على أسماء بديلة أو اجتياز أو روابط رمزية ({error})"
+
+msgid "path must be a directory"
+msgstr "يجب أن يكون المسار دليلًا"
+
+msgid "directory permissions must be 0700"
+msgstr "يجب أن تكون أذونات الدليل ⁦0700⁩"
+
+msgid "directory path changed during artifact access"
+msgstr "تغيّر مسار الدليل أثناء الوصول إلى العنصر"
+
+msgid "path must not contain aliases, traversal, or symlinks"
+msgstr "يجب ألا يحتوي المسار على أسماء بديلة أو اجتياز أو روابط رمزية"
+
+msgid "path must be a regular file"
+msgstr "يجب أن يكون المسار ملفًا عاديًا"
+
+msgid "path must be owned by the current user"
+msgstr "يجب أن يكون المسار مملوكًا للمستخدم الحالي"
+
+msgid "file must not have hard links"
+msgstr "يجب ألا تكون للملف روابط صلبة"
+
+msgid "file permissions must be 0600"
+msgstr "يجب أن تكون أذونات الملف ⁦0600⁩"
+
+msgid "cannot create the filesystem root"
+msgstr "لا يمكن إنشاء جذر نظام الملفات"
+
+msgid "directory changed while it was opened"
+msgstr "تغيّر الدليل أثناء فتحه"
+
+#, python-brace-format
+msgid "cannot create private directory: {error}"
+msgstr "لا يمكن إنشاء الدليل الخاص: {error}"
+
+msgid "directory exceeds the supported entry-count limit"
+msgstr "يتجاوز الدليل الحد المدعوم لعدد الإدخالات"
+
+#, python-brace-format
+msgid "cannot enumerate directory: {error}"
+msgstr "لا يمكن تعداد الدليل: {error}"
+
+msgid "locked and final directories must be distinct siblings"
+msgstr "يجب أن يكون الدليل المقفل والدليل النهائي شقيقين مختلفين"
+
+#, python-brace-format
+msgid "cannot open workspace lock: {error}"
+msgstr "لا يمكن فتح قفل مساحة العمل: {error}"
+
+#, python-brace-format
+msgid "cannot authenticate workspace lock: {error}"
+msgstr "لا يمكن مصادقة قفل مساحة العمل: {error}"
+
+msgid "workspace lock changed while it was opened"
+msgstr "تغيّر قفل مساحة العمل أثناء فتحه"
+
+msgid "workspace is already in use"
+msgstr "مساحة العمل قيد الاستخدام بالفعل"
+
+#, python-brace-format
+msgid "cannot lock workspace: {error}"
+msgstr "لا يمكن قفل مساحة العمل: {error}"
+
+#, python-brace-format
+msgid "cannot re-authenticate workspace lock: {error}"
+msgstr "لا يمكن إعادة مصادقة قفل مساحة العمل: {error}"
+
+msgid "workspace lock changed while it was held"
+msgstr "تغيّر قفل مساحة العمل أثناء الاحتفاظ به"
+
+msgid "staging and destination must be distinct siblings"
+msgstr "يجب أن يكون دليل التجهيز والوجهة شقيقين مختلفين"
+
+#, python-brace-format
+msgid "cannot inspect staging directory: {error}"
+msgstr "لا يمكن فحص دليل التجهيز: {error}"
+
+#, python-brace-format
+msgid "cannot open staging directory: {error}"
+msgstr "لا يمكن فتح دليل التجهيز: {error}"
+
+msgid "staging directory changed while it was opened"
+msgstr "تغيّر دليل التجهيز أثناء فتحه"
+
+#, python-brace-format
+msgid "cannot inspect destination: {error}"
+msgstr "لا يمكن فحص الوجهة: {error}"
+
+msgid "destination already exists"
+msgstr "الوجهة موجودة بالفعل"
+
+#, python-brace-format
+msgid "cannot re-authenticate staging directory: {error}"
+msgstr "لا يمكن إعادة مصادقة دليل التجهيز: {error}"
+
+msgid "staging directory changed before publication"
+msgstr "تغيّر دليل التجهيز قبل النشر"
+
+#, python-brace-format
+msgid "cannot publish directory: {error}"
+msgstr "لا يمكن نشر الدليل: {error}"
+
+msgid "published directory identity changed"
+msgstr "تغيّرت هوية الدليل المنشور"
+
+#, python-brace-format
+msgid "cannot inspect file: {error}"
+msgstr "لا يمكن فحص الملف: {error}"
+
+#, python-brace-format
+msgid "cannot inspect interrupted write: {error}"
+msgstr "لا يمكن فحص الكتابة المتقطعة: {error}"
+
+#, python-brace-format
+msgid "cannot open interrupted write: {error}"
+msgstr "لا يمكن فتح الكتابة المتقطعة: {error}"
+
+msgid "interrupted write changed before recovery"
+msgstr "تغيّرت الكتابة المتقطعة قبل الاسترداد"
+
+#, python-brace-format
+msgid "cannot remove interrupted write: {error}"
+msgstr "لا يمكن إزالة الكتابة المتقطعة: {error}"
+
+msgid "metadata exceeds the supported size limit"
+msgstr "تتجاوز البيانات الوصفية حد الحجم المدعوم"
+
+#, python-brace-format
+msgid "metadata cannot be decoded: {error}"
+msgstr "لا يمكن فك ترميز البيانات الوصفية: {error}"
+
+#, python-brace-format
+msgid "cannot open file: {error}"
+msgstr "لا يمكن فتح الملف: {error}"
+
+msgid "file changed while it was opened"
+msgstr "تغيّر الملف أثناء فتحه"
+
+msgid "file grew while it was read"
+msgstr "ازداد حجم الملف أثناء قراءته"
+
+msgid "file changed while it was read"
+msgstr "تغيّر الملف أثناء قراءته"
+
+#, python-brace-format
+msgid "cannot verify file after reading: {error}"
+msgstr "لا يمكن التحقق من الملف بعد قراءته: {error}"
+
+msgid "file path changed while it was read"
+msgstr "تغيّر مسار الملف أثناء قراءته"
+
+msgid "content does not match its expected size and SHA-256"
+msgstr "لا يطابق المحتوى حجمه وبصمة ⁦SHA-256⁩ المتوقعتين"
+
+msgid "destination appeared while it was being written"
+msgstr "ظهرت الوجهة أثناء الكتابة"
+
+msgid "destination changed while it was being written"
+msgstr "تغيّرت الوجهة أثناء الكتابة"
+
+#, python-brace-format
+msgid "cannot open destination: {error}"
+msgstr "لا يمكن فتح الوجهة: {error}"
+
+msgid "destination changed while it was opened"
+msgstr "تغيّرت الوجهة أثناء فتحها"
+
+#, python-brace-format
+msgid "cannot authenticate displaced destination: {error}"
+msgstr "لا يمكن مصادقة الوجهة المزاحة: {error}"
+
+#, python-brace-format
+msgid "{detail} ({error})"
+msgstr "{detail} ({error})"
+
+#, python-brace-format
+msgid "cannot inspect raced destination: {error}"
+msgstr "لا يمكن فحص الوجهة التي تعرضت لسباق: {error}"
+
+msgid "published artifact changed before exchange rollback"
+msgstr "تغيّر العنصر المنشور قبل التراجع عن التبديل"
+
+msgid "raced destination changed before exchange rollback"
+msgstr "تغيّرت الوجهة التي تعرضت لسباق قبل التراجع عن التبديل"
+
+#, python-brace-format
+msgid "cannot roll back raced destination: {error}"
+msgstr "لا يمكن التراجع عن الوجهة التي تعرضت لسباق: {error}"
+
+msgid "temporary artifact changed during exchange rollback"
+msgstr "تغيّر العنصر المؤقت أثناء التراجع عن التبديل"
+
+msgid "raced destination changed during exchange rollback"
+msgstr "تغيّرت الوجهة التي تعرضت لسباق أثناء التراجع عن التبديل"
+
+#, python-brace-format
+msgid "cannot create temporary artifact: {error}"
+msgstr "لا يمكن إنشاء العنصر المؤقت: {error}"
+
+msgid "temporary artifact changed while it was opened"
+msgstr "تغيّر العنصر المؤقت أثناء فتحه"
+
+msgid "artifact exceeds the supported size limit"
+msgstr "يتجاوز العنصر حد الحجم المدعوم"
+
+msgid "temporary artifact path changed while it was written"
+msgstr "تغيّر مسار العنصر المؤقت أثناء كتابته"
+
+msgid "temporary artifact size changed"
+msgstr "تغيّر حجم العنصر المؤقت"
+
+#, python-brace-format
+msgid "cannot publish artifact: {error}"
+msgstr "لا يمكن نشر العنصر: {error}"
+
+msgid "published artifact identity changed"
+msgstr "تغيّرت هوية العنصر المنشور"
+
+msgid "destination changed during atomic replacement"
+msgstr "تغيّرت الوجهة أثناء الاستبدال الذري"
+
+#, python-brace-format
+msgid "cannot remove displaced destination: {error}"
+msgstr "لا يمكن إزالة الوجهة المزاحة: {error}"
+
+msgid "source and destination must differ"
+msgstr "يجب أن يختلف المصدر والوجهة"
+
+#, python-brace-format
+msgid "Invalid rewrite resolution workspace: {detail}"
+msgstr "مساحة عمل حل إعادة الكتابة غير صالحة: {detail}"
+
+msgid "workspace path must be a non-empty string"
+msgstr "يجب أن يكون مسار مساحة العمل سلسلة غير فارغة"
+
+#, python-brace-format
+msgid "{location} is not valid strict JSON ({error})"
+msgstr "{location} ليس ⁦JSON⁩ صارمًا صالحًا ({error})"
+
+#, python-brace-format
+msgid "{location} does not match its immutable binding"
+msgstr "لا يطابق {location} ارتباطه غير القابل للتغيير"
+
+#, python-brace-format
+msgid "{location} has the wrong entries ({detail})"
+msgstr "يحتوي {location} على إدخالات خاطئة ({detail})"
+
+#, python-brace-format
+msgid "cannot inspect workspace path ({error})"
+msgstr "لا يمكن فحص مسار مساحة العمل ({error})"
+
+#, python-brace-format
+msgid "source unit {unit} has unsupported kind {kind}"
+msgstr "لوحدة المصدر {unit} نوع غير مدعوم {kind}"
+
+#, python-brace-format
+msgid "source unit {unit} has unsupported coupling {reason}"
+msgstr "لوحدة المصدر {unit} اقتران غير مدعوم {reason}"
+
+#, python-brace-format
+msgid "{context} path {path!r} has unsupported kind or mode {mode}"
+msgstr "لمسار {context}‏ {path!r} نوع أو نمط غير مدعوم {mode}"
+
+#, python-brace-format
+msgid "source blob {blob} is not accessible"
+msgstr "لا يمكن الوصول إلى كائن بيانات المصدر {blob}"
+
+msgid "Git returned the wrong source blob"
+msgstr "أرجع ⁦Git⁩ كائن بيانات المصدر الخطأ"
+
+msgid "Git returned duplicate source blobs"
+msgstr "أرجع ⁦Git⁩ كائنات بيانات مصدر مكررة"
+
+msgid "source blob size changed while it was exported"
+msgstr "تغيّر حجم كائن بيانات المصدر أثناء تصديره"
+
+msgid "resolution reference artifact names collided"
+msgstr "تعارضت أسماء عناصر مرجع الحل"
+
+#, python-brace-format
+msgid "staged output {output} contains unexpected entries"
+msgstr "يحتوي الناتج المجهّز {output} على إدخالات غير متوقعة"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to be created"
+msgstr "مسار النتيجة {path!r} غير مصرّح بإنشائه"
+
+#, python-brace-format
+msgid "result path {path!r} uses an unauthorized creation mode"
+msgstr "يستخدم مسار النتيجة {path!r} نمط إنشاء غير مصرّح به"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to be deleted"
+msgstr "مسار النتيجة {path!r} غير مصرّح بحذفه"
+
+#, python-brace-format
+msgid "authorized result path {path!r} did not change"
+msgstr "لم يتغيّر مسار النتيجة المصرّح به {path!r}"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to change mode"
+msgstr "مسار النتيجة {path!r} غير مصرّح له بتغيير النمط"
+
+#, python-brace-format
+msgid "result path {path!r} uses an unauthorized changed mode"
+msgstr "يستخدم مسار النتيجة {path!r} نمطًا متغيّرًا غير مصرّح به"
+
+#, python-brace-format
+msgid "result path {path!r} is not authorized to change content"
+msgstr "مسار النتيجة {path!r} غير مصرّح له بتغيير المحتوى"
+
+msgid "an absent result path has an artifact digest"
+msgstr "لمسار نتيجة غائب بصمة عنصر"
+
+msgid "resolved output would be an empty commit"
+msgstr "سيكون الناتج المحلول إيداعًا فارغًا"
+
+#, python-brace-format
+msgid "{location} has the wrong path inventory"
+msgstr "يحتوي {location} على جرد مسارات خاطئ"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] must be an object"
+msgstr "يجب أن يكون ⁦{location}.paths[{index}]⁩ كائنًا"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] has the wrong fields"
+msgstr "يحتوي ⁦{location}.paths[{index}]⁩ على حقول خاطئة"
+
+#, python-brace-format
+msgid "{location}.paths[{index}] does not match result.json"
+msgstr "لا يطابق ⁦{location}.paths[{index}]⁩ الملف ⁦result.json⁩"
+
+msgid "an absent receipt path has an artifact digest"
+msgstr "لمسار إيصال غائب بصمة عنصر"
+
+msgid "a present receipt path has an invalid artifact digest"
+msgstr "لمسار إيصال موجود بصمة عنصر غير صالحة"
+
+msgid "resolution replay used the wrong document or environment"
+msgstr "استخدمت إعادة تشغيل الحل المستند أو البيئة الخطأ"
+
+#, python-brace-format
+msgid "output {output} resolution is missing"
+msgstr "حل الناتج {output} مفقود"
+
+#, python-brace-format
+msgid "workspace outputs contain unexpected entries: {entries}"
+msgstr "تحتوي نواتج مساحة العمل على إدخالات غير متوقعة: {entries}"
+
+#, python-brace-format
+msgid "output {output} result.json changed after acceptance"
+msgstr "تغيّر ملف ⁦result.json⁩ للناتج {output} بعد القبول"
+
+#, python-brace-format
+msgid "output {output} receipt.json is not authentic"
+msgstr "ملف ⁦receipt.json⁩ للناتج {output} غير أصيل"
+
+#, python-brace-format
+msgid "output {output} has not been accepted"
+msgstr "لم يُقبل الناتج {output}"
+
+msgid "plan does not contain any RESOLVED outputs"
+msgstr "لا تحتوي الخطة على أي نواتج ⁦RESOLVED⁩"
+
+msgid "--accept requires an existing workspace"
+msgstr "يتطلب الخيار ⁦--accept⁩ مساحة عمل موجودة"
+
+#, python-brace-format
+msgid "Rewrite resolution workspace is complete: {workspace}"
+msgstr "اكتملت مساحة عمل حل إعادة الكتابة: {workspace}"
+
+#, python-brace-format
+msgid "{count} resolved output recorded."
+msgid_plural "{count} resolved outputs recorded."
+msgstr[0] "لم يُسجّل أي ناتج محلول."
+msgstr[1] "سُجّل ناتج محلول واحد."
+msgstr[2] "سُجّل ناتجان محلولان."
+msgstr[3] "سُجّلت {count} نواتج محلولة."
+msgstr[4] "سُجّل {count} ناتجًا محلولًا."
+msgstr[5] "سُجّل {count} ناتج محلول."
+
+#, python-brace-format
+msgid "Rewrite output {number} needs resolution ({key})."
+msgstr "يحتاج ناتج إعادة الكتابة {number} إلى حل ({key})."
+
+#, python-brace-format
+msgid "Inspect resolution request: {path}"
+msgstr "افحص طلب الحل: {path}"
+
+#, python-brace-format
+msgid "Edit resolution metadata: {path}"
+msgstr "حرّر البيانات الوصفية للحل: {path}"
+
+#, python-brace-format
+msgid "Edit resolved artifacts in: {path}"
+msgstr "حرّر العناصر المحلولة في: {path}"
+
+msgid "Authorized path:"
+msgid_plural "Authorized paths:"
+msgstr[0] "لا مسارات مصرّح بها:"
+msgstr[1] "المسار المصرّح به:"
+msgstr[2] "المساران المصرّح بهما:"
+msgstr[3] "المسارات المصرّح بها:"
+msgstr[4] "المسارات المصرّح بها:"
+msgstr[5] "المسارات المصرّح بها:"
+
+#, python-brace-format
+msgid "Then run: {command}"
+msgstr "ثم شغّل: {command}"
+
+# Completed resolution validation translations.
+msgid "Completed private rewrite-resolution workspace"
+msgstr "مساحة عمل خاصة مكتملة لحل إعادة الكتابة"
+
+#, python-brace-format
+msgid "{count} resolved output is authenticated."
+msgid_plural "{count} resolved outputs are authenticated."
+msgstr[0] "تمت مصادقة {count} من النواتج المحلولة."
+msgstr[1] "تمت مصادقة {count} ناتج محلول."
+msgstr[2] "تمت مصادقة {count} ناتجين محلولين."
+msgstr[3] "تمت مصادقة {count} نواتج محلولة."
+msgstr[4] "تمت مصادقة {count} ناتجًا محلولًا."
+msgstr[5] "تمت مصادقة {count} ناتج محلول."
+
+#, python-brace-format
+msgid "Resolution workspace: {workspace}"
+msgstr "مساحة عمل الحل: {workspace}"
+
+#, python-brace-format
+msgid "Resolution completion SHA-256: {sha256}"
+msgstr "بصمة إكمال الحل ⁦SHA-256⁩: {sha256}"
+
+# Frozen history authentication translations.
+#, python-brace-format
+msgid "The raw message for history source {commit} no longer matches its frozen digest."
+msgstr "لم تعد الرسالة الخام لمصدر التاريخ {commit} تطابق بصمتها المجمّدة."
+
+msgid "The persisted rewrite plan no longer matches its checkpoint."
+msgstr "لم تعد خطة إعادة الكتابة المحفوظة تطابق نقطة التحقق الخاصة بها."
+
+# Descriptor-pinned private publication translations.
+#, python-brace-format
+msgid "cannot authenticate locked directory: {error}"
+msgstr "لا يمكن مصادقة الدليل المقفل: {error}"
+
+msgid "staging directory is not the locked workspace"
+msgstr "دليل التجهيز ليس مساحة العمل المقفلة"
+
+# Persistent rewrite output verification translations.
+msgid "The persistent rewrite output object closure is incomplete or invalid."
+msgstr "إغلاق كائنات ناتج إعادة الكتابة الدائم غير مكتمل أو غير صالح."
+
+msgid "Git returned malformed object closure data while verifying rewrite output."
+msgstr "أعاد ⁦Git⁩ بيانات مشوّهة لإغلاق الكائنات أثناء التحقق من ناتج إعادة الكتابة."
+
+# Operation-owned resolution translations.
+msgid "Rewrite resolution provenance does not match the persisted plan."
+msgstr "لا يتطابق أصل حل إعادة الكتابة مع الخطة المحفوظة."
+
+msgid "The operation-owned rewrite resolution workspace changed."
+msgstr "تغيّرت مساحة عمل حل إعادة الكتابة المملوكة للعملية."
+
+msgid "source and destination workspaces must be disjoint"
+msgstr "يجب أن تكون مساحتا عمل المصدر والوجهة منفصلتين"
+
+msgid "destination workspace already exists"
+msgstr "مساحة عمل الوجهة موجودة بالفعل"
+
+msgid "source resolution workspace changed while it was copied"
+msgstr "تغيّرت مساحة عمل حل المصدر أثناء نسخها"
+
+msgid "owned resolution copy does not match its authenticated source"
+msgstr "لا تطابق نسخة الحل المملوكة مصدرها المصادق عليه"

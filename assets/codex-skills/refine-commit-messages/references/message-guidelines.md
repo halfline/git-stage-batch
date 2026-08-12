@@ -82,8 +82,11 @@ Use three body paragraphs for one standalone commit:
 Use a fourth body paragraph for every commit in a multi-commit series. It
 connects this commit to the series rather than restating the third paragraph.
 
-Avoid merging the selected state and problem with `but` or `however`. Avoid
-bare imperative solution prose. Avoid reconstruction mechanics such as
+Avoid merging the selected state and problem with `but` or `however`. Use
+imperative voice only in the commit summary. Write every commit-body sentence
+as an indicative, declarative statement, including the selected-state,
+problem, `This commit`, and series-transition paragraphs. Never use a body
+sentence to instruct the reader. Avoid reconstruction mechanics such as
 `fixup`, `squash`, `rebase`, `split`, `cleanup`, `decomposition`, or
 `reconstruction` unless those are literally product-domain concepts.
 

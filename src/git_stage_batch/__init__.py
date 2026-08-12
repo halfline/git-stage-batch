@@ -1,4 +1,4 @@
-"""Non-interactive hunk-by-hunk and line-by-line staging for git."""
+"""Fine-grained Git staging and deterministic draft-history refinement."""
 
 try:
     from ._version import __version__

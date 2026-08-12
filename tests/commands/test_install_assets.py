@@ -281,7 +281,7 @@ class TestCommandInstallAssets:
         assert (skill_dir / "refine-commit-messages" / "SKILL.md").exists()
         assert (skill_dir / "refine-history" / "SKILL.md").exists()
         assert (
-            skill_dir / "refine-history" / "scripts" / "refine-history-checkpoint.py"
+            skill_dir / "refine-history" / "scripts" / "verify-head-snapshot.py"
         ).exists()
         assert sorted(path.name for path in skill_dir.iterdir()) == [
             "decompose-and-commit-unstaged-changes",
@@ -406,17 +406,15 @@ class TestCommandInstallAssets:
         codex_messages = temp_git_repo / ".agents" / "skills" / "refine-commit-messages"
         assert (claude_dir / "SKILL.md").exists()
         assert (claude_dir / "references" / "rewrite-procedures.md").exists()
-        assert (claude_dir / "scripts" / "refine-history-checkpoint.py").exists()
+        assert (claude_dir / "scripts" / "verify-head-snapshot.py").exists()
+        assert not (claude_dir / "scripts" / "refine-history-checkpoint.py").exists()
         assert (codex_dir / "SKILL.md").exists()
         assert (codex_dir / "agents" / "openai.yaml").exists()
         assert (codex_dir / "references" / "rewrite-procedures.md").exists()
-        assert (codex_dir / "scripts" / "refine-history-checkpoint.py").exists()
-        assert (
-            claude_messages / "scripts" / "refine-commit-messages-checkpoint.py"
-        ).exists()
-        assert (
-            codex_messages / "scripts" / "refine-commit-messages-checkpoint.py"
-        ).exists()
+        assert (codex_dir / "scripts" / "verify-head-snapshot.py").exists()
+        assert not (codex_dir / "scripts" / "refine-history-checkpoint.py").exists()
+        assert not (claude_messages / "scripts").exists()
+        assert not (codex_messages / "scripts").exists()
 
     def test_install_single_refine_commit_messages_skills(self, temp_git_repo):
         """Message refinement should install independently for both assistants."""
@@ -427,12 +425,11 @@ class TestCommandInstallAssets:
         codex_dir = temp_git_repo / ".agents" / "skills" / "refine-commit-messages"
         assert (claude_dir / "SKILL.md").exists()
         assert (claude_dir / "references" / "message-guidelines.md").exists()
-        assert (
-            claude_dir / "scripts" / "refine-commit-messages-checkpoint.py"
-        ).exists()
+        assert not (claude_dir / "scripts").exists()
         assert (codex_dir / "SKILL.md").exists()
         assert (codex_dir / "agents" / "openai.yaml").exists()
         assert (codex_dir / "references" / "message-guidelines.md").exists()
+        assert not (codex_dir / "scripts").exists()
         claude_drafter = (
             temp_git_repo / ".claude" / "agents" / "commit-message-drafter.md"
         ).read_text(encoding="utf-8")
@@ -496,7 +493,7 @@ class TestCommandInstallAssets:
         assert (skill_dir / "refine-history" / "SKILL.md").exists()
         assert (skill_dir / "refine-commit-messages" / "SKILL.md").exists()
         assert (
-            skill_dir / "refine-history" / "scripts" / "refine-history-checkpoint.py"
+            skill_dir / "refine-history" / "scripts" / "verify-head-snapshot.py"
         ).exists()
         assert sorted(path.name for path in skill_dir.iterdir()) == [
             "decompose-and-commit-unstaged-changes",

@@ -85,6 +85,23 @@ class TestGitIndexPlumbing:
         assert result.stdout == "from temp index\n"
         assert run_git_command(["status", "--short"]).stdout == ""
 
+    def test_temp_index_uses_dynamic_default_scratch_parent(
+        self,
+        temp_git_repo,
+        tmp_path,
+        monkeypatch,
+    ):
+        """Temporary Git indexes should use the current scratch override."""
+        scratch = tmp_path / "scratch"
+        scratch.mkdir()
+        monkeypatch.setenv("TMPDIR", str(scratch))
+
+        with temp_git_index() as env:
+            temp_index_path = Path(env["GIT_INDEX_FILE"])
+            assert temp_index_path.parent == scratch
+
+        assert not temp_index_path.exists()
+
     def test_update_index_cacheinfo_handles_comma_paths(self, temp_git_repo):
         """Test that cacheinfo paths are passed as separate arguments."""
         blob_sha = create_git_blob([b"comma path\n"])

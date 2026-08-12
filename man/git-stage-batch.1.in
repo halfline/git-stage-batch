@@ -1,15 +1,17 @@
-.TH GIT-STAGE-BATCH 1 "May 2026" "git-stage-batch @VERSION@" "User Commands"
+.TH GIT-STAGE-BATCH 1 "August 2026" "git-stage-batch @VERSION@" "User Commands"
 .SH NAME
-git-stage-batch \- hunk-by-hunk and line-by-line staging for git
+git-stage-batch \- Fine-grained Git staging and deterministic draft-history refinement
 .SH SYNOPSIS
 .B git-stage-batch
 [\fB\-C\fR \fIPATH\fR] [\fB\-i\fR] [\fB\-\-version\fR]
 [\fICOMMAND\fR [\fIARGS\fR...]]
 .SH DESCRIPTION
 .B git-stage-batch
-provides a command-oriented workflow for reviewing and staging git changes.
-It presents hunks, files, and batches as numbered review targets so changes
-can be included, skipped, discarded, saved for later, or moved between batches.
+provides fine-grained Git staging and deterministic draft-history refinement.
+It presents hunks, files, and batches as numbered review targets so
+uncommitted changes can be included, skipped, discarded, saved for later, or
+moved between batches. Its rewrite workflow validates a semantic plan for a
+clean linear draft range before atomically updating the checked-out branch.
 .PP
 Session and repository compatibility state is maintained under
 .BR .git/git-stage-batch/ .
@@ -119,8 +121,15 @@ Permanently exclude a file from future sessions.
 .BR git-stage-batch-unblock-file (1)
 Allow a blocked file to be reviewed again.
 .TP
+.BR git-stage-batch-fixup (1)
+Suggest fixup targets or create grouped fixup commits from staged changes.
+.TP
+.BR git-stage-batch-rewrite (1)
+Scan, resolve, validate, apply, or inspect a deterministic history refinement.
+.TP
 .BR git-stage-batch-suggest-fixup (1)
-Suggest a commit to fix up with the selected hunk.
+Compatible spelling for
+.BR "git-stage-batch fixup suggest" .
 .TP
 .BR git-stage-batch-install-assets (1)
 Install bundled assistant assets into the repository.
@@ -180,4 +189,5 @@ License: MIT
 .BR git-stage-batch-skip (1),
 .BR git-stage-batch-discard (1),
 .BR git-stage-batch-status (1),
+.BR git-stage-batch-rewrite (1),
 .BR git-stage-batch-journal (1)

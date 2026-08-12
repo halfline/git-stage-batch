@@ -42,17 +42,22 @@ def display_path(path: str) -> str:
     except UnicodeDecodeError:
         return quote_path_token(raw_path).decode("ascii")
 
-    if decoded_path and all(character.isprintable() for character in decoded_path):
-        return decoded_path
+    return terminal_safe_text(decoded_path)
+
+
+def terminal_safe_text(value: str) -> str:
+    """Return text without literal terminal controls or bidi formatting."""
+    if value and all(character.isprintable() for character in value):
+        return value
     # JSON leaves most non-ASCII format controls literal when ensure_ascii is
-    # disabled. Escape those controls so a quoted pathname cannot alter the
+    # disabled. Escape those controls so quoted text cannot alter the
     # terminal's bidirectional state or hide characters, while keeping ordinary
     # printable Unicode readable beside C0 escapes such as ``\n``.
     has_non_ascii_control = any(
         ord(character) >= 0x20 and not character.isprintable()
-        for character in decoded_path
+        for character in value
     )
-    return json.dumps(decoded_path, ensure_ascii=has_non_ascii_control)
+    return json.dumps(value, ensure_ascii=has_non_ascii_control)
 
 
 def terminal_safe_shell_quote(value: str) -> str:

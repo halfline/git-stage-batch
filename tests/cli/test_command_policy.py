@@ -64,3 +64,13 @@ def test_regular_status_uses_repository_and_session_lock():
 
     assert policy_requires_repository(policy, args) is True
     assert policy_uses_session_lock(policy, args) is True
+
+
+def test_history_verify_allows_foreign_owner_under_session_lock():
+    args = _parse("rewrite", "verify")
+    policy = policy_for_args(args)
+
+    assert policy.session_ownership is SessionOwnershipPolicy.ALLOW_FOREIGN
+    assert policy.locking is LockingPolicy.SESSION
+    assert policy.repository is RepositoryPolicy.REQUIRED
+    assert policy_uses_session_lock(policy, args) is True

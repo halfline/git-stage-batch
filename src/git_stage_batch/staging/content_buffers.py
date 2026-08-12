@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Collection, Iterator, Sequence
 
 from ..core.models import LineEntry, LineLevelChange
 from ..core.replacement import (
@@ -325,7 +325,7 @@ def _new_index_for_old_anchor(
 
 def _target_index_line_contents(
     line_changes: LineLevelChange,
-    include_ids: set[int],
+    include_ids: Collection[int] | None,
     base_lines: Sequence[bytes],
     base_line_count: int,
 ) -> Iterator[bytes]:
@@ -333,13 +333,19 @@ def _target_index_line_contents(
 
     base_pointer = line_changes.header.old_prefix_line_count()
 
+    def line_is_included(line_entry: LineEntry) -> bool:
+        return (
+            line_entry.id is not None
+            and (include_ids is None or line_entry.id in include_ids)
+        )
+
     def flush_pending_additions(before_index: int) -> Iterator[bytes]:
         nonlocal pending_addition_start
         if pending_addition_start is None:
             return
         for pending_index in range(pending_addition_start, before_index):
             pending_line = line_changes.lines[pending_index]
-            if pending_line.kind == "+" and pending_line.id in include_ids:
+            if pending_line.kind == "+" and line_is_included(pending_line):
                 yield _line_entry_content(pending_line)
         pending_addition_start = None
 
@@ -383,13 +389,13 @@ def _target_index_line_contents(
                 raise ValueError(
                     _("Index content no longer matches the selected line view")
                 )
-            if line_entry.id in include_ids:
+            if line_is_included(line_entry):
                 base_pointer += 1
             else:
                 yield _line_content_at(base_lines, base_pointer)
                 base_pointer += 1
         elif line_entry.kind == "+":
-            if line_entry.id in include_ids and pending_addition_start is None:
+            if line_is_included(line_entry) and pending_addition_start is None:
                 pending_addition_start = line_index
 
     yield from flush_pending_additions(len(line_changes.lines))
@@ -400,12 +406,12 @@ def _target_index_line_contents(
 
 def build_target_index_buffer_from_lines(
     line_changes: LineLevelChange,
-    include_ids: set[int],
+    include_ids: Collection[int] | None,
     base_lines: Sequence[bytes],
     *,
     base_has_trailing_newline: bool,
 ) -> LineBuffer:
-    """Build target index content from indexed base content lines."""
+    """Build target index content from selected or all changed lines."""
     base_line_count = len(base_lines)
     detected_line_ending = detect_line_ending(base_lines)
     default_line_ending = (

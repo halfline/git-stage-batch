@@ -1,0 +1,371 @@
+.TH GIT-STAGE-BATCH-REWRITE 1 "August 2026" "git-stage-batch @VERSION@" "User Commands"
+.SH NAME
+git-stage-batch-rewrite \- execute deterministic history refinements
+.SH SYNOPSIS
+.B git-stage-batch rewrite scan
+[\fB\-\-output\fR \fIFILE\fR]
+[\fB\-\-porcelain\fR]
+[\fIBOUNDARY\fR]
+.PP
+.B git-stage-batch rewrite validate
+[\fB\-\-workspace\fR \fIDIR\fR]
+[\fB\-\-porcelain\fR]
+\fIPLAN\fR
+.PP
+.B git-stage-batch rewrite resolve
+\fIPLAN\fR
+\fB\-\-workspace\fR \fIDIR\fR
+[\fB\-\-accept\fR]
+[\fB\-\-porcelain\fR]
+.PP
+.B git-stage-batch rewrite apply
+[\fB\-\-workspace\fR \fIDIR\fR]
+[\fB\-\-allow-published-ref\fR \fIREF\fR]...
+[\fB\-\-porcelain\fR]
+\fIPLAN\fR
+.PP
+.B git-stage-batch rewrite status
+[\fB\-\-porcelain\fR]
+.PP
+.B git-stage-batch rewrite continue
+[\fB\-\-porcelain\fR]
+.PP
+.B git-stage-batch rewrite abort
+[\fB\-\-porcelain\fR]
+.PP
+.B git-stage-batch rewrite verify
+[\fB\-\-porcelain\fR]
+.SH DESCRIPTION
+.B rewrite scan
+captures an immutable, linear commit range and emits a semantic KEEP plan
+template. The snapshot contains full commit, parent, and tree object IDs;
+exact author, committer, message, encoding, and signature state; and stable
+patch-unit identities derived from streamed zero-context diffs. It also
+records compact per-unit backward-commutation evidence: original position,
+earliest proven position, and the first BLOCKED or UNKNOWN barrier. Consecutive
+different-path crossings are verified as one exact block replay, while
+same-path units retain individual dependency evidence. Analysis resumes after
+an unsupported commit boundary but retains an UNKNOWN edge across it.
+.PP
+Patch bytes are not copied into JSON. Each commit records its exact old and
+new tree pair, from which later commands regenerate full-index binary patches
+through bounded storage.
+.PP
+.B rewrite validate
+strictly parses a reviewed scan document, independently reacquires every
+immutable source fact, and accepts KEEP, REWORD, SPLIT, INTEGRATE, and
+mechanically proven REORDER outputs. A cached fact is reused only after its
+exact source inputs and object closure still match. Validation requires exact
+source and patch-unit conservation, original target authorship,
+dependency-safe ordering, complete replay, and the frozen final tree.
+For a plan whose outputs all use EXACT materialization, omit
+.BR \-\-workspace ;
+a gratuitous workspace is rejected rather than ignored. A plan containing any
+RESOLVED output requires a COMPLETE private workspace supplied with
+.BR \-\-workspace .
+Validation authenticates that workspace and its completion record read-only,
+replays its exact and resolved outputs in a fresh object quarantine, and
+rechecks the frozen final tree. No candidate objects or refs persist.
+.PP
+.B rewrite resolve
+creates or advances a private external workspace for explicitly RESOLVED
+outputs. It replays from the frozen base in a temporary object quarantine,
+exports one immutable request at a time with current-parent and source
+references, and accepts only unit-authorized result paths and transitions.
+Each accepted output receives a digest-bound receipt. Completion requires the
+entire replay to reproduce the frozen final tree and does not create commits,
+refs, or persistent candidate objects.
+The completed external workspace remains a reusable, read-only input to
+.BR "rewrite validate" .
+Supply it with
+.B \-\-workspace
+on the initial
+.B rewrite apply
+invocation to hand its authenticated results to a durable operation. Apply
+does not modify or publish the external workspace itself.
+.PP
+.B rewrite apply
+requires
+.BI \-\-workspace " DIR"
+on the initial invocation for a plan containing any RESOLVED output.
+.I DIR
+must be the COMPLETE private workspace produced by
+.B rewrite resolve
+for that exact plan. Omit the option for an all-EXACT plan; a gratuitous,
+missing, incomplete, changed, or differently bound workspace is rejected.
+.PP
+Before activation, apply authenticates the external workspace, copies its
+exact private inventory into the unpublished operation directory, confirms
+that the source did not change during the copy, and independently
+authenticates the copy in a separate fresh object quarantine. It then rechecks
+the branch, index, and worktree mutation facts. Once activated, building,
+continue, status, and verify use only the operation-owned copy. The external
+workspace may then be moved or deleted without affecting continuation or
+later verification; its path is not supplied again.
+.PP
+Apply creates a durable operation-owned recovery ref and PREPARED checkpoint,
+then reconstructs exact and resolved output trees and builds deterministic
+unsigned commits in a temporary object quarantine. It durably promotes the
+required commit, tree, and blob closure before updating the local operation-owned
+output ref. A promotion lease and exact-name ref updates keep interruption
+recovery bounded to operation-owned objects and refs.
+.PP
+Before changing the checked-out branch, apply requires the complete output
+closure to be readable from persistent object storage with lazy fetching
+disabled. It independently regenerates the expected commits and trees in a
+fresh quarantine, compares them with the persistent objects, and writes a
+digest-bound verification record. For a resolved plan, that record also binds
+the raw-plan and completion digests and the resolved-output count. Apply then
+updates the branch once with compare-and-swap. Commit objects preserve the
+planned author, target source committer, declared encoding, and exact message
+bytes. Source signature headers are omitted and recorded by digest.
+.PP
+Apply does not contact a remote and never performs or authorizes a push or
+force-push.
+.PP
+.B rewrite status
+reports the closed phase, exact next action, output progress, recovery ref,
+and independently rechecked resume preconditions for a durable operation.
+Before the apply executor creates an operation, status reports that no
+operation is active. After completion or abort, it reports the latest terminal
+operation while leaving the active slot available for another plan.
+Porcelain status includes counts by persisted plan operation, allowing a
+specialized workflow to verify the active plan kind without reading private
+checkpoint files.
+.PP
+The porcelain
+.B inspection.resolution_matches
+member is null only for a captured, digest-bound, structurally valid all-EXACT
+output plan with no resolution provenance. It is true only when a plan with
+RESOLVED outputs has matching provenance and its operation-owned workspace
+authenticates. An invalid output plan, missing or gratuitous provenance, a
+provenance mismatch, or a changed workspace reports false, adds the
+resolution-bundle-changed blocker, and prevents continuation.
+.PP
+.B rewrite continue
+revalidates an active checkpoint and executes only its exact next action.
+Pending output publication and final branch publication are reconciled
+idempotently after interruption.
+.PP
+.B rewrite abort
+records restore intent, retracts a pending output ref, and restores the
+original branch only when the live tip is an exact value owned by the
+operation. Foreign movement is never overwritten.
+.PP
+.B rewrite verify
+independently reconstructs the active or latest complete output, rechecks all
+commit metadata and topology, and compares its deterministic audit record to
+the checkpoint digest. It may run while another worktree owns a staging
+session, but takes the repository session lock so its related reads cannot
+interleave with rewrite apply, continue, or abort mutations.
+.SH SCAN OPTIONS
+.TP
+.BI \-\-output " FILE"
+Atomically write the reusable JSON document to
+.IR FILE .
+Existing regular-file permissions are preserved; symbolic-link destinations
+are refused.
+.TP
+.B \-\-porcelain
+Write the complete reusable JSON document to standard output. This can be
+combined with
+.B \-\-output
+when both a file and standard output are useful.
+.TP
+.I BOUNDARY
+Commit excluded from the source range. By default, use the fork point or
+merge base between HEAD and its configured upstream.
+.SH VALIDATE OPTIONS
+.TP
+.BI \-\-workspace " DIR"
+Authenticate the COMPLETE private rewrite-resolution workspace at
+.I DIR
+for a plan containing RESOLVED outputs. The workspace must be bound to the
+exact plan and is inspected without repair or advancement. Supplying this
+option for an all-EXACT plan is rejected.
+.TP
+.B \-\-porcelain
+Print a versioned JSON validation report with commit/unit counts, final tree,
+signature count, freshly collected mutation preconditions, and
+.B summary.resolved_outputs
+count. The top-level
+.B resolution
+member is null for an all-EXACT plan; completed-workspace validation reports
+its canonical path, authenticated
+.B complete_sha256
+digest, and resolved-output count.
+.SH RESOLVE OPTIONS
+.TP
+.BI \-\-workspace " DIR"
+Create a new private resolution workspace at
+.IR DIR .
+The first invocation requires a plan containing at least one RESOLVED output
+and requires that
+.I DIR
+does not exist. Subsequent invocations reopen only the workspace bound to the
+same plan.
+.TP
+.B \-\-accept
+Validate and accept the current editable result, then stop at the next
+RESOLVED output or publish the completed workspace marker. Without this
+option, a seeded or edited result is never accepted.
+.TP
+.B \-\-porcelain
+Print a versioned JSON checkpoint containing the canonical plan and workspace
+paths, current zero-based output index, opaque output key, authorized Git
+paths, and exact request/result locations.
+.PP
+Edit only the named
+.B result.json
+and opaque result artifacts. JSON object-member order is insignificant. A
+present path requires its opaque artifact and an authorized mode of 100644 or
+100755. An authorized deletion uses ABSENT with a null mode and removes its
+result artifact; an authorized addition becomes PRESENT after its artifact is
+created. Every listed path must change, and selected source units must
+authorize each content, lifecycle, or mode transition. Workspace directories
+must remain mode 0700, and every metadata or artifact file must remain mode
+0600.
+.SH STATUS OPTIONS
+.TP
+.B \-\-porcelain
+Print versioned JSON containing the complete durable checkpoint inspection.
+.SH APPLY OPTIONS
+.TP
+.BI \-\-workspace " DIR"
+Authenticate and take an operation-owned copy of the COMPLETE private
+rewrite-resolution workspace at
+.I DIR
+when starting a plan containing RESOLVED outputs. The workspace must be bound
+to the exact plan. Supplying this option for an all-EXACT plan is rejected.
+After activation, continue, status, and verify use the owned copy and no
+longer depend on
+.IR DIR .
+.TP
+.BI \-\-allow-published-ref " REF"
+Permit local rewriting when a source commit is contained by the exact full
+remote-tracking ref
+.IR REF .
+Repeat for every containing ref. This option does not authorize a push or
+force-push.
+.TP
+.B \-\-porcelain
+Print a versioned JSON operation result.
+.SH CONTINUE, ABORT, AND VERIFY OPTIONS
+.TP
+.B \-\-porcelain
+Print a versioned JSON operation or verification result.
+.SH PLAN CONTRACT
+Only
+.B plan.partitioned_units
+and
+.B plan.outputs
+are semantic input. The
+.B snapshot
+object is immutable and is compared exactly after reacquisition. The
+.B safety
+object is informational and is always recollected when a plan is validated.
+.PP
+Every output contains a semantic operation, an EXACT or RESOLVED
+materialization, one or more source commit IDs, an exact ordered source-unit
+list, a message and its declared encoding, the exact target author, and an
+optional human rationale. Rationale prose is not treated as mechanical proof.
+An ordinary unit must occur exactly once globally. A declared partitioned unit
+occurs once in each listed RESOLVED output, and nowhere else, when one
+mechanical unit contains semantic portions owned by several snapshots.
+.PP
+KEEP requires the original message. REWORD permits a new message but preserves
+the exact source patch, order, and author. SPLIT assigns non-empty ordered unit
+subsets from one source to at least two output commits, preserving that source
+author. INTEGRATE consumes a complete target source plus ordered subsets from
+later repair sources; one repair source may be partitioned across several
+targets, and may retain a later residual SPLIT output. REORDER marks a complete
+source moved earlier and preserves its exact message and encoding.
+.PP
+Every earlier EXACT move must stay within the unit's recorded
+adjacent-swap proof.
+A chain of BLOCKED predecessors may move farther only when the complete chain
+stays ordered inside one output; full-plan replay must then prove that compound
+movement. A blocker assigned to another output and every UNKNOWN barrier fail
+closed for exact replay. RESOLVED never claims commutation; it requires
+explicit, path-authorized output snapshots and a complete replay that
+reproduces the frozen final tree. Dependency evidence is not a substitute for
+that final oracle. Empty source commits remain explicit unless deliberately
+consumed by an integration.
+.SH SAFETY
+Scan, validation, and resolution do not change commits or refs. They
+materialize candidate trees only in a temporary object quarantine. They may
+run while local mutation preconditions are blocked and label those blockers in
+the safety report. They reject merges, stale or forged snapshots, duplicate
+JSON fields, abbreviated object IDs, omitted or unproven reordered units, and
+active replace objects or legacy grafts. Scan compares the index directly to
+the frozen final tree and never retains candidate objects in the repository's
+object database.
+.PP
+Commands that acquire the frozen source snapshot may reuse immutable snapshot
+and dependency analysis from a persistent JSON cache with at most 64 entries.
+A cache hit requires an exact
+repository, range, tree, branch, object-format, Git-behavior, configuration,
+analysis-version, source-diff, and source-object-closure match. A miss or
+failed check rebuilds the analysis from source objects. Live safety facts are
+always collected again. The cache stores no candidate Git objects and never
+substitutes for plan replay or final-tree proof.
+.PP
+The safety report records tracked index/worktree cleanliness, staging-session
+and saved-batch state, active Git/rewrite operations, upstream divergence,
+remote refs containing every source commit, and untracked-path count. A remote
+ref containing any selected commit blocks mutation unless a later apply
+invocation records that exact verified review-head exception. Untracked paths
+are reported but do not by themselves block an object-based rewrite whose
+final tree is unchanged.
+.PP
+Source cryptographic signature headers are identified by header name and
+content digest. Their payloads are not copied into the plan. Rewritten commit
+objects cannot retain the validity of source signatures, which is reported
+explicitly.
+.PP
+Durable operation checkpoints live below
+.B git-stage-batch/rewrite/
+in the repository's common Git directory. That path is
+.B .git/git-stage-batch/rewrite/
+in an ordinary checkout, and remains reachable after a linked worktree is
+removed.
+They use private atomically replaced files, a closed phase/next-action schema,
+operation-owned resolution copies when required, and operation-owned
+recovery/output refs. A pending commit/tree checkpoint closes the crash window
+around each output-ref update. Replacement objects are built in a quarantine,
+promoted under a durable lease, and checked as a complete persistent closure
+before branch publication. A deterministic verification record binds final
+tree, output topology, plan digest, resolution provenance when present, and
+removed signature digests. Status verifies the branch, expected tip, index,
+worktree, plan, resolution and verification digests, output objects, recovery
+ref, and the output ref that keeps a paused replacement chain reachable before
+declaring resume ready.
+Manual recovery output uses compare-and-swap
+.B git update-ref
+syntax so unrelated ref movement is not overwritten.
+.PP
+Completed and aborted operations deliberately retain their state and any refs
+below
+.BR refs/git-stage-batch/rewrite/ .
+The command does not prune them because the refs preserve original and output
+histories for later status, verification, and recovery. Inspect accumulated
+refs with:
+.PP
+.B git for-each-ref --format='%(refname) %(objectname)' refs/git-stage-batch/rewrite/
+.PP
+After all terminal-operation recovery and verification needs have ended,
+delete each reviewed ref with its exact expected object:
+.PP
+.B git update-ref -d EXACT_OPERATION_ORIGINAL_REF EXPECTED_ORIGINAL_HEAD
+.PP
+.B git update-ref -d EXACT_OPERATION_OUTPUT_REF EXPECTED_OUTPUT_HEAD
+.PP
+A partially built operation might not have an output ref. Removing an anchor
+prevents later verification or automatic recovery for that operation and may
+allow its commits to be garbage-collected.
+.SH SEE ALSO
+.BR git-stage-batch (1),
+.BR git-stage-batch-fixup (1),
+.BR git-commit (1),
+.BR git-rev-list (1),
+.BR git-update-ref (1)

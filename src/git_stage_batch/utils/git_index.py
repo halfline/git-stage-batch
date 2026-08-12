@@ -19,6 +19,7 @@ from .git_repository import (
     is_git_repository_root_path,
     null_object_id,
 )
+from .scratch import default_scratch_parent
 
 
 @dataclass(frozen=True)
@@ -32,14 +33,21 @@ class GitIndexEntryUpdate:
 
 
 @contextmanager
-def temp_git_index() -> Iterator[dict[str, str]]:
+def temp_git_index(
+    *,
+    base_env: Mapping[str, str] | None = None,
+) -> Iterator[dict[str, str]]:
     """Create a temporary Git index and yield an environment that uses it."""
-    temp_index = tempfile.NamedTemporaryFile(delete=False, suffix=".index")
+    temp_index = tempfile.NamedTemporaryFile(
+        delete=False,
+        suffix=".index",
+        dir=default_scratch_parent(),
+    )
     temp_index_path = temp_index.name
     temp_index.close()
     os.unlink(temp_index_path)
 
-    env = os.environ.copy()
+    env = dict(base_env) if base_env is not None else os.environ.copy()
     env["GIT_INDEX_FILE"] = temp_index_path
     try:
         yield env

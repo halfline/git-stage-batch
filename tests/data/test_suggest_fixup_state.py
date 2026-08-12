@@ -1,67 +1,66 @@
-"""Tests for persisted suggest-fixup state."""
+"""Tests for canonical persisted fixup-suggestion state."""
 
+import json
 import subprocess
 
 import pytest
 
 from git_stage_batch.data.suggest_fixup_state import (
+    SUGGEST_FIXUP_STATE_SCHEMA_VERSION,
     clear_suggest_fixup_state,
     read_suggest_fixup_state,
-    suggest_fixup_state_should_reset,
+    suggest_fixup_state_matches_search,
     write_suggest_fixup_state,
 )
 from git_stage_batch.utils.paths import get_suggest_fixup_state_file_path
+from git_stage_batch.utils.paths import ensure_state_directory_exists
 
 
 @pytest.fixture
 def temp_git_repo(tmp_path, monkeypatch):
-    """Create a temporary git repository for testing."""
+    """Create a temporary git repository for state-path tests."""
     repo = tmp_path / "test_repo"
     repo.mkdir()
     monkeypatch.chdir(repo)
-
-    subprocess.run(["git", "init"], check=True, cwd=repo, capture_output=True)
-    subprocess.run(["git", "config", "user.name", "Test User"], check=True, cwd=repo, capture_output=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], check=True, cwd=repo, capture_output=True)
-
-    (repo / "README.md").write_text("# Test\n")
-    subprocess.run(["git", "add", "README.md"], check=True, cwd=repo, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "Initial commit"], check=True, cwd=repo, capture_output=True)
-
+    subprocess.run(["git", "init", "-q"], check=True, cwd=repo)
+    ensure_state_directory_exists()
+    get_suggest_fixup_state_file_path().parent.mkdir(parents=True, exist_ok=True)
     return repo
 
 
-def test_read_state_when_no_file_exists(temp_git_repo):
-    """Missing state file should read as None."""
-    state = read_suggest_fixup_state()
+def _search_state():
+    return {
+        "schema_version": SUGGEST_FIXUP_STATE_SCHEMA_VERSION,
+        "object_format": "sha1",
+        "hunk_hash": "abc123",
+        "line_id_ranges": [[1, 3], [5, 5]],
+        "base_commit": "1" * 40,
+        "head_commit": "2" * 40,
+        "range_fingerprint": "3" * 64,
+        "file_path": "test.py",
+        "unit_id": "4" * 64,
+        "queried_ranges": [[10, 12], [20, 20]],
+    }
 
-    assert state is None
+
+def test_read_state_when_no_file_exists(temp_git_repo):
+    assert read_suggest_fixup_state() is None
 
 
 def test_write_and_read_state(temp_git_repo):
-    """Persisted state should round-trip through JSON."""
-    test_state = {
-        "hunk_hash": "abc123",
-        "line_ids": [1, 2, 3],
-        "boundary": "@{upstream}",
-        "file_path": "test.py",
-        "min_line": 10,
-        "max_line": 20,
-        "last_shown_commit": "def456",
-        "iteration": 1,
+    state = {
+        **_search_state(),
+        "last_shown_commit": "5" * 40,
+        "iteration": 2,
     }
 
-    write_suggest_fixup_state(test_state)
-    loaded_state = read_suggest_fixup_state()
+    write_suggest_fixup_state(state)
 
-    assert loaded_state == test_state
+    assert read_suggest_fixup_state() == state
 
 
 def test_clear_state(temp_git_repo):
-    """Clearing state should remove the state file."""
-    write_suggest_fixup_state({"hunk_hash": "abc123"})
-
-    assert get_suggest_fixup_state_file_path().exists()
+    write_suggest_fixup_state(_search_state())
 
     clear_suggest_fixup_state()
 
@@ -69,82 +68,73 @@ def test_clear_state(temp_git_repo):
     assert read_suggest_fixup_state() is None
 
 
-def test_should_reset_when_no_state_exists(temp_git_repo):
-    """Reset check should be true when no state exists."""
-    should_reset = suggest_fixup_state_should_reset(
-        "hash1", [1, 2], "@{upstream}", "test.py", 10, 20
+def test_legacy_spelling_based_state_is_invalid(temp_git_repo):
+    get_suggest_fixup_state_file_path().write_text(
+        json.dumps(
+            {
+                "hunk_hash": "hash1",
+                "line_ids": [1, 2],
+                "boundary": "HEAD~2",
+                "file_path": "test.py",
+                "min_line": 10,
+                "max_line": 20,
+            }
+        )
     )
 
-    assert should_reset is True
+    assert read_suggest_fixup_state() is None
 
 
-def test_should_reset_when_hunk_hash_changes(temp_git_repo):
-    """Reset check should be true when hunk hash changes."""
-    write_suggest_fixup_state({
-        "hunk_hash": "hash1",
-        "line_ids": [1, 2],
-        "boundary": "@{upstream}",
-        "file_path": "test.py",
-        "min_line": 10,
-        "max_line": 20,
-    })
+@pytest.mark.parametrize(
+    ("field", "changed_value"),
+    (
+        ("hunk_hash", "different"),
+        ("object_format", "sha256"),
+        ("line_id_ranges", [[1, 1]]),
+        ("base_commit", "6" * 40),
+        ("head_commit", "7" * 40),
+        ("range_fingerprint", "8" * 64),
+        ("file_path", "other.py"),
+        ("unit_id", "9" * 64),
+        ("queried_ranges", [[10, 10]]),
+    ),
+)
+def test_search_match_covers_every_frozen_field(
+    temp_git_repo,
+    field,
+    changed_value,
+):
+    search = _search_state()
+    write_suggest_fixup_state(search)
+    state = read_suggest_fixup_state()
+    assert suggest_fixup_state_matches_search(state, search)
 
-    should_reset = suggest_fixup_state_should_reset(
-        "hash2", [1, 2], "@{upstream}", "test.py", 10, 20
-    )
+    changed_search = {**search, field: changed_value}
 
-    assert should_reset is True
-
-
-def test_should_reset_when_line_ids_change(temp_git_repo):
-    """Reset check should be true when line IDs change."""
-    write_suggest_fixup_state({
-        "hunk_hash": "hash1",
-        "line_ids": [1, 2],
-        "boundary": "@{upstream}",
-        "file_path": "test.py",
-        "min_line": 10,
-        "max_line": 20,
-    })
-
-    should_reset = suggest_fixup_state_should_reset(
-        "hash1", [1, 2, 3], "@{upstream}", "test.py", 10, 20
-    )
-
-    assert should_reset is True
+    assert not suggest_fixup_state_matches_search(state, changed_search)
 
 
-def test_should_reset_when_boundary_changes(temp_git_repo):
-    """Reset check should be true when boundary changes."""
-    write_suggest_fixup_state({
-        "hunk_hash": "hash1",
-        "line_ids": [1, 2],
-        "boundary": "@{upstream}",
-        "file_path": "test.py",
-        "min_line": 10,
-        "max_line": 20,
-    })
+@pytest.mark.parametrize(
+    "ranges",
+    (
+        [[0, 1]],
+        [[3, 2]],
+        [[1, 2], [3, 4]],
+        [[2, 3], [1, 1]],
+    ),
+)
+def test_read_rejects_noncanonical_ranges(temp_git_repo, ranges):
+    state = {**_search_state(), "queried_ranges": ranges}
+    get_suggest_fixup_state_file_path().write_text(json.dumps(state))
 
-    should_reset = suggest_fixup_state_should_reset(
-        "hash1", [1, 2], "HEAD~5", "test.py", 10, 20
-    )
-
-    assert should_reset is True
+    assert read_suggest_fixup_state() is None
 
 
-def test_should_not_reset_when_parameters_match(temp_git_repo):
-    """Reset check should be false when all parameters match."""
-    write_suggest_fixup_state({
-        "hunk_hash": "hash1",
-        "line_ids": [1, 2],
-        "boundary": "@{upstream}",
-        "file_path": "test.py",
-        "min_line": 10,
-        "max_line": 20,
-    })
+def test_read_rejects_object_ids_with_the_wrong_format_length(temp_git_repo):
+    state = {
+        **_search_state(),
+        "object_format": "sha256",
+    }
+    get_suggest_fixup_state_file_path().write_text(json.dumps(state))
 
-    should_reset = suggest_fixup_state_should_reset(
-        "hash1", [1, 2], "@{upstream}", "test.py", 10, 20
-    )
-
-    assert should_reset is False
+    assert read_suggest_fixup_state() is None

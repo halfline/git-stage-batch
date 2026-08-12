@@ -1,16 +1,34 @@
-.TH GIT-STAGE-BATCH-SUGGEST-FIXUP 1 "May 2026" "git-stage-batch @VERSION@" "User Commands"
+.TH GIT-STAGE-BATCH-SUGGEST-FIXUP 1 "August 2026" "git-stage-batch @VERSION@" "User Commands"
 .SH NAME
 git-stage-batch-suggest-fixup \- suggest a commit for a fixup
 .SH SYNOPSIS
 .B git-stage-batch suggest-fixup
 [\fB\-\-line\fR \fIIDS\fR]
 [\fB\-\-reset\fR|\fB\-\-abort\fR|\fB\-\-last\fR]
+[\fB\-\-porcelain\fR]
+[\fIBOUNDARY\fR]
+.PP
+.B git-stage-batch fixup suggest
+[\fB\-\-line\fR \fIIDS\fR]
+[\fB\-\-reset\fR|\fB\-\-abort\fR|\fB\-\-last\fR]
+[\fB\-\-porcelain\fR]
 [\fIBOUNDARY\fR]
 .SH DESCRIPTION
 .B suggest-fixup
-uses git history to find commits that previously touched the selected hunk's
-lines and suggests them as fixup targets. Repeated invocations walk backward
-through candidates.
+materializes the selected hunk or lines as one exact patch without changing
+the real index. The patch is based on the frozen HEAD tree; an index-relative
+hunk is rejected when that file's index entry differs from HEAD. It searches
+each disjoint old-file range independently and commutes the patch backward
+through a frozen linear commit range.
+.PP
+Output reports source-line lineage and the mechanical placement barrier
+separately. A placement barrier is candidate evidence, not proof of semantic
+ownership. Repeated invocations walk newest-first through commits supported by
+either form of evidence.
+.PP
+Pure additions to an existing tracked file use adjacent old-file lines as
+lineage anchors. An insertion into an empty tracked file can be suggested from
+placement evidence alone. Whole-file additions are unsupported.
 .SH OPTIONS
 .TP
 .BI "\-\-line, \-\-lines " IDS
@@ -24,9 +42,23 @@ Clear suggestion state and exit without showing a candidate.
 .TP
 .B \-\-last
 Re-show the last candidate without advancing.
+.TP
+.B \-\-porcelain
+Output versioned JSON containing the Git object format, full object IDs, the
+frozen range, exact unit, lineage and placement evidence, candidate sources,
+and iteration position. A result without a candidate is still printed as a
+complete record and exits nonzero.
+.TP
 .I BOUNDARY
-Git ref to use as the lower bound for commit search. The default is
-.BR @{upstream} .
+Commit excluded from the target range. By default, use the fork point, or
+merge base, between
+.B HEAD
+and its configured upstream.
+.SH SAFETY
+The command does not create commits, move refs, or change the working tree or
+real index. The selected patch and history range are bound to stable IDs;
+saved iteration state is discarded when the selection, range, or HEAD changes.
 .SH SEE ALSO
 .BR git-stage-batch (1),
+.BR git-stage-batch-fixup (1),
 .BR git-log (1)

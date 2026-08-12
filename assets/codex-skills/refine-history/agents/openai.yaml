@@ -1,4 +1,4 @@
 interface:
   display_name: "Refine History"
   short_description: "Polish a local commit series safely"
-  default_prompt: "Use $refine-history to rewrite a local commit series from an optional base or its tracked upstream merge base."
+  default_prompt: "Use $refine-history to audit or rewrite a local commit series from an optional base or its tracked upstream merge base."

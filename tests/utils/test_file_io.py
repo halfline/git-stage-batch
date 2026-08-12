@@ -1,5 +1,6 @@
 """Tests for file I/O utilities."""
 
+import hashlib
 import os
 import errno
 import stat
@@ -19,6 +20,7 @@ from git_stage_batch.utils.file_io import (
     PROJECT_FILE_MODE,
     append_lines_to_file,
     read_required_text_file_contents,
+    read_required_text_file_contents_and_sha256,
     read_text_file_contents,
     write_file_bytes,
     write_text_file_contents,
@@ -76,6 +78,26 @@ class TestReadRequiredTextFileContents:
     def test_missing_file_raises(self, tmp_path):
         with pytest.raises(FileNotFoundError):
             read_required_text_file_contents(tmp_path / "missing.txt")
+
+    def test_single_stream_read_returns_exact_text_and_byte_digest(self, tmp_path):
+        test_file = tmp_path / "payload.txt"
+        payload = b'{"value":"\xff"}\n'
+        test_file.write_bytes(payload)
+
+        contents, digest = read_required_text_file_contents_and_sha256(test_file)
+
+        assert contents.encode("utf-8", errors="surrogateescape") == payload
+        assert digest == hashlib.sha256(payload).hexdigest()
+
+    @pytest.mark.skipif(not hasattr(os, "O_NOFOLLOW"), reason="requires O_NOFOLLOW")
+    def test_single_stream_read_refuses_symlink(self, tmp_path):
+        target = tmp_path / "target.txt"
+        target.write_text("target\n", encoding="utf-8")
+        link = tmp_path / "link.txt"
+        link.symlink_to(target)
+
+        with pytest.raises(OSError):
+            read_required_text_file_contents_and_sha256(link)
 
 
 class TestWriteTextFileContents:

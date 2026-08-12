@@ -110,6 +110,31 @@ class ReplacementUnit:
         )
 
 
+def replacement_counts_cover_origin(
+    origin: ReplacementUnitOrigin | None,
+    presence_line_count: int,
+    deletion_line_count: int,
+) -> bool:
+    """Return whether selected old/new counts cover a complete origin."""
+    if not isinstance(origin, ReplacementUnitOrigin):
+        return False
+    if (
+        type(origin.old_start) is not int
+        or type(origin.old_end) is not int
+        or type(origin.new_start) is not int
+        or type(origin.new_end) is not int
+        or origin.old_start < 1
+        or origin.new_start < 1
+        or origin.old_end < origin.old_start
+        or origin.new_end < origin.new_start
+    ):
+        return False
+    return (
+        presence_line_count == origin.new_end - origin.new_start + 1
+        and deletion_line_count == origin.old_end - origin.old_start + 1
+    )
+
+
 def normalize_replacement_units(
     replacement_units: list[ReplacementUnit],
     *,
@@ -176,13 +201,15 @@ def _normalize_replacement_unit_origin(
     origin: ReplacementUnitOrigin | None,
 ) -> ReplacementUnitOrigin | None:
     """Return valid original replacement context, or None."""
-    if origin is None:
+    if not isinstance(origin, ReplacementUnitOrigin):
         return None
     if (
         type(origin.old_start) is not int
         or type(origin.old_end) is not int
         or type(origin.new_start) is not int
         or type(origin.new_end) is not int
+        or origin.old_start < 1
+        or origin.new_start < 1
         or origin.old_start > origin.old_end
         or origin.new_start > origin.new_end
     ):

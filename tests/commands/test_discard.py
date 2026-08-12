@@ -34,8 +34,10 @@ import git_stage_batch.commands.index_cleanup as index_cleanup
 from git_stage_batch.commands.discard import command_discard, command_discard_line, command_discard_line_as_to_batch
 from git_stage_batch.commands.include import command_include, command_include_line
 from git_stage_batch.commands.show import command_show
+from git_stage_batch.commands.skip import command_skip
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.core.models import TextFileDeletionChange
+from git_stage_batch.core.replacement import ReplacementPayload
 from git_stage_batch.exceptions import CommandError
 from tests.batch.ownership.metadata_helpers import (
     reject_materialized_ownership_metadata as _reject_materialized_ownership_metadata,
@@ -1004,6 +1006,33 @@ class TestCommandDiscardToBatch:
 
         assert test_file.read_bytes() == b"keep\nnew"
 
+    def test_discard_deleted_line_as_preserves_exact_missing_final_newline(
+        self,
+        temp_git_repo,
+    ):
+        """Exact replacement of an empty worktree should remain unterminated."""
+        test_file = temp_git_repo / "empty.txt"
+        test_file.write_bytes(b"old")
+        subprocess.run(["git", "add", "empty.txt"], check=True, cwd=temp_git_repo)
+        subprocess.run(
+            ["git", "commit", "-m", "Add unterminated file"],
+            check=True,
+            cwd=temp_git_repo,
+        )
+        test_file.write_bytes(b"")
+        command_start(quiet=True)
+
+        command_discard_line_as_to_batch(
+            "replacement-batch",
+            "1",
+            ReplacementPayload(b"saved"),
+            quiet=True,
+        )
+
+        assert test_file.read_bytes() == b"old"
+        command_apply_from_batch("replacement-batch")
+        assert test_file.read_bytes() == b"saved"
+
     def test_discard_to_batch_auto_creates_batch(self, temp_git_repo_with_session):
         """Test that discard to batch auto-creates batch if it doesn't exist."""
 
@@ -1374,6 +1403,418 @@ class TestCommandDiscardToBatch:
             + "".join(staged_span)
             + "".join(base_lines[35:])
         )
+
+    def test_discard_line_as_to_batch_preserves_mixed_replacement_parents(
+        self,
+        temp_git_repo,
+    ):
+        """Each transformed replacement parent should retain its own alternative."""
+        file_path = temp_git_repo / "mixed.txt"
+        file_path.write_text("H\na\nx\nb\nM\nold2\nT\n")
+        subprocess.run(
+            ["git", "add", "mixed.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add mixed replacements"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        file_path.write_text("H\nn\nM\nnew2\nextra\nT\n")
+
+        command_start()
+        fetch_next_change()
+        command_discard_line_as_to_batch(
+            "mixed-batch",
+            "1-6",
+            "q\na\nb\nM\nsaved2\n",
+        )
+
+        assert file_path.read_text() == "H\na\nb\nM\nold2\nextra\nT\n"
+        assert read_file_from_batch(
+            "mixed-batch",
+            "mixed.txt",
+        ) == "H\nq\nM\nsaved2\nT\n"
+
+    def test_discard_line_as_to_batch_preserves_context_in_explicit_prefix(
+        self,
+        temp_git_repo,
+    ):
+        """A batch prefix should retain unchanged context between replacements."""
+        file_path = temp_git_repo / "split-context.txt"
+        file_path.write_text("H\nold1\nM\nold2\nT\n")
+        subprocess.run(
+            ["git", "add", "split-context.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add split replacements"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        file_path.write_text("H\nnew1\nM\nnew2\nextra\nT\n")
+
+        command_start()
+        fetch_next_change()
+        command_discard_line_as_to_batch(
+            "split-context-batch",
+            "1-4",
+            "new1\nM\nnew2\nold1\nM\nold2\n",
+        )
+
+        assert file_path.read_text() == "H\nold1\nM\nold2\nextra\nT\n"
+        assert read_file_from_batch(
+            "split-context-batch",
+            "split-context.txt",
+        ) == "H\nnew1\nM\nnew2\nT\n"
+
+    def test_discard_line_as_to_batch_maps_shifted_deletion_payload(
+        self,
+        temp_git_repo,
+    ):
+        """An earlier insertion should not shift a deletion replacement away."""
+        file_path = temp_git_repo / "shifted.txt"
+        file_path.write_text("A\nH\nold\nT\n")
+        subprocess.run(
+            ["git", "add", "shifted.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add shifted replacement"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        file_path.write_text("added\nA\nH\nT\n")
+
+        command_start()
+        fetch_next_change()
+        command_discard_line_as_to_batch(
+            "shifted-batch",
+            "2",
+            "saved\n",
+        )
+
+        assert file_path.read_text() == "added\nA\nH\nold\nT\n"
+        assert read_file_from_batch(
+            "shifted-batch",
+            "shifted.txt",
+        ) == "A\nH\nsaved\nT\n"
+
+    def test_discard_line_as_to_batch_maps_disjoint_shifted_payloads(
+        self,
+        temp_git_repo,
+    ):
+        """Surplus live text should not shift a later replacement."""
+        file_path = temp_git_repo / "additions.txt"
+        file_path.write_text("A\nM\nold\nT\n")
+        subprocess.run(
+            ["git", "add", "additions.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add separated anchors"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        file_path.write_text("A\nx1\nM\nnew\nT\n")
+
+        command_start()
+        fetch_next_change()
+        command_discard_line_as_to_batch(
+            "addition-batch",
+            "1-3",
+            "q1\nextra\nM\nsaved\nold\n",
+        )
+
+        assert file_path.read_text() == "A\nextra\nM\nold\nT\n"
+        assert read_file_from_batch(
+            "addition-batch",
+            "additions.txt",
+        ) == "A\nq1\nM\nsaved\nold\nT\n"
+
+    def test_discard_line_as_to_batch_preserves_intervening_context(
+        self,
+        temp_git_repo,
+    ):
+        """Context between selected endpoints should retain its original location."""
+        file_path = temp_git_repo / "intervening-context.txt"
+        baseline = "old\nkeep1\nkeep2\nkeep3\n"
+        file_path.write_text(baseline)
+        subprocess.run(
+            ["git", "add", "intervening-context.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add intervening context"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        file_path.write_text("working\nkeep1\nkeep2\nkeep3\nextra\n")
+
+        command_start(quiet=True, auto_advance=False)
+        fetch_next_change()
+        command_discard_line_as_to_batch(
+            "context-batch",
+            "2-3",
+            "saved\n",
+            quiet=True,
+            auto_advance=False,
+        )
+
+        assert file_path.read_text() == baseline
+        assert read_file_from_batch(
+            "context-batch",
+            "intervening-context.txt",
+        ) == "saved\n"
+
+    def test_discard_line_as_to_batch_replaces_intervening_repeated_context(
+        self,
+        temp_git_repo,
+    ):
+        """A deletion and later addition should consume their shared span."""
+        file_path = temp_git_repo / "repeated-context.txt"
+        baseline = "START\na\nc\nb\nc\nEND\n"
+        file_path.write_text(baseline)
+        subprocess.run(
+            ["git", "add", "repeated-context.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add repeated context"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        file_path.write_text("START\na\nc\nc\nx\nEND\n")
+
+        command_start(quiet=True, auto_advance=False)
+        fetch_next_change()
+        command_discard_line_as_to_batch(
+            "repeated-context-batch",
+            "1-2",
+            "saved\n",
+            quiet=True,
+            auto_advance=False,
+        )
+
+        assert file_path.read_text() == baseline
+        assert read_file_from_batch(
+            "repeated-context-batch",
+            "repeated-context.txt",
+        ) == "START\na\nc\nsaved\nEND\n"
+
+    def test_discard_line_as_to_batch_replaces_context_between_additions(
+        self,
+        temp_git_repo,
+    ):
+        """Two selected additions should consume the old context between them."""
+        file_path = temp_git_repo / "addition-context.txt"
+        baseline = "START\nc\nc\na\nEND\n"
+        file_path.write_text(baseline)
+        subprocess.run(
+            ["git", "add", "addition-context.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add addition context"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        file_path.write_text("START\nc\nc\ny\na\nb\nEND\n")
+
+        command_start(quiet=True, auto_advance=False)
+        fetch_next_change()
+        command_discard_line_as_to_batch(
+            "addition-context-batch",
+            "1-2",
+            "saved-one\nsaved-two\n",
+            quiet=True,
+            auto_advance=False,
+        )
+
+        assert file_path.read_text() == baseline
+        assert read_file_from_batch(
+            "addition-context-batch",
+            "addition-context.txt",
+        ) == "START\nc\nc\nsaved-one\nsaved-two\nEND\n"
+
+    def test_discard_line_as_to_batch_locates_full_repeated_line_selection(
+        self,
+        temp_git_repo,
+    ):
+        """A full selection should remain locatable after repeated lines move."""
+        file_path = temp_git_repo / "repeated-lines.txt"
+        baseline = "EXPORT-0\n{-1\n{-2\nD-0\nsame-1\n"
+        file_path.write_text(baseline)
+        subprocess.run(
+            ["git", "add", "repeated-lines.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add repeated lines"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        file_path.write_text("EXPORT-0\n{-2\nB-new\nD-0\nEXPORT-new\n")
+
+        command_start(quiet=True, auto_advance=False)
+        fetch_next_change()
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+        changed_ids = [
+            line.id
+            for line in line_changes.lines
+            if line.id is not None
+        ]
+        assert changed_ids
+        line_id_specification = f"{min(changed_ids)}-{max(changed_ids)}"
+        command_discard_line_as_to_batch(
+            "repeated-lines-batch",
+            line_id_specification,
+            "D-0\nEXPORT-0\nEXPORT-0\nP\n",
+            quiet=True,
+            auto_advance=False,
+        )
+
+        assert file_path.read_text() == baseline
+        assert read_file_from_batch(
+            "repeated-lines-batch",
+            "repeated-lines.txt",
+        ) == "EXPORT-0\nD-0\nEXPORT-0\nEXPORT-0\nP\n"
+
+    def test_discard_line_as_to_batch_maps_a_later_hunk_after_insertion(
+        self,
+        temp_git_repo,
+    ):
+        """An unshown earlier insertion should not shift a selected hunk."""
+        file_path = temp_git_repo / "later.txt"
+        base_lines = [f"line-{line}\n" for line in range(80)]
+        file_path.write_text("".join(base_lines))
+        subprocess.run(
+            ["git", "add", "later.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add separated insertion sites"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        working_lines = list(base_lines)
+        working_lines.insert(1, "pre\n")
+        working_lines.insert(67, "selected\n")
+        file_path.write_text("".join(working_lines))
+
+        command_start()
+        command_skip()
+        command_discard_line_as_to_batch(
+            "later-batch",
+            "1",
+            "saved\n",
+        )
+
+        assert file_path.read_text() == "".join(working_lines[:67] + working_lines[68:])
+        expected_batch = list(base_lines)
+        expected_batch.insert(66, "saved\n")
+        assert read_file_from_batch(
+            "later-batch",
+            "later.txt",
+        ) == "".join(expected_batch)
+
+    def test_discard_line_as_to_batch_keeps_repeated_parent_content(
+        self,
+        temp_git_repo,
+    ):
+        """Replacement text may deliberately retain the parent's old content."""
+        file_path = temp_git_repo / "retained.txt"
+        file_path.write_text("head\nold\ntail\n")
+        subprocess.run(
+            ["git", "add", "retained.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add retained replacement"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        file_path.write_text("head\nnew\ntail\n")
+
+        command_start()
+        fetch_next_change()
+        command_discard_line_as_to_batch(
+            "retained-batch",
+            "1-2",
+            "extra\nold\n",
+        )
+
+        assert file_path.read_text() == "head\nold\ntail\n"
+        assert read_file_from_batch(
+            "retained-batch",
+            "retained.txt",
+        ) == "head\nextra\nold\ntail\n"
+
+    def test_discard_line_as_to_batch_keeps_empty_transformed_alternative(
+        self,
+        temp_git_repo,
+    ):
+        """A live-only retained line should still remove the full batch parent."""
+        file_path = temp_git_repo / "empty-alternative.txt"
+        file_path.write_text("head\na\nb\ntail\n")
+        subprocess.run(
+            ["git", "add", "empty-alternative.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add replacement parent"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        file_path.write_text("head\nnew\ntail\n")
+
+        command_start()
+        fetch_next_change()
+        command_discard_line_as_to_batch(
+            "empty-alternative-batch",
+            "1-3",
+            "a\n",
+        )
+
+        assert file_path.read_text() == "head\na\ntail\n"
+        assert read_file_from_batch(
+            "empty-alternative-batch",
+            "empty-alternative.txt",
+        ) == "head\ntail\n"
 
     def test_discard_line_as_to_batch_trims_matching_edge_anchors(self, temp_git_repo):
         """Discard --to --line --as should accept unchanged edge anchors by default."""

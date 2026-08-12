@@ -337,10 +337,34 @@ def _replacement_selection_span_indices(
             or first_selected_index >= replacement_stop
         ):
             continue
-        if any(
+        replacement_core_is_incomplete = any(
             line_changes.lines[run_index].id is None
             or line_changes.lines[run_index].id not in replace_ids
             for run_index in range(run_start, replacement_stop)
+        )
+        deletion_side_is_complete = all(
+            line_changes.lines[run_index].id is not None
+            and line_changes.lines[run_index].id in replace_ids
+            for run_index in range(run_start, first_addition)
+        )
+        selected_addition_count = 0
+        for run_index in range(first_addition, line_index):
+            line_id = line_changes.lines[run_index].id
+            if line_id is None or line_id not in replace_ids:
+                break
+            selected_addition_count += 1
+        addition_prefix_is_partial = (
+            0 < selected_addition_count < line_index - first_addition
+            and all(
+                line_changes.lines[run_index].id not in replace_ids
+                for run_index in range(
+                    first_addition + selected_addition_count,
+                    line_index,
+                )
+            )
+        )
+        if replacement_core_is_incomplete and not (
+            deletion_side_is_complete and addition_prefix_is_partial
         ):
             raise ValueError(
                 _(
@@ -387,6 +411,97 @@ def _replacement_selection_span_indices(
     return span_start_index, span_end_index
 
 
+def replacement_working_tree_span_indices(
+    line_changes: LineLevelChange,
+    replace_ids: set[int],
+    working_line_count: int,
+) -> tuple[int, int]:
+    """Return the exact working-tree line span replaced by selected IDs."""
+    span_start_index, span_end_index = _replacement_selection_span_indices(
+        line_changes,
+        replace_ids,
+    )
+
+    def next_new_line_number(start_index: int) -> int | None:
+        for line_index in range(start_index, len(line_changes.lines)):
+            line_entry = line_changes.lines[line_index]
+            if _is_synthetic_gap_line(line_entry):
+                return None
+            if line_entry.new_line_number is not None:
+                return line_entry.new_line_number
+        return None
+
+    def previous_new_line_number(end_index: int) -> int | None:
+        for line_index in range(end_index, -1, -1):
+            line_entry = line_changes.lines[line_index]
+            if _is_synthetic_gap_line(line_entry):
+                return None
+            if line_entry.new_line_number is not None:
+                return line_entry.new_line_number
+        return None
+
+    first_selected_line = line_changes.lines[span_start_index]
+    if first_selected_line.new_line_number is not None:
+        replace_start = max(first_selected_line.new_line_number - 1, 0)
+    elif first_selected_line.old_line_number is not None:
+        replace_start = min(
+            _new_index_for_old_anchor(
+                line_changes,
+                first_selected_line.old_line_number - 1,
+                span_start_index,
+            ),
+            working_line_count,
+        )
+    else:
+        previous_line = previous_new_line_number(span_start_index - 1)
+        next_line = next_new_line_number(span_start_index + 1)
+        if previous_line is not None:
+            replace_start = min(previous_line, working_line_count)
+        elif next_line is not None:
+            replace_start = max(next_line - 1, 0)
+        else:
+            replace_start = min(
+                line_changes.header.new_prefix_line_count(),
+                working_line_count,
+            )
+
+    replace_end = replace_start
+    for line_index in range(span_end_index, span_start_index - 1, -1):
+        line_entry = line_changes.lines[line_index]
+        if line_entry.new_line_number is not None:
+            replace_end = line_entry.new_line_number
+            break
+    return replace_start, replace_end
+
+
+def replacement_baseline_span_indices(
+    line_changes: LineLevelChange,
+    replace_ids: set[int],
+    working_line_count: int,
+) -> tuple[int, int]:
+    """Return the old-file span consumed by a working-tree replacement."""
+    span_start_index, span_end_index = _replacement_selection_span_indices(
+        line_changes,
+        replace_ids,
+    )
+    working_start, working_end = replacement_working_tree_span_indices(
+        line_changes,
+        replace_ids,
+        working_line_count,
+    )
+    baseline_start = _old_index_for_new_anchor(
+        line_changes,
+        working_start,
+        span_start_index,
+    )
+    baseline_end = _old_index_for_new_anchor(
+        line_changes,
+        working_end,
+        span_end_index + 1,
+    )
+    return baseline_start, max(baseline_start, baseline_end)
+
+
 def _old_index_for_new_anchor(
     line_changes: LineLevelChange,
     new_anchor: int,
@@ -399,7 +514,8 @@ def _old_index_for_new_anchor(
     number delta at the selected row.
     """
     old_index = new_anchor
-    for line_entry in line_changes.lines[:before_index]:
+    for line_index in range(before_index):
+        line_entry = line_changes.lines[line_index]
         if line_entry.kind == "+":
             old_index -= 1
         elif line_entry.kind == "-":
@@ -414,7 +530,8 @@ def _new_index_for_old_anchor(
 ) -> int:
     """Translate an old-file anchor to a new-file insertion index."""
     new_index = old_anchor
-    for line_entry in line_changes.lines[:before_index]:
+    for line_index in range(before_index):
+        line_entry = line_changes.lines[line_index]
         if line_entry.kind == "-":
             new_index -= 1
         elif line_entry.kind == "+":
@@ -690,13 +807,15 @@ def _build_target_index_buffer_with_replaced_lines(
         selection_start=replace_start,
         selection_end=replace_end,
         has_trailing_newline=trailing_newline,
-        add_trailing_newline_when_nonempty=base_line_count == 0,
+        add_trailing_newline_when_nonempty=(
+            base_line_count == 0 and not replacement_payload.exact
+        ),
     )
 
 
 def _target_working_tree_line_contents(
     line_changes: LineLevelChange,
-    discard_ids: set[int],
+    discard_ids: Collection[int],
     working_lines: Sequence[bytes],
     working_line_count: int,
 ) -> Iterator[bytes]:
@@ -733,7 +852,8 @@ def _target_working_tree_line_contents(
                 )
             )
 
-        for next_entry in line_changes.lines[index + 1:]:
+        for next_index in range(index + 1, len(line_changes.lines)):
+            next_entry = line_changes.lines[next_index]
             if _is_synthetic_gap_line(next_entry):
                 return
             if next_entry.new_line_number is not None:
@@ -782,7 +902,7 @@ def _target_working_tree_line_contents(
 
 def build_target_working_tree_buffer_from_lines(
     line_changes: LineLevelChange,
-    discard_ids: set[int],
+    discard_ids: Collection[int],
     working_lines: Sequence[bytes],
 ) -> LineBuffer:
     """Build target working tree content from indexed working tree lines."""
@@ -850,62 +970,11 @@ def _build_target_working_tree_buffer_with_replaced_lines(
         )
 
     working_line_count = len(working_lines)
-    span_start_index, span_end_index = _replacement_selection_span_indices(
+    replace_start, replace_end = replacement_working_tree_span_indices(
         line_changes,
         replace_ids,
+        working_line_count,
     )
-
-    def find_next_new_line_number(start_index: int) -> int | None:
-        for line_entry in line_changes.lines[start_index:]:
-            if _is_synthetic_gap_line(line_entry):
-                return None
-            if line_entry.new_line_number is not None:
-                return line_entry.new_line_number
-        return None
-
-    def find_previous_new_line_number(end_index: int) -> int | None:
-        for line_entry in reversed(line_changes.lines[:end_index + 1]):
-            if _is_synthetic_gap_line(line_entry):
-                return None
-            if line_entry.new_line_number is not None:
-                return line_entry.new_line_number
-        return None
-
-    def new_insertion_index(index: int) -> int:
-        line_entry = line_changes.lines[index]
-        if line_entry.kind == "-" and line_entry.old_line_number is not None:
-            return min(
-                _new_index_for_old_anchor(
-                    line_changes,
-                    line_entry.old_line_number - 1,
-                    index,
-                ),
-                working_line_count,
-            )
-
-        previous_new_line_number = find_previous_new_line_number(index - 1)
-        if previous_new_line_number is not None:
-            return min(previous_new_line_number, working_line_count)
-
-        next_new_line_number = find_next_new_line_number(index + 1)
-        if next_new_line_number is not None:
-            return max(next_new_line_number - 1, 0)
-
-        return min(line_changes.header.new_prefix_line_count(), working_line_count)
-
-    first_selected_line = line_changes.lines[span_start_index]
-    if first_selected_line.new_line_number is not None:
-        replace_start = max(first_selected_line.new_line_number - 1, 0)
-    else:
-        replace_start = new_insertion_index(span_start_index)
-
-    replace_end = working_line_count
-    for line_entry in reversed(line_changes.lines[span_start_index:span_end_index + 1]):
-        if line_entry.new_line_number is not None:
-            replace_end = line_entry.new_line_number
-            break
-    else:
-        replace_end = replace_start
 
     if trim_unchanged_edge_anchors:
         context_limit = len(replacement_lines)
@@ -962,5 +1031,7 @@ def _build_target_working_tree_buffer_with_replaced_lines(
         selection_start=replace_start,
         selection_end=replace_end,
         has_trailing_newline=trailing_newline,
-        add_trailing_newline_when_nonempty=working_line_count == 0,
+        add_trailing_newline_when_nonempty=(
+            working_line_count == 0 and not replacement_payload.exact
+        ),
     )

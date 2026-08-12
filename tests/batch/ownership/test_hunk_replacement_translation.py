@@ -4,17 +4,31 @@ from __future__ import annotations
 
 import pytest
 
+from git_stage_batch.batch.ownership import (
+    hunk_replacement_translation as hunk_replacement_translation_module,
+)
+from git_stage_batch.batch.ownership.claims import LineRangeBuilder
 from git_stage_batch.batch.ownership.hunk_replacement_translation import (
     translate_hunk_replacement_line_runs,
 )
 from git_stage_batch.batch.ownership.line_entries import (
     LineEntryContentSequence,
-    old_line_content_by_number,
 )
 from git_stage_batch.batch.ownership.replacement_units import ReplacementUnit
 from git_stage_batch.batch.ownership.replacement_line_runs import ReplacementLineRun
 from git_stage_batch.core.line_selection import LineRanges
 from git_stage_batch.core.models import LineEntry
+
+
+def old_line_content_by_number(
+    hunk_lines: list[LineEntry],
+) -> dict[int, bytes]:
+    """Return the small fixture's visible old-line content by coordinate."""
+    return {
+        line.old_line_number: line.text_bytes
+        for line in hunk_lines
+        if line.old_line_number is not None and line.kind in {" ", "-"}
+    }
 
 
 def _translate(lines, selected_ids, replacement_runs):
@@ -89,6 +103,20 @@ def test_translate_hunk_replacement_line_runs_closes_inputs_on_error():
 
     assert displayed_runs.closed is True
     assert origin_runs.closed is True
+
+    same_stream_runs = ClosableRuns((ReplacementLineRun(1, 1, 1, 1),))
+    with pytest.raises(ValueError, match="source_line is None"):
+        translate_hunk_replacement_line_runs(
+            hunk_lines=lines,
+            selected_display_ids={1, 2},
+            replacement_line_runs=same_stream_runs,
+            old_line_content=old_line_content_by_number(lines),
+            hunk_content_view=LineEntryContentSequence(lines),
+            replacement_origin_source_lines=[b"old\n"],
+            replacement_runs_are_origin_runs=True,
+        )
+
+    assert same_stream_runs.closed is True
 
 
 def test_translate_hunk_replacement_line_runs_builds_replacement_result():
@@ -226,6 +254,88 @@ def test_translate_hunk_replacement_uses_origin_baseline_content():
     assert reference.before_content == b"orig-two\n"
 
 
+def test_same_stream_replacement_origin_matches_independent_origin_stream():
+    """One replacement stream should retain the two-stream origin metadata."""
+    lines = [
+        LineEntry(
+            id=1,
+            kind="-",
+            old_line_number=1,
+            new_line_number=None,
+            text_bytes=b"displayed-one",
+            source_line=None,
+        ),
+        LineEntry(
+            id=2,
+            kind="-",
+            old_line_number=2,
+            new_line_number=None,
+            text_bytes=b"displayed-two",
+            source_line=1,
+        ),
+        LineEntry(
+            id=3,
+            kind="+",
+            old_line_number=None,
+            new_line_number=1,
+            text_bytes=b"new-one",
+            source_line=1,
+        ),
+        LineEntry(
+            id=4,
+            kind="+",
+            old_line_number=None,
+            new_line_number=2,
+            text_bytes=b"new-two",
+            source_line=2,
+        ),
+    ]
+    run = ReplacementLineRun(1, 2, 1, 2)
+    origin_lines = [b"origin-one\n", b"origin-two\n", b"tail\n"]
+
+    same_stream = translate_hunk_replacement_line_runs(
+        hunk_lines=lines,
+        selected_display_ids=LineRanges.from_ranges(((1, 1), (3, 3))),
+        replacement_line_runs=(run,),
+        old_line_content=old_line_content_by_number(lines),
+        hunk_content_view=LineEntryContentSequence(lines),
+        replacement_origin_source_lines=origin_lines,
+        replacement_runs_are_origin_runs=True,
+    )
+    independent_streams = translate_hunk_replacement_line_runs(
+        hunk_lines=lines,
+        selected_display_ids={1, 3},
+        replacement_line_runs=(run,),
+        old_line_content=old_line_content_by_number(lines),
+        hunk_content_view=LineEntryContentSequence(lines),
+        replacement_origin_line_runs=(run,),
+        replacement_origin_source_lines=origin_lines,
+    )
+
+    def metadata_signature(result):
+        return (
+            result.claimed_source_lines.ranges(),
+            result.presence_baseline_references,
+            tuple(
+                (
+                    claim.anchor_line,
+                    tuple(claim.content_lines),
+                    claim.baseline_reference,
+                )
+                for claim in result.absence_claims
+            ),
+            result.replacement_units,
+            result.consumed_display_ids.ranges(),
+        )
+
+    assert metadata_signature(same_stream) == metadata_signature(
+        independent_streams
+    )
+    assert tuple(same_stream.absence_claims[0].content_lines) == (
+        b"origin-one\n",
+    )
+
+
 def test_translate_hunk_replacement_line_runs_keeps_large_ranges_compact(
     monkeypatch,
 ):
@@ -263,7 +373,7 @@ def test_translate_hunk_replacement_line_runs_keeps_large_ranges_compact(
             for index in range(1000)
         ],
     ]
-    selected_ids = {line.id for line in lines if line.id is not None}
+    selected_ids = LineRanges.from_ranges(((1, len(lines)),))
 
     result = _translate(lines, selected_ids, [RangeOnlyReplacementRun()])
 
@@ -272,3 +382,53 @@ def test_translate_hunk_replacement_line_runs_keeps_large_ranges_compact(
         ReplacementUnit(presence_lines=["1-1000"], deletion_indices=[0]),
     ]
     assert result.consumed_display_ids == selected_ids
+
+
+def test_equal_replacement_consumed_ids_stay_compact(monkeypatch):
+    """Paired old/new IDs should accumulate in separate monotonic ranges."""
+    builders = []
+
+    class TrackingLineRangeBuilder(LineRangeBuilder):
+        def __init__(self):
+            super().__init__()
+            builders.append(self)
+
+    monkeypatch.setattr(
+        hunk_replacement_translation_module,
+        "LineRangeBuilder",
+        TrackingLineRangeBuilder,
+    )
+    line_count = 64
+    lines = [
+        *[
+            LineEntry(
+                id=index + 1,
+                kind="-",
+                old_line_number=index + 1,
+                new_line_number=None,
+                text_bytes=b"old",
+            )
+            for index in range(line_count)
+        ],
+        *[
+            LineEntry(
+                id=line_count + index + 1,
+                kind="+",
+                old_line_number=None,
+                new_line_number=index + 1,
+                text_bytes=b"new",
+                source_line=index + 1,
+            )
+            for index in range(line_count)
+        ],
+    ]
+    selected_ids = LineRanges.from_ranges(((1, line_count * 2),))
+
+    result = _translate(
+        lines,
+        selected_ids,
+        (ReplacementLineRun(1, line_count, 1, line_count),),
+    )
+
+    assert result.consumed_display_ids == selected_ids
+    assert max(len(builder.ranges) for builder in builders) <= 1

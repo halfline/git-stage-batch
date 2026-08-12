@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import pytest
+
+from git_stage_batch.batch.ownership import hunk_translation as hunk_translation_module
 from git_stage_batch.batch.ownership.hunk_translation import (
     translate_hunk_selection_to_batch_ownership,
 )
@@ -343,6 +346,40 @@ def test_translate_hunk_selection_uses_full_hunk_boundaries():
     assert ownership.replacement_units == []
 
 
+def test_translate_hunk_selection_prefers_visible_boundary_content():
+    """Visible hunk bytes should override a fallback baseline boundary."""
+    lines = [
+        LineEntry(
+            id=None,
+            kind=" ",
+            old_line_number=1,
+            new_line_number=1,
+            text_bytes=b"visible",
+            text="visible",
+            source_line=1,
+        ),
+        LineEntry(
+            id=1,
+            kind="-",
+            old_line_number=2,
+            new_line_number=None,
+            text_bytes=b"deleted",
+            text="deleted",
+            source_line=1,
+        ),
+    ]
+
+    ownership = translate_hunk_selection_to_batch_ownership(
+        lines,
+        {1},
+        baseline_lines=[b"fallback\n", b"deleted\n"],
+    )
+
+    reference = ownership.deletions[0].baseline_reference
+    assert reference.after_line == 1
+    assert reference.after_content == b"visible"
+
+
 def test_translate_hunk_selection_uses_file_derived_replacement_runs():
     """Replacement units come from caller-provided before/after line runs."""
     lines = [
@@ -577,6 +614,47 @@ def test_translate_hunk_selection_scans_replacement_ranges(monkeypatch):
     assert ownership.replacement_units == [
         ReplacementUnit(presence_lines=["1-1000"], deletion_indices=[0]),
     ]
+
+
+def test_translate_hunk_selection_closes_old_line_index_on_population_error(
+    monkeypatch,
+):
+    """Old-line index construction failures should release mapped storage."""
+
+    class FailingRecordVector:
+        instance = None
+
+        def __init__(self, capacity, record_format):
+            self.closed = False
+            FailingRecordVector.instance = self
+
+        def append(self, record):
+            raise RuntimeError("index population failed")
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(
+        hunk_translation_module,
+        "MappedRecordVector",
+        FailingRecordVector,
+    )
+    lines = [
+        LineEntry(
+            id=1,
+            kind="-",
+            old_line_number=1,
+            new_line_number=None,
+            text_bytes=b"old",
+            source_line=None,
+        )
+    ]
+
+    with pytest.raises(RuntimeError, match="index population failed"):
+        translate_hunk_selection_to_batch_ownership(lines, {1})
+
+    assert FailingRecordVector.instance is not None
+    assert FailingRecordVector.instance.closed is True
 
 
 def test_translate_hunk_selection_stores_large_replacement_absence_buffer():

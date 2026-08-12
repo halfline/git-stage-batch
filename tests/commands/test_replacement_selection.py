@@ -66,6 +66,40 @@ def test_replacement_selection_leaves_surplus_additions_outside_core():
     assert expand_replacement_selection_ids(line_changes, {3}) == {3}
 
 
+def test_replacement_selection_keeps_explicit_partial_addition_prefix():
+    """A complete old side plus an explicit new prefix should remain exact."""
+    line_changes = LineLevelChange(
+        path="test.txt",
+        header=HunkHeader(1, 3, 1, 4),
+        lines=[
+            LineEntry(1, "-", 1, None, text_bytes=b"old-a"),
+            LineEntry(2, "-", 2, None, text_bytes=b"old-b"),
+            LineEntry(3, "-", 3, None, text_bytes=b"old-c"),
+            LineEntry(4, "+", None, 1, text_bytes=b"batch-a"),
+            LineEntry(5, "+", None, 2, text_bytes=b"batch-b"),
+            LineEntry(6, "+", None, 3, text_bytes=b"live-a"),
+            LineEntry(7, "+", None, 4, text_bytes=b"live-b"),
+        ],
+    )
+
+    assert expand_replacement_selection_ids(
+        line_changes,
+        {1, 2, 3, 4, 5},
+        preserve_partial_addition_prefix=True,
+    ) == {
+        1,
+        2,
+        3,
+        4,
+        5,
+    }
+
+    assert expand_replacement_selection_ids(
+        line_changes,
+        {1, 2, 3, 4, 5},
+    ) == {1, 2, 3, 4, 5, 6}
+
+
 def test_replacement_selection_refuses_unavailable_opposite_side():
     """A skipped row cannot be silently omitted from a selected replacement."""
     line_changes = LineLevelChange(

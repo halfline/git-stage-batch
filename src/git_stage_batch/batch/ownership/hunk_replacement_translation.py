@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 
 from ...core.line_selection import LineRanges
@@ -31,7 +31,7 @@ class HunkReplacementTranslation:
     presence_baseline_references: dict[int, BaselineReference]
     absence_claims: list[AbsenceClaim]
     replacement_units: list[ReplacementUnit]
-    consumed_display_ids: set[int]
+    consumed_display_ids: LineRanges
 
 
 def _close_replacement_run_iterator(
@@ -45,18 +45,25 @@ def _close_replacement_run_iterator(
 def translate_hunk_replacement_line_runs(
     *,
     hunk_lines: list[LineEntry],
-    selected_display_ids: set[int],
+    selected_display_ids: Collection[int],
     replacement_line_runs: Iterable[ReplacementLineRun],
-    old_line_content: dict[int, bytes],
+    old_line_content: Mapping[int, bytes],
     hunk_content_view: Sequence[bytes],
     replacement_origin_line_runs: Iterable[ReplacementLineRun] | None = None,
     replacement_origin_source_lines: Sequence[bytes] | None = None,
+    replacement_runs_are_origin_runs: bool = False,
 ) -> HunkReplacementTranslation:
     """Translate selected portions of file-derived replacement runs."""
-    if (
-        replacement_origin_line_runs is None
-    ) != (
-        replacement_origin_source_lines is None
+    if replacement_runs_are_origin_runs and (
+        replacement_origin_line_runs is not None
+        or replacement_origin_source_lines is None
+    ):
+        raise ValueError(
+            "same-stream replacement origins require only origin source lines"
+        )
+    if not replacement_runs_are_origin_runs and (
+        (replacement_origin_line_runs is None)
+        != (replacement_origin_source_lines is None)
     ):
         raise ValueError(
             "replacement origin runs and source lines must be provided together"
@@ -78,6 +85,7 @@ def translate_hunk_replacement_line_runs(
                 hunk_content_view=hunk_content_view,
                 origin_run_iterator=origin_run_iterator,
                 replacement_origin_source_lines=replacement_origin_source_lines,
+                replacement_runs_are_origin_runs=replacement_runs_are_origin_runs,
             )
         finally:
             _close_replacement_run_iterator(origin_run_iterator)
@@ -88,19 +96,21 @@ def translate_hunk_replacement_line_runs(
 def _translate_hunk_replacement_line_runs(
     *,
     hunk_lines: list[LineEntry],
-    selected_display_ids: set[int],
+    selected_display_ids: Collection[int],
     replacement_run_iterator: Iterator[ReplacementLineRun],
-    old_line_content: dict[int, bytes],
+    old_line_content: Mapping[int, bytes],
     hunk_content_view: Sequence[bytes],
     origin_run_iterator: Iterator[ReplacementLineRun],
     replacement_origin_source_lines: Sequence[bytes] | None,
+    replacement_runs_are_origin_runs: bool,
 ) -> HunkReplacementTranslation:
     """Translate replacement runs whose iterator lifetimes are caller-owned."""
     claimed_source_lines = LineRangeBuilder()
     presence_baseline_references: dict[int, BaselineReference] = {}
     absence_claims: list[AbsenceClaim] = []
     replacement_units: list[ReplacementUnit] = []
-    consumed_display_ids: set[int] = set()
+    consumed_old_display_ids = LineRangeBuilder()
+    consumed_new_display_ids = LineRangeBuilder()
 
     def add_replacement_unit(
         selected_old_ranges: Iterable[tuple[int, int]],
@@ -115,7 +125,6 @@ def _translate_hunk_replacement_line_runs(
         deletion_anchor: int | None = None
         old_line_seen = False
         selected_source_lines = LineRangeBuilder()
-        consumed_ids: list[int] = []
         use_origin_content = (
             origin_old_start is not None
             and origin_old_end is not None
@@ -135,7 +144,7 @@ def _translate_hunk_replacement_line_runs(
                 for index in range(range_start, range_stop):
                     old_line = hunk_lines[index]
                     if old_line.id is not None:
-                        consumed_ids.append(old_line.id)
+                        consumed_old_display_ids.add_line(old_line.id)
 
             if use_origin_content:
                 assert origin_old_start is not None
@@ -159,7 +168,7 @@ def _translate_hunk_replacement_line_runs(
             claimed_source_lines.add_line(new_line.source_line)
             selected_source_lines.add_line(new_line.source_line)
             if new_line.id is not None:
-                consumed_ids.append(new_line.id)
+                consumed_new_display_ids.add_line(new_line.id)
             baseline_reference = baseline_reference_for_presence_line(new_line)
             if baseline_reference is not None:
                 presence_baseline_references[new_line.source_line] = (
@@ -196,7 +205,6 @@ def _translate_hunk_replacement_line_runs(
                 origin=origin,
             )
         )
-        consumed_display_ids.update(consumed_ids)
 
     old_cursor = 0
     new_cursor = 0
@@ -207,6 +215,8 @@ def _translate_hunk_replacement_line_runs(
     def origin_projection_for_new_range(
         new_start: int,
         new_end: int,
+        *,
+        replacement_run: ReplacementLineRun,
     ) -> tuple[ReplacementUnitOrigin, int, int] | None:
         """Project a displayed replacement range through live HEAD."""
         nonlocal next_origin_run
@@ -216,12 +226,16 @@ def _translate_hunk_replacement_line_runs(
         if replacement_origin_source_lines is None:
             return None
 
-        while (
-            next_origin_run is not None
-            and next_origin_run.new_end < new_start
-        ):
-            next_origin_run = next(origin_run_iterator, None)
-        origin_run = next_origin_run
+        origin_run: ReplacementLineRun | None
+        if replacement_runs_are_origin_runs:
+            origin_run = replacement_run
+        else:
+            while (
+                next_origin_run is not None
+                and next_origin_run.new_end < new_start
+            ):
+                next_origin_run = next(origin_run_iterator, None)
+            origin_run = next_origin_run
         if (
             origin_run is None
             or origin_run.new_start > new_start
@@ -320,6 +334,7 @@ def _translate_hunk_replacement_line_runs(
                     origin_projection = origin_projection_for_new_range(
                         new_line.new_line_number,
                         new_line.new_line_number,
+                        replacement_run=replacement_run,
                     )
                     add_replacement_unit(
                         ((old_index, old_index + 1),),
@@ -348,6 +363,7 @@ def _translate_hunk_replacement_line_runs(
             origin_projection = origin_projection_for_new_range(
                 replacement_run.new_start,
                 replacement_run.new_end,
+                replacement_run=replacement_run,
             )
             add_replacement_unit(
                 _hunk_line_ranges.hunk_line_index_ranges_in_range(
@@ -384,10 +400,16 @@ def _translate_hunk_replacement_line_runs(
                 ),
             )
 
+    consumed_old_ids = consumed_old_display_ids.finish()
+    consumed_new_ids = consumed_new_display_ids.finish()
     return HunkReplacementTranslation(
         claimed_source_lines=claimed_source_lines.finish(),
         presence_baseline_references=presence_baseline_references,
         absence_claims=absence_claims,
         replacement_units=replacement_units,
-        consumed_display_ids=consumed_display_ids,
+        consumed_display_ids=LineRanges.from_ranges(
+            range_pair
+            for consumed_ids in (consumed_old_ids, consumed_new_ids)
+            for range_pair in consumed_ids.ranges()
+        ),
     )

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 
 from ...core.models import LineEntry
@@ -34,7 +34,7 @@ def scan_hunk_line_range(
     line_number_attr: str,
     start: int,
     end: int,
-    selected_display_ids: set[int],
+    selected_display_ids: Collection[int],
 ) -> HunkLineRangeScan:
     index = cursor
     start_index = cursor

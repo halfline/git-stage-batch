@@ -177,12 +177,6 @@ msgstr "احذف سطر الهدف {line}"
 msgid "deletion anchor has multiple compatible target placements"
 msgstr "لمرساة الحذف عدة مواضع متوافقة في الهدف"
 
-#: src/git_stage_batch/batch/merge/merge.py:82
-msgid ""
-"Cannot safely choose between recorded baseline coordinates and structural "
-"content matching"
-msgstr "لا يمكن الاختيار بأمان بين إحداثيات خط الأساس المسجلة ومطابقة المحتوى الهيكلي"
-
 #: src/git_stage_batch/batch/merge/merge.py:190
 msgid ""
 "Cannot reliably place split replacement: original replacement boundary is "

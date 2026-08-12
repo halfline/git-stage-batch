@@ -157,12 +157,6 @@ msgstr "대상 줄 {line} 삭제"
 msgid "deletion anchor has multiple compatible target placements"
 msgstr "삭제 앵커에 호환되는 대상 배치가 여러 개 있습니다"
 
-#: src/git_stage_batch/batch/merge/merge.py:82
-msgid ""
-"Cannot safely choose between recorded baseline coordinates and structural "
-"content matching"
-msgstr "기록된 기준선 좌표와 구조적 내용 일치 중 하나를 안전하게 선택할 수 없습니다"
-
 #: src/git_stage_batch/batch/merge/merge.py:190
 msgid ""
 "Cannot reliably place split replacement: original replacement boundary is "

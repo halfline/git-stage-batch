@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ...core.line_selection import LineSelection, coerce_line_ranges
-from ...core.mapped_storage import MappedRecordVector
+from ...core.mapped_storage import MappedRecordVector, sort_mapped_records
 from .baseline_anchor_matching import (
     live_coordinate_edits_are_safe as _live_coordinate_edits_are_safe,
 )
@@ -187,6 +187,10 @@ def _build_baseline_edit_plan(
         replacement_source_range_capacity,
         "QQ",
     )
+    mapped_replacement_target_lines = workspace.record_vector(
+        len(presence_lines),
+        "Q",
+    )
     if not _plan_replacement_unit_edits(
         workspace,
         plan,
@@ -196,8 +200,11 @@ def _build_baseline_edit_plan(
         deletion_claims,
         deletion_edit_bounds,
         replacement_source_ranges,
+        mapped_replacement_target_lines,
         resolution,
         max_resolution_choices=max_resolution_choices,
+        source_to_working_mapping=source_to_working_mapping,
+        spool_dir=spool_dir,
     ):
         return None
     if not _replacement_source_ranges_fit_presence(
@@ -212,6 +219,14 @@ def _build_baseline_edit_plan(
         deletion_edit_bounds,
     ):
         return None
+    if mapped_replacement_target_lines:
+        sort_mapped_records(mapped_replacement_target_lines)
+        if (
+            not plan.sort_target_spans_and_validate()
+            or plan.removes_any_target_lines(mapped_replacement_target_lines)
+        ):
+            return None
+    workspace.close_resource(mapped_replacement_target_lines)
 
     positioned_insertion_lines = _plan_presence_insertions(
         plan,

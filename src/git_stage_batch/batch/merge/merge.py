@@ -9,6 +9,10 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from . import baseline_anchor_matching as _baseline_anchor_matching
 from . import baseline_edits as _baseline_edits
 from . import presence_constraints as _presence_constraints
+from .baseline_replacement_choices import (
+    REPLACEMENT_ORIGIN_AMBIGUITY_PREFIX as _REPLACEMENT_ORIGIN_AMBIGUITY_PREFIX,
+    replacement_origin_unit_index as _replacement_origin_unit_index,
+)
 from .candidate_enumeration import (
     enumerate_merge_batch_candidates_for_lines as _enumerate_merge_candidates,
 )
@@ -24,6 +28,8 @@ from .coordinate_strategy import (
 )
 from .validation import (
     check_structural_validity as _check_merge_structural_validity,
+    has_mapped_origin_replacement_claims as _has_mapped_origin_replacement_claims,
+    has_mixed_origin_replacement_claims as _has_mixed_origin_replacement_claims,
     has_missing_origin_replacement_claims as _has_missing_origin_replacement_claims,
 )
 from ..line_matching.line_mapping import LineMapping
@@ -76,12 +82,29 @@ def _close_candidate(candidate: Iterator[bytes] | None) -> None:
         candidate.close()
 
 
+def _replacement_origin_resolution_unit_indices(
+    resolution: _MergeResolution | None,
+) -> frozenset[int]:
+    """Return unit indexes named by replacement-origin decisions."""
+    if resolution is None:
+        return frozenset()
+
+    unit_indices: set[int] = set()
+    for key in resolution.decisions:
+        if not isinstance(key, str) or not key.startswith(
+            _REPLACEMENT_ORIGIN_AMBIGUITY_PREFIX
+        ):
+            continue
+        unit_index = _replacement_origin_unit_index(key)
+        if unit_index is None:
+            raise _MergeError(_("Selected merge resolution is no longer valid"))
+        unit_indices.add(unit_index)
+    return frozenset(unit_indices)
+
+
 def _coordinate_ambiguity_error() -> _CoordinateStrategyAmbiguity:
     return _CoordinateStrategyAmbiguity(
-        _(
-            "Cannot safely choose between recorded baseline coordinates "
-            "and structural content matching"
-        )
+        _("Batch was created from a different version of the file")
     )
 
 
@@ -182,6 +205,7 @@ def _build_structural_realized_entries(
             ownership,
             presence_line_set,
             source_lines,
+            working_lines,
             mapping,
             spool_dir=spool_dir,
         ):
@@ -377,46 +401,47 @@ def _merge_batch_acquired_line_chunks(
     strategy_choice, effective_resolution = (
         _strategy_choice_and_effective_resolution(resolution)
     )
+    has_origin_replacement_units = any(
+        getattr(unit, "origin", None) is not None
+        for unit in ownership.replacement_units
+    )
 
-    if strategy_choice == _CoordinateStrategyChoice.RECORDED_COORDINATES:
-        if not _has_recorded_baseline_coordinates(
-            ownership,
-            presence_line_set,
-            deletion_claims,
-        ):
-            raise _MergeError(_("Selected merge resolution is no longer valid"))
-        selected_coordinate_candidate = (
-            _baseline_edits.try_apply_baseline_coordinate_edits(
-                source_lines,
-                working_lines,
+    replacement_resolution_unit_indices = (
+        _replacement_origin_resolution_unit_indices(
+            effective_resolution
+        )
+    )
+    if any(
+        unit_index >= len(ownership.replacement_units)
+        or getattr(ownership.replacement_units[unit_index], "origin", None) is None
+        for unit_index in replacement_resolution_unit_indices
+    ):
+        raise _MergeError(_("Selected merge resolution is no longer valid"))
+
+    has_replacement_resolution = bool(
+        replacement_resolution_unit_indices
+    )
+
+    needs_origin_resolution_preflight = has_replacement_resolution or (
+        strategy_choice == _CoordinateStrategyChoice.RECORDED_COORDINATES
+        and has_origin_replacement_units
+    )
+    needs_shared_mapping = (
+        strategy_choice is None
+        and presence_line_set
+        and (
+            has_origin_replacement_units
+            or not _has_recorded_baseline_coordinates(
                 ownership,
                 presence_line_set,
                 deletion_claims,
-                resolution=effective_resolution,
-                max_resolution_choices=_MERGE_CANDIDATE_CAP + 1,
-                trust_baseline_coordinates=True,
-                spool_dir=spool_dir,
             )
         )
-        if selected_coordinate_candidate is None:
-            raise _MergeError(_("Selected merge resolution is no longer valid"))
-        try:
-            yield from selected_coordinate_candidate
-        finally:
-            _close_candidate(selected_coordinate_candidate)
-        return
-
+    )
     owned_shared_mapping = None
     shared_mapping = source_to_working_mapping
-    if (
-        strategy_choice is None
-        and shared_mapping is None
-        and presence_line_set
-        and not _has_recorded_baseline_coordinates(
-            ownership,
-            presence_line_set,
-            deletion_claims,
-        )
+    if shared_mapping is None and (
+        needs_origin_resolution_preflight or needs_shared_mapping
     ):
         owned_shared_mapping = match_lines(
             source_lines,
@@ -426,7 +451,83 @@ def _merge_batch_acquired_line_chunks(
         shared_mapping = owned_shared_mapping
 
     try:
-        if strategy_choice is None:
+        if needs_origin_resolution_preflight:
+            assert shared_mapping is not None
+            if _has_mixed_origin_replacement_claims(
+                ownership,
+                presence_line_set,
+                source_lines,
+                shared_mapping,
+                spool_dir=spool_dir,
+            ):
+                raise _MergeError(
+                    _("Selected merge resolution is no longer valid")
+                )
+            mapped_unit_indices = (
+                None
+                if strategy_choice
+                == _CoordinateStrategyChoice.RECORDED_COORDINATES
+                else replacement_resolution_unit_indices
+            )
+            if _has_mapped_origin_replacement_claims(
+                ownership,
+                presence_line_set,
+                source_lines,
+                shared_mapping,
+                unit_indices=mapped_unit_indices,
+                spool_dir=spool_dir,
+            ):
+                raise _MergeError(
+                    _("Selected merge resolution is no longer valid")
+                )
+
+        if strategy_choice == _CoordinateStrategyChoice.RECORDED_COORDINATES:
+            if not _has_recorded_baseline_coordinates(
+                ownership,
+                presence_line_set,
+                deletion_claims,
+            ):
+                raise _MergeError(_("Selected merge resolution is no longer valid"))
+            selected_coordinate_candidate = (
+                _baseline_edits.try_apply_baseline_coordinate_edits(
+                    source_lines,
+                    working_lines,
+                    ownership,
+                    presence_line_set,
+                    deletion_claims,
+                    resolution=effective_resolution,
+                    max_resolution_choices=_MERGE_CANDIDATE_CAP + 1,
+                    trust_baseline_coordinates=True,
+                    source_to_working_mapping=shared_mapping,
+                    spool_dir=spool_dir,
+                )
+            )
+            if selected_coordinate_candidate is None:
+                raise _MergeError(_("Selected merge resolution is no longer valid"))
+            try:
+                yield from selected_coordinate_candidate
+            finally:
+                _close_candidate(selected_coordinate_candidate)
+            return
+
+        skip_coordinate_replay = (
+            strategy_choice is None
+            and has_origin_replacement_units
+            and shared_mapping is not None
+            and _has_mapped_origin_replacement_claims(
+                ownership,
+                presence_line_set,
+                source_lines,
+                shared_mapping,
+                unit_indices=(
+                    replacement_resolution_unit_indices
+                    if has_replacement_resolution
+                    else None
+                ),
+                spool_dir=spool_dir,
+            )
+        )
+        if strategy_choice is None and not skip_coordinate_replay:
             fallback_chunks = _baseline_edits.try_apply_baseline_coordinate_edits(
                 source_lines,
                 working_lines,
@@ -448,6 +549,7 @@ def _merge_batch_acquired_line_chunks(
         coordinate_candidate = None
         if (
             resolution is None
+            and not skip_coordinate_replay
             and _has_recorded_baseline_coordinates(
                 ownership,
                 presence_line_set,

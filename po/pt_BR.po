@@ -176,14 +176,6 @@ msgstr "excluir linha de destino {line}"
 msgid "deletion anchor has multiple compatible target placements"
 msgstr "a âncora de exclusão tem várias posições de destino compatíveis"
 
-#: src/git_stage_batch/batch/merge/merge.py:82
-msgid ""
-"Cannot safely choose between recorded baseline coordinates and structural "
-"content matching"
-msgstr ""
-"Não é possível escolher com segurança entre as coordenadas de referência "
-"registradas e a correspondência estrutural de conteúdo"
-
 #: src/git_stage_batch/batch/merge/merge.py:190
 msgid ""
 "Cannot reliably place split replacement: original replacement boundary is "

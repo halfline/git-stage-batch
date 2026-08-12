@@ -19,6 +19,9 @@ if TYPE_CHECKING:
     )
 
 
+REPLACEMENT_ORIGIN_AMBIGUITY_PREFIX = "replacement-origin:"
+
+
 @dataclass(frozen=True)
 class ReplacementOriginChoice:
     """Concrete target placement for an origin-tracked replacement."""
@@ -27,6 +30,23 @@ class ReplacementOriginChoice:
     position: int
     target_after_line: int | None
     target_before_line: int | None
+
+
+def replacement_origin_unit_index(ambiguity_key: object) -> int | None:
+    """Return the unit index encoded in a replacement-origin ambiguity key."""
+    if not isinstance(ambiguity_key, str) or not ambiguity_key.startswith(
+        REPLACEMENT_ORIGIN_AMBIGUITY_PREFIX
+    ):
+        return None
+
+    remainder = ambiguity_key[len(REPLACEMENT_ORIGIN_AMBIGUITY_PREFIX):]
+    unit_text, separator, _identity = remainder.partition(":")
+    if not separator or not unit_text.isascii() or not unit_text.isdigit():
+        return None
+    try:
+        return int(unit_text)
+    except ValueError:
+        return None
 
 
 def replacement_origin_choices_for_unit(
@@ -112,7 +132,8 @@ def _replacement_origin_ambiguity_key(
     claimed = _range_sequence_identity(claimed_ranges)
     digest = _sequence_digest(forbidden_sequence)
     return (
-        f"replacement-origin:{unit_index}:delete:{deletion_index}:"
+        f"{REPLACEMENT_ORIGIN_AMBIGUITY_PREFIX}"
+        f"{unit_index}:delete:{deletion_index}:"
         f"claimed:{claimed}:old:{origin.old_start}-{origin.old_end}:"
         f"new:{origin.new_start}-{origin.new_end}:{digest}"
     )

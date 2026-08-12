@@ -174,14 +174,6 @@ msgstr "удалить целевую строку {line}"
 msgid "deletion anchor has multiple compatible target placements"
 msgstr "якорь удаления имеет несколько совместимых целевых размещений"
 
-#: src/git_stage_batch/batch/merge/merge.py:82
-msgid ""
-"Cannot safely choose between recorded baseline coordinates and structural "
-"content matching"
-msgstr ""
-"Нельзя безопасно выбрать между записанными координатами базовой версии и "
-"структурным сопоставлением содержимого"
-
 #: src/git_stage_batch/batch/merge/merge.py:190
 msgid ""
 "Cannot reliably place split replacement: original replacement boundary is "

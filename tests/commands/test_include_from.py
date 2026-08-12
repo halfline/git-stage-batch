@@ -13,15 +13,19 @@ from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.state.query import read_batch_metadata
 from git_stage_batch.batch.text_file_storage import add_file_to_batch
 from git_stage_batch.commands.apply_from import command_apply_from_batch
+from git_stage_batch.commands.discard import command_discard_to_batch
 from git_stage_batch.commands.discard_from import command_discard_from_batch
 from git_stage_batch.commands.include import command_include_to_batch
 from git_stage_batch.commands.include_from import command_include_from_batch
 from git_stage_batch.commands.redo import command_redo
+from git_stage_batch.commands.show import command_show
 from git_stage_batch.commands.show_from import command_show_from_batch
 from git_stage_batch.commands.start import command_start
+from git_stage_batch.commands.stop import command_stop
 from git_stage_batch.commands.undo import command_undo
 from git_stage_batch.batch.file_display import render_batch_file_display
 from git_stage_batch.data.file_review.state import clear_last_file_review_state
+from git_stage_batch.data.line_state import load_line_changes_from_state
 from git_stage_batch.data.file_target_identity import (
     IndexIdentity,
     WorktreeIdentity,
@@ -107,6 +111,268 @@ class TestCommandIncludeFromBatch:
 
         captured = capsys.readouterr()
         assert "Staged changes from batch" in captured.err
+
+    def test_include_from_merges_disjoint_batch_after_head_advances(
+        self,
+        temp_git_repo,
+    ):
+        """A batch should merge after an earlier disjoint batch is committed."""
+        driver = temp_git_repo / "driver.c"
+        baseline = """\
+static struct state *duplicate_state(void)
+{
+        struct state *state;
+        struct frame_info *frame_info;
+
+        state = allocate_state();
+        if (!state)
+                return NULL;
+
+        frame_info = allocate_frame_info();
+        if (!frame_info) {
+                free_state(state);
+                return NULL;
+        }
+
+        state->frame_info = frame_info;
+        return state;
+}
+
+static void keep_first_boundary_stable(void)
+{
+        keep_line_one();
+        keep_line_two();
+        keep_line_three();
+        keep_line_four();
+        keep_line_five();
+        keep_line_six();
+}
+
+static void destroy_state(struct state *state)
+{
+        struct controller *controller = state->controller;
+
+        if (controller && state->frame_info->buffer) {
+                if (buffer_has_references(state->frame_info->buffer))
+                        buffer_put(state->frame_info->buffer);
+        }
+
+        free_frame_info(state->frame_info);
+        free_state(state);
+}
+
+static void keep_second_boundary_stable(void)
+{
+        keep_line_seven();
+        keep_line_eight();
+        keep_line_nine();
+        keep_line_ten();
+        keep_line_eleven();
+        keep_line_twelve();
+}
+
+static void reset_state(void)
+{
+        struct state *state;
+
+        state = allocate_state();
+        if (!state)
+                return;
+
+        install_state(state);
+}
+
+static void keep_third_boundary_stable(void)
+{
+        keep_line_thirteen();
+        keep_line_fourteen();
+        keep_line_fifteen();
+        keep_line_sixteen();
+        keep_line_seventeen();
+        keep_line_eighteen();
+}
+
+static struct plane *initialize_properties(struct device *device)
+{
+        struct plane *plane;
+
+        plane = allocate_plane(device,
+                               supported_formats,
+                               supported_format_count,
+                               primary_plane_type);
+        if (!plane)
+                return NULL;
+
+        add_plane_helpers(plane);
+
+        create_rotation_property(plane);
+        create_color_properties(plane);
+
+        return plane;
+}
+"""
+        helper_version = """\
+static struct state *allocate_complete_state(void)
+{
+        struct state *state;
+
+        state = allocate_state();
+        if (!state)
+                return NULL;
+
+        state->frame_info = allocate_frame_info();
+        if (!state->frame_info) {
+                free_state(state);
+                return NULL;
+        }
+
+        return state;
+}
+
+static struct state *duplicate_state(void)
+{
+        struct state *state;
+
+        state = allocate_complete_state();
+        if (!state)
+                return NULL;
+
+        return state;
+}
+
+static void keep_first_boundary_stable(void)
+{
+        keep_line_one();
+        keep_line_two();
+        keep_line_three();
+        keep_line_four();
+        keep_line_five();
+        keep_line_six();
+}
+
+static void destroy_state(struct state *state)
+{
+        if (state->frame_info && state->frame_info->buffer)
+                buffer_put(state->frame_info->buffer);
+
+        free_frame_info(state->frame_info);
+        free_state(state);
+}
+
+static void keep_second_boundary_stable(void)
+{
+        keep_line_seven();
+        keep_line_eight();
+        keep_line_nine();
+        keep_line_ten();
+        keep_line_eleven();
+        keep_line_twelve();
+}
+
+static void reset_state(void)
+{
+        struct state *state;
+
+        state = allocate_complete_state();
+        if (!state)
+                return;
+
+        install_state(state);
+}
+
+static void keep_third_boundary_stable(void)
+{
+        keep_line_thirteen();
+        keep_line_fourteen();
+        keep_line_fifteen();
+        keep_line_sixteen();
+        keep_line_seventeen();
+        keep_line_eighteen();
+}
+
+static struct plane *initialize_properties(struct device *device)
+{
+        struct plane *plane;
+
+        plane = allocate_plane(device,
+                               supported_formats,
+                               supported_format_count,
+                               primary_plane_type);
+        if (!plane)
+                return NULL;
+
+        add_plane_helpers(plane);
+
+        create_rotation_property(plane);
+        create_color_properties(plane);
+
+        return plane;
+}
+"""
+        property_version = baseline.replace(
+            "        struct plane *plane;\n",
+            "        struct plane *plane;\n"
+            "        int result;\n",
+        ).replace(
+            "        create_rotation_property(plane);\n"
+            "        create_color_properties(plane);\n",
+            "        result = create_rotation_property(plane);\n"
+            "        if (result)\n"
+            "                return NULL;\n\n"
+            "        result = create_color_properties(plane);\n"
+            "        if (result)\n"
+            "                return NULL;\n",
+        )
+        final_version = helper_version.replace(
+            "        struct plane *plane;\n",
+            "        struct plane *plane;\n"
+            "        int result;\n",
+        ).replace(
+            "        create_rotation_property(plane);\n"
+            "        create_color_properties(plane);\n",
+            "        result = create_rotation_property(plane);\n"
+            "        if (result)\n"
+            "                return NULL;\n\n"
+            "        result = create_color_properties(plane);\n"
+            "        if (result)\n"
+            "                return NULL;\n",
+        )
+        driver.write_text(baseline)
+        subprocess.run(
+            ["git", "add", "driver.c"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add driver"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+
+        driver.write_text(final_version)
+        command_start(quiet=True)
+        command_discard_to_batch("helper", quiet=True)
+        command_discard_to_batch("helper", quiet=True)
+        command_discard_to_batch("helper", quiet=True)
+        assert driver.read_text() == property_version
+        command_discard_to_batch("properties", file="driver.c", quiet=True)
+        assert driver.read_text() == baseline
+        command_stop()
+
+        command_include_from_batch("helper", file="driver.c")
+        subprocess.run(
+            ["git", "commit", "-m", "Extract allocator"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+
+        command_include_from_batch("properties", file="driver.c")
+
+        assert driver.read_text() == final_version
+        assert run_git_command(["show", ":driver.c"]).stdout == final_version
 
     def test_multi_file_write_failure_rolls_back_index_and_worktree(
         self,
@@ -234,6 +500,112 @@ class TestCommandIncludeFromBatch:
         # Try to use --file without cached hunk (no fetch_next_change call after command_start)
         with pytest.raises(CommandError):
             command_include_from_batch("test-batch", file="")
+
+    @pytest.mark.parametrize(
+        "line_scoped",
+        [False, True],
+        ids=["whole-file", "line-scoped"],
+    )
+    def test_include_from_batch_preserves_later_same_file_changes(
+        self,
+        temp_git_repo,
+        line_scoped,
+    ):
+        """Partial batch replay should merge already-landed source changes."""
+        script_path = temp_git_repo / "smoke-test.sh"
+        baseline = (
+            "cleanup driver\n"
+            "finish cleanup\n"
+            "build driver\n"
+            "verify driver\n"
+            "verify legacy identity\n"
+            "run topology test\n"
+            "run cleanup test\n"
+        )
+        source = (
+            "cleanup topology\n"
+            "cleanup driver\n"
+            "finish cleanup\n"
+            "build driver and tests\n"
+            "verify driver\n"
+            "verify test module\n"
+            "verify legacy identity\n"
+            "run topology lifetime test\n"
+            "run composition test\n"
+            "run cleanup test\n"
+        )
+        current = (
+            "cleanup topology\n"
+            "cleanup driver\n"
+            "finish cleanup\n"
+            "build driver\n"
+            "verify driver\n"
+            "verify legacy identity\n"
+            "run topology lifetime test\n"
+            "run composition test\n"
+            "run cleanup test\n"
+        )
+        expected = (
+            "cleanup topology\n"
+            "cleanup driver\n"
+            "finish cleanup\n"
+            "build driver and tests\n"
+            "verify driver\n"
+            "verify test module\n"
+            "verify legacy identity\n"
+            "run topology lifetime test\n"
+            "run composition test\n"
+            "run cleanup test\n"
+        )
+
+        script_path.write_text(baseline)
+        run_git_command(["add", "smoke-test.sh"])
+        run_git_command(["commit", "-m", "Add smoke test"])
+
+        script_path.write_text(source)
+        command_start(quiet=True)
+        command_show(file="smoke-test.sh")
+        line_changes = load_line_changes_from_state()
+        assert line_changes is not None
+        owned_text = {
+            "build driver",
+            "build driver and tests",
+            "verify test module",
+        }
+        owned_ids = ",".join(
+            str(line.id)
+            for line in line_changes.lines
+            if line.id is not None and line.display_text() in owned_text
+        )
+        command_include_to_batch(
+            "test-batch",
+            line_ids=owned_ids,
+            file="smoke-test.sh",
+            quiet=True,
+        )
+
+        script_path.write_text(current)
+        run_git_command(["add", "smoke-test.sh"])
+        run_git_command(["commit", "-m", "Extend smoke coverage"])
+
+        include_ids = None
+        if line_scoped:
+            command_show_from_batch("test-batch", file="smoke-test.sh")
+            line_changes = load_line_changes_from_state()
+            assert line_changes is not None
+            include_ids = ",".join(
+                str(line.id)
+                for line in line_changes.lines
+                if line.id is not None and line.display_text() in owned_text
+            )
+        command_include_from_batch(
+            "test-batch",
+            file="smoke-test.sh",
+            line_ids=include_ids,
+        )
+
+        assert script_path.read_text() == expected
+        assert run_git_command(["show", ":smoke-test.sh"]).stdout == expected
 
     def test_include_from_batch_restores_text_executable_mode(self, temp_git_repo):
         """Test whole-file include --from honors the batch target mode for text files."""

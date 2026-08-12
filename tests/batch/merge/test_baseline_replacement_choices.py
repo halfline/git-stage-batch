@@ -13,6 +13,29 @@ from git_stage_batch.batch.ownership.replacement_units import (
 from git_stage_batch.core.line_selection import LineRanges
 
 
+@pytest.mark.parametrize(
+    ("ambiguity_key", "expected"),
+    [
+        ("replacement-origin:0:delete:0:identity", 0),
+        ("replacement-origin:42:delete:1:identity", 42),
+        ("replacement-origin::delete:0:identity", None),
+        ("replacement-origin:-1:delete:0:identity", None),
+        ("replacement-origin:1", None),
+        ("presence:1", None),
+        (None, None),
+    ],
+)
+def test_replacement_origin_unit_index_parses_only_generated_key_shape(
+    ambiguity_key,
+    expected,
+) -> None:
+    """Resolution preflight should scope only well-formed origin decisions."""
+    assert (
+        baseline_replacement_choices.replacement_origin_unit_index(ambiguity_key)
+        == expected
+    )
+
+
 @pytest.mark.parametrize("max_results", [-1, 0, True, 1.0, None])
 def test_replacement_origin_choices_require_positive_integer_limit(
     max_results,

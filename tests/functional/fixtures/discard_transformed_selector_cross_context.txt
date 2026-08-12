@@ -1,0 +1,38 @@
+ * castkms_get_pixel_write_function() - Retrieve a format's write callback
+ * @format: DRM_FORMAT_* value for which to obtain a conversion function
+ *
+ * Returns NULL when @format is unsupported.
+ */
+pixel_write_t castkms_get_pixel_write_function(u32 format)
+{
+	for (unsigned int i = 0; i < ARRAY_SIZE(castkms_writeback_formats); i++)
+		if (castkms_writeback_formats[i].format == format)
+			return castkms_writeback_formats[i].write_pixel;
+
+	return NULL;
+}
+ * castkms_get_pixel_write_function() - Retrieve the correct write_pixel function for a specific format.
+ * The returned pointer is NULL for unsupported pixel formats. The caller must ensure that the
+ * pointer is valid before using it in a castkms_writeback_job.
+ *
+ * @format: DRM_FORMAT_* value for which to obtain a conversion function (see [drm_fourcc.h])
+ */
+pixel_write_t castkms_get_pixel_write_function(u32 format)
+{
+	switch (format) {
+	case DRM_FORMAT_ARGB8888:
+		return &argb_u16_to_ARGB8888;
+	case DRM_FORMAT_XRGB8888:
+		return &argb_u16_to_XRGB8888;
+	case DRM_FORMAT_ABGR8888:
+		return &argb_u16_to_ABGR8888;
+	case DRM_FORMAT_ARGB16161616:
+		return &argb_u16_to_ARGB16161616;
+	case DRM_FORMAT_XRGB16161616:
+		return &argb_u16_to_XRGB16161616;
+	case DRM_FORMAT_RGB565:
+		return &argb_u16_to_RGB565;
+	default:
+		return NULL;
+	}
+}

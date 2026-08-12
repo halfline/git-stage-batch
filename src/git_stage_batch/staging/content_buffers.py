@@ -783,7 +783,9 @@ def _build_target_index_buffer_with_replaced_lines(
         selection_start=replace_start,
         selection_end=replace_end,
         has_trailing_newline=trailing_newline,
-        add_trailing_newline_when_nonempty=base_line_count == 0,
+        add_trailing_newline_when_nonempty=(
+            base_line_count == 0 and not replacement_payload.exact
+        ),
     )
 
 
@@ -1005,5 +1007,7 @@ def _build_target_working_tree_buffer_with_replaced_lines(
         selection_start=replace_start,
         selection_end=replace_end,
         has_trailing_newline=trailing_newline,
-        add_trailing_newline_when_nonempty=working_line_count == 0,
+        add_trailing_newline_when_nonempty=(
+            working_line_count == 0 and not replacement_payload.exact
+        ),
     )

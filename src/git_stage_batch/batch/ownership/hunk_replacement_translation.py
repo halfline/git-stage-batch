@@ -51,12 +51,19 @@ def translate_hunk_replacement_line_runs(
     hunk_content_view: Sequence[bytes],
     replacement_origin_line_runs: Iterable[ReplacementLineRun] | None = None,
     replacement_origin_source_lines: Sequence[bytes] | None = None,
+    replacement_runs_are_origin_runs: bool = False,
 ) -> HunkReplacementTranslation:
     """Translate selected portions of file-derived replacement runs."""
-    if (
-        replacement_origin_line_runs is None
-    ) != (
-        replacement_origin_source_lines is None
+    if replacement_runs_are_origin_runs and (
+        replacement_origin_line_runs is not None
+        or replacement_origin_source_lines is None
+    ):
+        raise ValueError(
+            "same-stream replacement origins require only origin source lines"
+        )
+    if not replacement_runs_are_origin_runs and (
+        (replacement_origin_line_runs is None)
+        != (replacement_origin_source_lines is None)
     ):
         raise ValueError(
             "replacement origin runs and source lines must be provided together"
@@ -78,6 +85,7 @@ def translate_hunk_replacement_line_runs(
                 hunk_content_view=hunk_content_view,
                 origin_run_iterator=origin_run_iterator,
                 replacement_origin_source_lines=replacement_origin_source_lines,
+                replacement_runs_are_origin_runs=replacement_runs_are_origin_runs,
             )
         finally:
             _close_replacement_run_iterator(origin_run_iterator)
@@ -94,6 +102,7 @@ def _translate_hunk_replacement_line_runs(
     hunk_content_view: Sequence[bytes],
     origin_run_iterator: Iterator[ReplacementLineRun],
     replacement_origin_source_lines: Sequence[bytes] | None,
+    replacement_runs_are_origin_runs: bool,
 ) -> HunkReplacementTranslation:
     """Translate replacement runs whose iterator lifetimes are caller-owned."""
     claimed_source_lines = LineRangeBuilder()
@@ -206,6 +215,8 @@ def _translate_hunk_replacement_line_runs(
     def origin_projection_for_new_range(
         new_start: int,
         new_end: int,
+        *,
+        replacement_run: ReplacementLineRun,
     ) -> tuple[ReplacementUnitOrigin, int, int] | None:
         """Project a displayed replacement range through live HEAD."""
         nonlocal next_origin_run
@@ -215,12 +226,16 @@ def _translate_hunk_replacement_line_runs(
         if replacement_origin_source_lines is None:
             return None
 
-        while (
-            next_origin_run is not None
-            and next_origin_run.new_end < new_start
-        ):
-            next_origin_run = next(origin_run_iterator, None)
-        origin_run = next_origin_run
+        origin_run: ReplacementLineRun | None
+        if replacement_runs_are_origin_runs:
+            origin_run = replacement_run
+        else:
+            while (
+                next_origin_run is not None
+                and next_origin_run.new_end < new_start
+            ):
+                next_origin_run = next(origin_run_iterator, None)
+            origin_run = next_origin_run
         if (
             origin_run is None
             or origin_run.new_start > new_start
@@ -319,6 +334,7 @@ def _translate_hunk_replacement_line_runs(
                     origin_projection = origin_projection_for_new_range(
                         new_line.new_line_number,
                         new_line.new_line_number,
+                        replacement_run=replacement_run,
                     )
                     add_replacement_unit(
                         ((old_index, old_index + 1),),
@@ -347,6 +363,7 @@ def _translate_hunk_replacement_line_runs(
             origin_projection = origin_projection_for_new_range(
                 replacement_run.new_start,
                 replacement_run.new_end,
+                replacement_run=replacement_run,
             )
             add_replacement_unit(
                 _hunk_line_ranges.hunk_line_index_ranges_in_range(

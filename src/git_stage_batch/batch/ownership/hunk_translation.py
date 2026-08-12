@@ -32,6 +32,7 @@ def translate_hunk_selection_to_batch_ownership(
     replacement_line_runs: Iterable[_ReplacementLineRun] | None = None,
     replacement_origin_line_runs: Iterable[_ReplacementLineRun] | None = None,
     replacement_origin_source_lines: Sequence[bytes] | None = None,
+    replacement_runs_are_origin_runs: bool = False,
     baseline_lines: Sequence[bytes] | None = None,
 ) -> BatchOwnership:
     """Translate selected live-hunk IDs while retaining full-hunk boundaries.
@@ -65,6 +66,7 @@ def translate_hunk_selection_to_batch_ownership(
             hunk_content_view=hunk_content_view,
             replacement_origin_line_runs=replacement_origin_line_runs,
             replacement_origin_source_lines=replacement_origin_source_lines,
+            replacement_runs_are_origin_runs=replacement_runs_are_origin_runs,
         )
     )
     claimed_source_lines = LineRangeBuilder()

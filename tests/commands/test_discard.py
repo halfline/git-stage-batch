@@ -36,6 +36,7 @@ from git_stage_batch.commands.include import command_include, command_include_li
 from git_stage_batch.commands.show import command_show
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.core.models import TextFileDeletionChange
+from git_stage_batch.core.replacement import ReplacementPayload
 from git_stage_batch.exceptions import CommandError
 from tests.batch.ownership.metadata_helpers import (
     reject_materialized_ownership_metadata as _reject_materialized_ownership_metadata,
@@ -1003,6 +1004,33 @@ class TestCommandDiscardToBatch:
         command_apply_from_batch("replacement-batch")
 
         assert test_file.read_bytes() == b"keep\nnew"
+
+    def test_discard_deleted_line_as_preserves_exact_missing_final_newline(
+        self,
+        temp_git_repo,
+    ):
+        """Exact replacement of an empty worktree should remain unterminated."""
+        test_file = temp_git_repo / "empty.txt"
+        test_file.write_bytes(b"old")
+        subprocess.run(["git", "add", "empty.txt"], check=True, cwd=temp_git_repo)
+        subprocess.run(
+            ["git", "commit", "-m", "Add unterminated file"],
+            check=True,
+            cwd=temp_git_repo,
+        )
+        test_file.write_bytes(b"")
+        command_start(quiet=True)
+
+        command_discard_line_as_to_batch(
+            "replacement-batch",
+            "1",
+            ReplacementPayload(b"saved"),
+            quiet=True,
+        )
+
+        assert test_file.read_bytes() == b"old"
+        command_apply_from_batch("replacement-batch")
+        assert test_file.read_bytes() == b"saved"
 
     def test_discard_to_batch_auto_creates_batch(self, temp_git_repo_with_session):
         """Test that discard to batch auto-creates batch if it doesn't exist."""

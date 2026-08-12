@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Collection, Iterator, Sequence
+from typing import overload
 
 from ..core.models import LineEntry, LineLevelChange
 from ..core.replacement import (
@@ -13,6 +14,7 @@ from ..core.replacement import (
 from ..core.buffer import (
     LineBuffer,
 )
+from ..core.mapped_storage import MappedIntVector
 from ..editor.line_endings import detect_line_ending
 from ..editor.line_export import ensure_line_chunk_boundaries
 from ..i18n import _
@@ -178,12 +180,109 @@ def _working_tree_line_content_at(
     return lines[index]
 
 
+class _LinePayloadView(Sequence[bytes]):
+    """Lazy line-body view over a contiguous source range."""
+
+    def __init__(
+        self,
+        lines: Sequence[bytes],
+        indices: range,
+    ) -> None:
+        self._lines = lines
+        self._indices = indices
+
+    def __len__(self) -> int:
+        return len(self._indices)
+
+    @overload
+    def __getitem__(self, index: int) -> bytes: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> Sequence[bytes]: ...
+
+    def __getitem__(self, index: int | slice) -> bytes | Sequence[bytes]:
+        if isinstance(index, slice):
+            return _LinePayloadView(self._lines, self._indices[index])
+        try:
+            line_index = self._indices[index]
+        except IndexError as error:
+            raise IndexError(index) from error
+        return _line_payload_at(self._lines, line_index)
+
+
 def _line_payloads(
     lines: Sequence[bytes],
     start: int,
     end: int,
-) -> list[bytes]:
-    return [_line_payload_at(lines, index) for index in range(start, end)]
+) -> Sequence[bytes]:
+    return _LinePayloadView(lines, range(start, end))
+
+
+def _longest_edge_context_match(
+    candidate_lines: Sequence[bytes],
+    context_lines: Sequence[bytes],
+    *,
+    reverse: bool,
+) -> int:
+    """Return a longest edge overlap in linear time with mapped scratch."""
+    candidate_count = len(candidate_lines)
+    context_count = len(context_lines)
+    if candidate_count == 0 or context_count == 0:
+        return 0
+
+    def candidate_at(index: int) -> bytes:
+        return candidate_lines[
+            candidate_count - index - 1 if reverse else index
+        ]
+
+    def context_at(index: int) -> bytes:
+        return context_lines[
+            context_count - index - 1 if reverse else index
+        ]
+
+    width = 4 if candidate_count <= (1 << 32) - 1 else 8
+    with MappedIntVector(candidate_count, width=width) as prefix_lengths:
+        matched = 0
+        for index in range(1, candidate_count):
+            current = candidate_at(index)
+            while matched and current != candidate_at(matched):
+                matched = prefix_lengths[matched - 1]
+            if current == candidate_at(matched):
+                matched += 1
+            prefix_lengths[index] = matched
+
+        matched = 0
+        for index in range(context_count):
+            if matched == candidate_count:
+                matched = prefix_lengths[matched - 1]
+            current = context_at(index)
+            while matched and current != candidate_at(matched):
+                matched = prefix_lengths[matched - 1]
+            if current == candidate_at(matched):
+                matched += 1
+        return matched
+
+
+def _longest_prefix_context_match(
+    candidate_lines: Sequence[bytes],
+    context_lines: Sequence[bytes],
+) -> int:
+    return _longest_edge_context_match(
+        candidate_lines,
+        context_lines,
+        reverse=False,
+    )
+
+
+def _longest_suffix_context_match(
+    candidate_lines: Sequence[bytes],
+    context_lines: Sequence[bytes],
+) -> int:
+    return _longest_edge_context_match(
+        candidate_lines,
+        context_lines,
+        reverse=True,
+    )
 
 
 def _is_synthetic_gap_line(line_entry: LineEntry) -> bool:
@@ -466,26 +565,6 @@ def _build_target_index_buffer_with_replaced_lines(
     trim_unchanged_edge_anchors: bool,
 ) -> LineBuffer:
     """Build index content while replacement line storage is open."""
-    def longest_prefix_context_match(
-        candidate_lines: Sequence[bytes],
-        context_lines: Sequence[bytes],
-    ) -> int:
-        max_count = min(len(candidate_lines), len(context_lines))
-        for count in range(max_count, 0, -1):
-            if candidate_lines[:count] == context_lines[-count:]:
-                return count
-        return 0
-
-    def longest_suffix_context_match(
-        candidate_lines: Sequence[bytes],
-        context_lines: Sequence[bytes],
-    ) -> int:
-        max_count = min(len(candidate_lines), len(context_lines))
-        for count in range(max_count, 0, -1):
-            if candidate_lines[-count:] == context_lines[:count]:
-                return count
-        return 0
-
     if not replace_ids:
         return _edit_lines_preserving_source_endings_as_buffer(
             base_lines,
@@ -502,7 +581,8 @@ def _build_target_index_buffer_with_replaced_lines(
     )
 
     def find_next_old_line_number(start_index: int) -> int | None:
-        for line_entry in line_changes.lines[start_index:]:
+        for line_index in range(start_index, len(line_changes.lines)):
+            line_entry = line_changes.lines[line_index]
             if _is_synthetic_gap_line(line_entry):
                 return None
             if line_entry.old_line_number is not None:
@@ -510,7 +590,8 @@ def _build_target_index_buffer_with_replaced_lines(
         return None
 
     def find_previous_old_line_number(end_index: int) -> int | None:
-        for line_entry in reversed(line_changes.lines[:end_index + 1]):
+        for line_index in range(end_index, -1, -1):
+            line_entry = line_changes.lines[line_index]
             if _is_synthetic_gap_line(line_entry):
                 return None
             if line_entry.old_line_number is not None:
@@ -546,7 +627,8 @@ def _build_target_index_buffer_with_replaced_lines(
         replace_start = old_insertion_index(span_start_index)
 
     replace_end = base_line_count
-    for line_entry in reversed(line_changes.lines[span_start_index:span_end_index + 1]):
+    for line_index in range(span_end_index, span_start_index - 1, -1):
+        line_entry = line_changes.lines[line_index]
         if line_entry.old_line_number is not None:
             replace_end = line_entry.old_line_number
             break
@@ -554,18 +636,27 @@ def _build_target_index_buffer_with_replaced_lines(
         replace_end = replace_start
 
     if trim_unchanged_edge_anchors:
-        before_context = _line_payloads(base_lines, 0, replace_start)
-        after_context = _line_payloads(base_lines, replace_end, base_line_count)
+        context_limit = len(replacement_lines)
+        before_context = _line_payloads(
+            base_lines,
+            max(0, replace_start - context_limit),
+            replace_start,
+        )
+        after_context = _line_payloads(
+            base_lines,
+            replace_end,
+            min(base_line_count, replace_end + context_limit),
+        )
 
-        prefix_trim = longest_prefix_context_match(replacement_lines, before_context)
+        prefix_trim = _longest_prefix_context_match(replacement_lines, before_context)
         if prefix_trim:
             replacement_lines = replacement_lines[prefix_trim:]
 
-        suffix_trim = longest_suffix_context_match(replacement_lines, after_context)
+        suffix_trim = _longest_suffix_context_match(replacement_lines, after_context)
         if suffix_trim:
             replacement_lines = replacement_lines[:-suffix_trim]
 
-        if longest_prefix_context_match(replacement_lines, before_context) >= 2:
+        if _longest_prefix_context_match(replacement_lines, before_context) >= 2:
             raise ValueError(
                 _(
                     "Replacement text still includes unchanged anchor lines before "
@@ -575,7 +666,7 @@ def _build_target_index_buffer_with_replaced_lines(
                 )
             )
 
-        if longest_suffix_context_match(replacement_lines, after_context) >= 2:
+        if _longest_suffix_context_match(replacement_lines, after_context) >= 2:
             raise ValueError(
                 _(
                     "Replacement text still includes unchanged anchor lines after "
@@ -749,26 +840,6 @@ def _build_target_working_tree_buffer_with_replaced_lines(
     trim_unchanged_edge_anchors: bool,
 ) -> LineBuffer:
     """Build working content while replacement line storage is open."""
-    def longest_prefix_context_match(
-        candidate_lines: Sequence[bytes],
-        context_lines: Sequence[bytes],
-    ) -> int:
-        max_count = min(len(candidate_lines), len(context_lines))
-        for count in range(max_count, 0, -1):
-            if candidate_lines[:count] == context_lines[-count:]:
-                return count
-        return 0
-
-    def longest_suffix_context_match(
-        candidate_lines: Sequence[bytes],
-        context_lines: Sequence[bytes],
-    ) -> int:
-        max_count = min(len(candidate_lines), len(context_lines))
-        for count in range(max_count, 0, -1):
-            if candidate_lines[-count:] == context_lines[:count]:
-                return count
-        return 0
-
     if not replace_ids:
         return _edit_lines_preserving_source_endings_as_buffer(
             working_lines,
@@ -837,18 +908,27 @@ def _build_target_working_tree_buffer_with_replaced_lines(
         replace_end = replace_start
 
     if trim_unchanged_edge_anchors:
-        before_context = _line_payloads(working_lines, 0, replace_start)
-        after_context = _line_payloads(working_lines, replace_end, working_line_count)
+        context_limit = len(replacement_lines)
+        before_context = _line_payloads(
+            working_lines,
+            max(0, replace_start - context_limit),
+            replace_start,
+        )
+        after_context = _line_payloads(
+            working_lines,
+            replace_end,
+            min(working_line_count, replace_end + context_limit),
+        )
 
-        prefix_trim = longest_prefix_context_match(replacement_lines, before_context)
+        prefix_trim = _longest_prefix_context_match(replacement_lines, before_context)
         if prefix_trim:
             replacement_lines = replacement_lines[prefix_trim:]
 
-        suffix_trim = longest_suffix_context_match(replacement_lines, after_context)
+        suffix_trim = _longest_suffix_context_match(replacement_lines, after_context)
         if suffix_trim:
             replacement_lines = replacement_lines[:-suffix_trim]
 
-        if longest_prefix_context_match(replacement_lines, before_context) >= 2:
+        if _longest_prefix_context_match(replacement_lines, before_context) >= 2:
             raise ValueError(
                 _(
                     "Replacement text still includes unchanged anchor lines before "
@@ -858,7 +938,7 @@ def _build_target_working_tree_buffer_with_replaced_lines(
                 )
             )
 
-        if longest_suffix_context_match(replacement_lines, after_context) >= 2:
+        if _longest_suffix_context_match(replacement_lines, after_context) >= 2:
             raise ValueError(
                 _(
                     "Replacement text still includes unchanged anchor lines after "

@@ -790,6 +790,36 @@ class TestBuildTargetIndexContent:
         small_peak, large_peak = heap_peaks
         assert large_peak < small_peak + 16 * 1024
 
+    def test_edge_context_matching_avoids_line_scale_python_heap(self):
+        """Edge matching must view unselected file context without collecting it."""
+        heap_peaks = []
+        for context_line_count in (1024, 32768):
+            source_lines = [b"anchor\n"] * context_line_count
+            replacement_lines = (
+                [b"anchor"] * context_line_count + [b"replacement"]
+            )
+
+            gc.collect()
+            tracemalloc.start()
+            try:
+                context_lines = content_buffers_module._line_payloads(
+                    source_lines,
+                    0,
+                    context_line_count,
+                )
+                assert content_buffers_module._longest_prefix_context_match(
+                    replacement_lines,
+                    context_lines,
+                ) == context_line_count
+                _current_heap, peak_heap = tracemalloc.get_traced_memory()
+            finally:
+                tracemalloc.stop()
+
+            heap_peaks.append(peak_heap)
+
+        small_peak, large_peak = heap_peaks
+        assert large_peak < small_peak + 16 * 1024
+
     def test_replace_selection_honors_old_line_numbers_after_gap_markers(self):
         """File-scoped replacement staging should stay anchored after omitted regions."""
         header = HunkHeader(2, 12, 2, 12)
@@ -972,6 +1002,72 @@ class TestBuildTargetIndexContent:
             )
 
         assert result == b"keep1\nstaged\nkeep3\nkeep4\n"
+
+    def test_replace_selection_trims_repeated_edge_anchor_fallbacks(self):
+        """Repeated edge prefixes should retain the longest exact overlap."""
+        before = [b"x", b"a", b"b", b"a", b"b", b"a", b"b", b"a"]
+        after = [b"a", b"b", b"a", b"b", b"a", b"b", b"a", b"x"]
+        lines = [
+            *[
+                LineEntry(
+                    None,
+                    " ",
+                    index,
+                    index,
+                    text_bytes=content,
+                    text=content.decode(),
+                )
+                for index, content in enumerate(before, start=1)
+            ],
+            LineEntry(1, "-", 9, None, text_bytes=b"old", text="old"),
+            LineEntry(2, "+", None, 9, text_bytes=b"working", text="working"),
+            *[
+                LineEntry(
+                    None,
+                    " ",
+                    index,
+                    index,
+                    text_bytes=content,
+                    text=content.decode(),
+                )
+                for index, content in enumerate(after, start=10)
+            ],
+        ]
+        line_changes = LineLevelChange(
+            path="test.txt",
+            header=HunkHeader(1, 17, 1, 17),
+            lines=lines,
+        )
+        base_lines_content = [*before, b"old", *after]
+        base_content = b"\n".join(base_lines_content) + b"\n"
+        replacement_lines = [
+            b"a",
+            b"b",
+            b"a",
+            b"b",
+            b"a",
+            b"left",
+            b"staged",
+            b"right",
+            b"a",
+            b"b",
+            b"a",
+            b"b",
+            b"a",
+        ]
+
+        with LineBuffer.from_bytes(base_content) as base_lines:
+            result = _build_target_index_replacement_bytes(
+                line_changes,
+                {1, 2},
+                "\n".join(line.decode() for line in replacement_lines),
+                base_lines,
+                base_has_trailing_newline=True,
+            )
+
+        assert result == b"\n".join(
+            [*before, b"left", b"staged", b"right", *after, b""]
+        )
 
     def test_index_replacement_accepts_non_list_line_sequences(self, line_sequence):
         """Index replacement can read from an indexed line sequence."""

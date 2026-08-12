@@ -826,7 +826,8 @@ def _target_working_tree_line_contents(
                 )
             )
 
-        for next_entry in line_changes.lines[index + 1:]:
+        for next_index in range(index + 1, len(line_changes.lines)):
+            next_entry = line_changes.lines[next_index]
             if _is_synthetic_gap_line(next_entry):
                 return
             if next_entry.new_line_number is not None:
@@ -943,62 +944,11 @@ def _build_target_working_tree_buffer_with_replaced_lines(
         )
 
     working_line_count = len(working_lines)
-    span_start_index, span_end_index = _replacement_selection_span_indices(
+    replace_start, replace_end = replacement_working_tree_span_indices(
         line_changes,
         replace_ids,
+        working_line_count,
     )
-
-    def find_next_new_line_number(start_index: int) -> int | None:
-        for line_entry in line_changes.lines[start_index:]:
-            if _is_synthetic_gap_line(line_entry):
-                return None
-            if line_entry.new_line_number is not None:
-                return line_entry.new_line_number
-        return None
-
-    def find_previous_new_line_number(end_index: int) -> int | None:
-        for line_entry in reversed(line_changes.lines[:end_index + 1]):
-            if _is_synthetic_gap_line(line_entry):
-                return None
-            if line_entry.new_line_number is not None:
-                return line_entry.new_line_number
-        return None
-
-    def new_insertion_index(index: int) -> int:
-        line_entry = line_changes.lines[index]
-        if line_entry.kind == "-" and line_entry.old_line_number is not None:
-            return min(
-                _new_index_for_old_anchor(
-                    line_changes,
-                    line_entry.old_line_number - 1,
-                    index,
-                ),
-                working_line_count,
-            )
-
-        previous_new_line_number = find_previous_new_line_number(index - 1)
-        if previous_new_line_number is not None:
-            return min(previous_new_line_number, working_line_count)
-
-        next_new_line_number = find_next_new_line_number(index + 1)
-        if next_new_line_number is not None:
-            return max(next_new_line_number - 1, 0)
-
-        return min(line_changes.header.new_prefix_line_count(), working_line_count)
-
-    first_selected_line = line_changes.lines[span_start_index]
-    if first_selected_line.new_line_number is not None:
-        replace_start = max(first_selected_line.new_line_number - 1, 0)
-    else:
-        replace_start = new_insertion_index(span_start_index)
-
-    replace_end = working_line_count
-    for line_entry in reversed(line_changes.lines[span_start_index:span_end_index + 1]):
-        if line_entry.new_line_number is not None:
-            replace_end = line_entry.new_line_number
-            break
-    else:
-        replace_end = replace_start
 
     if trim_unchanged_edge_anchors:
         context_limit = len(replacement_lines)

@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import pytest
 
+from git_stage_batch.batch.ownership import (
+    hunk_replacement_translation as hunk_replacement_translation_module,
+)
+from git_stage_batch.batch.ownership.claims import LineRangeBuilder
 from git_stage_batch.batch.ownership.hunk_replacement_translation import (
     translate_hunk_replacement_line_runs,
 )
@@ -369,7 +373,7 @@ def test_translate_hunk_replacement_line_runs_keeps_large_ranges_compact(
             for index in range(1000)
         ],
     ]
-    selected_ids = {line.id for line in lines if line.id is not None}
+    selected_ids = LineRanges.from_ranges(((1, len(lines)),))
 
     result = _translate(lines, selected_ids, [RangeOnlyReplacementRun()])
 
@@ -378,3 +382,53 @@ def test_translate_hunk_replacement_line_runs_keeps_large_ranges_compact(
         ReplacementUnit(presence_lines=["1-1000"], deletion_indices=[0]),
     ]
     assert result.consumed_display_ids == selected_ids
+
+
+def test_equal_replacement_consumed_ids_stay_compact(monkeypatch):
+    """Paired old/new IDs should accumulate in separate monotonic ranges."""
+    builders = []
+
+    class TrackingLineRangeBuilder(LineRangeBuilder):
+        def __init__(self):
+            super().__init__()
+            builders.append(self)
+
+    monkeypatch.setattr(
+        hunk_replacement_translation_module,
+        "LineRangeBuilder",
+        TrackingLineRangeBuilder,
+    )
+    line_count = 64
+    lines = [
+        *[
+            LineEntry(
+                id=index + 1,
+                kind="-",
+                old_line_number=index + 1,
+                new_line_number=None,
+                text_bytes=b"old",
+            )
+            for index in range(line_count)
+        ],
+        *[
+            LineEntry(
+                id=line_count + index + 1,
+                kind="+",
+                old_line_number=None,
+                new_line_number=index + 1,
+                text_bytes=b"new",
+                source_line=index + 1,
+            )
+            for index in range(line_count)
+        ],
+    ]
+    selected_ids = LineRanges.from_ranges(((1, line_count * 2),))
+
+    result = _translate(
+        lines,
+        selected_ids,
+        (ReplacementLineRun(1, line_count, 1, line_count),),
+    )
+
+    assert result.consumed_display_ids == selected_ids
+    assert max(len(builder.ranges) for builder in builders) <= 1

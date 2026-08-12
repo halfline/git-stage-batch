@@ -67,6 +67,7 @@ def _translate_selection_to_batch_ownership(
     replacement_line_runs: Iterable[ReplacementLineRun] | None = None,
     replacement_origin_line_runs: Iterable[ReplacementLineRun] | None = None,
     replacement_origin_source_lines: Sequence[bytes] | None = None,
+    baseline_lines: Sequence[bytes] | None = None,
 ) -> BatchOwnership:
     """Translate a selection, using full-hunk replacement context when available."""
     selected_ids = {
@@ -88,6 +89,7 @@ def _translate_selection_to_batch_ownership(
                 if replacement_origin_line_runs is not None
                 else None
             ),
+            baseline_lines=baseline_lines,
         )
 
     return translate_lines_to_batch_ownership(selected_lines)
@@ -149,6 +151,7 @@ def _prepare_batch_ownership_update_from_refreshed_selection(
         replacement_line_runs=replacement_line_runs,
         replacement_origin_line_runs=replacement_origin_line_runs,
         replacement_origin_source_lines=replacement_origin_source_lines,
+        baseline_lines=reference_source_lines,
     )
     if (reference_source_lines is None) != (reference_target_lines is None):
         raise ValueError(

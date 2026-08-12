@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Collection, Iterable, Sequence
+from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
+from types import TracebackType
 
 from ...core.line_selection import LineRanges
+from ...core.mapped_storage import MappedRecordVector
 from ...core.models import LineEntry
 from . import hunk_replacement_translation as _hunk_replacement_translation
 from .absence_content import (
@@ -18,11 +20,90 @@ from .line_entries import (
     ReplacementUnitBuilder as _ReplacementUnitBuilder,
     baseline_reference_for_old_line_range as _baseline_reference_for_old_line_range,
     baseline_reference_for_presence_line as _baseline_reference_for_presence_line,
-    old_line_content_by_number as _old_line_content_by_number,
 )
 from .references import BaselineReference
 from .replacement_units import normalize_replacement_units
 from .replacement_line_runs import ReplacementLineRun as _ReplacementLineRun
+
+
+class _HunkOldLineContent(Mapping[int, bytes]):
+    """Lazy old-line lookup without one Python entry per hunk row."""
+
+    def __init__(
+        self,
+        hunk_lines: Sequence[LineEntry],
+        baseline_lines: Sequence[bytes] | None,
+    ) -> None:
+        self._hunk_lines = hunk_lines
+        self._baseline_lines = baseline_lines
+        self._hunk_index = MappedRecordVector(len(hunk_lines), "QQ")
+        try:
+            for hunk_index, line in enumerate(hunk_lines):
+                if line.old_line_number is not None and line.kind in {" ", "-"}:
+                    self._hunk_index.append((line.old_line_number, hunk_index))
+        except BaseException:
+            self._hunk_index.close()
+            raise
+
+    def _hunk_line_index(self, line_number: int) -> int | None:
+        start = 0
+        end = len(self._hunk_index)
+        while start < end:
+            middle = (start + end) // 2
+            old_line_number, _hunk_index = self._hunk_index[middle]
+            if old_line_number < line_number:
+                start = middle + 1
+            else:
+                end = middle
+        if start >= len(self._hunk_index):
+            return None
+        old_line_number, hunk_index = self._hunk_index[start]
+        return hunk_index if old_line_number == line_number else None
+
+    def __getitem__(self, line_number: int) -> bytes:
+        if line_number < 1:
+            raise KeyError(line_number)
+        hunk_index = self._hunk_line_index(line_number)
+        if hunk_index is not None:
+            return self._hunk_lines[hunk_index].text_bytes
+        if self._baseline_lines is not None:
+            index = line_number - 1
+            if index < len(self._baseline_lines):
+                return bytes(self._baseline_lines[index])
+            raise KeyError(line_number)
+        raise KeyError(line_number)
+
+    def __iter__(self) -> Iterator[int]:
+        if self._baseline_lines is not None:
+            yield from range(1, len(self._baseline_lines) + 1)
+            for old_line_number, _hunk_index in self._hunk_index:
+                if old_line_number > len(self._baseline_lines):
+                    yield old_line_number
+        else:
+            for old_line_number, _hunk_index in self._hunk_index:
+                yield old_line_number
+
+    def __len__(self) -> int:
+        if self._baseline_lines is not None:
+            return len(self._baseline_lines) + sum(
+                old_line_number > len(self._baseline_lines)
+                for old_line_number, _hunk_index in self._hunk_index
+            )
+        return len(self._hunk_index)
+
+    def close(self) -> None:
+        self._hunk_index.close()
+
+    def __enter__(self) -> _HunkOldLineContent:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.close()
 
 
 def translate_hunk_selection_to_batch_ownership(
@@ -47,15 +128,29 @@ def translate_hunk_selection_to_batch_ownership(
     runs derived from the full files represented by the hunk. This function does
     not infer semantic replacement units from the pregenerated diff layout.
     """
-    old_line_content = (
-        {
-            line_number: content
-            for line_number, content in enumerate(baseline_lines, start=1)
-        }
-        if baseline_lines is not None
-        else {}
-    )
-    old_line_content.update(_old_line_content_by_number(hunk_lines))
+    with _HunkOldLineContent(hunk_lines, baseline_lines) as old_line_content:
+        return _translate_hunk_selection_with_old_content(
+            hunk_lines,
+            selected_display_ids,
+            old_line_content=old_line_content,
+            replacement_line_runs=replacement_line_runs,
+            replacement_origin_line_runs=replacement_origin_line_runs,
+            replacement_origin_source_lines=replacement_origin_source_lines,
+            replacement_runs_are_origin_runs=replacement_runs_are_origin_runs,
+        )
+
+
+def _translate_hunk_selection_with_old_content(
+    hunk_lines: list[LineEntry],
+    selected_display_ids: Collection[int],
+    *,
+    old_line_content: Mapping[int, bytes],
+    replacement_line_runs: Iterable[_ReplacementLineRun] | None,
+    replacement_origin_line_runs: Iterable[_ReplacementLineRun] | None,
+    replacement_origin_source_lines: Sequence[bytes] | None,
+    replacement_runs_are_origin_runs: bool,
+) -> BatchOwnership:
+    """Translate one hunk while its storage-backed old-line index is open."""
     hunk_content_view = _LineEntryContentSequence(hunk_lines)
     replacement_translation = (
         _hunk_replacement_translation.translate_hunk_replacement_line_runs(

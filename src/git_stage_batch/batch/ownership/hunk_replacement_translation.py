@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Collection, Iterable, Iterator, Sequence
+from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 
 from ...core.line_selection import LineRanges
@@ -47,7 +47,7 @@ def translate_hunk_replacement_line_runs(
     hunk_lines: list[LineEntry],
     selected_display_ids: Collection[int],
     replacement_line_runs: Iterable[ReplacementLineRun],
-    old_line_content: dict[int, bytes],
+    old_line_content: Mapping[int, bytes],
     hunk_content_view: Sequence[bytes],
     replacement_origin_line_runs: Iterable[ReplacementLineRun] | None = None,
     replacement_origin_source_lines: Sequence[bytes] | None = None,
@@ -98,7 +98,7 @@ def _translate_hunk_replacement_line_runs(
     hunk_lines: list[LineEntry],
     selected_display_ids: Collection[int],
     replacement_run_iterator: Iterator[ReplacementLineRun],
-    old_line_content: dict[int, bytes],
+    old_line_content: Mapping[int, bytes],
     hunk_content_view: Sequence[bytes],
     origin_run_iterator: Iterator[ReplacementLineRun],
     replacement_origin_source_lines: Sequence[bytes] | None,

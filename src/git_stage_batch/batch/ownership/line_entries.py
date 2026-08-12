@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import overload
 
@@ -26,14 +26,6 @@ class ReplacementUnitBuilder:
             presence_lines=self.claimed_lines.finish().to_range_strings(),
             deletion_indices=self.deletion_indices,
         )
-
-
-def old_line_content_by_number(hunk_lines: list[LineEntry]) -> dict[int, bytes]:
-    return {
-        line.old_line_number: line.text_bytes
-        for line in hunk_lines
-        if line.old_line_number is not None and line.kind in {" ", "-"}
-    }
 
 
 def line_entry_content(line: LineEntry) -> bytes:
@@ -66,7 +58,7 @@ class LineEntryContentSequence(Sequence[bytes]):
 def baseline_reference_for_old_line_range(
     old_start: int,
     old_end: int,
-    old_line_content: dict[int, bytes],
+    old_line_content: Mapping[int, bytes],
 ) -> BaselineReference:
     after_line = old_start - 1 if old_start > 1 else None
     before_line = old_end + 1
@@ -130,7 +122,7 @@ def baseline_reference_for_presence_line(
 
 def replacement_unit_origin_for_line_run(
     replacement_run: ReplacementLineRun,
-    old_line_content: dict[int, bytes] | None = None,
+    old_line_content: Mapping[int, bytes] | None = None,
     *,
     old_file_lines: Sequence[bytes] | None = None,
 ) -> ReplacementUnitOrigin:

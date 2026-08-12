@@ -387,6 +387,97 @@ def _replacement_selection_span_indices(
     return span_start_index, span_end_index
 
 
+def replacement_working_tree_span_indices(
+    line_changes: LineLevelChange,
+    replace_ids: set[int],
+    working_line_count: int,
+) -> tuple[int, int]:
+    """Return the exact working-tree line span replaced by selected IDs."""
+    span_start_index, span_end_index = _replacement_selection_span_indices(
+        line_changes,
+        replace_ids,
+    )
+
+    def next_new_line_number(start_index: int) -> int | None:
+        for line_index in range(start_index, len(line_changes.lines)):
+            line_entry = line_changes.lines[line_index]
+            if _is_synthetic_gap_line(line_entry):
+                return None
+            if line_entry.new_line_number is not None:
+                return line_entry.new_line_number
+        return None
+
+    def previous_new_line_number(end_index: int) -> int | None:
+        for line_index in range(end_index, -1, -1):
+            line_entry = line_changes.lines[line_index]
+            if _is_synthetic_gap_line(line_entry):
+                return None
+            if line_entry.new_line_number is not None:
+                return line_entry.new_line_number
+        return None
+
+    first_selected_line = line_changes.lines[span_start_index]
+    if first_selected_line.new_line_number is not None:
+        replace_start = max(first_selected_line.new_line_number - 1, 0)
+    elif first_selected_line.old_line_number is not None:
+        replace_start = min(
+            _new_index_for_old_anchor(
+                line_changes,
+                first_selected_line.old_line_number - 1,
+                span_start_index,
+            ),
+            working_line_count,
+        )
+    else:
+        previous_line = previous_new_line_number(span_start_index - 1)
+        next_line = next_new_line_number(span_start_index + 1)
+        if previous_line is not None:
+            replace_start = min(previous_line, working_line_count)
+        elif next_line is not None:
+            replace_start = max(next_line - 1, 0)
+        else:
+            replace_start = min(
+                line_changes.header.new_prefix_line_count(),
+                working_line_count,
+            )
+
+    replace_end = replace_start
+    for line_index in range(span_end_index, span_start_index - 1, -1):
+        line_entry = line_changes.lines[line_index]
+        if line_entry.new_line_number is not None:
+            replace_end = line_entry.new_line_number
+            break
+    return replace_start, replace_end
+
+
+def replacement_baseline_span_indices(
+    line_changes: LineLevelChange,
+    replace_ids: set[int],
+    working_line_count: int,
+) -> tuple[int, int]:
+    """Return the old-file span consumed by a working-tree replacement."""
+    span_start_index, span_end_index = _replacement_selection_span_indices(
+        line_changes,
+        replace_ids,
+    )
+    working_start, working_end = replacement_working_tree_span_indices(
+        line_changes,
+        replace_ids,
+        working_line_count,
+    )
+    baseline_start = _old_index_for_new_anchor(
+        line_changes,
+        working_start,
+        span_start_index,
+    )
+    baseline_end = _old_index_for_new_anchor(
+        line_changes,
+        working_end,
+        span_end_index + 1,
+    )
+    return baseline_start, max(baseline_start, baseline_end)
+
+
 def _old_index_for_new_anchor(
     line_changes: LineLevelChange,
     new_anchor: int,
@@ -399,7 +490,8 @@ def _old_index_for_new_anchor(
     number delta at the selected row.
     """
     old_index = new_anchor
-    for line_entry in line_changes.lines[:before_index]:
+    for line_index in range(before_index):
+        line_entry = line_changes.lines[line_index]
         if line_entry.kind == "+":
             old_index -= 1
         elif line_entry.kind == "-":
@@ -414,7 +506,8 @@ def _new_index_for_old_anchor(
 ) -> int:
     """Translate an old-file anchor to a new-file insertion index."""
     new_index = old_anchor
-    for line_entry in line_changes.lines[:before_index]:
+    for line_index in range(before_index):
+        line_entry = line_changes.lines[line_index]
         if line_entry.kind == "-":
             new_index -= 1
         elif line_entry.kind == "+":

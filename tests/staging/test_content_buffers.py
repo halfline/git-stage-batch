@@ -820,6 +820,56 @@ class TestBuildTargetIndexContent:
         small_peak, large_peak = heap_peaks
         assert large_peak < small_peak + 16 * 1024
 
+    def test_partial_prefix_validation_avoids_line_scale_python_heap(self):
+        """A partial new prefix should retain only scalar validation state."""
+        heap_peaks = []
+        for line_count in (1024, 8192):
+            lines = [
+                LineEntry(
+                    line_id,
+                    "-",
+                    line_id,
+                    None,
+                    text_bytes=b"old",
+                )
+                for line_id in range(1, line_count + 1)
+            ]
+            lines.extend(
+                LineEntry(
+                    line_count + offset,
+                    "+",
+                    None,
+                    offset,
+                    text_bytes=b"new",
+                )
+                for offset in range(1, line_count * 2 + 1)
+            )
+            line_changes = LineLevelChange(
+                path="test.txt",
+                header=HunkHeader(1, line_count, 1, line_count * 2),
+                lines=lines,
+            )
+            replace_ids = set(range(1, line_count * 2 + 1))
+
+            gc.collect()
+            tracemalloc.start()
+            try:
+                span = (
+                    content_buffers_module._replacement_selection_span_indices(
+                        line_changes,
+                        replace_ids,
+                    )
+                )
+                _current_heap, peak_heap = tracemalloc.get_traced_memory()
+            finally:
+                tracemalloc.stop()
+
+            assert span == (0, line_count * 2 - 1)
+            heap_peaks.append(peak_heap)
+
+        small_peak, large_peak = heap_peaks
+        assert large_peak < small_peak + 16 * 1024
+
     def test_replace_selection_honors_old_line_numbers_after_gap_markers(self):
         """File-scoped replacement staging should stay anchored after omitted regions."""
         header = HunkHeader(2, 12, 2, 12)

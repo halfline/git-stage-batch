@@ -8,6 +8,9 @@ from typing import TYPE_CHECKING
 from .merge.baseline_correspondence import (
     build_baseline_correspondence as _build_discard_baseline_correspondence,
 )
+from .merge.baseline_anchor_matching import (
+    acquire_discard_baseline_anchor_pairs as _acquire_discard_baseline_anchor_pairs,
+)
 from .discard_reversal import (
     reverse_presence_constraints as _reverse_batch_presence_constraints,
 )
@@ -120,16 +123,26 @@ def _discard_batch_acquired_line_chunks(
     presence_line_set = resolved.presence_line_set
     deletion_claims = resolved.deletion_claims
 
-    with match_lines(source_lines, working_lines) as working_to_source:
+    with (
+        match_lines(source_lines, working_lines) as source_to_working,
+        _acquire_discard_baseline_anchor_pairs(
+            source_lines,
+            baseline_lines,
+            ownership,
+            source_to_working_mapping=source_to_working,
+            working_lines=working_lines,
+        ) as baseline_anchor_pairs,
+    ):
         correspondence = _build_discard_baseline_correspondence(
             baseline_lines,
             source_lines,
+            anchor_pairs=baseline_anchor_pairs,
         )
 
         realized_entries = _build_realized_entries_for_discard(
             source_lines,
             working_lines,
-            working_to_source,
+            source_to_working,
         )
 
     try:

@@ -168,14 +168,6 @@ msgstr "hedef satır {line} sil"
 msgid "deletion anchor has multiple compatible target placements"
 msgstr "silme çapasının birden çok uyumlu hedef yerleşimi var"
 
-#: src/git_stage_batch/batch/merge/merge.py:82
-msgid ""
-"Cannot safely choose between recorded baseline coordinates and structural "
-"content matching"
-msgstr ""
-"Kaydedilmiş temel koordinatlar ile yapısal içerik eşleştirmesi arasında "
-"güvenle seçim yapılamıyor"
-
 #: src/git_stage_batch/batch/merge/merge.py:190
 msgid ""
 "Cannot reliably place split replacement: original replacement boundary is "

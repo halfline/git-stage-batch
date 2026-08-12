@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ...core.line_selection import LineRanges
@@ -23,17 +24,65 @@ from .baseline_replacement_ranges import (
     collect_replacement_source_ranges as _collect_replacement_source_ranges,
 )
 from .candidates import MergeResolution as _MergeResolution
+from .validation import (
+    ReplacementOldSideState as _ReplacementOldSideState,
+    classify_replacement_old_side as _classify_replacement_old_side,
+)
 from ..line_matching.match_workspace import MatcherWorkspace
 from ..line_matching.sequence_equality import (
     line_slice_equals as _line_slice_matches,
 )
 
 if TYPE_CHECKING:
+    from ..line_matching.line_mapping import LineMapping
     from ..ownership.absence_claims import AbsenceClaim
     from ..ownership.replacement_units import (
         ReplacementUnit,
         ReplacementUnitOrigin,
     )
+
+
+def _record_mapped_replacement_lines(
+    claimed_ranges: Sequence[tuple[int, ...]],
+    mapping: LineMapping | None,
+    mapped_target_lines: MappedRecordVector,
+) -> bool | None:
+    """Record a fully mapped unit; return None for mixed realization."""
+    if mapping is None:
+        return False
+
+    original_count = len(mapped_target_lines)
+    has_mapped_line = False
+    has_missing_line = False
+    for source_start, source_end in claimed_ranges:
+        for source_line in range(source_start, source_end + 1):
+            target_line = mapping.get_target_line_from_source_line(source_line)
+            if target_line is None:
+                has_missing_line = True
+                continue
+            has_mapped_line = True
+            try:
+                mapped_target_lines.append((target_line - 1,))
+            except OverflowError:
+                mapped_target_lines.truncate(original_count)
+                return None
+    if has_missing_line:
+        mapped_target_lines.truncate(original_count)
+        return None if has_mapped_line else False
+    return has_mapped_line
+
+
+def _deletion_target_position(
+    claim: AbsenceClaim,
+    mapping: LineMapping,
+) -> int | None:
+    """Return the target gap immediately after a mapped deletion anchor."""
+    anchor_line = claim.anchor_line
+    if anchor_line is None:
+        return 0
+    if type(anchor_line) is not int or anchor_line < 1:
+        return None
+    return mapping.get_target_line_from_source_line(anchor_line)
 
 
 def _replacement_edit_with_origin_guard(
@@ -216,9 +265,12 @@ def plan_replacement_unit_edits(
     deletion_claims: Sequence[AbsenceClaim],
     deletion_edit_bounds: MappedRecordVector,
     replacement_source_ranges: MappedRecordVector,
+    mapped_replacement_target_lines: MappedRecordVector,
     resolution: _MergeResolution | None,
     *,
     max_resolution_choices: int,
+    source_to_working_mapping: LineMapping | None,
+    spool_dir: str | Path | None,
 ) -> bool:
     """Plan coupled replacement units and record their claimed source ranges."""
     for unit_index, unit in enumerate(replacement_units):
@@ -226,52 +278,104 @@ def plan_replacement_unit_edits(
             workspace,
             unit.presence_lines,
         )
-        if (
-            claimed_ranges is None
-            or not claimed_ranges
-            or claimed_ranges[-1][1] > source_line_count
-            or len(unit.deletion_indices) != 1
-        ):
+        if claimed_ranges is None:
             return False
+        try:
+            if (
+                not claimed_ranges
+                or claimed_ranges[-1][1] > source_line_count
+                or len(unit.deletion_indices) != 1
+            ):
+                return False
 
-        deletion_index = unit.deletion_indices[0]
-        if (
-            type(deletion_index) is not int
-            or deletion_index < 0
-            or deletion_index >= len(deletion_claims)
-        ):
-            return False
-        if deletion_edit_bounds[deletion_index][0]:
-            return False
+            deletion_index = unit.deletion_indices[0]
+            if (
+                type(deletion_index) is not int
+                or deletion_index < 0
+                or deletion_index >= len(deletion_claims)
+            ):
+                return False
+            if deletion_edit_bounds[deletion_index][0]:
+                return False
 
-        replacement_edit = _replacement_baseline_edit(
-            deletion_claims[deletion_index],
-            unit_index,
-            unit,
-            claimed_ranges,
-            working_lines,
-            resolution,
-            max_resolution_choices=max_resolution_choices,
-        )
-        if replacement_edit is None:
-            return False
+            claim = deletion_claims[deletion_index]
+            replacement_is_mapped = _record_mapped_replacement_lines(
+                claimed_ranges,
+                source_to_working_mapping,
+                mapped_replacement_target_lines,
+            )
+            if replacement_is_mapped is None:
+                return False
+            if replacement_is_mapped:
+                assert source_to_working_mapping is not None
+                old_side = _classify_replacement_old_side(
+                    claim,
+                    working_lines,
+                    source_to_working_mapping,
+                    claimed_ranges,
+                    spool_dir=spool_dir,
+                )
+                if (
+                    old_side is None
+                    or old_side.state is _ReplacementOldSideState.PARTIAL
+                ):
+                    return False
 
-        removal_edit, coordinate_was_reviewed = replacement_edit
-        start, end = removal_edit
-        plan.add_source_ranges(
-            start,
-            end,
-            ((source_start, source_end) for source_start, source_end in claimed_ranges),
-        )
-        for source_start, source_end in claimed_ranges:
-            replacement_source_ranges.append((source_start, source_end))
-        deletion_edit_bounds[deletion_index] = (
-            1,
-            start,
-            end,
-            coordinate_was_reviewed,
-        )
-        workspace.close_resource(claimed_ranges)
+                target_position = old_side.target_position
+                if old_side.state is _ReplacementOldSideState.ABSENT:
+                    target_position = _deletion_target_position(
+                        claim,
+                        source_to_working_mapping,
+                    )
+                if target_position is None:
+                    return False
+
+                target_end = target_position
+                if old_side.state is _ReplacementOldSideState.FULL:
+                    target_end += len(claim.content_lines)
+                    plan.add_removal(target_position, target_end)
+                for source_start, source_end in claimed_ranges:
+                    replacement_source_ranges.append((source_start, source_end))
+                deletion_edit_bounds[deletion_index] = (
+                    1,
+                    target_position,
+                    target_end,
+                    1,
+                )
+                continue
+
+            replacement_edit = _replacement_baseline_edit(
+                claim,
+                unit_index,
+                unit,
+                claimed_ranges,
+                working_lines,
+                resolution,
+                max_resolution_choices=max_resolution_choices,
+            )
+            if replacement_edit is None:
+                return False
+
+            removal_edit, coordinate_was_reviewed = replacement_edit
+            start, end = removal_edit
+            plan.add_source_ranges(
+                start,
+                end,
+                (
+                    (source_start, source_end)
+                    for source_start, source_end in claimed_ranges
+                ),
+            )
+            for source_start, source_end in claimed_ranges:
+                replacement_source_ranges.append((source_start, source_end))
+            deletion_edit_bounds[deletion_index] = (
+                1,
+                start,
+                end,
+                coordinate_was_reviewed,
+            )
+        finally:
+            workspace.close_resource(claimed_ranges)
 
     return True
 

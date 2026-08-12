@@ -178,14 +178,6 @@ msgstr "usuń wiersz docelowy {line}"
 msgid "deletion anchor has multiple compatible target placements"
 msgstr "kotwica usunięcia ma wiele zgodnych położeń docelowych"
 
-#: src/git_stage_batch/batch/merge/merge.py:82
-msgid ""
-"Cannot safely choose between recorded baseline coordinates and structural "
-"content matching"
-msgstr ""
-"Nie można bezpiecznie wybrać między zapisanymi współrzędnymi stanu bazowego "
-"a strukturalnym dopasowaniem treści"
-
 #: src/git_stage_batch/batch/merge/merge.py:190
 msgid ""
 "Cannot reliably place split replacement: original replacement boundary is "

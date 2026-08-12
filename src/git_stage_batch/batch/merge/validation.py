@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Hashable, Sequence
+from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import AbstractSet, TYPE_CHECKING, cast, overload
 
-from ...core.line_selection import LineSelection, coerce_line_ranges
+from ...core.line_selection import LineRanges, LineSelection, coerce_line_ranges
+from ...core.text_lines import normalize_line_sequence_endings
 from ...exceptions import MergeError as _MergeError
 from ...i18n import _, ngettext
 from ..line_matching.line_mapping import LineMapping
+from ..line_matching.match import match_lines
 from ..line_matching.match_workspace import MatcherWorkspace
+from ..ownership.replacement_units import replacement_counts_cover_origin
 from .baseline_replacement_ranges import (
     collect_replacement_source_ranges as _collect_replacement_source_ranges,
     selected_replacement_source_ranges as _selected_replacement_source_ranges,
@@ -26,12 +31,151 @@ from .presence_missing_claims import (
 if TYPE_CHECKING:
     from ..ownership.absence_claims import AbsenceClaim
     from ..ownership.model import BatchOwnership
+    from ..ownership.replacement_units import (
+        ReplacementUnit,
+        ReplacementUnitOrigin,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _ReplacementUnitMappingState:
+    """Selected-line realization state for one replacement unit."""
+
+    range_count: int
+    selected_line_count: int
+    has_mapped_line: bool
+    has_missing_line: bool
+    has_out_of_bounds_line: bool
+
+
+class ReplacementOldSideState(Enum):
+    """Structural state of a replacement unit's coupled old side."""
+
+    FULL = "full"
+    ABSENT = "absent"
+    PARTIAL = "partial"
+
+
+@dataclass(frozen=True, slots=True)
+class ReplacementOldSideRealization:
+    """Old-side state and its exact removable target position, if any."""
+
+    state: ReplacementOldSideState
+    target_position: int | None = None
+
+
+_CLAIMED_TARGET_LINE = object()
+
+
+class _UnclaimedTargetGap(Sequence[Hashable]):
+    """Target-gap view that masks content owned by selected presence lines."""
+
+    def __init__(
+        self,
+        target_lines: Sequence[bytes],
+        start: int,
+        end: int,
+        mapping: LineMapping,
+        claimed_ranges: Sequence[tuple[int, ...]],
+        *,
+        masked_start: int | None = None,
+        masked_end: int | None = None,
+    ) -> None:
+        self._target_lines = target_lines
+        self._start = start
+        self._end = end
+        self._mapping = mapping
+        self._claimed_ranges = claimed_ranges
+        self._masked_start = masked_start
+        self._masked_end = masked_end
+
+    def __len__(self) -> int:
+        return self._end - self._start
+
+    @overload
+    def __getitem__(self, index: int) -> Hashable: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> Sequence[Hashable]: ...
+
+    def __getitem__(self, index: int | slice) -> Hashable | Sequence[Hashable]:
+        if isinstance(index, slice):
+            return tuple(
+                self[child_index]
+                for child_index in range(*index.indices(len(self)))
+            )
+        if index < 0:
+            index += len(self)
+        if index < 0 or index >= len(self):
+            raise IndexError(index)
+
+        target_index = self._start + index
+        if (
+            self._masked_start is not None
+            and self._masked_end is not None
+            and self._masked_start <= target_index < self._masked_end
+        ):
+            return _CLAIMED_TARGET_LINE
+        source_line = self._mapping.get_source_line_from_target_line(
+            target_index + 1
+        )
+        if source_line is not None and _line_is_claimed(
+            self._claimed_ranges,
+            source_line,
+        ):
+            return _CLAIMED_TARGET_LINE
+        return self._target_lines[target_index]
+
+
+def _replacement_unit_mapping_state(
+    workspace: MatcherWorkspace,
+    unit: ReplacementUnit,
+    selected_presence: LineRanges,
+    source_line_count: int,
+    mapping: LineMapping,
+) -> _ReplacementUnitMappingState | None:
+    """Return selected mapping state, or None for malformed unit ranges."""
+    claimed_ranges = _collect_replacement_source_ranges(
+        workspace,
+        unit.presence_lines,
+    )
+    if claimed_ranges is None:
+        return None
+
+    try:
+        selected_line_count = 0
+        has_mapped_line = False
+        has_missing_line = False
+        has_out_of_bounds_line = False
+        for claimed_start, claimed_end in _selected_replacement_source_ranges(
+            claimed_ranges,
+            selected_presence,
+        ):
+            selected_line_count += claimed_end - claimed_start + 1
+            for claimed_line in range(claimed_start, claimed_end + 1):
+                if claimed_line > source_line_count:
+                    has_out_of_bounds_line = True
+                    has_missing_line = True
+                elif mapping.get_target_line_from_source_line(claimed_line) is None:
+                    has_missing_line = True
+                else:
+                    has_mapped_line = True
+        return _ReplacementUnitMappingState(
+            range_count=len(claimed_ranges),
+            selected_line_count=selected_line_count,
+            has_mapped_line=has_mapped_line,
+            has_missing_line=has_missing_line,
+            has_out_of_bounds_line=has_out_of_bounds_line,
+        )
+    finally:
+        workspace.close_resource(claimed_ranges)
 
 
 def has_missing_origin_replacement_claims(
     ownership: BatchOwnership,
     presence_line_set: LineSelection,
     source_lines: Sequence[bytes],
+    target_lines: Sequence[bytes],
     mapping: LineMapping,
     *,
     spool_dir: str | Path | None = None,
@@ -40,30 +184,351 @@ def has_missing_origin_replacement_claims(
     selected_presence = coerce_line_ranges(presence_line_set)
     with MatcherWorkspace(spool_dir=spool_dir) as workspace:
         for unit in getattr(ownership, "replacement_units", []):
+            origin = getattr(unit, "origin", None)
+            if origin is None:
+                continue
+            state = _replacement_unit_mapping_state(
+                workspace,
+                unit,
+                selected_presence,
+                len(source_lines),
+                mapping,
+            )
+            if state is None or state.has_out_of_bounds_line:
+                return True
+            if state.selected_line_count == 0:
+                continue
+            unit_covers_origin = (
+                state.range_count == 1
+                and _selected_unit_covers_replacement_origin(
+                    unit.deletion_indices,
+                    ownership.deletions,
+                    origin,
+                    state.selected_line_count,
+                )
+            )
+            old_side = _replacement_old_side_realization(
+                unit.deletion_indices,
+                ownership.deletions,
+                target_lines,
+                mapping,
+                selected_presence,
+                spool_dir=spool_dir,
+            )
+            if (
+                old_side is None
+                or old_side.state is ReplacementOldSideState.PARTIAL
+            ):
+                return True
+            if state.has_missing_line:
+                if not unit_covers_origin or state.has_mapped_line:
+                    return True
+                if old_side.state is not ReplacementOldSideState.FULL:
+                    return True
+    return False
+
+
+def has_mapped_origin_replacement_claims(
+    ownership: BatchOwnership,
+    presence_line_set: LineSelection,
+    source_lines: Sequence[bytes],
+    mapping: LineMapping,
+    *,
+    unit_indices: AbstractSet[int] | None = None,
+    spool_dir: str | Path | None = None,
+) -> bool:
+    """Return whether an origin-tracked unit has mapped new-side lines."""
+    selected_presence = coerce_line_ranges(presence_line_set)
+    with MatcherWorkspace(spool_dir=spool_dir) as workspace:
+        for unit_index, unit in enumerate(
+            getattr(ownership, "replacement_units", [])
+        ):
+            if unit_indices is not None and unit_index not in unit_indices:
+                continue
             if getattr(unit, "origin", None) is None:
                 continue
-            claimed_ranges = _collect_replacement_source_ranges(
+            state = _replacement_unit_mapping_state(
                 workspace,
-                unit.presence_lines,
+                unit,
+                selected_presence,
+                len(source_lines),
+                mapping,
             )
-            if claimed_ranges is None:
+            if state is not None and state.has_mapped_line:
                 return True
-            try:
-                for claimed_start, claimed_end in _selected_replacement_source_ranges(
-                    claimed_ranges,
-                    selected_presence,
-                ):
-                    for claimed_line in range(claimed_start, claimed_end + 1):
-                        if claimed_line > len(source_lines):
-                            continue
-                        if (
-                            mapping.get_target_line_from_source_line(claimed_line)
-                            is None
-                        ):
-                            return True
-            finally:
-                workspace.close_resource(claimed_ranges)
     return False
+
+
+def has_mixed_origin_replacement_claims(
+    ownership: BatchOwnership,
+    presence_line_set: LineSelection,
+    source_lines: Sequence[bytes],
+    mapping: LineMapping,
+    *,
+    spool_dir: str | Path | None = None,
+) -> bool:
+    """Return whether one origin unit mixes mapped and missing new lines."""
+    selected_presence = coerce_line_ranges(presence_line_set)
+    with MatcherWorkspace(spool_dir=spool_dir) as workspace:
+        for unit in getattr(ownership, "replacement_units", []):
+            if getattr(unit, "origin", None) is None:
+                continue
+            state = _replacement_unit_mapping_state(
+                workspace,
+                unit,
+                selected_presence,
+                len(source_lines),
+                mapping,
+            )
+            if (
+                state is not None
+                and state.has_mapped_line
+                and state.has_missing_line
+            ):
+                return True
+    return False
+
+
+def has_unsafe_mapped_origin_old_side_claims(
+    ownership: BatchOwnership,
+    presence_line_set: LineSelection,
+    source_lines: Sequence[bytes],
+    target_lines: Sequence[bytes],
+    mapping: LineMapping,
+    *,
+    spool_dir: str | Path | None = None,
+) -> bool:
+    """Return whether a mapped origin unit has an unsafe coupled old side."""
+    selected_presence = coerce_line_ranges(presence_line_set)
+    with MatcherWorkspace(spool_dir=spool_dir) as workspace:
+        for unit in getattr(ownership, "replacement_units", []):
+            if getattr(unit, "origin", None) is None:
+                continue
+            state = _replacement_unit_mapping_state(
+                workspace,
+                unit,
+                selected_presence,
+                len(source_lines),
+                mapping,
+            )
+            if (
+                state is None
+                or state.selected_line_count == 0
+                or not state.has_mapped_line
+            ):
+                continue
+            old_side = _replacement_old_side_realization(
+                unit.deletion_indices,
+                ownership.deletions,
+                target_lines,
+                mapping,
+                selected_presence,
+                spool_dir=spool_dir,
+            )
+            if (
+                old_side is None
+                or old_side.state is ReplacementOldSideState.PARTIAL
+            ):
+                return True
+    return False
+
+
+def _selected_unit_covers_replacement_origin(
+    deletion_indices: Sequence[int],
+    deletions: Sequence[AbsenceClaim],
+    origin: ReplacementUnitOrigin,
+    selected_line_count: int,
+) -> bool:
+    """Return whether selected old/new content covers the complete origin."""
+    if len(deletion_indices) != 1:
+        return False
+    deletion_index = deletion_indices[0]
+    if (
+        type(deletion_index) is not int
+        or deletion_index < 0
+        or deletion_index >= len(deletions)
+    ):
+        return False
+    return replacement_counts_cover_origin(
+        origin,
+        selected_line_count,
+        len(deletions[deletion_index].content_lines),
+    )
+
+
+def _replacement_old_side_realization(
+    deletion_indices: Sequence[int],
+    deletions: Sequence[AbsenceClaim],
+    target_lines: Sequence[bytes],
+    mapping: LineMapping,
+    claimed_lines: LineSelection | Sequence[tuple[int, ...]],
+    *,
+    spool_dir: str | Path | None,
+) -> ReplacementOldSideRealization | None:
+    """Return one unit's old-side realization, or None when it is malformed."""
+    if len(deletion_indices) != 1:
+        return None
+    deletion_index = deletion_indices[0]
+    if (
+        type(deletion_index) is not int
+        or deletion_index < 0
+        or deletion_index >= len(deletions)
+    ):
+        return None
+    return classify_replacement_old_side(
+        deletions[deletion_index],
+        target_lines,
+        mapping,
+        claimed_lines,
+        spool_dir=spool_dir,
+    )
+
+
+def classify_replacement_old_side(
+    deletion: AbsenceClaim,
+    target_lines: Sequence[bytes],
+    mapping: LineMapping,
+    claimed_lines: LineSelection | Sequence[tuple[int, ...]],
+    *,
+    spool_dir: str | Path | None = None,
+) -> ReplacementOldSideRealization | None:
+    """Classify old-side content in the deletion's mapped structural gap.
+
+    None means that the structural anchor or its following boundary cannot be
+    resolved safely. Content outside that gap is deliberately ignored: an
+    equal sequence elsewhere may be unrelated working-tree content.
+    """
+    claimed_ranges = _claimed_range_records(claimed_lines)
+    deleted_sequence = normalize_line_sequence_endings(deletion.content_lines)
+    if not deleted_sequence:
+        return None
+    if deletion.anchor_line is None:
+        target_position = 0
+        next_source_line = 1
+    else:
+        target_line = mapping.get_target_line_from_source_line(
+            deletion.anchor_line
+        )
+        if target_line is None:
+            return None
+        target_position = target_line
+        next_source_line = deletion.anchor_line + 1
+
+    target_end_position = len(target_lines)
+    for source_line in range(next_source_line, len(mapping.source_to_target) + 1):
+        next_target_line = mapping.get_target_line_from_source_line(source_line)
+        if next_target_line is None:
+            continue
+        if next_target_line <= target_position:
+            return None
+        if _line_is_claimed(claimed_ranges, source_line):
+            continue
+        target_end_position = next_target_line - 1
+        break
+
+    normalized_target = normalize_line_sequence_endings(target_lines)
+    after_claimed_position = target_position
+    while after_claimed_position < target_end_position:
+        mapped_source_line = mapping.get_source_line_from_target_line(
+            after_claimed_position + 1
+        )
+        if mapped_source_line is None or not _line_is_claimed(
+            claimed_ranges,
+            mapped_source_line,
+        ):
+            break
+        after_claimed_position += 1
+
+    target_gap = _UnclaimedTargetGap(
+        normalized_target,
+        target_position,
+        target_end_position,
+        mapping,
+        claimed_ranges,
+    )
+    removal_positions = tuple(
+        dict.fromkeys((target_position, after_claimed_position))
+    )
+    matching_positions = tuple(
+        removal_position
+        for removal_position in removal_positions
+        if (
+            removal_position + len(deleted_sequence) <= target_end_position
+            and all(
+                target_gap[
+                    removal_position - target_position + offset
+                ] == expected_line
+                for offset, expected_line in enumerate(deleted_sequence)
+            )
+        )
+    )
+    if len(matching_positions) > 1:
+        return ReplacementOldSideRealization(
+            ReplacementOldSideState.PARTIAL
+        )
+
+    overlap_gap = target_gap
+    if matching_positions:
+        removal_position = matching_positions[0]
+        overlap_gap = _UnclaimedTargetGap(
+            normalized_target,
+            target_position,
+            target_end_position,
+            mapping,
+            claimed_ranges,
+            masked_start=removal_position,
+            masked_end=removal_position + len(deleted_sequence),
+        )
+    with match_lines(
+        deleted_sequence,
+        overlap_gap,
+        spool_dir=spool_dir,
+    ) as overlap:
+        if (
+            overlap.may_have_unmapped_equal_lines
+            or next(overlap.mapped_line_pairs(), None) is not None
+        ):
+            return ReplacementOldSideRealization(
+                ReplacementOldSideState.PARTIAL
+            )
+    if matching_positions:
+        return ReplacementOldSideRealization(
+            ReplacementOldSideState.FULL,
+            matching_positions[0],
+        )
+    return ReplacementOldSideRealization(ReplacementOldSideState.ABSENT)
+
+
+def _claimed_range_records(
+    claimed_lines: LineSelection | Sequence[tuple[int, ...]],
+) -> Sequence[tuple[int, ...]]:
+    """Return normalized range records without copying mapped storage."""
+    if isinstance(claimed_lines, LineRanges):
+        return claimed_lines.ranges()
+    ranges = getattr(claimed_lines, "ranges", None)
+    if ranges is not None:
+        return cast(Sequence[tuple[int, ...]], ranges())
+    return cast(Sequence[tuple[int, ...]], claimed_lines)
+
+
+def _line_is_claimed(
+    claimed_ranges: Sequence[tuple[int, ...]],
+    source_line: int,
+) -> bool:
+    """Return whether sorted inclusive range records contain a source line."""
+    low = 0
+    high = len(claimed_ranges)
+    while low < high:
+        middle = (low + high) // 2
+        record = claimed_ranges[middle]
+        if len(record) < 2 or record[0] > source_line:
+            high = middle
+        else:
+            low = middle + 1
+    if low == 0:
+        return False
+    record = claimed_ranges[low - 1]
+    return len(record) >= 2 and record[0] <= source_line <= record[1]
 
 
 def check_structural_validity(

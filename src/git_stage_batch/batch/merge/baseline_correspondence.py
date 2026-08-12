@@ -79,12 +79,18 @@ class _BaselineCorrespondenceScanState:
 def build_baseline_correspondence(
     baseline_lines: Sequence[bytes],
     source_lines: Sequence[bytes],
+    *,
+    anchor_pairs: Sequence[tuple[int, int]] = (),
 ) -> BaselineCorrespondence:
     """Build restoration correspondence from source lines to baseline regions."""
     regions: list[BaselineRegion] = []
     state = _BaselineCorrespondenceScanState()
 
-    with match_lines(baseline_lines, source_lines) as mapping:
+    with match_lines(
+        baseline_lines,
+        source_lines,
+        anchor_pairs=anchor_pairs,
+    ) as mapping:
         for baseline_index in range(len(baseline_lines)):
             source_line = mapping.get_target_line_from_source_line(baseline_index + 1)
             if source_line is None:

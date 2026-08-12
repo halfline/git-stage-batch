@@ -171,14 +171,6 @@ msgstr "odstranit cílový řádek {line}"
 msgid "deletion anchor has multiple compatible target placements"
 msgstr "kotva odstranění má více kompatibilních cílových umístění"
 
-#: src/git_stage_batch/batch/merge/merge.py:82
-msgid ""
-"Cannot safely choose between recorded baseline coordinates and structural "
-"content matching"
-msgstr ""
-"Nelze bezpečně zvolit mezi zaznamenanými souřadnicemi základní verze a "
-"strukturálním porovnáním obsahu"
-
 #: src/git_stage_batch/batch/merge/merge.py:190
 msgid ""
 "Cannot reliably place split replacement: original replacement boundary is "

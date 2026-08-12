@@ -154,12 +154,6 @@ msgstr "删除目标行 {line}"
 msgid "deletion anchor has multiple compatible target placements"
 msgstr "删除锚点有多个兼容的目标位置"
 
-#: src/git_stage_batch/batch/merge/merge.py:82
-msgid ""
-"Cannot safely choose between recorded baseline coordinates and structural "
-"content matching"
-msgstr "无法在记录的基准坐标与结构化内容匹配之间安全选择"
-
 #: src/git_stage_batch/batch/merge/merge.py:190
 msgid ""
 "Cannot reliably place split replacement: original replacement boundary is "

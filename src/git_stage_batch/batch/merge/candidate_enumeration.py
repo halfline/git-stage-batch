@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from . import baseline_anchor_matching as _baseline_anchor_matching
 from .absence_constraints import (
     AbsenceChoice as _MergeAbsenceChoice,
     absence_ambiguity_key as _merge_absence_ambiguity_key,
@@ -36,6 +37,7 @@ from .coordinate_strategy import (
 )
 from .validation import (
     check_structural_validity as _check_merge_structural_validity,
+    has_unsafe_mapped_origin_old_side_claims as _has_unsafe_mapped_old_side,
 )
 from . import presence_placement_choices as _presence_placement_choices
 from ...core.line_selection import LineSelection, coerce_line_ranges
@@ -44,6 +46,7 @@ from ...i18n import _
 from ...core.text_lines import normalize_line_endings
 
 if TYPE_CHECKING:
+    from ..line_matching.line_mapping import LineMapping
     from ..ownership.model import BatchOwnership
     from ..ownership.absence_claims import AbsenceClaim
 
@@ -60,6 +63,10 @@ class _UnresolvedReplacementOrigin:
     deletion_index: int
     ambiguity_key: str
     choices: tuple[_BaselineReplacementOriginChoice, ...]
+
+
+class _MixedReplacementOrigin(Exception):
+    """Signal that origin-tracked content is only partly realized."""
 
 
 def _coordinate_strategy_candidate_set(
@@ -119,136 +126,118 @@ def _find_unresolved_replacement_origin(
     working_lines: Sequence[bytes],
     presence_line_set: LineSelection,
     deletion_claims: list["AbsenceClaim"],
+    source_to_working_mapping: LineMapping,
     *,
     max_candidates: int,
     spool_dir: str | Path | None,
 ) -> _UnresolvedReplacementOrigin | None:
     """Return the only unresolved split replacement, if there is one."""
-    owned_mapping = match_lines(
-        source_lines,
-        working_lines,
-        spool_dir=spool_dir,
-    )
+    range_workspace = MatcherWorkspace(spool_dir=spool_dir)
     try:
-        range_workspace = MatcherWorkspace(spool_dir=spool_dir)
-        try:
-            selected_presence = coerce_line_ranges(presence_line_set)
-            unresolved = None
-            for unit_index, unit in enumerate(ownership.replacement_units):
-                if unit.origin is None:
-                    continue
+        selected_presence = coerce_line_ranges(presence_line_set)
+        unresolved = None
+        for unit_index, unit in enumerate(ownership.replacement_units):
+            if unit.origin is None:
+                continue
 
-                claimed_ranges = _collect_replacement_source_ranges(
-                    range_workspace,
-                    unit.presence_lines,
+            claimed_ranges = _collect_replacement_source_ranges(
+                range_workspace,
+                unit.presence_lines,
+            )
+            if claimed_ranges is None:
+                raise _MergeError(
+                    _("Batch was created from a different version of the file")
                 )
-                if claimed_ranges is None:
+            try:
+                source_start: int | None = None
+                source_end: int | None = None
+                has_mapped_claimed_line = False
+                has_missing_claimed_line = False
+                for (
+                    claimed_start,
+                    claimed_end,
+                ) in _selected_replacement_source_ranges(
+                    claimed_ranges,
+                    selected_presence,
+                ):
+                    if source_start is None:
+                        source_start = claimed_start
+                    source_end = claimed_end
+                    for claimed_line in range(claimed_start, claimed_end + 1):
+                        if (
+                            claimed_line > len(source_lines)
+                            or source_to_working_mapping.get_target_line_from_source_line(
+                                claimed_line
+                            )
+                            is None
+                        ):
+                            has_missing_claimed_line = True
+                        else:
+                            has_mapped_claimed_line = True
+
+                if source_start is None or source_end is None:
+                    continue
+                if has_mapped_claimed_line and has_missing_claimed_line:
+                    raise _MixedReplacementOrigin
+                if not has_missing_claimed_line:
+                    continue
+                if len(unit.deletion_indices) != 1:
                     raise _MergeError(
                         _("Batch was created from a different version of the file")
                     )
-                try:
-                    source_start: int | None = None
-                    source_end: int | None = None
-                    all_claimed_lines_are_mapped = True
-                    for (
-                        claimed_start,
-                        claimed_end,
-                    ) in _selected_replacement_source_ranges(
+
+                deletion_index = unit.deletion_indices[0]
+                if type(deletion_index) is not int:
+                    raise _MergeError(
+                        _("Batch was created from a different version of the file")
+                    )
+                if (
+                    deletion_index < 0
+                    or deletion_index >= len(deletion_claims)
+                ):
+                    raise _MergeError(
+                        _("Batch was created from a different version of the file")
+                    )
+                key, choices = _replacement_origin_choices_for_unit(
+                    deletion_claims[deletion_index],
+                    unit_index,
+                    unit,
+                    _selected_replacement_source_ranges(
                         claimed_ranges,
                         selected_presence,
-                    ):
-                        if source_start is None:
-                            source_start = claimed_start
-                        source_end = claimed_end
-                        if not all_claimed_lines_are_mapped:
-                            continue
-                        for claimed_line in range(claimed_start, claimed_end + 1):
-                            if (
-                                claimed_line > len(source_lines)
-                                or owned_mapping.get_target_line_from_source_line(
-                                    claimed_line
-                                )
-                                is None
-                            ):
-                                all_claimed_lines_are_mapped = False
-                                break
-
-                    if source_start is None or source_end is None:
-                        continue
-                    if all_claimed_lines_are_mapped:
-                        continue
-                    if len(unit.deletion_indices) != 1:
-                        raise _MergeError(
-                            _("Batch was created from a different version of the file")
-                        )
-
-                    deletion_index = unit.deletion_indices[0]
-                    if type(deletion_index) is not int:
-                        raise _MergeError(
-                            _("Batch was created from a different version of the file")
-                        )
-                    if (
-                        deletion_index < 0
-                        or deletion_index >= len(deletion_claims)
-                    ):
-                        raise _MergeError(
-                            _("Batch was created from a different version of the file")
-                        )
-                    key, choices = _replacement_origin_choices_for_unit(
-                        deletion_claims[deletion_index],
-                        unit_index,
-                        unit,
-                        _selected_replacement_source_ranges(
-                            claimed_ranges,
-                            selected_presence,
-                        ),
-                        working_lines,
-                        max_results=max_candidates + 1,
+                    ),
+                    working_lines,
+                    max_results=max_candidates + 1,
+                )
+                if key is None:
+                    continue
+                candidate = _UnresolvedReplacementOrigin(
+                    source_start=source_start,
+                    source_end=source_end,
+                    deletion_index=deletion_index,
+                    ambiguity_key=key,
+                    choices=choices,
+                )
+                if unresolved is not None:
+                    raise _MergeError(
+                        _("Multiple split replacement placements need review")
                     )
-                    if key is None:
-                        continue
-                    candidate = _UnresolvedReplacementOrigin(
-                        source_start=source_start,
-                        source_end=source_end,
-                        deletion_index=deletion_index,
-                        ambiguity_key=key,
-                        choices=choices,
-                    )
-                    if unresolved is not None:
-                        raise _MergeError(
-                            _("Multiple split replacement placements need review")
-                        )
-                    unresolved = candidate
-                finally:
-                    range_workspace.close_resource(claimed_ranges)
-            return unresolved
-        finally:
-            range_workspace.close()
+                unresolved = candidate
+            finally:
+                range_workspace.close_resource(claimed_ranges)
+        return unresolved
     finally:
-        owned_mapping.close()
+        range_workspace.close()
 
 
-def _replacement_origin_candidate_set(
-    source_lines: Sequence[bytes],
-    ownership: "BatchOwnership",
-    working_lines: Sequence[bytes],
-    presence_line_set: LineSelection,
-    deletion_claims: list["AbsenceClaim"],
+def _replacement_origin_candidate_set_from_unresolved(
+    unresolved: _UnresolvedReplacementOrigin | None,
+    deletion_claims: list[AbsenceClaim],
     *,
     resolution_is_valid: _MergeResolutionValidator,
     max_candidates: int,
-    spool_dir: str | Path | None,
 ) -> _MergeCandidateSet:
-    """Enumerate reviewed placements for one unresolved split replacement."""
-    unresolved = _find_unresolved_replacement_origin(
-        source_lines,
-        ownership,
-        working_lines,
-        presence_line_set,
-        deletion_claims,
-        max_candidates=max_candidates,
-        spool_dir=spool_dir,
-    )
+    """Build reviewed candidates from one completed origin discovery pass."""
     if unresolved is None:
         return _MergeCandidateSet.refused()
 
@@ -560,6 +549,66 @@ def enumerate_merge_batch_candidates_for_lines(
     spool_dir: str | Path | None = None,
 ) -> _MergeCandidateSet:
     """Enumerate merge candidates for acquired normalized line sequences."""
+    resolved = ownership.resolve()
+    presence_line_set = resolved.presence_line_set
+    deletion_claims = resolved.deletion_claims
+    unresolved_replacement = None
+    has_replacement_origin = any(
+        getattr(unit, "origin", None) is not None
+        for unit in ownership.replacement_units
+    )
+    if has_replacement_origin:
+        try:
+            with match_lines(
+                source_lines,
+                working_lines,
+                spool_dir=spool_dir,
+            ) as discovery_mapping:
+                unresolved_replacement = _find_unresolved_replacement_origin(
+                    source_lines,
+                    ownership,
+                    working_lines,
+                    presence_line_set,
+                    deletion_claims,
+                    discovery_mapping,
+                    max_candidates=max_candidates,
+                    spool_dir=spool_dir,
+                )
+                with _baseline_anchor_matching.acquire_deletion_anchor_pairs_for_target(
+                    source_lines,
+                    working_lines,
+                    deletion_claims,
+                    spool_dir=spool_dir,
+                ) as deletion_anchor_pairs:
+                    if deletion_anchor_pairs:
+                        with match_lines(
+                            source_lines,
+                            working_lines,
+                            anchor_pairs=deletion_anchor_pairs,
+                            spool_dir=spool_dir,
+                        ) as structural_mapping:
+                            unsafe_old_side = _has_unsafe_mapped_old_side(
+                                ownership,
+                                presence_line_set,
+                                source_lines,
+                                working_lines,
+                                structural_mapping,
+                                spool_dir=spool_dir,
+                            )
+                    else:
+                        unsafe_old_side = _has_unsafe_mapped_old_side(
+                            ownership,
+                            presence_line_set,
+                            source_lines,
+                            working_lines,
+                            discovery_mapping,
+                            spool_dir=spool_dir,
+                        )
+                    if unsafe_old_side:
+                        raise _MixedReplacementOrigin
+        except _MixedReplacementOrigin:
+            return _MergeCandidateSet.refused()
+
     coordinate_strategy_candidates = _coordinate_strategy_candidate_set(
         strategies_differ=coordinate_strategies_differ,
         max_candidates=max_candidates,
@@ -567,19 +616,11 @@ def enumerate_merge_batch_candidates_for_lines(
     if coordinate_strategy_candidates.candidates:
         return coordinate_strategy_candidates
 
-    resolved = ownership.resolve()
-    presence_line_set = resolved.presence_line_set
-    deletion_claims = resolved.deletion_claims
-
-    replacement_candidates = _replacement_origin_candidate_set(
-        source_lines,
-        ownership,
-        working_lines,
-        presence_line_set,
+    replacement_candidates = _replacement_origin_candidate_set_from_unresolved(
+        unresolved_replacement,
         deletion_claims,
         resolution_is_valid=resolution_is_valid,
         max_candidates=max_candidates,
-        spool_dir=spool_dir,
     )
     if replacement_candidates.candidates:
         return replacement_candidates

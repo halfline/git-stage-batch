@@ -175,14 +175,6 @@ msgstr "eliminar línea destino {line}"
 msgid "deletion anchor has multiple compatible target placements"
 msgstr "el ancla de eliminación tiene varias ubicaciones destino compatibles"
 
-#: src/git_stage_batch/batch/merge/merge.py:82
-msgid ""
-"Cannot safely choose between recorded baseline coordinates and structural "
-"content matching"
-msgstr ""
-"No se puede elegir de forma segura entre las coordenadas de referencia "
-"registradas y la coincidencia estructural del contenido"
-
 #: src/git_stage_batch/batch/merge/merge.py:190
 msgid ""
 "Cannot reliably place split replacement: original replacement boundary is "

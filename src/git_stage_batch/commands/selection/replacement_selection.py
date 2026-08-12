@@ -143,8 +143,14 @@ def build_partial_structural_run_selection_error(
 def expand_replacement_selection_ids(
     line_changes: LineLevelChange,
     requested_ids: set[int],
+    *,
+    preserve_partial_addition_prefix: bool = False,
 ) -> set[int]:
-    """Expand selected rows to every adjacent mixed replacement core."""
+    """Expand selected rows to every adjacent mixed replacement core.
+
+    A discard replacement may preserve an explicit leading batch alternative;
+    other callers retain the historical complete-core expansion.
+    """
     expanded_ids: set[int] | None = None
     line_index = 0
     while line_index < len(line_changes.lines):
@@ -187,6 +193,34 @@ def expand_replacement_selection_ids(
         if (
             first_requested_index is None
             or first_requested_index >= replacement_stop
+        ):
+            continue
+
+        selected_addition_count = 0
+        for run_index in range(first_addition, run_stop):
+            line_id = line_changes.lines[run_index].id
+            if line_id not in requested_ids:
+                break
+            selected_addition_count += 1
+        selects_complete_old_side = all(
+            line_changes.lines[run_index].id is not None
+            and line_changes.lines[run_index].id in requested_ids
+            for run_index in range(run_start, first_addition)
+        )
+        selects_partial_addition_prefix = (
+            0 < selected_addition_count < addition_count
+            and all(
+                line_changes.lines[run_index].id not in requested_ids
+                for run_index in range(
+                    first_addition + selected_addition_count,
+                    run_stop,
+                )
+            )
+        )
+        if (
+            preserve_partial_addition_prefix
+            and selects_complete_old_side
+            and selects_partial_addition_prefix
         ):
             continue
 

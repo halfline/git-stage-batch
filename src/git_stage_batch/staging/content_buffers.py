@@ -337,10 +337,34 @@ def _replacement_selection_span_indices(
             or first_selected_index >= replacement_stop
         ):
             continue
-        if any(
+        replacement_core_is_incomplete = any(
             line_changes.lines[run_index].id is None
             or line_changes.lines[run_index].id not in replace_ids
             for run_index in range(run_start, replacement_stop)
+        )
+        deletion_side_is_complete = all(
+            line_changes.lines[run_index].id is not None
+            and line_changes.lines[run_index].id in replace_ids
+            for run_index in range(run_start, first_addition)
+        )
+        selected_addition_count = 0
+        for run_index in range(first_addition, line_index):
+            line_id = line_changes.lines[run_index].id
+            if line_id is None or line_id not in replace_ids:
+                break
+            selected_addition_count += 1
+        addition_prefix_is_partial = (
+            0 < selected_addition_count < line_index - first_addition
+            and all(
+                line_changes.lines[run_index].id not in replace_ids
+                for run_index in range(
+                    first_addition + selected_addition_count,
+                    line_index,
+                )
+            )
+        )
+        if replacement_core_is_incomplete and not (
+            deletion_side_is_complete and addition_prefix_is_partial
         ):
             raise ValueError(
                 _(

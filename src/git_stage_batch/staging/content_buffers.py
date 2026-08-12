@@ -789,7 +789,7 @@ def _build_target_index_buffer_with_replaced_lines(
 
 def _target_working_tree_line_contents(
     line_changes: LineLevelChange,
-    discard_ids: set[int],
+    discard_ids: Collection[int],
     working_lines: Sequence[bytes],
     working_line_count: int,
 ) -> Iterator[bytes]:
@@ -875,7 +875,7 @@ def _target_working_tree_line_contents(
 
 def build_target_working_tree_buffer_from_lines(
     line_changes: LineLevelChange,
-    discard_ids: set[int],
+    discard_ids: Collection[int],
     working_lines: Sequence[bytes],
 ) -> LineBuffer:
     """Build target working tree content from indexed working tree lines."""

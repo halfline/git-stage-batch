@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 
 from ...core.line_selection import LineRanges
 from ...core.models import LineEntry
@@ -27,7 +27,7 @@ from .replacement_line_runs import ReplacementLineRun as _ReplacementLineRun
 
 def translate_hunk_selection_to_batch_ownership(
     hunk_lines: list[LineEntry],
-    selected_display_ids: set[int],
+    selected_display_ids: Collection[int],
     *,
     replacement_line_runs: Iterable[_ReplacementLineRun] | None = None,
     replacement_origin_line_runs: Iterable[_ReplacementLineRun] | None = None,

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Collection, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 
 from ...core.line_selection import LineRanges
@@ -31,7 +31,7 @@ class HunkReplacementTranslation:
     presence_baseline_references: dict[int, BaselineReference]
     absence_claims: list[AbsenceClaim]
     replacement_units: list[ReplacementUnit]
-    consumed_display_ids: set[int]
+    consumed_display_ids: LineRanges
 
 
 def _close_replacement_run_iterator(
@@ -45,7 +45,7 @@ def _close_replacement_run_iterator(
 def translate_hunk_replacement_line_runs(
     *,
     hunk_lines: list[LineEntry],
-    selected_display_ids: set[int],
+    selected_display_ids: Collection[int],
     replacement_line_runs: Iterable[ReplacementLineRun],
     old_line_content: dict[int, bytes],
     hunk_content_view: Sequence[bytes],
@@ -88,7 +88,7 @@ def translate_hunk_replacement_line_runs(
 def _translate_hunk_replacement_line_runs(
     *,
     hunk_lines: list[LineEntry],
-    selected_display_ids: set[int],
+    selected_display_ids: Collection[int],
     replacement_run_iterator: Iterator[ReplacementLineRun],
     old_line_content: dict[int, bytes],
     hunk_content_view: Sequence[bytes],
@@ -100,7 +100,8 @@ def _translate_hunk_replacement_line_runs(
     presence_baseline_references: dict[int, BaselineReference] = {}
     absence_claims: list[AbsenceClaim] = []
     replacement_units: list[ReplacementUnit] = []
-    consumed_display_ids: set[int] = set()
+    consumed_old_display_ids = LineRangeBuilder()
+    consumed_new_display_ids = LineRangeBuilder()
 
     def add_replacement_unit(
         selected_old_ranges: Iterable[tuple[int, int]],
@@ -115,7 +116,6 @@ def _translate_hunk_replacement_line_runs(
         deletion_anchor: int | None = None
         old_line_seen = False
         selected_source_lines = LineRangeBuilder()
-        consumed_ids: list[int] = []
         use_origin_content = (
             origin_old_start is not None
             and origin_old_end is not None
@@ -135,7 +135,7 @@ def _translate_hunk_replacement_line_runs(
                 for index in range(range_start, range_stop):
                     old_line = hunk_lines[index]
                     if old_line.id is not None:
-                        consumed_ids.append(old_line.id)
+                        consumed_old_display_ids.add_line(old_line.id)
 
             if use_origin_content:
                 assert origin_old_start is not None
@@ -159,7 +159,7 @@ def _translate_hunk_replacement_line_runs(
             claimed_source_lines.add_line(new_line.source_line)
             selected_source_lines.add_line(new_line.source_line)
             if new_line.id is not None:
-                consumed_ids.append(new_line.id)
+                consumed_new_display_ids.add_line(new_line.id)
             baseline_reference = baseline_reference_for_presence_line(new_line)
             if baseline_reference is not None:
                 presence_baseline_references[new_line.source_line] = (
@@ -196,7 +196,6 @@ def _translate_hunk_replacement_line_runs(
                 origin=origin,
             )
         )
-        consumed_display_ids.update(consumed_ids)
 
     old_cursor = 0
     new_cursor = 0
@@ -384,10 +383,16 @@ def _translate_hunk_replacement_line_runs(
                 ),
             )
 
+    consumed_old_ids = consumed_old_display_ids.finish()
+    consumed_new_ids = consumed_new_display_ids.finish()
     return HunkReplacementTranslation(
         claimed_source_lines=claimed_source_lines.finish(),
         presence_baseline_references=presence_baseline_references,
         absence_claims=absence_claims,
         replacement_units=replacement_units,
-        consumed_display_ids=consumed_display_ids,
+        consumed_display_ids=LineRanges.from_ranges(
+            range_pair
+            for consumed_ids in (consumed_old_ids, consumed_new_ids)
+            for range_pair in consumed_ids.ranges()
+        ),
     )

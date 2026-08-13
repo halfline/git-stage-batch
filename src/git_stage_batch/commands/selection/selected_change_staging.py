@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 
 from ...core.buffer import LineBuffer
-from ...core.diff_parser import patch_is_file_deletion
+from ...core.diff_parser import patch_is_file_deletion, patch_requires_unidiff_zero
 from ...core.models import (
     BinaryFileChange,
     FileModeChange,
@@ -194,8 +194,10 @@ def _include_loaded_selected_change(
             stage_text_file_deletion(file_path)
             apply_result = None
         else:
+            unidiff_zero = patch_requires_unidiff_zero(patch_buffer)
             apply_result = git_apply_to_index(
                 patch_buffer.byte_chunks(),
+                unidiff_zero=unidiff_zero,
                 check=False,
             )
 

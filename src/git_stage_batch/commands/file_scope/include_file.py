@@ -10,6 +10,7 @@ from ...core.diff_parser import (
     UnifiedDiffItem,
     acquire_unified_diff,
     patch_is_file_deletion,
+    patch_requires_unidiff_zero,
 )
 from ...core.hashing import (
     compute_binary_file_hash,
@@ -211,7 +212,11 @@ def include_file_changes(
                     _selected_change_staging.stage_text_file_deletion(target_file)
                     apply_result = None
                 else:
-                    apply_result = git_apply_to_index(patch.lines, check=False)
+                    apply_result = git_apply_to_index(
+                        patch.lines,
+                        unidiff_zero=patch_requires_unidiff_zero(patch.lines),
+                        check=False,
+                    )
                 if apply_result is None or apply_result.returncode == 0:
                     included_hashes.append(patch_hash)
                     hunks_staged += 1

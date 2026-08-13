@@ -97,7 +97,12 @@ def command_start(
 
         try:
             fetch_next_change()
-        except NoMoreHunks:
+        except NoMoreHunks as error:
+            if error.all_changes_already_batched and error.batch_names:
+                raise CommandError(
+                    _already_batched_changes_message(error.batch_names),
+                    exit_code=2,
+                )
             raise CommandError(_("No changes to process."), exit_code=2)
 
         if not quiet:
@@ -110,3 +115,14 @@ def command_start(
         except BaseException as abort_error:
             raise start_error from abort_error
         raise
+
+
+def _already_batched_changes_message(batch_names: frozenset[str]) -> str:
+    """Explain that live changes were hidden by persistent batch ownership."""
+    locations = ", ".join(
+        _("batch {name}").format(name=repr(name))
+        for name in sorted(batch_names)
+    )
+    return _(
+        "All working tree changes are currently saved in {locations}."
+    ).format(locations=locations)

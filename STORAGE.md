@@ -12,14 +12,15 @@
 8. [Git-Backed Batch State](#git-backed-batch-state)
 9. [Batch Source Snapshots](#batch-source-snapshots)
 10. [Session Scratch State](#session-scratch-state)
-11. [Abort and Recovery State](#abort-and-recovery-state)
-12. [Selected Change Cache](#selected-change-cache)
-13. [Progress and Navigation State](#progress-and-navigation-state)
-14. [Batch Ref Snapshots](#batch-ref-snapshots)
-15. [Object Reachability](#object-reachability)
-16. [Undo Checkpoints](#undo-checkpoints)
-17. [Future Direction](#future-direction)
-18. [Migration Invariants](#migration-invariants)
+11. [Applied Batch Overlays](#applied-batch-overlays)
+12. [Abort and Recovery State](#abort-and-recovery-state)
+13. [Selected Change Cache](#selected-change-cache)
+14. [Progress and Navigation State](#progress-and-navigation-state)
+15. [Batch Ref Snapshots](#batch-ref-snapshots)
+16. [Object Reachability](#object-reachability)
+17. [Undo Checkpoints](#undo-checkpoints)
+18. [Future Direction](#future-direction)
+19. [Migration Invariants](#migration-invariants)
 
 ---
 
@@ -41,23 +42,26 @@ This document is narrower. It answers:
 
 The selected implementation is intentionally hybrid. Git objects store durable
 content, batch state, undo checkpoints, and durable snapshots. Local files under
-`.git/git-stage-batch` store active session scratch state and compatibility
-caches.
+`.git/git-stage-batch` store active session scratch state, identity-bound
+worktree provenance, and compatibility caches.
 
 ---
 
 ## Mental Model
 
-git-stage-batch storage falls into four categories:
+git-stage-batch storage falls into five categories:
 
 * **Batch content refs**: durable user-facing truth for realized batch content.
 * **Batch state refs**: durable metadata needed to reconstruct, merge, validate, and restore batches.
 * **Session state**: ephemeral workflow machinery for an active session.
+* **Applied batch provenance**: identity-bound, worktree-local intent recorded
+  after `apply --from`; it is advisory and never batch authority.
 * **Compatibility storage**: legacy paths kept only for migration and older repositories.
 
 For any path or ref, maintainers should ask:
 
-1. Is it durable content, durable state, ephemeral session state, or compatibility-only?
+1. Is it durable content, durable state, applied provenance, ephemeral session
+   state, or compatibility-only?
 2. If multiple locations mention the same batch, which one is authoritative?
 
 The answers are stable:
@@ -65,6 +69,8 @@ The answers are stable:
 * `refs/git-stage-batch/batches/<batch>` is authoritative for content.
 * `refs/git-stage-batch/state/<batch>` is authoritative for batch state.
 * `.git/git-stage-batch/session/` is authoritative for active session state.
+* `.git/git-stage-batch/applied-batch-overlays.json` is advisory provenance for
+  an exact worktree state; it is never batch authority.
 * Legacy refs and metadata files are migration inputs, not co-equal authorities.
 
 ---
@@ -183,8 +189,9 @@ They are not mirrors; they are the selected checkpoint storage.
 ```
 
 This directory stores active sessions, abort state, file-backed metadata, the
-debug journal, and compatibility batch metadata when a batch has not yet been
-published entirely through the Git-backed state refs.
+debug journal, identity-bound applied-batch overlays, and compatibility batch
+metadata when a batch has not yet been published entirely through the Git-backed
+state refs.
 
 ### Git Object Database
 
@@ -598,6 +605,7 @@ session/
   processed/
   progress/
   selected/
+  applied-batch-overlay-paths.txt
   batch-sources.json
   consumed-selections.json
 ```
@@ -642,6 +650,63 @@ format rather than using replacement writes.
 
 ---
 
+## Applied Batch Overlays
+
+### Location
+
+```text
+.git/git-stage-batch/applied-batch-overlays.json
+```
+
+### Meaning and authority
+
+`apply --from` restores saved ownership to the working tree without changing
+the index or consuming the named batch. The overlay records that explicit user
+intent so a later fresh `start` can review and stage the restored ownership even
+though ordinary attribution would hide it as already saved.
+
+The file is worktree-local advisory provenance. It does not modify
+`refs/git-stage-batch/state/<batch>:batch.json`, does not add ownership to a
+batch, and is not copied between clones. Sessions and batches created before
+this state existed remain valid; only applies performed by a version that
+writes the overlay gain the fresh-start exemption.
+
+Each path records compact selected attribution claims, its exact source blob
+ID, the batch name and metadata revision, and exact identities for `HEAD`, the
+index entry, and the resulting worktree path. Presence claims are normalized to
+range strings. Deletions retain only their source anchor and blob ID;
+merge-specific baseline references and replacement-unit coupling are omitted.
+The worktree identity contains path kind, mode, byte size, and a streamed
+SHA-256 digest. An absent index entry and the intent-to-add entry created by
+`start` compare as the same state; the intent flag is checked separately so an
+ordinarily staged empty blob stays distinct.
+
+Readers outside an active session use an overlay only while every recorded
+identity still matches. Editing or staging the path before the next session,
+committing, or changing the named batch therefore makes the record inapplicable
+without rewriting canonical batch state. During a session, an overlay whose
+index identity was fresh at `start` remains valid while git-stage-batch stages
+part of that path; `stop` rebinds still-valid ownership to the final index. A
+path applied during the session receives the same treatment. The trusted
+start-time paths are recorded in
+`session/abort/applied-batch-overlays-index.json`, and paths written by an apply
+in that session are recorded in `session/applied-batch-overlay-paths.txt`.
+`abort` restores the exact pre-session overlay instead of rebinding it.
+
+Consecutive applies retain earlier still-fresh applications to the same path.
+Ownership stays in compact range, anchor, and blob-ID form; complete file lines
+or bytes and per-line boundary references are not stored in Python collections
+or JSON. Bulk index identity reads split path arguments into bounded groups so
+repository-scale overlay state does not depend on the host's maximum command
+line size.
+
+The overlay is included as a scoped repository path in apply undo checkpoints.
+Session startup snapshots it under `session/abort/`; abort restores that exact
+pre-session value, while stop deliberately leaves it available for a later
+fresh session.
+
+---
+
 ## Abort and Recovery State
 
 ### Location
@@ -660,6 +725,8 @@ untracked/
 auto-added-files.txt
 intent-to-add-files.txt
 batch-refs.json
+applied-batch-overlays.json or applied-batch-overlays.absent
+applied-batch-overlays-index.json
 ```
 
 ### `head.txt`
@@ -727,6 +794,21 @@ Abort uses it to:
 * Revert batches modified during the session
 * Restore file-backed metadata
 * Resync the Git-backed state refs
+
+### `applied-batch-overlays.json` / `.absent`
+
+Startup records either the exact pre-session applied overlay or an explicit
+absence marker. Abort restores that state after restoring batch refs. A session
+created by an older version may contain neither file; abort then leaves the
+newer overlay path untouched for backward compatibility.
+
+### `applied-batch-overlays-index.json`
+
+Records which overlay paths still matched the exact index identity at session
+start. This allows git-stage-batch to stage part of a restored path without
+hiding the remaining applied ownership. `stop` validates the other identities
+and binds those paths to the final index; `abort` discards this scratch record
+and restores the pre-session overlay snapshot.
 
 ---
 

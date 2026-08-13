@@ -7726,3 +7726,12 @@ msgstr "kaynak çözümleme çalışma alanı kopyalanırken değişti"
 
 msgid "owned resolution copy does not match its authenticated source"
 msgstr "işleme ait çözümleme kopyası kimliği doğrulanmış kaynağıyla eşleşmiyor"
+
+# Applied-batch review provenance translations.
+#, python-brace-format
+msgid "All working tree changes are currently saved in {locations}."
+msgstr "Tüm çalışma ağacı değişiklikleri şu anda {locations} içinde kayıtlı."
+
+#, python-brace-format
+msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
+msgstr "Uygulanan grup durumu bozuk: {path}. Geri yüklenen değişiklik inceleme kaynağını unutmak için bu dosyayı kaldırın."

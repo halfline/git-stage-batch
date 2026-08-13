@@ -7830,3 +7830,12 @@ msgstr "de bronwerkruimte voor geschiedenisoplossingen is gewijzigd tijdens het 
 
 msgid "owned resolution copy does not match its authenticated source"
 msgstr "de beheerde kopie van de geschiedenisoplossing komt niet overeen met de geverifieerde bron"
+
+# Applied-batch review provenance translations.
+#, python-brace-format
+msgid "All working tree changes are currently saved in {locations}."
+msgstr "Alle wijzigingen in de werkboom zijn momenteel opgeslagen in {locations}."
+
+#, python-brace-format
+msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
+msgstr "De status van toegepaste batches is beschadigd: {path}. Verwijder dit bestand om de beoordelingsherkomst van herstelde wijzigingen te vergeten."

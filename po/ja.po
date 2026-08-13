@@ -7309,3 +7309,12 @@ msgstr "ソースの解決ワークスペースがコピー中に変更されま
 
 msgid "owned resolution copy does not match its authenticated source"
 msgstr "所有されている解決コピーが認証済みのソースと一致しません"
+
+# Applied-batch review provenance translations.
+#, python-brace-format
+msgid "All working tree changes are currently saved in {locations}."
+msgstr "作業ツリーのすべての変更は現在 {locations} に保存されています。"
+
+#, python-brace-format
+msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
+msgstr "適用済みバッチの状態が破損しています: {path}。復元された変更のレビュー来歴を破棄するには、このファイルを削除してください。"

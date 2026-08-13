@@ -7775,3 +7775,12 @@ msgstr "pracovní prostor zdrojového řešení se během kopírování změnil"
 
 msgid "owned resolution copy does not match its authenticated source"
 msgstr "vlastněná kopie řešení neodpovídá svému ověřenému zdroji"
+
+# Applied-batch review provenance translations.
+#, python-brace-format
+msgid "All working tree changes are currently saved in {locations}."
+msgstr "Všechny změny pracovního stromu jsou nyní uloženy v {locations}."
+
+#, python-brace-format
+msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
+msgstr "Stav použitých dávek je poškozen: {path}. Odeberte tento soubor, chcete-li zapomenout původ kontroly obnovených změn."

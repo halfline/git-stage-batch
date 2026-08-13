@@ -7919,3 +7919,12 @@ msgstr "der Quellarbeitsbereich zur Auflösung hat sich während des Kopierens g
 
 msgid "owned resolution copy does not match its authenticated source"
 msgstr "die eigene Auflösungskopie entspricht nicht ihrer authentifizierten Quelle"
+
+# Applied-batch review provenance translations.
+#, python-brace-format
+msgid "All working tree changes are currently saved in {locations}."
+msgstr "Alle Änderungen im Arbeitsbaum sind derzeit in {locations} gespeichert."
+
+#, python-brace-format
+msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
+msgstr "Der Zustand angewendeter Stapel ist beschädigt: {path}. Entfernen Sie diese Datei, um die Prüfherkunft wiederhergestellter Änderungen zu vergessen."

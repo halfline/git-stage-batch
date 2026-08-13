@@ -7883,3 +7883,12 @@ msgstr "źródłowa przestrzeń robocza rozwiązania zmieniła się podczas kopi
 
 msgid "owned resolution copy does not match its authenticated source"
 msgstr "kopia rozwiązania należąca do operacji nie odpowiada swojemu uwierzytelnionemu źródłu"
+
+# Applied-batch review provenance translations.
+#, python-brace-format
+msgid "All working tree changes are currently saved in {locations}."
+msgstr "Wszystkie zmiany drzewa roboczego są obecnie zapisane w {locations}."
+
+#, python-brace-format
+msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
+msgstr "Stan zastosowanych partii jest uszkodzony: {path}. Usuń ten plik, aby zapomnieć pochodzenie przeglądu przywróconych zmian."

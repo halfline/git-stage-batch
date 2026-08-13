@@ -70,6 +70,7 @@ These names refer to different file contents. They are not interchangeable.
 | **Realized batch content** | The complete file content produced from the baseline, batch source, and ownership. The source uses the word “realized” in names such as `realized_file_content.py`. |
 | **Baseline reference** | Exact before-and-after baseline line positions and bytes recorded for a claim. Merge code uses them only when those positions and bytes still match. |
 | **Attribution** | A calculated answer to which visible working-tree changes are already owned by which batches. It is recalculated; it is not stored as ownership. |
+| **Applied overlay** | Worktree-local, identity-bound provenance that records ownership intentionally restored by `apply --from`. It makes only that applied ownership reviewable and is not canonical batch metadata. |
 | **Display line identifier** | A number printed beside a changed line for a later user selection. It is not a batch-source line number. |
 | **Merge candidate** | One numbered result calculated after ordinary merge cannot choose a single structural placement. A later command can name the reviewed result. |
 
@@ -484,11 +485,46 @@ The same calculation includes consumed selections from
 Those records hide changes already handled during the current session even when
 they are not persistent named-batch ownership.
 
+It also includes applied overlays from
+[`data/applied_batch_overlays.py`](src/git_stage_batch/data/applied_batch_overlays.py).
+Ordinarily, named ownership hides an equivalent live change. `apply --from`
+records the exact selected attribution claims as an overlay so the intentionally
+restored change remains available to a later fresh `start` and `include --files`
+pass. Merge-only baseline references and replacement-unit coupling are omitted;
+presence line ranges and deletion blob/anchor pairs are sufficient to identify
+the visible ownership.
+The overlay lives in `.git/git-stage-batch/applied-batch-overlays.json`; it does
+not modify the batch state ref or `batch.json`.
+
+An applied overlay is accepted only while all of these still match its record:
+
+- the batch metadata revision
+- `HEAD`
+- the path's index entry (an absent entry and `start`'s intent-to-add sentinel
+  are equivalent)
+- the exact worktree path kind, mode, size, and streamed content digest
+
+Any external worktree edit, pre-session staging operation, commit, or batch
+mutation makes the old overlay inapplicable. Staging part of a fresh overlay
+through git-stage-batch during an active session keeps its remaining ownership
+reviewable; `stop` binds the overlay to the final index state. Multiple
+consecutive `apply --from` operations on the same unchanged target carry forward
+the still-fresh ownership, so layered recomposition remains reviewable as a
+whole. Active-session undo checkpoints and abort recovery include the overlay
+file.
+
+When a fresh `start` finds only changes hidden by ordinary named-batch
+ownership, it reports the sorted batch names instead of the generic “No changes
+to process” diagnostic. Applied-overlay ownership remains reviewable, so it does
+not appear in that list.
+
 Ownership and attribution answer different questions:
 
 - ownership records what a batch saved in batch-source line numbers
 - attribution calculates which current visible changes satisfy that saved
   ownership now
+- an applied overlay records that the user intentionally restored particular
+  ownership and wants it visible for the exact current repository state
 
 ## Why `include --line` creates a temporary batch
 

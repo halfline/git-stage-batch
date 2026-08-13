@@ -7883,3 +7883,12 @@ msgstr "исходная рабочая область разрешения из
 
 msgid "owned resolution copy does not match its authenticated source"
 msgstr "принадлежащая операции копия разрешения не соответствует своему аутентифицированному источнику"
+
+# Applied-batch review provenance translations.
+#, python-brace-format
+msgid "All working tree changes are currently saved in {locations}."
+msgstr "Все изменения рабочего дерева сейчас сохранены в {locations}."
+
+#, python-brace-format
+msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
+msgstr "Состояние применённых пакетов повреждено: {path}. Удалите этот файл, чтобы забыть происхождение проверки восстановленных изменений."

@@ -8011,3 +8011,12 @@ msgstr "تغيّرت مساحة عمل حل المصدر أثناء نسخها"
 
 msgid "owned resolution copy does not match its authenticated source"
 msgstr "لا تطابق نسخة الحل المملوكة مصدرها المصادق عليه"
+
+# Applied-batch review provenance translations.
+#, python-brace-format
+msgid "All working tree changes are currently saved in {locations}."
+msgstr "كل تغييرات شجرة العمل محفوظة حاليًا في {locations}."
+
+#, python-brace-format
+msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
+msgstr "حالة الدفعات المطبقة تالفة: {path}. احذف هذا الملف لنسيان مصدر مراجعة التغييرات المستعادة."

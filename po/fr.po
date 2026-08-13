@@ -7911,3 +7911,12 @@ msgstr "l’espace de travail de résolution source a changé pendant sa copie"
 
 msgid "owned resolution copy does not match its authenticated source"
 msgstr "la copie de résolution détenue ne correspond pas à sa source authentifiée"
+
+# Applied-batch review provenance translations.
+#, python-brace-format
+msgid "All working tree changes are currently saved in {locations}."
+msgstr "Toutes les modifications de l’arbre de travail sont actuellement enregistrées dans {locations}."
+
+#, python-brace-format
+msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
+msgstr "L’état des lots appliqués est endommagé : {path}. Supprimez ce fichier pour oublier la provenance de révision des modifications restaurées."

@@ -7278,3 +7278,12 @@ msgstr "源解析工作区在复制期间发生了变化"
 
 msgid "owned resolution copy does not match its authenticated source"
 msgstr "该操作拥有的解析副本与其已验证的源不匹配"
+
+# Applied-batch review provenance translations.
+#, python-brace-format
+msgid "All working tree changes are currently saved in {locations}."
+msgstr "所有工作树更改当前都已保存在 {locations} 中。"
+
+#, python-brace-format
+msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
+msgstr "已应用批次状态已损坏：{path}。请删除此文件以忘记已恢复更改的审查来源。"

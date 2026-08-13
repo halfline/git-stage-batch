@@ -145,13 +145,49 @@ def expand_replacement_selection_ids(
     requested_ids: set[int],
     *,
     preserve_partial_addition_prefix: bool = False,
+    preserve_explicit_addition_span: bool = False,
 ) -> set[int]:
     """Expand selected rows to every adjacent mixed replacement core.
 
-    A discard replacement may preserve an explicit leading batch alternative;
-    other callers retain the historical complete-core expansion.
+    A discard replacement may preserve a leading batch alternative or an
+    explicit contiguous addition span; other callers retain core expansion.
     """
+    expanded_ids, _preserved_explicit_addition_span = (
+        _expand_replacement_selection_ids(
+            line_changes,
+            requested_ids,
+            preserve_partial_addition_prefix=preserve_partial_addition_prefix,
+            preserve_explicit_addition_span=preserve_explicit_addition_span,
+        )
+    )
+    return expanded_ids
+
+
+def expand_replacement_selection_ids_with_explicit_span_status(
+    line_changes: LineLevelChange,
+    requested_ids: set[int],
+    *,
+    preserve_partial_addition_prefix: bool = False,
+) -> tuple[set[int], bool]:
+    """Expand rows and report whether one explicit addition span stayed exact."""
+    return _expand_replacement_selection_ids(
+        line_changes,
+        requested_ids,
+        preserve_partial_addition_prefix=preserve_partial_addition_prefix,
+        preserve_explicit_addition_span=True,
+    )
+
+
+def _expand_replacement_selection_ids(
+    line_changes: LineLevelChange,
+    requested_ids: set[int],
+    *,
+    preserve_partial_addition_prefix: bool,
+    preserve_explicit_addition_span: bool,
+) -> tuple[set[int], bool]:
+    """Return effective IDs and whether an explicit addition span was kept."""
     expanded_ids: set[int] | None = None
+    preserved_explicit_addition_span = False
     line_index = 0
     while line_index < len(line_changes.lines):
         if line_changes.lines[line_index].kind not in ("+", "-"):
@@ -161,14 +197,22 @@ def expand_replacement_selection_ids(
         run_start = line_index
         first_addition: int | None = None
         first_requested_index: int | None = None
+        last_requested_index: int | None = None
+        requested_count_in_run = 0
+        requested_indices_are_contiguous = True
         malformed_run = False
         while (
             line_index < len(line_changes.lines)
             and line_changes.lines[line_index].kind in ("+", "-")
         ):
             line = line_changes.lines[line_index]
-            if line.id in requested_ids and first_requested_index is None:
-                first_requested_index = line_index
+            if line.id in requested_ids:
+                requested_count_in_run += 1
+                if first_requested_index is None:
+                    first_requested_index = line_index
+                elif last_requested_index != line_index - 1:
+                    requested_indices_are_contiguous = False
+                last_requested_index = line_index
             if line.kind == "+":
                 if first_addition is None:
                     first_addition = line_index
@@ -196,6 +240,16 @@ def expand_replacement_selection_ids(
         ):
             continue
 
+        deletion_side_is_available = all(
+            line_changes.lines[run_index].id is not None
+            for run_index in range(run_start, first_addition)
+        )
+        selects_contiguous_addition_span = (
+            deletion_side_is_available
+            and first_requested_index >= first_addition
+            and requested_count_in_run == len(requested_ids)
+            and requested_indices_are_contiguous
+        )
         selected_addition_count = 0
         for run_index in range(first_addition, run_stop):
             line_id = line_changes.lines[run_index].id
@@ -217,6 +271,12 @@ def expand_replacement_selection_ids(
                 )
             )
         )
+        if (
+            preserve_explicit_addition_span
+            and selects_contiguous_addition_span
+        ):
+            preserved_explicit_addition_span = True
+            continue
         if (
             preserve_partial_addition_prefix
             and selects_complete_old_side
@@ -242,4 +302,7 @@ def expand_replacement_selection_ids(
             if line_id is not None:
                 expanded_ids.add(line_id)
 
-    return requested_ids if expanded_ids is None else expanded_ids
+    return (
+        requested_ids if expanded_ids is None else expanded_ids,
+        preserved_explicit_addition_span,
+    )

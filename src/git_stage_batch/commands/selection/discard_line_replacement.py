@@ -105,6 +105,7 @@ class DiscardLineReplacementSelection:
     explicit_replacement_parent: ReplacementLineRun | None = None
     explicit_rewritten_prefix_start: int | None = None
     explicit_rewritten_prefix_end: int | None = None
+    explicit_rewritten_discard_prefix_end: int | None = None
     discard_exact_rewritten_prefix: bool = False
 
 
@@ -136,10 +137,14 @@ def prepare_discard_line_replacement_selection(
         requested_ids,
         line_id_specification=line_id_specification,
     )
-    effective_ids = replacement_selection.expand_replacement_selection_ids(
-        line_changes,
-        requested_ids,
-        preserve_partial_addition_prefix=True,
+    replacement_selection.require_contiguous_display_selection(requested_ids)
+    replacement_payload = coerce_replacement_payload(replacement_text)
+    effective_ids, uses_explicit_addition_span = (
+        replacement_selection.expand_replacement_selection_ids_with_explicit_span_status(
+            line_changes,
+            requested_ids,
+            preserve_partial_addition_prefix=True,
+        )
     )
 
     if not any(line.id in effective_ids for line in line_changes.lines):
@@ -157,52 +162,94 @@ def prepare_discard_line_replacement_selection(
             )
         )
 
-    replacement_payload = coerce_replacement_payload(replacement_text)
     replacement_owned_prefix_count: int | None = None
-    selects_partial_new_prefix = _selects_complete_old_partial_new_prefix(
-        line_changes,
-        effective_ids,
-    )
-    selected_addition_count = _contiguous_selected_addition_count(
-        line_changes,
-        effective_ids,
-    )
+    replacement_discard_prefix_context_count = 0
     try:
         with load_working_tree_file_as_buffer(line_changes.path) as working_lines:
             original_working_line_count = len(working_lines)
-            replacement_start, replacement_end = (
-                replacement_working_tree_span_indices(
+            while True:
+                replacement_owned_prefix_count = None
+                replacement_discard_prefix_context_count = 0
+                selects_partial_new_prefix = (
+                    _selects_complete_old_partial_new_prefix(
+                        line_changes,
+                        effective_ids,
+                    )
+                )
+                selected_addition_count = _contiguous_selected_addition_count(
+                    line_changes,
+                    effective_ids,
+                )
+                replacement_start, replacement_end = (
+                    replacement_working_tree_span_indices(
+                        line_changes,
+                        effective_ids,
+                        original_working_line_count,
+                        allow_incomplete_addition_span=(
+                            uses_explicit_addition_span
+                        ),
+                    )
+                )
+                baseline_start, baseline_end = replacement_baseline_span_indices(
                     line_changes,
                     effective_ids,
                     original_working_line_count,
+                    allow_incomplete_addition_span=uses_explicit_addition_span,
                 )
-            )
-            baseline_start, baseline_end = replacement_baseline_span_indices(
-                line_changes,
-                effective_ids,
-                original_working_line_count,
-            )
-            selected_working_line_count = replacement_end - replacement_start
-            selects_exact_addition_span = (
-                selected_addition_count is not None
-                and selected_addition_count == selected_working_line_count
-            )
-            if (
-                (selects_partial_new_prefix or selects_exact_addition_span)
-                and replacement_start < replacement_end
-            ):
-                with replacement_line_bodies(replacement_payload) as payload_lines:
-                    if (
-                        len(payload_lines) > selected_working_line_count
-                        and all(
+                selected_working_line_count = replacement_end - replacement_start
+                selects_exact_addition_span = (
+                    selected_addition_count is not None
+                    and selected_addition_count == selected_working_line_count
+                )
+                selected_additions_cover_working_span = (
+                    _selected_additions_cover_working_span(
+                        line_changes,
+                        effective_ids,
+                        replacement_start=replacement_start,
+                        replacement_end=replacement_end,
+                    )
+                )
+                if (
+                    selects_partial_new_prefix
+                    or selected_additions_cover_working_span
+                ) and replacement_start < replacement_end:
+                    with replacement_line_bodies(replacement_payload) as payload_lines:
+                        if len(payload_lines) > selected_working_line_count and all(
                             payload_lines[index]
                             == _line_body(
                                 working_lines[replacement_start + index]
                             )
                             for index in range(selected_working_line_count)
+                        ):
+                            replacement_owned_prefix_count = (
+                                selected_working_line_count
+                            )
+                            if not no_edge_overlap:
+                                replacement_discard_prefix_context_count = (
+                                    _matching_discard_prefix_context_count(
+                                        payload_lines,
+                                        working_lines,
+                                        prefix_count=selected_working_line_count,
+                                        working_suffix_start=replacement_end,
+                                    )
+                                )
+                                replacement_owned_prefix_count += (
+                                    replacement_discard_prefix_context_count
+                                )
+                if (
+                    uses_explicit_addition_span
+                    and replacement_owned_prefix_count is None
+                ):
+                    effective_ids = (
+                        replacement_selection.expand_replacement_selection_ids(
+                            line_changes,
+                            requested_ids,
+                            preserve_partial_addition_prefix=True,
                         )
-                    ):
-                        replacement_owned_prefix_count = selected_working_line_count
+                    )
+                    uses_explicit_addition_span = False
+                    continue
+                break
             rewritten_working_buffer = (
                 build_target_working_tree_buffer_with_replaced_lines(
                     line_changes,
@@ -212,7 +259,13 @@ def prepare_discard_line_replacement_selection(
                     working_has_trailing_newline=buffer_ends_with_lf(working_lines),
                     trim_unchanged_edge_anchors=(
                         not no_edge_overlap
-                        and replacement_owned_prefix_count is None
+                        and (
+                            replacement_owned_prefix_count is None
+                            or replacement_discard_prefix_context_count > 0
+                        )
+                    ),
+                    preserved_replacement_prefix_count=(
+                        replacement_owned_prefix_count or 0
                     ),
                 )
             )
@@ -316,6 +369,11 @@ def prepare_discard_line_replacement_selection(
                 if replacement_owned_prefix_count is not None
                 else None
             ),
+            explicit_rewritten_discard_prefix_end=(
+                owned_replacement_new_end
+                if replacement_discard_prefix_context_count > 0
+                else None
+            ),
             discard_exact_rewritten_prefix=(
                 selects_exact_addition_span
                 and replacement_owned_prefix_count is not None
@@ -327,9 +385,22 @@ def build_discard_line_replacement_target_buffer(
     selection: DiscardLineReplacementSelection,
 ) -> LineBuffer:
     """Return the worktree buffer after removing rewritten replacement lines."""
+    prefix_start = selection.explicit_rewritten_prefix_start
+    prefix_end = selection.explicit_rewritten_prefix_end
+    discard_prefix_end = selection.explicit_rewritten_discard_prefix_end
+    if (
+        prefix_start is not None
+        and discard_prefix_end is not None
+    ):
+        return LineBuffer.from_chunks(chain(
+            LineRangeView(selection.rewritten_working_lines, 0, prefix_start - 1),
+            LineRangeView(
+                selection.rewritten_working_lines,
+                discard_prefix_end,
+                len(selection.rewritten_working_lines),
+            ),
+        ))
     if selection.discard_exact_rewritten_prefix:
-        prefix_start = selection.explicit_rewritten_prefix_start
-        prefix_end = selection.explicit_rewritten_prefix_end
         if prefix_start is None or prefix_end is None:
             raise ValueError("exact replacement prefix has no rewritten range")
         return LineBuffer.from_chunks(chain(
@@ -727,6 +798,34 @@ def _line_body(line: bytes) -> bytes:
     return line
 
 
+def _matching_discard_prefix_context_count(
+    payload_lines: Sequence[bytes],
+    working_lines: Sequence[bytes],
+    *,
+    prefix_count: int,
+    working_suffix_start: int,
+) -> int:
+    """Count copied delimiter context discarded with an owned prefix."""
+    payload_index = prefix_count
+    working_index = working_suffix_start
+    matched = 0
+    while (
+        payload_index < len(payload_lines) - 1
+        and working_index < len(working_lines)
+    ):
+        payload_line = payload_lines[payload_index]
+        if (
+            not payload_line.strip()
+            or not _line_is_delimiter_only(payload_line)
+            or payload_line != _line_body(working_lines[working_index])
+        ):
+            break
+        matched += 1
+        payload_index += 1
+        working_index += 1
+    return matched
+
+
 def _selects_complete_old_partial_new_prefix(
     line_changes: LineLevelChange,
     selected_ids: set[int],
@@ -797,6 +896,40 @@ def _contiguous_selected_addition_count(
         selected_count += 1
         previous_new_line = new_line
     return selected_count or None
+
+
+def _selected_additions_cover_working_span(
+    line_changes: LineLevelChange,
+    selected_ids: set[int],
+    *,
+    replacement_start: int,
+    replacement_end: int,
+) -> bool:
+    """Return whether selected additions exactly cover the working span.
+
+    Deletions may be interleaved with the additions.  This recognizes a
+    semantic replacement selected from inside a larger diff block without
+    treating unchanged gaps as part of the supplied batch prefix.
+    """
+    if replacement_start >= replacement_end:
+        return False
+    expected_new_line = replacement_start + 1
+    addition_seen = False
+    for line in line_changes.lines:
+        if line.id is None or line.id not in selected_ids:
+            continue
+        if line.kind == "-":
+            if addition_seen:
+                return False
+            continue
+        if (
+            line.kind != "+"
+            or line.new_line_number != expected_new_line
+        ):
+            return False
+        addition_seen = True
+        expected_new_line += 1
+    return expected_new_line == replacement_end + 1
 
 
 def _advance_ordered_range_membership(

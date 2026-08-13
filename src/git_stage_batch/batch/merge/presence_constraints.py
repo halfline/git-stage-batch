@@ -50,6 +50,7 @@ def apply_presence_constraints(
     require_distinctive_context: bool = False,
     distinctive_context_lines: LineSelection | None = None,
     contextual_placements: Sequence[_PresenceRunPlacement] | None = None,
+    collapsing_target_spans: Sequence[tuple[int, ...]] = (),
     spool_dir: str | Path | None = None,
 ) -> RealizedEntries:
     """Apply presence constraints: ensure all claimed lines exist in result.
@@ -87,6 +88,7 @@ def apply_presence_constraints(
             require_distinctive_context=require_distinctive_context,
             distinctive_context_lines=distinctive_context_lines,
             contextual_placements=contextual_placements,
+            collapsing_target_spans=collapsing_target_spans,
             spool_dir=spool_dir,
         )
     finally:
@@ -105,6 +107,7 @@ def _apply_presence_constraints_with_mapping(
     require_distinctive_context: bool = False,
     distinctive_context_lines: LineSelection | None = None,
     contextual_placements: Sequence[_PresenceRunPlacement] | None = None,
+    collapsing_target_spans: Sequence[tuple[int, ...]] = (),
     spool_dir: str | Path | None = None,
 ) -> RealizedEntries:
     """Apply presence constraints using an existing source-to-working mapping."""
@@ -199,6 +202,7 @@ def _apply_presence_constraints_with_mapping(
                     trusted_source_lines=trusted_source_lines,
                     require_distinctive_context=require_distinctive_context,
                     distinctive_context_lines=distinctive_context_lines,
+                    collapsing_target_spans=collapsing_target_spans,
                     spool_dir=spool_dir,
                 )
             )

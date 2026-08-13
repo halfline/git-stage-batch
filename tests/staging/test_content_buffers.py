@@ -105,6 +105,7 @@ def _build_target_working_tree_replacement_bytes(
     *,
     working_has_trailing_newline: bool,
     trim_unchanged_edge_anchors: bool = True,
+    preserved_replacement_prefix_count: int = 0,
 ) -> bytes:
     with build_target_working_tree_buffer_with_replaced_lines(
         line_changes,
@@ -113,6 +114,7 @@ def _build_target_working_tree_replacement_bytes(
         working_lines,
         working_has_trailing_newline=working_has_trailing_newline,
         trim_unchanged_edge_anchors=trim_unchanged_edge_anchors,
+        preserved_replacement_prefix_count=preserved_replacement_prefix_count,
     ) as result:
         return result.to_bytes()
 
@@ -1318,6 +1320,103 @@ class TestBuildTargetIndexContent:
             )
 
         assert result == b"keep1\nkeep1\nstaged\nkeep3\nkeep4\nkeep3\nkeep4\n"
+
+    def test_working_tree_replace_preserves_prefix_while_trimming_suffix(self):
+        """A batch prefix can coexist with ordinary trailing-anchor trimming."""
+        header = HunkHeader(1, 4, 1, 4)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"keep1"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"working"),
+            LineEntry(None, " ", 3, 3, text_bytes=b"keep3"),
+            LineEntry(None, " ", 4, 4, text_bytes=b"keep4"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        working_content = b"keep1\nworking\nkeep3\nkeep4\n"
+
+        with LineBuffer.from_bytes(working_content) as working_lines:
+            result = _build_target_working_tree_replacement_bytes(
+                line_changes,
+                {1, 2},
+                "keep1\nstaged\nlive\nkeep3\nkeep4\n",
+                working_lines,
+                working_has_trailing_newline=True,
+                preserved_replacement_prefix_count=1,
+            )
+
+        assert result == b"keep1\nkeep1\nstaged\nlive\nkeep3\nkeep4\n"
+
+    def test_working_tree_suffix_trim_cannot_consume_preserved_prefix(self):
+        """Repeated suffix anchors must leave every owned prefix line intact."""
+        header = HunkHeader(1, 4, 1, 4)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"head"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"working"),
+            LineEntry(None, " ", 3, 3, text_bytes=b"}"),
+            LineEntry(None, " ", 4, 4, text_bytes=b"}"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        working_content = b"head\nworking\n}\n}\n"
+
+        with LineBuffer.from_bytes(working_content) as working_lines:
+            result = _build_target_working_tree_replacement_bytes(
+                line_changes,
+                {1, 2},
+                "batch\n}\n}\n",
+                working_lines,
+                working_has_trailing_newline=True,
+                preserved_replacement_prefix_count=2,
+            )
+
+        assert result == b"head\nbatch\n}\n}\n}\n"
+
+    def test_working_tree_suffix_validation_ignores_preserved_prefix(self):
+        """Protected repeated lines are not residual trailing anchors."""
+        header = HunkHeader(1, 5, 1, 5)
+        lines = [
+            LineEntry(None, " ", 1, 1, text_bytes=b"head"),
+            LineEntry(1, "-", 2, None, text_bytes=b"old"),
+            LineEntry(2, "+", None, 2, text_bytes=b"}"),
+            LineEntry(3, "+", None, 3, text_bytes=b"}"),
+            LineEntry(None, " ", 3, 4, text_bytes=b"}"),
+            LineEntry(None, " ", 4, 5, text_bytes=b"}"),
+        ]
+        line_changes = LineLevelChange(path="test.txt", header=header, lines=lines)
+        working_content = b"head\n}\n}\n}\n}\n"
+
+        with LineBuffer.from_bytes(working_content) as working_lines:
+            result = _build_target_working_tree_replacement_bytes(
+                line_changes,
+                {1, 2, 3},
+                "}\n}\n}\n}\n",
+                working_lines,
+                working_has_trailing_newline=True,
+                preserved_replacement_prefix_count=2,
+            )
+
+        assert result == working_content
+
+    def test_working_tree_rejects_oversized_preserved_prefix(self):
+        """The protected-prefix boundary must lie inside the replacement."""
+        line_changes = LineLevelChange(
+            path="test.txt",
+            header=HunkHeader(1, 1, 1, 1),
+            lines=[LineEntry(1, "+", None, 1, text_bytes=b"working")],
+        )
+
+        with (
+            LineBuffer.from_bytes(b"working\n") as working_lines,
+            pytest.raises(ValueError, match="prefix exceeds replacement"),
+        ):
+            _build_target_working_tree_replacement_bytes(
+                line_changes,
+                {1},
+                "replacement\n",
+                working_lines,
+                working_has_trailing_newline=True,
+                preserved_replacement_prefix_count=2,
+            )
 
     def test_working_tree_replace_deletion_only_hunk_uses_new_anchor(self):
         """Pure deletion replacement should not move to the file end."""

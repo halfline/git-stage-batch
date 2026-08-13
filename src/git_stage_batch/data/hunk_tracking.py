@@ -21,7 +21,7 @@ from .selected_change import store as _selected_store
 from .selected_change.lifecycle import (
     clear_selected_change_state_files as _clear_selected_change_state_files,
 )
-from .live_change_candidates import next_eligible_live_change
+from .live_change_candidates import next_eligible_live_change_with_summary
 
 
 def fetch_next_change() -> Union[
@@ -40,7 +40,8 @@ def fetch_next_change() -> Union[
     Raises:
         NoMoreHunks: When there are no more items to process.
     """
-    candidate = next_eligible_live_change()
+    scan_result = next_eligible_live_change_with_summary()
+    candidate = scan_result.candidate
     if candidate is not None:
         with candidate:
             item = candidate.change
@@ -64,7 +65,10 @@ def fetch_next_change() -> Union[
             return item
 
     # No more items to process
-    raise NoMoreHunks()
+    raise NoMoreHunks(
+        all_changes_already_batched=scan_result.all_changes_already_batched,
+        batch_names=scan_result.batch_names,
+    )
 
 
 def advance_to_next_change() -> None:

@@ -671,6 +671,17 @@ Start from the original base commit. Apply each layer batch and its correspondin
 
 Using `apply --from` (working-tree-only) followed by `git-stage-batch include --files` is preferred over `include --from` (which writes to both index and working tree simultaneously) because recomposition alternates `apply --from` and `discard --from`, and keeping the index separate lets you review the final working-tree state before staging.
 
+`apply --from` records compact, worktree-local attribution claims for the exact
+ownership it restores. A later fresh `git-stage-batch start` can therefore
+review those changes even though their batches still exist. The provenance
+applies only while the batch revision, `HEAD`, index, and exact working-tree
+file identity remain unchanged. Editing or staging before the next session,
+committing, or changing the batch makes it stale automatically. Staging part of
+the restored work through git-stage-batch keeps the remaining ownership
+reviewable during that session and binds it to the final index at `stop`. It
+does not change the batch's stored metadata. Applies performed by older versions
+have no such record and retain their previous behavior.
+
 ```bash
 # Start from the original base commit / pristine tree.
 # Recompose inside-out.

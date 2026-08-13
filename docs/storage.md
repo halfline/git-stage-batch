@@ -3,6 +3,26 @@
 Git-stage-batch stores durable batch state under `refs/git-stage-batch/` and
 worktree-local session scratch files below the worktree's Git directory.
 
+## Applied batch provenance
+
+`apply --from` writes compact, worktree-local provenance to
+`.git/git-stage-batch/applied-batch-overlays.json`. This does not change the
+batch's authoritative state or metadata. It lets a later fresh `start` review
+the ownership that the user intentionally restored, but only while the batch
+revision, `HEAD`, index entry, and exact worktree file identity still match.
+Within a session, git-stage-batch may stage part of a fresh restored path while
+keeping the remainder reviewable; `stop` validates the other identities and
+binds the overlay to the final index.
+
+The state stores normalized presence ranges and deletion anchors/object IDs,
+not complete file contents, per-line boundary references, or replacement-unit
+coupling. Bulk identity reads use bounded path-argument groups. The state is
+covered by apply undo checkpoints. Session startup snapshots it and the
+start-time index boundary in abort state, abort restores the original overlay,
+and stop leaves the rebound state in place for the next session. Applies
+performed by older versions have no such provenance and retain their previous
+behavior.
+
 ## Disposable history-analysis cache
 
 Rewrite commands that acquire a frozen source snapshot may reuse exact commit,

@@ -31,6 +31,9 @@ from git_stage_batch.batch.merge.candidates import (
     MergeCandidateSetOutcome,
     MergeResolution,
 )
+from git_stage_batch.batch.merge.absence_constraints import (
+    apply_absence_constraints,
+)
 from git_stage_batch.batch.merge.coordinate_strategy import (
     AMBIGUITY_KEY,
     CoordinateStrategyChoice,
@@ -137,6 +140,37 @@ def test_contextual_presence_coalesces_overlapping_removal_spans() -> None:
         )
 
     assert [placement.gap_index for placement in placements] == [0]
+
+
+def test_realization_fallback_tracks_target_coordinates_after_removal() -> None:
+    """Earlier removals must not stale a later baseline target coordinate."""
+    lines = [b"head\n", b"old a\n", b"middle\n", b"old b\n", b"tail\n"]
+    entries = RealizedEntries()
+    entries.append_line_range_from(
+        lines,
+        0,
+        len(lines),
+        source_line_start=1,
+        target_line_start=1,
+    )
+    result = apply_absence_constraints(
+        entries,
+        [
+            AbsenceClaim(anchor_line=4, content_lines=[b"old b\n"]),
+            AbsenceClaim(anchor_line=2, content_lines=[b"old a\n"]),
+        ],
+        strict=False,
+        realization_fallback_target_positions=((0, 3), (1, 1)),
+    )
+    try:
+        assert b"".join(realized_entry_content_chunks(result)) == (
+            b"head\nmiddle\ntail\n"
+        )
+    finally:
+        result.close()
+        entries.close()
+
+
 class _IndexGuardedLineBuffer(LineBuffer):
     """LineBuffer variant that rejects public line indexing in tests."""
 
@@ -156,6 +190,19 @@ class _SourceLookupGuardedRealizedEntries(RealizedEntries):
 
     def source_line_at(self, index):
         raise AssertionError("source lookup should not be used")
+
+
+class _ProvenanceCountingRealizedEntries(RealizedEntries):
+    """Realized entries that count streamed provenance runs."""
+
+    def __init__(self):
+        super().__init__()
+        self.provenance_run_count = 0
+
+    def provenance_runs(self, start=0, stop=None):
+        for run in super().provenance_runs(start, stop):
+            self.provenance_run_count += 1
+            yield run
 
 
 class _GuardedLine:
@@ -198,6 +245,41 @@ class _CloseTrackingIterator:
 
     def close(self):
         self.closed = True
+
+
+def test_realization_fallback_streams_provenance_once() -> None:
+    """Target-ordered fallback lookup must not rescan every earlier run."""
+    claim_count = 512
+    entries = _ProvenanceCountingRealizedEntries()
+    lines = [b"target\n"]
+    for line_index in range(claim_count):
+        entries.append_line_range_from(
+            lines,
+            0,
+            1,
+            source_line_start=line_index * 2 + 1,
+            target_line_start=line_index + 1,
+        )
+    claims = [
+        AbsenceClaim(anchor_line=None, content_lines=[b"missing\n"])
+        for _ in range(claim_count)
+    ]
+    fallback_positions = tuple(
+        (claim_index, claim_index)
+        for claim_index in range(claim_count)
+    )
+
+    result = apply_absence_constraints(
+        entries,
+        claims,
+        strict=False,
+        realization_fallback_target_positions=fallback_positions,
+    )
+    try:
+        assert result is entries
+        assert entries.provenance_run_count < claim_count * 5
+    finally:
+        result.close()
 
 
 def test_candidate_comparison_preserves_structural_chunk_boundaries():

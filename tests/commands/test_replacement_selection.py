@@ -1,13 +1,20 @@
 """Tests for replacement-selection command helpers."""
 
+import gc
+import tracemalloc
+
 import pytest
 
+from git_stage_batch.batch.ownership.replacement_line_runs import (
+    ReplacementLineRun,
+)
 from git_stage_batch.commands.selection.replacement_selection import (
     expand_replacement_selection_ids,
     require_contiguous_display_selection,
 )
 from git_stage_batch.commands.selection.discard_line_replacement import (
     _contiguous_selected_addition_count,
+    _expand_parent_through_relocated_prefix_context,
 )
 from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange
 from git_stage_batch.exceptions import CommandError
@@ -170,3 +177,124 @@ def test_exact_addition_prefix_counts_one_contiguous_working_span():
     )
 
     assert _contiguous_selected_addition_count(line_changes, {1, 2}) == 2
+
+
+def test_replacement_parent_includes_delimiter_relocated_after_prefix():
+    """An owned close must replace its baseline copy despite a later match."""
+    baseline = b"""prefix
+signature
+{
+	old body;
+	}
+}
+suffix
+""".splitlines(keepends=True)
+    target = b"""prefix
+signature
+{
+	new body;
+}
+EXPORT(selector);
+validator
+{
+	}
+}
+suffix
+""".splitlines(keepends=True)
+    prefix = target[3:6]
+
+    parent = _expand_parent_through_relocated_prefix_context(
+        ReplacementLineRun(4, 4, 4, 8),
+        baseline_lines=baseline,
+        original_working_lines=target,
+        rewritten_prefix_lines=prefix,
+    )
+
+    assert parent == ReplacementLineRun(4, 6, 4, 10)
+
+
+def test_replacement_parent_stops_at_contentful_context():
+    """A later duplicate cannot pull unrelated baseline content into a parent."""
+    baseline = [
+        b"prefix\n",
+        b"old body\n",
+        b"stable boundary\n",
+        b"}\n",
+        b"suffix\n",
+    ]
+    target = [
+        b"prefix\n",
+        b"new body\n",
+        b"}\n",
+        b"stable boundary\n",
+        b"}\n",
+        b"suffix\n",
+    ]
+    original = ReplacementLineRun(2, 2, 2, 3)
+
+    parent = _expand_parent_through_relocated_prefix_context(
+        original,
+        baseline_lines=baseline,
+        original_working_lines=target,
+        rewritten_prefix_lines=target[1:3],
+    )
+
+    assert parent == original
+
+
+def test_replacement_parent_does_not_expand_for_relocated_blank_line():
+    """Whitespace alone is not enough evidence to absorb baseline context."""
+    baseline = [b"prefix\n", b"old body\n", b"\n", b"suffix\n"]
+    target = [
+        b"prefix\n",
+        b"new body\n",
+        b"\n",
+        b"adjacent block\n",
+        b"\n",
+        b"suffix\n",
+    ]
+    original = ReplacementLineRun(2, 2, 2, 4)
+
+    parent = _expand_parent_through_relocated_prefix_context(
+        original,
+        baseline_lines=baseline,
+        original_working_lines=target,
+        rewritten_prefix_lines=target[1:3],
+    )
+
+    assert parent == original
+
+
+def test_relocated_prefix_context_avoids_line_scale_python_heap():
+    """Context recovery should keep its file-sized state in mapped storage."""
+    heap_peaks = []
+    for line_count in (1024, 8192):
+        baseline = [b"prefix\n", b"old body\n"]
+        target = [b"prefix\n", b"new body\n"]
+        baseline.extend(
+            f"baseline-{index}\n".encode() for index in range(line_count)
+        )
+        target.extend(
+            f"target-{index}\n".encode() for index in range(line_count)
+        )
+        baseline.append(b"suffix\n")
+        target.append(b"suffix\n")
+
+        gc.collect()
+        tracemalloc.start()
+        try:
+            parent = _expand_parent_through_relocated_prefix_context(
+                ReplacementLineRun(2, 2, 2, 2),
+                baseline_lines=baseline,
+                original_working_lines=target,
+                rewritten_prefix_lines=target[1:2],
+            )
+            _current_heap, peak_heap = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+
+        assert parent == ReplacementLineRun(2, 2, 2, 2)
+        heap_peaks.append(peak_heap)
+
+    small_peak, large_peak = heap_peaks
+    assert large_peak < small_peak + 32 * 1024

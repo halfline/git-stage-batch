@@ -596,6 +596,104 @@ EXPORT_SYMBOL_IF_KUNIT(castkms_format_registries_are_valid);
     )
 
 
+def test_transformed_plane_selector_preserves_intermediate_callback(
+    functional_repo,
+):
+    """A selector split should retain a callback changed by an inner batch."""
+    old_switch = """pixel_read_line_t select_reader(u32 format)
+{
+	switch (format) {
+	case FORMAT_P010:
+	case FORMAT_P012:
+	case FORMAT_P016:
+		return &legacy_p0xx_reader;
+	case FORMAT_YUV420:
+	case FORMAT_YUV422:
+		return &planar_reader;
+	default:
+		BUG();
+	}
+}
+"""
+    live_switch = old_switch.replace(
+        "\t\treturn &legacy_p0xx_reader;\n",
+        "\t\treturn &p0xx_reader;\n",
+    ).replace("\t\tBUG();\n", "\t\treturn NULL;\n")
+    batch_selector = """pixel_read_line_t select_reader(u32 format)
+{
+	for (unsigned int i = 0; i < ARRAY_SIZE(plane_formats); i++)
+		if (plane_formats[i].format == format)
+			return plane_formats[i].read_line;
+
+	return NULL;
+}
+"""
+    descriptor_table = """struct plane_format {
+	u32 format;
+	pixel_read_line_t read_line;
+};
+
+static const struct plane_format plane_formats[] = {
+	{ FORMAT_P010, p0xx_reader },
+	{ FORMAT_YUV420, planar_reader },
+};
+
+"""
+    validator = """bool registries_are_valid(void)
+{
+	for (unsigned int i = 0; i < ARRAY_SIZE(plane_formats); i++) {
+		if (select_reader(plane_formats[i].format) !=
+		    plane_formats[i].read_line)
+			return false;
+	}
+
+	return true;
+}
+"""
+    prior = "".join(f"prior-change-{number:03}\n" for number in range(1, 260))
+    baseline = "prefix\n" + old_switch + "suffix\n"
+    final = (
+        "prefix\n" + prior + descriptor_table + batch_selector
+        + "EXPORT(select_reader);\n" + validator + "suffix\n"
+    )
+    path = _commit_file(functional_repo, baseline)
+    path.write_text(final)
+
+    git_stage_batch("start", "--no-auto-advance")
+    view = git_stage_batch("show", "--file", "file.txt", "--page", "all").stdout
+    prior_ids = _display_id_range(view, "prior-change-001", "prior-change-259")
+    git_stage_batch(
+        "discard", "--to", "prior", "--line", prior_ids,
+        "--no-auto-advance",
+    )
+
+    view = git_stage_batch("show", "--file", "file.txt", "--page", "all").stdout
+    first = _display_id_for_text(view, "\tswitch (format) {")
+    last = _display_id_for_text(view, "EXPORT(select_reader);")
+    batch_body = batch_selector.split("{\n", 1)[1] + "EXPORT(select_reader);\n"
+    live_body = live_switch.split("{\n", 1)[1] + "EXPORT(select_reader);\n"
+    result = git_stage_batch(
+        "discard", "--to", "selector", "--line", f"{first}-{last}",
+        "--as-stdin", "--no-auto-advance",
+        input_text=batch_body + live_body,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+    expected_live = (
+        "prefix\n" + descriptor_table + live_switch
+        + "EXPORT(select_reader);\n" + validator + "suffix\n"
+    )
+    expected_batch = (
+        "prefix\n" + batch_selector + "EXPORT(select_reader);\n" + "suffix\n"
+    )
+    assert path.read_text() == expected_live
+    assert _show_file(
+        functional_repo, "refs/git-stage-batch/batches/selector"
+    ) == expected_batch
+    assert "return &p0xx_reader;" in path.read_text()
+
+
 def test_new_batch_records_exact_addition_prefix_ownership(functional_repo):
     """A repeated suffix must not fragment a new batch's saved prefix."""
     prefix = (

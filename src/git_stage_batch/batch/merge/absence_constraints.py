@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 import hashlib
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ...exceptions import (
@@ -14,6 +15,8 @@ from ...exceptions import (
 from ...i18n import _
 from ...core.text_lines import normalize_line_endings
 from ...editor.piece_table import LineLike
+from ...core.mapped_storage import sort_mapped_records
+from ..line_matching.match_workspace import MatcherWorkspace
 from .candidates import MergeResolution as _MergeResolution
 from ..realization.boundaries import (
     boundary_choices_after_source_line as _boundary_choices_for_source_line,
@@ -52,6 +55,8 @@ def apply_absence_constraints(
     *,
     strict: bool = True,
     resolution: _MergeResolution | None = None,
+    realization_fallback_target_positions: Sequence[tuple[int, ...]] = (),
+    spool_dir: str | Path | None = None,
 ) -> RealizedEntries:
     """Apply absence constraints with boundary enforcement.
 
@@ -80,6 +85,10 @@ def apply_absence_constraints(
         deletion_claims: Absence constraints with structural anchors
         strict: If True, use strict enforcement (merge). If False, lenient
             enforcement for realization.
+        realization_fallback_target_positions: Ordered ``(claim index, target
+            gap)`` records consulted only during lenient realization when a
+            source anchor cannot remove content at the verified baseline gap.
+        spool_dir: Optional directory for storage-backed fallback planning.
 
     Returns:
         Entries with forbidden sequences suppressed at their anchored boundaries
@@ -99,47 +108,124 @@ def apply_absence_constraints(
         _suppress_at_boundary_for_realization
     )
 
-    for claim_index, claim in enumerate(deletion_claims):
-        if not claim.content_lines:
-            continue
+    fallback_workspace: MatcherWorkspace | None = None
+    try:
+        unresolved_fallbacks = None
+        if not strict and realization_fallback_target_positions:
+            fallback_workspace = MatcherWorkspace(spool_dir=spool_dir)
+            unresolved_fallbacks = fallback_workspace.record_vector(
+                len(realization_fallback_target_positions),
+                "QQ",
+            )
 
-        forbidden_sequence = [
-            normalize_line_endings(line)
-            for line in claim.content_lines
-        ]
+        fallback_index = 0
+        for claim_index, claim in enumerate(deletion_claims):
+            fallback_target_position: int | None = None
+            if fallback_index < len(realization_fallback_target_positions):
+                fallback_claim_index, target_position = (
+                    realization_fallback_target_positions[fallback_index]
+                )
+                if fallback_claim_index == claim_index:
+                    fallback_target_position = target_position
+                    fallback_index += 1
+            if not claim.content_lines:
+                continue
 
-        ambiguity_key = absence_ambiguity_key(
-            claim_index,
-            claim.anchor_line,
-            forbidden_sequence,
-        )
+            forbidden_sequence = [
+                normalize_line_endings(line)
+                for line in claim.content_lines
+            ]
 
-        if resolution is not None and ambiguity_key in resolution.decisions:
-            old_result = result
-            result = _suppress_absence_with_resolution(
-                result,
+            ambiguity_key = absence_ambiguity_key(
+                claim_index,
                 claim.anchor_line,
                 forbidden_sequence,
-                ambiguity_key,
-                resolution,
             )
+
+            if resolution is not None and ambiguity_key in resolution.decisions:
+                old_result = result
+                result = _suppress_absence_with_resolution(
+                    result,
+                    claim.anchor_line,
+                    forbidden_sequence,
+                    ambiguity_key,
+                    resolution,
+                )
+                if result is not old_result and old_result is not entries:
+                    old_result.close()
+                continue
+
+            try:
+                boundary = _locate_boundary_after_source_line(
+                    result,
+                    claim.anchor_line,
+                )
+            except _MissingAnchorError:
+                if strict:
+                    raise
+                boundary = _realization_fallback_boundary(
+                    result,
+                    claim.anchor_line,
+                )
+
+            old_result = result
+            result = suppress_fn(result, boundary, forbidden_sequence)
+            if (
+                result is old_result
+                and fallback_target_position is not None
+                and unresolved_fallbacks is not None
+            ):
+                unresolved_fallbacks.append((
+                    fallback_target_position,
+                    claim_index,
+                ))
             if result is not old_result and old_result is not entries:
                 old_result.close()
-            continue
 
-        try:
-            boundary = _locate_boundary_after_source_line(result, claim.anchor_line)
-        except _MissingAnchorError:
-            if strict:
-                raise
-            boundary = _realization_fallback_boundary(result, claim.anchor_line)
+        if unresolved_fallbacks is None or not unresolved_fallbacks:
+            return result
 
-        old_result = result
-        result = suppress_fn(result, boundary, forbidden_sequence)
-        if result is not old_result and old_result is not entries:
-            old_result.close()
+        sort_mapped_records(unresolved_fallbacks)
+        fallback_cursor = 0
+        for target_position, claim_index in unresolved_fallbacks:
+            claim = deletion_claims[claim_index]
+            forbidden_sequence = [
+                normalize_line_endings(line)
+                for line in claim.content_lines
+            ]
+            fallback_position = _realized_position_for_target_gap(
+                result,
+                target_position,
+                start_position=fallback_cursor,
+            )
+            fallback_position = _position_after_claimed_insertions_at_boundary(
+                result,
+                fallback_position,
+            )
+            fallback_cursor = fallback_position
+            if not _sequence_matches_at_position(
+                result,
+                fallback_position,
+                forbidden_sequence,
+            ):
+                continue
+            old_result = result
+            result = _remove_sequence_at_position(
+                result,
+                fallback_position,
+                forbidden_sequence,
+            )
+            if old_result is not entries:
+                old_result.close()
 
-    return result
+        return result
+    except BaseException:
+        if result is not entries:
+            result.close()
+        raise
+    finally:
+        if fallback_workspace is not None:
+            fallback_workspace.close()
 
 
 def absence_ambiguity_key(
@@ -332,6 +418,50 @@ def _position_after_claimed_insertions_at_boundary(
         check_pos += 1
 
     return check_pos
+
+
+def _realized_position_for_target_gap(
+    entries: Sequence[_RealizedEntry],
+    target_position: int,
+    *,
+    start_position: int = 0,
+) -> int:
+    """Translate an original zero-based target gap into realized entries.
+
+    Claimed insertions have no target coordinate and deliberately remain after
+    the returned boundary. Earlier removals therefore cannot stale a later
+    coordinate-backed realization fallback.
+    """
+    if (
+        target_position < 0
+        or start_position < 0
+        or start_position > len(entries)
+    ):
+        raise ValueError("invalid target-gap search position")
+
+    position = start_position
+    if isinstance(entries, RealizedEntries):
+        for run in entries.provenance_runs(start_position, len(entries)):
+            if run.target_start == 0:
+                continue
+            if run.target_start > target_position:
+                break
+            run_length = run.dest_end - run.dest_start
+            run_target_end = run.target_start + run_length - 1
+            if run_target_end <= target_position:
+                position = run.dest_end
+                continue
+            return run.dest_start + target_position - run.target_start + 1
+        return position
+
+    for index in range(start_position, len(entries)):
+        target_line = entries[index].target_line
+        if target_line is None:
+            continue
+        if target_line > target_position:
+            break
+        position = index + 1
+    return position
 
 
 def _suppress_at_boundary_strict(

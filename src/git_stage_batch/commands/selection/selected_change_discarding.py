@@ -8,7 +8,11 @@ import sys
 from ...batch.submodule_pointer import discard_submodule_pointer_from_batch
 from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.buffer import LineBuffer
-from ...core.diff_parser import build_line_changes_from_patch_lines, patch_is_new_file
+from ...core.diff_parser import (
+    build_line_changes_from_patch_lines,
+    patch_is_new_file,
+    patch_requires_unidiff_zero,
+)
 from ...core.models import (
     BinaryFileChange,
     FileModeChange,
@@ -261,9 +265,11 @@ def _discard_text_hunk(
             filename=file_path,
             patch_hash=patch_hash,
         )
+        unidiff_zero = patch_requires_unidiff_zero(patch_buffer)
         apply_result = git_apply_to_worktree(
             patch_buffer.byte_chunks(),
             reverse=True,
+            unidiff_zero=unidiff_zero,
             check=False,
         )
 

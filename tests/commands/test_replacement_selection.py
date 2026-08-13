@@ -6,6 +6,9 @@ from git_stage_batch.commands.selection.replacement_selection import (
     expand_replacement_selection_ids,
     require_contiguous_display_selection,
 )
+from git_stage_batch.commands.selection.discard_line_replacement import (
+    _contiguous_selected_addition_count,
+)
 from git_stage_batch.core.models import HunkHeader, LineEntry, LineLevelChange
 from git_stage_batch.exceptions import CommandError
 
@@ -139,3 +142,31 @@ def test_replacement_selection_expands_each_selected_disjoint_run():
         5,
         6,
     }
+
+
+def test_exact_addition_prefix_requires_contiguous_working_lines():
+    """Disjoint additions cannot activate exact-span removal."""
+    line_changes = LineLevelChange(
+        path="test.txt",
+        header=HunkHeader(1, 1, 1, 3),
+        lines=[
+            LineEntry(1, "+", None, 1, text_bytes=b"first"),
+            LineEntry(None, " ", 1, 2, text_bytes=b"middle"),
+            LineEntry(2, "+", None, 3, text_bytes=b"last"),
+        ],
+    )
+
+    assert _contiguous_selected_addition_count(line_changes, {1, 2}) is None
+
+
+def test_exact_addition_prefix_counts_one_contiguous_working_span():
+    line_changes = LineLevelChange(
+        path="test.txt",
+        header=HunkHeader(1, 1, 1, 2),
+        lines=[
+            LineEntry(1, "+", None, 1, text_bytes=b"first"),
+            LineEntry(2, "+", None, 2, text_bytes=b"last"),
+        ],
+    )
+
+    assert _contiguous_selected_addition_count(line_changes, {1, 2}) == 2

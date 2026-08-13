@@ -590,3 +590,37 @@ EXPORT_SYMBOL_IF_KUNIT(castkms_format_registries_are_valid);
     assert _show_file(functional_repo, "refs/git-stage-batch/batches/selector") == (
         expected_batch
     )
+
+
+def test_new_batch_records_exact_addition_prefix_ownership(functional_repo):
+    """A repeated suffix must not fragment a new batch's saved prefix."""
+    prefix = (
+        "#if FIRST\n"
+        "first body\n"
+        "shared line\n"
+        "#endif /* FIRST end */\n"
+    )
+    suffix = (
+        "#if SECOND\n"
+        "second body\n"
+        "shared line\n"
+        "#endif /* SECOND end */\n"
+    )
+    path = _commit_file(functional_repo, "head\ntail\n")
+    path.write_text("head\n" + prefix + "tail\n")
+
+    git_stage_batch("start", "--no-auto-advance")
+    view = git_stage_batch("show", "--file", "file.txt", "--page", "all").stdout
+    selected = _display_id_range(view, "#if FIRST", "FIRST end")
+    result = git_stage_batch(
+        "discard", "--to", "exact-prefix", "--line", selected,
+        "--as-stdin", "--no-auto-advance", input_text=prefix + suffix,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert path.read_text() == "head\n" + suffix + "tail\n"
+    assert _show_file(
+        functional_repo,
+        "refs/git-stage-batch/batches/exact-prefix",
+    ) == "head\n" + prefix + "tail\n"

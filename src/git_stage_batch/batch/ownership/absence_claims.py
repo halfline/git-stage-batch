@@ -45,6 +45,13 @@ class AbsenceClaim:
             data["baseline_reference"] = self.baseline_reference.to_dict()
         return data
 
+    def to_attribution_dict(self) -> AbsenceClaimMetadata:
+        """Serialize the anchor and content identity used by attribution."""
+        return {
+            "after_source_line": self.anchor_line,
+            "blob": create_git_blob(buffer_byte_chunks(self.content_lines)),
+        }
+
     @classmethod
     def from_dict(
         cls,

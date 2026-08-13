@@ -103,6 +103,25 @@ class BatchOwnership:
             data["replacement_units"] = replacement_units
         return data
 
+    def to_attribution_metadata_dict(self) -> BatchOwnershipMetadata:
+        """Serialize only the compact claims required by attribution."""
+        presence_lines = LineRanges.from_specs(
+            source_line
+            for claim in self.presence_claims
+            for source_line in claim.source_lines
+        )
+        return {
+            "presence_claims": (
+                [{"source_lines": presence_lines.to_range_strings()}]
+                if presence_lines
+                else []
+            ),
+            "deletions": [
+                claim.to_attribution_dict()
+                for claim in self.deletions
+            ],
+        }
+
     def resolve(self) -> ResolvedBatchOwnership:
         """Resolve into representation for materialization and merge.
 

@@ -70,6 +70,8 @@ def _collect_presence_position_records(
     ownership: BatchOwnership,
     presence_lines: LineRanges,
     replacement_source_ranges: Sequence[tuple[int, ...]],
+    *,
+    prefer_source_mapping: bool,
 ) -> tuple[MappedRecordVector, MappedRecordVector, bool] | None:
     """Partition presence lines into positioned and mapping-backed records."""
     positioned_lines = workspace.record_vector(
@@ -89,9 +91,13 @@ def _collect_presence_position_records(
     ):
         if claimed_line > source_line_count:
             return None
-        position = _find_baseline_insertion_position(
-            ownership.presence_baseline_reference(claimed_line),
-            working_lines,
+        position = (
+            None
+            if prefer_source_mapping
+            else _find_baseline_insertion_position(
+                ownership.presence_baseline_reference(claimed_line),
+                working_lines,
+            )
         )
         if position is None:
             unmapped_lines.append((claimed_line,))
@@ -109,14 +115,16 @@ def _collect_presence_position_records(
 
 def _mapping_preserves_unpositioned_presence(
     plan: BaselineEditPlan,
+    workspace: MatcherWorkspace,
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
     unmapped_lines: MappedRecordVector,
     *,
+    allow_adjacent_insertion: bool,
     source_to_working_mapping: LineMapping | None,
     spool_dir: str | Path | None,
 ) -> bool:
-    """Return whether mapped unpositioned lines survive planned removals."""
+    """Resolve unpositioned lines through mapping and adjacent mapped anchors."""
     if not unmapped_lines:
         return True
 
@@ -127,6 +135,7 @@ def _mapping_preserves_unpositioned_presence(
     previous_target_line: int | None = None
     owned_mapping = None
     mapping = source_to_working_mapping
+    can_insert_adjacent = allow_adjacent_insertion and mapping is not None
     if mapping is None:
         owned_mapping = _match_lines(
             source_lines,
@@ -134,24 +143,91 @@ def _mapping_preserves_unpositioned_presence(
             spool_dir=spool_dir,
         )
         mapping = owned_mapping
+    adjacent_insertions = workspace.record_vector(
+        len(unmapped_lines),
+        "QQ",
+    )
+    retained_target_count = 0
+    source_scan = 1
+    latest_mapped_source: int | None = None
+    latest_mapped_target: int | None = None
+    previous_missing_source: int | None = None
+    current_insertion_position: int | None = None
     try:
         for record_index in range(len(unmapped_lines)):
             claimed_line = unmapped_lines[record_index][0]
+            while source_scan < claimed_line:
+                target_line = mapping.get_target_line_from_source_line(
+                    source_scan
+                )
+                if target_line is not None:
+                    latest_mapped_source = source_scan
+                    latest_mapped_target = target_line
+                source_scan += 1
+
             target_line = mapping.get_target_line_from_source_line(claimed_line)
             if target_line is None:
-                return False
+                if not can_insert_adjacent:
+                    return False
+                continues_missing_run = (
+                    previous_missing_source is not None
+                    and claimed_line == previous_missing_source + 1
+                )
+                if not continues_missing_run:
+                    if (
+                        latest_mapped_source != claimed_line - 1
+                        or latest_mapped_target is None
+                    ):
+                        return False
+                    current_insertion_position = latest_mapped_target
+                assert current_insertion_position is not None
+                adjacent_insertions.append((
+                    current_insertion_position,
+                    claimed_line,
+                ))
+                previous_missing_source = claimed_line
+                source_scan = claimed_line + 1
+                continue
+
             target_index = target_line - 1
             if previous_target_line is not None and target_index < previous_target_line:
                 target_lines_are_ordered = False
-            unmapped_lines[record_index] = (target_index,)
+            unmapped_lines[retained_target_count] = (target_index,)
+            retained_target_count += 1
             previous_target_line = target_index
+            latest_mapped_source = claimed_line
+            latest_mapped_target = target_line
+            previous_missing_source = None
+            current_insertion_position = None
+            source_scan = claimed_line + 1
     finally:
         if owned_mapping is not None:
             owned_mapping.close()
 
+    unmapped_lines.truncate(retained_target_count)
     if not target_lines_are_ordered:
         sort_mapped_records(unmapped_lines)
-    return not plan.removes_any_target_lines(unmapped_lines)
+    if plan.removes_any_target_lines(unmapped_lines):
+        return False
+
+    insertion_start = 0
+    while insertion_start < len(adjacent_insertions):
+        insertion_position = adjacent_insertions[insertion_start][0]
+        insertion_stop = insertion_start + 1
+        while (
+            insertion_stop < len(adjacent_insertions)
+            and adjacent_insertions[insertion_stop][0] == insertion_position
+        ):
+            insertion_stop += 1
+        plan.add_positioned_source_lines(
+            insertion_position,
+            adjacent_insertions,
+            insertion_start,
+            insertion_stop,
+        )
+        insertion_start = insertion_stop
+    workspace.close_resource(adjacent_insertions)
+    return True
 
 
 def _add_positioned_presence_insertions(
@@ -244,6 +320,8 @@ def plan_presence_insertions(
     presence_lines: LineRanges,
     replacement_source_ranges: Sequence[tuple[int, ...]],
     *,
+    allow_adjacent_unmapped_presence: bool,
+    prefer_source_mapping: bool,
     trust_baseline_coordinates: bool,
     source_to_working_mapping: LineMapping | None,
     spool_dir: str | Path | None,
@@ -256,6 +334,7 @@ def plan_presence_insertions(
         ownership,
         presence_lines,
         replacement_source_ranges,
+        prefer_source_mapping=prefer_source_mapping,
     )
     if position_records is None:
         return None
@@ -265,9 +344,11 @@ def plan_presence_insertions(
 
     if not _mapping_preserves_unpositioned_presence(
         plan,
+        workspace,
         source_lines,
         working_lines,
         unmapped_lines,
+        allow_adjacent_insertion=allow_adjacent_unmapped_presence,
         source_to_working_mapping=source_to_working_mapping,
         spool_dir=spool_dir,
     ):

@@ -23,6 +23,16 @@ if TYPE_CHECKING:
     from .ownership.model import BatchOwnership
 
 
+def _has_unequal_replacement_parent(ownership: "BatchOwnership") -> bool:
+    """Return whether source realization needs parent-aware coordinates."""
+    return any(
+        unit.origin is not None
+        and unit.origin.old_line_count
+        != unit.origin.new_end - unit.origin.new_start + 1
+        for unit in ownership.replacement_units
+    )
+
+
 def build_realized_buffer_from_lines(
     base_lines: Sequence[bytes],
     batch_source_lines: Sequence[bytes],
@@ -62,15 +72,20 @@ def _stream_realized_content_chunks_from_lines(
     resolved = ownership.resolve()
     presence_line_set = resolved.presence_line_set
     deletion_claims = resolved.deletion_claims
+    has_unequal_replacement_parent = _has_unequal_replacement_parent(ownership)
 
-    baseline_chunks = _baseline_edits.try_apply_baseline_coordinate_edits(
-        batch_source_lines,
-        base_lines,
-        ownership,
-        presence_line_set,
-        deletion_claims,
-        trust_baseline_coordinates=True,
-        spool_dir=spool_dir,
+    baseline_chunks = (
+        None
+        if has_unequal_replacement_parent
+        else _baseline_edits.try_apply_baseline_coordinate_edits(
+            batch_source_lines,
+            base_lines,
+            ownership,
+            presence_line_set,
+            deletion_claims,
+            trust_baseline_coordinates=True,
+            spool_dir=spool_dir,
+        )
     )
     if baseline_chunks is not None:
         yield from baseline_chunks
@@ -92,6 +107,24 @@ def _stream_realized_content_chunks_from_lines(
                 spool_dir=spool_dir,
             ) as mapping,
         ):
+            if has_unequal_replacement_parent:
+                baseline_chunks = (
+                    _baseline_edits.try_apply_baseline_coordinate_edits(
+                        batch_source_lines,
+                        base_lines,
+                        ownership,
+                        presence_line_set,
+                        deletion_claims,
+                        allow_adjacent_unmapped_presence=True,
+                        prefer_source_mapping_for_presence=True,
+                        trust_baseline_coordinates=True,
+                        source_to_working_mapping=mapping,
+                        spool_dir=spool_dir,
+                    )
+                )
+                if baseline_chunks is not None:
+                    yield from baseline_chunks
+                    return
             realized_entries = satisfy_constraints(
                 batch_source_lines,
                 base_lines,

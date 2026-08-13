@@ -74,6 +74,8 @@ def try_apply_baseline_coordinate_edits(
     presence_line_set: LineSelection,
     deletion_claims: list[AbsenceClaim],
     *,
+    allow_adjacent_unmapped_presence: bool = False,
+    prefer_source_mapping_for_presence: bool = False,
     resolution: _MergeResolution | None = None,
     max_resolution_choices: int = _DEFAULT_RESOLUTION_CHOICE_LIMIT,
     trust_baseline_coordinates: bool = False,
@@ -89,6 +91,14 @@ def try_apply_baseline_coordinate_edits(
     recorded positions authoritative. It skips live-target uniqueness and
     already-present insertion checks while retaining boundary, removal-content,
     and plan-consistency checks.
+
+    ``allow_adjacent_unmapped_presence`` permits a missing claimed source run
+    to be inserted immediately after its mapped predecessor. Callers should
+    enable it only with a mapping constrained by trusted deletion anchors.
+
+    ``prefer_source_mapping_for_presence`` tries that mapping before recorded
+    presence coordinates. This leaves those coordinates available to a later
+    fallback when source/replacement context cannot place the claimed lines.
 
     Return ``None`` if any selected edit cannot be planned safely. A plan that
     changes content returns a lazy stream that owns its planning workspace until
@@ -124,6 +134,10 @@ def try_apply_baseline_coordinate_edits(
             presence_line_set,
             deletion_claims,
             deletion_edit_bounds,
+            allow_adjacent_unmapped_presence=allow_adjacent_unmapped_presence,
+            prefer_source_mapping_for_presence=(
+                prefer_source_mapping_for_presence
+            ),
             resolution=resolution,
             max_resolution_choices=max_resolution_choices,
             trust_baseline_coordinates=trust_baseline_coordinates,
@@ -159,6 +173,8 @@ def _build_baseline_edit_plan(
     deletion_claims: list[AbsenceClaim],
     deletion_edit_bounds: MappedRecordVector,
     *,
+    allow_adjacent_unmapped_presence: bool,
+    prefer_source_mapping_for_presence: bool,
     resolution: _MergeResolution | None,
     max_resolution_choices: int,
     trust_baseline_coordinates: bool,
@@ -236,6 +252,8 @@ def _build_baseline_edit_plan(
         ownership,
         presence_lines,
         replacement_source_ranges,
+        allow_adjacent_unmapped_presence=allow_adjacent_unmapped_presence,
+        prefer_source_mapping=prefer_source_mapping_for_presence,
         trust_baseline_coordinates=trust_baseline_coordinates,
         source_to_working_mapping=source_to_working_mapping,
         spool_dir=spool_dir,

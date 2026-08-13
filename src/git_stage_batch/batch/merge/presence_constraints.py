@@ -11,6 +11,7 @@ from .absence_constraints import (
 )
 from ..line_matching.line_mapping import LineMapping
 from ..line_matching.match import match_lines
+from ..line_matching.match_workspace import MatcherWorkspace
 from .candidates import MergeResolution as _MergeResolution
 from .presence_context import (
     PresenceRunPlacement as _PresenceRunPlacement,
@@ -29,6 +30,7 @@ from ..realization.entry_storage import (
 )
 from ..realization import mapping as _realized_mapping
 from ...core.line_selection import LineRanges, LineSelection, coerce_line_ranges
+from ...core.mapped_storage import sort_mapped_records
 from ...exceptions import MergeError as _MergeError
 from ...i18n import _
 
@@ -373,30 +375,69 @@ def satisfy_constraints(
         for deletion in deletion_claims
         if deletion.anchor_line is not None and deletion.content_lines
     }
-    realized_entries = apply_presence_constraints(
-        source_lines,
-        working_lines,
-        presence_line_set,
-        source_to_working_mapping=source_to_working_mapping,
-        resolution=resolution,
-        trusted_source_lines=trusted_source_lines,
-        require_distinctive_context=require_distinctive_context,
-        distinctive_context_lines=distinctive_context_lines,
-        contextual_placements=contextual_placements,
-        spool_dir=spool_dir,
-    )
+    realization_workspace: MatcherWorkspace | None = None
+    collapsing_target_spans: Sequence[tuple[int, ...]] = ()
+    realization_fallback_target_positions: Sequence[tuple[int, ...]] = ()
 
     try:
-        updated_entries = _apply_merge_absence_constraints(
-            realized_entries,
-            deletion_claims,
-            strict=strict,
-            resolution=resolution,
-        )
-        if updated_entries is not realized_entries:
-            realized_entries.close()
-        realized_entries = updated_entries
+        if not strict:
+            from .baseline_anchor_matching import baseline_removal_edit
 
+            realization_workspace = MatcherWorkspace(spool_dir=spool_dir)
+            target_span_records = realization_workspace.record_vector(
+                len(deletion_claims),
+                "QQ",
+            )
+            fallback_position_records = realization_workspace.record_vector(
+                len(deletion_claims),
+                "QQ",
+            )
+            for deletion_index, deletion in enumerate(deletion_claims):
+                edit = baseline_removal_edit(deletion, working_lines)
+                if edit is None:
+                    continue
+                target_span_records.append(edit)
+                fallback_position_records.append((deletion_index, edit[0]))
+            sort_mapped_records(target_span_records)
+            collapsing_target_spans = target_span_records
+            realization_fallback_target_positions = fallback_position_records
+
+        realized_entries = apply_presence_constraints(
+            source_lines,
+            working_lines,
+            presence_line_set,
+            source_to_working_mapping=source_to_working_mapping,
+            resolution=resolution,
+            trusted_source_lines=trusted_source_lines,
+            require_distinctive_context=require_distinctive_context,
+            distinctive_context_lines=distinctive_context_lines,
+            contextual_placements=contextual_placements,
+            collapsing_target_spans=collapsing_target_spans,
+            spool_dir=spool_dir,
+        )
+        try:
+            updated_entries = _apply_merge_absence_constraints(
+                realized_entries,
+                deletion_claims,
+                strict=strict,
+                resolution=resolution,
+                realization_fallback_target_positions=(
+                    realization_fallback_target_positions
+                ),
+                spool_dir=spool_dir,
+            )
+        except BaseException:
+            realized_entries.close()
+            raise
+    finally:
+        if realization_workspace is not None:
+            realization_workspace.close()
+
+    if updated_entries is not realized_entries:
+        realized_entries.close()
+    realized_entries = updated_entries
+
+    try:
         if not _missing_claimed_lines(realized_entries, presence_line_set):
             return realized_entries
 
@@ -427,18 +468,22 @@ def satisfy_constraints(
             realized_entries.close()
         realized_entries = updated_entries
 
-        missing_claimed = _missing_claimed_lines(realized_entries, presence_line_set)
+        missing_claimed = _missing_claimed_lines(
+            realized_entries,
+            presence_line_set,
+        )
         if missing_claimed:
             if not strict:
                 return realized_entries
             first_missing = missing_claimed.first()
             raise _MergeError(
-                _("Cannot satisfy claimed line {line}: removed by absence constraints").format(
-                    line=first_missing
-                )
+                _(
+                    "Cannot satisfy claimed line {line}: removed by "
+                    "absence constraints"
+                ).format(line=first_missing)
             )
 
         return realized_entries
-    except Exception:
+    except BaseException:
         realized_entries.close()
         raise

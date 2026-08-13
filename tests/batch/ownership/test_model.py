@@ -1,6 +1,8 @@
 """Tests for ownership attribution behavior."""
 
+import gc
 import subprocess
+import tracemalloc
 from tests.diff_parser_helpers import collect_unified_diff
 
 import pytest
@@ -309,6 +311,29 @@ def test_build_file_attribution_reuses_batch_alignment_per_file(temp_repo, monke
     assert len(attribution.units) >= 3
     assert match_call_count == 2
     assert presence_parse_count == 1
+
+
+def test_attribution_presence_ranges_avoid_line_scale_python_heap():
+    """Persisted ownership ranges should stay compact during attribution."""
+
+    def peak_for_range(line_count: int) -> int:
+        metadata = {
+            "presence_claims": [{"source_lines": [f"1-{line_count}"]}],
+        }
+        gc.collect()
+        tracemalloc.start()
+        try:
+            parsed = attribution_module._parse_presence_source_lines(metadata)
+            assert parsed.ranges() == ((1, line_count),)
+            _current_heap, peak_heap = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+        return peak_heap
+
+    small_peak = peak_for_range(128)
+    large_peak = peak_for_range(1_000_000)
+
+    assert large_peak < small_peak + 64 * 1024
 
 
 def test_build_file_attribution_bulk_loads_batch_source_buffers(

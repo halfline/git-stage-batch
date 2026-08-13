@@ -193,6 +193,19 @@ class _LineageRunTable:
             return None
         return run.translate(old_line)
 
+    def translate_range(
+        self,
+        old_start: int,
+        old_end: int,
+    ) -> tuple[int, int] | None:
+        """Translate a range only when one lineage run covers it wholly."""
+        if old_end < old_start:
+            return None
+        run = self.run_at(old_start)
+        if run is None or old_end > run.old_end:
+            return None
+        return run.translate_range(old_start, old_end)
+
     def append_translated_ranges(
         self,
         selection: LineRanges,
@@ -533,6 +546,15 @@ class BatchSourceLineage:
     def translate_working_line(self, line_number: int) -> int | None:
         self._require_open()
         return self._working_runs.translate_line(line_number)
+
+    def translate_working_range(
+        self,
+        start_line: int,
+        end_line: int,
+    ) -> tuple[int, int] | None:
+        """Translate a wholly preserved working-line range."""
+        self._require_open()
+        return self._working_runs.translate_range(start_line, end_line)
 
     def close(self) -> None:
         if self._closed:

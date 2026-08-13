@@ -169,6 +169,8 @@ def test_batch_source_lineage_translates_ranges():
             LineRanges.from_ranges([(2, 8)])
         ).ranges() == ((11, 13), (20, 20))
         assert lineage.translate_working_line(21) == 31
+        assert lineage.translate_working_range(20, 21) == (30, 31)
+        assert lineage.translate_working_range(19, 20) is None
 
 
 def test_batch_source_lineage_expands_complete_owned_replacements():

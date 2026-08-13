@@ -26,6 +26,7 @@ import os
 import subprocess
 
 import pytest
+import git_stage_batch.commands.file_scope.discard_to_batch as discard_to_batch_module
 import git_stage_batch.commands.file_scope.include_file as include_file_module
 import git_stage_batch.commands.file_scope.multi_file_actions as multi_file_actions
 import git_stage_batch.data.undo.checkpoints as undo_checkpoints
@@ -181,6 +182,48 @@ def test_multi_file_include_rejects_index_drift_before_later_file(
     ).returncode == 0
     assert "alpha2-modified" in (multi_file_repo / "alpha.txt").read_text()
     assert "beta2-modified" in (multi_file_repo / "beta.txt").read_text()
+
+
+def test_include_file_stages_context_free_hunk(multi_file_repo):
+    """File-scoped staging should accept a hunk with no unchanged context."""
+    (multi_file_repo / "alpha.txt").write_text("replacement\n")
+    command_start(quiet=True, auto_advance=False)
+
+    command_include_file("alpha.txt", quiet=True, auto_advance=False)
+
+    assert subprocess.run(
+        ["git", "show", ":alpha.txt"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout == "replacement\n"
+
+
+def test_include_file_does_not_relax_contextual_hunks(
+    multi_file_repo,
+    monkeypatch,
+):
+    """File-scoped staging preserves Git's contextual edge constraints."""
+    alpha = multi_file_repo / "alpha.txt"
+    alpha.write_text(alpha.read_text() + "replacement\n")
+    command_start(quiet=True, auto_advance=False)
+    original_apply = include_file_module.git_apply_to_index
+    observed = None
+
+    def capture_apply(*args, **kwargs):
+        nonlocal observed
+        observed = kwargs.get("unidiff_zero")
+        return original_apply(*args, **kwargs)
+
+    monkeypatch.setattr(
+        include_file_module,
+        "git_apply_to_index",
+        capture_apply,
+    )
+
+    command_include_file("alpha.txt", quiet=True, auto_advance=False)
+
+    assert observed is False
 
 
 def test_multi_file_include_blocks_concurrent_index_writer(
@@ -1062,6 +1105,49 @@ class TestShowFileFlag:
         assert result.stdout == ""
         metadata = read_batch_metadata("saved")
         assert sorted(metadata["files"]) == ["alpha.txt", "beta.txt", "gamma.txt"]
+
+    def test_discard_to_batch_files_isolates_zero_context_git_apply(
+        self,
+        multi_file_repo,
+        monkeypatch,
+    ):
+        """A whole-file hunk must not relax placement for contextual files."""
+        (multi_file_repo / "alpha.txt").write_text("alpha replacement\n")
+        command_start(quiet=True, auto_advance=False)
+        original_apply = discard_to_batch_module.git_apply_to_worktree
+        observed: list[tuple[bool, bool]] = []
+
+        def capture_apply(*args, **kwargs):
+            observed.append(
+                (kwargs["unidiff_zero"], kwargs["check_only"])
+            )
+            return original_apply(*args, **kwargs)
+
+        monkeypatch.setattr(
+            discard_to_batch_module,
+            "git_apply_to_worktree",
+            capture_apply,
+        )
+
+        result = discard_to_batch_module.discard_files_to_batch(
+            "saved",
+            ["alpha.txt", "beta.txt"],
+            advance=False,
+        )
+
+        assert result.discarded_files == ["alpha.txt", "beta.txt"]
+        assert observed == [
+            (False, True),
+            (True, True),
+            (False, False),
+            (True, False),
+        ]
+        assert (multi_file_repo / "alpha.txt").read_text() == (
+            "alpha1\nalpha2\nalpha3\n"
+        )
+        assert (multi_file_repo / "beta.txt").read_text() == (
+            "beta1\nbeta2\nbeta3\n"
+        )
 
     def test_include_files_can_restage_manually_unstaged_file_in_same_session(self, multi_file_repo, capsys):
         """Manual unstaging should not leave file-scoped include blocked in-session."""

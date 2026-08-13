@@ -171,6 +171,46 @@ def temp_git_repo(tmp_path, monkeypatch):
 class TestCommandInclude:
     """Tests for include command."""
 
+    def test_include_stages_context_free_hunk(self, temp_git_repo):
+        """A whole-file replacement should apply without unchanged context."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("Changed\n")
+
+        command_start(quiet=True)
+        command_include(quiet=True, auto_advance=False)
+
+        assert _show_index_file(temp_git_repo, "README.md") == "Changed\n"
+
+    def test_include_does_not_relax_a_contextual_hunk(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """A normal selected hunk must retain Git's edge anchoring."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nChanged\n")
+        command_start(quiet=True)
+        original_apply = selected_change_staging.git_apply_to_index
+        observed = None
+
+        def capture_apply(*args, **kwargs):
+            nonlocal observed
+            observed = kwargs.get("unidiff_zero")
+            return original_apply(*args, **kwargs)
+
+        monkeypatch.setattr(
+            selected_change_staging,
+            "git_apply_to_index",
+            capture_apply,
+        )
+
+        command_include(quiet=True, auto_advance=False)
+
+        assert observed is False
+        assert _show_index_file(temp_git_repo, "README.md") == (
+            "# Test\nChanged\n"
+        )
+
     def test_include_to_invalid_batch_does_not_create_session_state(
         self,
         temp_git_repo,

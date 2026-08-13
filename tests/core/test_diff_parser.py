@@ -8,6 +8,7 @@ from git_stage_batch.core.diff_parser import (
     patch_is_empty_file_change,
     patch_is_file_deletion,
     patch_is_new_file,
+    patch_requires_unidiff_zero,
 )
 from git_stage_batch.core.models import SingleHunkPatch
 from git_stage_batch.core.buffer import LineBuffer
@@ -32,6 +33,39 @@ diff --git a/file.txt b/file.txt
  context
 """
     return diff.encode("utf-8").splitlines(keepends=True)
+
+
+@pytest.mark.parametrize(
+    ("patch", "expected"),
+    [
+        (
+            b"--- a/file.txt\n+++ b/file.txt\n@@ -1 +1 @@\n-old\n+new\n",
+            True,
+        ),
+        (
+            b"--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n-old\n+new\n tail\n",
+            False,
+        ),
+        (
+            b"--- a/file.txt\n+++ b/file.txt\n@@ -1,2 +1,2 @@\n\n-old\n+new\n",
+            False,
+        ),
+        (
+            b"--- a/file.txt\n+++ b/file.txt\n"
+            b"@@ -1,2 +1,2 @@\n head\n-old\n+new\n"
+            b"@@ -5 +5 @@\n-old again\n+new again\n",
+            True,
+        ),
+    ],
+)
+def test_patch_requires_unidiff_zero_only_for_context_free_hunks(
+    patch,
+    expected,
+):
+    """The Git relaxation is requested only when a hunk truly needs it."""
+    assert patch_requires_unidiff_zero(
+        patch.splitlines(keepends=True)
+    ) is expected
 
 
 class TestParseUnifiedDiff:

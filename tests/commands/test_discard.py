@@ -77,6 +77,44 @@ def temp_git_repo(tmp_path, monkeypatch):
 class TestCommandDiscard:
     """Tests for discard command."""
 
+    def test_discard_reverts_context_free_hunk(self, temp_git_repo):
+        """A whole-file replacement should reverse without unchanged context."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("Changed\n")
+
+        command_start(quiet=True)
+        command_discard(quiet=True, auto_advance=False)
+
+        assert readme.read_text() == "# Test\n"
+
+    def test_discard_does_not_relax_a_contextual_hunk(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """A normal selected hunk must retain Git's edge anchoring."""
+        readme = temp_git_repo / "README.md"
+        readme.write_text("# Test\nChanged\n")
+        command_start(quiet=True)
+        original_apply = selected_change_discarding.git_apply_to_worktree
+        observed = None
+
+        def capture_apply(*args, **kwargs):
+            nonlocal observed
+            observed = kwargs.get("unidiff_zero")
+            return original_apply(*args, **kwargs)
+
+        monkeypatch.setattr(
+            selected_change_discarding,
+            "git_apply_to_worktree",
+            capture_apply,
+        )
+
+        command_discard(quiet=True, auto_advance=False)
+
+        assert observed is False
+        assert readme.read_text() == "# Test\n"
+
     def test_discard_to_invalid_batch_does_not_create_session_state(
         self,
         temp_git_repo,

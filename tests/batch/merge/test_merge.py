@@ -69,6 +69,74 @@ from git_stage_batch.core.text_lines import normalize_line_sequence_endings
 _LINE_SCALE_HEAP_LIMIT = 256 * 1024
 
 
+def test_contextual_presence_does_not_share_unrelated_eof_placement() -> None:
+    """One EOF claim cannot waive a sibling run's ordering ambiguity."""
+    source = [
+        b"head\n",
+        b"old one\n",
+        b"old two\n",
+        b"old three\n",
+        b"claimed inner\n",
+        b"old tail\n",
+        b"claimed edge\n",
+    ]
+    target = [b"head\n", b"target one\n", b"target two\n"]
+    with match_lines(source, target) as mapping:
+        with pytest.raises(MergeError, match="different version"):
+            contextual_presence_placements(
+                source,
+                target,
+                LineRanges.from_specs(["5", "7"]),
+                mapping,
+            )
+
+
+def test_contextual_presence_skips_adjacent_finished_removal_span() -> None:
+    """A finished removal span must not hide the next covering span."""
+    source = [
+        b"head\n",
+        b"old one\n",
+        b"old two\n",
+        b"old three\n",
+        b"claimed\n",
+        b"old tail\n",
+        b"footer\n",
+    ]
+    target = [b"head\n", b"target one\n", b"target two\n", b"footer\n"]
+    with match_lines(source, target) as mapping:
+        _missing, placements = contextual_presence_placements(
+            source,
+            target,
+            LineRanges.from_specs(["5"]),
+            mapping,
+            collapsing_target_spans=((0, 1), (1, 3)),
+        )
+
+    assert [placement.gap_index for placement in placements] == [1]
+
+
+def test_contextual_presence_coalesces_overlapping_removal_spans() -> None:
+    """Nested removal spans should form one linear-time collapse region."""
+    source = [
+        b"head\n",
+        b"old one\n",
+        b"old two\n",
+        b"old three\n",
+        b"claimed\n",
+        b"old tail\n",
+        b"footer\n",
+    ]
+    target = [b"head\n", b"target one\n", b"target two\n", b"footer\n"]
+    with match_lines(source, target) as mapping:
+        _missing, placements = contextual_presence_placements(
+            source,
+            target,
+            LineRanges.from_specs(["5"]),
+            mapping,
+            collapsing_target_spans=((0, 2), (0, 3)),
+        )
+
+    assert [placement.gap_index for placement in placements] == [0]
 class _IndexGuardedLineBuffer(LineBuffer):
     """LineBuffer variant that rejects public line indexing in tests."""
 

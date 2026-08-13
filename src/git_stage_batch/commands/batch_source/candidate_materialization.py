@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 
 from . import candidate_inputs as _candidate_inputs
 from . import candidate_planning as _candidate_planning
@@ -12,8 +13,11 @@ from ...batch.operation_candidate_types import (
     TargetCandidatePreview,
 )
 from ...batch.state.metadata_types import BatchFileMetadataDict
+from ...batch.state.metadata_types import add_ownership_metadata
+from ...batch.ownership.metadata_types import BatchOwnershipMetadata
 from ...core.buffer import LineBuffer
 from ...core.replacement import ReplacementPayload
+from ...core.text_lifecycle import TextFileChangeType
 from ...utils.repository_buffers import (
     read_git_object_buffer_or_none,
     load_working_tree_file_as_buffer,
@@ -31,6 +35,7 @@ class ApplyCandidateMaterialization:
     previews: tuple[OperationCandidatePreview, ...]
     file_path: str
     file_mode: str | None
+    selected_file_metadata: BatchFileMetadataDict
 
     @property
     def target(self) -> TargetCandidatePreview:
@@ -102,6 +107,22 @@ def materialize_apply_candidate(
         batch_source_buffer as batch_source_lines,
         load_working_tree_file_as_buffer(file_path) as working_lines,
     ):
+        selected_file_metadata: BatchFileMetadataDict | None = None
+
+        def capture_selected_ownership(
+            ownership_metadata: BatchOwnershipMetadata,
+        ) -> None:
+            nonlocal selected_file_metadata
+            selected_file_metadata = cast(
+                BatchFileMetadataDict,
+                {
+                    key: value
+                    for key, value in file_meta.items()
+                    if key in {"batch_source_commit", "mode"}
+                },
+            )
+            add_ownership_metadata(selected_file_metadata, ownership_metadata)
+
         try:
             previews = _candidate_planning.plan_apply_candidate_previews(
                 batch_name=batch_name,
@@ -113,6 +134,7 @@ def materialize_apply_candidate(
                 worktree_target=worktree_target,
                 selected_ids=selected_ids,
                 selection_ids=selection_ids_to_apply,
+                capture_selected_ownership=capture_selected_ownership,
             )
         except MergeError as e:
             exit_with_error(str(e))
@@ -135,11 +157,18 @@ def materialize_apply_candidate(
             _candidate_previews.close_candidate_previews(previews)
             raise
 
+    if selected_file_metadata is None:
+        raise RuntimeError("apply candidate ownership was not captured")
+    selected_file_metadata["change_type"] = TextFileChangeType(
+        preview.require_target("worktree").change_type
+    ).value
+
     return ApplyCandidateMaterialization(
         preview=preview,
         previews=previews,
         file_path=file_path,
         file_mode=worktree_target.file_mode,
+        selected_file_metadata=selected_file_metadata,
     )
 
 

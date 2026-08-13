@@ -11,6 +11,12 @@ from ...batch.operation_candidate_state import clear_candidate_preview_state_for
 from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.replacement import ReplacementPayload
 from ...data.session import snapshot_file_if_untracked
+from ...data.applied_batch_overlays import (
+    applied_batch_overlays_repository_path,
+    build_applied_file_provenance,
+    record_applied_batch_overlays,
+)
+from ...data.file_target_identity import capture_worktree_identity
 from ...data.undo.checkpoints import UndoCheckpointStatus, undo_checkpoint
 from ...git_paths import display_path, terminal_safe_shell_join
 from ...i18n import _, bidi_isolate
@@ -19,6 +25,7 @@ from ...i18n import _, bidi_isolate
 def execute_apply_candidate(
     *,
     batch_name: str,
+    batch_revision: str,
     raw_selector: str,
     ordinal: int,
     files: dict[str, BatchFileMetadataDict],
@@ -57,6 +64,14 @@ def execute_apply_candidate(
             file=sys.stderr,
         )
         operation_parts = ["apply", "--from", raw_selector, "--file", file_path]
+        before_identity = capture_worktree_identity(file_path)
+        file_provenance = build_applied_file_provenance(
+            batch_name,
+            file_path,
+            files[file_path],
+            selection_ids_to_apply,
+            selected_file_metadata=materialized.selected_file_metadata,
+        )
         report_progress("checkpoint", "not-started")
         checkpoint_status: UndoCheckpointStatus | None = None
         publication_started = False
@@ -64,6 +79,7 @@ def execute_apply_candidate(
             with undo_checkpoint(
                 terminal_safe_shell_join(operation_parts),
                 worktree_paths=[file_path],
+                repository_paths=[applied_batch_overlays_repository_path()],
                 rollback_on_error=True,
             ) as checkpoint_status:
                 publication_started = True
@@ -74,6 +90,12 @@ def execute_apply_candidate(
                     target.after_buffer,
                     materialized.file_mode,
                     target.change_type,
+                )
+                record_applied_batch_overlays(
+                    batch_name=batch_name,
+                    batch_revision=batch_revision,
+                    files={file_path: file_provenance},
+                    before_worktree_identities={file_path: before_identity},
                 )
         except BaseException:
             if publication_started:

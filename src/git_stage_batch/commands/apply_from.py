@@ -85,8 +85,12 @@ def command_apply_from_batch(
         selected_ids = selection.selected_ids
         selection_ids_to_apply = selection.selection_ids
         if selector.candidate_ordinal is not None:
+            revision = context.metadata.get("revision")
+            if not isinstance(revision, str) or not revision:
+                raise ValueError("validated batch metadata omitted its revision")
             _candidate_execution.execute_apply_candidate(
                 batch_name=batch_name,
+                batch_revision=revision,
                 raw_selector=raw_selector,
                 ordinal=selector.candidate_ordinal,
                 files=files,

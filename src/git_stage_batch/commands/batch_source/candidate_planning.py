@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import ExitStack
 from pathlib import Path
+from typing import Callable
 
 from . import candidate_inputs as _candidate_inputs
 from ...batch.operation_candidate_types import OperationCandidatePreview
@@ -12,6 +13,7 @@ from ...batch.operation_candidates import (
     build_include_candidate_previews as _build_include_candidate_previews,
 )
 from ...batch.replacement import build_replacement_batch_view_from_lines
+from ...batch.ownership.metadata_types import BatchOwnershipMetadata
 from ...batch.selection import acquire_batch_ownership_for_display_ids_from_lines
 from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.buffer import LineBuffer
@@ -34,6 +36,9 @@ def plan_apply_candidate_previews(
     selected_ids: set[int] | None,
     selection_ids: set[int] | None,
     spool_dir: str | Path | None = None,
+    capture_selected_ownership: (
+        Callable[[BatchOwnershipMetadata], None] | None
+    ) = None,
 ) -> tuple[OperationCandidatePreview, ...]:
     """Build apply previews from normalized source and target inputs."""
     with acquire_batch_ownership_for_display_ids_from_lines(
@@ -42,6 +47,10 @@ def plan_apply_candidate_previews(
         selection_ids,
         spool_dir=spool_dir,
     ) as ownership:
+        if capture_selected_ownership is not None:
+            capture_selected_ownership(
+                ownership.to_attribution_metadata_dict()
+            )
         return _build_apply_candidate_previews(
             batch_name=batch_name,
             file_path=file_path,

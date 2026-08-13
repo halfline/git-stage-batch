@@ -44,6 +44,12 @@ from ..utils.paths import (
 )
 from ..utils.context_lines import get_context_lines
 from .change_freshness import text_deletion_change_is_batched
+from .applied_batch_overlays import (
+    AppliedBatchOverlaySnapshot,
+    AppliedBatchOverlayView,
+    fresh_applied_batch_overlay_for_path,
+    load_applied_batch_overlay_snapshot,
+)
 from .binary_identity import attach_live_binary_fingerprint
 from .live_diff import stream_live_git_diff
 from .selected_change.hunk_filtering import filter_line_level_change_for_batches
@@ -109,6 +115,11 @@ class LiveChangeScanContext:
         self._metadata_by_path: (
             dict[str, dict[str, BatchMetadataDict]] | None
         ) = None
+        self._applied_overlay_by_path: dict[str, AppliedBatchOverlayView] = {}
+        self._applied_overlay_snapshot: AppliedBatchOverlaySnapshot | None = None
+        self.saw_skipped_change = False
+        self.saw_non_batch_skip = False
+        self.masked_batch_names: set[str] = set()
 
     def metadata_by_name(self) -> dict[str, BatchMetadataDict]:
         """Return the complete batch metadata snapshot for this scan."""
@@ -128,6 +139,32 @@ class LiveChangeScanContext:
                 for path in metadata.get("files", {}):
                     self._metadata_by_path.setdefault(path, {})[batch_name] = metadata
         return self._metadata_by_path.get(file_path, {})
+
+    def applied_overlay_for_path(self, file_path: str) -> AppliedBatchOverlayView:
+        """Return one identity-checked overlay, captured once per scan."""
+        if file_path not in self._applied_overlay_by_path:
+            if self._applied_overlay_snapshot is None:
+                self._applied_overlay_snapshot = load_applied_batch_overlay_snapshot()
+            self._applied_overlay_by_path[file_path] = (
+                fresh_applied_batch_overlay_for_path(
+                    file_path,
+                    batch_metadata_by_name=self.metadata_for_path(file_path),
+                    snapshot=self._applied_overlay_snapshot,
+                )
+            )
+        return self._applied_overlay_by_path[file_path]
+
+    def record_skip(
+        self,
+        reason: SkipReason,
+        *,
+        batch_names: frozenset[str] = frozenset(),
+    ) -> None:
+        """Record why a parsed live change was ineligible."""
+        self.saw_skipped_change = True
+        if reason is not SkipReason.ALREADY_BATCHED:
+            self.saw_non_batch_skip = True
+        self.masked_batch_names.update(batch_names)
 
 
 def live_change_paths(item: UnifiedDiffItem) -> tuple[str, ...]:
@@ -189,10 +226,24 @@ def prepare_atomic_live_change(
         change = item
     elif isinstance(item, TextFileDeletionChange):
         stable_hash = compute_text_file_deletion_hash(item)
+        applied_overlay = context.applied_overlay_for_path(item.path())
         if text_deletion_change_is_batched(
             item,
             batch_metadata_by_name=context.metadata_for_path(item.path()),
-        ):
+        ) and "deleted" not in applied_overlay.lifecycle_change_types:
+            context.record_skip(
+                SkipReason.ALREADY_BATCHED,
+                batch_names=frozenset(
+                    batch_name
+                    for batch_name, metadata in context.metadata_for_path(
+                        item.path()
+                    ).items()
+                    if metadata.get("files", {})
+                    .get(item.path(), {})
+                    .get("change_type")
+                    == "deleted"
+                ),
+            )
             return None, SkipReason.ALREADY_BATCHED
         change = item
     elif isinstance(item, GitlinkChange):
@@ -227,11 +278,18 @@ def prepare_live_change(
         item.lines,
         annotator=annotate_with_batch_source,
     )
+    masked_batch_names: set[str] = set()
     filtered = filter_line_level_change_for_batches(
         line_change,
         batch_metadata_by_name=context.metadata_for_path(line_change.path),
+        applied_overlay=context.applied_overlay_for_path(line_change.path),
+        masked_batch_names=masked_batch_names,
     )
     if filtered is None:
+        context.record_skip(
+            SkipReason.ALREADY_BATCHED,
+            batch_names=frozenset(masked_batch_names),
+        )
         return None, SkipReason.ALREADY_BATCHED
 
     owned_patch_lines = (
@@ -277,3 +335,38 @@ def next_eligible_live_change() -> EligibleLiveChange | None:
         close = getattr(candidates, "close", None)
         if close is not None:
             close()
+
+
+@dataclass(frozen=True, slots=True)
+class LiveChangeScanResult:
+    """First eligible candidate plus complete exhausted-scan diagnostics."""
+
+    candidate: EligibleLiveChange | None
+    all_changes_already_batched: bool
+    batch_names: frozenset[str]
+
+
+def next_eligible_live_change_with_summary() -> LiveChangeScanResult:
+    """Return one candidate or explain an exhaustion caused only by batches."""
+    context = LiveChangeScanContext()
+    with acquire_unified_diff(
+        stream_live_git_diff(
+            context_lines=get_context_lines(),
+            full_index=True,
+            ignore_submodules="none",
+            submodule_format="short",
+        )
+    ) as patches:
+        for item in patches:
+            candidate, reason = prepare_live_change(item, context)
+            if candidate is not None:
+                return LiveChangeScanResult(candidate, False, frozenset())
+            if reason is not None and reason is not SkipReason.ALREADY_BATCHED:
+                context.record_skip(reason)
+    return LiveChangeScanResult(
+        candidate=None,
+        all_changes_already_batched=(
+            context.saw_skipped_change and not context.saw_non_batch_skip
+        ),
+        batch_names=frozenset(context.masked_batch_names),
+    )

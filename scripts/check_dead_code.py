@@ -155,10 +155,28 @@ ALLOWED_FINDINGS = (
         "TypedDict key read from a worker manifest by string name.",
     ),
     _allowed(
-        "src/git_stage_batch/data/recovery_types.py",
+        "src/git_stage_batch/data/live_change_jobs.py",
         "variable",
-        "head",
-        "TypedDict key validated through a field-name collection.",
+        "applied_batch_metadata_by_owner",
+        "TypedDict key read from a worker manifest by string name.",
+    ),
+    _allowed(
+        "src/git_stage_batch/data/live_change_jobs.py",
+        "variable",
+        "applied_source_object_by_owner",
+        "TypedDict key read from a worker manifest by string name.",
+    ),
+    _allowed(
+        "src/git_stage_batch/data/live_change_jobs.py",
+        "variable",
+        "applied_revealed_owner_names",
+        "TypedDict key read from a worker manifest by string name.",
+    ),
+    _allowed(
+        "src/git_stage_batch/data/live_change_jobs.py",
+        "variable",
+        "applied_lifecycle_change_types",
+        "TypedDict key read from a worker manifest by string name.",
     ),
     _allowed(
         "src/git_stage_batch/data/recovery_types.py",

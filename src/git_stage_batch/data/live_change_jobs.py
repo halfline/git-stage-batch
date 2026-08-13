@@ -40,6 +40,9 @@ from ..utils.repository_buffers import (
 from ..utils.session_start_point import current_head_commit
 from ..utils.context_lines import get_context_lines
 from .consumed_selections import load_consumed_selections_metadata
+from .applied_batch_overlays import (
+    AppliedBatchOverlayView,
+)
 from .live_change_candidates import (
     LiveChangeScanContext,
     prepare_atomic_live_change,
@@ -47,8 +50,8 @@ from .live_change_candidates import (
 )
 from .live_diff import stream_live_git_diff
 from .selected_change.hunk_filtering import (
-    consumed_batch_metadata,
     filter_line_level_change_with_attribution,
+    supplemental_batch_metadata,
 )
 
 
@@ -139,6 +142,10 @@ class _LiveInputManifest(TypedDict):
     batch_source_commit: str | None
     batch_metadata_by_name: dict[str, BatchMetadataDict]
     consumed_file_metadata: BatchFileMetadataDict | None
+    applied_batch_metadata_by_owner: dict[str, BatchMetadataDict]
+    applied_source_object_by_owner: dict[str, str]
+    applied_revealed_owner_names: list[str]
+    applied_lifecycle_change_types: list[str]
     batch_state_commit_by_name: dict[str, str]
     scratch_directory: str
 
@@ -228,14 +235,35 @@ def count_eligible_live_text_file(
             consumed_file_metadata = input_manifest.get(
                 "consumed_file_metadata"
             )
+            applied_overlay = AppliedBatchOverlayView(
+                metadata_by_owner=input_manifest.get(
+                    "applied_batch_metadata_by_owner",
+                    {},
+                ),
+                source_object_by_owner=input_manifest.get(
+                    "applied_source_object_by_owner",
+                    {},
+                ),
+                revealed_owner_names=frozenset(
+                    input_manifest.get("applied_revealed_owner_names", [])
+                ),
+                batch_names=frozenset(),
+                lifecycle_change_types=frozenset(
+                    input_manifest.get("applied_lifecycle_change_types", [])
+                ),
+            )
             attribution = build_file_attribution_from_lines(
                 job.file_path,
                 baseline_lines=baseline_lines,
                 working_tree_lines=working_tree_lines,
                 batch_metadata_by_name=batch_metadata_by_name,
-                supplemental_batch_metadata=consumed_batch_metadata(
+                supplemental_batch_metadata=supplemental_batch_metadata(
                     job.file_path,
                     consumed_file_metadata,
+                    applied_overlay,
+                ),
+                supplemental_source_object_by_name=(
+                    applied_overlay.source_object_by_owner
                 ),
                 batch_state_commit_by_name=input_manifest[
                     "batch_state_commit_by_name"
@@ -256,6 +284,12 @@ def count_eligible_live_text_file(
                     batch_metadata_by_name=batch_metadata_by_name,
                 )
             )
+            if (
+                empty_lifecycle_change_type is not None
+                and empty_lifecycle_change_type.value
+                in applied_overlay.lifecycle_change_types
+            ):
+                captured_empty_lifecycle_is_batched = False
 
             eligible_count = 0
             already_batched_count = 0
@@ -280,6 +314,7 @@ def count_eligible_live_text_file(
                     captured_empty_lifecycle_is_batched=(
                         captured_empty_lifecycle_is_batched
                     ),
+                    revealed_owner_names=applied_overlay.revealed_owner_names,
                 )
                 if filtered_changes is None:
                     already_batched_count += 1
@@ -394,6 +429,9 @@ def _build_live_change_count_plan(
                                 for batch_name in file_batch_metadata
                                 if batch_name in batch_state_commit_by_name
                             },
+                            applied_overlay=(
+                                context.applied_overlay_for_path(file_path)
+                            ),
                         )
                     active_group.append_hunk(
                         ordinal,
@@ -442,6 +480,7 @@ class _LiveTextFileGroup:
         batch_metadata_by_name: dict[str, BatchMetadataDict],
         consumed_file_metadata: BatchFileMetadataDict | None,
         batch_state_commit_by_name: dict[str, str],
+        applied_overlay: AppliedBatchOverlayView,
     ) -> None:
         self.workspace = workspace
         self.ordinal = ordinal
@@ -453,6 +492,7 @@ class _LiveTextFileGroup:
         self.batch_metadata_by_name = batch_metadata_by_name
         self.consumed_file_metadata = consumed_file_metadata
         self.batch_state_commit_by_name = batch_state_commit_by_name
+        self.applied_overlay = applied_overlay
         self.expected_worktree_identity = capture_worktree_stat_identity(
             file_path,
             repository_root=repository_root,
@@ -525,6 +565,18 @@ class _LiveTextFileGroup:
                 "batch_source_commit": self.batch_source_commit,
                 "batch_metadata_by_name": self.batch_metadata_by_name,
                 "consumed_file_metadata": self.consumed_file_metadata,
+                "applied_batch_metadata_by_owner": (
+                    self.applied_overlay.metadata_by_owner
+                ),
+                "applied_source_object_by_owner": (
+                    self.applied_overlay.source_object_by_owner
+                ),
+                "applied_revealed_owner_names": sorted(
+                    self.applied_overlay.revealed_owner_names
+                ),
+                "applied_lifecycle_change_types": sorted(
+                    self.applied_overlay.lifecycle_change_types
+                ),
                 "batch_state_commit_by_name": (
                     self.batch_state_commit_by_name
                 ),
@@ -720,6 +772,34 @@ def _read_json_manifest(path: str) -> _LiveInputManifest:
             "live-change manifest field 'batch_state_commit_by_name' "
             "must map names to object IDs"
         )
+    applied_metadata = values.get("applied_batch_metadata_by_owner", {})
+    applied_sources = values.get("applied_source_object_by_owner", {})
+    applied_owners = values.get("applied_revealed_owner_names", [])
+    applied_lifecycle = values.get("applied_lifecycle_change_types", [])
+    if not isinstance(applied_metadata, dict) or not all(
+        isinstance(key, str) and isinstance(metadata, dict)
+        for key, metadata in applied_metadata.items()
+    ):
+        raise ValueError(
+            "live-change manifest applied metadata must map owners to metadata"
+        )
+    if not isinstance(applied_sources, dict) or not all(
+        isinstance(key, str) and isinstance(object_id, str)
+        for key, object_id in applied_sources.items()
+    ):
+        raise ValueError(
+            "live-change manifest applied sources must map owners to object IDs"
+        )
+    if not isinstance(applied_owners, list) or not all(
+        isinstance(owner, str) for owner in applied_owners
+    ):
+        raise ValueError("live-change manifest applied owners must be strings")
+    if not isinstance(applied_lifecycle, list) or not all(
+        isinstance(change_type, str) for change_type in applied_lifecycle
+    ):
+        raise ValueError(
+            "live-change manifest applied lifecycle states must be strings"
+        )
     return {
         "file_path": _required_manifest_string(values, "file_path"),
         "baseline_path": _required_manifest_string(values, "baseline_path"),
@@ -736,6 +816,16 @@ def _read_json_manifest(path: str) -> _LiveInputManifest:
             BatchFileMetadataDict | None,
             consumed_metadata,
         ),
+        "applied_batch_metadata_by_owner": cast(
+            dict[str, BatchMetadataDict],
+            applied_metadata,
+        ),
+        "applied_source_object_by_owner": cast(
+            dict[str, str],
+            applied_sources,
+        ),
+        "applied_revealed_owner_names": cast(list[str], applied_owners),
+        "applied_lifecycle_change_types": cast(list[str], applied_lifecycle),
         "batch_state_commit_by_name": cast(dict[str, str], state_commits),
         "scratch_directory": _required_manifest_string(
             values,

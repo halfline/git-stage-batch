@@ -60,6 +60,28 @@ def patch_is_empty_file_change(patch_lines: Iterable[bytes]) -> bool:
     )
 
 
+def patch_requires_unidiff_zero(patch_lines: Iterable[bytes]) -> bool:
+    """Return whether any unified-diff hunk has no unchanged context.
+
+    Git's ``--unidiff-zero`` switch applies to the complete input patch and
+    also relaxes beginning/end placement for hunks that do have context.  Keep
+    that relaxation scoped to inputs that actually need it.
+    """
+    in_hunk = False
+    hunk_has_context = False
+    for line in patch_lines:
+        if _hunk_headers.line_is_hunk_header(line):
+            if in_hunk and not hunk_has_context:
+                return True
+            in_hunk = True
+            hunk_has_context = False
+            continue
+        if in_hunk and (line.startswith(b" ") or line in (b"\n", b"\r\n")):
+            hunk_has_context = True
+
+    return in_hunk and not hunk_has_context
+
+
 class _UnifiedDiffParserBuildContext:
     """Own parser-created hunk buffers for a scoped unified diff parse."""
 

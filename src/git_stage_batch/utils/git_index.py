@@ -200,11 +200,15 @@ def git_commit_tree(
 def git_apply_to_index(
     patch_chunks: Iterable[bytes],
     *,
+    unidiff_zero: bool = False,
     check: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     """Apply patch chunks to the index."""
+    arguments = ["apply", "--cached", "--whitespace=nowarn"]
+    if unidiff_zero:
+        arguments.append("--unidiff-zero")
     return run_git_command(
-        ["apply", "--cached", "--whitespace=nowarn"],
+        arguments,
         stdin_chunks=patch_chunks,
         check=check,
         requires_index_lock=True,

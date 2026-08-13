@@ -934,6 +934,7 @@ def build_target_working_tree_buffer_with_replaced_lines(
     *,
     working_has_trailing_newline: bool,
     trim_unchanged_edge_anchors: bool = True,
+    preserved_replacement_prefix_count: int = 0,
 ) -> LineBuffer:
     """Build working tree content by replacing a span in indexed lines."""
     replacement_payload = coerce_replacement_payload(replacement_text)
@@ -946,6 +947,9 @@ def build_target_working_tree_buffer_with_replaced_lines(
             working_lines,
             working_has_trailing_newline=working_has_trailing_newline,
             trim_unchanged_edge_anchors=trim_unchanged_edge_anchors,
+            preserved_replacement_prefix_count=(
+                preserved_replacement_prefix_count
+            ),
         )
 
 
@@ -958,8 +962,13 @@ def _build_target_working_tree_buffer_with_replaced_lines(
     *,
     working_has_trailing_newline: bool,
     trim_unchanged_edge_anchors: bool,
+    preserved_replacement_prefix_count: int,
 ) -> LineBuffer:
     """Build working content while replacement line storage is open."""
+    if not (
+        0 <= preserved_replacement_prefix_count <= len(replacement_lines)
+    ):
+        raise ValueError("preserved replacement prefix exceeds replacement")
     if not replace_ids:
         return _edit_lines_preserving_source_endings_as_buffer(
             working_lines,
@@ -989,15 +998,32 @@ def _build_target_working_tree_buffer_with_replaced_lines(
             min(working_line_count, replace_end + context_limit),
         )
 
-        prefix_trim = _longest_prefix_context_match(replacement_lines, before_context)
-        if prefix_trim:
-            replacement_lines = replacement_lines[prefix_trim:]
+        if not preserved_replacement_prefix_count:
+            prefix_trim = _longest_prefix_context_match(
+                replacement_lines,
+                before_context,
+            )
+            if prefix_trim:
+                replacement_lines = replacement_lines[prefix_trim:]
 
         suffix_trim = _longest_suffix_context_match(replacement_lines, after_context)
+        suffix_trim = min(
+            suffix_trim,
+            max(
+                len(replacement_lines) - preserved_replacement_prefix_count,
+                0,
+            ),
+        )
         if suffix_trim:
             replacement_lines = replacement_lines[:-suffix_trim]
 
-        if _longest_prefix_context_match(replacement_lines, before_context) >= 2:
+        if (
+            not preserved_replacement_prefix_count
+            and _longest_prefix_context_match(
+                replacement_lines,
+                before_context,
+            ) >= 2
+        ):
             raise ValueError(
                 _(
                     "Replacement text still includes unchanged anchor lines before "
@@ -1007,7 +1033,11 @@ def _build_target_working_tree_buffer_with_replaced_lines(
                 )
             )
 
-        if _longest_suffix_context_match(replacement_lines, after_context) >= 2:
+        remaining_suffix_overlap = min(
+            _longest_suffix_context_match(replacement_lines, after_context),
+            len(replacement_lines) - preserved_replacement_prefix_count,
+        )
+        if remaining_suffix_overlap >= 2:
             raise ValueError(
                 _(
                     "Replacement text still includes unchanged anchor lines after "

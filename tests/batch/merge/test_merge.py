@@ -282,6 +282,33 @@ def test_realization_fallback_streams_provenance_once() -> None:
         result.close()
 
 
+def test_realization_removal_planning_avoids_line_scale_python_heap() -> None:
+    """Per-claim fallback coordinates should remain in mapped storage."""
+    claims = [
+        AbsenceClaim(anchor_line=None, content_lines=[])
+        for _ in range(8192)
+    ]
+
+    gc.collect()
+    tracemalloc.start()
+    try:
+        result = satisfy_constraints(
+            [],
+            [],
+            LineRanges.empty(),
+            claims,
+            strict=False,
+        )
+        try:
+            _current_heap, peak_heap = tracemalloc.get_traced_memory()
+        finally:
+            result.close()
+    finally:
+        tracemalloc.stop()
+
+    assert peak_heap < _LINE_SCALE_HEAP_LIMIT
+
+
 def test_candidate_comparison_preserves_structural_chunk_boundaries():
     """Stream comparison must not fragment the selected structural output."""
     structural_chunks = [b"alpha\n", b"beta\n", b"gamma\n"]

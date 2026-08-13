@@ -30,6 +30,8 @@ from git_stage_batch.batch.text_file_storage import add_file_to_batch
 from git_stage_batch.commands.apply_from import command_apply_from_batch
 from git_stage_batch.commands.include_from import command_include_from_batch
 from git_stage_batch.commands.show_from import command_show_from_batch
+from git_stage_batch.commands.start import command_start
+from git_stage_batch.commands.stop import command_stop
 from git_stage_batch.data.session import initialize_abort_state
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.exceptions import CommandError
@@ -448,6 +450,9 @@ def test_apply_candidate_can_run_from_overview(temp_git_repo, capsys):
     assert "delete target line" not in captured.err
     assert (temp_git_repo / "file.txt").read_text() == "a\ninsert\nmid\nx\nb\n"
     assert not _candidate_state_has_file("ambiguous", "file.txt")
+
+    command_stop()
+    command_start(auto_advance=False)
 
 
 def test_split_replacement_origin_uses_apply_candidates(temp_git_repo, capsys):

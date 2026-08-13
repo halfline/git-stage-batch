@@ -3,7 +3,7 @@
 import subprocess
 
 
-from .conftest import git_stage_batch, get_unstaged_diff
+from .conftest import git_stage_batch, get_staged_diff, get_unstaged_diff
 
 
 class TestCreateBatch:
@@ -171,7 +171,363 @@ class TestShowFromBatch:
 class TestApplyFromBatch:
     """Test applying changes from a batch."""
 
+    def test_start_reviews_changes_restored_from_batch(self, functional_repo):
+        """A restored batch should remain available to a fresh staging pass."""
+        file_path = functional_repo / "file.txt"
+        file_path.write_text("before\n")
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
 
+        file_path.write_text("after\n")
+        git_stage_batch("new", "restored-change", "-m", "Restore one change")
+        git_stage_batch("start", "--no-auto-advance")
+        git_stage_batch(
+            "discard",
+            "--to",
+            "restored-change",
+            "--file",
+            "file.txt",
+            "--no-auto-advance",
+        )
+        git_stage_batch("stop")
+
+        git_stage_batch("apply", "--from", "restored-change")
+        assert file_path.read_text() == "after\n"
+        assert get_unstaged_diff("file.txt")
+
+        result = git_stage_batch("start", "--no-auto-advance", check=False)
+
+        assert result.returncode == 0, result.stderr
+        assert "file.txt" in result.stdout
+
+        git_stage_batch("include", "--files", "file.txt", "--no-auto-advance")
+        assert get_staged_diff("file.txt")
+
+    def test_partial_staging_keeps_remaining_restored_hunks_reviewable(
+        self,
+        functional_repo,
+    ):
+        """Staging one restored hunk must not hide the remaining applied work."""
+        file_path = functional_repo / "file.txt"
+        file_path.write_text(
+            "base 1\nbase 2\nbase 3\nbase 4\nbase 5\nbase 6\nbase 7\n"
+        )
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+
+        file_path.write_text(
+            "changed 1\n"
+            "base 1\nbase 2\nbase 3\nbase 4\nbase 5\nbase 6\nbase 7\n"
+            "changed 7\n"
+        )
+        git_stage_batch("new", "restored-change")
+        git_stage_batch(
+            "start",
+            "--unified",
+            "0",
+            "--no-auto-advance",
+        )
+        git_stage_batch(
+            "discard",
+            "--to",
+            "restored-change",
+            "--file",
+            "file.txt",
+            "--no-auto-advance",
+        )
+        git_stage_batch("stop")
+        git_stage_batch("apply", "--from", "restored-change")
+
+        first = git_stage_batch(
+            "start",
+            "--unified",
+            "0",
+            "--no-auto-advance",
+        )
+        assert "changed 1" in first.stdout
+        assert "changed 7" not in first.stdout
+
+        git_stage_batch("include", "--no-auto-advance")
+        remaining = git_stage_batch("again", "--no-auto-advance", check=False)
+
+        assert remaining.returncode == 0, remaining.stderr
+        assert "changed 7" in remaining.stdout
+
+        git_stage_batch("stop")
+        fresh = git_stage_batch("start", "--no-auto-advance", check=False)
+
+        assert fresh.returncode == 0, fresh.stderr
+        assert "changed 7" in fresh.stdout
+
+    def test_start_names_batches_that_already_own_all_changes(
+        self,
+        functional_repo,
+    ):
+        """A fresh start should explain why unchanged saved work is hidden."""
+        file_path = functional_repo / "file.txt"
+        file_path.write_text("before\n")
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+
+        file_path.write_text("after\n")
+        git_stage_batch("new", "saved-change")
+        git_stage_batch("start", "--no-auto-advance")
+        git_stage_batch(
+            "include",
+            "--to",
+            "saved-change",
+            "--file",
+            "file.txt",
+            "--no-auto-advance",
+        )
+        git_stage_batch("stop")
+
+        result = git_stage_batch("start", "--no-auto-advance", check=False)
+
+        assert result.returncode == 2
+        assert (
+            "All working tree changes are currently saved in batch "
+            "'saved-change'."
+        ) in result.stderr
+
+    def test_start_names_each_batch_that_owns_the_hidden_changes(
+        self,
+        functional_repo,
+    ):
+        """The no-change diagnostic should identify every masking batch."""
+        first_path = functional_repo / "first.txt"
+        second_path = functional_repo / "second.txt"
+        first_path.write_text("before first\n")
+        second_path.write_text("before second\n")
+        subprocess.run(
+            ["git", "add", "first.txt", "second.txt"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add files"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        first_path.write_text("after first\n")
+        second_path.write_text("after second\n")
+
+        git_stage_batch("new", "alpha")
+        git_stage_batch("new", "beta")
+        git_stage_batch("start", "--no-auto-advance")
+        git_stage_batch(
+            "include",
+            "--to",
+            "alpha",
+            "--file",
+            "first.txt",
+            "--no-auto-advance",
+        )
+        git_stage_batch(
+            "include",
+            "--to",
+            "beta",
+            "--file",
+            "second.txt",
+            "--no-auto-advance",
+        )
+        git_stage_batch("stop")
+
+        result = git_stage_batch("start", "--no-auto-advance", check=False)
+
+        assert result.returncode == 2
+        assert (
+            "All working tree changes are currently saved in batch 'alpha', "
+            "batch 'beta'."
+        ) in result.stderr
+
+    def test_external_edit_invalidates_restored_batch_review_provenance(
+        self,
+        functional_repo,
+    ):
+        """Applied provenance must not survive a later worktree mutation."""
+        file_path = functional_repo / "file.txt"
+        file_path.write_text("before\n")
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+
+        file_path.write_text("after\n")
+        git_stage_batch("new", "restored-change")
+        git_stage_batch("start", "--no-auto-advance")
+        git_stage_batch(
+            "discard",
+            "--to",
+            "restored-change",
+            "--file",
+            "file.txt",
+            "--no-auto-advance",
+        )
+        git_stage_batch("stop")
+        git_stage_batch("apply", "--from", "restored-change")
+
+        file_path.write_text("after\nindependent\n")
+        result = git_stage_batch("start", "--no-auto-advance")
+
+        assert "independent" in result.stdout
+        assert "[#3] + independent" in result.stdout
+        assert "[#2] + after" in result.stdout
+
+    def test_fresh_start_reviews_consecutive_batch_applications(
+        self,
+        functional_repo,
+    ):
+        """Layered applies should retain each still-fresh ownership overlay."""
+        file_path = functional_repo / "file.txt"
+        file_path.write_text("base\n")
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        file_path.write_text("base\nalpha\ncontext\nbeta\n")
+        git_stage_batch("new", "alpha")
+        git_stage_batch("new", "beta")
+        first_view = git_stage_batch("start", "--no-auto-advance").stdout
+        alpha_line_id = next(
+            line.split("]", 1)[0].removeprefix("[#")
+            for line in first_view.splitlines()
+            if "+ alpha" in line
+        )
+        git_stage_batch(
+            "discard",
+            "--to",
+            "alpha",
+            "--line",
+            alpha_line_id,
+            "--no-auto-advance",
+        )
+        second_view = git_stage_batch("again", "--no-auto-advance").stdout
+        assert "+ context" in second_view
+        beta_line_ids = [
+            line.split("]", 1)[0].removeprefix("[#")
+            for line in second_view.splitlines()
+            if "+ context" in line or "+ beta" in line
+        ]
+        assert len(beta_line_ids) == 2
+        git_stage_batch(
+            "discard",
+            "--to",
+            "beta",
+            "--line",
+            ",".join(beta_line_ids),
+            "--no-auto-advance",
+        )
+        git_stage_batch("stop")
+
+        assert file_path.read_text() == "base\n"
+        git_stage_batch("apply", "--from", "alpha")
+        git_stage_batch("apply", "--from", "beta")
+        assert file_path.read_text() == "base\nalpha\ncontext\nbeta\n"
+
+        result = git_stage_batch("start", "--no-auto-advance", check=False)
+
+        assert result.returncode == 0, result.stderr
+        assert "+ alpha" in result.stdout
+        assert "+ context" in result.stdout
+        assert "+ beta" in result.stdout
+
+    def test_undo_apply_restores_applied_batch_review_provenance(
+        self,
+        functional_repo,
+    ):
+        """Undo should restore both worktree bytes and provenance state."""
+        file_path = functional_repo / "file.txt"
+        file_path.write_text("before\n")
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=functional_repo,
+            capture_output=True,
+        )
+
+        file_path.write_text("after\n")
+        git_stage_batch("new", "restored-change")
+        git_stage_batch("start", "--no-auto-advance")
+        git_stage_batch(
+            "discard",
+            "--to",
+            "restored-change",
+            "--file",
+            "file.txt",
+            "--no-auto-advance",
+        )
+
+        git_stage_batch("apply", "--from", "restored-change")
+        overlay_path = (
+            functional_repo
+            / ".git"
+            / "git-stage-batch"
+            / "applied-batch-overlays.json"
+        )
+        assert overlay_path.exists()
+        git_stage_batch("undo")
+
+        assert file_path.read_text() == "before\n"
+        assert not overlay_path.exists()
+        git_stage_batch("apply", "--from", "restored-change")
+        result = git_stage_batch("again", "--no-auto-advance", check=False)
+        assert result.returncode == 0, result.stderr
+        assert "file.txt" in result.stdout
 
     def test_apply_from_batch_stages_changes(self, repo_with_changes):
         """Test applying from batch stages the changes."""

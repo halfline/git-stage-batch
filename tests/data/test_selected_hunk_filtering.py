@@ -128,7 +128,7 @@ def test_explicit_attribution_filter_is_io_free(monkeypatch):
     monkeypatch.setattr(
         hunk_filtering_module,
         "filter_owned_diff_fragments",
-        lambda changes, _attribution: (False, changes),
+        lambda changes, _attribution, **_kwargs: (False, changes),
     )
     monkeypatch.setattr(
         hunk_filtering_module,

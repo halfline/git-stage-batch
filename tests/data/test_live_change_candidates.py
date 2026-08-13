@@ -10,6 +10,7 @@ import git_stage_batch.data.live_change_candidates as candidates_module
 from git_stage_batch.core.buffer import LineBuffer
 from git_stage_batch.core.diff_parser import build_line_changes_from_patch_lines
 from git_stage_batch.core.models import FileModeChange, SingleHunkPatch
+from git_stage_batch.data.applied_batch_overlays import AppliedBatchOverlayView
 from git_stage_batch.data.live_change_candidates import (
     EligibleLiveChange,
     SkipReason,
@@ -32,6 +33,12 @@ class _ScanContext:
 
     def metadata_for_path(self, _file_path: str) -> dict[str, dict]:
         return {}
+
+    def applied_overlay_for_path(self, _file_path: str) -> AppliedBatchOverlayView:
+        return AppliedBatchOverlayView.empty()
+
+    def record_skip(self, *_args, **_kwargs) -> None:
+        return None
 
 
 def _prepare_without_repository_io(monkeypatch, patch: SingleHunkPatch):
@@ -118,8 +125,12 @@ def test_fetch_next_change_closes_candidate_after_cache(monkeypatch, fail_cache)
     candidate = _candidate_with_owned_patch()
     monkeypatch.setattr(
         hunk_tracking_module,
-        "next_eligible_live_change",
-        lambda: candidate,
+        "next_eligible_live_change_with_summary",
+        lambda: candidates_module.LiveChangeScanResult(
+            candidate,
+            False,
+            frozenset(),
+        ),
     )
 
     def cache(*_args):

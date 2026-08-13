@@ -11,6 +11,7 @@ from git_stage_batch.batch.merge.baseline_replacement_choices import (
     replacement_origin_choices_for_unit,
 )
 from git_stage_batch.batch.merge.candidates import MergeResolution
+from git_stage_batch.batch.line_matching.match import match_lines
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.references import BaselineReference
@@ -126,6 +127,113 @@ def test_baseline_edit_planning_composes_all_edit_kinds() -> None:
 
     assert result is not None
     assert list(result) == [b"new value\n", b"inserted\n", b"tail\n"]
+
+
+def test_baseline_edit_planning_places_presence_after_replacement_anchor() -> None:
+    """An unmapped presence beside a replacement anchor joins that edit."""
+    source_lines = [
+        b"prefix\n",
+        b"static bool strides_are_valid(unsigned long stride)\n",
+        b"{\n",
+        b"\tif (stride > SSIZE_MAX)\n",
+        b"\tif (stride > INT_MAX)\n",
+        b"\t\treturn false;\n",
+        b"\n",
+        b"\treturn true;\n",
+        b"}\n",
+        b"\n",
+        b"static ptrdiff_t block_step(void)\n",
+        b"{\n",
+        b"\treturn BLOCK_HEIGHT;\n",
+        b"}\n",
+        b"suffix\n",
+    ]
+    working_lines = [
+        b"prefix\n",
+        b"static int block_step(void)\n",
+        b"{\n",
+        b"\treturn BLOCK_WIDTH;\n",
+        b"}\n",
+        b"suffix\n",
+    ]
+    deletion_reference = _boundary_reference(
+        after_line=3,
+        after_content=b"{",
+        before_line=5,
+        before_content=b"}",
+    )
+    origin_reference = _boundary_reference(
+        after_line=1,
+        after_content=b"prefix",
+        before_line=5,
+        before_content=b"}",
+    )
+    deletion_claims = [
+        AbsenceClaim(
+            anchor_line=3,
+            content_lines=[b"\treturn BLOCK_WIDTH;\n"],
+            baseline_reference=deletion_reference,
+        )
+    ]
+    ownership = BatchOwnership.from_presence_lines(
+        ["4,13"],
+        deletion_claims,
+        replacement_units=[
+            ReplacementUnit(
+                presence_lines=["13"],
+                deletion_indices=[0],
+                origin=ReplacementUnitOrigin(
+                    old_start=2,
+                    old_end=4,
+                    new_start=2,
+                    new_end=12,
+                    baseline_reference=origin_reference,
+                ),
+            )
+        ],
+    )
+
+    with match_lines(
+        source_lines,
+        working_lines,
+        anchor_pairs=((3, 3),),
+    ) as mapping:
+        assert baseline_edits.try_apply_baseline_coordinate_edits(
+            source_lines,
+            working_lines,
+            ownership,
+            LineRanges.from_ranges(((4, 4), (13, 13))),
+            deletion_claims,
+            trust_baseline_coordinates=True,
+            source_to_working_mapping=mapping,
+        ) is None
+
+    with match_lines(
+        source_lines,
+        working_lines,
+        anchor_pairs=((3, 3),),
+    ) as mapping:
+        result = baseline_edits.try_apply_baseline_coordinate_edits(
+            source_lines,
+            working_lines,
+            ownership,
+            LineRanges.from_ranges(((4, 4), (13, 13))),
+            deletion_claims,
+            allow_adjacent_unmapped_presence=True,
+            trust_baseline_coordinates=True,
+            source_to_working_mapping=mapping,
+        )
+
+    assert result is not None
+    assert list(result) == [
+        b"prefix\n",
+        b"static int block_step(void)\n",
+        b"{\n",
+        b"\tif (stride > SSIZE_MAX)\n",
+        b"\treturn BLOCK_HEIGHT;\n",
+        b"}\n",
+        b"suffix\n",
+    ]
 
 
 def test_trusted_plan_composes_partial_replacement_and_repeated_insertion() -> None:

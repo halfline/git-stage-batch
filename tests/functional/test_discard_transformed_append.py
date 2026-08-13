@@ -669,9 +669,9 @@ static const struct plane_format plane_formats[] = {
 
     view = git_stage_batch("show", "--file", "file.txt", "--page", "all").stdout
     first = _display_id_for_text(view, "\tswitch (format) {")
-    last = _display_id_for_text(view, "EXPORT(select_reader);")
-    batch_body = batch_selector.split("{\n", 1)[1] + "EXPORT(select_reader);\n"
-    live_body = live_switch.split("{\n", 1)[1] + "EXPORT(select_reader);\n"
+    last = _display_id_for_text(view, "\treturn NULL;")
+    batch_body = batch_selector.split("{\n", 1)[1]
+    live_body = live_switch.split("{\n", 1)[1]
     result = git_stage_batch(
         "discard", "--to", "selector", "--line", f"{first}-{last}",
         "--as-stdin", "--no-auto-advance",
@@ -684,9 +684,7 @@ static const struct plane_format plane_formats[] = {
         "prefix\n" + descriptor_table + live_switch
         + "EXPORT(select_reader);\n" + validator + "suffix\n"
     )
-    expected_batch = (
-        "prefix\n" + batch_selector + "EXPORT(select_reader);\n" + "suffix\n"
-    )
+    expected_batch = "prefix\n" + batch_selector + "suffix\n"
     assert path.read_text() == expected_live
     assert _show_file(
         functional_repo, "refs/git-stage-batch/batches/selector"
@@ -950,3 +948,111 @@ def test_active_legacy_session_accepts_adjacent_validator_split(functional_repo)
     assert _show_file(
         functional_repo, batch_ref, "src/castkms_formats.c"
     ) == batch_before + full_validator
+
+
+def test_transformed_append_splits_line_inside_later_added_function(
+    functional_repo,
+):
+    """A transformed append may evolve a line in a later-added function."""
+    baseline = """prefix
+static int block_step(void)
+{
+	return BLOCK_WIDTH;
+}
+suffix
+"""
+    final = """prefix
+static bool strides_are_valid(unsigned long stride)
+{
+	if (stride > SSIZE_MAX)
+		return false;
+
+	return true;
+}
+
+static ptrdiff_t block_step(void)
+{
+	return BLOCK_HEIGHT;
+}
+suffix
+"""
+    after_step_discard = final.replace("BLOCK_HEIGHT", "BLOCK_WIDTH")
+    path = _commit_file(functional_repo, baseline)
+    path.write_text(final)
+
+    git_stage_batch("start", "--no-auto-advance")
+    view = git_stage_batch(
+        "show", "--file", "file.txt", "--page", "all"
+    ).stdout
+    step_ids = ",".join(
+        (
+            _display_id_for_text(view, "\treturn BLOCK_WIDTH;"),
+            _display_id_for_text(view, "\treturn BLOCK_HEIGHT;"),
+        )
+    )
+    git_stage_batch(
+        "discard", "--to", "pointer-width", "--line", step_ids,
+        "--no-auto-advance",
+    )
+
+    assert path.read_text() == after_step_discard
+    assert _show_file(
+        functional_repo,
+        "refs/git-stage-batch/batches/pointer-width",
+    ) == baseline.replace("BLOCK_WIDTH", "BLOCK_HEIGHT")
+
+    view = git_stage_batch(
+        "show", "--file", "file.txt", "--page", "all"
+    ).stdout
+    limit_id = _display_id_for_text(view, "\tif (stride > SSIZE_MAX)")
+    batch_ref = "refs/git-stage-batch/batches/pointer-width"
+    state_ref = "refs/git-stage-batch/state/pointer-width"
+    live_before = path.read_text()
+    batch_before = _show_file(functional_repo, batch_ref)
+    refs_before = subprocess.run(
+        ["git", "rev-parse", batch_ref, state_ref],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    result = git_stage_batch(
+        "discard", "--to", "pointer-width", "--line", limit_id,
+        "--as-stdin", "--no-auto-advance",
+        input_text=(
+            "\tif (stride > SSIZE_MAX)\n"
+            "\tif (stride > INT_MAX)\n"
+        ),
+        check=False,
+    )
+
+    if result.returncode:
+        assert path.read_text() == live_before
+        assert _show_file(functional_repo, batch_ref) == batch_before
+        assert subprocess.run(
+            ["git", "rev-parse", batch_ref, state_ref],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout == refs_before
+    assert result.returncode == 0, result.stderr
+    assert path.read_text() == after_step_discard.replace(
+        "\tif (stride > SSIZE_MAX)\n",
+        "\tif (stride > INT_MAX)\n",
+    )
+    assert _show_file(functional_repo, batch_ref) == baseline.replace(
+        "\treturn BLOCK_WIDTH;\n",
+        "\tif (stride > SSIZE_MAX)\n\treturn BLOCK_HEIGHT;\n",
+    )
+    state = json.loads(_show_file(functional_repo, state_ref, "batch.json"))
+    file_metadata = state["files"]["file.txt"]
+    source_lines = _show_file(
+        functional_repo,
+        file_metadata["batch_source_commit"],
+    ).splitlines()
+    limit_source_line = source_lines.index("\tif (stride > SSIZE_MAX)") + 1
+    assert any(
+        str(limit_source_line) in claim.get("baseline_references", {})
+        for claim in file_metadata["presence_claims"]
+    )

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -342,6 +342,7 @@ def _analyze_presence_runs(
     *,
     require_distinctive_context: bool = False,
     distinctive_context_lines: LineSelection | None = None,
+    collapsing_target_spans: Sequence[tuple[int, ...]] = (),
     spool_dir: str | Path | None = None,
 ) -> tuple[LineRanges, tuple[_PresenceRunAnalysis, ...]]:
     missing = mapped_missing_source_lines(
@@ -414,7 +415,68 @@ def _analyze_presence_runs(
         if distinctive_context is not None:
             distinctive_context.close()
 
+    _resolve_collapsing_target_spans(
+        analyses,
+        collapsing_target_spans,
+        len(target_lines),
+    )
     return missing, tuple(analyses)
+
+
+def _resolve_collapsing_target_spans(
+    analyses: list[_PresenceRunAnalysis],
+    target_spans: Sequence[tuple[int, ...]],
+    target_line_count: int,
+) -> None:
+    """Place ambiguous runs at a verified removal span's start boundary."""
+    span_iterator = _iter_collapsing_target_spans(target_spans)
+    current_span = next(span_iterator, None)
+    for index, analysis in enumerate(analyses):
+        if analysis.gap_index is not None:
+            continue
+        before_gap = analysis.before[1] if analysis.before is not None else 0
+        after_gap = (
+            analysis.after[1] - 1
+            if analysis.after is not None
+            else target_line_count
+        )
+        while current_span is not None and current_span[1] <= before_gap:
+            current_span = next(span_iterator, None)
+        if current_span is None:
+            return
+        span_start, span_end = current_span
+        if span_start <= before_gap and after_gap <= span_end:
+            analyses[index] = _PresenceRunAnalysis(
+                run_start=analysis.run_start,
+                run_end=analysis.run_end,
+                before=analysis.before,
+                after=analysis.after,
+                gap_index=span_start,
+            )
+
+
+def _iter_collapsing_target_spans(
+    target_spans: Sequence[tuple[int, ...]],
+) -> Iterator[tuple[int, int]]:
+    """Yield ordered removal spans with overlapping spans coalesced."""
+    current_start: int | None = None
+    current_end: int | None = None
+    for span_start, span_end in target_spans:
+        if span_start < 0 or span_end <= span_start:
+            raise ValueError("collapsing target spans must be nonempty")
+        if current_start is None or current_end is None:
+            current_start, current_end = span_start, span_end
+            continue
+        if span_start < current_start:
+            raise ValueError("collapsing target spans must be ordered")
+        if span_start < current_end:
+            current_end = max(current_end, span_end)
+            continue
+        yield current_start, current_end
+        current_start, current_end = span_start, span_end
+
+    if current_start is not None and current_end is not None:
+        yield current_start, current_end
 
 
 def contextual_presence_ambiguities(
@@ -464,6 +526,7 @@ def contextual_presence_placements(
     trusted_source_lines: Collection[int] = (),
     require_distinctive_context: bool = False,
     distinctive_context_lines: LineSelection | None = None,
+    collapsing_target_spans: Sequence[tuple[int, ...]] = (),
     spool_dir: str | Path | None = None,
 ) -> tuple[LineRanges, tuple[PresenceRunPlacement, ...]]:
     """Return missing claims and their context-supported insertion gaps.
@@ -483,6 +546,7 @@ def contextual_presence_placements(
         trusted_source_lines,
         require_distinctive_context=require_distinctive_context,
         distinctive_context_lines=distinctive_context_lines,
+        collapsing_target_spans=collapsing_target_spans,
         spool_dir=spool_dir,
     )
     if not missing:

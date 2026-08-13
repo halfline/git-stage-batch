@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from itertools import chain
@@ -23,6 +23,9 @@ from ...batch.ownership.replacement_line_runs import (
     stream_replacement_line_runs_from_lines,
 )
 from ...batch.ownership.absence_claims import AbsenceClaim
+from ...batch.line_matching.match import match_lines
+from ...batch.line_matching.match_workspace import MatcherWorkspace
+from ...batch.line_matching.occurrence_index import LinePayloadOccurrenceIndex
 from ...batch.line_matching.line_range_view import LineRangeView
 from ...batch.line_matching.sequence_equality import line_slice_equals
 from ...batch.ownership.line_entries import (
@@ -1345,6 +1348,104 @@ def _merged_explicit_replacement_parent(
     )
 
 
+def _line_is_delimiter_only(content: bytes) -> bool:
+    """Return whether a line has no identifier-like payload."""
+    return not any(
+        byte == ord("_")
+        or ord("0") <= byte <= ord("9")
+        or ord("A") <= byte <= ord("Z")
+        or ord("a") <= byte <= ord("z")
+        or byte >= 0x80
+        for byte in content
+    )
+
+
+def _expand_parent_through_relocated_prefix_context(
+    parent: ReplacementLineRun,
+    *,
+    baseline_lines: Sequence[bytes],
+    original_working_lines: Sequence[bytes],
+    rewritten_prefix_lines: Sequence[bytes],
+) -> ReplacementLineRun:
+    """Include trailing baseline delimiters relocated past an owned prefix.
+
+    A transformed replacement can own a closing delimiter while structural
+    matching associates the corresponding baseline delimiter with a later,
+    adjacent block.  Trusting that association leaves the baseline delimiter
+    behind in the batch in addition to the owned copy.  Walk only the local
+    delimiter tail and expand through an exact prefix duplicate; a contentful
+    line ends the inference.
+    """
+    if parent.old_end >= len(baseline_lines) or not rewritten_prefix_lines:
+        return parent
+
+    expanded_old_end = parent.old_end
+    expanded_new_end = parent.new_end
+    with (
+        MatcherWorkspace() as workspace,
+        match_lines(baseline_lines, original_working_lines) as alignment,
+    ):
+        prefix_occurrences = LinePayloadOccurrenceIndex(
+            workspace,
+            rewritten_prefix_lines,
+            normalize_payloads=False,
+        )
+        for source_line in range(parent.old_end + 1, len(baseline_lines) + 1):
+            content = baseline_lines[source_line - 1]
+            if not _line_is_delimiter_only(content):
+                break
+            target_line = alignment.get_target_line_from_source_line(source_line)
+            prefix_count = prefix_occurrences.occurrence_count(content)
+            if (
+                content.strip() and prefix_count == 1
+                and target_line is not None
+                and target_line > parent.new_end
+            ):
+                expanded_old_end = source_line
+                expanded_new_end = max(expanded_new_end, target_line)
+
+    if expanded_old_end == parent.old_end:
+        return parent
+    return ReplacementLineRun(
+        old_start=parent.old_start,
+        old_end=expanded_old_end,
+        new_start=parent.new_start,
+        new_end=expanded_new_end,
+    )
+
+
+def _expand_explicit_parent_relocated_context(
+    selection: DiscardLineReplacementSelection,
+    expanded_parent: _ExpandedReplacementParent,
+    *,
+    baseline_lines: LineBuffer,
+    original_working_lines: LineBuffer,
+) -> _ExpandedReplacementParent:
+    """Expand an explicit parent when its owned prefix shadows later context."""
+    prefix_start = selection.explicit_rewritten_prefix_start
+    prefix_end = selection.explicit_rewritten_prefix_end
+    if prefix_start is None or prefix_end is None:
+        return expanded_parent
+    prefix_lines = LineRangeView(
+        selection.rewritten_working_lines,
+        prefix_start - 1,
+        prefix_end,
+    )
+    parent = _expand_parent_through_relocated_prefix_context(
+        expanded_parent.parent,
+        baseline_lines=baseline_lines,
+        original_working_lines=original_working_lines,
+        rewritten_prefix_lines=prefix_lines,
+    )
+    if parent == expanded_parent.parent:
+        return expanded_parent
+    return _ExpandedReplacementParent(
+        parent=parent,
+        rewritten_deletion_ids=expanded_parent.rewritten_deletion_ids,
+        rewritten_addition_ids=expanded_parent.rewritten_addition_ids,
+    )
+
+
 def _expanded_selected_replacement_parents(
     selection: DiscardLineReplacementSelection,
     *,
@@ -1447,6 +1548,12 @@ def _expanded_selected_replacement_parents(
             close()
     explicit_parent = _merged_explicit_replacement_parent(selection, parents)
     if explicit_parent is not None:
+        explicit_parent = _expand_explicit_parent_relocated_context(
+            selection,
+            explicit_parent,
+            baseline_lines=baseline_lines,
+            original_working_lines=original_working_lines,
+        )
         return (explicit_parent,)
     return tuple(parents)
 

@@ -17,7 +17,11 @@ from ...batch.state.query import read_batch_metadata
 from ...batch.text_file_storage import BatchFileUpdate, add_files_to_batch
 from ...batch.state.batch_names import batch_exists
 from ...core.buffer import LineBuffer
-from ...core.diff_parser import acquire_unified_diff, build_line_changes_from_patch_lines
+from ...core.diff_parser import (
+    acquire_unified_diff,
+    build_line_changes_from_patch_lines,
+    patch_requires_unidiff_zero,
+)
 from ...core.hashing import compute_stable_hunk_hash_from_lines
 from ...core.models import (
     BinaryFileChange,
@@ -313,25 +317,55 @@ def _run_reverse_apply_for_prepared_discards(
     *,
     check_only: bool = False,
 ) -> None:
-    def patch_chunks() -> Iterator[bytes]:
-        for prepared in prepared_discards:
-            for patch in prepared.patches_to_discard:
-                yield from patch.patch_lines
-
-    apply_result = git_apply_to_worktree(
-        patch_chunks(),
-        reverse=True,
-        unidiff_zero=True,
-        check_only=check_only,
-        check=False,
-    )
-
-    if apply_result.returncode != 0:
-        exit_with_error(
-            _("Failed to discard changes from file: {err}").format(
-                err=apply_result.stderr
+    apply_groups: dict[bool, list[_PreparedTextFileDiscardToBatch]] = {
+        False: [],
+        True: [],
+    }
+    for prepared in prepared_discards:
+        requirements = {
+            patch_requires_unidiff_zero(patch.patch_lines)
+            for patch in prepared.patches_to_discard
+        }
+        if len(requirements) > 1:
+            # One Git diff acquisition uses one context setting.  A normal
+            # contextual diff can lack context only when its sole hunk spans
+            # the complete file, so generated per-file patches are
+            # homogeneous.  Refuse unexpected mixed input instead of
+            # weakening Git's placement rules for its contextual hunks.
+            exit_with_error(
+                _("Failed to discard changes from file: {err}").format(
+                    err=(
+                        "mixed zero-context and contextual patches for "
+                        f"{display_path(prepared.file_path)}"
+                    )
+                )
             )
+        if requirements:
+            apply_groups[requirements.pop()].append(prepared)
+
+    for unidiff_zero, group in apply_groups.items():
+        if not group:
+            continue
+
+        def patch_chunks() -> Iterator[bytes]:
+            for prepared in group:
+                for patch in prepared.patches_to_discard:
+                    yield from patch.patch_lines
+
+        apply_result = git_apply_to_worktree(
+            patch_chunks(),
+            reverse=True,
+            unidiff_zero=unidiff_zero,
+            check_only=check_only,
+            check=False,
         )
+
+        if apply_result.returncode != 0:
+            exit_with_error(
+                _("Failed to discard changes from file: {err}").format(
+                    err=apply_result.stderr
+                )
+            )
 
 
 def _discard_prepared_text_files_to_batch(

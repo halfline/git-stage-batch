@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
+from itertools import chain
 import os
 from pathlib import Path
 
@@ -23,13 +24,17 @@ from ...batch.ownership.replacement_line_runs import (
 )
 from ...batch.ownership.absence_claims import AbsenceClaim
 from ...batch.line_matching.line_range_view import LineRangeView
+from ...batch.line_matching.sequence_equality import line_slice_equals
 from ...batch.ownership.line_entries import (
     baseline_reference_for_file_line_range,
     replacement_unit_origin_for_line_run,
 )
 from ...batch.ownership.replacement_units import ReplacementUnit
 from ...batch.ownership.replacement_units import normalize_replacement_units
-from ...batch.ownership.claims import LineRangeBuilder
+from ...batch.ownership.claims import (
+    LineRangeBuilder,
+    presence_claims_from_source_lines,
+)
 from ...batch.merge.baseline_reference_translation import (
     translate_ownership_baseline_references,
 )
@@ -97,6 +102,7 @@ class DiscardLineReplacementSelection:
     explicit_replacement_parent: ReplacementLineRun | None = None
     explicit_rewritten_prefix_start: int | None = None
     explicit_rewritten_prefix_end: int | None = None
+    discard_exact_rewritten_prefix: bool = False
 
 
 @dataclass(frozen=True)
@@ -154,6 +160,10 @@ def prepare_discard_line_replacement_selection(
         line_changes,
         effective_ids,
     )
+    selected_addition_count = _contiguous_selected_addition_count(
+        line_changes,
+        effective_ids,
+    )
     try:
         with load_working_tree_file_as_buffer(line_changes.path) as working_lines:
             original_working_line_count = len(working_lines)
@@ -169,12 +179,16 @@ def prepare_discard_line_replacement_selection(
                 effective_ids,
                 original_working_line_count,
             )
+            selected_working_line_count = replacement_end - replacement_start
+            selects_exact_addition_span = (
+                selected_addition_count is not None
+                and selected_addition_count == selected_working_line_count
+            )
             if (
-                selects_partial_new_prefix
+                (selects_partial_new_prefix or selects_exact_addition_span)
                 and replacement_start < replacement_end
             ):
                 with replacement_line_bodies(replacement_payload) as payload_lines:
-                    selected_working_line_count = replacement_end - replacement_start
                     if (
                         len(payload_lines) > selected_working_line_count
                         and all(
@@ -291,13 +305,17 @@ def prepare_discard_line_replacement_selection(
             explicit_replacement_parent=explicit_replacement_parent,
             explicit_rewritten_prefix_start=(
                 replacement_new_start
-                if explicit_replacement_parent is not None
+                if replacement_owned_prefix_count is not None
                 else None
             ),
             explicit_rewritten_prefix_end=(
                 owned_replacement_new_end
-                if explicit_replacement_parent is not None
+                if replacement_owned_prefix_count is not None
                 else None
+            ),
+            discard_exact_rewritten_prefix=(
+                selects_exact_addition_span
+                and replacement_owned_prefix_count is not None
             ),
         )
 
@@ -306,6 +324,19 @@ def build_discard_line_replacement_target_buffer(
     selection: DiscardLineReplacementSelection,
 ) -> LineBuffer:
     """Return the worktree buffer after removing rewritten replacement lines."""
+    if selection.discard_exact_rewritten_prefix:
+        prefix_start = selection.explicit_rewritten_prefix_start
+        prefix_end = selection.explicit_rewritten_prefix_end
+        if prefix_start is None or prefix_end is None:
+            raise ValueError("exact replacement prefix has no rewritten range")
+        return LineBuffer.from_chunks(chain(
+            LineRangeView(selection.rewritten_working_lines, 0, prefix_start - 1),
+            LineRangeView(
+                selection.rewritten_working_lines,
+                prefix_end,
+                len(selection.rewritten_working_lines),
+            ),
+        ))
     return build_target_working_tree_buffer_from_lines(
         selection.rewritten_line_changes,
         selection.rewritten_worktree_discard_ids,
@@ -369,6 +400,9 @@ def add_discard_line_replacement_to_batch(
                         baseline_lines=reference_source_lines,
                         original_working_lines=original_working_lines,
                         rewritten_lines=selection.rewritten_working_lines,
+                        exact_presence_range=(
+                            _explicit_owned_prefix_range(selection)
+                        ),
                     )
                 translate_ownership_baseline_references(
                     ownership,
@@ -460,11 +494,27 @@ def _merge_replacement_with_batch(
                 source_with_provenance.lineage.translate_source_line
             ),
         ):
+            exact_prefix_range = _exact_owned_prefix_source_range(
+                selection,
+                source_with_provenance.source_buffer,
+                translate_working_range=(
+                    source_with_provenance.lineage.translate_working_range
+                ),
+            )
+            if (
+                selection.discard_exact_rewritten_prefix
+                and exact_prefix_range is None
+            ):
+                raise ValueError(
+                    "advanced batch source does not preserve the replacement "
+                    "prefix as one contiguous range"
+                )
             new_ownership = _translate_rewritten_selection_ownership(
                 selection,
                 baseline_lines=reference_source_lines,
                 original_working_lines=original_working_lines,
                 rewritten_lines=selection.rewritten_working_lines,
+                exact_presence_range=exact_prefix_range,
             )
         translate_ownership_baseline_references(
             new_ownership,
@@ -541,6 +591,7 @@ def _translate_rewritten_selection_ownership(
     baseline_lines: LineBuffer,
     original_working_lines: LineBuffer | None,
     rewritten_lines: LineBuffer,
+    exact_presence_range: tuple[int, int] | None = None,
 ) -> BatchOwnership:
     """Translate the selected rewritten rows with full-hunk provenance."""
     expanded_parents = _expanded_selected_replacement_parents(
@@ -568,12 +619,73 @@ def _translate_rewritten_selection_ownership(
         replacement_runs_are_origin_runs=True,
         baseline_lines=baseline_lines,
     )
-    return _add_expanded_replacement_parents(
+    ownership = _add_expanded_replacement_parents(
         ownership,
         selection=selection,
         expanded_parents=expanded_parents,
         baseline_lines=baseline_lines,
     )
+    if selection.discard_exact_rewritten_prefix and (
+        exact_presence_range is None
+        or ownership.deletions
+        or ownership.replacement_units
+    ):
+        raise ValueError(
+            "exact addition prefix did not translate to presence-only ownership"
+        )
+    if exact_presence_range is not None and (
+        selection.discard_exact_rewritten_prefix
+        or (
+            not ownership.deletions
+            and not ownership.replacement_units
+        )
+    ):
+        exact_presence_lines = LineRanges.from_ranges((exact_presence_range,))
+        if ownership.presence_line_set() != exact_presence_lines:
+            ownership.presence_claims = presence_claims_from_source_lines(
+                exact_presence_lines,
+                ownership.presence_baseline_references(),
+            )
+    return ownership
+
+
+def _exact_owned_prefix_source_range(
+    selection: DiscardLineReplacementSelection,
+    source_lines: LineBuffer,
+    *,
+    translate_working_range: Callable[
+        [int, int],
+        tuple[int, int] | None,
+    ],
+) -> tuple[int, int] | None:
+    """Translate and verify a preserved prefix in the advanced source."""
+    prefix_range = _explicit_owned_prefix_range(selection)
+    if prefix_range is None:
+        return None
+    prefix_start, prefix_end = prefix_range
+    source_range = translate_working_range(prefix_start, prefix_end)
+    if source_range is None:
+        return None
+    source_start, source_end = source_range
+    prefix_lines = LineRangeView(
+        selection.rewritten_working_lines,
+        prefix_start - 1,
+        prefix_end,
+    )
+    if not line_slice_equals(source_lines, source_start - 1, prefix_lines):
+        return None
+    return source_start, source_end
+
+
+def _explicit_owned_prefix_range(
+    selection: DiscardLineReplacementSelection,
+) -> tuple[int, int] | None:
+    """Return the preserved prefix's one-based rewritten source range."""
+    prefix_start = selection.explicit_rewritten_prefix_start
+    prefix_end = selection.explicit_rewritten_prefix_end
+    if prefix_start is None or prefix_end is None or prefix_end < prefix_start:
+        return None
+    return prefix_start, prefix_end
 
 
 def _rewritten_replacement_new_range(
@@ -657,6 +769,31 @@ def _selects_complete_old_partial_new_prefix(
         addition_prefix_ended = False
         selected_after_prefix = False
     return matches()
+
+
+def _contiguous_selected_addition_count(
+    line_changes: LineLevelChange,
+    selected_ids: set[int],
+) -> int | None:
+    """Return the count when selected rows are one contiguous added span."""
+    selected_count = 0
+    previous_new_line: int | None = None
+    for line in line_changes.lines:
+        if line.id is None or line.id not in selected_ids:
+            continue
+        new_line = line.new_line_number
+        if (
+            line.kind != "+"
+            or new_line is None
+            or (
+                previous_new_line is not None
+                and new_line != previous_new_line + 1
+            )
+        ):
+            return None
+        selected_count += 1
+        previous_new_line = new_line
+    return selected_count or None
 
 
 def _advance_ordered_range_membership(

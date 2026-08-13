@@ -8,8 +8,9 @@ content that may not currently be visible in the working tree.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from itertools import chain
 from pathlib import Path
 
 from ..utils.git_object_io import (
@@ -30,7 +31,7 @@ from .attribution_units import (
 from .state.query import list_batch_names, read_batch_metadata_for_batches
 from .state.metadata_types import BatchFileMetadataDict, BatchMetadataDict
 from .state.reference_names import format_batch_state_ref_name
-from ..core.line_selection import parse_line_selection
+from ..core.line_selection import LineRanges
 from ..utils.repository_buffers import (
     read_git_object_buffer_or_empty,
     load_working_tree_file_as_buffer,
@@ -81,8 +82,7 @@ class BatchAttributionContext:
         str,
         _attribution_fingerprints.ContentFingerprint,
     ]
-    presence_source_lines: tuple[int, ...]
-    presence_source_line_set: frozenset[int]
+    presence_source_lines: LineRanges
 
 
 @dataclass(frozen=True)
@@ -100,24 +100,20 @@ class _ResolvedBatchSourceRequest:
     batch_name: str
     file_metadata: BatchFileMetadataDict
     source_object_id: str | None
-    presence_source_lines: tuple[int, ...]
+    presence_source_lines: LineRanges
 
 
 def _parse_presence_source_lines(
     file_metadata: BatchFileMetadataDict,
-) -> list[int]:
-    presence_lines: list[int] = []
-    for claim in file_metadata.get("presence_claims", []):
-        source_lines = claim.get("source_lines", [])
-        if source_lines:
-            presence_lines.extend(
-                parse_line_selection(",".join(str(line) for line in source_lines))
-            )
+) -> LineRanges:
+    presence_lines = LineRanges.from_specs(
+        source_line
+        for claim in file_metadata.get("presence_claims", [])
+        for source_line in claim.get("source_lines", [])
+    )
     legacy_claimed_lines = file_metadata.get("claimed_lines", [])
     if not presence_lines and legacy_claimed_lines:
-        presence_lines.extend(
-            parse_line_selection(",".join(str(line) for line in legacy_claimed_lines))
-        )
+        return LineRanges.from_specs(legacy_claimed_lines)
     return presence_lines
 
 
@@ -132,6 +128,7 @@ def build_file_attribution(
     *,
     batch_metadata_by_name: dict[str, BatchMetadataDict] | None = None,
     supplemental_batch_metadata: dict[str, BatchMetadataDict] | None = None,
+    supplemental_source_object_by_name: Mapping[str, str] | None = None,
     spool_dir: str | Path | None = None,
     metrics: AttributionMetrics | None = None,
 ) -> FileAttribution:
@@ -152,6 +149,7 @@ def build_file_attribution(
             working_tree_lines=working_tree_lines,
             batch_metadata_by_name=batch_metadata_by_name,
             supplemental_batch_metadata=supplemental_batch_metadata,
+            supplemental_source_object_by_name=supplemental_source_object_by_name,
             spool_dir=spool_dir,
             metrics=metrics,
         )
@@ -164,6 +162,7 @@ def build_file_attribution_from_lines(
     working_tree_lines: Sequence[bytes],
     batch_metadata_by_name: dict[str, BatchMetadataDict] | None = None,
     supplemental_batch_metadata: dict[str, BatchMetadataDict] | None = None,
+    supplemental_source_object_by_name: Mapping[str, str] | None = None,
     batch_state_commit_by_name: Mapping[str, str] | None = None,
     spool_dir: str | Path | None = None,
     metrics: AttributionMetrics | None = None,
@@ -212,6 +211,7 @@ def build_file_attribution_from_lines(
         all_batch_metadata,
         state_backed_batch_names=frozenset(state_backed_batch_names),
         batch_state_commit_by_name=batch_state_commit_by_name,
+        supplemental_source_object_by_name=supplemental_source_object_by_name,
         spool_dir=spool_dir,
         working_tree_lines=working_tree_lines,
         all_units_map=all_units_map,
@@ -239,6 +239,7 @@ def _attribute_batches(
     *,
     state_backed_batch_names: frozenset[str],
     batch_state_commit_by_name: Mapping[str, str] | None,
+    supplemental_source_object_by_name: Mapping[str, str] | None,
     spool_dir: str | Path | None,
     working_tree_lines: Sequence[bytes],
     all_units_map: dict[str, _AttributionUnit],
@@ -252,6 +253,7 @@ def _attribute_batches(
         all_batch_metadata,
         state_backed_batch_names=state_backed_batch_names,
         batch_state_commit_by_name=batch_state_commit_by_name,
+        supplemental_source_object_by_name=supplemental_source_object_by_name,
     )
     deletion_blob_ids = _deletion_blob_ids(source_requests)
     object_names = list(
@@ -341,8 +343,8 @@ def _resolve_batch_source_requests(
                 batch_name=request.batch_name,
                 file_metadata=request.file_metadata,
                 source_object_id=source_object_id,
-                presence_source_lines=tuple(
-                    _parse_presence_source_lines(request.file_metadata)
+                presence_source_lines=_parse_presence_source_lines(
+                    request.file_metadata
                 ),
             )
         )
@@ -413,18 +415,14 @@ def _attribute_source_group(
                 alignment=alignment,
                 deletion_fingerprints=deletion_fingerprints,
                 presence_source_lines=request.presence_source_lines,
-                presence_source_line_set=frozenset(request.presence_source_lines),
             )
-            generated_unit_ids = _enumerate_units_from_batch(
-                file_path,
-                context,
-                all_units_map,
-            )
-            candidate_unit_ids = dict.fromkeys(
-                [
-                    *baseline_unit_ids,
-                    *generated_unit_ids,
-                ]
+            candidate_unit_ids = chain(
+                baseline_unit_ids,
+                _enumerate_units_from_batch(
+                    file_path,
+                    context,
+                    all_units_map,
+                ),
             )
             for unit_id in candidate_unit_ids:
                 owners_by_unit_id.setdefault(unit_id, set())
@@ -438,15 +436,29 @@ def _batch_source_requests(
     *,
     state_backed_batch_names: frozenset[str],
     batch_state_commit_by_name: Mapping[str, str] | None = None,
+    supplemental_source_object_by_name: Mapping[str, str] | None = None,
 ) -> list[_BatchSourceRequest]:
     requests: list[_BatchSourceRequest] = []
     for batch_name in sorted(all_batch_metadata):
         batch_metadata = all_batch_metadata[batch_name]
         file_metadata = batch_metadata["files"][file_path]
-        fallback_refspec = f"{file_metadata['batch_source_commit']}:{file_path}"
+        source_object_id = (
+            None
+            if supplemental_source_object_by_name is None
+            else supplemental_source_object_by_name.get(batch_name)
+        )
+        fallback_refspec = (
+            source_object_id
+            if source_object_id is not None
+            else f"{file_metadata['batch_source_commit']}:{file_path}"
+        )
         source_path = file_metadata.get("source_path")
         primary_refspec = fallback_refspec
-        if source_path and batch_name in state_backed_batch_names:
+        if (
+            source_object_id is None
+            and source_path
+            and batch_name in state_backed_batch_names
+        ):
             if batch_state_commit_by_name is None:
                 primary_refspec = (
                     f"{format_batch_state_ref_name(batch_name)}:{source_path}"
@@ -492,15 +504,13 @@ def _enumerate_units_from_batch(
     file_path: str,
     batch_context: BatchAttributionContext,
     units_map: dict[str, _AttributionUnit],
-) -> list[str]:
-    """Add units claimed by one batch and return their semantic IDs."""
+) -> Iterator[str]:
+    """Add units claimed by one batch and yield their semantic IDs."""
     file_metadata = batch_context.file_metadata
     batch_source_lines = batch_context.batch_source_lines
     alignment = batch_context.alignment
-    generated_unit_ids: list[str] = []
-
     if len(batch_source_lines) == 0 and _has_presence_source_lines(file_metadata):
-        return generated_unit_ids
+        return
 
     for source_line in batch_context.presence_source_lines:
         if source_line < 1 or source_line > len(batch_source_lines):
@@ -523,7 +533,7 @@ def _enumerate_units_from_batch(
             deletion_content=None,
         )
         units_map.setdefault(unit.unit_id, unit)
-        generated_unit_ids.append(unit.unit_id)
+        yield unit.unit_id
 
     for deletion_entry in file_metadata.get("deletions", []):
         blob_hash = deletion_entry.get("blob")
@@ -557,9 +567,7 @@ def _enumerate_units_from_batch(
             deletion_fingerprint=deletion_fingerprint,
         )
         units_map.setdefault(unit.unit_id, unit)
-        generated_unit_ids.append(unit.unit_id)
-
-    return generated_unit_ids
+        yield unit.unit_id
 
 
 def _batch_owns_unit(
@@ -594,7 +602,6 @@ def _batch_owns_presence_unit(
     claimed_source_lines = batch_context.presence_source_lines
     if not claimed_source_lines:
         return False
-    claimed_source_line_set = batch_context.presence_source_line_set
     alignment = batch_context.alignment
     batch_source_lines = batch_context.batch_source_lines
 
@@ -604,7 +611,7 @@ def _batch_owns_presence_unit(
         )
         if mapped_source_line is None:
             return False
-        if mapped_source_line not in claimed_source_line_set:
+        if mapped_source_line not in claimed_source_lines:
             return False
         if mapped_source_line < 1 or mapped_source_line > len(batch_source_lines):
             return False
@@ -622,7 +629,7 @@ def _batch_owns_presence_unit(
         if source_line_range.stop - 1 > len(batch_source_lines):
             return False
         if any(
-            source_line not in claimed_source_line_set
+            source_line not in claimed_source_lines
             for source_line in source_line_range
         ):
             return False
@@ -651,7 +658,7 @@ def _batch_owns_presence_unit(
         source_line_range = range(source_line, source_line + unit.claimed_line_count)
         if source_line_range.stop - 1 > len(batch_source_lines):
             continue
-        if any(line not in claimed_source_line_set for line in source_line_range):
+        if any(line not in claimed_source_lines for line in source_line_range):
             continue
         if any(
             alignment.get_target_line_from_source_line(line) is not None

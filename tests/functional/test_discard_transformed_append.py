@@ -692,6 +692,322 @@ static const struct plane_format plane_formats[] = {
     assert "return &p0xx_reader;" in path.read_text()
 
 
+def test_active_castkms_selector_preserves_intermediate_p0xx_callback(
+    functional_repo,
+):
+    """A resumed multi-batch selector split must retain its P0XX callback."""
+    fixture_packs = (
+        next(FIXTURE_ROOT.glob("p0xx_selector_exact_v2-*.pack")),
+        next(FIXTURE_ROOT.glob("p0xx_selector_exact_supplement-*.pack")),
+        next(FIXTURE_ROOT.glob("p0xx_selector_exact_objects-*.pack")),
+    )
+    for fixture_pack in fixture_packs:
+        subprocess.run(
+            ["git", "index-pack", "--stdin"],
+            cwd=functional_repo,
+            input=fixture_pack.read_bytes(),
+            check=True,
+            capture_output=True,
+        )
+    subprocess.run(
+        [
+            "git", "checkout", "--detach",
+            "2447067692411cddc11a2ada3bc36ac676c0c3fe",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+
+    refs_path = FIXTURE_ROOT / "p0xx_selector_exact_refs.txt"
+    for line in refs_path.read_text().splitlines():
+        ref, object_id = line.split()
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+
+    git_dir = Path(
+        subprocess.run(
+            ["git", "rev-parse", "--absolute-git-dir"],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    )
+    state_dir = git_dir / "git-stage-batch"
+    state_dir.mkdir()
+    session_archive = FIXTURE_ROOT / "p0xx_selector_exact_session.tar.gz"
+    with tarfile.open(session_archive) as archive:
+        archive.extractall(state_dir, filter="data")
+
+    active_path = state_dir / "active-session.json"
+    active = json.loads(active_path.read_text())
+    active["worktree_git_dir"] = str(git_dir)
+    active["marker_path"] = str(state_dir / "session/abort/head.txt")
+    active_path.write_text(json.dumps(active, indent=2) + "\n")
+
+    path = functional_repo / "src" / "castkms_formats.c"
+    snapshot = state_dir / "session/selected/working-tree.snapshot"
+    path.write_bytes(snapshot.read_bytes())
+    live_before = path.read_text()
+    batch_body = """\tfor (unsigned int i = 0; i < ARRAY_SIZE(castkms_plane_formats); i++)
+\t\tif (castkms_plane_formats[i].format == format)
+\t\t\treturn castkms_plane_formats[i].read_line;
+
+\treturn NULL;
+}
+"""
+    live_body = """\tswitch (format) {
+\tcase DRM_FORMAT_ARGB8888:
+\t\treturn &ARGB8888_read_line;
+\tcase DRM_FORMAT_ABGR8888:
+\t\treturn &ABGR8888_read_line;
+\tcase DRM_FORMAT_BGRA8888:
+\t\treturn &BGRA8888_read_line;
+\tcase DRM_FORMAT_RGBA8888:
+\t\treturn &RGBA8888_read_line;
+\tcase DRM_FORMAT_XRGB8888:
+\t\treturn &XRGB8888_read_line;
+\tcase DRM_FORMAT_XBGR8888:
+\t\treturn &XBGR8888_read_line;
+\tcase DRM_FORMAT_RGB888:
+\t\treturn &RGB888_read_line;
+\tcase DRM_FORMAT_BGR888:
+\t\treturn &BGR888_read_line;
+\tcase DRM_FORMAT_ARGB16161616:
+\t\treturn &ARGB16161616_read_line;
+\tcase DRM_FORMAT_ABGR16161616:
+\t\treturn &ABGR16161616_read_line;
+\tcase DRM_FORMAT_XRGB16161616:
+\t\treturn &XRGB16161616_read_line;
+\tcase DRM_FORMAT_XBGR16161616:
+\t\treturn &XBGR16161616_read_line;
+\tcase DRM_FORMAT_RGB565:
+\t\treturn &RGB565_read_line;
+\tcase DRM_FORMAT_BGR565:
+\t\treturn &BGR565_read_line;
+\tcase DRM_FORMAT_NV12:
+\tcase DRM_FORMAT_NV16:
+\tcase DRM_FORMAT_NV24:
+\tcase DRM_FORMAT_NV21:
+\tcase DRM_FORMAT_NV61:
+\tcase DRM_FORMAT_NV42:
+\t\treturn &YUV888_semiplanar_read_line;
+\tcase DRM_FORMAT_P010:
+\tcase DRM_FORMAT_P012:
+\tcase DRM_FORMAT_P016:
+\t\treturn &P0XX_read_line;
+\tcase DRM_FORMAT_YUV420:
+\tcase DRM_FORMAT_YUV422:
+\tcase DRM_FORMAT_YUV444:
+\tcase DRM_FORMAT_YVU420:
+\tcase DRM_FORMAT_YVU422:
+\tcase DRM_FORMAT_YVU444:
+\t\treturn &planar_yuv_read_line;
+\tcase DRM_FORMAT_R1:
+\t\treturn &R1_read_line;
+\tcase DRM_FORMAT_R2:
+\t\treturn &R2_read_line;
+\tcase DRM_FORMAT_R4:
+\t\treturn &R4_read_line;
+\tcase DRM_FORMAT_R8:
+\t\treturn &R8_read_line;
+\tdefault:
+\t\treturn NULL;
+\t}
+}
+"""
+    result = git_stage_batch(
+        "discard", "--to", "decompose-14-plane-descriptor-provider",
+        "--line", "280-350", "--as-stdin", "--no-auto-advance",
+        input_text=batch_body + live_body,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+    expected_live = live_before.replace(batch_body, live_body)
+    assert path.read_text() == expected_live
+    assert "\t\treturn &P0XX_read_line;\n" in path.read_text()
+    batch_after = _show_file(
+        functional_repo,
+        "refs/git-stage-batch/batches/decompose-14-plane-descriptor-provider",
+        "src/castkms_formats.c",
+    )
+    assert (
+        "\tfor (unsigned int i = 0; "
+        "i < ARRAY_SIZE(castkms_plane_formats); i++)\n"
+    ) in batch_after
+    assert "\treturn NULL;\n\t}\n}\n" not in batch_after
+    assert "\t\treturn &P0XX_read_line;\n" not in batch_after
+
+
+@pytest.mark.parametrize(
+    ("line_ids", "replacement_text", "scoped_predecessor_blob"),
+    [
+        (
+            "20",
+            "\t\tu64 frame = "
+            "drm_crtc_vblank_count_and_time(crtc, &frame_time);\n"
+            "\t\tu64 frame = drm_crtc_vblank_count(crtc);\n",
+            "8ba3d23ff689288e30090c2791ceedddb1d684c8",
+        ),
+        (
+            "19-20",
+            "\t\tktime_t frame_time;\n"
+            "\t\tu64 frame = "
+            "drm_crtc_vblank_count_and_time(crtc, &frame_time);\n"
+            "\t\tu64 frame = drm_crtc_vblank_count(crtc);\n",
+            "3181292108577b8e33e59532b9e6fe1462882107",
+        ),
+    ],
+    ids=("single-addition", "contiguous-addition-span"),
+)
+def test_active_castkms_frame_transform_preserves_inner_addition_scope(
+    functional_repo,
+    line_ids,
+    replacement_text,
+    scoped_predecessor_blob,
+):
+    """A resumed concern-09 transform must not absorb unrelated additions."""
+    for fixture_pack in sorted(FIXTURE_ROOT.glob("concern09_exact_*.pack")):
+        subprocess.run(
+            ["git", "index-pack", "--stdin"],
+            cwd=functional_repo,
+            input=fixture_pack.read_bytes(),
+            check=True,
+            capture_output=True,
+        )
+    subprocess.run(
+        [
+            "git",
+            "checkout",
+            "--detach",
+            "94b9e9d09cb77ab1cb39e954e3a826feb37cf4ac",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+
+    refs_path = FIXTURE_ROOT / "concern09_exact_refs.txt"
+    for line in refs_path.read_text().splitlines():
+        ref, object_id = line.split()
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+
+    git_dir = Path(
+        subprocess.run(
+            ["git", "rev-parse", "--absolute-git-dir"],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    )
+    state_dir = git_dir / "git-stage-batch"
+    state_dir.mkdir()
+    with tarfile.open(FIXTURE_ROOT / "concern09_exact_session.tar.gz") as archive:
+        archive.extractall(state_dir, filter="data")
+
+    active_path = state_dir / "active-session.json"
+    active = json.loads(active_path.read_text())
+    active["worktree_git_dir"] = str(git_dir)
+    active["marker_path"] = str(state_dir / "session/abort/head.txt")
+    active_path.write_text(json.dumps(active, indent=2) + "\n")
+
+    file_path = "src/castkms_crtc.c"
+    path = functional_repo / file_path
+    snapshot = state_dir / "session/selected/working-tree.snapshot"
+    path.write_bytes(snapshot.read_bytes())
+
+    def worktree_blob() -> str:
+        return subprocess.run(
+            ["git", "hash-object", file_path],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    final_blob = "fb851ea25295748ebf420f2538495d4dd8f384e2"
+    assert worktree_blob() == final_blob
+    view = git_stage_batch("show", "--file", file_path, "--page", "all").stdout
+    assert (
+        "[#20] + \t\tu64 frame = "
+        "drm_crtc_vblank_count_and_time(crtc, &frame_time);"
+    ) in view
+
+    target_refs = (
+        "refs/git-stage-batch/batches/decompose-09-implicit-frame-delivery",
+        "refs/git-stage-batch/state/decompose-09-implicit-frame-delivery",
+    )
+    refs_before = subprocess.run(
+        ["git", "rev-parse", *target_refs],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    sparse = git_stage_batch(
+        "discard",
+        "--to",
+        "decompose-09-implicit-frame-delivery",
+        "--line",
+        "2,19-20",
+        "--as-stdin",
+        "--no-auto-advance",
+        input_text=(
+            "\t\tktime_t frame_time;\n"
+            "\t\tu64 frame = "
+            "drm_crtc_vblank_count_and_time(crtc, &frame_time);\n"
+            "\t\tu64 frame = drm_crtc_vblank_count(crtc);\n"
+        ),
+        check=False,
+    )
+    assert sparse.returncode != 0
+    assert "must be one contiguous line range" in sparse.stderr
+    assert worktree_blob() == final_blob
+    assert subprocess.run(
+        ["git", "rev-parse", *target_refs],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout == refs_before
+
+    result = git_stage_batch(
+        "discard",
+        "--to",
+        "decompose-09-implicit-frame-delivery",
+        "--line",
+        line_ids,
+        "--as-stdin",
+        "--no-auto-advance",
+        input_text=replacement_text,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert worktree_blob() == scoped_predecessor_blob
+    git_stage_batch("stop")
+    replay = git_stage_batch(
+        "apply",
+        "--from",
+        "decompose-09-implicit-frame-delivery",
+        check=False,
+    )
+    assert replay.returncode == 0, replay.stderr
+    assert worktree_blob() == final_blob
+
+
 def test_new_batch_records_exact_addition_prefix_ownership(functional_repo):
     """A repeated suffix must not fragment a new batch's saved prefix."""
     prefix = (

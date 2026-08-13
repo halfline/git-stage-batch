@@ -6,7 +6,7 @@ from contextlib import ExitStack
 from dataclasses import dataclass
 import os
 from pathlib import Path
-from typing import TypedDict
+from typing import TypedDict, cast
 
 from . import action_plans as _action_plans
 from ...batch.discard import discard_batch_from_line_sequences_as_buffer
@@ -14,6 +14,10 @@ from ...batch.merge.merge import merge_batch_from_line_sequences_as_buffer
 from ...batch.replacement import build_replacement_batch_view_from_lines
 from ...batch.selection import acquire_batch_ownership_for_display_ids_from_lines
 from ...batch.state.metadata_types import BatchFileMetadataDict
+from ...batch.ownership.metadata_types import BatchOwnershipMetadata
+from ...batch.ownership.attribution_metadata import (
+    compact_ownership_metadata_for_attribution,
+)
 from ...core.buffer import LineBuffer
 from ...core.replacement import ReplacementPayload
 from ...core.text_lifecycle import (
@@ -51,6 +55,7 @@ class ApplyTextPlanBuildResult:
 
     plan: _action_plans.ApplyTextFileActionPlan | None = None
     missing_source: bool = False
+    selected_ownership_metadata: BatchOwnershipMetadata | None = None
 
 
 @dataclass(frozen=True)
@@ -125,13 +130,17 @@ def build_apply_text_file_action_plan(
         destination_exists=working_exists,
     )
     if not apply_text_plan_requires_source(file_meta, selected_ids):
+        selected_ownership = compact_ownership_metadata_for_attribution(
+            cast(BatchOwnershipMetadata, file_meta),
+        )
         return ApplyTextPlanBuildResult(
             plan=_action_plans.ApplyTextFileActionPlan(
                 file_path,
                 None,
                 file_mode,
                 text_change_type,
-            )
+            ),
+            selected_ownership_metadata=selected_ownership,
         )
 
     batch_source_commit = file_meta["batch_source_commit"]
@@ -177,6 +186,7 @@ def build_apply_text_file_action_plan(
             selection_ids_to_apply,
             **spool_options,
         ) as ownership:
+            selected_ownership_metadata = ownership.to_attribution_metadata_dict()
             if ownership.is_empty():
                 if selected_ids is None and text_change_type == TextFileChangeType.ADDED:
                     merged_buffer = LineBuffer.from_bytes(
@@ -205,7 +215,8 @@ def build_apply_text_file_action_plan(
                 merged_buffer,
                 file_mode,
                 effective_change_type,
-            )
+            ),
+            selected_ownership_metadata=selected_ownership_metadata,
         )
     except BaseException:
         merged_buffer.close()

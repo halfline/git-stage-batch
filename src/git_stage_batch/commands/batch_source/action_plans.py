@@ -30,6 +30,7 @@ class ApplyTextFileActionPlan:
     buffer: LineBuffer | None
     file_mode: str | None
     change_type: TextFileChangeType
+    selected_file_metadata: BatchFileMetadataDict | None = None
 
     def close(self) -> None:
         if self.buffer is not None:

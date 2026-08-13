@@ -99,6 +99,7 @@ class ApplyTextPlanJobResult:
     output_path: str | None
     file_mode: str | None
     change_type: str | None
+    selected_ownership_artifact_path: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,6 +174,17 @@ def compute_apply_text_plan_job(
         plan = build_result.plan
         try:
             change_type = normalized_text_change_type(plan.change_type).value
+            selected_ownership_path = None
+            if build_result.selected_ownership_metadata is not None:
+                selected_ownership_path = str(
+                    Path(job.details_artifact_path).with_name(
+                        "selected-ownership.pickle"
+                    )
+                )
+                _write_pickle(
+                    selected_ownership_path,
+                    build_result.selected_ownership_metadata,
+                )
             output_path = None
             if plan.buffer is not None and change_type != "deleted":
                 write_buffer_to_path(job.output_path, plan.buffer)
@@ -183,6 +195,7 @@ def compute_apply_text_plan_job(
                 output_path=output_path,
                 file_mode=plan.file_mode,
                 change_type=change_type,
+                selected_ownership_artifact_path=selected_ownership_path,
             )
         finally:
             plan.close()
@@ -424,6 +437,11 @@ def validate_apply_text_plan_job_result(
         str,
     ):
         raise TypeError("apply text-plan result change type must be text")
+    if (
+        result.selected_ownership_artifact_path is not None
+        and not isinstance(result.selected_ownership_artifact_path, str)
+    ):
+        raise TypeError("apply text-plan ownership artifact path must be text")
 
     if result.outcome == "plan":
         if result.details_artifact_path is not None:
@@ -442,6 +460,17 @@ def validate_apply_text_plan_job_result(
         if result.output_path != expected_output_path:
             raise ValueError(
                 f"apply text-plan worker returned an invalid output path for "
+                f"{display_path(job.file_path)}"
+            )
+        expected_ownership_path = str(
+            Path(job.details_artifact_path).with_name(
+                "selected-ownership.pickle"
+            )
+        )
+        if result.selected_ownership_artifact_path != expected_ownership_path:
+            raise ValueError(
+                f"apply text-plan worker omitted or returned an invalid "
+                f"ownership path for "
                 f"{display_path(job.file_path)}"
             )
         return
@@ -468,6 +497,7 @@ def validate_apply_text_plan_job_result(
         result.output_path is not None
         or result.file_mode is not None
         or result.change_type is not None
+        or result.selected_ownership_artifact_path is not None
     ):
         raise ValueError(
             f"apply text-plan worker returned plan fields for "
@@ -571,6 +601,7 @@ def _result(
     output_path: str | None = None,
     file_mode: str | None = None,
     change_type: str | None = None,
+    selected_ownership_artifact_path: str | None = None,
 ) -> ApplyTextPlanJobResult:
     return ApplyTextPlanJobResult(
         ordinal=job.ordinal,
@@ -582,6 +613,7 @@ def _result(
         output_path=output_path,
         file_mode=file_mode,
         change_type=change_type,
+        selected_ownership_artifact_path=selected_ownership_artifact_path,
     )
 
 

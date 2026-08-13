@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import sys
 from typing import Callable
+from typing import cast
 
 from . import action_completion as _action_completion
 from . import action_context as _action_context
@@ -21,6 +22,8 @@ from . import text_plan_jobs as _text_plan_jobs
 from . import worktree_refusals as _worktree_refusals
 from ...batch.operation_candidate_types import CandidatePreviewCount
 from ...batch.state.metadata_types import BatchFileMetadataDict
+from ...batch.state.metadata_types import add_ownership_metadata
+from ...batch.ownership.metadata_types import BatchOwnershipMetadata
 from ...core.models import RenderedBatchDisplay
 from ...core.text_lifecycle import TextFileChangeType
 from ...batch.binary_file_content import read_binary_file_from_batch
@@ -29,6 +32,11 @@ from ...batch.submodule_pointer import (
     is_batch_submodule_pointer,
 )
 from ...data.session import snapshot_file_if_untracked
+from ...data.applied_batch_overlays import (
+    applied_batch_overlays_repository_path,
+    build_applied_file_provenances,
+    record_applied_batch_overlays,
+)
 from ...data.file_target_identity import (
     WorktreeIdentity,
     capture_worktree_identities,
@@ -137,6 +145,23 @@ def execute_apply_action(
             workspace=workspace,
         )
         try:
+            selected_metadata_by_path = {
+                plan.file_path: plan.selected_file_metadata
+                for plan in apply_plans
+                if (
+                    isinstance(plan, _action_plans.ApplyTextFileActionPlan)
+                    and plan.selected_file_metadata is not None
+                )
+            }
+            applied_file_provenance = build_applied_file_provenances(
+                batch_name,
+                {
+                    file_path: files[file_path]
+                    for file_path in selected_metadata_by_path
+                },
+                selection_ids_to_apply,
+                selected_file_metadata_by_path=selected_metadata_by_path,
+            )
             _require_unchanged_worktree_targets(
                 expected_worktree_identities,
             )
@@ -147,6 +172,7 @@ def execute_apply_action(
                 with undo_checkpoint(
                     terminal_safe_shell_join(operation_parts),
                     worktree_paths=list(files),
+                    repository_paths=[applied_batch_overlays_repository_path()],
                     rollback_on_error=True,
                 ) as checkpoint_status:
                     publication_started = True
@@ -188,6 +214,17 @@ def execute_apply_action(
                             raise TypeError("unsupported apply action plan")
                     for file_path, file_meta in mode_actions:
                         _file_mode_actions.apply_new_file_mode(file_path, file_meta)
+                    revision = context.metadata.get("revision")
+                    if not isinstance(revision, str) or not revision:
+                        raise ValueError(
+                            "validated batch metadata omitted its revision"
+                        )
+                    record_applied_batch_overlays(
+                        batch_name=batch_name,
+                        batch_revision=revision,
+                        files=applied_file_provenance,
+                        before_worktree_identities=expected_worktree_identities,
+                    )
             except BaseException as error:
                 if publication_started:
                     report_progress(
@@ -504,6 +541,30 @@ def _reduce_apply_action_plans(
         if type(details) is not dict:
             raise TypeError("apply text-plan details must be a dictionary")
         if result.outcome == "plan":
+            assert result.selected_ownership_artifact_path is not None
+            ownership_metadata = workspace.read_pickle(
+                result.selected_ownership_artifact_path
+            )
+            if type(ownership_metadata) is not dict:
+                raise TypeError(
+                    "apply text-plan ownership metadata must be a dictionary"
+                )
+            selected_metadata = cast(
+                BatchFileMetadataDict,
+                {
+                    key: value
+                    for key, value in files[result.file_path].items()
+                    if key in {"batch_source_commit", "mode"}
+                },
+            )
+            assert result.change_type is not None
+            selected_metadata["change_type"] = TextFileChangeType(
+                result.change_type
+            ).value
+            add_ownership_metadata(
+                selected_metadata,
+                cast(BatchOwnershipMetadata, ownership_metadata),
+            )
             buffer = (
                 None
                 if result.output_path is None
@@ -517,6 +578,7 @@ def _reduce_apply_action_plans(
                 buffer,
                 result.file_mode,
                 TextFileChangeType(result.change_type),
+                selected_metadata,
             )
         elif result.outcome == "noop":
             continue

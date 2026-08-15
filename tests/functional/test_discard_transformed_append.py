@@ -1372,3 +1372,42 @@ suffix
         str(limit_source_line) in claim.get("baseline_references", {})
         for claim in file_metadata["presence_claims"]
     )
+    assert sum(
+        deletion.get("source_alternative") is True
+        for deletion in file_metadata["deletions"]
+    ) == 1
+
+    git_stage_batch("stop")
+    subprocess.run(
+        ["git", "add", "file.txt"],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Commit the live stride guard"],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    result = git_stage_batch("apply", "--from", "pointer-width", check=False)
+    if result.returncode:
+        assert "has 1 apply candidate" in result.stderr
+        git_stage_batch(
+            "show",
+            "--from",
+            "pointer-width:apply:1",
+            "--file",
+            "file.txt",
+        )
+        result = git_stage_batch(
+            "apply",
+            "--from",
+            "pointer-width:apply:1",
+            "--file",
+            "file.txt",
+            check=False,
+        )
+
+    assert result.returncode == 0, result.stderr
+    assert path.read_text() == final

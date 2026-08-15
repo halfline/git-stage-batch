@@ -427,6 +427,52 @@ static struct plane *initialize_properties(struct device *device)
         staged = run_git_command(["diff", "--cached", "--name-only"])
         assert staged.stdout == ""
 
+    def test_plan_cleanup_cancellation_rolls_back_index_and_worktree(
+        self,
+        temp_git_repo,
+        monkeypatch,
+        capsys,
+    ):
+        """Include plan teardown must finish before transaction commit."""
+        path = temp_git_repo / "file.txt"
+        path.write_text("base\n")
+        subprocess.run(
+            ["git", "add", "file.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        path.write_text("batch\n")
+        command_start(quiet=True)
+        command_include_to_batch("cleanup", file="file.txt", quiet=True)
+        path.write_text("base\n")
+
+        real_close = include_action._action_plans.close_resources
+
+        def close_then_cancel(resources):
+            real_close(resources)
+            raise KeyboardInterrupt("include cleanup cancelled")
+
+        monkeypatch.setattr(
+            include_action._action_plans,
+            "close_resources",
+            close_then_cancel,
+        )
+        capsys.readouterr()
+
+        with pytest.raises(KeyboardInterrupt, match="include cleanup cancelled"):
+            command_include_from_batch("cleanup", file="file.txt")
+
+        assert path.read_text() == "base\n"
+        assert run_git_command(["show", ":file.txt"]).stdout == "base\n"
+        assert "✓ Staged" not in capsys.readouterr().err
+
     def test_include_from_empty_batch_fails(self, temp_git_repo):
         """Test including from an empty batch fails."""
         create_batch("empty-batch")

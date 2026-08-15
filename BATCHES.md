@@ -360,6 +360,8 @@ Both commands use modules under `commands/batch_source/` to:
 6. write accepted targets
 7. refresh review and selected-change state
 
+pre-existing conflict or an index/worktree change introduced after capture is
+therefore refused without overwriting concurrent state. Their review-complete
 state and success output are deferred until the outermost transaction commits,
 so a nested success cannot survive an enclosing rollback.
 For text files, [`batch/merge/merge.py`](src/git_stage_batch/batch/merge/merge.py) receives

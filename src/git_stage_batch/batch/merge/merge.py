@@ -334,6 +334,9 @@ def merge_batch_from_line_sequences_as_buffer(
     working_lines: Sequence[bytes],
     *,
     source_to_working_mapping: LineMapping | None = None,
+    trusted_target_lines: Sequence[bytes] | None = None,
+    source_to_trusted_target_mapping: LineMapping | None = None,
+    trusted_target_to_working_mapping: LineMapping | None = None,
     resolution: _MergeResolution | None = None,
     spool_dir: str | Path | None = None,
 ) -> LineBuffer:
@@ -348,6 +351,13 @@ def merge_batch_from_line_sequences_as_buffer(
     normalized_working_lines = as_acquirable_line_sequence(
         normalize_line_sequence_endings(working_lines)
     )
+    normalized_trusted_target_lines = (
+        None
+        if trusted_target_lines is None
+        else as_acquirable_line_sequence(
+            normalize_line_sequence_endings(trusted_target_lines)
+        )
+    )
     return LineBuffer.from_chunks(
         restore_line_endings_in_chunks(
             ensure_line_chunk_boundaries(
@@ -356,6 +366,13 @@ def merge_batch_from_line_sequences_as_buffer(
                     ownership,
                     normalized_working_lines,
                     source_to_working_mapping=source_to_working_mapping,
+                    trusted_target_lines=normalized_trusted_target_lines,
+                    source_to_trusted_target_mapping=(
+                        source_to_trusted_target_mapping
+                    ),
+                    trusted_target_to_working_mapping=(
+                        trusted_target_to_working_mapping
+                    ),
                     resolution=resolution,
                     spool_dir=spool_dir,
                 )
@@ -372,6 +389,9 @@ def can_merge_batch_from_line_sequences(
     working_lines: Sequence[bytes],
     *,
     source_to_working_mapping: LineMapping | None = None,
+    trusted_target_lines: Sequence[bytes] | None = None,
+    source_to_trusted_target_mapping: LineMapping | None = None,
+    trusted_target_to_working_mapping: LineMapping | None = None,
     resolution: _MergeResolution | None = None,
 ) -> bool:
     """Return whether a normalized line merge can be applied."""
@@ -381,12 +401,26 @@ def can_merge_batch_from_line_sequences(
     normalized_working_lines = as_acquirable_line_sequence(
         normalize_line_sequence_endings(working_lines)
     )
+    normalized_trusted_target_lines = (
+        None
+        if trusted_target_lines is None
+        else as_acquirable_line_sequence(
+            normalize_line_sequence_endings(trusted_target_lines)
+        )
+    )
     try:
         for _chunk in _merge_batch_line_chunks(
             normalized_source_lines,
             ownership,
             normalized_working_lines,
             source_to_working_mapping=source_to_working_mapping,
+            trusted_target_lines=normalized_trusted_target_lines,
+            source_to_trusted_target_mapping=(
+                source_to_trusted_target_mapping
+            ),
+            trusted_target_to_working_mapping=(
+                trusted_target_to_working_mapping
+            ),
             resolution=resolution,
         ):
             pass

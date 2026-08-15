@@ -89,16 +89,6 @@ class DiscardTextPlanBuildResult:
     missing_source: bool = False
 
 
-def _close_include_merge_buffers(
-    index_buffer: LineBuffer | None,
-    working_buffer: LineBuffer | None,
-) -> None:
-    if index_buffer is not None:
-        index_buffer.close()
-    if working_buffer is not None and working_buffer is not index_buffer:
-        working_buffer.close()
-
-
 def apply_text_plan_requires_source(
     file_meta: BatchFileMetadataDict,
     selected_ids: set[int] | None,
@@ -396,63 +386,68 @@ def build_include_text_file_action_plan(
         index_exists = captured_index_identity.exists
         index_buffer = None
 
-    if captured_working_tree_exists is None:
-        repo_root = get_git_repository_root_path()
-        working_exists = os.path.lexists(repo_root / file_path)
-    else:
-        working_exists = captured_working_tree_exists
+    try:
+        if captured_working_tree_exists is None:
+            repo_root = get_git_repository_root_path()
+            working_exists = os.path.lexists(repo_root / file_path)
+        else:
+            working_exists = captured_working_tree_exists
 
-    batch_file_mode = str(file_meta.get("mode", "100644"))
-    index_file_mode = mode_for_text_materialization(
-        batch_file_mode,
-        selected_ids,
-        destination_exists=index_exists,
-    )
-    working_file_mode = mode_for_text_materialization(
-        batch_file_mode,
-        selected_ids,
-        destination_exists=working_exists,
-    )
-    if not include_text_plan_requires_source(file_meta, selected_ids):
+        batch_file_mode = str(file_meta.get("mode", "100644"))
+        index_file_mode = mode_for_text_materialization(
+            batch_file_mode,
+            selected_ids,
+            destination_exists=index_exists,
+        )
+        working_file_mode = mode_for_text_materialization(
+            batch_file_mode,
+            selected_ids,
+            destination_exists=working_exists,
+        )
+        if not include_text_plan_requires_source(file_meta, selected_ids):
+            if index_buffer is not None:
+                index_buffer.close()
+            return IncludeTextPlanBuildResult(
+                plan=_action_plans.IncludeTextFileActionPlan(
+                    file_path,
+                    None,
+                    None,
+                    index_file_mode,
+                    working_file_mode,
+                    text_change_type,
+                    text_change_type,
+                )
+            )
+
+        if (
+            index_buffer is None
+            and captured_index_identity is not None
+            and captured_index_identity.content_object_id is not None
+        ):
+            index_buffer = load_git_blob_as_buffer(
+                captured_index_identity.content_object_id,
+                spool_dir=spool_dir,
+            )
+        if index_buffer is None:
+            index_buffer = LineBuffer.from_bytes(b"", spool_dir=spool_dir)
+
+        batch_source_commit = file_meta["batch_source_commit"]
+        if batch_source_object_id is None:
+            batch_source_buffer = read_git_object_buffer_or_none(
+                f"{batch_source_commit}:{file_path}"
+            )
+        else:
+            batch_source_buffer = load_git_blob_as_buffer(
+                batch_source_object_id,
+                spool_dir=spool_dir,
+            )
+        if batch_source_buffer is None:
+            index_buffer.close()
+            return IncludeTextPlanBuildResult(missing_source=True)
+    except BaseException:
         if index_buffer is not None:
             index_buffer.close()
-        return IncludeTextPlanBuildResult(
-            plan=_action_plans.IncludeTextFileActionPlan(
-                file_path,
-                None,
-                None,
-                index_file_mode,
-                working_file_mode,
-                text_change_type,
-                text_change_type,
-            )
-        )
-
-    if (
-        index_buffer is None
-        and captured_index_identity is not None
-        and captured_index_identity.content_object_id is not None
-    ):
-        index_buffer = load_git_blob_as_buffer(
-            captured_index_identity.content_object_id,
-            spool_dir=spool_dir,
-        )
-    if index_buffer is None:
-        index_buffer = LineBuffer.from_bytes(b"", spool_dir=spool_dir)
-
-    batch_source_commit = file_meta["batch_source_commit"]
-    if batch_source_object_id is None:
-        batch_source_buffer = read_git_object_buffer_or_none(
-            f"{batch_source_commit}:{file_path}"
-        )
-    else:
-        batch_source_buffer = load_git_blob_as_buffer(
-            batch_source_object_id,
-            spool_dir=spool_dir,
-        )
-    if batch_source_buffer is None:
-        index_buffer.close()
-        return IncludeTextPlanBuildResult(missing_source=True)
+        raise
 
     merged_index_buffer = None
     merged_working_buffer = None
@@ -482,6 +477,30 @@ def build_include_text_file_action_plan(
                 selection_ids_to_include,
                 **spool_options,
             ) as ownership:
+                legacy_unmarked_source_alternatives = (
+                    file_meta.get("legacy_unmarked_source_alternatives") is True
+                    and selection_ids_to_include is None
+                )
+                reject_ambiguous_legacy_presence_replay(
+                    file_path,
+                    batch_source_lines,
+                    ownership,
+                    index_lines,
+                    legacy_unmarked_source_alternatives=(
+                        legacy_unmarked_source_alternatives
+                    ),
+                    spool_dir=spool_dir,
+                )
+                reject_ambiguous_legacy_presence_replay(
+                    file_path,
+                    batch_source_lines,
+                    ownership,
+                    working_lines,
+                    legacy_unmarked_source_alternatives=(
+                        legacy_unmarked_source_alternatives
+                    ),
+                    spool_dir=spool_dir,
+                )
                 if ownership.is_empty():
                     if (
                         selected_ids is None
@@ -550,7 +569,15 @@ def build_include_text_file_action_plan(
         merged_working_buffer = None
         return IncludeTextPlanBuildResult(plan=plan)
     except BaseException:
-        _close_include_merge_buffers(merged_index_buffer, merged_working_buffer)
+        merge_buffers = []
+        if merged_index_buffer is not None:
+            merge_buffers.append(merged_index_buffer)
+        if (
+            merged_working_buffer is not None
+            and merged_working_buffer is not merged_index_buffer
+        ):
+            merge_buffers.append(merged_working_buffer)
+        _action_plans.close_resources(merge_buffers)
         raise
 
 

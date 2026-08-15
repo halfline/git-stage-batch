@@ -362,6 +362,32 @@ def test_line_buffer_uses_mapped_storage_for_page_sized_files(tmp_path):
         assert buffer[1] == b"x" * (mmap.PAGESIZE - len(b"alpha\n"))
 
 
+def test_line_buffer_retries_busy_mapped_backing_close(tmp_path):
+    """A failed mmap close must remain retryable after exported views release."""
+    file_path = tmp_path / "buffer.txt"
+    file_path.write_bytes(b"x" * mmap.PAGESIZE)
+    buffer = LineBuffer.from_path(file_path)
+    mapped_data = buffer._data
+    file_handle = buffer._backing.file_handle
+    assert isinstance(mapped_data, mmap.mmap)
+    assert file_handle is not None
+    exported_view = memoryview(mapped_data)
+
+    try:
+        with pytest.raises(BufferError):
+            buffer.close()
+        assert file_handle.closed is True
+        assert buffer._backing._closed is False
+        with pytest.raises(ValueError, match="buffer is closed"):
+            _ = buffer[0]
+    finally:
+        exported_view.release()
+
+    buffer.close()
+    assert mapped_data.closed is True
+    assert buffer._backing._closed is True
+
+
 def test_line_buffer_releases_mapped_backing_when_index_setup_fails(
     tmp_path,
     monkeypatch,
@@ -395,6 +421,62 @@ def test_line_buffer_releases_mapped_backing_when_index_setup_fails(
     assert backing.data.closed is True
     assert backing.file_handle is not None
     assert backing.file_handle.closed is True
+
+
+def test_line_buffer_setup_preserves_primary_error_when_release_fails(
+    monkeypatch,
+):
+    """Backing cleanup must not replace the constructor's original failure."""
+
+    def fail_line_index(*, spool_dir=None):
+        raise KeyboardInterrupt("index setup cancelled")
+
+    def fail_release(_backing):
+        raise RuntimeError("backing release failed")
+
+    monkeypatch.setattr(buffer_module, "_LineSpanVector", fail_line_index)
+    monkeypatch.setattr(buffer_module._BufferBacking, "release", fail_release)
+
+    with pytest.raises(KeyboardInterrupt, match="index setup cancelled"):
+        LineBuffer.from_bytes(b"content\n")
+
+
+def test_line_chunk_setup_preserves_primary_error_when_span_close_fails(
+    monkeypatch,
+):
+    """Span cleanup must not replace a producer's original cancellation."""
+
+    def cancelled_lines():
+        yield b"first\n"
+        raise KeyboardInterrupt("line production cancelled")
+
+    def fail_close(_spans):
+        raise RuntimeError("span close failed")
+
+    monkeypatch.setattr(buffer_module._LineSpanVector, "close", fail_close)
+
+    with pytest.raises(KeyboardInterrupt, match="line production cancelled"):
+        LineBuffer.from_line_chunks(cancelled_lines())
+
+
+def test_line_buffer_context_preserves_body_error_when_close_fails(
+    monkeypatch,
+):
+    """A close failure must not hide the operation that caused unwinding."""
+    buffer = LineBuffer.from_bytes(b"content\n")
+    real_close = buffer.close
+
+    def fail_close():
+        raise RuntimeError("buffer close failed")
+
+    monkeypatch.setattr(buffer, "close", fail_close)
+    try:
+        with pytest.raises(KeyboardInterrupt, match="operation cancelled"):
+            with buffer:
+                raise KeyboardInterrupt("operation cancelled")
+    finally:
+        monkeypatch.setattr(buffer, "close", real_close)
+        buffer.close()
 
 
 def test_line_buffer_clone_survives_original_close():
@@ -564,6 +646,28 @@ def test_line_buffer_handles_empty_generated_chunks():
     with LineBuffer.from_chunks([]) as buffer:
         assert uses_mapped_storage(buffer) is False
         assert len(buffer) == 0
+
+
+def test_line_buffer_preserves_explicit_unterminated_line_chunks():
+    """Explicit line chunks remain separately addressable without delimiters."""
+    with LineBuffer.from_line_chunks([b"alpha", b"beta\n"]) as buffer:
+        assert len(buffer) == 2
+        assert buffer[0] == b"alpha"
+        assert buffer[1] == b"beta\n"
+        assert buffer.to_bytes() == b"alphabeta\n"
+
+
+def test_explicit_line_buffer_clone_preserves_unterminated_boundaries():
+    """Cloning an explicit line buffer retains its supplied line framing."""
+    original = LineBuffer.from_line_chunks([b"alpha", b"beta\n"])
+    clone = original.clone()
+
+    original.close()
+
+    assert len(clone) == 2
+    assert clone[0] == b"alpha"
+    assert clone[1] == b"beta\n"
+    clone.close()
 
 
 def test_line_buffer_rejects_non_byte_chunks():

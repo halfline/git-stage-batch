@@ -371,6 +371,17 @@ single-file review permits only action groups completely shown on the selected
 pages. These checks prevent an identifier from acting on an unseen or stale
 line.
 
+Legacy metadata can lack an explicit replacement unit for a multi-line new
+side. When a merge action selects the inferred deletion/first-line pair, the
+transient selected ownership carries the rest of that contiguous presence run
+as the same replacement. This completion is not written back to batch metadata,
+and reset keeps its original fine-grained ownership units. If a stronger merge
+proof newly makes a visual replacement containing apply-capable and reset-only
+children actionable as one composite, an older generated all-other-actions
+command is also accepted for that composite. The compatibility completion is
+used only when the command selects every other action-capable identifier;
+ordinary partial selections do not acquire omitted changes.
+
 ## How `include --from` and `apply --from` add saved changes
 
 `include --from <name>` changes both the index and working tree.
@@ -598,6 +609,16 @@ agree. The selected ranges are reconstructed rather than duplicated. One
 optional application boolean records that the overlay is still bound to its
 original apply-time index target; index drift or session rebinding removes that
 authority. This changes no canonical batch metadata.
+
+Older batches can express the same relationship without a stored replacement
+unit: a deletion immediately before a contiguous presence range is its legacy
+replacement form. Reversal couples the live suffix of that range to the
+deletion just as merge does. This lets it remove the new side and restore the
+old side without expanding a historical whole-file replacement hunk over an
+unowned neighboring line. Candidate suffixes in each disjoint presence range
+are scanned together, so overlapping legacy claims do not repeatedly scan the
+same source lines.
+
 The same refusal rule applies: when the current file no longer provides one
 safe reversal, the command stops without guessing.
 

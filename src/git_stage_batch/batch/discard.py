@@ -38,6 +38,7 @@ from ..core.buffer import (
 )
 from ..core.line_selection import LineRanges
 from ..core.mapped_storage import MappedRecordVector, sort_mapped_records
+from ..core.resource_cleanup import close_resources_preserving_first
 from ..editor.line_endings import (
     choose_line_ending,
     restore_line_endings_in_chunks,
@@ -74,9 +75,14 @@ def _discard_result_line_ending_from_lines(
 
 def discard_batch_from_line_sequences_as_buffer(
     source_lines: Sequence[bytes],
-    ownership: 'BatchOwnership',
+    ownership: "BatchOwnership",
     working_lines: Sequence[bytes],
     baseline_lines: Sequence[bytes],
+    *,
+    trusted_presence_lines: LineRanges | None = None,
+    trusted_target_lines: Sequence[bytes] | None = None,
+    applied_presence_lines: LineRanges | None = None,
+    index_preimage_presence_lines: LineRanges | None = None,
 ) -> LineBuffer:
     """Discard ownership and return a buffer with destination line endings."""
     result_line_ending = _discard_result_line_ending_from_lines(
@@ -87,6 +93,11 @@ def discard_batch_from_line_sequences_as_buffer(
     normalized_source_lines = normalize_line_sequence_endings(source_lines)
     normalized_working_lines = normalize_line_sequence_endings(working_lines)
     normalized_baseline_lines = normalize_line_sequence_endings(baseline_lines)
+    normalized_trusted_target_lines = (
+        None
+        if trusted_target_lines is None
+        else normalize_line_sequence_endings(trusted_target_lines)
+    )
     return LineBuffer.from_chunks(
         restore_line_endings_in_chunks(
             _discard_batch_line_chunks(
@@ -94,6 +105,10 @@ def discard_batch_from_line_sequences_as_buffer(
                 ownership,
                 normalized_working_lines,
                 normalized_baseline_lines,
+                trusted_presence_lines=trusted_presence_lines,
+                trusted_target_lines=normalized_trusted_target_lines,
+                applied_presence_lines=applied_presence_lines,
+                index_preimage_presence_lines=(index_preimage_presence_lines),
             ),
             result_line_ending,
         ),
@@ -102,27 +117,40 @@ def discard_batch_from_line_sequences_as_buffer(
 
 def _discard_batch_line_chunks(
     source_lines: AcquirableLineSequence[bytes],
-    ownership: 'BatchOwnership',
+    ownership: "BatchOwnership",
     working_lines: AcquirableLineSequence[bytes],
     baseline_lines: AcquirableLineSequence[bytes],
+    *,
+    trusted_presence_lines: LineRanges | None = None,
+    trusted_target_lines: AcquirableLineSequence[bytes] | None = None,
+    applied_presence_lines: LineRanges | None = None,
+    index_preimage_presence_lines: LineRanges | None = None,
 ) -> Iterator[bytes]:
     """Discard ownership from normalized byte-line sequences."""
-    with (
-        source_lines.acquire_lines() as acquired_source_lines,
-        working_lines.acquire_lines() as acquired_working_lines,
-        baseline_lines.acquire_lines() as acquired_baseline_lines,
-    ):
+    with ExitStack() as stack:
+        acquired_source_lines = stack.enter_context(source_lines.acquire_lines())
+        acquired_working_lines = stack.enter_context(working_lines.acquire_lines())
+        acquired_baseline_lines = stack.enter_context(baseline_lines.acquire_lines())
+        acquired_trusted_target_lines = (
+            None
+            if trusted_target_lines is None
+            else stack.enter_context(trusted_target_lines.acquire_lines())
+        )
         yield from _discard_batch_acquired_line_chunks(
             acquired_source_lines,
             ownership,
             acquired_working_lines,
             acquired_baseline_lines,
+            trusted_presence_lines=trusted_presence_lines,
+            trusted_target_lines=acquired_trusted_target_lines,
+            applied_presence_lines=applied_presence_lines,
+            index_preimage_presence_lines=(index_preimage_presence_lines),
         )
 
 
 def _discard_batch_acquired_line_chunks(
     source_lines: Sequence[bytes],
-    ownership: 'BatchOwnership',
+    ownership: "BatchOwnership",
     working_lines: Sequence[bytes],
     baseline_lines: Sequence[bytes],
     *,
@@ -141,16 +169,12 @@ def _discard_batch_acquired_line_chunks(
         source_to_trusted_target = (
             None
             if trusted_target_lines is None
-            else stack.enter_context(
-                match_lines(source_lines, trusted_target_lines)
-            )
+            else stack.enter_context(match_lines(source_lines, trusted_target_lines))
         )
         trusted_target_to_working = (
             None
             if trusted_target_lines is None
-            else stack.enter_context(
-                match_lines(trusted_target_lines, working_lines)
-            )
+            else stack.enter_context(match_lines(trusted_target_lines, working_lines))
         )
         trusted_anchor_result = stack.enter_context(
             _acquire_trusted_discard_presence_anchors(
@@ -159,9 +183,7 @@ def _discard_batch_acquired_line_chunks(
                 presence_line_set,
                 trusted_presence_lines,
                 trusted_target_to_working=trusted_target_to_working,
-                index_preimage_presence_lines=(
-                    index_preimage_presence_lines
-                ),
+                index_preimage_presence_lines=(index_preimage_presence_lines),
             )
         )
         source_to_working = stack.enter_context(
@@ -171,17 +193,15 @@ def _discard_batch_acquired_line_chunks(
                 anchor_pairs=trusted_anchor_result[0],
             )
         )
-        preexisting_applied_presence = (
-            _trusted_preexisting_applied_presence(
-                source_lines,
-                working_lines,
-                trusted_target_lines,
-                presence_line_set,
-                applied_presence_lines,
-                source_to_working,
-                source_to_trusted_target,
-                trusted_target_to_working,
-            )
+        preexisting_applied_presence = _trusted_preexisting_applied_presence(
+            source_lines,
+            working_lines,
+            trusted_target_lines,
+            presence_line_set,
+            applied_presence_lines,
+            source_to_working,
+            source_to_trusted_target,
+            trusted_target_to_working,
         )
         with _acquire_discard_baseline_anchor_pairs(
             source_lines,
@@ -225,16 +245,20 @@ def _discard_batch_acquired_line_chunks(
                 realized_entries,
                 presence_line_set,
                 correspondence,
+                indexed_content_lines=working_lines,
                 trusted_insertion_lines=trusted_anchor_result[1],
-                preserved_presence_lines=(
-                    preexisting_applied_presence
-                ),
-                separately_restored_ranges=(
-                    separately_restored_presence_ranges
-                ),
+                preserved_presence_lines=(preexisting_applied_presence),
+                separately_restored_ranges=(separately_restored_presence_ranges),
             )
             if updated_entries is not realized_entries:
-                realized_entries.close()
+                try:
+                    realized_entries.close()
+                except BaseException:
+                    close_resources_preserving_first(
+                        (updated_entries,),
+                        suppress_errors=True,
+                    )
+                    raise
             realized_entries = updated_entries
 
             updated_entries = _restore_absence_constraints(
@@ -244,13 +268,25 @@ def _discard_batch_acquired_line_chunks(
                 trusted_target_lines,
             )
             if updated_entries is not realized_entries:
-                realized_entries.close()
+                try:
+                    realized_entries.close()
+                except BaseException:
+                    close_resources_preserving_first(
+                        (updated_entries,),
+                        suppress_errors=True,
+                    )
+                    raise
             realized_entries = updated_entries
 
             yield from _realized_entry_content_chunks(realized_entries)
-        finally:
-            realized_entries.close()
-
+        except BaseException:
+            close_resources_preserving_first(
+                (realized_entries,),
+                suppress_errors=True,
+            )
+            raise
+        else:
+            close_resources_preserving_first((realized_entries,))
 
 
 @contextmanager
@@ -265,10 +301,12 @@ def _acquire_trusted_discard_presence_anchors(
 ) -> Iterator[tuple[Sequence[tuple[int, int]], LineRanges]]:
     """Return exact equal-line anchors authorized by fresh apply provenance."""
     workspace = MatcherWorkspace()
+    scope_completed = False
     try:
         anchors = workspace.record_vector(presence_lines.count(), "QQ")
         if not trusted_presence_lines:
             yield cast(Sequence[tuple[int, int]], anchors), LineRanges.empty()
+            scope_completed = True
             return
 
         trusted = presence_lines.intersection(trusted_presence_lines)
@@ -286,22 +324,18 @@ def _acquire_trusted_discard_presence_anchors(
                     and trusted_target_to_working is not None
                 ):
                     if introduced_occurrence_index is None:
-                        introduced_occurrence_index = (
-                            LinePayloadOccurrenceIndex(
-                                workspace,
-                                working_lines,
-                                normalize_payloads=False,
-                                target_indexes=(
-                                    target_index
-                                    for target_index in range(
-                                        len(working_lines)
-                                    )
-                                    if trusted_target_to_working.get_source_line_from_target_line(
-                                        target_index + 1
-                                    )
-                                    is None
-                                ),
-                            )
+                        introduced_occurrence_index = LinePayloadOccurrenceIndex(
+                            workspace,
+                            working_lines,
+                            normalize_payloads=False,
+                            target_indexes=(
+                                target_index
+                                for target_index in range(len(working_lines))
+                                if trusted_target_to_working.get_source_line_from_target_line(
+                                    target_index + 1
+                                )
+                                is None
+                            ),
                         )
                     effective_occurrence_index = introduced_occurrence_index
                 elif effective_occurrence_index is None:
@@ -325,8 +359,13 @@ def _acquire_trusted_discard_presence_anchors(
             _source_ranges_from_sorted_anchors(anchors)
         )
         yield cast(Sequence[tuple[int, int]], anchors), anchored_lines
+        scope_completed = True
     finally:
-        workspace.close()
+        close_resources_preserving_first(
+            (workspace,),
+            suppress_errors=not scope_completed,
+        )
+
 
 def _strictly_increasing_anchor_pairs(
     anchors: Sequence[tuple[int, ...]],
@@ -339,6 +378,7 @@ def _strictly_increasing_anchor_pairs(
         previous_source = source_line
         previous_target = target_line
     return True
+
 
 def _source_ranges_from_sorted_anchors(
     anchors: Sequence[tuple[int, ...]],
@@ -357,6 +397,7 @@ def _source_ranges_from_sorted_anchors(
         pending_start = pending_end = source_line
     if pending_start is not None and pending_end is not None:
         yield pending_start, pending_end
+
 
 class _TrustedPreexistingAppliedPresence(Container[int]):
     """Membership proof for applied source lines inherited from the index."""
@@ -388,15 +429,11 @@ class _TrustedPreexistingAppliedPresence(Container[int]):
             or source_line not in self._applied_presence_lines
         ):
             return False
-        trusted_line = (
-            self._source_to_trusted_target.get_target_line_from_source_line(
-                source_line
-            )
+        trusted_line = self._source_to_trusted_target.get_target_line_from_source_line(
+            source_line
         )
-        working_line = (
-            self._source_to_working.get_target_line_from_source_line(
-                source_line
-            )
+        working_line = self._source_to_working.get_target_line_from_source_line(
+            source_line
         )
         return (
             trusted_line is not None
@@ -409,6 +446,7 @@ class _TrustedPreexistingAppliedPresence(Container[int]):
             == self._trusted_target_lines[trusted_line - 1]
             == self._working_lines[working_line - 1]
         )
+
 
 def _trusted_preexisting_applied_presence(
     source_lines: Sequence[bytes],
@@ -439,6 +477,7 @@ def _trusted_preexisting_applied_presence(
         trusted_target_to_working,
     )
 
+
 def _build_realized_entries_for_discard(
     source_lines: Sequence[bytes],
     working_lines: Sequence[bytes],
@@ -456,170 +495,6 @@ def _build_realized_entries_for_discard(
     )
 
     return result
-
-
-def _containing_source_range_index(
-    ranges: Sequence[tuple[int, int]],
-    source_line: int,
-) -> int | None:
-    """Return the normalized range containing one source line."""
-    lower = 0
-    upper = len(ranges)
-    while lower < upper:
-        middle = (lower + upper) // 2
-        if ranges[middle][0] <= source_line:
-            lower = middle + 1
-        else:
-            upper = middle
-    range_index = lower - 1
-    if range_index < 0 or source_line > ranges[range_index][1]:
-        return None
-    return range_index
-
-
-def _normalize_mapped_line_ranges(ranges: MappedRecordVector) -> None:
-    """Sort and compact inclusive line ranges in mapped storage."""
-    if len(ranges) > 1:
-        sort_mapped_records(ranges)
-    retained_count = 0
-    for source_start, source_end in ranges:
-        if retained_count:
-            previous_start, previous_end = ranges[retained_count - 1]
-            if source_start <= previous_end + 1:
-                ranges[retained_count - 1] = (
-                    previous_start,
-                    max(previous_end, source_end),
-                )
-                continue
-        ranges[retained_count] = (source_start, source_end)
-        retained_count += 1
-    ranges.truncate(retained_count)
-
-
-def _build_realized_source_boundary_index(
-    workspace: MatcherWorkspace,
-    entries: RealizedEntries,
-) -> MappedRecordVector:
-    """Index every realized source line in storage-backed sorted records."""
-    boundaries = workspace.record_vector(len(entries), "QQQ")
-    for run in entries.provenance_runs():
-        if run.source_start == 0:
-            continue
-        run_length = run.dest_end - run.dest_start
-        for offset in range(run_length):
-            boundaries.append((
-                run.source_start + offset,
-                run.dest_start + offset + 1,
-                int(run.is_claimed),
-            ))
-    sort_mapped_records(boundaries)
-    return boundaries
-
-
-def _first_source_boundary_record(
-    boundaries: Sequence[tuple[int, ...]],
-    source_line: int,
-) -> int:
-    """Return the first boundary record for or after one source line."""
-    lower = 0
-    upper = len(boundaries)
-    while lower < upper:
-        middle = (lower + upper) // 2
-        if boundaries[middle][0] < source_line:
-            lower = middle + 1
-        else:
-            upper = middle
-    return lower
-
-
-def _indexed_boundary_after_source_line(
-    boundaries: Sequence[tuple[int, ...]],
-    source_line: int | None,
-) -> int:
-    """Resolve one source boundary with the standard ambiguity semantics."""
-    if source_line is None:
-        return 0
-
-    first_record = _first_source_boundary_record(boundaries, source_line)
-    record_index = first_record
-    matching_count = 0
-    claimed_count = 0
-    matching_boundary = 0
-    claimed_boundary = 0
-    while (
-        record_index < len(boundaries)
-        and boundaries[record_index][0] == source_line
-    ):
-        _record_source_line, boundary, is_claimed = boundaries[record_index]
-        matching_count += 1
-        matching_boundary = boundary
-        if is_claimed:
-            claimed_count += 1
-            claimed_boundary = boundary
-        record_index += 1
-
-    if matching_count == 0:
-        raise _MissingAnchorError(
-            _(
-                "Cannot locate anchor boundary after source line {line}: "
-                "anchor not present in realized content"
-            ).format(line=source_line)
-        )
-    if matching_count == 1:
-        return matching_boundary
-    if claimed_count == 1:
-        return claimed_boundary
-    if claimed_count == 0:
-        raise _AmbiguousAnchorError(
-            ngettext(
-                "Anchor ambiguity: source line {line} appears {count} time "
-                "in realized content but is not claimed",
-                "Anchor ambiguity: source line {line} appears {count} times "
-                "in realized content but none are claimed",
-                matching_count,
-            ).format(line=source_line, count=matching_count)
-        )
-    raise _AmbiguousAnchorError(
-        ngettext(
-            "Anchor ambiguity: source line {line} claimed {count} time",
-            "Anchor ambiguity: source line {line} claimed {count} times",
-            claimed_count,
-        ).format(line=source_line, count=claimed_count)
-    )
-
-
-def _line_sequence_present_at_boundary(
-    lines: Sequence[bytes],
-    boundary: int,
-    sequence: Sequence[bytes],
-) -> bool:
-    """Return whether normalized bytes are present at one indexed boundary."""
-    if boundary < 0 or boundary + len(sequence) > len(lines):
-        return False
-    return all(
-        normalize_line_endings(lines[boundary + offset])
-        == normalize_line_endings(content)
-        for offset, content in enumerate(sequence)
-    )
-
-
-def _append_realized_range_from_buffer(
-    destination: RealizedEntries,
-    source: RealizedEntries,
-    source_lines: Sequence[bytes],
-    start: int,
-    stop: int,
-) -> None:
-    """Copy one realized range without rescanning editor piece runs."""
-    for run in source.provenance_runs(start, stop):
-        destination.append_line_range_from(
-            source_lines,
-            run.dest_start,
-            run.dest_end,
-            source_line_start=run.source_line_at(run.dest_start),
-            target_line_start=run.target_line_at(run.dest_start),
-            is_claimed=run.is_claimed,
-        )
 
 
 def _trusted_index_replacement_restore_bounds(
@@ -693,15 +568,11 @@ def _trusted_index_replacement_restore_bounds(
         working_after = source_to_working.get_target_line_from_source_line(
             after_source_line
         )
-        trusted_before = (
-            source_to_trusted_target.get_target_line_from_source_line(
-                before_source_line
-            )
+        trusted_before = source_to_trusted_target.get_target_line_from_source_line(
+            before_source_line
         )
-        trusted_after = (
-            source_to_trusted_target.get_target_line_from_source_line(
-                after_source_line
-            )
+        trusted_after = source_to_trusted_target.get_target_line_from_source_line(
+            after_source_line
         )
         if (
             working_before is None
@@ -714,24 +585,17 @@ def _trusted_index_replacement_restore_bounds(
                 trusted_before
             )
             != working_before
-            or trusted_target_to_working.get_target_line_from_source_line(
-                trusted_after
-            )
+            or trusted_target_to_working.get_target_line_from_source_line(trusted_after)
             != working_after
         ):
             return None
         working_start = working_before
-        for offset, source_line in enumerate(
-            range(source_start, source_end + 1)
-        ):
+        for offset, source_line in enumerate(range(source_start, source_end + 1)):
             working_line = working_start + offset + 1
             if (
-                source_to_working.get_target_line_from_source_line(
-                    source_line
-                )
+                source_to_working.get_target_line_from_source_line(source_line)
                 != working_line
-                or source_lines[source_line - 1]
-                != working_lines[working_line - 1]
+                or source_lines[source_line - 1] != working_lines[working_line - 1]
             ):
                 return None
         return trusted_before, trusted_after - 1
@@ -803,10 +667,7 @@ def _trusted_index_replacement_group_restore_bounds(
             source_start, source_end = claimed_ranges[0]
             if (
                 source_end > len(source_lines)
-                or (
-                    next_source_line is not None
-                    and source_start != next_source_line
-                )
+                or (next_source_line is not None and source_start != next_source_line)
                 or any(
                     source_line not in index_preimage_presence_lines
                     for source_line in range(source_start, source_end + 1)
@@ -821,9 +682,7 @@ def _trusted_index_replacement_group_restore_bounds(
             workspace.close_resource(claimed_ranges)
 
         deletion_line_count += len(claim.content_lines)
-        next_baseline_after_line = (
-            claim_reference.after_line + len(claim.content_lines)
-        )
+        next_baseline_after_line = claim_reference.after_line + len(claim.content_lines)
 
     if (
         first_source_line is None
@@ -854,12 +713,10 @@ def _trusted_index_replacement_group_restore_bounds(
         or trusted_after is None
         or working_after - working_before - 1 != selected_line_count
         or trusted_after - trusted_before - 1 != deletion_line_count
-        or trusted_target_to_working.get_target_line_from_source_line(
-            trusted_before
-        ) != working_before
-        or trusted_target_to_working.get_target_line_from_source_line(
-            trusted_after
-        ) != working_after
+        or trusted_target_to_working.get_target_line_from_source_line(trusted_before)
+        != working_before
+        or trusted_target_to_working.get_target_line_from_source_line(trusted_after)
+        != working_after
     ):
         return True, None
 
@@ -870,11 +727,9 @@ def _trusted_index_replacement_group_restore_bounds(
         if (
             source_to_working.get_target_line_from_source_line(source_line)
             != working_line
-            or source_to_trusted_target.get_target_line_from_source_line(
-                source_line
-            ) is not None
-            or source_lines[source_line - 1]
-            != working_lines[working_line - 1]
+            or source_to_trusted_target.get_target_line_from_source_line(source_line)
+            is not None
+            or source_lines[source_line - 1] != working_lines[working_line - 1]
         ):
             return True, None
         source_line += 1
@@ -907,7 +762,8 @@ def _replacement_deletion_restore_records(
         length=deletion_count,
     )
     separately_restored_ranges = workspace.record_vector(
-        deletion_count + sum(
+        deletion_count
+        + sum(
             _replacement_source_range_capacity(unit.presence_lines)
             for unit in ownership.replacement_units
         ),
@@ -983,9 +839,7 @@ def _replacement_deletion_restore_records(
                 assert claimed_ranges is not None
                 try:
                     for source_start, source_end in claimed_ranges:
-                        separately_restored_ranges.append(
-                            (source_start, source_end)
-                        )
+                        separately_restored_ranges.append((source_start, source_end))
                 finally:
                     workspace.close_resource(claimed_ranges)
                 restore_position = next_restore_position
@@ -1010,9 +864,7 @@ def _replacement_deletion_restore_records(
         try:
             if claimed_ranges is not None:
                 has_mapped_presence = any(
-                    source_to_working.get_target_line_from_source_line(
-                        source_line
-                    )
+                    source_to_working.get_target_line_from_source_line(source_line)
                     is not None
                     and (
                         preserved_presence_lines is None
@@ -1035,11 +887,7 @@ def _replacement_deletion_restore_records(
                         and replacement_counts_cover_origin(
                             unit.origin,
                             source_end - source_start + 1,
-                            len(
-                                ownership.deletions[
-                                    deletion_index
-                                ].content_lines
-                            ),
+                            len(ownership.deletions[deletion_index].content_lines),
                         )
                         and all(
                             source_line in index_preimage_presence_lines
@@ -1085,10 +933,7 @@ def _replacement_deletion_restore_records(
                         flag == 3
                         or (
                             records[deletion_index][0] != 3
-                            and (
-                                flag == 2
-                                or records[deletion_index][0] == 0
-                            )
+                            and (flag == 2 or records[deletion_index][0] == 0)
                         )
                     )
                 ):
@@ -1110,9 +955,7 @@ def _replacement_deletion_restore_records(
                 and claimed_ranges is not None
             ):
                 for source_start, source_end in claimed_ranges:
-                    separately_restored_ranges.append(
-                        (source_start, source_end)
-                    )
+                    separately_restored_ranges.append((source_start, source_end))
         finally:
             if claimed_ranges is not None:
                 workspace.close_resource(claimed_ranges)
@@ -1175,11 +1018,13 @@ def _append_live_legacy_replacement_restore_records(
             range_start, range_end = presence_ranges[range_index]
             if not range_start <= replacement_start <= range_end:
                 continue
-            candidates.append((
-                range_index,
-                replacement_start,
-                deletion_index,
-            ))
+            candidates.append(
+                (
+                    range_index,
+                    replacement_start,
+                    deletion_index,
+                )
+            )
 
         if not candidates:
             return
@@ -1192,12 +1037,9 @@ def _append_live_legacy_replacement_restore_records(
             next_source_line = range_end
             suffix_is_live = False
             while (
-                candidate_index >= 0
-                and candidates[candidate_index][0] == range_index
+                candidate_index >= 0 and candidates[candidate_index][0] == range_index
             ):
-                _, replacement_start, deletion_index = candidates[
-                    candidate_index
-                ]
+                _, replacement_start, deletion_index = candidates[candidate_index]
                 while next_source_line >= replacement_start:
                     if source_to_working.get_target_line_from_source_line(
                         next_source_line
@@ -1213,18 +1055,164 @@ def _append_live_legacy_replacement_restore_records(
                     0,
                 )
                 if suffix_is_live:
-                    separately_restored_ranges.append((
-                        replacement_start,
-                        range_end,
-                    ))
+                    separately_restored_ranges.append(
+                        (
+                            replacement_start,
+                            range_end,
+                        )
+                    )
                 candidate_index -= 1
     finally:
         workspace.close_resource(candidates)
 
 
+def _containing_source_range_index(
+    ranges: Sequence[tuple[int, int]],
+    source_line: int,
+) -> int | None:
+    """Return the normalized range containing one source line."""
+    lower = 0
+    upper = len(ranges)
+    while lower < upper:
+        middle = (lower + upper) // 2
+        if ranges[middle][0] <= source_line:
+            lower = middle + 1
+        else:
+            upper = middle
+    range_index = lower - 1
+    if range_index < 0 or source_line > ranges[range_index][1]:
+        return None
+    return range_index
+
+
+def _normalize_mapped_line_ranges(ranges: MappedRecordVector) -> None:
+    """Sort and compact inclusive line ranges in mapped storage."""
+    if len(ranges) > 1:
+        sort_mapped_records(ranges)
+    retained_count = 0
+    for source_start, source_end in ranges:
+        if retained_count:
+            previous_start, previous_end = ranges[retained_count - 1]
+            if source_start <= previous_end + 1:
+                ranges[retained_count - 1] = (
+                    previous_start,
+                    max(previous_end, source_end),
+                )
+                continue
+        ranges[retained_count] = (source_start, source_end)
+        retained_count += 1
+    ranges.truncate(retained_count)
+
+
+def _build_realized_source_boundary_index(
+    workspace: MatcherWorkspace,
+    entries: RealizedEntries,
+) -> MappedRecordVector:
+    """Index every realized source line in storage-backed sorted records."""
+    boundaries = workspace.record_vector(len(entries), "QQQ")
+    for run in entries.provenance_runs():
+        if run.source_start == 0:
+            continue
+        run_length = run.dest_end - run.dest_start
+        for offset in range(run_length):
+            boundaries.append(
+                (
+                    run.source_start + offset,
+                    run.dest_start + offset + 1,
+                    int(run.is_claimed),
+                )
+            )
+    sort_mapped_records(boundaries)
+    return boundaries
+
+
+def _first_source_boundary_record(
+    boundaries: Sequence[tuple[int, ...]],
+    source_line: int,
+) -> int:
+    """Return the first boundary record for or after one source line."""
+    lower = 0
+    upper = len(boundaries)
+    while lower < upper:
+        middle = (lower + upper) // 2
+        if boundaries[middle][0] < source_line:
+            lower = middle + 1
+        else:
+            upper = middle
+    return lower
+
+
+def _indexed_boundary_after_source_line(
+    boundaries: Sequence[tuple[int, ...]],
+    source_line: int | None,
+) -> int:
+    """Resolve one source boundary with the standard ambiguity semantics."""
+    if source_line is None:
+        return 0
+
+    first_record = _first_source_boundary_record(boundaries, source_line)
+    record_index = first_record
+    matching_count = 0
+    claimed_count = 0
+    matching_boundary = 0
+    claimed_boundary = 0
+    while record_index < len(boundaries) and boundaries[record_index][0] == source_line:
+        _record_source_line, boundary, is_claimed = boundaries[record_index]
+        matching_count += 1
+        matching_boundary = boundary
+        if is_claimed:
+            claimed_count += 1
+            claimed_boundary = boundary
+        record_index += 1
+
+    if matching_count == 0:
+        raise _MissingAnchorError(
+            _(
+                "Cannot locate anchor boundary after source line {line}: "
+                "anchor not present in realized content"
+            ).format(line=source_line)
+        )
+    if matching_count == 1:
+        return matching_boundary
+    if claimed_count == 1:
+        return claimed_boundary
+    if claimed_count == 0:
+        raise _AmbiguousAnchorError(
+            ngettext(
+                "Anchor ambiguity: source line {line} appears {count} time "
+                "in realized content but is not claimed",
+                "Anchor ambiguity: source line {line} appears {count} times "
+                "in realized content but none are claimed",
+                matching_count,
+            ).format(line=source_line, count=matching_count)
+        )
+    raise _AmbiguousAnchorError(
+        ngettext(
+            "Anchor ambiguity: source line {line} claimed {count} time",
+            "Anchor ambiguity: source line {line} claimed {count} times",
+            claimed_count,
+        ).format(line=source_line, count=claimed_count)
+    )
+
+
+def _line_sequence_present_at_boundary(
+    lines: Sequence[bytes],
+    boundary: int,
+    sequence: Sequence[bytes],
+) -> bool:
+    """Return whether normalized bytes are present at one indexed boundary."""
+    if boundary < 0 or boundary + len(sequence) > len(lines):
+        return False
+    return all(
+        normalize_line_endings(lines[boundary + offset])
+        == normalize_line_endings(content)
+        for offset, content in enumerate(sequence)
+    )
+
+
 def _restore_absence_constraints(
     entries: Sequence[_RealizedEntry],
-    deletion_claims: list['AbsenceClaim'],
+    deletion_claims: list["AbsenceClaim"],
     replacement_restore_records: Sequence[tuple[int, ...]] | None = None,
     trusted_target_lines: Sequence[bytes] | None = None,
 ) -> RealizedEntries:
@@ -1240,9 +1228,7 @@ def _restore_absence_constraints(
             and replacement_restore_records[claim_index][0] == 3
         ):
             if trusted_target_lines is None:
-                raise ValueError(
-                    "trusted replacement restoration omitted target lines"
-                )
+                raise ValueError("trusted replacement restoration omitted target lines")
             return LineRangeView(
                 trusted_target_lines,
                 replacement_restore_records[claim_index][1],
@@ -1250,121 +1236,113 @@ def _restore_absence_constraints(
             )
         return normalize_line_sequence_endings(claim.content_lines)
 
+    indexed_result_lines: LineBuffer | None = None
+    restored_claim_lines: LineBuffer | None = None
+    restored: RealizedEntries | None = None
+    workspace: MatcherWorkspace | None = None
     try:
-        indexed_result_lines = LineBuffer.from_line_chunks(
-            result.content_chunks()
+        indexed_result_lines = LineBuffer.from_line_chunks(result.content_chunks())
+        workspace = MatcherWorkspace()
+        source_boundaries = _build_realized_source_boundary_index(
+            workspace,
+            result,
         )
-    except BaseException:
-        if result is not entries:
-            result.close()
-        raise
-    indexed_result_is_retained = False
-    try:
-        with MatcherWorkspace() as workspace:
-            source_boundaries = _build_realized_source_boundary_index(
-                workspace,
-                result,
-            )
-            insertions = workspace.record_vector(len(deletion_claims), "QQ")
-            previous_anchor: int | None | object = object()
-            anchor_offset = 0
-            for claim_index, claim in enumerate(deletion_claims):
-                if (
-                    replacement_restore_records is not None
-                    and replacement_restore_records[claim_index][0] == 1
-                ):
-                    continue
-                content_lines = restored_content_lines(claim_index)
-                try:
-                    boundary = _indexed_boundary_after_source_line(
-                        source_boundaries,
-                        claim.anchor_line,
-                    )
-                except _MissingAnchorError:
-                    continue
-                except _AmbiguousAnchorError:
-                    raise
-
-                # Split children can share the source line before their old
-                # content. Existing children advance within the target;
-                # missing children stay queued there in recorded order.
-                if claim.anchor_line != previous_anchor:
-                    previous_anchor = claim.anchor_line
-                    anchor_offset = 0
-                boundary += anchor_offset
-                if _line_sequence_present_at_boundary(
-                    indexed_result_lines,
-                    boundary,
-                    content_lines,
-                ):
-                    anchor_offset += len(content_lines)
-                    continue
-                insertions.append((boundary, claim_index))
-
-            if not insertions:
-                return result
-
-            sort_mapped_records(insertions)
-            restored_claim_lines = LineBuffer.from_line_chunks(
-                line
-                for _boundary, claim_index in insertions
-                for line in restored_content_lines(claim_index)
-            )
-            restored_claim_lines_are_retained = False
+        insertions = workspace.record_vector(len(deletion_claims), "QQ")
+        previous_anchor: int | None | object = object()
+        anchor_offset = 0
+        for claim_index, claim in enumerate(deletion_claims):
+            if (
+                replacement_restore_records is not None
+                and replacement_restore_records[claim_index][0] == 1
+            ):
+                continue
+            content_lines = restored_content_lines(claim_index)
             try:
-                restored = RealizedEntries()
-                try:
-                    restored.retain_line_buffer(indexed_result_lines)
-                    indexed_result_is_retained = True
-                    restored.retain_line_buffer(restored_claim_lines)
-                    restored_claim_lines_are_retained = True
-                    copy_start = 0
-                    restored_claim_offset = 0
-                    for boundary, claim_index in insertions:
-                        if copy_start < boundary:
-                            _append_realized_range_from_buffer(
-                                restored,
-                                result,
-                                indexed_result_lines,
-                                copy_start,
-                                boundary,
-                            )
-                            copy_start = boundary
-                        claim_line_count = len(
-                            restored_content_lines(claim_index)
-                        )
-                        restored_claim_end = (
-                            restored_claim_offset + claim_line_count
-                        )
-                        restored.append_line_range_from(
-                            restored_claim_lines,
-                            restored_claim_offset,
-                            restored_claim_end,
-                            source_line_start=None,
-                            is_claimed=False,
-                        )
-                        restored_claim_offset = restored_claim_end
-                    if copy_start < len(result):
-                        _append_realized_range_from_buffer(
-                            restored,
-                            result,
-                            indexed_result_lines,
-                            copy_start,
-                            len(result),
-                        )
-                    if result is not entries:
-                        result.close()
-                    return restored
-                except BaseException:
-                    restored.close()
-                    raise
-            finally:
-                if not restored_claim_lines_are_retained:
-                    restored_claim_lines.close()
-    except BaseException:
+                boundary = _indexed_boundary_after_source_line(
+                    source_boundaries,
+                    claim.anchor_line,
+                )
+            except _MissingAnchorError:
+                continue
+
+            # Split children can share the source line before their old
+            # content. Existing children advance within the target;
+            # missing children stay queued there in recorded order.
+            if claim.anchor_line != previous_anchor:
+                previous_anchor = claim.anchor_line
+                anchor_offset = 0
+            boundary += anchor_offset
+            if _line_sequence_present_at_boundary(
+                indexed_result_lines,
+                boundary,
+                content_lines,
+            ):
+                anchor_offset += len(content_lines)
+                continue
+            insertions.append((boundary, claim_index))
+
+        if not insertions:
+            workspace.close()
+            workspace = None
+            indexed_result_lines.close()
+            indexed_result_lines = None
+            return result
+
+        sort_mapped_records(insertions)
+        restored_claim_lines = LineBuffer.from_line_chunks(
+            line
+            for _boundary, claim_index in insertions
+            for line in restored_content_lines(claim_index)
+        )
+        restored = RealizedEntries()
+        indexed_content_lines = indexed_result_lines
+        restored_content_buffer = restored_claim_lines
+        restored.retain_line_buffer(indexed_content_lines)
+        indexed_result_lines = None
+        restored.retain_line_buffer(restored_content_buffer)
+        restored_claim_lines = None
+        copy_start = 0
+        restored_claim_offset = 0
+        for boundary, claim_index in insertions:
+            if copy_start < boundary:
+                restored.copy_provenance_slice_from(
+                    result,
+                    indexed_content_lines,
+                    copy_start,
+                    boundary,
+                )
+                copy_start = boundary
+            claim_line_count = len(restored_content_lines(claim_index))
+            restored_claim_end = restored_claim_offset + claim_line_count
+            restored.append_line_range_from(
+                restored_content_buffer,
+                restored_claim_offset,
+                restored_claim_end,
+                source_line_start=None,
+                is_claimed=False,
+            )
+            restored_claim_offset = restored_claim_end
+        if copy_start < len(result):
+            restored.copy_provenance_slice_from(
+                result,
+                indexed_content_lines,
+                copy_start,
+                len(result),
+            )
         if result is not entries:
             result.close()
+        workspace.close()
+        workspace = None
+        return restored
+    except BaseException:
+        close_resources_preserving_first(
+            (
+                restored,
+                restored_claim_lines,
+                indexed_result_lines,
+                workspace,
+                result if result is not entries else None,
+            ),
+            suppress_errors=True,
+        )
         raise
-    finally:
-        if not indexed_result_is_retained:
-            indexed_result_lines.close()

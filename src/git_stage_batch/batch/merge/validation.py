@@ -27,6 +27,7 @@ from ..line_matching.sequence_equality import (
 from .presence_context import (
     PresenceRunPlacement,
     contextual_presence_placements as _contextual_presence_placements,
+    _iter_missing_presence_clusters,
 )
 from .presence_missing_claims import (
     mapped_missing_source_lines as _mapped_missing_source_lines,
@@ -886,26 +887,10 @@ def check_structural_validity(
                 ).format(line=claimed_line, count=len(source_lines))
             )
 
-        if not line_mapping.is_source_line_present(claimed_line):
-            has_context_before = False
-            has_context_after = False
-
-            for check_line in range(claimed_line - 1, 0, -1):
-                if line_mapping.is_source_line_present(check_line):
-                    has_context_before = True
-                    break
-
-            for check_line in range(claimed_line + 1, len(source_lines) + 1):
-                if line_mapping.is_source_line_present(check_line):
-                    has_context_after = True
-                    break
-
-            if not has_context_before and not has_context_after:
-                raise _MergeError(
-                    _("Cannot reliably place claimed line {line}: surrounding context lost").format(
-                        line=claimed_line
-                    )
-                )
+        # The complete-rewrite check above already establishes at least one
+        # mapped source line.  Any missing claimed line therefore has mapped
+        # context on at least one side; rescanning both sides for every claimed
+        # line would add no safety and turns a long missing run quadratic.
 
     has_unmapped_deletion_anchor = False
     has_unmapped_claimed_deletion_anchor = False
@@ -1005,72 +990,72 @@ def _check_unbounded_trailing_context(
         line_mapping,
     )
 
-    for run_start, run_end in missing.ranges():
-        before_source_line = next(
-            (
-                line
-                for line in range(run_start - 1, 0, -1)
-                if line_mapping.is_source_line_present(line)
-            ),
-            None,
-        )
-        after_source_line = next(
-            (
-                line
-                for line in range(run_end + 1, len(source_lines) + 1)
-                if line_mapping.is_source_line_present(line)
-            ),
-            None,
-        )
-        trailing_gap = (
-            after_source_line - run_end - 1
-            if after_source_line is not None
-            else len(source_lines) - run_end
-        )
-        if trailing_gap < 3:
+    missing_ranges = missing.ranges()
+    for cluster in _iter_missing_presence_clusters(missing, line_mapping):
+        if cluster.has_locally_collapsed_target_gap():
             continue
-
+        before_source_line = (
+            None if cluster.before is None else cluster.before[0]
+        )
         before_target_line = (
-            line_mapping.get_target_line_from_source_line(before_source_line)
-            if before_source_line is not None
-            else None
+            None if cluster.before is None else cluster.before[1]
         )
-        after_target_line = (
-            line_mapping.get_target_line_from_source_line(after_source_line)
-            if after_source_line is not None
-            else None
+        after_source_line = None if cluster.after is None else cluster.after[0]
+        after_target_line = None if cluster.after is None else cluster.after[1]
+        deleted_at_terminal_boundary = (
+            sum(
+                len(deletion.content_lines)
+                for deletion in deletions
+                if deletion.anchor_line == before_source_line
+            )
+            if before_target_line is not None and after_target_line is None
+            else 0
         )
 
-        if before_target_line is not None and after_target_line is not None:
-            assert before_source_line is not None
-            assert after_source_line is not None
-            target_span = after_target_line - before_target_line - 1
-            source_span_outside_run = (
-                after_source_line - before_source_line - 1
-                - (run_end - run_start + 1)
+        for run_index in range(
+            cluster.run_start_index,
+            cluster.run_stop_index,
+        ):
+            run_start, run_end = missing_ranges[run_index]
+            trailing_gap = (
+                after_source_line - run_end - 1
+                if after_source_line is not None
+                else len(source_lines) - run_end
             )
+            if trailing_gap < 3:
+                continue
+
+            if before_target_line is not None and after_target_line is not None:
+                assert before_source_line is not None
+                assert after_source_line is not None
+                target_span = after_target_line - before_target_line - 1
+                source_span_outside_run = (
+                    after_source_line - before_source_line - 1
+                    - (run_end - run_start + 1)
+                )
+                if (
+                    target_span < source_span_outside_run
+                    or target_span <= run_end - run_start + 1
+                ):
+                    raise _MergeError(
+                        _(
+                            "Batch was created from a different version of "
+                            "the file"
+                        )
+                    )
+                continue
+
+            if before_target_line is None or after_target_line is not None:
+                continue
+
+            target_tail = len(target_lines) - before_target_line
             if (
-                target_span < source_span_outside_run
-                or target_span <= run_end - run_start + 1
+                target_tail != 0
+                and target_tail > deleted_at_terminal_boundary
             ):
                 raise _MergeError(
                     _("Batch was created from a different version of the file")
                 )
-            continue
-
-        if before_target_line is None or after_target_line is not None:
-            continue
-
-        target_tail = len(target_lines) - before_target_line
-        deleted_at_boundary = sum(
-            len(deletion.content_lines)
-            for deletion in deletions
-            if deletion.anchor_line == before_source_line
-        )
-        if target_tail != 0 and target_tail > deleted_at_boundary:
-            raise _MergeError(
-                _("Batch was created from a different version of the file")
-            )
 
 
 def _first_selected_line(lines: LineSelection) -> int | None:

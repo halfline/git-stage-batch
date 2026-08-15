@@ -64,11 +64,11 @@ These names refer to different file contents. They are not interchangeable.
 | **Current working tree** | The file on disk now. It may differ from both the baseline and the batch source. |
 | **Batch ownership** | A `BatchOwnership` value containing the saved requirements for one text file |
 | **Presence claim** | Batch-source lines that must be present after the saved change is applied |
-| **Absence claim** | Baseline bytes that must be absent after the saved change is applied. The stored metadata key is `deletions`. |
+| **Absence claim** | Bytes that must be absent after the saved change is applied. They normally come from the baseline; a source-alternative claim comes from an explicit live replacement. The stored metadata key is `deletions`. |
 | **Replacement unit** | Stored metadata that ties presence claims and absence claims together because they are the new and old sides of one replacement |
 | **Ownership unit** | An `OwnershipUnit` value derived for display and selection. A replacement or deletion-only value must be selected in full. |
 | **Realized batch content** | The complete file content produced from the baseline, batch source, and ownership. The source uses the word “realized” in names such as `realized_file_content.py`. |
-| **Baseline reference** | Exact before-and-after baseline line positions and bytes recorded for a claim. Merge code uses them only when those positions and bytes still match. |
+| **Baseline reference** | Recorded before-and-after positions and bytes for a claim. They normally describe the baseline; a source-alternative reference describes the post-discard live target. Merge may use the recorded position or a separately proved relocation. |
 | **Attribution** | A calculated answer to which visible working-tree changes are already owned by which batches. It is recalculated; it is not stored as ownership. |
 | **Applied overlay** | Worktree-local, identity-bound provenance that records ownership intentionally restored by `apply --from`. It makes only that applied ownership reviewable and is not canonical batch metadata. |
 | **Display line identifier** | A number printed beside a changed line for a later user selection. It is not a batch-source line number. |
@@ -173,6 +173,10 @@ A text-file entry normally contains:
 
 An absence claim stores the removed bytes in a Git blob and records that blob's
 object identifier. It does not repeat those bytes inline in `batch.json`.
+An explicit transformed discard can also mark an absence claim as a
+`source_alternative`. That old side came from the live replacement payload,
+not the batch baseline, and is always coupled to the owned payload prefix by a
+replacement unit.
 
 Binary files, submodule pointers, and file mode changes use separate file types
 and store only fields applicable to the complete file change. They do not use
@@ -276,6 +280,10 @@ storage modules instead of `text_file_storage.py`.
 `discard --to <name>` records the same saved ownership but also removes the
 selected content from the working tree. Its command path lives in the matching
 discard modules under `commands/selection/` and `commands/file_scope/`.
+When `--as-stdin` preserves the selected lines as an owned payload prefix and
+retains a different suffix in the working tree, the command records those two
+sides as one source-alternative replacement. This keeps a later replay from
+inserting the owned prefix beside the retained alternative.
 
 ## How text ownership is stored
 
@@ -288,14 +296,21 @@ discard modules under `commands/selection/` and `commands/file_scope/`.
 - `replacement_units`: optional links between presence ranges and entries in
   `deletions`
 
-An absence anchor is either a batch-source line after which the baseline bytes
-were removed or `None` for the beginning of the file. The anchor is a placement
+An absence anchor is either the batch-source line after which the old-side bytes
+belong or `None` for the beginning of the file. The anchor is a placement
 boundary, not an instruction to search the whole file and delete the first
 matching text.
 
 The metadata key remains `deletions` for compatibility. Code that loads it
 constructs `AbsenceClaim` values because the stored requirement is “these exact
-baseline bytes must be absent at this boundary.”
+old-side bytes must be absent at this boundary.”
+
+Most absence claims describe baseline bytes. A `source_alternative` claim
+instead describes the exact live side retained by an explicit transformed
+discard. Its saved boundary is measured in that post-discard target, and its
+replacement unit supplies the owned side from the batch source. Source
+advancement remaps the compact anchor and presence ranges without expanding
+either side into Python line objects.
 
 [`batch/ownership/hunk_translation.py`](src/git_stage_batch/batch/ownership/hunk_translation.py)
 and [`batch/ownership/translation.py`](src/git_stage_batch/batch/ownership/translation.py)
@@ -388,8 +403,9 @@ line and every absence claim:
 - a missing claimed run needs surrounding mapped content or an exact recorded
   baseline boundary
 - an absence anchor must still identify the intended structural boundary
-- a replacement fallback requires the recorded baseline bytes at the recorded
-  baseline position
+- a replacement fallback requires the recorded baseline bytes at a verified
+  live boundary
+
 A source-alternative replacement uses the same exact-boundary discipline, but
 its recorded old bytes and boundary come from the post-discard live target. The
 old side must still match there (or at its sole complete relocated identity)
@@ -450,7 +466,7 @@ exact-coordinate responsibilities:
   proves recorded boundaries identify the intended live-target positions and
   supplies safe deletion anchors to structural matching.
 - [`batch/merge/baseline_replacement_edits.py`](src/git_stage_batch/batch/merge/baseline_replacement_edits.py)
-  plans replacement edits at verified baseline positions and records which
+  plans replacement edits at verified live boundaries and records which
   source ranges supply their new content.
 - [`batch/merge/baseline_removal_edits.py`](src/git_stage_batch/batch/merge/baseline_removal_edits.py)
   plans removals that are not part of replacement units and detects when

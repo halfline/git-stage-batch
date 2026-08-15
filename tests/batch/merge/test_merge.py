@@ -12,6 +12,8 @@ import git_stage_batch.batch.merge.candidate_enumeration as candidate_enumeratio
 import git_stage_batch.batch.merge.merge as merge_module
 import git_stage_batch.batch.merge.validation as validation_module
 import git_stage_batch.batch.realization.provenance as provenance_module
+import git_stage_batch.batch.discard as discard_module
+import git_stage_batch.batch.discard_reversal as discard_reversal_module
 from git_stage_batch.batch.merge.baseline_correspondence import (
     RegionKind,
     build_baseline_correspondence,
@@ -307,6 +309,53 @@ def test_realization_removal_planning_avoids_line_scale_python_heap() -> None:
         tracemalloc.stop()
 
     assert peak_heap < _LINE_SCALE_HEAP_LIMIT
+
+
+def test_discard_restored_claim_buffer_survives_borrowed_result() -> None:
+    """A slice should retain restored spool content after its source closes."""
+    claims = [AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])]
+    with RealizedEntries() as entries:
+        entries.append(b"head\n", source_line=1)
+        restored = discard_module._restore_absence_constraints(entries, claims)
+        borrowed = restored.slice(1, 2)
+        restored.close()
+        try:
+            assert borrowed.content_at(0) == b"old\n"
+        finally:
+            borrowed.close()
+
+
+def test_discard_restoration_closes_converted_predecessor(
+    monkeypatch,
+) -> None:
+    """A changed rollback result releases its internally converted store."""
+    captured_entries = []
+    original_conversion = discard_module.as_realized_entries
+
+    def capture_conversion(entries):
+        converted = original_conversion(entries)
+        captured_entries.append(converted)
+        return converted
+
+    monkeypatch.setattr(
+        discard_module,
+        "as_realized_entries",
+        capture_conversion,
+    )
+    entries = [RealizedEntry(b"head\n", source_line=1)]
+
+    restored = discard_module._restore_absence_constraints(
+        entries,
+        [AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])],
+    )
+    try:
+        assert list(restored.content_chunks()) == [b"head\n", b"old\n"]
+        assert len(captured_entries) == 1
+        assert captured_entries[0].closed
+    finally:
+        restored.close()
+
+
 
 
 def test_candidate_comparison_preserves_structural_chunk_boundaries():
@@ -1662,6 +1711,91 @@ class TestMergeLineSequences:
 
         try:
             assert list(result.content_chunks()) == baseline
+        finally:
+            result.close()
+
+    def test_reverse_presence_refuses_mixed_applied_hunk_expansion(self):
+        """Applied rollback must not expand a partly coupled baseline hunk."""
+        baseline = [b"head\n", b"old-a\n", b"old-b\n", b"tail\n"]
+        source = [b"head\n", b"new-a\n", b"new-b\n", b"tail\n"]
+        correspondence = build_baseline_correspondence(baseline, source)
+        assert correspondence.get_region_for_source_line(2).kind == (
+            RegionKind.REPLACE_BY_HUNK
+        )
+        entries = RealizedEntries()
+        entries.append_line_range_from(
+            source,
+            0,
+            len(source),
+            source_line_start=1,
+            target_line_start=1,
+        )
+
+        try:
+            with pytest.raises(MergeError, match="lacking an independent old side"):
+                reverse_presence_constraints(
+                    entries,
+                    {2, 3},
+                    correspondence,
+                    trusted_insertion_lines={2},
+                    separately_restored_ranges=((2, 2),),
+                )
+        finally:
+            entries.close()
+
+    def test_reverse_presence_closes_partial_result_on_failure(
+        self,
+        monkeypatch,
+    ):
+        """A refused rollback must release its partially built output."""
+        created_results = []
+
+        class TrackingRealizedEntries(RealizedEntries):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                created_results.append(self)
+
+        monkeypatch.setattr(
+            discard_reversal_module,
+            "RealizedEntries",
+            TrackingRealizedEntries,
+        )
+        correspondence = build_baseline_correspondence([], [])
+        entries = [RealizedEntry(b"owned\n", source_line=1)]
+
+        with pytest.raises(MergeError, match="no baseline restoration region"):
+            reverse_presence_constraints(entries, {1}, correspondence)
+
+        assert len(created_results) == 1
+        assert created_results[0].closed
+
+    def test_reverse_presence_defers_fully_coupled_applied_hunk(self):
+        """Every coupled line may defer old-side restoration to its claim."""
+        baseline = [b"head\n", b"old-a\n", b"old-b\n", b"tail\n"]
+        source = [b"head\n", b"new-a\n", b"new-b\n", b"tail\n"]
+        correspondence = build_baseline_correspondence(baseline, source)
+        entries = RealizedEntries()
+        entries.append_line_range_from(
+            source,
+            0,
+            len(source),
+            source_line_start=1,
+            target_line_start=1,
+        )
+
+        try:
+            result = reverse_presence_constraints(
+                entries,
+                {2, 3},
+                correspondence,
+                trusted_insertion_lines={2},
+                separately_restored_ranges=((2, 3),),
+            )
+        finally:
+            entries.close()
+
+        try:
+            assert list(result.content_chunks()) == [b"head\n", b"tail\n"]
         finally:
             result.close()
 

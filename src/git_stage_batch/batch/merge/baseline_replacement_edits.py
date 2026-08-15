@@ -85,6 +85,57 @@ def _record_mapped_replacement_lines(
     return has_mapped_line
 
 
+def _mixed_mapped_replacement_bounds(
+    claimed_ranges: Sequence[tuple[int, ...]],
+    mapping: LineMapping,
+    *,
+    minimum_target_start: int,
+) -> tuple[int, int] | None:
+    """Return the target island bounded by one partly mapped source range.
+
+    This proof is reserved for rebuilding saved batch content from its trusted
+    predecessor.  Both immediate source neighbors must map around the island,
+    every mapped claimed line must stay ordered inside it, and no target line
+    in the island may map to source content outside the claimed range.
+    """
+    if len(claimed_ranges) != 1:
+        return None
+    source_start, source_end = claimed_ranges[0]
+    if source_start <= 1 or source_end >= len(mapping.source_to_target):
+        return None
+
+    previous_target = mapping.get_target_line_from_source_line(source_start - 1)
+    next_target = mapping.get_target_line_from_source_line(source_end + 1)
+    if previous_target is None or next_target is None or next_target <= previous_target:
+        return None
+
+    target_start = previous_target
+    target_end = next_target - 1
+    if target_start < minimum_target_start:
+        return None
+    previous_mapped_index = target_start - 1
+    for source_line in range(source_start, source_end + 1):
+        target_line = mapping.get_target_line_from_source_line(source_line)
+        if target_line is None:
+            continue
+        target_index = target_line - 1
+        if (
+            target_index < target_start
+            or target_index >= target_end
+            or target_index <= previous_mapped_index
+        ):
+            return None
+        previous_mapped_index = target_index
+
+    for target_line in range(target_start + 1, target_end + 1):
+        mapped_source_line = mapping.get_source_line_from_target_line(target_line)
+        if mapped_source_line is not None and not (
+            source_start <= mapped_source_line <= source_end
+        ):
+            return None
+    return target_start, target_end
+
+
 def _deletion_target_position(
     claim: AbsenceClaim,
     mapping: LineMapping,
@@ -188,11 +239,14 @@ def _replacement_edit_from_trusted_target(
     origin: ReplacementUnitOrigin | None,
     claimed_ranges: Sequence[tuple[int, ...]],
     source_line_count: int,
+    source_lines: Sequence[bytes] | None,
     working_lines: Sequence[bytes],
     trusted_target_lines: Sequence[bytes] | None,
     source_to_working_mapping: LineMapping | None,
     source_to_trusted_target_mapping: LineMapping | None,
     trusted_target_to_working_mapping: LineMapping | None,
+    *,
+    allow_mapped_source_predecessor: bool,
 ) -> _BaselineRemovalEdit | None:
     """Return a complete replacement span unchanged from a trusted target.
 
@@ -237,15 +291,38 @@ def _replacement_edit_from_trusted_target(
     trusted_before = source_to_trusted_target_mapping.get_target_line_from_source_line(
         before_source_line
     )
+    if (
+        working_before is None
+        or trusted_before is None
+        or trusted_target_to_working_mapping.get_target_line_from_source_line(
+            trusted_before
+        )
+        != working_before
+    ):
+        return None
+
     trusted_after = source_to_trusted_target_mapping.get_target_line_from_source_line(
         after_source_line
     )
-    if (
-        working_before is None
-        or working_after is None
-        or trusted_before is None
-        or trusted_after is None
-    ):
+    if trusted_after is None:
+        if not allow_mapped_source_predecessor:
+            return None
+        return _replacement_edit_from_mapped_source_predecessor(
+            claim,
+            origin,
+            source_start,
+            source_end,
+            source_line_count,
+            source_lines,
+            working_lines,
+            working_before,
+            trusted_before,
+            source_to_working_mapping,
+            source_to_trusted_target_mapping,
+            trusted_target_to_working_mapping,
+            trusted_target_lines,
+        )
+    if working_after is None:
         return None
 
     working_start = working_before
@@ -255,10 +332,6 @@ def _replacement_edit_from_trusted_target(
     if (
         working_end <= working_start
         or trusted_end - trusted_start != working_end - working_start
-        or trusted_target_to_working_mapping.get_target_line_from_source_line(
-            trusted_before
-        )
-        != working_before
         or trusted_target_to_working_mapping.get_target_line_from_source_line(
             trusted_after
         )
@@ -278,6 +351,143 @@ def _replacement_edit_from_trusted_target(
         ):
             return None
     return working_start, working_end
+
+
+def _replacement_edit_from_mapped_source_predecessor(
+    claim: AbsenceClaim,
+    origin: ReplacementUnitOrigin,
+    source_start: int,
+    source_end: int,
+    source_line_count: int,
+    source_lines: Sequence[bytes] | None,
+    working_lines: Sequence[bytes],
+    working_before: int,
+    trusted_before: int,
+    source_to_working_mapping: LineMapping,
+    source_to_trusted_target_mapping: LineMapping,
+    trusted_target_to_working_mapping: LineMapping,
+    trusted_target_lines: Sequence[bytes],
+) -> _BaselineRemovalEdit | None:
+    """Return an exact live predecessor retained after one complete new side.
+
+    Source advancement can retain a committed predecessor immediately after a
+    newer, fully owned replacement.  The predecessor may have a different line
+    count from the historical old side, so the selected range's immediate
+    following line no longer identifies the trusted boundary.  Accept that
+    layout only for an unshifted complete origin.  The selected side must map an
+    initial prefix, the complete contiguous predecessor must equal the live
+    gap, and its remaining suffix must provide the rest of that gap.  The
+    surrounding source lines must still map through the trusted target, and
+    that target gap must contain the exact historical old side.
+    """
+    if (
+        source_lines is None
+        or source_start != origin.new_start
+        or source_end != origin.new_end
+    ):
+        return None
+    predecessor_start = source_end + 1
+    for source_line in range(predecessor_start, source_line_count + 1):
+        trusted_line = (
+            source_to_trusted_target_mapping.get_target_line_from_source_line(
+                source_line
+            )
+        )
+        working_line = source_to_working_mapping.get_target_line_from_source_line(
+            source_line
+        )
+        if trusted_line is not None:
+            if working_line is None:
+                return None
+            working_end = working_line - 1
+            if (
+                source_line == predecessor_start
+                or working_end <= working_before
+                or trusted_target_to_working_mapping.get_target_line_from_source_line(
+                    trusted_line
+                )
+                != working_line
+            ):
+                return None
+            historical_old_side = normalize_line_sequence_endings(claim.content_lines)
+            if trusted_line - trusted_before - 1 != len(
+                historical_old_side
+            ) or not _line_slice_matches(
+                trusted_target_lines,
+                trusted_before,
+                historical_old_side,
+            ):
+                return None
+
+            predecessor_line_count = source_line - predecessor_start
+            if predecessor_line_count != working_line - working_before - 1:
+                return None
+            normalized_source = normalize_line_sequence_endings(source_lines)
+            normalized_working = normalize_line_sequence_endings(working_lines)
+            for offset in range(predecessor_line_count):
+                if (
+                    normalized_source[predecessor_start - 1 + offset]
+                    != normalized_working[working_before + offset]
+                ):
+                    return None
+
+            next_target_line = working_before + 1
+            has_mapped_selected_line = False
+            has_missing_selected_line = False
+            for selected_source_line in range(source_start, source_end + 1):
+                target_line = (
+                    source_to_working_mapping.get_target_line_from_source_line(
+                        selected_source_line
+                    )
+                )
+                if target_line is None:
+                    has_missing_selected_line = True
+                    continue
+                if (
+                    has_missing_selected_line
+                    or target_line != next_target_line
+                    or source_to_working_mapping.get_source_line_from_target_line(
+                        target_line
+                    )
+                    != selected_source_line
+                ):
+                    return None
+                has_mapped_selected_line = True
+                next_target_line += 1
+
+            has_missing_predecessor_line = False
+            has_mapped_predecessor_line = False
+            for predecessor_source_line in range(predecessor_start, source_line):
+                target_line = (
+                    source_to_working_mapping.get_target_line_from_source_line(
+                        predecessor_source_line
+                    )
+                )
+                if target_line is None:
+                    if has_mapped_predecessor_line:
+                        return None
+                    has_missing_predecessor_line = True
+                    continue
+                if (
+                    target_line != next_target_line
+                    or source_to_working_mapping.get_source_line_from_target_line(
+                        target_line
+                    )
+                    != predecessor_source_line
+                ):
+                    return None
+                has_mapped_predecessor_line = True
+                next_target_line += 1
+            if not (
+                has_mapped_selected_line
+                and has_missing_selected_line
+                and has_missing_predecessor_line
+                and has_mapped_predecessor_line
+                and next_target_line == working_line
+            ):
+                return None
+            return working_before, working_end
+    return None
 
 
 @dataclass(slots=True)
@@ -668,6 +878,7 @@ def _replacement_baseline_edit(
     unit: ReplacementUnit,
     claimed_ranges: Sequence[tuple[int, ...]],
     source_line_count: int,
+    source_lines: Sequence[bytes] | None,
     working_lines: Sequence[bytes],
     trusted_target_lines: Sequence[bytes] | None,
     source_to_working_mapping: LineMapping | None,
@@ -676,6 +887,7 @@ def _replacement_baseline_edit(
     resolution: _MergeResolution | None,
     *,
     max_resolution_choices: int,
+    allow_mapped_source_predecessor: bool,
 ) -> tuple[_BaselineRemovalEdit, bool] | None:
     origin = getattr(unit, "origin", None)
     guarded_edit = _replacement_edit_with_origin_guard(
@@ -700,11 +912,13 @@ def _replacement_baseline_edit(
         origin,
         claimed_ranges,
         source_line_count,
+        source_lines,
         working_lines,
         trusted_target_lines,
         source_to_working_mapping,
         source_to_trusted_target_mapping,
         trusted_target_to_working_mapping,
+        allow_mapped_source_predecessor=allow_mapped_source_predecessor,
     )
     if trusted_edit is not None:
         return trusted_edit, True
@@ -928,25 +1142,18 @@ def trusted_target_replacement_source_ranges(
                 if claimed_ranges is None:
                     continue
                 try:
-                    if any(
-                        source_to_working_mapping.get_target_line_from_source_line(
-                            source_line
-                        )
-                        is not None
-                        for source_start, source_end in claimed_ranges
-                        for source_line in range(source_start, source_end + 1)
-                    ):
-                        continue
                     trusted_edit = _replacement_edit_from_trusted_target(
                         deletion_claims[deletion_index],
                         unit.origin,
                         claimed_ranges,
                         len(source_lines),
+                        source_lines,
                         working_lines,
                         trusted_target_lines,
                         source_to_working_mapping,
                         source_to_trusted_target_mapping,
                         trusted_target_to_working_mapping,
+                        allow_mapped_source_predecessor=(len(replacement_units) == 1),
                     )
                     if trusted_edit is not None and not _line_slice_matches(
                         working_lines,
@@ -1315,6 +1522,7 @@ def plan_replacement_unit_edits(
     source_to_trusted_target_mapping: LineMapping | None = None,
     trusted_target_to_working_mapping: LineMapping | None = None,
     trust_baseline_coordinates: bool = False,
+    allow_mixed_mapped_replacement_islands: bool = False,
     mapped_source_lines: Sequence[tuple[int, ...]] | None = None,
 ) -> bool:
     """Plan coupled replacement units and record their claimed source ranges."""
@@ -1339,6 +1547,7 @@ def plan_replacement_unit_edits(
     partial_context_until = 0
     partial_context: _TrustedPartialReplacementContext | None = None
     live_occurrence_index: LinePayloadOccurrenceIndex | None = None
+    previous_mixed_target_end = 0
     for unit_index, unit in enumerate(replacement_units):
         if unit_index < skip_until:
             continue
@@ -1441,7 +1650,71 @@ def plan_replacement_unit_edits(
                 mapped_replacement_target_lines,
             )
             if replacement_is_mapped is None:
-                return False
+                trusted_mixed_edit = _replacement_edit_from_trusted_target(
+                    claim,
+                    unit.origin,
+                    claimed_ranges,
+                    source_line_count,
+                    source_sequence,
+                    working_lines,
+                    trusted_target_lines,
+                    source_to_working_mapping,
+                    source_to_trusted_target_mapping,
+                    trusted_target_to_working_mapping,
+                    allow_mapped_source_predecessor=(len(replacement_units) == 1),
+                )
+                if trusted_mixed_edit is not None:
+                    target_start, target_end = trusted_mixed_edit
+                    plan.add_source_ranges(
+                        target_start,
+                        target_end,
+                        (
+                            (source_start, source_end)
+                            for source_start, source_end in claimed_ranges
+                        ),
+                    )
+                    for source_start, source_end in claimed_ranges:
+                        replacement_source_ranges.append((source_start, source_end))
+                    deletion_edit_bounds[deletion_index] = (
+                        1,
+                        target_start,
+                        target_end,
+                        1,
+                    )
+                    continue
+                mixed_bounds = (
+                    None
+                    if (
+                        not allow_mixed_mapped_replacement_islands
+                        or source_to_working_mapping is None
+                    )
+                    else _mixed_mapped_replacement_bounds(
+                        claimed_ranges,
+                        source_to_working_mapping,
+                        minimum_target_start=previous_mixed_target_end,
+                    )
+                )
+                if mixed_bounds is None:
+                    return False
+                target_start, target_end = mixed_bounds
+                previous_mixed_target_end = target_end
+                plan.add_source_ranges(
+                    target_start,
+                    target_end,
+                    (
+                        (source_start, source_end)
+                        for source_start, source_end in claimed_ranges
+                    ),
+                )
+                for source_start, source_end in claimed_ranges:
+                    replacement_source_ranges.append((source_start, source_end))
+                deletion_edit_bounds[deletion_index] = (
+                    1,
+                    target_start,
+                    target_end,
+                    1,
+                )
+                continue
             if replacement_is_mapped:
                 assert source_to_working_mapping is not None
                 old_side = _classify_replacement_old_side(
@@ -1557,6 +1830,7 @@ def plan_replacement_unit_edits(
                 unit,
                 claimed_ranges,
                 source_line_count,
+                source_sequence,
                 working_lines,
                 trusted_target_lines,
                 source_to_working_mapping,
@@ -1564,6 +1838,7 @@ def plan_replacement_unit_edits(
                 trusted_target_to_working_mapping,
                 resolution,
                 max_resolution_choices=max_resolution_choices,
+                allow_mapped_source_predecessor=(len(replacement_units) == 1),
             )
             if (
                 replacement_edit is None

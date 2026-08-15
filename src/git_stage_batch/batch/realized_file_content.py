@@ -44,11 +44,13 @@ def _ownership_for_realization(ownership: BatchOwnership) -> BatchOwnership:
         ]
         if not remapped_indices:
             continue
-        replacement_units.append(ReplacementUnit(
-            presence_lines=unit.presence_lines,
-            deletion_indices=remapped_indices,
-            origin=unit.origin,
-        ))
+        replacement_units.append(
+            ReplacementUnit(
+                presence_lines=unit.presence_lines,
+                deletion_indices=remapped_indices,
+                origin=unit.origin,
+            )
+        )
     return BatchOwnership(
         presence_claims=ownership.presence_claims,
         deletions=deletions,
@@ -143,24 +145,46 @@ def _stream_realized_content_chunks_from_lines(
                 spool_dir=spool_dir,
             ) as mapping,
         ):
-            if has_unequal_replacement_parent:
-                baseline_chunks = (
-                    _baseline_edits.try_apply_baseline_coordinate_edits(
-                        batch_source_lines,
-                        base_lines,
-                        realization_ownership,
-                        presence_line_set,
-                        deletion_claims,
-                        allow_adjacent_unmapped_presence=True,
-                        prefer_source_mapping_for_presence=True,
-                        trust_baseline_coordinates=True,
-                        source_to_working_mapping=mapping,
-                        spool_dir=spool_dir,
-                    )
+            baseline_chunks = (
+                None
+                if not realization_ownership.replacement_units
+                else _baseline_edits.try_apply_baseline_coordinate_edits(
+                    batch_source_lines,
+                    base_lines,
+                    realization_ownership,
+                    presence_line_set,
+                    deletion_claims,
+                    allow_adjacent_unmapped_presence=True,
+                    allow_mapped_independent_removals=True,
+                    allow_mixed_mapped_replacement_islands=True,
+                    prefer_source_mapping_for_presence=True,
+                    trust_baseline_coordinates=True,
+                    source_to_working_mapping=mapping,
+                    spool_dir=spool_dir,
                 )
-                if baseline_chunks is not None:
-                    yield from baseline_chunks
-                    return
+            )
+            if baseline_chunks is None and has_unequal_replacement_parent:
+                # Parent-aware coordinates are preferable when an unequal
+                # replacement can be tied to the source mapping.  Some
+                # historical batches contain copied context that prevents
+                # that mapping proof even though their recorded baseline
+                # coordinates still identify a complete, exact edit.  Keep
+                # that verified plan ahead of the lenient structural path:
+                # the latter can interleave mapped delimiters with the
+                # replacement and then suppress the delimiter as old-side
+                # content.
+                baseline_chunks = _baseline_edits.try_apply_baseline_coordinate_edits(
+                    batch_source_lines,
+                    base_lines,
+                    realization_ownership,
+                    presence_line_set,
+                    deletion_claims,
+                    trust_baseline_coordinates=True,
+                    spool_dir=spool_dir,
+                )
+            if baseline_chunks is not None:
+                yield from baseline_chunks
+                return
             realized_entries = satisfy_constraints(
                 batch_source_lines,
                 base_lines,

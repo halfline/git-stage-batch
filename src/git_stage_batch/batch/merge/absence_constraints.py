@@ -22,6 +22,7 @@ from ...core.mapped_storage import (
     MappedRecordVector,
     sort_mapped_records,
 )
+from ...core.resource_cleanup import close_resources_preserving_first
 from ..line_matching.match_workspace import MatcherWorkspace
 from .candidates import MergeResolution as _MergeResolution
 from ..realization.boundaries import (
@@ -42,6 +43,7 @@ if TYPE_CHECKING:
 
 
 _DEFAULT_CHOICE_SCAN_CAP = 50
+ABSENCE_AMBIGUITY_PREFIX = "absence:"
 
 
 @dataclass(frozen=True)
@@ -100,7 +102,13 @@ class _ActiveRealizedLineIndex:
         )
         try:
             self._initialize_provenance(source_records)
-        finally:
+        except BaseException:
+            try:
+                workspace.close_resource(source_records)
+            except BaseException:
+                pass
+            raise
+        else:
             workspace.close_resource(source_records)
         self._initialize_tree(self._active_tree, self._active)
         self._initialize_tree(self._nonclaimed_tree, self._nonclaimed)
@@ -193,7 +201,7 @@ class _ActiveRealizedLineIndex:
         position: int,
         sequence: Sequence[bytes],
     ) -> bool:
-        """Return whether active lines match one normalized sequence."""
+        """Return whether active unclaimed lines match one normalized sequence."""
         if position < 0 or position + len(sequence) > self.active_count:
             return False
         for offset in range(len(sequence)):
@@ -201,7 +209,7 @@ class _ActiveRealizedLineIndex:
                 self._active_tree,
                 position + offset,
             )
-            if normalize_line_endings(
+            if not self._nonclaimed[original_index] or normalize_line_endings(
                 lines[original_index]
             ) != normalize_line_endings(sequence[offset]):
                 return False
@@ -249,16 +257,10 @@ class _ActiveRealizedLineIndex:
             for run in self._entries.provenance_runs():
                 position = run.dest_start
                 while position < run.dest_end:
-                    while (
-                        position < run.dest_end
-                        and not self._active[position]
-                    ):
+                    while position < run.dest_end and not self._active[position]:
                         position += 1
                     active_start = position
-                    while (
-                        position < run.dest_end
-                        and self._active[position]
-                    ):
+                    while position < run.dest_end and self._active[position]:
                         position += 1
                     if active_start == position:
                         continue
@@ -272,7 +274,10 @@ class _ActiveRealizedLineIndex:
                     )
             return result
         except BaseException:
-            result.close()
+            close_resources_preserving_first(
+                (result,),
+                suppress_errors=True,
+            )
             raise
 
     def _initialize_provenance(
@@ -287,11 +292,13 @@ class _ActiveRealizedLineIndex:
             if run.source_start == 0:
                 continue
             for offset in range(run_length):
-                source_records.append((
-                    run.source_start + offset,
-                    run.dest_start + offset,
-                    int(run.is_claimed),
-                ))
+                source_records.append(
+                    (
+                        run.source_start + offset,
+                        run.dest_start + offset,
+                        int(run.is_claimed),
+                    )
+                )
         sort_mapped_records(source_records)
 
         record_index = 0
@@ -318,13 +325,15 @@ class _ActiveRealizedLineIndex:
                     claimed_original_indexes ^= original_index
                 self._source_group_by_original[original_index] = group_index + 1
                 record_index += 1
-            self._source_groups.append((
-                source_line,
-                matching_count,
-                claimed_count,
-                matching_original_indexes,
-                claimed_original_indexes,
-            ))
+            self._source_groups.append(
+                (
+                    source_line,
+                    matching_count,
+                    claimed_count,
+                    matching_original_indexes,
+                    claimed_original_indexes,
+                )
+            )
 
     @staticmethod
     def _initialize_tree(
@@ -358,11 +367,7 @@ class _ActiveRealizedLineIndex:
         """Return the original index of a zero-based active position."""
         target_count = position + 1
         tree_index = 0
-        step = (
-            0
-            if self._line_count == 0
-            else 1 << (self._line_count.bit_length() - 1)
-        )
+        step = 0 if self._line_count == 0 else 1 << (self._line_count.bit_length() - 1)
         while step:
             candidate = tree_index + step
             if candidate < len(tree) and tree[candidate] < target_count:
@@ -396,7 +401,7 @@ def _apply_strict_absence_constraints_indexed(
         result.content_chunks(),
         spool_dir=spool_dir,
     )
-    lines_are_retained = False
+    realized: RealizedEntries | None = None
     try:
         with MatcherWorkspace(spool_dir=spool_dir) as workspace:
             active = _ActiveRealizedLineIndex(workspace, result)
@@ -405,9 +410,7 @@ def _apply_strict_absence_constraints_indexed(
                 if not claim.content_lines:
                     continue
                 forbidden_sequence = claim.content_lines
-                boundary = active.boundary_after_source_line(
-                    claim.anchor_line
-                )
+                boundary = active.boundary_after_source_line(claim.anchor_line)
                 removal_position = boundary
                 if not active.sequence_matches(
                     lines,
@@ -415,13 +418,10 @@ def _apply_strict_absence_constraints_indexed(
                     forbidden_sequence,
                 ):
                     after_claimed = active.position_after_claimed(boundary)
-                    if (
-                        after_claimed != boundary
-                        and active.sequence_matches(
-                            lines,
-                            after_claimed,
-                            forbidden_sequence,
-                        )
+                    if after_claimed != boundary and active.sequence_matches(
+                        lines,
+                        after_claimed,
+                        forbidden_sequence,
                     ):
                         removal_position = after_claimed
                     else:
@@ -453,19 +453,24 @@ def _apply_strict_absence_constraints_indexed(
                 )
                 changed = True
 
-            if not changed:
-                return result
-            realized = active.build_result(lines)
-            lines_are_retained = True
-            return realized
-    finally:
-        if not lines_are_retained:
-            lines.close()
+            if changed:
+                realized = active.build_result(lines)
+    except BaseException:
+        close_resources_preserving_first(
+            (realized, lines if realized is None else None),
+            suppress_errors=True,
+        )
+        raise
+
+    if realized is None:
+        lines.close()
+        return result
+    return realized
 
 
 def apply_absence_constraints(
     entries: Sequence[_RealizedEntry],
-    deletion_claims: list[AbsenceClaim],
+    deletion_claims: Sequence[AbsenceClaim],
     *,
     strict: bool = True,
     resolution: _MergeResolution | None = None,
@@ -512,10 +517,23 @@ def apply_absence_constraints(
         AmbiguousAnchorError: If anchor boundary cannot be determined uniquely
         MergeError: If strict=True and sequence is found nearby but not at boundary
     """
+    absence_decision: tuple[str, int] | None = None
+    if resolution is not None:
+        for key, choice in resolution.decisions.items():
+            if not isinstance(key, str) or not key.startswith(ABSENCE_AMBIGUITY_PREFIX):
+                continue
+            if absence_decision is not None or type(choice) is not int or choice < 1:
+                raise _MergeError(_("Selected merge resolution is no longer valid"))
+            absence_decision = (key, choice)
+
     result = as_realized_entries(entries)
     if not deletion_claims:
+        if absence_decision is not None:
+            if result is not entries:
+                result.close()
+            raise _MergeError(_("Selected merge resolution is no longer valid"))
         return result
-    if strict and resolution is None:
+    if strict and absence_decision is None:
         try:
             indexed_result = _apply_strict_absence_constraints_indexed(
                 result,
@@ -524,16 +542,26 @@ def apply_absence_constraints(
             )
         except BaseException:
             if result is not entries:
-                result.close()
+                close_resources_preserving_first(
+                    (result,),
+                    suppress_errors=True,
+                )
             raise
         if indexed_result is not result and result is not entries:
-            result.close()
+            try:
+                result.close()
+            except BaseException:
+                close_resources_preserving_first(
+                    (indexed_result,),
+                    suppress_errors=True,
+                )
+                raise
         return indexed_result
 
     suppress_fn = (
         _suppress_at_boundary_strict
-        if strict else
-        _suppress_at_boundary_for_realization
+        if strict
+        else _suppress_at_boundary_for_realization
     )
 
     fallback_workspace: MatcherWorkspace | None = None
@@ -547,6 +575,7 @@ def apply_absence_constraints(
             )
 
         fallback_index = 0
+        absence_decision_consumed = False
         for claim_index, claim in enumerate(deletion_claims):
             fallback_target_position: int | None = None
             if fallback_index < len(realization_fallback_target_positions):
@@ -559,10 +588,7 @@ def apply_absence_constraints(
             if not claim.content_lines:
                 continue
 
-            forbidden_sequence = [
-                normalize_line_endings(line)
-                for line in claim.content_lines
-            ]
+            forbidden_sequence = claim.content_lines
 
             ambiguity_key = absence_ambiguity_key(
                 claim_index,
@@ -570,7 +596,8 @@ def apply_absence_constraints(
                 forbidden_sequence,
             )
 
-            if resolution is not None and ambiguity_key in resolution.decisions:
+            if absence_decision is not None and ambiguity_key == absence_decision[0]:
+                assert resolution is not None
                 old_result = result
                 result = _suppress_absence_with_resolution(
                     result,
@@ -581,6 +608,7 @@ def apply_absence_constraints(
                 )
                 if result is not old_result and old_result is not entries:
                     old_result.close()
+                absence_decision_consumed = True
                 continue
 
             try:
@@ -603,57 +631,71 @@ def apply_absence_constraints(
                 and fallback_target_position is not None
                 and unresolved_fallbacks is not None
             ):
-                unresolved_fallbacks.append((
-                    fallback_target_position,
-                    claim_index,
-                ))
+                unresolved_fallbacks.append(
+                    (
+                        fallback_target_position,
+                        claim_index,
+                    )
+                )
             if result is not old_result and old_result is not entries:
                 old_result.close()
 
-        if unresolved_fallbacks is None or not unresolved_fallbacks:
-            return result
+        if absence_decision is not None and not absence_decision_consumed:
+            raise _MergeError(_("Selected merge resolution is no longer valid"))
 
-        sort_mapped_records(unresolved_fallbacks)
-        fallback_cursor = 0
-        for target_position, claim_index in unresolved_fallbacks:
-            claim = deletion_claims[claim_index]
-            forbidden_sequence = [
-                normalize_line_endings(line)
-                for line in claim.content_lines
-            ]
-            fallback_position = _realized_position_for_target_gap(
-                result,
-                target_position,
-                start_position=fallback_cursor,
-            )
-            fallback_position = _position_after_claimed_insertions_at_boundary(
-                result,
-                fallback_position,
-            )
-            fallback_cursor = fallback_position
-            if not _sequence_matches_at_position(
-                result,
-                fallback_position,
-                forbidden_sequence,
-            ):
-                continue
-            old_result = result
-            result = _remove_sequence_at_position(
-                result,
-                fallback_position,
-                forbidden_sequence,
-            )
-            if old_result is not entries:
-                old_result.close()
-
-        return result
+        if unresolved_fallbacks is not None and unresolved_fallbacks:
+            sort_mapped_records(unresolved_fallbacks)
+            fallback_cursor = 0
+            for target_position, claim_index in unresolved_fallbacks:
+                claim = deletion_claims[claim_index]
+                forbidden_sequence = claim.content_lines
+                fallback_position = _realized_position_for_target_gap(
+                    result,
+                    target_position,
+                    start_position=fallback_cursor,
+                )
+                fallback_position = _position_after_claimed_insertions_at_boundary(
+                    result,
+                    fallback_position,
+                )
+                fallback_cursor = fallback_position
+                if not _sequence_matches_at_position(
+                    result,
+                    fallback_position,
+                    forbidden_sequence,
+                ):
+                    continue
+                old_result = result
+                result = _remove_sequence_at_position(
+                    result,
+                    fallback_position,
+                    forbidden_sequence,
+                )
+                if old_result is not entries:
+                    old_result.close()
     except BaseException:
         if result is not entries:
-            result.close()
+            close_resources_preserving_first(
+                (result,),
+                suppress_errors=True,
+            )
+        close_resources_preserving_first(
+            (fallback_workspace,),
+            suppress_errors=True,
+        )
         raise
-    finally:
+
+    try:
         if fallback_workspace is not None:
             fallback_workspace.close()
+    except BaseException:
+        if result is not entries:
+            close_resources_preserving_first(
+                (result,),
+                suppress_errors=True,
+            )
+        raise
+    return result
 
 
 def absence_ambiguity_key(
@@ -664,10 +706,10 @@ def absence_ambiguity_key(
     """Return the merge-resolution key for one absence ambiguity."""
     anchor = "start" if anchor_line is None else str(anchor_line)
     hasher = hashlib.sha256()
-    for line in forbidden_sequence:
-        hasher.update(line)
+    for line_index in range(len(forbidden_sequence)):
+        hasher.update(normalize_line_endings(bytes(forbidden_sequence[line_index])))
     digest = hasher.hexdigest()[:12]
-    return f"absence:{claim_index}:{anchor}:{digest}"
+    return f"{ABSENCE_AMBIGUITY_PREFIX}{claim_index}:{anchor}:{digest}"
 
 
 def absence_choices_for_claim(
@@ -678,6 +720,7 @@ def absence_choices_for_claim(
     max_results: int | None = None,
 ) -> tuple[AbsenceChoice, ...]:
     """Return concrete exact-removal choices for one absence claim."""
+    result_limit = max_results or _DEFAULT_CHOICE_SCAN_CAP
     positions: list[tuple[int, str]] = []
     seen: set[int] = set()
 
@@ -689,7 +732,10 @@ def absence_choices_for_claim(
         seen.add(position)
         positions.append((position, explanation))
 
+    first_boundary: int | None = None
     for boundary in _boundary_choices_for_source_line(entries, anchor_line):
+        if first_boundary is None:
+            first_boundary = boundary
         add_position(boundary, _("deletion content appears at the anchored boundary"))
         after_claimed = _position_after_claimed_insertions_at_boundary(
             entries,
@@ -698,24 +744,29 @@ def absence_choices_for_claim(
         if after_claimed != boundary:
             add_position(
                 after_claimed,
-                _("deletion content appears after claimed insertions at the anchored boundary"),
+                _(
+                    "deletion content appears after claimed insertions at the anchored boundary"
+                ),
             )
+        if len(positions) >= result_limit:
+            break
 
+    assert first_boundary is not None
     if len(positions) <= 1:
         for position in _iter_sequence_occurrences_nearby(
             entries,
-            _boundary_choices_for_source_line(entries, anchor_line)[0],
+            first_boundary,
             forbidden_sequence,
             window=20,
-            max_results=(max_results or _DEFAULT_CHOICE_SCAN_CAP) + 1,
+            max_results=result_limit,
         ):
             add_position(position, _("deletion content appears nearby"))
+            if len(positions) >= result_limit:
+                break
 
     positions.sort(key=lambda item: item[0])
-    if max_results is not None:
-        positions = positions[:max_results]
 
-    choices = []
+    choices: list[AbsenceChoice] = []
     for index, (position, explanation) in enumerate(positions, start=1):
         after_line = None if position == 0 else position
         before_line = (
@@ -738,13 +789,15 @@ def absence_choices_for_claim(
 def _suppress_absence_with_resolution(
     entries: Sequence[_RealizedEntry],
     anchor_line: int | None,
-    forbidden_sequence: list[bytes],
+    forbidden_sequence: Sequence[bytes],
     ambiguity_key: str,
     resolution: _MergeResolution,
 ) -> RealizedEntries:
     choice_index = resolution.decisions.get(ambiguity_key)
     if choice_index is None:
-        raise _MergeError(_("Missing merge resolution for {key}").format(key=ambiguity_key))
+        raise _MergeError(
+            _("Missing merge resolution for {key}").format(key=ambiguity_key)
+        )
     choices = absence_choices_for_claim(
         entries,
         anchor_line,
@@ -753,7 +806,9 @@ def _suppress_absence_with_resolution(
     )
     for choice in choices:
         if choice.choice_index == choice_index:
-            return _remove_sequence_at_position(entries, choice.position, forbidden_sequence)
+            return _remove_sequence_at_position(
+                entries, choice.position, forbidden_sequence
+            )
     raise _MergeError(_("Selected merge resolution is no longer valid"))
 
 
@@ -766,14 +821,14 @@ def _sequence_matches_at_position(
     position: int,
     sequence: Sequence[bytes],
 ) -> bool:
-    """Check if sequence matches entries starting at exact position."""
+    """Check if sequence matches unclaimed entries at an exact position."""
     if position + len(sequence) > len(entries):
         return False
 
     return all(
-        _normalize_line_content(
-            realized_entry_content_at(entries, position + i)
-        ) == sequence[i]
+        not realized_entry_is_claimed_at(entries, position + i)
+        and _normalize_line_content(realized_entry_content_at(entries, position + i))
+        == normalize_line_endings(bytes(sequence[i]))
         for i in range(len(sequence))
     )
 
@@ -860,11 +915,7 @@ def _realized_position_for_target_gap(
     the returned boundary. Earlier removals therefore cannot stale a later
     coordinate-backed realization fallback.
     """
-    if (
-        target_position < 0
-        or start_position < 0
-        or start_position > len(entries)
-    ):
+    if target_position < 0 or start_position < 0 or start_position > len(entries):
         raise ValueError("invalid target-gap search position")
 
     position = start_position
@@ -919,9 +970,7 @@ def _suppress_at_boundary_strict(
 
     nearby_pos = _find_sequence_nearby(entries, position, forbidden_sequence, window=20)
     if nearby_pos is not None:
-        raise _MergeError(
-            _("Batch was created from a different version of the file")
-        )
+        raise _MergeError(_("Batch was created from a different version of the file"))
 
     return as_realized_entries(entries)
 

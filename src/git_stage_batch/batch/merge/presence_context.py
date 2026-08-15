@@ -12,6 +12,7 @@ from ..line_matching.occurrence_index import LinePayloadOccurrenceIndex
 from .presence_missing_claims import mapped_missing_source_lines
 from ...core.line_selection import LineRanges, LineSelection
 from ...core.mapped_storage import MappedIntVector
+from ...core.resource_cleanup import close_resources_preserving_first
 from ...exceptions import MergeError
 from ...i18n import _
 
@@ -31,6 +32,7 @@ class PresenceRunPlacement:
     after_source_line: int | None
     before_target_line: int | None
     after_target_line: int | None
+    exact_context_gap: bool = False
 
 
 @dataclass(frozen=True)
@@ -45,6 +47,10 @@ class ContextualPresenceAmbiguity:
     end_gap: int
 
 
+class PresencePlacementAmbiguityError(MergeError):
+    """Raised when structural context supports multiple presence placements."""
+
+
 @dataclass(frozen=True)
 class _PresenceRunAnalysis:
     run_start: int
@@ -52,6 +58,7 @@ class _PresenceRunAnalysis:
     before: tuple[int, int] | None
     after: tuple[int, int] | None
     gap_index: int | None
+    exact_context_gap: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,18 +145,17 @@ class _DistinctiveContextResolver:
         run_end: int,
         before: tuple[int, int] | None,
         after: tuple[int, int] | None,
+        *,
+        trust_before: bool = False,
+        trust_after: bool = False,
     ) -> tuple[tuple[int, int] | None, tuple[int, int] | None]:
         """Return nearest distinctive mappings around a source run."""
-        candidates = tuple(
-            pair[0]
-            for pair in (before, after)
-            if pair is not None
-        )
+        candidates = tuple(pair[0] for pair in (before, after) if pair is not None)
         distinctive = self._distinctive_results(candidates)
 
-        if before is not None and not distinctive[0]:
+        if before is not None and not trust_before and not distinctive[0]:
             before = self.nearest_before(run_start)
-        if after is not None and not distinctive[-1]:
+        if after is not None and not trust_after and not distinctive[-1]:
             after = self.nearest_after(run_end)
         return before, after
 
@@ -175,21 +181,17 @@ class _DistinctiveContextResolver:
         nearest = 0
         for source_line in range(1, source_line_count + 1):
             before[source_line] = nearest
-            if (
-                self._mapping.get_target_line_from_source_line(source_line)
-                is not None
-                and self._is_distinctive_from_indexes(source_line)
-            ):
+            if self._mapping.get_target_line_from_source_line(
+                source_line
+            ) is not None and self._is_distinctive_from_indexes(source_line):
                 nearest = source_line
 
         nearest = 0
         for source_line in range(source_line_count, 0, -1):
             after[source_line] = nearest
-            if (
-                self._mapping.get_target_line_from_source_line(source_line)
-                is not None
-                and self._is_distinctive_from_indexes(source_line)
-            ):
+            if self._mapping.get_target_line_from_source_line(
+                source_line
+            ) is not None and self._is_distinctive_from_indexes(source_line):
                 nearest = source_line
 
         self._nearest_distinctive_before = before
@@ -231,8 +233,7 @@ class _DistinctiveContextResolver:
             <= _DIRECT_DISTINCTIVE_CONTEXT_CHECK_LIMIT
         ):
             contents = [
-                self._source_lines[source_line - 1]
-                for source_line in unchecked_lines
+                self._source_lines[source_line - 1] for source_line in unchecked_lines
             ]
             source_counts = _line_occurrence_counts(
                 self._source_lines,
@@ -356,9 +357,7 @@ def _iter_missing_presence_clusters(
             run_end,
             source_line_count,
         )
-        after_source_line = (
-            source_line_count + 1 if after is None else after[0]
-        )
+        after_source_line = source_line_count + 1 if after is None else after[0]
         selected_line_count = run_end - run_start + 1
         run_stop_index = run_index + 1
         while (
@@ -370,17 +369,13 @@ def _iter_missing_presence_clusters(
             run_stop_index += 1
 
         before_source_line = 0 if before is None else before[0]
-        source_gap_line_count = (
-            after_source_line - before_source_line - 1
-        )
+        source_gap_line_count = after_source_line - before_source_line - 1
         yield _MissingPresenceCluster(
             run_start_index=run_index,
             run_stop_index=run_stop_index,
             before=before,
             after=after,
-            unclaimed_source_line_count=(
-                source_gap_line_count - selected_line_count
-            ),
+            unclaimed_source_line_count=(source_gap_line_count - selected_line_count),
         )
         run_index = run_stop_index
 
@@ -434,6 +429,49 @@ def _choose_insertion_gap(
     return None
 
 
+def _extend_exact_cluster_context(
+    source_lines: Sequence[bytes],
+    target_lines: Sequence[bytes],
+    source_selection: LineSelection,
+    before: tuple[int, int] | None,
+    after: tuple[int, int] | None,
+) -> tuple[tuple[int, int] | None, tuple[int, int] | None]:
+    """Extend mapped cluster edges through exact unselected local context.
+
+    The primary matcher deliberately leaves repeated lines unmapped.  Within
+    an already ordered pair of mapped boundaries, however, an exact prefix or
+    suffix still proves where an adjacent selected run belongs.  Stop at the
+    first selected line or mismatch so this cannot infer an ordering across
+    unrelated source-only and target-only content.
+    """
+    source_before = before[0] if before is not None else 0
+    target_before = before[1] if before is not None else 0
+    source_after = after[0] if after is not None else len(source_lines) + 1
+    target_after = after[1] if after is not None else len(target_lines) + 1
+
+    while (
+        source_before + 1 < source_after
+        and target_before + 1 < target_after
+        and source_before + 1 not in source_selection
+        and source_lines[source_before] == target_lines[target_before]
+    ):
+        source_before += 1
+        target_before += 1
+        before = (source_before, target_before)
+
+    while (
+        source_after - 1 > source_before
+        and target_after - 1 > target_before
+        and source_after - 1 not in source_selection
+        and source_lines[source_after - 2] == target_lines[target_after - 2]
+    ):
+        source_after -= 1
+        target_after -= 1
+        after = (source_after, target_after)
+
+    return before, after
+
+
 def _contextual_ambiguity(
     *,
     run_start: int,
@@ -463,6 +501,7 @@ def _analyze_presence_runs(
     *,
     require_distinctive_context: bool = False,
     distinctive_context_lines: LineSelection | None = None,
+    recorded_context_lines: LineSelection | None = None,
     collapsing_target_spans: Sequence[tuple[int, ...]] = (),
     spool_dir: str | Path | None = None,
 ) -> tuple[LineRanges, tuple[_PresenceRunAnalysis, ...]]:
@@ -473,11 +512,22 @@ def _analyze_presence_runs(
     )
     distinctive_context: _DistinctiveContextResolver | None = None
     analyses: list[_PresenceRunAnalysis] = []
+    analysis_completed = False
 
     try:
         missing_ranges = missing.ranges()
         for cluster in _iter_missing_presence_clusters(missing, mapping):
             locally_collapsed = cluster.has_locally_collapsed_target_gap()
+            exact_before, exact_after = _extend_exact_cluster_context(
+                source_lines,
+                target_lines,
+                source_selection,
+                cluster.before,
+                cluster.after,
+            )
+            exact_target_gap_collapsed = (
+                exact_before[1] if exact_before is not None else 0
+            ) == (exact_after[1] - 1 if exact_after is not None else len(target_lines))
             for run_index in range(
                 cluster.run_start_index,
                 cluster.run_stop_index,
@@ -487,26 +537,47 @@ def _analyze_presence_runs(
                 mapped_before = cluster.before
                 mapped_after = cluster.after
                 leading_gap = (
-                    run_start - mapped_before[0] - 1
-                    if mapped_before is not None
-                    else 0
+                    run_start - mapped_before[0] - 1 if mapped_before is not None else 0
                 )
-                run_requires_distinctive_context = (
-                    require_distinctive_context
-                    or (
-                        distinctive_context_lines is not None
-                        and distinctive_context_lines.count(
-                            run_start,
-                            run_end,
-                        ) > 0
+                run_requires_distinctive_context = require_distinctive_context or (
+                    distinctive_context_lines is not None
+                    and distinctive_context_lines.count(
+                        run_start,
+                        run_end,
                     )
+                    > 0
                 )
+                run_has_recorded_context = (
+                    recorded_context_lines is not None
+                    and recorded_context_lines.count(run_start, run_end)
+                    == run_end - run_start + 1
+                )
+                exact_context_gap = False
 
                 if locally_collapsed:
                     before = mapped_before
                     after = mapped_after
                     assert before is not None
                     gap_index = before[1]
+                elif (
+                    run_has_recorded_context
+                    and exact_target_gap_collapsed
+                    and (
+                        (exact_before is not None and exact_before[0] == run_start - 1)
+                        or (exact_after is not None and exact_after[0] == run_end + 1)
+                    )
+                ):
+                    before = exact_before
+                    after = exact_after
+                    gap_index = _choose_insertion_gap(
+                        run_start=run_start,
+                        run_end=run_end,
+                        source_line_count=len(source_lines),
+                        target_line_count=len(target_lines),
+                        before=before,
+                        after=after,
+                    )
+                    exact_context_gap = gap_index is not None
                 elif (
                     not run_requires_distinctive_context
                     and leading_gap < _CONTEXTUAL_LEADING_GAP
@@ -528,6 +599,18 @@ def _analyze_presence_runs(
                         run_end,
                         mapped_before,
                         mapped_after,
+                        trust_before=(
+                            mapped_before is not None
+                            and mapped_before[0] == run_start - 1
+                            and recorded_context_lines is not None
+                            and mapped_before[0] in recorded_context_lines
+                        ),
+                        trust_after=(
+                            mapped_after is not None
+                            and mapped_after[0] == run_end + 1
+                            and recorded_context_lines is not None
+                            and mapped_after[0] in recorded_context_lines
+                        ),
                     )
                     gap_index = _choose_insertion_gap(
                         run_start=run_start,
@@ -538,16 +621,22 @@ def _analyze_presence_runs(
                         after=after,
                     )
 
-                analyses.append(_PresenceRunAnalysis(
-                    run_start=run_start,
-                    run_end=run_end,
-                    before=before,
-                    after=after,
-                    gap_index=gap_index,
-                ))
+                analyses.append(
+                    _PresenceRunAnalysis(
+                        run_start=run_start,
+                        run_end=run_end,
+                        before=before,
+                        after=after,
+                        gap_index=gap_index,
+                        exact_context_gap=exact_context_gap,
+                    )
+                )
+        analysis_completed = True
     finally:
-        if distinctive_context is not None:
-            distinctive_context.close()
+        close_resources_preserving_first(
+            (distinctive_context,),
+            suppress_errors=not analysis_completed,
+        )
 
     _resolve_collapsing_target_spans(
         analyses,
@@ -570,9 +659,7 @@ def _resolve_collapsing_target_spans(
             continue
         before_gap = analysis.before[1] if analysis.before is not None else 0
         after_gap = (
-            analysis.after[1] - 1
-            if analysis.after is not None
-            else target_line_count
+            analysis.after[1] - 1 if analysis.after is not None else target_line_count
         )
         while current_span is not None and current_span[1] <= before_gap:
             current_span = next(span_iterator, None)
@@ -586,6 +673,7 @@ def _resolve_collapsing_target_spans(
                 before=analysis.before,
                 after=analysis.after,
                 gap_index=span_start,
+                exact_context_gap=analysis.exact_context_gap,
             )
 
 
@@ -622,6 +710,7 @@ def contextual_presence_ambiguities(
     trusted_source_lines: Collection[int] = (),
     require_distinctive_context: bool = False,
     distinctive_context_lines: LineSelection | None = None,
+    recorded_context_lines: LineSelection | None = None,
     spool_dir: str | Path | None = None,
 ) -> tuple[ContextualPresenceAmbiguity, ...]:
     """Return bounded placement ambiguities for suspicious missing runs."""
@@ -633,6 +722,7 @@ def contextual_presence_ambiguities(
         trusted_source_lines,
         require_distinctive_context=require_distinctive_context,
         distinctive_context_lines=distinctive_context_lines,
+        recorded_context_lines=recorded_context_lines,
         spool_dir=spool_dir,
     )
     ambiguities: list[ContextualPresenceAmbiguity] = []
@@ -640,13 +730,15 @@ def contextual_presence_ambiguities(
     for analysis in analyses:
         if analysis.gap_index is not None:
             continue
-        ambiguities.append(_contextual_ambiguity(
-            run_start=analysis.run_start,
-            run_end=analysis.run_end,
-            target_line_count=len(target_lines),
-            before=analysis.before,
-            after=analysis.after,
-        ))
+        ambiguities.append(
+            _contextual_ambiguity(
+                run_start=analysis.run_start,
+                run_end=analysis.run_end,
+                target_line_count=len(target_lines),
+                before=analysis.before,
+                after=analysis.after,
+            )
+        )
 
     return tuple(ambiguities)
 
@@ -660,6 +752,7 @@ def contextual_presence_placements(
     trusted_source_lines: Collection[int] = (),
     require_distinctive_context: bool = False,
     distinctive_context_lines: LineSelection | None = None,
+    recorded_context_lines: LineSelection | None = None,
     collapsing_target_spans: Sequence[tuple[int, ...]] = (),
     spool_dir: str | Path | None = None,
 ) -> tuple[LineRanges, tuple[PresenceRunPlacement, ...]]:
@@ -680,6 +773,7 @@ def contextual_presence_placements(
         trusted_source_lines,
         require_distinctive_context=require_distinctive_context,
         distinctive_context_lines=distinctive_context_lines,
+        recorded_context_lines=recorded_context_lines,
         collapsing_target_spans=collapsing_target_spans,
         spool_dir=spool_dir,
     )
@@ -690,26 +784,29 @@ def contextual_presence_placements(
 
     for analysis in analyses:
         if analysis.gap_index is None:
-            raise MergeError(
+            raise PresencePlacementAmbiguityError(
                 _("Batch was created from a different version of the file")
             )
-        placements.append(PresenceRunPlacement(
-            run_start=analysis.run_start,
-            run_end=analysis.run_end,
-            gap_index=analysis.gap_index,
-            before_source_line=(
-                analysis.before[0] if analysis.before is not None else None
-            ),
-            after_source_line=(
-                analysis.after[0] if analysis.after is not None else None
-            ),
-            before_target_line=(
-                analysis.before[1] if analysis.before is not None else None
-            ),
-            after_target_line=(
-                analysis.after[1] if analysis.after is not None else None
-            ),
-        ))
+        placements.append(
+            PresenceRunPlacement(
+                run_start=analysis.run_start,
+                run_end=analysis.run_end,
+                gap_index=analysis.gap_index,
+                before_source_line=(
+                    analysis.before[0] if analysis.before is not None else None
+                ),
+                after_source_line=(
+                    analysis.after[0] if analysis.after is not None else None
+                ),
+                before_target_line=(
+                    analysis.before[1] if analysis.before is not None else None
+                ),
+                after_target_line=(
+                    analysis.after[1] if analysis.after is not None else None
+                ),
+                exact_context_gap=analysis.exact_context_gap,
+            )
+        )
 
     placements.sort(key=lambda placement: (placement.gap_index, placement.run_start))
     return missing, tuple(placements)

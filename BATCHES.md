@@ -458,6 +458,30 @@ old side must still match there (or at its sole complete relocated identity)
 before the owned source side replaces it. Ordinary presence claims never gain
 permission to remove an adjacent unowned source line.
 
+When successive replacement metadata reuses one intermediate payload, the
+same bytes can be an earlier unit's old side and a later unit's selected new
+side. Before planning, replay verifies that every explicit old side is the
+exact source span immediately after its linked replacement unit. Verified old
+sides are then removed from effective presence ownership, and a deletion whose
+anchor was inside a superseded span is moved to the nearest surviving source
+boundary. This collapses a replacement chain to the retained selected side
+rather than reintroducing an intermediate alternative.
+
+An ordinary line mapping is also insufficient when a low-entropy selected line
+can consume the target occurrence belonging to unowned source context. If a
+mapped selected payload also occurs outside the selection, replay performs a
+second mapping through a lazy source view that masks selected lines. That pass
+may displace the selected mapping across one contiguous context run when that
+run contains a globally unique source/target line. A verified
+source-alternative span authorizes only its own competing context lines, not
+unrelated repeated neighbors in the same run. A complete saved presence run may
+also authorize its immediately adjacent context, but only when the complete
+recorded boundary occurs once in the live target. Repeated context without one
+of those proofs remains ambiguous and fails closed. The
+occurrence indexes, correction records, and resulting mapping use mapped
+storage; slice views and claim payloads stay lazy instead of becoming Python
+collections of file lines.
+
 Recorded baseline coordinates are the first placement proof, not permanently
 fixed worktree offsets. Earlier replay may insert or remove neighboring lines.
 When that happens, a legacy replacement or deletion anchor may follow the sole
@@ -499,6 +523,15 @@ saved presence ranges. A nonempty target gap or broader unowned source skew
 still requires distinctive context and otherwise fails closed. The island scan
 uses compact missing ranges and does not construct a per-line Python index.
 
+Presence recorded against an empty baseline can also identify an independent
+addition inside a nonempty predecessor file. When exact unselected source lines
+extend inward from both mapped boundaries and consume the complete target gap,
+recorded runs adjacent to either side share that proven insertion position.
+Unselected source-only content between sibling runs remains omitted. This proof
+is unavailable to unrecorded claims, so broad source skew without the persisted
+insertion intent still fails closed. The ordered prefix and suffix scans retain
+only scalar cursors and do not copy file lines onto the Python heap.
+
 For adjacent selectable children of one historical replacement, the persisted
 parent coordinates describe the comparison that discovered the replacement;
 the child presence ranges describe the current batch-source coordinates. Source
@@ -520,6 +553,18 @@ deletion references must cover that gap consecutively. This proof scans the
 source, index, and worktree spans once and retains only compact ranges in mapped
 storage. Consecutive split children that satisfy the complete-parent proof only
 together are exposed as one atomic review selection.
+
+Source advancement can also retain a committed predecessor immediately after a
+newer replacement side. For a file with exactly one complete, unshifted
+replacement unit, the planner may cross that retained predecessor to the next
+shared index/worktree boundary. It does so only when the index gap is the exact
+historical old side, the selected new side maps an initial shared prefix, and
+the complete contiguous predecessor equals the live gap while its mapped suffix
+supplies the rest. A target-only line, a different index old side, an unrelated
+retained insertion, a partial unit, or a second replacement unit keeps the
+replay fail-closed. The scan uses only scalar cursors and existing storage-backed
+line mappings, so even a large retained predecessor does not create line-scale
+Python heap state.
 
 Older replacement units without parent-origin metadata can use the same trusted
 target proof when a duplicate historical source alternative hides an immediate

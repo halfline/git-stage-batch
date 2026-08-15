@@ -100,17 +100,17 @@ class _UnclaimedTargetGap(Sequence[Hashable]):
         *,
         masked_start: int | None = None,
         masked_end: int | None = None,
+        indices: range | None = None,
     ) -> None:
         self._target_lines = target_lines
-        self._start = start
-        self._end = end
+        self._indices = range(start, end) if indices is None else indices
         self._mapping = mapping
         self._claimed_ranges = claimed_ranges
         self._masked_start = masked_start
         self._masked_end = masked_end
 
     def __len__(self) -> int:
-        return self._end - self._start
+        return len(self._indices)
 
     @overload
     def __getitem__(self, index: int) -> Hashable: ...
@@ -120,25 +120,27 @@ class _UnclaimedTargetGap(Sequence[Hashable]):
 
     def __getitem__(self, index: int | slice) -> Hashable | Sequence[Hashable]:
         if isinstance(index, slice):
-            return tuple(
-                self[child_index]
-                for child_index in range(*index.indices(len(self)))
+            return _UnclaimedTargetGap(
+                self._target_lines,
+                0,
+                0,
+                self._mapping,
+                self._claimed_ranges,
+                masked_start=self._masked_start,
+                masked_end=self._masked_end,
+                indices=self._indices[index],
             )
-        if index < 0:
-            index += len(self)
-        if index < 0 or index >= len(self):
-            raise IndexError(index)
-
-        target_index = self._start + index
+        try:
+            target_index = self._indices[index]
+        except IndexError as error:
+            raise IndexError(index) from error
         if (
             self._masked_start is not None
             and self._masked_end is not None
             and self._masked_start <= target_index < self._masked_end
         ):
             return _CLAIMED_TARGET_LINE
-        source_line = self._mapping.get_source_line_from_target_line(
-            target_index + 1
-        )
+        source_line = self._mapping.get_source_line_from_target_line(target_index + 1)
         if source_line is not None and _line_is_claimed(
             self._claimed_ranges,
             source_line,
@@ -236,7 +238,8 @@ def has_missing_origin_replacement_claims(
                     origin,
                     spool_dir=spool_dir,
                     mapped_source_lines=mapped_source_lines,
-                ) is not None
+                )
+                is not None
             ):
                 unit_index = group_end
                 continue
@@ -319,11 +322,9 @@ def has_fragmented_replacement_crossing_mapped_source_lines(
                 first_selected_line = 0
                 last_selected_line = 0
                 has_missing_line = False
-                for source_start, source_end in (
-                    _selected_replacement_source_ranges(
-                        claimed_ranges,
-                        selected_presence,
-                    )
+                for source_start, source_end in _selected_replacement_source_ranges(
+                    claimed_ranges,
+                    selected_presence,
                 ):
                     if selected_range_count == 0:
                         first_selected_line = source_start
@@ -333,19 +334,16 @@ def has_fragmented_replacement_crossing_mapped_source_lines(
                         has_missing_line = True
                         continue
                     if any(
-                        mapping.get_target_line_from_source_line(source_line)
-                        is None
+                        mapping.get_target_line_from_source_line(source_line) is None
                         for source_line in range(source_start, source_end + 1)
                     ):
                         has_missing_line = True
 
                 if selected_range_count < 2 or not has_missing_line:
                     continue
-                first_mapped_record = (
-                    _first_mapped_source_record_at_or_after(
-                        mapped_source_lines,
-                        first_selected_line,
-                    )
+                first_mapped_record = _first_mapped_source_record_at_or_after(
+                    mapped_source_lines,
+                    first_selected_line,
                 )
                 if (
                     first_mapped_record < len(mapped_source_lines)
@@ -416,19 +414,14 @@ def complete_unrealized_replacement_group_target_bounds(
             if len(claimed_ranges) != 1:
                 return None
             source_start, source_end = claimed_ranges[0]
-            if (
-                source_end > len(source_lines)
-                or (
-                    next_source_line is not None
-                    and source_start != next_source_line
-                )
+            if source_end > len(source_lines) or (
+                next_source_line is not None and source_start != next_source_line
             ):
                 return None
             for source_line in range(source_start, source_end + 1):
                 if (
                     source_line not in selected_presence
-                    or mapping.get_target_line_from_source_line(source_line)
-                    is not None
+                    or mapping.get_target_line_from_source_line(source_line) is not None
                 ):
                     return None
             if parent_start is None:
@@ -483,9 +476,7 @@ def has_mapped_origin_replacement_claims(
     """Return whether an origin-tracked unit has mapped new-side lines."""
     selected_presence = coerce_line_ranges(presence_line_set)
     with MatcherWorkspace(spool_dir=spool_dir) as workspace:
-        for unit_index, unit in enumerate(
-            getattr(ownership, "replacement_units", [])
-        ):
+        for unit_index, unit in enumerate(getattr(ownership, "replacement_units", [])):
             if unit_indices is not None and unit_index not in unit_indices:
                 continue
             if getattr(unit, "origin", None) is None:
@@ -523,11 +514,7 @@ def has_mixed_origin_replacement_claims(
                 len(source_lines),
                 mapping,
             )
-            if (
-                state is not None
-                and state.has_mapped_line
-                and state.has_missing_line
-            ):
+            if state is not None and state.has_mapped_line and state.has_missing_line:
                 return True
     return False
 
@@ -584,10 +571,7 @@ def has_unsafe_mapped_origin_old_side_claims(
                 spool_dir=spool_dir,
                 mapped_source_lines=mapped_source_lines,
             )
-            if (
-                old_side is None
-                or old_side.state is ReplacementOldSideState.PARTIAL
-            ):
+            if old_side is None or old_side.state is ReplacementOldSideState.PARTIAL:
                 return True
     return False
 
@@ -668,9 +652,7 @@ def classify_replacement_old_side(
         target_position = 0
         next_source_line = 1
     else:
-        target_line = mapping.get_target_line_from_source_line(
-            deletion.anchor_line
-        )
+        target_line = mapping.get_target_line_from_source_line(deletion.anchor_line)
         if target_line is None:
             return None
         target_position = target_line
@@ -723,38 +705,33 @@ def classify_replacement_old_side(
         mapping,
         claimed_ranges,
     )
-    removal_positions = tuple(
-        dict.fromkeys((target_position, after_claimed_position))
-    )
-    matching_positions = tuple(
-        removal_position
-        for removal_position in removal_positions
-        if (
-            removal_position + len(deleted_sequence) <= target_end_position
-            and all(
-                target_gap[
-                    removal_position - target_position + offset
-                ] == expected_line
-                for offset, expected_line in enumerate(deleted_sequence)
-            )
-        )
-    )
-    if len(matching_positions) > 1:
-        return ReplacementOldSideRealization(
-            ReplacementOldSideState.PARTIAL
+
+    def deletion_matches_at(removal_position: int) -> bool:
+        return removal_position + len(deleted_sequence) <= target_end_position and all(
+            target_gap[removal_position - target_position + offset] == expected_line
+            for offset, expected_line in enumerate(deleted_sequence)
         )
 
+    matching_position = (
+        target_position if deletion_matches_at(target_position) else None
+    )
+    if after_claimed_position != target_position and deletion_matches_at(
+        after_claimed_position
+    ):
+        if matching_position is not None:
+            return ReplacementOldSideRealization(ReplacementOldSideState.PARTIAL)
+        matching_position = after_claimed_position
+
     overlap_gap = target_gap
-    if matching_positions:
-        removal_position = matching_positions[0]
+    if matching_position is not None:
         overlap_gap = _UnclaimedTargetGap(
             normalized_target,
             target_position,
             target_end_position,
             mapping,
             claimed_ranges,
-            masked_start=removal_position,
-            masked_end=removal_position + len(deleted_sequence),
+            masked_start=matching_position,
+            masked_end=matching_position + len(deleted_sequence),
         )
     with match_lines(
         deleted_sequence,
@@ -765,13 +742,11 @@ def classify_replacement_old_side(
             overlap.may_have_unmapped_equal_lines
             or next(overlap.mapped_line_pairs(), None) is not None
         ):
-            return ReplacementOldSideRealization(
-                ReplacementOldSideState.PARTIAL
-            )
-    if matching_positions:
+            return ReplacementOldSideRealization(ReplacementOldSideState.PARTIAL)
+    if matching_position is not None:
         return ReplacementOldSideRealization(
             ReplacementOldSideState.FULL,
-            matching_positions[0],
+            matching_position,
         )
     return ReplacementOldSideRealization(ReplacementOldSideState.ABSENT)
 
@@ -827,12 +802,13 @@ def _line_is_claimed(
 def check_structural_validity(
     line_mapping: LineMapping,
     claimed_lines: LineSelection,
-    deletions: list[AbsenceClaim],
+    deletions: Sequence[AbsenceClaim],
     source_lines: Sequence[bytes],
     target_lines: Sequence[bytes],
     *,
     require_distinctive_presence_context: bool = False,
     distinctive_presence_context_lines: LineSelection | None = None,
+    recorded_presence_context_lines: LineSelection | None = None,
     spool_dir: str | Path | None = None,
 ) -> tuple[PresenceRunPlacement, ...] | None:
     """Validate that batch can be safely applied given structural alignment.
@@ -859,7 +835,8 @@ def check_structural_validity(
         MergeError: If structural requirements aren't met
     """
     present_count = sum(
-        1 for line in range(1, len(source_lines) + 1)
+        1
+        for line in range(1, len(source_lines) + 1)
         if line_mapping.is_source_line_present(line)
     )
 
@@ -870,9 +847,9 @@ def check_structural_validity(
         if claimed_lines:
             first_claimed = _first_selected_line(claimed_lines)
             raise _MergeError(
-                _("Cannot reliably place claimed line {line}: file completely rewritten").format(
-                    line=first_claimed
-                )
+                _(
+                    "Cannot reliably place claimed line {line}: file completely rewritten"
+                ).format(line=first_claimed)
             )
 
     for claimed_line in claimed_lines:
@@ -902,57 +879,59 @@ def check_structural_validity(
         if after_line is not None:
             if after_line < 1 or after_line > len(source_lines):
                 raise _MergeError(
-                    _("Deletion after line {line} is out of range").format(line=after_line)
+                    _("Deletion after line {line} is out of range").format(
+                        line=after_line
+                    )
                 )
 
             if not line_mapping.is_source_line_present(after_line):
                 has_unmapped_deletion_anchor = True
                 if after_line in claimed_lines:
                     has_unmapped_claimed_deletion_anchor = True
+                    # Presence realization can reintroduce a selected anchor.
+                    # Its contextual placement below is the relevant safety
+                    # proof; a fixed-distance mapped-neighbor requirement can
+                    # reject an otherwise exact source-relative replacement.
+                    continue
                 has_context = False
                 for check_line in range(
                     max(1, after_line - 3),
                     min(len(source_lines) + 1, after_line + 4),
                 ):
-                    if (
-                        check_line != after_line
-                        and line_mapping.is_source_line_present(check_line)
+                    if check_line != after_line and line_mapping.is_source_line_present(
+                        check_line
                     ):
                         has_context = True
                         break
 
                 if not has_context and after_line != len(source_lines):
                     raise _MergeError(
-                        _("Cannot determine deletion position after line {line}: anchor and neighbors missing").format(
-                            line=after_line
-                        )
+                        _(
+                            "Cannot determine deletion position after line {line}: anchor and neighbors missing"
+                        ).format(line=after_line)
                     )
 
     # An unclaimed missing deletion anchor will remain absent after presence
     # realization, so let absence handling report its precise anchor error.
     # A claimed anchor can be reintroduced by that realization; validate its
     # placement first so the deletion cannot mask a silent variant interleave.
-    if (
-        has_unmapped_deletion_anchor
-        and not has_unmapped_claimed_deletion_anchor
-    ):
+    if has_unmapped_deletion_anchor and not has_unmapped_claimed_deletion_anchor:
         return None
 
-    _missing_presence_lines, presence_placements = (
-        _contextual_presence_placements(
-            source_lines,
-            target_lines,
-            claimed_lines,
-            line_mapping,
-            trusted_source_lines={
-                deletion.anchor_line
-                for deletion in deletions
-                if deletion.anchor_line is not None and deletion.content_lines
-            },
-            require_distinctive_context=require_distinctive_presence_context,
-            distinctive_context_lines=distinctive_presence_context_lines,
-            spool_dir=spool_dir,
-        )
+    _missing_presence_lines, presence_placements = _contextual_presence_placements(
+        source_lines,
+        target_lines,
+        claimed_lines,
+        line_mapping,
+        trusted_source_lines={
+            deletion.anchor_line
+            for deletion in deletions
+            if deletion.anchor_line is not None and deletion.content_lines
+        },
+        require_distinctive_context=require_distinctive_presence_context,
+        distinctive_context_lines=distinctive_presence_context_lines,
+        recorded_context_lines=recorded_presence_context_lines,
+        spool_dir=spool_dir,
     )
     # Let absence realization report its more precise missing-anchor error once
     # nearby mapped context has allowed an unmapped deletion anchor through.
@@ -966,6 +945,7 @@ def check_structural_validity(
         deletions,
         source_lines,
         target_lines,
+        presence_placements,
     )
     return presence_placements
 
@@ -973,9 +953,10 @@ def check_structural_validity(
 def _check_unbounded_trailing_context(
     line_mapping: LineMapping,
     claimed_lines: LineSelection,
-    deletions: list[AbsenceClaim],
+    deletions: Sequence[AbsenceClaim],
     source_lines: Sequence[bytes],
     target_lines: Sequence[bytes],
+    presence_placements: Sequence[PresenceRunPlacement],
 ) -> None:
     """Reject large unmatched tails not resolved by contextual anchors.
 
@@ -991,15 +972,16 @@ def _check_unbounded_trailing_context(
     )
 
     missing_ranges = missing.ranges()
+    exact_context_runs = LineRanges.from_ranges(
+        (placement.run_start, placement.run_end)
+        for placement in presence_placements
+        if placement.exact_context_gap
+    )
     for cluster in _iter_missing_presence_clusters(missing, line_mapping):
         if cluster.has_locally_collapsed_target_gap():
             continue
-        before_source_line = (
-            None if cluster.before is None else cluster.before[0]
-        )
-        before_target_line = (
-            None if cluster.before is None else cluster.before[1]
-        )
+        before_source_line = None if cluster.before is None else cluster.before[0]
+        before_target_line = None if cluster.before is None else cluster.before[1]
         after_source_line = None if cluster.after is None else cluster.after[0]
         after_target_line = None if cluster.after is None else cluster.after[1]
         deleted_at_terminal_boundary = (
@@ -1017,6 +999,10 @@ def _check_unbounded_trailing_context(
             cluster.run_stop_index,
         ):
             run_start, run_end = missing_ranges[run_index]
+            if exact_context_runs.count(run_start, run_end) == (
+                run_end - run_start + 1
+            ):
+                continue
             trailing_gap = (
                 after_source_line - run_end - 1
                 if after_source_line is not None
@@ -1030,7 +1016,9 @@ def _check_unbounded_trailing_context(
                 assert after_source_line is not None
                 target_span = after_target_line - before_target_line - 1
                 source_span_outside_run = (
-                    after_source_line - before_source_line - 1
+                    after_source_line
+                    - before_source_line
+                    - 1
                     - (run_end - run_start + 1)
                 )
                 if (
@@ -1038,10 +1026,7 @@ def _check_unbounded_trailing_context(
                     or target_span <= run_end - run_start + 1
                 ):
                     raise _MergeError(
-                        _(
-                            "Batch was created from a different version of "
-                            "the file"
-                        )
+                        _("Batch was created from a different version of the file")
                     )
                 continue
 
@@ -1049,10 +1034,7 @@ def _check_unbounded_trailing_context(
                 continue
 
             target_tail = len(target_lines) - before_target_line
-            if (
-                target_tail != 0
-                and target_tail > deleted_at_terminal_boundary
-            ):
+            if target_tail != 0 and target_tail > deleted_at_terminal_boundary:
                 raise _MergeError(
                     _("Batch was created from a different version of the file")
                 )

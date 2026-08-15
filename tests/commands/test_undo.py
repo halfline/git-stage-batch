@@ -12,6 +12,8 @@ from git_stage_batch.commands.discard import command_discard_file
 from git_stage_batch.commands.start import command_start
 from git_stage_batch.commands.undo import command_undo
 from git_stage_batch.data.undo.checkpoints import (
+    defer_transaction_completion,
+    defer_transaction_success,
     redo_last_checkpoint,
     transaction_checkpoint,
     undo_checkpoint,
@@ -19,6 +21,9 @@ from git_stage_batch.data.undo.checkpoints import (
 )
 from git_stage_batch.data.undo.refs import current_undo_commit
 from git_stage_batch.data.session import path_is_intent_to_add
+from git_stage_batch.data.applied_batch_overlays import (
+    applied_batch_overlays_repository_path,
+)
 from git_stage_batch.exceptions import CommandError
 from git_stage_batch.utils.paths import (
     get_batches_directory_path,
@@ -34,12 +39,29 @@ def temp_git_repo(tmp_path, monkeypatch):
     monkeypatch.chdir(repo)
 
     subprocess.run(["git", "init"], check=True, cwd=repo, capture_output=True)
-    subprocess.run(["git", "config", "user.name", "Test User"], check=True, cwd=repo, capture_output=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+    )
 
     (repo / "README.md").write_text("# Test\n")
-    subprocess.run(["git", "add", "README.md"], check=True, cwd=repo, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "Initial commit"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "add", "README.md"], check=True, cwd=repo, capture_output=True
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Initial commit"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+    )
 
     return repo
 
@@ -58,7 +80,9 @@ def _commit_symlink(repo, *, target):
     link_path = repo / "link"
     os.symlink(target, link_path)
     subprocess.run(["git", "add", "link"], check=True, cwd=repo, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "Add link"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Add link"], check=True, cwd=repo, capture_output=True
+    )
     return link_path
 
 
@@ -595,67 +619,6 @@ def test_unarmed_transaction_refusal_preserves_concurrent_worktree_edit(
     assert current_undo_commit() == previous_checkpoint
     assert status is not None
     assert status.rollback == "not-needed"
-def test_transient_transaction_rolls_back_scoped_index_change(temp_git_repo):
-    """A non-session transaction must restore every declared index target."""
-    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
-    neighbor = _commit_text_file(temp_git_repo, "neighbor.txt", "neighbor\n")
-    target.write_text("staged\n")
-    subprocess.run(
-        ["git", "add", "target.txt"],
-        check=True,
-        cwd=temp_git_repo,
-        capture_output=True,
-    )
-    expected_index = subprocess.run(
-        ["git", "ls-files", "--stage", "--", "target.txt"],
-        check=True,
-        cwd=temp_git_repo,
-        capture_output=True,
-        text=True,
-    ).stdout
-
-    with pytest.raises(RuntimeError, match="index publication failed"):
-        with transaction_checkpoint(
-            "change index",
-            worktree_paths=[],
-            index_paths=["target.txt"],
-        ) as status:
-            status.arm_rollback()
-            subprocess.run(
-                ["git", "update-index", "--force-remove", "--", "target.txt"],
-                check=True,
-                cwd=temp_git_repo,
-                capture_output=True,
-            )
-            neighbor.write_text("concurrent neighbor\n")
-            subprocess.run(
-                ["git", "add", "neighbor.txt"],
-                check=True,
-                cwd=temp_git_repo,
-                capture_output=True,
-            )
-            raise RuntimeError("index publication failed")
-
-    assert (
-        subprocess.run(
-            ["git", "ls-files", "--stage", "--", "target.txt"],
-            check=True,
-            cwd=temp_git_repo,
-            capture_output=True,
-            text=True,
-        ).stdout
-        == expected_index
-    )
-    assert (
-        subprocess.run(
-            ["git", "show", ":neighbor.txt"],
-            check=True,
-            cwd=temp_git_repo,
-            capture_output=True,
-            text=True,
-        ).stdout
-        == "concurrent neighbor\n"
-    )
 
 
 def test_transaction_checkpoint_delegates_to_active_outer_checkpoint(
@@ -685,10 +648,6 @@ def test_transaction_checkpoint_delegates_to_active_outer_checkpoint(
     assert target.read_text() == "inner\n"
     undo_last_checkpoint()
     assert target.read_text() == "before\n"
-
-
-
-
 
 
 @pytest.mark.parametrize("active_session", (False, True))
@@ -779,6 +738,250 @@ def test_caught_unarmed_nested_refusal_does_not_abort_armed_outer_transaction(
     assert outer_status.rollback == "not-needed"
     assert inner_status.rollback == "delegated"
     assert target.read_text() == "outer complete\n"
+
+
+@pytest.mark.parametrize("active_session", (False, True))
+def test_nested_transaction_defers_success_until_outer_commit(
+    temp_git_repo,
+    active_session,
+):
+    """Nested success effects must wait for the shared before-image to commit."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    if active_session:
+        marker = get_session_directory_path() / "abort" / "head.txt"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("HEAD\n")
+    published = []
+    rollbacks = []
+
+    with transaction_checkpoint(
+        "outer change",
+        worktree_paths=["target.txt"],
+    ) as outer_status:
+        with transaction_checkpoint(
+            "inner change",
+            worktree_paths=["target.txt"],
+        ) as inner_status:
+            inner_status.arm_rollback()
+            target.write_text("inner complete\n")
+        defer_transaction_success(lambda: published.append("success"))
+        defer_transaction_completion(
+            lambda: published.append("paired success"),
+            rollbacks.append,
+        )
+        assert published == []
+
+    assert outer_status.rollback == "not-needed"
+    assert inner_status.rollback == "delegated"
+    assert published == ["success", "paired success"]
+    assert rollbacks == []
+
+
+@pytest.mark.parametrize("active_session", (False, True))
+def test_nested_transaction_discards_success_after_outer_rollback(
+    temp_git_repo,
+    active_session,
+):
+    """A rolled-back nested publication must not announce success."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    if active_session:
+        marker = get_session_directory_path() / "abort" / "head.txt"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("HEAD\n")
+    published = []
+    rollbacks = []
+
+    with pytest.raises(RuntimeError, match="outer failed"):
+        with transaction_checkpoint(
+            "outer change",
+            worktree_paths=["target.txt"],
+        ):
+            with transaction_checkpoint(
+                "inner change",
+                worktree_paths=["target.txt"],
+            ) as inner_status:
+                inner_status.arm_rollback()
+                target.write_text("inner complete\n")
+            defer_transaction_success(lambda: published.append("success"))
+            defer_transaction_completion(
+                lambda: published.append("paired success"),
+                rollbacks.append,
+            )
+            raise RuntimeError("outer failed")
+
+    assert published == []
+    assert rollbacks == ["completed"]
+    assert target.read_text() == "before\n"
+
+
+def test_transient_transaction_refuses_nested_different_repository(
+    temp_git_repo,
+    tmp_path,
+    monkeypatch,
+):
+    """A transient before-image must never delegate work in another repo."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    other_repo = tmp_path / "other-repo"
+    other_repo.mkdir()
+    subprocess.run(
+        ["git", "init"],
+        check=True,
+        cwd=other_repo,
+        capture_output=True,
+    )
+
+    with transaction_checkpoint(
+        "outer change",
+        worktree_paths=["target.txt"],
+    ) as outer_status:
+        with monkeypatch.context() as nested_environment:
+            nested_environment.chdir(other_repo)
+            with pytest.raises(CommandError, match="outer checkpoint.*repository"):
+                with transaction_checkpoint(
+                    "wrong repository",
+                    worktree_paths=[],
+                ):
+                    raise AssertionError("cross-repository transaction started")
+        outer_status.arm_rollback()
+        target.write_text("published\n")
+
+    assert outer_status.rollback == "not-needed"
+    assert target.read_text() == "published\n"
+
+
+def test_active_transaction_refuses_nested_different_repository(
+    temp_git_repo,
+    tmp_path,
+    monkeypatch,
+):
+    """An active-session transaction must remain scoped to its repository."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    other_repo = tmp_path / "other-repo"
+    other_repo.mkdir()
+    subprocess.run(
+        ["git", "init"],
+        check=True,
+        cwd=other_repo,
+        capture_output=True,
+    )
+    marker = get_session_directory_path() / "abort" / "head.txt"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("HEAD\n")
+
+    with transaction_checkpoint(
+        "outer change",
+        worktree_paths=["target.txt"],
+    ) as outer_status:
+        with monkeypatch.context() as nested_environment:
+            nested_environment.chdir(other_repo)
+            with pytest.raises(CommandError, match="outer checkpoint.*repository"):
+                with transaction_checkpoint(
+                    "wrong repository",
+                    worktree_paths=[],
+                ):
+                    raise AssertionError("cross-repository transaction started")
+        outer_status.arm_rollback()
+        target.write_text("published\n")
+
+    assert outer_status.rollback == "not-needed"
+    assert target.read_text() == "published\n"
+
+
+def test_active_undo_checkpoint_refuses_nested_different_repository(
+    temp_git_repo,
+    tmp_path,
+    monkeypatch,
+):
+    """A regular pending checkpoint must retain ownership of its repository."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    other_repo = tmp_path / "other-repo"
+    other_repo.mkdir()
+    subprocess.run(
+        ["git", "init"],
+        check=True,
+        cwd=other_repo,
+        capture_output=True,
+    )
+    marker = get_session_directory_path() / "abort" / "head.txt"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("HEAD\n")
+
+    with undo_checkpoint("outer change", worktree_paths=["target.txt"]):
+        with monkeypatch.context() as nested_environment:
+            nested_environment.chdir(other_repo)
+            with pytest.raises(CommandError, match="outer checkpoint.*repository"):
+                with undo_checkpoint("wrong repository", worktree_paths=[]):
+                    raise AssertionError("cross-repository checkpoint started")
+        target.write_text("published\n")
+
+    assert target.read_text() == "published\n"
+    undo_last_checkpoint()
+    assert target.read_text() == "before\n"
+
+
+def test_transient_transaction_rolls_back_scoped_index_change(temp_git_repo):
+    """A non-session transaction must restore every declared index target."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    neighbor = _commit_text_file(temp_git_repo, "neighbor.txt", "neighbor\n")
+    target.write_text("staged\n")
+    subprocess.run(
+        ["git", "add", "target.txt"],
+        check=True,
+        cwd=temp_git_repo,
+        capture_output=True,
+    )
+    expected_index = subprocess.run(
+        ["git", "ls-files", "--stage", "--", "target.txt"],
+        check=True,
+        cwd=temp_git_repo,
+        capture_output=True,
+        text=True,
+    ).stdout
+
+    with pytest.raises(RuntimeError, match="index publication failed"):
+        with transaction_checkpoint(
+            "change index",
+            worktree_paths=[],
+            index_paths=["target.txt"],
+        ) as status:
+            status.arm_rollback()
+            subprocess.run(
+                ["git", "update-index", "--force-remove", "--", "target.txt"],
+                check=True,
+                cwd=temp_git_repo,
+                capture_output=True,
+            )
+            neighbor.write_text("concurrent neighbor\n")
+            subprocess.run(
+                ["git", "add", "neighbor.txt"],
+                check=True,
+                cwd=temp_git_repo,
+                capture_output=True,
+            )
+            raise RuntimeError("index publication failed")
+
+    assert (
+        subprocess.run(
+            ["git", "ls-files", "--stage", "--", "target.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        ).stdout
+        == expected_index
+    )
+    assert (
+        subprocess.run(
+            ["git", "show", ":neighbor.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        ).stdout
+        == "concurrent neighbor\n"
+    )
+
+
 def test_nontransactional_checkpoint_status_remains_not_requested(
     temp_git_repo,
 ):
@@ -942,6 +1145,50 @@ def test_failed_checkpoint_finalization_requires_force(temp_git_repo, monkeypatc
     assert target.read_text() == "before\n"
 
 
+def test_transactional_finalization_failure_rolls_back_publication(
+    temp_git_repo,
+    monkeypatch,
+):
+    """A transaction stays atomic when its undo-node finalization fails."""
+    from git_stage_batch.data.undo import snapshots as undo_snapshots
+
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    marker = get_session_directory_path() / "abort" / "head.txt"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("HEAD\n")
+    previous_checkpoint = current_undo_commit()
+    original_snapshot = undo_snapshots.snapshot_current_state
+    calls = 0
+    published_success = []
+
+    def fail_during_finalization(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("transaction finalization failed")
+        return original_snapshot(*args, **kwargs)
+
+    monkeypatch.setattr(
+        undo_snapshots,
+        "snapshot_current_state",
+        fail_during_finalization,
+    )
+
+    with pytest.raises(RuntimeError, match="transaction finalization failed"):
+        with transaction_checkpoint(
+            "change target",
+            worktree_paths=["target.txt"],
+        ) as status:
+            status.arm_rollback()
+            target.write_text("published\n")
+            defer_transaction_success(lambda: published_success.append("success"))
+
+    assert status.rollback == "completed"
+    assert target.read_text() == "before\n"
+    assert current_undo_commit() == previous_checkpoint
+    assert published_success == []
+
+
 def test_unreadable_checkpoint_manifest_fails_finalization(temp_git_repo, monkeypatch):
     """Finalization must report an unreadable before-image manifest."""
     from git_stage_batch.data.undo import checkpoints
@@ -1030,20 +1277,26 @@ def test_scoped_undo_preserves_unrelated_batch_ref_changes(temp_git_repo):
 
     undo_last_checkpoint()
 
-    assert subprocess.run(
-        ["git", "rev-parse", target_ref],
-        check=True,
-        cwd=temp_git_repo,
-        capture_output=True,
-        text=True,
-    ).stdout.strip() == head
-    assert subprocess.run(
-        ["git", "rev-parse", unrelated_ref],
-        check=True,
-        cwd=temp_git_repo,
-        capture_output=True,
-        text=True,
-    ).stdout.strip() == unrelated_after
+    assert (
+        subprocess.run(
+            ["git", "rev-parse", target_ref],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        == head
+    )
+    assert (
+        subprocess.run(
+            ["git", "rev-parse", unrelated_ref],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        == unrelated_after
+    )
 
 
 def test_scoped_undo_preserves_unrelated_application_metadata(temp_git_repo):
@@ -1200,108 +1453,3 @@ def test_incomplete_checkpoint_requires_force(temp_git_repo, monkeypatch):
         undo_last_checkpoint()
 
     assert target.read_text() == "after process exit\n"
-
-
-def test_active_transaction_refuses_nested_different_repository(
-    temp_git_repo,
-    tmp_path,
-    monkeypatch,
-):
-    """An active-session transaction must remain scoped to its repository."""
-    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
-    other_repo = tmp_path / "other-repo"
-    other_repo.mkdir()
-    subprocess.run(
-        ["git", "init"],
-        check=True,
-        cwd=other_repo,
-        capture_output=True,
-    )
-    marker = get_session_directory_path() / "abort" / "head.txt"
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text("HEAD\n")
-
-    with transaction_checkpoint(
-        "outer change",
-        worktree_paths=["target.txt"],
-    ) as outer_status:
-        with monkeypatch.context() as nested_environment:
-            nested_environment.chdir(other_repo)
-            with pytest.raises(CommandError, match="outer checkpoint.*repository"):
-                with transaction_checkpoint(
-                    "wrong repository",
-                    worktree_paths=[],
-                ):
-                    raise AssertionError("cross-repository transaction started")
-        outer_status.arm_rollback()
-        target.write_text("published\n")
-
-    assert outer_status.rollback == "not-needed"
-    assert target.read_text() == "published\n"
-
-
-def test_active_undo_checkpoint_refuses_nested_different_repository(
-    temp_git_repo,
-    tmp_path,
-    monkeypatch,
-):
-    """A regular pending checkpoint must retain ownership of its repository."""
-    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
-    other_repo = tmp_path / "other-repo"
-    other_repo.mkdir()
-    subprocess.run(
-        ["git", "init"],
-        check=True,
-        cwd=other_repo,
-        capture_output=True,
-    )
-    marker = get_session_directory_path() / "abort" / "head.txt"
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text("HEAD\n")
-
-    with undo_checkpoint("outer change", worktree_paths=["target.txt"]):
-        with monkeypatch.context() as nested_environment:
-            nested_environment.chdir(other_repo)
-            with pytest.raises(CommandError, match="outer checkpoint.*repository"):
-                with undo_checkpoint("wrong repository", worktree_paths=[]):
-                    raise AssertionError("cross-repository checkpoint started")
-        target.write_text("published\n")
-
-    assert target.read_text() == "published\n"
-    undo_last_checkpoint()
-    assert target.read_text() == "before\n"
-
-
-def test_transient_transaction_refuses_nested_different_repository(
-    temp_git_repo,
-    tmp_path,
-    monkeypatch,
-):
-    """A transient before-image must never delegate work in another repo."""
-    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
-    other_repo = tmp_path / "other-repo"
-    other_repo.mkdir()
-    subprocess.run(
-        ["git", "init"],
-        check=True,
-        cwd=other_repo,
-        capture_output=True,
-    )
-
-    with transaction_checkpoint(
-        "outer change",
-        worktree_paths=["target.txt"],
-    ) as outer_status:
-        with monkeypatch.context() as nested_environment:
-            nested_environment.chdir(other_repo)
-            with pytest.raises(CommandError, match="outer checkpoint.*repository"):
-                with transaction_checkpoint(
-                    "wrong repository",
-                    worktree_paths=[],
-                ):
-                    raise AssertionError("cross-repository transaction started")
-        outer_status.arm_rollback()
-        target.write_text("published\n")
-
-    assert outer_status.rollback == "not-needed"
-    assert target.read_text() == "published\n"

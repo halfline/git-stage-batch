@@ -197,24 +197,6 @@ ALLOWED_FINDINGS = (
         "TypedDict key read from persisted recovery state by string name.",
     ),
     _allowed(
-        "src/git_stage_batch/data/recovery_types.py",
-        "variable",
-        "session_files",
-        "TypedDict key read from persisted recovery state by string name.",
-    ),
-    _allowed(
-        "src/git_stage_batch/data/recovery_types.py",
-        "variable",
-        "batches_files",
-        "TypedDict key read from persisted recovery state by string name.",
-    ),
-    _allowed(
-        "src/git_stage_batch/data/recovery_types.py",
-        "variable",
-        "repository_files",
-        "TypedDict key read from persisted recovery state by string name.",
-    ),
-    _allowed(
         "src/git_stage_batch/data/status_types.py",
         "variable",
         "in_progress",

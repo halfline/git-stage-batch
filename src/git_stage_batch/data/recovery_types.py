@@ -12,11 +12,17 @@ class IndexEntryState(TypedDict):
     object_id: str
 
 
-class FilesystemEntryState(TypedDict):
+class _RequiredFilesystemEntryState(TypedDict):
     """One application-state file saved below a checkpoint tree prefix."""
 
     mode: str
     object_id: str
+
+
+class FilesystemEntryState(_RequiredFilesystemEntryState, total=False):
+    """One application-state file, including optional exact permissions."""
+
+    permissions: int
 
 
 class _RequiredWorktreePathState(TypedDict):
@@ -38,6 +44,7 @@ class WorktreePathState(_RequiredWorktreePathState, total=False):
     dirty: bool
     archive: bool
     storage_mode: str
+    permissions: int
 
 
 FilesystemState: TypeAlias = dict[str, FilesystemEntryState]
@@ -70,50 +77,57 @@ class CheckpointState(TypedDict, total=False):
 
 
 _OPTIONAL_STRING_FIELDS = frozenset({"head"})
-_STRING_FIELDS = frozenset({
-    "index_tree",
-    "operation",
-    "undo_checkpoint",
-})
-_STRING_LIST_FIELDS = frozenset({
-    "intent_to_add_paths",
-    "tracked_worktree_paths",
-    "tracked_index_paths",
-    "tracked_refs",
-    "tracked_session_paths",
-    "tracked_batches_paths",
-    "tracked_repository_paths",
-})
+_STRING_FIELDS = frozenset(
+    {
+        "index_tree",
+        "operation",
+        "undo_checkpoint",
+    }
+)
+_STRING_LIST_FIELDS = frozenset(
+    {
+        "intent_to_add_paths",
+        "tracked_worktree_paths",
+        "tracked_index_paths",
+        "tracked_refs",
+        "tracked_session_paths",
+        "tracked_batches_paths",
+        "tracked_repository_paths",
+    }
+)
 _STRING_MAPPING_FIELDS = frozenset({"refs", "recovery_anchors"})
-_FILESYSTEM_FIELDS = frozenset({
-    "session_files",
-    "batches_files",
-    "repository_files",
-})
-_WORKTREE_OPTIONAL_STRING_FIELDS = frozenset({
-    "mode",
-    "storage_mode",
-})
-_WORKTREE_NULLABLE_STRING_FIELDS = frozenset({
-    "blob",
-    "index_oid",
-    "head_oid",
-    "worktree_oid",
-})
+_FILESYSTEM_FIELDS = frozenset(
+    {
+        "session_files",
+        "batches_files",
+        "repository_files",
+    }
+)
+_WORKTREE_OPTIONAL_STRING_FIELDS = frozenset(
+    {
+        "mode",
+        "storage_mode",
+    }
+)
+_WORKTREE_NULLABLE_STRING_FIELDS = frozenset(
+    {
+        "blob",
+        "index_oid",
+        "head_oid",
+        "worktree_oid",
+    }
+)
 _WORKTREE_BOOLEAN_FIELDS = frozenset({"exists", "dirty", "archive"})
 
 
 def _string_mapping(value: object) -> TypeGuard[dict[str, str]]:
     return isinstance(value, dict) and all(
-        isinstance(key, str) and isinstance(item, str)
-        for key, item in value.items()
+        isinstance(key, str) and isinstance(item, str) for key, item in value.items()
     )
 
 
 def _string_list(value: object) -> TypeGuard[list[str]]:
-    return isinstance(value, list) and all(
-        isinstance(item, str) for item in value
-    )
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
 
 
 def _object_entry_mapping(
@@ -132,7 +146,13 @@ def _object_entry_mapping(
 
 
 def _filesystem_state(value: object) -> TypeGuard[FilesystemState]:
-    return _object_entry_mapping(value)
+    if not _object_entry_mapping(value):
+        return False
+    entries = cast(dict[str, dict[str, object]], value)
+    return all(
+        "permissions" not in entry or _permission_bits(entry["permissions"])
+        for entry in entries.values()
+    )
 
 
 def _worktree_path_state(value: object) -> TypeGuard[WorktreePathState]:
@@ -153,22 +173,26 @@ def _worktree_path_state(value: object) -> TypeGuard[WorktreePathState]:
     for field in _WORKTREE_BOOLEAN_FIELDS:
         if field in value and type(value[field]) is not bool:
             return False
+    permissions = value.get("permissions")
+    if permissions is not None and not _permission_bits(permissions):
+        return False
     return True
+
+
+def _permission_bits(value: object) -> TypeGuard[int]:
+    """Return whether a JSON value is an exact Unix permission-bit value."""
+    return type(value) is int and 0 <= value <= 0o7777
 
 
 def _worktree_path_states(
     value: object,
 ) -> TypeGuard[list[WorktreePathState]]:
-    return isinstance(value, list) and all(
-        _worktree_path_state(item) for item in value
-    )
+    return isinstance(value, list) and all(_worktree_path_state(item) for item in value)
 
 
 def is_checkpoint_state(value: object) -> TypeGuard[CheckpointState]:
     """Return whether a decoded JSON value has the checkpoint field shapes."""
-    if not isinstance(value, dict) or not all(
-        isinstance(key, str) for key in value
-    ):
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
         return False
     values = cast(dict[str, object], value)
     for field in _OPTIONAL_STRING_FIELDS:
@@ -185,14 +209,10 @@ def is_checkpoint_state(value: object) -> TypeGuard[CheckpointState]:
     for field in _STRING_MAPPING_FIELDS:
         if field in values and not _string_mapping(values[field]):
             return False
-    if (
-        "index_entries" in values
-        and not _object_entry_mapping(values["index_entries"])
-    ):
+    if "index_entries" in values and not _object_entry_mapping(values["index_entries"]):
         return False
-    if (
-        "worktree_paths" in values
-        and not _worktree_path_states(values["worktree_paths"])
+    if "worktree_paths" in values and not _worktree_path_states(
+        values["worktree_paths"]
     ):
         return False
     for field in _FILESYSTEM_FIELDS:

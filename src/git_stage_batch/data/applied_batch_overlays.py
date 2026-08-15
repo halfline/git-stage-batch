@@ -58,11 +58,11 @@ from ..utils.git_object_io import list_git_tree_blobs
 from ..utils.repository_buffers import load_git_blob_as_buffer
 from ..batch.state.reference_names import format_batch_state_ref_name
 from .session_marker import session_is_active
-from .file_target_identity import WorktreeIdentity, capture_worktree_identity
-from .index_entries import (
-    IndexEntry,
-    read_index_entries,
-    read_intent_to_add_paths,
+from .file_target_identity import (
+    IndexIdentity,
+    WorktreeIdentity,
+    capture_worktree_identity,
+    read_index_identities,
 )
 
 
@@ -596,6 +596,10 @@ def rebind_applied_batch_overlays_after_session() -> None:
         entry = state["files"].get(file_path)
         if entry is None or entry["head"] != head:
             continue
+        if index_identities[file_path].unmerged_entries:
+            del state["files"][file_path]
+            changed = True
+            continue
         if entry["worktree"] != asdict(capture_worktree_identity(file_path)):
             continue
         applications = [
@@ -621,8 +625,7 @@ def rebind_applied_batch_overlays_after_session() -> None:
         _write_state(state)
 
 
-def load_applied_batch_overlay_abort_snapshot(
-) -> AppliedBatchOverlayAbortSnapshot:
+def load_applied_batch_overlay_abort_snapshot() -> AppliedBatchOverlayAbortSnapshot:
     """Load and validate the optional pre-session overlay snapshot."""
     snapshot_path = get_abort_applied_batch_overlays_file_path()
     absent_path = get_abort_applied_batch_overlays_absent_file_path()
@@ -839,6 +842,25 @@ def _same_applied_ownership(
     )
 
 
+def _merge_application_authority(
+    target: _AppliedApplication,
+    source: _AppliedApplication,
+) -> None:
+    """Retain the union of still-valid proof for equivalent applications."""
+    if source.get("introduced_selected_presence") is True:
+        target["introduced_selected_presence"] = True
+    if source.get("index_target_is_original") is True:
+        target["index_target_is_original"] = True
+
+    source_preimage = source.get("index_preimage_source_lines", [])
+    if source_preimage:
+        target["index_preimage_source_lines"] = LineRanges.from_specs(
+            chain(
+                target.get("index_preimage_source_lines", []),
+                source_preimage,
+            )
+        ).to_range_strings()
+
 
 def _all_selected_presence_introduced(
     file_metadata: BatchFileMetadataDict,
@@ -915,25 +937,6 @@ def selected_presence_was_introduced(
         return True
 
 
-def _merge_application_authority(
-    target: _AppliedApplication,
-    source: _AppliedApplication,
-) -> None:
-    """Retain the union of still-valid proof for equivalent applications."""
-    if source.get("introduced_selected_presence") is True:
-        target["introduced_selected_presence"] = True
-    if source.get("index_target_is_original") is True:
-        target["index_target_is_original"] = True
-
-    source_preimage = source.get("index_preimage_source_lines", [])
-    if source_preimage:
-        target["index_preimage_source_lines"] = LineRanges.from_specs(
-            chain(
-                target.get("index_preimage_source_lines", []),
-                source_preimage,
-            )
-        ).to_range_strings()
-
 def _entry_identity_matches(
     entry: _AppliedFileEntry,
     *,
@@ -959,9 +962,7 @@ def _session_index_drift_paths(
     if not session_is_active():
         return frozenset()
     written_in_session = frozenset(
-        read_file_paths_file(
-            get_session_applied_batch_overlay_paths_file_path()
-        )
+        read_file_paths_file(get_session_applied_batch_overlay_paths_file_path())
     )
     fresh_index_path = get_abort_applied_batch_overlay_fresh_index_file_path()
     if not fresh_index_path.exists():
@@ -969,9 +970,7 @@ def _session_index_drift_paths(
         # written by this version inside it have an exact apply-time identity.
         return frozenset(state["files"]).intersection(written_in_session)
     fresh_at_start = _load_fresh_index_paths(fresh_index_path)
-    return frozenset(state["files"]).intersection(
-        fresh_at_start | written_in_session
-    )
+    return frozenset(state["files"]).intersection(fresh_at_start | written_in_session)
 
 
 def _write_fresh_index_paths(path: Path, file_paths: list[str]) -> None:

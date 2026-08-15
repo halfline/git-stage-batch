@@ -14,16 +14,16 @@ from . import binary_file_actions as _binary_file_actions
 from . import file_mode_actions as _file_mode_actions
 from . import text_file_actions as _text_file_actions
 from . import text_plan_builders as _text_plan_builders
-from ...batch.state.query import read_batch_metadata_for_batches
 from ...batch.state.validation import get_validated_baseline_commit
+from ...batch.state.query import read_batch_metadata_for_batches
 from ...batch.submodule_pointer import (
     discard_submodule_pointer_from_batch,
     is_batch_submodule_pointer,
     validate_discard_submodule_pointer,
 )
-from ...core.line_selection import LineRanges
 from ...data.session import snapshot_file_if_untracked
 from ...data.session_marker import session_is_active
+from ...core.line_selection import LineRanges
 from ...batch.state.metadata_types import (
     BatchFileMetadataDict,
     BatchMetadataDict,
@@ -33,6 +33,7 @@ from ...data.applied_batch_overlays import (
     fresh_applied_batch_overlay_for_path,
     load_applied_batch_overlay_snapshot,
 )
+from ...data.file_modes import detect_file_mode_in_commit
 from ...data.file_target_identity import (
     IndexIdentity,
     WorktreeIdentity,
@@ -40,13 +41,11 @@ from ...data.file_target_identity import (
     capture_worktree_identity,
     read_index_identities,
 )
-from ...data.file_modes import detect_file_mode_in_commit
-from ...data.undo.checkpoints import transaction_checkpoint, undo_checkpoint
+from ...data.undo.checkpoints import transaction_checkpoint
 from ...exceptions import (
     AtomicUnitError,
     BatchMetadataError,
     CommandError,
-    MergeError,
     exit_with_error,
 )
 from ...git_paths import display_path, terminal_safe_shell_join
@@ -134,6 +133,17 @@ def _print_binary_discard_result(
         )
 
 
+def _print_binary_discard_results(
+    results: tuple[
+        tuple[str, _binary_file_actions.BinaryWorktreeAction | None],
+        ...,
+    ],
+) -> None:
+    """Print binary discard results after the outer transaction commits."""
+    for file_path, action in results:
+        _print_binary_discard_result(file_path, action)
+
+
 def execute_discard_action(
     *,
     batch_name: str,
@@ -154,52 +164,74 @@ def execute_discard_action(
     )
 
     workspace = FileJobWorkspace()
-    capture = _build_discard_action_plans(
-        batch_name=batch_name,
-        baseline_commit=baseline_commit,
-        selection=selection,
-        applied_overlay_snapshot=applied_overlay_snapshot,
-        overlay_batch_metadata=overlay_batch_metadata,
-        workspace=workspace,
-    )
-    if not capture.plans:
-        return
-    _require_unchanged_discard_targets(
-        capture.index_identities,
-        capture.worktree_identities,
-    )
-    with transaction_checkpoint(
-        operation,
-        worktree_paths=list(
-            dict.fromkeys(plan.file_path for plan in capture.plans)
-        ),
-        index_paths=list(capture.index_mutation_paths),
-    ) as checkpoint_status:
-        _require_unchanged_discard_targets(
-            capture.index_identities,
-            capture.worktree_identities,
+    with _action_plans.resource_cleanup((workspace,)) as close_workspace:
+        capture = _build_discard_action_plans(
+            batch_name=batch_name,
+            baseline_commit=baseline_commit,
+            selection=selection,
+            applied_overlay_snapshot=applied_overlay_snapshot,
+            overlay_batch_metadata=overlay_batch_metadata,
+            workspace=workspace,
         )
-        checkpoint_status.arm_rollback()
-        binary_worktree_results: list[
-            tuple[
-                str,
-                _binary_file_actions.BinaryWorktreeAction | None,
-            ]
-        ] = []
-        for plan in capture.plans:
-            action = _publish_discard_action_plan(plan)
-            if isinstance(
-                plan,
-                _action_plans.BinaryFileActionPlan,
-            ):
-                binary_worktree_results.append((plan.file_path, action))
-    if binary_worktree_results:
-        checkpoint_status.defer_success(
-            partial(
-                _print_binary_discard_results,
-                tuple(binary_worktree_results),
+        with _action_plans.resource_cleanup(capture.plans) as close_discard_plans:
+            if not capture.plans:
+                return
+            _require_unchanged_discard_targets(
+                capture.index_identities,
+                capture.worktree_identities,
             )
+            with transaction_checkpoint(
+                operation,
+                worktree_paths=list(
+                    dict.fromkeys(plan.file_path for plan in capture.plans)
+                ),
+                index_paths=list(capture.index_mutation_paths),
+            ) as checkpoint_status:
+                _require_unchanged_discard_targets(
+                    capture.index_identities,
+                    capture.worktree_identities,
+                )
+                checkpoint_status.arm_rollback()
+                binary_worktree_results: list[
+                    tuple[
+                        str,
+                        _binary_file_actions.BinaryWorktreeAction | None,
+                    ]
+                ] = []
+                for plan in capture.plans:
+                    action = _publish_discard_action_plan(plan)
+                    if isinstance(
+                        plan,
+                        _action_plans.BinaryFileActionPlan,
+                    ):
+                        binary_worktree_results.append((plan.file_path, action))
+                close_discard_plans()
+                close_workspace()
+            if binary_worktree_results:
+                checkpoint_status.defer_success(
+                    partial(
+                        _print_binary_discard_results,
+                        tuple(binary_worktree_results),
+                    )
+                )
+
+
+def _load_overlay_batch_metadata(
+    files: dict[str, BatchFileMetadataDict],
+    applied_overlay_snapshot: AppliedBatchOverlaySnapshot,
+) -> dict[str, BatchMetadataDict]:
+    """Load metadata for overlay owners relevant to selected paths."""
+    overlay_batch_names: set[str] = set()
+    for file_path in files:
+        overlay_entry = applied_overlay_snapshot.state["files"].get(file_path)
+        if overlay_entry is None:
+            continue
+        overlay_batch_names.update(
+            application["batch"] for application in overlay_entry["applications"]
         )
+    return read_batch_metadata_for_batches(sorted(overlay_batch_names))
+
+
 def _capture_discard_targets(
     files: dict[str, BatchFileMetadataDict],
     applied_overlay_snapshot: AppliedBatchOverlaySnapshot,
@@ -265,101 +297,6 @@ def _capture_discard_targets(
         index_identities,
         tuple(capture_errors),
     )
-def _require_unchanged_discard_targets(
-    expected_index_identities: dict[str, IndexIdentity],
-    expected_worktree_identities: dict[str, WorktreeIdentity],
-) -> None:
-    """Refuse every plan when any captured publication target changed."""
-    current_index_identities = read_index_identities(expected_index_identities)
-    for file_path, expected_index_identity in expected_index_identities.items():
-        if (
-            expected_index_identity.unmerged_entries
-            or current_index_identities[file_path] != expected_index_identity
-        ):
-            raise _discard_target_changed_error(file_path, target="index")
-    current_worktree_identities = capture_worktree_identities(
-        expected_worktree_identities
-    )
-    for file_path, expected_worktree_identity in expected_worktree_identities.items():
-        if current_worktree_identities[file_path] != expected_worktree_identity:
-            raise _discard_target_changed_error(file_path, target="worktree")
-
-
-def _discard_target_changed_error(
-    file_path: str,
-    *,
-    target: str,
-) -> CommandError:
-    """Return the established complete stale-discard refusal message."""
-    if target == "index":
-        return CommandError(
-            _(
-                "Index changed while discard was being calculated: "
-                "{file}. Retry the discard command."
-            ).format(file=display_path(file_path))
-        )
-    return CommandError(
-        _(
-            "Working tree file changed while discard was being "
-            "calculated: {file}. Retry the discard command."
-        ).format(file=display_path(file_path))
-    )
-
-
-def _print_binary_discard_results(
-    results: tuple[
-        tuple[str, _binary_file_actions.BinaryWorktreeAction | None],
-        ...,
-    ],
-) -> None:
-    """Print binary discard results after the outer transaction commits."""
-    for file_path, action in results:
-        _print_binary_discard_result(file_path, action)
-
-
-def _load_overlay_batch_metadata(
-    files: dict[str, BatchFileMetadataDict],
-    applied_overlay_snapshot: AppliedBatchOverlaySnapshot,
-) -> dict[str, BatchMetadataDict]:
-    """Load metadata for overlay owners relevant to selected paths."""
-    overlay_batch_names: set[str] = set()
-    for file_path in files:
-        overlay_entry = applied_overlay_snapshot.state["files"].get(file_path)
-        if overlay_entry is None:
-            continue
-        overlay_batch_names.update(
-            application["batch"] for application in overlay_entry["applications"]
-        )
-    return read_batch_metadata_for_batches(sorted(overlay_batch_names))
-
-
-def _build_discard_binary_action_plan(
-    *,
-    ordinal: int,
-    file_path: str,
-    baseline_commit: str,
-    workspace: FileJobWorkspace,
-) -> _action_plans.BinaryFileActionPlan:
-    """Load a binary baseline into a deferred worktree action."""
-    buffer = read_git_object_buffer_or_none(
-        f"{baseline_commit}:{file_path}",
-        spool_dir=workspace.scratch_directory(ordinal),
-    )
-    try:
-        metadata: BatchFileMetadataDict = {
-            "file_type": "binary",
-            "change_type": "deleted" if buffer is None else "modified",
-        }
-        if buffer is not None:
-            mode = detect_file_mode_in_commit(baseline_commit, file_path)
-            if mode is None:
-                raise ValueError("binary baseline object omitted its file mode")
-            metadata["mode"] = mode
-        return _action_plans.BinaryFileActionPlan(file_path, metadata, buffer)
-    except BaseException:
-        if buffer is not None:
-            buffer.close()
-        raise
 
 
 def _build_discard_action_plans(
@@ -534,6 +471,35 @@ def _build_discard_action_plans(
         raise
 
 
+def _build_discard_binary_action_plan(
+    *,
+    ordinal: int,
+    file_path: str,
+    baseline_commit: str,
+    workspace: FileJobWorkspace,
+) -> _action_plans.BinaryFileActionPlan:
+    """Load a binary baseline into a deferred worktree action."""
+    buffer = read_git_object_buffer_or_none(
+        f"{baseline_commit}:{file_path}",
+        spool_dir=workspace.scratch_directory(ordinal),
+    )
+    try:
+        metadata: BatchFileMetadataDict = {
+            "file_type": "binary",
+            "change_type": "deleted" if buffer is None else "modified",
+        }
+        if buffer is not None:
+            mode = detect_file_mode_in_commit(baseline_commit, file_path)
+            if mode is None:
+                raise ValueError("binary baseline object omitted its file mode")
+            metadata["mode"] = mode
+        return _action_plans.BinaryFileActionPlan(file_path, metadata, buffer)
+    except BaseException:
+        if buffer is not None:
+            buffer.close()
+        raise
+
+
 def _publish_discard_action_plan(
     plan: _action_plans.BatchSourceActionPlan | _DiscardModeActionPlan,
 ) -> _binary_file_actions.BinaryWorktreeAction | None:
@@ -573,3 +539,44 @@ def _publish_discard_action_plan(
                 error=str(error),
             )
         ) from error
+
+
+def _require_unchanged_discard_targets(
+    expected_index_identities: dict[str, IndexIdentity],
+    expected_worktree_identities: dict[str, WorktreeIdentity],
+) -> None:
+    """Refuse every plan when any captured publication target changed."""
+    current_index_identities = read_index_identities(expected_index_identities)
+    for file_path, expected_index_identity in expected_index_identities.items():
+        if (
+            expected_index_identity.unmerged_entries
+            or current_index_identities[file_path] != expected_index_identity
+        ):
+            raise _discard_target_changed_error(file_path, target="index")
+    current_worktree_identities = capture_worktree_identities(
+        expected_worktree_identities
+    )
+    for file_path, expected_worktree_identity in expected_worktree_identities.items():
+        if current_worktree_identities[file_path] != expected_worktree_identity:
+            raise _discard_target_changed_error(file_path, target="worktree")
+
+
+def _discard_target_changed_error(
+    file_path: str,
+    *,
+    target: str,
+) -> CommandError:
+    """Return the established complete stale-discard refusal message."""
+    if target == "index":
+        return CommandError(
+            _(
+                "Index changed while discard was being calculated: "
+                "{file}. Retry the discard command."
+            ).format(file=display_path(file_path))
+        )
+    return CommandError(
+        _(
+            "Working tree file changed while discard was being "
+            "calculated: {file}. Retry the discard command."
+        ).format(file=display_path(file_path))
+    )

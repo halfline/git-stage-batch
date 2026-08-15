@@ -385,6 +385,34 @@ def test_discard_same_anchor_claims_avoids_line_scale_python_heap() -> None:
     assert peak_heap < _LINE_SCALE_HEAP_LIMIT
 
 
+def test_discard_fragmented_claim_restoration_scans_provenance_linearly() -> None:
+    """Many anchored insertions must not rescan prior provenance runs."""
+    claim_count = 512
+    entries = _ProvenanceCountingRealizedEntries()
+    claims = []
+    for claim_index in range(claim_count):
+        source_line = claim_index * 2 + 1
+        entries.append(
+            f"present {claim_index}\n".encode(),
+            source_line=source_line,
+            target_line=claim_index + 1,
+        )
+        claims.append(
+            AbsenceClaim(
+                anchor_line=source_line,
+                content_lines=[f"restored {claim_index}\n".encode()],
+            )
+        )
+
+    result = discard_module._restore_absence_constraints(entries, claims)
+    try:
+        assert len(result) == claim_count * 2
+        assert entries.provenance_run_count < claim_count * 3
+    finally:
+        result.close()
+        entries.close()
+
+
 def test_discard_same_anchor_claims_preserve_unterminated_boundaries() -> None:
     """Adjacent restored claims must not collapse when one lacks a newline."""
     claims = [
@@ -1435,6 +1463,48 @@ class TestMatchLines:
         # Replace block: source line maps to None in strict mode
         assert mapping.get_target_line_from_source_line(2) is None
         assert mapping.get_source_line_from_target_line(2) is None
+
+
+def test_discard_does_not_restore_unrealized_replacement_old_side() -> None:
+    """Discard must preserve a transformed unit whose new side is absent."""
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=3,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"old\n"],
+                baseline_reference=reference,
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                ["2"],
+                [0],
+                origin=ReplacementUnitOrigin(
+                    old_start=2,
+                    old_end=2,
+                    new_start=2,
+                    new_end=2,
+                    baseline_reference=reference,
+                ),
+            )
+        ],
+    )
+    working = b"head\ntransformed\ntail\n"
+
+    assert discard_batch(
+        b"head\nnew\ntail\n",
+        ownership,
+        working,
+        b"head\nold\ntail\n",
+    ) == working
 
 
 class TestMergeLineSequences:
@@ -4410,6 +4480,44 @@ class TestDiscardBatch:
 
         with pytest.raises(MergeError, match="batch owns 1 of 3 lines"):
             discard_batch(batch_source, ownership, working, baseline)
+
+    def test_discard_restores_live_legacy_replacement_before_unowned_neighbor(
+        self,
+    ):
+        """Legacy replacement reversal must not restore a changed neighbor."""
+        baseline = b"head\nold-call\nbaseline-neighbor\ntail\n"
+        batch_source = b"head\nnew-call-a\nnew-call-b\ncurrent-neighbor\ntail\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["2-3"],
+            [AbsenceClaim(anchor_line=1, content_lines=[b"old-call\n"])],
+        )
+        assert not ownership.replacement_units
+
+        result = discard_batch(
+            batch_source,
+            ownership,
+            batch_source,
+            baseline,
+        )
+
+        assert result == b"head\nold-call\ncurrent-neighbor\ntail\n"
+
+    def test_discard_does_not_restore_missing_legacy_replacement(self):
+        """An unapplied legacy new side must not introduce its historical old side."""
+        baseline = b"head\nold-call\nbaseline-neighbor\ntail\n"
+        batch_source = b"head\nnew-call-a\nnew-call-b\ncurrent-neighbor\ntail\n"
+        working = b"head\ncurrent-neighbor\ntail\n"
+        ownership = BatchOwnership.from_presence_lines(
+            ["2-3"],
+            [AbsenceClaim(anchor_line=1, content_lines=[b"old-call\n"])],
+        )
+
+        assert discard_batch(
+            batch_source,
+            ownership,
+            working,
+            baseline,
+        ) == working
 
     def test_discard_rejects_partial_ambiguous_repeated_replacement(self):
         """Repeated baseline/source content must not be guessed partially."""

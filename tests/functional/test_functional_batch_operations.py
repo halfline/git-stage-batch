@@ -163,6 +163,64 @@ def _install_castkms_raw_map_replay_fixture(functional_repo):
     return batch_name
 
 
+def _install_castkms_capture03_replay_fixture(functional_repo):
+    fixture_root = Path(__file__).parent / "fixtures"
+    fixture_pack = next(
+        fixture_root.glob("castkms_capture03_replay_exact-*.pack")
+    )
+    subprocess.run(
+        ["git", "index-pack", "--stdin"],
+        cwd=functional_repo,
+        input=fixture_pack.read_bytes(),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "checkout",
+            "--detach",
+            "94b9e9d09cb77ab1cb39e954e3a826feb37cf4ac",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    batch_name = "decompose-03-explicit-first-use"
+    persisted_refs = {
+        f"refs/git-stage-batch/batches/{batch_name}":
+            "bc12ec85fd1e2f52466e37cd2301033a0ebc354c",
+        f"refs/git-stage-batch/state/{batch_name}":
+            "8f31cd7bcd70c2e886eb600032b18ac1c3abd6cc",
+    }
+    for ref, object_id in persisted_refs.items():
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+    subprocess.run(
+        [
+            "git",
+            "restore",
+            "--source=cffda2bf8c96c53020f7dbd28fd1e0dbb581802b",
+            "--worktree",
+            ".",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "add", "-N", "."],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    return batch_name
+
+
 def _install_castkms_packed_bit_replay_fixture(functional_repo):
     fixture_root = Path(__file__).parent / "fixtures"
     fixture_pack = next(
@@ -494,6 +552,46 @@ class TestShowFromBatch:
 
 class TestApplyFromBatch:
     """Test applying changes from a batch."""
+
+    def test_apply_batch_to_independently_reconstructed_predecessor(
+        self,
+        functional_repo,
+    ):
+        """Independent source-relative edits must replay as one batch."""
+        batch_name = _install_castkms_capture03_replay_fixture(functional_repo)
+        changed_paths = (
+            "include/uapi/drm/castkms_drm.h",
+            "src/castkms_capture.c",
+            "tools/castkms-capture-test.c",
+            "README.md",
+            "docs/vm-testing.md",
+            "scripts/vm/guest-smoke-test.sh",
+        )
+        before = {
+            path: subprocess.run(
+                ["git", "hash-object", path],
+                cwd=functional_repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            for path in changed_paths
+        }
+
+        result = git_stage_batch("apply", "--from", batch_name, check=False)
+
+        assert result.returncode == 0, result.stderr
+        after = {
+            path: subprocess.run(
+                ["git", "hash-object", path],
+                cwd=functional_repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            for path in changed_paths
+        }
+        assert all(after[path] != before[path] for path in changed_paths)
 
     def test_apply_batch_after_committing_neighboring_replacements(
         self,

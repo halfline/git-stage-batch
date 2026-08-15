@@ -29,6 +29,7 @@ from git_stage_batch.batch.discard import (
     discard_batch_from_line_sequences_as_buffer,
 )
 from git_stage_batch.batch.line_matching.match import match_lines
+from git_stage_batch.batch.line_matching.line_mapping import LineMapping
 from git_stage_batch.batch.line_matching.match_workspace import MatcherWorkspace
 from git_stage_batch.batch.merge.candidates import (
     MergeCandidateSetOutcome,
@@ -184,6 +185,66 @@ footer
 """
 
 
+def test_recorded_presence_uses_exact_repeated_context_inside_mapped_edges() -> None:
+    """Repeated local lines can prove one source-relative insertion gap."""
+    source = [
+        b"unique head\n",
+        b"same\n",
+        b"same\n",
+        b"claimed\n",
+        b"same\n",
+        b"same\n",
+        b"unique tail\n",
+    ]
+    target = [
+        b"unique head\n",
+        b"same\n",
+        b"same\n",
+        b"same\n",
+        b"same\n",
+        b"unique tail\n",
+    ]
+    selected = LineRanges.from_specs(["4"])
+
+    with LineMapping(
+        source_to_target=[1, 0, 0, 0, 0, 0, 6],
+        target_to_source=[1, 0, 0, 0, 0, 7],
+    ) as mapping:
+        _missing, placements = contextual_presence_placements(
+            source,
+            target,
+            selected,
+            mapping,
+            require_distinctive_context=True,
+            distinctive_context_lines=selected,
+            recorded_context_lines=selected,
+        )
+
+    assert [
+        (placement.gap_index, placement.exact_context_gap)
+        for placement in placements
+    ] == [(3, True)]
+
+
+def test_recorded_split_presence_omits_unselected_source_between_exact_edges() -> None:
+    """Recorded sibling insertions can share one exact predecessor gap."""
+    source = b"head\nsame\nfirst\nomitted\nsecond\nsame\ntail\n"
+    target = b"head\nsame\nsame\ntail\n"
+    empty_baseline = BaselineReference(
+        after_line=None,
+        before_line=None,
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["3,5"],
+        baseline_references={3: empty_baseline, 5: empty_baseline},
+    )
+
+    assert merge_batch(source, ownership, target) == (
+        b"head\nsame\nfirst\nsecond\nsame\ntail\n"
+    )
+
+
 def test_contextual_presence_split_runs_do_not_cross_live_target_content() -> None:
     """Split source siblings cannot silently choose a side of live content."""
     source = b"""header
@@ -209,6 +270,40 @@ footer
 
     with pytest.raises(MergeError, match="different version"):
         merge_batch(source, ownership, target)
+
+
+def test_selected_missing_deletion_anchor_is_validated_by_presence_placement() -> None:
+    """A selected anchor can be reintroduced beyond a fixed neighbor window."""
+    source = (
+        b"head\n"
+        b"new 1\nnew 2\nnew 3\nnew 4\nnew 5\nnew 6\nnew 7\n"
+        b"future 1\nfuture 2\nfuture 3\nfuture 4\n"
+        b"tail\n"
+    )
+    working = b"head\nold\ntail\n"
+    ownership = BatchOwnership.from_presence_lines(
+        ["2-8"],
+        [AbsenceClaim(anchor_line=8, content_lines=[b"old\n"])],
+    )
+
+    assert merge_batch(source, ownership, working) == (
+        b"head\nnew 1\nnew 2\nnew 3\nnew 4\nnew 5\nnew 6\nnew 7\ntail\n"
+    )
+
+
+def test_absence_does_not_remove_matching_claimed_presence() -> None:
+    """An old-side payload reused as selected content remains present."""
+    source = b"head\nnew\ncarried\ntail\n"
+    working = b"head\ncarried\ntail\n"
+    ownership = BatchOwnership.from_presence_lines(
+        ["2-3"],
+        [AbsenceClaim(anchor_line=1, content_lines=[b"carried\n"])],
+        replacement_units=[
+            ReplacementUnit(presence_lines=["2"], deletion_indices=[0]),
+        ],
+    )
+
+    assert merge_batch(source, ownership, working) == source
 
 
 def test_contextual_presence_split_runs_keep_broad_source_skew_ambiguous() -> None:
@@ -2185,6 +2280,89 @@ def _legacy_reordered_replacement_ownership() -> BatchOwnership:
         ],
         replacement_units=[ReplacementUnit(["3-4"], [0])],
     )
+
+
+def _mapped_source_predecessor_ownership() -> BatchOwnership:
+    reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=3,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    return BatchOwnership.from_presence_lines(
+        ["2-3"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"historical old\n"],
+                baseline_reference=reference,
+            )
+        ],
+        replacement_units=[
+            ReplacementUnit(
+                ["2-3"],
+                [0],
+                ReplacementUnitOrigin(2, 2, 2, 3, reference),
+            )
+        ],
+    )
+
+
+def test_trusted_target_replaces_mapped_source_predecessor() -> None:
+    """A retained source predecessor may fill one complete origin gap."""
+    source = b"head\nshared\nnew tail\nshared\nprior tail\ntail\n"
+    working = b"head\nshared\nprior tail\ntail\n"
+    ownership = _mapped_source_predecessor_ownership()
+
+    with pytest.raises(MergeError, match="original replacement boundary"):
+        merge_batch(source, ownership, working)
+
+    assert merge_batch(
+        source,
+        ownership,
+        working,
+        trusted_target_content=b"head\nhistorical old\ntail\n",
+    ) == b"head\nshared\nnew tail\ntail\n"
+
+
+@pytest.mark.parametrize(
+    ("working", "trusted"),
+    [
+        (
+            b"head\nshared\nworktree edit\nprior tail\ntail\n",
+            b"head\nhistorical old\ntail\n",
+        ),
+        (
+            b"head\nshared\nprior tail\ntail\n",
+            b"head\ndifferent old\ntail\n",
+        ),
+    ],
+    ids=["unmapped-worktree-line", "different-index-old-side"],
+)
+def test_mapped_source_predecessor_requires_complete_trusted_gap(
+    working: bytes,
+    trusted: bytes,
+) -> None:
+    """Predecessor replay refuses target or index content outside its proof."""
+    with pytest.raises(MergeError, match="original replacement boundary"):
+        merge_batch(
+            b"head\nshared\nnew tail\nshared\nprior tail\ntail\n",
+            _mapped_source_predecessor_ownership(),
+            working,
+            trusted_target_content=trusted,
+        )
+
+
+def test_mapped_source_predecessor_requires_shared_selected_prefix() -> None:
+    """An unrelated retained insertion cannot borrow the trusted old side."""
+    with pytest.raises(MergeError, match="original replacement boundary"):
+        merge_batch(
+            b"head\nnew one\nnew two\nprior one\nprior two\ntail\n",
+            _mapped_source_predecessor_ownership(),
+            b"head\nprior one\nprior two\ntail\n",
+            trusted_target_content=b"head\nhistorical old\ntail\n",
+        )
 
 
 def test_trusted_target_replays_legacy_replacement_past_duplicate_source() -> None:

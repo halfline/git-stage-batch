@@ -1080,7 +1080,7 @@ static struct plane *initialize_properties(struct device *device)
         )
         clear_last_file_review_state()
 
-        with pytest.raises(CommandError, match="Line selection #8-16"):
+        with pytest.raises(CommandError, match="Line selection #9-16"):
             command_include_from_batch("test-batch", line_ids="7-16", file="Test.kt")
 
         assert run_git_command(["diff", "--cached", "--", "Test.kt"]).stdout == ""

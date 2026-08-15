@@ -5,9 +5,11 @@ import tracemalloc
 
 from git_stage_batch.batch.merge.coordinate_strategy import (
     has_recorded_baseline_coordinates,
+    presence_context_line_sets,
     presence_lines_requiring_distinctive_context,
 )
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
+from git_stage_batch.batch.ownership.claims import PresenceClaim
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.references import BaselineReference
 from git_stage_batch.batch.ownership.replacement_units import ReplacementUnit
@@ -47,6 +49,92 @@ def test_coordinate_detection_scans_references_not_selected_lines() -> None:
         _IterationGuardedSelection.from_ranges(((line_count, line_count),)),
         [],
     )
+
+
+def test_coordinate_policy_uses_last_overlapping_presence_reference() -> None:
+    """Coordinate policy must use the effective last-claim-wins reference."""
+    target_lines = [b"A\n", b"B\n"]
+    valid_reference = BaselineReference(
+        after_line=1,
+        after_content=b"A\n",
+        before_line=2,
+        before_content=b"B\n",
+        has_before_line=True,
+    )
+    unrecorded_reference = BaselineReference(
+        after_line=None,
+        has_after_line=False,
+    )
+
+    def ownership_with_references(
+        first: BaselineReference,
+        last: BaselineReference,
+    ) -> BatchOwnership:
+        return BatchOwnership(
+            [
+                PresenceClaim(["2"], {2: first}),
+                PresenceClaim(["2"], {2: last}),
+            ],
+            [],
+        )
+
+    valid = ownership_with_references(unrecorded_reference, valid_reference)
+    invalid = ownership_with_references(valid_reference, unrecorded_reference)
+
+    assert has_recorded_baseline_coordinates(
+        valid,
+        valid.presence_line_set(),
+        [],
+    )
+    assert not presence_lines_requiring_distinctive_context(
+        valid,
+        valid.presence_line_set(),
+        [],
+        target_lines=target_lines,
+    )
+    assert not has_recorded_baseline_coordinates(
+        invalid,
+        invalid.presence_line_set(),
+        [],
+    )
+    assert presence_lines_requiring_distinctive_context(
+        invalid,
+        invalid.presence_line_set(),
+        [],
+        target_lines=target_lines,
+    ).ranges() == ((2, 2),)
+
+
+def test_recorded_context_uses_effective_presence_reference() -> None:
+    """Structural context must reject a shadowed recorded boundary."""
+    valid_reference = BaselineReference(
+        after_line=1,
+        after_content=b"A\n",
+        before_line=2,
+        before_content=b"B\n",
+        has_before_line=True,
+    )
+    unrecorded_reference = BaselineReference(
+        after_line=None,
+        has_after_line=False,
+    )
+    def recorded_for(first: BaselineReference, last: BaselineReference):
+        ownership = BatchOwnership(
+            [
+                PresenceClaim(["2"], {2: first}),
+                PresenceClaim(["2"], {2: last}),
+            ],
+            [],
+        )
+        _distinctive_lines, recorded_lines = presence_context_line_sets(
+            ownership,
+            ownership.presence_line_set(),
+            [],
+        )
+        return recorded_lines
+
+    assert recorded_for(unrecorded_reference, valid_reference).ranges() == ((2, 2),)
+    assert not recorded_for(valid_reference, unrecorded_reference)
 
 
 def test_unrelated_deletion_does_not_anchor_presence_context() -> None:

@@ -618,6 +618,39 @@ def test_transient_transaction_rolls_back_scoped_index_change(temp_git_repo):
     )
 
 
+def test_transaction_checkpoint_delegates_to_active_outer_checkpoint(
+    temp_git_repo,
+):
+    """Nested required transactions should share one active-session snapshot."""
+    target = _commit_text_file(temp_git_repo, "target.txt", "before\n")
+    marker = get_session_directory_path() / "abort" / "head.txt"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("HEAD\n")
+
+    with transaction_checkpoint(
+        "outer change",
+        worktree_paths=["target.txt"],
+    ) as outer_status:
+        outer_status.arm_rollback()
+        target.write_text("outer\n")
+        with transaction_checkpoint(
+            "inner change",
+            worktree_paths=["target.txt"],
+        ) as inner_status:
+            inner_status.arm_rollback()
+            target.write_text("inner\n")
+
+    assert outer_status.rollback == "not-needed"
+    assert inner_status.rollback == "delegated"
+    assert target.read_text() == "inner\n"
+    undo_last_checkpoint()
+    assert target.read_text() == "before\n"
+
+
+
+
+
+
 def test_nontransactional_checkpoint_status_remains_not_requested(
     temp_git_repo,
 ):

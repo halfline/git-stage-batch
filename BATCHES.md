@@ -453,6 +453,24 @@ live span, at most a small bounded number of context candidates are inspected,
 and that span plus both boundaries must map unchanged from the index. This is a
 runtime compatibility proof: it does not rewrite the batch metadata.
 
+A missing insertion may likewise follow a boundary neighbor that occurs once,
+or a conservatively mapped source predecessor when the target still matches
+both saved boundary neighbors. A stale saved reference may be superseded by a
+two-sided source mapping only when the source neighbors immediately surrounding
+the missing run map to consecutive target lines and at least one neighbor occurs
+once in the target. If one already-applied presence run has split its saved
+boundary, the planner retains and reuses the mapping needed to recognize that
+run when validating other missing runs in the same plan. Unowned source-only
+lines between a missing run and later mapped content do not defeat that
+predecessor-and-boundary proof. Repeated boundaries without that mapped source
+proof remain ambiguous and fail closed. Occurrence lookup and source scanning
+use storage-backed indexes; each placement phase reuses its occurrence index,
+mapping, and mapped-line index across claims. This reconciliation therefore
+does not keep per-file line tables on the Python heap or compare every selected
+line with every target line. It is a live-target fallback only; the explicit
+recorded-coordinate candidate remains fixed at the stored positions so reviewed
+strategy choices stay distinct.
+
 A batch may own only one child of a historical parent whose unowned sibling was
 already committed and reordered. In a multi-unit replay, the coordinate planner
 may remove that child's exact old bytes and insert its new bytes separately when
@@ -478,8 +496,9 @@ exact-coordinate responsibilities:
   mapped source gaps when recorded offsets moved, and detects when claimed
   content is already absent.
 - [`batch/merge/baseline_presence_edits.py`](src/git_stage_batch/batch/merge/baseline_presence_edits.py)
-  plans insertions for required source lines at recorded baseline positions
-  and checks that structurally matched lines survive other planned edits.
+  plans insertions for required source lines at recorded, uniquely relocated,
+  or mapped-and-verified baseline boundaries and checks that structurally
+  matched lines survive other planned edits.
 - [`batch/merge/baseline_edits.py`](src/git_stage_batch/batch/merge/baseline_edits.py)
   coordinates the separate replacement, removal, and insertion plans and opens
   the resulting edit stream.

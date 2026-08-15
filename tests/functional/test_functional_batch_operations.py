@@ -890,6 +890,36 @@ class TestApplyFromBatch:
         )
         assert "castkms_config_crtc_primary_plane(config, crtc_cfg)" not in tests
 
+    def test_apply_stride_guard_after_wide_offset_helper(self, functional_repo):
+        """An adjacent helper insertion must replay after its predecessor."""
+        batch_name = _install_castkms_stride_guard_replay_fixture(functional_repo)
+        relative_path = "src/castkms_formats.c"
+        path = functional_repo / relative_path
+
+        git_stage_batch(
+            "show",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            "--pages",
+            "all",
+        )
+        result = git_stage_batch(
+            "apply",
+            "--from",
+            batch_name,
+            "--file",
+            relative_path,
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        source = path.read_text()
+        assert "bool castkms_framebuffer_read_strides_are_valid" in source
+        assert "if (block_stride > INT_MAX)" in source
+        assert "if (block_stride > SSIZE_MAX)" not in source
+
 
 class TestBatchList:
     """Test listing batches."""
@@ -1458,3 +1488,43 @@ class TestBatchRebaseWorkflow:
         # Batch should still exist
         result = git_stage_batch("list")
         assert "improvements" in result.stdout
+
+
+def _install_castkms_stride_guard_replay_fixture(functional_repo):
+    fixture_root = Path(__file__).parent / "fixtures"
+    fixture_pack = next(
+        fixture_root.glob("castkms_stride_guard_replay_exact-*.pack")
+    )
+    subprocess.run(
+        ["git", "index-pack", "--stdin"],
+        cwd=functional_repo,
+        input=fixture_pack.read_bytes(),
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "checkout",
+            "--detach",
+            "812d4beb9592b12048524b6f59049eec25dc03d3",
+        ],
+        cwd=functional_repo,
+        check=True,
+        capture_output=True,
+    )
+    batch_name = "decompose-23-int-range-scanout-guard"
+    persisted_refs = {
+        f"refs/git-stage-batch/batches/{batch_name}":
+            "b2de98e6c965ea6e22945b0f13043c3a1072f033",
+        f"refs/git-stage-batch/state/{batch_name}":
+            "f714d3d0af9cb864401fe2ee2b8eb3253645d539",
+    }
+    for ref, object_id in persisted_refs.items():
+        subprocess.run(
+            ["git", "update-ref", ref, object_id],
+            cwd=functional_repo,
+            check=True,
+            capture_output=True,
+        )
+    return batch_name

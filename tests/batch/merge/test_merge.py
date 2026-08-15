@@ -4138,6 +4138,185 @@ footer
         assert b"line1\n" in result
         assert b"line10000\n" in result
 
+    def test_shifted_adjacent_split_children_replay_complete_parent(self):
+        """Shifted child coordinates may still prove a complete parent."""
+        source = b"saved\nhead\nnew1\nnew2\ntail\n"
+        baseline = b"head\nold1\nold2\ntail\n"
+        parent_reference = BaselineReference(
+            after_line=1,
+            after_content=b"head\n",
+            before_line=4,
+            before_content=b"tail\n",
+            has_before_line=True,
+        )
+        ownership = BatchOwnership.from_presence_lines(
+            ["3-4"],
+            [
+                AbsenceClaim(
+                    anchor_line=2,
+                    content_lines=[b"old1\n"],
+                    baseline_reference=BaselineReference(
+                        after_line=1,
+                        after_content=b"head\n",
+                        before_line=3,
+                        before_content=b"old2\n",
+                        has_before_line=True,
+                    ),
+                ),
+                AbsenceClaim(
+                    anchor_line=2,
+                    content_lines=[b"old2\n"],
+                    baseline_reference=BaselineReference(
+                        after_line=2,
+                        after_content=b"old1\n",
+                        before_line=4,
+                        before_content=b"tail\n",
+                        has_before_line=True,
+                    ),
+                ),
+            ],
+            replacement_units=[
+                ReplacementUnit(
+                    ["3"],
+                    [0],
+                    ReplacementUnitOrigin(2, 3, 2, 3, parent_reference),
+                ),
+                ReplacementUnit(
+                    ["4"],
+                    [1],
+                    ReplacementUnitOrigin(2, 3, 2, 3, parent_reference),
+                ),
+            ],
+        )
+
+        assert merge_batch(source, ownership, baseline) == (
+            b"head\nnew1\nnew2\ntail\n"
+        )
+
+    def test_adjacent_split_children_replay_complete_parent(self):
+        """Adjacent selected children collectively replace their old parent."""
+        source = b"head\nnew1\nnew2\ntail\n"
+        baseline = b"head\nold1\nold2\ntail\n"
+        parent_reference = BaselineReference(
+            after_line=1,
+            after_content=b"head\n",
+            before_line=4,
+            before_content=b"tail\n",
+            has_before_line=True,
+        )
+        ownership = BatchOwnership.from_presence_lines(
+            ["2-3"],
+            [
+                AbsenceClaim(
+                    anchor_line=1,
+                    content_lines=[b"old1\n"],
+                    baseline_reference=BaselineReference(
+                        after_line=1,
+                        after_content=b"head\n",
+                        before_line=3,
+                        before_content=b"old2\n",
+                        has_before_line=True,
+                    ),
+                ),
+                AbsenceClaim(
+                    anchor_line=1,
+                    content_lines=[b"old2\n"],
+                    baseline_reference=BaselineReference(
+                        after_line=2,
+                        after_content=b"old1\n",
+                        before_line=4,
+                        before_content=b"tail\n",
+                        has_before_line=True,
+                    ),
+                ),
+            ],
+            replacement_units=[
+                ReplacementUnit(
+                    ["2"],
+                    [0],
+                    ReplacementUnitOrigin(2, 3, 2, 3, parent_reference),
+                ),
+                ReplacementUnit(
+                    ["3"],
+                    [1],
+                    ReplacementUnitOrigin(2, 3, 2, 3, parent_reference),
+                ),
+            ],
+        )
+
+        assert merge_batch(source, ownership, baseline) == source
+        assert discard_batch(source, ownership, source, baseline) == baseline
+
+    @pytest.mark.parametrize(
+        ("presence", "first_child", "second_child", "working"),
+        [
+            ("3", "3", None, b"head\nold1\nold2\ntail\n"),
+            ("3-4", "3", "5", b"head\nold1\nold2\ntail\n"),
+            ("3-4", "3", "4", b"head\nold1\nlocal\nold2\ntail\n"),
+            ("3-4", "3", "4", b"head\nold2\nold1\ntail\n"),
+        ],
+        ids=[
+            "missing-child",
+            "noncontiguous-new-side",
+            "fragmented-old-side",
+            "reordered-old-side",
+        ],
+    )
+    def test_shifted_split_children_require_complete_parent_proof(
+        self,
+        presence,
+        first_child,
+        second_child,
+        working,
+    ):
+        """Shift tolerance must not admit partial or reordered parents."""
+        parent_reference = BaselineReference(
+            after_line=1,
+            after_content=b"head\n",
+            before_line=4,
+            before_content=b"tail\n",
+            has_before_line=True,
+        )
+        deletions = [
+            AbsenceClaim(
+                anchor_line=2,
+                content_lines=[b"old1\n"],
+                baseline_reference=BaselineReference(after_line=1),
+            ),
+            AbsenceClaim(
+                anchor_line=2,
+                content_lines=[b"old2\n"],
+                baseline_reference=BaselineReference(after_line=2),
+            ),
+        ]
+        units = [
+            ReplacementUnit(
+                [first_child],
+                [0],
+                ReplacementUnitOrigin(2, 3, 2, 3, parent_reference),
+            )
+        ]
+        if second_child is not None:
+            units.append(
+                ReplacementUnit(
+                    [second_child],
+                    [1],
+                    ReplacementUnitOrigin(2, 3, 2, 3, parent_reference),
+                )
+            )
+        ownership = BatchOwnership.from_presence_lines(
+            [presence],
+            deletions,
+            replacement_units=units,
+        )
+
+        with pytest.raises(MergeError, match="original replacement boundary"):
+            merge_batch(
+                b"saved\nhead\nnew1\nnew2\nextra\ntail\n",
+                ownership,
+                working,
+            )
+
 
 class TestMergeErrors:
     """Tests for merge error conditions."""
@@ -5487,3 +5666,231 @@ def test_trusted_partial_replay_releases_each_finished_parent_index(
     ) == source
     assert capacities == [2, 2]
     assert close_count == 2
+
+
+def test_replacement_old_side_boundary_scans_mapping_once() -> None:
+    """Split validation must not rescan a long unmapped suffix per child."""
+    child_count = 256
+    source = [b"head\n"] + [b"new\n"] * child_count + [b"tail\n"]
+    working = [b"head\n"] + [b"old\n"] * child_count + [b"tail\n"]
+    parent_reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=child_count + 2,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    deletions = []
+    replacement_units = []
+    for offset in range(child_count):
+        source_line = offset + 2
+        deletions.append(
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"old\n"],
+                baseline_reference=BaselineReference(
+                    after_line=offset + 1,
+                    after_content=b"head\n" if offset == 0 else b"old\n",
+                    before_line=offset + 3,
+                    before_content=(
+                        b"tail\n" if offset + 1 == child_count else b"old\n"
+                    ),
+                    has_before_line=True,
+                ),
+            )
+        )
+        replacement_units.append(
+            ReplacementUnit(
+                [str(source_line)],
+                [offset],
+                ReplacementUnitOrigin(
+                    2,
+                    child_count + 1,
+                    2,
+                    child_count + 1,
+                    parent_reference,
+                ),
+            )
+        )
+    ownership = BatchOwnership.from_presence_lines(
+        [f"2-{child_count + 1}"],
+        deletions,
+        replacement_units=replacement_units,
+    )
+    mapping_reads = 0
+
+    with match_lines(source, working) as mapping:
+        original_mapping = mapping.source_to_target
+
+        class CountingMapping:
+            def __len__(self):
+                return len(original_mapping)
+
+            def __getitem__(self, index):
+                nonlocal mapping_reads
+                mapping_reads += 1
+                return original_mapping[index]
+
+        mapping.source_to_target = CountingMapping()
+        validation_module.has_missing_origin_replacement_claims(
+            ownership,
+            ownership.presence_line_set(),
+            source,
+            working,
+            mapping,
+        )
+
+    assert mapping_reads < child_count * 8
+
+
+def test_mapped_old_side_preflight_caps_dense_child_classification(
+    monkeypatch,
+) -> None:
+    """Ordinary replay should fail closed before dense groups become quadratic."""
+    child_count = 64
+    source = [b"head\n"] + [
+        f"new {child_index}\n".encode()
+        for child_index in range(child_count)
+    ] + [b"tail\n"]
+    origin = ReplacementUnitOrigin(
+        2,
+        child_count + 1,
+        2,
+        child_count + 1,
+    )
+    deletions = [
+        AbsenceClaim(anchor_line=1, content_lines=[b"old\n"])
+        for _child_index in range(child_count)
+    ]
+    ownership = BatchOwnership.from_presence_lines(
+        [f"2-{child_count + 1}"],
+        deletions,
+        replacement_units=[
+            ReplacementUnit(
+                [str(child_index + 2)],
+                [child_index],
+                origin,
+            )
+            for child_index in range(child_count)
+        ],
+    )
+    classification_count = 0
+
+    def count_classification(*_args, **_kwargs):
+        nonlocal classification_count
+        classification_count += 1
+        return validation_module.ReplacementOldSideRealization(
+            validation_module.ReplacementOldSideState.ABSENT
+        )
+
+    monkeypatch.setattr(
+        validation_module,
+        "_replacement_old_side_realization",
+        count_classification,
+    )
+
+    with match_lines(source, source) as mapping:
+        unsafe = validation_module.has_unsafe_mapped_origin_old_side_claims(
+            ownership,
+            ownership.presence_line_set(),
+            source,
+            source,
+            mapping,
+            max_classifications=16,
+        )
+
+    assert unsafe
+    assert classification_count == 16
+
+
+def test_mapped_replacement_group_scans_metadata_once() -> None:
+    """An already-realized sibling group must not rescan every suffix."""
+    child_count = 256
+    source = [b"head\n"] + [b"new\n"] * child_count + [b"tail\n"]
+    parent_reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=child_count + 2,
+        before_content=b"tail\n",
+        has_before_line=True,
+    )
+    deletions = [
+        AbsenceClaim(
+            anchor_line=1,
+            content_lines=[b"old\n"],
+            baseline_reference=BaselineReference(after_line=offset + 1),
+        )
+        for offset in range(child_count)
+    ]
+    units = [
+        ReplacementUnit(
+            [str(offset + 2)],
+            [offset],
+            ReplacementUnitOrigin(
+                2,
+                child_count + 1,
+                2,
+                child_count + 1,
+                parent_reference,
+            ),
+        )
+        for offset in range(child_count)
+    ]
+    unit_reads = 0
+
+    class CountingUnits(list):
+        def __getitem__(self, index):
+            nonlocal unit_reads
+            unit_reads += 1
+            return super().__getitem__(index)
+
+    ownership = BatchOwnership.from_presence_lines(
+        [f"2-{child_count + 1}"],
+        deletions,
+        replacement_units=CountingUnits(units),
+    )
+    with match_lines(source, source) as mapping:
+        assert not validation_module.has_missing_origin_replacement_claims(
+            ownership,
+            ownership.presence_line_set(),
+            source,
+            source,
+            mapping,
+        )
+
+    assert unit_reads < child_count * 8
+
+
+def test_fragmented_replacement_refuses_crossing_mapped_source_line() -> None:
+    """One replacement payload cannot move across an interleaved sibling."""
+    replacement_reference = BaselineReference(
+        after_line=1,
+        after_content=b"head\n",
+        before_line=3,
+        before_content=b"sibling\n",
+        has_before_line=True,
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2", "4"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"old\n"],
+                baseline_reference=replacement_reference,
+            )
+        ],
+        baseline_references={
+            2: replacement_reference,
+            4: replacement_reference,
+        },
+        replacement_units=[
+            ReplacementUnit(["2", "4"], [0]),
+        ],
+    )
+
+    with pytest.raises(MergeError, match="original replacement boundary"):
+        merge_batch(
+            b"head\nnew-a\nsibling\nnew-b\ntail\n",
+            ownership,
+            b"head\nold\nsibling\ntail\n",
+        )

@@ -212,6 +212,77 @@ def test_select_batch_ownership_accepts_batch_source_line_sequence(line_sequence
         assert selected.presence_line_set() == {3}
 
 
+def test_selected_legacy_replacement_carries_contiguous_continuation():
+    """Merge selection restores the full legacy replacement presence run."""
+    source_lines = _source_lines(b"head\nnew first\nnew second\ntail\n")
+    deletion = AbsenceClaim(
+        anchor_line=1,
+        content_lines=[b"old call\n"],
+    )
+    ownership = BatchOwnership.from_presence_lines(
+        ["2-3"],
+        [deletion],
+    )
+    file_meta = ownership.to_metadata_dict()
+
+    with acquire_batch_ownership_for_display_ids_from_lines(
+        file_meta,
+        source_lines,
+        {1, 2},
+    ) as selected:
+        assert selected.presence_line_set() == {2, 3}
+        assert len(selected.deletions) == 1
+        assert selected.deletions[0].anchor_line == 1
+        assert list(selected.deletions[0].content_lines) == [b"old call\n"]
+        assert selected.replacement_units == [
+            ReplacementUnit(
+                presence_lines=["2-3"],
+                deletion_indices=[0],
+            )
+        ]
+
+
+def test_selected_legacy_replacement_completion_does_not_union_per_line(
+    monkeypatch,
+):
+    """Long legacy continuations are accumulated as one compact range."""
+    union_calls = 0
+    original_union = LineRanges.union
+
+    def count_union(left, right):
+        nonlocal union_calls
+        union_calls += 1
+        return original_union(left, right)
+
+    monkeypatch.setattr(LineRanges, "union", count_union)
+    def completion_union_count(continuation_count):
+        nonlocal union_calls
+        source_lines = _source_lines(
+            b"head\n"
+            + b"".join(
+                f"new {line}\n".encode()
+                for line in range(continuation_count)
+            )
+            + b"tail\n"
+        )
+        ownership = BatchOwnership.from_presence_lines(
+            [f"2-{continuation_count + 1}"],
+            [AbsenceClaim(anchor_line=1, content_lines=[b"old call\n"])],
+        )
+        calls_before = union_calls
+        with acquire_batch_ownership_for_display_ids_from_lines(
+            ownership.to_metadata_dict(),
+            source_lines,
+            {1, 2},
+        ) as selected:
+            assert selected.presence_line_set().ranges() == (
+                (2, continuation_count + 1),
+            )
+        return union_calls - calls_before
+
+    assert completion_union_count(128) == completion_union_count(8)
+
+
 
 def test_claimed_followed_by_deletion_becomes_replacement():
     """Test claimed line immediately followed by deletion block forms REPLACEMENT unit."""

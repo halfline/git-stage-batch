@@ -7839,3 +7839,11 @@ msgstr "Alle wijzigingen in de werkboom zijn momenteel opgeslagen in {locations}
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "De status van toegepaste batches is beschadigd: {path}. Verwijder dit bestand om de beoordelingsherkomst van herstelde wijzigingen te vergeten."
+#: src/git_stage_batch/data/undo/snapshots.py:66
+#, python-brace-format
+msgid ""
+"Cannot create a recovery checkpoint while the index contains unmerged "
+"entries: {paths}"
+msgstr ""
+"Kan geen herstelcontrolepunt maken zolang de index niet-samengevoegde "
+"vermeldingen bevat: {paths}"

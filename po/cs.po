@@ -7784,3 +7784,11 @@ msgstr "Všechny změny pracovního stromu jsou nyní uloženy v {locations}."
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Stav použitých dávek je poškozen: {path}. Odeberte tento soubor, chcete-li zapomenout původ kontroly obnovených změn."
+#: src/git_stage_batch/data/undo/snapshots.py:66
+#, python-brace-format
+msgid ""
+"Cannot create a recovery checkpoint while the index contains unmerged "
+"entries: {paths}"
+msgstr ""
+"Nelze vytvořit kontrolní bod obnovy, dokud index obsahuje nesloučené "
+"položky: {paths}"

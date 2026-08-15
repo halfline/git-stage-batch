@@ -7819,3 +7819,11 @@ msgstr "Todas as alterações da árvore de trabalho estão salvas atualmente em
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "O estado dos lotes aplicados está corrompido: {path}. Remova este arquivo para esquecer a procedência de revisão das alterações restauradas."
+#: src/git_stage_batch/data/undo/snapshots.py:66
+#, python-brace-format
+msgid ""
+"Cannot create a recovery checkpoint while the index contains unmerged "
+"entries: {paths}"
+msgstr ""
+"Não é possível criar um ponto de recuperação enquanto o índice contiver "
+"entradas não mescladas: {paths}"

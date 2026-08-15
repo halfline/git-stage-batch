@@ -7735,3 +7735,11 @@ msgstr "Tüm çalışma ağacı değişiklikleri şu anda {locations} içinde ka
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Uygulanan grup durumu bozuk: {path}. Geri yüklenen değişiklik inceleme kaynağını unutmak için bu dosyayı kaldırın."
+#: src/git_stage_batch/data/undo/snapshots.py:66
+#, python-brace-format
+msgid ""
+"Cannot create a recovery checkpoint while the index contains unmerged "
+"entries: {paths}"
+msgstr ""
+"Dizin birleştirilmemiş girdiler içerirken kurtarma denetim noktası "
+"oluşturulamaz: {paths}"

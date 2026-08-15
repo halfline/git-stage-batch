@@ -7928,3 +7928,11 @@ msgstr "Alle Änderungen im Arbeitsbaum sind derzeit in {locations} gespeichert.
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Der Zustand angewendeter Stapel ist beschädigt: {path}. Entfernen Sie diese Datei, um die Prüfherkunft wiederhergestellter Änderungen zu vergessen."
+#: src/git_stage_batch/data/undo/snapshots.py:66
+#, python-brace-format
+msgid ""
+"Cannot create a recovery checkpoint while the index contains unmerged "
+"entries: {paths}"
+msgstr ""
+"Ein Wiederherstellungskontrollpunkt kann nicht erstellt werden, solange der "
+"Index nicht zusammengeführte Einträge enthält: {paths}"

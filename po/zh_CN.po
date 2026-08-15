@@ -7287,3 +7287,9 @@ msgstr "所有工作树更改当前都已保存在 {locations} 中。"
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "已应用批次状态已损坏：{path}。请删除此文件以忘记已恢复更改的审查来源。"
+#: src/git_stage_batch/data/undo/snapshots.py:66
+#, python-brace-format
+msgid ""
+"Cannot create a recovery checkpoint while the index contains unmerged "
+"entries: {paths}"
+msgstr "索引包含未合并条目时，无法创建恢复检查点：{paths}"

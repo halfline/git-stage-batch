@@ -7920,3 +7920,11 @@ msgstr "Toutes les modifications de l’arbre de travail sont actuellement enreg
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "L’état des lots appliqués est endommagé : {path}. Supprimez ce fichier pour oublier la provenance de révision des modifications restaurées."
+#: src/git_stage_batch/data/undo/snapshots.py:66
+#, python-brace-format
+msgid ""
+"Cannot create a recovery checkpoint while the index contains unmerged "
+"entries: {paths}"
+msgstr ""
+"Impossible de créer un point de contrôle de récupération tant que l’index "
+"contient des entrées non fusionnées : {paths}"

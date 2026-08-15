@@ -7892,3 +7892,11 @@ msgstr "Все изменения рабочего дерева сейчас с�
 #, python-brace-format
 msgid "Applied-batch state is corrupt: {path}. Remove this file to forget restored-change review provenance."
 msgstr "Состояние применённых пакетов повреждено: {path}. Удалите этот файл, чтобы забыть происхождение проверки восстановленных изменений."
+#: src/git_stage_batch/data/undo/snapshots.py:66
+#, python-brace-format
+msgid ""
+"Cannot create a recovery checkpoint while the index contains unmerged "
+"entries: {paths}"
+msgstr ""
+"Невозможно создать контрольную точку восстановления, пока индекс содержит "
+"неслитые записи: {paths}"

@@ -601,7 +601,8 @@ def _validate_claims(values: dict[str, Any], path: str, batch_name: str) -> None
                     ).format(path=path),
                 )
             _validate_baseline_reference(reference, batch_name, path)
-    for deletion in values.get("deletions", []):
+    source_alternative_indices: set[int] = set()
+    for deletion_index, deletion in enumerate(values.get("deletions", [])):
         if not isinstance(deletion, dict):
             _invalid(
                 batch_name,
@@ -611,7 +612,12 @@ def _validate_claims(values: dict[str, Any], path: str, batch_name: str) -> None
             )
         _reject_unknown_keys(
             deletion,
-            {"after_source_line", "blob", "baseline_reference"},
+            {
+                "after_source_line",
+                "blob",
+                "baseline_reference",
+                "source_alternative",
+            },
             batch_name,
             f"files[{path!r}].deletions",
         )
@@ -624,8 +630,34 @@ def _validate_claims(values: dict[str, Any], path: str, batch_name: str) -> None
                 ),
             )
         _validate_object_id(deletion.get("blob"), batch_name, f"files[{path!r}].deletions.blob")
+        if (
+            "source_alternative" in deletion
+            and type(deletion["source_alternative"]) is not bool
+        ):
+            _invalid(
+                batch_name,
+                _(
+                    "files[{path!r}] has an invalid source-alternative flag"
+                ).format(path=path),
+            )
         if "baseline_reference" in deletion:
             _validate_baseline_reference(deletion["baseline_reference"], batch_name, path)
+        if deletion.get("source_alternative") is True:
+            baseline_reference = deletion.get("baseline_reference")
+            if (
+                not isinstance(baseline_reference, dict)
+                or not {"after_line", "before_line"}.intersection(
+                    baseline_reference
+                )
+            ):
+                _invalid(
+                    batch_name,
+                    _(
+                        "files[{path!r}] has a source alternative without "
+                        "a live boundary"
+                    ).format(path=path),
+                )
+            source_alternative_indices.add(deletion_index)
     deletion_count = len(values.get("deletions", []))
     for replacement in values.get("replacement_units", []):
         if not isinstance(replacement, dict):

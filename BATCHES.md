@@ -407,6 +407,7 @@ Both commands use modules under `commands/batch_source/` to:
 6. write accepted targets
 7. refresh review and selected-change state
 
+unarmed transaction, then arm rollback immediately before the first write. A
 pre-existing conflict or an index/worktree change introduced after capture is
 therefore refused without overwriting concurrent state. Their review-complete
 state and success output are deferred until the outermost transaction commits,

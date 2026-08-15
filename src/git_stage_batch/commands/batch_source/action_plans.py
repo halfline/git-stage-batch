@@ -97,13 +97,15 @@ class IncludeTextFileActionPlan:
     working_change_type: TextFileChangeType
 
     def close(self) -> None:
+        buffers = []
         if self.index_buffer is not None:
-            self.index_buffer.close()
+            buffers.append(self.index_buffer)
         if (
             self.working_buffer is not None
             and self.working_buffer is not self.index_buffer
         ):
-            self.working_buffer.close()
+            buffers.append(self.working_buffer)
+        close_resources(buffers)
 
 
 @dataclass

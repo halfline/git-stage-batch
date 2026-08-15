@@ -78,6 +78,7 @@ def resolve_apply_action_selection(
             context.raw_selector,
             line_ids=line_ids,
             file=file,
+            resolved_file_paths=context.resolved_file_paths,
         ),
     )
 

@@ -273,6 +273,67 @@ def test_v1_rejects_replacement_with_out_of_range_deletion_index():
         decode_batch_metadata(data, expected_batch="feature")
 
 
+def test_current_schema_accepts_boolean_source_alternative_deletion_flag():
+    data = _current_source_alternative_metadata()
+
+    model = decode_batch_metadata(data, expected_batch="feature")
+
+    assert model.files[0].values["deletions"][0]["source_alternative"] is True
+
+
+def test_current_schema_rejects_non_boolean_source_alternative_deletion_flag():
+    data = _current_source_alternative_metadata()
+    data["files"]["src/example.py"]["deletions"][0][
+        "source_alternative"
+    ] = 1
+
+    with pytest.raises(BatchMetadataError, match="source-alternative flag"):
+        decode_batch_metadata(data, expected_batch="feature")
+
+
+def test_current_schema_rejects_source_alternative_without_live_boundary():
+    data = _current_source_alternative_metadata()
+    del data["files"]["src/example.py"]["deletions"][0][
+        "baseline_reference"
+    ]
+
+    with pytest.raises(BatchMetadataError, match="without a live boundary"):
+        decode_batch_metadata(data, expected_batch="feature")
+
+
+def test_current_schema_rejects_source_alternative_with_empty_live_boundary():
+    data = _current_source_alternative_metadata()
+    data["files"]["src/example.py"]["deletions"][0][
+        "baseline_reference"
+    ] = {}
+
+    with pytest.raises(BatchMetadataError, match="without a live boundary"):
+        decode_batch_metadata(data, expected_batch="feature")
+
+
+
+def test_current_schema_rejects_non_boolean_legacy_alternative_marker():
+    data = _v1_metadata()
+    data["schema_version"] = CURRENT_BATCH_METADATA_SCHEMA_VERSION
+    data["files"]["src/example.py"][
+        "legacy_unmarked_source_alternatives"
+    ] = 1
+
+    with pytest.raises(BatchMetadataError, match="legacy source-alternative"):
+        decode_batch_metadata(data, expected_batch="feature")
+
+
+def test_current_schema_rejects_null_legacy_alternative_marker():
+    data = _v1_metadata()
+    data["schema_version"] = CURRENT_BATCH_METADATA_SCHEMA_VERSION
+    data["files"]["src/example.py"][
+        "legacy_unmarked_source_alternatives"
+    ] = None
+
+    with pytest.raises(BatchMetadataError, match="legacy source-alternative"):
+        decode_batch_metadata(data, expected_batch="feature")
+
+
 def test_v1_rejects_unknown_nested_claim_field():
     data = _v1_metadata()
     data["files"]["src/example.py"]["presence_claims"][0]["typo"] = True
@@ -289,4 +350,14 @@ def test_v1_rejects_invalid_line_ranges(line_range):
     ]
 
     with pytest.raises(BatchMetadataError, match="range|non-positive"):
+        decode_batch_metadata(data, expected_batch="feature")
+
+
+def test_current_schema_reports_invalid_legacy_claimed_lines_as_metadata_error():
+    """Malformed compatibility ranges should use the metadata error contract."""
+    data = _v1_metadata()
+    data["schema_version"] = CURRENT_BATCH_METADATA_SCHEMA_VERSION
+    data["files"]["src/example.py"]["claimed_lines"] = ["not-a-range"]
+
+    with pytest.raises(BatchMetadataError, match="range"):
         decode_batch_metadata(data, expected_batch="feature")

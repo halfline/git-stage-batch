@@ -7,7 +7,7 @@ import pytest
 from git_stage_batch.batch.ownership import (
     hunk_replacement_translation as hunk_replacement_translation_module,
 )
-from git_stage_batch.batch.ownership.claims import LineRangeBuilder
+from git_stage_batch.core.line_selection import LineRangeBuilder
 from git_stage_batch.batch.ownership.hunk_replacement_translation import (
     translate_hunk_replacement_line_runs,
 )
@@ -328,12 +328,8 @@ def test_same_stream_replacement_origin_matches_independent_origin_stream():
             result.consumed_display_ids.ranges(),
         )
 
-    assert metadata_signature(same_stream) == metadata_signature(
-        independent_streams
-    )
-    assert tuple(same_stream.absence_claims[0].content_lines) == (
-        b"origin-one\n",
-    )
+    assert metadata_signature(same_stream) == metadata_signature(independent_streams)
+    assert tuple(same_stream.absence_claims[0].content_lines) == (b"origin-one\n",)
 
 
 def test_translate_hunk_replacement_line_runs_keeps_large_ranges_compact(

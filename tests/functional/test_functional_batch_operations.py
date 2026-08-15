@@ -1,9 +1,57 @@
 """Functional tests for batch operations."""
 
 import subprocess
+from pathlib import Path
 
 
 from .conftest import git_stage_batch, get_staged_diff, get_unstaged_diff
+
+
+def _install_castkms_ptrdiff_replay_fixture(
+    functional_repo,
+    *,
+    corrected_source_alternative: bool = True,
+):
+    fixture_root = Path(__file__).parent / "fixtures"
+    fixture_packs = [
+        next(fixture_root.glob("castkms_ptrdiff_replay_exact-*.pack")),
+    ]
+    if corrected_source_alternative:
+        fixture_packs.append(
+            fixture_root / "castkms_ptrdiff_source_alternative_exact.pack"
+        )
+    for fixture_pack in fixture_packs:
+        subprocess.run(
+            ["git", "index-pack", "--stdin"], cwd=functional_repo,
+            input=fixture_pack.read_bytes(), check=True, capture_output=True,
+        )
+    subprocess.run(
+        [
+            "git", "checkout", "--detach",
+            "a59c3b7e422482f654186b79c87236c825d75741",
+        ],
+        cwd=functional_repo, check=True, capture_output=True,
+    )
+    refs = {
+        "refs/git-stage-batch/batches/decompose-22-ptrdiff-stride-admission":
+            "7f312fe101f4dc2dd9f55c2fadd07b005907009a",
+        "refs/git-stage-batch/state/decompose-22-ptrdiff-stride-admission":
+            (
+                "2f333bc3c08d6e10fa70d3fe1396057d0e2882f3"
+                if corrected_source_alternative
+                else "1ddc2c96e04556d24fd7216884127803fd28c333"
+            ),
+        "refs/git-stage-batch/batches/decompose-22-ptrdiff-stride-admission-repair":
+            "6f9cf6498bc0e51f6491de71fe8725a7b592b7ab",
+        "refs/git-stage-batch/state/decompose-22-ptrdiff-stride-admission-repair":
+            "d71f3b3c44de3df9326a27d627ad99d191e02887",
+    }
+    for ref, oid in refs.items():
+        subprocess.run(
+            ["git", "update-ref", ref, oid], cwd=functional_repo,
+            check=True, capture_output=True,
+        )
+    return "decompose-22-ptrdiff-stride-admission"
 
 
 class TestCreateBatch:
@@ -170,6 +218,28 @@ class TestShowFromBatch:
 
 class TestApplyFromBatch:
     """Test applying changes from a batch."""
+
+    def test_apply_ptrdiff_stride_migration_before_companion_repair(
+        self,
+        functional_repo,
+    ):
+        """The stride migration must replay before its companion is inverted."""
+        batch_name = _install_castkms_ptrdiff_replay_fixture(functional_repo)
+        path = functional_repo / "src" / "castkms_formats.c"
+
+        result = git_stage_batch(
+            "apply", "--from", batch_name, check=False,
+        )
+        assert result.returncode == 0, result.stderr
+
+        git_stage_batch(
+            "discard", "--from", f"{batch_name}-repair",
+        )
+        source = path.read_text()
+        assert "static ptrdiff_t get_block_step_bytes" in source
+        assert "if (block_stride > SSIZE_MAX)" in source
+        assert "if (block_stride > INT_MAX)" not in source
+        assert "drm_format_info_block_height(fb->format" in source
 
     def test_start_reviews_changes_restored_from_batch(self, functional_repo):
         """A restored batch should remain available to a fresh staging pass."""

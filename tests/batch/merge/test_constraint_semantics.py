@@ -7,6 +7,8 @@ described in BATCHES.md.
 
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.ownership.absence_claims import AbsenceClaim
+from git_stage_batch.batch.ownership.replacement_units import ReplacementUnit
+from git_stage_batch.batch.ownership.references import BaselineReference
 from git_stage_batch.batch.merge.merge import merge_batch_from_line_sequences_as_buffer
 from git_stage_batch.batch.realized_file_content import (
     build_realized_buffer_from_lines,
@@ -47,6 +49,36 @@ def _build_realized_content_from_bytes(
         ) as realized,
     ):
         return realized.to_bytes()
+
+
+def test_merge_replaces_recorded_live_source_alternative():
+    """An explicit source alternative should replay as one replacement."""
+    ownership = BatchOwnership.from_presence_lines(
+        ["2"],
+        [
+            AbsenceClaim(
+                anchor_line=1,
+                content_lines=[b"live alternative\n"],
+                baseline_reference=BaselineReference(
+                    after_line=1,
+                    after_content=b"head\n",
+                    before_line=3,
+                    before_content=b"tail\n",
+                    has_before_line=True,
+                ),
+                source_alternative=True,
+            ),
+        ],
+        replacement_units=[
+            ReplacementUnit(presence_lines=["2"], deletion_indices=[0]),
+        ],
+    )
+
+    assert merge_batch(
+        b"head\nowned alternative\nlive alternative\ntail\n",
+        ownership,
+        b"head\nlive alternative\ntail\n",
+    ) == b"head\nowned alternative\ntail\n"
 
 
 class TestAbsenceClaimIdentity:

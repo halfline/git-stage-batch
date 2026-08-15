@@ -78,6 +78,7 @@ class ApplyTextFileActionPlan:
     file_mode: str | None
     change_type: TextFileChangeType
     selected_file_metadata: BatchFileMetadataDict | None = None
+    expected_index_identity: IndexIdentity | None = None
 
     def close(self) -> None:
         if self.buffer is not None:
@@ -141,6 +142,7 @@ class SubmodulePointerActionPlan:
 
     file_path: str
     file_meta: BatchFileMetadataDict
+    expected_index_identity: IndexIdentity | None = None
 
     def close(self) -> None:
         return None

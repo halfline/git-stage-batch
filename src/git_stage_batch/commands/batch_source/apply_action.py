@@ -38,9 +38,11 @@ from ...data.applied_batch_overlays import (
     record_applied_batch_overlays,
 )
 from ...data.file_target_identity import (
+    IndexIdentity,
     WorktreeIdentity,
     capture_worktree_identities,
     capture_worktree_identity,
+    read_index_identities,
 )
 from ...data.undo.checkpoints import UndoCheckpointStatus, undo_checkpoint
 from ...exceptions import (
@@ -70,6 +72,7 @@ class _ApplyTextInput:
     scratch_directory: Path
     source_commit: str | None
     source_required: bool
+    index_identity: IndexIdentity | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,7 +133,8 @@ def execute_apply_action(
     operation_parts = list(selection.operation_parts)
     repository_root = get_git_repository_root_path()
     report_progress("planning", "not-started")
-    with FileJobWorkspace() as workspace:
+    workspace = FileJobWorkspace()
+    with _action_plans.resource_cleanup((workspace,)) as close_workspace:
         (
             apply_plans,
             mode_actions,
@@ -144,7 +148,20 @@ def execute_apply_action(
             repository_root=repository_root,
             workspace=workspace,
         )
-        try:
+        with _action_plans.resource_cleanup(apply_plans) as close_apply_plans:
+            expected_index_identities = {
+                plan.file_path: plan.expected_index_identity
+                for plan in apply_plans
+                if (
+                    isinstance(
+                        plan,
+                        (
+                            _action_plans.ApplyTextFileActionPlan,
+                        ),
+                    )
+                    and plan.expected_index_identity is not None
+                )
+            }
             selected_metadata_by_path = {
                 plan.file_path: plan.selected_file_metadata
                 for plan in apply_plans
@@ -162,7 +179,8 @@ def execute_apply_action(
                 selection_ids_to_apply,
                 selected_file_metadata_by_path=selected_metadata_by_path,
             )
-            _require_unchanged_worktree_targets(
+            _require_unchanged_apply_targets(
+                expected_index_identities,
                 expected_worktree_identities,
             )
             publication_started = False
@@ -175,6 +193,10 @@ def execute_apply_action(
                     repository_paths=[applied_batch_overlays_repository_path()],
                     rollback_on_error=True,
                 ) as checkpoint_status:
+                    _require_unchanged_apply_targets(
+                        expected_index_identities,
+                        expected_worktree_identities,
+                    )
                     publication_started = True
                     report_progress(
                         "publication",
@@ -247,9 +269,6 @@ def execute_apply_action(
             else:
                 assert checkpoint_status is not None
                 report_progress("publication", checkpoint_status.rollback)
-        finally:
-            _action_plans.close_action_plans(apply_plans)
-
     assert checkpoint_status is not None
     report_progress("completion", checkpoint_status.rollback)
     _action_completion.finish_batch_source_action_review(context, files)
@@ -366,6 +385,9 @@ def _capture_apply_plan_inputs(
                     scratch_directory=scratch_directory,
                     source_commit=source_commit,
                     source_required=source_required,
+                    index_identity=(
+                        index_identities[file_path] if source_required else None
+                    ),
                 )
             )
         except CommandError as error:
@@ -681,18 +703,35 @@ def _resolve_apply_text_source_blobs(
     return source_blob_by_target
 
 
-def _worktree_target_changed_error(file_path: str) -> CommandError:
-    return CommandError(
-        _(
+def _apply_target_changed_error(
+    file_path: str,
+    *,
+    target: str,
+) -> CommandError:
+    if target == "index":
+        message = _(
+            "Index changed while apply was being calculated: "
+            "{file}. Retry the apply command."
+        )
+    else:
+        message = _(
             "Working tree file changed while apply was being calculated: "
             "{file}. Retry the apply command."
-        ).format(file=display_path(file_path))
-    )
+        )
+    return CommandError(message.format(file=display_path(file_path)))
 
 
-def _require_unchanged_worktree_targets(
+def _require_unchanged_apply_targets(
+    expected_index_identities: dict[str, IndexIdentity],
     expected_identities: dict[str, WorktreeIdentity],
 ) -> None:
+    current_index_identities = read_index_identities(expected_index_identities)
+    for file_path, expected_identity in expected_index_identities.items():
+        if (
+            expected_identity.unmerged_entries
+            or current_index_identities[file_path] != expected_identity
+        ):
+            raise _apply_target_changed_error(file_path, target="index")
     current_identities = capture_worktree_identities(tuple(expected_identities))
     stale_path = next(
         (
@@ -703,7 +742,7 @@ def _require_unchanged_worktree_targets(
         None,
     )
     if stale_path is not None:
-        raise _worktree_target_changed_error(stale_path)
+        raise _apply_target_changed_error(stale_path, target="worktree")
 
 
 def _require_unchanged_worktree_target(
@@ -711,4 +750,4 @@ def _require_unchanged_worktree_target(
     expected_identity: WorktreeIdentity,
 ) -> None:
     if capture_worktree_identity(file_path) != expected_identity:
-        raise _worktree_target_changed_error(file_path)
+        raise _apply_target_changed_error(file_path, target="worktree")

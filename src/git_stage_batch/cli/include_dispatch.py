@@ -130,6 +130,13 @@ def dispatch_include_command(args: argparse.Namespace) -> None:
             command_name="include",
             line_ids=args.line_ids,
         )
+        if resolved_batch_scope.is_multiple and args.line_ids is None:
+            command_include_from_batch(
+                args.from_batch,
+                line_ids=args.line_ids,
+                file_paths=resolved_batch_scope.files,
+            )
+            return
         run_for_each_resolved_file(
             resolved_batch_scope,
             lambda file: command_include_from_batch(

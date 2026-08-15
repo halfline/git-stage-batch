@@ -27,6 +27,7 @@ class AbsenceClaimMetadata(TypedDict, total=False):
     after_source_line: int | None
     blob: str
     baseline_reference: BaselineReferenceMetadata
+    source_alternative: bool
 
 
 class ReplacementUnitOriginMetadata(TypedDict, total=False):

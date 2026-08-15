@@ -13,7 +13,7 @@ from .references import BaselineReference
 
 @dataclass
 class AbsenceClaim:
-    """A suppression constraint: specific baseline content that must not appear.
+    """A suppression constraint: specific old-side content that must not appear.
 
     Deletions are constraints, not content to replay. Each absence claim represents
     a contiguous run of lines that must be absent from the materialized result.
@@ -21,18 +21,21 @@ class AbsenceClaim:
     Attributes:
         anchor_line: Batch source line after which this absence claim is anchored
                      (None for start-of-file)
-        content_lines: Exact baseline line content that must be suppressed,
+        content_lines: Exact old-side line content that must be suppressed,
                        with line endings preserved
         baseline_reference: Optional old-file coordinate where this absence
                             claim was selected. This lets same-source batch
                             round trips apply replacement units back to an
                             unchanged baseline/index without guessing from
                             post-change source anchors.
+        source_alternative: The old side came from an explicit live replacement
+                            payload rather than from the batch baseline.
     """
 
     anchor_line: int | None
     content_lines: Sequence[bytes]
     baseline_reference: BaselineReference | None = None
+    source_alternative: bool = False
 
     def to_dict(self) -> AbsenceClaimMetadata:
         """Serialize to metadata dictionary."""
@@ -43,6 +46,8 @@ class AbsenceClaim:
         }
         if self.baseline_reference is not None:
             data["baseline_reference"] = self.baseline_reference.to_dict()
+        if self.source_alternative:
+            data["source_alternative"] = True
         return data
 
     def to_attribution_dict(self) -> AbsenceClaimMetadata:
@@ -74,4 +79,5 @@ class AbsenceClaim:
             anchor_line=anchor_line,
             content_lines=content_lines,
             baseline_reference=baseline_reference,
+            source_alternative=data.get("source_alternative") is True,
         )

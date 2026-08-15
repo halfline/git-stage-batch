@@ -735,6 +735,21 @@ persisted range field or general anchor authorization. An optional
 `index_target_is_original` marker authorizes this proof only until the overlay's
 index target is rebound.
 
+The optional `index_preimage_source_lines` application field records complete
+replacement ranges whose pre-apply worktree span exactly matched the index. It
+contains normalized range strings and must be a subset of that application's
+selected presence. It is worktree-local applied-overlay metadata, not canonical
+batch metadata. Overlays written by older versions simply lack the optional
+introduced-presence, original-index marker, and index-preimage fields. Each
+preimage range is proved
+independently, so it can authorize that exact range even when another selected
+claim was preexisting and the whole selection received no general
+authorization. Apply and discard plans read the captured index object, then
+verify that the index is still identical before publishing either the worktree
+change or this authority. If discard cannot locate an authorized applied
+occurrence unambiguously, it refuses the reversal instead of falling back to
+the replacement's historical old text.
+
 An applied overlay is accepted only while all of these still match its record:
 
 - the batch metadata revision

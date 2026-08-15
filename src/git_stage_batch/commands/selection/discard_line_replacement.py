@@ -35,7 +35,6 @@ from ...batch.ownership.line_entries import (
 from ...batch.ownership.replacement_units import ReplacementUnit
 from ...batch.ownership.replacement_units import normalize_replacement_units
 from ...batch.ownership.claims import (
-    LineRangeBuilder,
     presence_claims_from_source_lines,
 )
 from ...batch.merge.baseline_reference_translation import (
@@ -54,7 +53,7 @@ from ...batch.source.line_coordinates import translate_display_source_coordinate
 from ...batch.text_file_storage import add_file_to_batch
 from ...batch.state.batch_names import batch_exists
 from ...core.buffer import LineBuffer, buffer_ends_with_lf
-from ...core.line_selection import LineRanges
+from ...core.line_selection import LineRangeBuilder, LineRanges
 from ...core.mapped_storage import MappedRecordVector
 from ...core.models import LineLevelChange
 from ...core.replacement import (

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Literal, TypedDict, overload
 
-from ...core.line_selection import LineRanges, LineSelection
+from ...core.line_selection import LineRangeBuilder, LineRanges, LineSelection
 from .display_lines import (
     OwnershipDisplayLine,
     build_display_lines_from_batch_source_lines,
@@ -13,10 +13,7 @@ from .display_lines import (
 from .model import (
     BatchOwnership,
 )
-from .claims import (
-    LineRangeBuilder,
-    parse_ownership_line_ranges,
-)
+from .claims import parse_ownership_line_ranges
 from .unit_types import (
     OwnershipUnit as _UnitRecord,
     OwnershipUnitKind as _UnitKind,
@@ -115,17 +112,20 @@ def build_ownership_units_from_display_lines(
                     "source_lines": [claimed_source_line],
                     "next_index": i,
                 }
-                units.append(_build_replacement_unit(
-                    ownership=ownership,
-                    deletion_run=deletion_run,
-                    claimed_run=claimed_run
-                ))
+                units.append(
+                    _build_replacement_unit(
+                        ownership=ownership,
+                        deletion_run=deletion_run,
+                        claimed_run=claimed_run,
+                    )
+                )
             else:
                 # Deletion-only unit: no adjacent claimed block
-                units.append(_build_deletion_only_unit(
-                    ownership=ownership,
-                    deletion_run=deletion_run
-                ))
+                units.append(
+                    _build_deletion_only_unit(
+                        ownership=ownership, deletion_run=deletion_run
+                    )
+                )
 
         elif line["type"] == "claimed":
             # Collect single claimed line (not a block, to preserve fine-grained reset)
@@ -159,25 +159,31 @@ def build_ownership_units_from_display_lines(
                     "source_lines": [claimed_source_line],
                     "next_index": i,
                 }
-                units.append(_build_replacement_unit(
-                    ownership=ownership,
-                    deletion_run=deletion_run,
-                    claimed_run=claimed_run
-                ))
+                units.append(
+                    _build_replacement_unit(
+                        ownership=ownership,
+                        deletion_run=deletion_run,
+                        claimed_run=claimed_run,
+                    )
+                )
             else:
                 # Presence-only unit: one claimed line without adjacent deletions
                 # One unit per line allows independent reset
-                units.append(_UnitRecord(
-                    kind=_UnitKind.PRESENCE_ONLY,
-                    claimed_source_lines=LineRanges.from_lines([claimed_source_line]),
-                    deletion_claims=[],
-                    display_line_ids=LineRanges.from_lines([claimed_display_id]),
-                    baseline_references=_presence_references_for_lines(
-                        ownership,
-                        LineRanges.from_lines([claimed_source_line]),
-                    ),
-                    is_atomic=False,
-                ))
+                units.append(
+                    _UnitRecord(
+                        kind=_UnitKind.PRESENCE_ONLY,
+                        claimed_source_lines=LineRanges.from_lines(
+                            [claimed_source_line]
+                        ),
+                        deletion_claims=[],
+                        display_line_ids=LineRanges.from_lines([claimed_display_id]),
+                        baseline_references=_presence_references_for_lines(
+                            ownership,
+                            LineRanges.from_lines([claimed_source_line]),
+                        ),
+                        is_atomic=False,
+                    )
+                )
         else:
             # Unknown type - skip
             i += 1
@@ -244,22 +250,23 @@ def _build_explicit_replacement_units_from_display_lines(
             continue
 
         deletion_claims = [
-            ownership.deletions[index]
-            for index in sorted(deletion_indices)
+            ownership.deletions[index] for index in sorted(deletion_indices)
         ]
-        units.append(_UnitRecord(
-            kind=_UnitKind.REPLACEMENT,
-            claimed_source_lines=claimed_source_lines,
-            deletion_claims=deletion_claims,
-            display_line_ids=claimed_display_ids.union(deletion_display_ids),
-            baseline_references=_presence_references_for_lines(
-                ownership,
-                claimed_source_lines,
-            ),
-            is_atomic=True,
-            preserves_replacement_unit=True,
-            replacement_origin=replacement_unit.origin,
-        ))
+        units.append(
+            _UnitRecord(
+                kind=_UnitKind.REPLACEMENT,
+                claimed_source_lines=claimed_source_lines,
+                deletion_claims=deletion_claims,
+                display_line_ids=claimed_display_ids.union(deletion_display_ids),
+                baseline_references=_presence_references_for_lines(
+                    ownership,
+                    claimed_source_lines,
+                ),
+                is_atomic=True,
+                preserves_replacement_unit=True,
+                replacement_origin=replacement_unit.origin,
+            )
+        )
         consumed_claimed_lines = consumed_claimed_lines.union(claimed_source_lines)
         consumed_deletion_indices.update(deletion_indices)
 
@@ -378,8 +385,7 @@ def _build_replacement_unit(
         REPLACEMENT OwnershipUnit (atomic)
     """
     deletion_claims = [
-        ownership.deletions[idx]
-        for idx in set(deletion_run["deletion_indices"])
+        ownership.deletions[idx] for idx in set(deletion_run["deletion_indices"])
     ]
 
     claimed_source_lines = LineRanges.from_lines(claimed_run["source_lines"])
@@ -412,8 +418,7 @@ def _build_deletion_only_unit(
         DELETION_ONLY OwnershipUnit (atomic)
     """
     deletion_claims = [
-        ownership.deletions[idx]
-        for idx in set(deletion_run["deletion_indices"])
+        ownership.deletions[idx] for idx in set(deletion_run["deletion_indices"])
     ]
 
     return _UnitRecord(

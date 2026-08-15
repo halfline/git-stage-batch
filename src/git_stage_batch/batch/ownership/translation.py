@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from ...core.line_selection import LineRangeBuilder
 from .absence_content import (
     build_absence_content_from_range as _build_absence_content_from_range,
 )
 from .model import BatchOwnership
 from .absence_claims import AbsenceClaim
-from .claims import LineRangeBuilder, presence_claims_from_source_lines
+from .claims import presence_claims_from_source_lines
 from .line_entries import (
     LineEntryContentSequence as _LineEntryContentSequence,
     ReplacementUnitBuilder as _ReplacementUnitBuilder,
@@ -38,11 +39,11 @@ def detect_stale_batch_source_for_selection(
     for line in selected_lines:
         # Context and addition lines need source coordinates for claim
         # translation and deletion boundaries.
-        if line.kind in (' ', '+') and line.source_line is None:
+        if line.kind in (" ", "+") and line.source_line is None:
             return True
         # A None deletion anchor is only current for deletions before line 1.
         if (
-            line.kind == '-'
+            line.kind == "-"
             and line.source_line is None
             and line.old_line_number is not None
             and line.old_line_number > 1
@@ -165,7 +166,7 @@ def translate_lines_to_batch_ownership(
         return [absence_index]
 
     for index, line in enumerate(selected_lines):
-        if line.kind in (' ', '+'):
+        if line.kind in (" ", "+"):
             # Context or addition: exists in batch source (working tree)
             # Flush any pending deletion run
             flushed_deletion_indices = flush_absence_run()
@@ -177,22 +178,16 @@ def translate_lines_to_batch_ownership(
                     f"Batch source is stale and must be advanced before translation."
                 )
 
-            if line.kind == '+':
+            if line.kind == "+":
                 claimed_source_lines.add_line(line.source_line)
                 if line.has_baseline_reference_after:
-                    presence_baseline_references[line.source_line] = (
-                        BaselineReference(
-                            after_line=line.baseline_reference_after_line,
-                            after_content=(
-                                line.baseline_reference_after_text_bytes
-                            ),
-                            has_after_line=line.has_baseline_reference_after,
-                            before_line=line.baseline_reference_before_line,
-                            before_content=(
-                                line.baseline_reference_before_text_bytes
-                            ),
-                            has_before_line=line.has_baseline_reference_before,
-                        )
+                    presence_baseline_references[line.source_line] = BaselineReference(
+                        after_line=line.baseline_reference_after_line,
+                        after_content=(line.baseline_reference_after_text_bytes),
+                        has_after_line=line.has_baseline_reference_after,
+                        before_line=line.baseline_reference_before_line,
+                        before_content=(line.baseline_reference_before_text_bytes),
+                        has_before_line=line.has_baseline_reference_before,
                     )
                 if flushed_deletion_indices:
                     finish_replacement_unit(active_replacement_unit)
@@ -212,7 +207,7 @@ def translate_lines_to_batch_ownership(
                 previous_old_line = line.old_line_number
                 previous_old_content = line.text_bytes
 
-        elif line.kind == '-':
+        elif line.kind == "-":
             finish_replacement_unit(active_replacement_unit)
             active_replacement_unit = None
             if (

@@ -30,38 +30,6 @@ def format_ownership_line_set(
 
 
 @dataclass
-class LineRangeBuilder:
-    """Build a normalized line selection from mostly ordered additions."""
-
-    ranges: list[tuple[int, int]] = field(default_factory=list)
-    pending_start: int | None = None
-    pending_end: int | None = None
-
-    def add_line(self, line_number: int) -> None:
-        if self.pending_start is None or self.pending_end is None:
-            self.pending_start = line_number
-            self.pending_end = line_number
-            return
-
-        if self.pending_start <= line_number <= self.pending_end:
-            return
-
-        if line_number == self.pending_end + 1:
-            self.pending_end = line_number
-            return
-
-        self.ranges.append((self.pending_start, self.pending_end))
-        self.pending_start = line_number
-        self.pending_end = line_number
-
-    def finish(self) -> LineRanges:
-        ranges = list(self.ranges)
-        if self.pending_start is not None and self.pending_end is not None:
-            ranges.append((self.pending_start, self.pending_end))
-        return LineRanges.from_ranges(ranges)
-
-
-@dataclass
 class PresenceClaim:
     """A presence constraint over batch-source lines.
 

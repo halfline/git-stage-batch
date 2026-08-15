@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from array import array
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol, SupportsBytes
 
@@ -93,12 +93,6 @@ class LinePieceTable:
                 line_range.end,
                 line_range.owner,
             )
-
-    def active_owners(self) -> Iterator[LineOwner]:
-        for source_id in self._run_source_ids:
-            owner = self._sources[source_id].owner
-            if owner is not None:
-                yield owner
 
     def _source_id(
         self,

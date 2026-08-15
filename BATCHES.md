@@ -149,6 +149,17 @@ references and removes the historical storage for that batch.
 
 [`batch/state/metadata_schema.py`](src/git_stage_batch/batch/state/metadata_schema.py)
 validates stored fields before the rest of the program uses them.
+Schema version 2 adds source-alternative absence claims. Version 1 and
+historical unversioned metadata are migrated in memory; the next successful
+publication writes the current schema.
+Because older schemas did not record whether an unowned source suffix was the
+other side of an explicit transformed replacement, migration marks text
+ownership with that uncertainty. Whole-file replay refuses a legacy claimed
+insertion when it occupies a collapsed gap between mapped historical neighbors
+and no saved boundary or replacement unit proves insertion semantics. A
+reviewed line selection is the user's explicit confirmation to apply the shown
+insertion. This prevents an unreviewed replay from silently preserving both
+alternatives.
 
 A text-file entry normally contains:
 

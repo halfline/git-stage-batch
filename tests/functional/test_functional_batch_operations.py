@@ -403,6 +403,26 @@ class TestApplyFromBatch:
         assert result.returncode == 0, result.stderr
         assert path.read_text() == committed
 
+    def test_legacy_ptrdiff_stride_migration_fails_without_semantic_intent(
+        self,
+        functional_repo,
+    ):
+        """An ambiguous legacy insertion must not preserve both alternatives."""
+        batch_name = _install_castkms_ptrdiff_replay_fixture(
+            functional_repo,
+            corrected_source_alternative=False,
+        )
+        path = functional_repo / "src" / "castkms_formats.c"
+        before = path.read_bytes()
+
+        result = git_stage_batch("apply", "--from", batch_name, check=False)
+
+        assert result.returncode != 0
+        assert "does not record whether adjacent historical source content" in (
+            result.stderr
+        )
+        assert path.read_bytes() == before
+
     def test_start_reviews_changes_restored_from_batch(self, functional_repo):
         """A restored batch should remain available to a fresh staging pass."""
         file_path = functional_repo / "file.txt"

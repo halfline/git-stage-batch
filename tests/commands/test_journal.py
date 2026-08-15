@@ -16,7 +16,12 @@ from git_stage_batch.commands.selection import discard_line_batching
 from git_stage_batch.commands.selection import discard_to_batch_action
 from git_stage_batch.data.undo.checkpoints import UndoCheckpointStatus
 from git_stage_batch.exceptions import CommandError
-from git_stage_batch.utils.journal import JOURNAL_LEVEL_ENV, JOURNAL_PATH_ENV, flush_journal, log_journal
+from git_stage_batch.utils.journal import (
+    JOURNAL_LEVEL_ENV,
+    JOURNAL_PATH_ENV,
+    flush_journal,
+    log_journal,
+)
 from tests.journal_helpers import reset_journal_state
 
 
@@ -109,6 +114,71 @@ def test_apply_success_has_correlated_terminal_journal_event(monkeypatch):
     assert events[1][1]["resolved_batch_name"] == "resolved"
     assert events[1][1]["stage"] == "complete"
     assert events[1][1]["rollback"] == "delegated"
+
+
+def test_apply_outer_rollback_has_correlated_terminal_journal_event(
+    monkeypatch,
+    capsys,
+):
+    """A locally successful apply must close its journal if an outer rolls back."""
+    events = []
+    deferred = {}
+    context = SimpleNamespace(
+        selector=SimpleNamespace(candidate_ordinal=None),
+        batch_name="resolved",
+    )
+    selection = SimpleNamespace(
+        file=None,
+        files={"file.txt": {}},
+        selected_ids=None,
+        selection_ids=None,
+    )
+    monkeypatch.setattr(apply_from, "require_git_repository", lambda: None)
+    monkeypatch.setattr(
+        apply_from._action_context,
+        "resolve_batch_source_action_context",
+        lambda *_args, **_kwargs: context,
+    )
+    monkeypatch.setattr(
+        apply_from._action_selection,
+        "resolve_apply_action_selection",
+        lambda *_args, **_kwargs: selection,
+    )
+
+    def apply_action(*, journal_progress, **_kwargs):
+        journal_progress("completion", "delegated")
+
+    def defer_completion(on_commit, on_rollback):
+        deferred["commit"] = on_commit
+        deferred["rollback"] = on_rollback
+
+    monkeypatch.setattr(apply_from._apply_action, "execute_apply_action", apply_action)
+    monkeypatch.setattr(
+        apply_from,
+        "defer_transaction_completion",
+        defer_completion,
+    )
+    monkeypatch.setattr(
+        apply_from,
+        "log_journal",
+        lambda operation, **fields: events.append((operation, fields)),
+    )
+
+    apply_from.command_apply_from_batch("saved")
+
+    assert [operation for operation, _fields in events] == ["apply_from_batch_start"]
+    assert "✓ Applied" not in capsys.readouterr().err
+
+    deferred["rollback"]("completed")
+
+    assert [operation for operation, _fields in events] == [
+        "apply_from_batch_start",
+        "apply_from_batch_failed",
+    ]
+    assert events[0][1]["operation_id"] == events[1][1]["operation_id"]
+    assert events[1][1]["rollback"] == "completed"
+    assert events[1][1]["error_type"] == "EnclosingTransactionRollback"
+    assert "✓ Applied" not in capsys.readouterr().err
 
 
 def test_apply_start_redacts_requested_file_path(temp_git_repo, monkeypatch):
@@ -296,10 +366,14 @@ def test_multi_file_discard_distinguishes_collection_and_single_file_events(
     operations = []
     monkeypatch.setattr(discard_to_batch, "require_git_repository", lambda: None)
     monkeypatch.setattr(discard_to_batch, "ensure_state_directory_exists", lambda: None)
-    monkeypatch.setattr(discard_to_batch, "auto_add_untracked_files", lambda _files: None)
+    monkeypatch.setattr(
+        discard_to_batch, "auto_add_untracked_files", lambda _files: None
+    )
     monkeypatch.setattr(discard_to_batch, "batch_exists", lambda _name: True)
     monkeypatch.setattr(discard_to_batch, "read_batch_metadata", lambda _name: {})
-    monkeypatch.setattr(discard_to_batch, "read_text_file_line_set", lambda _path: set())
+    monkeypatch.setattr(
+        discard_to_batch, "read_text_file_line_set", lambda _path: set()
+    )
     monkeypatch.setattr(
         discard_to_batch,
         "_collect_text_file_discard_inputs",

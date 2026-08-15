@@ -409,6 +409,17 @@ Both commands use modules under `commands/batch_source/` to:
 6. write accepted targets
 7. refresh review and selected-change state
 
+When `apply --from ... --files` resolves more than one path, the resolved paths
+remain one ordered, literal file scope. Apply builds and validates every file
+plan before publishing any of them, then writes the accepted worktree targets
+and their applied-overlay state under one undo checkpoint. If any selected file
+cannot be planned or publication fails, no file or overlay from that invocation
+is left partially applied. This guarantee also applies without an active
+session. Applying an added submodule pointer declares its intent-to-add index
+entry as part of the same transaction and validates that entry before
+publication; ordinary worktree-only apply paths do not acquire broader index
+rollback authority.
+
 Both flows
 capture the complete scoped index identity, including intent-to-add and every
 unmerged stage, before merge planning. They repeat that check inside the

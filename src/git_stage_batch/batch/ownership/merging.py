@@ -19,6 +19,7 @@ class _AbsenceSignature:
     content_digest: str
     byte_count: int
     line_count: int
+    source_alternative: bool
 
 
 def _absence_signature(claim: AbsenceClaim) -> _AbsenceSignature:
@@ -34,6 +35,7 @@ def _absence_signature(claim: AbsenceClaim) -> _AbsenceSignature:
         content_digest=digest.hexdigest(),
         byte_count=byte_count,
         line_count=len(claim.content_lines),
+        source_alternative=claim.source_alternative,
     )
 
 
@@ -98,6 +100,7 @@ def _merge_deletion_claim_metadata(
             existing.baseline_reference,
             new.baseline_reference,
         ),
+        source_alternative=existing.source_alternative,
     )
 
 

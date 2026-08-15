@@ -8,6 +8,7 @@ import sys
 import pytest
 
 import git_stage_batch.commands.batch_source.include_action as include_action
+from git_stage_batch.cli.argument_parser import parse_command_line
 from git_stage_batch.batch.state.lifecycle import create_batch
 from git_stage_batch.batch.ownership.model import BatchOwnership
 from git_stage_batch.batch.state.query import read_batch_metadata
@@ -52,13 +53,30 @@ def temp_git_repo(tmp_path, monkeypatch):
     monkeypatch.chdir(repo)
 
     subprocess.run(["git", "init"], check=True, cwd=repo, capture_output=True)
-    subprocess.run(["git", "config", "user.name", "Test User"], check=True, cwd=repo, capture_output=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+    )
 
     # Create initial commit
     (repo / "README.md").write_text("# Test\n")
-    subprocess.run(["git", "add", "README.md"], check=True, cwd=repo, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "Initial commit"], check=True, cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "add", "README.md"], check=True, cwd=repo, capture_output=True
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "Initial commit"],
+        check=True,
+        cwd=repo,
+        capture_output=True,
+    )
 
     # Initialize session for batch operations
     ensure_state_directory_exists()
@@ -311,8 +329,7 @@ static struct plane *initialize_properties(struct device *device)
 """
         property_version = baseline.replace(
             "        struct plane *plane;\n",
-            "        struct plane *plane;\n"
-            "        int result;\n",
+            "        struct plane *plane;\n        int result;\n",
         ).replace(
             "        create_rotation_property(plane);\n"
             "        create_color_properties(plane);\n",
@@ -325,8 +342,7 @@ static struct plane *initialize_properties(struct device *device)
         )
         final_version = helper_version.replace(
             "        struct plane *plane;\n",
-            "        struct plane *plane;\n"
-            "        int result;\n",
+            "        struct plane *plane;\n        int result;\n",
         ).replace(
             "        create_rotation_property(plane);\n"
             "        create_color_properties(plane);\n",
@@ -473,6 +489,80 @@ static struct plane *initialize_properties(struct device *device)
         assert run_git_command(["show", ":file.txt"]).stdout == "base\n"
         assert "✓ Staged" not in capsys.readouterr().err
 
+    def test_cli_multi_file_no_session_failure_is_atomic(
+        self,
+        temp_git_repo,
+        monkeypatch,
+    ):
+        """CLI --files must publish one transient multi-file transaction."""
+        for name in ("a.txt", "b.txt"):
+            (temp_git_repo / name).write_text(f"{name} base\n")
+        subprocess.run(
+            ["git", "add", "a.txt", "b.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add files"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        for name in ("a.txt", "b.txt"):
+            (temp_git_repo / name).write_text(f"{name} batch\n")
+        command_start(quiet=True)
+        command_include_to_batch("test-batch", file="a.txt", quiet=True)
+        command_include_to_batch("test-batch", file="b.txt", quiet=True)
+        for name in ("a.txt", "b.txt"):
+            (temp_git_repo / name).write_text(f"{name} base\n")
+        command_stop()
+
+        original_write = include_action._text_file_actions.write_text_file_to_worktree
+        calls = 0
+
+        def fail_second_write(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise OSError("injected CLI write failure")
+            return original_write(*args, **kwargs)
+
+        monkeypatch.setattr(
+            include_action._text_file_actions,
+            "write_text_file_to_worktree",
+            fail_second_write,
+        )
+        monkeypatch.setattr(
+            include_action,
+            "snapshot_file_if_untracked",
+            lambda _path: (_ for _ in ()).throw(
+                AssertionError("outside-session include wrote abort state")
+            ),
+        )
+        args = parse_command_line(
+            ["include", "--from", "test-batch", "--files", "*.txt"],
+            quiet=True,
+        )
+        assert args is not None
+
+        with pytest.raises(CommandError, match="injected CLI write failure"):
+            args.func(args)
+
+        assert (temp_git_repo / "a.txt").read_text() == "a.txt base\n"
+        assert (temp_git_repo / "b.txt").read_text() == "b.txt base\n"
+        assert run_git_command(["diff", "--cached", "--name-only"]).stdout == ""
+        assert (
+            run_git_command(
+                [
+                    "for-each-ref",
+                    "--format=%(refname)",
+                    "refs/git-stage-batch/transactions",
+                ]
+            ).stdout
+            == ""
+        )
+
     def test_include_from_empty_batch_fails(self, temp_git_repo):
         """Test including from an empty batch fails."""
         create_batch("empty-batch")
@@ -495,14 +585,26 @@ static struct plane *initialize_properties(struct device *device)
         with pytest.raises(CommandError):
             command_include_from_batch("test-batch")
 
-    def test_include_from_batch_file_mode_filters_to_selected_file(self, temp_git_repo, capsys):
+    def test_include_from_batch_file_mode_filters_to_selected_file(
+        self, temp_git_repo, capsys
+    ):
         """Test that --file mode filters batch diff to selected file only."""
 
         # Create baseline with multiple files
         (temp_git_repo / "file1.txt").write_text("line 1\nline 2\n")
         (temp_git_repo / "file2.txt").write_text("line A\nline B\n")
-        subprocess.run(["git", "add", "file1.txt", "file2.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add files"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "file1.txt", "file2.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add files"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         # Add new lines to both files and save to batch
         (temp_git_repo / "file1.txt").write_text("line 1\nline 2\nfile1 added\n")
@@ -529,7 +631,9 @@ static struct plane *initialize_properties(struct device *device)
         # Verify file1 has the added line
         result = run_git_command(["show", ":file1.txt"])
         assert "file1 added" in result.stdout
-        assert (temp_git_repo / "file1.txt").read_text() == "line 1\nline 2\nfile1 added\n"
+        assert (
+            temp_git_repo / "file1.txt"
+        ).read_text() == "line 1\nline 2\nfile1 added\n"
         assert (temp_git_repo / "file2.txt").read_text() == "line A\nline B\n"
 
         captured = capsys.readouterr()
@@ -658,15 +762,30 @@ static struct plane *initialize_properties(struct device *device)
         tool_path = temp_git_repo / "tool.sh"
         tool_path.write_text("#!/bin/sh\necho base\n")
         tool_path.chmod(0o644)
-        subprocess.run(["git", "add", "tool.sh"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add tool"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "tool.sh"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add tool"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         tool_path.write_text("#!/bin/sh\necho batched\n")
         tool_path.chmod(0o755)
         command_start()
         command_include_to_batch("test-batch", file="tool.sh", quiet=True)
 
-        subprocess.run(["git", "checkout", "HEAD", "--", "tool.sh"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "checkout", "HEAD", "--", "tool.sh"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         command_include_from_batch("test-batch", file="tool.sh")
 
@@ -680,15 +799,30 @@ static struct plane *initialize_properties(struct device *device)
         tool_path = temp_git_repo / "tool.sh"
         tool_path.write_text("#!/bin/sh\necho base\n")
         tool_path.chmod(0o644)
-        subprocess.run(["git", "add", "tool.sh"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add tool"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "tool.sh"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add tool"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         tool_path.write_text("#!/bin/sh\necho batched\n")
         tool_path.chmod(0o755)
         command_start()
         command_include_to_batch("test-batch", file="tool.sh", quiet=True)
 
-        subprocess.run(["git", "checkout", "HEAD", "--", "tool.sh"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "checkout", "HEAD", "--", "tool.sh"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
         tool_path.chmod(0o644)
 
         command_apply_from_batch("test-batch", file="tool.sh")
@@ -696,13 +830,25 @@ static struct plane *initialize_properties(struct device *device)
         assert tool_path.read_text() == "#!/bin/sh\necho batched\n"
         assert stat.S_IMODE(tool_path.stat().st_mode) & stat.S_IXUSR
 
-    def test_discard_from_batch_restores_text_baseline_executable_mode(self, temp_git_repo):
+    def test_discard_from_batch_restores_text_baseline_executable_mode(
+        self, temp_git_repo
+    ):
         """Test whole-file discard --from honors the baseline mode for text files."""
         tool_path = temp_git_repo / "tool.sh"
         tool_path.write_text("#!/bin/sh\necho base\n")
         tool_path.chmod(0o755)
-        subprocess.run(["git", "add", "tool.sh"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add executable tool"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "tool.sh"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add executable tool"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         tool_path.write_text("#!/bin/sh\necho batched\n")
         command_start()
@@ -734,8 +880,18 @@ static struct plane *initialize_properties(struct device *device)
         """Whole deleted text files saved to a batch apply back to absence."""
         gone_path = temp_git_repo / "gone.txt"
         gone_path.write_text("gone\n")
-        subprocess.run(["git", "add", "gone.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add gone"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "gone.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add gone"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         gone_path.unlink()
         command_start()
@@ -744,30 +900,64 @@ static struct plane *initialize_properties(struct device *device)
         file_meta = read_batch_metadata("test-batch")["files"]["gone.txt"]
         assert file_meta["change_type"] == "deleted"
 
-        subprocess.run(["git", "checkout", "HEAD", "--", "gone.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "checkout", "HEAD", "--", "gone.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
         command_apply_from_batch("test-batch", file="gone.txt")
 
         assert not gone_path.exists()
-        assert run_git_command(["diff", "--cached", "--name-only", "--", "gone.txt"]).stdout == ""
+        assert (
+            run_git_command(
+                ["diff", "--cached", "--name-only", "--", "gone.txt"]
+            ).stdout
+            == ""
+        )
 
-    def test_apply_from_batch_line_scoped_deleted_text_file_removes_path(self, temp_git_repo):
+    def test_apply_from_batch_line_scoped_deleted_text_file_removes_path(
+        self, temp_git_repo
+    ):
         """Selecting every deleted text line should preserve deleted-path semantics."""
         gone_path = temp_git_repo / "gone.txt"
         gone_path.write_text("gone\n")
-        subprocess.run(["git", "add", "gone.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add gone"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "gone.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add gone"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         gone_path.unlink()
         command_start()
         command_include_to_batch("test-batch", file="gone.txt", quiet=True)
 
-        subprocess.run(["git", "checkout", "HEAD", "--", "gone.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "checkout", "HEAD", "--", "gone.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
         command_apply_from_batch("test-batch", line_ids="1", file="gone.txt")
 
         assert not gone_path.exists()
-        assert run_git_command(["diff", "--cached", "--name-only", "--", "gone.txt"]).stdout == ""
+        assert (
+            run_git_command(
+                ["diff", "--cached", "--name-only", "--", "gone.txt"]
+            ).stdout
+            == ""
+        )
 
-    def test_apply_from_batch_line_scoped_added_text_file_restores_executable_mode(self, temp_git_repo):
+    def test_apply_from_batch_line_scoped_added_text_file_restores_executable_mode(
+        self, temp_git_repo
+    ):
         """Line-scoped apply that creates a text path should use the batch mode."""
         tool_path = temp_git_repo / "tool.sh"
         tool_path.write_text("#!/bin/sh\necho batched\n")
@@ -781,24 +971,46 @@ static struct plane *initialize_properties(struct device *device)
         assert tool_path.read_text() == "#!/bin/sh\necho batched\n"
         assert stat.S_IMODE(tool_path.stat().st_mode) & stat.S_IXUSR
 
-    def test_include_from_batch_stages_deleted_text_file_and_removes_worktree_path(self, temp_git_repo):
+    def test_include_from_batch_stages_deleted_text_file_and_removes_worktree_path(
+        self, temp_git_repo
+    ):
         """Whole deleted text files saved to a batch include as staged deletions."""
         gone_path = temp_git_repo / "gone.txt"
         gone_path.write_text("gone\n")
-        subprocess.run(["git", "add", "gone.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add gone"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "gone.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add gone"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         gone_path.unlink()
         command_start()
         command_include_to_batch("test-batch", file="gone.txt", quiet=True)
 
-        subprocess.run(["git", "checkout", "HEAD", "--", "gone.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "checkout", "HEAD", "--", "gone.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
         command_include_from_batch("test-batch", file="gone.txt")
 
         assert not gone_path.exists()
-        assert run_git_command(["status", "--short", "--", "gone.txt"]).stdout == "D  gone.txt\n"
+        assert (
+            run_git_command(["status", "--short", "--", "gone.txt"]).stdout
+            == "D  gone.txt\n"
+        )
 
-    def test_include_from_batch_line_scoped_added_text_file_restores_executable_mode(self, temp_git_repo):
+    def test_include_from_batch_line_scoped_added_text_file_restores_executable_mode(
+        self, temp_git_repo
+    ):
         """Line-scoped include that creates a text path should use the batch mode."""
         tool_path = temp_git_repo / "tool.sh"
         tool_path.write_text("#!/bin/sh\necho batched\n")
@@ -824,31 +1036,28 @@ static struct plane *initialize_properties(struct device *device)
             "class X {\n",
             "    @Test\n",
             "    fun presentBefore() {\n",
-            "        assert(\"before\")\n",
+            '        assert("before")\n',
             "    }\n",
             "\n",
         ]
         missing_middle = [
             "    @Test\n",
             "    fun missingOne() {\n",
-            "        assert(\"body1\")\n",
+            '        assert("body1")\n',
             "    }\n",
             "\n",
             "    @Test\n",
             "    fun missingTwo() {\n",
-            "        assert(\"body2\")\n",
+            '        assert("body2")\n',
             "    }\n",
             "\n",
         ]
         suffix = [
             "    @Test\n",
             "    fun next() {\n",
-            "        assert(\"next\")\n",
+            '        assert("next")\n',
             "    }\n",
-            *[
-                f"    val filler{index} = {index}\n"
-                for index in range(1, 40)
-            ],
+            *[f"    val filler{index} = {index}\n" for index in range(1, 40)],
             "}\n",
         ]
         test_file = temp_git_repo / "Test.kt"
@@ -857,8 +1066,18 @@ static struct plane *initialize_properties(struct device *device)
         command_include_to_batch("test-batch", file="Test.kt", quiet=True)
 
         test_file.write_text("".join([*prefix, *suffix]))
-        subprocess.run(["git", "add", "Test.kt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Partial"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "Test.kt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Partial"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
         clear_last_file_review_state()
 
         with pytest.raises(CommandError, match="Line selection #8-16"):
@@ -867,38 +1086,67 @@ static struct plane *initialize_properties(struct device *device)
         assert run_git_command(["diff", "--cached", "--", "Test.kt"]).stdout == ""
         assert test_file.read_text() == "".join([*prefix, *suffix])
 
-    def test_include_from_batch_line_scoped_deleted_text_file_stages_deletion(self, temp_git_repo):
+    def test_include_from_batch_line_scoped_deleted_text_file_stages_deletion(
+        self, temp_git_repo
+    ):
         """Line-scoped include of a full deleted text file should stage path deletion."""
         gone_path = temp_git_repo / "gone.txt"
         gone_path.write_text("gone\n")
-        subprocess.run(["git", "add", "gone.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add gone"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "gone.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add gone"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         gone_path.unlink()
         command_start()
         command_include_to_batch("test-batch", file="gone.txt", quiet=True)
 
-        subprocess.run(["git", "checkout", "HEAD", "--", "gone.txt"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "checkout", "HEAD", "--", "gone.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
         command_include_from_batch("test-batch", line_ids="1", file="gone.txt")
 
         assert not gone_path.exists()
-        assert run_git_command(["status", "--short", "--", "gone.txt"]).stdout == "D  gone.txt\n"
+        assert (
+            run_git_command(["status", "--short", "--", "gone.txt"]).stdout
+            == "D  gone.txt\n"
+        )
 
     def test_include_from_batch_creates_added_empty_text_file(self, temp_git_repo):
         """Empty added text files should not be skipped as empty ownership."""
         empty_path = temp_git_repo / "empty.txt"
         empty_path.write_text("")
         command_start()
-        add_file_to_batch("test-batch", "empty.txt", BatchOwnership.from_presence_lines([], []))
+        add_file_to_batch(
+            "test-batch", "empty.txt", BatchOwnership.from_presence_lines([], [])
+        )
 
         empty_path.unlink()
         command_include_from_batch("test-batch", file="empty.txt")
 
         assert empty_path.exists()
         assert empty_path.read_bytes() == b""
-        assert run_git_command(["diff", "--cached", "--name-only", "--", "empty.txt"]).stdout == "empty.txt\n"
+        assert (
+            run_git_command(
+                ["diff", "--cached", "--name-only", "--", "empty.txt"]
+            ).stdout
+            == "empty.txt\n"
+        )
 
-    def test_discard_from_batch_line_scoped_added_text_file_removes_path(self, temp_git_repo):
+    def test_discard_from_batch_line_scoped_added_text_file_removes_path(
+        self, temp_git_repo
+    ):
         """Line-scoped discard of a full added text file should restore absence."""
         new_path = temp_git_repo / "new.txt"
         new_path.write_text("new\n")
@@ -909,7 +1157,9 @@ static struct plane *initialize_properties(struct device *device)
 
         assert not new_path.exists()
 
-    def test_discard_from_batch_partial_new_text_file_removes_path_when_exhausted(self, temp_git_repo):
+    def test_discard_from_batch_partial_new_text_file_removes_path_when_exhausted(
+        self, temp_git_repo
+    ):
         """Discarding the remaining owned content of a partial new file should restore absence."""
         new_path = temp_git_repo / "new.txt"
         new_path.write_text("owned\nunowned\n")
@@ -922,13 +1172,25 @@ static struct plane *initialize_properties(struct device *device)
 
         assert not new_path.exists()
 
-    def test_discard_from_batch_line_scoped_deleted_text_file_restores_executable_mode(self, temp_git_repo):
+    def test_discard_from_batch_line_scoped_deleted_text_file_restores_executable_mode(
+        self, temp_git_repo
+    ):
         """Line-scoped discard that restores a deleted text path should use baseline mode."""
         tool_path = temp_git_repo / "tool.sh"
         tool_path.write_text("#!/bin/sh\necho base\n")
         tool_path.chmod(0o755)
-        subprocess.run(["git", "add", "tool.sh"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add executable tool"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "tool.sh"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add executable tool"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         tool_path.unlink()
         command_start()
@@ -939,12 +1201,24 @@ static struct plane *initialize_properties(struct device *device)
         assert tool_path.read_text() == "#!/bin/sh\necho base\n"
         assert stat.S_IMODE(tool_path.stat().st_mode) & stat.S_IXUSR
 
-    def test_include_from_batch_as_replaces_presence_only_selection(self, temp_git_repo):
+    def test_include_from_batch_as_replaces_presence_only_selection(
+        self, temp_git_repo
+    ):
         """Test include --from --line --as replaces claimed batch content before staging."""
         test_file = temp_git_repo / "test.txt"
         test_file.write_text("keep\n")
-        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         test_file.write_text("keep\nbatch value\n")
         command_start()
@@ -971,12 +1245,24 @@ static struct plane *initialize_properties(struct device *device)
         assert result.stdout == "keep\nedited value\n"
         assert test_file.read_text() == "keep\nedited value\n"
 
-    def test_include_from_batch_as_replaces_atomic_replacement_unit(self, temp_git_repo):
+    def test_include_from_batch_as_replaces_atomic_replacement_unit(
+        self, temp_git_repo
+    ):
         """Test include --from --line --as preserves batch deletion semantics."""
         test_file = temp_git_repo / "test.txt"
         test_file.write_text("keep\nold value\n")
-        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         test_file.write_text("keep\nbatch value\n")
         command_start()
@@ -989,7 +1275,8 @@ static struct plane *initialize_properties(struct device *device)
         replacement_gutters = sorted(
             rendered.selection_id_to_gutter[line.id]
             for line in rendered.line_changes.lines
-            if line.id is not None and line.display_text() in {"old value", "batch value"}
+            if line.id is not None
+            and line.display_text() in {"old value", "batch value"}
         )
 
         command_include_from_batch(
@@ -1003,12 +1290,24 @@ static struct plane *initialize_properties(struct device *device)
         assert result.stdout == "keep\nedited value\n"
         assert test_file.read_text() == "keep\nedited value\n"
 
-    def test_include_from_batch_as_rejects_partial_replacement_unit(self, temp_git_repo):
+    def test_include_from_batch_as_rejects_partial_replacement_unit(
+        self, temp_git_repo
+    ):
         """Test include --from --line --as honors explicit replacement atomicity."""
         test_file = temp_git_repo / "test.txt"
         test_file.write_text("old one\nold two\nkeep\n")
-        subprocess.run(["git", "add", "test.txt"], check=True, cwd=temp_git_repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "Add file"], check=True, cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "add", "test.txt"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "Add file"],
+            check=True,
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
 
         test_file.write_text("new one\nnew two\nkeep\n")
         command_start()
@@ -1152,8 +1451,8 @@ static struct plane *initialize_properties(struct device *device)
         }
         monkeypatch.setattr(
             include_action,
-            "read_index_entries",
-            lambda _paths: {},
+            "read_index_identities",
+            lambda paths: {path: IndexIdentity(None, None) for path in paths},
         )
         monkeypatch.setattr(
             include_action,
@@ -1197,12 +1496,8 @@ static struct plane *initialize_properties(struct device *device)
             )
         capsys.readouterr()
         mapped_outputs = []
-        original_stage = (
-            include_action._text_file_actions.stage_text_file_to_index
-        )
-        original_write = (
-            include_action._text_file_actions.write_text_file_to_worktree
-        )
+        original_stage = include_action._text_file_actions.stage_text_file_to_index
+        original_write = include_action._text_file_actions.write_text_file_to_worktree
 
         def record_stage(file_path, buffer, file_mode, change_type):
             mapped_outputs.append(uses_mapped_storage(buffer))
@@ -1242,23 +1537,18 @@ static struct plane *initialize_properties(struct device *device)
 
             observations.append(
                 (
-                    {
-                        name: (temp_git_repo / name).read_text()
-                        for name in expected
-                    },
+                    {name: (temp_git_repo / name).read_text() for name in expected},
                     run_git_command(["write-tree"]).stdout.strip(),
                     capsys.readouterr(),
                 )
             )
             command_undo(force=True)
             assert {
-                name: (temp_git_repo / name).read_text()
-                for name in baseline
+                name: (temp_git_repo / name).read_text() for name in baseline
             } == baseline
             command_redo(force=True)
             assert {
-                name: (temp_git_repo / name).read_text()
-                for name in expected
+                name: (temp_git_repo / name).read_text() for name in expected
             } == expected
             capsys.readouterr()
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 import sys
 from typing import Callable
@@ -32,6 +33,7 @@ from ...batch.submodule_pointer import (
     is_batch_submodule_pointer,
 )
 from ...data.session import snapshot_file_if_untracked
+from ...data.session_marker import session_is_active
 from ...data.applied_batch_overlays import (
     applied_batch_overlays_repository_path,
     build_applied_file_provenances,
@@ -44,7 +46,11 @@ from ...data.file_target_identity import (
     capture_worktree_identity,
     read_index_identities,
 )
-from ...data.undo.checkpoints import UndoCheckpointStatus, undo_checkpoint
+from ...data.undo.checkpoints import (
+    UndoCheckpointStatus,
+    transaction_checkpoint,
+    undo_checkpoint,
+)
 from ...exceptions import (
     AtomicUnitError,
     CommandError,
@@ -187,23 +193,24 @@ def execute_apply_action(
             checkpoint_status: UndoCheckpointStatus | None = None
             report_progress("checkpoint", "not-started")
             try:
-                with undo_checkpoint(
+                with transaction_checkpoint(
                     terminal_safe_shell_join(operation_parts),
                     worktree_paths=list(files),
                     repository_paths=[applied_batch_overlays_repository_path()],
-                    rollback_on_error=True,
                 ) as checkpoint_status:
                     _require_unchanged_apply_targets(
                         expected_index_identities,
                         expected_worktree_identities,
                     )
+                    checkpoint_status.arm_rollback()
                     publication_started = True
                     report_progress(
                         "publication",
                         checkpoint_status.rollback,
                     )
                     for plan in apply_plans:
-                        snapshot_file_if_untracked(plan.file_path)
+                        if session_is_active():
+                            snapshot_file_if_untracked(plan.file_path)
                         if isinstance(plan, _action_plans.ApplyTextFileActionPlan):
                             _text_file_actions.write_text_file_to_worktree(
                                 plan.file_path,
@@ -247,6 +254,8 @@ def execute_apply_action(
                         files=applied_file_provenance,
                         before_worktree_identities=expected_worktree_identities,
                     )
+                    close_apply_plans()
+                    close_workspace()
             except BaseException as error:
                 if publication_started:
                     report_progress(
@@ -271,7 +280,13 @@ def execute_apply_action(
                 report_progress("publication", checkpoint_status.rollback)
     assert checkpoint_status is not None
     report_progress("completion", checkpoint_status.rollback)
-    _action_completion.finish_batch_source_action_review(context, files)
+    checkpoint_status.defer_success(
+        partial(
+            _action_completion.finish_batch_source_action_review,
+            context,
+            tuple(files),
+        )
+    )
 
 
 def _build_apply_action_plans(

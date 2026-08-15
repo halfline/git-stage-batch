@@ -386,6 +386,19 @@ permission to remove an adjacent unowned source line.
 
 
 
+Recorded baseline coordinates are the first placement proof, not permanently
+fixed worktree offsets. Earlier replay may insert or remove neighboring lines.
+When that happens, a legacy replacement or deletion anchor may follow the sole
+live occurrence of its complete saved after/deleted-span/before identity. An
+independent deletion that is also visible as unowned historical source text
+needs the stronger proof that its complete span and both boundaries map
+byte-for-byte from the current index to the worktree. When another selected
+change already requires a source-to-target mapping, an independent deletion may
+instead use the exact gap between its mapped surviving source anchors. The gap
+must contain the complete saved old side or none of it; matching bytes elsewhere
+are unrelated and remain untouched. Mapped deletion gaps selected together must
+not overlap, so each target region is inspected at most once.
+
 [`batch/merge/validation.py`](src/git_stage_batch/batch/merge/validation.py)
 owns structural validation. The merge helpers separate these structural and
 exact-coordinate responsibilities:

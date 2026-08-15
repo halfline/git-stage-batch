@@ -9,13 +9,19 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ...exceptions import (
+    AmbiguousAnchorError as _AmbiguousAnchorError,
     MergeError as _MergeError,
     MissingAnchorError as _MissingAnchorError,
 )
-from ...i18n import _
+from ...i18n import _, ngettext
+from ...core.buffer import LineBuffer
 from ...core.text_lines import normalize_line_endings
 from ...editor.piece_table import LineLike
-from ...core.mapped_storage import sort_mapped_records
+from ...core.mapped_storage import (
+    MappedIntVector,
+    MappedRecordVector,
+    sort_mapped_records,
+)
 from ..line_matching.match_workspace import MatcherWorkspace
 from .candidates import MergeResolution as _MergeResolution
 from ..realization.boundaries import (
@@ -47,6 +53,414 @@ class AbsenceChoice:
     target_after_line: int | None
     target_before_line: int | None
     explanation: str
+
+
+class _ActiveRealizedLineIndex:
+    """Storage-backed order statistics for one-pass absence suppression."""
+
+    def __init__(
+        self,
+        workspace: MatcherWorkspace,
+        entries: RealizedEntries,
+    ) -> None:
+        self._entries = entries
+        self._line_count = len(entries)
+        self._active = workspace.int_vector(
+            self._line_count,
+            width=4,
+            fill=1,
+        )
+        self._nonclaimed = workspace.int_vector(
+            self._line_count,
+            width=4,
+            fill=0,
+        )
+        self._active_tree = workspace.int_vector(
+            self._line_count + 1,
+            width=8,
+            fill=0,
+        )
+        self._nonclaimed_tree = workspace.int_vector(
+            self._line_count + 1,
+            width=8,
+            fill=0,
+        )
+        source_records = workspace.record_vector(
+            self._line_count,
+            "QQQ",
+        )
+        self._source_groups = workspace.record_vector(
+            self._line_count,
+            "QQQQQ",
+        )
+        self._source_group_by_original = workspace.int_vector(
+            self._line_count,
+            width=8,
+            fill=0,
+        )
+        try:
+            self._initialize_provenance(source_records)
+        finally:
+            workspace.close_resource(source_records)
+        self._initialize_tree(self._active_tree, self._active)
+        self._initialize_tree(self._nonclaimed_tree, self._nonclaimed)
+
+    @property
+    def active_count(self) -> int:
+        """Return the current number of realized lines."""
+        return self._prefix_count(self._active_tree, self._line_count)
+
+    def boundary_after_source_line(self, source_line: int | None) -> int:
+        """Return an active boundary with normal ambiguity handling."""
+        if source_line is None:
+            return 0
+
+        group_index = self._first_source_group(source_line)
+        if (
+            group_index >= len(self._source_groups)
+            or self._source_groups[group_index][0] != source_line
+        ):
+            matching_count = 0
+            claimed_count = 0
+            matching_original_index = 0
+            claimed_original_index = 0
+        else:
+            (
+                _record_source_line,
+                matching_count,
+                claimed_count,
+                matching_original_index,
+                claimed_original_index,
+            ) = self._source_groups[group_index]
+
+        if matching_count == 0:
+            raise _MissingAnchorError(
+                _(
+                    "Cannot locate anchor boundary after source line {line}: "
+                    "anchor not present in realized content"
+                ).format(line=source_line)
+            )
+        if matching_count == 1:
+            original_index = matching_original_index
+        elif claimed_count == 1:
+            original_index = claimed_original_index
+        elif claimed_count == 0:
+            raise _AmbiguousAnchorError(
+                ngettext(
+                    "Anchor ambiguity: source line {line} appears {count} "
+                    "time in realized content but is not claimed",
+                    "Anchor ambiguity: source line {line} appears {count} "
+                    "times in realized content but none are claimed",
+                    matching_count,
+                ).format(line=source_line, count=matching_count)
+            )
+        else:
+            raise _AmbiguousAnchorError(
+                ngettext(
+                    "Anchor ambiguity: source line {line} claimed {count} time",
+                    "Anchor ambiguity: source line {line} claimed {count} times",
+                    claimed_count,
+                ).format(line=source_line, count=claimed_count)
+            )
+        return self._prefix_count(self._active_tree, original_index + 1)
+
+    def position_after_claimed(self, position: int) -> int:
+        """Skip one contiguous active claimed run in logarithmic time."""
+        if position >= self.active_count:
+            return position
+        original_index = self._select(self._active_tree, position)
+        if self._nonclaimed[original_index]:
+            return position
+        nonclaimed_before = self._prefix_count(
+            self._nonclaimed_tree,
+            original_index,
+        )
+        nonclaimed_count = self._prefix_count(
+            self._nonclaimed_tree,
+            self._line_count,
+        )
+        if nonclaimed_before >= nonclaimed_count:
+            return self.active_count
+        next_nonclaimed = self._select(
+            self._nonclaimed_tree,
+            nonclaimed_before,
+        )
+        return self._prefix_count(self._active_tree, next_nonclaimed)
+
+    def sequence_matches(
+        self,
+        lines: Sequence[bytes],
+        position: int,
+        sequence: Sequence[bytes],
+    ) -> bool:
+        """Return whether active lines match one normalized sequence."""
+        if position < 0 or position + len(sequence) > self.active_count:
+            return False
+        for offset in range(len(sequence)):
+            original_index = self._select(
+                self._active_tree,
+                position + offset,
+            )
+            if normalize_line_endings(
+                lines[original_index]
+            ) != normalize_line_endings(sequence[offset]):
+                return False
+        return True
+
+    def remove_sequence(self, position: int, line_count: int) -> None:
+        """Deactivate a consecutive sequence at one current position."""
+        for _offset in range(line_count):
+            original_index = self._select(self._active_tree, position)
+            source_group = self._source_group_by_original[original_index]
+            if source_group:
+                group_index = source_group - 1
+                (
+                    source_line,
+                    matching_count,
+                    claimed_count,
+                    matching_original_indexes,
+                    claimed_original_indexes,
+                ) = self._source_groups[group_index]
+                is_claimed = not self._nonclaimed[original_index]
+                self._source_groups[group_index] = (
+                    source_line,
+                    matching_count - 1,
+                    claimed_count - int(is_claimed),
+                    matching_original_indexes ^ original_index,
+                    (
+                        claimed_original_indexes ^ original_index
+                        if is_claimed
+                        else claimed_original_indexes
+                    ),
+                )
+            self._active[original_index] = 0
+            self._update_tree(self._active_tree, original_index)
+            if self._nonclaimed[original_index]:
+                self._update_tree(self._nonclaimed_tree, original_index)
+
+    def build_result(
+        self,
+        lines: LineBuffer,
+    ) -> RealizedEntries:
+        """Build surviving entries in one provenance/run traversal."""
+        result = RealizedEntries()
+        try:
+            result.retain_line_buffer(lines)
+            for run in self._entries.provenance_runs():
+                position = run.dest_start
+                while position < run.dest_end:
+                    while (
+                        position < run.dest_end
+                        and not self._active[position]
+                    ):
+                        position += 1
+                    active_start = position
+                    while (
+                        position < run.dest_end
+                        and self._active[position]
+                    ):
+                        position += 1
+                    if active_start == position:
+                        continue
+                    result.append_line_range_from(
+                        lines,
+                        active_start,
+                        position,
+                        source_line_start=run.source_line_at(active_start),
+                        target_line_start=run.target_line_at(active_start),
+                        is_claimed=run.is_claimed,
+                    )
+            return result
+        except BaseException:
+            result.close()
+            raise
+
+    def _initialize_provenance(
+        self,
+        source_records: MappedRecordVector,
+    ) -> None:
+        for run in self._entries.provenance_runs():
+            run_length = run.dest_end - run.dest_start
+            if not run.is_claimed:
+                for original_index in range(run.dest_start, run.dest_end):
+                    self._nonclaimed[original_index] = 1
+            if run.source_start == 0:
+                continue
+            for offset in range(run_length):
+                source_records.append((
+                    run.source_start + offset,
+                    run.dest_start + offset,
+                    int(run.is_claimed),
+                ))
+        sort_mapped_records(source_records)
+
+        record_index = 0
+        while record_index < len(source_records):
+            source_line = source_records[record_index][0]
+            matching_count = 0
+            claimed_count = 0
+            matching_original_indexes = 0
+            claimed_original_indexes = 0
+            group_index = len(self._source_groups)
+            while (
+                record_index < len(source_records)
+                and source_records[record_index][0] == source_line
+            ):
+                (
+                    _record_source_line,
+                    original_index,
+                    is_claimed,
+                ) = source_records[record_index]
+                matching_count += 1
+                matching_original_indexes ^= original_index
+                if is_claimed:
+                    claimed_count += 1
+                    claimed_original_indexes ^= original_index
+                self._source_group_by_original[original_index] = group_index + 1
+                record_index += 1
+            self._source_groups.append((
+                source_line,
+                matching_count,
+                claimed_count,
+                matching_original_indexes,
+                claimed_original_indexes,
+            ))
+
+    @staticmethod
+    def _initialize_tree(
+        tree: MappedIntVector,
+        values: MappedIntVector,
+    ) -> None:
+        for original_index in range(len(values)):
+            tree_index = original_index + 1
+            tree[tree_index] += values[original_index]
+            parent = tree_index + (tree_index & -tree_index)
+            if parent < len(tree):
+                tree[parent] += tree[tree_index]
+
+    @staticmethod
+    def _prefix_count(tree: MappedIntVector, stop: int) -> int:
+        count = 0
+        tree_index = stop
+        while tree_index > 0:
+            count += tree[tree_index]
+            tree_index -= tree_index & -tree_index
+        return count
+
+    @staticmethod
+    def _update_tree(tree: MappedIntVector, original_index: int) -> None:
+        tree_index = original_index + 1
+        while tree_index < len(tree):
+            tree[tree_index] -= 1
+            tree_index += tree_index & -tree_index
+
+    def _select(self, tree: MappedIntVector, position: int) -> int:
+        """Return the original index of a zero-based active position."""
+        target_count = position + 1
+        tree_index = 0
+        step = (
+            0
+            if self._line_count == 0
+            else 1 << (self._line_count.bit_length() - 1)
+        )
+        while step:
+            candidate = tree_index + step
+            if candidate < len(tree) and tree[candidate] < target_count:
+                target_count -= tree[candidate]
+                tree_index = candidate
+            step >>= 1
+        if tree_index >= self._line_count:
+            raise IndexError(position)
+        return tree_index
+
+    def _first_source_group(self, source_line: int) -> int:
+        lower = 0
+        upper = len(self._source_groups)
+        while lower < upper:
+            middle = (lower + upper) // 2
+            if self._source_groups[middle][0] < source_line:
+                lower = middle + 1
+            else:
+                upper = middle
+        return lower
+
+
+def _apply_strict_absence_constraints_indexed(
+    result: RealizedEntries,
+    deletion_claims: Sequence[AbsenceClaim],
+    *,
+    spool_dir: str | Path | None,
+) -> RealizedEntries:
+    """Apply ordinary strict removals without rebuilding after each claim."""
+    lines = LineBuffer.from_line_chunks(
+        result.content_chunks(),
+        spool_dir=spool_dir,
+    )
+    lines_are_retained = False
+    try:
+        with MatcherWorkspace(spool_dir=spool_dir) as workspace:
+            active = _ActiveRealizedLineIndex(workspace, result)
+            changed = False
+            for claim in deletion_claims:
+                if not claim.content_lines:
+                    continue
+                forbidden_sequence = claim.content_lines
+                boundary = active.boundary_after_source_line(
+                    claim.anchor_line
+                )
+                removal_position = boundary
+                if not active.sequence_matches(
+                    lines,
+                    removal_position,
+                    forbidden_sequence,
+                ):
+                    after_claimed = active.position_after_claimed(boundary)
+                    if (
+                        after_claimed != boundary
+                        and active.sequence_matches(
+                            lines,
+                            after_claimed,
+                            forbidden_sequence,
+                        )
+                    ):
+                        removal_position = after_claimed
+                    else:
+                        search_end = min(
+                            boundary + 20,
+                            active.active_count - len(forbidden_sequence) + 1,
+                        )
+                        if any(
+                            active.sequence_matches(
+                                lines,
+                                check_position,
+                                forbidden_sequence,
+                            )
+                            for check_position in range(
+                                boundary + 1,
+                                search_end,
+                            )
+                        ):
+                            raise _MergeError(
+                                _(
+                                    "Batch was created from a different "
+                                    "version of the file"
+                                )
+                            )
+                        continue
+                active.remove_sequence(
+                    removal_position,
+                    len(forbidden_sequence),
+                )
+                changed = True
+
+            if not changed:
+                return result
+            realized = active.build_result(lines)
+            lines_are_retained = True
+            return realized
+    finally:
+        if not lines_are_retained:
+            lines.close()
 
 
 def apply_absence_constraints(
@@ -101,6 +515,20 @@ def apply_absence_constraints(
     result = as_realized_entries(entries)
     if not deletion_claims:
         return result
+    if strict and resolution is None:
+        try:
+            indexed_result = _apply_strict_absence_constraints_indexed(
+                result,
+                deletion_claims,
+                spool_dir=spool_dir,
+            )
+        except BaseException:
+            if result is not entries:
+                result.close()
+            raise
+        if indexed_result is not result and result is not entries:
+            result.close()
+        return indexed_result
 
     suppress_fn = (
         _suppress_at_boundary_strict

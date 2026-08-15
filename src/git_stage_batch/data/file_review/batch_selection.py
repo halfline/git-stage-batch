@@ -7,6 +7,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from ...batch.file_display import render_batch_file_display
+from ...core.line_selection import LineRangeBuilder
 from ...batch.selection import require_single_file_context_for_line_selection_ranges
 from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...batch.submodule_pointer import (
@@ -33,8 +34,8 @@ class _SelectionForValidation:
 
 
 def _current_action_selections_for_validation(
-    rendered: 'RenderedBatchDisplay',
-    action: 'FileReviewAction | str',
+    rendered: "RenderedBatchDisplay",
+    action: "FileReviewAction | str",
 ) -> list[_SelectionForValidation]:
     review_action = FileReviewAction(action).value
     return [
@@ -56,18 +57,76 @@ def _selection_ids_from_gutter_ids(
             yield display_id_map[gutter_id]
         else:
             raise CommandError(
-                _("Line ID {id} is not available for this action. Select one of the numbered lines shown for this batch file.").format(
-                    id=gutter_id
-                )
+                _(
+                    "Line ID {id} is not available for this action. Select one of the numbered lines shown for this batch file."
+                ).format(id=gutter_id)
             )
+
+
+def _complete_mixed_review_composite_dependencies(
+    selection_ids: set[int],
+    rendered: "RenderedBatchDisplay",
+    action: "FileReviewAction | str",
+) -> set[int]:
+    """Complete the former recommendation around mixed-action composites.
+
+    A visual replacement can contain one independently mergeable child and a
+    reset-only sibling.  Once the whole replacement becomes provably
+    mergeable, a fresh review exposes the composite too, but commands copied
+    from the earlier review omit that entire visual change.  Preserve that
+    generated command's meaning only when the request selects every other
+    action-capable ID; ordinary partial selections are unchanged.
+    """
+    review_action = FileReviewAction(action).value
+    reset_action = FileReviewAction.RESET_FROM_BATCH.value
+    reset_only_builder = LineRangeBuilder()
+    action_builder = LineRangeBuilder()
+    for group in rendered.review_action_groups:
+        if reset_action in group.actions and review_action not in group.actions:
+            for selection_id in group.selection_ids:
+                reset_only_builder.add_line(selection_id)
+        if review_action in group.actions:
+            for selection_id in group.selection_ids:
+                action_builder.add_line(selection_id)
+
+    reset_only_ids = reset_only_builder.finish()
+    if not reset_only_ids:
+        return selection_ids
+
+    action_ids = action_builder.finish()
+    composite_dependency_ranges = LineRangeBuilder()
+    for group in rendered.review_action_groups:
+        if review_action not in group.actions:
+            continue
+        group_id_builder = LineRangeBuilder()
+        for selection_id in group.selection_ids:
+            group_id_builder.add_line(selection_id)
+        group_ids = group_id_builder.finish()
+        if not any(
+            reset_only_ids.intersects_range(range_start, range_end)
+            for range_start, range_end in group_ids.ranges()
+        ):
+            continue
+        for range_start, range_end in group_ids.ranges():
+            composite_dependency_ranges.add_range(range_start, range_end)
+    composite_dependency_ids = composite_dependency_ranges.finish()
+    if not composite_dependency_ids:
+        return selection_ids
+
+    former_recommendation = action_ids.difference(composite_dependency_ids)
+    if len(selection_ids) != len(former_recommendation) or any(
+        selection_id not in former_recommendation for selection_id in selection_ids
+    ):
+        return selection_ids
+    return set(former_recommendation.union(composite_dependency_ids))
 
 
 def translate_batch_file_gutter_ids_to_selection_ids(
     batch_name: str,
     file_path: str,
     selected_ids: set[int] | None,
-    action: 'FileReviewAction | str',
-) -> tuple[set[int] | None, 'RenderedBatchDisplay | None']:
+    action: "FileReviewAction | str",
+) -> tuple[set[int] | None, "RenderedBatchDisplay | None"]:
     """Translate displayed batch-file gutter IDs to internal selection IDs.
 
     If the IDs came after a fresh matching file review, validate them against
@@ -91,10 +150,11 @@ def translate_batch_file_gutter_ids_to_selection_ids(
     selection_ids: set[int] | None = None
     if review_selections is not None:
         display_id_map = (
-            rendered.review_gutter_to_selection_id
-            or rendered.gutter_to_selection_id
+            rendered.review_gutter_to_selection_id or rendered.gutter_to_selection_id
         )
-        selection_ids = set(_selection_ids_from_gutter_ids(selected_ids, display_id_map))
+        selection_ids = set(
+            _selection_ids_from_gutter_ids(selected_ids, display_id_map)
+        )
         validate_review_scoped_line_selection(selected_ids, review_selections)
     else:
         current_action_selections = _current_action_selections_for_validation(
@@ -106,7 +166,9 @@ def translate_batch_file_gutter_ids_to_selection_ids(
                 rendered.review_gutter_to_selection_id
                 or rendered.gutter_to_selection_id
             )
-            selection_ids = set(_selection_ids_from_gutter_ids(selected_ids, display_id_map))
+            selection_ids = set(
+                _selection_ids_from_gutter_ids(selected_ids, display_id_map)
+            )
             validate_review_scoped_line_selection(
                 selected_ids,
                 current_action_selections,
@@ -123,11 +185,19 @@ def translate_batch_file_gutter_ids_to_selection_ids(
                 for gutter_id, selection_id in display_id_map.items()
             },
         )
-        if review_selections is not None else
-        rendered
+        if review_selections is not None
+        else rendered
     )
     if selection_ids is None:
-        selection_ids = set(_selection_ids_from_gutter_ids(selected_ids, display_id_map))
+        selection_ids = set(
+            _selection_ids_from_gutter_ids(selected_ids, display_id_map)
+        )
+    if review_selections is not None:
+        selection_ids = _complete_mixed_review_composite_dependencies(
+            selection_ids,
+            rendered,
+            action,
+        )
     return selection_ids, rendered_for_messages
 
 
@@ -157,7 +227,9 @@ def translate_reset_batch_file_gutter_ids_to_selection_ranges(
 
     file_path = list(files.keys())[0]
     if files[file_path].get("file_type") == "binary":
-        raise CommandError(_("Cannot use --lines with binary files. Reset the whole file instead."))
+        raise CommandError(
+            _("Cannot use --lines with binary files. Reset the whole file instead.")
+        )
     if files[file_path].get("file_type") == "mode":
         raise CommandError(_("Cannot use --lines with file mode actions."))
     if is_batch_submodule_pointer(files[file_path]):
@@ -181,7 +253,9 @@ def translate_reset_batch_file_gutter_ids_to_selection_ranges(
             )
         )
 
-    display_id_map = rendered.review_gutter_to_selection_id or rendered.gutter_to_selection_id
+    display_id_map = (
+        rendered.review_gutter_to_selection_id or rendered.gutter_to_selection_id
+    )
     return LineRanges.from_lines(
         _selection_ids_from_gutter_ids(selected_ids, display_id_map)
     )

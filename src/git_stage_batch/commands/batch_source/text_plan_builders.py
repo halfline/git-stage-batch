@@ -57,6 +57,8 @@ class ApplyTextPlanBuildResult:
     plan: _action_plans.ApplyTextFileActionPlan | None = None
     missing_source: bool = False
     selected_ownership_metadata: BatchOwnershipMetadata | None = None
+    introduced_selected_presence: bool = False
+    index_preimage_source_ranges: tuple[tuple[int, int], ...] = ()
 
 
 @dataclass(frozen=True)

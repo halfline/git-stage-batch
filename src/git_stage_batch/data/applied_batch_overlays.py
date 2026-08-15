@@ -11,14 +11,22 @@ its start, after which ``stop`` binds the record to the final index identity.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from copy import deepcopy
 from dataclasses import asdict, dataclass
+from itertools import chain
 import json
 import os
 from pathlib import Path
 from typing import TypedDict, cast
 
 from ..batch.state.metadata_schema import metadata_from_application_dict
+from ..batch.line_matching.match import match_lines
+from ..batch.line_matching.match_workspace import MatcherWorkspace
+from ..batch.line_matching.occurrence_index import LinePayloadOccurrenceIndex
+from ..core.buffer import LineBuffer
+from ..core.line_selection import LineRanges
+from ..core.text_lines import normalize_line_sequence_endings
 from ..batch.state.metadata_types import (
     BatchFileMetadataDict,
     BatchMetadataDict,
@@ -47,6 +55,7 @@ from ..utils.paths import (
 )
 from ..utils.session_start_point import current_head_commit
 from ..utils.git_object_io import list_git_tree_blobs
+from ..utils.repository_buffers import load_git_blob_as_buffer
 from ..batch.state.reference_names import format_batch_state_ref_name
 from .session_marker import session_is_active
 from .file_target_identity import WorktreeIdentity, capture_worktree_identity
@@ -66,6 +75,9 @@ class _AppliedApplication(TypedDict, total=False):
     revision: str
     file_metadata: BatchFileMetadataDict
     source_object_id: str
+    introduced_selected_presence: bool
+    index_target_is_original: bool
+    index_preimage_source_lines: list[str]
 
 
 class _AppliedFileEntry(TypedDict):
@@ -86,6 +98,8 @@ class AppliedFileProvenance:
 
     file_metadata: BatchFileMetadataDict
     source_object_id: str | None
+    introduced_selected_presence: bool = False
+    index_preimage_source_ranges: tuple[tuple[int, int], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,11 +111,20 @@ class AppliedBatchOverlayView:
     revealed_owner_names: frozenset[str]
     batch_names: frozenset[str]
     lifecycle_change_types: frozenset[str]
+    applied_source_line_ranges_by_batch: dict[
+        str,
+        tuple[tuple[int, int], ...],
+    ]
+    source_line_ranges_by_batch: dict[str, tuple[tuple[int, int], ...]]
+    index_preimage_source_line_ranges_by_batch: dict[
+        str,
+        tuple[tuple[int, int], ...],
+    ]
 
     @classmethod
     def empty(cls) -> AppliedBatchOverlayView:
         """Return an empty immutable view."""
-        return cls({}, {}, frozenset(), frozenset(), frozenset())
+        return cls({}, {}, frozenset(), frozenset(), frozenset(), {}, {}, {})
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,8 +141,7 @@ class AppliedBatchOverlaySnapshot:
 
     state: _AppliedOverlayState
     head_commit: str | None
-    index_entries: dict[str, IndexEntry]
-    intent_to_add_paths: frozenset[str]
+    index_identities: dict[str, IndexIdentity]
     session_index_drift_paths: frozenset[str]
 
 
@@ -140,6 +162,8 @@ def build_applied_file_provenance(
     selection_ids: set[int] | None,
     *,
     selected_file_metadata: BatchFileMetadataDict | None = None,
+    before_lines: LineBuffer | None = None,
+    after_lines: LineBuffer | None = None,
 ) -> AppliedFileProvenance:
     """Freeze the exact text ownership selected by one successful apply."""
     source_commit = file_metadata.get("batch_source_commit")
@@ -167,6 +191,12 @@ def build_applied_file_provenance(
     return AppliedFileProvenance(
         file_metadata=selected_file_metadata,
         source_object_id=source_object_id,
+        introduced_selected_presence=_all_selected_presence_introduced(
+            selected_file_metadata,
+            source_object_id,
+            before_lines,
+            after_lines,
+        ),
     )
 
 
@@ -176,6 +206,12 @@ def build_applied_file_provenances(
     selection_ids: set[int] | None,
     *,
     selected_file_metadata_by_path: dict[str, BatchFileMetadataDict],
+    introduced_selected_presence_by_path: dict[str, bool] | None = None,
+    index_preimage_source_ranges_by_path: dict[
+        str,
+        tuple[tuple[int, int], ...],
+    ]
+    | None = None,
 ) -> dict[str, AppliedFileProvenance]:
     """Freeze applied ownership while resolving each source tree only once."""
     source_paths = {
@@ -203,8 +239,7 @@ def build_applied_file_provenances(
     for source_commit, file_paths in fallback_paths_by_commit.items():
         entries = list_git_tree_blobs(source_commit, file_paths)
         source_object_by_path.update(
-            (file_path, entry.blob_sha)
-            for file_path, entry in entries.items()
+            (file_path, entry.blob_sha) for file_path, entry in entries.items()
         )
 
     provenances = {}
@@ -220,6 +255,22 @@ def build_applied_file_provenances(
         provenances[file_path] = AppliedFileProvenance(
             file_metadata=selected_metadata,
             source_object_id=source_object_by_path.get(file_path),
+            introduced_selected_presence=(
+                False
+                if introduced_selected_presence_by_path is None
+                else introduced_selected_presence_by_path.get(
+                    file_path,
+                    False,
+                )
+            ),
+            index_preimage_source_ranges=(
+                ()
+                if index_preimage_source_ranges_by_path is None
+                else index_preimage_source_ranges_by_path.get(
+                    file_path,
+                    (),
+                )
+            ),
         )
     return provenances
 
@@ -244,8 +295,7 @@ def fresh_applied_batch_overlay_for_path(
     if not _entry_identity_matches(
         raw_entry,
         head=snapshot.head_commit,
-        index_entry=snapshot.index_entries.get(file_path),
-        index_is_intent_to_add=file_path in snapshot.intent_to_add_paths,
+        index_identity=snapshot.index_identities[file_path],
         allow_index_drift=file_path in snapshot.session_index_drift_paths,
         worktree=(
             capture_worktree_identity(file_path)
@@ -255,10 +305,19 @@ def fresh_applied_batch_overlay_for_path(
     ):
         return AppliedBatchOverlayView.empty()
 
+    snapshot_index_identity = snapshot.index_identities[file_path]
+    index_identity_is_exact = (
+        not snapshot_index_identity.unmerged_entries
+        and raw_entry["index"] == _index_identity_dict(snapshot_index_identity)
+    )
+
     metadata_by_owner: dict[str, BatchMetadataDict] = {}
     source_object_by_owner: dict[str, str] = {}
     batch_names: set[str] = set()
     lifecycle_change_types: set[str] = set()
+    applied_ranges_by_batch: dict[str, list[tuple[int, int]]] = {}
+    source_line_ranges_by_batch: dict[str, list[tuple[int, int]]] = {}
+    index_preimage_ranges_by_batch: dict[str, list[tuple[int, int]]] = {}
     for ordinal, application in enumerate(raw_entry["applications"]):
         batch_name = application["batch"]
         current_metadata = batch_metadata_by_name.get(batch_name)
@@ -279,6 +338,40 @@ def fresh_applied_batch_overlay_for_path(
         change_type = file_metadata.get("change_type")
         if isinstance(change_type, str):
             lifecycle_change_types.add(change_type)
+        selected_ranges = LineRanges.from_specs(
+            source_line
+            for claim in file_metadata.get("presence_claims", [])
+            for source_line in claim.get("source_lines", [])
+        ).ranges()
+        if (
+            index_identity_is_exact
+            and application.get("index_target_is_original") is True
+        ):
+            applied_ranges_by_batch.setdefault(batch_name, []).extend(selected_ranges)
+        if application.get("introduced_selected_presence") is True:
+            batch_ranges = source_line_ranges_by_batch.setdefault(
+                batch_name,
+                [],
+            )
+            batch_ranges.extend(selected_ranges)
+        preimage_specs = application.get(
+            "index_preimage_source_lines",
+            [],
+        )
+        if (
+            preimage_specs
+            and index_identity_is_exact
+            and application.get("index_target_is_original") is True
+        ):
+            preimage_ranges = LineRanges.from_specs(preimage_specs).ranges()
+            source_line_ranges_by_batch.setdefault(
+                batch_name,
+                [],
+            ).extend(preimage_ranges)
+            index_preimage_ranges_by_batch.setdefault(
+                batch_name,
+                [],
+            ).extend(preimage_ranges)
         batch_names.add(batch_name)
 
     if not metadata_by_owner:
@@ -289,6 +382,18 @@ def fresh_applied_batch_overlay_for_path(
         revealed_owner_names=frozenset(metadata_by_owner),
         batch_names=frozenset(batch_names),
         lifecycle_change_types=frozenset(lifecycle_change_types),
+        applied_source_line_ranges_by_batch={
+            batch_name: LineRanges.from_ranges(ranges).ranges()
+            for batch_name, ranges in applied_ranges_by_batch.items()
+        },
+        source_line_ranges_by_batch={
+            batch_name: LineRanges.from_ranges(ranges).ranges()
+            for batch_name, ranges in source_line_ranges_by_batch.items()
+        },
+        index_preimage_source_line_ranges_by_batch={
+            batch_name: LineRanges.from_ranges(ranges).ranges()
+            for batch_name, ranges in index_preimage_ranges_by_batch.items()
+        },
     )
 
 
@@ -299,8 +404,7 @@ def load_applied_batch_overlay_snapshot() -> AppliedBatchOverlaySnapshot:
     return AppliedBatchOverlaySnapshot(
         state=state,
         head_commit=current_head_commit(),
-        index_entries=read_index_entries(file_paths),
-        intent_to_add_paths=read_intent_to_add_paths(file_paths),
+        index_identities=read_index_identities(file_paths),
         session_index_drift_paths=_session_index_drift_paths(state),
     )
 
@@ -311,6 +415,7 @@ def record_applied_batch_overlays(
     batch_revision: str,
     files: dict[str, AppliedFileProvenance],
     before_worktree_identities: dict[str, WorktreeIdentity],
+    expected_index_identities: dict[str, IndexIdentity] | None = None,
 ) -> None:
     """Record successfully applied text ownership against the final tree state."""
     if not files:
@@ -320,12 +425,10 @@ def record_applied_batch_overlays(
 
     state = _load_state()
     head = current_head_commit()
-    index_entries = read_index_entries(files)
-    intent_to_add_paths = read_intent_to_add_paths(files)
+    index_identities = read_index_identities(files)
     session_index_drift_paths = _session_index_drift_paths(state)
     final_worktree_identities = {
-        file_path: capture_worktree_identity(file_path)
-        for file_path in files
+        file_path: capture_worktree_identity(file_path) for file_path in files
     }
     previous_batch_names = {
         application["batch"]
@@ -337,7 +440,14 @@ def record_applied_batch_overlays(
         sorted(previous_batch_names)
     )
 
+    recorded_paths: list[str] = []
     for file_path, provenance in files.items():
+        if index_identities[file_path].unmerged_entries:
+            # Conflict stages can never authorize applied ownership. Forget an
+            # older record too, so resolving the path to absence cannot revive
+            # authority captured before the conflict.
+            state["files"].pop(file_path, None)
+            continue
         previous_entry = state["files"].get(file_path)
         applications: list[_AppliedApplication] = []
         before_identity = before_worktree_identities.get(file_path)
@@ -347,51 +457,90 @@ def record_applied_batch_overlays(
             and _entry_identity_matches(
                 previous_entry,
                 head=head,
-                index_entry=index_entries.get(file_path),
-                index_is_intent_to_add=file_path in intent_to_add_paths,
+                index_identity=index_identities[file_path],
                 allow_index_drift=file_path in session_index_drift_paths,
                 worktree=before_identity,
             )
         ):
-            applications.extend(
-                deepcopy(application)
-                for application in previous_entry["applications"]
-                if (
-                    current_metadata_by_name.get(application["batch"], {}).get(
-                        "revision"
-                    )
-                    == application["revision"]
+            previous_index_is_exact = previous_entry["index"] == (
+                _index_identity_dict(
+                    index_identities[file_path],
                 )
             )
+            for previous_application in previous_entry["applications"]:
+                if (
+                    current_metadata_by_name.get(
+                        previous_application["batch"],
+                        {},
+                    ).get("revision")
+                    != previous_application["revision"]
+                ):
+                    continue
+                carried_application = deepcopy(previous_application)
+                if not previous_index_is_exact:
+                    carried_application.pop(
+                        "index_target_is_original",
+                        None,
+                    )
+                    carried_application.pop(
+                        "index_preimage_source_lines",
+                        None,
+                    )
+                applications.append(carried_application)
 
         application: _AppliedApplication = {
             "batch": batch_name,
             "revision": batch_revision,
-            "file_metadata": _compact_applied_file_metadata(
-                provenance.file_metadata
-            ),
+            "file_metadata": _compact_applied_file_metadata(provenance.file_metadata),
         }
         if provenance.source_object_id is not None:
             application["source_object_id"] = provenance.source_object_id
-        if application not in applications:
+        if provenance.introduced_selected_presence:
+            application["introduced_selected_presence"] = True
+        index_preimage_lines = LineRanges.from_ranges(
+            provenance.index_preimage_source_ranges
+        ).to_range_strings()
+        expected_index_identity = (
+            None
+            if expected_index_identities is None
+            else expected_index_identities.get(file_path)
+        )
+        current_index_matches_apply_target = expected_index_identities is None or (
+            expected_index_identity is not None
+            and not index_identities[file_path].unmerged_entries
+            and index_identities[file_path] == expected_index_identity
+        )
+        if current_index_matches_apply_target:
+            application["index_target_is_original"] = True
+        if index_preimage_lines and current_index_matches_apply_target:
+            application["index_preimage_source_lines"] = index_preimage_lines
+        for carried_application in applications:
+            if _same_applied_ownership(
+                carried_application,
+                application,
+            ):
+                _merge_application_authority(
+                    carried_application,
+                    application,
+                )
+                break
+        else:
             applications.append(application)
 
         state["files"][file_path] = {
             "head": head,
-            "index": _index_identity_dict(
-                index_entries.get(file_path),
-                is_intent_to_add=file_path in intent_to_add_paths,
-            ),
+            "index": _index_identity_dict(index_identities[file_path]),
             "worktree": asdict(final_worktree_identities[file_path]),
             "applications": applications,
         }
+        recorded_paths.append(file_path)
 
     _write_state(state)
-    if session_is_active():
+    if session_is_active() and recorded_paths:
         session_paths_file = get_session_applied_batch_overlay_paths_file_path()
         write_file_paths_file(
             session_paths_file,
-            [*read_file_paths_file(session_paths_file), *files],
+            [*read_file_paths_file(session_paths_file), *recorded_paths],
         )
 
 
@@ -405,16 +554,12 @@ def snapshot_applied_batch_overlays_for_abort() -> None:
         contents = read_required_text_file_contents(source_path)
         state = _decode_and_validate(contents)
         file_paths = state["files"]
-        index_entries = read_index_entries(file_paths)
-        intent_to_add_paths = read_intent_to_add_paths(file_paths)
+        index_identities = read_index_identities(file_paths)
         fresh_index_paths = sorted(
             file_path
             for file_path, entry in file_paths.items()
-            if entry["index"]
-            == _index_identity_dict(
-                index_entries.get(file_path),
-                is_intent_to_add=file_path in intent_to_add_paths,
-            )
+            if not index_identities[file_path].unmerged_entries
+            and entry["index"] == _index_identity_dict(index_identities[file_path])
         )
         write_text_file_contents(snapshot_path, contents)
         _write_fresh_index_paths(fresh_index_path, fresh_index_paths)
@@ -438,8 +583,7 @@ def rebind_applied_batch_overlays_after_session() -> None:
         return
 
     head = current_head_commit()
-    index_entries = read_index_entries(trusted_paths)
-    intent_to_add_paths = read_intent_to_add_paths(trusted_paths)
+    index_identities = read_index_identities(trusted_paths)
     batch_names = {
         application["batch"]
         for file_path in trusted_paths
@@ -462,10 +606,11 @@ def rebind_applied_batch_overlays_after_session() -> None:
         ]
         if not applications:
             continue
-        rebound_index = _index_identity_dict(
-            index_entries.get(file_path),
-            is_intent_to_add=file_path in intent_to_add_paths,
-        )
+        rebound_index = _index_identity_dict(index_identities[file_path])
+        if entry["index"] != rebound_index:
+            for application in applications:
+                application.pop("index_target_is_original", None)
+                application.pop("index_preimage_source_lines", None)
         if entry["index"] == rebound_index and entry["applications"] == applications:
             continue
         entry["index"] = rebound_index
@@ -565,24 +710,56 @@ def _validate_application(
         "revision",
         "file_metadata",
         "source_object_id",
+        "introduced_selected_presence",
+        "index_target_is_original",
+        "index_preimage_source_lines",
     }:
         raise _state_error(state_path)
     batch_name = application["batch"]
     revision = application["revision"]
     file_metadata = application["file_metadata"]
     source_object_id = application.get("source_object_id")
+    introduced_selected_presence = application.get("introduced_selected_presence")
+    index_target_is_original = application.get("index_target_is_original")
+    index_preimage_source_lines = application.get("index_preimage_source_lines")
     if (
         type(batch_name) is not str
         or not batch_name
         or type(revision) is not str
         or not revision
         or type(file_metadata) is not dict
+        or (source_object_id is not None and not _valid_object_id(source_object_id))
         or (
-            source_object_id is not None
-            and not _valid_object_id(source_object_id)
+            introduced_selected_presence is not None
+            and type(introduced_selected_presence) is not bool
+        )
+        or (
+            index_target_is_original is not None
+            and type(index_target_is_original) is not bool
+        )
+        or (
+            index_preimage_source_lines is not None
+            and (
+                type(index_preimage_source_lines) is not list
+                or any(
+                    type(specification) is not str
+                    for specification in index_preimage_source_lines
+                )
+            )
         )
     ):
         raise _state_error(state_path)
+    if index_preimage_source_lines is not None:
+        if index_target_is_original is False:
+            raise _state_error(state_path)
+        try:
+            canonical_preimage_lines = LineRanges.from_specs(
+                index_preimage_source_lines
+            ).to_range_strings()
+        except ValueError as error:
+            raise _state_error(state_path) from error
+        if canonical_preimage_lines != index_preimage_source_lines:
+            raise _state_error(state_path)
     try:
         validate_batch_name_constraints(batch_name)
     except CommandError as error:
@@ -604,6 +781,24 @@ def _validate_application(
         cast(BatchFileMetadataDict, file_metadata)
     ):
         raise _state_error(state_path)
+    if index_preimage_source_lines is not None:
+        selected_presence_lines = LineRanges.from_specs(
+            source_line
+            for claim in file_metadata.get("presence_claims", [])
+            for source_line in claim.get("source_lines", [])
+        )
+        index_preimage_lines = LineRanges.from_specs(index_preimage_source_lines)
+        if index_preimage_lines.difference(selected_presence_lines):
+            raise _state_error(state_path)
+        if index_target_is_original is None:
+            # Early versions of index-preimage provenance wrote the selected
+            # ranges before they wrote the identity marker that makes those
+            # ranges authoritative.  Keep accepting that historical shape,
+            # but discard its unbound proof while decoding.  In particular,
+            # this prevents a later equivalent application from attaching a
+            # fresh identity marker to ranges whose original index was never
+            # recorded.
+            application.pop("index_preimage_source_lines")
 
 
 def _compact_applied_file_metadata(
@@ -628,24 +823,130 @@ def _compact_applied_file_metadata(
     return compact
 
 
+def _same_applied_ownership(
+    left: _AppliedApplication,
+    right: _AppliedApplication,
+) -> bool:
+    """Return whether two applications describe the same selected ownership."""
+    return all(
+        left.get(field) == right.get(field)
+        for field in (
+            "batch",
+            "revision",
+            "file_metadata",
+            "source_object_id",
+        )
+    )
+
+
+
+def _all_selected_presence_introduced(
+    file_metadata: BatchFileMetadataDict,
+    source_object_id: str | None,
+    before_lines: LineBuffer | None,
+    after_lines: LineBuffer | None,
+) -> bool:
+    """Return whether every selected source line was introduced by this apply."""
+    if source_object_id is None or before_lines is None or after_lines is None:
+        return False
+    with load_git_blob_as_buffer(source_object_id) as source_lines:
+        return selected_presence_was_introduced(
+            file_metadata,
+            source_lines,
+            before_lines,
+            after_lines,
+        )
+
+
+def selected_presence_was_introduced(
+    file_metadata: BatchFileMetadataDict,
+    source_lines: Sequence[bytes],
+    before_lines: Sequence[bytes],
+    after_lines: Sequence[bytes],
+) -> bool:
+    """Return whether every selected source line was added to this target."""
+    selected_lines = LineRanges.from_specs(
+        source_line
+        for claim in file_metadata.get("presence_claims", [])
+        for source_line in claim.get("source_lines", [])
+    )
+    if not selected_lines:
+        return False
+
+    normalized_source = normalize_line_sequence_endings(source_lines)
+    normalized_before = normalize_line_sequence_endings(before_lines)
+    normalized_after = normalize_line_sequence_endings(after_lines)
+    with (
+        match_lines(normalized_before, normalized_after) as applied_mapping,
+        MatcherWorkspace() as workspace,
+    ):
+        introduced_occurrences = LinePayloadOccurrenceIndex(
+            workspace,
+            normalized_after,
+            normalize_payloads=False,
+            target_indexes=(
+                target_index
+                for target_index in range(len(normalized_after))
+                if applied_mapping.get_source_line_from_target_line(target_index + 1)
+                is None
+            ),
+        )
+        previous_source = 0
+        previous_target = 0
+        for start, end in selected_lines.ranges():
+            for source_line in range(start, end + 1):
+                if source_line > len(normalized_source):
+                    return False
+                source_content = normalized_source[source_line - 1]
+                if introduced_occurrences.occurrence_count(source_content) != 1:
+                    return False
+                after_target = (
+                    next(introduced_occurrences.matching_line_indexes(source_content))
+                    + 1
+                )
+                if previous_target != 0:
+                    if source_line == previous_source + 1:
+                        if after_target != previous_target + 1:
+                            return False
+                    elif after_target <= previous_target:
+                        return False
+                previous_source = source_line
+                previous_target = after_target
+        return True
+
+
+def _merge_application_authority(
+    target: _AppliedApplication,
+    source: _AppliedApplication,
+) -> None:
+    """Retain the union of still-valid proof for equivalent applications."""
+    if source.get("introduced_selected_presence") is True:
+        target["introduced_selected_presence"] = True
+    if source.get("index_target_is_original") is True:
+        target["index_target_is_original"] = True
+
+    source_preimage = source.get("index_preimage_source_lines", [])
+    if source_preimage:
+        target["index_preimage_source_lines"] = LineRanges.from_specs(
+            chain(
+                target.get("index_preimage_source_lines", []),
+                source_preimage,
+            )
+        ).to_range_strings()
+
 def _entry_identity_matches(
     entry: _AppliedFileEntry,
     *,
     head: str | None,
-    index_entry: IndexEntry | None,
-    index_is_intent_to_add: bool,
+    index_identity: IndexIdentity,
     allow_index_drift: bool = False,
     worktree: WorktreeIdentity,
 ) -> bool:
     return (
         entry["head"] == head
+        and not index_identity.unmerged_entries
         and (
-            allow_index_drift
-            or entry["index"]
-            == _index_identity_dict(
-                index_entry,
-                is_intent_to_add=index_is_intent_to_add,
-            )
+            allow_index_drift or entry["index"] == _index_identity_dict(index_identity)
         )
         and entry["worktree"] == asdict(worktree)
     )
@@ -710,15 +1011,15 @@ def _write_state(state: _AppliedOverlayState) -> None:
 
 
 def _index_identity_dict(
-    entry: IndexEntry | None,
-    *,
-    is_intent_to_add: bool,
+    identity: IndexIdentity,
 ) -> dict[str, str | None]:
-    if entry is None or is_intent_to_add:
+    if identity.unmerged_entries:
+        raise ValueError("unmerged index identity cannot authorize applied overlay")
+    if not identity.exists or identity.intent_to_add:
         # ``start`` adds untracked paths with intent-to-add.  Treat that index
         # sentinel as equivalent to the absent entry seen by ``apply``.
         return {"mode": None, "object_id": None}
-    return {"mode": entry.mode, "object_id": entry.object_id}
+    return {"mode": identity.mode, "object_id": identity.object_id}
 
 
 def _valid_index_identity(value: object) -> bool:

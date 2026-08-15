@@ -10,6 +10,7 @@ from typing import Protocol
 from ...batch.state.metadata_types import BatchFileMetadataDict
 from ...core.buffer import LineBuffer
 from ...core.text_lifecycle import TextFileChangeType
+from ...data.file_target_identity import IndexIdentity
 
 
 class CloseableResource(Protocol):
@@ -78,6 +79,8 @@ class ApplyTextFileActionPlan:
     file_mode: str | None
     change_type: TextFileChangeType
     selected_file_metadata: BatchFileMetadataDict | None = None
+    introduced_selected_presence: bool = False
+    index_preimage_source_ranges: tuple[tuple[int, int], ...] = ()
     expected_index_identity: IndexIdentity | None = None
 
     def close(self) -> None:

@@ -195,6 +195,22 @@ def execute_apply_action(
                 },
                 selection_ids_to_apply,
                 selected_file_metadata_by_path=selected_metadata_by_path,
+                introduced_selected_presence_by_path={
+                    plan.file_path: plan.introduced_selected_presence
+                    for plan in apply_plans
+                    if isinstance(
+                        plan,
+                        _action_plans.ApplyTextFileActionPlan,
+                    )
+                },
+                index_preimage_source_ranges_by_path={
+                    plan.file_path: plan.index_preimage_source_ranges
+                    for plan in apply_plans
+                    if isinstance(
+                        plan,
+                        _action_plans.ApplyTextFileActionPlan,
+                    )
+                },
             )
             _require_unchanged_apply_targets(
                 expected_index_identities,
